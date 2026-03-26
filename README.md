@@ -2,7 +2,9 @@
 
 **Turn-based tactical RPG combat in Minecraft.**
 
-Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight through 18 procedurally generated biome arenas across the Overworld, Nether, and End — using vanilla items, crafting, and potions — in a complete turn-based combat system with an isometric camera, grid movement, and 35+ unique enemy AI behaviors.
+Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight through 18 procedurally generated biome arenas across the Overworld, Nether, and End — using vanilla items, crafting, and potions — in a complete turn-based combat system with an isometric camera, grid movement, and 40+ unique enemy AI behaviors.
+
+> **No new items. No new blocks.** (Except the Level Select.) Every item already in the game has a purpose in battle.
 
 - **Mod ID:** `craftics`
 - **Version:** 0.1.0
@@ -11,6 +13,18 @@ Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight th
 - **Java:** 21+
 - **Author:** CrackedGames
 - **License:** All Rights Reserved
+
+### 📖 Documentation
+
+Full documentation with in-depth guides:
+
+| Page | Description |
+|------|-------------|
+| [**Combat System**](https://chrisatwell27.github.io/Craftics/combat.html) | Weapons, abilities, armor trims, goat horns, items, damage formula |
+| [**Enemy AI**](https://chrisatwell27.github.io/Craftics/enemies.html) | 40+ mob behaviors, boss phases, on-hit effects |
+| [**Biome Progression**](https://chrisatwell27.github.io/Craftics/biomes.html) | 18 biomes, branching paths, procedural generation |
+| [**Progression & Builds**](https://chrisatwell27.github.io/Craftics/progression.html) | Stats, leveling, traders, NG+, recommended class builds |
+| [**Modding Guide**](https://chrisatwell27.github.io/Craftics/modding.html) | Custom arenas, JSON biomes, Java API, addon policy |
 
 ---
 
@@ -212,7 +226,19 @@ There are **8 damage types**: Sword, Cleaving, Blunt, Water, Magic, Pet, Ranged,
 | Raiser | Pet/Ally Damage +1 |
 | Wild, Dune, etc. | Generic Melee Power +1 (stacks with Sword/Cleaving/Blunt) |
 
-Wearing 4 pieces with the **same trim material** activates a **full-set bonus** (e.g., Infernal = +3 fire damage, Fortress = halve incoming damage, Tidal = water tiles heal you).
+Wearing 4 pieces with the **same trim pattern** activates a **full-set bonus**:
+
+| Trim | Full Set Bonus |
+|------|---------------|
+| Sentry | Counter-attack ranged enemies |
+| Wild | First attack each turn is free |
+| Ward | 50% less damage when stationary |
+| Vex | 20% dodge chance |
+| Silence | Invisible for first 2 turns |
+| Flow | Kills refund 1 AP |
+| Bolt | Crits stun the target |
+
+Templates drop from bosses. Every trim enables a different playstyle. See the [full trim reference](https://chrisatwell27.github.io/Craftics/combat.html#armor-trims) for all 19 patterns.
 
 **Combat Effect Bonuses:**
 
@@ -234,6 +260,23 @@ Each weapon type has a unique combat ability:
 | **Spears** | Pierce | Damage passes through the target to hit the tile behind |
 | **Mace** | Smash | 3×3 AoE damage + knockback |
 | **Crossbow** | Pierce-Through | Bolt passes through the first target to hit a second |
+
+### Goat Horn Effects
+
+Rare drops from goats (10% chance). 8 variants, each with its own sound and combat effect:
+
+| Horn | AP | Effect |
+|------|----|--------|
+| Ponder | 1 | +2 Defense for 3 turns |
+| Sing | 1 | +2 HP regen for 3 turns |
+| Seek | 2 | +3 Attack for 3 turns |
+| Feel | 1 | +2 Speed for 3 turns |
+| Admire | 2 | All enemies −2 Attack for 2 turns |
+| Call | 2 | All enemies −1 Speed for 2 turns |
+| Yearn | 3 | All enemies Poisoned for 3 turns |
+| Dream | 2 | Fire Resistance for 4 turns |
+
+See the [full combat reference](https://chrisatwell27.github.io/Craftics/combat.html#goat-horns) for strategy tips.
 
 ### Usable Items
 
@@ -261,11 +304,15 @@ Effects can also be frozen — potions consumed in the hub activate when combat 
 | Fire Charge | Sets target tile on fire |
 | Wind Charge | Knockback 2 tiles + 1 damage |
 | TNT | Timed 3×3 AoE explosion |
-| Splash Potion | 3×3 area effect |
+| Splash Potion | 3×3 area effect (arcs with particles, 4-tile range) |
+| Lingering Potion | Creates a poison cloud that ticks damage each turn |
+| Cobweb | Stuns target for 1 turn |
+| Bell | Stuns all enemies in range |
+| Tipped Arrow | Applies potion effect on hit (poison, slowness, harming) |
 
 ### Enemy AI
 
-The mod includes 20+ unique AI strategies registered for 35+ mob types. Unregistered mobs default to passive behavior (flee when attacked). Each AI controls movement, targeting, and special mechanics:
+The mod includes 20+ unique AI strategies registered for 40+ mob types. Unregistered mobs default to passive behavior (flee when attacked). Each AI controls movement, targeting, and special mechanics. See the [full Enemy AI reference](https://chrisatwell27.github.io/Craftics/enemies.html) for every mob.
 
 | AI | Mobs | Key Behavior |
 |----|------|-------------|
@@ -357,6 +404,8 @@ After defeating the Ender Dragon in Dragon's Nest (the final biome), New Game Pl
 - Player stats and emeralds carry over
 - Enemies scale by **+25% per NG+ cycle** (HP, attack, defense)
 - The NG+ tier is displayed on the level select screen
+
+See the [Recommended Builds guide](https://chrisatwell27.github.io/Craftics/progression.html#recommended-builds) for class builds optimized for each stage of the game.
 
 ---
 
@@ -659,7 +708,29 @@ EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos);
 
 13 action types are available: Move, Attack, MoveAndAttack, Flee, Teleport, TeleportAndAttack, Pounce, Explode, RangedAttack, Swoop, StartFuse, Detonate, and Idle.
 
-See [MODDING.md](MODDING.md) for complete API documentation, built-in AI reference, environment styles, enemy stats guide, and examples.
+See [MODDING.md](MODDING.md) for complete API documentation, or the [online Modding Guide](https://chrisatwell27.github.io/Craftics/modding.html) for the full reference with examples.
+
+---
+
+## Configuration
+
+45+ config options via Mod Menu:
+
+- **Combat Balance:** Enemy HP/ATK/DEF scaling per biome, boss HP multiplier, critical hit chance, ranged accuracy
+- **Mob Behavior:** Passive mob wander chance, predator hunting toggle, enemy animation speed, auto-end turn
+- **Difficulty:** Permadeath mode, heal between levels, enemy range hints, intention preview
+- **Accessibility:** Colorblind mode, larger UI, camera shake toggle
+- **Economy:** Loot multiplier, trader spawn chance, horn drop rate, emerald rewards
+
+---
+
+## Addon Policy
+
+You're free to create **addons, datapacks, resource packs, and mods** that interact with Craftics through its API. You can also include Craftics in **modpacks** with credit.
+
+**Allowed:** Addons via API, datapacks with custom arenas/loot/biomes, resource packs, modpacks on CurseForge/Modrinth (with credit), videos/streams/reviews.
+
+**Not allowed:** Redistributing Craftics outside modpack launchers, copying source code, re-uploading without permission.
 
 ---
 
@@ -680,7 +751,7 @@ The mod is in active development (v0.1.0). The following systems are implemented
 - [x] Click-to-attack (melee and ranged)
 - [x] Weapon abilities (cleave, stun, pierce, smash, crit, execute)
 - [x] Equipment-based combat stats
-- [x] 20+ unique enemy AI strategies for 35+ mob types
+- [x] 20+ unique enemy AI strategies for 40+ mob types
 - [x] Turn-based status effects (12 effects, frozen effects)
 - [x] Food, potion, and throwable item use in combat
 - [x] Tile highlights (carpet-based movement/attack display)

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics — Enemy AI Behaviors</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">&#9876; Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="combat.html">Combat</a></li>
+      <li><a href="enemies.html" class="active">Enemies</a></li>
+      <li><a href="biomes.html">Biomes</a></li>
+      <li><a href="progression.html">Progression</a></li>
+      <li><a href="modding.html">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============================================================
+     PAGE LAYOUT
+     ============================================================ -->
+<div class="page-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-label">On This Page</div>
+    <nav class="sidebar-nav">
+      <a href="#how-ai-works">How AI Works</a>
+      <a href="#passive-mobs">Passive Mobs</a>
+      <a href="#hostile-mobs">Hostile Mobs</a>
+      <a href="#boss-warden">Boss: The Warden</a>
+      <a href="#boss-dragon">Boss: Ender Dragon</a>
+      <a href="#on-hit-effects">Special On-Hit Effects</a>
+    </nav>
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+    <h1>Enemy AI Behaviors</h1>
+    <p class="page-desc">Every mob in Craftics has its own combat intelligence. 40+ mobs with 20+ unique AI strategies.</p>
+
+    <!-- ── How AI Works ── -->
+    <h2 id="how-ai-works">How AI Works</h2>
+    <p>
+      After the player ends their turn, each enemy acts in sequence. The AI evaluates
+      four possible actions: <strong>move</strong>, <strong>attack</strong>,
+      <strong>use a special ability</strong>, or <strong>flee</strong>. The decision
+      depends on the mob's registered AI class, which encodes its personality and
+      combat style.
+    </p>
+    <p>
+      Every mob type has a registered AI class that determines its behavior. When the
+      AI's turn begins it checks line-of-sight, distance to the player, its own HP,
+      and any active status effects before choosing what to do.
+    </p>
+    <p>
+      Mobs without a registered AI class default to <code>PassiveAI</code> &mdash;
+      they stand idle and flee when attacked.
+    </p>
+
+    <!-- ── Passive Mobs ── -->
+    <h2 id="passive-mobs">Passive Mobs</h2>
+    <p>
+      Passive mobs won't attack unprovoked. Some can be turned hostile, and a few
+      have unique quirks that make them more than simple bystanders.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Mob</th>
+            <th>AI</th>
+            <th>Behavior</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Cow, Pig, Sheep, Chicken</td>
+            <td><code>PassiveAI</code></td>
+            <td>Idle. Flees when attacked. Drops food/resources.</td>
+          </tr>
+          <tr>
+            <td>Rabbit</td>
+            <td><code>PassiveAI</code></td>
+            <td>Idle. Quick to flee (speed 2).</td>
+          </tr>
+          <tr>
+            <td>Bat</td>
+            <td><code>PassiveAI</code></td>
+            <td>Idle. Very low HP (2). Easy XP.</td>
+          </tr>
+          <tr>
+            <td>Cod, Salmon</td>
+            <td><code>PassiveAI</code></td>
+            <td>Idle. Only spawns in water biomes.</td>
+          </tr>
+          <tr>
+            <td>Axolotl</td>
+            <td><code>AxolotlAI</code></td>
+            <td>Fights alongside the player as an ally. Attacks nearest enemy.</td>
+          </tr>
+          <tr>
+            <td>Cat</td>
+            <td><code>CatAI</code></td>
+            <td>Runs away unless you're holding a fish.</td>
+          </tr>
+          <tr>
+            <td>Ocelot</td>
+            <td><code>OcelotAI</code></td>
+            <td>Speed 2 hit-and-run. Strikes then flees.</td>
+          </tr>
+          <tr>
+            <td>Bee</td>
+            <td><code>BeeAI</code></td>
+            <td>Passive until you hit one. Then EVERY bee swarms you with poison.</td>
+          </tr>
+          <tr>
+            <td>Wolf</td>
+            <td><code>GoatAI</code> variant</td>
+            <td>Hunts sheep and chickens. Hit one and it turns hostile permanently.</td>
+          </tr>
+          <tr>
+            <td>Goat</td>
+            <td><code>GoatAI</code></td>
+            <td>Wanders until hit. Then 50% ram (knockback 2) or flee. Never stops charging once hostile.</td>
+          </tr>
+          <tr>
+            <td>Polar Bear</td>
+            <td><code>PolarBearAI</code></td>
+            <td>Passive unless you get within 2 tiles. Then aggressive melee.</td>
+          </tr>
+          <tr>
+            <td>Llama</td>
+            <td><code>LlamaAI</code></td>
+            <td>Spits at range 2 when provoked. Low damage.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Hostile Mobs ── -->
+    <h2 id="hostile-mobs">Hostile Mobs</h2>
+    <p>
+      Hostile mobs attack on sight. Each one has a distinct AI personality &mdash;
+      from mindless melee rushers to careful kiters and devastating ranged threats.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Mob</th>
+            <th>AI</th>
+            <th>Speed</th>
+            <th>Range</th>
+            <th>Key Behavior</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Zombie</td>
+            <td><code>ZombieAI</code></td>
+            <td>1</td>
+            <td>1</td>
+            <td>Beeline melee. Simplest AI &mdash; walks straight at you.</td>
+          </tr>
+          <tr>
+            <td>Husk</td>
+            <td><code>HuskAI</code></td>
+            <td>1</td>
+            <td>1</td>
+            <td>Zombie variant. +1 bonus damage. Inflicts Weakness on hit.</td>
+          </tr>
+          <tr>
+            <td>Drowned</td>
+            <td><code>DrownedAI</code></td>
+            <td>1</td>
+            <td>3</td>
+            <td>Throws trident at range 3 if it has one. Otherwise melee rush.</td>
+          </tr>
+          <tr>
+            <td>Skeleton</td>
+            <td><code>SkeletonAI</code></td>
+            <td>1</td>
+            <td>3</td>
+            <td>Ranged. Seeks cardinal line-of-sight. Backs up when you're within 2 tiles.</td>
+          </tr>
+          <tr>
+            <td>Stray</td>
+            <td><code>StrayAI</code></td>
+            <td>1</td>
+            <td>3</td>
+            <td>Ranged + kiting. Prefers maximum distance. Inflicts Slowness on hit.</td>
+          </tr>
+          <tr>
+            <td>Bogged</td>
+            <td><code>BoggedAI</code></td>
+            <td>1</td>
+            <td>3</td>
+            <td>Ranged. Inflicts Poison on hit.</td>
+          </tr>
+          <tr>
+            <td>Spider</td>
+            <td><code>SpiderAI</code></td>
+            <td>2</td>
+            <td>1</td>
+            <td>2&times;2 body. Pounce attack &mdash; leaps over obstacles to land adjacent.</td>
+          </tr>
+          <tr>
+            <td>Cave Spider</td>
+            <td><code>CaveSpiderAI</code></td>
+            <td>2</td>
+            <td>1</td>
+            <td>Like Spider but 1&times;1. Inflicts Poison on hit.</td>
+          </tr>
+          <tr>
+            <td>Creeper</td>
+            <td><code>CreeperAI</code></td>
+            <td>1</td>
+            <td>1</td>
+            <td>Sneaks close. Starts fuse when adjacent (glows). Explodes next turn for 2&times; damage in radius 1. Fuse resets if player moves away. Kill it or run!</td>
+          </tr>
+          <tr>
+            <td>Vindicator</td>
+            <td><code>VindicatorAI</code></td>
+            <td>2</td>
+            <td>1</td>
+            <td>Speed 2 aggressive melee rush. High damage.</td>
+          </tr>
+          <tr>
+            <td>Pillager</td>
+            <td><code>PillagerAI</code></td>
+            <td>1</td>
+            <td>4</td>
+            <td>Crossbow (range 4). Retreats from melee range.</td>
+          </tr>
+          <tr>
+            <td>Witch</td>
+            <td><code>WitchAI</code></td>
+            <td>1</td>
+            <td>2-3</td>
+            <td>Potion throw with random debuffs. Keeps distance.</td>
+          </tr>
+          <tr>
+            <td>Enderman</td>
+            <td><code>EndermanAI</code></td>
+            <td>2</td>
+            <td>1</td>
+            <td>Teleports behind you when attacked from the front. High damage, evasive.</td>
+          </tr>
+          <tr>
+            <td>Phantom</td>
+            <td><code>PhantomAI</code></td>
+            <td>4</td>
+            <td>-</td>
+            <td>Cardinal-line swoops. Damages ALL tiles in its path.</td>
+          </tr>
+          <tr>
+            <td>Silverfish</td>
+            <td><code>SilverfishAI</code></td>
+            <td>2</td>
+            <td>1</td>
+            <td>Tiny, fast, swarms. Low HP but annoying in groups.</td>
+          </tr>
+          <tr>
+            <td>Slime</td>
+            <td><code>SlimeAI</code></td>
+            <td>1</td>
+            <td>1</td>
+            <td>Splits into smaller slimes when killed.</td>
+          </tr>
+          <tr>
+            <td>Blaze</td>
+            <td><code>BlazeAI</code></td>
+            <td>1</td>
+            <td>3-4</td>
+            <td>Medium-range fire attacks. Applies Burning. Retreats from melee.</td>
+          </tr>
+          <tr>
+            <td>Ghast</td>
+            <td><code>GhastAI</code></td>
+            <td>1</td>
+            <td>5-6</td>
+            <td>Long-range fireball. Flees from close range. Very dangerous at distance.</td>
+          </tr>
+          <tr>
+            <td>Shulker</td>
+            <td><code>ShulkerAI</code></td>
+            <td>0</td>
+            <td>4-5</td>
+            <td>Stationary turret. High defense. Rarely moves. Levitation projectile.</td>
+          </tr>
+          <tr>
+            <td>Breeze</td>
+            <td><code>BreezeAI</code></td>
+            <td>2</td>
+            <td>3</td>
+            <td>Wind charge attacks. Knockback. Mobile and evasive.</td>
+          </tr>
+          <tr>
+            <td>Magma Cube</td>
+            <td><code>SlimeAI</code> variant</td>
+            <td>1</td>
+            <td>1</td>
+            <td>Like Slime but inflicts Burning on hit.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Boss: The Warden ── -->
+    <h2 id="boss-warden">Boss: The Warden</h2>
+    <p>
+      The Warden is the first major boss encounter. It hits incredibly hard and
+      becomes far more dangerous as the fight goes on.
+    </p>
+
+    <h3>Phase 1 &mdash; 100% to 50% HP</h3>
+    <ul>
+      <li><strong>Speed 1.</strong> Slow but devastating melee damage.</li>
+      <li>Walks directly toward the player each turn.</li>
+      <li><strong>Strategy:</strong> Kite and use ranged weapons. Keep your distance and chip away at its massive HP pool.</li>
+    </ul>
+
+    <h3>Phase 2 &mdash; Below 50% HP</h3>
+    <ul>
+      <li><strong>Speed increases to 2.</strong> Much harder to outrun.</li>
+      <li>Gains <strong>Sonic Boom</strong> &mdash; a ranged attack (range 3) that bypasses armor entirely.</li>
+      <li>Significantly more dangerous. Kiting becomes unreliable.</li>
+      <li><strong>Strategy:</strong> Focus on burst damage to finish the fight quickly. Save your strongest abilities for this phase.</li>
+    </ul>
+
+    <!-- ── Boss: Ender Dragon ── -->
+    <h2 id="boss-dragon">Boss: Ender Dragon</h2>
+    <p>
+      The Ender Dragon is the final boss of Craftics. The fight takes place on a
+      special arena grid with end crystals and obsidian towers.
+    </p>
+
+    <h3>Phase 1 &mdash; 100% to 50% HP</h3>
+    <ul>
+      <li><strong>Arena swoops</strong> &mdash; flies across the grid damaging every tile in its path.</li>
+      <li>Predictable flight patterns, but the damage area is wide.</li>
+      <li><strong>Strategy:</strong> Learn the swoop lanes and position between them. Destroy end crystals to prevent healing.</li>
+    </ul>
+
+    <h3>Phase 2 &mdash; Below 50% HP</h3>
+    <ul>
+      <li>Switches to <strong>charging directly at the player</strong> instead of sweeping lanes.</li>
+      <li>Gains <strong>AoE breath attacks</strong> that leave lingering damage zones on the grid.</li>
+      <li>More aggressive and harder to dodge.</li>
+      <li><strong>Strategy:</strong> Stay mobile. Avoid lingering in breath zones. Use your best burst damage to close out the fight.</li>
+    </ul>
+
+    <!-- ── Special On-Hit Effects ── -->
+    <h2 id="on-hit-effects">Special On-Hit Effects</h2>
+    <p>
+      Several mobs apply debuffs when they land a hit. Knowing which mobs inflict
+      which effects is critical for prioritizing targets and planning your defenses.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Mob</th>
+            <th>Effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Wither Skeleton</td>
+            <td>Wither (damage over time)</td>
+          </tr>
+          <tr>
+            <td>Blaze</td>
+            <td>Burning</td>
+          </tr>
+          <tr>
+            <td>Husk</td>
+            <td>Weakness (reduced damage)</td>
+          </tr>
+          <tr>
+            <td>Stray</td>
+            <td>Slowness (reduced movement)</td>
+          </tr>
+          <tr>
+            <td>Cave Spider</td>
+            <td>Poison</td>
+          </tr>
+          <tr>
+            <td>Bogged</td>
+            <td>Poison</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+</div>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer>
+  <span>Craftics by CrackedGames</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="js/nav.js"></script>
+</body>
+</html>

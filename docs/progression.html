@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics — Player Progression</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">&#9876; Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="combat.html">Combat</a></li>
+      <li><a href="enemies.html">Enemies</a></li>
+      <li><a href="biomes.html">Biomes</a></li>
+      <li><a href="progression.html" class="active">Progression</a></li>
+      <li><a href="modding.html">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============================================================
+     PAGE LAYOUT
+     ============================================================ -->
+<div class="page-layout">
+
+  <!-- ---- Sidebar ---- -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Progression</div>
+    <nav class="sidebar-nav">
+      <a href="#stats">Stats</a>
+      <a href="#leveling">Leveling Up</a>
+      <a href="#traders">Trader System</a>
+      <a href="#victory-defeat">Victory &amp; Defeat</a>
+      <a href="#new-game-plus">New Game+</a>
+      <a href="#configuration">Configuration</a>
+      <a href="#recommended-builds">Recommended Builds</a>
+      <a href="#build-early" class="sub">Early Overworld</a>
+      <a href="#build-mid" class="sub">Mid Overworld</a>
+      <a href="#build-sniper" class="sub">Alt: The Sniper</a>
+      <a href="#build-late" class="sub">Late Overworld</a>
+      <a href="#build-nether" class="sub">Nether</a>
+      <a href="#build-end" class="sub">The End</a>
+      <a href="#build-ngplus" class="sub">New Game+</a>
+    </nav>
+  </aside>
+
+  <!-- ---- Content ---- -->
+  <main class="content">
+    <h1>Player Progression</h1>
+    <p class="page-desc">
+      Level up, allocate stats, trade with merchants, and push through New Game+ cycles.
+    </p>
+
+    <!-- ================================================================
+         1. STATS
+         ================================================================ -->
+    <h2 id="stats">Stats</h2>
+    <p>
+      Defeating a biome boss grants a level-up. Each level-up gives you points to allocate across <strong>8 stats</strong> that define your playstyle.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Stat</th>
+            <th>Base</th>
+            <th>Effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Speed</strong></td>
+            <td>3</td>
+            <td>Tiles you can move per turn</td>
+          </tr>
+          <tr>
+            <td><strong>AP</strong></td>
+            <td>3</td>
+            <td>Action Points per turn</td>
+          </tr>
+          <tr>
+            <td><strong>Melee Power</strong></td>
+            <td>0</td>
+            <td>Bonus melee damage</td>
+          </tr>
+          <tr>
+            <td><strong>Ranged Power</strong></td>
+            <td>0</td>
+            <td>Bonus ranged damage</td>
+          </tr>
+          <tr>
+            <td><strong>Vitality</strong></td>
+            <td>0</td>
+            <td>Bonus max HP</td>
+          </tr>
+          <tr>
+            <td><strong>Defense</strong></td>
+            <td>0</td>
+            <td>Flat damage reduction</td>
+          </tr>
+          <tr>
+            <td><strong>Luck</strong></td>
+            <td>0</td>
+            <td>Better loot rolls, crit chance</td>
+          </tr>
+          <tr>
+            <td><strong>Resourceful</strong></td>
+            <td>0</td>
+            <td>Bonus emerald rewards, cheaper trades</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Stats are persistent per player (UUID-based, multiplayer supported). They are displayed in a panel on the inventory screen.
+    </p>
+
+    <!-- ================================================================
+         2. LEVELING UP
+         ================================================================ -->
+    <h2 id="leveling">Leveling Up</h2>
+    <ul>
+      <li><strong>Boss kills</strong> grant a level-up.</li>
+      <li>Each level-up gives <strong>stat points</strong> to allocate.</li>
+      <li>Stats compound with <strong>armor trims</strong> and <strong>equipment bonuses</strong>.</li>
+      <li>A <strong>stat panel</strong> shows current level, all stats, unspent points, and emerald count.</li>
+    </ul>
+
+    <!-- ================================================================
+         3. TRADER SYSTEM
+         ================================================================ -->
+    <h2 id="traders">Trader System</h2>
+    <p>
+      There is a <strong>40% chance</strong> a trader appears between combat levels when you choose &ldquo;Continue.&rdquo;
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Trader</th>
+            <th>Specialty</th>
+            <th>Example Items</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Weaponsmith</strong></td>
+            <td>Melee weapons</td>
+            <td>Swords, axes (wood&rarr;netherite by tier)</td>
+          </tr>
+          <tr>
+            <td><strong>Armorer</strong></td>
+            <td>Armor sets</td>
+            <td>Full sets scaling by progression tier</td>
+          </tr>
+          <tr>
+            <td><strong>Fletcher</strong></td>
+            <td>Ranged weapons</td>
+            <td>Bows, crossbows, arrows, tipped arrows</td>
+          </tr>
+          <tr>
+            <td><strong>Alchemist</strong></td>
+            <td>Potions</td>
+            <td>Strength, Swiftness, Healing, Fire Resistance</td>
+          </tr>
+          <tr>
+            <td><strong>Chef</strong></td>
+            <td>Food items</td>
+            <td>Cooked meats, golden apples, golden carrots</td>
+          </tr>
+          <tr>
+            <td><strong>Toolsmith</strong></td>
+            <td>Utility items</td>
+            <td>Shields, ender pearls, TNT, fire charges</td>
+          </tr>
+          <tr>
+            <td><strong>Curiosity Dealer</strong></td>
+            <td>Rare items</td>
+            <td>Goat horns, enchanted books, trim templates</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Trades cost <strong>emeralds</strong>. Each encounter offers <strong>3&ndash;5 random trades</strong>. Quality scales with biome tier (1&ndash;9).
+    </p>
+
+    <!-- ================================================================
+         4. VICTORY & DEFEAT
+         ================================================================ -->
+    <h2 id="victory-defeat">Victory &amp; Defeat</h2>
+
+    <h3>Victory</h3>
+    <p>
+      When all enemies die, you receive:
+    </p>
+    <ul>
+      <li><strong>Mob drops</strong> from each enemy</li>
+      <li><strong>Biome loot</strong> from a weighted loot table</li>
+      <li><strong>Emerald reward</strong> (scaled by the Resourceful stat)</li>
+      <li><strong>Boss kills</strong> unlock the next biome(s) + a level-up</li>
+    </ul>
+    <p>
+      After a non-boss victory, choose:
+    </p>
+    <ul>
+      <li><strong>Go Home</strong> &mdash; keep loot, return to hub, reset biome run.</li>
+      <li><strong>Continue</strong> &mdash; proceed to next level (risk/reward: dying loses run loot).</li>
+    </ul>
+
+    <h3>Defeat</h3>
+    <p>
+      If you die:
+    </p>
+    <ul>
+      <li><strong>Inventory cleared</strong> &mdash; current run items lost.</li>
+      <li><strong>Teleported back to hub</strong> &mdash; biome run resets (start from level 1).</li>
+      <li><strong>Stats and permanent progress kept.</strong></li>
+    </ul>
+
+    <!-- ================================================================
+         5. NEW GAME+
+         ================================================================ -->
+    <h2 id="new-game-plus">New Game+</h2>
+    <p>
+      Beat the Ender Dragon in Dragon&rsquo;s Nest to enter New Game+:
+    </p>
+    <ul>
+      <li>All biome progression <strong>resets</strong>.</li>
+      <li><strong>Stats, emeralds, and gear</strong> carry over.</li>
+      <li>Enemies scale <strong>+25% per NG+ cycle</strong> (HP, attack, defense).</li>
+      <li>NG+ tier is displayed on the <strong>level select screen</strong>.</li>
+      <li>How far can you go?</li>
+    </ul>
+
+    <!-- ================================================================
+         6. CONFIGURATION
+         ================================================================ -->
+    <h2 id="configuration">Configuration</h2>
+    <p>
+      Over <strong>45 config options</strong> are available via Mod Menu. Key categories:
+    </p>
+
+    <h3>Combat Balance</h3>
+    <p>
+      Enemy HP/ATK/DEF scaling per biome, boss HP multiplier, critical hit chance, ranged accuracy.
+    </p>
+
+    <h3>Mob Behavior</h3>
+    <p>
+      Passive mob wander chance, predator hunting toggle, enemy animation speed, auto-end turn.
+    </p>
+
+    <h3>Difficulty</h3>
+    <p>
+      Permadeath mode, heal between levels, enemy range hints, intention preview.
+    </p>
+
+    <h3>Accessibility</h3>
+    <p>
+      Colorblind mode, larger UI, camera shake toggle.
+    </p>
+
+    <h3>Economy</h3>
+    <p>
+      Loot multiplier, trader spawn chance, horn drop rate, emerald rewards.
+    </p>
+
+    <!-- ================================================================
+         7. RECOMMENDED BUILDS
+         ================================================================ -->
+    <h2 id="recommended-builds">Recommended Builds</h2>
+    <p>
+      A class building guide for each stage of the game. These builds combine armor sets, trim bonuses, weapons, and stat allocations into cohesive strategies.
+    </p>
+
+    <!-- ---- Early Overworld ---- -->
+    <h3 id="build-early">Early Overworld (Plains &rarr; Dark Forest) &mdash; &ldquo;The Survivor&rdquo;</h3>
+    <ul>
+      <li><strong>Armor:</strong> Leather or Iron (whatever you find)</li>
+      <li><strong>Weapon:</strong> Iron Sword (Cleave is very strong early)</li>
+      <li><strong>Stats:</strong> Speed +1, Vitality +1 first</li>
+      <li><strong>Strategy:</strong> Focus on mobility. Food is your main healing. Save emeralds for the Armorer.</li>
+    </ul>
+
+    <!-- ---- Mid Overworld ---- -->
+    <h3 id="build-mid">Mid Overworld (Desert/Jungle &rarr; River Delta) &mdash; &ldquo;The Rogue&rdquo;</h3>
+    <ul>
+      <li><strong>Armor:</strong> Chainmail (Sword +2 damage type bonus)</li>
+      <li><strong>Trim:</strong> Bolt &times;4 (Sword Power +4, full set: crits stun)</li>
+      <li><strong>Weapon:</strong> Diamond Sword (Cleave + 30% crit)</li>
+      <li><strong>Stats:</strong> Melee Power, Speed, AP</li>
+      <li><strong>Strategy:</strong> Crit-stun build. Every crit stuns the target. Cleave hits neighbors. Stack Sharpness enchant.</li>
+    </ul>
+
+    <!-- ---- Alt Mid: The Sniper ---- -->
+    <h3 id="build-sniper">Alternative Mid Build &mdash; &ldquo;The Sniper&rdquo;</h3>
+    <ul>
+      <li><strong>Armor:</strong> Leather (Scout, light &mdash; invest in Speed)</li>
+      <li><strong>Trim:</strong> Sentry &times;4 (Ranged Power +4, full set: counter-attack ranged)</li>
+      <li><strong>Weapon:</strong> Crossbow (Pierce-through, range 4)</li>
+      <li><strong>Stats:</strong> Ranged Power, Speed, AP</li>
+      <li><strong>Strategy:</strong> Kite everything. Stay at max range. Pierce-through hits two enemies per shot. Tipped arrows for debuffs.</li>
+    </ul>
+
+    <!-- ---- Late Overworld ---- -->
+    <h3 id="build-late">Late Overworld (Caverns &rarr; Deep Dark) &mdash; &ldquo;The Knight&rdquo;</h3>
+    <ul>
+      <li><strong>Armor:</strong> Diamond (Blunt +2 bonus)</li>
+      <li><strong>Trim:</strong> Ward &times;4 (Defense +4, full set: 50% less damage stationary)</li>
+      <li><strong>Weapon:</strong> Mace (3&times;3 AoE + knockback)</li>
+      <li><strong>Stats:</strong> Defense, Vitality, Melee Power</li>
+      <li><strong>Strategy:</strong> Tank build. Stand your ground and smash groups. Ward full-set halves damage when you don&rsquo;t move. Use potions of Strength for burst.</li>
+    </ul>
+
+    <!-- ---- Nether ---- -->
+    <h3 id="build-nether">Nether &mdash; &ldquo;The Infernal&rdquo;</h3>
+    <ul>
+      <li><strong>Armor:</strong> Netherite (Juggernaut &mdash; ALL types +1)</li>
+      <li><strong>Trim:</strong> Flow &times;4 (Speed +4, full set: kills refund 1 AP)</li>
+      <li><strong>Weapon:</strong> Netherite Sword (Cleave + Execute below 30% HP)</li>
+      <li><strong>Stats:</strong> Speed, AP, Melee Power</li>
+      <li><strong>Strategy:</strong> Speed-kill build. Flow refunds AP on kills. Execute cleans up wounded enemies. Fire Resistance potion is essential.</li>
+    </ul>
+
+    <!-- ---- The End ---- -->
+    <h3 id="build-end">The End &mdash; &ldquo;The Phantom&rdquo;</h3>
+    <ul>
+      <li><strong>Armor:</strong> Netherite</li>
+      <li><strong>Trim:</strong> Silence &times;4 (Stealth +4, full set: invisible 2 turns)</li>
+      <li><strong>Weapon:</strong> Netherite Sword + Crossbow (switch between)</li>
+      <li><strong>Stats:</strong> AP, Speed, Ranged Power, Melee Power (balanced)</li>
+      <li><strong>Strategy:</strong> 2 turns invisible to position. Then burst. Ender pearls for emergency repositioning. Golden Apples for the Dragon fight.</li>
+    </ul>
+
+    <!-- ---- New Game+ ---- -->
+    <h3 id="build-ngplus">New Game+ (Cycle 2+) &mdash; &ldquo;The Juggernaut&rdquo;</h3>
+    <ul>
+      <li><strong>Armor:</strong> Netherite</li>
+      <li><strong>Trim:</strong> Wild &times;4 (Melee Power +4, full set: first attack free each turn)</li>
+      <li><strong>Weapon:</strong> Netherite Sword</li>
+      <li><strong>Stats:</strong> All-rounder &mdash; pump AP and Melee Power, rest into Vitality</li>
+      <li><strong>Strategy:</strong> Wild makes your first attack free, giving you effectively +1 AP. Combined with high AP stat, you get 5&ndash;6 actions per turn. Stack Golden Apples. Use Goat Horn (Seek) for +3 ATK. Prepare to get wrecked by +50%+ enemies.</li>
+    </ul>
+
+  </main>
+</div>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer>
+  <a href="https://github.com/ChrisAtwell27/Craftics" target="_blank">GitHub</a>
+  <span class="sep">|</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues" target="_blank">Issues</a>
+  <span class="sep">|</span>
+  <a href="#">Discord</a>
+  <br>
+  &copy; 2026 Craftics. All Rights Reserved.
+</footer>
+
+<script src="js/nav.js"></script>
+</body>
+</html>

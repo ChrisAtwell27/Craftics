@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics — Turn-Based Tactical RPG Combat in Minecraft</title>
+  <meta name="description" content="Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight through 18 biomes in grid-based combat using vanilla items, weapons, armor, and potions.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ============ NAV ============ -->
+  <nav class="top-nav">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-logo">&#9876; Craftics</a>
+      <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+      <ul class="nav-links">
+        <li><a href="index.html" class="active">Home</a></li>
+        <li><a href="combat.html">Combat</a></li>
+        <li><a href="enemies.html">Enemies</a></li>
+        <li><a href="biomes.html">Biomes</a></li>
+        <li><a href="progression.html">Progression</a></li>
+        <li><a href="modding.html">Modding</a></li>
+        <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <h1>Craftics</h1>
+    <p class="tagline">Turn-based tactical RPG combat inside Minecraft.</p>
+    <p class="sub-tagline">Fight through 18 biomes across the Overworld, Nether, and End in grid-based combat using your actual inventory, weapons, armor, and potions. Every item has a purpose in battle.</p>
+    <div class="btn-group">
+      <a href="https://github.com/ChrisAtwell27/Craftics/releases" class="btn-primary">&#11015; Download</a>
+      <a href="combat.html" class="btn-outline">Read the Docs</a>
+    </div>
+    <div class="req-pills">
+      <span class="req-pill">Minecraft 1.21.1</span>
+      <span class="req-pill">Fabric Loader &ge;0.16</span>
+      <span class="req-pill">Java 21+</span>
+      <span class="req-pill">Fabric API</span>
+    </div>
+  </section>
+
+  <!-- ============ FEATURES ============ -->
+  <div class="section-header">
+    <h2>Features</h2>
+    <p>Everything vanilla. Nothing wasted.</p>
+  </div>
+
+  <div class="feature-grid">
+    <div class="card">
+      <span class="card-icon">&#9876;</span>
+      <h3>Combat System</h3>
+      <p>3 AP per turn. 11 weapon types with unique abilities. Cleave, stun, pierce, smash. Click to move, click to attack.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">&#129504;</span>
+      <h3>40+ Enemy AIs</h3>
+      <p>Every mob thinks differently. Skeletons kite. Creepers fuse. Endermen teleport. Spiders pounce. Bosses have phase transitions.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">&#128506;</span>
+      <h3>18 Biomes</h3>
+      <p>Branching paths across Overworld, Nether, and End. 5 levels per biome. 90 levels total. Randomized per world.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">&#128737;</span>
+      <h3>Armor Trim System</h3>
+      <p>19 trim patterns with per-piece bonuses. Match all 4 for a full-set bonus. Every trim enables a different playstyle.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">&#128176;</span>
+      <h3>Trader Economy</h3>
+      <p>7 trader types between levels. Weaponsmiths, alchemists, chefs, and more. Spend emeralds earned from victories.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">&#128295;</span>
+      <h3>Fully Moddable</h3>
+      <p>Custom arena maps, JSON biome datapacks, Java API for custom AI. Hot reload with <code>/reload</code>.</p>
+    </div>
+  </div>
+
+  <!-- ============ DIMENSIONS ============ -->
+  <div class="section-header">
+    <h2>Three Dimensions</h2>
+    <p>Progress through a branching path of increasing danger.</p>
+  </div>
+
+  <div class="dimension-grid">
+    <div class="dimension-card overworld">
+      <h3><span class="badge badge-overworld">Overworld</span></h3>
+      <div class="dim-meta">8 biomes &middot; branching paths &middot; Warden boss</div>
+      <p>Plains through Dark Forest, branching to Desert or Jungle. Converges at Underground Caverns and culminates in The Deep Dark &mdash; home of the Warden.</p>
+    </div>
+    <div class="dimension-card nether">
+      <h3><span class="badge badge-nether">The Nether</span></h3>
+      <div class="dim-meta">5 biomes &middot; linear &middot; fire &amp; lava</div>
+      <p>Nether Wastes through Soul Sand Valley, Crimson Forest, Warped Forest, to Basalt Deltas. Fire, lava, and the most dangerous hostile mobs.</p>
+    </div>
+    <div class="dimension-card end">
+      <h3><span class="badge badge-end">The End</span></h3>
+      <div class="dim-meta">4 biomes &middot; final act &middot; Ender Dragon</div>
+      <p>Outer End Islands, End City, Chorus Grove, and Dragon's Nest &mdash; the final confrontation with the Ender Dragon.</p>
+    </div>
+  </div>
+
+  <!-- ============ PHILOSOPHY ============ -->
+  <div class="philosophy-callout">
+    <div class="callout">
+      <p><strong>No new items. No new blocks.</strong> (Except the Level Select.) Craftics gives combat meaning to everything already in the game &mdash; swords, axes, bows, potions, food, armor trims, goat horns, and more.</p>
+    </div>
+  </div>
+
+  <!-- ============ QUICK LINKS ============ -->
+  <div class="section-header">
+    <h2>Documentation</h2>
+    <p>Everything you need to play, build, and mod.</p>
+  </div>
+
+  <div class="feature-grid" style="padding-bottom: 60px;">
+    <a href="combat.html" class="card" style="text-decoration:none; border-top-color: var(--amber);">
+      <h3>Combat System &#8594;</h3>
+      <p>Weapons, abilities, armor trims, goat horns, usable items, damage types, and the full damage formula.</p>
+    </a>
+    <a href="enemies.html" class="card" style="text-decoration:none; border-top-color: var(--amber);">
+      <h3>Enemy AI &#8594;</h3>
+      <p>40+ mob behaviors, boss phase transitions, and special on-hit effects.</p>
+    </a>
+    <a href="biomes.html" class="card" style="text-decoration:none; border-top-color: var(--amber);">
+      <h3>Biome Progression &#8594;</h3>
+      <p>18 biomes across 3 dimensions, branching paths, and procedural arena generation.</p>
+    </a>
+    <a href="progression.html" class="card" style="text-decoration:none; border-top-color: var(--amber);">
+      <h3>Progression &amp; Builds &#8594;</h3>
+      <p>8 stats, leveling, traders, NG+, and recommended class builds for every stage of the game.</p>
+    </a>
+    <a href="modding.html" class="card" style="text-decoration:none; border-top-color: var(--amber);">
+      <h3>Modding Guide &#8594;</h3>
+      <p>Custom arena maps, JSON biome datapacks, Java API, and addon policy.</p>
+    </a>
+    <a href="https://github.com/ChrisAtwell27/Craftics" class="card" style="text-decoration:none; border-top-color: var(--emerald);" target="_blank">
+      <h3>Source Code &#8599;</h3>
+      <p>99 Java files, 27 JSON configs, fully open on GitHub.</p>
+    </a>
+  </div>
+
+  <!-- ============ FOOTER ============ -->
+  <footer>
+    <span>Craftics by CrackedGames</span>
+    <span class="sep">&middot;</span>
+    <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+    <span class="sep">&middot;</span>
+    <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+    <span class="sep">&middot;</span>
+    <span>All Rights Reserved</span>
+  </footer>
+
+  <script src="js/nav.js"></script>
+</body>
+</html>

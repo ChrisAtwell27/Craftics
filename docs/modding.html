@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics — Modding Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">&#9876; Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="combat.html">Combat</a></li>
+      <li><a href="enemies.html">Enemies</a></li>
+      <li><a href="biomes.html">Biomes</a></li>
+      <li><a href="progression.html">Progression</a></li>
+      <li><a href="modding.html" class="active">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============================================================
+     PAGE LAYOUT
+     ============================================================ -->
+<div class="page-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Modding Guide</div>
+    <nav class="sidebar-nav">
+      <a href="#overview">Overview</a>
+      <a href="#arena-maps">Custom Arena Maps</a>
+      <a href="#custom-biomes">Custom Biomes</a>
+      <a href="#datapack-setup">Datapack Setup</a>
+      <a href="#hot-reload">Hot Reload</a>
+      <a href="#java-api">Java API</a>
+      <a href="#addon-policy">Addon Policy</a>
+    </nav>
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+    <h1>Modding Guide</h1>
+    <p class="page-desc">Three tiers of extensibility &mdash; from drag-and-drop arena maps to full Java API integration.</p>
+
+    <!-- ================================================================
+         1. OVERVIEW
+         ================================================================ -->
+    <h2 id="overview">Overview</h2>
+    <p>
+      Craftics supports three levels of modding:
+    </p>
+    <ol>
+      <li><strong>Custom Arena Maps</strong> &mdash; Build <code>.nbt</code>/<code>.schem</code> structures in Minecraft, no code required.</li>
+      <li><strong>Datapack Biome Modding</strong> &mdash; JSON files for custom biomes, enemies, and loot.</li>
+      <li><strong>Fabric Mod Integration</strong> &mdash; Java API for custom AI and programmatic biomes.</li>
+    </ol>
+
+    <!-- ================================================================
+         2. CUSTOM ARENA MAPS
+         ================================================================ -->
+    <h2 id="arena-maps">Custom Arena Maps</h2>
+
+    <h3>Step 1: Build Your Arena</h3>
+    <p>
+      Create the full scene in creative mode including a flat area for the grid, surrounding decorations (trees, ruins, water, cliffs), and any blocks you want. The area outside the grid is purely cosmetic &mdash; the game only reads the grid boundaries and spawn markers.
+    </p>
+
+    <h3>Step 2: Place Marker Blocks</h3>
+    <p>
+      Place special marker blocks to define the playable grid and spawn positions. The game scans for these blocks when loading the arena.
+    </p>
+
+    <div class="marker-diagram">  &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+  &#9474;      Decorations...          &#9474;
+  &#9474;  <span class="em">EMERALD</span>&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;<span class="em">EMERALD</span> &#9474;  &#8592; Emerald corners OUTSIDE the grid
+  &#9474;  &#9474;  <span class="go">GOLD</span>                  &#9474;  &#9474;  &#8592; Gold = Player 1 spawn (inside grid)
+  &#9474;  &#9474;     (playable grid)    &#9474;  &#9474;
+  &#9474;  &#9474;  <span class="ir">IRON</span>                  &#9474;  &#9474;  &#8592; Iron = Player 2 spawn (optional)
+  &#9474;  &#9474;                        &#9474;  &#9474;
+  &#9474;  <span class="em">EMERALD</span>&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;<span class="em">EMERALD</span> &#9474;
+  &#9474;      More terrain...         &#9474;
+  &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</div>
+
+    <h4>Marker Block Reference</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Block</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Emerald Block</td>
+            <td>Arena boundary corner. Place 2+ on opposite corners outside the grid.</td>
+          </tr>
+          <tr>
+            <td>Gold Block</td>
+            <td>Player 1 spawn (primary)</td>
+          </tr>
+          <tr>
+            <td>Iron Block</td>
+            <td>Player 2 spawn (multiplayer)</td>
+          </tr>
+          <tr>
+            <td>Copper Block</td>
+            <td>Player 3 spawn</td>
+          </tr>
+          <tr>
+            <td>Coal Block</td>
+            <td>Player 4 spawn</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout callout-muted">
+      <p>All markers must be at the same Y level.</p>
+    </div>
+
+    <h3>Step 3: Export</h3>
+
+    <h4>Option A: WorldEdit (recommended)</h4>
+    <ol>
+      <li>Select: <code>//pos1</code> and <code>//pos2</code></li>
+      <li>Copy: <code>//copy</code></li>
+      <li>Save: <code>//schem save &lt;name&gt;</code></li>
+      <li>Find in <code>config/worldedit/schematics/</code></li>
+      <li>Copy to <code>craftics_arenas/&lt;biome&gt;/&lt;number&gt;.schem</code></li>
+    </ol>
+
+    <h4>Option B: Vanilla Structure Block (48&times;48&times;48 limit)</h4>
+    <ol>
+      <li><code>/give @s structure_block</code></li>
+      <li>Set to Save mode, define box, name it, click SAVE</li>
+      <li>Find in <code>&lt;world&gt;/generated/minecraft/structures/</code></li>
+      <li>Copy to datapack at <code>data/craftics/structures/arenas/&lt;biome&gt;/&lt;number&gt;.nbt</code></li>
+    </ol>
+
+    <h3>File Naming</h3>
+    <pre><code>craftics_arenas/          (in game run directory, for .schem)
+  plains/
+    1.schem
+    2.schem
+    boss_1.schem
+  forest/
+    1.schem
+
+data/craftics/structures/arenas/   (in datapack, for .nbt)
+  plains/
+    1.nbt
+    boss_1.nbt</code></pre>
+
+    <h4>Biome IDs</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Overworld</th>
+            <th>Nether</th>
+            <th>End</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>plains</td><td>nether_wastes</td><td>outer_end_islands</td></tr>
+          <tr><td>forest</td><td>soul_sand_valley</td><td>end_city</td></tr>
+          <tr><td>desert</td><td>crimson_forest</td><td>chorus_grove</td></tr>
+          <tr><td>jungle</td><td>warped_forest</td><td>dragons_nest</td></tr>
+          <tr><td>river</td><td>basalt_deltas</td><td></td></tr>
+          <tr><td>mountain</td><td></td><td></td></tr>
+          <tr><td>snowy</td><td></td><td></td></tr>
+          <tr><td>cave</td><td></td><td></td></tr>
+          <tr><td>deep_dark</td><td></td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Selection Rules</h4>
+    <p>
+      Files are scanned sequentially (1, 2, 3&hellip;) and the scanner stops at the first missing number. One map is picked randomly each fight. Boss maps (<code>boss_1</code>, <code>boss_2</code>&hellip;) are used for boss levels, falling back to regular maps if no boss maps exist.
+    </p>
+
+    <h3>Tips</h3>
+    <ul>
+      <li>Size your grid for the biome's growth range (e.g., Plains starts 8&times;8, grows +1 per level).</li>
+      <li>The isometric camera looks from the southwest at ~55&deg;. Tall structures on the north/east edges may block the view.</li>
+      <li>Floor level = marker Y level.</li>
+      <li>Obstacles are overlaid by the game &mdash; your arena provides the base terrain only.</li>
+      <li>Add atmosphere outside the grid (lanterns, campfires, particle-emitting blocks, etc.).</li>
+      <li>Under-floor lighting is automatic (glowstone every 3 blocks).</li>
+    </ul>
+
+    <!-- ================================================================
+         3. CUSTOM BIOMES
+         ================================================================ -->
+    <h2 id="custom-biomes">Custom Biomes</h2>
+
+    <h3>JSON Schema</h3>
+    <p>
+      Each custom biome is defined by a single JSON file. Here is the full schema with all supported fields:
+    </p>
+    <pre><code>{
+  "id": "my_biome",
+  "name": "My Custom Biome",
+  "order": 20,
+  "levels": 5,
+  "grid": {
+    "base_width": 10,
+    "base_height": 10,
+    "width_growth": 1,
+    "height_growth": 1
+  },
+  "floor_blocks": ["minecraft:stone_bricks", "minecraft:mossy_stone_bricks"],
+  "obstacle_blocks": ["minecraft:cobblestone_wall"],
+  "obstacle_density": 0.1,
+  "obstacle_density_growth": 0.02,
+  "environment": "cave",
+  "night": true,
+  "enemies": {
+    "passive": [
+      {"type": "minecraft:bat", "weight": 3, "hp": 2, "attack": 0, "defense": 0, "range": 1}
+    ],
+    "hostile": [
+      {"type": "minecraft:skeleton", "weight": 8, "hp": 10, "attack": 3, "defense": 0, "range": 3},
+      {"type": "minecraft:spider", "weight": 6, "hp": 8, "attack": 3, "defense": 0, "range": 1}
+    ],
+    "boss": {"type": "minecraft:warden", "hp": 50, "attack": 8, "defense": 4, "range": 2}
+  },
+  "loot": [
+    {"item": "minecraft:diamond", "weight": 5},
+    {"item": "minecraft:iron_ingot", "weight": 15}
+  ]
+}</code></pre>
+
+    <h3>Field Reference</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>id</code></td>
+            <td>string</td>
+            <td>Required. Unique identifier.</td>
+          </tr>
+          <tr>
+            <td><code>name</code></td>
+            <td>string</td>
+            <td>Display name in HUD and level select.</td>
+          </tr>
+          <tr>
+            <td><code>order</code></td>
+            <td>int</td>
+            <td>Sort position. Lower = earlier.</td>
+          </tr>
+          <tr>
+            <td><code>levels</code></td>
+            <td>int</td>
+            <td>Levels in this biome (typically 5). Last = boss.</td>
+          </tr>
+          <tr>
+            <td><code>grid.base_width</code></td>
+            <td>int</td>
+            <td>Starting grid width.</td>
+          </tr>
+          <tr>
+            <td><code>grid.base_height</code></td>
+            <td>int</td>
+            <td>Starting grid height.</td>
+          </tr>
+          <tr>
+            <td><code>grid.width_growth</code></td>
+            <td>int</td>
+            <td>Width increase per level.</td>
+          </tr>
+          <tr>
+            <td><code>grid.height_growth</code></td>
+            <td>int</td>
+            <td>Height increase per level.</td>
+          </tr>
+          <tr>
+            <td><code>floor_blocks</code></td>
+            <td>string[]</td>
+            <td>Floor tile blocks (checkerboard pattern).</td>
+          </tr>
+          <tr>
+            <td><code>obstacle_blocks</code></td>
+            <td>string[]</td>
+            <td>Obstacle blocks.</td>
+          </tr>
+          <tr>
+            <td><code>obstacle_density</code></td>
+            <td>float</td>
+            <td>Base obstacle probability (0.0&ndash;1.0).</td>
+          </tr>
+          <tr>
+            <td><code>obstacle_density_growth</code></td>
+            <td>float</td>
+            <td>Density increase per level.</td>
+          </tr>
+          <tr>
+            <td><code>environment</code></td>
+            <td>string</td>
+            <td>Visual style (see list below).</td>
+          </tr>
+          <tr>
+            <td><code>night</code></td>
+            <td>bool</td>
+            <td>Night mode (prevents undead burning).</td>
+          </tr>
+          <tr>
+            <td><code>enemies.passive</code></td>
+            <td>array</td>
+            <td>Passive mob pool.</td>
+          </tr>
+          <tr>
+            <td><code>enemies.hostile</code></td>
+            <td>array</td>
+            <td>Hostile mob pool (weighted random selection).</td>
+          </tr>
+          <tr>
+            <td><code>enemies.boss</code></td>
+            <td>object</td>
+            <td>Boss for the final level.</td>
+          </tr>
+          <tr>
+            <td><code>loot</code></td>
+            <td>array</td>
+            <td>Weighted loot table.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Environment Styles</h4>
+    <p>
+      <code>plains</code>, <code>forest</code>, <code>desert</code>, <code>jungle</code>, <code>river</code>, <code>mountain</code>, <code>snowy</code>, <code>cave</code>, <code>nether_wastes</code>, <code>end</code>, <code>deep_dark</code>
+    </p>
+
+    <h3>Creating, Overriding, Combining</h3>
+    <ul>
+      <li>Place your biome JSON at <code>data/craftics/craftics/biomes/my_biome.json</code></li>
+      <li>Use the same <code>id</code> as a built-in biome to override its settings.</li>
+      <li>Multiple JSON files with unique IDs create multiple biome variations.</li>
+      <li>Combine custom biome JSONs with multiple <code>.nbt</code> maps per biome for maximum variety.</li>
+    </ul>
+
+    <h3>Enemy Definitions</h3>
+    <p>
+      Each enemy entry in the <code>passive</code> or <code>hostile</code> arrays follows this format:
+    </p>
+    <pre><code>{"type": "minecraft:zombie", "weight": 8, "hp": 6, "attack": 2, "defense": 0, "range": 1}</code></pre>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>type</code></td>
+            <td>string</td>
+            <td>Minecraft entity ID. Must be a supported mob type.</td>
+          </tr>
+          <tr>
+            <td><code>weight</code></td>
+            <td>int</td>
+            <td>Spawn weight. Higher = more frequent.</td>
+          </tr>
+          <tr>
+            <td><code>hp</code></td>
+            <td>int</td>
+            <td>Hit points for this enemy.</td>
+          </tr>
+          <tr>
+            <td><code>attack</code></td>
+            <td>int</td>
+            <td>Attack power.</td>
+          </tr>
+          <tr>
+            <td><code>defense</code></td>
+            <td>int</td>
+            <td>Defense value.</td>
+          </tr>
+          <tr>
+            <td><code>range</code></td>
+            <td>int</td>
+            <td>Attack range in tiles.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Supported Mob Types</h4>
+    <p>
+      All mobs below have registered AI classes and are supported in custom biomes:
+    </p>
+    <ul>
+      <li><strong>Passive:</strong> <code>minecraft:cow</code>, <code>minecraft:pig</code>, <code>minecraft:sheep</code>, <code>minecraft:chicken</code>, <code>minecraft:rabbit</code>, <code>minecraft:bat</code>, <code>minecraft:cod</code>, <code>minecraft:salmon</code>, <code>minecraft:axolotl</code>, <code>minecraft:cat</code>, <code>minecraft:ocelot</code>, <code>minecraft:bee</code>, <code>minecraft:wolf</code>, <code>minecraft:goat</code>, <code>minecraft:polar_bear</code>, <code>minecraft:llama</code></li>
+      <li><strong>Hostile:</strong> <code>minecraft:zombie</code>, <code>minecraft:husk</code>, <code>minecraft:drowned</code>, <code>minecraft:skeleton</code>, <code>minecraft:stray</code>, <code>minecraft:bogged</code>, <code>minecraft:spider</code>, <code>minecraft:cave_spider</code>, <code>minecraft:creeper</code>, <code>minecraft:vindicator</code>, <code>minecraft:pillager</code>, <code>minecraft:witch</code>, <code>minecraft:enderman</code>, <code>minecraft:phantom</code>, <code>minecraft:silverfish</code>, <code>minecraft:slime</code>, <code>minecraft:blaze</code>, <code>minecraft:ghast</code>, <code>minecraft:shulker</code>, <code>minecraft:breeze</code>, <code>minecraft:magma_cube</code>, <code>minecraft:wither_skeleton</code></li>
+      <li><strong>Boss:</strong> <code>minecraft:warden</code>, <code>minecraft:ender_dragon</code></li>
+    </ul>
+
+    <h3>Loot Tables</h3>
+    <p>
+      Each loot entry specifies an item and a weight for random selection:
+    </p>
+    <pre><code>{"item": "minecraft:diamond", "weight": 5}</code></pre>
+    <p>
+      1&ndash;3 items are rolled per level completion. Higher weight means that item is chosen more frequently relative to other entries in the table.
+    </p>
+
+    <!-- ================================================================
+         4. DATAPACK SETUP
+         ================================================================ -->
+    <h2 id="datapack-setup">Datapack Setup</h2>
+    <p>
+      Wrap your custom biomes and arena structures into a standard Minecraft datapack:
+    </p>
+    <pre><code>my_arena_pack/
+  pack.mcmeta
+  data/
+    craftics/
+      craftics/
+        biomes/
+          my_custom_biome.json
+      structures/
+        arenas/
+          my_custom_biome/
+            1.nbt
+            2.nbt
+            boss_1.nbt</code></pre>
+
+    <h4>pack.mcmeta</h4>
+    <pre><code>{
+  "pack": {
+    "pack_format": 48,
+    "description": "Custom Craftics arenas"
+  }
+}</code></pre>
+    <p>
+      Place the finished datapack folder in your world&rsquo;s <code>datapacks/</code> directory.
+    </p>
+
+    <!-- ================================================================
+         5. HOT RELOAD
+         ================================================================ -->
+    <h2 id="hot-reload">Hot Reload</h2>
+    <ul>
+      <li><strong>Biome JSONs:</strong> Run <code>/reload</code> to reload without restarting the server.</li>
+      <li><strong>Structure files:</strong> Loaded on-demand when combat starts &mdash; new files are picked up immediately.</li>
+      <li><strong>No server restart needed</strong> for any modding content.</li>
+    </ul>
+
+    <!-- ================================================================
+         6. JAVA API
+         ================================================================ -->
+    <h2 id="java-api">Java API</h2>
+    <p>
+      For full programmatic control, Craftics exposes a Fabric mod API. Register custom AI behaviors, biomes, and more from Java code.
+    </p>
+
+    <h3>Custom AI Registration</h3>
+    <pre><code>import com.crackedgames.craftics.combat.ai.AIRegistry;
+
+AIRegistry.register("mymod:custom_mob", (self, arena, playerPos) -&gt; {
+    // Your AI logic here
+    return new EnemyAction.Attack(self.getAttackPower());
+});</code></pre>
+
+    <h3>Biome &amp; Level API</h3>
+    <pre><code>CrafticsAPI.registerBiome(myBiomeTemplate);
+int total = CrafticsAPI.getTotalLevels();</code></pre>
+
+    <h4>Action Types</h4>
+    <p>
+      13 action types are available for custom AI:
+    </p>
+    <p>
+      <code>Move</code>, <code>Attack</code>, <code>MoveAndAttack</code>, <code>Flee</code>, <code>Teleport</code>, <code>TeleportAndAttack</code>, <code>Pounce</code>, <code>Explode</code>, <code>RangedAttack</code>, <code>Swoop</code>, <code>StartFuse</code>, <code>Detonate</code>, <code>Idle</code>
+    </p>
+
+    <!-- ================================================================
+         7. ADDON POLICY
+         ================================================================ -->
+    <h2 id="addon-policy">Addon Policy</h2>
+
+    <h3>Allowed</h3>
+    <ul>
+      <li>Addons via API (biomes, enemies, AI, items)</li>
+      <li>Datapacks (arenas, loot, biome configs)</li>
+      <li>Resource packs retexturing Craftics content</li>
+      <li>Modpacks on CurseForge/Modrinth with credit</li>
+      <li>Videos, streams, reviews (no permission needed)</li>
+    </ul>
+
+    <h3>Not Allowed</h3>
+    <ul>
+      <li>Redistributing Craftics outside modpack launchers</li>
+      <li>Copying source code into your projects</li>
+      <li>Re-uploading without permission</li>
+    </ul>
+
+  </main>
+</div>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer>
+  <span>Craftics by CrackedGames</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="js/nav.js"></script>
+</body>
+</html>

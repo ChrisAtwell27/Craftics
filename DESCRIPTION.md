@@ -240,6 +240,7 @@ You may **not** redistribute Craftics itself, include its source code in your pr
 
 ## Links
 
-- [Source Code](https://github.com/your-repo-here)
-- [Issue Tracker](https://github.com/your-repo-here/issues)
+- [Documentation](https://chrisatwell27.github.io/Craftics)
+- [Source Code](https://github.com/ChrisAtwell27/Craftics)
+- [Issue Tracker](https://github.com/ChrisAtwell27/Craftics/issues)
 - [Discord](https://discord.gg/your-discord-here)
