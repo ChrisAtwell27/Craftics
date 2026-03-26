@@ -40,11 +40,13 @@
     <div class="sidebar-label">On This Page</div>
     <nav class="sidebar-nav">
       <a href="#how-ai-works">How AI Works</a>
+      <a href="#mob-speeds">Default Mob Speeds</a>
       <a href="#passive-mobs">Passive Mobs</a>
       <a href="#hostile-mobs">Hostile Mobs</a>
       <a href="#boss-warden">Boss: The Warden</a>
       <a href="#boss-dragon">Boss: Ender Dragon</a>
       <a href="#on-hit-effects">Special On-Hit Effects</a>
+      <a href="#trial-chambers">Trial Chambers</a>
     </nav>
   </aside>
 
@@ -69,14 +71,58 @@
     </p>
     <p>
       Mobs without a registered AI class default to <code>PassiveAI</code>,
-      which means they stand idle and flee when attacked.
+      which means they wander or idle and flee when attacked.
     </p>
+    <p>
+      <strong>Defense is percentage-based.</strong> Each point of defense reduces
+      incoming damage by 5%, capped at 60%.
+    </p>
+
+    <!-- ── Default Mob Speeds ── -->
+    <h2 id="mob-speeds">Default Mob Speeds</h2>
+    <p>
+      Mob speeds are defined in <code>CombatEntity.java</code>. Speed determines
+      how many tiles a mob can move per turn. Any mob not listed below defaults to
+      speed 2.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Speed</th>
+            <th>Mobs</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>5</td>
+            <td>Enderman</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Ocelot, Phantom, Ender Dragon, Camel</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Spider, Wolf, Vindicator, Hoglin, Wither Skeleton, Magma Cube, Warden</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Skeleton, Stray, Pillager, Piglin, Blaze, Drowned, Creeper, Witch</td>
+          </tr>
+          <tr>
+            <td>1</td>
+            <td>Ghast, Shulker</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
     <!-- ── Passive Mobs ── -->
     <h2 id="passive-mobs">Passive Mobs</h2>
     <p>
-      Passive mobs won't attack unprovoked. Some can be turned hostile, and a few
-      have unique quirks that make them more than simple bystanders.
+      Passive mobs won't attack unprovoked. Some can be turned hostile permanently,
+      and a few have unique quirks that make them more than simple bystanders.
     </p>
     <div class="table-wrap">
       <table>
@@ -84,6 +130,7 @@
           <tr>
             <th>Mob</th>
             <th>AI</th>
+            <th>Speed</th>
             <th>Behavior</th>
           </tr>
         </thead>
@@ -91,62 +138,74 @@
           <tr>
             <td>Cow, Pig, Sheep, Chicken</td>
             <td><code>PassiveAI</code></td>
-            <td>Idle. Flees when attacked. Drops food/resources.</td>
+            <td>2</td>
+            <td>Wander or idle. Flee 2 tiles when hit.</td>
           </tr>
           <tr>
             <td>Rabbit</td>
-            <td><code>PassiveAI</code></td>
-            <td>Idle. Quick to flee (speed 2).</td>
+            <td><code>RabbitAI</code></td>
+            <td>2 (flee)</td>
+            <td>Flees if player within 2 tiles or if hit.</td>
           </tr>
           <tr>
             <td>Bat</td>
-            <td><code>PassiveAI</code></td>
-            <td>Idle. Very low HP (2). Easy XP.</td>
+            <td><code>BatAI</code></td>
+            <td>1-2</td>
+            <td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td>
           </tr>
           <tr>
             <td>Cod, Salmon</td>
-            <td><code>PassiveAI</code></td>
-            <td>Idle. Only spawns in water biomes.</td>
+            <td><code>CodAI</code></td>
+            <td>2 (flee)</td>
+            <td>Water-only. Wanders on water tiles, flees on water when hit.</td>
           </tr>
           <tr>
             <td>Axolotl</td>
             <td><code>AxolotlAI</code></td>
-            <td>Fights alongside the player as an ally. Attacks nearest enemy.</td>
+            <td>2</td>
+            <td>Ally. Hunts hostile mobs on water tiles.</td>
           </tr>
           <tr>
             <td>Cat</td>
             <td><code>CatAI</code></td>
-            <td>Runs away unless you're holding a fish.</td>
+            <td>2</td>
+            <td>Flees unless player holds fish. Enrages permanently if attacked.</td>
           </tr>
           <tr>
             <td>Ocelot</td>
             <td><code>OcelotAI</code></td>
-            <td>Speed 2 hit-and-run. Strikes then flees.</td>
+            <td>4</td>
+            <td>Hit-and-run assassin. Speed 4 charge, flees at full speed when hit.</td>
           </tr>
           <tr>
             <td>Bee</td>
             <td><code>BeeAI</code></td>
-            <td>Passive until you hit one. Then EVERY bee swarms you with poison.</td>
+            <td>2</td>
+            <td>Passive. If ANY bee is hit, ALL bees in the arena enrage permanently and swarm with poison.</td>
           </tr>
           <tr>
             <td>Wolf</td>
             <td><code>GoatAI</code> variant</td>
+            <td>3</td>
             <td>Hunts sheep and chickens. Hit one and it turns hostile permanently.</td>
           </tr>
           <tr>
             <td>Goat</td>
             <td><code>GoatAI</code></td>
-            <td>Wanders until hit. Then 50% ram (knockback 2) or flee. Never stops charging once hostile.</td>
+            <td>2</td>
+            <td>Wanders. Counterattacks with knockback when hit at melee. Enrages permanently.</td>
           </tr>
           <tr>
             <td>Polar Bear</td>
             <td><code>PolarBearAI</code></td>
-            <td>Passive unless you get within 2 tiles. Then aggressive melee.</td>
+            <td>2</td>
+            <td>Passive unless player within 2 tiles or hit. Then aggressive melee.</td>
           </tr>
           <tr>
             <td>Llama</td>
             <td><code>LlamaAI</code></td>
-            <td>Spits at range 2 when provoked. Low damage.</td>
+            <td>2</td>
+            <td>Passive. Enrages when hit. Spits at range 2, maintains distance.</td>
           </tr>
         </tbody>
       </table>
@@ -173,149 +232,149 @@
           <tr>
             <td>Zombie</td>
             <td><code>ZombieAI</code></td>
+            <td>2</td>
             <td>1</td>
-            <td>1</td>
-            <td>Beeline melee. Simplest AI. Walks straight at you.</td>
+            <td>Relentless. Always move+attack. +1 ATK per adjacent allied undead (horde bonus).</td>
           </tr>
           <tr>
             <td>Husk</td>
             <td><code>HuskAI</code></td>
+            <td>2 (+1 below 50% HP)</td>
             <td>1</td>
-            <td>1</td>
-            <td>Zombie variant. +1 bonus damage. Inflicts Weakness on hit.</td>
+            <td>Zombie variant. +1 bonus damage. Weakness on hit. Gets faster when wounded.</td>
           </tr>
           <tr>
             <td>Drowned</td>
             <td><code>DrownedAI</code></td>
-            <td>1</td>
+            <td>2</td>
             <td>3</td>
-            <td>Throws trident at range 3 if it has one. Otherwise melee rush.</td>
+            <td>Trident throw (cardinal LOS) at range 3 for ATK+1 damage. Melee if adjacent.</td>
           </tr>
           <tr>
             <td>Skeleton</td>
             <td><code>SkeletonAI</code></td>
-            <td>1</td>
+            <td>2</td>
             <td>3</td>
-            <td>Ranged. Seeks cardinal line-of-sight. Backs up when you're within 2 tiles.</td>
+            <td>Archer. Cardinal LOS arrows. Retreats when player within 2 tiles.</td>
           </tr>
           <tr>
             <td>Stray</td>
             <td><code>StrayAI</code></td>
-            <td>1</td>
+            <td>2</td>
             <td>3</td>
-            <td>Ranged + kiting. Prefers maximum distance. Inflicts Slowness on hit.</td>
+            <td>Like Skeleton but applies Slowness on hit. Prefers max distance.</td>
           </tr>
           <tr>
             <td>Bogged</td>
             <td><code>BoggedAI</code></td>
-            <td>1</td>
-            <td>3</td>
-            <td>Ranged. Inflicts Poison on hit.</td>
+            <td>2</td>
+            <td>3-4</td>
+            <td>Poison arrows. Less cautious than Stray.</td>
           </tr>
           <tr>
             <td>Spider</td>
             <td><code>SpiderAI</code></td>
-            <td>2</td>
-            <td>1</td>
-            <td>2&times;2 body. Pounce attack that leaps over obstacles to land adjacent.</td>
+            <td>3</td>
+            <td>3 (pounce)</td>
+            <td>2&times;2 body. Pounces up to 3 tiles to land adjacent. Applies Slowness (web).</td>
           </tr>
           <tr>
             <td>Cave Spider</td>
             <td><code>CaveSpiderAI</code></td>
-            <td>2</td>
-            <td>1</td>
-            <td>Like Spider but 1&times;1. Inflicts Poison on hit.</td>
+            <td>3</td>
+            <td>2 (pounce)</td>
+            <td>Fast flanker. 1&times;1. Pounce 2 tiles. Poison on hit.</td>
           </tr>
           <tr>
             <td>Creeper</td>
             <td><code>CreeperAI</code></td>
+            <td>2</td>
             <td>1</td>
-            <td>1</td>
-            <td>Sneaks close. Starts fuse when adjacent (glows). Explodes next turn for 2&times; damage in radius 1. Fuse resets if player moves away. Kill it or run!</td>
+            <td>Walks up, primes fuse when adjacent (1 turn). Explodes for 2&times; ATK in radius 2 AoE. Fuse resets if player escapes.</td>
           </tr>
           <tr>
             <td>Vindicator</td>
             <td><code>VindicatorAI</code></td>
-            <td>2</td>
+            <td>3</td>
             <td>1</td>
-            <td>Speed 2 aggressive melee rush. High damage.</td>
+            <td>Berserker. Full speed rush. Enrages when damaged: 1.5&times; attack power permanently.</td>
           </tr>
           <tr>
             <td>Pillager</td>
             <td><code>PillagerAI</code></td>
-            <td>1</td>
+            <td>2</td>
             <td>4</td>
-            <td>Crossbow (range 4). Retreats from melee range.</td>
+            <td>Crossbow (any direction). Retreats from melee. Maintains range 3-4.</td>
           </tr>
           <tr>
             <td>Witch</td>
             <td><code>WitchAI</code></td>
-            <td>1</td>
-            <td>2-3</td>
-            <td>Potion throw with random debuffs. Keeps distance.</td>
+            <td>2</td>
+            <td>2-4</td>
+            <td>Potion throw. Random effect: Harming (full), Poison (half), Slowness (half), Weakness (half). 25% chance to reposition below 40% HP.</td>
           </tr>
           <tr>
             <td>Enderman</td>
             <td><code>EndermanAI</code></td>
-            <td>2</td>
+            <td>5</td>
             <td>1</td>
-            <td>Teleports behind you when attacked from the front. High damage, evasive.</td>
+            <td>Teleports behind player. Teleports away when hit (4+ tiles). Most unpredictable.</td>
           </tr>
           <tr>
             <td>Phantom</td>
             <td><code>PhantomAI</code></td>
             <td>4</td>
-            <td>-</td>
-            <td>Cardinal-line swoops. Damages ALL tiles in its path.</td>
+            <td>swoop</td>
+            <td>Cardinal swoops up to 4 tiles. Damages everything in path. Flies over obstacles. Repositions to align.</td>
           </tr>
           <tr>
             <td>Silverfish</td>
             <td><code>SilverfishAI</code></td>
-            <td>2</td>
+            <td>3</td>
             <td>1</td>
-            <td>Tiny, fast, swarms. Low HP but annoying in groups.</td>
+            <td>Swarmer. Flanks from opposite side of other enemies.</td>
           </tr>
           <tr>
             <td>Slime</td>
             <td><code>SlimeAI</code></td>
-            <td>1</td>
-            <td>1</td>
-            <td>Splits into smaller slimes when killed.</td>
+            <td>2</td>
+            <td>3 (pounce)</td>
+            <td>Bouncy pouncer. Leaps up to 3 tiles.</td>
           </tr>
           <tr>
             <td>Blaze</td>
             <td><code>BlazeAI</code></td>
-            <td>1</td>
-            <td>3-4</td>
-            <td>Medium-range fire attacks. Applies Burning. Retreats from melee.</td>
+            <td>2</td>
+            <td>4</td>
+            <td>Fireball artillery (any direction). Fire Shield above 50% HP. Retreats within 2 tiles. Burning on hit.</td>
           </tr>
           <tr>
             <td>Ghast</td>
             <td><code>GhastAI</code></td>
             <td>1</td>
             <td>5-6</td>
-            <td>Long-range fireball. Flees from close range. Very dangerous at distance.</td>
+            <td>Long-range fireball. Panics and flees within 3 tiles. Nearly stationary. Burning on hit.</td>
           </tr>
           <tr>
             <td>Shulker</td>
             <td><code>ShulkerAI</code></td>
-            <td>0</td>
-            <td>4-5</td>
-            <td>Stationary turret. High defense. Rarely moves. Levitation projectile.</td>
+            <td>1</td>
+            <td>5</td>
+            <td>Immobile turret. Homing bullet ignoring LOS. Slowness on hit. Very high defense.</td>
           </tr>
           <tr>
             <td>Breeze</td>
             <td><code>BreezeAI</code></td>
             <td>2</td>
             <td>3</td>
-            <td>Wind charge attacks. Knockback. Mobile and evasive.</td>
+            <td>Wind charge (cardinal LOS). Dash-teleports 2-3 tiles away from melee. Evasive.</td>
           </tr>
           <tr>
             <td>Magma Cube</td>
             <td><code>SlimeAI</code> variant</td>
-            <td>1</td>
-            <td>1</td>
-            <td>Like Slime but inflicts Burning on hit.</td>
+            <td>3</td>
+            <td>3 (pounce)</td>
+            <td>Like Slime. Burning on hit.</td>
           </tr>
         </tbody>
       </table>
@@ -324,45 +383,27 @@
     <!-- ── Boss: The Warden ── -->
     <h2 id="boss-warden">Boss: The Warden</h2>
     <p>
-      The Warden is the first major boss encounter. It hits incredibly hard and
-      becomes far more dangerous as the fight goes on.
+      The Warden is the first major boss encounter, found in the Deep Dark biome.
+      It hits incredibly hard with massive HP, high attack, and heavy defense.
     </p>
-
-    <h3>Phase 1: 100% to 50% HP</h3>
     <ul>
-      <li><strong>Speed 1.</strong> Slow but devastating melee damage.</li>
-      <li>Walks directly toward the player each turn.</li>
-      <li><strong>Strategy:</strong> Kite and use ranged weapons. Keep your distance and chip away at its massive HP pool.</li>
-    </ul>
-
-    <h3>Phase 2: Below 50% HP</h3>
-    <ul>
-      <li><strong>Speed increases to 2.</strong> Much harder to outrun.</li>
-      <li>Gains <strong>Sonic Boom</strong>, a ranged attack (range 3) that bypasses armor entirely.</li>
-      <li>Significantly more dangerous. Kiting becomes unreliable.</li>
-      <li><strong>Strategy:</strong> Focus on burst damage to finish the fight quickly. Save your strongest abilities for this phase.</li>
+      <li><strong>Speed: 3.</strong> Range: 2.</li>
+      <li><strong>Sonic Boom.</strong> A ranged attack that ignores defense entirely.</li>
+      <li>Extremely high HP pool, high attack damage, and heavy percentage-based defense.</li>
+      <li><strong>Strategy:</strong> Defense-ignoring attacks like the Sonic Boom make the Warden lethal at any range. Burst damage and careful positioning are essential.</li>
     </ul>
 
     <!-- ── Boss: Ender Dragon ── -->
     <h2 id="boss-dragon">Boss: Ender Dragon</h2>
     <p>
-      The Ender Dragon is the final boss of Craftics. The fight takes place on a
-      special arena grid with end crystals and obsidian towers.
+      The Ender Dragon is the final boss of Craftics, fought in the Dragon's Nest.
+      Defeating it triggers New Game+ (NG+).
     </p>
-
-    <h3>Phase 1: 100% to 50% HP</h3>
     <ul>
-      <li><strong>Arena swoops</strong> that fly across the grid, damaging every tile in its path.</li>
-      <li>Predictable flight patterns, but the damage area is wide.</li>
-      <li><strong>Strategy:</strong> Learn the swoop lanes and position between them. Destroy end crystals to prevent healing.</li>
-    </ul>
-
-    <h3>Phase 2: Below 50% HP</h3>
-    <ul>
-      <li>Switches to <strong>charging directly at the player</strong> instead of sweeping lanes.</li>
-      <li>Gains <strong>AoE breath attacks</strong> that leave lingering damage zones on the grid.</li>
-      <li>More aggressive and harder to dodge.</li>
-      <li><strong>Strategy:</strong> Stay mobile. Avoid lingering in breath zones. Use your best burst damage to close out the fight.</li>
+      <li><strong>Speed: 4.</strong></li>
+      <li><strong>Devastating Swoop.</strong> Hits everything in its path across the grid.</li>
+      <li>The ultimate test of everything you've learned. Extremely dangerous at all ranges.</li>
+      <li><strong>Strategy:</strong> Learn the swoop lanes and stay mobile. Use your strongest abilities and items to close out the fight.</li>
     </ul>
 
     <!-- ── Special On-Hit Effects ── -->
@@ -382,31 +423,71 @@
         <tbody>
           <tr>
             <td>Wither Skeleton</td>
-            <td>Wither (damage over time)</td>
+            <td>Wither (-2 HP/turn)</td>
           </tr>
           <tr>
-            <td>Blaze</td>
-            <td>Burning</td>
+            <td>Blaze, Ghast</td>
+            <td>Burning (-1 HP/turn)</td>
           </tr>
           <tr>
             <td>Husk</td>
-            <td>Weakness (reduced damage)</td>
+            <td>Weakness (-2 attack)</td>
           </tr>
           <tr>
             <td>Stray</td>
-            <td>Slowness (reduced movement)</td>
+            <td>Slowness (-1 movement)</td>
           </tr>
           <tr>
-            <td>Cave Spider</td>
-            <td>Poison</td>
+            <td>Cave Spider, Bogged, Bee</td>
+            <td>Poison (-1 HP/turn)</td>
           </tr>
           <tr>
-            <td>Bogged</td>
-            <td>Poison</td>
+            <td>Spider</td>
+            <td>Slowness (web)</td>
+          </tr>
+          <tr>
+            <td>Shulker</td>
+            <td>Slowness (levitation)</td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <!-- ── Trial Chambers ── -->
+    <h2 id="trial-chambers">Trial Chambers</h2>
+    <p>
+      Trial Chambers are special combat events sourced from <code>TrialChamberEvent.java</code>.
+      They come in four variants, each with different grid sizes, enemy counts, and loot tables.
+    </p>
+
+    <h3>Standard Trial</h3>
+    <ul>
+      <li><strong>Grid size:</strong> 10-12 tiles.</li>
+      <li><strong>Enemies:</strong> 4-6 mobs plus a Breeze mini-boss.</li>
+      <li><strong>Loot tiers:</strong> Common, Uncommon, Rare, Epic, and Legendary.</li>
+    </ul>
+
+    <h3>Ambush</h3>
+    <ul>
+      <li><strong>Grid size:</strong> 8&times;8.</li>
+      <li><strong>Enemies:</strong> 2-3 weaker mobs.</li>
+      <li><strong>Scaling:</strong> Gentler difficulty scaling. A lighter encounter.</li>
+    </ul>
+
+    <h3>Ominous Trial</h3>
+    <ul>
+      <li><strong>Grid size:</strong> 12-14 tiles.</li>
+      <li><strong>Enemies:</strong> 5-7 mobs plus a Breeze and a Warden.</li>
+      <li><strong>Scaling:</strong> Harder difficulty scaling than Standard.</li>
+      <li><strong>Loot:</strong> Better rewards including Netherite gear, Mace, and other rare items.</li>
+    </ul>
+
+    <h3>Treasure Vault</h3>
+    <ul>
+      <li><strong>Grid size:</strong> 5&times;5.</li>
+      <li><strong>Enemies:</strong> None. Automatic victory.</li>
+      <li><strong>Loot:</strong> 3-5 items. A free reward room.</li>
+    </ul>
 
   </main>
 </div>
