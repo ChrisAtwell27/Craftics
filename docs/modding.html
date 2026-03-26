@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Craftics — Modding Guide</title>
+  <title>Craftics - Modding Guide</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -52,7 +52,7 @@
   <!-- Content -->
   <main class="content">
     <h1>Modding Guide</h1>
-    <p class="page-desc">Three tiers of extensibility &mdash; from drag-and-drop arena maps to full Java API integration.</p>
+    <p class="page-desc">Three tiers of extensibility, from drag-and-drop arena maps to full Java API integration.</p>
 
     <!-- ================================================================
          1. OVERVIEW
@@ -62,9 +62,9 @@
       Craftics supports three levels of modding:
     </p>
     <ol>
-      <li><strong>Custom Arena Maps</strong> &mdash; Build <code>.nbt</code>/<code>.schem</code> structures in Minecraft, no code required.</li>
-      <li><strong>Datapack Biome Modding</strong> &mdash; JSON files for custom biomes, enemies, and loot.</li>
-      <li><strong>Fabric Mod Integration</strong> &mdash; Java API for custom AI and programmatic biomes.</li>
+      <li><strong>Custom Arena Maps:</strong> Build <code>.nbt</code>/<code>.schem</code> structures in Minecraft, no code required.</li>
+      <li><strong>Datapack Biome Modding:</strong> JSON files for custom biomes, enemies, and loot.</li>
+      <li><strong>Fabric Mod Integration:</strong> Java API for custom AI and programmatic biomes.</li>
     </ol>
 
     <!-- ================================================================
@@ -74,7 +74,7 @@
 
     <h3>Step 1: Build Your Arena</h3>
     <p>
-      Create the full scene in creative mode including a flat area for the grid, surrounding decorations (trees, ruins, water, cliffs), and any blocks you want. The area outside the grid is purely cosmetic &mdash; the game only reads the grid boundaries and spawn markers.
+      Create the full scene in creative mode including a flat area for the grid, surrounding decorations (trees, ruins, water, cliffs), and any blocks you want. The area outside the grid is purely cosmetic. The game only reads the grid boundaries and spawn markers.
     </p>
 
     <h3>Step 2: Place Marker Blocks</h3>
@@ -197,7 +197,7 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
       <li>Size your grid for the biome's growth range (e.g., Plains starts 8&times;8, grows +1 per level).</li>
       <li>The isometric camera looks from the southwest at ~55&deg;. Tall structures on the north/east edges may block the view.</li>
       <li>Floor level = marker Y level.</li>
-      <li>Obstacles are overlaid by the game &mdash; your arena provides the base terrain only.</li>
+      <li>Obstacles are overlaid by the game, so your arena provides the base terrain only.</li>
       <li>Add atmosphere outside the grid (lanterns, campfires, particle-emitting blocks, etc.).</li>
       <li>Under-floor lighting is automatic (glowstone every 3 blocks).</li>
     </ul>
@@ -468,7 +468,7 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
     <h2 id="hot-reload">Hot Reload</h2>
     <ul>
       <li><strong>Biome JSONs:</strong> Run <code>/reload</code> to reload without restarting the server.</li>
-      <li><strong>Structure files:</strong> Loaded on-demand when combat starts &mdash; new files are picked up immediately.</li>
+      <li><strong>Structure files:</strong> Loaded on-demand when combat starts, so new files are picked up immediately.</li>
       <li><strong>No server restart needed</strong> for any modding content.</li>
     </ul>
 

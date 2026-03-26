@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Craftics — Enemy AI Behaviors</title>
+  <title>Craftics - Enemy AI Behaviors</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -68,8 +68,8 @@
       and any active status effects before choosing what to do.
     </p>
     <p>
-      Mobs without a registered AI class default to <code>PassiveAI</code> &mdash;
-      they stand idle and flee when attacked.
+      Mobs without a registered AI class default to <code>PassiveAI</code>,
+      which means they stand idle and flee when attacked.
     </p>
 
     <!-- ── Passive Mobs ── -->
@@ -155,7 +155,7 @@
     <!-- ── Hostile Mobs ── -->
     <h2 id="hostile-mobs">Hostile Mobs</h2>
     <p>
-      Hostile mobs attack on sight. Each one has a distinct AI personality &mdash;
+      Hostile mobs attack on sight. Each one has a distinct AI personality,
       from mindless melee rushers to careful kiters and devastating ranged threats.
     </p>
     <div class="table-wrap">
@@ -175,7 +175,7 @@
             <td><code>ZombieAI</code></td>
             <td>1</td>
             <td>1</td>
-            <td>Beeline melee. Simplest AI &mdash; walks straight at you.</td>
+            <td>Beeline melee. Simplest AI. Walks straight at you.</td>
           </tr>
           <tr>
             <td>Husk</td>
@@ -217,7 +217,7 @@
             <td><code>SpiderAI</code></td>
             <td>2</td>
             <td>1</td>
-            <td>2&times;2 body. Pounce attack &mdash; leaps over obstacles to land adjacent.</td>
+            <td>2&times;2 body. Pounce attack that leaps over obstacles to land adjacent.</td>
           </tr>
           <tr>
             <td>Cave Spider</td>
@@ -328,17 +328,17 @@
       becomes far more dangerous as the fight goes on.
     </p>
 
-    <h3>Phase 1 &mdash; 100% to 50% HP</h3>
+    <h3>Phase 1: 100% to 50% HP</h3>
     <ul>
       <li><strong>Speed 1.</strong> Slow but devastating melee damage.</li>
       <li>Walks directly toward the player each turn.</li>
       <li><strong>Strategy:</strong> Kite and use ranged weapons. Keep your distance and chip away at its massive HP pool.</li>
     </ul>
 
-    <h3>Phase 2 &mdash; Below 50% HP</h3>
+    <h3>Phase 2: Below 50% HP</h3>
     <ul>
       <li><strong>Speed increases to 2.</strong> Much harder to outrun.</li>
-      <li>Gains <strong>Sonic Boom</strong> &mdash; a ranged attack (range 3) that bypasses armor entirely.</li>
+      <li>Gains <strong>Sonic Boom</strong>, a ranged attack (range 3) that bypasses armor entirely.</li>
       <li>Significantly more dangerous. Kiting becomes unreliable.</li>
       <li><strong>Strategy:</strong> Focus on burst damage to finish the fight quickly. Save your strongest abilities for this phase.</li>
     </ul>
@@ -350,14 +350,14 @@
       special arena grid with end crystals and obsidian towers.
     </p>
 
-    <h3>Phase 1 &mdash; 100% to 50% HP</h3>
+    <h3>Phase 1: 100% to 50% HP</h3>
     <ul>
-      <li><strong>Arena swoops</strong> &mdash; flies across the grid damaging every tile in its path.</li>
+      <li><strong>Arena swoops</strong> that fly across the grid, damaging every tile in its path.</li>
       <li>Predictable flight patterns, but the damage area is wide.</li>
       <li><strong>Strategy:</strong> Learn the swoop lanes and position between them. Destroy end crystals to prevent healing.</li>
     </ul>
 
-    <h3>Phase 2 &mdash; Below 50% HP</h3>
+    <h3>Phase 2: Below 50% HP</h3>
     <ul>
       <li>Switches to <strong>charging directly at the player</strong> instead of sweeping lanes.</li>
       <li>Gains <strong>AoE breath attacks</strong> that leave lingering damage zones on the grid.</li>

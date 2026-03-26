@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Craftics — Biome Progression</title>
+  <title>Craftics - Biome Progression</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -97,56 +97,56 @@
             <td><strong>Plains</strong></td>
             <td>8&times;8 (+1w/level)</td>
             <td>Grassy hills, flowers</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Tutorial biome, open field</td>
           </tr>
           <tr>
             <td><strong>Dark Forest</strong></td>
             <td>9&times;9</td>
             <td>Dense trees, dark</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Tree obstacles, low visibility</td>
           </tr>
           <tr>
             <td><strong>Scorching Desert</strong></td>
             <td>10&times;10</td>
             <td>Sand dunes, cacti</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Open terrain, cactus damage tiles</td>
           </tr>
           <tr>
             <td><strong>Dense Jungle</strong></td>
             <td>10&times;10 (+1w)</td>
             <td>Vegetation, vines</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Heavy obstacles, vine cover</td>
           </tr>
           <tr>
             <td><strong>River Delta</strong></td>
             <td>9&times;9</td>
             <td>Sandy banks, water</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Water edge tiles</td>
           </tr>
           <tr>
             <td><strong>Stony Peaks</strong></td>
             <td>10&times;10</td>
             <td>Stone terrain</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Minimal cover, exposed</td>
           </tr>
           <tr>
             <td><strong>Snowy Tundra</strong></td>
             <td>9&times;9</td>
             <td>Snow, ice</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Powder snow edges</td>
           </tr>
           <tr>
             <td><strong>Underground Caverns</strong></td>
             <td>10&times;10 (+1 both)</td>
             <td>Cave, ore veins</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Dense obstacles, night mode</td>
           </tr>
           <tr>
@@ -183,28 +183,28 @@
             <td><strong>Nether Wastes</strong></td>
             <td>10&times;10</td>
             <td>Netherrack, fire</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Lava edges, fire hazards</td>
           </tr>
           <tr>
             <td><strong>Soul Sand Valley</strong></td>
             <td>10&times;10 (+1w)</td>
             <td>Soul sand, soul fire</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Slow terrain</td>
           </tr>
           <tr>
             <td><strong>Crimson Forest</strong></td>
             <td>11&times;11</td>
             <td>Crimson nylium, fungi</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Dense fungal obstacles</td>
           </tr>
           <tr>
             <td><strong>Warped Forest</strong></td>
             <td>11&times;11 (+1w)</td>
             <td>Warped nylium</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Sparse obstacles</td>
           </tr>
           <tr>
@@ -241,21 +241,21 @@
             <td><strong>Outer End Islands</strong></td>
             <td>10&times;10</td>
             <td>End stone, chorus</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Void edges, sparse</td>
           </tr>
           <tr>
             <td><strong>End City</strong></td>
             <td>11&times;11 (+1w)</td>
             <td>Purpur, end bricks</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Shulker turrets</td>
           </tr>
           <tr>
             <td><strong>Chorus Grove</strong></td>
             <td>11&times;11 (+1 both)</td>
             <td>Chorus plants</td>
-            <td>&mdash;</td>
+            <td>-</td>
             <td>Organic obstacles</td>
           </tr>
           <tr>
@@ -278,10 +278,10 @@
 
     <ul>
       <li><strong>Grid dimensions</strong> grow per level based on biome settings. Some biomes add width only (+1w), others add both width and height (+1 both).</li>
-      <li><strong>Obstacles</strong> are placed with increasing density &mdash; a base count plus growth per level &mdash; ensuring later levels feel more cluttered and tactical.</li>
+      <li><strong>Obstacles</strong> are placed with increasing density, using a base count plus growth per level, ensuring later levels feel more cluttered and tactical.</li>
       <li><strong>Edges</strong> are carved with noise-based organic shapes, giving arenas irregular, natural-looking boundaries rather than clean rectangles.</li>
       <li><strong>Edge blocks</strong> match the biome: water (river), lava (nether), void (end), powder snow (snowy). Stepping on edge blocks triggers biome-specific hazards.</li>
-      <li><strong>Decorations</strong> are placed around the arena perimeter &mdash; trees and ferns in the overworld, nether vegetation in the nether, end pillars and chorus plants in the end.</li>
+      <li><strong>Decorations</strong> are placed around the arena perimeter: trees and ferns in the overworld, nether vegetation in the nether, end pillars and chorus plants in the end.</li>
       <li><strong>Underground biomes</strong> use stone walls with glowstone lighting placed every 3 blocks to simulate a cave environment.</li>
     </ul>
 
@@ -294,8 +294,8 @@
 
     <ul>
       <li><strong>Two choice points</strong> exist in the Overworld progression, both appearing after the linear opening biomes.</li>
-      <li><strong>First fork:</strong> Desert (warm) or Jungle (warm) &mdash; the order is randomized per world seed. You pick one path.</li>
-      <li><strong>Second fork:</strong> Stony Peaks or Snowy Tundra &mdash; also randomized per world seed.</li>
+      <li><strong>First fork:</strong> Desert (warm) or Jungle (warm). The order is randomized per world seed, and you pick one path.</li>
+      <li><strong>Second fork:</strong> Stony Peaks or Snowy Tundra, also randomized per world seed.</li>
       <li><strong>Both branches converge</strong> before the boss biome (Underground Caverns leads to The Deep Dark regardless of path).</li>
       <li><strong>Each playthrough visits different biomes,</strong> meaning you see a different subset of arenas on each run. This encourages multiple playthroughs to experience all 9 overworld biomes.</li>
     </ul>

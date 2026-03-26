@@ -2,7 +2,7 @@
 
 **Turn-based tactical RPG combat in Minecraft.**
 
-Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight through 18 procedurally generated biome arenas across the Overworld, Nether, and End — using vanilla items, crafting, and potions — in a complete turn-based combat system with an isometric camera, grid movement, and 40+ unique enemy AI behaviors.
+Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight through 18 procedurally generated biome arenas across the Overworld, Nether, and End, using vanilla items, crafting, and potions, in a complete turn-based combat system with an isometric camera, grid movement, and 40+ unique enemy AI behaviors.
 
 > **No new items. No new blocks.** (Except the Level Select.) Every item already in the game has a purpose in battle.
 
@@ -113,7 +113,7 @@ The compiled mod JAR is output to `build/libs/`.
 
 ### World Creation
 
-Select the **Craftics** world preset when creating a new world. This generates a void world — no terrain, no structures, no natural mob spawning. The hub is built automatically at the world origin and you are teleported there on first join.
+Select the **Craftics** world preset when creating a new world. This generates a void world with no terrain, no structures, no natural mob spawning. The hub is built automatically at the world origin and you are teleported there on first join.
 
 ### The Hub
 
@@ -128,7 +128,7 @@ A decorated cottage at spawn serves as your base of operations. It contains:
 | **Level Select Block** | Opens the biome map to start combat arenas |
 | **Armor Stand** | Display your loadout |
 
-The hub is protected — blocks in the hub shell cannot be broken.
+The hub is protected. Blocks in the hub shell cannot be broken.
 
 ### Level Select
 
@@ -140,7 +140,7 @@ Each biome contains 5 levels. The last level of each biome is a boss fight. Defe
 
 When you enter an arena:
 
-1. The arena is procedurally generated from the biome template — floor blocks, obstacles, edge terrain, and decorations
+1. The arena is procedurally generated from the biome template: floor blocks, obstacles, edge terrain, and decorations
 2. Enemies spawn at randomized positions based on the biome's mob pool
 3. The camera locks to an isometric view
 4. The mouse cursor unlocks for point-and-click control
@@ -159,8 +159,8 @@ The player gets **3 AP** per turn (modified by stats and potions).
 | **Melee Attack** | 2 AP | Click an adjacent enemy with a melee weapon equipped. |
 | **Ranged Attack** | 2 AP | Click an enemy in range with a bow, crossbow, or trident. Requires line of sight and arrows (for bows/crossbows). |
 | **Use Item** | 1 AP | Eat food (heals HP), drink a potion (applies combat effect), or throw a throwable item. |
-| **Block** | 1 AP | Shield in offhand — halves the next incoming damage. |
-| **End Turn** | 0 AP | Press **R** to end your turn. Remaining AP is lost — no banking. |
+| **Block** | 1 AP | Shield in offhand. Halves the next incoming damage. |
+| **End Turn** | 0 AP | Press **R** to end your turn. Remaining AP is lost. No banking. |
 
 ### Damage Calculation
 
@@ -280,9 +280,9 @@ See the [full combat reference](https://chrisatwell27.github.io/Craftics/combat.
 
 ### Usable Items
 
-**Food** — 28 food items can be eaten during combat for HP recovery (1 AP). Examples: steak heals the most, bread and cooked meats offer moderate healing, berries and raw foods heal less.
+**Food:** 28 food items can be eaten during combat for HP recovery (1 AP). Examples: steak heals the most, bread and cooked meats offer moderate healing, berries and raw foods heal less.
 
-**Potions** — Drinking a potion applies a turn-based effect (converted from Minecraft's tick-based system):
+**Potions:** Drinking a potion applies a turn-based effect (converted from Minecraft's tick-based system):
 
 | Potion | Combat Effect |
 |--------|---------------|
@@ -292,7 +292,7 @@ See the [full combat reference](https://chrisatwell27.github.io/Craftics/combat.
 | Regeneration | Heal 1 HP per turn |
 | Healing (Instant) | Restore 4 HP immediately |
 
-Effects can also be frozen — potions consumed in the hub activate when combat starts.
+Effects can also be frozen. Potions consumed in the hub activate when combat starts.
 
 **Throwables:**
 
@@ -335,8 +335,8 @@ The mod includes 20+ unique AI strategies registered for 40+ mob types. Unregist
 | **GhastAI** | Ghast | Long-range fireball (range 5–6), flees from close range |
 | **BlazeAI** | Blaze | Medium-range fire (range 3–4), applies burning, retreats from melee |
 | **ShulkerAI** | Shulker | Stationary turret, range 4–5, high defense, rarely moves |
-| **WardenAI** | Warden | Boss — Phase 1: slow (speed 1), massive melee. Phase 2 (<50% HP): speed 2, sonic boom (range 3) |
-| **DragonAI** | Ender Dragon | Final boss — Phase 1: arena swoops. Phase 2 (<50% HP): charge + AoE breath |
+| **WardenAI** | Warden | Boss. Phase 1: slow (speed 1), massive melee. Phase 2 (<50% HP): speed 2, sonic boom (range 3) |
+| **DragonAI** | Ender Dragon | Final boss. Phase 1: arena swoops. Phase 2 (<50% HP): charge + AoE breath |
 
 Enemy types also inflict special effects on hit:
 - **Wither Skeleton** → Wither debuff
@@ -353,8 +353,8 @@ Enemy types also inflict special effects on hit:
 - Boss kills unlock the next biome and grant a level-up
 
 After a non-boss victory, the player chooses:
-- **Go Home** — Keep loot, return to hub, reset the current biome run
-- **Continue** — Proceed to the next level in the biome (risk/reward — dying loses everything from the run)
+- **Go Home**: Keep loot, return to hub, reset the current biome run
+- **Continue**: Proceed to the next level in the biome (risk/reward; dying loses everything from the run)
 
 There is a 40% chance a trader appears between levels when continuing.
 
@@ -362,7 +362,7 @@ There is a 40% chance a trader appears between levels when continuing.
 - Inventory is cleared (items from the current run are lost)
 - The player is teleported back to the hub
 - The biome run resets (must start from level 1 of that biome)
-- No permadeath — progress and stats are kept
+- No permadeath. Progress and stats are kept
 
 ### Trader System
 
@@ -424,7 +424,7 @@ Plains → Dark Forest → ┬─ Desert ──┬─→ River Delta → ┬─ 
 
 | Biome | Grid Size | Environment | Boss | Notable Mechanics |
 |-------|-----------|-------------|------|-------------------|
-| **Plains** | 8×8 (+1 width/level) | Grassy hills, flowers | Varies | Tutorial biome — open field |
+| **Plains** | 8×8 (+1 width/level) | Grassy hills, flowers | Varies | Tutorial biome, open field |
 | **Dark Forest** | 9×9 | Dense trees, dark atmosphere | Varies | Tree obstacles, low visibility |
 | **Scorching Desert** | 10×10 | Sand dunes, cacti | Varies | Open terrain, cactus damage |
 | **Dense Jungle** | 10×10 (+1 width) | Dense vegetation, vines | Varies | Heavy obstacles, vine cover |
@@ -496,58 +496,58 @@ Standard Minecraft controls. Interact with blocks normally (crafting table, furn
 ```
 src/
 ├── main/java/com/crackedgames/craftics/
-│   ├── CrafticsMod.java              — Main mod entrypoint (ModInitializer)
+│   ├── CrafticsMod.java              : Main mod entrypoint (ModInitializer)
 │   ├── api/
-│   │   └── CrafticsAPI.java          — Public modding API
+│   │   └── CrafticsAPI.java          : Public modding API
 │   ├── block/
-│   │   ├── ModBlocks.java               — Block registration
-│   │   ├── LevelSelectBlock.java        — Interactive block with GUI
-│   │   ├── LevelSelectBlockEntity.java  — Block entity with screen data
-│   │   ├── LevelSelectScreenHandler.java — Screen handler
-│   │   └── ModScreenHandlers.java       — Screen handler registration
+│   │   ├── ModBlocks.java               : Block registration
+│   │   ├── LevelSelectBlock.java        : Interactive block with GUI
+│   │   ├── LevelSelectBlockEntity.java  : Block entity with screen data
+│   │   ├── LevelSelectScreenHandler.java : Screen handler
+│   │   └── ModScreenHandlers.java       : Screen handler registration
 │   ├── combat/
-│   │   ├── CombatManager.java           — Server-side combat state machine (~1500 lines)
-│   │   ├── CombatEntity.java            — Combat enemy data
-│   │   ├── CombatPhase.java             — Phase enum
-│   │   ├── CombatEffects.java           — Turn-based effect system (12 effects)
-│   │   ├── PlayerCombatStats.java       — Equipment → combat stat reader
-│   │   ├── PlayerProgression.java       — Persistent stat/leveling system
-│   │   ├── Pathfinding.java             — A* pathfinding + BFS reachability
-│   │   ├── WeaponAbility.java           — Per-weapon-type abilities
-│   │   ├── ItemUseHandler.java          — Food, potions, throwables in combat
-│   │   ├── TileHighlightManager.java    — Carpet-based tile highlights
-│   │   ├── LootPool.java               — Weighted loot rolling
-│   │   ├── TraderSystem.java            — 7 trader types, tiered loot pools
+│   │   ├── CombatManager.java           : Server-side combat state machine (~1500 lines)
+│   │   ├── CombatEntity.java            : Combat enemy data
+│   │   ├── CombatPhase.java             : Phase enum
+│   │   ├── CombatEffects.java           : Turn-based effect system (12 effects)
+│   │   ├── PlayerCombatStats.java       : Equipment → combat stat reader
+│   │   ├── PlayerProgression.java       : Persistent stat/leveling system
+│   │   ├── Pathfinding.java             : A* pathfinding + BFS reachability
+│   │   ├── WeaponAbility.java           : Per-weapon-type abilities
+│   │   ├── ItemUseHandler.java          : Food, potions, throwables in combat
+│   │   ├── TileHighlightManager.java    : Carpet-based tile highlights
+│   │   ├── LootPool.java               : Weighted loot rolling
+│   │   ├── TraderSystem.java            : 7 trader types, tiered loot pools
 │   │   └── ai/
-│   │       ├── EnemyAI.java             — AI interface
-│   │       ├── EnemyAction.java         — 13 action types (sealed interface)
-│   │       ├── AIRegistry.java          — 35+ mob→AI mappings
-│   │       ├── AIUtils.java             — Shared AI utilities
-│   │       └── (20+ AI classes)         — One per mob behavior archetype
+│   │       ├── EnemyAI.java             : AI interface
+│   │       ├── EnemyAction.java         : 13 action types (sealed interface)
+│   │       ├── AIRegistry.java          : 35+ mob→AI mappings
+│   │       ├── AIUtils.java             : Shared AI utilities
+│   │       └── (20+ AI classes)         : One per mob behavior archetype
 │   ├── core/
-│   │   ├── GridArena.java               — Width×height tile grid with occupants
-│   │   ├── GridPos.java                 — 2D grid coordinate
-│   │   ├── GridTile.java                — Tile data (type, block, timer)
-│   │   └── TileType.java               — NORMAL, OBSTACLE, LAVA, FIRE, VOID, EXIT
+│   │   ├── GridArena.java               : Width×height tile grid with occupants
+│   │   ├── GridPos.java                 : 2D grid coordinate
+│   │   ├── GridTile.java                : Tile data (type, block, timer)
+│   │   └── TileType.java               : NORMAL, OBSTACLE, LAVA, FIRE, VOID, EXIT
 │   ├── level/
-│   │   ├── BiomeTemplate.java           — Biome data class
-│   │   ├── BiomeRegistry.java           — Central biome registry (JSON + API)
-│   │   ├── BiomeJsonLoader.java         — Datapack JSON parser
-│   │   ├── BiomePath.java              — Branching progression graph (3 dimensions)
-│   │   ├── LevelDefinition.java         — Abstract level layout
-│   │   ├── LevelGenerator.java          — Procedural arena generation
-│   │   ├── GeneratedLevelDefinition.java — Concrete generated level
-│   │   ├── LevelRegistry.java           — Level lookup facade
-│   │   ├── ArenaBuilder.java            — Places blocks in world from definition
-│   │   ├── EnvironmentStyle.java        — 11 visual styles enum
-│   │   └── MobPoolEntry.java            — Enemy pool data record
+│   │   ├── BiomeTemplate.java           : Biome data class
+│   │   ├── BiomeRegistry.java           : Central biome registry (JSON + API)
+│   │   ├── BiomeJsonLoader.java         : Datapack JSON parser
+│   │   ├── BiomePath.java              : Branching progression graph (3 dimensions)
+│   │   ├── LevelDefinition.java         : Abstract level layout
+│   │   ├── LevelGenerator.java          : Procedural arena generation
+│   │   ├── GeneratedLevelDefinition.java : Concrete generated level
+│   │   ├── LevelRegistry.java           : Level lookup facade
+│   │   ├── ArenaBuilder.java            : Places blocks in world from definition
+│   │   ├── EnvironmentStyle.java        : 11 visual styles enum
+│   │   └── MobPoolEntry.java            : Enemy pool data record
 │   ├── network/
-│   │   ├── ModNetworking.java           — Registers 6 C2S + 8 S2C payloads
-│   │   └── (14 payload record classes)  — Individual packet definitions
+│   │   ├── ModNetworking.java           : Registers 6 C2S + 8 S2C payloads
+│   │   └── (14 payload record classes)  : Individual packet definitions
 │   └── world/
-│       ├── VoidChunkGenerator.java      — Empty void world generation
-│       ├── HubRoomBuilder.java          — Decorated cottage at spawn
-│       └── CrafticsSavedData.java    — Persistent world state (progress, emeralds, NG+)
+│       ├── VoidChunkGenerator.java      : Empty void world generation
+│       ├── HubRoomBuilder.java          : Decorated cottage at spawn
+│       └── CrafticsSavedData.java    : Persistent world state (progress, emeralds, NG+)
 │
 ├── main/resources/
 │   ├── fabric.mod.json
@@ -561,47 +561,47 @@ src/
 │       └── (18 biome JSON files)
 │
 ├── client/java/com/crackedgames/craftics/
-│   ├── CrafticsClient.java           — Client entrypoint (ClientModInitializer)
+│   ├── CrafticsClient.java           : Client entrypoint (ClientModInitializer)
 │   ├── client/
-│   │   ├── CombatState.java             — Client combat state + camera settings
-│   │   ├── CombatHudOverlay.java        — HUD rendering (HP, AP, enemies, log)
-│   │   ├── CombatInputHandler.java      — Click-to-move, click-to-attack, pan, zoom
-│   │   ├── CombatLog.java               — Scrolling combat message log
-│   │   ├── CombatTooltips.java          — Item tooltip enrichment
-│   │   ├── TileRaycast.java             — Cursor → grid tile raycasting
-│   │   ├── ClientGridHelper.java        — Client-side grid utilities
-│   │   ├── LevelSelectScreen.java       — Biome map GUI
-│   │   ├── VictoryChoiceScreen.java     — Post-victory Go Home/Continue
-│   │   ├── LevelUpScreen.java           — Stat allocation GUI
-│   │   └── TraderScreen.java            — Trading GUI
+│   │   ├── CombatState.java             : Client combat state + camera settings
+│   │   ├── CombatHudOverlay.java        : HUD rendering (HP, AP, enemies, log)
+│   │   ├── CombatInputHandler.java      : Click-to-move, click-to-attack, pan, zoom
+│   │   ├── CombatLog.java               : Scrolling combat message log
+│   │   ├── CombatTooltips.java          : Item tooltip enrichment
+│   │   ├── TileRaycast.java             : Cursor → grid tile raycasting
+│   │   ├── ClientGridHelper.java        : Client-side grid utilities
+│   │   ├── LevelSelectScreen.java       : Biome map GUI
+│   │   ├── VictoryChoiceScreen.java     : Post-victory Go Home/Continue
+│   │   ├── LevelUpScreen.java           : Stat allocation GUI
+│   │   └── TraderScreen.java            : Trading GUI
 │   └── mixin/client/
-│       ├── CameraLockMixin.java         — Isometric camera lock
-│       ├── ScrollZoomMixin.java         — Scroll wheel → zoom
-│       ├── MovementDisableMixin.java    — Disable WASD in combat
-│       ├── MouseUnlockMixin.java        — Free cursor in combat
-│       ├── InputAccessor.java           — Movement vector accessor
-│       ├── OverlayMessageMixin.java     — Action bar → combat log
-│       └── InventoryStatsMixin.java     — Stat panel in inventory screen
+│       ├── CameraLockMixin.java         : Isometric camera lock
+│       ├── ScrollZoomMixin.java         : Scroll wheel → zoom
+│       ├── MovementDisableMixin.java    : Disable WASD in combat
+│       ├── MouseUnlockMixin.java        : Free cursor in combat
+│       ├── InputAccessor.java           : Movement vector accessor
+│       ├── OverlayMessageMixin.java     : Action bar → combat log
+│       └── InventoryStatsMixin.java     : Stat panel in inventory screen
 │
 └── client/resources/
-    └── craftics.client.mixins.json   — 7 client mixins
+    └── craftics.client.mixins.json   : 7 client mixins
 ```
 
 **Total: 99 Java files, 27 JSON configs, 2 textures.**
 
 ### Core Systems
 
-- **CombatManager** — Server-authoritative state machine driving the entire combat lifecycle. Handles player actions, A* pathfinding, animated movement (lerp over 4 ticks), weapon abilities, enemy AI turns (with per-phase delays: DECIDING→MOVING→ATTACKING→DONE), per-turn status effects, environmental hazard damage, victory/defeat conditions, loot distribution, and biome progression.
+- **CombatManager**: Server-authoritative state machine driving the entire combat lifecycle. Handles player actions, A* pathfinding, animated movement (lerp over 4 ticks), weapon abilities, enemy AI turns (with per-phase delays: DECIDING→MOVING→ATTACKING→DONE), per-turn status effects, environmental hazard damage, victory/defeat conditions, loot distribution, and biome progression.
 
-- **GridArena** — 2D tile array with occupant tracking. Supports multi-tile entities (e.g., 2×2 spiders). Arena origins are spaced at `X = level × 1000, Y = 100, Z = 0` to prevent collision.
+- **GridArena**: 2D tile array with occupant tracking. Supports multi-tile entities (e.g., 2×2 spiders). Arena origins are spaced at `X = level × 1000, Y = 100, Z = 0` to prevent collision.
 
-- **Pathfinding** — A* pathfinding for movement with BFS flood-fill for reachable tile calculation. Respects obstacles, multi-tile entities, and movement speed limits.
+- **Pathfinding**: A* pathfinding for movement with BFS flood-fill for reachable tile calculation. Respects obstacles, multi-tile entities, and movement speed limits.
 
-- **PlayerProgression** — Persistent per-player stat system using Minecraft's `PersistentState` and `Codec` serialization. UUID-based for multiplayer support.
+- **PlayerProgression**: Persistent per-player stat system using Minecraft's `PersistentState` and `Codec` serialization. UUID-based for multiplayer support.
 
-- **CombatEffects** — Turn-based effect system replacing Minecraft's tick-based effects. 12 distinct effects with frozen state (apply in hub, activate on combat start).
+- **CombatEffects**: Turn-based effect system replacing Minecraft's tick-based effects. 12 distinct effects with frozen state (apply in hub, activate on combat start).
 
-- **BiomeRegistry** — Central registry loading biomes from JSON datapacks (`data/*/craftics/biomes/*.json`) and programmatic API registration. Hot-reloadable via `/reload`.
+- **BiomeRegistry**: Central registry loading biomes from JSON datapacks (`data/*/craftics/biomes/*.json`) and programmatic API registration. Hot-reloadable via `/reload`.
 
 ### Client Mixins
 
@@ -632,20 +632,20 @@ src/
 
 | Payload | Purpose |
 |---------|---------|
-| `EnterCombatPayload` | Combat started — arena dimensions, origin |
+| `EnterCombatPayload` | Combat started, arena dimensions, origin |
 | `CombatEventPayload` | Combat event (damage, movement, effect) |
 | `ExitCombatPayload` | Combat ended |
 | `CombatSyncPayload` | Full combat state sync (phase, AP, HP, enemies) |
 | `VictoryChoicePayload` | Prompt Go Home/Continue screen |
-| `TraderOfferPayload` | Trader encountered — show trades |
-| `LevelUpPayload` | Level up — show stat allocation |
+| `TraderOfferPayload` | Trader encountered, show trades |
+| `LevelUpPayload` | Level up, show stat allocation |
 | `PlayerStatsSyncPayload` | Sync progression data to client |
 
 ### World Generation
 
-- **VoidChunkGenerator** — Produces an empty world with no terrain, entities, or structures. Codec-serialized for world preset compatibility.
-- **HubRoomBuilder** — Constructs a decorated cottage at the world origin with cobblestone foundation, oak plank floor, dark oak posts, windows, pitched roof, porch, chimney, furniture, and lighting. Supports versioned rebuilds.
-- **CrafticsSavedData** — Persistent world-level state stored via Minecraft's `PersistentState` system. Tracks hub state, biome progression, emerald currency, active biome run, branch choices, discovered biomes, and NG+ level.
+- **VoidChunkGenerator**: Produces an empty world with no terrain, entities, or structures. Codec-serialized for world preset compatibility.
+- **HubRoomBuilder**: Constructs a decorated cottage at the world origin with cobblestone foundation, oak plank floor, dark oak posts, windows, pitched roof, porch, chimney, furniture, and lighting. Supports versioned rebuilds.
+- **CrafticsSavedData**: Persistent world-level state stored via Minecraft's `PersistentState` system. Tracks hub state, biome progression, emerald currency, active biome run, branch choices, discovered biomes, and NG+ level.
 
 ### Data-Driven Biomes
 
@@ -659,7 +659,7 @@ All 18 built-in biomes are defined as JSON files in `data/craftics/craftics/biom
 - Passive, hostile, and boss mob pools with full stats
 - Weighted loot tables
 
-Biomes are hot-reloadable — run `/reload` in-game to reload all biome definitions without restarting.
+Biomes are hot-reloadable. Run `/reload` in-game to reload all biome definitions without restarting.
 
 ---
 
@@ -774,5 +774,5 @@ The mod is in active development (v0.1.0). The following systems are implemented
 
 ### Known Limitations
 
-- **CombatHudRenderer** (world-space rendering for grid overlay and 3D enemy HP bars) is stubbed — blocked by Minecraft 1.21.11 render pipeline changes
+- **CombatHudRenderer** (world-space rendering for grid overlay and 3D enemy HP bars) is stubbed, blocked by Minecraft 1.21.11 render pipeline changes
 - Legacy hardcoded level definitions (Level1Definition, Level2Definition) remain in the codebase but are superseded by the procedural generation system
