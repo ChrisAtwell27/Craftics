@@ -1,0 +1,29 @@
+{
+  "id": "chorus_grove",
+  "name": "Chorus Grove",
+  "order": 17,
+  "levels": 5,
+  "grid": { "base_width": 11, "base_height": 11, "width_growth": 1, "height_growth": 1 },
+  "floor_blocks": ["minecraft:end_stone", "minecraft:purpur_block"],
+  "obstacle_blocks": ["minecraft:chorus_plant", "minecraft:purpur_pillar"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "end",
+  "night": true,
+  "enemies": {
+    "passive": [],
+    "hostile": [
+      {"type": "minecraft:enderman", "weight": 5, "hp": 20, "attack": 8},
+      {"type": "minecraft:shulker", "weight": 5, "hp": 16, "attack": 7, "range": 4},
+      {"type": "minecraft:phantom", "weight": 3, "hp": 12, "attack": 6}
+    ],
+    "boss": {"type": "minecraft:enderman", "hp": 35, "attack": 12}
+  },
+  "loot": [
+    {"item": "minecraft:chorus_fruit", "weight": 8},
+    {"item": "minecraft:popped_chorus_fruit", "weight": 5},
+    {"item": "minecraft:shulker_shell", "weight": 3},
+    {"item": "minecraft:ender_pearl", "weight": 4},
+    {"item": "minecraft:diamond", "weight": 2}
+  ]
+}

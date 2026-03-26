@@ -1,0 +1,55 @@
+{
+	"schemaVersion": 1,
+	"id": "craftics",
+	"version": "${version}",
+	"name": "Craftics",
+	"description": "Turn-based tactical RPG combat in Minecraft",
+	"authors": [
+		"CrackedGames"
+	],
+	"contact": {},
+	"license": "All-Rights-Reserved",
+	"icon": "assets/craftics/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.crackedgames.craftics.CrafticsMod"
+		],
+		"client": [
+			"com.crackedgames.craftics.CrafticsClient"
+		],
+		"cardinal-components-entity": [
+			"com.crackedgames.craftics.component.ComponentInit"
+		],
+		"cardinal-components-world": [
+			"com.crackedgames.craftics.component.ComponentInit"
+		]
+	},
+	"mixins": [
+		"craftics.mixins.json",
+		{
+			"config": "craftics.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.16.0",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"custom": {
+		"cardinal-components": [
+			"craftics:progression",
+			"craftics:world_data"
+		]
+	},
+	"suggests": {
+		"geckolib": "*",
+		"player-animation-lib": "*",
+		"owo": "*",
+		"patchouli": "*",
+		"pehkui": "*",
+		"cardinal-components-api": "*"
+	}
+}

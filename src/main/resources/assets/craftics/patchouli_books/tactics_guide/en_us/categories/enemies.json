@@ -1,0 +1,6 @@
+{
+  "name": "Enemy Bestiary",
+  "description": "Know your foes. Each enemy has unique abilities and behaviors.",
+  "icon": "minecraft:zombie_head",
+  "sortnum": 1
+}

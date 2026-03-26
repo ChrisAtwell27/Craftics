@@ -1,0 +1,27 @@
+{
+  "id": "outer_end_islands",
+  "name": "Outer End Islands",
+  "order": 15,
+  "levels": 5,
+  "grid": { "base_width": 10, "base_height": 10, "width_growth": 1, "height_growth": 1 },
+  "floor_blocks": ["minecraft:end_stone"],
+  "obstacle_blocks": ["minecraft:end_stone_bricks", "minecraft:obsidian"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "end",
+  "night": true,
+  "enemies": {
+    "passive": [],
+    "hostile": [
+      {"type": "minecraft:enderman", "weight": 8, "hp": 18, "attack": 7},
+      {"type": "minecraft:phantom", "weight": 3, "hp": 10, "attack": 5}
+    ],
+    "boss": {"type": "minecraft:enderman", "hp": 35, "attack": 10}
+  },
+  "loot": [
+    {"item": "minecraft:end_stone", "weight": 8},
+    {"item": "minecraft:ender_pearl", "weight": 5},
+    {"item": "minecraft:chorus_fruit", "weight": 6},
+    {"item": "minecraft:obsidian", "weight": 3}
+  ]
+}

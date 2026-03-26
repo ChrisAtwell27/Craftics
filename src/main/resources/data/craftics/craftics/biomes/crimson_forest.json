@@ -1,0 +1,27 @@
+{
+  "id": "crimson_forest",
+  "name": "Crimson Forest",
+  "order": 12,
+  "levels": 5,
+  "grid": { "base_width": 10, "base_height": 10, "width_growth": 1, "height_growth": 0 },
+  "floor_blocks": ["minecraft:crimson_nylium"],
+  "obstacle_blocks": ["minecraft:crimson_stem", "minecraft:shroomlight"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "nether",
+  "night": true,
+  "enemies": {
+    "passive": [],
+    "hostile": [
+      {"type": "minecraft:hoglin", "weight": 5, "hp": 14, "attack": 5},
+      {"type": "minecraft:piglin", "weight": 5, "hp": 10, "attack": 4, "range": 4}
+    ],
+    "boss": {"type": "minecraft:hoglin", "hp": 35, "attack": 8}
+  },
+  "loot": [
+    {"item": "minecraft:crimson_planks", "weight": 8},
+    {"item": "minecraft:leather", "weight": 6},
+    {"item": "minecraft:gold_ingot", "weight": 5},
+    {"item": "minecraft:shroomlight", "weight": 3}
+  ]
+}

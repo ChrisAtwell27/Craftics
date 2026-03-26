@@ -1,0 +1,41 @@
+{
+  "id": "forest",
+  "name": "Dark Forest",
+  "order": 2,
+  "levels": 5,
+  "grid": {
+    "base_width": 9,
+    "base_height": 9,
+    "width_growth": 1,
+    "height_growth": 0
+  },
+  "floor_blocks": ["minecraft:podzol", "minecraft:mycelium"],
+  "obstacle_blocks": ["minecraft:mushroom_stem", "minecraft:mossy_cobblestone"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "forest",
+  "night": false,
+  "enemies": {
+    "passive": [
+      {"type": "minecraft:wolf", "weight": 5, "hp": 4, "attack": 0, "defense": 0, "range": 1},
+      {"type": "minecraft:chicken", "weight": 4, "hp": 3, "attack": 0, "defense": 0, "range": 1},
+      {"type": "minecraft:cat", "weight": 1, "hp": 3, "attack": 1, "defense": 0, "range": 1},
+      {"type": "minecraft:bee", "weight": 2, "hp": 3, "attack": 1, "defense": 0, "range": 1}
+    ],
+    "hostile": [
+      {"type": "minecraft:pillager", "weight": 7, "hp": 8, "attack": 3, "defense": 0, "range": 3},
+      {"type": "minecraft:vindicator", "weight": 5, "hp": 9, "attack": 4, "defense": 1, "range": 1},
+      {"type": "minecraft:evoker", "weight": 3, "hp": 7, "attack": 3, "defense": 0, "range": 4}
+    ],
+    "boss": {"type": "minecraft:evoker", "hp": 35, "attack": 5, "defense": 1, "range": 4}
+  },
+  "loot": [
+    {"item": "minecraft:dark_oak_log", "weight": 8},
+    {"item": "minecraft:spruce_log", "weight": 8},
+    {"item": "minecraft:string", "weight": 6},
+    {"item": "minecraft:spider_eye", "weight": 4},
+    {"item": "minecraft:mushroom_stew", "weight": 3},
+    {"item": "minecraft:sweet_berries", "weight": 4},
+    {"item": "minecraft:brown_mushroom", "weight": 3}
+  ]
+}

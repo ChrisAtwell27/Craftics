@@ -1,0 +1,18 @@
+{
+  "name": "Weapons & Items",
+  "icon": "minecraft:diamond_sword",
+  "category": "craftics:basics",
+  "sortnum": 2,
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "title": "Melee Weapons",
+      "text": "$(b)Swords & Axes$() - Attack adjacent enemies (range 1). Damage scales with weapon tier:$(br)$(li)Wood/Gold: base damage$(br)$(li)Stone: +1$(br)$(li)Iron: +2$(br)$(li)Diamond: +3$(br)$(li)Netherite: +4$(br2)Axes deal slightly more damage but are slower."
+    },
+    {
+      "type": "patchouli:text",
+      "title": "Ranged Weapons",
+      "text": "$(b)Bows & Crossbows$() - Attack from distance (range 3-4). Require arrows in your inventory. Each shot consumes one arrow.$(br2)$(b)Tridents$() - Versatile! Can be used in melee (range 1) or thrown (range 3).$(br2)$(b)Eggs & Snowballs$() - Low damage but can be used as items (right-click)."
+    }
+  ]
+}

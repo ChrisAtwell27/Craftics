@@ -1,0 +1,28 @@
+{
+  "id": "basalt_deltas",
+  "name": "Basalt Deltas",
+  "order": 14,
+  "levels": 5,
+  "grid": { "base_width": 10, "base_height": 10, "width_growth": 1, "height_growth": 1 },
+  "floor_blocks": ["minecraft:basalt", "minecraft:blackstone"],
+  "obstacle_blocks": ["minecraft:blackstone", "minecraft:magma_block"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "nether",
+  "night": true,
+  "enemies": {
+    "passive": [],
+    "hostile": [
+      {"type": "minecraft:blaze", "weight": 5, "hp": 14, "attack": 6, "range": 4},
+      {"type": "minecraft:wither_skeleton", "weight": 5, "hp": 16, "attack": 7}
+    ],
+    "boss": {"type": "minecraft:wither_skeleton", "hp": 35, "attack": 10, "speed": 2}
+  },
+  "loot": [
+    {"item": "minecraft:blackstone", "weight": 8},
+    {"item": "minecraft:blaze_rod", "weight": 4},
+    {"item": "minecraft:wither_skeleton_skull", "weight": 1},
+    {"item": "minecraft:nether_brick", "weight": 6},
+    {"item": "minecraft:netherite_scrap", "weight": 2}
+  ]
+}

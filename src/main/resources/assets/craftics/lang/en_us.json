@@ -1,0 +1,11 @@
+{
+  "generator.craftics.craftics": "Craftics",
+  "block.craftics.level_select_block": "Level Select",
+  "gui.craftics.level_select.title": "Level Select",
+  "key.craftics.toggle_combat": "Toggle Combat Mode (Debug)",
+  "key.craftics.attack_mode": "Toggle Attack/Move Mode",
+  "key.craftics.end_turn": "End Turn",
+  "category.craftics": "Craftics",
+  "item.craftics.guide_book": "Tactics Field Manual",
+  "key.craftics.guide_book": "Open Guide Book"
+}

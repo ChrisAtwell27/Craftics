@@ -1,0 +1,131 @@
+plugins {
+	id 'fabric-loom' version '1.15.5'
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	maven {
+		name = 'GeckoLib'
+		url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+		content { includeGroup('software.bernie.geckolib') }
+	}
+	maven {
+		name = 'KosmX'
+		url = 'https://maven.kosmx.dev/'
+	}
+	maven {
+		name = 'WispForest'
+		url = 'https://maven.wispforest.io/releases/'
+	}
+	maven {
+		name = 'BlameJared'
+		url = 'https://maven.blamejared.com'
+	}
+	maven {
+		name = 'JitPack'
+		url = 'https://jitpack.io'
+	}
+	maven {
+		name = 'Ladysnake'
+		url = 'https://maven.ladysnake.org/releases'
+	}
+	maven {
+		// WorldEdit — arena editing tool (dev-only, not shipped with the mod)
+		name = 'EngineHub'
+		url = 'https://maven.enginehub.org/repo/'
+	}
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"craftics" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+
+	runs {
+		// Dedicated client session for building arenas with WorldEdit.
+		// Run with: ./gradlew runArenaEditor
+		// WorldEdit is NOT a mod dependency — it is only present in this run.
+		arenaEditor {
+			client()
+			name "Arena Editor"
+			programArg "--username=ArenaBuilder"
+			runDir "run"
+		}
+	}
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+	// Fabric API
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+	// GeckoLib — entity animations
+	modImplementation "software.bernie.geckolib:geckolib-fabric-1.21.1:4.8.4"
+
+	// PlayerAnimator — player combat animations (JiJ bundled)
+	include modImplementation("dev.kosmx.player-anim:player-animation-lib-fabric:2.0.4+1.21.1")
+
+	// owo-lib — UI framework, networking, config
+	modImplementation "io.wispforest:owo-lib:0.12.15.4+1.21"
+	include "io.wispforest:owo-sentinel:0.12.15.4+1.21"
+	annotationProcessor "io.wispforest:owo-lib:0.12.15.4+1.21"
+
+	// Patchouli — in-game guide book
+	modImplementation "vazkii.patchouli:Patchouli:1.21.1-93-FABRIC"
+
+	// Pehkui — entity scaling (bosses, baby mobs)
+	modApi("com.github.Virtuoel:Pehkui:3.8.3") {
+		exclude group: "net.fabricmc.fabric-api"
+	}
+
+	// Cardinal Components API — auto-save/sync data on entities/worlds
+	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-base:6.1.3")
+	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-entity:6.1.3")
+	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-world:6.1.3")
+
+	// WorldEdit — available in ALL local run tasks (runClient, runArenaEditor) but
+	// NOT compiled against and NOT required by players. Purely a dev-time arena tool.
+	// For Minecraft 1.21.1, EngineHub publishes this artifact under mc1.21.
+	modLocalRuntime "com.sk89q.worldedit:worldedit-fabric-mc1.21:${project.worldedit_version}"
+}
+
+processResources {
+	inputs.property "version", project.version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 21
+}
+
+java {
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+	from("LICENSE") {
+		rename { "${it}_${project.base.archivesName.get()}" }
+	}
+}

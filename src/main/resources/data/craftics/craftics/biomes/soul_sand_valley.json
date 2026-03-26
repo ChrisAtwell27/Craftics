@@ -1,0 +1,27 @@
+{
+  "id": "soul_sand_valley",
+  "name": "Soul Sand Valley",
+  "order": 11,
+  "levels": 5,
+  "grid": { "base_width": 9, "base_height": 9, "width_growth": 1, "height_growth": 1 },
+  "floor_blocks": ["minecraft:soul_sand", "minecraft:soul_soil"],
+  "obstacle_blocks": ["minecraft:basalt", "minecraft:bone_block"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "nether",
+  "night": true,
+  "enemies": {
+    "passive": [],
+    "hostile": [
+      {"type": "minecraft:skeleton", "weight": 6, "hp": 10, "attack": 5, "range": 3},
+      {"type": "minecraft:ghast", "weight": 3, "hp": 12, "attack": 6, "range": 5}
+    ],
+    "boss": {"type": "minecraft:ghast", "hp": 35, "attack": 8, "range": 6}
+  },
+  "loot": [
+    {"item": "minecraft:bone", "weight": 10},
+    {"item": "minecraft:soul_sand", "weight": 8},
+    {"item": "minecraft:ghast_tear", "weight": 3},
+    {"item": "minecraft:arrow", "weight": 6}
+  ]
+}

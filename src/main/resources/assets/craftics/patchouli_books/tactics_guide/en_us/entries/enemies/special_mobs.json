@@ -1,0 +1,28 @@
+{
+  "name": "Special Enemies",
+  "icon": "minecraft:blaze_rod",
+  "category": "craftics:enemies",
+  "sortnum": 1,
+  "pages": [
+    {
+      "type": "patchouli:text",
+      "title": "Enderman",
+      "text": "$(b)Speed:$() 5 | $(b)Special:$() Teleport$(br)Extremely fast and can teleport anywhere on the grid! They teleport adjacent to you and attack. Very hard to run from. Focus fire them down quickly."
+    },
+    {
+      "type": "patchouli:text",
+      "title": "Blaze",
+      "text": "$(b)Speed:$() 2 | $(b)Range:$() 3 | $(b)Special:$() Fireball$(br)Hovering ranged attacker that shoots fireballs. The fireball deals area damage on impact. Try to close distance or use ranged weapons."
+    },
+    {
+      "type": "patchouli:text",
+      "title": "Witch",
+      "text": "$(b)Speed:$() 2 | $(b)Range:$() 4 | $(b)Special:$() Potions$(br)Throws harmful potions from long range. Can poison, slow, or weaken you. High priority target - take her out before the debuffs stack up!"
+    },
+    {
+      "type": "patchouli:text",
+      "title": "Phantom",
+      "text": "$(b)Speed:$() 4 | $(b)Special:$() Swoop$(br)Flying enemy that swoops in from distance, deals damage, then retreats. Hard to pin down. Use ranged weapons or wait for it to come to you."
+    }
+  ]
+}

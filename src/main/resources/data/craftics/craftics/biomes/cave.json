@@ -1,0 +1,38 @@
+{
+  "id": "cave",
+  "name": "Underground Caverns",
+  "order": 8,
+  "levels": 5,
+  "grid": {
+    "base_width": 11,
+    "base_height": 11,
+    "width_growth": 1,
+    "height_growth": 1
+  },
+  "floor_blocks": ["minecraft:stone", "minecraft:deepslate"],
+  "obstacle_blocks": ["minecraft:cobblestone", "minecraft:mossy_cobblestone"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "cave",
+  "night": true,
+  "enemies": {
+    "passive": [],
+    "hostile": [
+      {"type": "minecraft:zombie", "weight": 5, "hp": 12, "attack": 3, "defense": 1, "range": 1},
+      {"type": "minecraft:skeleton", "weight": 5, "hp": 10, "attack": 4, "defense": 1, "range": 3},
+      {"type": "minecraft:creeper", "weight": 4, "hp": 12, "attack": 5, "defense": 0, "range": 1},
+      {"type": "minecraft:spider", "weight": 3, "hp": 10, "attack": 3, "defense": 1, "range": 1}
+    ],
+    "boss": {"type": "minecraft:zombie", "hp": 35, "attack": 6, "defense": 3, "range": 1}
+  },
+  "loot": [
+    {"item": "minecraft:iron_ingot", "weight": 8},
+    {"item": "minecraft:gold_ingot", "weight": 5},
+    {"item": "minecraft:diamond", "weight": 2},
+    {"item": "minecraft:coal", "weight": 7},
+    {"item": "minecraft:redstone", "weight": 5},
+    {"item": "minecraft:lapis_lazuli", "weight": 4},
+    {"item": "minecraft:pumpkin_seeds", "weight": 2},
+    {"item": "minecraft:glow_berries", "weight": 3}
+  ]
+}

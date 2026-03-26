@@ -1,0 +1,39 @@
+{
+  "id": "mountain",
+  "name": "Stony Peaks",
+  "order": 4,
+  "levels": 5,
+  "grid": {
+    "base_width": 10,
+    "base_height": 10,
+    "width_growth": 1,
+    "height_growth": 0
+  },
+  "floor_blocks": ["minecraft:stone", "minecraft:tuff"],
+  "obstacle_blocks": ["minecraft:andesite", "minecraft:diorite"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "mountain",
+  "night": false,
+  "enemies": {
+    "passive": [
+      {"type": "minecraft:goat", "weight": 4, "hp": 6, "attack": 1, "defense": 0, "range": 1},
+      {"type": "minecraft:bee", "weight": 2, "hp": 3, "attack": 1, "defense": 0, "range": 1}
+    ],
+    "hostile": [
+      {"type": "minecraft:pillager", "weight": 6, "hp": 8, "attack": 3, "defense": 1, "range": 3},
+      {"type": "minecraft:vindicator", "weight": 5, "hp": 10, "attack": 4, "defense": 1, "range": 1},
+      {"type": "minecraft:zombie", "weight": 3, "hp": 9, "attack": 2, "defense": 1, "range": 1}
+    ],
+    "boss": {"type": "minecraft:vindicator", "hp": 35, "attack": 5, "defense": 2, "range": 1}
+  },
+  "loot": [
+    {"item": "minecraft:cobblestone", "weight": 8},
+    {"item": "minecraft:iron_ingot", "weight": 7},
+    {"item": "minecraft:coal", "weight": 6},
+    {"item": "minecraft:emerald", "weight": 2},
+    {"item": "minecraft:crossbow", "weight": 1},
+    {"item": "minecraft:wheat_seeds", "weight": 3},
+    {"item": "minecraft:sweet_berries", "weight": 2}
+  ]
+}

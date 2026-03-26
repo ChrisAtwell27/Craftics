@@ -1,0 +1,35 @@
+{
+  "id": "deep_dark",
+  "name": "The Deep Dark",
+  "order": 9,
+  "levels": 5,
+  "grid": {
+    "base_width": 12,
+    "base_height": 12,
+    "width_growth": 1,
+    "height_growth": 1
+  },
+  "floor_blocks": ["minecraft:deepslate", "minecraft:sculk"],
+  "obstacle_blocks": ["minecraft:deepslate_bricks", "minecraft:sculk_catalyst"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "deep_dark",
+  "night": true,
+  "enemies": {
+    "passive": [],
+    "hostile": [
+      {"type": "minecraft:zombie", "weight": 4, "hp": 15, "attack": 4, "defense": 2, "range": 1},
+      {"type": "minecraft:skeleton", "weight": 4, "hp": 12, "attack": 5, "defense": 2, "range": 3},
+      {"type": "minecraft:creeper", "weight": 3, "hp": 14, "attack": 6, "defense": 1, "range": 1},
+      {"type": "minecraft:spider", "weight": 3, "hp": 12, "attack": 4, "defense": 2, "range": 1}
+    ],
+    "boss": {"type": "minecraft:warden", "hp": 35, "attack": 8, "defense": 4, "range": 1}
+  },
+  "loot": [
+    {"item": "minecraft:diamond", "weight": 3},
+    {"item": "minecraft:echo_shard", "weight": 2},
+    {"item": "minecraft:deepslate", "weight": 6},
+    {"item": "minecraft:iron_ingot", "weight": 5},
+    {"item": "minecraft:gold_ingot", "weight": 4}
+  ]
+}

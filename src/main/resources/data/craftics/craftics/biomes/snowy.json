@@ -1,0 +1,39 @@
+{
+  "id": "snowy",
+  "name": "Snowy Tundra",
+  "order": 3,
+  "levels": 5,
+  "grid": {
+    "base_width": 9,
+    "base_height": 9,
+    "width_growth": 1,
+    "height_growth": 1
+  },
+  "floor_blocks": ["minecraft:snow_block", "minecraft:packed_ice"],
+  "obstacle_blocks": ["minecraft:blue_ice", "minecraft:packed_ice"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "snowy",
+  "night": false,
+  "enemies": {
+    "passive": [
+      {"type": "minecraft:fox", "weight": 5, "hp": 3, "attack": 0, "defense": 0, "range": 1},
+      {"type": "minecraft:wolf", "weight": 4, "hp": 4, "attack": 0, "defense": 0, "range": 1}
+    ],
+    "hostile": [
+      {"type": "minecraft:stray", "weight": 7, "hp": 6, "attack": 3, "defense": 0, "range": 3},
+      {"type": "minecraft:skeleton", "weight": 5, "hp": 6, "attack": 2, "defense": 0, "range": 3},
+      {"type": "minecraft:zombie", "weight": 3, "hp": 8, "attack": 2, "defense": 0, "range": 1}
+    ],
+    "boss": {"type": "minecraft:stray", "hp": 35, "attack": 4, "defense": 2, "range": 3}
+  },
+  "loot": [
+    {"item": "minecraft:snowball", "weight": 8},
+    {"item": "minecraft:ice", "weight": 6},
+    {"item": "minecraft:bone", "weight": 5},
+    {"item": "minecraft:arrow", "weight": 5},
+    {"item": "minecraft:leather", "weight": 4},
+    {"item": "minecraft:potato", "weight": 3},
+    {"item": "minecraft:carrot", "weight": 3}
+  ]
+}

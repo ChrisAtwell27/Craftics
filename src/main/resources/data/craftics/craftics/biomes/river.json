@@ -1,0 +1,38 @@
+{
+  "id": "river",
+  "name": "River Delta",
+  "order": 5,
+  "levels": 5,
+  "grid": {
+    "base_width": 10,
+    "base_height": 10,
+    "width_growth": 1,
+    "height_growth": 1
+  },
+  "floor_blocks": ["minecraft:sand", "minecraft:gravel"],
+  "obstacle_blocks": ["minecraft:clay", "minecraft:dripstone_block"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "river",
+  "night": false,
+  "enemies": {
+    "passive": [
+      {"type": "minecraft:cod", "weight": 4, "hp": 2, "attack": 0, "defense": 0, "range": 1}
+    ],
+    "hostile": [
+      {"type": "minecraft:drowned", "weight": 7, "hp": 9, "attack": 3, "defense": 1, "range": 1},
+      {"type": "minecraft:zombie", "weight": 4, "hp": 9, "attack": 2, "defense": 0, "range": 1},
+      {"type": "minecraft:skeleton", "weight": 3, "hp": 7, "attack": 3, "defense": 0, "range": 3}
+    ],
+    "boss": {"type": "minecraft:drowned", "hp": 35, "attack": 5, "defense": 2, "range": 1}
+  },
+  "loot": [
+    {"item": "minecraft:cod", "weight": 7},
+    {"item": "minecraft:salmon", "weight": 6},
+    {"item": "minecraft:prismarine_shard", "weight": 4},
+    {"item": "minecraft:gold_ingot", "weight": 3},
+    {"item": "minecraft:trident", "weight": 1},
+    {"item": "minecraft:lily_pad", "weight": 4},
+    {"item": "minecraft:kelp", "weight": 3}
+  ]
+}

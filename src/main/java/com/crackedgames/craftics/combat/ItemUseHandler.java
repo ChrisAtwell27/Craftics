@@ -1,0 +1,1230 @@
+package com.crackedgames.craftics.combat;
+
+import com.crackedgames.craftics.core.GridArena;
+import com.crackedgames.craftics.core.GridPos;
+import com.crackedgames.craftics.core.GridTile;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.math.BlockPos;
+
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Handles item usage during combat (food, potions, throwables, utilities).
+ */
+public class ItemUseHandler {
+
+    // Food items and their heal values
+    private static final Map<Item, Integer> FOOD_HEAL = Map.ofEntries(
+        Map.entry(Items.APPLE, 2),
+        Map.entry(Items.BREAD, 3),
+        Map.entry(Items.COOKED_BEEF, 5),
+        Map.entry(Items.COOKED_PORKCHOP, 5),
+        Map.entry(Items.COOKED_CHICKEN, 3),
+        Map.entry(Items.COOKED_MUTTON, 4),
+        Map.entry(Items.COOKED_COD, 3),
+        Map.entry(Items.COOKED_SALMON, 4),
+        Map.entry(Items.BAKED_POTATO, 3),
+        Map.entry(Items.COOKIE, 1),
+        Map.entry(Items.PUMPKIN_PIE, 4),
+        Map.entry(Items.MELON_SLICE, 1),
+        Map.entry(Items.SWEET_BERRIES, 1),
+        Map.entry(Items.GLOW_BERRIES, 1),
+        Map.entry(Items.GOLDEN_CARROT, 4),
+        Map.entry(Items.GOLDEN_APPLE, 8),
+        Map.entry(Items.ENCHANTED_GOLDEN_APPLE, 10),
+        Map.entry(Items.HONEY_BOTTLE, 3),
+        Map.entry(Items.SUSPICIOUS_STEW, 4),
+        Map.entry(Items.CHORUS_FRUIT, 2),
+        Map.entry(Items.DRIED_KELP, 1),
+        Map.entry(Items.BEEF, 2),
+        Map.entry(Items.PORKCHOP, 2),
+        Map.entry(Items.CHICKEN, 1),
+        Map.entry(Items.MUTTON, 2),
+        Map.entry(Items.COD, 1),
+        Map.entry(Items.SALMON, 1),
+        Map.entry(Items.RABBIT, 2),
+        Map.entry(Items.COOKED_RABBIT, 3),
+        Map.entry(Items.TROPICAL_FISH, 1),
+        Map.entry(Items.POTATO, 1),
+        Map.entry(Items.POISONOUS_POTATO, 1),
+        Map.entry(Items.CARROT, 2),
+        Map.entry(Items.BEETROOT, 1),
+        Map.entry(Items.MUSHROOM_STEW, 4),
+        Map.entry(Items.BEETROOT_SOUP, 4),
+        Map.entry(Items.RABBIT_STEW, 6),
+        Map.entry(Items.SPIDER_EYE, 1),
+        Map.entry(Items.ROTTEN_FLESH, 2),
+        Map.entry(Items.PUFFERFISH, 1)
+    );
+
+    // Items that are "usable" in combat
+    private static final Set<Item> THROWABLES = Set.of(
+        Items.SNOWBALL, Items.EGG, Items.ENDER_PEARL, Items.FIRE_CHARGE
+    );
+
+    public static boolean isFood(Item item) {
+        return FOOD_HEAL.containsKey(item);
+    }
+
+    public static boolean isPotion(Item item) {
+        return item == Items.POTION;
+    }
+
+    public static boolean isSplashPotion(Item item) {
+        return item == Items.SPLASH_POTION;
+    }
+
+    public static boolean isThrowable(Item item) {
+        return THROWABLES.contains(item);
+    }
+
+    // Breeding/taming materials — maps mob entity type → item that tames them
+    private static final Map<String, Set<Item>> BREEDING_ITEMS = Map.ofEntries(
+        Map.entry("minecraft:wolf", Set.of(Items.BONE, Items.BEEF, Items.COOKED_BEEF)),
+        Map.entry("minecraft:cat", Set.of(Items.COD, Items.SALMON, Items.COOKED_COD, Items.COOKED_SALMON)),
+        Map.entry("minecraft:ocelot", Set.of(Items.COD, Items.SALMON)),
+        Map.entry("minecraft:cow", Set.of(Items.WHEAT)),
+        Map.entry("minecraft:sheep", Set.of(Items.WHEAT)),
+        Map.entry("minecraft:pig", Set.of(Items.CARROT, Items.POTATO, Items.BEETROOT)),
+        Map.entry("minecraft:chicken", Set.of(Items.WHEAT_SEEDS, Items.MELON_SEEDS, Items.PUMPKIN_SEEDS, Items.BEETROOT_SEEDS)),
+        Map.entry("minecraft:horse", Set.of(Items.GOLDEN_APPLE, Items.GOLDEN_CARROT)),
+        Map.entry("minecraft:donkey", Set.of(Items.GOLDEN_APPLE, Items.GOLDEN_CARROT)),
+        Map.entry("minecraft:rabbit", Set.of(Items.CARROT, Items.GOLDEN_CARROT, Items.DANDELION)),
+        Map.entry("minecraft:llama", Set.of(Items.HAY_BLOCK)),
+        Map.entry("minecraft:fox", Set.of(Items.SWEET_BERRIES, Items.GLOW_BERRIES)),
+        Map.entry("minecraft:goat", Set.of(Items.WHEAT)),
+        Map.entry("minecraft:bee", Set.of(Items.DANDELION, Items.POPPY, Items.BLUE_ORCHID)),
+        Map.entry("minecraft:mooshroom", Set.of(Items.WHEAT)),
+        Map.entry("minecraft:parrot", Set.of(Items.WHEAT_SEEDS, Items.MELON_SEEDS)),
+        Map.entry("minecraft:turtle", Set.of(Items.SEAGRASS)),
+        Map.entry("minecraft:axolotl", Set.of(Items.TROPICAL_FISH_BUCKET)),
+        Map.entry("minecraft:frog", Set.of(Items.SLIME_BALL)),
+        Map.entry("minecraft:camel", Set.of(Items.CACTUS)),
+        Map.entry("minecraft:sniffer", Set.of(Items.TORCHFLOWER_SEEDS))
+    );
+
+    public static boolean isBreedingItem(Item item, String entityTypeId) {
+        Set<Item> items = BREEDING_ITEMS.get(entityTypeId);
+        return items != null && items.contains(item);
+    }
+
+    public static boolean isAnyBreedingItem(Item item) {
+        for (Set<Item> items : BREEDING_ITEMS.values()) {
+            if (items.contains(item)) return true;
+        }
+        return item == Items.BONE; // bone always counts
+        }
+
+    public static boolean isFishingRod(Item item) {
+        return item == Items.FISHING_ROD;
+    }
+
+    // Items with special AP costs
+    private static final Set<Item> TWO_AP_ITEMS = Set.of(
+        Items.BELL, Items.TRIDENT, Items.JUKEBOX, Items.CROSSBOW
+    );
+
+    public static int getApCost(Item item) {
+        if (PotterySherdSpells.isPotterySherd(item)) return PotterySherdSpells.getSherdApCost(item);
+        if (item == Items.FISHING_ROD) return FISHING_AP_COST;
+        if (TWO_AP_ITEMS.contains(item)) return 2;
+        return 1;
+    }
+
+    /**
+     * Get AP cost for an ItemStack (handles goat horn variants with different costs).
+     */
+    public static int getApCost(ItemStack stack) {
+        if (stack.getItem() == Items.GOAT_HORN) {
+            String hornId = GoatHornEffects.getHornId(stack);
+            if (hornId != null) return GoatHornEffects.getApCost(hornId);
+            return 2;
+        }
+        return getApCost(stack.getItem());
+    }
+
+    private static final Set<Item> EXTRA_USABLE = Set.of(
+        Items.SPYGLASS, Items.COMPASS, Items.BELL, Items.LAVA_BUCKET,
+        Items.SCAFFOLDING, Items.CAMPFIRE, Items.ANVIL, Items.HONEY_BLOCK,
+        Items.POWDER_SNOW_BUCKET, Items.TRIDENT, Items.JUKEBOX,
+        Items.WHITE_BANNER, Items.BLACK_BANNER, Items.RED_BANNER,
+        Items.BLUE_BANNER, Items.GREEN_BANNER, Items.YELLOW_BANNER,
+        Items.ORANGE_BANNER, Items.PURPLE_BANNER, Items.CYAN_BANNER,
+        Items.LIGHT_BLUE_BANNER, Items.MAGENTA_BANNER, Items.PINK_BANNER,
+        Items.BROWN_BANNER, Items.GRAY_BANNER, Items.LIGHT_GRAY_BANNER,
+        Items.LIME_BANNER,
+        Items.WATER_BUCKET, Items.SPONGE, Items.IRON_PICKAXE,
+        Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE, Items.STONE_PICKAXE,
+        Items.WOODEN_PICKAXE, Items.GOLDEN_PICKAXE, Items.CROSSBOW,
+        Items.LINGERING_POTION, Items.LIGHTNING_ROD, Items.CACTUS,
+        Items.HAY_BLOCK, Items.CAKE, Items.SPORE_BLOSSOM,
+        Items.LANTERN, Items.GOAT_HORN, Items.ECHO_SHARD, Items.BRUSH
+    );
+
+    private static boolean isBanner(Item item) {
+        return item.toString().contains("banner");
+    }
+
+    public static boolean isUsableItem(Item item) {
+        return isFood(item) || isPotion(item) || isSplashPotion(item)
+            || isThrowable(item) || item == Items.TNT || item == Items.SHIELD
+            || item == Items.MILK_BUCKET || item == Items.TOTEM_OF_UNDYING
+            || item == Items.COBWEB || item == Items.FLINT_AND_STEEL
+            || isAnyBreedingItem(item) || isFishingRod(item)
+            || EXTRA_USABLE.contains(item) || isBanner(item) || isPickaxe(item)
+            || item == Items.GOAT_HORN || PotterySherdSpells.isPotterySherd(item);
+    }
+
+    /**
+     * Use the player's held item. Returns a message describing what happened,
+     * or null if the item can't be used.
+     */
+    public static String useItem(ServerPlayerEntity player, GridArena arena, GridPos targetTile) {
+        ItemStack held = player.getMainHandStack();
+        Item item = held.getItem();
+
+        if (item == Items.GOAT_HORN) {
+            return useGoatHorn(arena, held);
+        } else if (isFood(item)) {
+            return useFood(player, held, item);
+        } else if (isPotion(item)) {
+            return useDrinkPotion(player, held);
+        } else if (item == Items.SNOWBALL) {
+            return useSnowball(player, arena, targetTile, held);
+        } else if (item == Items.EGG) {
+            return useEgg(player, arena, targetTile, held);
+        } else if (item == Items.ENDER_PEARL) {
+            return useEnderPearl(player, arena, targetTile, held);
+        } else if (isSplashPotion(item)) {
+            return useSplashPotion(player, arena, targetTile, held);
+        } else if (item == Items.FIRE_CHARGE) {
+            return useFireCharge(player, arena, targetTile, held);
+        } else if (item == Items.MILK_BUCKET) {
+            return useMilkBucket(player, held);
+        } else if (item == Items.TNT) {
+            return useTNT(player, arena, targetTile, held);
+        } else if (item == Items.COBWEB) {
+            return useCobweb(player, arena, targetTile, held);
+        } else if (item == Items.SHIELD) {
+            return "§9Shield is passive! Equip in offhand for +2 DEF. End turn to brace for +5 DEF total.";
+        } else if (item == Items.FLINT_AND_STEEL) {
+            return useFlintAndSteel(player, arena, targetTile, held);
+        } else if (item == Items.TOTEM_OF_UNDYING) {
+            return useTotem(player, held);
+        } else if (isAnyBreedingItem(item)) {
+            return useBreedingItem(player, arena, targetTile, held);
+        } else if (isFishingRod(item)) {
+            return useFishingRod(player, arena, targetTile, held);
+        } else if (item == Items.SPYGLASS) {
+            return useSpyglass(arena, targetTile);
+        } else if (item == Items.COMPASS) {
+            return useCompass(arena);
+        } else if (item == Items.BELL) {
+            return useBell(arena, targetTile);
+        } else if (item == Items.LAVA_BUCKET) {
+            return useLavaBucket(arena, targetTile, held);
+        } else if (item == Items.SCAFFOLDING) {
+            return useScaffolding(arena, targetTile, held);
+        } else if (item == Items.CAMPFIRE) {
+            return useCampfire(arena, targetTile, held);
+        } else if (item == Items.ANVIL) {
+            return useAnvil(arena, targetTile, held);
+        } else if (item == Items.HONEY_BLOCK) {
+            return useHoneyBlock(arena, targetTile, held);
+        } else if (item == Items.POWDER_SNOW_BUCKET) {
+            return usePowderSnow(arena, targetTile, held);
+        } else if (item == Items.TRIDENT) {
+            return useTrident(arena, targetTile, held);
+        } else if (item == Items.JUKEBOX) {
+            return useJukebox(arena, held);
+        } else if (isBanner(item)) {
+            return useBanner(arena, targetTile, held);
+        } else if (item == Items.WATER_BUCKET) {
+            return useWaterBucket(arena, targetTile, held);
+        } else if (item == Items.SPONGE) {
+            return useSponge(arena, targetTile, held);
+        } else if (isPickaxe(item)) {
+            return usePickaxe(arena, targetTile, held);
+        } else if (item == Items.CROSSBOW) {
+            return useCrossbow(arena, targetTile, held);
+        } else if (item == Items.LINGERING_POTION) {
+            return useLingeringPotion(player, arena, targetTile, held);
+        } else if (item == Items.LIGHTNING_ROD) {
+            return useLightningRod(arena, targetTile, held);
+        } else if (item == Items.CACTUS) {
+            return useCactus(arena, targetTile, held);
+        } else if (item == Items.HAY_BLOCK) {
+            return useHayBale(arena, targetTile, held);
+        } else if (item == Items.CAKE) {
+            return useCake(arena, targetTile, held);
+        } else if (item == Items.SPORE_BLOSSOM) {
+            return useSporeBlossom(arena, targetTile, held);
+        } else if (item == Items.LANTERN) {
+            return useLantern(arena, targetTile, held);
+        } else if (item == Items.GOAT_HORN) {
+            return useGoatHorn(arena, held);
+        } else if (item == Items.ECHO_SHARD) {
+            return useEchoShard(arena, held);
+        } else if (item == Items.BRUSH) {
+            return useBrush(player, arena, targetTile, held);
+        }
+
+        return null;
+    }
+
+    /** Prefix for fishing results — CombatManager deducts extra AP. */
+    public static final String FISHING_PREFIX = "§bFISH:";
+    public static final int FISHING_AP_COST = 3;
+
+    /** Prefix for tile effects — CombatManager processes these. Format: TILE:type:x:z */
+    public static final String TILE_EFFECT_PREFIX = "§eTILE:";
+    /** Prefix for ally buff — CombatManager processes this. */
+    public static final String ALLY_BUFF_PREFIX = "§dBUFF:";
+
+    private static String useFood(ServerPlayerEntity player, ItemStack stack, Item food) {
+        int healAmount = FOOD_HEAL.getOrDefault(food, 1);
+        float maxHealth = player.getMaxHealth();
+        float newHealth = Math.min(maxHealth, player.getHealth() + healAmount);
+        player.setHealth(newHealth);
+        stack.decrement(1);
+
+        // Golden apple also gives absorption
+        if (food == Items.GOLDEN_APPLE) {
+            player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 2400, 0));
+        } else if (food == Items.ENCHANTED_GOLDEN_APPLE) {
+            player.setHealth(maxHealth);
+            player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 2400, 3));
+            player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 6000, 0));
+            player.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 600, 1));
+        }
+
+        return "§aAte " + stack.getName().getString() + "! Healed " + healAmount + " HP (HP: "
+            + (int) newHealth + "/" + (int) maxHealth + ")";
+    }
+
+    private static String useDrinkPotion(ServerPlayerEntity player, ItemStack stack) {
+        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        // Read potion contents BEFORE decrementing (decrement destroys component data)
+        var potionContents = stack.get(net.minecraft.component.DataComponentTypes.POTION_CONTENTS);
+        stack.decrement(1);
+        player.getInventory().insertStack(new ItemStack(Items.GLASS_BOTTLE));
+
+        // Drinking sound
+        player.getWorld().playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.ENTITY_GENERIC_DRINK,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+
+        // Swirl particles on player
+        net.minecraft.server.world.ServerWorld sw = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+        sw.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH,
+            player.getX(), player.getY() + 1.0, player.getZ(), 12, 0.3, 0.5, 0.3, 0.05);
+        sw.spawnParticles(net.minecraft.particle.ParticleTypes.EFFECT,
+            player.getX(), player.getY() + 0.8, player.getZ(), 8, 0.2, 0.4, 0.2, 0.02);
+
+        // Apply potion effects (contents read before decrement above)
+        if (potionContents != null) {
+            StringBuilder applied = new StringBuilder();
+            for (StatusEffectInstance sei : potionContents.getEffects()) {
+                var effectType = sei.getEffectType().value();
+                CombatEffects.EffectType combatType = mapStatusEffect(effectType);
+                if (combatType != null) {
+                    int turns = getTurnsForPotion(combatType, sei.getDuration());
+                    effects.addEffect(combatType, turns, sei.getAmplifier());
+                    // Apply vanilla effect for particles (infinite duration, removed when combat effect expires)
+                    player.addStatusEffect(new StatusEffectInstance(
+                        sei.getEffectType(), -1, sei.getAmplifier(), false, true));
+                    if (applied.length() > 0) applied.append(", ");
+                    String level = sei.getAmplifier() > 0 ? " II" : "";
+                    applied.append(combatType.displayName).append(level).append(" (").append(turns).append("t)");
+                }
+                // Instant effects
+                if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
+                    int healAmount = 4 * (sei.getAmplifier() + 1);
+                    player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + healAmount));
+                    if (applied.length() > 0) applied.append(", ");
+                    applied.append("Healed ").append(healAmount);
+                    // Heart particles for healing
+                    sw.spawnParticles(net.minecraft.particle.ParticleTypes.HEART,
+                        player.getX(), player.getY() + 1.5, player.getZ(), 6, 0.4, 0.3, 0.4, 0.05);
+                }
+            }
+            if (applied.length() > 0) {
+                return "§dDrank potion! " + applied;
+            }
+        }
+        return "§dDrank potion!";
+    }
+
+    private static CombatEffects.EffectType mapStatusEffect(net.minecraft.entity.effect.StatusEffect effect) {
+        // Buffs
+        if (effect == StatusEffects.SPEED.value()) return CombatEffects.EffectType.SPEED;
+        if (effect == StatusEffects.STRENGTH.value()) return CombatEffects.EffectType.STRENGTH;
+        if (effect == StatusEffects.RESISTANCE.value()) return CombatEffects.EffectType.RESISTANCE;
+        if (effect == StatusEffects.REGENERATION.value()) return CombatEffects.EffectType.REGENERATION;
+        if (effect == StatusEffects.FIRE_RESISTANCE.value()) return CombatEffects.EffectType.FIRE_RESISTANCE;
+        if (effect == StatusEffects.INVISIBILITY.value()) return CombatEffects.EffectType.INVISIBILITY;
+        if (effect == StatusEffects.ABSORPTION.value()) return CombatEffects.EffectType.ABSORPTION;
+        if (effect == StatusEffects.LUCK.value()) return CombatEffects.EffectType.LUCK;
+        if (effect == StatusEffects.SLOW_FALLING.value()) return CombatEffects.EffectType.SLOW_FALLING;
+        if (effect == StatusEffects.HASTE.value()) return CombatEffects.EffectType.HASTE;
+        if (effect == StatusEffects.WATER_BREATHING.value()) return CombatEffects.EffectType.WATER_BREATHING;
+        // Debuffs
+        if (effect == StatusEffects.POISON.value()) return CombatEffects.EffectType.POISON;
+        if (effect == StatusEffects.SLOWNESS.value()) return CombatEffects.EffectType.SLOWNESS;
+        if (effect == StatusEffects.WEAKNESS.value()) return CombatEffects.EffectType.WEAKNESS;
+        if (effect == StatusEffects.WITHER.value()) return CombatEffects.EffectType.WITHER;
+        if (effect == StatusEffects.BLINDNESS.value()) return CombatEffects.EffectType.BLINDNESS;
+        if (effect == StatusEffects.MINING_FATIGUE.value()) return CombatEffects.EffectType.MINING_FATIGUE;
+        if (effect == StatusEffects.LEVITATION.value()) return CombatEffects.EffectType.LEVITATION;
+        if (effect == StatusEffects.DARKNESS.value()) return CombatEffects.EffectType.DARKNESS;
+        return null;
+    }
+
+    private static boolean isBuffEffect(CombatEffects.EffectType type) {
+        return switch (type) {
+            case SPEED, STRENGTH, RESISTANCE, REGENERATION, FIRE_RESISTANCE,
+                 INVISIBILITY, ABSORPTION, LUCK, SLOW_FALLING, HASTE, WATER_BREATHING -> true;
+            default -> false;
+        };
+    }
+
+    private static int getTurnsForPotion(CombatEffects.EffectType type, int vanillaDurationTicks) {
+        int baseTurns = switch (type) {
+            case SPEED, STRENGTH, RESISTANCE, ABSORPTION -> 5;
+            case REGENERATION -> 3;
+            case FIRE_RESISTANCE, INVISIBILITY, WATER_BREATHING -> 4;
+            case POISON, SLOWNESS, WEAKNESS -> 3;
+            case WITHER, BURNING -> 3;
+            case LUCK, HASTE, SLOW_FALLING -> 4;
+            case BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS -> 3;
+        };
+        // Extended potions (long vanilla duration > 4 min) double the combat turn count
+        if (vanillaDurationTicks > 4800) {
+            baseTurns *= 2;
+        }
+        return Math.min(baseTurns, com.crackedgames.craftics.CrafticsMod.CONFIG.maxCombatEffectDuration());
+    }
+
+    private static int getTurnsForPotion(CombatEffects.EffectType type) {
+        return getTurnsForPotion(type, 0);
+    }
+
+    private static String useSnowball(ServerPlayerEntity player, GridArena arena,
+                                       GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+
+        stack.decrement(1);
+
+        // Knockback: push enemy 1 tile away from player
+        GridPos playerPos = arena.getPlayerGridPos();
+        int dx = Integer.signum(enemy.getGridPos().x() - playerPos.x());
+        int dz = Integer.signum(enemy.getGridPos().z() - playerPos.z());
+        GridPos knockbackPos = new GridPos(enemy.getGridPos().x() + dx, enemy.getGridPos().z() + dz);
+
+        if (arena.isInBounds(knockbackPos) && !arena.isOccupied(knockbackPos)) {
+            var tile = arena.getTile(knockbackPos);
+            if (tile != null && tile.isWalkable()) {
+                arena.moveEntity(enemy, knockbackPos);
+                if (enemy.getMobEntity() != null) {
+                    var bp = arena.gridToBlockPos(knockbackPos);
+                    enemy.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                }
+                return "§bSnowball hit! " + enemy.getDisplayName() + " knocked back!";
+            }
+        }
+        return "§bSnowball hit " + enemy.getDisplayName() + "! (no knockback room)";
+    }
+
+    private static String useEgg(ServerPlayerEntity player, GridArena arena,
+                                  GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+
+        stack.decrement(1);
+        int dealt = enemy.takeDamage(1); // small damage
+        return "§eEgg hit " + enemy.getDisplayName() + " for " + dealt + " damage!";
+    }
+
+    private static String useEnderPearl(ServerPlayerEntity player, GridArena arena,
+                                         GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        var tile = arena.getTile(targetTile);
+        if (tile == null || !tile.isWalkable()) return "§cCan't teleport there!";
+
+        stack.decrement(1);
+        arena.setPlayerGridPos(targetTile);
+        var bp = arena.gridToBlockPos(targetTile);
+        player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+
+        // Ender pearl costs 2 HP
+        player.setHealth(Math.max(1, player.getHealth() - 2));
+
+        return "§5Teleported to (" + targetTile.x() + "," + targetTile.z() + ")! Took 2 damage.";
+    }
+
+    /**
+     * Read active potion effects and return combat stat modifiers.
+     * Call this each turn to update combat stats.
+     */
+    public static int getSpeedBonus(ServerPlayerEntity player) {
+        if (player.hasStatusEffect(StatusEffects.SPEED)) return 2;
+        return 0;
+    }
+
+    public static int getStrengthBonus(ServerPlayerEntity player) {
+        if (player.hasStatusEffect(StatusEffects.STRENGTH)) return 3;
+        return 0;
+    }
+
+    public static int getResistanceBonus(ServerPlayerEntity player) {
+        if (player.hasStatusEffect(StatusEffects.RESISTANCE)) return 2;
+        return 0;
+    }
+
+    public static boolean hasFireResistance(ServerPlayerEntity player) {
+        return player.hasStatusEffect(StatusEffects.FIRE_RESISTANCE);
+    }
+
+    public static boolean isInvisible(ServerPlayerEntity player) {
+        return player.hasStatusEffect(StatusEffects.INVISIBILITY);
+    }
+
+    // --- Splash Potion: throw at target tile, applies effects to enemy ---
+    private static final int POTION_THROW_RANGE = 4;
+
+    private static String useSplashPotion(ServerPlayerEntity player, GridArena arena,
+                                           GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (arena.getPlayerGridPos().manhattanDistance(targetTile) > POTION_THROW_RANGE) {
+            return "§cToo far! Max throw range is " + POTION_THROW_RANGE + " tiles.";
+        }
+        CombatEntity enemy = arena.getOccupant(targetTile);
+
+        // Read potion contents BEFORE decrementing (decrement destroys component data)
+        var potionContents = stack.get(net.minecraft.component.DataComponentTypes.POTION_CONTENTS);
+        stack.decrement(1);
+
+        net.minecraft.server.world.ServerWorld sw = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+        BlockPos playerBlock = arena.gridToBlockPos(arena.getPlayerGridPos());
+        BlockPos targetBlock = arena.gridToBlockPos(targetTile);
+
+        // Throw sound
+        sw.playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.ENTITY_SPLASH_POTION_THROW,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+
+        // Throw arc trail particles (potion bottle flying through air)
+        ProjectileSpawner.spawnPotionThrow(sw, playerBlock, targetBlock);
+
+        if (potionContents != null) {
+            CombatEffects effects = CombatManager.get(player).getCombatEffects();
+            GridPos playerPos = arena.getPlayerGridPos();
+            int hitCount = 0;
+            StringBuilder msg = new StringBuilder();
+
+            // Collect all enemies in 3x3 AoE (manhattan distance <= 1 from target)
+            java.util.List<CombatEntity> aoeEnemies = new java.util.ArrayList<>();
+            for (CombatEntity ce : arena.getOccupants().values()) {
+                if (!ce.isAlive()) continue;
+                if (ce.getGridPos().manhattanDistance(targetTile) <= 1) {
+                    aoeEnemies.add(ce);
+                }
+            }
+            // Deduplicate (multi-tile entities appear multiple times in occupants)
+            aoeEnemies = new java.util.ArrayList<>(new java.util.LinkedHashSet<>(aoeEnemies));
+
+            // Check if player is in the splash radius
+            boolean playerInRange = playerPos.manhattanDistance(targetTile) <= 1;
+
+            ProjectileSpawner.spawnPotionSplash(sw, targetBlock, aoeEnemies.isEmpty() && playerInRange);
+
+            for (StatusEffectInstance sei : potionContents.getEffects()) {
+                var effectType = sei.getEffectType().value();
+                int amp = sei.getAmplifier();
+
+                // === Apply debuffs to ALL enemies in 3x3 ===
+                for (CombatEntity target : aoeEnemies) {
+                    // Vanilla particles on mob
+                    if (target.getMobEntity() != null) {
+                        target.getMobEntity().addStatusEffect(new StatusEffectInstance(
+                            sei.getEffectType(), -1, amp, false, true));
+                    }
+                    if (effectType == StatusEffects.INSTANT_DAMAGE.value()) {
+                        // Magic damage type bonus from player's gear/effects
+                        int magicBonus = DamageType.getTotalBonus(
+                            PlayerCombatStats.getArmorSet(player), CombatManager.get(player).getTrimScan(),
+                            effects, DamageType.MAGIC);
+                        int dealt = target.takeDamage(3 * (amp + 1) + magicBonus);
+                        msg.append("§5").append(target.getDisplayName()).append(" -").append(dealt).append("HP ");
+                    } else if (effectType == StatusEffects.POISON.value()) {
+                        target.takeDamage(1 + amp);
+                        int poisonTurns = getTurnsForPotion(CombatEffects.EffectType.POISON, sei.getDuration());
+                        target.setPoisonTurns(Math.max(target.getPoisonTurns(), poisonTurns));
+                        target.setPoisonAmplifier(Math.max(target.getPoisonAmplifier(), amp));
+                        msg.append("§2").append(target.getDisplayName()).append(" poisoned ");
+                    } else if (effectType == StatusEffects.SLOWNESS.value()) {
+                        target.setSpeedBonus(target.getSpeedBonus() - (1 + amp));
+                        msg.append("§7").append(target.getDisplayName()).append(" slowed ");
+                    } else if (effectType == StatusEffects.WEAKNESS.value()) {
+                        target.setAttackPenalty(target.getAttackPenalty() + 2 + amp);
+                        msg.append("§8").append(target.getDisplayName()).append(" weakened ");
+                    } else if (effectType == StatusEffects.WITHER.value()) {
+                        target.takeDamage(2 + amp);
+                        msg.append("§8").append(target.getDisplayName()).append(" withered ");
+                    } else if (effectType == StatusEffects.BLINDNESS.value() || effectType == StatusEffects.DARKNESS.value()) {
+                        target.setStunned(true);
+                        msg.append("§8").append(target.getDisplayName()).append(" stunned ");
+                    } else if (effectType == StatusEffects.LEVITATION.value()) {
+                        target.setSpeedBonus(target.getSpeedBonus() - 1);
+                        msg.append("§d").append(target.getDisplayName()).append(" levitating ");
+                    }
+                    hitCount++;
+                }
+
+                // === Apply buffs to player if in range ===
+                if (playerInRange) {
+                    CombatEffects.EffectType combatType = mapStatusEffect(effectType);
+                    if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
+                        int heal = 4 * (amp + 1);
+                        player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + heal));
+                        msg.append("§a+").append(heal).append("HP ");
+                        hitCount++;
+                    } else if (combatType != null && isBuffEffect(combatType)) {
+                        int turns = getTurnsForPotion(combatType, sei.getDuration());
+                        effects.addEffect(combatType, turns, amp);
+                        player.addStatusEffect(new StatusEffectInstance(
+                            sei.getEffectType(), -1, amp, false, true));
+                        msg.append("§d").append(combatType.displayName).append(" ");
+                        hitCount++;
+                    }
+                }
+            }
+
+            if (hitCount > 0) {
+                // Check deaths from AoE
+                for (CombatEntity ce : aoeEnemies) {
+                    CombatManager.get(player).checkAndHandleDeathPublic(ce);
+                }
+                return "§5Splash hit " + hitCount + "! " + msg.toString().trim();
+            }
+        }
+        ProjectileSpawner.spawnPotionSplash(sw, targetBlock, false);
+        return "§dThrew splash potion!";
+    }
+
+    // --- Fire Charge: ranged fire damage to a target ---
+    private static String useFireCharge(ServerPlayerEntity player, GridArena arena,
+                                         GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+
+        stack.decrement(1);
+        int dealt = enemy.takeDamage(4);
+        // Set mob on fire visually for 3 seconds
+        if (enemy.getMobEntity() != null) {
+            enemy.getMobEntity().setFireTicks(60);
+        }
+        return "§6Fire charge hit " + enemy.getDisplayName() + " for " + dealt + " fire damage!";
+    }
+
+    // --- Milk Bucket: clears all status effects (good and bad) ---
+    private static String useMilkBucket(ServerPlayerEntity player, ItemStack stack) {
+        stack.decrement(1);
+        player.getInventory().insertStack(new ItemStack(Items.BUCKET));
+        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        effects.clear();
+        player.clearStatusEffects();
+        return "§fDrank milk! All effects cleared.";
+    }
+
+    // --- TNT: place on target tile, deals AoE damage to all adjacent enemies ---
+    private static String useTNT(ServerPlayerEntity player, GridArena arena,
+                                  GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+
+        stack.decrement(1);
+        int totalDamage = 0;
+        int enemiesHit = 0;
+        // Damage all enemies within 2 tiles of target (3x3 area)
+        for (CombatEntity enemy : arena.getOccupants().values()) {
+            if (!enemy.isAlive()) continue;
+            int dist = Math.abs(enemy.getGridPos().x() - targetTile.x())
+                     + Math.abs(enemy.getGridPos().z() - targetTile.z());
+            if (dist <= 2) {
+                int dmg = dist == 0 ? 8 : (dist == 1 ? 5 : 3);
+                int dealt = enemy.takeDamage(dmg);
+                totalDamage += dealt;
+                enemiesHit++;
+            }
+        }
+        // Also damages the player if close
+        GridPos playerPos = arena.getPlayerGridPos();
+        int playerDist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
+        if (playerDist <= 2) {
+            int selfDmg = playerDist == 0 ? 6 : (playerDist == 1 ? 4 : 2);
+            player.setHealth(Math.max(1, player.getHealth() - selfDmg));
+            return "§c§lBOOM! Hit " + enemiesHit + " enemies for " + totalDamage + " total! You took " + selfDmg + " blast damage!";
+        }
+        return "§c§lBOOM! Hit " + enemiesHit + " enemies for " + totalDamage + " total damage!";
+    }
+
+    // --- Cobweb: slows an enemy (stuns for 1 turn) ---
+    private static String useCobweb(ServerPlayerEntity player, GridArena arena,
+                                     GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+
+        stack.decrement(1);
+        enemy.setStunned(true);
+        return "§7Webbed " + enemy.getDisplayName() + "! They skip their next turn.";
+    }
+
+    // --- Shield: blocks next incoming attack (gives resistance for 1 turn) ---
+    private static String useShield(ServerPlayerEntity player) {
+        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        effects.addEffect(CombatEffects.EffectType.RESISTANCE, 1, 2);
+        return "§9Shield raised! Damage reduced next enemy turn.";
+    }
+
+    // --- Flint and Steel: sets target enemy on fire, damage over time ---
+    private static String useFlintAndSteel(ServerPlayerEntity player, GridArena arena,
+                                            GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+
+        // Durability cost
+        if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
+            stack.decrement(1);
+        } else {
+            stack.setDamage(stack.getDamage() + 1);
+        }
+        int dealt = enemy.takeDamage(2);
+        if (enemy.getMobEntity() != null) {
+            enemy.getMobEntity().setFireTicks(100); // 5 seconds of fire
+        }
+        return "§6Set " + enemy.getDisplayName() + " on fire! " + dealt + " damage.";
+    }
+
+    // --- Totem of Undying: prevents death once, full heal ---
+    private static String useTotem(ServerPlayerEntity player, ItemStack stack) {
+        stack.decrement(1);
+        player.setHealth(player.getMaxHealth());
+        player.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 900, 1));
+        player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 100, 1));
+        return "§6§lTotem activated! Full heal + Regeneration!";
+    }
+
+    private static boolean hasSaddle(ServerPlayerEntity player) {
+        for (int i = 0; i < player.getInventory().size(); i++) {
+            if (player.getInventory().getStack(i).getItem() == Items.SADDLE) return true;
+        }
+        return false;
+    }
+
+    private static void consumeSaddle(ServerPlayerEntity player) {
+        for (int i = 0; i < player.getInventory().size(); i++) {
+            ItemStack stack = player.getInventory().getStack(i);
+            if (stack.getItem() == Items.SADDLE) {
+                stack.decrement(1);
+                return;
+            }
+        }
+    }
+
+    // --- Fishing Rod: cast into adjacent water tile for random loot (3 AP) ---
+    private static String useFishingRod(ServerPlayerEntity player, GridArena arena,
+                                         GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a water tile!";
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null || !tile.isWater()) return "§cThat's not a water tile!";
+
+        // Must be adjacent (Manhattan distance 1)
+        GridPos playerPos = arena.getPlayerGridPos();
+        int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
+        if (dist > 1) return "§cToo far! Stand next to the water.";
+
+        // Durability cost
+        if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
+            stack.decrement(1);
+        } else {
+            stack.setDamage(stack.getDamage() + 1);
+        }
+
+        // Random fishing loot
+        java.util.Random rng = new java.util.Random();
+        int roll = rng.nextInt(100);
+        Item loot;
+        int count = 1;
+        String rarity;
+        if (roll < 50) {
+            // Common fish (50%)
+            loot = switch (rng.nextInt(4)) {
+                case 0 -> Items.COD;
+                case 1 -> Items.SALMON;
+                case 2 -> Items.TROPICAL_FISH;
+                default -> Items.PUFFERFISH;
+            };
+            rarity = "§7";
+        } else if (roll < 75) {
+            // Useful items (25%)
+            loot = switch (rng.nextInt(5)) {
+                case 0 -> Items.BONE;
+                case 1 -> Items.STRING;
+                case 2 -> Items.LILY_PAD;
+                case 3 -> Items.INK_SAC;
+                default -> Items.LEATHER;
+            };
+            rarity = "§a";
+        } else if (roll < 90) {
+            // Good items (15%)
+            loot = switch (rng.nextInt(5)) {
+                case 0 -> Items.NAME_TAG;
+                case 1 -> Items.SADDLE;
+                case 2 -> Items.NAUTILUS_SHELL;
+                case 3 -> Items.BOW;
+                default -> Items.ENCHANTED_BOOK;
+            };
+            rarity = "§b";
+        } else {
+            // Rare treasure (10%)
+            loot = switch (rng.nextInt(4)) {
+                case 0 -> Items.DIAMOND;
+                case 1 -> Items.EMERALD;
+                case 2 -> Items.GOLDEN_APPLE;
+                default -> Items.HEART_OF_THE_SEA;
+            };
+            rarity = "§d";
+        }
+
+        player.getInventory().insertStack(new ItemStack(loot, count));
+        String lootName = new ItemStack(loot).getName().getString();
+        return FISHING_PREFIX + rarity + "Caught: " + lootName + "!";
+    }
+
+    /** Prefix returned when taming/befriending succeeds — CombatManager processes this. */
+    public static final String TAME_PREFIX = "§aTAME:";
+    /** Prefix for passive mobs that get sent to the hub instead of becoming combat allies. */
+    public static final String BEFRIEND_PREFIX = "§aBEFRIEND:";
+    /** Prefix for mounting a tamed mob (horse/donkey/camel with saddle). */
+    public static final String MOUNT_PREFIX = "§aMOUNT:";
+
+    /** Mobs that can be mounted in combat (require a saddle). */
+    private static final Set<String> MOUNTABLE_MOBS = Set.of(
+        "minecraft:horse", "minecraft:donkey", "minecraft:camel",
+        "minecraft:mule", "minecraft:skeleton_horse", "minecraft:zombie_horse"
+    );
+
+    // --- Spyglass: reveal enemy stats (1 AP, no consume) ---
+    private static String useSpyglass(GridArena arena, GridPos targetTile) {
+        if (targetTile == null) return "§cNeed to target an enemy!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        return "§e" + enemy.getDisplayName() + " — HP: " + enemy.getCurrentHp() + "/" + enemy.getMaxHp()
+            + " | ATK: " + enemy.getAttackPower() + " | DEF: " + enemy.getDefense()
+            + " | Range: " + enemy.getRange() + " | Speed: " + enemy.getMoveSpeed();
+    }
+
+    // --- Compass: reveal all enemy positions (1 AP, no consume) ---
+    private static String useCompass(GridArena arena) {
+        StringBuilder sb = new StringBuilder("§6Enemy positions: ");
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (e.isAlive() && !e.isAlly()) {
+                sb.append(e.getDisplayName()).append("(")
+                  .append(e.getGridPos().x()).append(",").append(e.getGridPos().z())
+                  .append(") ");
+            }
+        }
+        return sb.toString();
+    }
+
+    // --- Bell: AoE stun all enemies within 2 tiles of target (2 AP, no consume) ---
+    private static String useBell(GridArena arena, GridPos targetTile) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        int stunned = 0;
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            int dist = Math.abs(e.getGridPos().x() - targetTile.x()) + Math.abs(e.getGridPos().z() - targetTile.z());
+            if (dist <= 2) {
+                e.setStunned(true);
+                stunned++;
+            }
+        }
+        return "§6Bell rings! " + stunned + " enemies stunned for 1 turn.";
+    }
+
+    // --- Lava Bucket: place lava on tile — deals damage to enemies that step on it (1 AP) ---
+    private static String useLavaBucket(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "lava:" + targetTile.x() + ":" + targetTile.z()
+            + "|§6Placed lava! Enemies on it take 3 fire damage per turn.";
+    }
+
+    // --- Scaffolding: place elevated tile — gives +1 range to ranged attacks from it (1 AP) ---
+    private static String useScaffolding(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "scaffold:" + targetTile.x() + ":" + targetTile.z()
+            + "|§aPlaced scaffolding! +1 range for ranged attacks from this tile.";
+    }
+
+    // --- Campfire: place healing zone — heals 1 HP per turn when adjacent (1 AP) ---
+    private static String useCampfire(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "campfire:" + targetTile.x() + ":" + targetTile.z()
+            + "|§6Placed campfire! Heals 1 HP per turn when standing on or next to it.";
+    }
+
+    // --- Anvil: drop on enemy — 5 damage, consumes item (1 AP) ---
+    private static String useAnvil(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target an enemy!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        stack.decrement(1);
+        int dealt = enemy.takeDamage(5);
+        return "§8Anvil dropped on " + enemy.getDisplayName() + " for " + dealt + " damage!";
+    }
+
+    // --- Honey Block: place sticky trap — enemies lose all movement when stepping on it (1 AP) ---
+    private static String useHoneyBlock(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "honey:" + targetTile.x() + ":" + targetTile.z()
+            + "|§eHoney block placed! Enemies that walk onto it lose all remaining movement.";
+    }
+
+    // --- Powder Snow Bucket: freeze enemy — stun + 1 cold damage (1 AP) ---
+    private static String usePowderSnow(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target an enemy!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        stack.decrement(1);
+        int dealt = enemy.takeDamage(1);
+        enemy.setStunned(true);
+        return "§bFrozen! " + enemy.getDisplayName() + " takes " + dealt + " cold damage and skips next turn.";
+    }
+
+    // --- Trident: ranged 3-tile attack, returns to player (2 AP, durability cost) ---
+    private static String useTrident(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target an enemy!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        GridPos playerPos = arena.getPlayerGridPos();
+        int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
+        if (dist > 3) return "§cOut of range! (max 3 tiles)";
+        if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
+            stack.decrement(1);
+        } else {
+            stack.setDamage(stack.getDamage() + 1);
+        }
+        int dealt = enemy.takeDamage(4);
+        return "§3Trident strikes " + enemy.getDisplayName() + " for " + dealt + " damage! It returns to your hand.";
+    }
+
+    // --- Jukebox: play music — buff all allies +1 speed for this battle (2 AP, consumes) ---
+    private static String useJukebox(GridArena arena, ItemStack stack) {
+        stack.decrement(1);
+        int buffed = 0;
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (e.isAlive() && e.isAlly()) {
+                e.setSpeedBonus(e.getSpeedBonus() + 1);
+                buffed++;
+            }
+        }
+        return ALLY_BUFF_PREFIX + "music|§dMusic plays! " + buffed + " allies buffed (+1 speed for this battle).";
+    }
+
+    // --- Banner: plant defense zone — +2 defense to player/allies within 2 tiles (1 AP) ---
+    private static String useBanner(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "banner:" + targetTile.x() + ":" + targetTile.z()
+            + "|§5Banner planted! +2 defense for player/allies within 2 tiles.";
+    }
+
+    private static boolean isPickaxe(Item item) {
+        return item == Items.IRON_PICKAXE || item == Items.DIAMOND_PICKAXE
+            || item == Items.NETHERITE_PICKAXE || item == Items.STONE_PICKAXE
+            || item == Items.WOODEN_PICKAXE || item == Items.GOLDEN_PICKAXE;
+    }
+
+    // --- Water Bucket: place water tile on empty walkable tile (1 AP) ---
+    private static String useWaterBucket(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "water:" + targetTile.x() + ":" + targetTile.z()
+            + "|§bPlaced water! Creates a fishable water tile.";
+    }
+
+    // --- Sponge: absorb adjacent water tile (1 AP) ---
+    private static String useSponge(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a water tile!";
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null || !tile.isWater()) return "§cThat's not a water tile!";
+        GridPos playerPos = arena.getPlayerGridPos();
+        int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
+        if (dist > 1) return "§cToo far! Stand next to the water.";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "sponge:" + targetTile.x() + ":" + targetTile.z()
+            + "|§eSponge absorbed the water!";
+    }
+
+    // --- Pickaxe: break obstacle tile, making it walkable (1 AP, durability cost) ---
+    private static String usePickaxe(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target an obstacle!";
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null) return "§cInvalid tile!";
+        if (tile.isWalkable()) return "§cThat tile is already walkable!";
+        GridPos playerPos = arena.getPlayerGridPos();
+        int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
+        if (dist > 1) return "§cToo far! Stand next to the obstacle.";
+        if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
+            stack.decrement(1);
+        } else {
+            stack.setDamage(stack.getDamage() + 1);
+        }
+        return TILE_EFFECT_PREFIX + "break:" + targetTile.x() + ":" + targetTile.z()
+            + "|§7Obstacle broken! Tile is now walkable.";
+    }
+
+    // --- Crossbow: 4-tile range, 3 damage (2 AP, durability cost) ---
+    private static String useCrossbow(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target an enemy!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        GridPos playerPos = arena.getPlayerGridPos();
+        int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
+        if (dist > 4) return "§cOut of range! (max 4 tiles)";
+        if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
+            stack.decrement(1);
+        } else {
+            stack.setDamage(stack.getDamage() + 1);
+        }
+        int dealt = enemy.takeDamage(3);
+        return "§7Crossbow bolt hits " + enemy.getDisplayName() + " for " + dealt + " damage!";
+    }
+
+    // --- Lingering Potion: create poison cloud on tile for 3 turns (1 AP) ---
+    private static String useLingeringPotion(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.getPlayerGridPos().manhattanDistance(targetTile) > POTION_THROW_RANGE) {
+            return "§cToo far! Max throw range is " + POTION_THROW_RANGE + " tiles.";
+        }
+
+        // Read potion contents before decrementing
+        var potionContents = stack.get(net.minecraft.component.DataComponentTypes.POTION_CONTENTS);
+        stack.decrement(1);
+
+        net.minecraft.server.world.ServerWorld sw = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+        BlockPos playerBlock = arena.gridToBlockPos(arena.getPlayerGridPos());
+        BlockPos targetBlock = arena.gridToBlockPos(targetTile);
+
+        // Throw sound + arc
+        sw.playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.ENTITY_LINGERING_POTION_THROW,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        ProjectileSpawner.spawnPotionThrow(sw, playerBlock, targetBlock);
+
+        // Spawn a real AreaEffectCloudEntity for vanilla cloud visuals
+        net.minecraft.entity.AreaEffectCloudEntity cloud = new net.minecraft.entity.AreaEffectCloudEntity(
+            sw, targetBlock.getX() + 0.5, targetBlock.getY(), targetBlock.getZ() + 0.5);
+        cloud.setRadius(1.5f);
+        cloud.setDuration(999999); // effectively permanent — cleaned up when combat ends
+        cloud.setRadiusGrowth(0); // don't shrink — stays until combat ends
+        cloud.setWaitTime(0);
+        if (potionContents != null) {
+            // Set the full potion contents — handles color, effects, and particles automatically
+            cloud.setPotionContents(potionContents);
+        } else {
+            // Default to poison cloud
+            cloud.addEffect(new StatusEffectInstance(StatusEffects.POISON, 100, 0));
+        }
+        cloud.addCommandTag("craftics_arena");
+        sw.spawnEntity(cloud);
+
+        return TILE_EFFECT_PREFIX + "poison_cloud:" + targetTile.x() + ":" + targetTile.z()
+            + "|§5Lingering potion cloud! Enemies passing through are affected.";
+    }
+
+    // --- Lightning Rod: place on tile, strikes next turn for 4 AoE damage (1 AP) ---
+    private static String useLightningRod(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "lightning:" + targetTile.x() + ":" + targetTile.z()
+            + "|§eLightning rod placed! It will strike all nearby enemies next turn.";
+    }
+
+    // --- Cactus: place 1HP wall that deals 1 damage to attackers (1 AP) ---
+    private static String useCactus(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "cactus:" + targetTile.x() + ":" + targetTile.z()
+            + "|§2Cactus placed! Enemies that touch it take 1 damage.";
+    }
+
+    // --- Hay Bale: throw to ally pet, heals 4 HP (1 AP) ---
+    private static String useHayBale(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target an ally!";
+        CombatEntity ally = arena.getOccupant(targetTile);
+        if (ally == null || !ally.isAlive() || !ally.isAlly()) return "§cNo ally at target!";
+        stack.decrement(1);
+        int healed = Math.min(4, ally.getMaxHp() - ally.getCurrentHp());
+        return ALLY_BUFF_PREFIX + "heal:" + ally.getEntityId() + ":" + healed
+            + "|§aHay bale heals " + ally.getDisplayName() + " for " + healed + " HP!";
+    }
+
+    // --- Cake: place on tile, heals 2 HP to anyone stepping on it, 3 uses (1 AP) ---
+    private static String useCake(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "cake:" + targetTile.x() + ":" + targetTile.z()
+            + "|§dCake placed! Heals 2 HP when stepped on (3 uses).";
+    }
+
+    // --- Spore Blossom: AoE slow, enemies within 3 tiles get -1 speed for 2 turns (1 AP) ---
+    private static String useSporeBlossom(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        stack.decrement(1);
+        int slowed = 0;
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            int dist = Math.abs(e.getGridPos().x() - targetTile.x()) + Math.abs(e.getGridPos().z() - targetTile.z());
+            if (dist <= 3) {
+                e.setSpeedBonus(e.getSpeedBonus() - 1);
+                slowed++;
+            }
+        }
+        return "§dSpore cloud! " + slowed + " enemies slowed (-1 speed).";
+    }
+
+    // --- Lantern: reveals invisible/hidden enemies in 3-tile radius (1 AP, consumes) ---
+    private static String useLantern(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "lantern:" + targetTile.x() + ":" + targetTile.z()
+            + "|§eLantern placed! Reveals hidden enemies within 3 tiles.";
+    }
+
+    // --- Goat Horn: taunt all enemies to target you next turn (1 AP, no consume) ---
+    private static String useGoatHorn(GridArena arena, ItemStack stack) {
+        String hornId = GoatHornEffects.getHornId(stack);
+        if (hornId == null) {
+            return "§7The horn makes no sound...";
+        }
+
+        // Get the combat effects and enemy list from the arena occupants
+        java.util.List<CombatEntity> enemies = new java.util.ArrayList<>();
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            enemies.add(e);
+        }
+
+        // The horn is not consumed — it's reusable, just costs AP
+        // CombatManager will handle applying the effect via HORN_EFFECT_PREFIX
+        return HORN_EFFECT_PREFIX + hornId + "|" + GoatHornEffects.getTooltip(hornId);
+    }
+
+    /** Prefix for horn effects — CombatManager applies the actual buff/debuff. */
+    public static final String HORN_EFFECT_PREFIX = "§6HORN:";
+
+    // --- Echo Shard: teleport back to your position at start of turn (1 AP) ---
+    private static String useEchoShard(GridArena arena, ItemStack stack) {
+        stack.decrement(1);
+        return ALLY_BUFF_PREFIX + "echo|§5Echo shard activates! You'll return to your start position at end of turn.";
+    }
+
+    // --- Brush: excavate random item from sand/gravel tile (1 AP) ---
+    private static String useBrush(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        GridPos playerPos = arena.getPlayerGridPos();
+        int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
+        if (dist > 1) return "§cToo far! Stand next to the tile.";
+        if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
+            stack.decrement(1);
+        } else {
+            stack.setDamage(stack.getDamage() + 1);
+        }
+        java.util.Random rng = new java.util.Random();
+        Item[] loot = {
+            Items.GOLD_NUGGET, Items.IRON_NUGGET, Items.CLAY_BALL,
+            Items.EMERALD, Items.DIAMOND, Items.AMETHYST_SHARD,
+            Items.ARROW, Items.BONE, Items.STRING,
+            Items.FLINT, Items.COAL, Items.BRICK
+        };
+        Item found = loot[rng.nextInt(loot.length)];
+        player.getInventory().insertStack(new ItemStack(found, 1));
+        String name = new ItemStack(found).getName().getString();
+        return "§eBrushed up: " + name + "!";
+    }
+
+    private static String useBreedingItem(ServerPlayerEntity player, GridArena arena,
+                                           GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity occupant = arena.getOccupant(targetTile);
+        if (occupant == null || !occupant.isAlive()) return "§cNo creature at target!";
+        if (occupant.isAlly()) return "§cAlready tamed!";
+
+        String entityType = occupant.getEntityTypeId();
+        Item item = stack.getItem();
+
+        // Check if this item works on this mob type
+        if (!isBreedingItem(item, entityType)) {
+            String mobName = entityType.substring(entityType.indexOf(':') + 1);
+            return "§cThis item doesn't work on " + mobName + "!";
+        }
+
+        stack.decrement(1);
+
+        // Combat-capable mobs become allies (wolf, cat, ocelot, horse, donkey, llama)
+        Set<String> combatTameable = Set.of(
+            "minecraft:wolf", "minecraft:cat", "minecraft:ocelot",
+            "minecraft:horse", "minecraft:donkey", "minecraft:llama",
+            "minecraft:camel", "minecraft:fox", "minecraft:mule",
+            "minecraft:skeleton_horse", "minecraft:zombie_horse"
+        );
+
+        if (combatTameable.contains(entityType)) {
+            // Mountable mobs require a saddle — player mounts them for bonus speed
+            if (MOUNTABLE_MOBS.contains(entityType)) {
+                if (hasSaddle(player)) {
+                    consumeSaddle(player);
+                    return MOUNT_PREFIX + occupant.getEntityId();
+                }
+                // No saddle — tame as normal walking ally
+            }
+            // Returns TAME_PREFIX — CombatManager converts to ally
+            return TAME_PREFIX + occupant.getEntityId();
+        } else {
+            // Passive mobs (cow, sheep, pig, chicken, etc.) — show hearts, vanish, sent to hub
+            return BEFRIEND_PREFIX + occupant.getEntityId() + ":" + entityType;
+        }
+    }
+}

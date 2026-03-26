@@ -1,0 +1,27 @@
+{
+  "id": "nether_wastes",
+  "name": "Nether Wastes",
+  "order": 10,
+  "levels": 5,
+  "grid": { "base_width": 9, "base_height": 9, "width_growth": 1, "height_growth": 0 },
+  "floor_blocks": ["minecraft:netherrack"],
+  "obstacle_blocks": ["minecraft:magma_block"],
+  "obstacle_density": 0.0,
+  "obstacle_density_growth": 0.0,
+  "environment": "nether",
+  "night": true,
+  "enemies": {
+    "passive": [],
+    "hostile": [
+      {"type": "minecraft:zombified_piglin", "weight": 6, "hp": 10, "attack": 4},
+      {"type": "minecraft:magma_cube", "weight": 4, "hp": 8, "attack": 3}
+    ],
+    "boss": {"type": "minecraft:magma_cube", "hp": 35, "attack": 6}
+  },
+  "loot": [
+    {"item": "minecraft:gold_nugget", "weight": 10},
+    {"item": "minecraft:netherrack", "weight": 8},
+    {"item": "minecraft:magma_cream", "weight": 5},
+    {"item": "minecraft:gold_ingot", "weight": 3}
+  ]
+}

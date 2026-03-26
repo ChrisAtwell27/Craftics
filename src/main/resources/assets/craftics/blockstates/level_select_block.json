@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "craftics:block/level_select_block" }
+  }
+}
