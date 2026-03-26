@@ -296,7 +296,11 @@ public class ArenaBuilder {
 
         BlockPos diamondPos = null;
         BlockPos emeraldPos = null;
-        BlockPos[] playerSpawns = new BlockPos[4];
+        // Collect ALL candidate spawn markers; we'll filter to grid bounds after finding corners
+        List<BlockPos> goldCandidates = new ArrayList<>();
+        List<BlockPos> ironCandidates = new ArrayList<>();
+        List<BlockPos> copperCandidates = new ArrayList<>();
+        List<BlockPos> coalCandidates = new ArrayList<>();
 
         for (int x = 0; x < sizeX; x++) {
             for (int y = 0; y < sizeY; y++) {
@@ -305,17 +309,21 @@ public class ArenaBuilder {
                     BlockState state = world.getBlockState(worldPos);
                     if (state.isOf(Blocks.DIAMOND_BLOCK)) diamondPos = worldPos;
                     else if (state.isOf(Blocks.EMERALD_BLOCK)) emeraldPos = worldPos;
-                    else if (state.isOf(Blocks.GOLD_BLOCK)) playerSpawns[0] = worldPos;
-                    else if (state.isOf(Blocks.IRON_BLOCK)) playerSpawns[1] = worldPos;
-                    else if (state.isOf(Blocks.COPPER_BLOCK)) playerSpawns[2] = worldPos;
-                    else if (state.isOf(Blocks.COAL_BLOCK)) playerSpawns[3] = worldPos;
+                    else if (state.isOf(Blocks.GOLD_BLOCK)) goldCandidates.add(worldPos);
+                    else if (state.isOf(Blocks.IRON_BLOCK)) ironCandidates.add(worldPos);
+                    else if (state.isOf(Blocks.COPPER_BLOCK)) copperCandidates.add(worldPos);
+                    else if (state.isOf(Blocks.COAL_BLOCK)) coalCandidates.add(worldPos);
                 }
             }
         }
 
+        boolean hasGold = !goldCandidates.isEmpty();
+        boolean hasIron = !ironCandidates.isEmpty();
+        boolean hasCopper = !copperCandidates.isEmpty();
+        boolean hasCoal = !coalCandidates.isEmpty();
         CrafticsMod.LOGGER.info("Structure {} marker scan: diamond={}, emerald={}, spawns=[{},{},{},{}]",
             sourceName, diamondPos != null, emeraldPos != null,
-            playerSpawns[0] != null, playerSpawns[1] != null, playerSpawns[2] != null, playerSpawns[3] != null);
+            hasGold, hasIron, hasCopper, hasCoal);
 
         if (diamondPos == null || emeraldPos == null) {
             CrafticsMod.LOGGER.warn("Structure {} missing DIAMOND/EMERALD corner markers. Falling back to default overlay.", sourceName);
@@ -348,6 +356,21 @@ public class ArenaBuilder {
             CrafticsMod.LOGGER.warn("Structure {} produced invalid inner arena size {}x{}. Falling back to default overlay.", sourceName, gridW, gridH);
             overlayArenaTiles(world, ox, oy, oz, w, h, tiles);
             return true;
+        }
+
+        // Filter spawn markers: must be at arena floor Y and within the grid boundary
+        @SuppressWarnings("unchecked")
+        List<BlockPos>[] candidateLists = new List[]{goldCandidates, ironCandidates, copperCandidates, coalCandidates};
+        BlockPos[] playerSpawns = new BlockPos[4];
+        for (int i = 0; i < 4; i++) {
+            for (BlockPos bp : candidateLists[i]) {
+                if (bp.getY() == arenaFloorY
+                    && bp.getX() >= gridMinX && bp.getX() <= gridMaxX
+                    && bp.getZ() >= gridMinZ && bp.getZ() <= gridMaxZ) {
+                    playerSpawns[i] = bp;
+                    break;
+                }
+            }
         }
 
         double centerX = (gridMinX + gridMaxX) / 2.0;
