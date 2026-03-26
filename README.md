@@ -1,5 +1,7 @@
 # Craftics
 
+https://legacy.curseforge.com/minecraft/mc-mods/craftics-a-tactical-rpg-mod
+
 **Turn-based tactical RPG combat in Minecraft.**
 
 Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight through 18 procedurally generated biome arenas across the Overworld, Nether, and End, using vanilla items, crafting, and potions, in a complete turn-based combat system with an isometric camera, grid movement, and 40+ unique enemy AI behaviors.
