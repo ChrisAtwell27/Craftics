@@ -76,49 +76,49 @@
           <tr>
             <th>Stat</th>
             <th>Base</th>
-            <th>Effect</th>
+            <th>Effect per Point</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong>Speed</strong></td>
             <td>3</td>
-            <td>Tiles you can move per turn</td>
+            <td>+1 tile movement per turn</td>
           </tr>
           <tr>
             <td><strong>AP</strong></td>
             <td>3</td>
-            <td>Action Points per turn</td>
+            <td>+1 action per turn</td>
           </tr>
           <tr>
             <td><strong>Melee Power</strong></td>
             <td>0</td>
-            <td>Bonus melee damage</td>
+            <td>+1 melee damage</td>
           </tr>
           <tr>
             <td><strong>Ranged Power</strong></td>
             <td>0</td>
-            <td>Bonus ranged damage</td>
+            <td>+1 ranged damage</td>
           </tr>
           <tr>
             <td><strong>Vitality</strong></td>
             <td>0</td>
-            <td>Bonus max HP</td>
+            <td>+2 max HP</td>
           </tr>
           <tr>
             <td><strong>Defense</strong></td>
             <td>0</td>
-            <td>Flat damage reduction</td>
+            <td>+1 damage reduction (5% per point, capped at 60%)</td>
           </tr>
           <tr>
             <td><strong>Luck</strong></td>
             <td>0</td>
-            <td>Better loot rolls, crit chance</td>
+            <td>+1 loot quality and crit chance</td>
           </tr>
           <tr>
             <td><strong>Resourceful</strong></td>
             <td>0</td>
-            <td>Bonus emerald rewards, cheaper trades</td>
+            <td>+1 emerald per level and trader discount</td>
           </tr>
         </tbody>
       </table>
@@ -143,7 +143,7 @@
          ================================================================ -->
     <h2 id="traders">Trader System</h2>
     <p>
-      There is a <strong>40% chance</strong> a trader appears between combat levels when you choose &ldquo;Continue.&rdquo;
+      There is a <strong>13% chance</strong> (configurable) a trader appears between combat levels when you choose "Continue."
     </p>
     <div class="table-wrap">
       <table>
@@ -151,50 +151,55 @@
           <tr>
             <th>Trader</th>
             <th>Specialty</th>
-            <th>Example Items</th>
+            <th>Key Items</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong>Weaponsmith</strong></td>
-            <td>Melee weapons</td>
-            <td>Swords, axes (wood&rarr;netherite by tier)</td>
+            <td>Weapons</td>
+            <td>Swords, axes (scale by tier), bow, crossbow, arrows, shield</td>
           </tr>
           <tr>
             <td><strong>Armorer</strong></td>
-            <td>Armor sets</td>
-            <td>Full sets scaling by progression tier</td>
+            <td>Armor</td>
+            <td>Full sets (leather to diamond by tier)</td>
           </tr>
           <tr>
-            <td><strong>Fletcher</strong></td>
-            <td>Ranged weapons</td>
-            <td>Bows, crossbows, arrows, tipped arrows</td>
+            <td><strong>Provisioner</strong></td>
+            <td>Food</td>
+            <td>Bread, steak, golden carrot, golden apple (tier 6+), enchanted golden apple (tier 9)</td>
           </tr>
           <tr>
             <td><strong>Alchemist</strong></td>
             <td>Potions</td>
-            <td>Strength, Swiftness, Healing, Fire Resistance</td>
+            <td>Healing, Speed, Strength (tier 3+), Regeneration (tier 5+), Invisibility (tier 7+)</td>
           </tr>
           <tr>
-            <td><strong>Chef</strong></td>
-            <td>Food items</td>
-            <td>Cooked meats, golden apples, golden carrots</td>
+            <td><strong>Supplier</strong></td>
+            <td>Raw materials</td>
+            <td>Planks, cobblestone, iron, gold, diamond (tier 7+), netherite scrap (tier 9+)</td>
           </tr>
           <tr>
-            <td><strong>Toolsmith</strong></td>
-            <td>Utility items</td>
-            <td>Shields, ender pearls, TNT, fire charges</td>
+            <td><strong>Decorator</strong></td>
+            <td>Hub furnishing</td>
+            <td>Paintings, lanterns, bookshelves, beds, flowers, ice, sea lanterns (tier 7+)</td>
+          </tr>
+          <tr>
+            <td><strong>Craftsman</strong></td>
+            <td>Crafting stations</td>
+            <td>Crafting table, furnace, anvil (tier 3+), brewing stand (tier 4+), enchanting table (tier 5+), ender chest (tier 7+), beacon (tier 8+)</td>
           </tr>
           <tr>
             <td><strong>Curiosity Dealer</strong></td>
             <td>Rare items</td>
-            <td>Goat horns, enchanted books, trim templates</td>
+            <td>Ender pearls, TNT, trident (tier 5+), totem of undying (tier 7+), elytra (tier 9+)</td>
           </tr>
         </tbody>
       </table>
     </div>
     <p>
-      Trades cost <strong>emeralds</strong>. Each encounter offers <strong>3&ndash;5 random trades</strong>. Quality scales with biome tier (1&ndash;9).
+      Trades cost <strong>emeralds</strong>. Each encounter offers <strong>3 to 5 random trades</strong>. Quality scales with biome tier.
     </p>
 
     <!-- ================================================================
@@ -209,15 +214,15 @@
     <ul>
       <li><strong>Mob drops</strong> from each enemy</li>
       <li><strong>Biome loot</strong> from a weighted loot table</li>
-      <li><strong>Emerald reward</strong> (scaled by the Resourceful stat)</li>
-      <li><strong>Boss kills</strong> unlock the next biome(s) + a level-up</li>
+      <li><strong>Emerald reward:</strong> base 1 + biome_tier/3, with a +3 bonus for boss kills</li>
+      <li><strong>Boss kills</strong> unlock the next biome and grant a level-up</li>
     </ul>
     <p>
       After a non-boss victory, choose:
     </p>
     <ul>
       <li><strong>Go Home:</strong> keep loot, return to hub, reset biome run.</li>
-      <li><strong>Continue:</strong> proceed to next level (risk/reward: dying loses run loot).</li>
+      <li><strong>Continue:</strong> proceed to next level. Dying loses all run loot.</li>
     </ul>
 
     <h3>Defeat</h3>
@@ -226,7 +231,7 @@
     </p>
     <ul>
       <li><strong>Inventory cleared.</strong> Current run items lost.</li>
-      <li><strong>Teleported back to hub.</strong> Biome run resets (start from level 1).</li>
+      <li><strong>Teleported back to hub.</strong> Biome run resets.</li>
       <li><strong>Stats and permanent progress kept.</strong></li>
     </ul>
 
@@ -235,14 +240,13 @@
          ================================================================ -->
     <h2 id="new-game-plus">New Game+</h2>
     <p>
-      Beat the Ender Dragon in Dragon&rsquo;s Nest to enter New Game+:
+      Beat the Ender Dragon to enter New Game+:
     </p>
     <ul>
       <li>All biome progression <strong>resets</strong>.</li>
-      <li><strong>Stats, emeralds, and gear</strong> carry over.</li>
+      <li><strong>Stats and emeralds</strong> carry over.</li>
       <li>Enemies scale <strong>+25% per NG+ cycle</strong> (HP, attack, defense).</li>
       <li>NG+ tier is displayed on the <strong>level select screen</strong>.</li>
-      <li>How far can you go?</li>
     </ul>
 
     <!-- ================================================================
@@ -250,110 +254,213 @@
          ================================================================ -->
     <h2 id="configuration">Configuration</h2>
     <p>
-      Over <strong>45 config options</strong> are available via Mod Menu. Key categories:
+      Extensive config options are available via Mod Menu (from <code>CrafticsConfig.java</code>). Key defaults:
     </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Setting</th>
+            <th>Default</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>baseAp</td><td>3</td></tr>
+          <tr><td>baseSpeed</td><td>3</td></tr>
+          <tr><td>attackApCost</td><td>2</td></tr>
+          <tr><td>enemyDamageMultiplier</td><td>1.0</td></tr>
+          <tr><td>enemyHpMultiplier</td><td>1.0</td></tr>
+          <tr><td>bossHpMultiplier</td><td>1.0</td></tr>
+          <tr><td>maxEnemiesPerLevel</td><td>6</td></tr>
+          <tr><td>maxBossAdds</td><td>4</td></tr>
+          <tr><td>criticalHitChance</td><td>0.0 (default off, Luck adds to it)</td></tr>
+          <tr><td>traderSpawnChance</td><td>0.13 (13%)</td></tr>
+          <tr><td>emeraldBaseReward</td><td>1</td></tr>
+          <tr><td>goatHornDropChance</td><td>0.10 (10%)</td></tr>
+          <tr><td>trimDropChance</td><td>0.35 (35%)</td></tr>
+          <tr><td>ngPlusScalingPerCycle</td><td>0.25</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-    <h3>Combat Balance</h3>
-    <p>
-      Enemy HP/ATK/DEF scaling per biome, boss HP multiplier, critical hit chance, ranged accuracy.
-    </p>
-
-    <h3>Mob Behavior</h3>
-    <p>
-      Passive mob wander chance, predator hunting toggle, enemy animation speed, auto-end turn.
-    </p>
-
-    <h3>Difficulty</h3>
-    <p>
-      Permadeath mode, heal between levels, enemy range hints, intention preview.
-    </p>
-
-    <h3>Accessibility</h3>
-    <p>
-      Colorblind mode, larger UI, camera shake toggle.
-    </p>
-
-    <h3>Economy</h3>
-    <p>
-      Loot multiplier, trader spawn chance, horn drop rate, emerald rewards.
-    </p>
+    <h3>Config Categories</h3>
+    <ul>
+      <li><strong>Combat Balance:</strong> enemy HP/ATK/DEF scaling, boss HP multiplier, critical hit chance</li>
+      <li><strong>Enemy Behavior:</strong> mob AI, animation speed, auto-end turn</li>
+      <li><strong>Difficulty:</strong> permadeath, heal between levels, enemy range hints</li>
+      <li><strong>Accessibility:</strong> colorblind mode, larger UI, camera shake toggle</li>
+      <li><strong>Economy:</strong> loot multiplier, trader spawn chance, emerald rewards, horn/trim drop rates</li>
+      <li><strong>Quality of Life:</strong> auto-save, turn timers, UI preferences</li>
+      <li><strong>Visual:</strong> particle effects, screen shake, animation toggles</li>
+    </ul>
 
     <!-- ================================================================
          7. RECOMMENDED BUILDS
          ================================================================ -->
     <h2 id="recommended-builds">Recommended Builds</h2>
     <p>
-      A class building guide for each stage of the game. These builds combine armor sets, trim bonuses, weapons, and stat allocations into cohesive strategies.
+      Class builds for each stage of the game, combining armor set bonuses, trim patterns, weapons, and stat priorities.
     </p>
 
-    <!-- ---- Early Overworld ---- -->
-    <h3 id="build-early">Early Overworld (Plains &rarr; Dark Forest): &ldquo;The Survivor&rdquo;</h3>
-    <ul>
-      <li><strong>Armor:</strong> Leather or Iron (whatever you find)</li>
-      <li><strong>Weapon:</strong> Iron Sword (Cleave is very strong early)</li>
-      <li><strong>Stats:</strong> Speed +1, Vitality +1 first</li>
-      <li><strong>Strategy:</strong> Focus on mobility. Food is your main healing. Save emeralds for the Armorer.</li>
-    </ul>
+    <!-- ======== EARLY OVERWORLD ======== -->
+    <div class="build-stage" id="build-early">Early Overworld</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>The Survivor</h4>
+          <span class="build-class">Starter</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Leather or Iron (whatever you find)</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Iron Sword</strong> (5 ATK, Cleave)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value">None (too early for trims)</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Speed +1, Vitality +1</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Food for healing, save emeralds</span></div>
+        </div>
+        <div class="build-strategy">Focus on mobility and staying alive. Cleave is strong even at this stage. Buy from Provisioner for food and Weaponsmith for weapon upgrades.</div>
+      </div>
+    </div>
 
-    <!-- ---- Mid Overworld ---- -->
-    <h3 id="build-mid">Mid Overworld (Desert/Jungle &rarr; River Delta): &ldquo;The Rogue&rdquo;</h3>
-    <ul>
-      <li><strong>Armor:</strong> Chainmail (Sword +2 damage type bonus)</li>
-      <li><strong>Trim:</strong> Bolt &times;4 (Sword Power +4, full set: crits stun)</li>
-      <li><strong>Weapon:</strong> Diamond Sword (Cleave + 30% crit)</li>
-      <li><strong>Stats:</strong> Melee Power, Speed, AP</li>
-      <li><strong>Strategy:</strong> Crit-stun build. Every crit stuns the target. Cleave hits neighbors. Stack Sharpness enchant.</li>
-    </ul>
+    <!-- ======== MID OVERWORLD ======== -->
+    <div class="build-stage" id="build-mid">Mid Overworld</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>The Rogue</h4>
+          <span class="build-class">Melee / Crit</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Chainmail</strong> <span class="green">(Rogue: +1 Speed, attacks cost -1 AP)</span></span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Diamond Sword</strong> (6 ATK, Cleave + 30% crit)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Bolt &times;4</strong> (Sword Power +4)<br>Full set <strong>Thunderstrike</strong>: crits stun target</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Melee Power &gt; Speed &gt; AP</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Strength potions, Sharpness enchant</span></div>
+        </div>
+        <div class="build-strategy">Chainmail makes every attack 1 AP cheaper. Every crit stuns the target via Thunderstrike. Cleave hits neighbors. Stack Sharpness for even more damage.</div>
+      </div>
 
-    <!-- ---- Alt Mid: The Sniper ---- -->
-    <h3 id="build-sniper">Alternative Mid Build: &ldquo;The Sniper&rdquo;</h3>
-    <ul>
-      <li><strong>Armor:</strong> Leather (Scout, light; invest in Speed)</li>
-      <li><strong>Trim:</strong> Sentry &times;4 (Ranged Power +4, full set: counter-attack ranged)</li>
-      <li><strong>Weapon:</strong> Crossbow (Pierce-through, range 4)</li>
-      <li><strong>Stats:</strong> Ranged Power, Speed, AP</li>
-      <li><strong>Strategy:</strong> Kite everything. Stay at max range. Pierce-through hits two enemies per shot. Tipped arrows for debuffs.</li>
-    </ul>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>The Sniper</h4>
+          <span class="build-class">Ranged</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Leather</strong> <span class="green">(Brawler: +2 Speed, +1 AP)</span></span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Crossbow</strong> (4 ATK, unlimited cardinal range, pierce-through)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Sentry &times;4</strong> (Ranged Power +4)<br>Full set <strong>Overwatch</strong>: counter-attack ranged enemies</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Ranged Power &gt; Speed &gt; AP</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Tipped arrows (poison, slowness), Power enchant</span></div>
+        </div>
+        <div class="build-strategy">Leather gives the most actions per turn (+1 AP, +2 Speed). Crossbow has infinite range on cardinal lines and pierce-through hits two enemies per shot. Kite everything.</div>
+      </div>
+    </div>
 
-    <!-- ---- Late Overworld ---- -->
-    <h3 id="build-late">Late Overworld (Caverns &rarr; Deep Dark): &ldquo;The Knight&rdquo;</h3>
-    <ul>
-      <li><strong>Armor:</strong> Diamond (Blunt +2 bonus)</li>
-      <li><strong>Trim:</strong> Ward &times;4 (Defense +4, full set: 50% less damage stationary)</li>
-      <li><strong>Weapon:</strong> Mace (3&times;3 AoE + knockback)</li>
-      <li><strong>Stats:</strong> Defense, Vitality, Melee Power</li>
-      <li><strong>Strategy:</strong> Tank build. Stand your ground and smash groups. Ward full-set halves damage when you don&rsquo;t move. Use potions of Strength for burst.</li>
-    </ul>
+    <!-- ======== LATE OVERWORLD ======== -->
+    <div class="build-stage" id="build-late">Late Overworld (Caverns / Deep Dark)</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>The Knight</h4>
+          <span class="build-class">Tank / AoE</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Diamond</strong> <span class="green">(Knight: +3 Defense, +1 Attack)</span></span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Mace</strong> (7 ATK, 3&times;3 AoE + knockback)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Ward &times;4</strong> (Defense +4)<br>Full set <strong>Fortress</strong>: 50% less damage when stationary</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Defense &gt; Vitality &gt; Melee Power</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Resistance potions, Golden Apples, Shield</span></div>
+        </div>
+        <div class="build-strategy">Fortress halves all incoming damage when you don't move. Defense is percentage-based (5% per point, capped at 60%). Stack it high and smash groups with the Mace's AoE. Use Density enchant for bonus shockwave damage.</div>
+      </div>
 
-    <!-- ---- Nether ---- -->
-    <h3 id="build-nether">Nether: &ldquo;The Infernal&rdquo;</h3>
-    <ul>
-      <li><strong>Armor:</strong> Netherite (Juggernaut, ALL types +1)</li>
-      <li><strong>Trim:</strong> Flow &times;4 (Speed +4, full set: kills refund 1 AP)</li>
-      <li><strong>Weapon:</strong> Netherite Sword (Cleave + Execute below 30% HP)</li>
-      <li><strong>Stats:</strong> Speed, AP, Melee Power</li>
-      <li><strong>Strategy:</strong> Speed-kill build. Flow refunds AP on kills. Execute cleans up wounded enemies. Fire Resistance potion is essential.</li>
-    </ul>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>The Gambler</h4>
+          <span class="build-class">Luck / Economy</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Gold</strong> <span class="green">(Gambler: +3 Luck/crit, +1 emerald per kill)</span></span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Diamond Sword</strong> (6 ATK, crit + Luck = high crit rate)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Spire &times;4</strong> (Luck +4)<br>Full set <strong>Fortune's Peak</strong>: double emerald rewards</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Luck &gt; Resourceful &gt; Melee Power</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Golden Apples, Totem of Undying</span></div>
+        </div>
+        <div class="build-strategy">Low defense, high risk. +3 Luck from Gold armor plus Spire trims gives massive crit chance and loot quality. Fortune's Peak doubles emerald rewards. Use this to farm emeralds and buy your way to better gear.</div>
+      </div>
+    </div>
 
-    <!-- ---- The End ---- -->
-    <h3 id="build-end">The End: &ldquo;The Phantom&rdquo;</h3>
-    <ul>
-      <li><strong>Armor:</strong> Netherite</li>
-      <li><strong>Trim:</strong> Silence &times;4 (Stealth +4, full set: invisible 2 turns)</li>
-      <li><strong>Weapon:</strong> Netherite Sword + Crossbow (switch between)</li>
-      <li><strong>Stats:</strong> AP, Speed, Ranged Power, Melee Power (balanced)</li>
-      <li><strong>Strategy:</strong> 2 turns invisible to position. Then burst. Ender pearls for emergency repositioning. Golden Apples for the Dragon fight.</li>
-    </ul>
+    <!-- ======== NETHER ======== -->
+    <div class="build-stage" id="build-nether">The Nether</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>The Infernal</h4>
+          <span class="build-class">Bruiser / Execute</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Netherite</strong> <span class="green">(Juggernaut: +4 DEF, +2 ATK, fire immune)</span></span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Netherite Sword</strong> (7 ATK, Cleave + Execute &lt;30% HP)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Flow &times;4</strong> (Speed +4)<br>Full set <strong>Current</strong>: kills refund 1 AP</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Speed &gt; AP &gt; Melee Power</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Goat Horn (Seek: +3 ATK), Golden Apples</span></div>
+        </div>
+        <div class="build-strategy">Fire immunity is essential in the Nether. Flow's Current refunds 1 AP per kill, chaining through groups. Execute instantly kills anything below 30% HP. Blaze and Ghast fire attacks do nothing to you.</div>
+      </div>
+    </div>
 
-    <!-- ---- New Game+ ---- -->
-    <h3 id="build-ngplus">New Game+ (Cycle 2+): &ldquo;The Juggernaut&rdquo;</h3>
-    <ul>
-      <li><strong>Armor:</strong> Netherite</li>
-      <li><strong>Trim:</strong> Wild &times;4 (Melee Power +4, full set: first attack free each turn)</li>
-      <li><strong>Weapon:</strong> Netherite Sword</li>
-      <li><strong>Stats:</strong> All-rounder. Pump AP and Melee Power, rest into Vitality</li>
-      <li><strong>Strategy:</strong> Wild makes your first attack free, giving you effectively +1 AP. Combined with high AP stat, you get 5&ndash;6 actions per turn. Stack Golden Apples. Use Goat Horn (Seek) for +3 ATK. Prepare to get wrecked by +50%+ enemies.</li>
-    </ul>
+    <!-- ======== THE END ======== -->
+    <div class="build-stage" id="build-end">The End</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>The Phantom</h4>
+          <span class="build-class">Stealth / Burst</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Netherite</strong> <span class="green">(Juggernaut: +4 DEF, +2 ATK, fire immune)</span></span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Netherite Sword</strong> + <strong>Crossbow</strong> (swap between)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Silence &times;4</strong> (Stealth Range +4)<br>Full set <strong>Phantom</strong>: invisible for first 2 turns</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">AP &gt; Speed &gt; balanced Melee/Ranged</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Ender Pearls, Golden Apples, Strength potions</span></div>
+        </div>
+        <div class="build-strategy">2 turns invisible means enemies don't act. Use that time to position perfectly, then burst. Ender Pearls for emergency repositioning during the Dragon fight. Swap to Crossbow for Shulker turrets at range.</div>
+      </div>
+    </div>
+
+    <!-- ======== NEW GAME+ ======== -->
+    <div class="build-stage" id="build-ngplus">New Game+ (Cycle 2+)</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>The Juggernaut</h4>
+          <span class="build-class">Action Economy</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Netherite</strong> <span class="green">(Juggernaut: +4 DEF, +2 ATK, fire immune)</span></span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Netherite Sword</strong> (7 ATK, Cleave + Execute)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Wild &times;4</strong> (AP +4)<br>Full set <strong>Feral</strong>: 1.3x damage per kill streak level</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">AP &gt; Melee Power &gt; Vitality</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Goat Horn (Seek: +3 ATK), Enchanted Golden Apples, Totem of Undying</span></div>
+        </div>
+        <div class="build-strategy">Wild gives +4 AP for a massive action economy (7+ actions per turn). Feral stacks 1.3x multiplicative damage per consecutive kill, so your damage ramps up as you chain kills. Stack Enchanted Golden Apples for survivability against +50%+ scaled enemies.</div>
+      </div>
+
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>The Healer</h4>
+          <span class="build-class">Sustain / Attrition</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Netherite</strong> <span class="green">(Juggernaut: +4 DEF, +2 ATK, fire immune)</span></span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Netherite Sword</strong> (7 ATK, Execute)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Host &times;4</strong> (Max HP +4)<br>Full set <strong>Symbiote</strong>: heal 1 HP per enemy killed</span></div>
+          <div class="build-row"><span class="build-label">Material</span><span class="build-value"><strong>Amethyst</strong> (+1 HP Regen per piece = +4)</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Vitality &gt; Defense &gt; AP</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Goat Horn (Sing: +2 Regen), Campfire, Regeneration potions</span></div>
+        </div>
+        <div class="build-strategy">Outlast everything. Symbiote heals on kills, Amethyst material adds regen, plus Vitality stacking gives massive HP. Use Campfire for passive healing. Slower but nearly unkillable in NG+ cycles.</div>
+      </div>
+    </div>
 
   </main>
 </div>
@@ -362,13 +469,13 @@
      FOOTER
      ============================================================ -->
 <footer>
-  <a href="https://github.com/ChrisAtwell27/Craftics" target="_blank">GitHub</a>
-  <span class="sep">|</span>
-  <a href="https://github.com/ChrisAtwell27/Craftics/issues" target="_blank">Issues</a>
-  <span class="sep">|</span>
-  <a href="#">Discord</a>
-  <br>
-  &copy; 2026 Craftics. All Rights Reserved.
+  <span>Craftics by CrackedGames</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics" target="_blank" rel="noopener">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues" target="_blank" rel="noopener">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
 </footer>
 
 <script src="js/nav.js"></script>

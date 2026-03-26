@@ -43,9 +43,13 @@
       <a href="#weapons">Weapons</a>
       <a href="#damage-calculation">Damage Calculation</a>
       <a href="#damage-types">Damage Types</a>
+      <a href="#armor-sets">Armor Set Bonuses</a>
       <a href="#armor-trims">Armor Trims</a>
+      <a href="#trim-materials">Trim Materials</a>
+      <a href="#full-set-bonuses">Full-Set Bonuses</a>
       <a href="#goat-horns">Goat Horn Effects</a>
       <a href="#usable-items">Usable Items</a>
+      <a href="#combat-effects">Combat Effects</a>
       <a href="#enchantments">Enchantments</a>
       <a href="#shields">Shield &amp; Blocking</a>
     </nav>
@@ -63,7 +67,7 @@
          ================================================================ -->
     <h2 id="action-points">Action Points</h2>
     <p>
-      The player receives <strong>3 AP per turn</strong>, modified by stats, potions, and armor trims. Each action costs a certain number of AP. When you run out, your turn ends. Any remaining AP is lost when you end your turn early.
+      The player receives <strong>3 AP per turn</strong> (base stat), modified by armor trims, potions, and set bonuses. Each action costs a certain number of AP. When you run out, your turn ends. Any remaining AP is lost when you end your turn early with <code>R</code>.
     </p>
     <div class="table-wrap">
       <table>
@@ -78,27 +82,32 @@
           <tr>
             <td><strong>Move</strong></td>
             <td>0 (Speed)</td>
-            <td>Click a highlighted tile. Movement uses the Speed stat (base 3 tiles).</td>
+            <td>Click a highlighted tile. Movement uses the Speed stat (base 3 tiles), no AP cost.</td>
           </tr>
           <tr>
-            <td><strong>Melee Attack</strong></td>
-            <td>1&ndash;2 AP</td>
-            <td>Click an adjacent enemy. Heavy weapons (axes, mace, crossbow) cost 2 AP.</td>
-          </tr>
-          <tr>
-            <td><strong>Ranged Attack</strong></td>
-            <td>1&ndash;2 AP</td>
-            <td>Click an enemy in range with bow (range 3), crossbow (range 4), or trident (range 3).</td>
-          </tr>
-          <tr>
-            <td><strong>Use Item</strong></td>
+            <td><strong>Attack (Light)</strong></td>
             <td>1 AP</td>
-            <td>Eat food, drink a potion, or throw an item.</td>
+            <td>All Swords, Bow, and Trident (melee) cost 1 AP.</td>
           </tr>
           <tr>
-            <td><strong>Block</strong></td>
+            <td><strong>Attack (Heavy)</strong></td>
+            <td>2 AP</td>
+            <td>Mace, Crossbow, and all Axes cost 2 AP. Default attack AP cost is 2.</td>
+          </tr>
+          <tr>
+            <td><strong>Use Item (Standard)</strong></td>
             <td>1 AP</td>
-            <td>Shield in offhand. Gain +5 DEF until your next turn.</td>
+            <td>Most consumables, food, potions, throwables, and tools.</td>
+          </tr>
+          <tr>
+            <td><strong>Use Item (Special)</strong></td>
+            <td>2 AP</td>
+            <td>Bell, Trident (thrown), Jukebox, and Crossbow.</td>
+          </tr>
+          <tr>
+            <td><strong>Use Item (Fishing Rod)</strong></td>
+            <td>3 AP</td>
+            <td>Cast into an adjacent water tile. Draws from a loot table.</td>
           </tr>
           <tr>
             <td><strong>End Turn</strong></td>
@@ -114,7 +123,7 @@
          ================================================================ -->
     <h2 id="weapons">Weapons</h2>
     <p>
-      Every vanilla weapon has an Attack value, a Damage Type, an AP cost, and an optional special Ability. Higher-tier weapons gain stronger abilities.
+      Every vanilla weapon has an Attack value, an AP cost, a Range, and an optional special Ability. Higher-tier weapons gain stronger abilities. Each attack costs <strong>10 weapon durability</strong>.
     </p>
     <div class="table-wrap">
       <table>
@@ -122,123 +131,130 @@
           <tr>
             <th>Weapon</th>
             <th>Attack</th>
-            <th>Damage Type</th>
             <th>AP Cost</th>
+            <th>Range</th>
             <th>Ability</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>Fist</td>
+            <td>2</td>
             <td>1</td>
-            <td>Physical</td>
             <td>1</td>
             <td>-</td>
           </tr>
           <tr>
             <td>Wooden Sword</td>
-            <td>2</td>
-            <td>Sword</td>
+            <td>3</td>
+            <td>1</td>
             <td>1</td>
             <td>-</td>
           </tr>
           <tr>
             <td>Stone Sword</td>
-            <td>3</td>
-            <td>Sword</td>
+            <td>4</td>
+            <td>1</td>
             <td>1</td>
             <td>-</td>
           </tr>
           <tr>
             <td>Iron Sword</td>
-            <td>4</td>
-            <td>Sword</td>
+            <td>5</td>
             <td>1</td>
-            <td>Cleave: hits one adjacent enemy for half damage</td>
+            <td>1</td>
+            <td>Cleave: hits adjacent enemy for half damage</td>
+          </tr>
+          <tr>
+            <td>Golden Sword</td>
+            <td>-</td>
+            <td>1</td>
+            <td>1</td>
+            <td>-</td>
           </tr>
           <tr>
             <td>Diamond Sword</td>
-            <td>5</td>
-            <td>Sword</td>
+            <td>6</td>
             <td>1</td>
-            <td>Cleave + 30% crit chance (double damage)</td>
+            <td>1</td>
+            <td>Cleave + 30% crit (2x damage)</td>
           </tr>
           <tr>
             <td>Netherite Sword</td>
-            <td>6</td>
-            <td>Sword</td>
+            <td>7</td>
             <td>1</td>
-            <td>Cleave + execute (triple damage below 30% HP)</td>
+            <td>1</td>
+            <td>Cleave + Execute (3x damage below 30% HP)</td>
           </tr>
           <tr>
             <td>Wooden Axe</td>
+            <td>4</td>
             <td>2</td>
-            <td>Cleaving</td>
-            <td>2</td>
-            <td>Stun: target loses next turn</td>
+            <td>1</td>
+            <td>Stun: target skips next turn</td>
           </tr>
           <tr>
             <td>Stone Axe</td>
-            <td>3</td>
-            <td>Cleaving</td>
+            <td>5</td>
             <td>2</td>
+            <td>1</td>
             <td>Stun</td>
           </tr>
           <tr>
             <td>Iron Axe</td>
-            <td>4</td>
-            <td>Cleaving</td>
+            <td>6</td>
             <td>2</td>
-            <td>Stun</td>
-          </tr>
-          <tr>
-            <td>Diamond Axe</td>
-            <td>5</td>
-            <td>Cleaving</td>
-            <td>2</td>
+            <td>1</td>
             <td>Stun</td>
           </tr>
           <tr>
             <td>Golden Axe</td>
+            <td>5</td>
             <td>2</td>
-            <td>Cleaving</td>
+            <td>1</td>
+            <td>Stun</td>
+          </tr>
+          <tr>
+            <td>Diamond Axe</td>
+            <td>7</td>
             <td>2</td>
+            <td>1</td>
             <td>Stun</td>
           </tr>
           <tr>
             <td>Netherite Axe</td>
-            <td>6</td>
-            <td>Cleaving</td>
+            <td>8</td>
             <td>2</td>
+            <td>1</td>
             <td>Stun</td>
           </tr>
           <tr>
             <td>Bow</td>
-            <td>3</td>
-            <td>Ranged</td>
+            <td>4</td>
             <td>1</td>
-            <td>Range 3, requires arrows</td>
+            <td>3</td>
+            <td>Requires arrows</td>
           </tr>
           <tr>
             <td>Crossbow</td>
             <td>4</td>
-            <td>Ranged</td>
             <td>2</td>
-            <td>Range 4, pierce-through. Bolt hits second target</td>
+            <td>Rook (unlimited cardinal)</td>
+            <td>Pierce-through: bolt continues to hit second target for half damage</td>
           </tr>
           <tr>
             <td>Trident</td>
-            <td>4</td>
-            <td>Water</td>
-            <td>1</td>
-            <td>Range 3, returning</td>
+            <td>5</td>
+            <td>1 (melee) / 2 (thrown)</td>
+            <td>1 / 3</td>
+            <td>Returning</td>
           </tr>
           <tr>
             <td>Mace</td>
-            <td>5</td>
-            <td>Blunt</td>
+            <td>7</td>
             <td>2</td>
-            <td>3&times;3 AoE + knockback. Enchantable: Density, Breach, Wind Burst</td>
+            <td>1</td>
+            <td>3x3 AoE (half damage) + knockback. Enchants: Density (+AoE dmg), Breach (+2 armor pen/lvl), Wind Burst (+1 knockback/lvl)</td>
           </tr>
         </tbody>
       </table>
@@ -252,10 +268,16 @@
          ================================================================ -->
     <h2 id="damage-calculation">Damage Calculation</h2>
     <p>
-      All damage in Craftics follows one unified formula. The result is always at least 1, so no attack is ever completely negated.
+      Craftics uses <strong>percentage-based defense</strong>, not flat reduction. Each defense point grants 5% damage reduction, capped at 60% (12 defense points). The result is always at least 1, so no attack is ever completely negated.
     </p>
     <div class="formula">
-      Damage = Weapon Attack + Stat Bonuses + Damage Type Bonus &minus; Target Defense (min 1)
+      actual damage = max(1, rawDamage * (1.0 - min(0.60, defense * 0.05)))
+    </div>
+    <p>
+      Where <code>rawDamage</code> = weapon attack + stat bonuses + damage type bonus + enchantment bonuses.
+    </p>
+    <div class="callout">
+      <p><strong>Example:</strong> A weapon with 6 raw damage hitting a target with 4 defense: 4 * 0.05 = 0.20 (20% reduction). Actual damage = max(1, 6 * 0.80) = 4.8, rounded to <strong>4 or 5</strong> depending on implementation.</p>
     </div>
 
     <!-- ================================================================
@@ -263,91 +285,83 @@
          ================================================================ -->
     <h2 id="damage-types">Damage Types</h2>
     <p>
-      There are <strong>8 damage types</strong>: <strong>Sword</strong>, <strong>Cleaving</strong>, <strong>Blunt</strong>, <strong>Water</strong>, <strong>Magic</strong>, <strong>Pet</strong>, <strong>Ranged</strong>, and <strong>Physical</strong>.
+      There are <strong>8 damage types</strong> defined in <code>DamageType.java</code>: <strong>Sword</strong>, <strong>Cleaving</strong>, <strong>Blunt</strong>, <strong>Water</strong>, <strong>Magic</strong>, <strong>Pet</strong>, <strong>Ranged</strong>, and <strong>Physical</strong>.
       Each armor set grants a class specialization that boosts a specific damage type.
     </p>
 
-    <h3>Armor Set Specializations</h3>
+    <!-- ================================================================
+         5. ARMOR SET BONUSES
+         ================================================================ -->
+    <h2 id="armor-sets">Armor Set Bonuses</h2>
+    <p>
+      Each full armor set assigns a <strong>class</strong> with unique stat bonuses and a damage type affinity. Data sourced from <code>PlayerCombatStats.java</code>.
+    </p>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Armor Set</th>
             <th>Class</th>
-            <th>Damage Type Bonus</th>
+            <th>Bonuses</th>
+            <th>Damage Affinity</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>Leather</td>
-            <td>Scout</td>
-            <td>None</td>
+            <td><span class="badge badge-amber">Brawler</span></td>
+            <td>+2 Speed, +1 AP, +2 Fist damage, 2x kill streak multiplier</td>
+            <td>Physical +2</td>
           </tr>
           <tr>
             <td>Chainmail</td>
-            <td>Rogue</td>
+            <td><span class="badge badge-amber">Rogue</span></td>
+            <td>+1 Speed, attacks cost -1 AP (min 1)</td>
             <td>Sword +2</td>
           </tr>
           <tr>
             <td>Iron</td>
-            <td>Guard</td>
+            <td><span class="badge badge-amber">Guard</span></td>
+            <td>+2 Defense, immune to knockback</td>
             <td>Cleaving +2</td>
           </tr>
           <tr>
             <td>Gold</td>
-            <td>Gambler</td>
+            <td><span class="badge badge-amber">Gambler</span></td>
+            <td>+3 Luck/crit chance, +1 emerald per kill</td>
             <td>Magic +2</td>
           </tr>
           <tr>
             <td>Diamond</td>
-            <td>Knight</td>
+            <td><span class="badge badge-amber">Knight</span></td>
+            <td>+3 Defense, +1 Attack</td>
             <td>Blunt +2</td>
           </tr>
           <tr>
             <td>Netherite</td>
-            <td>Juggernaut</td>
+            <td><span class="badge badge-amber">Juggernaut</span></td>
+            <td>+4 Defense, +2 Attack, immune to fire damage</td>
             <td>ALL types +1</td>
           </tr>
           <tr>
             <td>Turtle</td>
-            <td>Aquatic</td>
+            <td><span class="badge badge-amber">Aquatic</span></td>
+            <td>Water tiles walkable, +1 HP regen/turn, +1 Range on water</td>
             <td>Water +3</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <h3>Combat Effect Bonuses</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Effect</th>
-            <th>Bonus</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Water Breathing</td>
-            <td>Water +2</td>
-          </tr>
-          <tr>
-            <td>Fire Resistance</td>
-            <td>Magic +1</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
     <!-- ================================================================
-         5. ARMOR TRIMS
+         6. ARMOR TRIMS
          ================================================================ -->
     <h2 id="armor-trims">Armor Trims</h2>
     <p>
-      Every trim pattern gives a <strong>per-piece bonus</strong> that stacks up to 4 (one per armor slot), plus a powerful <strong>full-set bonus</strong> when all 4 pieces share the same trim pattern.
+      Every trim pattern gives a <strong>per-piece bonus</strong> that stacks up to 4 (one per armor slot), plus a powerful <strong>full-set bonus</strong> when all 4 pieces share the same trim pattern. Data sourced from <code>TrimEffects.java</code>.
     </p>
 
-    <h3>Per-Piece Bonuses</h3>
+    <h3>Per-Piece Trim Pattern Bonuses</h3>
     <div class="table-wrap">
       <table>
         <thead>
@@ -358,54 +372,98 @@
         </thead>
         <tbody>
           <tr><td>Sentry</td><td>Ranged Power +1</td></tr>
-          <tr><td>Wild</td><td>Generic Melee Power +1</td></tr>
-          <tr><td>Ward</td><td>Defense +1</td></tr>
-          <tr><td>Vex</td><td>Ignore 1 enemy DEF</td></tr>
-          <tr><td>Silence</td><td>Stealth +1</td></tr>
-          <tr><td>Flow</td><td>Speed +1</td></tr>
-          <tr><td>Bolt</td><td>Sword Power +1</td></tr>
-          <tr><td>Snout</td><td>Cleaving Power +1</td></tr>
+          <tr><td>Dune</td><td>Blunt Power +1</td></tr>
           <tr><td>Coast</td><td>Water Power +1</td></tr>
+          <tr><td>Wild</td><td>AP +1</td></tr>
+          <tr><td>Ward</td><td>Defense +1</td></tr>
+          <tr><td>Eye</td><td>Attack Range +1</td></tr>
+          <tr><td>Vex</td><td>Armor Penetration +1</td></tr>
+          <tr><td>Tide</td><td>HP Regen +1</td></tr>
+          <tr><td>Snout</td><td>Cleaving Power +1</td></tr>
           <tr><td>Rib</td><td>Magic Power +1</td></tr>
-          <tr><td>Dune</td><td>Generic Melee Power +1</td></tr>
-          <tr><td>Raiser</td><td>Pet/Ally Damage +1</td></tr>
-          <tr><td>Eye</td><td>Luck +1</td></tr>
-          <tr><td>Spire</td><td>Ranged Power +1</td></tr>
-          <tr><td>Tide</td><td>Water Power +1</td></tr>
+          <tr><td>Spire</td><td>Luck +1</td></tr>
           <tr><td>Wayfinder</td><td>Speed +1</td></tr>
           <tr><td>Shaper</td><td>Defense +1</td></tr>
-          <tr><td>Host</td><td>Vitality +1</td></tr>
-          <tr><td>Breeze</td><td>AP +1</td></tr>
+          <tr><td>Silence</td><td>Stealth Range +1</td></tr>
+          <tr><td>Raiser</td><td>Ally Damage +1</td></tr>
+          <tr><td>Host</td><td>Max HP +1</td></tr>
+          <tr><td>Flow</td><td>Speed +1</td></tr>
+          <tr><td>Bolt</td><td>Sword Power +1</td></tr>
         </tbody>
       </table>
     </div>
 
-    <h3>Full-Set Bonuses</h3>
+    <!-- ================================================================
+         7. TRIM MATERIALS
+         ================================================================ -->
+    <h2 id="trim-materials">Trim Materials</h2>
     <p>
-      Matching all 4 armor pieces with the same trim pattern unlocks a unique full-set bonus:
+      The <strong>material</strong> used for the trim also grants a per-piece bonus, independent of the trim pattern.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Material</th>
+            <th>Per-Piece Bonus</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Iron</td><td>+1 Defense</td></tr>
+          <tr><td>Copper</td><td>+1 Speed</td></tr>
+          <tr><td>Gold</td><td>+1 Luck</td></tr>
+          <tr><td>Lapis</td><td>+1 Magic Power</td></tr>
+          <tr><td>Emerald</td><td>+1 AP</td></tr>
+          <tr><td>Diamond</td><td>+1 Melee Power</td></tr>
+          <tr><td>Netherite</td><td>+1 Armor Penetration</td></tr>
+          <tr><td>Redstone</td><td>+1 Ranged Power</td></tr>
+          <tr><td>Amethyst</td><td>+1 HP Regen</td></tr>
+          <tr><td>Quartz</td><td>+2 Max HP</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ================================================================
+         8. FULL-SET BONUSES
+         ================================================================ -->
+    <h2 id="full-set-bonuses">Full-Set Bonuses</h2>
+    <p>
+      Matching all 4 armor pieces with the <strong>same trim pattern</strong> unlocks a unique full-set bonus:
     </p>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Trim</th>
+            <th>Name</th>
             <th>Full Set Bonus</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td>Sentry</td><td>Counter-attack ranged enemies</td></tr>
-          <tr><td>Wild</td><td>First attack each turn is free</td></tr>
-          <tr><td>Ward</td><td>50% less damage when stationary</td></tr>
-          <tr><td>Vex</td><td>20% dodge chance</td></tr>
-          <tr><td>Silence</td><td>Invisible for first 2 turns</td></tr>
-          <tr><td>Flow</td><td>Kills refund 1 AP</td></tr>
-          <tr><td>Bolt</td><td>Crits stun the target</td></tr>
+          <tr><td>Sentry</td><td><span class="badge badge-emerald">Overwatch</span></td><td>Counter-attack ranged enemies that hit you</td></tr>
+          <tr><td>Dune</td><td><span class="badge badge-emerald">Sandstorm</span></td><td>Enemies within 2 tiles lose 1 Speed</td></tr>
+          <tr><td>Coast</td><td><span class="badge badge-emerald">Tidal</span></td><td>Water tiles heal 1 HP/turn</td></tr>
+          <tr><td>Wild</td><td><span class="badge badge-emerald">Feral</span></td><td>Kill streak: 1.3x damage per streak level (resets if no kills)</td></tr>
+          <tr><td>Ward</td><td><span class="badge badge-emerald">Fortress</span></td><td>50% less damage when you didn't move this turn</td></tr>
+          <tr><td>Eye</td><td><span class="badge badge-emerald">All-Seeing</span></td><td>See all enemy stats and their next action</td></tr>
+          <tr><td>Vex</td><td><span class="badge badge-emerald">Ethereal</span></td><td>20% chance to dodge incoming attacks</td></tr>
+          <tr><td>Tide</td><td><span class="badge badge-emerald">Ocean's Blessing</span></td><td>Full heal when dropping below 25% HP (once per combat)</td></tr>
+          <tr><td>Snout</td><td><span class="badge badge-emerald">Brute Force</span></td><td>Melee attacks splash to adjacent enemies</td></tr>
+          <tr><td>Rib</td><td><span class="badge badge-emerald">Infernal</span></td><td>Fire attacks deal +3 bonus damage</td></tr>
+          <tr><td>Spire</td><td><span class="badge badge-emerald">Fortune's Peak</span></td><td>Double emerald rewards</td></tr>
+          <tr><td>Wayfinder</td><td><span class="badge badge-emerald">Pathfinder</span></td><td>Movement ignores obstacle tiles</td></tr>
+          <tr><td>Shaper</td><td><span class="badge badge-emerald">Terraformer</span></td><td>Place a free barrier block each turn</td></tr>
+          <tr><td>Silence</td><td><span class="badge badge-emerald">Phantom</span></td><td>Invisible for first 2 turns (enemies don't act)</td></tr>
+          <tr><td>Raiser</td><td><span class="badge badge-emerald">Rally</span></td><td>Tamed allies get +2 Speed and +1 Attack</td></tr>
+          <tr><td>Host</td><td><span class="badge badge-emerald">Symbiote</span></td><td>Heal 1 HP for each enemy killed</td></tr>
+          <tr><td>Flow</td><td><span class="badge badge-emerald">Current</span></td><td>Killing an enemy refunds 1 AP</td></tr>
+          <tr><td>Bolt</td><td><span class="badge badge-emerald">Thunderstrike</span></td><td>Critical hits stun the target for 1 turn</td></tr>
         </tbody>
       </table>
     </div>
 
     <!-- ================================================================
-         6. GOAT HORN EFFECTS
+         9. GOAT HORN EFFECTS
          ================================================================ -->
     <h2 id="goat-horns">Goat Horn Effects</h2>
     <p>
@@ -425,8 +483,8 @@
           <tr><td>Sing</td><td>1</td><td>+2 HP regen for 3 turns</td></tr>
           <tr><td>Seek</td><td>2</td><td>+3 Attack for 3 turns</td></tr>
           <tr><td>Feel</td><td>1</td><td>+2 Speed for 3 turns</td></tr>
-          <tr><td>Admire</td><td>2</td><td>All enemies &minus;2 Attack for 2 turns</td></tr>
-          <tr><td>Call</td><td>2</td><td>All enemies &minus;1 Speed for 2 turns</td></tr>
+          <tr><td>Admire</td><td>2</td><td>All enemies -2 Attack for 2 turns</td></tr>
+          <tr><td>Call</td><td>2</td><td>All enemies -1 Speed for 2 turns</td></tr>
           <tr><td>Yearn</td><td>3</td><td>All enemies Poisoned for 3 turns</td></tr>
           <tr><td>Dream</td><td>2</td><td>Fire Resistance for 4 turns</td></tr>
         </tbody>
@@ -434,16 +492,16 @@
     </div>
 
     <!-- ================================================================
-         7. USABLE ITEMS
+         10. USABLE ITEMS
          ================================================================ -->
     <h2 id="usable-items">Usable Items</h2>
     <p>
-      All usable items cost <strong>1 AP</strong> to activate. They fall into three categories: food, potions, and throwables.
+      All usable items cost AP to activate. Most cost 1 AP, but some special items cost 2 or 3. Data sourced from <code>ItemUseHandler.java</code>.
     </p>
 
     <h3>Food</h3>
     <p>
-      Eating food in combat restores HP instantly.
+      Eating food in combat restores HP instantly. All food costs <strong>1 AP</strong>.
     </p>
     <div class="table-wrap">
       <table>
@@ -454,100 +512,206 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td>Steak</td><td>5 HP</td></tr>
+          <tr><td>Enchanted Golden Apple</td><td>10 HP + full heal, Absorption, Resistance, Regeneration</td></tr>
+          <tr><td>Golden Apple</td><td>8 HP + Absorption</td></tr>
+          <tr><td>Rabbit Stew</td><td>6 HP</td></tr>
+          <tr><td>Cooked Beef</td><td>5 HP</td></tr>
           <tr><td>Cooked Porkchop</td><td>5 HP</td></tr>
-          <tr><td>Golden Apple</td><td>8 HP + absorption</td></tr>
+          <tr><td>Cooked Mutton</td><td>4 HP</td></tr>
+          <tr><td>Cooked Salmon</td><td>4 HP</td></tr>
+          <tr><td>Pumpkin Pie</td><td>4 HP</td></tr>
           <tr><td>Golden Carrot</td><td>4 HP</td></tr>
+          <tr><td>Suspicious Stew</td><td>4 HP</td></tr>
+          <tr><td>Mushroom Stew</td><td>4 HP</td></tr>
+          <tr><td>Beetroot Soup</td><td>4 HP</td></tr>
           <tr><td>Bread</td><td>3 HP</td></tr>
           <tr><td>Cooked Chicken</td><td>3 HP</td></tr>
-          <tr><td>Baked Potato</td><td>3 HP</td></tr>
-          <tr><td>Cooked Salmon</td><td>3 HP</td></tr>
           <tr><td>Cooked Cod</td><td>3 HP</td></tr>
+          <tr><td>Baked Potato</td><td>3 HP</td></tr>
+          <tr><td>Honey Bottle</td><td>3 HP</td></tr>
+          <tr><td>Cooked Rabbit</td><td>3 HP</td></tr>
+          <tr><td>Apple</td><td>2 HP</td></tr>
+          <tr><td>Carrot</td><td>2 HP</td></tr>
+          <tr><td>Chorus Fruit</td><td>2 HP</td></tr>
+          <tr><td>Rotten Flesh</td><td>2 HP</td></tr>
+          <tr><td>Cookie</td><td>1 HP</td></tr>
+          <tr><td>Melon Slice</td><td>1 HP</td></tr>
           <tr><td>Sweet Berries</td><td>1 HP</td></tr>
+          <tr><td>Glow Berries</td><td>1 HP</td></tr>
           <tr><td>Dried Kelp</td><td>1 HP</td></tr>
+          <tr><td>Beetroot</td><td>1 HP</td></tr>
+          <tr><td>Spider Eye</td><td>1 HP</td></tr>
         </tbody>
       </table>
     </div>
 
     <h3>Potions</h3>
     <p>
-      Potions apply turn-based effects rather than timed durations.
+      Potions apply turn-based effects rather than timed durations. All potions cost <strong>1 AP</strong>. Extended potions double the duration.
     </p>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Potion</th>
-            <th>Effect</th>
+            <th>Duration</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td>Strength</td><td>+3 ATK for 5 turns</td></tr>
-          <tr><td>Swiftness</td><td>+1 AP per turn for 5 turns</td></tr>
-          <tr><td>Fire Resistance</td><td>Immune to fire/lava tiles</td></tr>
-          <tr><td>Regeneration</td><td>+1 HP per turn for 5 turns</td></tr>
-          <tr><td>Healing (Instant)</td><td>+4 HP immediately</td></tr>
+          <tr><td>Speed</td><td>5 turns</td></tr>
+          <tr><td>Strength</td><td>5 turns</td></tr>
+          <tr><td>Resistance</td><td>5 turns</td></tr>
+          <tr><td>Regeneration</td><td>3 turns</td></tr>
+          <tr><td>Fire Resistance</td><td>4 turns</td></tr>
+          <tr><td>Invisibility</td><td>4 turns</td></tr>
+          <tr><td>Water Breathing</td><td>4 turns</td></tr>
+          <tr><td>Healing (Instant)</td><td>Immediate</td></tr>
         </tbody>
       </table>
     </div>
-    <ul>
-      <li><strong>Splash potions</strong> affect a 3&times;3 area with 4-tile range, thrown in an arc with particles.</li>
-      <li><strong>Lingering potions</strong> create poison clouds on the ground that tick each turn for any unit standing in them.</li>
-      <li><strong>Tipped arrows</strong> apply the potion effect on hit when fired from a bow or crossbow.</li>
-    </ul>
+    <div class="callout">
+      <p><strong>Splash potions:</strong> 4-tile range, 3x3 AoE, applies effect to all targets in the area. Cost 1 AP.</p>
+    </div>
 
-    <h3>Throwables</h3>
+    <h3>Throwables and Special Items</h3>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Item</th>
+            <th>AP Cost</th>
             <th>Effect</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td>Snowball</td><td>Knockback 1 tile</td></tr>
-          <tr><td>Egg</td><td>1 damage</td></tr>
-          <tr><td>Ender Pearl</td><td>Teleport to tile (costs 2 HP)</td></tr>
-          <tr><td>Fire Charge</td><td>Sets target tile on fire</td></tr>
-          <tr><td>Wind Charge</td><td>Knockback 2 tiles + 1 damage</td></tr>
-          <tr><td>TNT</td><td>3&times;3 AoE explosion (timed)</td></tr>
-          <tr><td>Cobweb</td><td>Stuns target for 1 turn</td></tr>
-          <tr><td>Bell</td><td>Stuns all enemies in range</td></tr>
+          <tr><td>Snowball</td><td>1</td><td>Knockback 1 tile</td></tr>
+          <tr><td>Egg</td><td>1</td><td>1 damage</td></tr>
+          <tr><td>Ender Pearl</td><td>1</td><td>Teleport + 2 self damage</td></tr>
+          <tr><td>Fire Charge</td><td>1</td><td>4 damage + fire</td></tr>
+          <tr><td>Wind Charge</td><td>1</td><td>Knockback + damage</td></tr>
+          <tr><td>TNT</td><td>1</td><td>3x3 AoE: 8/5/3 damage by distance, self damage 6/4/2</td></tr>
+          <tr><td>Splash Potion</td><td>1</td><td>4-tile range, 3x3 AoE, applies effect</td></tr>
+          <tr><td>Cobweb</td><td>1</td><td>Stun 1 turn</td></tr>
+          <tr><td>Bell</td><td>2</td><td>Stun all enemies within 2 tiles</td></tr>
+          <tr><td>Fishing Rod</td><td>3</td><td>Adjacent water tile, loot table (Common 50%, Useful 25%, Good 15%, Rare 10%)</td></tr>
+          <tr><td>Milk Bucket</td><td>1</td><td>Clear all effects (good and bad)</td></tr>
+          <tr><td>Flint and Steel</td><td>1</td><td>2 damage + fire</td></tr>
+          <tr><td>Totem of Undying</td><td>1</td><td>Full heal + Regeneration + Absorption</td></tr>
+          <tr><td>Lava Bucket</td><td>1</td><td>Creates lava tile (3 fire damage/turn)</td></tr>
+          <tr><td>Campfire</td><td>1</td><td>Heal 1 HP/turn when adjacent</td></tr>
+          <tr><td>Anvil</td><td>1</td><td>5 damage</td></tr>
+          <tr><td>Honey Block</td><td>1</td><td>Enemies lose all movement stepping on it</td></tr>
+          <tr><td>Powder Snow</td><td>1</td><td>1 damage + stun</td></tr>
+          <tr><td>Jukebox</td><td>2</td><td>Buff all allies +1 speed</td></tr>
+          <tr><td>Banner</td><td>1</td><td>+2 defense within 2 tiles</td></tr>
+          <tr><td>Water Bucket</td><td>1</td><td>Creates fishable water tile</td></tr>
+          <tr><td>Scaffolding</td><td>1</td><td>+1 range from that tile</td></tr>
+          <tr><td>Pickaxe</td><td>1</td><td>Breaks obstacle blocks</td></tr>
         </tbody>
       </table>
     </div>
 
     <!-- ================================================================
-         8. ENCHANTMENTS
+         11. COMBAT EFFECTS
+         ================================================================ -->
+    <h2 id="combat-effects">Combat Effects</h2>
+    <p>
+      All combat effects are turn-based. Data sourced from <code>CombatEffects.java</code>.
+    </p>
+
+    <h3>Buffs</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Effect</th>
+            <th>Bonus</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Speed</td><td>+2 movement</td></tr>
+          <tr><td>Strength</td><td>+3 attack</td></tr>
+          <tr><td>Resistance</td><td>+2 defense</td></tr>
+          <tr><td>Regeneration</td><td>+2 HP/turn</td></tr>
+          <tr><td>Fire Resistance</td><td>Immune to fire damage</td></tr>
+          <tr><td>Invisibility</td><td>Enemies skip you</td></tr>
+          <tr><td>Absorption</td><td>Extra HP</td></tr>
+          <tr><td>Luck</td><td>+crit chance</td></tr>
+          <tr><td>Slow Falling</td><td>No knockback</td></tr>
+          <tr><td>Haste</td><td>+1 AP</td></tr>
+          <tr><td>Water Breathing</td><td>+2 water damage</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Debuffs</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Effect</th>
+            <th>Penalty</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Poison</td><td>-1 HP/turn</td></tr>
+          <tr><td>Slowness</td><td>-1 movement</td></tr>
+          <tr><td>Weakness</td><td>-2 attack</td></tr>
+          <tr><td>Wither</td><td>-2 HP/turn</td></tr>
+          <tr><td>Burning</td><td>-1 HP/turn</td></tr>
+          <tr><td>Blindness</td><td>-2 range</td></tr>
+          <tr><td>Mining Fatigue</td><td>-1 AP</td></tr>
+          <tr><td>Levitation</td><td>-1 movement</td></tr>
+          <tr><td>Darkness</td><td>-1 range</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ================================================================
+         12. ENCHANTMENTS
          ================================================================ -->
     <h2 id="enchantments">Enchantments</h2>
     <p>
       Enchantments carry over into tactical combat with turn-based equivalents:
     </p>
+
+    <h3>Weapon Enchantments</h3>
     <ul>
-      <li><strong>Sharpness</strong> adds flat bonus damage to melee attacks.</li>
-      <li><strong>Protection</strong> adds flat bonus defense to the armor piece.</li>
-      <li><strong>Fire Aspect</strong> ignites the target, dealing damage over multiple turns.</li>
-      <li><strong>Infinity</strong> prevents the bow from consuming arrows.</li>
-      <li><strong>Thorns</strong> reflects a portion of melee damage back to the attacker.</li>
-      <li><strong>Looting</strong> improves loot drops from defeated enemies.</li>
+      <li><strong>Sharpness:</strong> +1 damage per level.</li>
+      <li><strong>Smite:</strong> +2 damage per level (vs undead).</li>
+      <li><strong>Bane of Arthropods:</strong> +2 damage per level (vs arthropods).</li>
+      <li><strong>Fire Aspect:</strong> Ignites the target.</li>
+      <li><strong>Knockback:</strong> Pushes target back.</li>
+      <li><strong>Looting:</strong> Better drops from defeated enemies.</li>
     </ul>
-    <p>
-      The <strong>Mace</strong> has three exclusive enchantments:
-    </p>
+
+    <h3>Bow Enchantments</h3>
     <ul>
-      <li><strong>Density</strong> increases AoE damage.</li>
-      <li><strong>Breach</strong> provides armor penetration, ignoring a portion of enemy DEF.</li>
-      <li><strong>Wind Burst</strong> increases knockback range on hit.</li>
+      <li><strong>Infinity:</strong> Bow doesn't consume arrows.</li>
+      <li><strong>Power:</strong> Bonus bow damage per level.</li>
+      <li><strong>Flame:</strong> Bow ignites target.</li>
+      <li><strong>Punch:</strong> Bow knockback.</li>
+    </ul>
+
+    <h3>Armor Enchantments</h3>
+    <ul>
+      <li><strong>Protection:</strong> Total levels / 2 = defense bonus.</li>
+      <li><strong>Thorns:</strong> Reflects damage back to melee attackers.</li>
+    </ul>
+
+    <h3>Mace-Exclusive Enchantments</h3>
+    <ul>
+      <li><strong>Density:</strong> +AoE damage per level.</li>
+      <li><strong>Breach:</strong> +2 defense ignore per level.</li>
+      <li><strong>Wind Burst:</strong> +1 knockback per level.</li>
     </ul>
 
     <!-- ================================================================
-         9. SHIELD & BLOCKING
+         13. SHIELD & BLOCKING
          ================================================================ -->
     <h2 id="shields">Shield &amp; Blocking</h2>
     <p>
-      Equipping a shield in your offhand passively grants <strong>+2 DEF</strong> at all times. You can also spend <strong>1 AP</strong> to <em>brace</em>, raising your shield for a total of <strong>+5 DEF</strong> that lasts until the start of your next turn. This makes blocking a strong defensive option when you have AP to spare but no favorable attack.
+      Equipping a shield in your offhand (checked via <code>EquipmentSlot.OFFHAND</code>) provides <strong>passive defense</strong> at all times. You can also spend AP to <em>brace</em>, raising your shield for additional defense until the start of your next turn. This makes blocking a strong defensive option when you have AP to spare but no favorable attack.
     </p>
 
   </main>

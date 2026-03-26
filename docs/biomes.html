@@ -52,28 +52,32 @@
   <main class="content">
 
     <h1>Biome Progression</h1>
-    <p class="page-desc">18 biomes across three dimensions. 5 levels each. 90 total. Branching paths randomized per world.</p>
+    <p class="page-desc">18 biomes across three dimensions. 5 levels each. 90 total. Overworld ordering randomized per world.</p>
 
     <!-- ──────────────────────────────────────────────────────────
          1. PROGRESSION MAP
          ────────────────────────────────────────────────────────── -->
     <h2 id="progression-map">Progression Map</h2>
 
-    <div class="progression-map"><span class="ow">OVERWORLD</span>
-<span class="ow">═════════</span>
-<span class="ow">Plains</span> ──→ <span class="ow">Dark Forest</span> ──┬──→ <span class="ow">Desert</span> ───┬──→ <span class="ow">River Delta</span> ──┬──→ <span class="ow">Stony Peaks</span> ───┬──→ <span class="ow">Underground Caverns</span> ──→ <span class="boss">THE DEEP DARK (Warden)</span>
-                         └──→ <span class="ow">Jungle</span> ───┘                  └──→ <span class="ow">Snowy Tundra</span> ──┘
+    <div class="progression-map"><span class="ow">OVERWORLD (two possible orderings, randomly chosen per world)</span>
+<span class="ow">═══════════════════════════════════════════════════════════</span>
 
-<span class="nt">NETHER</span>
-<span class="nt">══════</span>
-<span class="nt">Nether Wastes</span> ──→ <span class="nt">Soul Sand Valley</span> ──→ <span class="nt">Crimson Forest</span> ──→ <span class="nt">Warped Forest</span> ──→ <span class="boss">Basalt Deltas</span>
+<span class="ow">Branch 0 (Warm First):</span>
+<span class="ow">Plains</span> ──→ <span class="ow">Scorching Desert</span> ──→ <span class="ow">Dense Jungle</span> ──→ <span class="ow">Dark Forest</span> ──→ <span class="ow">River Delta</span> ──→ <span class="ow">Snowy Tundra</span> ──→ <span class="ow">Stony Peaks</span> ──→ <span class="ow">Underground Caverns</span> ──→ <span class="boss">THE DEEP DARK (Warden)</span>
 
-<span class="en">THE END</span>
-<span class="en">═══════</span>
+<span class="ow">Branch 1 (Cool First):</span>
+<span class="ow">Plains</span> ──→ <span class="ow">Snowy Tundra</span> ──→ <span class="ow">Stony Peaks</span> ──→ <span class="ow">River Delta</span> ──→ <span class="ow">Scorching Desert</span> ──→ <span class="ow">Dense Jungle</span> ──→ <span class="ow">Dark Forest</span> ──→ <span class="ow">Underground Caverns</span> ──→ <span class="boss">THE DEEP DARK (Warden)</span>
+
+<span class="nt">NETHER (linear)</span>
+<span class="nt">═══════════════</span>
+<span class="nt">Nether Wastes</span> ──→ <span class="nt">Soul Sand Valley</span> ──→ <span class="nt">Crimson Forest</span> ──→ <span class="nt">Warped Forest</span> ──→ <span class="nt">Basalt Deltas</span>
+
+<span class="en">THE END (linear)</span>
+<span class="en">════════════════</span>
 <span class="en">Outer End Islands</span> ──→ <span class="en">End City</span> ──→ <span class="en">Chorus Grove</span> ──→ <span class="boss">DRAGON'S NEST (Ender Dragon)</span></div>
 
     <div class="callout-muted callout">
-      <p>Branch order is randomized per world. At each fork, you choose one path. Both converge before the boss biome.</p>
+      <p>The Overworld has two possible orderings (Warm First or Cool First), randomly chosen per world seed. The Nether and End are always linear.</p>
     </div>
 
     <!-- ──────────────────────────────────────────────────────────
@@ -144,7 +148,7 @@
           </tr>
           <tr>
             <td><strong>Underground Caverns</strong></td>
-            <td>10&times;10 (+1 both)</td>
+            <td>11&times;11 (+1 both)</td>
             <td>Cave, ore veins</td>
             <td>-</td>
             <td>Dense obstacles, night mode</td>
@@ -188,7 +192,7 @@
           </tr>
           <tr>
             <td><strong>Soul Sand Valley</strong></td>
-            <td>10&times;10 (+1w)</td>
+            <td>9&times;9 (+1/+1)</td>
             <td>Soul sand, soul fire</td>
             <td>-</td>
             <td>Slow terrain</td>
@@ -290,14 +294,15 @@
          ────────────────────────────────────────────────────────── -->
     <h2 id="branching-paths">Branching Paths</h2>
 
-    <p>The Overworld dimension features a warm/cool branch system that adds replayability. Each world seed determines which branches are available.</p>
+    <p>The Overworld dimension features a warm/cool ordering system that adds replayability. Each world seed determines which ordering is used.</p>
 
     <ul>
-      <li><strong>Two choice points</strong> exist in the Overworld progression, both appearing after the linear opening biomes.</li>
-      <li><strong>First fork:</strong> Desert (warm) or Jungle (warm). The order is randomized per world seed, and you pick one path.</li>
-      <li><strong>Second fork:</strong> Stony Peaks or Snowy Tundra, also randomized per world seed.</li>
-      <li><strong>Both branches converge</strong> before the boss biome (Underground Caverns leads to The Deep Dark regardless of path).</li>
-      <li><strong>Each playthrough visits different biomes,</strong> meaning you see a different subset of arenas on each run. This encourages multiple playthroughs to experience all 9 overworld biomes.</li>
+      <li><strong>Two possible orderings</strong> exist for the Overworld, randomly chosen per world seed.</li>
+      <li><strong>Branch 0 (Warm First):</strong> Plains, Scorching Desert, Dense Jungle, Dark Forest, River Delta, Snowy Tundra, Stony Peaks, Underground Caverns, The Deep Dark.</li>
+      <li><strong>Branch 1 (Cool First):</strong> Plains, Snowy Tundra, Stony Peaks, River Delta, Scorching Desert, Dense Jungle, Dark Forest, Underground Caverns, The Deep Dark.</li>
+      <li><strong>All 9 biomes are visited</strong> in every playthrough. The ordering changes, not the set of biomes.</li>
+      <li><strong>Both orderings converge</strong> at Underground Caverns before the final boss biome, The Deep Dark.</li>
+      <li><strong>The Nether and End</strong> are always linear, with a fixed biome order regardless of world seed.</li>
     </ul>
 
   </main>

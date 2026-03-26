@@ -157,64 +157,55 @@ The player gets **3 AP** per turn (modified by stats and potions).
 
 | Action | AP Cost | Description |
 |--------|---------|-------------|
-| **Move** | 1 AP per tile | Click a highlighted tile to path there. Move speed is 3 tiles by default (upgradeable). |
-| **Melee Attack** | 2 AP | Click an adjacent enemy with a melee weapon equipped. |
-| **Ranged Attack** | 2 AP | Click an enemy in range with a bow, crossbow, or trident. Requires line of sight and arrows (for bows/crossbows). |
-| **Use Item** | 1 AP | Eat food (heals HP), drink a potion (applies combat effect), or throw a throwable item. |
-| **Block** | 1 AP | Shield in offhand. Halves the next incoming damage. |
-| **End Turn** | 0 AP | Press **R** to end your turn. Remaining AP is lost. No banking. |
+| **Move** | 0 (uses Speed) | Click a highlighted tile. Speed stat (base 3) determines range. |
+| **Melee Attack** | 1-2 AP | Light weapons (swords, bow, trident) cost 1 AP. Heavy weapons (axes, mace, crossbow) cost 2 AP. |
+| **Ranged Attack** | 1-2 AP | Bow (range 3), Crossbow (unlimited cardinal range), Trident (range 3). |
+| **Use Item** | 1-3 AP | Most items 1 AP. Bell/Jukebox 2 AP. Fishing Rod 3 AP. |
+| **Block** | 1 AP | Shield in offhand. Gain +5 DEF until your next turn. |
+| **End Turn** | 0 AP | Press **R** to end your turn. Remaining AP is lost. |
 
 ### Damage Calculation
 
 ```
-Damage = Weapon Attack Power + Stat Bonuses + Damage Type Bonus - Target Defense
-Minimum damage = 1
+rawDamage = Weapon Attack + Stat Bonuses + Damage Type Bonus + Enchantments
+actual damage = max(1, rawDamage * (1.0 - min(0.60, targetDefense * 0.05)))
 ```
+
+Defense is **percentage-based**: each point = 5% reduction, capped at 60%.
 
 **Weapon Attack Power** (from equipped main hand):
 
-| Weapon | Attack | Damage Type |
-|--------|--------|-------------|
-| Fist | 1 | Physical |
-| Wooden Sword | 2 | Sword |
-| Stone Sword | 3 | Sword |
-| Iron Sword | 4 | Sword |
-| Diamond Sword | 5 | Sword |
-| Netherite Sword | 6 | Sword |
-| Wooden/Stone/Iron/Diamond/Gold/Netherite Axe | 2-6 | Cleaving |
-| Bow | 3 (range 3) | Ranged |
-| Crossbow | 4 (range 4) | Ranged |
-| Trident | 4 (range 3) | Water |
-| Mace | 5 | Blunt |
-| Stick | 1 | Blunt |
+| Weapon | Attack | Range | Damage Type |
+|--------|--------|-------|-------------|
+| Fist | 2 | 1 | Physical |
+| Wooden Sword | 3 | 1 | Sword |
+| Stone Sword | 4 | 1 | Sword |
+| Iron Sword | 5 | 1 | Sword |
+| Diamond Sword | 6 | 1 | Sword |
+| Netherite Sword | 7 | 1 | Sword |
+| Axes (wood to netherite) | 4-8 | 1 | Cleaving |
+| Bow | 4 | 3 | Ranged |
+| Crossbow | 4 | Cardinal (unlimited) | Ranged |
+| Trident | 5 | 1 / 3 (thrown) | Water |
+| Mace | 7 | 1 | Blunt |
 
-**Weapon durability:** Each attack costs **10 durability** instead of the usual 1. Weapons break during combat if they run out.
-
-**Defense** (from equipped armor):
-
-| Armor Set | Defense |
-|-----------|---------|
-| None | 0 |
-| Full Leather | 3 |
-| Full Iron | 7 |
-| Full Diamond | 10 |
-| Full Netherite | 12+ |
+**Weapon durability:** Each attack costs **10 durability**. Weapons break during combat.
 
 ### Damage Types
 
 There are **8 damage types**: Sword, Cleaving, Blunt, Water, Magic, Pet, Ranged, and Physical. Bonus damage from damage types stacks from three sources:
 
-**Armor Set Specializations:**
+**Armor Set Classes** (full 4-piece set bonus):
 
-| Armor Set | Class | Damage Type Bonus |
-|-----------|-------|-------------------|
-| Chainmail | Rogue | Sword +2 |
-| Iron | Guard | Cleaving +2 |
-| Gold | Gambler | Magic +2 |
-| Diamond | Knight | Blunt +2 |
-| Netherite | Juggernaut | ALL types +1 |
-| Turtle | Aquatic | Water +3 |
-| Leather | Scout | None |
+| Armor Set | Class | Bonuses | Damage Affinity |
+|-----------|-------|---------|-----------------|
+| Leather | Brawler | +2 Speed, +1 AP, +2 Fist damage, 2x kill streak | Physical +2 |
+| Chainmail | Rogue | +1 Speed, attacks cost -1 AP (min 1) | Sword +2 |
+| Iron | Guard | +2 Defense, immune to knockback | Cleaving +2 |
+| Gold | Gambler | +3 Luck/crit, +1 emerald per kill | Magic +2 |
+| Diamond | Knight | +3 Defense, +1 Attack | Blunt +2 |
+| Netherite | Juggernaut | +4 Defense, +2 Attack, fire immune | ALL +1 |
+| Turtle | Aquatic | Water walkable, +1 HP regen, +1 water range | Water +3 |
 
 **Armor Trim Bonuses** (per-piece, max +4 from 4 armor pieces):
 
@@ -226,21 +217,38 @@ There are **8 damage types**: Sword, Cleaving, Blunt, Water, Magic, Pet, Ranged,
 | Rib | Magic Power +1 |
 | Sentry | Ranged Power +1 |
 | Raiser | Pet/Ally Damage +1 |
-| Wild, Dune, etc. | Generic Melee Power +1 (stacks with Sword/Cleaving/Blunt) |
+| Wild | AP +1 |
+| Ward | Defense +1 |
+| Dune | Blunt Power +1 |
+| Eye | Attack Range +1 |
+| Vex | Armor Penetration +1 |
+| Tide | HP Regen +1 |
+| Spire | Luck +1 |
+| Wayfinder | Speed +1 |
+| Shaper | Defense +1 |
+| Silence | Stealth Range +1 |
+| Host | Max HP +1 |
+| Flow | Speed +1 |
 
 Wearing 4 pieces with the **same trim pattern** activates a **full-set bonus**:
 
-| Trim | Full Set Bonus |
-|------|---------------|
-| Sentry | Counter-attack ranged enemies |
-| Wild | First attack each turn is free |
-| Ward | 50% less damage when stationary |
-| Vex | 20% dodge chance |
-| Silence | Invisible for first 2 turns |
-| Flow | Kills refund 1 AP |
-| Bolt | Crits stun the target |
+| Trim | Name | Full Set Bonus |
+|------|------|---------------|
+| Sentry | Overwatch | Counter-attack ranged enemies |
+| Wild | Feral | 1.3x damage per kill streak level |
+| Ward | Fortress | 50% less damage when stationary |
+| Vex | Ethereal | 20% dodge chance |
+| Silence | Phantom | Invisible for first 2 turns |
+| Flow | Current | Kills refund 1 AP |
+| Bolt | Thunderstrike | Crits stun the target |
+| Dune | Sandstorm | Enemies within 2 tiles lose 1 Speed |
+| Coast | Tidal | Water tiles heal 1 HP/turn |
+| Snout | Brute Force | Melee attacks splash to adjacent |
+| Rib | Infernal | Fire attacks deal +3 damage |
+| Spire | Fortune's Peak | Double emerald rewards |
+| Host | Symbiote | Heal 1 HP per enemy killed |
 
-Templates drop from bosses. Every trim enables a different playstyle. See the [full trim reference](https://chrisatwell27.github.io/Craftics/combat.html#armor-trims) for all 19 patterns.
+Templates drop from bosses. See the [full trim reference](https://chrisatwell27.github.io/Craftics/combat.html#armor-trims) for all 18 patterns, trim material bonuses, and remaining full-set effects.
 
 **Combat Effect Bonuses:**
 
@@ -368,19 +376,20 @@ There is a 40% chance a trader appears between levels when continuing.
 
 ### Trader System
 
-Traders appear randomly between combat levels (40% chance). There are 7 trader types:
+Traders appear randomly between combat levels (13% chance, configurable). There are 8 trader types:
 
 | Trader | Specialty |
 |--------|-----------|
-| Weaponsmith | Weapons (scales wood→netherite by tier) |
+| Weaponsmith | Weapons (scales wood to netherite by tier) |
 | Armorer | Armor sets |
-| Fletcher | Bows, crossbows, arrows |
+| Provisioner | Food, golden apples, golden carrots |
 | Alchemist | Potions and brewing ingredients |
-| Chef | Cooked food and golden apples |
-| Toolsmith | Shields, utility items |
-| Curiosity Dealer | Rare and unique items |
+| Supplier | Raw materials (iron, gold, diamond, netherite) |
+| Decorator | Hub furnishing (lanterns, paintings, beds) |
+| Craftsman | Crafting stations (furnace, anvil, enchanting table) |
+| Curiosity Dealer | Rare items (trident, totem, elytra) |
 
-Trades cost emeralds. Each encounter offers 3–5 random trades from the trader's pool. Weapon/armor quality scales with biome progression tier (1–9).
+Trades cost emeralds. Each encounter offers 3-5 random trades. Quality scales with biome tier (1-9).
 
 ### Player Progression
 
