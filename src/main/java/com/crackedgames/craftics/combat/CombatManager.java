@@ -4158,6 +4158,9 @@ public class CombatManager {
     private static final BlockPos DIG_SITE_ORIGIN = new BlockPos(500, 100, 600); // offset from trader area
 
     private void offerDigSite(ServerPlayerEntity savedPlayer, com.crackedgames.craftics.level.BiomeTemplate biome) {
+        // Exit combat mode on client so the player gets first-person view for digging
+        ServerPlayNetworking.send(savedPlayer, new ExitCombatPayload(false));
+
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         digSitePending = true;
 
@@ -4258,6 +4261,9 @@ public class CombatManager {
     }
 
     private void offerTrader(ServerPlayerEntity savedPlayer, com.crackedgames.craftics.level.BiomeTemplate biome) {
+        // Exit combat mode on client so the player gets first-person view for trading
+        ServerPlayNetworking.send(savedPlayer, new ExitCombatPayload(false));
+
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         int biomeTier = com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes().indexOf(biome) + 1;
         activeTraderOffer = TraderSystem.generateOffer(biomeTier, new java.util.Random());
