@@ -4,7 +4,7 @@ build/
 out/
 classes/
 .claude/
-.docs/
+.docs/superpowers
 # eclipse
 *.launch
 
@@ -40,3 +40,4 @@ replay_*.log
 #af
 Banner.af
 Logo.af
+docs/superpowers/specs/2026-03-26-github-pages-design.md
