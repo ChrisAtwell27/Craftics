@@ -51,18 +51,18 @@ public class WeaponAbility {
         List<CombatEntity> extraTargets = new ArrayList<>();
         int totalExtra = 0;
 
-        // === SWORDS: Cleave ===
-        // Iron Sword: cleave hits 1 adjacent enemy for half damage
-        // Diamond Sword: cleave + 30% crit chance (double damage on main target)
-        // Netherite Sword: cleave + execute (triple damage if target below 30% HP)
+        // === SWORDS: Sweeping Edge ===
+        // Iron Sword: sweep hits 1 adjacent enemy for half damage
+        // Diamond Sword: sweep + 30% crit chance (double damage on main target)
+        // Netherite Sword: sweep + execute (triple damage if target below 30% HP)
         if (weapon == Items.IRON_SWORD || weapon == Items.DIAMOND_SWORD || weapon == Items.NETHERITE_SWORD) {
-            // Cleave: find one enemy adjacent to the target
-            CombatEntity cleaveTarget = findAdjacentEnemy(arena, target);
-            if (cleaveTarget != null) {
-                int cleaveDmg = cleaveTarget.takeDamage(baseDamage / 2);
-                extraTargets.add(cleaveTarget);
-                totalExtra += cleaveDmg;
-                messages.add("§e⚔ Cleave! " + cleaveTarget.getDisplayName() + " takes " + cleaveDmg + " splash damage!");
+            // Sweeping Edge: find one enemy adjacent to the target
+            CombatEntity sweepTarget = findAdjacentEnemy(arena, target);
+            if (sweepTarget != null) {
+                int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);
+                extraTargets.add(sweepTarget);
+                totalExtra += sweepDmg;
+                messages.add("§e⚔ Sweep! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " splash damage!");
             }
 
             if (weapon == Items.DIAMOND_SWORD && Math.random() < 0.3) {
@@ -77,7 +77,7 @@ public class WeaponAbility {
         }
 
         // === AXES: Stun ===
-        // Axes stun the target — they skip their next move
+        // Axes stun the target, they skip their next move
         if (weapon == Items.WOODEN_AXE || weapon == Items.STONE_AXE || weapon == Items.IRON_AXE
             || weapon == Items.DIAMOND_AXE || weapon == Items.GOLDEN_AXE || weapon == Items.NETHERITE_AXE) {
             target.setStunned(true);
