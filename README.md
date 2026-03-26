@@ -263,9 +263,9 @@ Each weapon type has a unique combat ability:
 
 | Weapon | Ability | Effect |
 |--------|---------|--------|
-| **Swords** | Cleave | Hits the target AND one adjacent tile in the same direction |
-| **Diamond Sword** | Cleave + Crit | 30% chance to deal double damage |
-| **Netherite Sword** | Cleave + Execute | Instant kill on targets below 30% HP |
+| **Swords** | Sweeping Edge | Hits the target AND one adjacent enemy for half damage |
+| **Diamond Sword** | Sweep + Crit | 30% chance to deal double damage |
+| **Netherite Sword** | Sweep + Execute | Triple damage on targets below 30% HP |
 | **Axes** | Stun | Target loses 2 AP on their next turn |
 | **Spears** | Pierce | Damage passes through the target to hit the tile behind |
 | **Mace** | Smash | 3×3 AoE damage + knockback |
@@ -760,7 +760,7 @@ The mod is in active development (v0.1.0). The following systems are implemented
 - [x] Action Point system
 - [x] Click-to-move with A* pathfinding
 - [x] Click-to-attack (melee and ranged)
-- [x] Weapon abilities (cleave, stun, pierce, smash, crit, execute)
+- [x] Weapon abilities (sweep, stun, pierce, smash, crit, execute)
 - [x] Equipment-based combat stats
 - [x] 20+ unique enemy AI strategies for 40+ mob types
 - [x] Turn-based status effects (12 effects, frozen effects)
