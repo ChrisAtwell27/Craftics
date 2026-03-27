@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics Wiki — The Rockbreaker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo">&#9876; Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html" class="active">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div class="page-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-label">Biome Bosses</div>
+    <nav class="sidebar-nav">
+      <a href="revenant.html">Plains</a>
+      <a href="hexweaver.html">Dark Forest</a>
+      <a href="frostbound-huntsman.html">Snowy Tundra</a>
+      <a href="rockbreaker.html" class="active">Stony Peaks</a>
+      <a href="tidecaller.html">River Delta</a>
+      <a href="broodmother.html">Dense Jungle</a>
+      <a href="sandstorm-pharaoh.html">Scorching Desert</a>
+      <a href="hollow-king.html">Underground Caverns</a>
+      <a href="molten-king.html">Nether Wastes</a>
+      <a href="wailing-revenant.html">Soul Sand Valley</a>
+      <a href="void-walker.html">Warped Forest</a>
+      <a href="ashen-warlord.html">Basalt Deltas</a>
+      <a href="crimson-ravager.html">Crimson Forest</a>
+      <a href="chorus-mind.html">Chorus Grove</a>
+      <a href="shulker-architect.html">End City</a>
+      <a href="void-herald.html">Outer End Islands</a>
+    </nav>
+    <div class="sidebar-label" style="margin-top:24px;">Special Bosses</div>
+    <nav class="sidebar-nav">
+      <a href="warden.html">The Warden</a>
+      <a href="ender-dragon.html">Ender Dragon</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <p class="breadcrumb"><a href="../enemies.html">Enemies</a> <span class="sep">&rsaquo;</span> <a href="../enemies.html#biome-bosses">Biome Bosses</a> <span class="sep">&rsaquo;</span> The Rockbreaker</p>
+
+    <div class="infobox">
+      <div class="infobox-title">
+        The Rockbreaker
+        <span class="infobox-subtitle">Stony Peaks Boss</span>
+      </div>
+      <div class="infobox-image">
+        <img src="../img/mobs/vindicator.png" alt="Vindicator">
+      </div>
+      <table>
+        <tr><th>Type</th><td>Vindicator</td></tr>
+        <tr><th>HP</th><td>30</td></tr>
+        <tr><th>Attack</th><td>6</td></tr>
+        <tr><th>Defense</th><td>3</td></tr>
+        <tr><th>Speed</th><td>2</td></tr>
+        <tr><th>Size</th><td>2 &times; 2</td></tr>
+        <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
+        <tr><th>Dimension</th><td><span class="badge badge-overworld">Overworld</span></td></tr>
+      </table>
+    </div>
+
+    <div class="wiki-toc">
+      <div class="wiki-toc-title">Contents</div>
+      <ol>
+        <li><a href="#abilities">Abilities</a></li>
+        <li><a href="#phase-2">Phase 2</a></li>
+        <li><a href="#strategy">Strategy</a></li>
+      </ol>
+    </div>
+
+    <h1>The Rockbreaker</h1>
+    <p class="page-desc">Stony Peaks biome boss &mdash; a brutish giant whose seismic strikes reshape the battlefield.</p>
+
+    <div class="wiki-content">
+      <p>The Rockbreaker is an enormous Vindicator empowered by the raw geological force of the Stony Peaks, able to split stone and hurl boulders with casual ease. It shrugs off punishment through sheer resilience and punishes aggression with seismic counterattacks.</p>
+
+      <h2 id="abilities">Abilities</h2>
+      <ul>
+        <li><strong>Seismic Slam:</strong> Strikes the ground in a + cross pattern extending 3 tiles in each cardinal direction, dealing 5 damage. Telegraphed 1 turn in advance.</li>
+        <li><strong>Boulder Toss:</strong> Hurls a boulder up to 4 tiles, dealing 4 damage and creating a permanent obstacle at the target tile.</li>
+        <li><strong>Fortify:</strong> Reactive &mdash; gains +5 DEF for 2 turns immediately after taking a hit.</li>
+        <li><strong>Avalanche:</strong> Sends a full-row attack for 3 damage every 4 turns. Telegraphed 1 turn in advance.</li>
+      </ul>
+
+      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Total Collapse&rdquo;</h2>
+      <div class="phase2-callout">
+        <p><strong>Triggers at &le; 50% HP.</strong> Gains a permanent passive +3 DEF. Seismic Slam extends to 4 tiles per direction and destroys obstacles in its path. Boulder Toss now throws 2 boulders per use. Avalanche hits 2 rows simultaneously.</p>
+      </div>
+
+      <h2 id="strategy">Strategy</h2>
+      <p>Stay off-axis from the boss to avoid Seismic Slam. Burst damage is most effective &mdash; chip strategies struggle against Fortify stacking.</p>
+    </div>
+
+    <div class="boss-nav">
+      <a href="frostbound-huntsman.html" class="boss-nav-link">
+        <span class="nav-dir">&larr; Previous</span>
+        Snowy Tundra &mdash; The Frostbound Huntsman
+      </a>
+      <a href="tidecaller.html" class="boss-nav-link next">
+        <span class="nav-dir">Next &rarr;</span>
+        River Delta &mdash; The Tidecaller
+      </a>
+    </div>
+  </main>
+</div>
+
+<footer>
+  <span>Craftics by CrackedGames</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+</body>
+</html>

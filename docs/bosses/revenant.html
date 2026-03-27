@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics Wiki — The Revenant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo">&#9876; Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html" class="active">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div class="page-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-label">Biome Bosses</div>
+    <nav class="sidebar-nav">
+      <a href="revenant.html" class="active">Plains</a>
+      <a href="hexweaver.html">Dark Forest</a>
+      <a href="frostbound-huntsman.html">Snowy Tundra</a>
+      <a href="rockbreaker.html">Stony Peaks</a>
+      <a href="tidecaller.html">River Delta</a>
+      <a href="broodmother.html">Dense Jungle</a>
+      <a href="sandstorm-pharaoh.html">Scorching Desert</a>
+      <a href="hollow-king.html">Underground Caverns</a>
+      <a href="molten-king.html">Nether Wastes</a>
+      <a href="wailing-revenant.html">Soul Sand Valley</a>
+      <a href="void-walker.html">Warped Forest</a>
+      <a href="ashen-warlord.html">Basalt Deltas</a>
+      <a href="crimson-ravager.html">Crimson Forest</a>
+      <a href="chorus-mind.html">Chorus Grove</a>
+      <a href="shulker-architect.html">End City</a>
+      <a href="void-herald.html">Outer End Islands</a>
+    </nav>
+    <div class="sidebar-label" style="margin-top:24px;">Special Bosses</div>
+    <nav class="sidebar-nav">
+      <a href="warden.html">The Warden</a>
+      <a href="ender-dragon.html">Ender Dragon</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <p class="breadcrumb"><a href="../enemies.html">Enemies</a> <span class="sep">&rsaquo;</span> <a href="../enemies.html#biome-bosses">Biome Bosses</a> <span class="sep">&rsaquo;</span> The Revenant</p>
+
+    <div class="infobox">
+      <div class="infobox-title">
+        The Revenant
+        <span class="infobox-subtitle">Plains Boss</span>
+      </div>
+      <div class="infobox-image">
+        <img src="../img/mobs/zombie.png" alt="Zombie">
+      </div>
+      <table>
+        <tr><th>Type</th><td>Zombie</td></tr>
+        <tr><th>HP</th><td>20</td></tr>
+        <tr><th>Attack</th><td>4</td></tr>
+        <tr><th>Defense</th><td>2</td></tr>
+        <tr><th>Speed</th><td>2</td></tr>
+        <tr><th>Size</th><td>2 &times; 2</td></tr>
+        <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
+        <tr><th>Dimension</th><td><span class="badge badge-overworld">Overworld</span></td></tr>
+      </table>
+    </div>
+
+    <div class="wiki-toc">
+      <div class="wiki-toc-title">Contents</div>
+      <ol>
+        <li><a href="#abilities">Abilities</a></li>
+        <li><a href="#phase-2">Phase 2</a></li>
+        <li><a href="#strategy">Strategy</a></li>
+      </ol>
+    </div>
+
+    <h1>The Revenant</h1>
+    <p class="page-desc">Plains biome boss &mdash; a relentless undead warlord that raises fallen foes to fight again.</p>
+
+    <div class="wiki-content">
+      <p>The Revenant is an ancient warrior risen from the plains battlefields, bound together by dark energy and relentless spite. It leads a mob of undead and channels supernatural strength into devastating charges.</p>
+
+      <h2 id="abilities">Abilities</h2>
+      <ul>
+        <li><strong>Raise the Dead:</strong> Summons 1&ndash;2 Zombies (6 HP / 2 ATK) every 3 turns. Maximum 3 Zombies alive at once.</li>
+        <li><strong>Death Charge:</strong> Charges in a straight line up to 3 tiles dealing ATK+2 damage. Telegraphed 1 turn in advance.</li>
+        <li><strong>Shield Bash:</strong> Knocks back an adjacent player 2 tiles for half ATK damage.</li>
+      </ul>
+
+      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Undying Rage&rdquo;</h2>
+      <div class="phase2-callout">
+        <p><strong>Triggers at &le; 50% HP.</strong> Gains Regeneration (1 HP / turn). Raise the Dead triggers every 2 turns instead of 3. Death Charge damage increases to ATK+4 and leaves a fire trail behind the Revenant.</p>
+      </div>
+
+      <h2 id="strategy">Strategy</h2>
+      <p>Destroy summoned Zombies to prevent horde buildup. Sidestep charge telegraphs and punish the recovery window.</p>
+    </div>
+
+    <div class="boss-nav">
+      <span></span>
+      <a href="hexweaver.html" class="boss-nav-link next">
+        <span class="nav-dir">Next &rarr;</span>
+        Dark Forest &mdash; The Hexweaver
+      </a>
+    </div>
+  </main>
+</div>
+
+<footer>
+  <span>Craftics by CrackedGames</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+</body>
+</html>

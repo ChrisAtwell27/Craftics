@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics Wiki &mdash; The Void Walker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo">&#9876; Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html" class="active">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div class="page-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-label">Biome Bosses</div>
+    <nav class="sidebar-nav">
+      <a href="revenant.html">Plains</a>
+      <a href="hexweaver.html">Dark Forest</a>
+      <a href="frostbound-huntsman.html">Snowy Tundra</a>
+      <a href="rockbreaker.html">Stony Peaks</a>
+      <a href="tidecaller.html">River Delta</a>
+      <a href="broodmother.html">Dense Jungle</a>
+      <a href="sandstorm-pharaoh.html">Scorching Desert</a>
+      <a href="hollow-king.html">Underground Caverns</a>
+      <a href="molten-king.html">Nether Wastes</a>
+      <a href="wailing-revenant.html">Soul Sand Valley</a>
+      <a href="void-walker.html" class="active">Warped Forest</a>
+      <a href="ashen-warlord.html">Basalt Deltas</a>
+      <a href="crimson-ravager.html">Crimson Forest</a>
+      <a href="chorus-mind.html">Chorus Grove</a>
+      <a href="shulker-architect.html">End City</a>
+      <a href="void-herald.html">Outer End Islands</a>
+    </nav>
+    <div class="sidebar-label" style="margin-top:24px;">Special Bosses</div>
+    <nav class="sidebar-nav">
+      <a href="warden.html">The Warden</a>
+      <a href="ender-dragon.html">Ender Dragon</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <p class="breadcrumb"><a href="../enemies.html">Enemies</a> <span class="sep">&rsaquo;</span> <a href="../enemies.html#biome-bosses">Biome Bosses</a> <span class="sep">&rsaquo;</span> The Void Walker</p>
+
+    <div class="infobox">
+      <div class="infobox-title">
+        The Void Walker
+        <span class="infobox-subtitle">Warped Forest Boss</span>
+      </div>
+      <div class="infobox-image">
+        <img src="../img/mobs/enderman.png" alt="Enderman">
+      </div>
+      <table>
+        <tr><th>Type</th><td>Enderman</td></tr>
+        <tr><th>HP</th><td>50</td></tr>
+        <tr><th>Attack</th><td>9</td></tr>
+        <tr><th>Defense</th><td>2</td></tr>
+        <tr><th>Speed</th><td>3 + free teleports</td></tr>
+        <tr><th>Size</th><td>2&times;2</td></tr>
+        <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
+        <tr><th>Dimension</th><td><span class="badge badge-nether">Nether</span></td></tr>
+      </table>
+    </div>
+
+    <div class="wiki-toc">
+      <div class="wiki-toc-title">Contents</div>
+      <ol>
+        <li><a href="#abilities">Abilities</a></li>
+        <li><a href="#phase-2">Phase 2</a></li>
+        <li><a href="#strategy">Strategy</a></li>
+      </ol>
+    </div>
+
+    <h1>The Void Walker</h1>
+    <p class="page-desc">Warped Forest biome boss &mdash; a reality-shredding predator that tears space apart to strike from anywhere.</p>
+
+    <div class="wiki-content">
+      <p>The Void Walker is an Enderman transformed by the Warped Forest&rsquo;s volatile dimensional energies, gaining mastery over spatial rifts and illusory copies. It never stays in one place, striking from behind and vanishing before a counterattack can land.</p>
+
+      <h2 id="abilities">Abilities</h2>
+      <ul>
+        <li><strong>Void Rift:</strong> Creates 2 portal pairs on empty tiles &mdash; stepping onto one teleports you to the other. Lasts 4 turns. Max 2 pairs active.</li>
+        <li><strong>Mirror Image:</strong> Summons 2 Enderman clones (8 HP / 3 ATK, take double damage).</li>
+        <li><strong>Phase Strike:</strong> Teleports directly behind the player and attacks. Cannot be dodged.</li>
+        <li><strong>Void Pull:</strong> Pulls the player 2 tiles toward the boss.</li>
+      </ul>
+
+      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Reality Shatter&rdquo;</h2>
+      <div class="phase2-callout">
+        <p><strong>Triggers at &le; 50% HP.</strong> Rifts become permanent. Spawns 3 clones. Phase Strike hits twice in succession. Randomly blinks to a new tile at the start of each turn. Void Pull extends to 3 tiles.</p>
+      </div>
+
+      <h2 id="strategy">Strategy</h2>
+      <p>Destroy Mirror Image clones immediately &mdash; they distract and deal real damage. Map rift locations carefully or you&rsquo;ll teleport directly into the boss.</p>
+    </div>
+
+    <div class="boss-nav">
+      <a href="wailing-revenant.html" class="boss-nav-link">
+        <span class="nav-dir">&larr; Previous</span>
+        Soul Sand Valley &mdash; The Wailing Revenant
+      </a>
+      <a href="ashen-warlord.html" class="boss-nav-link next">
+        <span class="nav-dir">Next &rarr;</span>
+        Basalt Deltas &mdash; The Ashen Warlord
+      </a>
+    </div>
+  </main>
+</div>
+
+<footer>
+  <span>Craftics by CrackedGames</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+</body>
+</html>
