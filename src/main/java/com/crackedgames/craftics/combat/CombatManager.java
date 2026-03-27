@@ -3917,6 +3917,8 @@ public class CombatManager {
         // Handle trial chamber choice (not in active combat — player ref was nulled by endCombat)
         if (trialChamberPending) {
             trialChamberPending = false;
+            lastFightWasTrial = false; // ensure clean state regardless of accept/decline
+            trialChamberLevelDef = null;
             ServerWorld tcWorld = (ServerWorld) choicePlayer.getEntityWorld();
             if (goHome) {
                 // Skip trial — continue to pending next level
