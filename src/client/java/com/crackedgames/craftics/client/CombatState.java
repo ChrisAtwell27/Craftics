@@ -354,6 +354,7 @@ public class CombatState {
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedMoveTiles = new java.util.HashSet<>();
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedAttackTiles = new java.util.HashSet<>();
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedDangerTiles = new java.util.HashSet<>();
+    private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedWarningTiles = new java.util.HashSet<>();
     private static final java.util.Map<com.crackedgames.craftics.core.GridPos, Integer> enemyGridMap = new java.util.HashMap<>();
     private static final java.util.Map<com.crackedgames.craftics.core.GridPos, String> enemyGridTypeMap = new java.util.HashMap<>();
 
@@ -368,6 +369,7 @@ public class CombatState {
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getMoveTiles() { return cachedMoveTiles; }
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getAttackTiles() { return cachedAttackTiles; }
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getDangerTiles() { return cachedDangerTiles; }
+    public static java.util.Set<com.crackedgames.craftics.core.GridPos> getWarningTiles() { return cachedWarningTiles; }
     public static java.util.Map<com.crackedgames.craftics.core.GridPos, Integer> getEnemyGridMap() { return enemyGridMap; }
     public static java.util.Map<com.crackedgames.craftics.core.GridPos, String> getEnemyGridTypeMap() { return enemyGridTypeMap; }
     public static com.crackedgames.craftics.core.GridPos getHoveredTile() { return hoveredTile; }
@@ -378,10 +380,11 @@ public class CombatState {
     public static java.util.Map<java.util.UUID, Long> getTeammateHoverTimestamps() { return teammateHoverTimestamps; }
 
     public static void updateTileSets(int[] moveTiles, int[] attackTiles, int[] dangerTiles,
-                                       int[] enemyMapData, String enemyTypes) {
+                                       int[] warningTiles, int[] enemyMapData, String enemyTypes) {
         cachedMoveTiles.clear();
         cachedAttackTiles.clear();
         cachedDangerTiles.clear();
+        cachedWarningTiles.clear();
         enemyGridMap.clear();
         enemyGridTypeMap.clear();
 
@@ -391,6 +394,8 @@ public class CombatState {
             cachedAttackTiles.add(new com.crackedgames.craftics.core.GridPos(attackTiles[i], attackTiles[i + 1]));
         for (int i = 0; i + 1 < dangerTiles.length; i += 2)
             cachedDangerTiles.add(new com.crackedgames.craftics.core.GridPos(dangerTiles[i], dangerTiles[i + 1]));
+        for (int i = 0; i + 1 < warningTiles.length; i += 2)
+            cachedWarningTiles.add(new com.crackedgames.craftics.core.GridPos(warningTiles[i], warningTiles[i + 1]));
 
         String[] types = enemyTypes.isEmpty() ? new String[0] : enemyTypes.split("\\|");
         for (int i = 0; i + 2 < enemyMapData.length; i += 3) {
@@ -411,6 +416,7 @@ public class CombatState {
         cachedMoveTiles.clear();
         cachedAttackTiles.clear();
         cachedDangerTiles.clear();
+        cachedWarningTiles.clear();
         enemyGridMap.clear();
         enemyGridTypeMap.clear();
         teammateHovers.clear();

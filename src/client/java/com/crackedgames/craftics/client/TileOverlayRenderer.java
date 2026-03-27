@@ -75,6 +75,15 @@ public class TileOverlayRenderer {
             drawTileQuad(tessellator, matrix, originX + tile.x(), renderY, originZ + tile.z(), 1.0f, 0.6f, 0.1f, 0.25f);
         }
 
+        // Draw boss attack warning tiles (pulsing bright red)
+        if (!CombatState.getWarningTiles().isEmpty()) {
+            float warningPulse = (float) (0.4 + 0.2 * Math.sin(frameCounter * 0.15));
+            for (GridPos tile : CombatState.getWarningTiles()) {
+                drawTileQuad(tessellator, matrix, originX + tile.x(), renderY + 0.01f, originZ + tile.z(),
+                    1.0f, 0.1f, 0.1f, warningPulse);
+            }
+        }
+
         // Draw teammate hovers (dim with fade)
         long now = System.currentTimeMillis();
         for (Map.Entry<UUID, GridPos> entry : CombatState.getTeammateHovers().entrySet()) {

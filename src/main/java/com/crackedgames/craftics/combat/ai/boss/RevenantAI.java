@@ -94,14 +94,43 @@ public class RevenantAI extends BossAI {
     }
 
     private ChargePattern findChargePattern(CombatEntity self, GridArena arena, GridPos playerPos) {
+        GridPos myPos = self.getGridPos();
         ChargePattern best = null;
-        for (GridPos occupiedTile : GridArena.getOccupiedTiles(self.getGridPos(), self.getSize())) {
+
+        // Check charge from each occupied tile (1 for 1x1, 4 for 2x2)
+        for (GridPos occupiedTile : GridArena.getOccupiedTiles(myPos, self.getSize())) {
             ChargePattern candidate = buildChargePattern(arena, occupiedTile, playerPos);
             if (candidate == null) continue;
             if (best == null || candidate.tiles().size() > best.tiles().size()) {
                 best = candidate;
             }
         }
+
+        // For 1x1 bosses: also try charging after a 1-tile sidestep to align
+        // This compensates for not having multiple occupied tiles to check from
+        if (best == null && self.getSize() == 1) {
+            GridPos[] sidesteps = {
+                new GridPos(myPos.x() + 1, myPos.z()),
+                new GridPos(myPos.x() - 1, myPos.z()),
+                new GridPos(myPos.x(), myPos.z() + 1),
+                new GridPos(myPos.x(), myPos.z() - 1)
+            };
+            for (GridPos step : sidesteps) {
+                if (!arena.isInBounds(step) || arena.isOccupied(step)) continue;
+                var tile = arena.getTile(step);
+                if (tile == null || !tile.isWalkable()) continue;
+                ChargePattern candidate = buildChargePattern(arena, step, playerPos);
+                if (candidate != null && (best == null || candidate.tiles().size() > best.tiles().size())) {
+                    best = candidate;
+                    // Include the sidestep move by prepending it to the charge
+                    List<GridPos> fullPath = new java.util.ArrayList<>();
+                    fullPath.add(step);
+                    fullPath.addAll(candidate.tiles());
+                    best = new ChargePattern(step, candidate.dx(), candidate.dz(), fullPath);
+                }
+            }
+        }
+
         return best;
     }
 
