@@ -3793,6 +3793,12 @@ public class CombatManager {
         if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
             biomeTemplate = gld.getBiomeTemplate();
         }
+        // Fallback: look up biome from active biome run (covers event levels like treasure vault)
+        if (biomeTemplate == null && data.isInBiomeRun()) {
+            for (var b : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {
+                if (b.biomeId.equals(data.activeBiomeId)) { biomeTemplate = b; break; }
+            }
+        }
         // Use path order for biome progression (not registry order)
         java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
             .getFullPath(Math.max(0, data.branchChoice));
@@ -4092,7 +4098,7 @@ public class CombatManager {
                         // 4% chance: Treasure Vault
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
-                        trialChamberLevelDef = RandomEvents.generateTreasureVault();
+                        trialChamberLevelDef = RandomEvents.generateTreasureVault(biomeOrdinal);
                         trialChamberPending = true;
                         sendMessageTo(savedPlayer, "\u00a76\u00a7l\u2726 TREASURE VAULT DISCOVERED! \u2726");
                         sendMessageTo(savedPlayer, "\u00a7eA hidden vault filled with riches!");

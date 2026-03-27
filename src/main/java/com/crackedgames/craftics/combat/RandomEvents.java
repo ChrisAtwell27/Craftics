@@ -156,9 +156,9 @@ public class RandomEvents {
     }
 
     // ── Treasure Vault ──
-    // Generates a level definition with no enemies — just loot
-    public static com.crackedgames.craftics.level.LevelDefinition generateTreasureVault() {
-        return TrialChamberEvent.generateTreasureVault();
+    // Generates a level definition with no enemies — just loot, scaled to biome tier
+    public static com.crackedgames.craftics.level.LevelDefinition generateTreasureVault(int biomeOrdinal) {
+        return TrialChamberEvent.generateTreasureVault(biomeOrdinal);
     }
 
     // ── Ominous Trial Chamber ──

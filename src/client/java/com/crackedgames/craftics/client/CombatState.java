@@ -136,7 +136,8 @@ public class CombatState {
     private static boolean hasFocus = false;
     private static int focusTimer = 0;
     private static final float FOCUS_ZOOM_DISTANCE = 10.0f; // closer zoom when focused
-    private static final float LERP_SPEED = 0.35f; // smooth interpolation speed
+    private static final float FOCUS_LERP_SPEED = 0.35f; // smooth interpolation for focus animations
+    private static final float PAN_LERP_SPEED = 0.85f;  // near-instant for pan/zoom to keep raycast aligned
 
     /** Focus camera on a world position (e.g. an entity taking action). */
     public static void focusOn(double worldX, double worldZ) {
@@ -174,9 +175,10 @@ public class CombatState {
         double targetZ = hasFocus ? focusTargetZ : arenaBaseCenterZ + cameraPanZ;
         float targetZoom = hasFocus ? focusZoomTarget : combatCameraDistance;
 
-        focusCurrentX += (targetX - focusCurrentX) * LERP_SPEED;
-        focusCurrentZ += (targetZ - focusCurrentZ) * LERP_SPEED;
-        focusZoomCurrent += (targetZoom - focusZoomCurrent) * LERP_SPEED;
+        float speed = hasFocus ? FOCUS_LERP_SPEED : PAN_LERP_SPEED;
+        focusCurrentX += (targetX - focusCurrentX) * speed;
+        focusCurrentZ += (targetZ - focusCurrentZ) * speed;
+        focusZoomCurrent += (targetZoom - focusZoomCurrent) * speed;
     }
 
     /** Get the camera focus X (used by CameraLockMixin instead of arenaCenterX). */

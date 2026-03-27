@@ -39,7 +39,9 @@ import java.util.Random;
  */
 public class ArenaBuilder {
 
-    static final int SET_FLAGS = Block.NOTIFY_LISTENERS | Block.FORCE_STATE;
+    // FORCE_STATE only — skip NOTIFY_LISTENERS to avoid sending individual block updates
+    // during arena construction. The client receives the full chunk data after building.
+    static final int SET_FLAGS = Block.FORCE_STATE;
 
     /** Camera yaw set by diamond block marker in the last loaded structure. -1 = use default. */
     private static float pendingCameraYaw = -1;
@@ -154,6 +156,19 @@ public class ArenaBuilder {
 
         // Paint the correct Minecraft biome on arena chunks so fog, grass color, and sky match the theme
         setBiomeForArena(world, finalOrigin, finalW, finalH, biomeId);
+
+        // Mark arena chunks as needing resend so client receives all blocks at once
+        for (int cx = minCX; cx <= maxCX; cx++) {
+            for (int cz = minCZ; cz <= maxCZ; cz++) {
+                var chunk = world.getChunk(cx, cz);
+                if (chunk != null) {
+                    for (var sectionPlayer : world.getPlayers()) {
+                        ((net.minecraft.server.network.ServerPlayerEntity) sectionPlayer)
+                            .networkHandler.chunkDataSender.add(chunk);
+                    }
+                }
+            }
+        }
 
         CrafticsMod.LOGGER.info("Arena built. origin={}, size={}x{}, playerStart={}", finalOrigin, finalW, finalH, finalPlayerStart);
         return new GridArena(finalW, finalH, finalTiles, finalOrigin, level, finalPlayerStart);
