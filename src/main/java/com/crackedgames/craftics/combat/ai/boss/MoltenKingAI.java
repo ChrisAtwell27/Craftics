@@ -23,6 +23,7 @@ import java.util.List;
  * death explosion if not split, absorb range 2.
  */
 public class MoltenKingAI extends BossAI {
+    @Override public int getGridSize() { return 2; }
     private static final String CD_ERUPTION = "magma_eruption";
     private static final String CD_ABSORB = "absorb";
     private boolean hasSplit = false;

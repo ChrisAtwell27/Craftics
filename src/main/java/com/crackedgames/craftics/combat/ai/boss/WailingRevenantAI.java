@@ -23,6 +23,7 @@ import java.util.List;
  * Phase 2 — "Requiem": 5 fireballs, wail + slowness, 2 chains, permanent fire, speed 2.
  */
 public class WailingRevenantAI extends BossAI {
+    @Override public int getGridSize() { return 2; }
     private static final String CD_BARRAGE = "soul_barrage";
     private static final String CD_WAIL = "wail_despair";
     private static final String CD_CHAIN = "soul_chain";

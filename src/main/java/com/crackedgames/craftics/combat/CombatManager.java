@@ -662,10 +662,18 @@ public class CombatManager {
                 int scaledAtk = Math.max(1, (int)((spawn.attack() + equipAtkBonus) * ngMult));
                 int finalDef = spawn.defense() + equipDefBonus;
 
+                // Determine entity grid size: boss AI defines its own, others use mob defaults
+                int sizeOverride = -1;
+                if (isBoss && bossBiomeId != null) {
+                    var bossAiInstance = AIRegistry.get("boss:" + bossBiomeId);
+                    if (bossAiInstance instanceof BossAI bai) {
+                        sizeOverride = bai.getGridSize();
+                    }
+                }
                 CombatEntity ce = new CombatEntity(
                     mob.getId(), spawn.entityTypeId(), resolvedPos,
                     scaledHp, scaledAtk, finalDef, spawn.range(),
-                    isBoss ? 2 : -1
+                    sizeOverride
                 );
                 // Apply baby speed bonus
                 if (equipSpeedBonus > 0) {
@@ -1593,9 +1601,10 @@ public class CombatManager {
         enemyMoveTickCounter++;
         GridPos next = enemyMovePath.get(enemyMovePathIndex);
         BlockPos endBlock = arena.gridToBlockPos(next);
-        double endX = endBlock.getX() + 0.5;
+        double moveOffset = (currentEnemy != null && currentEnemy.getSize() > 1) ? currentEnemy.getSize() / 2.0 : 0.5;
+        double endX = endBlock.getX() + moveOffset;
         double endY = endBlock.getY();
-        double endZ = endBlock.getZ() + 0.5;
+        double endZ = endBlock.getZ() + moveOffset;
 
         int emTicks = getMoveTicks();
         float progress = Math.min(1.0f, (float) enemyMoveTickCounter / emTicks);
@@ -2025,8 +2034,9 @@ public class CombatManager {
                 if (e != currentEnemy || enemyTurnState == EnemyTurnState.DONE
                         || enemyTurnState == EnemyTurnState.DECIDING) {
                     BlockPos gridBlock = arena.gridToBlockPos(e.getGridPos());
-                    double targetX = gridBlock.getX() + 0.5;
-                    double targetZ = gridBlock.getZ() + 0.5;
+                    double sizeOffset = e.getSize() > 1 ? e.getSize() / 2.0 : 0.5;
+                    double targetX = gridBlock.getX() + sizeOffset;
+                    double targetZ = gridBlock.getZ() + sizeOffset;
                     double driftX = Math.abs(mob.getX() - targetX);
                     double driftZ = Math.abs(mob.getZ() - targetZ);
                     if (driftX > 0.1 || driftZ > 0.1) {
@@ -3417,9 +3427,10 @@ public class CombatManager {
         enemyMoveTickCounter++;
         GridPos next = enemyMovePath.get(enemyMovePathIndex);
         BlockPos endBlock = arena.gridToBlockPos(next);
-        double endX = endBlock.getX() + 0.5;
+        double moveOffset = (currentEnemy != null && currentEnemy.getSize() > 1) ? currentEnemy.getSize() / 2.0 : 0.5;
+        double endX = endBlock.getX() + moveOffset;
         double endY = endBlock.getY();
-        double endZ = endBlock.getZ() + 0.5;
+        double endZ = endBlock.getZ() + moveOffset;
 
         int emTicks2 = getMoveTicks();
         float progress = Math.min(1.0f, (float) enemyMoveTickCounter / emTicks2);

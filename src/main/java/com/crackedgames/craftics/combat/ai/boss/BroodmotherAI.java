@@ -22,6 +22,7 @@ import java.util.List;
  * Phase 2 — "Nest Awakening": +2 Speed, 3 new egg sacs, respawning sacs.
  */
 public class BroodmotherAI extends BossAI {
+    @Override public int getGridSize() { return 2; }
     private static final String CD_BROOD = "spawn_brood";
     private static final String CD_WEB = "web_spray";
     private static final String CD_POUNCE = "pounce";
