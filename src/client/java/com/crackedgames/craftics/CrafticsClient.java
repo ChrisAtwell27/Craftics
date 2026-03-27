@@ -171,7 +171,7 @@ public class CrafticsClient implements ClientModInitializer {
             com.crackedgames.craftics.network.TileSetPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
                     CombatState.updateTileSets(payload.moveTiles(), payload.attackTiles(),
-                        payload.dangerTiles(), payload.enemyMap(), payload.enemyTypes());
+                        payload.dangerTiles(), payload.warningTiles(), payload.enemyMap(), payload.enemyTypes());
                 });
             });
 

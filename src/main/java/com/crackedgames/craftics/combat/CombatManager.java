@@ -4706,14 +4706,37 @@ public class CombatManager {
             enemyTypesBuilder.append(enemy.getEntityTypeId());
         }
 
+        // Build boss attack warning tiles from pending warnings
+        java.util.List<Integer> warningList = new java.util.ArrayList<>();
+        for (PendingBossWarning pw : pendingBossWarnings) {
+            if (pw.ability().warningTiles() != null) {
+                for (GridPos wt : pw.ability().warningTiles()) {
+                    warningList.add(wt.x());
+                    warningList.add(wt.z());
+                }
+            }
+        }
+        // Also include warnings from boss AIs that just set pendingWarning this turn
+        for (CombatEntity enemy : enemies) {
+            if (!enemy.isBoss() || !enemy.isAlive()) continue;
+            var ai = AIRegistry.get(enemy.getAiKey());
+            if (ai instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bai && bai.getPendingWarning() != null) {
+                for (GridPos wt : bai.getPendingWarning().getAffectedTiles()) {
+                    warningList.add(wt.x());
+                    warningList.add(wt.z());
+                }
+            }
+        }
+
         // Convert lists to int arrays
         int[] moveArr = moveList.stream().mapToInt(Integer::intValue).toArray();
         int[] attackArr = attackList.stream().mapToInt(Integer::intValue).toArray();
         int[] dangerArr = dangerList.stream().mapToInt(Integer::intValue).toArray();
+        int[] warningArr = warningList.stream().mapToInt(Integer::intValue).toArray();
         int[] enemyMapArr = enemyMapList.stream().mapToInt(Integer::intValue).toArray();
 
         ServerPlayNetworking.send(player, new TileSetPayload(
-            moveArr, attackArr, dangerArr, enemyMapArr, enemyTypesBuilder.toString()
+            moveArr, attackArr, dangerArr, warningArr, enemyMapArr, enemyTypesBuilder.toString()
         ));
 
         // Auto-end turn when AP is depleted (configurable)
@@ -4776,7 +4799,7 @@ public class CombatManager {
     private void clearHighlights() {
         if (player != null) {
             ServerPlayNetworking.send(player, new TileSetPayload(
-                new int[0], new int[0], new int[0], new int[0], ""
+                new int[0], new int[0], new int[0], new int[0], new int[0], ""
             ));
         }
     }

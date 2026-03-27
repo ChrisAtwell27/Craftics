@@ -13,6 +13,7 @@ public record TileSetPayload(
     int[] moveTiles,     // flat: [x1, z1, x2, z2, ...]
     int[] attackTiles,   // flat: [x1, z1, x2, z2, ...]
     int[] dangerTiles,   // flat: [x1, z1, x2, z2, ...]
+    int[] warningTiles,  // flat: [x1, z1, x2, z2, ...] — boss attack telegraphs
     int[] enemyMap,      // flat: [x, z, entityId, x, z, entityId, ...]
     String enemyTypes    // pipe-separated entity type IDs parallel to enemyMap triplets
 ) implements CustomPayload {
@@ -27,15 +28,17 @@ public record TileSetPayload(
         int[] move = readIntArray(buf);
         int[] attack = readIntArray(buf);
         int[] danger = readIntArray(buf);
+        int[] warning = readIntArray(buf);
         int[] enemy = readIntArray(buf);
         String types = buf.readString();
-        return new TileSetPayload(move, attack, danger, enemy, types);
+        return new TileSetPayload(move, attack, danger, warning, enemy, types);
     }
 
     private void encode(RegistryByteBuf buf) {
         writeIntArray(buf, moveTiles);
         writeIntArray(buf, attackTiles);
         writeIntArray(buf, dangerTiles);
+        writeIntArray(buf, warningTiles);
         writeIntArray(buf, enemyMap);
         buf.writeString(enemyTypes);
     }
