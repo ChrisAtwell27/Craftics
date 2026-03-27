@@ -77,6 +77,9 @@ public class CrafticsMod implements ModInitializer {
                     }
                     // Set to daytime on load
                     world.setTimeOfDay(6000);
+                    // Disable mob spawning in Craftics void worlds
+                    world.getGameRules().get(net.minecraft.world.GameRules.DO_MOB_SPAWNING).set(false, server);
+                    world.getGameRules().get(net.minecraft.world.GameRules.DO_INSOMNIA).set(false, server);
                 }
             }
         });

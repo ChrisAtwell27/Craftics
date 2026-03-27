@@ -244,8 +244,8 @@ public class TrialChamberEvent {
         };
     }
 
-    /** Treasure Vault — no enemies, just loot on the ground. Player gets 3-5 random items. */
-    public static LevelDefinition generateTreasureVault() {
+    /** Treasure Vault — no enemies, just loot on the ground. Player gets 2-4 random items scaled to biome tier. */
+    public static LevelDefinition generateTreasureVault(int biomeOrdinal) {
         Random rng = new Random();
         // No enemies — the "combat" will be won immediately
         return new TrialChamberLevelDef(5, 5, new ArrayList<>(), rng) {
@@ -256,13 +256,73 @@ public class TrialChamberEvent {
             @Override public List<ItemStack> rollCompletionLoot() {
                 List<ItemStack> loot = new ArrayList<>();
                 Random r = new Random();
-                int count = 3 + r.nextInt(3); // 3-5 items
+                int count = 2 + r.nextInt(3); // 2-4 items
                 for (int i = 0; i < count; i++) {
-                    loot.add(rollSingleReward(r));
+                    loot.add(rollTieredReward(r, biomeOrdinal));
                 }
                 return loot;
             }
         };
+    }
+
+    /** No-arg version for backwards compatibility (defaults to late-game loot). */
+    public static LevelDefinition generateTreasureVault() {
+        return generateTreasureVault(10);
+    }
+
+    /** Roll a reward scaled to biome progression. Early biomes get simpler loot. */
+    private static ItemStack rollTieredReward(Random rng, int biomeOrdinal) {
+        // Early biomes (0-2): only common + uncommon
+        // Mid biomes (3-6): common through rare
+        // Late biomes (7+): full loot table including epic/legendary
+        int roll = rng.nextInt(100);
+        if (biomeOrdinal <= 2) {
+            // Early: 50% common, 50% uncommon — no rare/epic/legendary
+            if (roll < 50) {
+                return switch (rng.nextInt(5)) {
+                    case 0 -> new ItemStack(Items.GOLDEN_APPLE, 1);
+                    case 1 -> new ItemStack(Items.ARROW, 16);
+                    case 2 -> new ItemStack(Items.COOKED_BEEF, 8);
+                    case 3 -> new ItemStack(Items.IRON_INGOT, 4);
+                    default -> new ItemStack(Items.SHIELD, 1);
+                };
+            } else {
+                return switch (rng.nextInt(4)) {
+                    case 0 -> new ItemStack(Items.IRON_SWORD, 1);
+                    case 1 -> new ItemStack(Items.IRON_AXE, 1);
+                    case 2 -> new ItemStack(Items.EMERALD, 3);
+                    default -> new ItemStack(Items.CROSSBOW, 1);
+                };
+            }
+        } else if (biomeOrdinal <= 6) {
+            // Mid: 30% common, 40% uncommon, 30% rare — no epic/legendary
+            if (roll < 30) {
+                return switch (rng.nextInt(4)) {
+                    case 0 -> new ItemStack(Items.GOLDEN_APPLE, 1);
+                    case 1 -> new ItemStack(Items.ENDER_PEARL, 2);
+                    case 2 -> new ItemStack(Items.ARROW, 16);
+                    default -> new ItemStack(Items.DIAMOND, 1);
+                };
+            } else if (roll < 70) {
+                return switch (rng.nextInt(5)) {
+                    case 0 -> new ItemStack(Items.DIAMOND, 2);
+                    case 1 -> new ItemStack(Items.EMERALD, 5);
+                    case 2 -> new ItemStack(Items.IRON_AXE, 1);
+                    case 3 -> new ItemStack(Items.CROSSBOW, 1);
+                    default -> new ItemStack(Items.SHIELD, 1);
+                };
+            } else {
+                return switch (rng.nextInt(4)) {
+                    case 0 -> new ItemStack(Items.DIAMOND_SWORD, 1);
+                    case 1 -> new ItemStack(Items.DIAMOND_CHESTPLATE, 1);
+                    case 2 -> new ItemStack(Items.TOTEM_OF_UNDYING, 1);
+                    default -> new ItemStack(Items.DIAMOND_AXE, 1);
+                };
+            }
+        } else {
+            // Late game: full loot table
+            return rollSingleReward(rng);
+        }
     }
 
     /** Ominous trial loot — better than regular trial. */
