@@ -43,6 +43,7 @@ public class CombatState {
 
     public static void enterCombat(int originX, int originY, int originZ, int width, int height) {
         inCombat = true;
+        clearTileSets();
         arenaOriginX = originX;
         arenaOriginY = originY;
         arenaOriginZ = originZ;
@@ -344,5 +345,75 @@ public class CombatState {
     public static int getUnspentPoints() { return unspentPoints; }
     public static int getStatPoints(int ordinal) {
         return ordinal >= 0 && ordinal < statPoints.length ? statPoints[ordinal] : 0;
+    }
+
+    // === Client-side tile set cache (from TileSetPayload) ===
+
+    private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedMoveTiles = new java.util.HashSet<>();
+    private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedAttackTiles = new java.util.HashSet<>();
+    private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedDangerTiles = new java.util.HashSet<>();
+    private static final java.util.Map<com.crackedgames.craftics.core.GridPos, Integer> enemyGridMap = new java.util.HashMap<>();
+    private static final java.util.Map<com.crackedgames.craftics.core.GridPos, String> enemyGridTypeMap = new java.util.HashMap<>();
+
+    // Teammate hover positions
+    private static final java.util.Map<java.util.UUID, com.crackedgames.craftics.core.GridPos> teammateHovers = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<java.util.UUID, String> teammateNames = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<java.util.UUID, Long> teammateHoverTimestamps = new java.util.concurrent.ConcurrentHashMap<>();
+
+    // Client-local hover (used directly by renderer, no server round-trip)
+    private static com.crackedgames.craftics.core.GridPos hoveredTile = null;
+
+    public static java.util.Set<com.crackedgames.craftics.core.GridPos> getMoveTiles() { return cachedMoveTiles; }
+    public static java.util.Set<com.crackedgames.craftics.core.GridPos> getAttackTiles() { return cachedAttackTiles; }
+    public static java.util.Set<com.crackedgames.craftics.core.GridPos> getDangerTiles() { return cachedDangerTiles; }
+    public static java.util.Map<com.crackedgames.craftics.core.GridPos, Integer> getEnemyGridMap() { return enemyGridMap; }
+    public static java.util.Map<com.crackedgames.craftics.core.GridPos, String> getEnemyGridTypeMap() { return enemyGridTypeMap; }
+    public static com.crackedgames.craftics.core.GridPos getHoveredTile() { return hoveredTile; }
+    public static void setHoveredTile(com.crackedgames.craftics.core.GridPos tile) { hoveredTile = tile; }
+
+    public static java.util.Map<java.util.UUID, com.crackedgames.craftics.core.GridPos> getTeammateHovers() { return teammateHovers; }
+    public static java.util.Map<java.util.UUID, String> getTeammateNames() { return teammateNames; }
+    public static java.util.Map<java.util.UUID, Long> getTeammateHoverTimestamps() { return teammateHoverTimestamps; }
+
+    public static void updateTileSets(int[] moveTiles, int[] attackTiles, int[] dangerTiles,
+                                       int[] enemyMapData, String enemyTypes) {
+        cachedMoveTiles.clear();
+        cachedAttackTiles.clear();
+        cachedDangerTiles.clear();
+        enemyGridMap.clear();
+        enemyGridTypeMap.clear();
+
+        for (int i = 0; i + 1 < moveTiles.length; i += 2)
+            cachedMoveTiles.add(new com.crackedgames.craftics.core.GridPos(moveTiles[i], moveTiles[i + 1]));
+        for (int i = 0; i + 1 < attackTiles.length; i += 2)
+            cachedAttackTiles.add(new com.crackedgames.craftics.core.GridPos(attackTiles[i], attackTiles[i + 1]));
+        for (int i = 0; i + 1 < dangerTiles.length; i += 2)
+            cachedDangerTiles.add(new com.crackedgames.craftics.core.GridPos(dangerTiles[i], dangerTiles[i + 1]));
+
+        String[] types = enemyTypes.isEmpty() ? new String[0] : enemyTypes.split("\\|");
+        for (int i = 0; i + 2 < enemyMapData.length; i += 3) {
+            var pos = new com.crackedgames.craftics.core.GridPos(enemyMapData[i], enemyMapData[i + 1]);
+            enemyGridMap.put(pos, enemyMapData[i + 2]);
+            int typeIdx = i / 3;
+            if (typeIdx < types.length) enemyGridTypeMap.put(pos, types[typeIdx]);
+        }
+    }
+
+    public static void updateTeammateHover(java.util.UUID uuid, String name, int gridX, int gridZ) {
+        teammateHovers.put(uuid, new com.crackedgames.craftics.core.GridPos(gridX, gridZ));
+        teammateNames.put(uuid, name);
+        teammateHoverTimestamps.put(uuid, System.currentTimeMillis());
+    }
+
+    public static void clearTileSets() {
+        cachedMoveTiles.clear();
+        cachedAttackTiles.clear();
+        cachedDangerTiles.clear();
+        enemyGridMap.clear();
+        enemyGridTypeMap.clear();
+        teammateHovers.clear();
+        teammateNames.clear();
+        teammateHoverTimestamps.clear();
+        hoveredTile = null;
     }
 }
