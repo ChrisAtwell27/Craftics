@@ -5,6 +5,7 @@ import com.crackedgames.craftics.client.CombatHudOverlay;
 import com.crackedgames.craftics.client.CombatInputHandler;
 import com.crackedgames.craftics.client.CombatTooltips;
 import com.crackedgames.craftics.client.CombatState;
+import com.crackedgames.craftics.client.TileOverlayRenderer;
 import com.crackedgames.craftics.client.CombatAnimations;
 import com.crackedgames.craftics.client.CombatVisualEffects;
 import com.crackedgames.craftics.client.LevelSelectScreen;
@@ -165,6 +166,24 @@ public class CrafticsClient implements ClientModInitializer {
             }
         );
 
+        // Tile set sync (move/attack/danger overlays)
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.TileSetPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    CombatState.updateTileSets(payload.moveTiles(), payload.attackTiles(),
+                        payload.dangerTiles(), payload.enemyMap(), payload.enemyTypes());
+                });
+            });
+
+        // Teammate hover relay
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.TeammateHoverPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    CombatState.updateTeammateHover(payload.playerUuid(), payload.playerName(),
+                        payload.gridX(), payload.gridZ());
+                });
+            });
+
         // --- Keybinds (F6 debug only) ---
 
         combatToggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
@@ -186,6 +205,7 @@ public class CrafticsClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(new CombatHudOverlay());
         HudRenderCallback.EVENT.register(TransitionOverlay::render);
         CombatTooltips.register();
+        TileOverlayRenderer.register();
 
         // --- Client tick ---
 

@@ -730,71 +730,19 @@ public class CombatManager {
         startData.markDirty();
     }
 
-    private GridPos hoveredTile = null;
-
     public void handleAction(CombatActionPayload action) {
         if (!active) return;
-
-        // Hover updates are allowed even outside PLAYER_TURN for visual feedback
-        if (action.actionType() == CombatActionPayload.ACTION_HOVER) {
-            handleHover(action.targetX(), action.targetZ());
-            return;
-        }
 
         if (phase != CombatPhase.PLAYER_TURN) return;
 
         // Block input during spell cast animations (particles still staging)
-        if (spellAnimCooldown > 0 && action.actionType() != CombatActionPayload.ACTION_HOVER) return;
+        if (spellAnimCooldown > 0) return;
 
         switch (action.actionType()) {
             case CombatActionPayload.ACTION_MOVE -> handleMove(new GridPos(action.targetX(), action.targetZ()));
             case CombatActionPayload.ACTION_ATTACK -> handleAttack(action.targetEntityId());
             case CombatActionPayload.ACTION_END_TURN -> handleEndTurn();
             case CombatActionPayload.ACTION_USE_ITEM -> handleUseItem(new GridPos(action.targetX(), action.targetZ()));
-        }
-    }
-
-    private void handleHover(int gridX, int gridZ) {
-        if (player == null || phase != CombatPhase.PLAYER_TURN) return;
-        ServerWorld world = (ServerWorld) player.getEntityWorld();
-
-        GridPos newHover = (gridX >= 0 && gridZ >= 0) ? new GridPos(gridX, gridZ) : null;
-
-        // Only update if hover changed
-        if (java.util.Objects.equals(hoveredTile, newHover)) return;
-        hoveredTile = newHover;
-
-        // Always show all valid tiles first
-        refreshHighlights();
-
-        // Then darken the hovered tile with a darker carpet color
-        if (hoveredTile != null && arena.isInBounds(hoveredTile)) {
-            BlockPos pos = new BlockPos(
-                arena.getOrigin().getX() + hoveredTile.x(),
-                arena.getOrigin().getY() + 1,
-                arena.getOrigin().getZ() + hoveredTile.z()
-            );
-            // Replace the light carpet with a darker version
-            var held = player.getMainHandStack().getItem();
-            boolean isMoveMode = (held == Items.FEATHER);
-            // Dark blue for move hover, dark red for attack hover
-            var darkCarpet = isMoveMode ? Blocks.CYAN_CARPET : Blocks.MAGENTA_CARPET;
-            var existingBlock = world.getBlockState(pos).getBlock();
-            boolean isCarpet = existingBlock instanceof net.minecraft.block.CarpetBlock;
-            if (isCarpet) {
-                // Only darken if there's already a highlight carpet there
-                world.setBlockState(pos, darkCarpet.getDefaultState(),
-                    net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
-                TileHighlightManager.trackHighlight(pos);
-            } else if (!world.getBlockState(pos).isAir()) {
-                // Non-carpet block (placed item like campfire/banner) — put highlight above it
-                BlockPos above = pos.up();
-                if (world.getBlockState(above).isAir()) {
-                    world.setBlockState(above, darkCarpet.getDefaultState(),
-                        net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
-                    TileHighlightManager.trackHighlight(above);
-                }
-            }
         }
     }
 
@@ -4652,24 +4600,102 @@ public class CombatManager {
 
     public void refreshHighlights() {
         if (!active || player == null || phase != CombatPhase.PLAYER_TURN) return;
-        ServerWorld world = (ServerWorld) player.getEntityWorld();
 
-        // Determine mode from player's held item
+        // --- Build move tiles ---
         var held = player.getMainHandStack().getItem();
         boolean isMoveMode = (held == Items.FEATHER);
-        boolean isBow = (held == Items.BOW);
+
+        java.util.List<Integer> moveList = new java.util.ArrayList<>();
+        java.util.List<Integer> attackList = new java.util.ArrayList<>();
 
         if (isMoveMode) {
-            TileHighlightManager.showMoveHighlights(world, arena, movePointsRemaining);
+            if (movePointsRemaining > 0) {
+                java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, arena.getPlayerGridPos(), movePointsRemaining);
+                for (GridPos gp : reachable) {
+                    moveList.add(gp.x());
+                    moveList.add(gp.z());
+                }
+            }
         } else {
+            // --- Build attack tiles ---
             int range = PlayerCombatStats.getWeaponRange(player);
-            TileHighlightManager.showAttackHighlights(world, arena, range);
+            GridPos playerPos = arena.getPlayerGridPos();
+            java.util.Set<CombatEntity> highlighted = new java.util.HashSet<>();
+            for (var entry : arena.getOccupants().entrySet()) {
+                CombatEntity enemy = entry.getValue();
+                if (!enemy.isAlive() || highlighted.contains(enemy)) continue;
+
+                boolean inRange;
+                if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
+                    inRange = false;
+                    for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                        if (PlayerCombatStats.isInCrossbowLine(arena, playerPos, tile)) { inRange = true; break; }
+                    }
+                } else {
+                    inRange = enemy.minDistanceTo(playerPos) <= range;
+                }
+
+                if (inRange) {
+                    highlighted.add(enemy);
+                    for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                        attackList.add(tile.x());
+                        attackList.add(tile.z());
+                    }
+                }
+            }
         }
 
-        // Show enemy danger zones if enabled
+        // --- Build danger tiles ---
+        java.util.List<Integer> dangerList = new java.util.ArrayList<>();
         if (CrafticsMod.CONFIG.showEnemyRangeHints()) {
-            TileHighlightManager.showEnemyDangerZones(world, arena, enemies);
+            GridPos playerPos = arena.getPlayerGridPos();
+            java.util.Set<GridPos> dangerTiles = new java.util.HashSet<>();
+            for (CombatEntity enemy : enemies) {
+                if (!enemy.isAlive() || enemy.isAlly()) continue;
+                GridPos ePos = enemy.getGridPos();
+                int speed = enemy.getMoveSpeed();
+                int eRange = enemy.getRange();
+                for (int dx = -(speed + eRange); dx <= speed + eRange; dx++) {
+                    for (int dz = -(speed + eRange); dz <= speed + eRange; dz++) {
+                        if (Math.abs(dx) + Math.abs(dz) > speed + eRange) continue;
+                        GridPos tile = new GridPos(ePos.x() + dx, ePos.z() + dz);
+                        if (!arena.isInBounds(tile)) continue;
+                        if (tile.equals(playerPos)) continue;
+                        dangerTiles.add(tile);
+                    }
+                }
+            }
+            for (GridPos gp : dangerTiles) {
+                dangerList.add(gp.x());
+                dangerList.add(gp.z());
+            }
         }
+
+        // --- Build enemy grid map ---
+        java.util.List<Integer> enemyMapList = new java.util.ArrayList<>();
+        StringBuilder enemyTypesBuilder = new StringBuilder();
+        java.util.Set<CombatEntity> seen = new java.util.HashSet<>();
+        for (var entry : arena.getOccupants().entrySet()) {
+            CombatEntity enemy = entry.getValue();
+            if (!enemy.isAlive() || seen.contains(enemy)) continue;
+            seen.add(enemy);
+            GridPos gp = enemy.getGridPos();
+            enemyMapList.add(gp.x());
+            enemyMapList.add(gp.z());
+            enemyMapList.add(enemy.getEntityId());
+            if (enemyTypesBuilder.length() > 0) enemyTypesBuilder.append("|");
+            enemyTypesBuilder.append(enemy.getEntityTypeId());
+        }
+
+        // Convert lists to int arrays
+        int[] moveArr = moveList.stream().mapToInt(Integer::intValue).toArray();
+        int[] attackArr = attackList.stream().mapToInt(Integer::intValue).toArray();
+        int[] dangerArr = dangerList.stream().mapToInt(Integer::intValue).toArray();
+        int[] enemyMapArr = enemyMapList.stream().mapToInt(Integer::intValue).toArray();
+
+        ServerPlayNetworking.send(player, new TileSetPayload(
+            moveArr, attackArr, dangerArr, enemyMapArr, enemyTypesBuilder.toString()
+        ));
 
         // Auto-end turn when AP is depleted (configurable)
         if (CrafticsMod.CONFIG.autoEndTurn() && apRemaining <= 0 && movePointsRemaining <= 0) {
@@ -4730,7 +4756,9 @@ public class CombatManager {
 
     private void clearHighlights() {
         if (player != null) {
-            TileHighlightManager.clearHighlights((ServerWorld) player.getEntityWorld());
+            ServerPlayNetworking.send(player, new TileSetPayload(
+                new int[0], new int[0], new int[0], new int[0], ""
+            ));
         }
     }
 

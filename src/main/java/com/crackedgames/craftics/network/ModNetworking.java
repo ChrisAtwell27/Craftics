@@ -31,6 +31,11 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(TraderOfferPayload.ID, TraderOfferPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(LevelUpPayload.ID, LevelUpPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(PlayerStatsSyncPayload.ID, PlayerStatsSyncPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(TileSetPayload.ID, TileSetPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(TeammateHoverPayload.ID, TeammateHoverPayload.CODEC);
+
+        // Register C2S hover update
+        PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);
 
         // Handle "start level" — starts a biome run by biome ID
         ServerPlayNetworking.registerGlobalReceiver(StartLevelPayload.ID, (payload, context) -> {
@@ -162,6 +167,25 @@ public class ModNetworking {
                     CrafticsSavedData data = CrafticsSavedData.get(overworld);
                     ServerPlayNetworking.send(player, new PlayerStatsSyncPayload(
                         ps.level, ps.unspentPoints, statData.toString(), data.emeralds
+                    ));
+                }
+            }
+        });
+
+        // Handle hover updates — relay to party members
+        ServerPlayNetworking.registerGlobalReceiver(HoverUpdatePayload.ID, (payload, context) -> {
+            ServerPlayerEntity hoverPlayer = context.player();
+            ServerWorld world = (ServerWorld) hoverPlayer.getEntityWorld();
+            CrafticsSavedData data = CrafticsSavedData.get(world);
+            com.crackedgames.craftics.world.Party party = data.getPlayerParty(hoverPlayer.getUuid());
+            if (party == null) return;
+            String senderName = hoverPlayer.getName().getString();
+            for (java.util.UUID memberUuid : party.getMemberUuids()) {
+                if (memberUuid.equals(hoverPlayer.getUuid())) continue;
+                ServerPlayerEntity member = world.getServer().getPlayerManager().getPlayer(memberUuid);
+                if (member != null) {
+                    ServerPlayNetworking.send(member, new TeammateHoverPayload(
+                        hoverPlayer.getUuid(), senderName, payload.gridX(), payload.gridZ()
                     ));
                 }
             }

@@ -4,22 +4,19 @@ import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.network.CombatActionPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.Entity;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
-import net.minecraft.util.math.Box;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.Set;
-
-import java.util.List;
 
 public class CombatInputHandler {
 
     private static boolean lastLeftClick = false;
     private static boolean lastRKey = false;
     private static int lastMode = -1; // track for action bar display
-    private static GridPos lastHoveredTile = null; // track for hover highlight updates
+    private static long lastHoverBroadcastTime = 0;
+    private static GridPos lastBroadcastedHover = null;
 
     // Middle mouse pan state
     private static boolean middleMouseDown = false;
@@ -140,21 +137,25 @@ public class CombatInputHandler {
             }
         }
 
-        // Send hover updates when the tile under cursor changes
-        GridPos currentHover = TileRaycast.getGridPosUnderCursor();
-        if (!java.util.Objects.equals(currentHover, lastHoveredTile)) {
-            lastHoveredTile = currentHover;
-            int hx = currentHover != null ? currentHover.x() : -1;
-            int hz = currentHover != null ? currentHover.z() : -1;
-            ClientPlayNetworking.send(new CombatActionPayload(
-                CombatActionPayload.ACTION_HOVER, hx, hz, 0
-            ));
+        // Update hover tile locally (no server round-trip)
+        GridPos hoverPos = TileRaycast.getGridPosUnderCursor();
+        CombatState.setHoveredTile(hoverPos);
+        if (hoverPos != null) {
+            Integer entityId = CombatState.getEnemyGridMap().get(hoverPos);
+            CombatState.setHoveredEnemyId(entityId != null ? entityId : -1);
+        } else {
+            CombatState.setHoveredEnemyId(-1);
+        }
 
-            // Track hovered enemy for inspect panel
-            if (currentHover != null) {
-                CombatState.setHoveredEnemyId(findEnemyAtGridPos(client, currentHover));
-            } else {
-                CombatState.setHoveredEnemyId(-1);
+        // Throttled hover broadcast for teammates
+        long now = System.currentTimeMillis();
+        if (hoverPos != null && (lastHoverBroadcastTime == 0 || now - lastHoverBroadcastTime > 200)) {
+            if (!java.util.Objects.equals(hoverPos, lastBroadcastedHover)) {
+                ClientPlayNetworking.send(
+                    new com.crackedgames.craftics.network.HoverUpdatePayload(hoverPos.x(), hoverPos.z())
+                );
+                lastBroadcastedHover = hoverPos;
+                lastHoverBroadcastTime = now;
             }
         }
 
@@ -174,7 +175,8 @@ public class CombatInputHandler {
                 ));
             }
             case MELEE_ATTACK, RANGED_ATTACK -> {
-                int entityId = findEnemyAtGridPos(client, tilePos);
+                Integer mappedId = CombatState.getEnemyGridMap().get(tilePos);
+                int entityId = mappedId != null ? mappedId : -1;
                 if (entityId != -1) {
                     ClientPlayNetworking.send(new CombatActionPayload(
                         CombatActionPayload.ACTION_ATTACK, 0, 0, entityId
@@ -192,46 +194,6 @@ public class CombatInputHandler {
                 ));
             }
         }
-    }
-
-    private static int findEnemyAtGridPos(MinecraftClient client, GridPos gridPos) {
-        if (client.world == null) return -1;
-
-        double worldX = CombatState.getArenaOriginX() + gridPos.x() + 0.5;
-        double worldZ = CombatState.getArenaOriginZ() + gridPos.z() + 0.5;
-        double worldY = CombatState.getArenaCenterY();
-
-        // Search a generous area around the tile for any mob entity
-        Box searchBox = new Box(worldX - 1.5, worldY - 2.0, worldZ - 1.5,
-                                worldX + 1.5, worldY + 4.0, worldZ + 1.5);
-
-        List<Entity> entities = client.world.getOtherEntities(client.player, searchBox);
-
-        // Filter to known alive enemies from sync data
-        java.util.Map<Integer, int[]> aliveEnemies = CombatState.getEnemyHpMap();
-
-        for (Entity entity : entities) {
-            if (entity instanceof net.minecraft.entity.mob.MobEntity
-                    && aliveEnemies.containsKey(entity.getId())) {
-                return entity.getId();
-            }
-        }
-
-        // Fallback: find the closest synced enemy entity within 2 tiles of the click
-        int bestId = -1;
-        double bestDist = Double.MAX_VALUE;
-        for (int entityId : aliveEnemies.keySet()) {
-            Entity entity = client.world.getEntityById(entityId);
-            if (entity == null || !entity.isAlive()) continue;
-            double dx = entity.getX() - worldX;
-            double dz = entity.getZ() - worldZ;
-            double dist = dx * dx + dz * dz;
-            if (dist < bestDist && dist < 4.0) { // within ~2 blocks
-                bestDist = dist;
-                bestId = entityId;
-            }
-        }
-        return bestId;
     }
 
     public static void sendEndTurn() {
