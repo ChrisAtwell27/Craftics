@@ -143,6 +143,12 @@ public class CombatManager {
     private ServerPlayerEntity player;
     private final CombatEffects combatEffects = new CombatEffects();
 
+    /** Shared event manager for this biome run (shared across party members). */
+    private EventManager eventManager;
+
+    public EventManager getEventManager() { return eventManager; }
+    public void setEventManager(EventManager em) { this.eventManager = em; }
+
     // Mounted pet state
     private boolean playerMounted = false;
     private MobEntity mountMob = null;

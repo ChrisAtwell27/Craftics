@@ -101,6 +101,17 @@ public class ModNetworking {
 
             CombatManager.get(player).startCombat(player, arena, levelDef);
             data.saveLegacyToPlayer(player.getUuid());
+
+            // Create EventManager for this party/solo run and assign to CombatManager
+            java.util.List<java.util.UUID> partyMembers = data.getPartyMemberUuids(player.getUuid());
+            com.crackedgames.craftics.combat.EventManager em = new com.crackedgames.craftics.combat.EventManager(partyMembers);
+            CombatManager.get(player).setEventManager(em);
+            for (java.util.UUID memberUuid : partyMembers) {
+                if (!memberUuid.equals(player.getUuid())) {
+                    CombatManager.get(memberUuid).setEventManager(em);
+                }
+            }
+
             CrafticsMod.LOGGER.info("Player {} started {} (biome {}, level {})",
                 player.getName().getString(), levelDef.getName(), biome.biomeId, levelIndex + 1);
         });
