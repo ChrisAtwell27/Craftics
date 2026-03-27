@@ -2674,12 +2674,12 @@ public class CombatManager {
             case EnemyAction.MoveAndAttackWithKnockback maakb -> startEnemyMove(maakb.path());
             case EnemyAction.Idle idle -> {
                 sendMessage("§7" + currentEnemy.getDisplayName() + " waits...");
-                // If boss has a pending warning, place physical warning blocks on the grid
+                // If boss has a pending warning, render its telegraph for the player's turn.
                 if (currentEnemy.isBoss()) {
                     EnemyAI bossAi = AIRegistry.get(currentEnemy.getAiKey());
                     if (bossAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI ba
                             && ba.getPendingWarning() != null) {
-                        placeWarningBlocks(ba.getPendingWarning().getAffectedTiles());
+                        renderBossWarning(ba.getPendingWarning());
                     }
                 }
                 enemyTurnState = EnemyTurnState.DONE;
@@ -3228,25 +3228,61 @@ public class CombatManager {
     }
 
     /**
-     * Place physical warning blocks (magma blocks) on the arena grid.
-     * Saves original blocks for later restoration.
+     * Render a boss warning. Some warnings only use particles/client overlays,
+     * while line-style telegraphs also place a temporary floor marker.
+     */
+    private void renderBossWarning(com.crackedgames.craftics.combat.ai.boss.BossWarning warning) {
+        if (warning == null) return;
+        for (GridPos tile : warning.getAffectedTiles()) {
+            highlightWarningTile(tile);
+        }
+
+        if (warning.getType() == com.crackedgames.craftics.combat.ai.boss.BossWarning.WarningType.GROUND_CRACK) {
+            spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.ANGRY_VILLAGER, 2);
+        }
+
+        if (warning.getType() == com.crackedgames.craftics.combat.ai.boss.BossWarning.WarningType.TILE_HIGHLIGHT) {
+            placeWarningBlocks(warning.getAffectedTiles());
+        }
+    }
+
+    private void spawnWarningParticles(java.util.List<GridPos> tiles,
+                                       net.minecraft.particle.ParticleEffect particle,
+                                       int countPerTile) {
+        if (player == null || arena == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        for (GridPos tile : tiles) {
+            if (!arena.isInBounds(tile)) continue;
+            BlockPos bp = arena.gridToBlockPos(tile);
+            world.spawnParticles(
+                particle,
+                bp.getX() + 0.5,
+                bp.getY() + 0.15,
+                bp.getZ() + 0.5,
+                countPerTile,
+                0.18,
+                0.02,
+                0.18,
+                0.01
+            );
+        }
+    }
+
+    /**
+     * Place physical warning blocks on the arena floor and save originals for restoration.
      */
     private void placeWarningBlocks(java.util.List<GridPos> tiles) {
         if (player == null || arena == null) return;
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         for (GridPos tile : tiles) {
             if (!arena.isInBounds(tile)) continue;
-            BlockPos bp = arena.gridToBlockPos(tile);
+            BlockPos bp = arena.gridToBlockPos(tile).down();
             net.minecraft.block.BlockState original = world.getBlockState(bp);
             // Don't overwrite if already a warning block
-            if (original.getBlock() != Blocks.MAGMA_BLOCK) {
+            if (original.getBlock() != Blocks.REDSTONE_BLOCK) {
                 warningOriginalBlocks.putIfAbsent(bp, original);
-                world.setBlockState(bp, Blocks.MAGMA_BLOCK.getDefaultState());
+                world.setBlockState(bp, Blocks.REDSTONE_BLOCK.getDefaultState());
             }
-        }
-        // Also send tile highlight packet to client for any additional rendering
-        for (GridPos tile : tiles) {
-            highlightWarningTile(tile);
         }
     }
 

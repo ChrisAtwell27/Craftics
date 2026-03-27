@@ -1,12 +1,12 @@
 package com.crackedgames.craftics.combat.ai.boss;
 
 import com.crackedgames.craftics.combat.CombatEntity;
-import com.crackedgames.craftics.combat.ai.AIUtils;
 import com.crackedgames.craftics.combat.ai.EnemyAction;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -41,7 +41,30 @@ public class RevenantAI extends BossAI {
 
         // Priority 1: Resolve pending warning (handled by base class)
 
-        // Priority 2: Raise the Dead on schedule
+        // Priority 2: Death Charge if the player is in a clear lane.
+        if (!isOnCooldown(CD_CHARGE)) {
+            ChargePattern charge = findChargePattern(self, arena, playerPos);
+            if (charge != null) {
+                int chargeDmg = self.getAttackPower() + (isPhaseTwo() ? 4 : 2);
+                setCooldown(CD_CHARGE, 2);
+
+                List<EnemyAction> actions = new ArrayList<>();
+                actions.add(new EnemyAction.LineAttack(
+                    charge.start(), charge.dx(), charge.dz(), charge.tiles().size(), chargeDmg));
+                if (isPhaseTwo()) {
+                    actions.add(new EnemyAction.CreateTerrain(charge.tiles(), TileType.FIRE, 1));
+                }
+                EnemyAction resolved = actions.size() == 1 ? actions.get(0)
+                    : new EnemyAction.CompositeAction(actions);
+
+                pendingWarning = new BossWarning(
+                    self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
+                    charge.tiles(), 1, resolved, 0xFFFF4444);
+                return new EnemyAction.Idle();
+            }
+        }
+
+        // Priority 3: Raise the Dead on schedule
         if (!isOnCooldown(CD_RAISE) && getAliveMinionCount() < SUMMON_CAP) {
             int count = isPhaseTwo() ? 2 : (getAliveMinionCount() == 0 ? 2 : 1);
             List<GridPos> positions = findSummonPositions(arena, count);
@@ -57,39 +80,8 @@ public class RevenantAI extends BossAI {
             }
         }
 
-        // Priority 3: Death Charge if aligned on cardinal axis and in range
-        if (!isOnCooldown(CD_CHARGE) && dist >= 2 && dist <= 4) {
-            int[] dir = getDirectionToward(myPos, playerPos);
-            // Check if player is on same axis
-            boolean aligned = (dir[0] != 0 && myPos.z() == playerPos.z())
-                           || (dir[1] != 0 && myPos.x() == playerPos.x());
-            if (aligned) {
-                List<GridPos> chargePath = getChargePath(arena, myPos, dir[0], dir[1], 3);
-                if (!chargePath.isEmpty()) {
-                    int chargeDmg = self.getAttackPower() + (isPhaseTwo() ? 4 : 2);
-                    setCooldown(CD_CHARGE, 2);
-
-                    // Build the warning action
-                    List<EnemyAction> actions = new java.util.ArrayList<>();
-                    actions.add(new EnemyAction.LineAttack(myPos, dir[0], dir[1], chargePath.size(), chargeDmg));
-                    if (isPhaseTwo()) {
-                        // Fire trail on charge path
-                        actions.add(new EnemyAction.CreateTerrain(chargePath, TileType.FIRE, 1));
-                    }
-                    EnemyAction resolved = actions.size() == 1 ? actions.get(0)
-                        : new EnemyAction.CompositeAction(actions);
-
-                    pendingWarning = new BossWarning(
-                        self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                        chargePath, 1, resolved, 0xFFFF4444);
-                    return new EnemyAction.Idle();
-                }
-            }
-        }
-
         // Priority 4: Shield Bash if player is adjacent
         if (dist <= 1) {
-            int bashDmg = Math.max(1, self.getAttackPower() / 2);
             // Determine knockback direction: away from boss
             int kdx = Integer.signum(playerPos.x() - myPos.x());
             int kdz = Integer.signum(playerPos.z() - myPos.z());
@@ -100,4 +92,36 @@ public class RevenantAI extends BossAI {
         // Priority 5: Melee attack or approach
         return meleeOrApproach(self, arena, playerPos, isPhaseTwo() ? 2 : 0);
     }
+
+    private ChargePattern findChargePattern(CombatEntity self, GridArena arena, GridPos playerPos) {
+        ChargePattern best = null;
+        for (GridPos occupiedTile : GridArena.getOccupiedTiles(self.getGridPos(), self.getSize())) {
+            ChargePattern candidate = buildChargePattern(arena, occupiedTile, playerPos);
+            if (candidate == null) continue;
+            if (best == null || candidate.tiles().size() > best.tiles().size()) {
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    private ChargePattern buildChargePattern(GridArena arena, GridPos startTile, GridPos playerPos) {
+        int dx = 0;
+        int dz = 0;
+        if (startTile.x() == playerPos.x() && startTile.z() != playerPos.z()) {
+            dz = Integer.signum(playerPos.z() - startTile.z());
+        } else if (startTile.z() == playerPos.z() && startTile.x() != playerPos.x()) {
+            dx = Integer.signum(playerPos.x() - startTile.x());
+        } else {
+            return null;
+        }
+
+        List<GridPos> path = getChargePath(arena, startTile, dx, dz, 3);
+        if (path.isEmpty() || !path.contains(playerPos)) {
+            return null;
+        }
+        return new ChargePattern(path.get(0), dx, dz, path);
+    }
+
+    private record ChargePattern(GridPos start, int dx, int dz, List<GridPos> tiles) {}
 }
