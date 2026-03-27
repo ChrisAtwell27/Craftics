@@ -22,6 +22,7 @@ import java.util.List;
  * no knockback, speed 4.
  */
 public class CrimsonRavagerAI extends BossAI {
+    @Override public int getGridSize() { return 2; }
     private static final String CD_CHARGE = "gore_charge";
     private static final String CD_FUNGAL = "fungal_growth";
     private static final String CD_RAMPAGE = "rampage";

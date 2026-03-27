@@ -121,9 +121,34 @@ public class Pathfinding {
     }
 
     /**
-     * Get all tiles reachable within maxSteps from the starting position.
+     * Check if ALL tiles of a sized entity's footprint at a given anchor position are valid.
+     * For size 1, this is equivalent to checking a single tile.
+     */
+    private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int entitySize,
+                                                CombatEntity self, boolean hasBoat) {
+        for (GridPos tile : GridArena.getOccupiedTiles(anchor, entitySize)) {
+            if (!arena.isInBounds(tile)) return false;
+            var gridTile = arena.getTile(tile);
+            if (gridTile == null || !gridTile.isWalkable(hasBoat)) return false;
+            if (isBlockedBy(arena, tile, self)) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Get all tiles reachable within maxSteps from the starting position (1x1 entities).
      */
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps) {
+        return getReachableTiles(arena, from, maxSteps, 1, null);
+    }
+
+    /**
+     * Get all tiles reachable within maxSteps, accounting for entity size.
+     * For a 2x2 entity, each candidate position is checked to ensure ALL footprint
+     * tiles are in-bounds, walkable, and unoccupied (except by self).
+     */
+    public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
+                                                   int entitySize, CombatEntity self) {
         Set<GridPos> reachable = new HashSet<>();
         Map<GridPos, Integer> dist = new HashMap<>();
         Queue<GridPos> queue = new LinkedList<>();
@@ -139,12 +164,10 @@ public class Pathfinding {
 
             for (GridPos dir : DIRECTIONS) {
                 GridPos neighbor = new GridPos(current.x() + dir.x(), current.z() + dir.z());
-                if (!arena.isInBounds(neighbor)) continue;
                 if (dist.containsKey(neighbor)) continue;
 
-                var tile = arena.getTile(neighbor);
-                if (tile == null || !tile.isWalkable()) continue;
-                if (arena.isOccupied(neighbor)) continue;
+                // For sized entities, check ALL footprint tiles at this anchor position
+                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, false)) continue;
 
                 dist.put(neighbor, currentDist + 1);
                 reachable.add(neighbor);

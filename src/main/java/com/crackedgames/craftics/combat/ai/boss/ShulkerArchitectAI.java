@@ -22,6 +22,7 @@ import java.util.List;
  * turret limit 5, auto-deploy every 3 turns.
  */
 public class ShulkerArchitectAI extends BossAI {
+    @Override public int getGridSize() { return 2; }
     private static final String CD_BULLET = "bullet_storm";
     private static final String CD_TURRET = "deploy_turret";
     private static final String CD_SHELL = "fortify_shell";

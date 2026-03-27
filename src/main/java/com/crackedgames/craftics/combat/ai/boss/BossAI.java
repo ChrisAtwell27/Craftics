@@ -28,6 +28,12 @@ public abstract class BossAI implements EnemyAI {
     // Summoned minion tracking — boss AI can check how many are alive
     protected final List<Integer> summonedMinionIds = new ArrayList<>();
 
+    /**
+     * Grid size for this boss. Override in subclasses for naturally large mobs.
+     * Default is 1 (humanoid-sized bosses). Return 2 for large mobs (spider, hoglin, ghast, etc.)
+     */
+    public int getGridSize() { return 1; }
+
     @Override
     public final EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         turnCounter++;
