@@ -801,3 +801,294 @@ footer .sep { color: var(--border); margin: 0 4px; }
   .philosophy-callout { padding: 0 16px; }
   .section-header { padding: 32px 16px 0; }
 }
+
+/* ================================================================
+   WIKI INFOBOX  (boss pages — floats right in content)
+   ================================================================ */
+.infobox {
+  float: right;
+  clear: right;
+  margin: 0 0 28px 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 230px;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.infobox-title {
+  background: var(--surface-alt);
+  padding: 10px 14px;
+  font-family: 'Cinzel', serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--amber);
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.4;
+}
+
+.infobox-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  display: block;
+  margin-top: 2px;
+}
+
+.infobox-image {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.infobox-image img {
+  max-width: 130px;
+  max-height: 130px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.infobox table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.infobox th {
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  width: 46%;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  text-align: left;
+}
+
+.infobox td {
+  padding: 7px 10px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.infobox tr:last-child th,
+.infobox tr:last-child td { border-bottom: none; }
+
+.infobox tr:nth-child(even) td { background: var(--surface-alt); }
+
+/* ================================================================
+   WIKI TOC  (floating table of contents)
+   ================================================================ */
+.wiki-toc {
+  float: left;
+  clear: left;
+  margin: 4px 24px 16px 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 150px;
+  max-width: 190px;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.wiki-toc-title {
+  background: var(--surface-alt);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.wiki-toc-title a {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.wiki-toc ol {
+  padding: 10px 12px 10px 30px;
+  margin: 0;
+  list-style: decimal;
+}
+
+.wiki-toc ol li {
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.wiki-toc ol li a {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.wiki-toc ol li a:hover { color: var(--amber); }
+
+/* ================================================================
+   BOSS PAGE — breadcrumb, phase-2 callout, prev/next nav
+   ================================================================ */
+.breadcrumb {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 20px !important;
+}
+
+.breadcrumb a { color: var(--muted); }
+.breadcrumb a:hover { color: var(--amber); }
+.breadcrumb .sep { color: var(--border); margin: 0 6px; }
+
+.phase2-callout {
+  border: 1px solid var(--nether);
+  border-left: 4px solid var(--nether);
+  border-radius: 8px;
+  padding: 14px 18px;
+  background: rgba(239, 68, 68, 0.05);
+  margin: 16px 0 24px;
+  clear: both;
+}
+
+.phase2-callout p { margin: 0; line-height: 1.7; }
+.phase2-callout strong { color: #f87171; }
+
+.boss-nav {
+  display: flex;
+  gap: 12px;
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  clear: both;
+}
+
+.boss-nav-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s;
+  flex: 1;
+}
+
+.boss-nav-link:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.boss-nav-link .nav-dir {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.boss-nav-link.next { text-align: right; }
+
+/* Clearfix for floating infobox / toc */
+.wiki-content::after {
+  content: '';
+  display: table;
+  clear: both;
+}
+
+/* Sidebar active highlight */
+.sidebar-nav a.active {
+  color: var(--amber);
+  border-left-color: var(--amber);
+  background: var(--amber-dim);
+}
+
+/* Boss grid on hub page */
+.boss-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 20px 0 32px;
+}
+
+.boss-card {
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  text-decoration: none;
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.boss-card:hover {
+  border-color: var(--amber);
+  transform: translateY(-2px);
+  color: var(--text);
+}
+
+.boss-card-img {
+  width: 100%;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  height: 100px;
+}
+
+.boss-card-img img {
+  max-height: 70px;
+  max-width: 80px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.boss-card-body {
+  padding: 12px 14px;
+}
+
+.boss-card-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--amber);
+  margin-bottom: 2px;
+}
+
+.boss-card-biome {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.boss-card-stats {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .infobox { float: none; width: 100%; margin: 0 0 24px; }
+  .wiki-toc { float: none; max-width: 100%; margin: 0 0 20px; }
+  .boss-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+}
