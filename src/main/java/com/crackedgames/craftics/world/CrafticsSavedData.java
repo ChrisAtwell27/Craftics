@@ -6,7 +6,10 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.PersistentState;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 
@@ -22,6 +25,10 @@ public class CrafticsSavedData extends PersistentState {
 
     // Per-player state
     private final Map<UUID, PlayerData> players = new HashMap<>();
+
+    // Party system
+    private final Map<UUID, Party> parties = new HashMap<>();
+    private final Map<UUID, UUID> playerToParty = new HashMap<>(); // playerUuid -> partyId
 
     // Tracks which player's data is loaded into the legacy fields
     private UUID currentLegacyPlayerId = null;
@@ -263,6 +270,21 @@ public class CrafticsSavedData extends PersistentState {
             data.players.put(new UUID(0, 0), legacy);
         }
 
+        // Load parties
+        if (nbt.contains("parties")) {
+            NbtCompound partiesNbt = nbt.getCompound("parties");
+            for (String key : partiesNbt.getKeys()) {
+                try {
+                    UUID partyId = UUID.fromString(key);
+                    Party party = Party.fromNbt(partiesNbt.getCompound(key));
+                    data.parties.put(partyId, party);
+                    for (UUID memberUuid : party.getMemberUuids()) {
+                        data.playerToParty.put(memberUuid, partyId);
+                    }
+                } catch (IllegalArgumentException ignored) {}
+            }
+        }
+
         return data;
     }
 
@@ -277,6 +299,13 @@ public class CrafticsSavedData extends PersistentState {
         }
         nbt.put("players", playersNbt);
 
+        // Serialize parties
+        NbtCompound partiesNbt = new NbtCompound();
+        for (var entry : parties.entrySet()) {
+            partiesNbt.put(entry.getKey().toString(), entry.getValue().toNbt());
+        }
+        nbt.put("parties", partiesNbt);
+
         return nbt;
     }
 
@@ -285,6 +314,101 @@ public class CrafticsSavedData extends PersistentState {
 
     public static CrafticsSavedData get(ServerWorld world) {
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE, "craftics_data");
+    }
+
+    // === Party System ===
+
+    public Party getParty(UUID partyId) {
+        return parties.get(partyId);
+    }
+
+    /** Get the party a player belongs to, or null if solo. */
+    public Party getPlayerParty(UUID playerUuid) {
+        UUID partyId = playerToParty.get(playerUuid);
+        return partyId != null ? parties.get(partyId) : null;
+    }
+
+    /** Get all parties (for invite lookup). */
+    public Map<UUID, Party> getAllParties() {
+        return Collections.unmodifiableMap(parties);
+    }
+
+    public Party createParty(UUID leaderUuid) {
+        leaveParty(leaderUuid);
+        UUID partyId = UUID.randomUUID();
+        Party party = new Party(partyId, leaderUuid);
+        parties.put(partyId, party);
+        playerToParty.put(leaderUuid, partyId);
+        markDirty();
+        return party;
+    }
+
+    public boolean joinParty(UUID playerUuid, UUID partyId) {
+        Party party = parties.get(partyId);
+        if (party == null || !party.hasInvite(playerUuid)) return false;
+        leaveParty(playerUuid);
+        party.addMember(playerUuid);
+        playerToParty.put(playerUuid, partyId);
+        markDirty();
+        return true;
+    }
+
+    public void leaveParty(UUID playerUuid) {
+        UUID partyId = playerToParty.remove(playerUuid);
+        if (partyId == null) return;
+        Party party = parties.get(partyId);
+        if (party == null) return;
+        party.removeMember(playerUuid);
+        if (party.isEmpty()) {
+            parties.remove(partyId);
+        }
+        markDirty();
+    }
+
+    public void disbandParty(UUID partyId) {
+        Party party = parties.remove(partyId);
+        if (party == null) return;
+        for (UUID member : party.getMemberUuids()) {
+            playerToParty.remove(member);
+        }
+        markDirty();
+    }
+
+    public void addPartyInvite(UUID partyId, UUID inviteeUuid) {
+        Party party = parties.get(partyId);
+        if (party != null) {
+            party.addInvite(inviteeUuid);
+            markDirty();
+        }
+    }
+
+    public void removePartyInvite(UUID partyId, UUID inviteeUuid) {
+        Party party = parties.get(partyId);
+        if (party != null) {
+            party.removeInvite(inviteeUuid);
+            markDirty();
+        }
+    }
+
+    public void kickFromParty(UUID partyId, UUID playerUuid) {
+        Party party = parties.get(partyId);
+        if (party == null) return;
+        party.removeMember(playerUuid);
+        playerToParty.remove(playerUuid);
+        if (party.isEmpty()) {
+            parties.remove(partyId);
+        }
+        markDirty();
+    }
+
+    /**
+     * Get party member UUIDs for a player. Returns a list containing just the player
+     * if they are not in a party (solo = party of 1).
+     */
+    public List<UUID> getPartyMemberUuids(UUID playerUuid) {
+        Party party = getPlayerParty(playerUuid);
+        if (party == null) return List.of(playerUuid);
+        return new ArrayList<>(party.getMemberUuids());
     }
 
     /**
