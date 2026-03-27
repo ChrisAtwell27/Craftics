@@ -506,30 +506,33 @@ public class ArenaBuilder {
     /** Simple procedural arena when no .nbt structure is available. */
     private static void buildProceduralFallback(ServerWorld world, int ox, int oy, int oz,
                                                   int w, int h, GridTile[][] tiles, Random rng) {
-        int pad = 5;
+        int pad = 2; // minimal padding — void world doesn't need much clearing
 
-        // Clear area
-        for (int x = -pad; x < w + pad; x++) {
-            for (int z = -pad; z < h + pad; z++) {
-                for (int y = -3; y <= 12; y++) {
-                    BlockPos bp = new BlockPos(ox + x, oy + y, oz + z);
-                    if (!world.getBlockState(bp).isAir()) {
-                        world.setBlockState(bp, Blocks.AIR.getDefaultState(), SET_FLAGS);
+        // In a void world, skip clearing (blocks are already air).
+        // Only clear if blocks exist (e.g. previous arena at same location).
+        boolean needsClear = !world.getBlockState(new BlockPos(ox, oy, oz)).isAir();
+        if (needsClear) {
+            for (int x = -pad; x < w + pad; x++) {
+                for (int z = -pad; z < h + pad; z++) {
+                    for (int y = -3; y <= 6; y++) {
+                        BlockPos bp = new BlockPos(ox + x, oy + y, oz + z);
+                        if (!world.getBlockState(bp).isAir()) {
+                            world.setBlockState(bp, Blocks.AIR.getDefaultState(), SET_FLAGS);
+                        }
                     }
                 }
             }
         }
 
-        // Bedrock + stone base
-        for (int x = -pad; x < w + pad; x++) {
-            for (int z = -pad; z < h + pad; z++) {
-                set(world, ox + x, oy - 3, oz + z, Blocks.BEDROCK);
-                set(world, ox + x, oy - 2, oz + z, Blocks.STONE);
+        // Bedrock + stone base (only under the arena, not the full padded area)
+        for (int x = -1; x < w + 1; x++) {
+            for (int z = -1; z < h + 1; z++) {
+                set(world, ox + x, oy - 2, oz + z, Blocks.BEDROCK);
                 set(world, ox + x, oy - 1, oz + z, Blocks.STONE);
             }
         }
 
-        // Simple grass ground around arena
+        // Simple grass ground around arena (just the border ring)
         for (int x = -pad; x < w + pad; x++) {
             for (int z = -pad; z < h + pad; z++) {
                 if (x >= 0 && x < w && z >= 0 && z < h) continue;
