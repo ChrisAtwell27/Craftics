@@ -600,8 +600,221 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
+            registerPartyCommands(root);
+
             dispatcher.register(root);
         });
+    }
+
+    private void registerPartyCommands(com.mojang.brigadier.builder.LiteralArgumentBuilder<ServerCommandSource> root) {
+        var partyNode = CommandManager.literal("party");
+
+        // /craftics party create
+        partyNode.then(CommandManager.literal("create").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = ctx.getSource().getServer().getOverworld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            if (data.getPlayerParty(player.getUuid()) != null) {
+                ctx.getSource().sendError(Text.literal("§cYou are already in a party. Use /craftics party leave first."));
+                return 0;
+            }
+            data.createParty(player.getUuid());
+            ctx.getSource().sendFeedback(() -> Text.literal("§aParty created! Use /craftics party invite <player> to add members."), false);
+            return 1;
+        }));
+
+        // /craftics party invite <player>
+        partyNode.then(CommandManager.literal("invite")
+            .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                .executes(ctx -> {
+                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                    ServerPlayerEntity target = net.minecraft.command.argument.EntityArgumentType.getPlayer(ctx, "player");
+                    ServerWorld overworld = ctx.getSource().getServer().getOverworld();
+                    CrafticsSavedData data = CrafticsSavedData.get(overworld);
+                    com.crackedgames.craftics.world.Party party = data.getPlayerParty(player.getUuid());
+                    if (party == null) {
+                        ctx.getSource().sendError(Text.literal("§cYou are not in a party. Use /craftics party create first."));
+                        return 0;
+                    }
+                    if (!party.isLeader(player.getUuid())) {
+                        ctx.getSource().sendError(Text.literal("§cOnly the party leader can invite players."));
+                        return 0;
+                    }
+                    if (party.size() >= CONFIG.maxPartySize()) {
+                        ctx.getSource().sendError(Text.literal("§cParty is full (max " + CONFIG.maxPartySize() + ")."));
+                        return 0;
+                    }
+                    if (party.isMember(target.getUuid())) {
+                        ctx.getSource().sendError(Text.literal("§c" + target.getName().getString() + " is already in your party."));
+                        return 0;
+                    }
+                    if (data.getPlayerParty(target.getUuid()) != null) {
+                        ctx.getSource().sendError(Text.literal("§c" + target.getName().getString() + " is already in another party."));
+                        return 0;
+                    }
+                    data.addPartyInvite(party.getPartyId(), target.getUuid());
+                    ctx.getSource().sendFeedback(() -> Text.literal("§aInvited " + target.getName().getString() + " to the party."), false);
+                    net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
+                        .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent(
+                            net.minecraft.text.ClickEvent.Action.RUN_COMMAND, "/craftics party accept"))
+                            .withHoverEvent(new net.minecraft.text.HoverEvent(
+                                net.minecraft.text.HoverEvent.Action.SHOW_TEXT, Text.literal("Click to accept"))));
+                    net.minecraft.text.MutableText declineText = Text.literal("§c[DECLINE]")
+                        .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent(
+                            net.minecraft.text.ClickEvent.Action.RUN_COMMAND, "/craftics party decline"))
+                            .withHoverEvent(new net.minecraft.text.HoverEvent(
+                                net.minecraft.text.HoverEvent.Action.SHOW_TEXT, Text.literal("Click to decline"))));
+                    target.sendMessage(Text.literal("§e" + player.getName().getString() + " invited you to their party! ")
+                        .append(acceptText).append(Text.literal(" ")).append(declineText), false);
+                    return 1;
+                })));
+
+        // /craftics party accept
+        partyNode.then(CommandManager.literal("accept").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = ctx.getSource().getServer().getOverworld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            for (var entry : data.getAllParties().entrySet()) {
+                com.crackedgames.craftics.world.Party party = entry.getValue();
+                if (party.hasInvite(player.getUuid())) {
+                    if (data.joinParty(player.getUuid(), party.getPartyId())) {
+                        ctx.getSource().sendFeedback(() -> Text.literal("§aYou joined the party!"), false);
+                        for (java.util.UUID memberUuid : party.getMemberUuids()) {
+                            ServerPlayerEntity member = ctx.getSource().getServer().getPlayerManager().getPlayer(memberUuid);
+                            if (member != null && !member.equals(player)) {
+                                member.sendMessage(Text.literal("§e" + player.getName().getString() + " joined the party!"), false);
+                            }
+                        }
+                        return 1;
+                    }
+                }
+            }
+            ctx.getSource().sendError(Text.literal("§cNo pending party invite."));
+            return 0;
+        }));
+
+        // /craftics party decline
+        partyNode.then(CommandManager.literal("decline").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = ctx.getSource().getServer().getOverworld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            boolean found = false;
+            for (var entry : data.getAllParties().entrySet()) {
+                com.crackedgames.craftics.world.Party party = entry.getValue();
+                if (party.hasInvite(player.getUuid())) {
+                    data.removePartyInvite(party.getPartyId(), player.getUuid());
+                    found = true;
+                }
+            }
+            if (found) {
+                ctx.getSource().sendFeedback(() -> Text.literal("§7Invite declined."), false);
+                return 1;
+            }
+            ctx.getSource().sendError(Text.literal("§cNo pending party invite."));
+            return 0;
+        }));
+
+        // /craftics party leave
+        partyNode.then(CommandManager.literal("leave").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = ctx.getSource().getServer().getOverworld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            com.crackedgames.craftics.world.Party party = data.getPlayerParty(player.getUuid());
+            if (party == null) {
+                ctx.getSource().sendError(Text.literal("§cYou are not in a party."));
+                return 0;
+            }
+            boolean wasLeader = party.isLeader(player.getUuid());
+            // Snapshot members before leaving
+            java.util.Set<java.util.UUID> remainingMembers = new java.util.HashSet<>(party.getMemberUuids());
+            data.leaveParty(player.getUuid());
+            ctx.getSource().sendFeedback(() -> Text.literal("§7You left the party."), false);
+            remainingMembers.remove(player.getUuid());
+            for (java.util.UUID memberUuid : remainingMembers) {
+                ServerPlayerEntity member = ctx.getSource().getServer().getPlayerManager().getPlayer(memberUuid);
+                if (member != null) {
+                    String leaderMsg = wasLeader && party.isLeader(memberUuid) ? " §b" + member.getName().getString() + " is now the leader." : "";
+                    member.sendMessage(Text.literal("§e" + player.getName().getString() + " left the party." + leaderMsg), false);
+                }
+            }
+            return 1;
+        }));
+
+        // /craftics party kick <player>
+        partyNode.then(CommandManager.literal("kick")
+            .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                .executes(ctx -> {
+                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                    ServerPlayerEntity target = net.minecraft.command.argument.EntityArgumentType.getPlayer(ctx, "player");
+                    ServerWorld overworld = ctx.getSource().getServer().getOverworld();
+                    CrafticsSavedData data = CrafticsSavedData.get(overworld);
+                    com.crackedgames.craftics.world.Party party = data.getPlayerParty(player.getUuid());
+                    if (party == null || !party.isLeader(player.getUuid())) {
+                        ctx.getSource().sendError(Text.literal("§cOnly the party leader can kick players."));
+                        return 0;
+                    }
+                    if (!party.isMember(target.getUuid())) {
+                        ctx.getSource().sendError(Text.literal("§c" + target.getName().getString() + " is not in your party."));
+                        return 0;
+                    }
+                    if (target.equals(player)) {
+                        ctx.getSource().sendError(Text.literal("§cYou can't kick yourself. Use /craftics party leave."));
+                        return 0;
+                    }
+                    data.kickFromParty(party.getPartyId(), target.getUuid());
+                    ctx.getSource().sendFeedback(() -> Text.literal("§aKicked " + target.getName().getString() + " from the party."), false);
+                    target.sendMessage(Text.literal("§cYou were kicked from the party."), false);
+                    return 1;
+                })));
+
+        // /craftics party list
+        partyNode.then(CommandManager.literal("list").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = ctx.getSource().getServer().getOverworld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            com.crackedgames.craftics.world.Party party = data.getPlayerParty(player.getUuid());
+            if (party == null) {
+                ctx.getSource().sendFeedback(() -> Text.literal("§7You are not in a party."), false);
+                return 1;
+            }
+            StringBuilder sb = new StringBuilder("§6--- Party Members ---\n");
+            for (java.util.UUID memberUuid : party.getMemberUuids()) {
+                ServerPlayerEntity member = ctx.getSource().getServer().getPlayerManager().getPlayer(memberUuid);
+                String name = member != null ? member.getName().getString() : memberUuid.toString().substring(0, 8) + "...";
+                boolean isLeader = party.isLeader(memberUuid);
+                boolean isOnline = member != null;
+                sb.append(isOnline ? "§a" : "§7").append(name);
+                if (isLeader) sb.append(" §e[Leader]");
+                if (!isOnline) sb.append(" §8[Offline]");
+                sb.append("\n");
+            }
+            String result = sb.toString();
+            ctx.getSource().sendFeedback(() -> Text.literal(result), false);
+            return 1;
+        }));
+
+        // /craftics party disband
+        partyNode.then(CommandManager.literal("disband").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = ctx.getSource().getServer().getOverworld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            com.crackedgames.craftics.world.Party party = data.getPlayerParty(player.getUuid());
+            if (party == null || !party.isLeader(player.getUuid())) {
+                ctx.getSource().sendError(Text.literal("§cOnly the party leader can disband."));
+                return 0;
+            }
+            for (java.util.UUID memberUuid : party.getMemberUuids()) {
+                ServerPlayerEntity member = ctx.getSource().getServer().getPlayerManager().getPlayer(memberUuid);
+                if (member != null && !member.equals(player)) {
+                    member.sendMessage(Text.literal("§cThe party has been disbanded."), false);
+                }
+            }
+            data.disbandParty(party.getPartyId());
+            ctx.getSource().sendFeedback(() -> Text.literal("§7Party disbanded."), false);
+            return 1;
+        }));
+
+        root.then(partyNode);
     }
 
     private static void giveItems(ServerPlayerEntity player, net.minecraft.item.Item... items) {

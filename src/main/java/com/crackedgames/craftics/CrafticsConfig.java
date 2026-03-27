@@ -125,6 +125,11 @@ public class CrafticsConfig {
     @RangeConstraint(min = 0.0, max = 1.0)
     public float traderSpawnChance = 0.13f;
 
+    // ===== Party =====
+
+    @RangeConstraint(min = 2, max = 8)
+    public int maxPartySize = 4;
+
     // ===== NG+ =====
 
     @RangeConstraint(min = 0.0, max = 1.0)
