@@ -43,8 +43,25 @@
       <a href="#mob-speeds">Default Mob Speeds</a>
       <a href="#passive-mobs">Passive Mobs</a>
       <a href="#hostile-mobs">Hostile Mobs</a>
-      <a href="#boss-warden">Boss: The Warden</a>
-      <a href="#boss-dragon">Boss: Ender Dragon</a>
+      <a href="#biome-bosses">Biome Bosses</a>
+      <a href="#biome-plains-boss" class="sub">Plains</a>
+      <a href="#biome-dark-forest-boss" class="sub">Dark Forest</a>
+      <a href="#biome-snowy-tundra-boss" class="sub">Snowy Tundra</a>
+      <a href="#biome-stony-peaks-boss" class="sub">Stony Peaks</a>
+      <a href="#biome-river-delta-boss" class="sub">River Delta</a>
+      <a href="#biome-jungle-boss" class="sub">Dense Jungle</a>
+      <a href="#biome-desert-boss" class="sub">Scorching Desert</a>
+      <a href="#biome-caverns-boss" class="sub">Underground Caverns</a>
+      <a href="#biome-nether-boss" class="sub">Nether Wastes</a>
+      <a href="#biome-soul-valley-boss" class="sub">Soul Sand Valley</a>
+      <a href="#biome-warped-boss" class="sub">Warped Forest</a>
+      <a href="#biome-basalt-boss" class="sub">Basalt Deltas</a>
+      <a href="#biome-crimson-boss" class="sub">Crimson Forest</a>
+      <a href="#biome-chorus-boss" class="sub">Chorus Grove</a>
+      <a href="#biome-end-city-boss" class="sub">End City</a>
+      <a href="#biome-end-islands-boss" class="sub">Outer End Islands</a>
+      <a href="#boss-warden">Special Boss: The Warden</a>
+      <a href="#boss-dragon">Final Boss: Ender Dragon</a>
       <a href="#on-hit-effects">Special On-Hit Effects</a>
       <a href="#trial-chambers">Trial Chambers</a>
     </nav>
@@ -380,8 +397,405 @@
       </table>
     </div>
 
+    <!-- ── Biome Bosses ── -->
+    <h2 id="biome-bosses">Biome Bosses</h2>
+    <p>
+      Each biome has a unique named boss encounter that serves as a progression milestone. Bosses telegraph
+      their abilities with visual warnings, transition to a more aggressive <strong>Phase 2</strong> at
+      ≤50% HP, and reward a level-up on defeat.
+    </p>
+
+    <!-- Plains Boss -->
+    <h3 id="biome-plains-boss">Plains — The Revenant</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Zombie</td></tr>
+          <tr><td><strong>HP</strong></td><td>20</td></tr>
+          <tr><td><strong>Attack</strong></td><td>4</td></tr>
+          <tr><td><strong>Defense</strong></td><td>2</td></tr>
+          <tr><td><strong>Speed</strong></td><td>2</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Raise the Dead:</strong> Summons 1–2 Zombies (6HP/2ATK) every 3 turns. Max 3 alive at once.</li>
+      <li><strong>Death Charge:</strong> Charges in a straight line up to 3 tiles dealing ATK+2 damage. Telegraphed 1 turn in advance.</li>
+      <li><strong>Shield Bash:</strong> Knocks back an adjacent player 2 tiles for half ATK damage.</li>
+    </ul>
+    <p><strong>Phase 2 — "Undying Rage" (≤50% HP):</strong> Gains Regeneration (1 HP/turn). Raise the Dead triggers every 2 turns. Death Charge damage increases to ATK+4 and leaves a fire trail.</p>
+    <p><strong>Strategy:</strong> Destroy summoned Zombies to prevent horde buildup. Sidestep charge telegraphs and punish the recovery window.</p>
+
+    <!-- Dark Forest Boss -->
+    <h3 id="biome-dark-forest-boss">Dark Forest — The Hexweaver</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Evoker</td></tr>
+          <tr><td><strong>HP</strong></td><td>28</td></tr>
+          <tr><td><strong>Attack</strong></td><td>5</td></tr>
+          <tr><td><strong>Defense</strong></td><td>2</td></tr>
+          <tr><td><strong>Speed</strong></td><td>2</td></tr>
+          <tr><td><strong>Range</strong></td><td>4</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Vex Swarm:</strong> Summons 2 Vexes (3HP/2ATK) nearby every 3 turns. Cap 4 alive.</li>
+      <li><strong>Fang Line:</strong> 5-tile fang eruption toward the player, 4 dmg each. Telegraphed 1 turn.</li>
+      <li><strong>Cursed Fog:</strong> 3&times;3 curse cloud at player — enemies gain +3 DEF, player loses –2 ATK for 3 turns.</li>
+      <li><strong>Hex Bolt:</strong> Ranged attack at up to 4 tiles, applies 1-turn Slowness.</li>
+    </ul>
+    <p><strong>Phase 2 — "Arcane Fury" (≤50% HP):</strong> Teleports away when the player gets adjacent. Vex Swarm spawns 3 Vexes (cap 6). Fang Line erupts in a full cross pattern (both cardinal directions simultaneously).</p>
+    <p><strong>Strategy:</strong> Pressure the Hexweaver into melee before it can lay down Cursed Fog. Kill Vexes quickly or they'll overwhelm you while the boss kites.</p>
+
+    <!-- Snowy Tundra Boss -->
+    <h3 id="biome-snowy-tundra-boss">Snowy Tundra — The Frostbound Huntsman</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Stray</td></tr>
+          <tr><td><strong>HP</strong></td><td>25</td></tr>
+          <tr><td><strong>Attack</strong></td><td>5</td></tr>
+          <tr><td><strong>Defense</strong></td><td>2</td></tr>
+          <tr><td><strong>Speed</strong></td><td>2</td></tr>
+          <tr><td><strong>Range</strong></td><td>4</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Blizzard:</strong> 3&times;3 AoE on the player, 3 dmg + Slowness for 2 turns.</li>
+      <li><strong>Ice Wall:</strong> Raises a 3-tile obstacle wall perpendicular between itself and the player, lasting 3 turns. Blocks movement and line of sight.</li>
+      <li><strong>Glacial Trap:</strong> Places a 2&times;2 freeze zone at the player's position — stuns for 1 turn at the start of the next turn.</li>
+      <li><strong>Frost Arrow:</strong> Ranged attack at up to 4 tiles, ATK damage + 1-turn Slowness.</li>
+    </ul>
+    <p><strong>Phase 2 — "Permafrost" (≤50% HP):</strong> Gains Speed 3. 2 random tiles freeze every 2 turns. Blizzard's center tile stuns in addition to slowing.</p>
+    <p><strong>Strategy:</strong> Destroy Ice Walls to maintain movement lines and keep pressure on. Avoid the Glacial Trap or you'll be stunned at point-blank with no escape.</p>
+
+    <!-- Stony Peaks Boss -->
+    <h3 id="biome-stony-peaks-boss">Stony Peaks — The Rockbreaker</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Vindicator</td></tr>
+          <tr><td><strong>HP</strong></td><td>30</td></tr>
+          <tr><td><strong>Attack</strong></td><td>6</td></tr>
+          <tr><td><strong>Defense</strong></td><td>3</td></tr>
+          <tr><td><strong>Speed</strong></td><td>2</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Seismic Slam:</strong> Strikes in a + cross pattern (3 tiles each direction), 5 dmg. Telegraphed 1 turn.</li>
+      <li><strong>Boulder Toss:</strong> Range 4, 4 dmg + creates a permanent obstacle at the target tile.</li>
+      <li><strong>Fortify:</strong> Reactive — gains +5 DEF for 2 turns after taking a hit.</li>
+      <li><strong>Avalanche:</strong> Full-row attack for 3 dmg every 4 turns. Telegraphed 1 turn.</li>
+    </ul>
+    <p><strong>Phase 2 — "Total Collapse" (≤50% HP):</strong> Passive +3 DEF permanently. Seismic Slam extends to 4 tiles and destroys obstacles in its path. Boulder Toss throws 2 boulders. Avalanche hits 2 rows simultaneously.</p>
+    <p><strong>Strategy:</strong> Stay off-axis from the boss to avoid Seismic Slam. Burst damage is most effective — chip strategies struggle against Fortify stacking.</p>
+
+    <!-- River Delta Boss -->
+    <h3 id="biome-river-delta-boss">River Delta — The Tidecaller</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Drowned</td></tr>
+          <tr><td><strong>HP</strong></td><td>30</td></tr>
+          <tr><td><strong>Attack</strong></td><td>5</td></tr>
+          <tr><td><strong>Defense</strong></td><td>2</td></tr>
+          <tr><td><strong>Speed</strong></td><td>2 (3 on water)</td></tr>
+          <tr><td><strong>Range</strong></td><td>3</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Tidal Wave:</strong> Floods a 2-wide column intersecting the player with water tiles for 3 turns.</li>
+      <li><strong>Trident Storm:</strong> Hurls 3 tridents at the player's position and adjacent tiles, 4 dmg each. Telegraphed 1 turn.</li>
+      <li><strong>Riptide Charge:</strong> While on water, charges 4 tiles dealing ATK+3 damage + knockback 2.</li>
+      <li><strong>Call of the Deep:</strong> Summons 1–2 Drowned (9HP/3ATK) on water tiles every 3 turns.</li>
+    </ul>
+    <p><strong>Phase 2 — "Deluge" (≤50% HP):</strong> On transition, floods the lower half of the arena permanently. Tidal Wave becomes 3 tiles wide and permanent. Gains +2 ATK on water tiles. Call of the Deep summons 2–3 every 2 turns.</p>
+    <p><strong>Strategy:</strong> Hold the high ground — staying on dry tiles neutralizes speed and ATK bonuses. Prioritize Drowned summons or they'll push you into the flood.</p>
+
+    <!-- Dense Jungle Boss -->
+    <h3 id="biome-jungle-boss">Dense Jungle — The Broodmother</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Spider</td></tr>
+          <tr><td><strong>HP</strong></td><td>35</td></tr>
+          <tr><td><strong>Attack</strong></td><td>6</td></tr>
+          <tr><td><strong>Defense</strong></td><td>2</td></tr>
+          <tr><td><strong>Speed</strong></td><td>3</td></tr>
+          <tr><td><strong>Size</strong></td><td>3&times;3</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Spawn Brood:</strong> Hatches 2–3 Cave Spiders (3HP/2ATK) from 3 predeployed egg sacs every 3 turns.</li>
+      <li><strong>Web Spray:</strong> 3&times;3 web cloud at player — stuns 1 turn + Slowness 1 turn.</li>
+      <li><strong>Venomous Bite:</strong> Melee attack that applies Poison (2 dmg/turn for 3 turns).</li>
+      <li><strong>Pounce:</strong> Leaps up to 3 tiles, landing in a 2&times;2 AoE for ATK+2 damage. Telegraphed 1 turn.</li>
+    </ul>
+    <p><strong>Phase 2 — "Nest Awakening" (≤50% HP):</strong> Gains Speed 5 (+2). Places 3 new egg sacs. Pounce range extends to 4 tiles. Web Spray also applies Poison.</p>
+    <p><strong>Strategy:</strong> Destroy egg sacs early to cut off the brood chain. Cave Spiders stacking on top of Slowness and Poison will overwhelm you fast.</p>
+
+    <!-- Scorching Desert Boss -->
+    <h3 id="biome-desert-boss">Scorching Desert — The Sandstorm Pharaoh</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Husk</td></tr>
+          <tr><td><strong>HP</strong></td><td>25</td></tr>
+          <tr><td><strong>Attack</strong></td><td>6</td></tr>
+          <tr><td><strong>Defense</strong></td><td>1</td></tr>
+          <tr><td><strong>Speed</strong></td><td>2</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Plant Mine:</strong> Places an invisible trap on a tile near the player, 6 dmg on contact. Max 4 active at once.</li>
+      <li><strong>Sand Burial:</strong> 2&times;2 quicksand zone at player, stunning for 1 turn. Telegraphed 1 turn.</li>
+      <li><strong>Sandstorm:</strong> 3&times;3 AoE at player, 3 dmg + –1 accuracy for 2 turns.</li>
+      <li><strong>Curse of the Sands:</strong> Marks the player — every tile moved off becomes quicksand for 3 turns.</li>
+    </ul>
+    <p><strong>Phase 2 — "Tomb Wrath" (≤50% HP):</strong> Drops 2 mines per turn (was 1). Sand Burial enlarges to a 3&times;3 zone. Summons 2 Husks (8HP/3ATK) once on transition.</p>
+    <p><strong>Strategy:</strong> Step carefully — mines are invisible. Curse of the Sands punishes careless movement, so plan your path before committing to a direction.</p>
+
+    <!-- Underground Caverns Boss -->
+    <h3 id="biome-caverns-boss">Underground Caverns — The Hollow King</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Zombie</td></tr>
+          <tr><td><strong>HP</strong></td><td>40</td></tr>
+          <tr><td><strong>Attack</strong></td><td>7</td></tr>
+          <tr><td><strong>Defense</strong></td><td>3</td></tr>
+          <tr><td><strong>Speed</strong></td><td>2</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Cave-In:</strong> 3&times;3 AoE at the player, 5 dmg + creates rubble obstacles on affected tiles. Telegraphed 1 turn.</li>
+      <li><strong>Miner's Fury:</strong> 3-tile directional charge, ATK+2 damage, destroys obstacles in its path.</li>
+      <li><strong>Swarm Call:</strong> Summons 3–4 Silverfish from the arena edges.</li>
+      <li><strong>Lights Out:</strong> Darkness field — tiles beyond 3 from the player go dark; all enemies in darkness gain +2 ATK.</li>
+    </ul>
+    <p><strong>Phase 2 — "Total Collapse" (≤50% HP):</strong> Auto Cave-In every 2 turns. Darkness becomes permanent. Boss regenerates HP while in dark areas. Swarm Call grows to 4 Silverfish.</p>
+    <p><strong>Strategy:</strong> Stay near the center to maintain your light radius. Cave-In rubble will fragment the arena — keep escape routes open and deal with Silverfish before they flank.</p>
+
+    <!-- Nether Wastes Boss -->
+    <h3 id="biome-nether-boss">Nether Wastes — The Molten King</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Magma Cube</td></tr>
+          <tr><td><strong>HP</strong></td><td>35</td></tr>
+          <tr><td><strong>Attack</strong></td><td>7</td></tr>
+          <tr><td><strong>Defense</strong></td><td>2</td></tr>
+          <tr><td><strong>Speed</strong></td><td>2</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Magma Eruption:</strong> Leaps to a tile near the player, 3&times;3 AoE 5 dmg + fire ring around the blast zone (2 turns). Telegraphed 1 turn.</li>
+      <li><strong>Split (reactive):</strong> If hit for 8+ damage in a single strike, splits once into 2 medium Magma Cubes (15HP/4ATK).</li>
+      <li><strong>Lava Trail (passive):</strong> Movement leaves fire tiles lasting 2 turns.</li>
+      <li><strong>Absorb:</strong> Merges with an adjacent split cube, healing for that cube's remaining HP.</li>
+    </ul>
+    <p><strong>Phase 2 — "Meltdown" (≤50% HP):</strong> Lava trail tiles become permanent. Eruption fire rings are permanent. Absorb range extends to 2 tiles.</p>
+    <p><strong>Strategy:</strong> Kill the halves after a Split before it can Absorb them to heal. Avoid clustering on the same tiles — Magma Eruption catches the center blast zone for 5 dmg.</p>
+
+    <!-- Soul Sand Valley Boss -->
+    <h3 id="biome-soul-valley-boss">Soul Sand Valley — The Wailing Revenant</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Ghast</td></tr>
+          <tr><td><strong>HP</strong></td><td>40</td></tr>
+          <tr><td><strong>Attack</strong></td><td>8</td></tr>
+          <tr><td><strong>Defense</strong></td><td>1</td></tr>
+          <tr><td><strong>Speed</strong></td><td>1 (teleports)</td></tr>
+          <tr><td><strong>Range</strong></td><td>6</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Soul Barrage:</strong> Fires 3 soul fireballs at scattered tiles near the player, 4 dmg + soul fire each (2 turns). Telegraphed 1 turn.</li>
+      <li><strong>Wail of Despair:</strong> AoE debuff within 4 tiles — all entities lose –2 ATK for 2 turns.</li>
+      <li><strong>Soul Chain:</strong> Tethers the player to an anchor point dealing 2 dmg/turn. Breaks if player moves 5+ tiles from the anchor.</li>
+      <li><strong>Phase Shift:</strong> Teleports to the farthest arena corner when the player closes within 3 tiles.</li>
+    </ul>
+    <p><strong>Phase 2 — "Requiem" (≤50% HP):</strong> Soul Barrage fires 5 fireballs and the soul fire becomes permanent. Wail of Despair also applies Slowness. Can maintain 2 active Soul Chains simultaneously. Gains Speed 2.</p>
+    <p><strong>Strategy:</strong> Break the Soul Chain by creating distance, then close before it Phase Shifts again. High burst helps end the fight before the arena fills with permanent soul fire.</p>
+
+    <!-- Warped Forest Boss -->
+    <h3 id="biome-warped-boss">Warped Forest — The Void Walker</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Enderman</td></tr>
+          <tr><td><strong>HP</strong></td><td>50</td></tr>
+          <tr><td><strong>Attack</strong></td><td>9</td></tr>
+          <tr><td><strong>Defense</strong></td><td>2</td></tr>
+          <tr><td><strong>Speed</strong></td><td>3 + free teleports</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Void Rift:</strong> Creates 2 portal pairs on empty tiles — stepping onto one teleports you to the other. Last 4 turns. Max 2 pairs active.</li>
+      <li><strong>Mirror Image:</strong> Summons 2 Enderman clones (8HP/3ATK, take double damage).</li>
+      <li><strong>Phase Strike:</strong> Teleports directly behind the player and attacks. Cannot be dodged.</li>
+      <li><strong>Void Pull:</strong> Pulls the player 2 tiles toward the boss.</li>
+    </ul>
+    <p><strong>Phase 2 — "Reality Shatter" (≤50% HP):</strong> Rifts become permanent. Spawns 3 clones. Phase Strike hits twice in succession. Randomly blinks to a new tile at the start of each turn. Void Pull extends to 3 tiles.</p>
+    <p><strong>Strategy:</strong> Destroy Mirror Image clones immediately — they distract and deal real damage. Map rift locations carefully or you'll teleport directly into the boss.</p>
+
+    <!-- Basalt Deltas Boss -->
+    <h3 id="biome-basalt-boss">Basalt Deltas — The Ashen Warlord</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Wither Skeleton</td></tr>
+          <tr><td><strong>HP</strong></td><td>55</td></tr>
+          <tr><td><strong>Attack</strong></td><td>10</td></tr>
+          <tr><td><strong>Defense</strong></td><td>4</td></tr>
+          <tr><td><strong>Speed</strong></td><td>3</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Wither Slash:</strong> Melee attack + Wither stack (permanently reduces max HP by 3 per hit; stacks).</li>
+      <li><strong>Summon Blaze Guard:</strong> Summons 2 Blazes (10HP/5ATK/Range 4) every 4 turns. Cap 3 active guards.</li>
+      <li><strong>Ash Storm:</strong> 5&times;5 field centered on player — –1 speed and –50% ranged accuracy for 2 turns.</li>
+      <li><strong>Fire Pillar:</strong> 4-tile line toward the player, 6 dmg each. Telegraphed 1 turn.</li>
+    </ul>
+    <p><strong>Phase 2 — "Warlord's Command" (≤50% HP):</strong> Gains Speed 4. Wither Slash becomes a 180° arc hitting 3 tiles and applies double Wither stacks. Blaze Guards replaced by Wither Skeletons (12HP/6ATK, also apply Wither). Fire Pillar becomes an X-pattern.</p>
+    <p><strong>Strategy:</strong> Never let Wither Slash hit repeatedly — the permanent max HP reduction compounds fast. Kill the Blaze Guard immediately, or they whittle you down from range while the Warlord closes in.</p>
+
+    <!-- Crimson Forest Boss -->
+    <h3 id="biome-crimson-boss">Crimson Forest — The Crimson Ravager</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Hoglin</td></tr>
+          <tr><td><strong>HP</strong></td><td>45</td></tr>
+          <tr><td><strong>Attack</strong></td><td>8</td></tr>
+          <tr><td><strong>Defense</strong></td><td>3</td></tr>
+          <tr><td><strong>Speed</strong></td><td>3</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Gore Charge:</strong> 4-tile line charge, ATK+3 damage, knockback 3. Destroys obstacles. Telegraphed 1 turn.</li>
+      <li><strong>Fungal Growth:</strong> Creates a 3&times;3 crimson terrain zone around itself; boss heals 2 HP/turn while standing on it for 3 turns.</li>
+      <li><strong>Rampage:</strong> Hits all 8 adjacent tiles for ATK damage each.</li>
+      <li><strong>Summon Pack:</strong> Calls 2 Piglins (8HP/4ATK/Range 3) to the field. Once per fight.</li>
+    </ul>
+    <p><strong>Phase 2 — "Blood Frenzy" (≤50% HP):</strong> +4 permanent ATK. Gains Speed 4. Gore Charge leaves a fire trail. Rampage extends to a 2-tile radius. Melee attacks no longer knock back.</p>
+    <p><strong>Strategy:</strong> Lure Gore Charge into walls to interrupt it. Stay off the Fungal Growth terrain or the boss heals faster than you can damage it.</p>
+
+    <!-- Chorus Grove Boss -->
+    <h3 id="biome-chorus-boss">Chorus Grove — The Chorus Mind</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Enderman</td></tr>
+          <tr><td><strong>HP</strong></td><td>60</td></tr>
+          <tr><td><strong>Attack</strong></td><td>12</td></tr>
+          <tr><td><strong>Defense</strong></td><td>3</td></tr>
+          <tr><td><strong>Speed</strong></td><td>2 + chorus teleport</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Chorus Bloom:</strong> Grows 4–5 chorus plant obstacles (4HP each) across the arena. Boss can instantly teleport to any plant as a free action.</li>
+      <li><strong>Entangle:</strong> 2&times;2 root zone at player — immobilizes 1 turn + 4 dmg. Telegraphed 1 turn.</li>
+      <li><strong>Chorus Bomb:</strong> Range 4, 2&times;2 AoE blast for 5 dmg that randomly teleports any hit target.</li>
+      <li><strong>Resonance Cascade:</strong> Each chorus plant pulses for 3 dmg to all adjacent tiles simultaneously. Requires 3+ plants to activate.</li>
+    </ul>
+    <p><strong>Phase 2 — "Overgrowth" (≤50% HP):</strong> Plants auto-spread to 1 adjacent tile per turn. Entangle becomes a 3&times;3 zone. Resonance Cascade fires automatically every 2 turns. Boss teleports to a random plant at the start of every turn. Chorus Bomb pulls hit targets toward the boss instead.</p>
+    <p><strong>Strategy:</strong> Destroy chorus plants aggressively — they are the backbone of this fight. Without plants, Resonance Cascade is disabled and the boss loses its free repositioning.</p>
+
+    <!-- End City Boss -->
+    <h3 id="biome-end-city-boss">End City — The Shulker Architect</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Shulker</td></tr>
+          <tr><td><strong>HP</strong></td><td>50</td></tr>
+          <tr><td><strong>Attack</strong></td><td>9</td></tr>
+          <tr><td><strong>Defense</strong></td><td>4</td></tr>
+          <tr><td><strong>Speed</strong></td><td>1</td></tr>
+          <tr><td><strong>Range</strong></td><td>5</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Bullet Storm:</strong> Fires 4 homing bullets at the player and nearby tiles, 3 dmg each + Levitation.</li>
+      <li><strong>Deploy Turret:</strong> Places a stationary Shulker turret (6HP/2ATK/Range 4, 1 bullet/turn). Max 3 turrets.</li>
+      <li><strong>Fortify Shell (reactive):</strong> Upon taking damage, activates 80% damage reduction for 1 turn.</li>
+      <li><strong>Teleport Link:</strong> Teleports to an active turret location (consuming that turret) to escape melee range.</li>
+    </ul>
+    <p><strong>Phase 2 — "Defense Protocol" (≤50% HP):</strong> Bullet Storm fires 6 bullets. Turret cap raised to 5. Auto-deploys a turret every 3 turns. Fortify Shell also reflects 50% of incoming damage. Turret bullets apply Levitation.</p>
+    <p><strong>Strategy:</strong> Prioritize destroying turrets to prevent an inescapable bullet web. Fortify Shell punishes burst windows — sustained damage over time is more reliable.</p>
+
+    <!-- Outer End Islands Boss -->
+    <h3 id="biome-end-islands-boss">Outer End Islands — The Void Herald</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Stat</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mob Type</strong></td><td>Enderman</td></tr>
+          <tr><td><strong>HP</strong></td><td>55</td></tr>
+          <tr><td><strong>Attack</strong></td><td>10</td></tr>
+          <tr><td><strong>Defense</strong></td><td>3</td></tr>
+          <tr><td><strong>Speed</strong></td><td>3</td></tr>
+          <tr><td><strong>Range</strong></td><td>6 (lightning)</td></tr>
+          <tr><td><strong>Size</strong></td><td>2&times;2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Void Gale:</strong> Pushes all entities 2 tiles toward the nearest void edge. Telegraphed 1 turn.</li>
+      <li><strong>Lightning Strike:</strong> Marks the player's position + + cross pattern — deals 6 dmg next turn.</li>
+      <li><strong>Platform Collapse:</strong> Permanently destroys a 2&times;2 section of floor as void. Telegraphed 1 turn.</li>
+      <li><strong>Blink Assault:</strong> Teleports adjacent to the player and attacks the player plus 2 adjacent targets.</li>
+    </ul>
+    <p><strong>Phase 2 — "Oblivion" (≤50% HP):</strong> Gains Speed 4. Void Gale push increases to 3 tiles. Lightning Strike marks 2 locations simultaneously. Platform Collapse auto-triggers every 2 turns. Summons 2 Endermites near the player every 3 turns.</p>
+    <p><strong>Strategy:</strong> The arena shrinks throughout this fight as platforms collapse. Stay near the center and track safe tiles. Getting pushed by Void Gale toward the edge is lethal — always maintain the ability to reposition away from the void.</p>
+
     <!-- ── Boss: The Warden ── -->
-    <h2 id="boss-warden">Boss: The Warden</h2>
+    <h2 id="boss-warden">Special Boss: The Warden</h2>
     <p>
       The Warden is the first major boss encounter, found in the Deep Dark biome.
       It hits incredibly hard with massive HP, high attack, and heavy defense.
@@ -394,7 +808,7 @@
     </ul>
 
     <!-- ── Boss: Ender Dragon ── -->
-    <h2 id="boss-dragon">Boss: Ender Dragon</h2>
+    <h2 id="boss-dragon">Final Boss: Ender Dragon</h2>
     <p>
       The Ender Dragon is the final boss of Craftics, fought in the Dragon's Nest.
       Defeating it triggers New Game+ (NG+).
