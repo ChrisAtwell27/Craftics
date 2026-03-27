@@ -172,4 +172,36 @@ public class RandomEvents {
     public static com.crackedgames.craftics.level.LevelDefinition generateAmbush(int biomeOrdinal, int ngPlusLevel) {
         return TrialChamberEvent.generateAmbush(biomeOrdinal, ngPlusLevel);
     }
+
+    // === Multi-player reward methods ===
+
+    /**
+     * Execute shrine event for all participants. Each player pays and rolls independently.
+     */
+    public static void handleShrineForAll(java.util.List<ServerPlayerEntity> participants,
+                                           com.crackedgames.craftics.world.CrafticsSavedData data) {
+        for (ServerPlayerEntity player : participants) {
+            data.loadPlayerIntoLegacy(player.getUuid());
+            String result = handleShrine(player, data);
+            data.saveLegacyToPlayer(player.getUuid());
+            player.sendMessage(net.minecraft.text.Text.literal(result), false);
+        }
+    }
+
+    /**
+     * Execute traveler event for all participants. Each donates food and rolls independently.
+     */
+    public static void handleTravelerForAll(java.util.List<ServerPlayerEntity> participants) {
+        for (ServerPlayerEntity player : participants) {
+            String result = handleWoundedTraveler(player);
+            player.sendMessage(net.minecraft.text.Text.literal(result), false);
+        }
+    }
+
+    /**
+     * Execute dig site reward for a single player (called when they right-click the block).
+     */
+    public static String handleDigSiteForPlayer(ServerPlayerEntity player) {
+        return handleSuspiciousBlock(player);
+    }
 }
