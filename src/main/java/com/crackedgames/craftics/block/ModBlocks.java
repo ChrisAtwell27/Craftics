@@ -18,9 +18,14 @@ public class ModBlocks {
 
     public static final Block LEVEL_SELECT_BLOCK = registerBlock("level_select_block",
         new LevelSelectBlock(AbstractBlock.Settings.create()
-            .mapColor(MapColor.PURPLE)
-            .strength(-1.0f, 3600000.0f)
+            .mapColor(MapColor.OAK_TAN)
+            .strength(2.0f, 3.0f)
+            .sounds(net.minecraft.sound.BlockSoundGroup.WOOD)
             .luminance(state -> 7)
+            .nonOpaque()
+            .solidBlock((state, world, pos) -> false)
+            .suffocates((state, world, pos) -> false)
+            .blockVision((state, world, pos) -> false)
         )
     );
 

@@ -46,6 +46,29 @@ public class CrafticsMod implements ModInitializer {
         ModScreenHandlers.register();
         ModNetworking.registerServer();
 
+        // Level select block: redirect right-clicks on adjacent blocks to the level select
+        // (the model extends 2 blocks but only 1 block has the block entity)
+        net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) return net.minecraft.util.ActionResult.PASS;
+            net.minecraft.util.math.BlockPos clickedPos = hitResult.getBlockPos();
+            if (world.getBlockState(clickedPos).getBlock() instanceof com.crackedgames.craftics.block.LevelSelectBlock) {
+                return net.minecraft.util.ActionResult.PASS; // let the block handle it directly
+            }
+            // Check all 4 horizontal neighbors for a LevelSelectBlock
+            for (net.minecraft.util.math.Direction dir : net.minecraft.util.math.Direction.Type.HORIZONTAL) {
+                net.minecraft.util.math.BlockPos neighborPos = clickedPos.offset(dir);
+                net.minecraft.block.BlockState neighborState = world.getBlockState(neighborPos);
+                if (neighborState.getBlock() instanceof com.crackedgames.craftics.block.LevelSelectBlock) {
+                    net.minecraft.block.entity.BlockEntity be = world.getBlockEntity(neighborPos);
+                    if (be instanceof net.minecraft.screen.NamedScreenHandlerFactory factory) {
+                        player.openHandledScreen(factory);
+                        return net.minecraft.util.ActionResult.SUCCESS;
+                    }
+                }
+            }
+            return net.minecraft.util.ActionResult.PASS;
+        });
+
         // Dig site event: intercept right-clicks on suspicious blocks
         net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) return net.minecraft.util.ActionResult.PASS;
@@ -69,10 +92,10 @@ public class CrafticsMod implements ModInitializer {
             if (world.getRegistryKey() == World.OVERWORLD) {
                 if (world.getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator) {
                     CrafticsSavedData data = CrafticsSavedData.get(world);
-                    if (!data.hubBuilt || data.hubVersion < HubRoomBuilder.HUB_VERSION) {
-                        HubRoomBuilder.build(world);
+                    if (!data.hubBuilt || data.hubVersion < HubRoomBuilder.LOBBY_VERSION) {
+                        HubRoomBuilder.buildLobby(world);
                         data.hubBuilt = true;
-                        data.hubVersion = HubRoomBuilder.HUB_VERSION;
+                        data.hubVersion = HubRoomBuilder.LOBBY_VERSION;
                         data.markDirty();
                     }
                     // Set to daytime on load
@@ -144,8 +167,9 @@ public class CrafticsMod implements ModInitializer {
                                 com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, data.branchChoice);
                             if (levelDef == null) { data.inCombat = false; data.markDirty(); return; }
 
+                            java.util.UUID rejoinWorldOwner = data.getEffectiveWorldOwner(rejoinPlayer.getUuid());
                             com.crackedgames.craftics.core.GridArena arena =
-                                com.crackedgames.craftics.level.ArenaBuilder.build(rejoinWorld, levelDef);
+                                com.crackedgames.craftics.level.ArenaBuilder.build(rejoinWorld, levelDef, rejoinWorldOwner);
                             net.minecraft.util.math.BlockPos startPos = arena.getPlayerStartBlockPos();
                             net.minecraft.util.math.BlockPos origin = arena.getOrigin();
                             float cameraYaw = com.crackedgames.craftics.level.ArenaBuilder.consumePendingCameraYaw();
@@ -169,12 +193,29 @@ public class CrafticsMod implements ModInitializer {
             }
         });
 
-        // Clean up combat on player disconnect — only affects that player's instance
+        // Clean up combat on player disconnect — handle both leader and party member cases
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             var playerUuid = handler.getPlayer().getUuid();
+            String playerName = handler.getPlayer().getName().getString();
+
+            // Check if this player is in someone else's party combat (non-leader)
+            CombatManager leaderCm = CombatManager.getActiveCombat(playerUuid);
+            if (leaderCm != null && leaderCm.isActive() && !leaderCm.equals(CombatManager.get(playerUuid))) {
+                // Party member disconnected — remove from leader's combat, notify party
+                leaderCm.removePartyMember(playerUuid);
+                if (leaderCm.getEventManager() != null) {
+                    leaderCm.getEventManager().removeParticipant(playerUuid);
+                    ServerWorld world = server.getOverworld();
+                    leaderCm.getEventManager().broadcastMessage(world,
+                        "\u00a7c" + playerName + " disconnected from the party.");
+                }
+                LOGGER.info("Party member {} disconnected during combat", playerName);
+            }
+
+            // Clean up this player's own CombatManager
             CombatManager cm = CombatManager.get(playerUuid);
             if (cm.isActive()) {
-                LOGGER.info("Player {} disconnected during combat — cleaning up", handler.getPlayer().getName().getString());
+                LOGGER.info("Player {} disconnected during combat — cleaning up", playerName);
                 cm.endCombat();
             }
             CombatManager.remove(playerUuid);
@@ -192,8 +233,9 @@ public class CrafticsMod implements ModInitializer {
                         && CombatManager.get(sp).isActive()) {
                     return false; // cancel block breaking for THIS player during combat
                 }
-                // Protect hub shell (walls, floor, ceiling, roof)
-                if (HubRoomBuilder.isHubShell(pos)) return false;
+                // Protect central lobby (floating island — prevent breaking the platform)
+                if (HubRoomBuilder.isLobbyProtected(pos)) return false;
+                // Personal worlds are fully modifiable — no shell protection
                 return true;
             }
         );
@@ -448,7 +490,9 @@ public class CrafticsMod implements ModInitializer {
                 if (cm.isActive()) {
                     cm.endCombat();
                 }
-                player.requestTeleport(0.5, 65, 0.5);
+                CrafticsSavedData hubData = CrafticsSavedData.get(player.getServerWorld());
+                net.minecraft.util.math.BlockPos hub = hubData.getHubTeleportPos(player.getUuid());
+                player.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
                 player.changeGameMode(GameMode.SURVIVAL);
                 src.sendFeedback(() -> Text.literal("§aTeleported to hub."), true);
                 return 1;
@@ -595,7 +639,9 @@ public class CrafticsMod implements ModInitializer {
                 }
                 p.setHealth(p.getMaxHealth());
                 cm.endCombat();
-                p.requestTeleport(0.5, 65, 0.5);
+                CrafticsSavedData leaveData = CrafticsSavedData.get(p.getServerWorld());
+                net.minecraft.util.math.BlockPos leaveHub = leaveData.getHubTeleportPos(p.getUuid());
+                p.requestTeleport(leaveHub.getX() + 0.5, leaveHub.getY(), leaveHub.getZ() + 0.5);
                 p.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
                 net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p,
                     new com.crackedgames.craftics.network.ExitCombatPayload(false));
@@ -604,9 +650,117 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             registerPartyCommands(root);
+            registerWorldCommands(root);
 
             dispatcher.register(root);
         });
+    }
+
+    private void registerWorldCommands(com.mojang.brigadier.builder.LiteralArgumentBuilder<ServerCommandSource> root) {
+        var worldNode = CommandManager.literal("world");
+
+        // /craftics world create — create a personal world
+        worldNode.then(CommandManager.literal("create").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = player.getServerWorld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+
+            if (data.hasPersonalWorld(player.getUuid())) {
+                ctx.getSource().sendError(Text.literal("\u00a7cYou already have a personal world!"));
+                return 0;
+            }
+
+            int slot = data.allocateWorldSlot(player.getUuid());
+            net.minecraft.util.math.BlockPos hubCenter = data.getHubOrigin(player.getUuid());
+
+            // Build the personal hub
+            HubRoomBuilder.build(overworld, hubCenter);
+            CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+            pd.personalHubBuilt = true;
+            pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
+            data.markDirty();
+
+            // Teleport player to their new hub
+            player.requestTeleport(hubCenter.getX() + 0.5, hubCenter.getY(), hubCenter.getZ() + 0.5);
+
+            ctx.getSource().sendFeedback(() -> Text.literal(
+                "\u00a7a\u00a7l\u2726 Personal world created! \u00a7r\u00a7a(Slot " + slot + ")"), true);
+            ctx.getSource().sendFeedback(() -> Text.literal(
+                "\u00a77Use \u00a7e/craftics world home\u00a77 to return here anytime."), false);
+            return 1;
+        }));
+
+        // /craftics world home — teleport to personal hub
+        worldNode.then(CommandManager.literal("home").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = player.getServerWorld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+
+            if (!data.hasPersonalWorld(player.getUuid())) {
+                ctx.getSource().sendError(Text.literal(
+                    "\u00a7cYou don't have a personal world yet. Use \u00a7e/craftics world create\u00a7c first."));
+                return 0;
+            }
+
+            // End combat if active
+            CombatManager cm = CombatManager.get(player);
+            if (cm.isActive()) cm.endCombat();
+
+            net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(player.getUuid());
+            player.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+            player.changeGameMode(GameMode.SURVIVAL);
+            ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to your personal hub."), false);
+            return 1;
+        }));
+
+        // /craftics world lobby — teleport to central lobby
+        worldNode.then(CommandManager.literal("lobby").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+
+            CombatManager cm = CombatManager.get(player);
+            if (cm.isActive()) cm.endCombat();
+
+            player.requestTeleport(0.5, 65, 0.5);
+            player.changeGameMode(GameMode.SURVIVAL);
+            ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to the central lobby."), false);
+            return 1;
+        }));
+
+        // /craftics world visit <player> — visit another player's hub (party members only)
+        worldNode.then(CommandManager.literal("visit")
+            .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                .executes(ctx -> {
+                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                    ServerPlayerEntity target = net.minecraft.command.argument.EntityArgumentType.getPlayer(ctx, "player");
+                    ServerWorld overworld = player.getServerWorld();
+                    CrafticsSavedData data = CrafticsSavedData.get(overworld);
+
+                    if (!data.hasPersonalWorld(target.getUuid())) {
+                        ctx.getSource().sendError(Text.literal(
+                            "\u00a7c" + target.getName().getString() + " doesn't have a personal world."));
+                        return 0;
+                    }
+
+                    // Check if they're in the same party
+                    com.crackedgames.craftics.world.Party playerParty = data.getPlayerParty(player.getUuid());
+                    if (playerParty == null || !playerParty.isMember(target.getUuid())) {
+                        ctx.getSource().sendError(Text.literal(
+                            "\u00a7cYou can only visit party members' worlds."));
+                        return 0;
+                    }
+
+                    CombatManager cm = CombatManager.get(player);
+                    if (cm.isActive()) cm.endCombat();
+
+                    net.minecraft.util.math.BlockPos targetHub = data.getHubOrigin(target.getUuid());
+                    player.requestTeleport(targetHub.getX() + 0.5, targetHub.getY(), targetHub.getZ() + 0.5);
+                    player.changeGameMode(GameMode.SURVIVAL);
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        "\u00a7aVisiting " + target.getName().getString() + "'s world."), false);
+                    return 1;
+                })));
+
+        root.then(worldNode);
     }
 
     private void registerPartyCommands(com.mojang.brigadier.builder.LiteralArgumentBuilder<ServerCommandSource> root) {

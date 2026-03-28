@@ -47,6 +47,15 @@ public class ModNetworking {
             data.claimLegacyData(player.getUuid());
             data.loadPlayerIntoLegacy(player.getUuid());
 
+            // Require a personal world before starting biome runs
+            java.util.UUID effectiveOwner = data.getEffectiveWorldOwner(player.getUuid());
+            if (!data.hasPersonalWorld(effectiveOwner)) {
+                player.sendMessage(net.minecraft.text.Text.literal(
+                    "\u00a7cCreate a personal world first: \u00a7e/craftics world create"), false);
+                ServerPlayNetworking.send(player, new ExitCombatPayload(false));
+                return;
+            }
+
             // Find the biome template by ID
             BiomeTemplate biome = null;
             for (BiomeTemplate b : BiomeRegistry.getAllBiomes()) {
@@ -91,8 +100,9 @@ public class ModNetworking {
                 return;
             }
 
-            // Build arena, teleport, start combat
-            GridArena arena = ArenaBuilder.build(world, levelDef);
+            // Build arena in the player's (or party leader's) world slot
+            java.util.UUID worldOwner = data.getEffectiveWorldOwner(player.getUuid());
+            GridArena arena = ArenaBuilder.build(world, levelDef, worldOwner);
             BlockPos startPos = arena.getPlayerStartBlockPos();
             BlockPos origin = arena.getOrigin();
             float cameraYaw = ArenaBuilder.consumePendingCameraYaw();
@@ -110,35 +120,58 @@ public class ModNetworking {
             // Create EventManager for this party/solo run and assign to CombatManager
             java.util.List<java.util.UUID> partyMembers = data.getPartyMemberUuids(player.getUuid());
             com.crackedgames.craftics.combat.EventManager em = new com.crackedgames.craftics.combat.EventManager(partyMembers);
-            CombatManager.get(player).setEventManager(em);
+            CombatManager leaderCm = CombatManager.get(player);
+            leaderCm.setEventManager(em);
+            leaderCm.setWorldOwnerUuid(worldOwner);
+
+            // Register leader as party participant
+            leaderCm.addPartyMember(player);
+
+            // Teleport and register all online party members into the same combat
             for (java.util.UUID memberUuid : partyMembers) {
-                if (!memberUuid.equals(player.getUuid())) {
+                if (memberUuid.equals(player.getUuid())) continue;
+                ServerPlayerEntity member = world.getServer().getPlayerManager().getPlayer(memberUuid);
+                if (member != null) {
+                    member.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
+                    member.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
+                    ServerPlayNetworking.send(member, new EnterCombatPayload(
+                        origin.getX(), origin.getY(), origin.getZ(),
+                        arena.getWidth(), arena.getHeight(), cameraYaw
+                    ));
+                    leaderCm.addPartyMember(member);
+                    // Also set EventManager on their CombatManager for between-level coordination
                     CombatManager.get(memberUuid).setEventManager(em);
+                    CrafticsMod.LOGGER.info("Party member {} joined combat (biome {}, level {})",
+                        member.getName().getString(), biome.biomeId, levelIndex + 1);
                 }
             }
 
-            CrafticsMod.LOGGER.info("Player {} started {} (biome {}, level {})",
-                player.getName().getString(), levelDef.getName(), biome.biomeId, levelIndex + 1);
+            CrafticsMod.LOGGER.info("Player {} started {} (biome {}, level {}, party size {})",
+                player.getName().getString(), levelDef.getName(), biome.biomeId, levelIndex + 1,
+                partyMembers.size());
         });
 
-        // Handle combat actions
+        // Handle combat actions — route to party leader's CombatManager
         ServerPlayNetworking.registerGlobalReceiver(CombatActionPayload.ID, (payload, context) -> {
-            CombatManager.get(context.player()).handleAction(payload);
+            CombatManager.getActiveCombat(context.player().getUuid()).handleAction(payload);
         });
 
-        // Handle post-level choice (Go Home vs Continue)
+        // Handle post-level choice (Go Home vs Continue) — route to party leader
         ServerPlayNetworking.registerGlobalReceiver(PostLevelChoicePayload.ID, (payload, context) -> {
-            CombatManager.get(context.player()).handlePostLevelChoice(context.player(), payload.goHome());
+            CombatManager.getActiveCombat(context.player().getUuid())
+                .handlePostLevelChoice(context.player(), payload.goHome());
         });
 
-        // Handle trader buy request
+        // Handle trader buy request — route to party leader
         ServerPlayNetworking.registerGlobalReceiver(TraderBuyPayload.ID, (payload, context) -> {
-            CombatManager.get(context.player()).handleTraderBuy(context.player(), payload.tradeIndex());
+            CombatManager.getActiveCombat(context.player().getUuid())
+                .handleTraderBuy(context.player(), payload.tradeIndex());
         });
 
-        // Handle trader done — proceed to next level
+        // Handle trader done — proceed to next level — route to party leader
         ServerPlayNetworking.registerGlobalReceiver(TraderDonePayload.ID, (payload, context) -> {
-            CombatManager.get(context.player()).handleTraderDone(context.player());
+            CombatManager.getActiveCombat(context.player().getUuid())
+                .handleTraderDone(context.player());
         });
 
         // Handle stat choice from level-up screen

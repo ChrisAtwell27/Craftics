@@ -23,6 +23,14 @@ public class CrafticsSavedData extends PersistentState {
     public boolean hubBuilt = false;
     public int hubVersion = 0;
 
+    /** Monotonically increasing counter for allocating per-player world slots. */
+    private int nextWorldSlot = 0;
+
+    /** World slot spacing — each player gets this many blocks of X-axis space. */
+    private static final int WORLD_SLOT_SPACING = 10000;
+    /** X-offset where personal worlds begin (slots start here). */
+    private static final int WORLD_SLOT_BASE_X = 10000;
+
     // Per-player state
     private final Map<UUID, PlayerData> players = new HashMap<>();
 
@@ -44,6 +52,12 @@ public class CrafticsSavedData extends PersistentState {
         public int ngPlusLevel = 0;
         /** True while the player is mid-battle — used to restart the fight on rejoin. */
         public boolean inCombat = false;
+        /** Per-player world slot index (-1 = no personal world created yet). */
+        public int worldSlot = -1;
+        /** Whether this player's personal hub has been built. */
+        public boolean personalHubBuilt = false;
+        /** Version of the player's personal hub (for rebuild detection). */
+        public int personalHubVersion = 0;
 
         public boolean isInBiomeRun() {
             return activeBiomeId != null && !activeBiomeId.isEmpty();
@@ -114,6 +128,9 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putString("discoveredBiomes", discoveredBiomes);
             nbt.putInt("ngPlusLevel", ngPlusLevel);
             nbt.putBoolean("inCombat", inCombat);
+            nbt.putInt("worldSlot", worldSlot);
+            nbt.putBoolean("personalHubBuilt", personalHubBuilt);
+            nbt.putInt("personalHubVersion", personalHubVersion);
             return nbt;
         }
 
@@ -127,6 +144,9 @@ public class CrafticsSavedData extends PersistentState {
             pd.discoveredBiomes = nbt.contains("discoveredBiomes") ? nbt.getString("discoveredBiomes") : "";
             pd.ngPlusLevel = nbt.contains("ngPlusLevel") ? nbt.getInt("ngPlusLevel") : 0;
             pd.inCombat = nbt.contains("inCombat") && nbt.getBoolean("inCombat");
+            pd.worldSlot = nbt.contains("worldSlot") ? nbt.getInt("worldSlot") : -1;
+            pd.personalHubBuilt = nbt.contains("personalHubBuilt") && nbt.getBoolean("personalHubBuilt");
+            pd.personalHubVersion = nbt.contains("personalHubVersion") ? nbt.getInt("personalHubVersion") : 0;
             return pd;
         }
     }
@@ -244,6 +264,7 @@ public class CrafticsSavedData extends PersistentState {
         CrafticsSavedData data = new CrafticsSavedData();
         data.hubBuilt = nbt.getBoolean("hubBuilt");
         data.hubVersion = nbt.getInt("hubVersion");
+        data.nextWorldSlot = nbt.contains("nextWorldSlot") ? nbt.getInt("nextWorldSlot") : 0;
 
         // Load per-player data
         if (nbt.contains("players")) {
@@ -292,6 +313,7 @@ public class CrafticsSavedData extends PersistentState {
     public NbtCompound writeNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
         nbt.putBoolean("hubBuilt", hubBuilt);
         nbt.putInt("hubVersion", hubVersion);
+        nbt.putInt("nextWorldSlot", nextWorldSlot);
 
         NbtCompound playersNbt = new NbtCompound();
         for (var entry : players.entrySet()) {
@@ -409,6 +431,84 @@ public class CrafticsSavedData extends PersistentState {
         Party party = getPlayerParty(playerUuid);
         if (party == null) return List.of(playerUuid);
         return new ArrayList<>(party.getMemberUuids());
+    }
+
+    // === World Slot System (per-player world isolation) ===
+
+    /** Allocate a new world slot for a player. Returns the assigned slot index. */
+    public int allocateWorldSlot(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot >= 0) return pd.worldSlot; // already has one
+        pd.worldSlot = nextWorldSlot++;
+        markDirty();
+        return pd.worldSlot;
+    }
+
+    /** Get the world origin (hub center) for a player's personal world, or null if not created. */
+    public net.minecraft.util.math.BlockPos getWorldOrigin(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot < 0) return null;
+        return new net.minecraft.util.math.BlockPos(
+            WORLD_SLOT_BASE_X + pd.worldSlot * WORLD_SLOT_SPACING, 65, 0);
+    }
+
+    /** Alias for getWorldOrigin — returns the center of the player's personal hub. */
+    public net.minecraft.util.math.BlockPos getHubOrigin(UUID playerId) {
+        return getWorldOrigin(playerId);
+    }
+
+    /** Offset from hub center to first arena — well beyond render distance. */
+    private static final int ARENA_OFFSET = 1000;
+
+    /** Get the arena origin for a specific level within a player's world. */
+    public net.minecraft.util.math.BlockPos getArenaOrigin(UUID playerId, int level) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot < 0) return null;
+        int baseX = WORLD_SLOT_BASE_X + pd.worldSlot * WORLD_SLOT_SPACING;
+        return new net.minecraft.util.math.BlockPos(baseX + ARENA_OFFSET + level * 100, 100, 0);
+    }
+
+    /** Get the trader area origin within a player's world. */
+    public net.minecraft.util.math.BlockPos getTraderOrigin(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot < 0) return null;
+        int baseX = WORLD_SLOT_BASE_X + pd.worldSlot * WORLD_SLOT_SPACING;
+        return new net.minecraft.util.math.BlockPos(baseX + ARENA_OFFSET + 500, 100, 500);
+    }
+
+    /** Get the dig site origin within a player's world. */
+    public net.minecraft.util.math.BlockPos getDigSiteOrigin(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot < 0) return null;
+        int baseX = WORLD_SLOT_BASE_X + pd.worldSlot * WORLD_SLOT_SPACING;
+        return new net.minecraft.util.math.BlockPos(baseX + ARENA_OFFSET + 500, 100, 600);
+    }
+
+    /**
+     * Get the effective world owner for a player. If in a party, returns the party leader
+     * (all party members use the leader's world). Otherwise returns the player's own UUID.
+     */
+    public UUID getEffectiveWorldOwner(UUID playerId) {
+        Party party = getPlayerParty(playerId);
+        if (party != null) return party.getLeaderUuid();
+        return playerId;
+    }
+
+    /**
+     * Get the hub teleport position for a player. Resolves to their personal hub,
+     * or the party leader's hub, or the central lobby if no personal world exists.
+     */
+    public net.minecraft.util.math.BlockPos getHubTeleportPos(UUID playerId) {
+        UUID owner = getEffectiveWorldOwner(playerId);
+        net.minecraft.util.math.BlockPos hub = getHubOrigin(owner);
+        if (hub != null) return hub;
+        // Fallback to central lobby
+        return new net.minecraft.util.math.BlockPos(0, 65, 0);
+    }
+
+    /** Check if a player has a personal world. */
+    public boolean hasPersonalWorld(UUID playerId) {
+        return getPlayerData(playerId).worldSlot >= 0;
     }
 
     /**

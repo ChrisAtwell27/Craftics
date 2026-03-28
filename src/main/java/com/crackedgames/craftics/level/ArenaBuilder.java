@@ -71,9 +71,27 @@ public class ArenaBuilder {
      * - GOLD_BLOCK, IRON_BLOCK, COPPER_BLOCK, COAL_BLOCK
      */
 
+    /** Build arena at legacy shared position (no world isolation). */
     public static GridArena build(ServerWorld world, LevelDefinition levelDef) {
         int level = levelDef.getLevelNumber();
         BlockPos origin = GridArena.arenaOriginForLevel(level);
+        return buildAt(world, levelDef, origin);
+    }
+
+    /** Build arena within a player's world slot. */
+    public static GridArena build(ServerWorld world, LevelDefinition levelDef, java.util.UUID worldOwner) {
+        com.crackedgames.craftics.world.CrafticsSavedData data =
+            com.crackedgames.craftics.world.CrafticsSavedData.get(world);
+        BlockPos origin = data.getArenaOrigin(worldOwner, levelDef.getLevelNumber());
+        if (origin == null) {
+            // Fallback to legacy positioning if no world slot
+            origin = GridArena.arenaOriginForLevel(levelDef.getLevelNumber());
+        }
+        return buildAt(world, levelDef, origin);
+    }
+
+    private static GridArena buildAt(ServerWorld world, LevelDefinition levelDef, BlockPos origin) {
+        int level = levelDef.getLevelNumber();
         int w = levelDef.getWidth();
         int h = levelDef.getHeight();
         GridTile[][] tiles = levelDef.buildTiles();

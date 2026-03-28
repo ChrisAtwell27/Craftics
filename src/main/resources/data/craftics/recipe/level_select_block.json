@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "PMP",
+    "LSL",
+    "L L"
+  ],
+  "key": {
+    "P": { "item": "minecraft:oak_planks" },
+    "M": { "item": "minecraft:filled_map" },
+    "L": { "item": "minecraft:oak_log" },
+    "S": { "item": "minecraft:oak_slab" }
+  },
+  "result": {
+    "id": "craftics:level_select_block",
+    "count": 1
+  }
+}

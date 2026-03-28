@@ -44,27 +44,232 @@ public class HubRoomBuilder {
     // Hub version for rebuild detection — bump to trigger rebuild
     public static final int HUB_VERSION = 3;
 
+    // Offset applied to all block placements (set before building)
+    private static int ox = 0, oz = 0;
+
+    /** Create an offset BlockPos — all hub block placements go through this. */
+    private static BlockPos bp(int x, int y, int z) {
+        return new BlockPos(ox + x, y, oz + z);
+    }
+
+    /** Lobby version — bump to trigger rebuild of the central lobby. */
+    public static final int LOBBY_VERSION = 1;
+
+    /** Build the central lobby — a floating island waiting room with barrier walls. */
+    public static void buildLobby(ServerWorld world) {
+        CrafticsMod.LOGGER.info("Building central lobby...");
+        BlockState stone = Blocks.SMOOTH_STONE.getDefaultState();
+        BlockState deepslate = Blocks.POLISHED_DEEPSLATE.getDefaultState();
+        BlockState basalt = Blocks.POLISHED_BASALT.getDefaultState();
+        BlockState grass = Blocks.GRASS_BLOCK.getDefaultState();
+        BlockState dirt = Blocks.DIRT.getDefaultState();
+        BlockState barrier = Blocks.BARRIER.getDefaultState();
+        BlockState air = Blocks.AIR.getDefaultState();
+        BlockState glowstone = Blocks.SEA_LANTERN.getDefaultState();
+        BlockState blackstone = Blocks.POLISHED_BLACKSTONE_BRICKS.getDefaultState();
+
+        int radius = 12; // island radius
+        int baseY = 62;  // bottom of the island
+        int floorY = 64; // walkable surface
+        int spawnY = 65;  // player Y
+        int wallHeight = 5; // barrier walls
+
+        // Build the floating island disc — circular platform
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                double dist = Math.sqrt(x * x + z * z);
+                if (dist > radius + 0.5) continue;
+
+                // Underside depth varies for a natural floating island look
+                int depth = (int)(3 * (1.0 - dist / radius)) + 1;
+                for (int y = floorY - depth; y < floorY; y++) {
+                    BlockState block = (y < floorY - 1) ? deepslate : dirt;
+                    world.setBlockState(new BlockPos(x, y, z), block);
+                }
+
+                // Surface: grass for inner area, stone border ring
+                boolean isEdge = dist > radius - 1.5;
+                world.setBlockState(new BlockPos(x, floorY, z), isEdge ? blackstone : grass);
+
+                // Clear air above
+                for (int y = spawnY; y <= spawnY + wallHeight + 2; y++) {
+                    world.setBlockState(new BlockPos(x, y, z), air);
+                }
+
+                // Barrier walls at the edge (invisible but solid)
+                if (dist > radius - 0.8 && dist <= radius + 0.5) {
+                    for (int y = spawnY; y < spawnY + wallHeight; y++) {
+                        world.setBlockState(new BlockPos(x, y, z), barrier);
+                    }
+                }
+            }
+        }
+
+        // Under-glow: embed lights under the platform edge
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                double dist = Math.sqrt(x * x + z * z);
+                if (dist > radius - 3 && dist < radius - 1) {
+                    world.setBlockState(new BlockPos(x, floorY - 1, z), glowstone);
+                }
+            }
+        }
+
+        // Center pedestal with sign/info
+        world.setBlockState(new BlockPos(0, floorY, 0), basalt);
+        world.setBlockState(new BlockPos(0, spawnY, 0), Blocks.SOUL_LANTERN.getDefaultState());
+
+        // Small ring of lanterns around center
+        for (int[] pos : new int[][]{{3,0},{-3,0},{0,3},{0,-3},{2,2},{-2,2},{2,-2},{-2,-2}}) {
+            world.setBlockState(new BlockPos(pos[0], spawnY, pos[1]),
+                Blocks.LANTERN.getDefaultState());
+        }
+
+        // Decorative corner posts (4 pillars near edges)
+        for (int[] corner : new int[][]{{7,7},{-7,7},{7,-7},{-7,-7}}) {
+            for (int y = spawnY; y <= spawnY + 2; y++) {
+                world.setBlockState(new BlockPos(corner[0], y, corner[1]), basalt);
+            }
+            world.setBlockState(new BlockPos(corner[0], spawnY + 3, corner[1]),
+                Blocks.SOUL_LANTERN.getDefaultState());
+        }
+
+        // Set world spawn
+        world.setSpawnPos(new BlockPos(0, spawnY, 0), 0f);
+
+        CrafticsMod.LOGGER.info("Central lobby built.");
+    }
+
+    /**
+     * Check if a position is part of the central lobby platform (protected from breaking).
+     * The lobby is a circular island of radius 12 centered at (0, 65, 0).
+     */
+    public static boolean isLobbyProtected(BlockPos pos) {
+        int x = pos.getX(), y = pos.getY(), z = pos.getZ();
+        // Only protect blocks at or below floor level (Y <= 64) within the island radius
+        if (y > 64) return false;
+        double dist = Math.sqrt(x * x + z * z);
+        return dist <= 13; // radius 12 + 1 block margin
+    }
+
+    /** Build the central lobby (legacy entry point — calls buildLobby). */
     public static void build(ServerWorld world) {
-        CrafticsMod.LOGGER.info("Building Craftics hub cottage...");
-        Random rng = world.getRandom();
+        buildLobby(world);
+    }
 
-        buildOutdoorArea(world);
-        clearArea(world);
-        buildFoundation(world, rng);
-        buildFloor(world);
-        buildWalls(world);
-        buildBumpOut(world);
-        buildWindows(world);
-        buildDoor(world);
-        buildCeiling(world);
-        buildRoof(world);
-        buildPorch(world);
-        buildChimney(world);
-        placeFurniture(world);
-        placeLighting(world);
-        setSpawn(world);
+    /** Build a simple starter hut at the specified center position. Players can modify freely. */
+    public static void build(ServerWorld world, BlockPos hubCenter) {
+        ox = hubCenter.getX();
+        oz = hubCenter.getZ();
+        CrafticsMod.LOGGER.info("Building starter hut at ({}, {})...", ox, oz);
 
-        CrafticsMod.LOGGER.info("Hub cottage built successfully.");
+        BlockState oak = Blocks.OAK_PLANKS.getDefaultState();
+        BlockState log = Blocks.OAK_LOG.getDefaultState();
+        BlockState glass = Blocks.GLASS.getDefaultState();
+        BlockState grass = Blocks.GRASS_BLOCK.getDefaultState();
+        BlockState dirt = Blocks.DIRT.getDefaultState();
+        BlockState air = Blocks.AIR.getDefaultState();
+        BlockState door_lower = Blocks.OAK_DOOR.getDefaultState()
+            .with(Properties.HORIZONTAL_FACING, Direction.SOUTH)
+            .with(Properties.DOUBLE_BLOCK_HALF, net.minecraft.block.enums.DoubleBlockHalf.LOWER);
+        BlockState door_upper = Blocks.OAK_DOOR.getDefaultState()
+            .with(Properties.HORIZONTAL_FACING, Direction.SOUTH)
+            .with(Properties.DOUBLE_BLOCK_HALF, net.minecraft.block.enums.DoubleBlockHalf.UPPER);
+
+        // Hut: 10x10 exterior (even width so level select centers on 2 blocks)
+        // Walls at -4..5 in both axes, interior -3..4
+        int minX = -4, maxX = 5;
+        int minZ = -4, maxZ = 5;
+        int floorY = 64;
+        int interiorY = 65;
+        int ceilingY = 68;
+
+        // Ground: grass platform with dirt below
+        int platMin = -12, platMax = 12;
+        for (int x = platMin; x <= platMax; x++) {
+            for (int z = platMin; z <= platMax; z++) {
+                world.setBlockState(bp(x, floorY - 2, z), dirt);
+                world.setBlockState(bp(x, floorY - 1, z), dirt);
+                world.setBlockState(bp(x, floorY, z), grass);
+                for (int y = interiorY; y <= ceilingY + 3; y++) {
+                    world.setBlockState(bp(x, y, z), air);
+                }
+            }
+        }
+
+        // Floor
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                world.setBlockState(bp(x, floorY, z), oak);
+            }
+        }
+
+        // Walls (3 high)
+        for (int y = interiorY; y <= interiorY + 2; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                world.setBlockState(bp(x, y, minZ), oak);
+                world.setBlockState(bp(x, y, maxZ), oak);
+            }
+            for (int z = minZ; z <= maxZ; z++) {
+                world.setBlockState(bp(minX, y, z), oak);
+                world.setBlockState(bp(maxX, y, z), oak);
+            }
+        }
+
+        // Corner logs (full height)
+        for (int y = interiorY; y <= interiorY + 2; y++) {
+            world.setBlockState(bp(minX, y, minZ), log);
+            world.setBlockState(bp(maxX, y, minZ), log);
+            world.setBlockState(bp(minX, y, maxZ), log);
+            world.setBlockState(bp(maxX, y, maxZ), log);
+        }
+
+        // Ceiling
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                world.setBlockState(bp(x, ceilingY, z), oak);
+            }
+        }
+
+        // Clear interior
+        for (int x = minX + 1; x <= maxX - 1; x++) {
+            for (int z = minZ + 1; z <= maxZ - 1; z++) {
+                for (int y = interiorY; y <= ceilingY - 1; y++) {
+                    world.setBlockState(bp(x, y, z), air);
+                }
+            }
+        }
+
+        // Door (south wall, centered between 0 and 1)
+        world.setBlockState(bp(0, interiorY, maxZ), door_lower);
+        world.setBlockState(bp(0, interiorY + 1, maxZ), door_upper);
+
+        // Windows (glass blocks, 2 wide on each wall)
+        for (int wx : new int[]{0, 1}) {
+            world.setBlockState(bp(wx, interiorY + 1, minZ), glass); // north
+        }
+        world.setBlockState(bp(minX, interiorY + 1, 0), glass); // west
+        world.setBlockState(bp(minX, interiorY + 1, 1), glass);
+        world.setBlockState(bp(maxX, interiorY + 1, 0), glass); // east
+        world.setBlockState(bp(maxX, interiorY + 1, 1), glass);
+
+        // Crafting table (NW corner)
+        world.setBlockState(bp(minX + 1, interiorY, minZ + 1), Blocks.CRAFTING_TABLE.getDefaultState());
+
+        // Furnace (NE corner)
+        world.setBlockState(bp(maxX - 1, interiorY, minZ + 1), Blocks.FURNACE.getDefaultState()
+            .with(Properties.HORIZONTAL_FACING, Direction.SOUTH));
+
+        // Level select block (centered on north wall — hut center is between 0 and 1)
+        world.setBlockState(bp(0, interiorY, minZ + 1),
+            ModBlocks.LEVEL_SELECT_BLOCK.getDefaultState()
+                .with(com.crackedgames.craftics.block.LevelSelectBlock.FACING, Direction.EAST));
+
+        // Hanging lantern (centered)
+        world.setBlockState(bp(0, interiorY + 2, 1), Blocks.LANTERN.getDefaultState()
+            .with(Properties.HANGING, true));
+
+        CrafticsMod.LOGGER.info("Starter hut built at ({}, {}).", ox, oz);
     }
 
     /**
@@ -82,16 +287,16 @@ public class HubRoomBuilder {
         for (int x = YARD_MIN_X; x <= YARD_MAX_X; x++) {
             for (int z = YARD_MIN_Z; z <= YARD_MAX_Z; z++) {
                 // Bedrock floor
-                world.setBlockState(new BlockPos(x, YARD_Y - DIRT_DEPTH, z), bedrock);
+                world.setBlockState(bp(x, YARD_Y - DIRT_DEPTH, z), bedrock);
                 // 3 layers of dirt
                 for (int d = 1; d <= DIRT_DEPTH; d++) {
-                    world.setBlockState(new BlockPos(x, YARD_Y - DIRT_DEPTH + d, z), dirt);
+                    world.setBlockState(bp(x, YARD_Y - DIRT_DEPTH + d, z), dirt);
                 }
                 // Grass on top
-                world.setBlockState(new BlockPos(x, YARD_Y + 1, z), grass);
+                world.setBlockState(bp(x, YARD_Y + 1, z), grass);
                 // Clear air above (10 blocks high for trees, buildings, etc.)
                 for (int y = YARD_Y + 2; y <= YARD_Y + 12; y++) {
-                    world.setBlockState(new BlockPos(x, y, z), air);
+                    world.setBlockState(bp(x, y, z), air);
                 }
             }
         }
@@ -99,18 +304,18 @@ public class HubRoomBuilder {
         // Place a fence around the yard perimeter
         BlockState fence = Blocks.OAK_FENCE.getDefaultState();
         for (int x = YARD_MIN_X; x <= YARD_MAX_X; x++) {
-            world.setBlockState(new BlockPos(x, YARD_Y + 2, YARD_MIN_Z), fence);
-            world.setBlockState(new BlockPos(x, YARD_Y + 2, YARD_MAX_Z), fence);
+            world.setBlockState(bp(x, YARD_Y + 2, YARD_MIN_Z), fence);
+            world.setBlockState(bp(x, YARD_Y + 2, YARD_MAX_Z), fence);
         }
         for (int z = YARD_MIN_Z; z <= YARD_MAX_Z; z++) {
-            world.setBlockState(new BlockPos(YARD_MIN_X, YARD_Y + 2, z), fence);
-            world.setBlockState(new BlockPos(YARD_MAX_X, YARD_Y + 2, z), fence);
+            world.setBlockState(bp(YARD_MIN_X, YARD_Y + 2, z), fence);
+            world.setBlockState(bp(YARD_MAX_X, YARD_Y + 2, z), fence);
         }
 
         // Gate openings (south side, centered)
-        world.setBlockState(new BlockPos(-1, YARD_Y + 2, YARD_MAX_Z), air);
-        world.setBlockState(new BlockPos(0, YARD_Y + 2, YARD_MAX_Z), air);
-        world.setBlockState(new BlockPos(1, YARD_Y + 2, YARD_MAX_Z), air);
+        world.setBlockState(bp(-1, YARD_Y + 2, YARD_MAX_Z), air);
+        world.setBlockState(bp(0, YARD_Y + 2, YARD_MAX_Z), air);
+        world.setBlockState(bp(1, YARD_Y + 2, YARD_MAX_Z), air);
 
         // A few trees scattered around
         plantSimpleTree(world, 15, YARD_Y + 2, 20);
@@ -124,16 +329,16 @@ public class HubRoomBuilder {
         BlockState leaves = Blocks.OAK_LEAVES.getDefaultState();
         // Trunk (4 high)
         for (int y = 0; y < 4; y++) {
-            world.setBlockState(new BlockPos(x, baseY + y, z), log);
+            world.setBlockState(bp(x, baseY + y, z), log);
         }
         // Leaf canopy (3x3x2 on top)
         for (int lx = -1; lx <= 1; lx++) {
             for (int lz = -1; lz <= 1; lz++) {
-                world.setBlockState(new BlockPos(x + lx, baseY + 3, z + lz), leaves);
-                world.setBlockState(new BlockPos(x + lx, baseY + 4, z + lz), leaves);
+                world.setBlockState(bp(x + lx, baseY + 3, z + lz), leaves);
+                world.setBlockState(bp(x + lx, baseY + 4, z + lz), leaves);
             }
         }
-        world.setBlockState(new BlockPos(x, baseY + 5, z), leaves);
+        world.setBlockState(bp(x, baseY + 5, z), leaves);
     }
 
     private static void clearArea(ServerWorld world) {
@@ -141,7 +346,7 @@ public class HubRoomBuilder {
         for (int x = -8; x <= 10; x++) {
             for (int z = -6; z <= 7; z++) {
                 for (int y = 62; y <= 73; y++) {
-                    world.setBlockState(new BlockPos(x, y, z), air);
+                    world.setBlockState(bp(x, y, z), air);
                 }
             }
         }
@@ -156,7 +361,7 @@ public class HubRoomBuilder {
                     BlockState stone = rng.nextInt(4) == 0
                         ? Blocks.MOSSY_COBBLESTONE.getDefaultState()
                         : Blocks.COBBLESTONE.getDefaultState();
-                    world.setBlockState(new BlockPos(x, y, z), stone);
+                    world.setBlockState(bp(x, y, z), stone);
                 }
             }
             // Bump-out foundation
@@ -165,7 +370,7 @@ public class HubRoomBuilder {
                     BlockState stone = rng.nextInt(4) == 0
                         ? Blocks.MOSSY_COBBLESTONE.getDefaultState()
                         : Blocks.COBBLESTONE.getDefaultState();
-                    world.setBlockState(new BlockPos(x, y, z), stone);
+                    world.setBlockState(bp(x, y, z), stone);
                 }
             }
             // Porch foundation
@@ -174,7 +379,7 @@ public class HubRoomBuilder {
                     BlockState stone = rng.nextInt(3) == 0
                         ? Blocks.MOSSY_COBBLESTONE.getDefaultState()
                         : Blocks.COBBLESTONE.getDefaultState();
-                    world.setBlockState(new BlockPos(x, y, z), stone);
+                    world.setBlockState(bp(x, y, z), stone);
                 }
             }
         }
@@ -185,13 +390,13 @@ public class HubRoomBuilder {
         // Main room floor
         for (int x = MAIN_MIN_X; x <= MAIN_MAX_X; x++) {
             for (int z = MAIN_MIN_Z; z <= MAIN_MAX_Z; z++) {
-                world.setBlockState(new BlockPos(x, FLOOR_Y, z), oakPlanks);
+                world.setBlockState(bp(x, FLOOR_Y, z), oakPlanks);
             }
         }
         // Bump-out floor
         for (int x = BUMP_MIN_X; x <= BUMP_MAX_X; x++) {
             for (int z = BUMP_MIN_Z; z <= BUMP_MAX_Z; z++) {
-                world.setBlockState(new BlockPos(x, FLOOR_Y, z), oakPlanks);
+                world.setBlockState(bp(x, FLOOR_Y, z), oakPlanks);
             }
         }
         // Clear interior air above floor
@@ -199,7 +404,7 @@ public class HubRoomBuilder {
         for (int x = MAIN_MIN_X + 1; x < MAIN_MAX_X; x++) {
             for (int z = MAIN_MIN_Z + 1; z < MAIN_MAX_Z; z++) {
                 for (int y = INTERIOR_Y; y <= INTERIOR_Y + 2; y++) {
-                    world.setBlockState(new BlockPos(x, y, z), air);
+                    world.setBlockState(bp(x, y, z), air);
                 }
             }
         }
@@ -228,41 +433,41 @@ public class HubRoomBuilder {
         };
         for (int[] c : corners) {
             for (int y = FLOOR_Y; y <= CEILING_Y; y++) {
-                world.setBlockState(new BlockPos(c[0], y, c[1]), darkOakLog);
+                world.setBlockState(bp(c[0], y, c[1]), darkOakLog);
             }
         }
 
         // North wall (Z = MAIN_MIN_Z), runs along X
         for (int x = MAIN_MIN_X + 1; x < MAIN_MAX_X; x++) {
-            world.setBlockState(new BlockPos(x, INTERIOR_Y, MAIN_MIN_Z), wainscotX);
-            world.setBlockState(new BlockPos(x, INTERIOR_Y + 1, MAIN_MIN_Z), oakPlanks);
-            world.setBlockState(new BlockPos(x, INTERIOR_Y + 2, MAIN_MIN_Z), oakPlanks);
-            world.setBlockState(new BlockPos(x, CEILING_Y, MAIN_MIN_Z), beamX);
+            world.setBlockState(bp(x, INTERIOR_Y, MAIN_MIN_Z), wainscotX);
+            world.setBlockState(bp(x, INTERIOR_Y + 1, MAIN_MIN_Z), oakPlanks);
+            world.setBlockState(bp(x, INTERIOR_Y + 2, MAIN_MIN_Z), oakPlanks);
+            world.setBlockState(bp(x, CEILING_Y, MAIN_MIN_Z), beamX);
         }
 
         // South wall (Z = MAIN_MAX_Z), runs along X
         for (int x = MAIN_MIN_X + 1; x < MAIN_MAX_X; x++) {
-            world.setBlockState(new BlockPos(x, INTERIOR_Y, MAIN_MAX_Z), wainscotX);
-            world.setBlockState(new BlockPos(x, INTERIOR_Y + 1, MAIN_MAX_Z), oakPlanks);
-            world.setBlockState(new BlockPos(x, INTERIOR_Y + 2, MAIN_MAX_Z), oakPlanks);
-            world.setBlockState(new BlockPos(x, CEILING_Y, MAIN_MAX_Z), beamX);
+            world.setBlockState(bp(x, INTERIOR_Y, MAIN_MAX_Z), wainscotX);
+            world.setBlockState(bp(x, INTERIOR_Y + 1, MAIN_MAX_Z), oakPlanks);
+            world.setBlockState(bp(x, INTERIOR_Y + 2, MAIN_MAX_Z), oakPlanks);
+            world.setBlockState(bp(x, CEILING_Y, MAIN_MAX_Z), beamX);
         }
 
         // West wall (X = MAIN_MIN_X), runs along Z
         for (int z = MAIN_MIN_Z + 1; z < MAIN_MAX_Z; z++) {
-            world.setBlockState(new BlockPos(MAIN_MIN_X, INTERIOR_Y, z), wainscotZ);
-            world.setBlockState(new BlockPos(MAIN_MIN_X, INTERIOR_Y + 1, z), oakPlanks);
-            world.setBlockState(new BlockPos(MAIN_MIN_X, INTERIOR_Y + 2, z), oakPlanks);
-            world.setBlockState(new BlockPos(MAIN_MIN_X, CEILING_Y, z), beamZ);
+            world.setBlockState(bp(MAIN_MIN_X, INTERIOR_Y, z), wainscotZ);
+            world.setBlockState(bp(MAIN_MIN_X, INTERIOR_Y + 1, z), oakPlanks);
+            world.setBlockState(bp(MAIN_MIN_X, INTERIOR_Y + 2, z), oakPlanks);
+            world.setBlockState(bp(MAIN_MIN_X, CEILING_Y, z), beamZ);
         }
 
         // East wall (X = MAIN_MAX_X), runs along Z — but leave opening for bump-out
         for (int z = MAIN_MIN_Z + 1; z < MAIN_MAX_Z; z++) {
             if (z >= BUMP_MIN_Z && z <= BUMP_MAX_Z) continue; // opening to bump-out
-            world.setBlockState(new BlockPos(MAIN_MAX_X, INTERIOR_Y, z), wainscotZ);
-            world.setBlockState(new BlockPos(MAIN_MAX_X, INTERIOR_Y + 1, z), oakPlanks);
-            world.setBlockState(new BlockPos(MAIN_MAX_X, INTERIOR_Y + 2, z), oakPlanks);
-            world.setBlockState(new BlockPos(MAIN_MAX_X, CEILING_Y, z), beamZ);
+            world.setBlockState(bp(MAIN_MAX_X, INTERIOR_Y, z), wainscotZ);
+            world.setBlockState(bp(MAIN_MAX_X, INTERIOR_Y + 1, z), oakPlanks);
+            world.setBlockState(bp(MAIN_MAX_X, INTERIOR_Y + 2, z), oakPlanks);
+            world.setBlockState(bp(MAIN_MAX_X, CEILING_Y, z), beamZ);
         }
     }
 
@@ -285,51 +490,51 @@ public class HubRoomBuilder {
         };
         for (int[] c : bumpCorners) {
             for (int y = FLOOR_Y; y <= CEILING_Y; y++) {
-                world.setBlockState(new BlockPos(c[0], y, c[1]), darkOakLog);
+                world.setBlockState(bp(c[0], y, c[1]), darkOakLog);
             }
         }
         // Transition posts where bump meets main wall
         for (int y = FLOOR_Y; y <= CEILING_Y; y++) {
-            world.setBlockState(new BlockPos(MAIN_MAX_X, y, BUMP_MIN_Z), darkOakLog);
-            world.setBlockState(new BlockPos(MAIN_MAX_X, y, BUMP_MAX_Z), darkOakLog);
+            world.setBlockState(bp(MAIN_MAX_X, y, BUMP_MIN_Z), darkOakLog);
+            world.setBlockState(bp(MAIN_MAX_X, y, BUMP_MAX_Z), darkOakLog);
         }
 
         // East wall of bump-out (X = BUMP_MAX_X)
         for (int z = BUMP_MIN_Z + 1; z < BUMP_MAX_Z; z++) {
-            world.setBlockState(new BlockPos(BUMP_MAX_X, INTERIOR_Y, z), wainscotZ);
-            world.setBlockState(new BlockPos(BUMP_MAX_X, INTERIOR_Y + 1, z), oakPlanks);
-            world.setBlockState(new BlockPos(BUMP_MAX_X, INTERIOR_Y + 2, z), oakPlanks);
-            world.setBlockState(new BlockPos(BUMP_MAX_X, CEILING_Y, z), beamZ);
+            world.setBlockState(bp(BUMP_MAX_X, INTERIOR_Y, z), wainscotZ);
+            world.setBlockState(bp(BUMP_MAX_X, INTERIOR_Y + 1, z), oakPlanks);
+            world.setBlockState(bp(BUMP_MAX_X, INTERIOR_Y + 2, z), oakPlanks);
+            world.setBlockState(bp(BUMP_MAX_X, CEILING_Y, z), beamZ);
         }
 
         // North wall of bump-out (Z = BUMP_MIN_Z)
         for (int x = BUMP_MIN_X; x < BUMP_MAX_X; x++) {
-            world.setBlockState(new BlockPos(x, INTERIOR_Y, BUMP_MIN_Z), wainscotX);
-            world.setBlockState(new BlockPos(x, INTERIOR_Y + 1, BUMP_MIN_Z), oakPlanks);
-            world.setBlockState(new BlockPos(x, INTERIOR_Y + 2, BUMP_MIN_Z), oakPlanks);
-            world.setBlockState(new BlockPos(x, CEILING_Y, BUMP_MIN_Z), beamX);
+            world.setBlockState(bp(x, INTERIOR_Y, BUMP_MIN_Z), wainscotX);
+            world.setBlockState(bp(x, INTERIOR_Y + 1, BUMP_MIN_Z), oakPlanks);
+            world.setBlockState(bp(x, INTERIOR_Y + 2, BUMP_MIN_Z), oakPlanks);
+            world.setBlockState(bp(x, CEILING_Y, BUMP_MIN_Z), beamX);
         }
 
         // South wall of bump-out (Z = BUMP_MAX_Z)
         for (int x = BUMP_MIN_X; x < BUMP_MAX_X; x++) {
-            world.setBlockState(new BlockPos(x, INTERIOR_Y, BUMP_MAX_Z), wainscotX);
-            world.setBlockState(new BlockPos(x, INTERIOR_Y + 1, BUMP_MAX_Z), oakPlanks);
-            world.setBlockState(new BlockPos(x, INTERIOR_Y + 2, BUMP_MAX_Z), oakPlanks);
-            world.setBlockState(new BlockPos(x, CEILING_Y, BUMP_MAX_Z), beamX);
+            world.setBlockState(bp(x, INTERIOR_Y, BUMP_MAX_Z), wainscotX);
+            world.setBlockState(bp(x, INTERIOR_Y + 1, BUMP_MAX_Z), oakPlanks);
+            world.setBlockState(bp(x, INTERIOR_Y + 2, BUMP_MAX_Z), oakPlanks);
+            world.setBlockState(bp(x, CEILING_Y, BUMP_MAX_Z), beamX);
         }
 
         // Clear bump-out interior air
         for (int x = BUMP_MIN_X; x < BUMP_MAX_X; x++) {
             for (int z = BUMP_MIN_Z + 1; z < BUMP_MAX_Z; z++) {
                 for (int y = INTERIOR_Y; y <= INTERIOR_Y + 2; y++) {
-                    world.setBlockState(new BlockPos(x, y, z), air);
+                    world.setBlockState(bp(x, y, z), air);
                 }
             }
         }
         // Clear opening between main room and bump-out
         for (int z = BUMP_MIN_Z + 1; z < BUMP_MAX_Z; z++) {
             for (int y = INTERIOR_Y; y <= INTERIOR_Y + 2; y++) {
-                world.setBlockState(new BlockPos(MAIN_MAX_X, y, z), air);
+                world.setBlockState(bp(MAIN_MAX_X, y, z), air);
             }
         }
 
@@ -337,7 +542,7 @@ public class HubRoomBuilder {
         BlockState sprucePlanks = Blocks.SPRUCE_PLANKS.getDefaultState();
         for (int x = BUMP_MIN_X; x <= BUMP_MAX_X; x++) {
             for (int z = BUMP_MIN_Z; z <= BUMP_MAX_Z; z++) {
-                world.setBlockState(new BlockPos(x, CEILING_Y, z), sprucePlanks);
+                world.setBlockState(bp(x, CEILING_Y, z), sprucePlanks);
             }
         }
     }
@@ -348,32 +553,32 @@ public class HubRoomBuilder {
         // North wall windows (Z = MAIN_MIN_Z) — two 2-wide windows at Y=66-67
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
             // Left window
-            world.setBlockState(new BlockPos(-3, y, MAIN_MIN_Z), glassPane);
-            world.setBlockState(new BlockPos(-2, y, MAIN_MIN_Z), glassPane);
+            world.setBlockState(bp(-3, y, MAIN_MIN_Z), glassPane);
+            world.setBlockState(bp(-2, y, MAIN_MIN_Z), glassPane);
             // Right window
-            world.setBlockState(new BlockPos(2, y, MAIN_MIN_Z), glassPane);
-            world.setBlockState(new BlockPos(3, y, MAIN_MIN_Z), glassPane);
+            world.setBlockState(bp(2, y, MAIN_MIN_Z), glassPane);
+            world.setBlockState(bp(3, y, MAIN_MIN_Z), glassPane);
         }
 
         // South wall windows (Z = MAIN_MAX_Z) — two windows, leaving center for door
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
             // Left window
-            world.setBlockState(new BlockPos(-4, y, MAIN_MAX_Z), glassPane);
-            world.setBlockState(new BlockPos(-3, y, MAIN_MAX_Z), glassPane);
+            world.setBlockState(bp(-4, y, MAIN_MAX_Z), glassPane);
+            world.setBlockState(bp(-3, y, MAIN_MAX_Z), glassPane);
             // Right window
-            world.setBlockState(new BlockPos(3, y, MAIN_MAX_Z), glassPane);
-            world.setBlockState(new BlockPos(4, y, MAIN_MAX_Z), glassPane);
+            world.setBlockState(bp(3, y, MAIN_MAX_Z), glassPane);
+            world.setBlockState(bp(4, y, MAIN_MAX_Z), glassPane);
         }
 
         // West wall window (X = MAIN_MIN_X) — one 2-tall window
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
-            world.setBlockState(new BlockPos(MAIN_MIN_X, y, -1), glassPane);
-            world.setBlockState(new BlockPos(MAIN_MIN_X, y, 0), glassPane);
+            world.setBlockState(bp(MAIN_MIN_X, y, -1), glassPane);
+            world.setBlockState(bp(MAIN_MIN_X, y, 0), glassPane);
         }
 
         // Bump-out east window (X = BUMP_MAX_X) — one 2-tall window
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
-            world.setBlockState(new BlockPos(BUMP_MAX_X, y, 0), glassPane);
+            world.setBlockState(bp(BUMP_MAX_X, y, 0), glassPane);
         }
 
         // Trapdoor shutters on exterior faces of windows
@@ -400,30 +605,30 @@ public class HubRoomBuilder {
 
         // North wall shutters (placed on Z = MAIN_MIN_Z - 1)
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
-            world.setBlockState(new BlockPos(-4, y, MAIN_MIN_Z - 1), shutterN);
-            world.setBlockState(new BlockPos(-1, y, MAIN_MIN_Z - 1), shutterN);
-            world.setBlockState(new BlockPos(1, y, MAIN_MIN_Z - 1), shutterN);
-            world.setBlockState(new BlockPos(4, y, MAIN_MIN_Z - 1), shutterN);
+            world.setBlockState(bp(-4, y, MAIN_MIN_Z - 1), shutterN);
+            world.setBlockState(bp(-1, y, MAIN_MIN_Z - 1), shutterN);
+            world.setBlockState(bp(1, y, MAIN_MIN_Z - 1), shutterN);
+            world.setBlockState(bp(4, y, MAIN_MIN_Z - 1), shutterN);
         }
 
         // South wall shutters (placed on Z = MAIN_MAX_Z + 1)
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
-            world.setBlockState(new BlockPos(-5, y, MAIN_MAX_Z + 1), shutterS);
-            world.setBlockState(new BlockPos(-2, y, MAIN_MAX_Z + 1), shutterS);
-            world.setBlockState(new BlockPos(2, y, MAIN_MAX_Z + 1), shutterS);
-            world.setBlockState(new BlockPos(5, y, MAIN_MAX_Z + 1), shutterS);
+            world.setBlockState(bp(-5, y, MAIN_MAX_Z + 1), shutterS);
+            world.setBlockState(bp(-2, y, MAIN_MAX_Z + 1), shutterS);
+            world.setBlockState(bp(2, y, MAIN_MAX_Z + 1), shutterS);
+            world.setBlockState(bp(5, y, MAIN_MAX_Z + 1), shutterS);
         }
 
         // West wall shutters (placed on X = MAIN_MIN_X - 1)
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
-            world.setBlockState(new BlockPos(MAIN_MIN_X - 1, y, -2), shutterW);
-            world.setBlockState(new BlockPos(MAIN_MIN_X - 1, y, 1), shutterW);
+            world.setBlockState(bp(MAIN_MIN_X - 1, y, -2), shutterW);
+            world.setBlockState(bp(MAIN_MIN_X - 1, y, 1), shutterW);
         }
 
         // Bump-out east shutters (placed on X = BUMP_MAX_X + 1)
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
-            world.setBlockState(new BlockPos(BUMP_MAX_X + 1, y, -1), shutterE);
-            world.setBlockState(new BlockPos(BUMP_MAX_X + 1, y, 1), shutterE);
+            world.setBlockState(bp(BUMP_MAX_X + 1, y, -1), shutterE);
+            world.setBlockState(bp(BUMP_MAX_X + 1, y, 1), shutterE);
         }
     }
 
@@ -435,8 +640,8 @@ public class HubRoomBuilder {
             .with(Properties.HORIZONTAL_FACING, Direction.NORTH)
             .with(Properties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER);
 
-        world.setBlockState(new BlockPos(0, INTERIOR_Y, MAIN_MAX_Z), doorLower);
-        world.setBlockState(new BlockPos(0, INTERIOR_Y + 1, MAIN_MAX_Z), doorUpper);
+        world.setBlockState(bp(0, INTERIOR_Y, MAIN_MAX_Z), doorLower);
+        world.setBlockState(bp(0, INTERIOR_Y + 1, MAIN_MAX_Z), doorUpper);
     }
 
     private static void buildCeiling(ServerWorld world) {
@@ -444,7 +649,7 @@ public class HubRoomBuilder {
         // Main room ceiling
         for (int x = MAIN_MIN_X; x <= MAIN_MAX_X; x++) {
             for (int z = MAIN_MIN_Z; z <= MAIN_MAX_Z; z++) {
-                world.setBlockState(new BlockPos(x, CEILING_Y, z), sprucePlanks);
+                world.setBlockState(bp(x, CEILING_Y, z), sprucePlanks);
             }
         }
     }
@@ -470,17 +675,17 @@ public class HubRoomBuilder {
         // North eave at Z = MAIN_MIN_Z - 1, South eave at Z = MAIN_MAX_Z + 1
         for (int x = roofMinX; x <= roofMaxX; x++) {
             // Y=68 eaves
-            world.setBlockState(new BlockPos(x, 68, MAIN_MIN_Z - 1), stairsN);
-            world.setBlockState(new BlockPos(x, 68, MAIN_MAX_Z + 1), stairsS);
+            world.setBlockState(bp(x, 68, MAIN_MIN_Z - 1), stairsN);
+            world.setBlockState(bp(x, 68, MAIN_MAX_Z + 1), stairsS);
             // Y=69
-            world.setBlockState(new BlockPos(x, 69, MAIN_MIN_Z), stairsN);
-            world.setBlockState(new BlockPos(x, 69, MAIN_MAX_Z), stairsS);
+            world.setBlockState(bp(x, 69, MAIN_MIN_Z), stairsN);
+            world.setBlockState(bp(x, 69, MAIN_MAX_Z), stairsS);
             // Y=70
-            world.setBlockState(new BlockPos(x, 70, MAIN_MIN_Z + 1), stairsN);
-            world.setBlockState(new BlockPos(x, 70, MAIN_MAX_Z - 1), stairsS);
+            world.setBlockState(bp(x, 70, MAIN_MIN_Z + 1), stairsN);
+            world.setBlockState(bp(x, 70, MAIN_MAX_Z - 1), stairsS);
             // Y=71 — ridge cap (slabs)
-            world.setBlockState(new BlockPos(x, 71, MAIN_MIN_Z + 2), slab);
-            world.setBlockState(new BlockPos(x, 71, MAIN_MAX_Z - 2), slab);
+            world.setBlockState(bp(x, 71, MAIN_MIN_Z + 2), slab);
+            world.setBlockState(bp(x, 71, MAIN_MAX_Z - 2), slab);
         }
 
         // Fill under roof with air (attic space)
@@ -488,7 +693,7 @@ public class HubRoomBuilder {
         for (int y = 69; y <= 71; y++) {
             for (int x = MAIN_MIN_X; x <= MAIN_MAX_X; x++) {
                 for (int z = MAIN_MIN_Z; z <= MAIN_MAX_Z; z++) {
-                    BlockPos pos = new BlockPos(x, y, z);
+                    BlockPos pos = bp(x, y, z);
                     if (world.getBlockState(pos).isAir()) continue;
                     // Only clear if it's not a roof stair/slab we just placed
                     if (!world.getBlockState(pos).isOf(Blocks.SPRUCE_STAIRS)
@@ -510,15 +715,15 @@ public class HubRoomBuilder {
         // Triangle fill from Y=69 upward, narrowing toward ridge
         // Y=69: Z from MAIN_MIN_Z to MAIN_MAX_Z (full width)
         for (int z = MAIN_MIN_Z; z <= MAIN_MAX_Z; z++) {
-            world.setBlockState(new BlockPos(x, 69, z), fill);
+            world.setBlockState(bp(x, 69, z), fill);
         }
         // Y=70: Z from MAIN_MIN_Z+1 to MAIN_MAX_Z-1
         for (int z = MAIN_MIN_Z + 1; z <= MAIN_MAX_Z - 1; z++) {
-            world.setBlockState(new BlockPos(x, 70, z), fill);
+            world.setBlockState(bp(x, 70, z), fill);
         }
         // Y=71: Z from MAIN_MIN_Z+2 to MAIN_MAX_Z-2 (just the center)
         for (int z = MAIN_MIN_Z + 2; z <= MAIN_MAX_Z - 2; z++) {
-            world.setBlockState(new BlockPos(x, 71, z), fill);
+            world.setBlockState(bp(x, 71, z), fill);
         }
     }
 
@@ -532,38 +737,38 @@ public class HubRoomBuilder {
         // Porch floor (slabs on top of foundation)
         for (int x = PORCH_MIN_X; x <= PORCH_MAX_X; x++) {
             for (int z = PORCH_MIN_Z; z <= PORCH_MAX_Z; z++) {
-                world.setBlockState(new BlockPos(x, FLOOR_Y, z), oakSlab);
+                world.setBlockState(bp(x, FLOOR_Y, z), oakSlab);
             }
         }
 
         // Porch support posts
-        world.setBlockState(new BlockPos(PORCH_MIN_X, INTERIOR_Y, PORCH_MAX_Z), post);
-        world.setBlockState(new BlockPos(PORCH_MAX_X, INTERIOR_Y, PORCH_MAX_Z), post);
-        world.setBlockState(new BlockPos(PORCH_MIN_X, INTERIOR_Y + 1, PORCH_MAX_Z), post);
-        world.setBlockState(new BlockPos(PORCH_MAX_X, INTERIOR_Y + 1, PORCH_MAX_Z), post);
-        world.setBlockState(new BlockPos(PORCH_MIN_X, INTERIOR_Y + 2, PORCH_MAX_Z), post);
-        world.setBlockState(new BlockPos(PORCH_MAX_X, INTERIOR_Y + 2, PORCH_MAX_Z), post);
+        world.setBlockState(bp(PORCH_MIN_X, INTERIOR_Y, PORCH_MAX_Z), post);
+        world.setBlockState(bp(PORCH_MAX_X, INTERIOR_Y, PORCH_MAX_Z), post);
+        world.setBlockState(bp(PORCH_MIN_X, INTERIOR_Y + 1, PORCH_MAX_Z), post);
+        world.setBlockState(bp(PORCH_MAX_X, INTERIOR_Y + 1, PORCH_MAX_Z), post);
+        world.setBlockState(bp(PORCH_MIN_X, INTERIOR_Y + 2, PORCH_MAX_Z), post);
+        world.setBlockState(bp(PORCH_MAX_X, INTERIOR_Y + 2, PORCH_MAX_Z), post);
 
         // Fence railing along porch edge (Z = PORCH_MAX_Z), skip middle for entry
         for (int x = PORCH_MIN_X + 1; x < PORCH_MAX_X; x++) {
             if (Math.abs(x) <= 1) continue; // entry gap
-            world.setBlockState(new BlockPos(x, INTERIOR_Y, PORCH_MAX_Z), fence);
+            world.setBlockState(bp(x, INTERIOR_Y, PORCH_MAX_Z), fence);
         }
         // Side railings
-        world.setBlockState(new BlockPos(PORCH_MIN_X, INTERIOR_Y, PORCH_MIN_Z), fence);
-        world.setBlockState(new BlockPos(PORCH_MAX_X, INTERIOR_Y, PORCH_MIN_Z), fence);
+        world.setBlockState(bp(PORCH_MIN_X, INTERIOR_Y, PORCH_MIN_Z), fence);
+        world.setBlockState(bp(PORCH_MAX_X, INTERIOR_Y, PORCH_MIN_Z), fence);
 
         // Steps down from porch (cobble step at Z = PORCH_MAX_Z + 1)
         BlockState cobbleSlab = Blocks.COBBLESTONE_SLAB.getDefaultState()
             .with(Properties.SLAB_TYPE, SlabType.TOP);
         for (int x = -1; x <= 1; x++) {
-            world.setBlockState(new BlockPos(x, FLOOR_Y, PORCH_MAX_Z + 1), cobbleSlab);
+            world.setBlockState(bp(x, FLOOR_Y, PORCH_MAX_Z + 1), cobbleSlab);
         }
 
         // Path from steps (a few cobblestone blocks)
         for (int x = -1; x <= 1; x++) {
-            world.setBlockState(new BlockPos(x, FLOOR_Y - 1, PORCH_MAX_Z + 2), cobble);
-            world.setBlockState(new BlockPos(x, FLOOR_Y - 1, PORCH_MAX_Z + 3), cobble);
+            world.setBlockState(bp(x, FLOOR_Y - 1, PORCH_MAX_Z + 2), cobble);
+            world.setBlockState(bp(x, FLOOR_Y - 1, PORCH_MAX_Z + 3), cobble);
         }
     }
 
@@ -574,28 +779,29 @@ public class HubRoomBuilder {
         // Chimney on the bump-out roof, rising from Y=69 to Y=72
         int cx = BUMP_MAX_X, cz = 0;
         for (int y = CEILING_Y; y <= 72; y++) {
-            world.setBlockState(new BlockPos(cx, y, cz), bricks);
+            world.setBlockState(bp(cx, y, cz), bricks);
         }
         // Chimney cap
-        world.setBlockState(new BlockPos(cx, 73, cz), wall);
+        world.setBlockState(bp(cx, 73, cz), wall);
     }
 
     private static void placeFurniture(ServerWorld world) {
-        // Level select block — centered on north wall
-        world.setBlockState(new BlockPos(0, INTERIOR_Y, MAIN_MIN_Z + 1),
-            ModBlocks.LEVEL_SELECT_BLOCK.getDefaultState());
+        // Level select block — centered on north wall, facing east so model extends sideways
+        world.setBlockState(bp(0, INTERIOR_Y, MAIN_MIN_Z + 1),
+            ModBlocks.LEVEL_SELECT_BLOCK.getDefaultState()
+                .with(com.crackedgames.craftics.block.LevelSelectBlock.FACING, Direction.EAST));
 
         // Furnace — against NW interior wall, facing into room
-        world.setBlockState(new BlockPos(MAIN_MIN_X + 1, INTERIOR_Y, MAIN_MIN_Z + 1),
+        world.setBlockState(bp(MAIN_MIN_X + 1, INTERIOR_Y, MAIN_MIN_Z + 1),
             Blocks.FURNACE.getDefaultState()
                 .with(Properties.HORIZONTAL_FACING, Direction.EAST));
 
         // Crafting table — between furnace and chest on west wall
-        world.setBlockState(new BlockPos(MAIN_MIN_X + 1, INTERIOR_Y, 0),
+        world.setBlockState(bp(MAIN_MIN_X + 1, INTERIOR_Y, 0),
             Blocks.CRAFTING_TABLE.getDefaultState());
 
         // Chest — against SW interior wall
-        world.setBlockState(new BlockPos(MAIN_MIN_X + 1, INTERIOR_Y, MAIN_MAX_Z - 1),
+        world.setBlockState(bp(MAIN_MIN_X + 1, INTERIOR_Y, MAIN_MAX_Z - 1),
             Blocks.CHEST.getDefaultState()
                 .with(Properties.HORIZONTAL_FACING, Direction.EAST));
     }
@@ -608,15 +814,15 @@ public class HubRoomBuilder {
         // 4 hanging lanterns inside
         int[][] lanternPositions = {{-3, 0}, {3, 0}, {0, -1}, {0, 1}};
         for (int[] pos : lanternPositions) {
-            world.setBlockState(new BlockPos(pos[0], CEILING_Y, pos[1]), chain);
-            world.setBlockState(new BlockPos(pos[0], CEILING_Y - 1, pos[1]), lantern);
+            world.setBlockState(bp(pos[0], CEILING_Y, pos[1]), chain);
+            world.setBlockState(bp(pos[0], CEILING_Y - 1, pos[1]), lantern);
         }
 
         // Soul lanterns on porch posts
         BlockState soulLantern = Blocks.SOUL_LANTERN.getDefaultState()
             .with(Properties.HANGING, false);
-        world.setBlockState(new BlockPos(PORCH_MIN_X, INTERIOR_Y + 3, PORCH_MAX_Z), soulLantern);
-        world.setBlockState(new BlockPos(PORCH_MAX_X, INTERIOR_Y + 3, PORCH_MAX_Z), soulLantern);
+        world.setBlockState(bp(PORCH_MIN_X, INTERIOR_Y + 3, PORCH_MAX_Z), soulLantern);
+        world.setBlockState(bp(PORCH_MAX_X, INTERIOR_Y + 3, PORCH_MAX_Z), soulLantern);
     }
 
     private static void setSpawn(ServerWorld world) {
@@ -624,12 +830,17 @@ public class HubRoomBuilder {
         world.setSpawnPos(spawnPos, 0f);
     }
 
+    /** Check if a position is part of the central lobby hub shell. */
+    public static boolean isHubShell(BlockPos pos) {
+        return isHubShell(pos, new BlockPos(0, INTERIOR_Y, 0));
+    }
+
     /**
-     * Check if a position is part of the hub shell (protected from breaking).
+     * Check if a position is part of a hub shell centered at hubCenter (protected from breaking).
      * Players can modify the interior but not the structure itself.
      */
-    public static boolean isHubShell(BlockPos pos) {
-        int x = pos.getX(), y = pos.getY(), z = pos.getZ();
+    public static boolean isHubShell(BlockPos pos, BlockPos hubCenter) {
+        int x = pos.getX() - hubCenter.getX(), y = pos.getY(), z = pos.getZ() - hubCenter.getZ();
 
         // Foundation and below — always protected
         if (y <= FLOOR_Y && isWithinFootprint(x, z)) return true;
