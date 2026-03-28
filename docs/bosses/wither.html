@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics Wiki &mdash; The Wither</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo">&#9876; Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html" class="active">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div class="page-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-label">Biome Bosses</div>
+    <nav class="sidebar-nav">
+      <a href="revenant.html">Plains</a>
+      <a href="hexweaver.html">Dark Forest</a>
+      <a href="frostbound-huntsman.html">Snowy Tundra</a>
+      <a href="rockbreaker.html">Stony Peaks</a>
+      <a href="tidecaller.html">River Delta</a>
+      <a href="broodmother.html">Dense Jungle</a>
+      <a href="sandstorm-pharaoh.html">Scorching Desert</a>
+      <a href="hollow-king.html">Underground Caverns</a>
+      <a href="molten-king.html">Nether Wastes</a>
+      <a href="wailing-revenant.html">Soul Sand Valley</a>
+      <a href="void-walker.html">Warped Forest</a>
+      <a href="wither.html" class="active">Basalt Deltas</a>
+      <a href="crimson-ravager.html">Crimson Forest</a>
+      <a href="chorus-mind.html">Chorus Grove</a>
+      <a href="shulker-architect.html">End City</a>
+      <a href="void-herald.html">Outer End Islands</a>
+    </nav>
+    <div class="sidebar-label" style="margin-top:24px;">Special Bosses</div>
+    <nav class="sidebar-nav">
+      <a href="warden.html">The Warden</a>
+      <a href="ender-dragon.html">Ender Dragon</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <p class="breadcrumb"><a href="../enemies.html">Enemies</a> <span class="sep">&rsaquo;</span> <a href="../enemies.html#nether-bosses">Nether Bosses</a> <span class="sep">&rsaquo;</span> The Wither</p>
+
+    <div class="infobox">
+      <div class="infobox-title">
+        The Wither
+        <span class="infobox-subtitle">Basalt Deltas Boss</span>
+      </div>
+      <table>
+        <tr><th>Type</th><td>Wither</td></tr>
+        <tr><th>HP</th><td>65</td></tr>
+        <tr><th>Attack</th><td>8</td></tr>
+        <tr><th>Defense</th><td>5</td></tr>
+        <tr><th>Range</th><td>5</td></tr>
+        <tr><th>Speed</th><td>2</td></tr>
+        <tr><th>Size</th><td>2&times;2</td></tr>
+        <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
+        <tr><th>Dimension</th><td><span class="badge badge-nether">Nether</span></td></tr>
+      </table>
+    </div>
+
+    <div class="wiki-toc">
+      <div class="wiki-toc-title">Contents</div>
+      <ol>
+        <li><a href="#abilities">Abilities</a></li>
+        <li><a href="#skull-barrage">Wither Skull Barrage</a></li>
+        <li><a href="#phase-2">Phase 2 &mdash; Wither Armor</a></li>
+        <li><a href="#strategy">Strategy</a></li>
+      </ol>
+    </div>
+
+    <h1>The Wither</h1>
+    <p class="page-desc">Basalt Deltas biome boss &mdash; the undisputed king of the Nether. A three-headed abomination that rains skulls from above, decays everything it touches, and becomes an unstoppable battering ram at low health.</p>
+
+    <div class="wiki-content">
+      <p>The Wither is the final Nether boss and the gatekeeper to the End. It combines ranged artillery (skull projectiles), passive ground denial (decay aura), summoned reinforcements (Wither Skeletons), and a devastating charge attack. Phase 2 forces melee combat by granting complete ranged immunity.</p>
+
+      <h2 id="abilities">Abilities</h2>
+      <ul>
+        <li><strong>Wither Skull Barrage</strong> (every 2 turns): Launches 3 Wither Skull mobs (3 HP / 5 ATK) that travel in a straight line toward the player&rsquo;s position. Skulls move 2 tiles per turn and deal 5 damage + 2 turns of Wither on contact. They can be destroyed (3 HP). Max 6 skulls alive. Telegraphed with dark gathering particles.</li>
+        <li><strong>Decay Aura</strong> (passive, every turn): All tiles within 2 of the Wither become fire tiles (2 damage/turn). Refreshed each turn. The Wither poisons the ground just by existing.</li>
+        <li><strong>Summon Wither Skeletons</strong> (every 4 turns): Spawns 2 Wither Skeletons (10 HP / 5 ATK / 1 DEF) on random empty tiles. Max 4 alive. Telegraphed with ground crack particles.</li>
+        <li><strong>Charge</strong> (when player at range 3+): Dashes up to 4 tiles in a straight line, dealing ATK+3 damage to everything in the path. Telegraphed with highlighted path tiles for 1 turn.</li>
+      </ul>
+
+      <h2 id="skull-barrage">Wither Skull Barrage</h2>
+      <p>The signature mechanic. Wither Skulls are <strong>actual mob entities</strong> on the grid, not instant damage. They spawn adjacent to the Wither and travel in a straight line (cardinal or diagonal) toward where the player was standing when they were fired. Each turn, skulls advance 2 tiles. They deal 5 damage and apply Wither on contact, then despawn. Skulls can be destroyed by the player (3 HP &mdash; one hit with most weapons).</p>
+      <p>Every 2 turns, 3 new skulls launch, creating a constant stream of incoming projectiles to weave through. The board becomes increasingly chaotic as skulls accumulate from different angles.</p>
+
+      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Wither Armor&rdquo;</h2>
+      <div class="phase2-callout">
+        <p><strong>Triggers at &le; 50% HP.</strong></p>
+        <ul>
+          <li><strong>Transition Explosion:</strong> 8 damage to all entities within 3 tiles. Telegraphed with a white flash for 1 full turn before detonation.</li>
+          <li><strong>Ranged Immunity:</strong> Completely immune to ranged/projectile attacks. Must be hit in melee.</li>
+          <li><strong>Skull Barrage:</strong> 5 skulls instead of 3. Speed 3 tiles/turn. Max 10.</li>
+          <li><strong>Decay Aura:</strong> Range extends to 3 tiles.</li>
+          <li><strong>Summon:</strong> 3 Wither Skeletons. Cap 6.</li>
+          <li><strong>Charge:</strong> Leaves decay trail behind it.</li>
+        </ul>
+      </div>
+
+      <h2 id="strategy">Strategy</h2>
+      <p><strong>Phase 1</strong> is a ranged artillery fight. Dodge skull projectiles, avoid decayed ground, clear Wither Skeleton adds, and chip away from range. Prioritize destroying skulls before they reach you &mdash; they only have 3 HP.</p>
+      <p><strong>Phase 2</strong> flips everything. Ranged immunity forces melee, but the expanded Decay Aura punishes proximity. Faster and more numerous skulls make the board chaotic. The Charge leaves decay trails cutting off retreat paths. The transition Explosion punishes early melee positioning.</p>
+      <p>Bring high melee damage for Phase 2. This is the hardest fight in the Nether.</p>
+    </div>
+
+    <div class="boss-nav">
+      <a href="void-walker.html" class="boss-nav-link">
+        <span class="nav-dir">&larr; Previous</span>
+        Warped Forest &mdash; The Void Walker
+      </a>
+      <a href="crimson-ravager.html" class="boss-nav-link next">
+        <span class="nav-dir">Next &rarr;</span>
+        Crimson Forest &mdash; The Crimson Ravager
+      </a>
+    </div>
+  </main>
+</div>
+
+<footer>
+  <span>Craftics by CrackedGames</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+</body>
+</html>

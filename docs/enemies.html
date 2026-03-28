@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Craftics - Enemy AI Behaviors</title>
+  <title>Craftics - All Mobs &amp; AI Behaviors</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -11,9 +11,6 @@
 </head>
 <body>
 
-<!-- ============================================================
-     TOP NAVIGATION
-     ============================================================ -->
 <nav class="top-nav">
   <div class="nav-inner">
     <a href="index.html" class="nav-logo">&#9876; Craftics</a>
@@ -30,634 +27,300 @@
   </div>
 </nav>
 
-<!-- ============================================================
-     PAGE LAYOUT
-     ============================================================ -->
 <div class="page-layout">
 
-  <!-- Sidebar -->
   <aside class="sidebar">
-    <div class="sidebar-label">On This Page</div>
+    <div class="sidebar-label">Mob Categories</div>
     <nav class="sidebar-nav">
       <a href="#how-ai-works">How AI Works</a>
-      <a href="#mob-speeds">Default Mob Speeds</a>
-      <a href="#passive-mobs">Passive Mobs</a>
-      <a href="#hostile-mobs">Hostile Mobs</a>
-      <a href="#biome-bosses">Biome Bosses</a>
-      <a href="#boss-warden" class="sub">The Warden</a>
-      <a href="#boss-dragon" class="sub">Ender Dragon</a>
-      <a href="#on-hit-effects">Special On-Hit Effects</a>
-      <a href="#trial-chambers">Trial Chambers</a>
+      <a href="#passive">Passive Mobs</a>
+      <a href="#aquatic">Aquatic Mobs</a>
+      <a href="#territorial">Territorial Mobs</a>
+      <a href="#predators">Predators</a>
+      <a href="#swarm">Swarm Mobs</a>
+      <a href="#melee-hostile">Melee Hostiles</a>
+      <a href="#ranged-hostile">Ranged Hostiles</a>
+      <a href="#rush-hostile">Rush Hostiles</a>
+      <a href="#special-hostile">Special Hostiles</a>
+      <a href="#nether-mobs">Nether Mobs</a>
+      <a href="#end-mobs">End Mobs</a>
+      <a href="#trial-mobs">Trial Chamber Mobs</a>
+      <a href="#overworld-bosses">Overworld Bosses</a>
+      <a href="#nether-bosses">Nether Bosses</a>
+      <a href="#end-bosses">End Bosses</a>
     </nav>
   </aside>
 
-  <!-- Content -->
   <main class="content">
-    <h1>Enemy AI Behaviors</h1>
-    <p class="page-desc">Every mob in Craftics has its own combat intelligence. 40+ mobs with 20+ unique AI strategies.</p>
+    <h1>All Mobs &amp; AI Behaviors</h1>
+    <p class="page-desc">Every mob in Craftics has unique combat intelligence. 57 mobs with 40+ distinct AI strategies across 3 dimensions.</p>
 
     <!-- ── How AI Works ── -->
     <h2 id="how-ai-works">How AI Works</h2>
-    <p>
-      After the player ends their turn, each enemy acts in sequence. The AI evaluates
-      four possible actions: <strong>move</strong>, <strong>attack</strong>,
-      <strong>use a special ability</strong>, or <strong>flee</strong>. The decision
-      depends on the mob's registered AI class, which encodes its personality and
-      combat style.
-    </p>
-    <p>
-      Every mob type has a registered AI class that determines its behavior. When the
-      AI's turn begins it checks line-of-sight, distance to the player, its own HP,
-      and any active status effects before choosing what to do.
-    </p>
-    <p>
-      Mobs without a registered AI class default to <code>PassiveAI</code>,
-      which means they wander or idle and flee when attacked.
-    </p>
-    <p>
-      <strong>Defense is percentage-based.</strong> Each point of defense reduces
-      incoming damage by 5%, capped at 60%.
-    </p>
+    <p>Each turn during the enemy phase, every mob on the grid evaluates the board state and chooses an action. Actions include moving, attacking, fleeing, using abilities, or idling. Mobs have different speed values determining how many tiles they can move per turn. Some mobs react to being hit (enrage, flee, counterattack), and some coordinate with allies (horde bonus, swarm aggression).</p>
 
-    <!-- ── Default Mob Speeds ── -->
-    <h2 id="mob-speeds">Default Mob Speeds</h2>
-    <p>
-      Mob speeds are defined in <code>CombatEntity.java</code>. Speed determines
-      how many tiles a mob can move per turn. Any mob not listed below defaults to
-      speed 2.
-    </p>
+    <!-- ══════════════════════════════════════════════════════════════
+         PASSIVE MOBS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="passive">Passive Mobs</h2>
+    <p>Farm animals and wildlife that wander peacefully. They flee when attacked but never initiate combat.</p>
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr>
-            <th>Speed</th>
-            <th>Mobs</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Behavior</th></tr></thead>
         <tbody>
-          <tr>
-            <td>5</td>
-            <td>Enderman</td>
-          </tr>
-          <tr>
-            <td>4</td>
-            <td>Ocelot, Phantom, Ender Dragon, Camel</td>
-          </tr>
-          <tr>
-            <td>3</td>
-            <td>Spider, Wolf, Vindicator, Hoglin, Wither Skeleton, Magma Cube, Warden</td>
-          </tr>
-          <tr>
-            <td>2</td>
-            <td>Skeleton, Stray, Pillager, Piglin, Blaze, Drowned, Creeper, Witch</td>
-          </tr>
-          <tr>
-            <td>1</td>
-            <td>Ghast, Shulker</td>
-          </tr>
+          <tr><td>Cow</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
+          <tr><td>Pig</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
+          <tr><td>Sheep</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
+          <tr><td>Chicken</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
+          <tr><td>Horse</td><td>Passive</td><td>2</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
+          <tr><td>Donkey</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
+          <tr><td>Panda</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
+          <tr><td>Parrot</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
+          <tr><td>Rabbit</td><td>Skittish</td><td>2</td><td>Always flees if player within 2 tiles. Wanders otherwise.</td></tr>
+          <tr><td>Bat</td><td>Restless</td><td>2</td><td>Always wanders 1-2 tiles. Flees when hit. Never stands still.</td></tr>
         </tbody>
       </table>
     </div>
 
-    <!-- ── Passive Mobs ── -->
-    <h2 id="passive-mobs">Passive Mobs</h2>
-    <p>
-      Passive mobs won't attack unprovoked. Some can be turned hostile permanently,
-      and a few have unique quirks that make them more than simple bystanders.
-    </p>
+    <!-- ══════════════════════════════════════════════════════════════
+         AQUATIC MOBS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="aquatic">Aquatic Mobs</h2>
+    <p>Water-dwelling creatures restricted to water tiles. Some hunt other aquatic mobs.</p>
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr>
-            <th>Mob</th>
-            <th>AI</th>
-            <th>Speed</th>
-            <th>Behavior</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Behavior</th></tr></thead>
         <tbody>
-          <tr>
-            <td>Cow, Pig, Sheep, Chicken</td>
-            <td><code>PassiveAI</code></td>
-            <td>2</td>
-            <td>Wander or idle. Flee 2 tiles when hit.</td>
-          </tr>
-          <tr>
-            <td>Rabbit</td>
-            <td><code>RabbitAI</code></td>
-            <td>2 (flee)</td>
-            <td>Flees if player within 2 tiles or if hit.</td>
-          </tr>
-          <tr>
-            <td>Bat</td>
-            <td><code>BatAI</code></td>
-            <td>1-2</td>
-            <td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td>
-          </tr>
-          <tr>
-            <td>Cod, Salmon</td>
-            <td><code>CodAI</code></td>
-            <td>2 (flee)</td>
-            <td>Water-only. Wanders on water tiles, flees on water when hit.</td>
-          </tr>
-          <tr>
-            <td>Axolotl</td>
-            <td><code>AxolotlAI</code></td>
-            <td>2</td>
-            <td>Ally. Hunts hostile mobs on water tiles.</td>
-          </tr>
-          <tr>
-            <td>Cat</td>
-            <td><code>CatAI</code></td>
-            <td>2</td>
-            <td>Flees unless player holds fish. Enrages permanently if attacked.</td>
-          </tr>
-          <tr>
-            <td>Ocelot</td>
-            <td><code>OcelotAI</code></td>
-            <td>4</td>
-            <td>Hit-and-run assassin. Speed 4 charge, flees at full speed when hit.</td>
-          </tr>
-          <tr>
-            <td>Bee</td>
-            <td><code>BeeAI</code></td>
-            <td>2</td>
-            <td>Passive. If ANY bee is hit, ALL bees in the arena enrage permanently and swarm with poison.</td>
-          </tr>
-          <tr>
-            <td>Wolf</td>
-            <td><code>GoatAI</code> variant</td>
-            <td>3</td>
-            <td>Hunts sheep and chickens. Hit one and it turns hostile permanently.</td>
-          </tr>
-          <tr>
-            <td>Goat</td>
-            <td><code>GoatAI</code></td>
-            <td>2</td>
-            <td>Wanders. Counterattacks with knockback when hit at melee. Enrages permanently.</td>
-          </tr>
-          <tr>
-            <td>Polar Bear</td>
-            <td><code>PolarBearAI</code></td>
-            <td>2</td>
-            <td>Passive unless player within 2 tiles or hit. Then aggressive melee.</td>
-          </tr>
-          <tr>
-            <td>Llama</td>
-            <td><code>LlamaAI</code></td>
-            <td>2</td>
-            <td>Passive. Enrages when hit. Spits at range 2, maintains distance.</td>
-          </tr>
+          <tr><td>Cod</td><td>Fish</td><td>1</td><td>Water-only. Wanders between water tiles. Flees on water when hit.</td></tr>
+          <tr><td>Salmon</td><td>Fish</td><td>1</td><td>Water-only. Wanders between water tiles. Flees on water when hit.</td></tr>
+          <tr><td>Axolotl</td><td>Aquatic Hunter</td><td>2</td><td>Stays on water tiles. Hunts hostile mobs also in water. Wanders on water when no targets.</td></tr>
         </tbody>
       </table>
     </div>
 
-    <!-- ── Hostile Mobs ── -->
-    <h2 id="hostile-mobs">Hostile Mobs</h2>
-    <p>
-      Hostile mobs attack on sight. Each one has a distinct AI personality,
-      from mindless melee rushers to careful kiters and devastating ranged threats.
-    </p>
+    <!-- ══════════════════════════════════════════════════════════════
+         TERRITORIAL MOBS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="territorial">Territorial Mobs</h2>
+    <p>Normally peaceful, but become aggressive under certain conditions.</p>
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr>
-            <th>Mob</th>
-            <th>AI</th>
-            <th>Speed</th>
-            <th>Range</th>
-            <th>Key Behavior</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Behavior</th></tr></thead>
         <tbody>
-          <tr>
-            <td>Zombie</td>
-            <td><code>ZombieAI</code></td>
-            <td>2</td>
-            <td>1</td>
-            <td>Relentless. Always move+attack. +1 ATK per adjacent allied undead (horde bonus).</td>
-          </tr>
-          <tr>
-            <td>Husk</td>
-            <td><code>HuskAI</code></td>
-            <td>2 (+1 below 50% HP)</td>
-            <td>1</td>
-            <td>Zombie variant. +1 bonus damage. Weakness on hit. Gets faster when wounded.</td>
-          </tr>
-          <tr>
-            <td>Drowned</td>
-            <td><code>DrownedAI</code></td>
-            <td>2</td>
-            <td>3</td>
-            <td>Trident throw (cardinal LOS) at range 3 for ATK+1 damage. Melee if adjacent.</td>
-          </tr>
-          <tr>
-            <td>Skeleton</td>
-            <td><code>SkeletonAI</code></td>
-            <td>2</td>
-            <td>3</td>
-            <td>Archer. Cardinal LOS arrows. Retreats when player within 2 tiles.</td>
-          </tr>
-          <tr>
-            <td>Stray</td>
-            <td><code>StrayAI</code></td>
-            <td>2</td>
-            <td>3</td>
-            <td>Like Skeleton but applies Slowness on hit. Prefers max distance.</td>
-          </tr>
-          <tr>
-            <td>Bogged</td>
-            <td><code>BoggedAI</code></td>
-            <td>2</td>
-            <td>3-4</td>
-            <td>Poison arrows. Less cautious than Stray.</td>
-          </tr>
-          <tr>
-            <td>Spider</td>
-            <td><code>SpiderAI</code></td>
-            <td>3</td>
-            <td>3 (pounce)</td>
-            <td>2&times;2 body. Pounces up to 3 tiles to land adjacent. Applies Slowness (web).</td>
-          </tr>
-          <tr>
-            <td>Cave Spider</td>
-            <td><code>CaveSpiderAI</code></td>
-            <td>3</td>
-            <td>2 (pounce)</td>
-            <td>Fast flanker. 1&times;1. Pounce 2 tiles. Poison on hit.</td>
-          </tr>
-          <tr>
-            <td>Creeper</td>
-            <td><code>CreeperAI</code></td>
-            <td>2</td>
-            <td>1</td>
-            <td>Walks up, primes fuse when adjacent (1 turn). Explodes for 2&times; ATK in radius 2 AoE. Fuse resets if player escapes.</td>
-          </tr>
-          <tr>
-            <td>Vindicator</td>
-            <td><code>VindicatorAI</code></td>
-            <td>3</td>
-            <td>1</td>
-            <td>Berserker. Full speed rush. Enrages when damaged: 1.5&times; attack power permanently.</td>
-          </tr>
-          <tr>
-            <td>Pillager</td>
-            <td><code>PillagerAI</code></td>
-            <td>2</td>
-            <td>4</td>
-            <td>Crossbow (any direction). Retreats from melee. Maintains range 3-4.</td>
-          </tr>
-          <tr>
-            <td>Witch</td>
-            <td><code>WitchAI</code></td>
-            <td>2</td>
-            <td>2-4</td>
-            <td>Potion throw. Random effect: Harming (full), Poison (half), Slowness (half), Weakness (half). 25% chance to reposition below 40% HP.</td>
-          </tr>
-          <tr>
-            <td>Enderman</td>
-            <td><code>EndermanAI</code></td>
-            <td>5</td>
-            <td>1</td>
-            <td>Teleports behind player. Teleports away when hit (4+ tiles). Most unpredictable.</td>
-          </tr>
-          <tr>
-            <td>Phantom</td>
-            <td><code>PhantomAI</code></td>
-            <td>4</td>
-            <td>swoop</td>
-            <td>Cardinal swoops up to 4 tiles. Damages everything in path. Flies over obstacles. Repositions to align.</td>
-          </tr>
-          <tr>
-            <td>Silverfish</td>
-            <td><code>SilverfishAI</code></td>
-            <td>3</td>
-            <td>1</td>
-            <td>Swarmer. Flanks from opposite side of other enemies.</td>
-          </tr>
-          <tr>
-            <td>Slime</td>
-            <td><code>SlimeAI</code></td>
-            <td>2</td>
-            <td>3 (pounce)</td>
-            <td>Bouncy pouncer. Leaps up to 3 tiles.</td>
-          </tr>
-          <tr>
-            <td>Blaze</td>
-            <td><code>BlazeAI</code></td>
-            <td>2</td>
-            <td>4</td>
-            <td>Fireball artillery (any direction). Fire Shield above 50% HP. Retreats within 2 tiles. Burning on hit.</td>
-          </tr>
-          <tr>
-            <td>Ghast</td>
-            <td><code>GhastAI</code></td>
-            <td>1</td>
-            <td>5-6</td>
-            <td>Long-range fireball. Panics and flees within 3 tiles. Nearly stationary. Burning on hit.</td>
-          </tr>
-          <tr>
-            <td>Shulker</td>
-            <td><code>ShulkerAI</code></td>
-            <td>1</td>
-            <td>5</td>
-            <td>Immobile turret. Homing bullet ignoring LOS. Slowness on hit. Very high defense.</td>
-          </tr>
-          <tr>
-            <td>Breeze</td>
-            <td><code>BreezeAI</code></td>
-            <td>2</td>
-            <td>3</td>
-            <td>Wind charge (cardinal LOS). Dash-teleports 2-3 tiles away from melee. Evasive.</td>
-          </tr>
-          <tr>
-            <td>Magma Cube</td>
-            <td><code>SlimeAI</code> variant</td>
-            <td>3</td>
-            <td>3 (pounce)</td>
-            <td>Like Slime. Burning on hit.</td>
-          </tr>
+          <tr><td>Llama</td><td>Territorial Spitter</td><td>1</td><td>Passive until hit. Permanently enraged when attacked. Spits at range 2 while maintaining distance.</td></tr>
+          <tr><td>Polar Bear</td><td>Territorial Charger</td><td>2</td><td>Becomes aggressive if player within 2 tiles or if hit. Charges melee with full speed.</td></tr>
+          <tr><td>Goat</td><td>Ram</td><td>2</td><td>Passive until hit. Counterattacks with +2 knockback. Becomes enraged and charges in straight lines.</td></tr>
+          <tr><td>Cat</td><td>Conditional</td><td>2</td><td>Flees unless player holds fish. Approaches if holding fish. Becomes enraged if hit.</td></tr>
         </tbody>
       </table>
     </div>
 
-    <!-- ── Biome Bosses ── -->
-    <h2 id="biome-bosses">Biome Bosses</h2>
-    <p>
-      Each biome has a unique named boss that serves as a progression milestone. Bosses telegraph
-      their abilities one turn in advance, transition to a more aggressive <strong>Phase 2</strong> at
-      &le;50% HP, and reward a level-up on defeat. Click any boss card to view the full wiki page.
-    </p>
-
-    <h3 style="margin: 28px 0 12px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;">
-      <span class="badge badge-overworld">Overworld</span>
-    </h3>
-    <div class="boss-grid">
-      <a href="bosses/revenant.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/zombie.png" alt="The Revenant"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Revenant</div>
-          <div class="boss-card-biome">Plains</div>
-          <div class="boss-card-stats"><span>20 HP</span><span>4 ATK</span><span>2 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/hexweaver.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/evoker.png" alt="The Hexweaver"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Hexweaver</div>
-          <div class="boss-card-biome">Dark Forest</div>
-          <div class="boss-card-stats"><span>24 HP</span><span>6 ATK</span><span>3 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/frostbound-huntsman.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/stray.png" alt="Frostbound Huntsman"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">Frostbound Huntsman</div>
-          <div class="boss-card-biome">Snowy Tundra</div>
-          <div class="boss-card-stats"><span>22 HP</span><span>5 ATK</span><span>1 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/rockbreaker.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/vindicator.png" alt="The Rockbreaker"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Rockbreaker</div>
-          <div class="boss-card-biome">Stony Peaks</div>
-          <div class="boss-card-stats"><span>30 HP</span><span>7 ATK</span><span>4 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/tidecaller.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/drowned.png" alt="The Tidecaller"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Tidecaller</div>
-          <div class="boss-card-biome">River Delta</div>
-          <div class="boss-card-stats"><span>25 HP</span><span>5 ATK</span><span>3 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/broodmother.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/spider.png" alt="The Broodmother"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Broodmother</div>
-          <div class="boss-card-biome">Dense Jungle</div>
-          <div class="boss-card-stats"><span>26 HP</span><span>5 ATK</span><span>2 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/sandstorm-pharaoh.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/husk.png" alt="Sandstorm Pharaoh"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">Sandstorm Pharaoh</div>
-          <div class="boss-card-biome">Scorching Desert</div>
-          <div class="boss-card-stats"><span>28 HP</span><span>6 ATK</span><span>3 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/hollow-king.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/wither_skeleton.png" alt="The Hollow King"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Hollow King</div>
-          <div class="boss-card-biome">Underground Caverns</div>
-          <div class="boss-card-stats"><span>32 HP</span><span>6 ATK</span><span>4 DEF</span></div>
-        </div>
-      </a>
-    </div>
-
-    <h3 style="margin: 28px 0 12px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;">
-      <span class="badge badge-nether">The Nether</span>
-    </h3>
-    <div class="boss-grid">
-      <a href="bosses/molten-king.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/magma_cube.png" alt="The Molten King"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Molten King</div>
-          <div class="boss-card-biome">Nether Wastes</div>
-          <div class="boss-card-stats"><span>35 HP</span><span>8 ATK</span><span>5 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/wailing-revenant.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/ghast.png" alt="Wailing Revenant"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">Wailing Revenant</div>
-          <div class="boss-card-biome">Soul Sand Valley</div>
-          <div class="boss-card-stats"><span>24 HP</span><span>7 ATK</span><span>1 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/void-walker.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/enderman.png" alt="The Void Walker"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Void Walker</div>
-          <div class="boss-card-biome">Warped Forest</div>
-          <div class="boss-card-stats"><span>28 HP</span><span>7 ATK</span><span>2 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/ashen-warlord.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/wither_skeleton.png" alt="The Ashen Warlord"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Ashen Warlord</div>
-          <div class="boss-card-biome">Basalt Deltas</div>
-          <div class="boss-card-stats"><span>36 HP</span><span>8 ATK</span><span>5 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/crimson-ravager.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/hoglin.png" alt="Crimson Ravager"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">Crimson Ravager</div>
-          <div class="boss-card-biome">Crimson Forest</div>
-          <div class="boss-card-stats"><span>40 HP</span><span>9 ATK</span><span>5 DEF</span></div>
-        </div>
-      </a>
-    </div>
-
-    <h3 style="margin: 28px 0 12px; font-size: 15px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;">
-      <span class="badge badge-end">The End</span>
-    </h3>
-    <div class="boss-grid">
-      <a href="bosses/chorus-mind.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/enderman.png" alt="The Chorus Mind"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Chorus Mind</div>
-          <div class="boss-card-biome">Chorus Grove</div>
-          <div class="boss-card-stats"><span>30 HP</span><span>6 ATK</span><span>3 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/shulker-architect.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/shulker.png" alt="Shulker Architect"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">Shulker Architect</div>
-          <div class="boss-card-biome">End City</div>
-          <div class="boss-card-stats"><span>36 HP</span><span>7 ATK</span><span>6 DEF</span></div>
-        </div>
-      </a>
-      <a href="bosses/void-herald.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/enderman.png" alt="The Void Herald"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Void Herald</div>
-          <div class="boss-card-biome">Outer End Islands</div>
-          <div class="boss-card-stats"><span>32 HP</span><span>8 ATK</span><span>3 DEF</span></div>
-        </div>
-      </a>
-    </div>
-
-    <h2 id="boss-warden" style="margin-top: 48px;">Special Boss: The Warden</h2>
-    <p>
-      Lurking in the Deep Dark biome, the Warden is an optional but extremely powerful encounter
-      that rewards the bravest players with exceptional loot. It cannot be outrun and its Sonic
-      Shriek bypasses armor entirely.
-    </p>
-    <div class="boss-grid" style="max-width: 460px;">
-      <a href="bosses/warden.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/warden.png" alt="The Warden"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">The Warden</div>
-          <div class="boss-card-biome">Deep Dark — Overworld</div>
-          <div class="boss-card-stats"><span>80 HP</span><span>12 ATK</span><span>8 DEF</span></div>
-        </div>
-      </a>
-    </div>
-
-    <h2 id="boss-dragon" style="margin-top: 40px;">Final Boss: Ender Dragon</h2>
-    <p>
-      The Ender Dragon is the ultimate challenge of Craftics, fought in the Dragon’s Nest.
-      Defeating it triggers New Game+ (NG+). Destroy all End Crystals before engaging —
-      the Dragon regenerates indefinitely while any Crystal remains.
-    </p>
-    <div class="boss-grid" style="max-width: 460px;">
-      <a href="bosses/ender-dragon.html" class="boss-card">
-        <div class="boss-card-img"><img src="img/mobs/ender_dragon.png" alt="Ender Dragon"></div>
-        <div class="boss-card-body">
-          <div class="boss-card-name">Ender Dragon</div>
-          <div class="boss-card-biome">Dragon’s Nest — The End</div>
-          <div class="boss-card-stats"><span>100 HP</span><span>10 ATK</span><span>6 DEF</span></div>
-        </div>
-      </a>
-    </div>
-
-    <!-- ── Special On-Hit Effects ── -->
-    <h2 id="on-hit-effects">Special On-Hit Effects</h2>
-    <p>
-      Several mobs apply debuffs when they land a hit. Knowing which mobs inflict
-      which effects is critical for prioritizing targets and planning your defenses.
-    </p>
+    <!-- ══════════════════════════════════════════════════════════════
+         PREDATORS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="predators">Predators</h2>
+    <p>Hunt other mobs on the grid. Become hostile to the player if attacked.</p>
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr>
-            <th>Mob</th>
-            <th>Effect</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Behavior</th></tr></thead>
         <tbody>
-          <tr>
-            <td>Wither Skeleton</td>
-            <td>Wither (-2 HP/turn)</td>
-          </tr>
-          <tr>
-            <td>Blaze, Ghast</td>
-            <td>Burning (-1 HP/turn)</td>
-          </tr>
-          <tr>
-            <td>Husk</td>
-            <td>Weakness (-2 attack)</td>
-          </tr>
-          <tr>
-            <td>Stray</td>
-            <td>Slowness (-1 movement)</td>
-          </tr>
-          <tr>
-            <td>Cave Spider, Bogged, Bee</td>
-            <td>Poison (-1 HP/turn)</td>
-          </tr>
-          <tr>
-            <td>Spider</td>
-            <td>Slowness (web)</td>
-          </tr>
-          <tr>
-            <td>Shulker</td>
-            <td>Slowness (levitation)</td>
-          </tr>
+          <tr><td>Wolf</td><td>Pack Hunter</td><td>3</td><td>Hunts sheep, chickens, and skeletons. Becomes permanently enraged if hit by player.</td></tr>
+          <tr><td>Fox</td><td>Opportunist</td><td>2</td><td>Hunts sheep and chickens. Becomes enraged if hit. Nearly identical to Wolf behavior.</td></tr>
+          <tr><td>Ocelot</td><td>Assassin</td><td>4</td><td>Lightning-fast. Charges, attacks, and flees if damaged. Low HP but extremely evasive.</td></tr>
         </tbody>
       </table>
     </div>
 
-    <!-- ── Trial Chambers ── -->
-    <h2 id="trial-chambers">Trial Chambers</h2>
-    <p>
-      Trial Chambers are special combat events sourced from <code>TrialChamberEvent.java</code>.
-      They come in four variants, each with different grid sizes, enemy counts, and loot tables.
-    </p>
+    <!-- ══════════════════════════════════════════════════════════════
+         SWARM MOBS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="swarm">Swarm Mobs</h2>
+    <p>Individual mobs that coordinate as a group when provoked.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td>Bee</td><td>Swarm</td><td>2</td><td>Passive normally. If ANY bee is hit, ALL bees become permanently enraged. Applies poison on hit.</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-    <h3>Standard Trial</h3>
-    <ul>
-      <li><strong>Grid size:</strong> 10-12 tiles.</li>
-      <li><strong>Enemies:</strong> 4-6 mobs plus a Breeze mini-boss.</li>
-      <li><strong>Loot tiers:</strong> Common, Uncommon, Rare, Epic, and Legendary.</li>
-    </ul>
+    <!-- ══════════════════════════════════════════════════════════════
+         MELEE HOSTILES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="melee-hostile">Melee Hostiles</h2>
+    <p>Aggressive mobs that close distance and attack in melee range.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Special</th></tr></thead>
+        <tbody>
+          <tr><td>Zombie</td><td>Horde Fighter</td><td>2</td><td>Always moves + attacks in same turn. +1 ATK per adjacent undead ally (horde bonus). Never retreats.</td></tr>
+          <tr><td>Husk</td><td>Desert Zombie</td><td>2</td><td>Applies Weakness on hit. +1 hunger damage. Gets +1 Speed below 50% HP (desperation charge).</td></tr>
+          <tr><td>Drowned</td><td>Versatile</td><td>2</td><td>Throws trident at range 3 with cardinal line of sight. Falls back to melee rush if no LOS.</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-    <h3>Ambush</h3>
-    <ul>
-      <li><strong>Grid size:</strong> 8&times;8.</li>
-      <li><strong>Enemies:</strong> 2-3 weaker mobs.</li>
-      <li><strong>Scaling:</strong> Gentler difficulty scaling. A lighter encounter.</li>
-    </ul>
+    <!-- ══════════════════════════════════════════════════════════════
+         RANGED HOSTILES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="ranged-hostile">Ranged Hostiles</h2>
+    <p>Keep distance and attack from afar. Kite backward if the player gets close.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Range</th><th>Special</th></tr></thead>
+        <tbody>
+          <tr><td>Skeleton</td><td>Tactical Archer</td><td>2</td><td>3</td><td>Kites when player within 2 tiles. Maintains distance 3+ for safe shooting. Repositions for cardinal LOS.</td></tr>
+          <tr><td>Stray</td><td>Ice Archer</td><td>2</td><td>3</td><td>Applies Slowness on hit. More cautious than Skeleton. Prefers maximum distance.</td></tr>
+          <tr><td>Pillager</td><td>Crossbow Tactical</td><td>2</td><td>4</td><td>Range 4 any direction. Retreats if within 2 tiles. Maintains range 3-4. Never wastes a turn.</td></tr>
+          <tr><td>Witch</td><td>Potion Caster</td><td>1</td><td>2-4</td><td>Random potion effects (poison/slowness/weakness/harming). Kites backward. 25% self-heal below 40% HP.</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-    <h3>Ominous Trial</h3>
-    <ul>
-      <li><strong>Grid size:</strong> 12-14 tiles.</li>
-      <li><strong>Enemies:</strong> 5-7 mobs plus a Breeze and a Warden.</li>
-      <li><strong>Scaling:</strong> Harder difficulty scaling than Standard.</li>
-      <li><strong>Loot:</strong> Better rewards including Netherite gear, Mace, and other rare items.</li>
-    </ul>
+    <!-- ══════════════════════════════════════════════════════════════
+         RUSH HOSTILES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="rush-hostile">Rush Hostiles</h2>
+    <p>Aggressive chargers that close distance fast and hit hard.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Size</th><th>Special</th></tr></thead>
+        <tbody>
+          <tr><td>Vindicator</td><td>Axe Berserker</td><td>2</td><td>1&times;1</td><td>Permanently enraged when hit. +50% damage while enraged. Charges with full speed.</td></tr>
+          <tr><td>Spider</td><td>Pouncing Predator</td><td>3</td><td>2&times;2</td><td>Pounces up to 3 tiles to land adjacent. Applies Slowness. Aggressive flanker.</td></tr>
+          <tr><td>Creeper</td><td>Suicidal Bomber</td><td>2</td><td>1&times;1</td><td>Walks adjacent then primes fuse. Explodes next turn if still adjacent. Radius 2 AoE.</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-    <h3>Treasure Vault</h3>
-    <ul>
-      <li><strong>Grid size:</strong> 5&times;5.</li>
-      <li><strong>Enemies:</strong> None. Automatic victory.</li>
-      <li><strong>Loot:</strong> 3-5 items. A free reward room.</li>
-    </ul>
+    <!-- ══════════════════════════════════════════════════════════════
+         SPECIAL HOSTILES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="special-hostile">Special Hostiles</h2>
+    <p>Unique combat behaviors that don't fit standard categories.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Special</th></tr></thead>
+        <tbody>
+          <tr><td>Enderman</td><td>Teleporter</td><td>5</td><td>Reactive blink when damaged (teleports away). Teleport-strikes behind player. Nearly impossible to corner.</td></tr>
+          <tr><td>Phantom</td><td>Dive Bomber</td><td>4</td><td>Swoops 4 tiles in straight line. Damages player if in path. Flies over obstacles. Repositions for next dive.</td></tr>
+          <tr><td>Mounted Camel</td><td>Lance Cavalry</td><td>4</td><td>+1 damage per tile moved (charge bonus). Dismounts at &lt;50% HP (speed 4 &rarr; 2). Prefers straight-line charges.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         NETHER MOBS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="nether-mobs">Nether Mobs</h2>
+    <p>Dangerous creatures found in Nether biomes. Many share AI with Overworld counterparts but with higher stats.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Special</th></tr></thead>
+        <tbody>
+          <tr><td>Zombified Piglin</td><td>Horde Fighter</td><td>2</td><td>Same as Zombie. Undead horde bonus. Relentless melee.</td></tr>
+          <tr><td>Magma Cube</td><td>Bouncing Pouncer</td><td>3</td><td>Pounces like Spider. 2&times;2 size. Aggressive charger.</td></tr>
+          <tr><td>Ghast</td><td>Artillery</td><td>1</td><td>Long-range fireball at range 5-6. Flees if player within 3 tiles. Applies burning.</td></tr>
+          <tr><td>Hoglin</td><td>Berserker</td><td>2</td><td>Rush melee charger. Same AI as Vindicator. Enrages when hit.</td></tr>
+          <tr><td>Piglin</td><td>Crossbow Tactical</td><td>2</td><td>Same AI as Pillager. Range 4 crossbow. Maintains distance.</td></tr>
+          <tr><td>Blaze</td><td>Fire Artillery</td><td>1</td><td>Range 4 any direction. Hovers backward if within 2 tiles. Applies burning. High defense.</td></tr>
+          <tr><td>Wither Skeleton</td><td>Wither Melee</td><td>2</td><td>Melee fighter. Applies Wither on hit (HP drain). Aggressive charger.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         END MOBS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="end-mobs">End Mobs</h2>
+    <p>Alien creatures of the End dimension.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Special</th></tr></thead>
+        <tbody>
+          <tr><td>Shulker</td><td>Immobile Turret</td><td>1</td><td>Fires homing bullets at range 5 (any direction). Applies Slowness. Very high defense. Barely moves.</td></tr>
+          <tr><td>Endermite</td><td>Swarmer</td><td>3</td><td>Fast weak flanker. Approaches from the opposite side of other enemies. Swarm tactics.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         TRIAL CHAMBER MOBS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="trial-mobs">Trial Chamber Mobs</h2>
+    <p>Encountered in Trial Chamber events between levels. Tougher variants with unique mechanics.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Special</th></tr></thead>
+        <tbody>
+          <tr><td>Breeze</td><td>Wind Dasher</td><td>3</td><td>Range 3. Dashes away if adjacent then shoots. Never stays still. Constantly repositions.</td></tr>
+          <tr><td>Bogged</td><td>Poison Archer</td><td>2</td><td>Swamp skeleton variant. Applies poison. Less cautious than Stray. Holds ground at range 2.</td></tr>
+          <tr><td>Cave Spider</td><td>Venomous Striker</td><td>3</td><td>Pounces up to 2 tiles. Applies poison. Hit-and-run flanker.</td></tr>
+          <tr><td>Silverfish</td><td>Flanker</td><td>3</td><td>Tries to approach from opposite side of other enemies. Swarmer AI with flanking logic.</td></tr>
+          <tr><td>Slime</td><td>Bouncy Charger</td><td>2</td><td>Hops up to 3 tiles. Always charges. Simple but effective in groups.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         OVERWORLD BOSSES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="overworld-bosses">Overworld Bosses</h2>
+    <p>Each Overworld biome's final level features a unique boss with custom abilities and a Phase 2 at &le;50% HP. See individual <a href="bosses/revenant.html">boss pages</a> for full ability breakdowns.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Boss</th><th>Biome</th><th>Entity</th><th>HP</th><th>ATK</th><th>Size</th><th>Signature</th></tr></thead>
+        <tbody>
+          <tr><td><a href="bosses/revenant.html">The Revenant</a></td><td>Plains</td><td>Zombie</td><td>20</td><td>4</td><td>2&times;2</td><td>Raise Dead, Death Charge, Shield Bash</td></tr>
+          <tr><td><a href="bosses/hexweaver.html">The Hexweaver</a></td><td>Dark Forest</td><td>Evoker</td><td>28</td><td>5</td><td>2&times;2</td><td>Vex Swarm, Fang Line, Cursed Fog</td></tr>
+          <tr><td><a href="bosses/frostbound-huntsman.html">Frostbound Huntsman</a></td><td>Snowy Tundra</td><td>Stray</td><td>25</td><td>5</td><td>2&times;2</td><td>Blizzard, Ice Wall, Glacial Trap</td></tr>
+          <tr><td><a href="bosses/rockbreaker.html">The Rockbreaker</a></td><td>Stony Peaks</td><td>Vindicator</td><td>30</td><td>6</td><td>2&times;2</td><td>Seismic Slam, Boulder Toss, Avalanche</td></tr>
+          <tr><td><a href="bosses/tidecaller.html">The Tidecaller</a></td><td>River Delta</td><td>Drowned</td><td>30</td><td>5</td><td>2&times;2</td><td>Tidal Wave, Trident Storm, Riptide Charge</td></tr>
+          <tr><td><a href="bosses/broodmother.html">The Broodmother</a></td><td>Dense Jungle</td><td>Spider</td><td>35</td><td>6</td><td>3&times;3</td><td>Spawn Brood, Web Spray, Venomous Bite</td></tr>
+          <tr><td><a href="bosses/sandstorm-pharaoh.html">Sandstorm Pharaoh</a></td><td>Scorching Desert</td><td>Husk</td><td>25</td><td>6</td><td>2&times;2</td><td>Plant Mine, Sand Burial, Sandstorm</td></tr>
+          <tr><td><a href="bosses/hollow-king.html">The Hollow King</a></td><td>Underground Caverns</td><td>Zombie</td><td>40</td><td>7</td><td>2&times;2</td><td>Cave-In, Miner's Fury, Lights Out</td></tr>
+          <tr><td><a href="bosses/warden.html">The Warden</a></td><td>Deep Dark</td><td>Warden</td><td>50</td><td>8</td><td>2&times;2</td><td>Vibration Sense, Sculk Spread, Darkness Pulse</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         NETHER BOSSES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="nether-bosses">Nether Bosses</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Boss</th><th>Biome</th><th>Entity</th><th>HP</th><th>ATK</th><th>Size</th><th>Signature</th></tr></thead>
+        <tbody>
+          <tr><td><a href="bosses/molten-king.html">The Molten King</a></td><td>Nether Wastes</td><td>Magma Cube</td><td>35</td><td>7</td><td>2&times;2</td><td>Magma Eruption, Split, Lava Trail</td></tr>
+          <tr><td><a href="bosses/wailing-revenant.html">Wailing Revenant</a></td><td>Soul Sand Valley</td><td>Wither Skeleton</td><td>32</td><td>8</td><td>2&times;2</td><td>Wither Curse, Soul Chain, Soul Torrent</td></tr>
+          <tr><td><a href="bosses/crimson-ravager.html">Crimson Ravager</a></td><td>Crimson Forest</td><td>Hoglin</td><td>40</td><td>8</td><td>2&times;2</td><td>Savage Charge, Spore Cloud, Rampage</td></tr>
+          <tr><td><a href="bosses/void-walker.html">The Void Walker</a></td><td>Warped Forest</td><td>Enderman</td><td>28</td><td>6</td><td>2&times;2</td><td>Void Spike, Blink Away, Rift</td></tr>
+          <tr><td>The Wither</td><td>Basalt Deltas</td><td>Wither</td><td>65</td><td>8</td><td>2&times;2</td><td>Skull Barrage (projectile mobs), Decay Aura, Charge. Phase 2: Ranged immune.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         END BOSSES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="end-bosses">End Bosses</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Boss</th><th>Biome</th><th>Entity</th><th>HP</th><th>ATK</th><th>Size</th><th>Signature</th></tr></thead>
+        <tbody>
+          <tr><td><a href="bosses/void-herald.html">The Void Herald</a></td><td>Outer End Islands</td><td>Enderman</td><td>-</td><td>-</td><td>2&times;2</td><td>Storm Abilities</td></tr>
+          <tr><td><a href="bosses/shulker-architect.html">Shulker Architect</a></td><td>End City</td><td>Shulker</td><td>32</td><td>6</td><td>2&times;2</td><td>Bullet Barrage, Summon Shulkerlings, Shell Defense</td></tr>
+          <tr><td><a href="bosses/chorus-mind.html">The Chorus Mind</a></td><td>Chorus Grove</td><td>Evoker</td><td>36</td><td>6</td><td>2&times;2</td><td>Chorus Teleport, Vex Legion, Harmonic Resonance</td></tr>
+          <tr><td><a href="bosses/ender-dragon.html">Ender Dragon</a></td><td>Dragon's Nest</td><td>Ender Dragon</td><td>80</td><td>15</td><td>3&times;3</td><td>End Crystal Shield, Dragon Breath, Wing Gust, Swoop, Fury Charge</td></tr>
+        </tbody>
+      </table>
+    </div>
 
   </main>
 </div>
 
-<!-- ============================================================
-     FOOTER
-     ============================================================ -->
 <footer>
   <span>Craftics by CrackedGames</span>
   <span class="sep">&middot;</span>

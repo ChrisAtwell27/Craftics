@@ -146,8 +146,146 @@ public class CombatManager {
     /** Shared event manager for this biome run (shared across party members). */
     private EventManager eventManager;
 
+    /** The UUID of the world owner for this combat (determines arena/event positions). */
+    private java.util.UUID worldOwnerUuid;
+
     public EventManager getEventManager() { return eventManager; }
     public void setEventManager(EventManager em) { this.eventManager = em; }
+
+    public java.util.UUID getWorldOwnerUuid() { return worldOwnerUuid; }
+    public void setWorldOwnerUuid(java.util.UUID uuid) { this.worldOwnerUuid = uuid; }
+
+    // === Party co-op support ===
+
+    /** All players participating in this combat (leader first, then party members). */
+    private final List<ServerPlayerEntity> partyPlayers = new ArrayList<>();
+
+    /** Maps non-leader party member UUID → leader UUID for action routing. */
+    private static final java.util.Map<java.util.UUID, java.util.UUID> PARTY_COMBAT_LEADER =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Add a party member to this combat (includes leader — call for every participant). */
+    public void addPartyMember(ServerPlayerEntity member) {
+        if (partyPlayers.stream().noneMatch(p -> p.getUuid().equals(member.getUuid()))) {
+            partyPlayers.add(member);
+        }
+        if (player != null && !member.getUuid().equals(player.getUuid())) {
+            PARTY_COMBAT_LEADER.put(member.getUuid(), player.getUuid());
+        }
+    }
+
+    /** Remove a party member (disconnect/leave). */
+    public void removePartyMember(java.util.UUID memberUuid) {
+        partyPlayers.removeIf(p -> p.getUuid().equals(memberUuid));
+        PARTY_COMBAT_LEADER.remove(memberUuid);
+    }
+
+    /** Get the CombatManager that handles this player's active combat (follows party leader). */
+    public static CombatManager getActiveCombat(java.util.UUID playerUuid) {
+        java.util.UUID leaderUuid = PARTY_COMBAT_LEADER.get(playerUuid);
+        if (leaderUuid != null) {
+            CombatManager leaderCm = INSTANCES.get(leaderUuid);
+            if (leaderCm != null && leaderCm.active) return leaderCm;
+        }
+        return get(playerUuid);
+    }
+
+    /** Check if a UUID is a party participant in this combat. */
+    public boolean isPartyMember(java.util.UUID uuid) {
+        return partyPlayers.stream().anyMatch(p -> p.getUuid().equals(uuid));
+    }
+
+    /** Get all participating players (leader + party members), or just the leader if solo. */
+    private List<ServerPlayerEntity> getAllParticipants() {
+        if (!partyPlayers.isEmpty()) return partyPlayers;
+        return player != null ? List.of(player) : List.of();
+    }
+
+    /** Send a payload to all party participants (or just the player if solo). */
+    private void sendToAllParty(net.minecraft.network.packet.CustomPayload payload) {
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null && p.networkHandler != null) {
+                ServerPlayNetworking.send(p, payload);
+            }
+        }
+    }
+
+    /** Send a chat message (not action bar) to all party participants. */
+    private void sendMessageToAllChat(String msg) {
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null) {
+                p.sendMessage(Text.literal(msg), false);
+            }
+        }
+    }
+
+    /** Clean up party tracking on combat end. */
+    private void cleanupPartyTracking() {
+        for (ServerPlayerEntity member : partyPlayers) {
+            PARTY_COMBAT_LEADER.remove(member.getUuid());
+        }
+        partyPlayers.clear();
+    }
+
+    /** Get online party members via EventManager (survives endCombat). Falls back to single player. */
+    private List<ServerPlayerEntity> getOnlinePartyMembers(ServerPlayerEntity referencePlayer) {
+        if (eventManager != null) {
+            return eventManager.getOnlineParticipants((ServerWorld) referencePlayer.getEntityWorld());
+        }
+        return List.of(referencePlayer);
+    }
+
+    /**
+     * Transition all party members to a new arena and start combat.
+     * Uses EventManager to find participants (survives endCombat clearing partyPlayers).
+     */
+    private void transitionPartyToArena(ServerPlayerEntity leader, GridArena newArena, LevelDefinition newLevelDef) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(leader);
+        BlockPos startPos = newArena.getPlayerStartBlockPos();
+        EnterCombatPayload enterPayload = makeEnterPayload(newArena);
+        for (ServerPlayerEntity member : members) {
+            member.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
+            ServerPlayNetworking.send(member, enterPayload);
+            if (!member.getUuid().equals(leader.getUuid())) {
+                member.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
+            }
+        }
+        startCombat(leader, newArena, newLevelDef);
+        // Re-register party members on the new combat instance
+        for (ServerPlayerEntity member : members) {
+            addPartyMember(member);
+        }
+    }
+
+    /** Build an arena using this combat's world owner for positioning. */
+    private GridArena buildArena(ServerWorld world, LevelDefinition def) {
+        if (worldOwnerUuid != null) {
+            return com.crackedgames.craftics.level.ArenaBuilder.build(world, def, worldOwnerUuid);
+        }
+        return com.crackedgames.craftics.level.ArenaBuilder.build(world, def);
+    }
+
+    /** Resolve the dynamic hub position for a player (personal world or central lobby). */
+    private static void teleportToHub(ServerPlayerEntity p) {
+        ServerWorld world = (ServerWorld) p.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        BlockPos hub = data.getHubTeleportPos(p.getUuid());
+        p.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+    }
+
+    /** Teleport all party members home and send ExitCombat. */
+    private void sendPartyHome(ServerPlayerEntity referencePlayer) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(referencePlayer);
+        for (ServerPlayerEntity member : members) {
+            teleportToHub(member);
+        }
+        // Send exit to all via the reference (partyPlayers may already be cleared)
+        for (ServerPlayerEntity member : members) {
+            if (member.networkHandler != null) {
+                ServerPlayNetworking.send(member, new ExitCombatPayload(true));
+            }
+        }
+    }
 
     // Mounted pet state
     private boolean playerMounted = false;
@@ -1023,7 +1161,7 @@ public class CombatManager {
         final GridPos fTPos = tPos;
 
         // Trigger client animation immediately (damage visuals are already delayed on client)
-        ServerPlayNetworking.send(player, new CombatEventPayload(
+        sendToAllParty(new CombatEventPayload(
             CombatEventPayload.EVENT_DAMAGED, target.getEntityId(),
             0, target.getCurrentHp(), tPos.x(), tPos.z()  // 0 damage placeholder — triggers animation
         ));
@@ -1102,7 +1240,7 @@ public class CombatManager {
             for (String msg : abilityResult.messages()) sendMessage(msg);
 
             // Send REAL damage event (client will show damage number at this point)
-            ServerPlayNetworking.send(player, new CombatEventPayload(
+            sendToAllParty(new CombatEventPayload(
                 CombatEventPayload.EVENT_DAMAGED, fTarget.getEntityId(),
                 dealt, fTarget.getCurrentHp(), fTarget.getGridPos().x(), fTarget.getGridPos().z()
             ));
@@ -1171,7 +1309,7 @@ public class CombatManager {
             if (entity.getMobEntity() != null) {
                 entity.getMobEntity().discard();
             }
-            ServerPlayNetworking.send(player, new CombatEventPayload(
+            sendToAllParty(new CombatEventPayload(
                 CombatEventPayload.EVENT_DIED, entity.getEntityId(), 0, 0,
                 deathPos.x(), deathPos.z()
             ));
@@ -1224,7 +1362,7 @@ public class CombatManager {
             case "soul_sand_valley" -> "The Wailing Revenant";
             case "crimson_forest" -> "The Crimson Ravager";
             case "warped_forest" -> "The Void Walker";
-            case "basalt_deltas" -> "The Ashen Warlord";
+            case "basalt_deltas" -> "The Wither";
             case "outer_end" -> "The Void Herald";
             case "end_city" -> "The Shulker Architect";
             case "chorus_grove" -> "The Chorus Mind";
@@ -1369,19 +1507,11 @@ public class CombatManager {
                 // No equipment — entity distorts reality
                 scaleBoss(mob, 1.7);
             }
-            case "basalt_deltas" -> { // The Ashen Warlord — Wither Skeleton
-                mob.setCustomName(Text.literal("§8§lThe Ashen Warlord"));
+            case "basalt_deltas" -> { // The Wither
+                mob.setCustomName(Text.literal("§0§lThe Wither"));
                 mob.setCustomNameVisible(true);
-                // Nether-brick crown
-                ItemStack crown = new ItemStack(Items.NETHERITE_HELMET);
-                crown.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
-                mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, crown);
-                mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.NETHERITE_CHESTPLATE));
-                // Flaming sword
-                ItemStack flameSword = new ItemStack(Items.NETHERITE_SWORD);
-                flameSword.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
-                mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, flameSword);
-                scaleBoss(mob, 1.6);
+                // Wither is naturally large — no equipment needed, just scale
+                scaleBoss(mob, 1.5);
             }
             case "outer_end" -> { // The Void Herald — Enderman
                 mob.setCustomName(Text.literal("§d§lThe Void Herald"));
@@ -1792,7 +1922,7 @@ public class CombatManager {
             .toList();
         for (CombatEntity dead : deadEnemies) {
             sendMessage("§a" + dead.getDisplayName() + " defeated!");
-            ServerPlayNetworking.send(player, new CombatEventPayload(
+            sendToAllParty(new CombatEventPayload(
                 CombatEventPayload.EVENT_DIED, dead.getEntityId(), 0, 0,
                 dead.getGridPos().x(), dead.getGridPos().z()
             ));
@@ -1873,7 +2003,7 @@ public class CombatManager {
             .toList();
         for (CombatEntity dead : deadEnemies) {
             sendMessage("§a" + dead.getDisplayName() + " defeated!");
-            ServerPlayNetworking.send(player, new CombatEventPayload(
+            sendToAllParty(new CombatEventPayload(
                 CombatEventPayload.EVENT_DIED, dead.getEntityId(), 0, 0,
                 dead.getGridPos().x(), dead.getGridPos().z()
             ));
@@ -2002,7 +2132,7 @@ public class CombatManager {
                         CrafticsMod.LOGGER.error("Failed to re-spawn '{}' — removing from combat", e.getDisplayName());
                         e.takeDamage(9999);
                         arena.removeEntity(e);
-                        ServerPlayNetworking.send(player, new CombatEventPayload(
+                        sendToAllParty(new CombatEventPayload(
                             CombatEventPayload.EVENT_DIED, e.getEntityId(), 0, 0, 0, 0
                         ));
                         if (enemies.stream().noneMatch(en -> en.isAlive() && !en.isAlly())) {
@@ -2399,7 +2529,7 @@ public class CombatManager {
             sendMessage("§aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
             sendSync();
             refreshHighlights();
-            ServerPlayNetworking.send(player, new CombatEventPayload(
+            sendToAllParty(new CombatEventPayload(
                 CombatEventPayload.EVENT_PHASE_CHANGED, 0,
                 CombatPhase.PLAYER_TURN.ordinal(), apRemaining, 0, 0
             ));
@@ -3185,7 +3315,7 @@ public class CombatManager {
     private void highlightWarningTile(GridPos tile) {
         // Send warning tile highlight to client for rendering
         if (player != null) {
-            ServerPlayNetworking.send(player, new CombatEventPayload(
+            sendToAllParty(new CombatEventPayload(
                 CombatEventPayload.EVENT_TILE_WARNING, 0, 0, 0, tile.x(), tile.z()
             ));
         }
@@ -3631,11 +3761,11 @@ public class CombatManager {
         if (testRange) {
             sendMessage("§c§l*** DEFEATED ***");
             sendMessage("§7Test range — no penalties applied.");
-            if (player != null) {
-                player.setHealth(player.getMaxHealth());
-                player.requestTeleport(0.5, 65, 0.5);
-                ServerPlayNetworking.send(player, new ExitCombatPayload(false));
+            for (ServerPlayerEntity p : getAllParticipants()) {
+                p.setHealth(p.getMaxHealth());
+                teleportToHub(p);
             }
+            sendToAllParty(new ExitCombatPayload(false));
             endCombat();
             return;
         }
@@ -3717,10 +3847,12 @@ public class CombatManager {
         sendMessage("§7Returning to hub... Your biome run has ended.");
         sendMessage("§7Remaining emeralds: " + data.emeralds);
 
-        // Teleport home, restore daytime
+        // Teleport all party members home, restore daytime
         world.setTimeOfDay(6000);
-        player.requestTeleport(0.5, 65, 0.5);
-        ServerPlayNetworking.send(player, new ExitCombatPayload(false));
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            teleportToHub(p);
+        }
+        sendToAllParty(new ExitCombatPayload(false));
         endCombat();
     }
 
@@ -3747,11 +3879,11 @@ public class CombatManager {
         if (testRange) {
             sendMessage("§a§l*** VICTORY ***");
             sendMessage("§7Test range — no rewards given.");
-            if (player != null) {
-                player.setHealth(player.getMaxHealth());
-                player.requestTeleport(0.5, 65, 0.5);
-                ServerPlayNetworking.send(player, new ExitCombatPayload(true));
+            for (ServerPlayerEntity p : getAllParticipants()) {
+                p.setHealth(p.getMaxHealth());
+                teleportToHub(p);
             }
+            sendToAllParty(new ExitCombatPayload(true));
             endCombat();
             return;
         }
@@ -3764,34 +3896,40 @@ public class CombatManager {
         phase = CombatPhase.LEVEL_COMPLETE;
         sendMessage("§a§l*** VICTORY! ***");
 
-        // Give mob drops (Luck stat adds bonus items per mob)
+        // Give mob drops to all party participants (Luck stat adds bonus items per mob)
+        List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
         int luckBonusItems = PlayerProgression.get((ServerWorld) player.getEntityWorld())
             .getStats(player).getPoints(PlayerProgression.Stat.LUCK);
         for (CombatEntity enemy : enemies) {
             List<ItemStack> drops = getMobDrops(enemy.getEntityTypeId());
             for (ItemStack drop : drops) {
-                // Luck bonus: each point gives 20% chance to double each drop stack
                 if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
                     drop.setCount(drop.getCount() + 1);
                 }
-                player.getInventory().insertStack(drop.copy());
+                for (ServerPlayerEntity recipient : rewardRecipients) {
+                    recipient.getInventory().insertStack(drop.copy());
+                }
                 sendMessage("§e+ " + drop.getCount() + "x " + drop.getName().getString());
             }
             // Rare goat horn drop (10% chance per goat)
             if ("minecraft:goat".equals(enemy.getEntityTypeId()) && Math.random() < CrafticsMod.CONFIG.goatHornDropChance()) {
                 ItemStack horn = GoatHornEffects.createRandomHorn(player.getRegistryManager());
                 if (horn != null) {
-                    player.getInventory().insertStack(horn);
+                    for (ServerPlayerEntity recipient : rewardRecipients) {
+                        recipient.getInventory().insertStack(horn.copy());
+                    }
                     sendMessage("§6§l+ Goat Horn! " + horn.getName().getString());
                 }
             }
         }
 
-        // Give level completion loot
+        // Give level completion loot to all party participants
         if (levelDef != null) {
             List<ItemStack> loot = levelDef.rollCompletionLoot();
             for (ItemStack item : loot) {
-                player.getInventory().insertStack(item.copy());
+                for (ServerPlayerEntity recipient : rewardRecipients) {
+                    recipient.getInventory().insertStack(item.copy());
+                }
                 sendMessage("§e+ " + item.getCount() + "x " + item.getName().getString());
             }
         }
@@ -3817,12 +3955,17 @@ public class CombatManager {
             ? fullPath.indexOf(biomeTemplate.biomeId) : 0;
         if (biomeOrdinal < 0) biomeOrdinal = 0;
         boolean isBoss = biomeTemplate != null && biomeTemplate.isBossLevel(arena.getLevelNumber());
-        // Resourceful stat: +1 emerald per point
+        // Resourceful stat: +1 emerald per point (uses leader's stat)
         PlayerProgression victoryProg = PlayerProgression.get(world);
         int resourcefulBonus = victoryProg.getStats(player).getPoints(PlayerProgression.Stat.RESOURCEFUL);
         int emeraldsEarned = com.crackedgames.craftics.CrafticsMod.CONFIG.emeraldBaseReward() + biomeOrdinal / 3 + (isBoss ? 3 : 0) + resourcefulBonus;
-        data.addEmeralds(emeraldsEarned);
-        sendMessage("§a+ " + emeraldsEarned + " Emeralds (Total: " + data.emeralds + ")");
+        // Award emeralds to all party members via per-player data
+        for (ServerPlayerEntity recipient : rewardRecipients) {
+            CrafticsSavedData.PlayerData pd = data.getPlayerData(recipient.getUuid());
+            pd.addEmeralds(emeraldsEarned);
+        }
+        data.addEmeralds(emeraldsEarned); // also update legacy fields for leader
+        sendMessage("§a+ " + emeraldsEarned + " Emeralds");
 
         // Boss trim template drops (semi-rare: ~35% chance)
         if (isBoss && Math.random() < CrafticsMod.CONFIG.trimDropChance()) {
@@ -3839,14 +3982,16 @@ public class CombatManager {
             if (trimPool.length > 0) {
                 net.minecraft.item.Item trimItem = trimPool[new java.util.Random().nextInt(trimPool.length)];
                 ItemStack trimStack = new ItemStack(trimItem);
-                player.getInventory().insertStack(trimStack);
+                for (ServerPlayerEntity recipient : rewardRecipients) {
+                    recipient.getInventory().insertStack(trimStack.copy());
+                }
                 sendMessage("\u00a7b\u00a7l\u2726 RARE DROP: " + trimStack.getName().getString() + "!");
             }
         }
 
         if (isBoss) {
             // Boss fights end the biome run immediately.
-            ServerPlayNetworking.send(player, new ExitCombatPayload(true));
+            sendToAllParty(new ExitCombatPayload(true));
 
             // Boss defeated — biome complete! Unlock next biome, go home
             sendMessage("§6§l*** BIOME COMPLETE! ***");
@@ -3855,6 +4000,13 @@ public class CombatManager {
                 data.highestBiomeUnlocked = currentBiomeOrder + 1;
                 data.markDirty();
                 com.crackedgames.craftics.CrafticsMod.updateWorldIcon(player.getServer(), data);
+                // Unlock biome for all party members
+                for (ServerPlayerEntity recipient : rewardRecipients) {
+                    CrafticsSavedData.PlayerData pd = data.getPlayerData(recipient.getUuid());
+                    if (pd.highestBiomeUnlocked <= currentBiomeOrder) {
+                        pd.highestBiomeUnlocked = currentBiomeOrder + 1;
+                    }
+                }
                 // Special messages when unlocking new dimensions
                 int overworldBiomeCount = com.crackedgames.craftics.level.BiomePath
                     .getPath(Math.max(0, data.branchChoice)).size();
@@ -3879,28 +4031,34 @@ public class CombatManager {
             data.inCombat = false;
             data.markDirty();
             world.setTimeOfDay(6000);
-            player.requestTeleport(0.5, 65, 0.5);
+            // Teleport all party members home
+            for (ServerPlayerEntity p : rewardRecipients) {
+                teleportToHub(p);
+            }
 
-            // Save player reference before endCombat() nulls it
+            // Save party list before endCombat() clears it
+            List<ServerPlayerEntity> savedParty = new ArrayList<>(rewardRecipients);
             ServerPlayerEntity savedPlayer = player;
             endCombat();
 
-            // Grant level-up and send to client
+            // Grant level-up to all party members
             PlayerProgression progression = PlayerProgression.get(world);
-            progression.grantLevelUp(savedPlayer);
-            PlayerProgression.PlayerStats stats = progression.getStats(savedPlayer);
-            StringBuilder statData = new StringBuilder();
-            for (PlayerProgression.Stat s : PlayerProgression.Stat.values()) {
-                if (statData.length() > 0) statData.append(":");
-                statData.append(stats.getPoints(s));
+            for (ServerPlayerEntity member : savedParty) {
+                progression.grantLevelUp(member);
+                PlayerProgression.PlayerStats stats = progression.getStats(member);
+                StringBuilder statData = new StringBuilder();
+                for (PlayerProgression.Stat s : PlayerProgression.Stat.values()) {
+                    if (statData.length() > 0) statData.append(":");
+                    statData.append(stats.getPoints(s));
+                }
+                ServerPlayNetworking.send(member, new com.crackedgames.craftics.network.LevelUpPayload(
+                    stats.level, stats.unspentPoints, statData.toString()
+                ));
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(member.getUuid());
+                ServerPlayNetworking.send(member, new com.crackedgames.craftics.network.PlayerStatsSyncPayload(
+                    stats.level, stats.unspentPoints, statData.toString(), pd.emeralds
+                ));
             }
-            ServerPlayNetworking.send(savedPlayer, new com.crackedgames.craftics.network.LevelUpPayload(
-                stats.level, stats.unspentPoints, statData.toString()
-            ));
-            // Also sync stats for inventory display
-            ServerPlayNetworking.send(savedPlayer, new com.crackedgames.craftics.network.PlayerStatsSyncPayload(
-                stats.level, stats.unspentPoints, statData.toString(), data.emeralds
-            ));
         } else {
             // Non-boss: show Go Home / Continue choice
             // Don't advance if this was a trial/ambush — those are bonus fights, not real levels
@@ -3910,9 +4068,15 @@ public class CombatManager {
             String biomeName = biomeTemplate != null ? biomeTemplate.displayName : "Unknown";
             int displayIndex = data.activeBiomeLevelIndex;
 
+            // Send choice screen to leader, waiting message to party members
             ServerPlayNetworking.send(player, new VictoryChoicePayload(
                 emeraldsEarned, data.emeralds, false, biomeName, displayIndex
             ));
+            for (ServerPlayerEntity member : getAllParticipants()) {
+                if (!member.getUuid().equals(player.getUuid())) {
+                    sendMessageTo(member, "§7Waiting for party leader to decide...");
+                }
+            }
             // Don't endCombat yet — wait for player choice
             // But do clear the arena
             clearHighlights();
@@ -3928,35 +4092,31 @@ public class CombatManager {
         // Handle trial chamber choice (not in active combat — player ref was nulled by endCombat)
         if (trialChamberPending) {
             trialChamberPending = false;
-            lastFightWasTrial = false; // ensure clean state regardless of accept/decline
+            lastFightWasTrial = false;
+            com.crackedgames.craftics.level.LevelDefinition savedTrialDef = trialChamberLevelDef;
             trialChamberLevelDef = null;
             ServerWorld tcWorld = (ServerWorld) choicePlayer.getEntityWorld();
             if (goHome) {
                 // Skip trial — continue to pending next level
-                sendMessageTo(choicePlayer, "§7You pass by the trial chamber...");
+                for (ServerPlayerEntity p : getOnlinePartyMembers(choicePlayer)) {
+                    sendMessageTo(p, "§7You pass by the trial chamber...");
+                }
                 if (pendingNextLevelDef != null && pendingBiome != null) {
-                    GridArena nextArena = com.crackedgames.craftics.level.ArenaBuilder.build(tcWorld, pendingNextLevelDef);
-                    BlockPos startPos = nextArena.getPlayerStartBlockPos();
-                    choicePlayer.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
-                    ServerPlayNetworking.send(choicePlayer, makeEnterPayload(nextArena));
-                    startCombat(choicePlayer, nextArena, pendingNextLevelDef);
+                    GridArena nextArena = buildArena(tcWorld, pendingNextLevelDef);
+                    transitionPartyToArena(choicePlayer, nextArena, pendingNextLevelDef);
                     pendingNextLevelDef = null;
                     pendingBiome = null;
                 }
             } else {
                 // Accept trial!
-                sendMessageTo(choicePlayer, "§6§l⚔ Entering the Trial Chamber! ⚔");
-                sendMessageTo(choicePlayer, "§cWarning: Enemies are stronger here!");
-                if (trialChamberLevelDef != null) {
-                    GridArena trialArena = com.crackedgames.craftics.level.ArenaBuilder.build(tcWorld, trialChamberLevelDef);
-                    BlockPos startPos = trialArena.getPlayerStartBlockPos();
-                    choicePlayer.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
-                    ServerPlayNetworking.send(choicePlayer, makeEnterPayload(trialArena));
-                    startCombat(choicePlayer, trialArena, trialChamberLevelDef);
+                for (ServerPlayerEntity p : getOnlinePartyMembers(choicePlayer)) {
+                    sendMessageTo(p, "§6§l\u2694 Entering the Trial Chamber! \u2694");
+                    sendMessageTo(p, "§cWarning: Enemies are stronger here!");
+                }
+                if (savedTrialDef != null) {
+                    GridArena trialArena = buildArena(tcWorld, savedTrialDef);
+                    transitionPartyToArena(choicePlayer, trialArena, savedTrialDef);
                     lastFightWasTrial = true;
-                    trialChamberLevelDef = null;
-                    // Note: pendingNextLevelDef stays set — after trial victory,
-                    // the normal flow will pick it up and skip event rolling
                 }
             }
             return;
@@ -3967,21 +4127,20 @@ public class CombatManager {
             lastFightWasTrial = false;
             ServerWorld world2 = (ServerWorld) choicePlayer.getEntityWorld();
             endCombat();
-            GridArena nextArena = com.crackedgames.craftics.level.ArenaBuilder.build(world2, pendingNextLevelDef);
-            BlockPos startPos = nextArena.getPlayerStartBlockPos();
-            choicePlayer.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
-            ServerPlayNetworking.send(choicePlayer, makeEnterPayload(nextArena));
-            startCombat(choicePlayer, nextArena, pendingNextLevelDef);
+            GridArena nextArena = buildArena(world2, pendingNextLevelDef);
+            transitionPartyToArena(choicePlayer, nextArena, pendingNextLevelDef);
             pendingNextLevelDef = null;
             pendingBiome = null;
             return;
         }
         lastFightWasTrial = false;
 
+        // Only accept choice from the combat leader
         if (player == null || !choicePlayer.equals(player)) return;
 
-        // Save reference before endCombat() nulls this.player
+        // Save references before endCombat() nulls them
         ServerPlayerEntity savedPlayer = player;
+        List<ServerPlayerEntity> savedMembers = new ArrayList<>(getAllParticipants());
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
 
@@ -3991,9 +4150,11 @@ public class CombatManager {
             data.inCombat = false;
             data.markDirty();
             world.setTimeOfDay(6000);
-            savedPlayer.requestTeleport(0.5, 65, 0.5);
-            // Notify client so TransitionOverlay.startFadeOut() is called
-            ServerPlayNetworking.send(savedPlayer, new ExitCombatPayload(true));
+            // Teleport all party members home
+            for (ServerPlayerEntity member : savedMembers) {
+                teleportToHub(member);
+            }
+            sendToAllParty(new ExitCombatPayload(true));
             endCombat();
         } else {
             // Continue to next level
@@ -4042,22 +4203,25 @@ public class CombatManager {
                         skipEvents = false; // override skip
                     }
 
+                    // Helper: broadcast event messages to all party members
+                    List<ServerPlayerEntity> partyMsg = getOnlinePartyMembers(savedPlayer);
+
                     if (skipEvents) {
                         // No event — go straight to next level
-                        GridArena nextArena = com.crackedgames.craftics.level.ArenaBuilder.build(world, nextLevelDef);
-                        BlockPos startPos = nextArena.getPlayerStartBlockPos();
-                        savedPlayer.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
-                        ServerPlayNetworking.send(savedPlayer, makeEnterPayload(nextArena));
-                        startCombat(savedPlayer, nextArena, nextLevelDef);
+                        GridArena nextArena = buildArena(world, nextLevelDef);
+                        transitionPartyToArena(savedPlayer, nextArena, nextLevelDef);
                     } else if (forced != null ? forced.equals("ominous_trial") : (eventRoll < 0.05f && biomeOrdinal >= 10)) {
                         // 5% chance (late game only): Ominous Trial Chamber
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         trialChamberLevelDef = RandomEvents.generateOminousTrial(biomeOrdinal, data.ngPlusLevel);
                         trialChamberPending = true;
-                        sendMessageTo(savedPlayer, "\u00a74\u00a7l\u2694 OMINOUS TRIAL CHAMBER! \u2694");
-                        sendMessageTo(savedPlayer, "\u00a7cA dark and powerful trial awaits... with a WARDEN.");
-                        sendMessageTo(savedPlayer, "\u00a7eAccept for legendary loot?");
+                        for (ServerPlayerEntity p : partyMsg) {
+                            sendMessageTo(p, "\u00a74\u00a7l\u2694 OMINOUS TRIAL CHAMBER! \u2694");
+                            sendMessageTo(p, "\u00a7cA dark and powerful trial awaits... with a WARDEN.");
+                            sendMessageTo(p, "\u00a7eAccept for legendary loot?");
+                        }
+                        // Only leader gets the choice screen
                         ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
                             0, data.emeralds, false, "Ominous Trial", -1
                         ));
@@ -4067,9 +4231,11 @@ public class CombatManager {
                         pendingBiome = biome;
                         trialChamberLevelDef = TrialChamberEvent.generate(biomeOrdinal, data.ngPlusLevel);
                         trialChamberPending = true;
-                        sendMessageTo(savedPlayer, "\u00a76\u00a7l\u2694 TRIAL CHAMBER DISCOVERED! \u2694");
-                        sendMessageTo(savedPlayer, "\u00a77A mysterious trial awaits...");
-                        sendMessageTo(savedPlayer, "\u00a7eAccept the challenge for rare loot?");
+                        for (ServerPlayerEntity p : partyMsg) {
+                            sendMessageTo(p, "\u00a76\u00a7l\u2694 TRIAL CHAMBER DISCOVERED! \u2694");
+                            sendMessageTo(p, "\u00a77A mysterious trial awaits...");
+                            sendMessageTo(p, "\u00a7eAccept the challenge for rare loot?");
+                        }
                         ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
                             0, data.emeralds, false, "Trial Chamber", -1
                         ));
@@ -4078,49 +4244,45 @@ public class CombatManager {
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         var ambushDef = RandomEvents.generateAmbush(biomeOrdinal, data.ngPlusLevel);
-                        sendMessageTo(savedPlayer, "\u00a7c\u00a7l\u26a0 AMBUSH! \u26a0");
-                        sendMessageTo(savedPlayer, "\u00a7cEnemies surround you! No escape!");
-                        // Start ambush combat immediately (no choice)
-                        lastFightWasTrial = true; // reuse this flag to skip events after ambush
-                        GridArena ambushArena = com.crackedgames.craftics.level.ArenaBuilder.build(world, ambushDef);
-                        BlockPos ambushStart = ambushArena.getPlayerStartBlockPos();
-                        savedPlayer.requestTeleport(ambushStart.getX() + 0.5, ambushStart.getY(), ambushStart.getZ() + 0.5);
-                        ServerPlayNetworking.send(savedPlayer, makeEnterPayload(ambushArena));
-                        startCombat(savedPlayer, ambushArena, ambushDef);
+                        for (ServerPlayerEntity p : partyMsg) {
+                            sendMessageTo(p, "\u00a7c\u00a7l\u26a0 AMBUSH! \u26a0");
+                            sendMessageTo(p, "\u00a7cEnemies surround you! No escape!");
+                        }
+                        lastFightWasTrial = true;
+                        GridArena ambushArena = buildArena(world, ambushDef);
+                        transitionPartyToArena(savedPlayer, ambushArena, ambushDef);
                     } else if (forced != null ? forced.equals("shrine") : (eventRoll < 0.32f)) {
                         // 7% chance: Shrine of Fortune
                         String shrineResult = RandomEvents.handleShrine(savedPlayer, data);
-                        sendMessageTo(savedPlayer, shrineResult);
-                        // Directly start next level after shrine
-                        GridArena nextArena2 = com.crackedgames.craftics.level.ArenaBuilder.build(world, nextLevelDef);
-                        BlockPos sp2 = nextArena2.getPlayerStartBlockPos();
-                        savedPlayer.requestTeleport(sp2.getX() + 0.5, sp2.getY(), sp2.getZ() + 0.5);
-                        ServerPlayNetworking.send(savedPlayer, makeEnterPayload(nextArena2));
-                        startCombat(savedPlayer, nextArena2, nextLevelDef);
+                        for (ServerPlayerEntity p : partyMsg) {
+                            sendMessageTo(p, shrineResult);
+                        }
+                        GridArena nextArena2 = buildArena(world, nextLevelDef);
+                        transitionPartyToArena(savedPlayer, nextArena2, nextLevelDef);
                     } else if (forced != null ? forced.equals("traveler") : (eventRoll < 0.38f)) {
                         // 6% chance: Wounded Traveler
                         String travelerResult = RandomEvents.handleWoundedTraveler(savedPlayer);
-                        sendMessageTo(savedPlayer, travelerResult);
-                        // Directly start next level
-                        GridArena nextArena3 = com.crackedgames.craftics.level.ArenaBuilder.build(world, nextLevelDef);
-                        BlockPos sp3 = nextArena3.getPlayerStartBlockPos();
-                        savedPlayer.requestTeleport(sp3.getX() + 0.5, sp3.getY(), sp3.getZ() + 0.5);
-                        ServerPlayNetworking.send(savedPlayer, makeEnterPayload(nextArena3));
-                        startCombat(savedPlayer, nextArena3, nextLevelDef);
+                        for (ServerPlayerEntity p : partyMsg) {
+                            sendMessageTo(p, travelerResult);
+                        }
+                        GridArena nextArena3 = buildArena(world, nextLevelDef);
+                        transitionPartyToArena(savedPlayer, nextArena3, nextLevelDef);
                     } else if (forced != null ? forced.equals("vault") : (eventRoll < 0.42f)) {
                         // 4% chance: Treasure Vault
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         trialChamberLevelDef = RandomEvents.generateTreasureVault(biomeOrdinal);
                         trialChamberPending = true;
-                        sendMessageTo(savedPlayer, "\u00a76\u00a7l\u2726 TREASURE VAULT DISCOVERED! \u2726");
-                        sendMessageTo(savedPlayer, "\u00a7eA hidden vault filled with riches!");
-                        sendMessageTo(savedPlayer, "\u00a77Enter to claim the loot? (No enemies!)");
+                        for (ServerPlayerEntity p : partyMsg) {
+                            sendMessageTo(p, "\u00a76\u00a7l\u2726 TREASURE VAULT DISCOVERED! \u2726");
+                            sendMessageTo(p, "\u00a7eA hidden vault filled with riches!");
+                            sendMessageTo(p, "\u00a77Enter to claim the loot? (No enemies!)");
+                        }
                         ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
                             0, data.emeralds, false, "Treasure Vault", -1
                         ));
                     } else if (forced != null ? forced.equals("dig_site") : (eventRoll < 0.48f)) {
-                        // 6% chance: Dig Site (brushing suspicious block for pottery sherds)
+                        // 6% chance: Dig Site
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         offerDigSite(savedPlayer, biome);
@@ -4131,11 +4293,8 @@ public class CombatManager {
                         offerTrader(savedPlayer, biome);
                     } else {
                         // 45% chance: No event — start next level immediately
-                        GridArena nextArena = com.crackedgames.craftics.level.ArenaBuilder.build(world, nextLevelDef);
-                        BlockPos startPos = nextArena.getPlayerStartBlockPos();
-                        savedPlayer.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
-                        ServerPlayNetworking.send(savedPlayer, makeEnterPayload(nextArena));
-                        startCombat(savedPlayer, nextArena, nextLevelDef);
+                        GridArena nextArena = buildArena(world, nextLevelDef);
+                        transitionPartyToArena(savedPlayer, nextArena, nextLevelDef);
                     }
                 }
             }
@@ -4164,18 +4323,33 @@ public class CombatManager {
     private int traderEmeraldsGiven = 0; // how many emerald items we gave the player
 
     // ---- Dig Site event ----
-    private static final BlockPos DIG_SITE_ORIGIN = new BlockPos(500, 100, 600); // offset from trader area
+    /** Get the dig site origin for this combat's world owner. */
+    private BlockPos getDigSiteOrigin() {
+        if (player != null && worldOwnerUuid != null) {
+            ServerWorld w = (ServerWorld) player.getEntityWorld();
+            CrafticsSavedData d = CrafticsSavedData.get(w);
+            BlockPos origin = d.getDigSiteOrigin(worldOwnerUuid);
+            if (origin != null) return origin;
+        }
+        return new BlockPos(500, 100, 600); // legacy fallback
+    }
 
     private void offerDigSite(ServerPlayerEntity savedPlayer, com.crackedgames.craftics.level.BiomeTemplate biome) {
-        // Exit combat mode on client so the player gets first-person view for digging
-        ServerPlayNetworking.send(savedPlayer, new ExitCombatPayload(false));
+        // Exit combat mode on client for all party members
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
 
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         digSitePending = true;
 
-        buildDigSiteArea(world, DIG_SITE_ORIGIN, biome);
-        savedPlayer.requestTeleport(
-            DIG_SITE_ORIGIN.getX() + 4.5, DIG_SITE_ORIGIN.getY() + 1, DIG_SITE_ORIGIN.getZ() + 4.5);
+        buildDigSiteArea(world, getDigSiteOrigin(), biome);
+        // Teleport all party members to dig site
+        for (ServerPlayerEntity p : members) {
+            p.requestTeleport(
+                getDigSiteOrigin().getX() + 4.5, getDigSiteOrigin().getY() + 1, getDigSiteOrigin().getZ() + 4.5);
+        }
 
         sendMessageTo(savedPlayer, "§6§l✦ Archaeological Dig Site! ✦");
         sendMessageTo(savedPlayer, "§7You discover a suspicious block buried in the ground...");
@@ -4239,7 +4413,7 @@ public class CombatManager {
         sendMessageTo(player, result);
 
         // Replace the suspicious block with regular sand/gravel
-        BlockPos blockPos = new BlockPos(DIG_SITE_ORIGIN.getX() + 4, DIG_SITE_ORIGIN.getY() + 1, DIG_SITE_ORIGIN.getZ() + 4);
+        BlockPos blockPos = new BlockPos(getDigSiteOrigin().getX() + 4, getDigSiteOrigin().getY() + 1, getDigSiteOrigin().getZ() + 4);
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         net.minecraft.block.Block replacement = world.getBlockState(blockPos).getBlock() == Blocks.SUSPICIOUS_SAND
             ? Blocks.SAND : Blocks.GRAVEL;
@@ -4254,15 +4428,12 @@ public class CombatManager {
             net.minecraft.sound.SoundEvents.ITEM_BRUSH_BRUSHING_GENERIC,
             net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
 
-        // Start the pending next level after a short delay (20 ticks = 1 second)
+        // Start the pending next level after a short delay — transition whole party
         world.getServer().execute(() -> {
             try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
             if (pendingNextLevelDef != null && pendingBiome != null) {
-                GridArena nextArena = com.crackedgames.craftics.level.ArenaBuilder.build(world, pendingNextLevelDef);
-                BlockPos startPos = nextArena.getPlayerStartBlockPos();
-                player.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
-                ServerPlayNetworking.send(player, makeEnterPayload(nextArena));
-                startCombat(player, nextArena, pendingNextLevelDef);
+                GridArena nextArena = buildArena(world, pendingNextLevelDef);
+                transitionPartyToArena(player, nextArena, pendingNextLevelDef);
                 pendingNextLevelDef = null;
                 pendingBiome = null;
             }
@@ -4270,8 +4441,10 @@ public class CombatManager {
     }
 
     private void offerTrader(ServerPlayerEntity savedPlayer, com.crackedgames.craftics.level.BiomeTemplate biome) {
-        // Exit combat mode on client so the player gets first-person view for trading
-        ServerPlayNetworking.send(savedPlayer, new ExitCombatPayload(false));
+        // Exit combat mode on client for all party members
+        for (ServerPlayerEntity p : getOnlinePartyMembers(savedPlayer)) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
 
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         int biomeTier = com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes().indexOf(biome) + 1;
@@ -4304,7 +4477,15 @@ public class CombatManager {
         }
 
         // Build a small themed trader area away from the arena
-        BlockPos traderAreaOrigin = new BlockPos(500, 100, 500); // fixed location for trader areas
+        // Build a trader area in this combat's world slot
+        BlockPos traderAreaOrigin;
+        if (worldOwnerUuid != null) {
+            CrafticsSavedData traderData = CrafticsSavedData.get(world);
+            BlockPos dynamicOrigin = traderData.getTraderOrigin(worldOwnerUuid);
+            traderAreaOrigin = dynamicOrigin != null ? dynamicOrigin : new BlockPos(500, 100, 500);
+        } else {
+            traderAreaOrigin = new BlockPos(500, 100, 500); // legacy fallback
+        }
         buildTraderArea(world, traderAreaOrigin, biome);
         savedPlayer.requestTeleport(traderAreaOrigin.getX() + 4.5, traderAreaOrigin.getY() + 1, traderAreaOrigin.getZ() + 4.5);
 
@@ -4484,13 +4665,10 @@ public class CombatManager {
 
         activeTraderOffer = null;
 
-        // Start the pending next level
+        // Start the pending next level — transition whole party
         if (pendingNextLevelDef != null && pendingBiome != null) {
-            GridArena nextArena = com.crackedgames.craftics.level.ArenaBuilder.build(world, pendingNextLevelDef);
-            BlockPos startPos = nextArena.getPlayerStartBlockPos();
-            player.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
-            ServerPlayNetworking.send(player, makeEnterPayload(nextArena));
-            startCombat(player, nextArena, pendingNextLevelDef);
+            GridArena nextArena = buildArena(world, pendingNextLevelDef);
+            transitionPartyToArena(player, nextArena, pendingNextLevelDef);
             pendingNextLevelDef = null;
             pendingBiome = null;
         }
@@ -4548,19 +4726,25 @@ public class CombatManager {
         clearHighlights();
         clearWarningBlocks();
 
-        // Re-enable natural health regeneration and restore survival mode
+        // Re-enable natural health regeneration and restore survival mode for all participants
         if (player != null) {
             ServerWorld world = (ServerWorld) player.getEntityWorld();
             world.getGameRules().get(net.minecraft.world.GameRules.NATURAL_REGENERATION).set(true, world.getServer());
-            player.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+        }
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null) {
+                p.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+            }
         }
 
-        // Remove the Move feather from inventory
-        if (player != null) {
-            for (int i = 0; i < player.getInventory().size(); i++) {
-                ItemStack stack = player.getInventory().getStack(i);
-                if (stack.getItem() == Items.FEATHER) {
-                    player.getInventory().removeStack(i);
+        // Remove the Move feather from all participants' inventories
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null) {
+                for (int i = 0; i < p.getInventory().size(); i++) {
+                    ItemStack stack = p.getInventory().getStack(i);
+                    if (stack.getItem() == Items.FEATHER) {
+                        p.getInventory().removeStack(i);
+                    }
                 }
             }
         }
@@ -4600,10 +4784,15 @@ public class CombatManager {
             forcedChunks.clear();
         }
 
-        // Clear all vanilla status effects from combat (potion particles)
-        if (player != null) {
-            player.clearStatusEffects();
+        // Clear all vanilla status effects from combat (potion particles) for all participants
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null) {
+                p.clearStatusEffects();
+            }
         }
+
+        // Clean up party tracking
+        cleanupPartyTracking();
 
         arena = null;
         enemies = null;
@@ -4735,7 +4924,7 @@ public class CombatManager {
         int[] warningArr = warningList.stream().mapToInt(Integer::intValue).toArray();
         int[] enemyMapArr = enemyMapList.stream().mapToInt(Integer::intValue).toArray();
 
-        ServerPlayNetworking.send(player, new TileSetPayload(
+        sendToAllParty(new TileSetPayload(
             moveArr, attackArr, dangerArr, warningArr, enemyMapArr, enemyTypesBuilder.toString()
         ));
 
@@ -4797,11 +4986,9 @@ public class CombatManager {
     }
 
     private void clearHighlights() {
-        if (player != null) {
-            ServerPlayNetworking.send(player, new TileSetPayload(
-                new int[0], new int[0], new int[0], new int[0], new int[0], ""
-            ));
-        }
+        sendToAllParty(new TileSetPayload(
+            new int[0], new int[0], new int[0], new int[0], new int[0], ""
+        ));
     }
 
     private void sendSync() {
@@ -4846,7 +5033,7 @@ public class CombatManager {
             + PlayerCombatStats.getSetSpeedBonus(player)
             + (playerMounted ? MOUNT_SPEED_BONUS : 0);
 
-        ServerPlayNetworking.send(player, new CombatSyncPayload(
+        sendToAllParty(new CombatSyncPayload(
             phase.ordinal(), apRemaining, movePointsRemaining,
             getPlayerHp(), (int) player.getMaxHealth(), turnNumber,
             maxAp, maxSpeed, enemyData, typeIds.toString(),
@@ -4855,9 +5042,11 @@ public class CombatManager {
     }
 
     private void sendMessage(String msg) {
-        if (player != null) {
-            // Use action bar (overlay) instead of chat to avoid clutter
-            player.sendMessage(Text.literal(msg), true);
+        // Broadcast action bar message to all party participants
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null) {
+                p.sendMessage(Text.literal(msg), true);
+            }
         }
     }
 

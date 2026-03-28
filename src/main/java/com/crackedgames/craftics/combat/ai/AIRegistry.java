@@ -113,7 +113,7 @@ public class AIRegistry {
         register("boss:soul_sand_valley", new WailingRevenantAI());
         register("boss:crimson_forest", new CrimsonRavagerAI());
         register("boss:warped_forest", new VoidWalkerAI());
-        register("boss:basalt_deltas", new AshenWarlordAI());
+        register("boss:basalt_deltas", new WitherBossAI());
         register("boss:outer_end_islands", new VoidHeraldAI());
         register("boss:end_city", new ShulkerArchitectAI());
         register("boss:chorus_grove", new ChorusMindAI());

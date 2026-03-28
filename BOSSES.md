@@ -396,30 +396,32 @@ The Warden is **blind**. It doesn't track the player by position — it tracks b
 
 ---
 
-### 14. Basalt Deltas — "The Ashen Warlord"
+### 14. Basalt Deltas — "The Wither"
 
-**Entity:** Wither Skeleton (custom — nether-brick crown, flaming sword, blackstone pauldrons, wither rose particle trail)
-**Stats:** 55 HP / 10 ATK / 4 DEF / Speed 3
+**Entity:** Wither (the actual Wither boss mob — 3-headed, flying, iconic)
+**Stats:** 65 HP / 8 ATK / 5 DEF / Range 5 / Speed 2
 **Size:** 2×2
-**Theme:** The Nether's general. Commands fire and wither, summons elite guards, and hits like a truck. This is the gatekeeper boss — the last fight before the End. It should be the hardest Nether boss by a significant margin.
+**Theme:** The undisputed king of the Nether. A three-headed abomination that rains skulls from above, decays everything it touches, and becomes an unstoppable battering ram at low health. This is the gatekeeper — the last fight before the End. It should feel like a true boss encounter with escalating chaos.
 
 **Abilities:**
 
 | Ability | AP | Description | Warning |
 |---|---|---|---|
-| **Wither Slash** | — | Melee attack that deals ATK damage and applies Wither (max HP reduced by 3 for the rest of the fight). Wither stacks. | Blade drips black particles on the backswing. |
-| **Summon Blaze Guard** | — | Calls 2 Blazes (10HP/5ATK/Range 4) as fire support. Uses every 4 turns. Max 3 alive. | Fire erupts from the ground at summon tiles. Horn blast sound. |
-| **Ash Storm** | — | Blankets a 4×4 area in volcanic ash. Reduces Speed by 1 and ranged accuracy by 50% for 2 turns. | Ash particles swirl aggressively over the zone. |
-| **Fire Pillar** | — | Strikes the ground creating a pillar of fire — 1 tile wide, 4 tiles long line. Deals 6 damage to everything in the line. | Ground turns dark orange along the line. Hissing fire sound. |
+| **Wither Skull Barrage** | — | Each of the 3 heads launches a Wither Skull mob (3HP/5ATK) that travels in a straight line toward the player's position at the time of firing — cardinal or diagonal depending on relative position. Skulls move 2 tiles per turn and deal 5 damage + 2 turns Wither (1 HP/turn) on contact with the player, then despawn. Skulls can be destroyed (3HP). If a skull reaches the arena edge without hitting anything, it despawns. Uses every 2 turns. Max 6 skulls alive at once. | All 3 heads glow and turn toward the target. Dark smoke trails form behind each skull as it launches. |
+| **Decay Aura** | — | Passive — at the start of each of the Wither's turns, all tiles within 2 of the Wither become Decayed (dark texture, wither rose particles). Standing on a Decayed tile deals 2 damage/turn and reduces healing by 50%. Decayed tiles last 3 turns. | Wither rose particles spread outward from the Wither. |
+| **Summon Wither Skeletons** | — | Summons 2 Wither Skeletons (10HP/5ATK, apply Wither on hit) on random empty tiles. Max 4 alive. Uses every 4 turns. | Soul sand particles erupt from the summon tiles. Bone-rattling sound. |
+| **Charge** | — | Dashes in a straight line up to 4 tiles, dealing ATK+3 damage to everything in the path and knocking targets 2 tiles sideways. Only used when player is at range 3+. | Wither's body tilts forward and glows blue-black. The charge path pulses dark for 1 turn. |
 
-**Phase 2 — "Warlord's Command" (≤50% HP):**
-- Wither Slash hits a 180° arc (hits all 3 tiles in front of the boss)
-- Summons 2 Wither Skeletons (12HP/6ATK, also apply Wither) instead of Blazes
-- Speed increases to 4
-- Wither from all sources stacks twice as fast (max HP reduced by 4 per hit instead of 3)
-- Fire Pillar can be cast in an X pattern (two crossing diagonal lines)
+**Phase 2 — "Wither Armor" (≤50% HP):**
+- Gains Wither Armor: immune to ranged attacks (must be hit in melee — just like vanilla Wither Phase 2)
+- Speed increases to 3
+- Decay Aura range extends to 3 tiles
+- Wither Skull Barrage fires 5 skulls instead of 3 — 3 aimed at the player, 2 aimed at adjacent tiles. Skull speed increases to 3 tiles/turn. Max skulls increases to 10.
+- Charge now leaves a trail of Decayed tiles behind it
+- Summons 3 Wither Skeletons instead of 2, cap increases to 6
+- Gains **Explosion** — when first entering Phase 2, deals 8 damage to all entities within 3 tiles (one-time transition attack, warning: the Wither flashes white for 1 full turn before detonating)
 
-**Design Intent:** The final exam before the End. Tests everything — can you handle summons (Blazes + Wither Skeletons), area denial (Ash Storm + Fire Pillar), a debuff that permanently weakens you (Wither stacking), AND a fast aggressive melee boss? Wither stacking is the timer — every hit you take permanently reduces your max HP. You cannot play passively. Phase 2's Wither Skeleton summons create a horrifying situation where multiple enemies all apply permanent debuffs.
+**Design Intent:** The Wither is THE Nether boss. The skull projectile-mobs are the signature mechanic — they're not instant damage, they're threats that travel across the board and force you to move or spend AP destroying them. Every 2 turns, 3 new skulls launch and start tracking toward where you were, creating a constant stream of incoming projectiles to weave through. Phase 1 is about managing space: dodge skulls, avoid Decayed ground, clear Wither Skeleton adds, and chip away at a tanky enemy. Phase 2 flips everything: ranged immunity forces melee, but the expanded Decay Aura punishes standing near the Wither. Faster skulls (3/turn) and more of them (5 per barrage) make the board increasingly chaotic. The Charge leaves decay trails cutting off retreat paths. The Phase 2 transition Explosion punishes players already in melee range, forcing a retreat-then-re-engage. This should feel like the hardest fight in the Nether by a significant margin.
 
 ---
 

@@ -130,16 +130,21 @@ public class GridArena {
         return pos.toBlockPos(origin, 1);
     }
 
-    /** Get arena origin for singleplayer (Z=0 lane). */
+    /** Get arena origin for singleplayer (Z=0 lane). Legacy — use world-slot variant. */
     public static BlockPos arenaOriginForLevel(int level) {
         return new BlockPos(level * 1000, 100, 0);
     }
 
-    /** Get arena origin for a specific player (unique Z lane based on UUID). */
+    /** Get arena origin for a specific player (unique Z lane based on UUID). Legacy — used by test range. */
     public static BlockPos arenaOriginForLevel(int level, java.util.UUID playerId) {
-        // Each player gets a unique Z-lane offset so arenas never overlap
-        // Hash UUID to a lane number (0-999), multiply by 1000 for Z spacing
         int lane = Math.abs(playerId.hashCode() % 1000);
         return new BlockPos(level * 1000, 100, lane * 1000);
+    }
+
+    /** Get arena origin within a player's world slot. 100-block spacing per level. */
+    /** Get arena origin within a player's world slot. 1000-block offset from hub, 100-block spacing per level. */
+    public static BlockPos arenaOriginForLevel(int level, int worldSlot) {
+        int baseX = 10000 + worldSlot * 10000;
+        return new BlockPos(baseX + 1000 + level * 100, 100, 0);
     }
 }
