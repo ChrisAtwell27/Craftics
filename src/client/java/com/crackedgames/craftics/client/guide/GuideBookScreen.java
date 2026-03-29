@@ -72,9 +72,13 @@ public class GuideBookScreen extends Screen {
                     b -> {
                         if (selectedCategory != ci) {
                             selectedCategory = ci;
-                            selectedEntry = 0;
+                            // Bestiary starts with no entry selected so the grid shows first
+                            selectedEntry = cats.get(ci).name().equals("Enemy Bestiary") ? -1 : 0;
                             currentPage = 0;
                             sidebarScroll = 0;
+                        } else if (cats.get(ci).name().equals("Enemy Bestiary")) {
+                            // Re-clicking Bestiary category goes back to grid
+                            selectedEntry = -1;
                         }
                         rebuildButtons();
                     }
@@ -318,8 +322,8 @@ public class GuideBookScreen extends Screen {
     /** Render detailed view of a selected bestiary mob. */
     private void renderBestiaryDetail(DrawContext ctx, GuideBookData.Entry entry,
                                        int contentX, int y, int contentW) {
-        // Back hint
-        ctx.drawTextWithShadow(textRenderer, Text.literal("\u00a78[Click another mob or category to go back]"),
+        // Back hint (clicking the Bestiary category header also returns to grid)
+        ctx.drawTextWithShadow(textRenderer, Text.literal("\u00a78[Click \u00a77Bestiary\u00a78 category or another mob to go back]"),
             contentX, y, 0xFF666666);
         y += LINE_HEIGHT + 2;
 

@@ -34,6 +34,9 @@ public class DamageTypePanel {
     private static final int COLOR_RANGED   = 0xFF55FFFF; // cyan
     private static final int COLOR_PHYSICAL = 0xFFAAAAAA; // light gray
 
+    // Cached partial set bonuses for mixed armor (computed each frame in render)
+    private static Map<DamageType, Integer> cachedPartialBonuses = new HashMap<>();
+
     public static void render(DrawContext ctx, int screenWidth, int screenHeight) {
         MinecraftClient client = MinecraftClient.getInstance();
         ClientPlayerEntity player = client.player;
@@ -43,6 +46,29 @@ public class DamageTypePanel {
         // Compute bonuses
         String armorSet = getArmorSet(player);
         Map<String, Integer> trimBonuses = scanTrimBonuses(player);
+
+        // Compute partial set bonuses for mixed armor (2+ pieces of same material = +1)
+        cachedPartialBonuses.clear();
+        if ("mixed".equals(armorSet)) {
+            Map<String, Integer> materialCounts = new HashMap<>();
+            for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+                String mat = getArmorMaterial(player.getEquippedStack(slot).getItem());
+                if (mat != null) materialCounts.merge(mat, 1, Integer::sum);
+            }
+            for (var entry : materialCounts.entrySet()) {
+                if (entry.getValue() >= 2) {
+                    DamageType affinity = switch (entry.getKey()) {
+                        case "leather" -> DamageType.PHYSICAL;
+                        case "chainmail" -> DamageType.SWORD;
+                        case "iron" -> DamageType.CLEAVING;
+                        case "gold" -> DamageType.MAGIC;
+                        case "diamond" -> DamageType.BLUNT;
+                        default -> null;
+                    };
+                    if (affinity != null) cachedPartialBonuses.put(affinity, 1);
+                }
+            }
+        }
 
         // Panel position: left side of inventory
         int panelW = 120;
@@ -115,11 +141,11 @@ public class DamageTypePanel {
         }
     }
 
-    /** Compute total bonus for a damage type from armor set + trims (client-side). */
+    /** Compute total bonus for a damage type from armor set + trims + partial pieces (client-side). */
     private static int computeBonus(String armorSet, Map<String, Integer> trimBonuses, DamageType type) {
         int bonus = 0;
 
-        // Armor set bonus (same logic as DamageType.getArmorSetBonus)
+        // Full armor set bonus
         bonus += switch (armorSet) {
             case "leather"   -> type == DamageType.PHYSICAL ? 2 : 0;
             case "chainmail" -> type == DamageType.SWORD ? 2 : 0;
@@ -130,6 +156,11 @@ public class DamageTypePanel {
             case "turtle"    -> type == DamageType.WATER ? 3 : 0;
             default -> 0;
         };
+
+        // Partial set bonus: 2+ pieces of same material gives +1 to its affinity type (even without full set)
+        if ("mixed".equals(armorSet)) {
+            bonus += cachedPartialBonuses.getOrDefault(type, 0);
+        }
 
         // Trim bonuses
         String bonusKey = switch (type) {
@@ -148,6 +179,21 @@ public class DamageTypePanel {
         // Generic melee power stacks with melee types
         if (type == DamageType.SWORD || type == DamageType.CLEAVING || type == DamageType.BLUNT) {
             bonus += trimBonuses.getOrDefault("MELEE_POWER", 0);
+        }
+
+        // Affinity points from level-up choices
+        int affinityOrdinal = switch (type) {
+            case SWORD -> 0;
+            case CLEAVING -> 1;
+            case BLUNT -> 2;
+            case RANGED -> 3;
+            case WATER -> 4;
+            case MAGIC -> 5;
+            case PHYSICAL -> 6;
+            case PET -> -1;
+        };
+        if (affinityOrdinal >= 0) {
+            bonus += CombatState.getAffinityPoints(affinityOrdinal);
         }
 
         return bonus;
@@ -259,6 +305,23 @@ public class DamageTypePanel {
             case "turtle"    -> "\u00a72Aquatic";
             default -> "";
         };
+    }
+
+    /** Detect which armor material a single piece belongs to (for partial set detection). */
+    private static String getArmorMaterial(Item item) {
+        if (item == Items.LEATHER_HELMET || item == Items.LEATHER_CHESTPLATE
+            || item == Items.LEATHER_LEGGINGS || item == Items.LEATHER_BOOTS) return "leather";
+        if (item == Items.CHAINMAIL_HELMET || item == Items.CHAINMAIL_CHESTPLATE
+            || item == Items.CHAINMAIL_LEGGINGS || item == Items.CHAINMAIL_BOOTS) return "chainmail";
+        if (item == Items.IRON_HELMET || item == Items.IRON_CHESTPLATE
+            || item == Items.IRON_LEGGINGS || item == Items.IRON_BOOTS) return "iron";
+        if (item == Items.GOLDEN_HELMET || item == Items.GOLDEN_CHESTPLATE
+            || item == Items.GOLDEN_LEGGINGS || item == Items.GOLDEN_BOOTS) return "gold";
+        if (item == Items.DIAMOND_HELMET || item == Items.DIAMOND_CHESTPLATE
+            || item == Items.DIAMOND_LEGGINGS || item == Items.DIAMOND_BOOTS) return "diamond";
+        if (item == Items.NETHERITE_HELMET || item == Items.NETHERITE_CHESTPLATE
+            || item == Items.NETHERITE_LEGGINGS || item == Items.NETHERITE_BOOTS) return "netherite";
+        return null;
     }
 
     /** Brighten an ARGB color by adding to RGB channels. */

@@ -16,12 +16,16 @@
       {"type": "minecraft:skeleton", "weight": 6, "hp": 10, "attack": 5, "range": 3},
       {"type": "minecraft:ghast", "weight": 3, "hp": 12, "attack": 6, "range": 5}
     ],
-    "boss": {"type": "minecraft:ghast", "hp": 35, "attack": 8, "range": 6}
+    "boss": {"type": "minecraft:ghast", "hp": 60, "attack": 8, "range": 6}
   },
   "loot": [
     {"item": "minecraft:bone", "weight": 10},
     {"item": "minecraft:soul_sand", "weight": 8},
     {"item": "minecraft:ghast_tear", "weight": 3},
-    {"item": "minecraft:arrow", "weight": 6}
+    {"item": "minecraft:arrow", "weight": 6},
+    {"item": "minecraft:cobblestone", "weight": 4},
+    {"item": "minecraft:quartz", "weight": 3},
+    {"item": "minecraft:gold_ingot", "weight": 2},
+    {"item": "minecraft:blaze_rod", "weight": 2}
   ]
 }

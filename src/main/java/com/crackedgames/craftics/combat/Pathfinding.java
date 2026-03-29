@@ -30,6 +30,13 @@ public class Pathfinding {
         return findPath(arena, from, to, maxSteps, self, false);
     }
 
+    /** Size-aware enemy pathfinding. For entities > 1x1, checks full footprint at each position. */
+    public static List<GridPos> findPathSized(GridArena arena, GridPos from, GridPos to,
+                                               int maxSteps, CombatEntity self, int entitySize) {
+        if (entitySize <= 1) return findPath(arena, from, to, maxSteps, self, false);
+        return findPathSizedInternal(arena, from, to, maxSteps, self, entitySize);
+    }
+
     /**
      * A* pathfinding with self-exclusion and optional boat access.
      * The 'self' entity's tile is ignored in occupancy checks.
@@ -139,7 +146,12 @@ public class Pathfinding {
      * Get all tiles reachable within maxSteps from the starting position (1x1 entities).
      */
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps) {
-        return getReachableTiles(arena, from, maxSteps, 1, null);
+        return getReachableTiles(arena, from, maxSteps, 1, null, false);
+    }
+
+    /** Overload with hasBoat for player movement highlights. */
+    public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps, boolean hasBoat) {
+        return getReachableTiles(arena, from, maxSteps, 1, null, hasBoat);
     }
 
     /**
@@ -149,6 +161,11 @@ public class Pathfinding {
      */
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
                                                    int entitySize, CombatEntity self) {
+        return getReachableTiles(arena, from, maxSteps, entitySize, self, false);
+    }
+
+    public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
+                                                   int entitySize, CombatEntity self, boolean hasBoat) {
         Set<GridPos> reachable = new HashSet<>();
         Map<GridPos, Integer> dist = new HashMap<>();
         Queue<GridPos> queue = new LinkedList<>();
@@ -167,7 +184,7 @@ public class Pathfinding {
                 if (dist.containsKey(neighbor)) continue;
 
                 // For sized entities, check ALL footprint tiles at this anchor position
-                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, false)) continue;
+                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, hasBoat)) continue;
 
                 dist.put(neighbor, currentDist + 1);
                 reachable.add(neighbor);
@@ -224,5 +241,102 @@ public class Pathfinding {
             }
         }
         return best;
+    }
+
+    /**
+     * Size-aware version of findClosestReachableTo.
+     * For entities > 1x1, checks full footprint at each candidate position.
+     */
+    public static GridPos findClosestReachableTo(GridArena arena, GridPos from, GridPos target,
+                                                   int maxSteps, CombatEntity self, int entitySize) {
+        if (entitySize <= 1) return findClosestReachableTo(arena, from, target, maxSteps, self);
+
+        Set<GridPos> reachable = getReachableTiles(arena, from, maxSteps, entitySize, self);
+
+        GridPos best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (GridPos pos : reachable) {
+            int d = CombatEntity.minDistanceFromSizedEntity(pos, entitySize, target);
+            if (d < bestDist) {
+                bestDist = d;
+                best = pos;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * A* pathfinding for multi-tile entities.
+     * Checks all footprint tiles at each candidate position.
+     */
+    private static List<GridPos> findPathSizedInternal(GridArena arena, GridPos from, GridPos to,
+                                                         int maxSteps, CombatEntity self, int entitySize) {
+        if (from.equals(to)) return List.of();
+        if (!canPlaceSizedEntity(arena, to, entitySize, self, false)) return List.of();
+
+        Map<GridPos, GridPos> cameFrom = new HashMap<>();
+        Map<GridPos, Integer> gScore = new HashMap<>();
+        gScore.put(from, 0);
+
+        PriorityQueue<GridPos> open = new PriorityQueue<>(
+            Comparator.comparingInt(p -> gScore.getOrDefault(p, Integer.MAX_VALUE) + p.manhattanDistance(to))
+        );
+        open.add(from);
+
+        Set<GridPos> closed = new HashSet<>();
+
+        while (!open.isEmpty()) {
+            GridPos current = open.poll();
+            if (current.equals(to)) {
+                return reconstructSizedPath(cameFrom, to, maxSteps, arena, self, entitySize);
+            }
+
+            if (closed.contains(current)) continue;
+            closed.add(current);
+
+            int currentG = gScore.getOrDefault(current, Integer.MAX_VALUE);
+            if (currentG >= maxSteps) continue;
+
+            for (GridPos dir : DIRECTIONS) {
+                GridPos neighbor = new GridPos(current.x() + dir.x(), current.z() + dir.z());
+                if (closed.contains(neighbor)) continue;
+
+                // Check all footprint tiles at this anchor (except allow destination)
+                if (!neighbor.equals(to) && !canPlaceSizedEntity(arena, neighbor, entitySize, self, false)) continue;
+                if (neighbor.equals(to) && !canPlaceSizedEntity(arena, neighbor, entitySize, self, false)) continue;
+
+                int tentativeG = currentG + 1;
+                if (tentativeG < gScore.getOrDefault(neighbor, Integer.MAX_VALUE)) {
+                    cameFrom.put(neighbor, current);
+                    gScore.put(neighbor, tentativeG);
+                    open.add(neighbor);
+                }
+            }
+        }
+
+        return List.of();
+    }
+
+    private static List<GridPos> reconstructSizedPath(Map<GridPos, GridPos> cameFrom, GridPos end,
+                                                        int maxSteps, GridArena arena,
+                                                        CombatEntity self, int entitySize) {
+        List<GridPos> path = new ArrayList<>();
+        GridPos current = end;
+        while (cameFrom.containsKey(current)) {
+            path.add(current);
+            current = cameFrom.get(current);
+        }
+        Collections.reverse(path);
+
+        if (path.size() > maxSteps) {
+            path = new ArrayList<>(path.subList(0, maxSteps));
+        }
+
+        // Trim if the truncated endpoint is occupied
+        while (!path.isEmpty() && !canPlaceSizedEntity(arena, path.get(path.size() - 1), entitySize, self, false)) {
+            path.remove(path.size() - 1);
+        }
+
+        return path;
     }
 }

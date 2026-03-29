@@ -23,13 +23,20 @@
       {"type": "minecraft:creeper", "weight": 3, "hp": 14, "attack": 6, "defense": 1, "range": 1},
       {"type": "minecraft:spider", "weight": 3, "hp": 12, "attack": 4, "defense": 2, "range": 1}
     ],
-    "boss": {"type": "minecraft:warden", "hp": 35, "attack": 8, "defense": 4, "range": 1}
+    "boss": {"type": "minecraft:warden", "hp": 60, "attack": 8, "defense": 4, "range": 1}
   },
   "loot": [
     {"item": "minecraft:diamond", "weight": 3},
     {"item": "minecraft:echo_shard", "weight": 2},
     {"item": "minecraft:deepslate", "weight": 6},
     {"item": "minecraft:iron_ingot", "weight": 5},
-    {"item": "minecraft:gold_ingot", "weight": 4}
+    {"item": "minecraft:gold_ingot", "weight": 4},
+    {"item": "minecraft:cobblestone", "weight": 4},
+    {"item": "minecraft:coal", "weight": 3},
+    {"item": "minecraft:redstone", "weight": 3},
+    {"item": "minecraft:lapis_lazuli", "weight": 3},
+    {"item": "minecraft:copper_ingot", "weight": 2},
+    {"item": "minecraft:amethyst_shard", "weight": 2},
+    {"item": "minecraft:emerald", "weight": 2}
   ]
 }

@@ -160,6 +160,35 @@ public class WeaponAbility {
             }
         }
 
+        // === BLAZE ROD: Fire on hit ===
+        if (weapon == Items.BLAZE_ROD) {
+            if (target.getMobEntity() != null) {
+                target.getMobEntity().setFireTicks(100);
+            }
+            int fireDmg = target.takeDamage(1);
+            totalExtra += fireDmg;
+            messages.add("\u00a76\u2716 Blaze Rod scorches " + target.getDisplayName() + " for +" + fireDmg + " fire damage!");
+        }
+
+        // === BREEZE ROD: Knockback 1 tile ===
+        if (weapon == Items.BREEZE_ROD) {
+            GridPos pPos = arena.getPlayerGridPos();
+            int dx = Integer.signum(target.getGridPos().x() - pPos.x());
+            int dz = Integer.signum(target.getGridPos().z() - pPos.z());
+            GridPos kbPos = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
+            if (arena.isInBounds(kbPos) && !arena.isOccupied(kbPos)) {
+                var tile = arena.getTile(kbPos);
+                if (tile != null && tile.isWalkable()) {
+                    arena.moveEntity(target, kbPos);
+                    if (target.getMobEntity() != null) {
+                        var bp = arena.gridToBlockPos(kbPos);
+                        target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                    }
+                    messages.add("\u00a7b\u2716 Breeze Rod knocks " + target.getDisplayName() + " back 1 tile!");
+                }
+            }
+        }
+
         // === CROSSBOW: Pierce through ===
         // Bolt continues through the first target to hit a second
         if (weapon == Items.CROSSBOW) {
@@ -213,6 +242,8 @@ public class WeaponAbility {
         if (item == Items.MACE) return true;
         // Crossbow
         if (item == Items.CROSSBOW) return true;
+        // Blunt rods
+        if (item == Items.BLAZE_ROD || item == Items.BREEZE_ROD) return true;
         return false;
     }
 

@@ -71,7 +71,7 @@ public class GridTile {
             case NORMAL -> Blocks.GRASS_BLOCK;
             case OBSTACLE -> Blocks.STONE;
             case LAVA -> Blocks.LAVA;
-            case FIRE -> Blocks.FIRE;
+            case FIRE -> Blocks.MAGMA_BLOCK;
             case VOID -> Blocks.AIR;
             case EXIT -> Blocks.LADDER;
             case WATER -> Blocks.WATER;

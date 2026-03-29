@@ -80,13 +80,14 @@ public class AIRegistry {
         register("minecraft:camel", new MountedAI());  // husk/parched riding camel
 
         // === Nether mobs ===
-        register("minecraft:zombified_piglin", new ZombieAI());     // undead melee, like zombie
-        register("minecraft:magma_cube", new SpiderAI());           // bouncy pounce attacker
-        register("minecraft:ghast", new GhastAI());                 // long-range fireball kiter
-        register("minecraft:hoglin", new VindicatorAI());           // rush melee charger, speed 2
-        register("minecraft:piglin", new PillagerAI());             // crossbow ranged, retreats
-        register("minecraft:blaze", new BlazeAI());                 // medium-range fire attacker
-        register("minecraft:wither_skeleton", new VindicatorAI());  // rush melee, speed 2
+        register("minecraft:zombified_piglin", new ZombifiedPiglinAI()); // neutral pack aggro, mob mentality
+        register("minecraft:magma_cube", new MagmaCubeAI());             // bounce over obstacles, fire trail, split
+        register("minecraft:ghast", new GhastAI());                      // long-range fireball kiter
+        register("minecraft:hoglin", new HoglinAI());                    // bull rush charge + knockback
+        register("minecraft:piglin", new PillagerAI());                  // crossbow ranged, retreats
+        register("minecraft:piglin_brute", new VindicatorAI());          // rook-dash charger
+        register("minecraft:blaze", new BlazeAI());                      // medium-range fire attacker
+        register("minecraft:wither_skeleton", new WitherSkeletonAI());   // wither-strike, patrol, skull throw
 
         // === Trial Chamber mobs ===
         register("minecraft:breeze", new BreezeAI());             // wind charge ranged, evasive repositioner

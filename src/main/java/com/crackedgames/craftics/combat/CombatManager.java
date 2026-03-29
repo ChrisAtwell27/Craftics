@@ -149,6 +149,10 @@ public class CombatManager {
     /** The UUID of the world owner for this combat (determines arena/event positions). */
     private java.util.UUID worldOwnerUuid;
 
+    /** Persisted pet data across level transitions within a biome run. */
+    private record PetData(String entityType, int hp, int maxHp, int atk, int def, int speed, int range) {}
+    private final List<PetData> savedPets = new ArrayList<>();
+
     public EventManager getEventManager() { return eventManager; }
     public void setEventManager(EventManager em) { this.eventManager = em; }
 
@@ -251,6 +255,8 @@ public class CombatManager {
             }
         }
         startCombat(leader, newArena, newLevelDef);
+        // Respawn tamed pets from previous level
+        spawnSavedPets();
         // Re-register party members on the new combat instance
         for (ServerPlayerEntity member : members) {
             addPartyMember(member);
@@ -320,6 +326,9 @@ public class CombatManager {
     // Active armor trim bonuses for current combat
     private TrimEffects.TrimScan activeTrimScan = null;
     public TrimEffects.TrimScan getTrimScan() { return activeTrimScan; }
+
+    // Track last dropped trim to avoid back-to-back duplicates
+    private static net.minecraft.item.Item lastDroppedTrim = null;
 
     // Test range mode — infinite AP/movement, no rewards or penalties
     private boolean testRange = false;
@@ -392,7 +401,7 @@ public class CombatManager {
     private boolean lerpInitialized;
 
     // Enemy turn state
-    private enum EnemyTurnState { DECIDING, MOVING, ATTACKING, DONE }
+    private enum EnemyTurnState { DECIDING, MOVING, ANIMATING, ATTACKING, DONE }
     private int enemyTurnIndex;
     private int enemyTurnDelay;
     private EnemyTurnState enemyTurnState;
@@ -405,6 +414,16 @@ public class CombatManager {
     private int enemyMoveTickCounter;
     private double enemyLerpStartX, enemyLerpStartY, enemyLerpStartZ;
     private boolean enemyLerpInitialized;
+
+    // Enemy attack animation (lunge toward target + arm swing)
+    private static final int ATTACK_ANIM_LUNGE_TICKS = 5;
+    private static final int ATTACK_ANIM_RETURN_TICKS = 4;
+    private static final int ATTACK_ANIM_TOTAL_TICKS = ATTACK_ANIM_LUNGE_TICKS + ATTACK_ANIM_RETURN_TICKS;
+    private static final double ATTACK_LUNGE_DISTANCE = 0.55;
+    private int attackAnimTick;
+    private double attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ;
+    private double attackAnimLungeX, attackAnimLungeZ; // direction unit vector
+    private boolean attackAnimSwung; // whether arm swing has been triggered
 
     private net.minecraft.item.Item lastHeldItem = null;
     private int tickCounter; // global tick counter for ambient effects
@@ -505,6 +524,7 @@ public class CombatManager {
             zombie.setAiDisabled(true);
             zombie.setInvulnerable(true);
             zombie.setNoGravity(true);
+            zombie.noClip = true;
             zombie.setPersistent();
             zombie.setBaby(false);
             zombie.setCustomName(Text.literal("§6Training Dummy"));
@@ -554,7 +574,15 @@ public class CombatManager {
             origin.getX(), origin.getY(), origin.getZ(), size, size, -1f
         ));
 
-        // Give Move feather
+        // Give Move feather — move existing slot 8 item elsewhere first
+        ItemStack displaced = player.getInventory().getStack(8);
+        if (!displaced.isEmpty()) {
+            int emptySlot = player.getInventory().getEmptySlot();
+            if (emptySlot != -1) {
+                player.getInventory().setStack(emptySlot, displaced);
+            }
+            // If inventory is full, the item stays — feather overwrites it
+        }
         ItemStack moveItem = new ItemStack(Items.FEATHER);
         moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§aMove"));
         player.getInventory().setStack(8, moveItem);
@@ -600,13 +628,15 @@ public class CombatManager {
         player.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
 
         // Apply Vitality stat + Host trim: max HP bonus via Health Boost
+        // Preserve HP ratio so continuing between battles doesn't full-heal
         int vitalityPoints = pStats.getPoints(PlayerProgression.Stat.VITALITY);
         int trimHpBonus = activeTrimScan.get(TrimEffects.Bonus.MAX_HP); // +2 per piece
         int totalHpBonusLevels = vitalityPoints + trimHpBonus;
         if (totalHpBonusLevels > 0) {
+            float hpRatio = player.getMaxHealth() > 0 ? player.getHealth() / player.getMaxHealth() : 1.0f;
             player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
                 net.minecraft.entity.effect.StatusEffects.HEALTH_BOOST, 999999, totalHpBonusLevels - 1));
-            player.setHealth(player.getMaxHealth());
+            player.setHealth(Math.max(1, hpRatio * player.getMaxHealth()));
         }
 
         // Unfreeze any hub-applied potion effects now that combat started
@@ -617,19 +647,33 @@ public class CombatManager {
         // Disable natural health regeneration during combat
         world.getGameRules().get(net.minecraft.world.GameRules.NATURAL_REGENERATION).set(false, world.getServer());
 
-        // Force-load arena chunks to prevent entity-tracking gap from removing spawned mobs.
-        // Without this, chunks loaded by ArenaBuilder for block editing may not have entity
-        // tracking active yet (player teleport hasn't been processed by chunk manager).
+        // Force-load arena chunks + surrounding chunks to prevent visual artifacts.
+        // Extra margin (48 blocks / 3 chunks) ensures the void around the arena renders
+        // as clean air rather than showing chunk-loading glitches at the edges.
         BlockPos origin = arena.getOrigin();
         forcedChunks.clear();
-        int minCX = (origin.getX() - 2) >> 4;
-        int maxCX = (origin.getX() + arena.getWidth() + 2) >> 4;
-        int minCZ = (origin.getZ() - 2) >> 4;
-        int maxCZ = (origin.getZ() + arena.getHeight() + 2) >> 4;
+        int chunkMargin = 48;
+        int minCX = (origin.getX() - chunkMargin) >> 4;
+        int maxCX = (origin.getX() + arena.getWidth() + chunkMargin) >> 4;
+        int minCZ = (origin.getZ() - chunkMargin) >> 4;
+        int maxCZ = (origin.getZ() + arena.getHeight() + chunkMargin) >> 4;
         for (int cx = minCX; cx <= maxCX; cx++) {
             for (int cz = minCZ; cz <= maxCZ; cz++) {
                 world.setChunkForced(cx, cz, true);
                 forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
+            }
+        }
+
+        // Resend all arena chunks to the player so they see the full schematic.
+        // This is critical for level 2+ where the arena is built before the player
+        // teleports — the ArenaBuilder's resend may not reach a player still at the
+        // old position, causing only game-tile overlays (water/gravel) to appear.
+        for (int cx = minCX; cx <= maxCX; cx++) {
+            for (int cz = minCZ; cz <= maxCZ; cz++) {
+                var chunk = world.getChunk(cx, cz);
+                if (chunk != null) {
+                    player.networkHandler.chunkDataSender.add(chunk);
+                }
             }
         }
 
@@ -707,6 +751,7 @@ public class CombatManager {
                 preMob.setAiDisabled(true);
                 preMob.setNoGravity(true);
                 preMob.setPersistent();
+                preMob.noClip = true;
             }
 
             // Use spawnEntity (not spawnNewEntityAndPassengers) to bypass mob cap
@@ -753,6 +798,7 @@ public class CombatManager {
                 mob.setAiDisabled(true);
                 mob.setInvulnerable(true);
                 mob.setNoGravity(true);
+                mob.noClip = true;
                 mob.setPersistent();
                 mob.setHealth(mob.getMaxHealth()); // Ensure full vanilla health after spawn
                 mob.addCommandTag("craftics_arena");
@@ -838,11 +884,19 @@ public class CombatManager {
         boolean hasUndead = enemies.stream().anyMatch(e -> isUndeadMob(e.getEntityTypeId()));
         world.setTimeOfDay((levelDef.isNightLevel() || hasUndead) ? 18000 : 6000);
 
-        // Give the player a named "Move" feather in slot 8 (hotbar 9)
+        // Give the player a named "Move" feather in slot 8 — move existing item elsewhere first
+        ItemStack displaced2 = player.getInventory().getStack(8);
+        if (!displaced2.isEmpty()) {
+            int emptySlot2 = player.getInventory().getEmptySlot();
+            if (emptySlot2 != -1) {
+                player.getInventory().setStack(emptySlot2, displaced2);
+            }
+        }
         ItemStack moveItem = new ItemStack(Items.FEATHER);
         moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§aMove"));
         player.getInventory().setStack(8, moveItem);
         player.getInventory().selectedSlot = 8; // start in move mode
+        lastHeldItem = Items.FEATHER; // Reset weapon tracking so next slot change triggers refresh
 
         // Sound: combat start
         player.getWorld().playSound(null, player.getBlockPos(),
@@ -951,6 +1005,10 @@ public class CombatManager {
 
     private boolean playerHasBoat() {
         if (player == null) return false;
+        // Turtle helmet set bonus: water tiles are walkable
+        if (player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD).getItem() == Items.TURTLE_HELMET) {
+            return true;
+        }
         for (int i = 0; i < player.getInventory().size(); i++) {
             Item item = player.getInventory().getStack(i).getItem();
             if (item == Items.OAK_BOAT || item == Items.SPRUCE_BOAT || item == Items.BIRCH_BOAT
@@ -1079,8 +1137,10 @@ public class CombatManager {
         boolean isTridentWeapon = weapon == Items.TRIDENT;
         int progBonus = isRangedWeapon ? getProgRangedBonus() : getProgMeleeBonus();
         DamageType damageType = DamageType.fromWeapon(weapon);
+        PlayerProgression.PlayerStats attackerStats = PlayerProgression.get(
+            (ServerWorld) player.getEntityWorld()).getStats(player);
         int damageTypeBonus = DamageType.getTotalBonus(
-            PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects, damageType);
+            PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects, damageType, attackerStats);
         int baseDamage = PlayerCombatStats.getAttackPower(player) + combatEffects.getStrengthBonus()
             + progBonus + PlayerCombatStats.getSetAttackBonus(player)
             + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus;
@@ -1440,14 +1500,12 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, trident);
                 scaleBoss(mob, 1.5);
             }
-            case "desert" -> { // The Sandstorm Pharaoh — Husk
+            case "desert" -> { // The Sandstorm Pharaoh — Husk (no helmet so husk head is visible)
                 mob.setCustomName(Text.literal("§6§lThe Sandstorm Pharaoh"));
                 mob.setCustomNameVisible(true);
-                // Gold and lapis headdress
-                ItemStack headdress = new ItemStack(Items.GOLDEN_HELMET);
-                headdress.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
-                mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, headdress);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.GOLDEN_CHESTPLATE));
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.LEGS, new ItemStack(Items.GOLDEN_LEGGINGS));
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.FEET, new ItemStack(Items.GOLDEN_BOOTS));
                 // Golden sword
                 ItemStack goldenSword = new ItemStack(Items.GOLDEN_SWORD);
                 goldenSword.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
@@ -1818,6 +1876,17 @@ public class CombatManager {
             for (CombatEntity e : enemies) {
                 if (e.getEntityId() == entityId) {
                     e.setAlly(true);
+                    // Apply per-species minimum stats for combat pets
+                    PetStats.Stats petMin = PetStats.get(e.getEntityTypeId());
+                    if (e.getAttackPower() < petMin.atk()) {
+                        e.setAttackBoost(petMin.atk() - e.getAttackPower());
+                    }
+                    if (e.getDefense() < petMin.def()) {
+                        e.setDefenseBoost(petMin.def() - e.getDefense());
+                    }
+                    if (e.getRange() < petMin.range()) {
+                        e.setRangeOverride(petMin.range());
+                    }
                     if (e.getMobEntity() != null) {
                         e.getMobEntity().setGlowing(false);
                         // Check for horse/wolf armor on the tamed mob
@@ -1880,8 +1949,49 @@ public class CombatManager {
             String effectType = tileInfo[0];
             int tx = Integer.parseInt(tileInfo[1]);
             int tz = Integer.parseInt(tileInfo[2]);
-            tileEffects.put(new GridPos(tx, tz), effectType);
-            if (parts.length > 1) sendMessage(parts[1]);
+            if ("clear".equals(effectType)) {
+                // Empty bucket: revert tile to NORMAL and remove any existing effect
+                GridPos clearPos = new GridPos(tx, tz);
+                GridTile clearTile = arena.getTile(clearPos);
+                if (clearTile != null) {
+                    clearTile.setType(TileType.NORMAL);
+                }
+                tileEffects.remove(clearPos);
+                // Place the actual block
+                BlockPos bp = arena.gridToBlockPos(clearPos);
+                ServerWorld sw = (ServerWorld) player.getEntityWorld();
+                sw.setBlockState(bp, net.minecraft.block.Blocks.GRASS_BLOCK.getDefaultState());
+            } else {
+                GridPos effectPos = new GridPos(tx, tz);
+                tileEffects.put(effectPos, effectType);
+                // Update the GridTile type so fishing/boat checks work
+                GridTile effectTile = arena.getTile(effectPos);
+                if (effectTile != null) {
+                    if ("water".equals(effectType)) effectTile.setType(TileType.WATER);
+                    else if ("lava".equals(effectType)) effectTile.setType(TileType.LAVA);
+                    else if ("fire".equals(effectType)) effectTile.setType(TileType.FIRE);
+                }
+            }
+            // Process message part - handle GIVE: prefix for item rewards
+            if (parts.length > 1) {
+                String msg = parts[1];
+                // Check for chained GIVE:item|message format
+                if (msg.startsWith("GIVE:")) {
+                    String[] giveParts = msg.split("\\|", 2);
+                    String itemId = giveParts[0].substring(5); // after "GIVE:"
+                    net.minecraft.item.Item giveItem = switch (itemId) {
+                        case "water_bucket" -> Items.WATER_BUCKET;
+                        case "lava_bucket" -> Items.LAVA_BUCKET;
+                        default -> null;
+                    };
+                    if (giveItem != null) {
+                        player.getInventory().insertStack(new ItemStack(giveItem));
+                    }
+                    if (giveParts.length > 1) sendMessage(giveParts[1]);
+                } else {
+                    sendMessage(msg);
+                }
+            }
         }
         // Ally buff (jukebox music)
         else if (result.startsWith(ItemUseHandler.ALLY_BUFF_PREFIX)) {
@@ -2067,6 +2177,30 @@ public class CombatManager {
 
         tickCounter++;
 
+        // Fall death: if player drops more than 2 blocks below arena floor, instant death
+        if (arena != null) {
+            int arenaFloorY = arena.getOrigin().getY();
+            if (player.getY() < arenaFloorY - 2) {
+                sendMessage("§c§l☠ You fell to your death!");
+                player.setHealth(0);
+                handleGameOver();
+                return;
+            }
+        }
+        // Void safety: if player falls below Y=0, teleport them back
+        if (player.getY() < 0) {
+            BlockPos safePos = arena != null ? arena.getPlayerStartBlockPos() : null;
+            if (safePos != null) {
+                player.requestTeleport(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
+            } else {
+                player.requestTeleport(player.getX(), 100, player.getZ());
+            }
+            player.setVelocity(0, 0, 0);
+            player.velocityModified = true;
+            player.setFireTicks(0);
+            player.fallDistance = 0;
+        }
+
         // Boss ambient particles (runs every tick, per-boss throttling inside)
         tickBossAmbientParticles();
 
@@ -2121,6 +2255,7 @@ public class CombatManager {
                         replacementMob.setInvulnerable(true);
                         replacementMob.setAiDisabled(true);
                         replacementMob.setNoGravity(true);
+                        replacementMob.noClip = true;
                         replacementMob.setPersistent();
                         replacementMob.setHealth(replacementMob.getMaxHealth());
                         replacementMob.addCommandTag("craftics_arena");
@@ -2300,6 +2435,7 @@ public class CombatManager {
         switch (enemyTurnState) {
             case DECIDING -> tickEnemyDeciding();
             case MOVING -> tickEnemyMoving();
+            case ANIMATING -> tickEnemyAnimating();
             case ATTACKING -> tickEnemyAttacking();
             case DONE -> tickEnemyDone();
         }
@@ -2577,8 +2713,7 @@ public class CombatManager {
             case EnemyAction.Flee flee -> startEnemyMove(flee.path());
             case EnemyAction.MoveAndAttack maa -> startEnemyMove(maa.path());
             case EnemyAction.Attack atk -> {
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
             case EnemyAction.Teleport tp -> {
                 // Instant move — no lerp animation
@@ -2605,8 +2740,7 @@ public class CombatManager {
                 arena.moveEntity(currentEnemy, tpa.target());
                 // Proceed to attack phase
                 pendingAction = new EnemyAction.Attack(tpa.damage());
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
             case EnemyAction.Pounce pounce -> {
                 // Instant jump to landing position, then attack
@@ -2619,8 +2753,7 @@ public class CombatManager {
                 }
                 arena.moveEntity(currentEnemy, pounce.landingPos());
                 pendingAction = new EnemyAction.Attack(pounce.damage());
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                startAttackAnimation(2);
             }
             case EnemyAction.Explode explode -> {
                 // AoE explosion — damage player AND other mobs within radius
@@ -2762,8 +2895,7 @@ public class CombatManager {
             }
             case EnemyAction.MoveAndAttackMob maam -> startEnemyMove(maam.path());
             case EnemyAction.AttackWithKnockback akb -> {
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
             case EnemyAction.MoveAndAttackWithKnockback maakb -> startEnemyMove(maakb.path());
             case EnemyAction.Idle idle -> {
@@ -2776,6 +2908,42 @@ public class CombatManager {
                         renderBossWarning(ba.getPendingWarning());
                     }
                 }
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
+
+            // === Spider ceiling mechanic ===
+
+            case EnemyAction.CeilingAscend ascend -> {
+                sendMessage("§7" + currentEnemy.getDisplayName() + " shoots a web and ascends to the ceiling!");
+                // Hide the mob entity (move it way up so it's invisible)
+                MobEntity ascendMob = currentEnemy.getMobEntity();
+                if (ascendMob != null) {
+                    ascendMob.requestTeleport(ascendMob.getX(), ascendMob.getY() + 100, ascendMob.getZ());
+                    ascendMob.setInvisible(true);
+                }
+                // Remove from grid so it doesn't block tiles, but keep in enemies list
+                arena.removeEntity(currentEnemy);
+                // Mark as "on ceiling" via a tag the AI can check
+                currentEnemy.setOnCeiling(true);
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
+
+            case EnemyAction.CeilingDrop drop -> {
+                sendMessage("§c" + currentEnemy.getDisplayName() + " drops from the ceiling!");
+                // Place the mob back on the grid at the landing position
+                currentEnemy.setOnCeiling(false);
+                currentEnemy.setGridPos(drop.landingPos());
+                arena.placeEntity(currentEnemy);
+                // Show the mob entity again at the landing position
+                MobEntity dropMob = currentEnemy.getMobEntity();
+                if (dropMob != null) {
+                    dropMob.setInvisible(false);
+                    BlockPos dropBlock = arena.gridToBlockPos(drop.landingPos());
+                    dropMob.requestTeleport(dropBlock.getX() + 0.5, dropBlock.getY(), dropBlock.getZ() + 0.5);
+                }
+                // Landing only — no attack this turn (drop is the action)
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -2867,7 +3035,7 @@ public class CombatManager {
      */
     private void handleAllyTurn(CombatEntity ally) {
         GridPos allyPos = ally.getGridPos();
-        boolean lowHp = ally.getCurrentHp() <= 4; // 2 hearts or less = retreat
+        boolean lowHp = ally.getMaxHp() > 0 && (float) ally.getCurrentHp() / ally.getMaxHp() <= 0.25f;
 
         if (lowHp) {
             // RETREAT: move away from nearest enemy
@@ -2899,13 +3067,21 @@ public class CombatManager {
             return;
         }
 
-        // ATTACK: find nearest non-ally enemy and move toward / attack it
+        // ATTACK: find best target using priority scoring
+        GridPos playerPos = arena.getPlayerGridPos();
         CombatEntity target = null;
+        int bestScore = Integer.MIN_VALUE;
         int targetDist = Integer.MAX_VALUE;
         for (CombatEntity e : enemies) {
             if (!e.isAlive() || e.isAlly()) continue;
-            int d = Math.abs(e.getGridPos().x() - allyPos.x()) + Math.abs(e.getGridPos().z() - allyPos.z());
-            if (d < targetDist) {
+            int d = e.minDistanceTo(allyPos);
+            int dToPlayer = e.minDistanceTo(playerPos);
+            // Score: prefer close targets, targets near player, and wounded targets
+            int score = -d;
+            if (dToPlayer <= 2) score += 3; // protect the player
+            if (e.getCurrentHp() <= e.getMaxHp() / 2) score += 2; // finish wounded
+            if (score > bestScore || (score == bestScore && d < targetDist)) {
+                bestScore = score;
                 targetDist = d;
                 target = e;
             }
@@ -3059,6 +3235,7 @@ public class CombatManager {
                 mob.setAiDisabled(true);
                 mob.setInvulnerable(true);
                 mob.setNoGravity(true);
+                mob.noClip = true;
                 mob.setPersistent();
                 mob.addCommandTag("craftics_arena");
             }
@@ -3177,8 +3354,11 @@ public class CombatManager {
             if (ct.duration() > 0) {
                 tile.setTurnsRemaining(ct.duration());
             }
-            // Update the visual block in the world
-            BlockPos bp = arena.gridToBlockPos(pos);
+            // Update the visual block in the world (floor level, not above)
+            BlockPos bp = new BlockPos(
+                arena.getOrigin().getX() + pos.x(),
+                arena.getOrigin().getY(),
+                arena.getOrigin().getZ() + pos.z());
             world.setBlockState(bp, tile.getBlockType().getDefaultState());
 
             // Particles for the transformation
@@ -3402,10 +3582,13 @@ public class CombatManager {
                 GridTile tile = arena.getTile(x, z);
                 if (tile != null && tile.getTurnsRemaining() > 0) {
                     tile.tickTurn();
-                    // If tile reset to NORMAL, update the world block
+                    // If tile reset to NORMAL, restore the floor block
                     if (tile.getType() == TileType.NORMAL) {
-                        BlockPos bp = arena.gridToBlockPos(new GridPos(x, z));
-                        world.setBlockState(bp, Blocks.GRASS_BLOCK.getDefaultState());
+                        BlockPos bp = new BlockPos(
+                            arena.getOrigin().getX() + x,
+                            arena.getOrigin().getY(),
+                            arena.getOrigin().getZ() + z);
+                        world.setBlockState(bp, tile.getBlockType().getDefaultState());
                     }
                 }
             }
@@ -3520,8 +3703,7 @@ public class CombatManager {
             if (pendingAction instanceof EnemyAction.MoveAndAttack
                     || pendingAction instanceof EnemyAction.MoveAndAttackMob
                     || pendingAction instanceof EnemyAction.MoveAndAttackWithKnockback) {
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
+                startAttackAnimation(Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2));
             } else {
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
@@ -3593,6 +3775,95 @@ public class CombatManager {
 
             enemyLerpInitialized = false;
             enemyMovePathIndex++;
+        }
+    }
+
+    /** Initialize attack animation and transition to ANIMATING state. */
+    private void startAttackAnimation(int delay) {
+        attackAnimTick = 0;
+        attackAnimSwung = false;
+        enemyTurnState = EnemyTurnState.ANIMATING;
+        enemyTurnDelay = delay;
+    }
+
+    /**
+     * Attack animation phase: mob faces the player, swings arm, lunges forward then back.
+     * On completion, transitions to ATTACKING to apply damage.
+     */
+    private void tickEnemyAnimating() {
+        net.minecraft.entity.mob.MobEntity mob = currentEnemy.getMobEntity();
+        if (mob == null || !mob.isAlive() || mob.isRemoved()) {
+            enemyTurnState = EnemyTurnState.ATTACKING;
+            return;
+        }
+
+        attackAnimTick++;
+
+        // Tick 1: Face the player and trigger arm swing
+        if (!attackAnimSwung) {
+            attackAnimSwung = true;
+            attackAnimOriginX = mob.getX();
+            attackAnimOriginY = mob.getY();
+            attackAnimOriginZ = mob.getZ();
+
+            // Face toward the player
+            double dx = player.getX() - mob.getX();
+            double dz = player.getZ() - mob.getZ();
+            float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            mob.setYaw(yaw);
+            mob.setHeadYaw(yaw);
+
+            // Compute lunge direction unit vector
+            double dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 0.01) {
+                attackAnimLungeX = dx / dist;
+                attackAnimLungeZ = dz / dist;
+            } else {
+                attackAnimLungeX = 0;
+                attackAnimLungeZ = 1;
+            }
+
+            // Swing main hand — vanilla syncs this to clients automatically
+            mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+
+            // Send attack anim event to client for mob-specific particles
+            // valueA: 0=melee, 1=knockback melee. valueB: entity type hash for client effects
+            int attackType = (pendingAction instanceof EnemyAction.AttackWithKnockback
+                || pendingAction instanceof EnemyAction.MoveAndAttackWithKnockback) ? 1 : 0;
+            GridPos playerGridPos = arena.getPlayerGridPos();
+            ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.CombatEventPayload(
+                com.crackedgames.craftics.network.CombatEventPayload.EVENT_MOB_ATTACK_ANIM,
+                currentEnemy.getMobEntity().getId(), attackType, 0,
+                playerGridPos.x(), playerGridPos.z()
+            ));
+        }
+
+        // Lunge phase: move toward the player
+        if (attackAnimTick <= ATTACK_ANIM_LUNGE_TICKS) {
+            float progress = (float) attackAnimTick / ATTACK_ANIM_LUNGE_TICKS;
+            // Ease-out for snappy lunge
+            float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
+            double offsetX = attackAnimLungeX * ATTACK_LUNGE_DISTANCE * eased;
+            double offsetZ = attackAnimLungeZ * ATTACK_LUNGE_DISTANCE * eased;
+            mob.requestTeleport(
+                attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+        }
+        // Return phase: move back to original position
+        else if (attackAnimTick <= ATTACK_ANIM_TOTAL_TICKS) {
+            int returnTick = attackAnimTick - ATTACK_ANIM_LUNGE_TICKS;
+            float progress = (float) returnTick / ATTACK_ANIM_RETURN_TICKS;
+            float eased = progress * progress; // ease-in for smooth return
+            double offsetX = attackAnimLungeX * ATTACK_LUNGE_DISTANCE * (1.0 - eased);
+            double offsetZ = attackAnimLungeZ * ATTACK_LUNGE_DISTANCE * (1.0 - eased);
+            mob.requestTeleport(
+                attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+        }
+
+        // Animation complete — snap back and proceed to damage
+        if (attackAnimTick >= ATTACK_ANIM_TOTAL_TICKS) {
+            mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
+            enemyTurnState = EnemyTurnState.ATTACKING;
+            enemyTurnDelay = 0;
         }
     }
 
@@ -3842,6 +4113,8 @@ public class CombatManager {
         // Reset biome run
         data.endBiomeRun();
         data.inCombat = false;
+        // Persist legacy fields (including emerald loss) back to per-player data
+        data.saveLegacyToPlayer(player.getUuid());
         data.markDirty();
 
         sendMessage("§7Returning to hub... Your biome run has ended.");
@@ -3980,7 +4253,16 @@ public class CombatManager {
 
             net.minecraft.item.Item[] trimPool = TrimEffects.getBossDropTrims(dimension);
             if (trimPool.length > 0) {
-                net.minecraft.item.Item trimItem = trimPool[new java.util.Random().nextInt(trimPool.length)];
+                // Avoid giving the same trim back-to-back
+                java.util.List<net.minecraft.item.Item> candidates = new java.util.ArrayList<>();
+                for (net.minecraft.item.Item t : trimPool) {
+                    if (t != lastDroppedTrim) candidates.add(t);
+                }
+                if (candidates.isEmpty()) {
+                    for (net.minecraft.item.Item t : trimPool) candidates.add(t);
+                }
+                net.minecraft.item.Item trimItem = candidates.get(new java.util.Random().nextInt(candidates.size()));
+                lastDroppedTrim = trimItem;
                 ItemStack trimStack = new ItemStack(trimItem);
                 for (ServerPlayerEntity recipient : rewardRecipients) {
                     recipient.getInventory().insertStack(trimStack.copy());
@@ -4041,22 +4323,39 @@ public class CombatManager {
             ServerPlayerEntity savedPlayer = player;
             endCombat();
 
-            // Grant level-up to all party members
+            // Grant level-up with diminishing returns per boss
+            String bossbiomeId = biomeTemplate != null ? biomeTemplate.biomeId : "unknown";
             PlayerProgression progression = PlayerProgression.get(world);
             for (ServerPlayerEntity member : savedParty) {
-                progression.grantLevelUp(member);
                 PlayerProgression.PlayerStats stats = progression.getStats(member);
+                boolean earned = stats.recordBossKillAndCheckLevelUp(bossbiomeId);
+                progression.saveStats(member);
+                if (earned) {
+                    stats.grantLevelUp();
+                    progression.saveStats(member);
+                } else {
+                    int remaining = stats.getKillsUntilNextLevel(bossbiomeId);
+                    sendMessageTo(member, "§7Defeat this boss §e" + remaining + "§7 more time" + (remaining != 1 ? "s" : "") + " for a level up.");
+                }
                 StringBuilder statData = new StringBuilder();
                 for (PlayerProgression.Stat s : PlayerProgression.Stat.values()) {
                     if (statData.length() > 0) statData.append(":");
                     statData.append(stats.getPoints(s));
                 }
-                ServerPlayNetworking.send(member, new com.crackedgames.craftics.network.LevelUpPayload(
-                    stats.level, stats.unspentPoints, statData.toString()
-                ));
+                // Only show level-up screen if this kill earned a level
+                if (earned) {
+                    ServerPlayNetworking.send(member, new com.crackedgames.craftics.network.LevelUpPayload(
+                        stats.level, stats.unspentPoints, statData.toString()
+                    ));
+                }
+                StringBuilder affData = new StringBuilder();
+                for (PlayerProgression.Affinity a : PlayerProgression.Affinity.values()) {
+                    if (affData.length() > 0) affData.append(":");
+                    affData.append(stats.getAffinityPoints(a));
+                }
                 CrafticsSavedData.PlayerData pd = data.getPlayerData(member.getUuid());
                 ServerPlayNetworking.send(member, new com.crackedgames.craftics.network.PlayerStatsSyncPayload(
-                    stats.level, stats.unspentPoints, statData.toString(), pd.emeralds
+                    stats.level, stats.unspentPoints, statData.toString(), pd.emeralds, affData.toString()
                 ));
             }
         } else {
@@ -4102,6 +4401,8 @@ public class CombatManager {
                     sendMessageTo(p, "§7You pass by the trial chamber...");
                 }
                 if (pendingNextLevelDef != null && pendingBiome != null) {
+                    // Restore allies and pets before continuing
+                    spawnSavedPets();
                     GridArena nextArena = buildArena(tcWorld, pendingNextLevelDef);
                     transitionPartyToArena(choicePlayer, nextArena, pendingNextLevelDef);
                     pendingNextLevelDef = null;
@@ -4114,6 +4415,8 @@ public class CombatManager {
                     sendMessageTo(p, "§cWarning: Enemies are stronger here!");
                 }
                 if (savedTrialDef != null) {
+                    // Restore allies and pets before entering trial
+                    spawnSavedPets();
                     GridArena trialArena = buildArena(tcWorld, savedTrialDef);
                     transitionPartyToArena(choicePlayer, trialArena, savedTrialDef);
                     lastFightWasTrial = true;
@@ -4122,10 +4425,12 @@ public class CombatManager {
             return;
         }
 
-        // After a trial chamber victory, go directly to the pending next level (no more events)
+        // After a trial chamber or ambush victory, go directly to the pending next level (no more events)
         if (lastFightWasTrial && pendingNextLevelDef != null && !goHome) {
             lastFightWasTrial = false;
             ServerWorld world2 = (ServerWorld) choicePlayer.getEntityWorld();
+            // Restore allies and pets before continuing
+            spawnSavedPets();
             endCombat();
             GridArena nextArena = buildArena(world2, pendingNextLevelDef);
             transitionPartyToArena(choicePlayer, nextArena, pendingNextLevelDef);
@@ -4144,8 +4449,30 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
 
+        // Persist tamed pets so they carry over to the next level
+        savePets();
+
         if (goHome) {
             sendMessage("§7Returning to hub...");
+            // Spawn saved pets at hub as permanent tamed mobs
+            if (!savedPets.isEmpty()) {
+                BlockPos hubPos = data.getHubTeleportPos(savedPlayer.getUuid());
+                for (PetData pet : savedPets) {
+                    var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
+                    var rawEntity = entityType.create(world, null, hubPos,
+                        net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
+                    if (rawEntity instanceof net.minecraft.entity.mob.MobEntity mob) {
+                        mob.requestTeleport(hubPos.getX() + 1.5, hubPos.getY(), hubPos.getZ() + 0.5);
+                        mob.setPersistent();
+                        mob.setAiDisabled(false);
+                        mob.setSilent(false);
+                        world.spawnEntity(mob);
+                        sendMessage("\u00a7a" + pet.entityType().substring(pet.entityType().indexOf(':') + 1).replace('_', ' ')
+                            + " has been sent to your hub!");
+                    }
+                }
+                savedPets.clear();
+            }
             data.endBiomeRun();
             data.inCombat = false;
             data.markDirty();
@@ -4161,10 +4488,8 @@ public class CombatManager {
             sendMessage("§aOnward!");
             endCombat();
 
-            // Small delay then start next level — use the biome run state
-            // The client will re-send a StartLevelPayload which triggers the next level
-            // via the biome run tracking in ModNetworking
-            // For now, directly start the next level
+            try {
+            // Start next level directly
             String biomeId = data.activeBiomeId;
             int levelIndex = data.activeBiomeLevelIndex;
             com.crackedgames.craftics.level.BiomeTemplate biome = null;
@@ -4191,8 +4516,8 @@ public class CombatManager {
                     boolean isBossLevel = biome.isBossLevel(globalLevel);
                     boolean skipEvents = levelIndex <= 1 || isBossLevel;
                     if (!skipEvents && biomeOrdinal < 3) {
-                        // Early biomes: only 25% chance of any event (vs 55% normally)
-                        skipEvents = eventRoll > 0.25f;
+                        // Early biomes: reduced event chance (configurable)
+                        skipEvents = eventRoll > CrafticsMod.CONFIG.earlyBiomeEventChance();
                         if (!skipEvents) eventRoll = eventRng.nextFloat(); // re-roll within event pool
                     }
 
@@ -4206,12 +4531,22 @@ public class CombatManager {
                     // Helper: broadcast event messages to all party members
                     List<ServerPlayerEntity> partyMsg = getOnlinePartyMembers(savedPlayer);
 
+                    // Build cumulative thresholds from config
+                    float cOminous = CrafticsMod.CONFIG.ominousTrialChance();
+                    float cTrial = cOminous + CrafticsMod.CONFIG.trialChamberChance();
+                    float cAmbush = cTrial + CrafticsMod.CONFIG.ambushChance();
+                    float cShrine = cAmbush + CrafticsMod.CONFIG.shrineChance();
+                    float cTraveler = cShrine + CrafticsMod.CONFIG.travelerChance();
+                    float cVault = cTraveler + CrafticsMod.CONFIG.vaultChance();
+                    float cDigSite = cVault + CrafticsMod.CONFIG.digSiteChance();
+                    float cTrader = cDigSite + CrafticsMod.CONFIG.traderSpawnChance();
+
                     if (skipEvents) {
                         // No event — go straight to next level
                         GridArena nextArena = buildArena(world, nextLevelDef);
                         transitionPartyToArena(savedPlayer, nextArena, nextLevelDef);
-                    } else if (forced != null ? forced.equals("ominous_trial") : (eventRoll < 0.05f && biomeOrdinal >= 10)) {
-                        // 5% chance (late game only): Ominous Trial Chamber
+                    } else if (forced != null ? forced.equals("ominous_trial") : (eventRoll < cOminous && biomeOrdinal >= 10)) {
+                        // Ominous Trial Chamber (late game only)
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         trialChamberLevelDef = RandomEvents.generateOminousTrial(biomeOrdinal, data.ngPlusLevel);
@@ -4225,8 +4560,8 @@ public class CombatManager {
                         ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
                             0, data.emeralds, false, "Ominous Trial", -1
                         ));
-                    } else if (forced != null ? forced.equals("trial") : (eventRoll < 0.15f)) {
-                        // 10% chance: Trial Chamber
+                    } else if (forced != null ? forced.equals("trial") : (eventRoll < cTrial)) {
+                        // Trial Chamber
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         trialChamberLevelDef = TrialChamberEvent.generate(biomeOrdinal, data.ngPlusLevel);
@@ -4239,8 +4574,8 @@ public class CombatManager {
                         ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
                             0, data.emeralds, false, "Trial Chamber", -1
                         ));
-                    } else if (forced != null ? forced.equals("ambush") : (eventRoll < 0.25f)) {
-                        // 10% chance: Ambush (unavoidable!)
+                    } else if (forced != null ? forced.equals("ambush") : (eventRoll < cAmbush)) {
+                        // Ambush (unavoidable!)
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         var ambushDef = RandomEvents.generateAmbush(biomeOrdinal, data.ngPlusLevel);
@@ -4251,42 +4586,27 @@ public class CombatManager {
                         lastFightWasTrial = true;
                         GridArena ambushArena = buildArena(world, ambushDef);
                         transitionPartyToArena(savedPlayer, ambushArena, ambushDef);
-                    } else if (forced != null ? forced.equals("shrine") : (eventRoll < 0.32f)) {
-                        // 7% chance: Shrine of Fortune
-                        String shrineResult = RandomEvents.handleShrine(savedPlayer, data);
-                        for (ServerPlayerEntity p : partyMsg) {
-                            sendMessageTo(p, shrineResult);
-                        }
-                        GridArena nextArena2 = buildArena(world, nextLevelDef);
-                        transitionPartyToArena(savedPlayer, nextArena2, nextLevelDef);
-                    } else if (forced != null ? forced.equals("traveler") : (eventRoll < 0.38f)) {
-                        // 6% chance: Wounded Traveler
-                        String travelerResult = RandomEvents.handleWoundedTraveler(savedPlayer);
-                        for (ServerPlayerEntity p : partyMsg) {
-                            sendMessageTo(p, travelerResult);
-                        }
-                        GridArena nextArena3 = buildArena(world, nextLevelDef);
-                        transitionPartyToArena(savedPlayer, nextArena3, nextLevelDef);
-                    } else if (forced != null ? forced.equals("vault") : (eventRoll < 0.42f)) {
-                        // 4% chance: Treasure Vault
+                    } else if (forced != null ? forced.equals("shrine") : (eventRoll < cShrine)) {
+                        // Shrine of Fortune — interactive room
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
-                        trialChamberLevelDef = RandomEvents.generateTreasureVault(biomeOrdinal);
-                        trialChamberPending = true;
-                        for (ServerPlayerEntity p : partyMsg) {
-                            sendMessageTo(p, "\u00a76\u00a7l\u2726 TREASURE VAULT DISCOVERED! \u2726");
-                            sendMessageTo(p, "\u00a7eA hidden vault filled with riches!");
-                            sendMessageTo(p, "\u00a77Enter to claim the loot? (No enemies!)");
-                        }
-                        ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
-                            0, data.emeralds, false, "Treasure Vault", -1
-                        ));
-                    } else if (forced != null ? forced.equals("dig_site") : (eventRoll < 0.48f)) {
-                        // 6% chance: Dig Site
+                        offerShrine(savedPlayer);
+                    } else if (forced != null ? forced.equals("traveler") : (eventRoll < cTraveler)) {
+                        // Wounded Traveler — interactive room
+                        pendingNextLevelDef = nextLevelDef;
+                        pendingBiome = biome;
+                        offerTraveler(savedPlayer);
+                    } else if (forced != null ? forced.equals("vault") : (eventRoll < cVault)) {
+                        // Treasure Vault — interactive room
+                        pendingNextLevelDef = nextLevelDef;
+                        pendingBiome = biome;
+                        offerVault(savedPlayer, biomeOrdinal);
+                    } else if (forced != null ? forced.equals("dig_site") : (eventRoll < cDigSite)) {
+                        // Dig Site
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         offerDigSite(savedPlayer, biome);
-                    } else if (forced != null ? forced.equals("trader") : (eventRoll < 0.48f + CrafticsMod.CONFIG.traderSpawnChance())) {
+                    } else if (forced != null ? forced.equals("trader") : (eventRoll < cTrader)) {
                         // Configurable chance: Wandering Trader
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
@@ -4297,6 +4617,16 @@ public class CombatManager {
                         transitionPartyToArena(savedPlayer, nextArena, nextLevelDef);
                     }
                 }
+            }
+            } catch (Exception ex) {
+                CrafticsMod.LOGGER.error("Failed to start next level, sending player home", ex);
+                sendMessageTo(savedPlayer, "§cError loading next level! Returning to hub...");
+                data.endBiomeRun();
+                data.inCombat = false;
+                data.saveLegacyToPlayer(savedPlayer.getUuid());
+                data.markDirty();
+                teleportToHub(savedPlayer);
+                ServerPlayNetworking.send(savedPlayer, new ExitCombatPayload(false));
             }
         }
     }
@@ -4314,6 +4644,13 @@ public class CombatManager {
     // ---- Dig site event (suspicious block brushing for pottery sherds) ----
     private boolean digSitePending = false;
     public boolean isDigSitePending() { return digSitePending; }
+
+    // ---- Interactive event rooms (shrine, traveler, vault) ----
+    private boolean eventRoomPending = false;
+    private String eventRoomType = null; // "shrine", "traveler", "vault"
+    private net.minecraft.entity.passive.VillagerEntity spawnedTraveler;
+    private int[] shrineCosts; // [small, medium, large]
+    private java.util.List<int[]> travelerFoodSlots; // list of [slotIndex, foodTier]
 
     // ---- Trader system ----
     private TraderSystem.TraderOffer activeTraderOffer;
@@ -4380,6 +4717,11 @@ public class CombatManager {
             for (int z = 0; z < 9; z++)
                 world.setBlockState(new BlockPos(ox + x, oy, oz + z), edgeBlock.getDefaultState(), sf);
 
+        // Solid support layer under the floor so gravel/sand doesn't fall
+        for (int x = 0; x < 9; x++)
+            for (int z = 0; z < 9; z++)
+                world.setBlockState(new BlockPos(ox + x, oy - 1, oz + z), Blocks.STONE.getDefaultState(), sf);
+
         // Central 5×5 dig pit (lowered floor of sand/gravel)
         for (int x = 2; x <= 6; x++)
             for (int z = 2; z <= 6; z++)
@@ -4387,6 +4729,20 @@ public class CombatManager {
 
         // Suspicious block in the center
         world.setBlockState(new BlockPos(ox + 4, oy + 1, oz + 4), suspiciousBlock.getDefaultState(), sf);
+
+        // Barrier walls around perimeter (invisible 2-high walls prevent falling off)
+        for (int x = -1; x <= 9; x++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz - 1), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz + 9), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+        for (int z = -1; z <= 9; z++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox - 1, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 9, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
 
         // Corner fences for decoration
         for (int[] corner : new int[][]{{1,1},{1,7},{7,1},{7,7}}) {
@@ -4632,6 +4988,537 @@ public class CombatManager {
 
         // Lectern near entrance
         world.setBlockState(new BlockPos(ox + 4, oy + 1, oz + 1), Blocks.LECTERN.getDefaultState(), sf);
+
+        // Barrier walls around perimeter (invisible 2-high walls prevent falling off)
+        for (int x = -1; x <= 9; x++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz - 1), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz + 9), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+        for (int z = -1; z <= 9; z++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox - 1, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 9, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+    }
+
+    // ── Interactive Event Rooms (Shrine, Traveler, Vault) ──
+
+    private BlockPos getEventRoomOrigin() {
+        if (worldOwnerUuid != null) {
+            ServerWorld w = (ServerWorld) player.getEntityWorld();
+            CrafticsSavedData d = CrafticsSavedData.get(w);
+            BlockPos origin = d.getTraderOrigin(worldOwnerUuid);
+            if (origin != null) return origin;
+        }
+        return new BlockPos(500, 100, 500);
+    }
+
+    private void offerShrine(ServerPlayerEntity savedPlayer) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
+
+        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
+        eventRoomPending = true;
+        eventRoomType = "shrine";
+        shrineCosts = new int[]{2, 5, 10};
+
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        int playerEmeralds = data.emeralds;
+
+        buildShrineArea(world, getEventRoomOrigin());
+        for (ServerPlayerEntity p : members) {
+            p.requestTeleport(
+                getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 1, getEventRoomOrigin().getZ() + 4.5);
+        }
+
+        String eventData = shrineCosts[0] + ":" + shrineCosts[1] + ":" + shrineCosts[2] + ":" + playerEmeralds;
+        ServerPlayNetworking.send(savedPlayer, new EventRoomPayload("shrine", eventData));
+    }
+
+    private void offerTraveler(ServerPlayerEntity savedPlayer) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
+
+        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
+        eventRoomPending = true;
+        eventRoomType = "traveler";
+
+        // Scan player inventory for food items and assign quality tiers
+        travelerFoodSlots = new java.util.ArrayList<>();
+        StringBuilder foodData = new StringBuilder();
+        for (int i = 0; i < savedPlayer.getInventory().size(); i++) {
+            ItemStack stack = savedPlayer.getInventory().getStack(i);
+            if (stack.isEmpty()) continue;
+            Item item = stack.getItem();
+            int tier = getFoodTier(item);
+            if (tier > 0) {
+                travelerFoodSlots.add(new int[]{i, tier});
+                if (foodData.length() > 0) foodData.append("|");
+                foodData.append(i).append(":").append(stack.getName().getString()).append(":").append(tier);
+            }
+        }
+
+        buildTravelerArea(world, getEventRoomOrigin());
+        for (ServerPlayerEntity p : members) {
+            p.requestTeleport(
+                getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 1, getEventRoomOrigin().getZ() + 4.5);
+        }
+
+        // Spawn a villager NPC
+        spawnedTraveler = (net.minecraft.entity.passive.VillagerEntity)
+            net.minecraft.entity.EntityType.VILLAGER.spawn(world, getEventRoomOrigin().up(), net.minecraft.entity.SpawnReason.EVENT);
+        if (spawnedTraveler != null) {
+            spawnedTraveler.refreshPositionAndAngles(
+                getEventRoomOrigin().getX() + 6.5, getEventRoomOrigin().getY() + 1, getEventRoomOrigin().getZ() + 4.5,
+                -90f, 0f);
+            spawnedTraveler.setAiDisabled(true);
+            spawnedTraveler.setInvulnerable(true);
+            spawnedTraveler.setBaby(false);
+            world.spawnEntity(spawnedTraveler);
+        }
+
+        ServerPlayNetworking.send(savedPlayer, new EventRoomPayload("traveler", foodData.toString()));
+    }
+
+    private void offerVault(ServerPlayerEntity savedPlayer, int biomeOrdinal) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
+
+        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
+        eventRoomPending = true;
+        eventRoomType = "vault";
+
+        buildVaultArea(world, getEventRoomOrigin());
+        for (ServerPlayerEntity p : members) {
+            p.requestTeleport(
+                getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 1, getEventRoomOrigin().getZ() + 4.5);
+        }
+
+        ServerPlayNetworking.send(savedPlayer, new EventRoomPayload("vault", String.valueOf(biomeOrdinal)));
+    }
+
+    /** Determine food quality tier for the Wounded Traveler event. */
+    private static int getFoodTier(Item item) {
+        if (item == Items.ENCHANTED_GOLDEN_APPLE) return 4;
+        if (item == Items.GOLDEN_APPLE || item == Items.GOLDEN_CARROT || item == Items.CAKE
+            || item == Items.HONEY_BOTTLE) return 3;
+        if (item == Items.COOKED_BEEF || item == Items.COOKED_PORKCHOP || item == Items.COOKED_CHICKEN
+            || item == Items.COOKED_MUTTON || item == Items.COOKED_SALMON || item == Items.COOKED_COD
+            || item == Items.MUSHROOM_STEW || item == Items.RABBIT_STEW || item == Items.BEETROOT_SOUP
+            || item == Items.PUMPKIN_PIE) return 2;
+        if (item == Items.BREAD || item == Items.BAKED_POTATO || item == Items.CARROT
+            || item == Items.BEETROOT || item == Items.APPLE || item == Items.COOKIE
+            || item == Items.DRIED_KELP || item == Items.SWEET_BERRIES || item == Items.MELON_SLICE
+            || item == Items.POTATO || item == Items.COD || item == Items.SALMON) return 1;
+        return 0;
+    }
+
+    /**
+     * Handle a player's choice from an event room screen.
+     * choiceIndex: 0+ = specific choice, -1 = skip/walk away
+     */
+    public void handleEventChoice(ServerPlayerEntity choicePlayer, int choiceIndex) {
+        if (!eventRoomPending) return;
+        eventRoomPending = false;
+        String type = eventRoomType;
+        eventRoomType = null;
+
+        ServerWorld world = (ServerWorld) choicePlayer.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        List<ServerPlayerEntity> partyMsg = getOnlinePartyMembers(choicePlayer);
+
+        if ("shrine".equals(type)) {
+            if (choiceIndex >= 0 && choiceIndex < 3) {
+                int cost = shrineCosts[choiceIndex];
+                if (data.emeralds >= cost) {
+                    data.spendEmeralds(cost);
+                    java.util.Random rng = new java.util.Random();
+                    // Better offering = better odds
+                    int roll = rng.nextInt(100);
+                    int threshold = choiceIndex == 0 ? 40 : (choiceIndex == 1 ? 25 : 10);
+                    ItemStack reward;
+                    String desc;
+
+                    if (roll < threshold) {
+                        // Common
+                        reward = switch (rng.nextInt(4)) {
+                            case 0 -> new ItemStack(Items.GOLDEN_APPLE, 2);
+                            case 1 -> new ItemStack(Items.ENDER_PEARL, 3);
+                            case 2 -> new ItemStack(Items.ARROW, 32);
+                            default -> new ItemStack(Items.COOKED_BEEF, 8);
+                        };
+                        desc = "§aThe shrine rewards your faith!";
+                    } else if (roll < threshold + 35) {
+                        // Good
+                        reward = switch (rng.nextInt(4)) {
+                            case 0 -> new ItemStack(Items.DIAMOND, 3);
+                            case 1 -> new ItemStack(Items.SHIELD, 1);
+                            case 2 -> new ItemStack(Items.IRON_SWORD, 1);
+                            default -> new ItemStack(Items.TOTEM_OF_UNDYING, 1);
+                        };
+                        desc = "§bThe shrine glows brightly!";
+                    } else if (roll < threshold + 55) {
+                        // Great
+                        reward = switch (rng.nextInt(3)) {
+                            case 0 -> new ItemStack(Items.DIAMOND_SWORD, 1);
+                            case 1 -> new ItemStack(Items.DIAMOND_CHESTPLATE, 1);
+                            default -> new ItemStack(Items.ENCHANTED_GOLDEN_APPLE, 1);
+                        };
+                        desc = "§d§lThe shrine erupts with light!";
+                    } else {
+                        // Jackpot
+                        data.addEmeralds(cost * 3);
+                        reward = new ItemStack(Items.EMERALD, cost * 3);
+                        desc = "§6§l✦ JACKPOT! ✦ §r§6Triple emeralds returned!";
+                    }
+
+                    choicePlayer.getInventory().insertStack(reward);
+                    String rewardName = reward.getName().getString();
+                    for (ServerPlayerEntity p : partyMsg) {
+                        sendMessageTo(p, "§e§lShrine of Fortune! §r§7(" + cost + " emeralds offered)");
+                        sendMessageTo(p, desc);
+                        sendMessageTo(p, "§7Received: §f" + rewardName);
+                    }
+                    // Particles
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANT,
+                        getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 2.5, getEventRoomOrigin().getZ() + 4.5,
+                        30, 0.5, 1.0, 0.5, 0.1);
+                } else {
+                    for (ServerPlayerEntity p : partyMsg) {
+                        sendMessageTo(p, "§cNot enough emeralds!");
+                    }
+                }
+            } else {
+                for (ServerPlayerEntity p : partyMsg) {
+                    sendMessageTo(p, "§7You walk away from the shrine...");
+                }
+            }
+        } else if ("traveler".equals(type)) {
+            // Despawn the villager
+            if (spawnedTraveler != null && spawnedTraveler.isAlive()) {
+                spawnedTraveler.discard();
+                spawnedTraveler = null;
+            }
+
+            if (choiceIndex >= 0 && travelerFoodSlots != null) {
+                // Find the food slot matching the choice index
+                int[] chosen = null;
+                for (int[] slot : travelerFoodSlots) {
+                    if (slot[0] == choiceIndex) { chosen = slot; break; }
+                }
+                if (chosen != null) {
+                    int slotIdx = chosen[0];
+                    int tier = chosen[1];
+                    String foodName = choicePlayer.getInventory().getStack(slotIdx).getName().getString();
+                    choicePlayer.getInventory().getStack(slotIdx).decrement(1);
+
+                    // Reward based on food tier
+                    java.util.Random rng = new java.util.Random();
+                    ItemStack reward;
+                    int roll = rng.nextInt(100);
+
+                    // Tier shifts the reward brackets
+                    int basicCap = switch (tier) { case 1 -> 40; case 2 -> 20; case 3 -> 5; default -> 0; };
+                    int goodCap = basicCap + switch (tier) { case 1 -> 30; case 2 -> 35; case 3 -> 20; default -> 0; };
+                    int greatCap = goodCap + switch (tier) { case 1 -> 20; case 2 -> 30; case 3 -> 40; default -> 30; };
+
+                    if (roll < basicCap) {
+                        reward = switch (rng.nextInt(4)) {
+                            case 0 -> new ItemStack(Items.EMERALD, 3);
+                            case 1 -> new ItemStack(Items.IRON_INGOT, 5);
+                            case 2 -> new ItemStack(Items.BONE, 4);
+                            default -> new ItemStack(Items.ARROW, 16);
+                        };
+                    } else if (roll < goodCap) {
+                        reward = switch (rng.nextInt(3)) {
+                            case 0 -> new ItemStack(Items.DIAMOND, 1);
+                            case 1 -> new ItemStack(Items.GOLDEN_APPLE, 1);
+                            default -> new ItemStack(Items.SPYGLASS, 1);
+                        };
+                    } else if (roll < greatCap) {
+                        reward = switch (rng.nextInt(3)) {
+                            case 0 -> new ItemStack(Items.SADDLE, 1);
+                            case 1 -> new ItemStack(Items.ENCHANTED_BOOK, 1);
+                            default -> new ItemStack(Items.NAME_TAG, 1);
+                        };
+                    } else {
+                        reward = switch (rng.nextInt(2)) {
+                            case 0 -> new ItemStack(Items.DIAMOND_SWORD, 1);
+                            default -> new ItemStack(Items.TOTEM_OF_UNDYING, 1);
+                        };
+                    }
+
+                    choicePlayer.getInventory().insertStack(reward);
+                    String rewardName = reward.getName().getString();
+                    for (ServerPlayerEntity p : partyMsg) {
+                        sendMessageTo(p, "§e§lWounded Traveler! §r§7You give " + foodName + ".");
+                        sendMessageTo(p, "§a\"Thank you, brave warrior!\"");
+                        sendMessageTo(p, "§7Received: §f" + rewardName);
+                    }
+                    // Particles
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.HEART,
+                        getEventRoomOrigin().getX() + 6.5, getEventRoomOrigin().getY() + 2.5, getEventRoomOrigin().getZ() + 4.5,
+                        10, 0.3, 0.5, 0.3, 0.02);
+                }
+            } else {
+                for (ServerPlayerEntity p : partyMsg) {
+                    sendMessageTo(p, "§7You leave the traveler behind...");
+                }
+            }
+            travelerFoodSlots = null;
+        } else if ("vault".equals(type)) {
+            if (choiceIndex >= 0) {
+                // Give loot from treasure vault table
+                int biomeOrdinal = 0;
+                try { biomeOrdinal = Integer.parseInt(eventRoomType != null ? "0" : "0"); } catch (Exception ignored) {}
+                // Use the pending biome ordinal
+                java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
+                    .getFullPath(Math.max(0, CrafticsSavedData.get(world).branchChoice));
+                if (pendingBiome != null) {
+                    biomeOrdinal = fullPath.indexOf(pendingBiome.biomeId);
+                    if (biomeOrdinal < 0) biomeOrdinal = 0;
+                }
+
+                java.util.Random rng = new java.util.Random();
+                int itemCount = 2 + rng.nextInt(3); // 2-4 items
+                for (int i = 0; i < itemCount; i++) {
+                    ItemStack loot = getVaultLootItem(biomeOrdinal, rng);
+                    choicePlayer.getInventory().insertStack(loot);
+                }
+                for (ServerPlayerEntity p : partyMsg) {
+                    sendMessageTo(p, "§6§l✦ TREASURE VAULT OPENED! ✦");
+                    sendMessageTo(p, "§eYou claim " + itemCount + " treasures!");
+                }
+                // Particles
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.TOTEM_OF_UNDYING,
+                    getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 2, getEventRoomOrigin().getZ() + 4.5,
+                    50, 1.0, 1.0, 1.0, 0.3);
+            } else {
+                for (ServerPlayerEntity p : partyMsg) {
+                    sendMessageTo(p, "§7You leave the vault untouched...");
+                }
+            }
+        }
+
+        // Transition to next level after a short delay
+        world.getServer().execute(() -> {
+            try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
+            if (pendingNextLevelDef != null && pendingBiome != null) {
+                GridArena nextArena = buildArena(world, pendingNextLevelDef);
+                transitionPartyToArena(choicePlayer, nextArena, pendingNextLevelDef);
+                pendingNextLevelDef = null;
+                pendingBiome = null;
+            }
+        });
+    }
+
+    /** Generate a random treasure vault loot item scaled to biome progression. */
+    private ItemStack getVaultLootItem(int biomeOrdinal, java.util.Random rng) {
+        if (biomeOrdinal >= 7) {
+            return switch (rng.nextInt(8)) {
+                case 0 -> new ItemStack(Items.DIAMOND, 2 + rng.nextInt(3));
+                case 1 -> new ItemStack(Items.NETHERITE_SCRAP, 1);
+                case 2 -> new ItemStack(Items.ENCHANTED_GOLDEN_APPLE, 1);
+                case 3 -> new ItemStack(Items.DIAMOND_SWORD, 1);
+                case 4 -> new ItemStack(Items.DIAMOND_CHESTPLATE, 1);
+                case 5 -> new ItemStack(Items.TOTEM_OF_UNDYING, 1);
+                case 6 -> new ItemStack(Items.GOLDEN_APPLE, 2);
+                default -> new ItemStack(Items.EMERALD, 5 + rng.nextInt(6));
+            };
+        } else if (biomeOrdinal >= 3) {
+            return switch (rng.nextInt(8)) {
+                case 0 -> new ItemStack(Items.DIAMOND, 1 + rng.nextInt(2));
+                case 1 -> new ItemStack(Items.IRON_SWORD, 1);
+                case 2 -> new ItemStack(Items.IRON_CHESTPLATE, 1);
+                case 3 -> new ItemStack(Items.GOLDEN_APPLE, 1);
+                case 4 -> new ItemStack(Items.ENDER_PEARL, 2);
+                case 5 -> new ItemStack(Items.SHIELD, 1);
+                case 6 -> new ItemStack(Items.GOLDEN_CARROT, 3);
+                default -> new ItemStack(Items.EMERALD, 3 + rng.nextInt(4));
+            };
+        } else {
+            return switch (rng.nextInt(8)) {
+                case 0 -> new ItemStack(Items.IRON_INGOT, 3 + rng.nextInt(3));
+                case 1 -> new ItemStack(Items.STONE_SWORD, 1);
+                case 2 -> new ItemStack(Items.LEATHER_CHESTPLATE, 1);
+                case 3 -> new ItemStack(Items.BREAD, 5);
+                case 4 -> new ItemStack(Items.ARROW, 16 + rng.nextInt(16));
+                case 5 -> new ItemStack(Items.COAL, 8);
+                case 6 -> new ItemStack(Items.GOLDEN_CARROT, 2);
+                default -> new ItemStack(Items.EMERALD, 2 + rng.nextInt(3));
+            };
+        }
+    }
+
+    // ── Event Room Builders ──
+
+    private void buildShrineArea(ServerWorld world, BlockPos origin) {
+        int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
+        net.minecraft.block.BlockState air = Blocks.AIR.getDefaultState();
+        int sf = net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE;
+
+        // Clear 9x9, 6 high
+        for (int x = 0; x < 9; x++)
+            for (int z = 0; z < 9; z++)
+                for (int y = 0; y <= 6; y++)
+                    world.setBlockState(new BlockPos(ox + x, oy + y, oz + z), air, sf);
+
+        // Floor: polished blackstone
+        for (int x = 0; x < 9; x++)
+            for (int z = 0; z < 9; z++)
+                world.setBlockState(new BlockPos(ox + x, oy, oz + z), Blocks.POLISHED_BLACKSTONE.getDefaultState(), sf);
+
+        // Gold accent cross in center
+        for (int i = 2; i <= 6; i++) {
+            world.setBlockState(new BlockPos(ox + 4, oy, oz + i), Blocks.GOLD_BLOCK.getDefaultState(), sf);
+            world.setBlockState(new BlockPos(ox + i, oy, oz + 4), Blocks.GOLD_BLOCK.getDefaultState(), sf);
+        }
+
+        // Enchanting table as shrine centerpiece
+        world.setBlockState(new BlockPos(ox + 4, oy + 1, oz + 4), Blocks.ENCHANTING_TABLE.getDefaultState(), sf);
+
+        // Soul torches around shrine
+        world.setBlockState(new BlockPos(ox + 3, oy + 1, oz + 3), Blocks.SOUL_TORCH.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 5, oy + 1, oz + 3), Blocks.SOUL_TORCH.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 3, oy + 1, oz + 5), Blocks.SOUL_TORCH.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 5, oy + 1, oz + 5), Blocks.SOUL_TORCH.getDefaultState(), sf);
+
+        // Candles on corners
+        world.setBlockState(new BlockPos(ox + 1, oy + 1, oz + 1), Blocks.CANDLE.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 7, oy + 1, oz + 1), Blocks.CANDLE.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 1, oy + 1, oz + 7), Blocks.CANDLE.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 7, oy + 1, oz + 7), Blocks.CANDLE.getDefaultState(), sf);
+
+        // Barrier walls
+        for (int x = -1; x <= 9; x++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz - 1), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz + 9), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+        for (int z = -1; z <= 9; z++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox - 1, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 9, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+    }
+
+    private void buildTravelerArea(ServerWorld world, BlockPos origin) {
+        int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
+        net.minecraft.block.BlockState air = Blocks.AIR.getDefaultState();
+        int sf = net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE;
+
+        // Clear 9x9, 6 high
+        for (int x = 0; x < 9; x++)
+            for (int z = 0; z < 9; z++)
+                for (int y = 0; y <= 6; y++)
+                    world.setBlockState(new BlockPos(ox + x, oy + y, oz + z), air, sf);
+
+        // Floor: dirt/grass
+        for (int x = 0; x < 9; x++)
+            for (int z = 0; z < 9; z++)
+                world.setBlockState(new BlockPos(ox + x, oy, oz + z), Blocks.GRASS_BLOCK.getDefaultState(), sf);
+
+        // Path to the traveler
+        for (int z = 0; z <= 6; z++)
+            world.setBlockState(new BlockPos(ox + 4, oy, oz + z), Blocks.DIRT_PATH.getDefaultState(), sf);
+
+        // Campfire in center
+        world.setBlockState(new BlockPos(ox + 4, oy + 1, oz + 4), Blocks.CAMPFIRE.getDefaultState(), sf);
+
+        // Hay bale bed near traveler
+        world.setBlockState(new BlockPos(ox + 6, oy + 1, oz + 5), Blocks.HAY_BLOCK.getDefaultState(), sf);
+
+        // Lanterns
+        world.setBlockState(new BlockPos(ox + 2, oy + 1, oz + 3), Blocks.LANTERN.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 6, oy + 1, oz + 3), Blocks.LANTERN.getDefaultState(), sf);
+
+        // Oak logs as seating
+        world.setBlockState(new BlockPos(ox + 3, oy + 1, oz + 3), Blocks.OAK_LOG.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 5, oy + 1, oz + 5), Blocks.OAK_LOG.getDefaultState(), sf);
+
+        // Barrier walls
+        for (int x = -1; x <= 9; x++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz - 1), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz + 9), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+        for (int z = -1; z <= 9; z++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox - 1, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 9, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+    }
+
+    private void buildVaultArea(ServerWorld world, BlockPos origin) {
+        int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
+        net.minecraft.block.BlockState air = Blocks.AIR.getDefaultState();
+        int sf = net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE;
+
+        // Clear 9x9, 6 high
+        for (int x = 0; x < 9; x++)
+            for (int z = 0; z < 9; z++)
+                for (int y = 0; y <= 6; y++)
+                    world.setBlockState(new BlockPos(ox + x, oy + y, oz + z), air, sf);
+
+        // Floor: deepslate bricks
+        for (int x = 0; x < 9; x++)
+            for (int z = 0; z < 9; z++)
+                world.setBlockState(new BlockPos(ox + x, oy, oz + z), Blocks.DEEPSLATE_BRICKS.getDefaultState(), sf);
+
+        // Gold center (3x3)
+        for (int x = 3; x <= 5; x++)
+            for (int z = 3; z <= 5; z++)
+                world.setBlockState(new BlockPos(ox + x, oy, oz + z), Blocks.GOLD_BLOCK.getDefaultState(), sf);
+
+        // Chests along walls
+        world.setBlockState(new BlockPos(ox + 1, oy + 1, oz + 1), Blocks.CHEST.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 7, oy + 1, oz + 1), Blocks.CHEST.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 1, oy + 1, oz + 7), Blocks.CHEST.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 7, oy + 1, oz + 7), Blocks.CHEST.getDefaultState(), sf);
+
+        // Vault block centerpiece (if available, otherwise use lodestone)
+        world.setBlockState(new BlockPos(ox + 4, oy + 1, oz + 4), Blocks.LODESTONE.getDefaultState(), sf);
+
+        // Lanterns
+        world.setBlockState(new BlockPos(ox + 2, oy + 1, oz + 2), Blocks.LANTERN.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 6, oy + 1, oz + 2), Blocks.LANTERN.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 2, oy + 1, oz + 6), Blocks.LANTERN.getDefaultState(), sf);
+        world.setBlockState(new BlockPos(ox + 6, oy + 1, oz + 6), Blocks.LANTERN.getDefaultState(), sf);
+
+        // Deepslate pillar walls (partial, for vault feel)
+        for (int y = 1; y <= 3; y++) {
+            world.setBlockState(new BlockPos(ox, oy + y, oz), Blocks.DEEPSLATE_BRICK_WALL.getDefaultState(), sf);
+            world.setBlockState(new BlockPos(ox + 8, oy + y, oz), Blocks.DEEPSLATE_BRICK_WALL.getDefaultState(), sf);
+            world.setBlockState(new BlockPos(ox, oy + y, oz + 8), Blocks.DEEPSLATE_BRICK_WALL.getDefaultState(), sf);
+            world.setBlockState(new BlockPos(ox + 8, oy + y, oz + 8), Blocks.DEEPSLATE_BRICK_WALL.getDefaultState(), sf);
+        }
+
+        // Barrier walls
+        for (int x = -1; x <= 9; x++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz - 1), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz + 9), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+        for (int z = -1; z <= 9; z++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox - 1, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 9, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
     }
 
     private void sendMessageTo(ServerPlayerEntity p, String msg) {
@@ -4806,6 +5693,74 @@ public class CombatManager {
         CrafticsMod.LOGGER.info("Combat ended.");
     }
 
+    /** Save alive allied pets so they persist into the next level. */
+    private void savePets() {
+        if (enemies == null) return;
+        for (CombatEntity e : enemies) {
+            if (e.isAlive() && e.isAlly() && !e.isMounted()) {
+                savedPets.add(new PetData(
+                    e.getEntityTypeId(), e.getCurrentHp(), e.getMaxHp(),
+                    e.getAttackPower(), e.getDefense(), e.getMoveSpeed(), e.getRange()));
+            }
+        }
+        if (!savedPets.isEmpty()) {
+            CrafticsMod.LOGGER.info("Saved {} pet(s) for next level.", savedPets.size());
+        }
+    }
+
+    /** Spawn previously saved pets into the current arena near the player start. */
+    private void spawnSavedPets() {
+        if (savedPets.isEmpty() || arena == null || player == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        GridPos playerStart = arena.getPlayerGridPos();
+
+        for (PetData pet : savedPets) {
+            // Find a walkable tile near the player start
+            GridPos spawnPos = null;
+            for (int dx = -1; dx <= 1 && spawnPos == null; dx++) {
+                for (int dz = -1; dz <= 1 && spawnPos == null; dz++) {
+                    if (dx == 0 && dz == 0) continue;
+                    GridPos candidate = new GridPos(playerStart.x() + dx, playerStart.z() + dz);
+                    if (arena.isInBounds(candidate) && !arena.isOccupied(candidate)) {
+                        var tile = arena.getTile(candidate);
+                        if (tile != null && tile.isWalkable()) spawnPos = candidate;
+                    }
+                }
+            }
+            if (spawnPos == null) continue;
+
+            // Spawn the pet entity
+            var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
+            BlockPos blockPos = arena.gridToBlockPos(spawnPos);
+            var rawEntity = entityType.create(world, null, blockPos,
+                net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
+            if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) continue;
+
+            mob.requestTeleport(blockPos.getX() + 0.5, blockPos.getY() + 1.0, blockPos.getZ() + 0.5);
+            mob.setPersistent();
+            mob.setAiDisabled(true);
+            mob.noClip = true;
+            mob.setSilent(true);
+            mob.setGlowing(false);
+            world.spawnEntity(mob);
+
+            CombatEntity ce = new CombatEntity(
+                mob.getId(), pet.entityType(), spawnPos,
+                pet.maxHp(), pet.atk(), pet.def(), pet.range());
+            // Restore saved HP (constructor sets to max, so damage down to saved value)
+            if (pet.hp() < pet.maxHp()) {
+                ce.takeDamage(pet.maxHp() - pet.hp());
+            }
+            ce.setAlly(true);
+            ce.setMobEntity(mob);
+            enemies.add(ce);
+            arena.placeEntity(ce);
+
+            sendMessage("\u00a7a" + ce.getDisplayName() + " rejoins the fight!");
+        }
+        savedPets.clear();
+    }
+
     public void refreshHighlights() {
         if (!active || player == null || phase != CombatPhase.PLAYER_TURN) return;
 
@@ -4818,7 +5773,7 @@ public class CombatManager {
 
         if (isMoveMode) {
             if (movePointsRemaining > 0) {
-                java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, arena.getPlayerGridPos(), movePointsRemaining);
+                java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat());
                 for (GridPos gp : reachable) {
                     moveList.add(gp.x());
                     moveList.add(gp.z());
@@ -4887,10 +5842,12 @@ public class CombatManager {
             CombatEntity enemy = entry.getValue();
             if (!enemy.isAlive() || seen.contains(enemy)) continue;
             seen.add(enemy);
-            GridPos gp = enemy.getGridPos();
-            enemyMapList.add(gp.x());
-            enemyMapList.add(gp.z());
-            enemyMapList.add(enemy.getEntityId());
+            // Add ALL occupied tiles for multi-tile entities (e.g., 2x2 spider)
+            for (GridPos occupied : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                enemyMapList.add(occupied.x());
+                enemyMapList.add(occupied.z());
+                enemyMapList.add(enemy.getEntityId());
+            }
             if (enemyTypesBuilder.length() > 0) enemyTypesBuilder.append("|");
             enemyTypesBuilder.append(enemy.getEntityTypeId());
         }
@@ -5013,6 +5970,10 @@ public class CombatManager {
                 typeIds.append(";spd=").append(e.getMoveSpeed());
                 typeIds.append(";range=").append(e.getRange());
             }
+            // Tag allies so client can display them separately
+            if (e.isAlly()) {
+                typeIds.append(";ally");
+            }
             // Append status effects after type ID with ; separator
             StringBuilder efx = new StringBuilder();
             if (e.isStunned()) efx.append(";Stunned");
@@ -5042,10 +6003,10 @@ public class CombatManager {
     }
 
     private void sendMessage(String msg) {
-        // Broadcast action bar message to all party participants
+        // Broadcast to regular chat for all party participants
         for (ServerPlayerEntity p : getAllParticipants()) {
             if (p != null) {
-                p.sendMessage(Text.literal(msg), true);
+                p.sendMessage(Text.literal(msg), false);
             }
         }
     }

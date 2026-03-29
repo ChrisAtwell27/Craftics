@@ -16,13 +16,16 @@
       {"type": "minecraft:blaze", "weight": 5, "hp": 14, "attack": 6, "range": 4},
       {"type": "minecraft:wither_skeleton", "weight": 5, "hp": 16, "attack": 7}
     ],
-    "boss": {"type": "minecraft:wither", "hp": 65, "attack": 8, "defense": 5, "range": 5, "speed": 2}
+    "boss": {"type": "minecraft:wither", "hp": 75, "attack": 8, "defense": 5, "range": 5, "speed": 2}
   },
   "loot": [
     {"item": "minecraft:blackstone", "weight": 8},
     {"item": "minecraft:blaze_rod", "weight": 4},
     {"item": "minecraft:wither_skeleton_skull", "weight": 1},
     {"item": "minecraft:nether_brick", "weight": 6},
-    {"item": "minecraft:netherite_scrap", "weight": 2}
+    {"item": "minecraft:netherite_scrap", "weight": 2},
+    {"item": "minecraft:cobblestone", "weight": 4},
+    {"item": "minecraft:quartz", "weight": 2},
+    {"item": "minecraft:diamond", "weight": 1}
   ]
 }

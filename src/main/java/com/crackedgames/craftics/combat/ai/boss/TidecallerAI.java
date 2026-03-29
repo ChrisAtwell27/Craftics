@@ -42,7 +42,8 @@ public class TidecallerAI extends BossAI {
                     GridPos pos = new GridPos(x, z);
                     if (arena.getTile(pos) != null
                             && arena.getTile(pos).getType() != TileType.OBSTACLE
-                            && arena.getTile(pos).getType() != TileType.VOID) {
+                            && arena.getTile(pos).getType() != TileType.VOID
+                            && pos.manhattanDistance(playerPos) > 1) { // Don't flood player's tile or adjacent
                         floodTiles.add(pos);
                     }
                 }

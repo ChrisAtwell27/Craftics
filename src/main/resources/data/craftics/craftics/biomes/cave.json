@@ -23,7 +23,7 @@
       {"type": "minecraft:creeper", "weight": 4, "hp": 12, "attack": 5, "defense": 0, "range": 1},
       {"type": "minecraft:spider", "weight": 3, "hp": 10, "attack": 3, "defense": 1, "range": 1}
     ],
-    "boss": {"type": "minecraft:zombie", "hp": 35, "attack": 6, "defense": 3, "range": 1}
+    "boss": {"type": "minecraft:zombie", "hp": 55, "attack": 6, "defense": 3, "range": 1}
   },
   "loot": [
     {"item": "minecraft:iron_ingot", "weight": 8},
@@ -33,6 +33,10 @@
     {"item": "minecraft:redstone", "weight": 5},
     {"item": "minecraft:lapis_lazuli", "weight": 4},
     {"item": "minecraft:pumpkin_seeds", "weight": 2},
-    {"item": "minecraft:glow_berries", "weight": 3}
+    {"item": "minecraft:glow_berries", "weight": 3},
+    {"item": "minecraft:cobblestone", "weight": 4},
+    {"item": "minecraft:copper_ingot", "weight": 3},
+    {"item": "minecraft:amethyst_shard", "weight": 2},
+    {"item": "minecraft:emerald", "weight": 2}
   ]
 }

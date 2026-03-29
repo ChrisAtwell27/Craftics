@@ -112,7 +112,8 @@ public class LevelGenerator {
 
         // Passive vs hostile ratio — early levels have some passive mobs
         float hostileRatio;
-        if (biomeOrdinal == 0 && biomeIndex <= 1) hostileRatio = 0.4f;
+        if (biomeOrdinal == 0 && biomeIndex == 0) hostileRatio = 0.0f; // Plains level 1: always passive animals
+        else if (biomeOrdinal == 0 && biomeIndex <= 1) hostileRatio = 0.4f;
         else if (biomeIndex <= 0) hostileRatio = 0.6f;
         else if (biomeIndex <= 1) hostileRatio = 0.75f;
         else hostileRatio = 1.0f;
@@ -124,6 +125,8 @@ public class LevelGenerator {
             hpBonus += biomeIndex * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerLevel();
         }
         int atkBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());
+        // Per-level attack scaling within a biome (so later levels in the same biome hit harder)
+        atkBonus += (biomeIndex + 1) / 2;
         int defBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.defPerBiome());
 
         // Collect valid spawn positions — only walkable tiles, 2+ tiles from player start

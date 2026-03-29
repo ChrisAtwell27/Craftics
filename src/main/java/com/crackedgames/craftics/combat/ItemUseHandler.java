@@ -174,7 +174,7 @@ public class ItemUseHandler {
     public static boolean isUsableItem(Item item) {
         return isFood(item) || isPotion(item) || isSplashPotion(item)
             || isThrowable(item) || item == Items.TNT || item == Items.SHIELD
-            || item == Items.MILK_BUCKET || item == Items.TOTEM_OF_UNDYING
+            || item == Items.MILK_BUCKET || item == Items.BUCKET || item == Items.TOTEM_OF_UNDYING
             || item == Items.COBWEB || item == Items.FLINT_AND_STEEL
             || isAnyBreedingItem(item) || isFishingRod(item)
             || EXTRA_USABLE.contains(item) || isBanner(item) || isPickaxe(item)
@@ -247,6 +247,8 @@ public class ItemUseHandler {
             return useBanner(arena, targetTile, held);
         } else if (item == Items.WATER_BUCKET) {
             return useWaterBucket(arena, targetTile, held);
+        } else if (item == Items.BUCKET) {
+            return useEmptyBucket(arena, targetTile, held);
         } else if (item == Items.SPONGE) {
             return useSponge(arena, targetTile, held);
         } else if (isPickaxe(item)) {
@@ -676,9 +678,9 @@ public class ItemUseHandler {
         if (playerDist <= 2) {
             int selfDmg = playerDist == 0 ? 6 : (playerDist == 1 ? 4 : 2);
             player.setHealth(Math.max(1, player.getHealth() - selfDmg));
-            return "§c§lBOOM! Hit " + enemiesHit + " enemies for " + totalDamage + " total! You took " + selfDmg + " blast damage!";
+            return "§6§lBOOM! §r§7Hit " + enemiesHit + " enemies for " + totalDamage + " total! You took " + selfDmg + " blast damage!";
         }
-        return "§c§lBOOM! Hit " + enemiesHit + " enemies for " + totalDamage + " total damage!";
+        return "§6§lBOOM! §r§7Hit " + enemiesHit + " enemies for " + totalDamage + " total damage!";
     }
 
     // --- Cobweb: slows an enemy (stuns for 1 turn) ---
@@ -979,6 +981,23 @@ public class ItemUseHandler {
             + "|§bPlaced water! Creates a fishable water tile.";
     }
 
+    // --- Empty Bucket: pick up water or lava from a tile ---
+    private static String useEmptyBucket(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a water or lava tile!";
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null) return "§cInvalid tile!";
+        if (tile.getType() == com.crackedgames.craftics.core.TileType.WATER) {
+            stack.decrement(1);
+            return TILE_EFFECT_PREFIX + "clear:" + targetTile.x() + ":" + targetTile.z()
+                + "|GIVE:water_bucket|§bScooped up water!";
+        } else if (tile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+            stack.decrement(1);
+            return TILE_EFFECT_PREFIX + "clear:" + targetTile.x() + ":" + targetTile.z()
+                + "|GIVE:lava_bucket|§6Scooped up lava!";
+        }
+        return "§cThat tile has no liquid to pick up!";
+    }
+
     // --- Sponge: absorb adjacent water tile (1 AP) ---
     private static String useSponge(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a water tile!";
@@ -1089,13 +1108,14 @@ public class ItemUseHandler {
             + "|§2Cactus placed! Enemies that touch it take 1 damage.";
     }
 
-    // --- Hay Bale: throw to ally pet, heals 4 HP (1 AP) ---
+    // --- Hay Bale: throw to ally pet, heals 50% max HP (1 AP) ---
     private static String useHayBale(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target an ally!";
         CombatEntity ally = arena.getOccupant(targetTile);
         if (ally == null || !ally.isAlive() || !ally.isAlly()) return "§cNo ally at target!";
         stack.decrement(1);
-        int healed = Math.min(4, ally.getMaxHp() - ally.getCurrentHp());
+        int healAmount = Math.max(4, ally.getMaxHp() / 2);
+        int healed = Math.min(healAmount, ally.getMaxHp() - ally.getCurrentHp());
         return ALLY_BUFF_PREFIX + "heal:" + ally.getEntityId() + ":" + healed
             + "|§aHay bale heals " + ally.getDisplayName() + " for " + healed + " HP!";
     }
@@ -1203,12 +1223,16 @@ public class ItemUseHandler {
 
         stack.decrement(1);
 
-        // Combat-capable mobs become allies (wolf, cat, ocelot, horse, donkey, llama)
+        // All tameable mobs become combat allies
         Set<String> combatTameable = Set.of(
             "minecraft:wolf", "minecraft:cat", "minecraft:ocelot",
             "minecraft:horse", "minecraft:donkey", "minecraft:llama",
             "minecraft:camel", "minecraft:fox", "minecraft:mule",
-            "minecraft:skeleton_horse", "minecraft:zombie_horse"
+            "minecraft:skeleton_horse", "minecraft:zombie_horse",
+            "minecraft:cow", "minecraft:sheep", "minecraft:pig",
+            "minecraft:chicken", "minecraft:rabbit", "minecraft:bee",
+            "minecraft:mooshroom", "minecraft:parrot", "minecraft:turtle",
+            "minecraft:axolotl", "minecraft:frog", "minecraft:sniffer", "minecraft:goat"
         );
 
         if (combatTameable.contains(entityType)) {

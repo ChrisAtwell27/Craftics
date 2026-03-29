@@ -25,7 +25,7 @@
     "hostile": [
       {"type": "minecraft:zombie", "weight": 8, "hp": 6, "attack": 2, "defense": 0, "range": 1}
     ],
-    "boss": {"type": "minecraft:zombie", "hp": 35, "attack": 3, "defense": 1, "range": 1}
+    "boss": {"type": "minecraft:zombie", "hp": 30, "attack": 3, "defense": 1, "range": 1}
   },
   "loot": [
     {"item": "minecraft:oak_planks", "weight": 10},
@@ -36,6 +36,9 @@
     {"item": "minecraft:stick", "weight": 6},
     {"item": "minecraft:wheat_seeds", "weight": 5},
     {"item": "minecraft:cobblestone", "weight": 3},
-    {"item": "minecraft:beetroot_seeds", "weight": 3}
+    {"item": "minecraft:beetroot_seeds", "weight": 3},
+    {"item": "minecraft:leather", "weight": 5},
+    {"item": "minecraft:coal", "weight": 2},
+    {"item": "minecraft:copper_ingot", "weight": 1}
   ]
 }

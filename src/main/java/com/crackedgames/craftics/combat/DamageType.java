@@ -40,7 +40,8 @@ public enum DamageType {
             || weapon == Items.DIAMOND_AXE || weapon == Items.NETHERITE_AXE) {
             return CLEAVING;
         }
-        if (weapon == Items.MACE || weapon == Items.STICK) return BLUNT;
+        if (weapon == Items.MACE || weapon == Items.STICK || weapon == Items.BAMBOO
+            || weapon == Items.BLAZE_ROD || weapon == Items.BREEZE_ROD) return BLUNT;
         if (weapon == Items.TRIDENT) return WATER;
         if (weapon == Items.BOW || weapon == Items.CROSSBOW) return RANGED;
         return PHYSICAL;
@@ -113,12 +114,40 @@ public enum DamageType {
     }
 
     /**
-     * Calculate total damage type bonus from all sources (armor set + trims + effects).
+     * Calculate total damage type bonus from all sources (armor set + trims + effects + affinity).
      */
     public static int getTotalBonus(String armorSet, TrimEffects.TrimScan trimScan,
                                      CombatEffects effects, DamageType type) {
         return getArmorSetBonus(armorSet, type)
              + getTrimBonus(trimScan, type)
              + getEffectBonus(effects, type);
+    }
+
+    /** Version with player affinity points included. */
+    public static int getTotalBonus(String armorSet, TrimEffects.TrimScan trimScan,
+                                     CombatEffects effects, DamageType type,
+                                     PlayerProgression.PlayerStats playerStats) {
+        int bonus = getTotalBonus(armorSet, trimScan, effects, type);
+        if (playerStats != null) {
+            PlayerProgression.Affinity affinity = mapToAffinity(type);
+            if (affinity != null) {
+                bonus += playerStats.getAffinityPoints(affinity);
+            }
+        }
+        return bonus;
+    }
+
+    /** Map DamageType to the corresponding Affinity for level-up bonuses. */
+    private static PlayerProgression.Affinity mapToAffinity(DamageType type) {
+        return switch (type) {
+            case SWORD -> PlayerProgression.Affinity.SWORD;
+            case CLEAVING -> PlayerProgression.Affinity.CLEAVING;
+            case BLUNT -> PlayerProgression.Affinity.BLUNT;
+            case RANGED -> PlayerProgression.Affinity.RANGED;
+            case WATER -> PlayerProgression.Affinity.WATER;
+            case MAGIC -> PlayerProgression.Affinity.MAGIC;
+            case PHYSICAL -> PlayerProgression.Affinity.PHYSICAL;
+            case PET -> null;
+        };
     }
 }

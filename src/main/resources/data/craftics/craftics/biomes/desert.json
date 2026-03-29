@@ -24,7 +24,7 @@
       {"type": "minecraft:creeper", "weight": 5, "hp": 10, "attack": 4, "defense": 0, "range": 1},
       {"type": "minecraft:skeleton", "weight": 3, "hp": 8, "attack": 3, "defense": 0, "range": 3}
     ],
-    "boss": {"type": "minecraft:creeper", "hp": 35, "attack": 6, "defense": 0, "range": 1}
+    "boss": {"type": "minecraft:husk", "hp": 45, "attack": 6, "defense": 2, "range": 1}
   },
   "loot": [
     {"item": "minecraft:sandstone", "weight": 8},
@@ -33,6 +33,10 @@
     {"item": "minecraft:cactus", "weight": 4},
     {"item": "minecraft:bone", "weight": 4},
     {"item": "minecraft:sugar_cane", "weight": 3},
-    {"item": "minecraft:dead_bush", "weight": 3}
+    {"item": "minecraft:dead_bush", "weight": 3},
+    {"item": "minecraft:cobblestone", "weight": 4},
+    {"item": "minecraft:redstone", "weight": 2},
+    {"item": "minecraft:emerald", "weight": 1},
+    {"item": "minecraft:leather", "weight": 2}
   ]
 }

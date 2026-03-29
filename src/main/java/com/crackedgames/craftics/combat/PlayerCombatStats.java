@@ -15,24 +15,31 @@ public class PlayerCombatStats {
     public static int getAttackPower(ServerPlayerEntity player) {
         Item weapon = player.getMainHandStack().getItem();
         // Swords
-        if (weapon == Items.DIAMOND_SWORD) return 6;
-        if (weapon == Items.IRON_SWORD) return 5;
-        if (weapon == Items.STONE_SWORD) return 4;
-        if (weapon == Items.WOODEN_SWORD) return 3;
-        // Netherite sword
-        if (weapon == Items.NETHERITE_SWORD) return 7;
-        // Other weapons
-        if (weapon == Items.MACE) return 7; // heavy hitter
-        if (weapon == Items.TRIDENT) return 5;
-        if (weapon == Items.BOW || weapon == Items.CROSSBOW) return 4;
-        // Axes (slower but strong)
-        if (weapon == Items.NETHERITE_AXE) return 8;
-        if (weapon == Items.DIAMOND_AXE) return 7;
-        if (weapon == Items.IRON_AXE) return 6;
-        if (weapon == Items.GOLDEN_AXE) return 5;
-        if (weapon == Items.STONE_AXE) return 5;
-        if (weapon == Items.WOODEN_AXE) return 4;
-        return 2; // fist
+        if (weapon == Items.WOODEN_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgWoodenSword();
+        if (weapon == Items.STONE_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgStoneSword();
+        if (weapon == Items.IRON_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgIronSword();
+        if (weapon == Items.GOLDEN_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgGoldenSword();
+        if (weapon == Items.DIAMOND_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgDiamondSword();
+        if (weapon == Items.NETHERITE_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgNetheriteSword();
+        // Axes
+        if (weapon == Items.WOODEN_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgWoodenAxe();
+        if (weapon == Items.STONE_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgStoneAxe();
+        if (weapon == Items.IRON_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgIronAxe();
+        if (weapon == Items.GOLDEN_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgGoldenAxe();
+        if (weapon == Items.DIAMOND_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgDiamondAxe();
+        if (weapon == Items.NETHERITE_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgNetheriteAxe();
+        // Heavy / special
+        if (weapon == Items.MACE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgMace();
+        if (weapon == Items.TRIDENT) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgTrident();
+        // Ranged
+        if (weapon == Items.BOW) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBow();
+        if (weapon == Items.CROSSBOW) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCrossbow();
+        // Blunt rods
+        if (weapon == Items.STICK) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgStick();
+        if (weapon == Items.BAMBOO) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBamboo();
+        if (weapon == Items.BLAZE_ROD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBlazeRod();
+        if (weapon == Items.BREEZE_ROD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBreezeRod();
+        return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgFist();
     }
 
     public static int getDefense(ServerPlayerEntity player) {

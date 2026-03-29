@@ -12,7 +12,8 @@ import net.minecraft.util.Identifier;
  * Sent on join and whenever stats change.
  */
 public record PlayerStatsSyncPayload(int playerLevel, int unspentPoints,
-                                       String statData, int emeralds) implements CustomPayload {
+                                       String statData, int emeralds,
+                                       String affinityData) implements CustomPayload {
 
     public static final CustomPayload.Id<PlayerStatsSyncPayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "player_stats_sync"));
@@ -23,6 +24,7 @@ public record PlayerStatsSyncPayload(int playerLevel, int unspentPoints,
             PacketCodecs.INTEGER, PlayerStatsSyncPayload::unspentPoints,
             PacketCodecs.STRING, PlayerStatsSyncPayload::statData,
             PacketCodecs.INTEGER, PlayerStatsSyncPayload::emeralds,
+            PacketCodecs.STRING, PlayerStatsSyncPayload::affinityData,
             PlayerStatsSyncPayload::new
         );
 

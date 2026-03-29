@@ -16,12 +16,15 @@
       {"type": "minecraft:zombified_piglin", "weight": 6, "hp": 10, "attack": 4},
       {"type": "minecraft:magma_cube", "weight": 4, "hp": 8, "attack": 3}
     ],
-    "boss": {"type": "minecraft:magma_cube", "hp": 35, "attack": 6}
+    "boss": {"type": "minecraft:magma_cube", "hp": 55, "attack": 6}
   },
   "loot": [
     {"item": "minecraft:gold_nugget", "weight": 10},
     {"item": "minecraft:netherrack", "weight": 8},
     {"item": "minecraft:magma_cream", "weight": 5},
-    {"item": "minecraft:gold_ingot", "weight": 3}
+    {"item": "minecraft:gold_ingot", "weight": 3},
+    {"item": "minecraft:cobblestone", "weight": 4},
+    {"item": "minecraft:quartz", "weight": 3},
+    {"item": "minecraft:blaze_rod", "weight": 2}
   ]
 }

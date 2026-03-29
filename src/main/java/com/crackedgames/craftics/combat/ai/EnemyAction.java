@@ -61,6 +61,12 @@ public sealed interface EnemyAction {
     record BossAbility(String abilityName, EnemyAction resolvedAction,
                        List<GridPos> warningTiles) implements EnemyAction {}
 
+    /** Spider ceiling ascend: mob shoots web upward, rises off the grid for 1 turn. */
+    record CeilingAscend() implements EnemyAction {}
+
+    /** Spider ceiling drop: mob drops from ceiling onto a tile near the player, then attacks. */
+    record CeilingDrop(GridPos landingPos, int damage) implements EnemyAction {}
+
     /** Multi-action: execute multiple actions in sequence (e.g., teleport + attack + create terrain). */
     record CompositeAction(List<EnemyAction> actions) implements EnemyAction {}
 }
