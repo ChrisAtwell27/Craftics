@@ -8,7 +8,7 @@ public class CombatState {
     private static float combatYaw = 225.0f;   // SW-facing isometric angle
     private static float combatCameraDistance = 15.0f; // Distance from focus point
     private static final float MIN_CAMERA_DISTANCE = 8.0f;
-    private static final float MAX_CAMERA_DISTANCE = 30.0f;
+    private static final float MAX_CAMERA_DISTANCE = 22.0f;
 
     // Camera pan offset (added to arena center)
     private static double cameraPanX = 0;
@@ -209,6 +209,8 @@ public class CombatState {
     private static int maxSpeed = 3;
     private static java.util.Map<Integer, int[]> enemyHpMap = new java.util.LinkedHashMap<>();
     private static java.util.Map<Integer, String> enemyTypeMap = new java.util.LinkedHashMap<>();
+    private static java.util.Map<Integer, int[]> allyHpMap = new java.util.LinkedHashMap<>();
+    private static java.util.Map<Integer, String> allyTypeMap = new java.util.LinkedHashMap<>();
 
     // Active player effects string (e.g. "Poison(2)|Burning(1)")
     private static String playerEffects = "";
@@ -292,12 +294,20 @@ public class CombatState {
 
         enemyHpMap.clear();
         enemyTypeMap.clear();
+        allyHpMap.clear();
+        allyTypeMap.clear();
         String[] typeIds = enemyTypeIds.isEmpty() ? new String[0] : enemyTypeIds.split("\\|");
         for (int i = 0; i + 2 < enemyData.length; i += 3) {
             int idx = i / 3;
-            enemyHpMap.put(enemyData[i], new int[]{enemyData[i + 1], enemyData[i + 2]});
+            boolean isAlly = idx < typeIds.length && typeIds[idx].contains(";ally");
+            if (isAlly) {
+                allyHpMap.put(enemyData[i], new int[]{enemyData[i + 1], enemyData[i + 2]});
+                if (idx < typeIds.length) allyTypeMap.put(enemyData[i], typeIds[idx]);
+            } else {
+                enemyHpMap.put(enemyData[i], new int[]{enemyData[i + 1], enemyData[i + 2]});
+                if (idx < typeIds.length) enemyTypeMap.put(enemyData[i], typeIds[idx]);
+            }
             if (idx < typeIds.length) {
-                enemyTypeMap.put(enemyData[i], typeIds[idx]);
                 // Unlock bestiary entry when we see this mob type
                 com.crackedgames.craftics.client.guide.GuideBookData.unlockMob(typeIds[idx]);
             }
@@ -314,6 +324,8 @@ public class CombatState {
     public static int getMaxSpeed() { return maxSpeed; }
     public static java.util.Map<Integer, int[]> getEnemyHpMap() { return enemyHpMap; }
     public static java.util.Map<Integer, String> getEnemyTypeMap() { return enemyTypeMap; }
+    public static java.util.Map<Integer, int[]> getAllyHpMap() { return allyHpMap; }
+    public static java.util.Map<Integer, String> getAllyTypeMap() { return allyTypeMap; }
 
     public static boolean isPlayerTurn() { return phase == 0; } // CombatPhase.PLAYER_TURN ordinal
     public static boolean isEnemyTurn() { return phase == 1; }  // CombatPhase.ENEMY_TURN ordinal
@@ -332,8 +344,9 @@ public class CombatState {
     private static int playerLevel = 1;
     private static int unspentPoints = 0;
     private static int[] statPoints = new int[8]; // one per PlayerProgression.Stat ordinal
+    private static int[] affinityPoints = new int[7]; // one per PlayerProgression.Affinity ordinal (SWORD,CLEAVING,BLUNT,RANGED,WATER,MAGIC,PHYSICAL)
 
-    public static void updateStats(int level, int unspent, String statData) {
+    public static void updateStats(int level, int unspent, String statData, String affinityData) {
         playerLevel = level;
         unspentPoints = unspent;
         String[] parts = statData.split(":");
@@ -341,12 +354,24 @@ public class CombatState {
             try { statPoints[i] = Integer.parseInt(parts[i]); }
             catch (NumberFormatException e) { statPoints[i] = 0; }
         }
+        // Parse affinity data
+        if (affinityData != null && !affinityData.isEmpty()) {
+            String[] affParts = affinityData.split(":");
+            for (int i = 0; i < affinityPoints.length && i < affParts.length; i++) {
+                try { affinityPoints[i] = Integer.parseInt(affParts[i]); }
+                catch (NumberFormatException e) { affinityPoints[i] = 0; }
+            }
+        }
     }
 
     public static int getPlayerLevel() { return playerLevel; }
     public static int getUnspentPoints() { return unspentPoints; }
     public static int getStatPoints(int ordinal) {
         return ordinal >= 0 && ordinal < statPoints.length ? statPoints[ordinal] : 0;
+    }
+
+    public static int getAffinityPoints(int ordinal) {
+        return ordinal >= 0 && ordinal < affinityPoints.length ? affinityPoints[ordinal] : 0;
     }
 
     // === Client-side tile set cache (from TileSetPayload) ===

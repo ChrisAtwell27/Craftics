@@ -14,7 +14,6 @@ public class CombatInputHandler {
 
     private static boolean lastLeftClick = false;
     private static boolean lastRKey = false;
-    private static int lastMode = -1; // track for action bar display
     private static long lastHoverBroadcastTime = 0;
     private static GridPos lastBroadcastedHover = null;
 
@@ -122,21 +121,6 @@ public class CombatInputHandler {
         }
         lastRKey = rDown;
 
-        // Show current mode on action bar when hotbar selection changes
-        ActionMode mode = getActionMode(client);
-        if (mode.ordinal() != lastMode) {
-            lastMode = mode.ordinal();
-            if (client.player != null) {
-                String label = switch (mode) {
-                    case MOVE -> "\u00a7aMove Mode";
-                    case MELEE_ATTACK -> "\u00a7cMelee Attack";
-                    case RANGED_ATTACK -> "\u00a76Ranged Attack";
-                    case USE_ITEM -> "\u00a7dUse Item";
-                };
-                client.player.sendMessage(net.minecraft.text.Text.literal(label), true);
-            }
-        }
-
         // Update hover tile locally (no server round-trip)
         GridPos hoverPos = TileRaycast.getGridPosUnderCursor();
         CombatState.setHoveredTile(hoverPos);
@@ -160,7 +144,7 @@ public class CombatInputHandler {
         }
 
         if (clicked) {
-            handleClick(client, mode);
+            handleClick(client, getActionMode(client));
         }
     }
 

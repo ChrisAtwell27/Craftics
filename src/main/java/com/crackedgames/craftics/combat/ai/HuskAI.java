@@ -8,9 +8,11 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Husk AI: Desert zombie variant — tougher, applies Weakness on hit.
- * - DESPERATION CHARGE: +1 speed when below 50% HP
- * - Hits harder than regular zombies (+1 hunger damage)
+ * Husk AI: Desert zombie with hunger drain mechanic.
+ * - HUNGER DRAIN: each hit reduces player AP by 1 for 2 turns (via hit effect)
+ * - If player has 0 AP remaining, husk heals for the attack amount
+ * - DESERT SPEED: speed 3 in desert biomes, speed 2 otherwise
+ * - Desperation: +1 speed when below 50% HP
  * - Always move+attack, never wastes a turn
  */
 public class HuskAI implements EnemyAI {
@@ -25,7 +27,9 @@ public class HuskAI implements EnemyAI {
             effectiveSpeed += 1;
         }
 
-        int damage = self.getAttackPower() + 1; // hunger bonus
+        // Hunger drain damage — base attack + 1 hunger bonus
+        // The AP reduction effect is handled by CombatManager's applyEnemyHitEffect
+        int damage = self.getAttackPower() + 1;
 
         if (dist <= 1) {
             return new EnemyAction.Attack(damage);

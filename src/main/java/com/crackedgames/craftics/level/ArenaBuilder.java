@@ -188,6 +188,52 @@ public class ArenaBuilder {
             }
         }
 
+        // Scan world blocks to auto-detect obstacles and voids from schematic terrain.
+        // Any solid block at floorY+1 marks the tile as OBSTACLE (blocks movement).
+        // Any air/void at floorY with a drop >2 blocks marks the tile as VOID (instant death on enter).
+        for (int x = 0; x < finalW; x++) {
+            for (int z = 0; z < finalH; z++) {
+                GridTile tile = finalTiles[x][z];
+                if (tile == null) continue;
+                BlockPos floorPos = new BlockPos(floorX + x, floorY, floorZ + z);
+                BlockPos abovePos = new BlockPos(floorX + x, floorY + 1, floorZ + z);
+                net.minecraft.block.BlockState aboveState = world.getBlockState(abovePos);
+
+                // Solid block above floor = obstacle (skip if tile is already non-walkable)
+                if (tile.isWalkable() && !aboveState.isAir()
+                    && !(aboveState.getBlock() instanceof net.minecraft.block.CarpetBlock)
+                    && aboveState.isSolidBlock(world, abovePos)) {
+                    finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.OBSTACLE,
+                        aboveState.getBlock());
+                }
+
+                // Water block at floor level = mark as WATER tile (for fishing, boat movement, etc.)
+                net.minecraft.block.BlockState floorState = world.getBlockState(floorPos);
+                if (tile.isWalkable() && !floorState.getFluidState().isEmpty()
+                    && floorState.getBlock() == Blocks.WATER) {
+                    finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.WATER,
+                        Blocks.WATER);
+                }
+
+                // Deep drop below arena floor = void (fall death)
+                if (finalTiles[x][z].isWalkable()) {
+                    if (floorState.isAir() || floorState.getBlock() == Blocks.VOID_AIR) {
+                        // Check how deep the drop is
+                        int dropDepth = 0;
+                        for (int dy = -1; dy >= -5; dy--) {
+                            BlockPos checkPos = new BlockPos(floorX + x, floorY + dy, floorZ + z);
+                            if (!world.getBlockState(checkPos).isAir()) break;
+                            dropDepth++;
+                        }
+                        if (dropDepth > 2) {
+                            finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.VOID,
+                                Blocks.AIR);
+                        }
+                    }
+                }
+            }
+        }
+
         CrafticsMod.LOGGER.info("Arena built. origin={}, size={}x{}, playerStart={}", finalOrigin, finalW, finalH, finalPlayerStart);
         return new GridArena(finalW, finalH, finalTiles, finalOrigin, level, finalPlayerStart);
     }
@@ -524,7 +570,7 @@ public class ArenaBuilder {
     /** Simple procedural arena when no .nbt structure is available. */
     private static void buildProceduralFallback(ServerWorld world, int ox, int oy, int oz,
                                                   int w, int h, GridTile[][] tiles, Random rng) {
-        int pad = 2; // minimal padding — void world doesn't need much clearing
+        int pad = 2; // minimal padding — schem files handle their own surroundings
 
         // In a void world, skip clearing (blocks are already air).
         // Only clear if blocks exist (e.g. previous arena at same location).

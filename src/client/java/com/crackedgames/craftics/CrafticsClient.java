@@ -30,6 +30,8 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding guideBookKey;
     private static boolean traderScreenOpened = false;
     private static boolean previousBobView = true;
+    private static double previousChatScale = 1.0;
+    private static double previousChatWidth = 1.0;
 
     @Override
     public void onInitializeClient() {
@@ -59,6 +61,11 @@ public class CrafticsClient implements ClientModInitializer {
             }
             previousBobView = context.client().options.getBobView().getValue();
             context.client().options.getBobView().setValue(false);
+            // Set compact chat for combat messages
+            previousChatScale = context.client().options.getChatScale().getValue();
+            previousChatWidth = context.client().options.getChatWidth().getValue();
+            context.client().options.getChatScale().setValue(0.33);
+            context.client().options.getChatWidth().setValue(0.39); // ~125px at default GUI scale
             context.client().options.setPerspective(Perspective.THIRD_PERSON_BACK);
             context.client().mouse.unlockCursor();
             TransitionOverlay.startFadeOut();
@@ -110,6 +117,38 @@ public class CrafticsClient implements ClientModInitializer {
                         CombatVisualEffects.spawnDeathTextAtEntity(
                             payload.entityId(), "Enemy");
                     }
+                    case com.crackedgames.craftics.network.CombatEventPayload.EVENT_MOB_ATTACK_ANIM -> {
+                        // Focus camera on attacker
+                        if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
+                            CombatState.focusOnTile(payload.targetX(), payload.targetZ());
+                        }
+                        // Spawn attack particles at the mob's position
+                        var entity = context.client().world != null
+                            ? context.client().world.getEntityById(payload.entityId()) : null;
+                        if (entity != null) {
+                            // Sweep/slash particles near the mob (attack effect)
+                            for (int i = 0; i < 6; i++) {
+                                double ox = (Math.random() - 0.5) * 1.2;
+                                double oy = Math.random() * 1.5;
+                                double oz = (Math.random() - 0.5) * 1.2;
+                                context.client().world.addParticle(
+                                    net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                                    entity.getX() + ox, entity.getY() + oy, entity.getZ() + oz,
+                                    0, 0, 0);
+                            }
+                            // Knockback attacks: extra ground impact particles
+                            if (payload.valueA() == 1) {
+                                for (int i = 0; i < 4; i++) {
+                                    context.client().world.addParticle(
+                                        net.minecraft.particle.ParticleTypes.CRIT,
+                                        entity.getX() + (Math.random() - 0.5) * 0.8,
+                                        entity.getY() + 0.2,
+                                        entity.getZ() + (Math.random() - 0.5) * 0.8,
+                                        (Math.random() - 0.5) * 0.3, 0.2, (Math.random() - 0.5) * 0.3);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         );
@@ -118,6 +157,8 @@ public class CrafticsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(ExitCombatPayload.ID, (payload, context) -> {
             CombatState.setInCombat(false);
             context.client().options.getBobView().setValue(previousBobView);
+            context.client().options.getChatScale().setValue(previousChatScale);
+            context.client().options.getChatWidth().setValue(previousChatWidth);
             context.client().options.setPerspective(Perspective.FIRST_PERSON);
             context.client().mouse.lockCursor();
             TransitionOverlay.startFadeOut();
@@ -143,7 +184,7 @@ public class CrafticsClient implements ClientModInitializer {
         // Player stats sync (for inventory display)
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.PlayerStatsSyncPayload.ID, (payload, context) -> {
-                CombatState.updateStats(payload.playerLevel(), payload.unspentPoints(), payload.statData());
+                CombatState.updateStats(payload.playerLevel(), payload.unspentPoints(), payload.statData(), payload.affinityData());
                 CombatState.setEmeralds(payload.emeralds());
             }
         );
@@ -163,6 +204,17 @@ public class CrafticsClient implements ClientModInitializer {
                 CombatState.setTraderActive(true);
                 CombatState.setEmeralds(payload.playerEmeralds());
                 TransitionOverlay.startFadeOut();
+            }
+        );
+
+        // Event room screen (shrine, traveler, vault)
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.EventRoomPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    context.client().setScreen(new com.crackedgames.craftics.client.EventRoomScreen(
+                        payload.eventType(), payload.eventData()
+                    ));
+                });
             }
         );
 

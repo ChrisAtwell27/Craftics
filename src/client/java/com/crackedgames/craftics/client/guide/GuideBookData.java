@@ -8,6 +8,7 @@ import java.util.Map;
 /**
  * All guide book content. Categories contain entries, entries contain pages.
  * Tracks which entries are unlocked (for bestiary discovery).
+ * Persists unlock state to a local file.
  */
 public class GuideBookData {
 
@@ -17,15 +18,18 @@ public class GuideBookData {
 
     private static final List<Category> CATEGORIES = new ArrayList<>();
     private static final java.util.Set<String> unlockedEntries = new java.util.HashSet<>();
+    private static final java.nio.file.Path SAVE_FILE = java.nio.file.Path.of("craftics_bestiary.txt");
+    private static boolean loaded = false;
 
     static {
         buildContent();
-        // All categories unlocked except Bestiary (index 1) and Armor Trims (unlocks on acquire)
+        // All categories unlocked except Bestiary and Armor Trims
         for (int i = 0; i < CATEGORIES.size(); i++) {
             String catName = CATEGORIES.get(i).name();
             if (catName.equals("Enemy Bestiary") || catName.equals("Armor Trims")) continue;
             for (Entry e : CATEGORIES.get(i).entries()) unlockedEntries.add(e.name());
         }
+        loadUnlocks();
     }
 
     public static List<Category> getCategories() { return CATEGORIES; }
@@ -35,7 +39,37 @@ public class GuideBookData {
     }
 
     public static void unlock(String entryName) {
-        unlockedEntries.add(entryName);
+        if (unlockedEntries.add(entryName)) {
+            saveUnlocks();
+        }
+    }
+
+    private static void saveUnlocks() {
+        try {
+            // Only save bestiary + trim entries (non-default unlocks)
+            java.util.Set<String> defaultUnlocks = new java.util.HashSet<>();
+            for (int i = 0; i < CATEGORIES.size(); i++) {
+                String catName = CATEGORIES.get(i).name();
+                if (catName.equals("Enemy Bestiary") || catName.equals("Armor Trims")) continue;
+                for (Entry e : CATEGORIES.get(i).entries()) defaultUnlocks.add(e.name());
+            }
+            List<String> toSave = new ArrayList<>();
+            for (String name : unlockedEntries) {
+                if (!defaultUnlocks.contains(name)) toSave.add(name);
+            }
+            java.nio.file.Files.write(SAVE_FILE, toSave);
+        } catch (Exception ignored) {}
+    }
+
+    private static void loadUnlocks() {
+        if (loaded) return;
+        loaded = true;
+        try {
+            if (java.nio.file.Files.exists(SAVE_FILE)) {
+                List<String> lines = java.nio.file.Files.readAllLines(SAVE_FILE);
+                unlockedEntries.addAll(lines);
+            }
+        } catch (Exception ignored) {}
     }
 
     /** Unlock the Armor Trims guide entry (called when player receives a trim template). */
@@ -179,8 +213,59 @@ public class GuideBookData {
         enemies.add(mob("Shulker", "Speed: 1 | Range: 4\n\nStationary turret. Levitation projectiles!\n\nWeak to: Blunt\nResist: Ranged, Sword"));
         enemies.add(mob("Witch", "Speed: 2 | Range: 4\n\nThrows harmful potions from long range.\n\nWeak to: Sword, Cleaving\nResist: Magic\nImmune: Water"));
         // Bosses
-        enemies.add(mob("Warden", "Speed: 3 | BOSS | Special: Sonic Boom\n\nDeep Dark boss. Sonic boom ignores defense. Massive HP.\n\nWeak to: Ranged\nResist: Blunt, Sword"));
-        enemies.add(mob("Ender Dragon", "Speed: 4 | BOSS | Special: Devastating Swoop\n\nFinal boss. Massive, fast, devastating. Triggers NG+!\n\nWeak to: Ranged, Magic\nResist: Water"));
+        enemies.add(mob("The Revenant", "BOSS | Zombie | 20HP / 4ATK / 2DEF / Speed 2\nPlains biome boss.\n\n" +
+            "Abilities:\n- Raise the Dead: Summons 1-2 Zombies every 3 turns\n- Death Charge: 3-tile line charge, ATK+2\n- Shield Bash: Knockback 2 tiles\n\n" +
+            "Phase 2 — Undying Rage: Regeneration, faster summons, fire trail on charge."));
+        enemies.add(mob("Sandstorm Pharaoh", "BOSS | Husk | 25HP / 6ATK / 1DEF / Speed 2\nDesert biome boss.\n\n" +
+            "Abilities:\n- Plant Mine: Invisible mine, 6 dmg on contact\n- Sand Burial: 2x2 quicksand stun\n- Sandstorm: 3x3 AoE + accuracy debuff\n- Curse of the Sands: Tiles you leave become quicksand\n\n" +
+            "Phase 2 — Tomb Wrath: 2 mines/turn, 3x3 burial, summons 2 Husks."));
+        enemies.add(mob("Frostbound Huntsman", "BOSS | Stray | 25HP / 5ATK / 2DEF / Range 4 / Speed 2\nSnowy Tundra boss.\n\n" +
+            "Abilities:\n- Blizzard: 3x3 AoE + frozen tiles (1-turn stun)\n- Frost Arrow: Range 4, ATK + Slowness\n- Ice Wall: Creates obstacle line\n\n" +
+            "Phase 2 — Permafrost: Speed 3, random frozen tiles every 2 turns."));
+        enemies.add(mob("The Rockbreaker", "BOSS | Vindicator | 30HP / 6ATK / 3DEF / Speed 2\nStony Peaks boss.\n\n" +
+            "Abilities:\n- Seismic Slam: Cross pattern, 5 dmg\n- Boulder Toss: Range 4, creates obstacle\n- Fortify: +5 DEF for 2 turns\n- Avalanche: Full-row attack\n\n" +
+            "Phase 2: Permanent +3 DEF, 2 boulders, 2 rows avalanche."));
+        enemies.add(mob("The Hexweaver", "BOSS | Evoker | 28HP / 5ATK / 2DEF / Range 4 / Speed 2\nDark Forest boss.\n\n" +
+            "Abilities:\n- Vex Swarm: Summons 2 Vexes every 3 turns\n- Cursed Fog: 3x3 debuff zone\n- Hex Bolt: Ranged ATK + Slowness\n\n" +
+            "Phase 2 — Arcane Fury: Teleports away, cross fangs, 3 Vexes."));
+        enemies.add(mob("The Hollow King", "BOSS | Zombie | 40HP / 7ATK / 3DEF / Speed 2\nCaverns boss.\n\n" +
+            "Abilities:\n- Cave-In: Boulders fall on tiles\n- Miner's Fury: Line charge destroys obstacles\n- Summon Silverfish from rubble\n- Lights Out: Tiles go dark, enemies +2 ATK\n\n" +
+            "Phase 2 — Total Collapse: Permanent darkness, regen in dark."));
+        enemies.add(mob("The Broodmother", "BOSS | Spider | 35HP / 6ATK / 2DEF / Speed 3 | Size 3x3\nJungle boss.\n\n" +
+            "Abilities:\n- Spawn Brood: 2-3 Cave Spiders from egg sacs\n- Web Spray: 3x3 stun + slow\n- Venomous Bite: ATK + Poison\n- Pounce: Leap 3 tiles, 2x2 AoE\n\n" +
+            "Phase 2 — Nest Awakening: +2 Speed, respawning egg sacs."));
+        enemies.add(mob("The Tidecaller", "BOSS | Drowned | 30HP / 5ATK / 2DEF / Range 3 / Speed 2\nRiver Delta boss.\n\n" +
+            "Abilities:\n- Tidal Wave: 2-tile-wide flood column\n- Trident Storm: 3 tridents in spread\n- Riptide Charge: Water charge, knockback 2\n- Call of the Deep: Summon Drowned on water\n\n" +
+            "Phase 2 — Deluge: Half arena floods permanently, +2 ATK on water."));
+        enemies.add(mob("The Molten King", "BOSS | Magma Cube | 35HP / 7ATK / 2DEF / Speed 2\nNether Wastes boss.\n\n" +
+            "Abilities:\n- Eruption: Ring of fire AoE around self\n- Lava Trail: Leaves fire on tiles moved\n- Absorb: Merges with nearby cube to heal\n\n" +
+            "Phase 2 — Meltdown: Permanent fire tiles, constant eruptions."));
+        enemies.add(mob("Crimson Ravager", "BOSS | Hoglin | 45HP / 8ATK / 3DEF / Speed 3\nCrimson Forest boss.\n\n" +
+            "Abilities:\n- Gore Charge: 4-tile charge, ATK+3, knockback 3\n- Fungal Growth: 3x3 heal zone\n- Rampage: AoE all adjacent tiles\n- Summon Pack: 2 Piglins (once)\n\n" +
+            "Phase 2 — Blood Frenzy: +4 ATK, fire trail, 2-tile rampage, speed 4."));
+        enemies.add(mob("Wailing Revenant", "BOSS | Ghast | 40HP / 8ATK / 1DEF / Range 6 / Speed 1\nSoul Sand Valley boss.\n\n" +
+            "Abilities:\n- Soul Barrage: 3 fireballs at different tiles\n- Wail of Despair: AoE -2 ATK debuff\n- Soul Chain: Tethers player, 2 dmg/turn\n- Phase Shift: Teleports when player gets close\n\n" +
+            "Phase 2 — Requiem: 5 fireballs, wail + slowness, 2 chains, speed 2."));
+        enemies.add(mob("Ashen Warlord", "BOSS | Wither Skeleton | 55HP / 10ATK / 4DEF / Speed 3\nBasalt Deltas boss.\n\n" +
+            "Abilities:\n- Wither Slash: ATK + permanent max HP reduction\n- Summon Blaze Guard: 2 Blazes every 4 turns\n\n" +
+            "Phase 2 — Warlord's Command: Arc wither slash, summons Wither Skeletons instead, speed 4."));
+        enemies.add(mob("The Void Walker", "BOSS | Enderman | 50HP / 9ATK / 2DEF / Speed 3\nWarped Forest boss.\n\n" +
+            "Abilities:\n- Void Rift: Portal pair (step on one, teleport to other)\n- Mirror Image: 2 decoy clones\n- Phase Strike: Teleport behind player + attack\n- Void Pull: Pulls player 2 tiles toward boss\n\n" +
+            "Phase 2 — Reality Shatter: Permanent rifts, 3 clones, pull range 3."));
+        enemies.add(mob("Shulker Architect", "BOSS | Shulker | 50HP / 9ATK / 4DEF / Range 5 / Speed 1\nEnd City boss.\n\n" +
+            "Abilities:\n- Bullet Storm: 4 homing bullets + Levitation\n- Deploy Turret: Stationary shulker turret (max 3)\n- Fortify Shell: 80% damage reduction 1 turn\n- Teleport Link: Teleport to turret position\n\n" +
+            "Phase 2 — Defense Protocol: 6 bullets, reflect shell, turret limit 5."));
+        enemies.add(mob("The Chorus Mind", "BOSS | Enderman | 60HP / 12ATK / 3DEF / Speed 2\nChorus Grove boss.\n\n" +
+            "Abilities:\n- Chorus Bloom: Grow obstacle plants, teleport to any\n- Entangle: Root area, immobilize + damage\n- Chorus Bomb: AoE + random teleport on hit\n- Resonance Cascade: All plants pulse AoE damage\n\n" +
+            "Phase 2 — Overgrowth: Auto-spread plants, auto cascade, boss teleports each turn."));
+        enemies.add(mob("The Void Herald", "BOSS | Enderman | 55HP / 10ATK / 3DEF / Speed 3\nOuter End Islands boss.\n\n" +
+            "Abilities:\n- Void Gale: Push all entities toward void edge\n- Lightning Strike: Mark tile, + pattern 6 dmg next turn\n- Platform Collapse: Permanently remove 2x2 floor\n- Blink Assault: Teleport + hit 3 tiles\n\n" +
+            "Phase 2 — Oblivion: Auto collapse, gale 3 tiles, 2 lightning marks, speed 4."));
+        enemies.add(mob("The Wither", "BOSS | Wither | 65HP / 8ATK / 5DEF / Range 5 / Speed 2\nBasalt Deltas final boss.\n\n" +
+            "Abilities:\n- Wither Skull Barrage: 3 destroyable skull projectiles\n- Decay Aura: Tiles near Wither become fire\n- Summon Wither Skeletons (max 4)\n- Charge: 4-tile dash, ATK+3\n\n" +
+            "Phase 2 — Wither Armor: Immune to ranged, transition explosion, 5 skulls, larger decay."));
+        enemies.add(mob("Warden", "BOSS | Warden | Speed 3\nDeep Dark boss. Sonic boom ignores defense. Massive HP.\n\nWeak to: Ranged\nResist: Blunt, Sword"));
+        enemies.add(mob("Ender Dragon", "BOSS | Ender Dragon | Speed 4\nFinal boss. Massive, fast, devastating. Triggers NG+!\n\nWeak to: Ranged, Magic\nResist: Water"));
         CATEGORIES.add(new Category("Enemy Bestiary", "minecraft:zombie_head",
             "Know your foes. Entries unlock as you encounter them.", enemies));
 

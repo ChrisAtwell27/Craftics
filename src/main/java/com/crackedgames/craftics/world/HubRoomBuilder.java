@@ -260,8 +260,8 @@ public class HubRoomBuilder {
         world.setBlockState(bp(maxX - 1, interiorY, minZ + 1), Blocks.FURNACE.getDefaultState()
             .with(Properties.HORIZONTAL_FACING, Direction.SOUTH));
 
-        // Level select block (centered on north wall — hut center is between 0 and 1)
-        world.setBlockState(bp(0, interiorY, minZ + 1),
+        // Level select block (centered on north wall, shifted 1 right)
+        world.setBlockState(bp(1, interiorY, minZ + 1),
             ModBlocks.LEVEL_SELECT_BLOCK.getDefaultState()
                 .with(com.crackedgames.craftics.block.LevelSelectBlock.FACING, Direction.EAST));
 
@@ -786,8 +786,8 @@ public class HubRoomBuilder {
     }
 
     private static void placeFurniture(ServerWorld world) {
-        // Level select block — centered on north wall, facing east so model extends sideways
-        world.setBlockState(bp(0, INTERIOR_Y, MAIN_MIN_Z + 1),
+        // Level select block — centered on north wall, shifted 1 right
+        world.setBlockState(bp(1, INTERIOR_Y, MAIN_MIN_Z + 1),
             ModBlocks.LEVEL_SELECT_BLOCK.getDefaultState()
                 .with(com.crackedgames.craftics.block.LevelSelectBlock.FACING, Direction.EAST));
 

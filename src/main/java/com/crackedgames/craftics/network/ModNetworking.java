@@ -21,6 +21,8 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(TraderBuyPayload.ID, TraderBuyPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(TraderDonePayload.ID, TraderDonePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(StatChoicePayload.ID, StatChoicePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(AffinityChoicePayload.ID, AffinityChoicePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(EventChoicePayload.ID, EventChoicePayload.CODEC);
 
         // Register S2C payload types
         PayloadTypeRegistry.playS2C().register(EnterCombatPayload.ID, EnterCombatPayload.CODEC);
@@ -33,6 +35,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(PlayerStatsSyncPayload.ID, PlayerStatsSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TileSetPayload.ID, TileSetPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TeammateHoverPayload.ID, TeammateHoverPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(EventRoomPayload.ID, EventRoomPayload.CODEC);
 
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);
@@ -197,12 +200,68 @@ public class ModNetworking {
                         if (statData.length() > 0) statData.append(":");
                         statData.append(ps.getPoints(s));
                     }
+                    // Build affinity data string
+                    StringBuilder affData = new StringBuilder();
+                    for (com.crackedgames.craftics.combat.PlayerProgression.Affinity a : com.crackedgames.craftics.combat.PlayerProgression.Affinity.values()) {
+                        if (affData.length() > 0) affData.append(":");
+                        affData.append(ps.getAffinityPoints(a));
+                    }
                     CrafticsSavedData data = CrafticsSavedData.get(overworld);
                     ServerPlayNetworking.send(player, new PlayerStatsSyncPayload(
-                        ps.level, ps.unspentPoints, statData.toString(), data.emeralds
+                        ps.level, ps.unspentPoints, statData.toString(), data.emeralds, affData.toString()
+                    ));
+
+                    // Mark that player now needs to pick an affinity
+                    ps.pendingAffinityChoice = true;
+                    progression.saveStats(player);
+                }
+            }
+        });
+
+        // Handle affinity choice from level-up screen (second step)
+        ServerPlayNetworking.registerGlobalReceiver(AffinityChoicePayload.ID, (payload, context) -> {
+            ServerPlayerEntity player = context.player();
+            com.crackedgames.craftics.combat.PlayerProgression.Affinity[] affinities =
+                com.crackedgames.craftics.combat.PlayerProgression.Affinity.values();
+            int ordinal = payload.affinityOrdinal();
+            if (ordinal >= 0 && ordinal < affinities.length) {
+                ServerWorld overworld = (ServerWorld) player.getEntityWorld();
+                com.crackedgames.craftics.combat.PlayerProgression progression =
+                    com.crackedgames.craftics.combat.PlayerProgression.get(overworld);
+                com.crackedgames.craftics.combat.PlayerProgression.PlayerStats ps =
+                    progression.getStats(player);
+                if (ps.pendingAffinityChoice) {
+                    ps.allocateAffinity(affinities[ordinal]);
+                    progression.saveStats(player);
+                    player.sendMessage(net.minecraft.text.Text.literal(
+                        "§6+" + affinities[ordinal].displayName + " affinity! §7(Now +" +
+                        ps.getAffinityPoints(affinities[ordinal]) + ")"), false);
+
+                    // Re-sync stats (including affinity) to client
+                    com.crackedgames.craftics.combat.PlayerProgression.Stat[] stats2 =
+                        com.crackedgames.craftics.combat.PlayerProgression.Stat.values();
+                    StringBuilder statData2 = new StringBuilder();
+                    for (com.crackedgames.craftics.combat.PlayerProgression.Stat s : stats2) {
+                        if (statData2.length() > 0) statData2.append(":");
+                        statData2.append(ps.getPoints(s));
+                    }
+                    StringBuilder affData2 = new StringBuilder();
+                    for (com.crackedgames.craftics.combat.PlayerProgression.Affinity a : affinities) {
+                        if (affData2.length() > 0) affData2.append(":");
+                        affData2.append(ps.getAffinityPoints(a));
+                    }
+                    CrafticsSavedData data2 = CrafticsSavedData.get(overworld);
+                    ServerPlayNetworking.send(player, new PlayerStatsSyncPayload(
+                        ps.level, ps.unspentPoints, statData2.toString(), data2.emeralds, affData2.toString()
                     ));
                 }
             }
+        });
+
+        // Handle event room choice (shrine/traveler/vault)
+        ServerPlayNetworking.registerGlobalReceiver(EventChoicePayload.ID, (payload, context) -> {
+            CombatManager.getActiveCombat(context.player().getUuid())
+                .handleEventChoice(context.player(), payload.choiceIndex());
         });
 
         // Handle hover updates — relay to party members

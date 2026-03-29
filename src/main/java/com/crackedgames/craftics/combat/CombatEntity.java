@@ -29,6 +29,9 @@ public class CombatEntity {
     private int defensePenaltyTurns = 0;
     private int burningTurns = 0; // fire damage over time
     private int burningDamage = 0; // damage per turn while burning
+    private int attackBoost = 0; // permanent attack boost (from pet stats override)
+    private int defenseBoost = 0; // permanent defense boost (from pet stats override)
+    private int rangeOverride = -1; // if set, overrides base range
 
     public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
                         int maxHp, int attackPower, int defense, int range) {
@@ -57,9 +60,12 @@ public class CombatEntity {
     public int getMaxHp() { return maxHp; }
     public int getCurrentHp() { return currentHp; }
     public void heal(int amount) { currentHp = Math.min(maxHp, currentHp + amount); }
-    public int getAttackPower() { return Math.max(0, attackPower - attackPenalty); }
-    public int getDefense() { return defense; }
-    public int getRange() { return range; }
+    public int getAttackPower() { return Math.max(0, attackPower + attackBoost - attackPenalty); }
+    public int getDefense() { return defense + defenseBoost; }
+    public int getRange() { return rangeOverride >= 0 ? rangeOverride : range; }
+    public void setAttackBoost(int boost) { this.attackBoost = boost; }
+    public void setDefenseBoost(int boost) { this.defenseBoost = boost; }
+    public void setRangeOverride(int r) { this.rangeOverride = r; }
     public boolean isAlive() { return alive; }
     public int getSize() { return size; }
 
@@ -112,6 +118,11 @@ public class CombatEntity {
     private boolean boss = false;
     public boolean isBoss() { return boss; }
     public void setBoss(boolean b) { this.boss = b; }
+
+    /** Spider ceiling mechanic — true when the spider is hanging from the ceiling (off-grid). */
+    private boolean onCeiling = false;
+    public boolean isOnCeiling() { return onCeiling; }
+    public void setOnCeiling(boolean v) { this.onCeiling = v; }
 
     private String bossDisplayName = null;
     public void setBossDisplayName(String name) { this.bossDisplayName = name; }
@@ -176,7 +187,7 @@ public class CombatEntity {
 
     private static int getDefaultSize(String entityTypeId) {
         return switch (entityTypeId) {
-            case "minecraft:spider" -> 2;
+            case "minecraft:spider", "minecraft:hoglin" -> 2;
             default -> 1;
         };
     }

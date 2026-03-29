@@ -54,6 +54,11 @@ loom {
 	}
 
 	runs {
+		// Set a consistent username for the default client so player data persists
+		client {
+			programArg "--username=Dev"
+		}
+
 		// Dedicated client session for building arenas with WorldEdit.
 		// Run with: ./gradlew runArenaEditor
 		// WorldEdit is NOT a mod dependency — it is only present in this run.

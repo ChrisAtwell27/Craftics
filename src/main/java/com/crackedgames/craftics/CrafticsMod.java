@@ -140,10 +140,17 @@ public class CrafticsMod implements ModInitializer {
                     if (statData.length() > 0) statData.append(":");
                     statData.append(stats.getPoints(s));
                 }
+                StringBuilder affData = new StringBuilder();
+                for (com.crackedgames.craftics.combat.PlayerProgression.Affinity a :
+                        com.crackedgames.craftics.combat.PlayerProgression.Affinity.values()) {
+                    if (affData.length() > 0) affData.append(":");
+                    affData.append(stats.getAffinityPoints(a));
+                }
                 CrafticsSavedData data = CrafticsSavedData.get(overworld);
                 net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
                     new com.crackedgames.craftics.network.PlayerStatsSyncPayload(
-                        stats.level, stats.unspentPoints, statData.toString(), data.emeralds
+                        stats.level, stats.unspentPoints, statData.toString(), data.emeralds,
+                        affData.toString()
                     ));
 
                 // If the player disconnected mid-battle, restart the fight after they load in
@@ -267,10 +274,10 @@ public class CrafticsMod implements ModInitializer {
 
     private void registerCommands() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-            var root = CommandManager.literal("craftics").requires(src -> src.hasPermissionLevel(2));
+            var root = CommandManager.literal("craftics");
 
-            // /craftics unlock_all — unlock every biome
-            root.then(CommandManager.literal("unlock_all").executes(ctx -> {
+            // /craftics unlock_all — unlock every biome (op only)
+            root.then(CommandManager.literal("unlock_all").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 ServerWorld overworld = src.getServer().getOverworld();
@@ -286,7 +293,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics reset_biomes — reset current biome level progress back to level 1
-            root.then(CommandManager.literal("reset_biomes").executes(ctx -> {
+            root.then(CommandManager.literal("reset_biomes").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
@@ -300,7 +307,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics set_emeralds <amount>
-            root.then(CommandManager.literal("set_emeralds")
+            root.then(CommandManager.literal("set_emeralds").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(ctx -> {
                         ServerCommandSource src = ctx.getSource();
@@ -315,7 +322,7 @@ public class CrafticsMod implements ModInitializer {
                     })));
 
             // /craftics set_level <level> — set player progression level
-            root.then(CommandManager.literal("set_level")
+            root.then(CommandManager.literal("set_level").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("level", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
                     .executes(ctx -> {
                         ServerCommandSource src = ctx.getSource();
@@ -332,7 +339,7 @@ public class CrafticsMod implements ModInitializer {
                     })));
 
             // /craftics info — display current save state
-            root.then(CommandManager.literal("info").executes(ctx -> {
+            root.then(CommandManager.literal("info").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
@@ -350,7 +357,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics heal — fully heal the player
-            root.then(CommandManager.literal("heal").executes(ctx -> {
+            root.then(CommandManager.literal("heal").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity player = src.getPlayerOrThrow();
                 player.setHealth(player.getMaxHealth());
@@ -361,7 +368,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics kill_enemies — kill all enemies in current combat
-            root.then(CommandManager.literal("kill_enemies").executes(ctx -> {
+            root.then(CommandManager.literal("kill_enemies").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
                 if (!cm.isActive()) {
@@ -374,7 +381,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics skip_level — win current combat instantly
-            root.then(CommandManager.literal("skip_level").executes(ctx -> {
+            root.then(CommandManager.literal("skip_level").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
                 if (!cm.isActive()) {
@@ -387,7 +394,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics set_ap <amount> — set AP remaining during combat
-            root.then(CommandManager.literal("set_ap")
+            root.then(CommandManager.literal("set_ap").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(ctx -> {
                         ServerCommandSource src = ctx.getSource();
@@ -403,7 +410,7 @@ public class CrafticsMod implements ModInitializer {
                     })));
 
             // /craftics set_speed <amount> — set move points remaining during combat
-            root.then(CommandManager.literal("set_speed")
+            root.then(CommandManager.literal("set_speed").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(ctx -> {
                         ServerCommandSource src = ctx.getSource();
@@ -419,7 +426,7 @@ public class CrafticsMod implements ModInitializer {
                     })));
 
             // /craftics set_ngplus <level> — set NG+ cycle
-            root.then(CommandManager.literal("set_ngplus")
+            root.then(CommandManager.literal("set_ngplus").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("level", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(ctx -> {
                         ServerCommandSource src = ctx.getSource();
@@ -432,7 +439,7 @@ public class CrafticsMod implements ModInitializer {
                     })));
 
             // /craftics set_stat <stat> <value> — set a specific stat's allocated points
-            root.then(CommandManager.literal("set_stat")
+            root.then(CommandManager.literal("set_stat").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("stat", com.mojang.brigadier.arguments.StringArgumentType.word())
                     .suggests((ctx, builder) -> {
                         for (com.crackedgames.craftics.combat.PlayerProgression.Stat s :
@@ -464,7 +471,7 @@ public class CrafticsMod implements ModInitializer {
                         }))));
 
             // /craftics reset_stats — reset all player stats to defaults
-            root.then(CommandManager.literal("reset_stats").executes(ctx -> {
+            root.then(CommandManager.literal("reset_stats").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity player = src.getPlayerOrThrow();
                 var progression = com.crackedgames.craftics.combat.PlayerProgression.get(src.getServer().getOverworld());
@@ -483,7 +490,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics tp_hub — teleport back to hub room (ends combat if active)
-            root.then(CommandManager.literal("tp_hub").executes(ctx -> {
+            root.then(CommandManager.literal("tp_hub").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity player = src.getPlayerOrThrow();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
@@ -499,7 +506,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics give <preset> — give a set of gear
-            root.then(CommandManager.literal("give")
+            root.then(CommandManager.literal("give").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.literal("wood_gear").executes(ctx -> {
                     ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                     giveItems(player, net.minecraft.item.Items.WOODEN_SWORD, net.minecraft.item.Items.WOODEN_AXE,
@@ -558,7 +565,7 @@ public class CrafticsMod implements ModInitializer {
                 })));
 
             // /craftics combat_info — show detailed combat state
-            root.then(CommandManager.literal("combat_info").executes(ctx -> {
+            root.then(CommandManager.literal("combat_info").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
                 if (!cm.isActive()) {
@@ -595,7 +602,7 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics test_range — enter a test arena with a training dummy
-            root.then(CommandManager.literal("test_range").executes(ctx -> {
+            root.then(CommandManager.literal("test_range").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerPlayerEntity p = ctx.getSource().getPlayerOrThrow();
                 com.crackedgames.craftics.combat.CombatManager cm = com.crackedgames.craftics.combat.CombatManager.get(p);
                 if (cm.isActive()) {

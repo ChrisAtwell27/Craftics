@@ -17,7 +17,7 @@
       {"type": "minecraft:shulker", "weight": 4, "hp": 18, "attack": 8, "range": 5},
       {"type": "minecraft:phantom", "weight": 3, "hp": 14, "attack": 7}
     ],
-    "boss": {"type": "minecraft:ender_dragon", "hp": 35, "attack": 15}
+    "boss": {"type": "minecraft:ender_dragon", "hp": 100, "attack": 15}
   },
   "loot": [
     {"item": "minecraft:dragon_breath", "weight": 4},
@@ -25,6 +25,9 @@
     {"item": "minecraft:diamond", "weight": 3},
     {"item": "minecraft:netherite_scrap", "weight": 2},
     {"item": "minecraft:elytra", "weight": 1},
-    {"item": "minecraft:dragon_egg", "weight": 1}
+    {"item": "minecraft:dragon_egg", "weight": 1},
+    {"item": "minecraft:cobblestone", "weight": 4},
+    {"item": "minecraft:emerald", "weight": 2},
+    {"item": "minecraft:amethyst_shard", "weight": 2}
   ]
 }

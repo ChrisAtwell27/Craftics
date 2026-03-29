@@ -1,6 +1,7 @@
 package com.crackedgames.craftics.client;
 
 import com.crackedgames.craftics.combat.PlayerProgression;
+import com.crackedgames.craftics.network.AffinityChoicePayload;
 import com.crackedgames.craftics.network.StatChoicePayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.DrawContext;
@@ -10,14 +11,17 @@ import net.minecraft.text.Text;
 
 /**
  * Level-up screen shown after completing a biome.
- * Displays all stats with current values and lets the player pick one to upgrade.
- * Polished layout with stat bars, icons, and clear descriptions.
+ * Two steps: (1) pick a stat to upgrade, (2) pick a damage affinity to upgrade.
  */
 public class LevelUpScreen extends Screen {
 
     private final int playerLevel;
     private int unspentPoints;
-    private final int[] statValues; // current allocated points per stat
+    private final int[] statValues;
+
+    // Two-step flow: stat first, then affinity
+    private enum Phase { STAT_CHOICE, AFFINITY_CHOICE }
+    private Phase phase = Phase.STAT_CHOICE;
 
     // Layout constants
     private static final int CARD_WIDTH = 320;
@@ -29,7 +33,6 @@ public class LevelUpScreen extends Screen {
         this.playerLevel = playerLevel;
         this.unspentPoints = unspentPoints;
 
-        // Parse stat data: "s0:s1:s2:s3:s4:s5:s6:s7"
         String[] parts = statData.split(":");
         PlayerProgression.Stat[] stats = PlayerProgression.Stat.values();
         this.statValues = new int[stats.length];
@@ -42,6 +45,14 @@ public class LevelUpScreen extends Screen {
     protected void init() {
         this.clearChildren();
 
+        if (phase == Phase.STAT_CHOICE) {
+            initStatChoice();
+        } else {
+            initAffinityChoice();
+        }
+    }
+
+    private void initStatChoice() {
         PlayerProgression.Stat[] stats = PlayerProgression.Stat.values();
         int centerX = this.width / 2;
         int totalHeight = stats.length * (CARD_HEIGHT + CARD_GAP);
@@ -53,10 +64,9 @@ public class LevelUpScreen extends Screen {
             int effective = stat.baseValue + currentPoints;
             int y = startY + i * (CARD_HEIGHT + CARD_GAP);
 
-            // Stat upgrade button
             String btnText = unspentPoints > 0
-                ? "§a[+] " + stat.icon + " " + stat.displayName
-                : "§8" + stat.icon + " " + stat.displayName;
+                ? "\u00a7a[+] " + stat.icon + " " + stat.displayName
+                : "\u00a78" + stat.icon + " " + stat.displayName;
 
             final int statIndex = i;
             ButtonWidget btn = ButtonWidget.builder(
@@ -66,16 +76,41 @@ public class LevelUpScreen extends Screen {
                         ClientPlayNetworking.send(new StatChoicePayload(statIndex));
                         statValues[statIndex]++;
                         unspentPoints--;
-                        init(); // refresh buttons
                         if (unspentPoints <= 0) {
-                            // Small delay then close
-                            this.close();
+                            // Move to affinity choice phase
+                            phase = Phase.AFFINITY_CHOICE;
                         }
+                        init();
                     }
                 }
             ).dimensions(centerX - CARD_WIDTH / 2, y, CARD_WIDTH, CARD_HEIGHT).build();
 
             btn.active = unspentPoints > 0;
+            this.addDrawableChild(btn);
+        }
+    }
+
+    private void initAffinityChoice() {
+        PlayerProgression.Affinity[] affinities = PlayerProgression.Affinity.values();
+        int centerX = this.width / 2;
+        int totalHeight = affinities.length * (CARD_HEIGHT + CARD_GAP);
+        int startY = (this.height / 2) - (totalHeight / 2) + 20;
+
+        for (int i = 0; i < affinities.length; i++) {
+            PlayerProgression.Affinity affinity = affinities[i];
+            int y = startY + i * (CARD_HEIGHT + CARD_GAP);
+
+            String btnText = affinity.icon + " " + affinity.displayName + " \u00a77" + affinity.description;
+
+            final int affinityIndex = i;
+            ButtonWidget btn = ButtonWidget.builder(
+                Text.literal(btnText),
+                button -> {
+                    ClientPlayNetworking.send(new AffinityChoicePayload(affinityIndex));
+                    this.close();
+                }
+            ).dimensions(centerX - CARD_WIDTH / 2, y, CARD_WIDTH, CARD_HEIGHT).build();
+
             this.addDrawableChild(btn);
         }
     }
@@ -90,18 +125,24 @@ public class LevelUpScreen extends Screen {
         // Header area
         int headerY = startY - 45;
 
-        // Level badge
-        context.drawCenteredTextWithShadow(this.textRenderer,
-            "§6§l★ LEVEL UP! ★", centerX, headerY, 0xFFAA00);
-        context.drawCenteredTextWithShadow(this.textRenderer,
-            "§fLevel §e§l" + playerLevel, centerX, headerY + 14, 0xFFFFFF);
-
-        // Points remaining
-        String pointsText = unspentPoints > 0
-            ? "§a" + unspentPoints + " point" + (unspentPoints != 1 ? "s" : "") + " to spend"
-            : "§7All points spent!";
-        context.drawCenteredTextWithShadow(this.textRenderer,
-            pointsText, centerX, headerY + 28, 0xAAAAAA);
+        if (phase == Phase.STAT_CHOICE) {
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                "\u00a76\u00a7l\u2605 LEVEL UP! \u2605", centerX, headerY, 0xFFAA00);
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                "\u00a7fLevel \u00a7e\u00a7l" + playerLevel, centerX, headerY + 14, 0xFFFFFF);
+            String pointsText = unspentPoints > 0
+                ? "\u00a7a" + unspentPoints + " point" + (unspentPoints != 1 ? "s" : "") + " to spend"
+                : "\u00a77Choose a stat to upgrade!";
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                pointsText, centerX, headerY + 28, 0xAAAAAA);
+        } else {
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                "\u00a76\u00a7l\u2694 CHOOSE AFFINITY \u2694", centerX, headerY, 0xFFAA00);
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                "\u00a7fPermanent +1 to a damage type", centerX, headerY + 14, 0xFFFFFF);
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                "\u00a77Pick the weapon class you want to specialize in", centerX, headerY + 28, 0xAAAAAA);
+        }
 
         // Stat value labels (drawn to the right of each button)
         for (int i = 0; i < stats.length; i++) {

@@ -25,7 +25,7 @@
       {"type": "minecraft:vindicator", "weight": 5, "hp": 10, "attack": 4, "defense": 1, "range": 1},
       {"type": "minecraft:zombie", "weight": 3, "hp": 9, "attack": 2, "defense": 1, "range": 1}
     ],
-    "boss": {"type": "minecraft:vindicator", "hp": 35, "attack": 5, "defense": 2, "range": 1}
+    "boss": {"type": "minecraft:vindicator", "hp": 40, "attack": 5, "defense": 2, "range": 1}
   },
   "loot": [
     {"item": "minecraft:cobblestone", "weight": 8},
@@ -34,6 +34,10 @@
     {"item": "minecraft:emerald", "weight": 2},
     {"item": "minecraft:crossbow", "weight": 1},
     {"item": "minecraft:wheat_seeds", "weight": 3},
-    {"item": "minecraft:sweet_berries", "weight": 2}
+    {"item": "minecraft:sweet_berries", "weight": 2},
+    {"item": "minecraft:spruce_log", "weight": 3},
+    {"item": "minecraft:copper_ingot", "weight": 2},
+    {"item": "minecraft:redstone", "weight": 2},
+    {"item": "minecraft:leather", "weight": 3}
   ]
 }

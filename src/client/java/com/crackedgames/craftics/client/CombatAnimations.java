@@ -23,21 +23,34 @@ public class CombatAnimations {
     private static int attackAnimTimer = 0;
     private static ModifierLayer<IAnimation> currentLayer = null;
 
+    /** Registered layer per-player, keyed by player reference to survive respawns. */
+    private static java.util.WeakHashMap<AbstractClientPlayerEntity, ModifierLayer<IAnimation>> layerMap = new java.util.WeakHashMap<>();
+
     public static void register() {
         PlayerAnimationAccess.REGISTER_ANIMATION_EVENT.register((player, stack) -> {
             var layer = new ModifierLayer<IAnimation>();
             stack.addAnimLayer(42, layer);
+            if (player instanceof AbstractClientPlayerEntity acp) {
+                layerMap.put(acp, layer);
+            }
         });
     }
 
     @SuppressWarnings("unchecked")
     private static ModifierLayer<IAnimation> getOrCreateLayer(AbstractClientPlayerEntity player) {
-        if (currentLayer != null) return currentLayer;
+        // Return the layer registered via the animation event callback
+        ModifierLayer<IAnimation> layer = layerMap.get(player);
+        if (layer != null) {
+            currentLayer = layer;
+            return layer;
+        }
+        // Fallback: create one manually if the callback hasn't fired yet
         if (player instanceof IPlayer iPlayer) {
             AnimationStack stack = iPlayer.getAnimationStack();
             if (stack != null) {
-                var layer = new ModifierLayer<IAnimation>();
+                layer = new ModifierLayer<IAnimation>();
                 stack.addAnimLayer(42, layer);
+                layerMap.put(player, layer);
                 currentLayer = layer;
                 return layer;
             }
@@ -400,12 +413,12 @@ public class CombatAnimations {
             float bounce = impact > 0 ? (float) Math.sin(impact * Math.PI * 3) * 0.25f * (1 - impact) : 0;
 
             if (type == TransformType.POSITION && "body".equals(modelPart)) {
-                // Crouch down, JUMP UP high, then SLAM down below ground level
+                // Crouch down, JUMP UP high, then SLAM back to ground
                 float height = -crouch * 0.8f         // crouch
-                    + airborne * 6.0f                   // jump way up
-                    - slammed * 7.0f                    // slam down past origin
-                    + bounce * 2.0f                     // impact bounce
-                    + recovery * 1.8f;                  // stand back up
+                    + airborne * 4.0f                   // jump up
+                    - slammed * 4.5f                    // slam back to ground (net ~-0.5 at impact)
+                    + bounce * 1.5f                     // impact bounce
+                    + recovery * 1.3f;                  // stand back up
                 return new Vec3f(v.getX(), v.getY() + height, v.getZ());
             }
 
@@ -414,10 +427,10 @@ public class CombatAnimations {
                     case "rightArm", "leftArm" -> {
                         // Crouch: arms tense. Jump: arms swing overhead. Slam: arms drive down
                         float armX = crouch * 0.3f                     // tense
-                            - airborne * 3.8f                           // arms way overhead
-                            + slammed * 5.5f                            // drive down hard
+                            - airborne * 3.2f                           // arms overhead
+                            + slammed * 4.5f                            // drive down
                             + bounce                                    // recoil
-                            - recovery * 1.7f;                          // return to neutral
+                            - recovery * 1.3f;                          // return to neutral
                         return new Vec3f(v.getX() + armX, v.getY(), v.getZ());
                     }
                     case "body" -> {

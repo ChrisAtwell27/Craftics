@@ -37,15 +37,19 @@ public class AIUtils {
      * Find the best tile adjacent to the player that this entity can path to.
      */
     public static GridPos findBestAdjacentTarget(GridArena arena, GridPos self, GridPos playerPos, int maxSteps) {
+        return findBestAdjacentTarget(arena, self, playerPos, maxSteps, 1);
+    }
+
+    /**
+     * Size-aware version: checks that ALL footprint tiles at each candidate are valid.
+     */
+    public static GridPos findBestAdjacentTarget(GridArena arena, GridPos self, GridPos playerPos, int maxSteps, int entitySize) {
         GridPos best = null;
         int bestDist = Integer.MAX_VALUE;
 
         for (GridPos dir : CARDINALS) {
             GridPos adj = new GridPos(playerPos.x() + dir.x(), playerPos.z() + dir.z());
-            if (!arena.isInBounds(adj)) continue;
-            GridTile tile = arena.getTile(adj);
-            if (tile == null || !tile.isWalkable()) continue;
-            if (arena.isEnemyOccupied(adj)) continue;
+            if (!canPlaceFootprint(arena, adj, entitySize)) continue;
 
             int dist = self.manhattanDistance(adj);
             if (dist < bestDist) {
@@ -54,6 +58,19 @@ public class AIUtils {
             }
         }
         return best;
+    }
+
+    /**
+     * Check if a sized entity can be placed at an anchor position (all footprint tiles valid).
+     */
+    public static boolean canPlaceFootprint(GridArena arena, GridPos anchor, int entitySize) {
+        for (GridPos tile : GridArena.getOccupiedTiles(anchor, entitySize)) {
+            if (!arena.isInBounds(tile)) return false;
+            GridTile gridTile = arena.getTile(tile);
+            if (gridTile == null || !gridTile.isWalkable()) return false;
+            if (arena.isEnemyOccupied(tile)) return false;
+        }
+        return true;
     }
 
     /**
@@ -128,16 +145,18 @@ public class AIUtils {
      * Returns a Move action, or Idle only if truly boxed in.
      */
     public static EnemyAction seekOrWander(CombatEntity self, GridArena arena, GridPos playerPos) {
+        int size = self.getSize();
         // Try to find the closest reachable tile to the player
         GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, self.getGridPos(), playerPos, self.getMoveSpeed(), self);
+            arena, self.getGridPos(), playerPos, self.getMoveSpeed(), self, size);
 
         if (closest != null && !closest.equals(self.getGridPos())) {
-            List<GridPos> path = Pathfinding.findPath(arena, self.getGridPos(), closest, self.getMoveSpeed(), self);
+            List<GridPos> path = Pathfinding.findPathSized(
+                arena, self.getGridPos(), closest, self.getMoveSpeed(), self, size);
             if (!path.isEmpty()) {
                 // Check if we end up adjacent — attack too
                 GridPos endPos = path.get(path.size() - 1);
-                if (CombatEntity.minDistanceFromSizedEntity(endPos, self.getSize(), playerPos) <= 1) {
+                if (CombatEntity.minDistanceFromSizedEntity(endPos, size, playerPos) <= 1) {
                     return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                 }
                 return new EnemyAction.Move(path);

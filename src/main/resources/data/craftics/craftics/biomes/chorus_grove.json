@@ -17,13 +17,16 @@
       {"type": "minecraft:shulker", "weight": 5, "hp": 16, "attack": 7, "range": 4},
       {"type": "minecraft:phantom", "weight": 3, "hp": 12, "attack": 6}
     ],
-    "boss": {"type": "minecraft:enderman", "hp": 35, "attack": 12}
+    "boss": {"type": "minecraft:enderman", "hp": 80, "attack": 12}
   },
   "loot": [
     {"item": "minecraft:chorus_fruit", "weight": 8},
     {"item": "minecraft:popped_chorus_fruit", "weight": 5},
     {"item": "minecraft:shulker_shell", "weight": 3},
     {"item": "minecraft:ender_pearl", "weight": 4},
-    {"item": "minecraft:diamond", "weight": 2}
+    {"item": "minecraft:diamond", "weight": 2},
+    {"item": "minecraft:cobblestone", "weight": 4},
+    {"item": "minecraft:amethyst_shard", "weight": 2},
+    {"item": "minecraft:emerald", "weight": 1}
   ]
 }

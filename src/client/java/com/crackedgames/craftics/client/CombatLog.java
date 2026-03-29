@@ -13,10 +13,10 @@ import java.util.List;
  */
 public class CombatLog {
 
-    private static final int MAX_MESSAGES_DEFAULT = 6;
+    private static final int MAX_VISIBLE_DEFAULT = 4;
     private static int getMaxMessages() {
         try { return com.crackedgames.craftics.CrafticsMod.CONFIG.combatLogMaxLines(); }
-        catch (Exception e) { return MAX_MESSAGES_DEFAULT; }
+        catch (Exception e) { return MAX_VISIBLE_DEFAULT; }
     }
     private static final int FADE_START_TICKS = 60;  // start fading after 3 seconds
     private static final int FADE_DURATION_TICKS = 40; // fully gone after 2 more seconds
@@ -50,7 +50,7 @@ public class CombatLog {
         if (entries.isEmpty() || !CombatState.isInCombat()) return;
 
         int x = 6;
-        int baseY = screenHeight - 50; // above hotbar
+        int baseY = screenHeight - 56; // above hotbar, clear of vanilla HUD
         long now = System.currentTimeMillis();
 
         // Draw from bottom up (newest at bottom)
@@ -71,6 +71,10 @@ public class CombatLog {
             alpha = Math.max(4, Math.min(255, alpha));
 
             int y = baseY - (drawn * LINE_HEIGHT);
+
+            // Left-edge accent line
+            int accentAlpha = (alpha * 3) / 4;
+            context.fill(x - 3, y - 1, x - 2, y + LINE_HEIGHT - 2, (accentAlpha << 24) | 0x555577);
 
             // Semi-transparent background behind text
             int bgAlpha = (alpha * 3) / 4;

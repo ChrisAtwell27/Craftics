@@ -451,10 +451,13 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Mace
         if (item == Items.MACE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a78Blunt\n\u00a76AoE: \u00a77Half damage to all in 3x3\n\u00a76Knockback: \u00a77Pushes target back\n\u00a7dDensity: \u00a77+AoE dmg | \u00a74Breach: \u00a77Armor pen | \u00a7bWind Burst: \u00a77+KB range";
         if (item == Items.STICK) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a77A humble stick. Surprisingly effective.";
+        if (item == Items.BAMBOO) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a77Sturdy jungle staff. Better than a stick.";
+        if (item == Items.BLAZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a76\u2716 Fire: \u00a77Scorches target for +1 fire damage";
+        if (item == Items.BREEZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a7b\u2716 Knockback: \u00a77Pushes target back 1 tile";
 
         // Ranged
-        if (item == Items.BOW) return "\u00a7c4 DMG \u00a77| \u00a7bRange 3 \u00a77| 1 AP | \u00a7bRanged\n\u00a77Consumes arrows. Tipped arrows apply effects.\n\u00a7dPower: \u00a77+1 DMG/lvl | \u00a76Flame: \u00a77Ignite | \u00a7eInfinity: \u00a77Free ammo";
-        if (item == Items.CROSSBOW) return "\u00a7c4 DMG \u00a77| \u00a7bRange 4 \u00a77| \u00a7c2 AP \u00a77| \u00a7bRanged\n\u00a7bPierce: \u00a77Bolt hits 2nd target for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.";
+        if (item == Items.BOW) return "\u00a7c5 DMG \u00a77| \u00a7bRange 3 \u00a77| 1 AP | \u00a7bRanged\n\u00a77Consumes arrows. Tipped arrows apply effects.\n\u00a7dPower: \u00a77+1 DMG/lvl | \u00a76Flame: \u00a77Ignite | \u00a7eInfinity: \u00a77Free ammo";
+        if (item == Items.CROSSBOW) return "\u00a7c6 DMG \u00a77| \u00a7bRange 4 \u00a77| \u00a7c2 AP \u00a77| \u00a7bRanged\n\u00a7bPierce: \u00a77Bolt hits 2nd target for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.";
         if (item == Items.TRIDENT) return "\u00a7c5 DMG \u00a77| \u00a7bRange 3 \u00a77| \u00a7c2 AP \u00a77| \u00a73Water\n\u00a77No ammo needed. Returns after throwing.";
 
         // ── Food ──

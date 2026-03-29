@@ -24,7 +24,7 @@
       {"type": "minecraft:creeper", "weight": 5, "hp": 11, "attack": 4, "defense": 0, "range": 1},
       {"type": "minecraft:zombie", "weight": 4, "hp": 10, "attack": 3, "defense": 1, "range": 1}
     ],
-    "boss": {"type": "minecraft:spider", "hp": 35, "attack": 5, "defense": 2, "range": 1}
+    "boss": {"type": "minecraft:spider", "hp": 50, "attack": 5, "defense": 2, "range": 1}
   },
   "loot": [
     {"item": "minecraft:jungle_log", "weight": 8},
@@ -33,6 +33,10 @@
     {"item": "minecraft:melon_slice", "weight": 4},
     {"item": "minecraft:string", "weight": 5},
     {"item": "minecraft:melon_seeds", "weight": 3},
-    {"item": "minecraft:sugar_cane", "weight": 3}
+    {"item": "minecraft:sugar_cane", "weight": 3},
+    {"item": "minecraft:cobblestone", "weight": 4},
+    {"item": "minecraft:emerald", "weight": 2},
+    {"item": "minecraft:lapis_lazuli", "weight": 1},
+    {"item": "minecraft:leather", "weight": 3}
   ]
 }

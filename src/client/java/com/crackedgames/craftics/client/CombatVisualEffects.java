@@ -120,7 +120,7 @@ public class CombatVisualEffects {
      */
     public static void flashDamage() {
         screenFlashTicks = 8;
-        screenFlashColor = 0xBBFF0000; // high alpha red
+        screenFlashColor = 0x88FF0000; // toned-down red
     }
 
     /**

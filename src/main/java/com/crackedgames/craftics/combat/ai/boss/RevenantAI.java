@@ -52,7 +52,7 @@ public class RevenantAI extends BossAI {
                 actions.add(new EnemyAction.LineAttack(
                     charge.start(), charge.dx(), charge.dz(), charge.tiles().size(), chargeDmg));
                 if (isPhaseTwo()) {
-                    actions.add(new EnemyAction.CreateTerrain(charge.tiles(), TileType.FIRE, 1));
+                    actions.add(new EnemyAction.CreateTerrain(charge.tiles(), TileType.FIRE, 3));
                 }
                 EnemyAction resolved = actions.size() == 1 ? actions.get(0)
                     : new EnemyAction.CompositeAction(actions);
