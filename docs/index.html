@@ -46,9 +46,47 @@
 
   <!-- ============ DIMENSIONS ============ -->
 
-  <div style="text-align:center;padding:0 24px 32px;">
-    <img src="https://media.forgecdn.net/attachments/1605/54/screenshot-2026-03-29-202300.png" alt="Craftics Gameplay - Plains Boss" style="width:100%;max-width:900px;border-radius:8px;border:1px solid #d0d0d7;">
+  <div class="slideshow-container">
+    <div class="slideshow">
+      <img class="slide active" src="https://media.forgecdn.net/attachments/1605/54/screenshot-2026-03-29-202300.png" alt="Craftics Gameplay - Plains Boss">
+      <img class="slide" src="https://media.forgecdn.net/attachments/1599/855/screenshot-2026-03-26-110037.png" alt="Biome Selection Screen">
+      <img class="slide" src="https://media.forgecdn.net/attachments/1605/26/screenshot-2026-03-29-201518.png" alt="AP and Speed Display">
+      <img class="slide" src="https://media.forgecdn.net/attachments/1605/28/screenshot-2026-03-29-201552.png" alt="Attacking an Enemy">
+      <img class="slide" src="https://media.forgecdn.net/attachments/1605/29/screenshot-2026-03-29-201703.png" alt="Weapon Information">
+      <img class="slide" src="https://media.forgecdn.net/attachments/1605/32/screenshot-2026-03-29-201806.png" alt="Armor Sets">
+      <img class="slide" src="https://media.forgecdn.net/attachments/1605/36/screenshot-2026-03-29-201905.png" alt="Smithing Trims">
+      <img class="slide" src="https://media.forgecdn.net/attachments/1605/46/screenshot-2026-03-29-201944.png" alt="Goat Horns">
+      <img class="slide" src="https://media.forgecdn.net/attachments/1605/61/screenshot-2026-03-29-203301.png" alt="Hub Area">
+    </div>
+    <button class="slide-btn prev" onclick="changeSlide(-1)">&#10094;</button>
+    <button class="slide-btn next" onclick="changeSlide(1)">&#10095;</button>
+    <div class="slide-dots" id="slideDots"></div>
   </div>
+  <script>
+    (function() {
+      var slides = document.querySelectorAll('.slideshow .slide');
+      var dots = document.getElementById('slideDots');
+      var current = 0;
+      for (var i = 0; i < slides.length; i++) {
+        var dot = document.createElement('span');
+        dot.className = 'dot' + (i === 0 ? ' active' : '');
+        dot.setAttribute('data-index', i);
+        dot.onclick = function() { goToSlide(parseInt(this.getAttribute('data-index'))); };
+        dots.appendChild(dot);
+      }
+      window.changeSlide = function(dir) {
+        goToSlide((current + dir + slides.length) % slides.length);
+      };
+      function goToSlide(n) {
+        slides[current].classList.remove('active');
+        dots.children[current].classList.remove('active');
+        current = n;
+        slides[current].classList.add('active');
+        dots.children[current].classList.add('active');
+      }
+      setInterval(function() { window.changeSlide(1); }, 5000);
+    })();
+  </script>
 
   <!-- ============ PHILOSOPHY ============ -->
   <div class="philosophy-callout">
