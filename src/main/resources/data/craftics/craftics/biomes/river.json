@@ -20,8 +20,8 @@
       {"type": "minecraft:cod", "weight": 4, "hp": 2, "attack": 0, "defense": 0, "range": 1}
     ],
     "hostile": [
-      {"type": "minecraft:drowned", "weight": 7, "hp": 9, "attack": 3, "defense": 1, "range": 1},
-      {"type": "minecraft:zombie", "weight": 4, "hp": 9, "attack": 2, "defense": 0, "range": 1},
+      {"type": "minecraft:drowned", "weight": 10, "hp": 9, "attack": 3, "defense": 1, "range": 1},
+      {"type": "minecraft:zombie", "weight": 2, "hp": 9, "attack": 2, "defense": 0, "range": 1},
       {"type": "minecraft:skeleton", "weight": 3, "hp": 7, "attack": 3, "defense": 0, "range": 3}
     ],
     "boss": {"type": "minecraft:drowned", "hp": 45, "attack": 5, "defense": 2, "range": 1}

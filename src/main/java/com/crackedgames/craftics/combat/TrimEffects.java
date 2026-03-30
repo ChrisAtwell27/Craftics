@@ -28,7 +28,7 @@ public class TrimEffects {
         ATTACK_RANGE, MAX_HP, ARMOR_PEN, REGEN, ALLY_DAMAGE,
         STEALTH_RANGE, BURN_REDUCTION, WATER_DAMAGE_REDUCTION,
         // Damage-type-specific power bonuses
-        SWORD_POWER, CLEAVING_POWER, BLUNT_POWER, WATER_POWER, MAGIC_POWER
+        SWORD_POWER, CLEAVING_POWER, BLUNT_POWER, WATER_POWER, SPECIAL_POWER
     }
 
     /** Full set bonus names. */
@@ -131,7 +131,7 @@ public class TrimEffects {
             case "vex"       -> Bonus.ARMOR_PEN;
             case "tide"      -> Bonus.REGEN;
             case "snout"     -> Bonus.CLEAVING_POWER;
-            case "rib"       -> Bonus.MAGIC_POWER;
+            case "rib"       -> Bonus.SPECIAL_POWER;
             case "spire"     -> Bonus.LUCK;
             case "wayfinder" -> Bonus.SPEED;
             case "shaper"    -> Bonus.DEFENSE;
@@ -164,7 +164,7 @@ public class TrimEffects {
             case "iron"      -> Bonus.DEFENSE;
             case "copper"    -> Bonus.SPEED;
             case "gold"      -> Bonus.LUCK;
-            case "lapis"     -> Bonus.MAGIC_POWER;
+            case "lapis"     -> Bonus.SPECIAL_POWER;
             case "emerald"   -> Bonus.AP;
             case "diamond"   -> Bonus.MELEE_POWER;
             case "netherite" -> Bonus.ARMOR_PEN;
@@ -263,7 +263,7 @@ public class TrimEffects {
             case "raiser"    -> "+1 ally damage per piece";
             case "host"      -> "+2 max HP per piece";
             case "flow"      -> "+1 Speed per piece";
-            case "bolt"      -> "+1 Sword Power per piece";
+            case "bolt"      -> "+1 Slashing Power per piece";
             default -> "";
         };
     }

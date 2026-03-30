@@ -139,9 +139,9 @@ public class LevelUpScreen extends Screen {
             context.drawCenteredTextWithShadow(this.textRenderer,
                 "\u00a76\u00a7l\u2694 CHOOSE AFFINITY \u2694", centerX, headerY, 0xFFAA00);
             context.drawCenteredTextWithShadow(this.textRenderer,
-                "\u00a7fPermanent +1 to a damage type", centerX, headerY + 14, 0xFFFFFF);
+                "\u00a7fPermanent +1 damage & special effect boost", centerX, headerY + 14, 0xFFFFFF);
             context.drawCenteredTextWithShadow(this.textRenderer,
-                "\u00a77Pick the weapon class you want to specialize in", centerX, headerY + 28, 0xAAAAAA);
+                "\u00a77Each point increases damage and unique ability chance", centerX, headerY + 28, 0xAAAAAA);
         }
 
         // Stat value labels (drawn to the right of each button)

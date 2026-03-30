@@ -13,6 +13,12 @@ import java.util.List;
 /**
  * Unique weapon abilities that trigger during attacks.
  * Each weapon type has a distinct combat identity.
+ *
+ * Affinity-scaled effects (base % + affinity points * bonus per point):
+ *   Slashing (Swords):  10% base + 5%/pt → sweep adjacent enemy
+ *   Cleaving (Axes):     5% base + 3%/pt → ignore armor on hit
+ *   Blunt:               5% base + 3%/pt → stun target
+ *   Water:               5% base + 3%/pt → knockback + Wet debuff
  */
 public class WeaponAbility {
 
@@ -25,6 +31,7 @@ public class WeaponAbility {
     /**
      * Get the AP cost for attacking with this weapon.
      * Most weapons cost 1 AP. Heavy weapons cost 2.
+     * Note: Trident AP cost is dynamic (1 melee / 2 throw) — handled in CombatManager.
      */
     public static int getAttackCost(Item weapon) {
         // Heavy weapons cost 2 AP
@@ -32,6 +39,7 @@ public class WeaponAbility {
         if (weapon == Items.CROSSBOW) return 2;
         if (weapon == Items.WOODEN_AXE || weapon == Items.STONE_AXE || weapon == Items.GOLDEN_AXE) return 2;
         if (weapon == Items.IRON_AXE || weapon == Items.DIAMOND_AXE || weapon == Items.NETHERITE_AXE) return 2;
+        // Trident defaults to 1 AP (melee); throw cost (2 AP) overridden in CombatManager
         return 1;
     }
 
@@ -41,7 +49,8 @@ public class WeaponAbility {
      */
     public static AttackResult applyAbility(ServerPlayerEntity player, Item weapon,
                                              CombatEntity target, GridArena arena,
-                                             int baseDamage) {
+                                             int baseDamage,
+                                             PlayerProgression.PlayerStats playerStats) {
         // No ability for fists, feathers, food, potions, or other non-weapon items
         if (!hasAbility(weapon)) {
             return new AttackResult(baseDamage, "");
@@ -51,37 +60,107 @@ public class WeaponAbility {
         List<CombatEntity> extraTargets = new ArrayList<>();
         int totalExtra = 0;
 
-        // === SWORDS: Sweeping Edge ===
-        // Iron Sword: sweep hits 1 adjacent enemy for half damage
-        // Diamond Sword: sweep + 30% crit chance (double damage on main target)
-        // Netherite Sword: sweep + execute (triple damage if target below 30% HP)
-        if (weapon == Items.IRON_SWORD || weapon == Items.DIAMOND_SWORD || weapon == Items.NETHERITE_SWORD) {
-            // Sweeping Edge: find one enemy adjacent to the target
-            CombatEntity sweepTarget = findAdjacentEnemy(arena, target);
-            if (sweepTarget != null) {
-                int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);
-                extraTargets.add(sweepTarget);
-                totalExtra += sweepDmg;
-                messages.add("§e⚔ Sweep! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " splash damage!");
+        // === SWORDS: Chance-based Sweep ===
+        // Base 10% chance + 5% per Slashing affinity point
+        // Sweeping Edge enchantment increases max sweep targets beyond 1
+        if (isSword(weapon)) {
+            int slashingPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.SLASHING) : 0;
+            double sweepChance = 0.10 + (slashingPts * 0.05);
+            int sweepingEdge = PlayerCombatStats.getSweepingEdge(player);
+            int maxSweepTargets = 1 + sweepingEdge; // base 1, +1 per enchant level
+
+            if (Math.random() < sweepChance) {
+                List<CombatEntity> sweepTargets = findAdjacentEnemies(arena, target, maxSweepTargets);
+                for (CombatEntity sweepTarget : sweepTargets) {
+                    int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);
+                    extraTargets.add(sweepTarget);
+                    totalExtra += sweepDmg;
+                    messages.add("§e⚔ Sweep! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " splash damage!");
+                }
+                if (sweepTargets.isEmpty()) {
+                    // Sweep triggered but no adjacent enemies
+                } else if (sweepingEdge > 0) {
+                    messages.add("§7  Sweeping Edge " + sweepingEdge + ": up to " + maxSweepTargets + " targets");
+                }
             }
 
+            // Diamond Sword: 30% crit (double damage)
             if (weapon == Items.DIAMOND_SWORD && Math.random() < 0.3) {
                 messages.add("§6✦ CRITICAL HIT! Double damage!");
                 return new AttackResult(baseDamage * 2 + totalExtra, messages, extraTargets);
             }
 
+            // Netherite Sword: execute (triple damage if target below 30% HP)
             if (weapon == Items.NETHERITE_SWORD && target.getCurrentHp() < target.getMaxHp() * 0.3) {
                 messages.add("§4✦ EXECUTE! Triple damage on wounded target!");
                 return new AttackResult(baseDamage * 3 + totalExtra, messages, extraTargets);
             }
         }
 
-        // === AXES: Stun ===
-        // Axes stun the target, they skip their next move
-        if (weapon == Items.WOODEN_AXE || weapon == Items.STONE_AXE || weapon == Items.IRON_AXE
-            || weapon == Items.DIAMOND_AXE || weapon == Items.GOLDEN_AXE || weapon == Items.NETHERITE_AXE) {
-            target.setStunned(true);
-            messages.add("§c✦ STUNNED! " + target.getDisplayName() + " can't move next turn!");
+        // === AXES: Chance-based Armor Ignore ===
+        // Base 5% chance + 3% per Cleaving affinity point
+        // When triggered, this attack ignores all target defense
+        if (isAxe(weapon)) {
+            int cleavingPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.CLEAVING) : 0;
+            double armorIgnoreChance = 0.05 + (cleavingPts * 0.03);
+
+            if (Math.random() < armorIgnoreChance) {
+                // Deal bonus damage equal to the target's defense (simulates ignoring armor)
+                int targetDef = target.getDefense();
+                if (targetDef > 0) {
+                    int bonusDmg = target.takeDamage(targetDef);
+                    totalExtra += bonusDmg;
+                    messages.add("§6✦ ARMOR CRUSH! Ignores " + targetDef + " defense for +" + bonusDmg + " damage!");
+                } else {
+                    messages.add("§6✦ ARMOR CRUSH! (target has no armor)");
+                }
+            }
+        }
+
+        // === BLUNT: Chance-based Stun ===
+        // Base 5% chance + 3% per Blunt affinity point
+        if (weapon == Items.MACE || weapon == Items.STICK || weapon == Items.BAMBOO) {
+            int bluntPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.BLUNT) : 0;
+            double stunChance = 0.05 + (bluntPts * 0.03);
+
+            if (Math.random() < stunChance) {
+                target.setStunned(true);
+                messages.add("§8✦ STUNNED! " + target.getDisplayName() + " can't move next turn!");
+            }
+        }
+
+        // === WATER: Chance-based Knockback + Wet ===
+        // Base 5% chance + 3% per Water affinity point
+        // Applies to Trident and Coral weapons
+        if (weapon == Items.TRIDENT || DamageType.isCoral(weapon)) {
+            int waterPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.WATER) : 0;
+            double waterChance = 0.05 + (waterPts * 0.03);
+
+            if (Math.random() < waterChance) {
+                // Apply Soaked (Wet) debuff
+                target.setSoakedTurns(Math.max(target.getSoakedTurns(), 2));
+                target.setSoakedAmplifier(Math.max(target.getSoakedAmplifier(), 0));
+
+                // Knockback 1 tile
+                GridPos pPos = arena.getPlayerGridPos();
+                int wdx = Integer.signum(target.getGridPos().x() - pPos.x());
+                int wdz = Integer.signum(target.getGridPos().z() - pPos.z());
+                GridPos kbPos = new GridPos(target.getGridPos().x() + wdx, target.getGridPos().z() + wdz);
+                boolean knockedBack = false;
+                if (arena.isInBounds(kbPos) && !arena.isOccupied(kbPos)) {
+                    var tile = arena.getTile(kbPos);
+                    if (tile != null && tile.isWalkable()) {
+                        arena.moveEntity(target, kbPos);
+                        if (target.getMobEntity() != null) {
+                            var bp = arena.gridToBlockPos(kbPos);
+                            target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                        }
+                        knockedBack = true;
+                    }
+                }
+                String kbMsg = knockedBack ? " + knocked back!" : "";
+                messages.add("§3✦ SOAKED! " + target.getDisplayName() + " is drenched and slowed" + kbMsg);
+            }
         }
 
         // === SPEARS: Pierce ===
@@ -168,6 +247,14 @@ public class WeaponAbility {
             int fireDmg = target.takeDamage(1);
             totalExtra += fireDmg;
             messages.add("\u00a76\u2716 Blaze Rod scorches " + target.getDisplayName() + " for +" + fireDmg + " fire damage!");
+
+            // Blunt stun check for blaze rod too
+            int bluntPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.BLUNT) : 0;
+            double stunChance = 0.05 + (bluntPts * 0.03);
+            if (Math.random() < stunChance) {
+                target.setStunned(true);
+                messages.add("§8✦ STUNNED! " + target.getDisplayName() + " can't move next turn!");
+            }
         }
 
         // === BREEZE ROD: Knockback 1 tile ===
@@ -186,6 +273,14 @@ public class WeaponAbility {
                     }
                     messages.add("\u00a7b\u2716 Breeze Rod knocks " + target.getDisplayName() + " back 1 tile!");
                 }
+            }
+
+            // Blunt stun check for breeze rod too
+            int bluntPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.BLUNT) : 0;
+            double stunChance = 0.05 + (bluntPts * 0.03);
+            if (Math.random() < stunChance) {
+                target.setStunned(true);
+                messages.add("§8✦ STUNNED! " + target.getDisplayName() + " can't move next turn!");
             }
         }
 
@@ -292,29 +387,49 @@ public class WeaponAbility {
         return new AttackResult(baseDamage + totalExtra, messages, extraTargets);
     }
 
-    private static CombatEntity findAdjacentEnemy(GridArena arena, CombatEntity target) {
+    /** Backwards-compatible overload for callers that don't have PlayerStats. */
+    public static AttackResult applyAbility(ServerPlayerEntity player, Item weapon,
+                                             CombatEntity target, GridArena arena,
+                                             int baseDamage) {
+        return applyAbility(player, weapon, target, arena, baseDamage, null);
+    }
+
+    /** Find up to maxTargets adjacent enemies around a target (for sweep). */
+    private static List<CombatEntity> findAdjacentEnemies(GridArena arena, CombatEntity target, int maxTargets) {
+        List<CombatEntity> found = new ArrayList<>();
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 if (dx == 0 && dz == 0) continue;
                 GridPos adj = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
                 CombatEntity other = arena.getOccupant(adj);
-                if (other != null && other.isAlive() && other != target) {
-                    return other;
+                if (other != null && other.isAlive() && other != target && !other.isAlly()) {
+                    found.add(other);
+                    if (found.size() >= maxTargets) return found;
                 }
             }
         }
-        return null;
+        return found;
+    }
+
+    private static boolean isSword(Item item) {
+        return item == Items.WOODEN_SWORD || item == Items.STONE_SWORD
+            || item == Items.IRON_SWORD || item == Items.GOLDEN_SWORD
+            || item == Items.DIAMOND_SWORD || item == Items.NETHERITE_SWORD;
+    }
+
+    private static boolean isAxe(Item item) {
+        return item == Items.WOODEN_AXE || item == Items.STONE_AXE || item == Items.IRON_AXE
+            || item == Items.DIAMOND_AXE || item == Items.GOLDEN_AXE || item == Items.NETHERITE_AXE;
     }
 
     /**
      * Check if a weapon has any special ability. Fists, feathers, food etc. do not.
      */
     public static boolean hasAbility(Item item) {
-        // Swords
-        if (item == Items.IRON_SWORD || item == Items.DIAMOND_SWORD || item == Items.NETHERITE_SWORD) return true;
+        // Swords (all tiers now have sweep chance)
+        if (isSword(item)) return true;
         // Axes
-        if (item == Items.WOODEN_AXE || item == Items.STONE_AXE || item == Items.IRON_AXE
-            || item == Items.DIAMOND_AXE || item == Items.GOLDEN_AXE || item == Items.NETHERITE_AXE) return true;
+        if (isAxe(item)) return true;
         // Spears
         if (isSpear(item)) return true;
         // Mace
@@ -323,8 +438,12 @@ public class WeaponAbility {
         if (item == Items.CROSSBOW) return true;
         // Blunt rods
         if (item == Items.BLAZE_ROD || item == Items.BREEZE_ROD) return true;
+        // Blunt basics
+        if (item == Items.STICK || item == Items.BAMBOO) return true;
         // Coral weapons
         if (DamageType.isCoral(item)) return true;
+        // Trident (Water affinity effect)
+        if (item == Items.TRIDENT) return true;
         return false;
     }
 

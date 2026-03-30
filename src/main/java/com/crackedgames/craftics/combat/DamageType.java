@@ -9,11 +9,11 @@ import net.minecraft.item.Items;
  * can specialize in specific types for bonus damage.
  */
 public enum DamageType {
-    SWORD("Sword", "\u00a7c"),
+    SLASHING("Slashing", "\u00a7c"),
     CLEAVING("Cleaving", "\u00a76"),
     BLUNT("Blunt", "\u00a78"),
     WATER("Water", "\u00a73"),
-    MAGIC("Magic", "\u00a7d"),
+    SPECIAL("Special", "\u00a7d"),
     PET("Pet", "\u00a7a"),
     RANGED("Ranged", "\u00a7b"),
     PHYSICAL("Physical", "\u00a77");
@@ -32,7 +32,7 @@ public enum DamageType {
         if (weapon == Items.WOODEN_SWORD || weapon == Items.STONE_SWORD
             || weapon == Items.IRON_SWORD || weapon == Items.GOLDEN_SWORD
             || weapon == Items.DIAMOND_SWORD || weapon == Items.NETHERITE_SWORD) {
-            return SWORD;
+            return SLASHING;
         }
         // Axes
         if (weapon == Items.WOODEN_AXE || weapon == Items.STONE_AXE
@@ -46,6 +46,18 @@ public enum DamageType {
         // Coral weapons — all Water type
         if (isCoral(weapon)) return WATER;
         if (weapon == Items.BOW || weapon == Items.CROSSBOW) return RANGED;
+        // Hoes — Special damage (effects/utility)
+        if (weapon == Items.WOODEN_HOE || weapon == Items.STONE_HOE
+            || weapon == Items.IRON_HOE || weapon == Items.GOLDEN_HOE
+            || weapon == Items.DIAMOND_HOE || weapon == Items.NETHERITE_HOE) {
+            return SPECIAL;
+        }
+        // Shovels — Pet damage (boosted by Pet affinity)
+        if (weapon == Items.WOODEN_SHOVEL || weapon == Items.STONE_SHOVEL
+            || weapon == Items.IRON_SHOVEL || weapon == Items.GOLDEN_SHOVEL
+            || weapon == Items.DIAMOND_SHOVEL || weapon == Items.NETHERITE_SHOVEL) {
+            return PET;
+        }
         return PHYSICAL;
     }
 
@@ -70,7 +82,7 @@ public enum DamageType {
      * Each armor set specializes in a particular damage type.
      *
      * Leather (Brawler)     → Physical +2
-     * Chainmail (Rogue)     → Sword +2
+     * Chainmail (Rogue)     → Slashing +2
      * Iron (Guard)          → Cleaving +2
      * Gold (Gambler)        → Magic +2
      * Diamond (Knight)      → Blunt +2
@@ -80,9 +92,9 @@ public enum DamageType {
     public static int getArmorSetBonus(String armorSet, DamageType type) {
         return switch (armorSet) {
             case "leather"   -> type == PHYSICAL ? 2 : 0;
-            case "chainmail" -> type == SWORD ? 2 : 0;
+            case "chainmail" -> type == SLASHING ? 2 : 0;
             case "iron"      -> type == CLEAVING ? 2 : 0;
-            case "gold"      -> type == MAGIC ? 2 : 0;
+            case "gold"      -> type == SPECIAL ? 2 : 0;
             case "diamond"   -> type == BLUNT ? 2 : 0;
             case "netherite" -> 1;
             case "turtle"    -> type == WATER ? 3 : 0;
@@ -98,17 +110,17 @@ public enum DamageType {
     public static int getTrimBonus(TrimEffects.TrimScan scan, DamageType type) {
         if (scan == null) return 0;
         int bonus = switch (type) {
-            case SWORD    -> scan.get(TrimEffects.Bonus.SWORD_POWER);
+            case SLASHING -> scan.get(TrimEffects.Bonus.SWORD_POWER);
             case CLEAVING -> scan.get(TrimEffects.Bonus.CLEAVING_POWER);
             case BLUNT    -> scan.get(TrimEffects.Bonus.BLUNT_POWER);
             case WATER    -> scan.get(TrimEffects.Bonus.WATER_POWER);
-            case MAGIC    -> scan.get(TrimEffects.Bonus.MAGIC_POWER);
+            case SPECIAL  -> scan.get(TrimEffects.Bonus.SPECIAL_POWER);
             case PET      -> scan.get(TrimEffects.Bonus.ALLY_DAMAGE);
             case RANGED   -> scan.get(TrimEffects.Bonus.RANGED_POWER);
             default       -> 0;
         };
         // Generic melee power stacks with specific melee types
-        if (type == SWORD || type == CLEAVING || type == BLUNT) {
+        if (type == SLASHING || type == CLEAVING || type == BLUNT) {
             bonus += scan.get(TrimEffects.Bonus.MELEE_POWER);
         }
         return bonus;
@@ -125,7 +137,7 @@ public enum DamageType {
         if (type == WATER && effects.hasEffect(CombatEffects.EffectType.WATER_BREATHING)) {
             bonus += 2;
         }
-        if (type == MAGIC && effects.hasEffect(CombatEffects.EffectType.FIRE_RESISTANCE)) {
+        if (type == SPECIAL && effects.hasEffect(CombatEffects.EffectType.FIRE_RESISTANCE)) {
             bonus += 1;
         }
         return bonus;
@@ -158,14 +170,14 @@ public enum DamageType {
     /** Map DamageType to the corresponding Affinity for level-up bonuses. */
     private static PlayerProgression.Affinity mapToAffinity(DamageType type) {
         return switch (type) {
-            case SWORD -> PlayerProgression.Affinity.SWORD;
+            case SLASHING -> PlayerProgression.Affinity.SLASHING;
             case CLEAVING -> PlayerProgression.Affinity.CLEAVING;
             case BLUNT -> PlayerProgression.Affinity.BLUNT;
             case RANGED -> PlayerProgression.Affinity.RANGED;
             case WATER -> PlayerProgression.Affinity.WATER;
-            case MAGIC -> PlayerProgression.Affinity.MAGIC;
+            case SPECIAL -> PlayerProgression.Affinity.SPECIAL;
             case PHYSICAL -> PlayerProgression.Affinity.PHYSICAL;
-            case PET -> null;
+            case PET -> PlayerProgression.Affinity.PET;
         };
     }
 }

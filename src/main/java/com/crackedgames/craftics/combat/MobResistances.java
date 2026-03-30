@@ -21,7 +21,7 @@ public class MobResistances {
     private static final Map<String, Set<DamageType>> IMMUNITIES = new HashMap<>();
 
     static {
-        // ── Undead: weak to BLUNT (crushing bones), resist SWORD ──
+        // ── Undead: weak to BLUNT (crushing bones), resist SLASHING ──
         vuln("minecraft:zombie",            DamageType.BLUNT, DamageType.CLEAVING);
 
         vuln("minecraft:husk",              DamageType.BLUNT, DamageType.WATER);
@@ -36,53 +36,53 @@ public class MobResistances {
         resist("minecraft:stray",          DamageType.RANGED, DamageType.WATER);
 
         vuln("minecraft:wither_skeleton",   DamageType.BLUNT, DamageType.WATER);
-        resist("minecraft:wither_skeleton", DamageType.MAGIC);
+        resist("minecraft:wither_skeleton", DamageType.SPECIAL);
 
         vuln("minecraft:phantom",           DamageType.RANGED);
-        resist("minecraft:phantom",         DamageType.SWORD);
+        resist("minecraft:phantom",         DamageType.SLASHING);
 
         // ── Arthropods: weak to CLEAVING (chopping legs), resist BLUNT ──
-        vuln("minecraft:spider",            DamageType.CLEAVING, DamageType.MAGIC);
+        vuln("minecraft:spider",            DamageType.CLEAVING, DamageType.SPECIAL);
         resist("minecraft:spider",          DamageType.BLUNT);
 
-        // ── Nether mobs: weak to WATER, resist MAGIC ──
+        // ── Nether mobs: weak to WATER, resist SPECIAL ──
         vuln("minecraft:blaze",             DamageType.WATER);
-        resist("minecraft:blaze",           DamageType.MAGIC, DamageType.RANGED);
+        resist("minecraft:blaze",           DamageType.SPECIAL, DamageType.RANGED);
 
-        vuln("minecraft:ghast",             DamageType.RANGED, DamageType.SWORD);
-        resist("minecraft:ghast",           DamageType.MAGIC);
+        vuln("minecraft:ghast",             DamageType.RANGED, DamageType.SLASHING);
+        resist("minecraft:ghast",           DamageType.SPECIAL);
 
         vuln("minecraft:magma_cube",        DamageType.WATER);
         resist("minecraft:magma_cube",      DamageType.BLUNT);
 
-        vuln("minecraft:hoglin",            DamageType.MAGIC);
+        vuln("minecraft:hoglin",            DamageType.SPECIAL);
         resist("minecraft:hoglin",          DamageType.BLUNT);
 
-        vuln("minecraft:piglin",            DamageType.MAGIC, DamageType.WATER);
+        vuln("minecraft:piglin",            DamageType.SPECIAL, DamageType.WATER);
         resist("minecraft:piglin",          DamageType.RANGED);
 
-        // ── Creeper: weak to RANGED (keep your distance), resist SWORD ──
+        // ── Creeper: weak to RANGED (keep your distance), resist SLASHING ──
         vuln("minecraft:creeper",           DamageType.RANGED, DamageType.CLEAVING);
-        resist("minecraft:creeper",         DamageType.SWORD);
+        resist("minecraft:creeper",         DamageType.SLASHING);
 
-        // ── Illagers: weak to SWORD (dueling), resist MAGIC ──
+        // ── Illagers: weak to SLASHING (dueling), resist SPECIAL ──
         vuln("minecraft:vindicator",        DamageType.RANGED);
         resist("minecraft:vindicator",      DamageType.CLEAVING);
 
-        vuln("minecraft:pillager",          DamageType.SWORD, DamageType.CLEAVING);
+        vuln("minecraft:pillager",          DamageType.SLASHING, DamageType.CLEAVING);
         resist("minecraft:pillager",        DamageType.RANGED);
 
-        vuln("minecraft:witch",             DamageType.SWORD, DamageType.CLEAVING);
-        resist("minecraft:witch",           DamageType.MAGIC);
+        vuln("minecraft:witch",             DamageType.SLASHING, DamageType.CLEAVING);
+        resist("minecraft:witch",           DamageType.SPECIAL);
         immune("minecraft:witch",           DamageType.WATER);
 
         // ── Endermen: weak to WATER (lore-accurate), resist RANGED ──
-        vuln("minecraft:enderman",          DamageType.WATER, DamageType.MAGIC);
+        vuln("minecraft:enderman",          DamageType.WATER, DamageType.SPECIAL);
         resist("minecraft:enderman",        DamageType.RANGED);
 
         // ── Shulker: weak to BLUNT (cracking the shell), resist RANGED ──
         vuln("minecraft:shulker",           DamageType.BLUNT);
-        resist("minecraft:shulker",         DamageType.RANGED, DamageType.SWORD);
+        resist("minecraft:shulker",         DamageType.RANGED, DamageType.SLASHING);
 
         // ── Animals / passives: no special resistances ──
         // (cows, pigs, sheep, chickens — neutral to everything)
@@ -90,18 +90,18 @@ public class MobResistances {
         // ── Ocelot: weak to BLUNT ──
         vuln("minecraft:ocelot",            DamageType.BLUNT);
 
-        // ── Wolf: weak to MAGIC ──
-        vuln("minecraft:wolf",              DamageType.MAGIC);
+        // ── Wolf: weak to SPECIAL ──
+        vuln("minecraft:wolf",              DamageType.SPECIAL);
 
-        // ── Goat: weak to SWORD, resist BLUNT ──
-        vuln("minecraft:goat",              DamageType.SWORD);
+        // ── Goat: weak to SLASHING, resist BLUNT ──
+        vuln("minecraft:goat",              DamageType.SLASHING);
         resist("minecraft:goat",            DamageType.BLUNT);
 
         // ── Bosses ──
         vuln("minecraft:warden",            DamageType.RANGED);
-        resist("minecraft:warden",          DamageType.BLUNT, DamageType.SWORD);
+        resist("minecraft:warden",          DamageType.BLUNT, DamageType.SLASHING);
 
-        vuln("minecraft:ender_dragon",      DamageType.RANGED, DamageType.MAGIC);
+        vuln("minecraft:ender_dragon",      DamageType.RANGED, DamageType.SPECIAL);
         resist("minecraft:ender_dragon",    DamageType.WATER);
     }
 

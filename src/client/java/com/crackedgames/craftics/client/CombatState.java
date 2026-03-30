@@ -216,6 +216,10 @@ public class CombatState {
     private static String playerEffects = "";
     private static int killStreak = 0;
 
+    // Party member HP list (empty in solo play)
+    public record PartyMemberHp(String uuid, String name, int hp, int maxHp, boolean dead) {}
+    private static java.util.List<PartyMemberHp> partyHpList = new java.util.ArrayList<>();
+
     // Hovered enemy inspection
     private static int hoveredEnemyId = -1;
     public static int getHoveredEnemyId() { return hoveredEnemyId; }
@@ -243,13 +247,15 @@ public class CombatState {
         lastKnownEnemyCount = 0;
         killStreak = 0;
         playerEffects = "";
+        partyHpList.clear();
     }
 
     public static void updateFromSync(int phase, int ap, int movePoints,
                                        int playerHp, int playerMaxHp, int turnNumber,
                                        int maxAp, int maxSpeed,
                                        int[] enemyData, String enemyTypeIds,
-                                       String playerEffects, int killStreak) {
+                                       String playerEffects, int killStreak,
+                                       String partyHpData) {
         // Save old HP before overwriting so we can detect damage/heal
         int oldHp = CombatState.playerHp;
 
@@ -312,7 +318,36 @@ public class CombatState {
                 com.crackedgames.craftics.client.guide.GuideBookData.unlockMob(typeIds[idx]);
             }
         }
+
+        // Parse party HP data — put self at top of the list
+        partyHpList.clear();
+        if (partyHpData != null && !partyHpData.isEmpty()) {
+            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+            String myUuid = mc.getSession().getUuidOrNull() != null
+                ? mc.getSession().getUuidOrNull().toString() : "";
+            PartyMemberHp self = null;
+            java.util.List<PartyMemberHp> others = new java.util.ArrayList<>();
+            for (String entry : partyHpData.split("\\|")) {
+                String[] parts = entry.split(",");
+                if (parts.length < 5) continue;
+                String uuid = parts[0];
+                String name = parts[1];
+                int hp = Integer.parseInt(parts[2]);
+                int mHp = Integer.parseInt(parts[3]);
+                boolean dead = "1".equals(parts[4]);
+                PartyMemberHp member = new PartyMemberHp(uuid, name, hp, mHp, dead);
+                if (uuid.equals(myUuid)) {
+                    self = member;
+                } else {
+                    others.add(member);
+                }
+            }
+            if (self != null) partyHpList.add(self);
+            partyHpList.addAll(others);
+        }
     }
+
+    public static java.util.List<PartyMemberHp> getPartyHpList() { return partyHpList; }
 
     public static int getPhase() { return phase; }
     public static int getApRemaining() { return apRemaining; }
@@ -344,7 +379,7 @@ public class CombatState {
     private static int playerLevel = 1;
     private static int unspentPoints = 0;
     private static int[] statPoints = new int[8]; // one per PlayerProgression.Stat ordinal
-    private static int[] affinityPoints = new int[7]; // one per PlayerProgression.Affinity ordinal (SWORD,CLEAVING,BLUNT,RANGED,WATER,MAGIC,PHYSICAL)
+    private static int[] affinityPoints = new int[8]; // one per PlayerProgression.Affinity ordinal (SLASHING,CLEAVING,BLUNT,RANGED,WATER,SPECIAL,PHYSICAL,PET)
 
     public static void updateStats(int level, int unspent, String statData, String affinityData) {
         playerLevel = level;

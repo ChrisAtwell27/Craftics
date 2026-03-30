@@ -12,7 +12,7 @@
     {
       "type": "patchouli:text",
       "title": "Ranged Weapons",
-      "text": "$(b)Bows & Crossbows$() - Attack from distance (range 3-4). Require arrows in your inventory. Each shot consumes one arrow.$(br2)$(b)Tridents$() - Versatile! Can be used in melee (range 1) or thrown (range 3).$(br2)$(b)Eggs & Snowballs$() - Low damage but can be used as items (right-click)."
+      "text": "$(b)Bows & Crossbows$() - Attack from distance (range 3-4). Require arrows in your inventory. Each shot consumes one arrow.$(br2)$(b)Tridents$() - Melee stab (1 AP) when adjacent, or throw (2 AP) in straight/diagonal lines. Thrown tridents lodge in the ground and must be retrieved. $(b)Loyalty$() returns it. $(b)Riptide$() dashes through enemies. $(b)Channeling$() strikes lightning.$(br2)$(b)Eggs & Snowballs$() - Low damage but can be used as items (right-click)."
     }
   ]
 }

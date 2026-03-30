@@ -62,9 +62,9 @@ public class CombatInputHandler {
         Item held = client.player.getMainHandStack().getItem();
 
         if (held == Items.FEATHER) return ActionMode.MOVE;
-        if (held == Items.BOW || held == Items.CROSSBOW) return ActionMode.RANGED_ATTACK;
+        if (held == Items.BOW || held == Items.CROSSBOW || held == Items.TRIDENT) return ActionMode.RANGED_ATTACK;
         if (SWORDS.contains(held) || AXES.contains(held) || SPEARS.contains(held)
-            || held == Items.MACE || held == Items.TRIDENT)
+            || held == Items.MACE)
             return ActionMode.MELEE_ATTACK;
         if (FOODS.contains(held) || USE_ITEMS.contains(held)
             || com.crackedgames.craftics.combat.ItemUseHandler.isUsableItem(held))

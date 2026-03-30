@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Drowned AI: Aquatic fighter with 50/50 trident variant.
- * - 50% of drowned spawn with tridents (determined by entity instance)
+ * Drowned AI: Aquatic fighter with 70% trident variant.
+ * - 70% of drowned spawn with tridents (determined by entity instance)
  * - TRIDENT THROW: ranged attack at range 3 with cardinal LOS
  * - WATER SPEED: double speed on water tiles
  * - Non-trident drowned are pure melee rushers
@@ -24,9 +24,9 @@ public class DrownedAI implements EnemyAI {
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
-        // Determine trident on first call (50/50 per drowned instance)
+        // Determine trident on first call (70% chance per drowned instance)
         if (hasTrident == null) {
-            hasTrident = RNG.nextBoolean();
+            hasTrident = RNG.nextDouble() < 0.7;
         }
 
         GridPos myPos = self.getGridPos();

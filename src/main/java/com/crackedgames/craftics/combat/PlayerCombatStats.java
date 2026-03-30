@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.combat;
 
+import com.crackedgames.craftics.core.GridPos;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.enchantment.Enchantment;
@@ -57,6 +58,20 @@ public class PlayerCombatStats {
         if (weapon == Items.DEAD_TUBE_CORAL_FAN || weapon == Items.DEAD_BRAIN_CORAL_FAN
             || weapon == Items.DEAD_BUBBLE_CORAL_FAN || weapon == Items.DEAD_FIRE_CORAL_FAN
             || weapon == Items.DEAD_HORN_CORAL_FAN) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralDead();
+        // Hoes — low base damage, Special type (effects/utility)
+        if (weapon == Items.WOODEN_HOE) return 1;
+        if (weapon == Items.STONE_HOE) return 1;
+        if (weapon == Items.IRON_HOE) return 2;
+        if (weapon == Items.GOLDEN_HOE) return 2;
+        if (weapon == Items.DIAMOND_HOE) return 3;
+        if (weapon == Items.NETHERITE_HOE) return 3;
+        // Shovels — moderate damage, Pet type (boosted by Pet affinity)
+        if (weapon == Items.WOODEN_SHOVEL) return 2;
+        if (weapon == Items.STONE_SHOVEL) return 3;
+        if (weapon == Items.IRON_SHOVEL) return 4;
+        if (weapon == Items.GOLDEN_SHOVEL) return 3;
+        if (weapon == Items.DIAMOND_SHOVEL) return 5;
+        if (weapon == Items.NETHERITE_SHOVEL) return 6;
         return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgFist();
     }
 
@@ -67,12 +82,27 @@ public class PlayerCombatStats {
     /** Crossbow uses special rook pattern — return -1 to signal unlimited cardinal range. */
     public static final int RANGE_CROSSBOW_ROOK = -1;
 
+    /** Max throw range for trident (cardinal/diagonal line). */
+    public static final int TRIDENT_THROW_RANGE = 5;
+
     public static int getWeaponRange(ServerPlayerEntity player) {
         Item weapon = player.getMainHandStack().getItem();
         if (weapon == Items.BOW && hasArrows(player)) return 3;
         if (weapon == Items.CROSSBOW && hasArrows(player)) return RANGE_CROSSBOW_ROOK;
-        if (weapon == Items.TRIDENT) return 3;
+        // Trident: melee at range 1; throw handled separately in CombatManager
+        if (weapon == Items.TRIDENT) return TRIDENT_THROW_RANGE;
         return 1; // melee
+    }
+
+    /** Check if a target is on a valid straight/diagonal line from the player. */
+    public static boolean isInTridentLine(GridPos from, GridPos to) {
+        int dx = to.x() - from.x();
+        int dz = to.z() - from.z();
+        if (dx == 0 && dz == 0) return false;
+        // Cardinal: same row or column
+        if (dx == 0 || dz == 0) return true;
+        // Diagonal: |dx| == |dz|
+        return Math.abs(dx) == Math.abs(dz);
     }
 
     /** Check if target is reachable by crossbow rook pattern (same row or column, clear line). */
@@ -379,6 +409,23 @@ public class PlayerCombatStats {
     /** Wind Burst: increased knockback range (+1 tile per level). */
     public static int getWindBurst(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:wind_burst");
+    }
+
+    // ─── Trident enchantments ──────────────────────────────────────────
+
+    /** Riptide: dash through enemies instead of throwing. Level determines damage/knockback. */
+    public static int getRiptide(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:riptide");
+    }
+
+    /** Channeling: lightning strike on thrown hit. Level determines chain count. */
+    public static int getChanneling(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:channeling");
+    }
+
+    /** Loyalty: trident returns after throwing instead of landing on the ground. */
+    public static int getLoyalty(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:loyalty");
     }
 
     // ─── Tool enchantments ──────────────────────────────────────────────

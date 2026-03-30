@@ -25,11 +25,11 @@ import java.util.Map;
 public class DamageTypePanel {
 
     // ARGB colors for each damage type bar (matching DamageType color codes)
-    private static final int COLOR_SWORD    = 0xFFFF5555; // red
+    private static final int COLOR_SLASHING    = 0xFFFF5555; // red
     private static final int COLOR_CLEAVING = 0xFFFFAA00; // orange
     private static final int COLOR_BLUNT    = 0xFF888888; // gray
     private static final int COLOR_WATER    = 0xFF5555FF; // blue
-    private static final int COLOR_MAGIC    = 0xFFFF55FF; // pink
+    private static final int COLOR_SPECIAL    = 0xFFFF55FF; // pink
     private static final int COLOR_PET      = 0xFF55FF55; // green
     private static final int COLOR_RANGED   = 0xFF55FFFF; // cyan
     private static final int COLOR_PHYSICAL = 0xFFAAAAAA; // light gray
@@ -59,9 +59,9 @@ public class DamageTypePanel {
                 if (entry.getValue() >= 2) {
                     DamageType affinity = switch (entry.getKey()) {
                         case "leather" -> DamageType.PHYSICAL;
-                        case "chainmail" -> DamageType.SWORD;
+                        case "chainmail" -> DamageType.SLASHING;
                         case "iron" -> DamageType.CLEAVING;
-                        case "gold" -> DamageType.MAGIC;
+                        case "gold" -> DamageType.SPECIAL;
                         case "diamond" -> DamageType.BLUNT;
                         default -> null;
                     };
@@ -101,10 +101,10 @@ public class DamageTypePanel {
         int lineHeight = 14;
         int maxBonus = 8; // max expected bonus for scaling bars
 
-        DamageType[] types = { DamageType.SWORD, DamageType.CLEAVING, DamageType.BLUNT,
-            DamageType.RANGED, DamageType.WATER, DamageType.MAGIC, DamageType.PHYSICAL, DamageType.PET };
-        int[] colors = { COLOR_SWORD, COLOR_CLEAVING, COLOR_BLUNT,
-            COLOR_RANGED, COLOR_WATER, COLOR_MAGIC, COLOR_PHYSICAL, COLOR_PET };
+        DamageType[] types = { DamageType.SLASHING, DamageType.CLEAVING, DamageType.BLUNT,
+            DamageType.RANGED, DamageType.WATER, DamageType.SPECIAL, DamageType.PHYSICAL, DamageType.PET };
+        int[] colors = { COLOR_SLASHING, COLOR_CLEAVING, COLOR_BLUNT,
+            COLOR_RANGED, COLOR_WATER, COLOR_SPECIAL, COLOR_PHYSICAL, COLOR_PET };
 
         for (int i = 0; i < types.length; i++) {
             DamageType type = types[i];
@@ -148,9 +148,9 @@ public class DamageTypePanel {
         // Full armor set bonus
         bonus += switch (armorSet) {
             case "leather"   -> type == DamageType.PHYSICAL ? 2 : 0;
-            case "chainmail" -> type == DamageType.SWORD ? 2 : 0;
+            case "chainmail" -> type == DamageType.SLASHING ? 2 : 0;
             case "iron"      -> type == DamageType.CLEAVING ? 2 : 0;
-            case "gold"      -> type == DamageType.MAGIC ? 2 : 0;
+            case "gold"      -> type == DamageType.SPECIAL ? 2 : 0;
             case "diamond"   -> type == DamageType.BLUNT ? 2 : 0;
             case "netherite" -> 1;
             case "turtle"    -> type == DamageType.WATER ? 3 : 0;
@@ -164,11 +164,11 @@ public class DamageTypePanel {
 
         // Trim bonuses
         String bonusKey = switch (type) {
-            case SWORD    -> "SWORD_POWER";
+            case SLASHING -> "SWORD_POWER";
             case CLEAVING -> "CLEAVING_POWER";
             case BLUNT    -> "BLUNT_POWER";
             case WATER    -> "WATER_POWER";
-            case MAGIC    -> "MAGIC_POWER";
+            case SPECIAL  -> "SPECIAL_POWER";
             case PET      -> "ALLY_DAMAGE";
             case RANGED   -> "RANGED_POWER";
             default       -> null;
@@ -177,18 +177,18 @@ public class DamageTypePanel {
             bonus += trimBonuses.getOrDefault(bonusKey, 0);
         }
         // Generic melee power stacks with melee types
-        if (type == DamageType.SWORD || type == DamageType.CLEAVING || type == DamageType.BLUNT) {
+        if (type == DamageType.SLASHING || type == DamageType.CLEAVING || type == DamageType.BLUNT) {
             bonus += trimBonuses.getOrDefault("MELEE_POWER", 0);
         }
 
         // Affinity points from level-up choices
         int affinityOrdinal = switch (type) {
-            case SWORD -> 0;
+            case SLASHING -> 0;
             case CLEAVING -> 1;
             case BLUNT -> 2;
             case RANGED -> 3;
             case WATER -> 4;
-            case MAGIC -> 5;
+            case SPECIAL -> 5;
             case PHYSICAL -> 6;
             case PET -> -1;
         };
@@ -264,7 +264,7 @@ public class DamageTypePanel {
             case "vex"       -> "ARMOR_PEN";
             case "tide"      -> "REGEN";
             case "snout"     -> "CLEAVING_POWER";
-            case "rib"       -> "MAGIC_POWER";
+            case "rib"       -> "SPECIAL_POWER";
             case "spire"     -> "LUCK";
             case "wayfinder" -> "SPEED";
             case "shaper"    -> "DEFENSE";
@@ -283,7 +283,7 @@ public class DamageTypePanel {
             case "iron"      -> "DEFENSE";
             case "copper"    -> "SPEED";
             case "gold"      -> "LUCK";
-            case "lapis"     -> "MAGIC_POWER";
+            case "lapis"     -> "SPECIAL_POWER";
             case "emerald"   -> "AP";
             case "diamond"   -> "MELEE_POWER";
             case "netherite" -> "ARMOR_PEN";

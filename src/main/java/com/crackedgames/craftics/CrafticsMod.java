@@ -615,7 +615,7 @@ public class CrafticsMod implements ModInitializer {
 
             // /craftics force_event <event> — force the next between-level event
             var forceEventNode = CommandManager.literal("force_event");
-            String[] eventNames = {"ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "trader", "none"};
+            String[] eventNames = {"ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "none"};
             for (String eventName : eventNames) {
                 forceEventNode.then(CommandManager.literal(eventName).executes(ctx -> {
                     ServerPlayerEntity p = ctx.getSource().getPlayerOrThrow();
@@ -660,6 +660,73 @@ public class CrafticsMod implements ModInitializer {
             registerWorldCommands(root);
 
             dispatcher.register(root);
+
+            // === Shortcut commands ===
+
+            // /new and /craftics new — create a new personal island
+            var shortcutNewCmd = (com.mojang.brigadier.Command<ServerCommandSource>) (ctx -> {
+                ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                ServerWorld overworld = player.getServerWorld();
+                CrafticsSavedData data = CrafticsSavedData.get(overworld);
+
+                if (data.hasPersonalWorld(player.getUuid())) {
+                    ctx.getSource().sendError(Text.literal("\u00a7cYou already have a personal world! Use \u00a7e/home\u00a7c to go there."));
+                    return 0;
+                }
+
+                int slot = data.allocateWorldSlot(player.getUuid());
+                net.minecraft.util.math.BlockPos hubCenter = data.getHubOrigin(player.getUuid());
+                HubRoomBuilder.build(overworld, hubCenter);
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+                pd.personalHubBuilt = true;
+                pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
+                data.markDirty();
+
+                player.requestTeleport(hubCenter.getX() + 0.5, hubCenter.getY(), hubCenter.getZ() + 0.5);
+                ctx.getSource().sendFeedback(() -> Text.literal(
+                    "\u00a7a\u00a7l\u2726 Personal world created! \u00a7r\u00a7aUse \u00a7e/home\u00a7a to return anytime."), true);
+                return 1;
+            });
+            dispatcher.register(CommandManager.literal("new").executes(shortcutNewCmd));
+            dispatcher.register(CommandManager.literal("craftics").then(
+                CommandManager.literal("new").executes(shortcutNewCmd)));
+
+            // /home and /craftics home — teleport to personal hub
+            var shortcutHomeCmd = (com.mojang.brigadier.Command<ServerCommandSource>) (ctx -> {
+                ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                ServerWorld overworld = player.getServerWorld();
+                CrafticsSavedData data = CrafticsSavedData.get(overworld);
+
+                if (!data.hasPersonalWorld(player.getUuid())) {
+                    ctx.getSource().sendError(Text.literal(
+                        "\u00a7cYou don't have a personal world yet. Use \u00a7e/new\u00a7c to create one."));
+                    return 0;
+                }
+
+                CombatManager cm = CombatManager.get(player);
+                if (cm.isActive()) cm.endCombat();
+
+                net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(player.getUuid());
+                player.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+                player.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+                ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported home."), false);
+                return 1;
+            });
+            dispatcher.register(CommandManager.literal("home").executes(shortcutHomeCmd));
+            dispatcher.register(CommandManager.literal("craftics").then(
+                CommandManager.literal("home").executes(shortcutHomeCmd)));
+
+            // /lobby — shortcut to central lobby
+            dispatcher.register(CommandManager.literal("lobby").executes(ctx -> {
+                ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                CombatManager cm = CombatManager.get(player);
+                if (cm.isActive()) cm.endCombat();
+
+                player.requestTeleport(0.5, 65, 0.5);
+                player.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+                ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to the lobby."), false);
+                return 1;
+            }));
         });
     }
 

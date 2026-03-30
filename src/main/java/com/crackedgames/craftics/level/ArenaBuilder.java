@@ -555,11 +555,16 @@ public class ArenaBuilder {
                                             int w, int h, GridTile[][] tiles) {
         for (int x = 0; x < w; x++) {
             for (int z = 0; z < h; z++) {
-                world.setBlockState(new BlockPos(ox + x, oy, oz + z),
-                    tiles[x][z].getBlockType().getDefaultState(), SET_FLAGS);
                 set(world, ox + x, oy - 1, oz + z, Blocks.STONE);
                 if (!tiles[x][z].isWalkable() && !tiles[x][z].isWater()) {
+                    // Obstacles: floor block at oy, obstacle block at oy+1
+                    world.setBlockState(new BlockPos(ox + x, oy, oz + z),
+                        Blocks.STONE.getDefaultState(), SET_FLAGS);
                     set(world, ox + x, oy + 1, oz + z, tiles[x][z].getBlockType());
+                } else {
+                    // Walkable tiles: tile block at oy, clear oy+1
+                    world.setBlockState(new BlockPos(ox + x, oy, oz + z),
+                        tiles[x][z].getBlockType().getDefaultState(), SET_FLAGS);
                 }
             }
         }

@@ -67,6 +67,7 @@ public class CombatEntity {
     public int getAttackPower() { return Math.max(0, attackPower + attackBoost - attackPenalty); }
     public int getDefense() { return defense + defenseBoost; }
     public int getRange() { return rangeOverride >= 0 ? rangeOverride : range; }
+    public int getAttackBoost() { return attackBoost; }
     public void setAttackBoost(int boost) { this.attackBoost = boost; }
     public void setDefenseBoost(int boost) { this.defenseBoost = boost; }
     public void setRangeOverride(int r) { this.rangeOverride = r; }
@@ -76,6 +77,21 @@ public class CombatEntity {
     /** Minimum manhattan distance from a point to any tile this entity occupies. */
     public int minDistanceTo(GridPos from) {
         return minDistanceFromSizedEntity(gridPos, size, from);
+    }
+
+    /** Returns the occupied tile of this entity closest to the given point. */
+    public GridPos nearestTileTo(GridPos from) {
+        if (size <= 1) return gridPos;
+        GridPos best = gridPos;
+        int bestDist = Integer.MAX_VALUE;
+        for (int dx = 0; dx < size; dx++) {
+            for (int dz = 0; dz < size; dz++) {
+                GridPos tile = new GridPos(gridPos.x() + dx, gridPos.z() + dz);
+                int dist = Math.abs(from.x() - tile.x()) + Math.abs(from.z() - tile.z());
+                if (dist < bestDist) { bestDist = dist; best = tile; }
+            }
+        }
+        return best;
     }
 
     /** Minimum manhattan distance from any tile of a sized entity at origin to a target point. */

@@ -45,13 +45,14 @@ public class PlayerProgression extends PersistentState {
      */
     /** Damage affinity types that players can upgrade on level-up. */
     public enum Affinity {
-        SWORD("Sword", "\u00a7c\u2694", "+1 Sword damage"),
-        CLEAVING("Cleaving", "\u00a76\u2716", "+1 Cleaving damage"),
-        BLUNT("Blunt", "\u00a78\u2B24", "+1 Blunt damage"),
+        SLASHING("Slashing", "\u00a7c\u2694", "+1 dmg, +5% sweep chance"),
+        CLEAVING("Cleaving", "\u00a76\u2716", "+1 dmg, +3% armor ignore"),
+        BLUNT("Blunt", "\u00a78\u2B24", "+1 dmg, +3% stun chance"),
         RANGED("Ranged", "\u00a7b\u27B3", "+1 Ranged damage"),
-        WATER("Water", "\u00a73\u2248", "+1 Water damage"),
-        MAGIC("Magic", "\u00a7d\u2728", "+1 Magic damage"),
-        PHYSICAL("Physical", "\u00a77\u270A", "+1 Physical damage");
+        WATER("Water", "\u00a73\u2248", "+1 dmg, +3% knockback & Wet"),
+        SPECIAL("Special", "\u00a7d\u2728", "+1 dmg, +3% free AP on use"),
+        PET("Pet", "\u00a7a\uD83D\uDC3E", "+1 dmg, +3% pet stat boost"),
+        PHYSICAL("Physical", "\u00a77\u270A", "+1 dmg, +3% counterattack");
 
         public final String displayName;
         public final String icon;
@@ -218,7 +219,9 @@ public class PlayerProgression extends PersistentState {
                     String[] kv = entry.split("=", 2);
                     if (kv.length == 2) {
                         try {
-                            Affinity a = Affinity.valueOf(kv[0]);
+                            // Migration: SWORD was renamed to SLASHING
+                            String affinityName = "SWORD".equals(kv[0]) ? "SLASHING" : kv[0];
+                            Affinity a = Affinity.valueOf(affinityName);
                             ps.affinityPoints.put(a, Integer.parseInt(kv[1]));
                         } catch (Exception ignored) {}
                     }

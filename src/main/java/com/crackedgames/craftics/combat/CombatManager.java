@@ -9,6 +9,7 @@ import com.crackedgames.craftics.network.*;
 import com.crackedgames.craftics.world.CrafticsSavedData;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.ItemEnchantmentsComponent;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.SpawnReason;
 import net.minecraft.entity.mob.MobEntity;
@@ -140,6 +141,8 @@ public class CombatManager {
     private int apRemaining;
     private int movePointsRemaining;
     private int turnNumber;
+    private int peacefulTurnCount = 0; // consecutive turns with no hostile enemies
+    private boolean endTurnHintSent = false; // avoid spamming the "press R" hint
     private ServerPlayerEntity player;
     private final CombatEffects combatEffects = new CombatEffects();
 
@@ -167,6 +170,9 @@ public class CombatManager {
     /** Maps non-leader party member UUID → leader UUID for action routing. */
     private static final java.util.Map<java.util.UUID, java.util.UUID> PARTY_COMBAT_LEADER =
         new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Tracks party members who have died during this combat level (spectating). */
+    private final java.util.Set<java.util.UUID> deadPartyMembers = new java.util.HashSet<>();
 
     /** Add a party member to this combat (includes leader — call for every participant). */
     public void addPartyMember(ServerPlayerEntity member) {
@@ -229,6 +235,7 @@ public class CombatManager {
             PARTY_COMBAT_LEADER.remove(member.getUuid());
         }
         partyPlayers.clear();
+        deadPartyMembers.clear();
     }
 
     /** Get online party members via EventManager (survives endCombat). Falls back to single player. */
@@ -247,6 +254,17 @@ public class CombatManager {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(leader);
         BlockPos startPos = newArena.getPlayerStartBlockPos();
         EnterCombatPayload enterPayload = makeEnterPayload(newArena);
+
+        // Revive any dead party members with 2 hearts for the next level
+        for (ServerPlayerEntity member : members) {
+            if (deadPartyMembers.remove(member.getUuid())) {
+                member.setHealth(4); // 2 hearts
+                member.clearStatusEffects();
+                member.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
+                sendMessageTo(member, "§a§l\u2726 REVIVED! §rYou're back with 2 hearts!");
+            }
+        }
+
         for (ServerPlayerEntity member : members) {
             member.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
             ServerPlayNetworking.send(member, enterPayload);
@@ -333,6 +351,12 @@ public class CombatManager {
     // Test range mode — infinite AP/movement, no rewards or penalties
     private boolean testRange = false;
     public boolean isTestRange() { return testRange; }
+
+    // Dropped trident tracking — when thrown without Loyalty, the trident lands on the arena
+    private GridPos droppedTridentPos = null;
+    private ItemStack droppedTridentStack = null;
+    private net.minecraft.entity.ItemEntity droppedTridentEntity = null; // visual item entity on the ground
+    public GridPos getDroppedTridentPos() { return droppedTridentPos; }
 
     // Shield brace state — active during enemy turn when player ended turn with shield equipped
     private boolean shieldBraced = false;
@@ -1056,12 +1080,8 @@ public class CombatManager {
         if (pendingAttackAction != null) return;
 
         Item weapon = player.getMainHandStack().getItem();
-        int attackCost = WeaponAbility.getAttackCost(weapon);
-        if (apRemaining < attackCost) {
-            sendMessage("§cNeed " + attackCost + " AP to attack! (have " + apRemaining + ")");
-            return;
-        }
 
+        // Find target first (needed for trident mode detection)
         CombatEntity target = null;
         for (CombatEntity e : enemies) {
             if (e.getEntityId() == targetEntityId && e.isAlive()) {
@@ -1069,36 +1089,95 @@ public class CombatManager {
                 break;
             }
         }
-
         if (target == null) {
             sendMessage("§cNo valid target!");
             return;
         }
 
-        // Range check
-        int range = PlayerCombatStats.getWeaponRange(player);
         GridPos pPos = arena.getPlayerGridPos();
         GridPos tPos = target.getGridPos();
 
-        if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
-            // Crossbow: rook pattern — must be in same row/column with clear line
-            if (!PlayerCombatStats.isInCrossbowLine(arena, pPos, tPos)) {
-                sendMessage("§cCrossbow requires a clear straight line! (N/S/E/W only)");
+        // === TRIDENT MODE DETECTION ===
+        boolean isTridentMelee = false;
+        boolean isTridentThrow = false;
+        int tridentRiptideLevel = 0;
+        int tridentChannelingLevel = 0;
+        boolean tridentHasLoyalty = false;
+        // For multi-tile mobs, use the nearest occupied tile for line/distance checks
+        GridPos tridentAimTile = tPos;
+
+        if (weapon == Items.TRIDENT) {
+            tridentAimTile = target.nearestTileTo(pPos);
+            int chebyDist = Math.max(Math.abs(pPos.x() - tridentAimTile.x()), Math.abs(pPos.z() - tridentAimTile.z()));
+            tridentRiptideLevel = PlayerCombatStats.getRiptide(player);
+            tridentChannelingLevel = PlayerCombatStats.getChanneling(player);
+            tridentHasLoyalty = PlayerCombatStats.getLoyalty(player) > 0;
+
+            if (chebyDist <= 1) {
+                isTridentMelee = true;
+            } else if (tridentRiptideLevel > 0) {
+                // Riptide: validate direction is straight/diagonal, then dash
+                if (!PlayerCombatStats.isInTridentLine(pPos, tridentAimTile)) {
+                    sendMessage("§cRiptide requires a straight or diagonal line!");
+                    return;
+                }
+                if (apRemaining < 2) {
+                    sendMessage("§cNeed 2 AP for Riptide dash! (have " + apRemaining + ")");
+                    return;
+                }
+                handleRiptideDash(tridentRiptideLevel, pPos, tridentAimTile);
                 return;
-            }
-        } else {
-            boolean isRanged = PlayerCombatStats.isBow(player) || weapon == Items.TRIDENT;
-            // For multi-tile mobs, check distance to nearest occupied tile
-            int dist;
-            if (target.getSize() > 1) {
-                dist = target.minDistanceTo(pPos);
             } else {
-                dist = isRanged ? pPos.manhattanDistance(tPos)
-                    : Math.max(Math.abs(pPos.x() - tPos.x()), Math.abs(pPos.z() - tPos.z()));
+                isTridentThrow = true;
+                if (!PlayerCombatStats.isInTridentLine(pPos, tridentAimTile)) {
+                    sendMessage("§cTrident can only be thrown in straight or diagonal lines!");
+                    return;
+                }
+                int throwDist = Math.max(Math.abs(tridentAimTile.x() - pPos.x()), Math.abs(tridentAimTile.z() - pPos.z()));
+                if (throwDist > PlayerCombatStats.TRIDENT_THROW_RANGE) {
+                    sendMessage("§cOut of throw range! (max " + PlayerCombatStats.TRIDENT_THROW_RANGE + " tiles)");
+                    return;
+                }
             }
-            if (dist > range) {
-                sendMessage("§cTarget out of range! (distance: " + dist + ", range: " + range + ")");
-                return;
+        }
+
+        // AP cost: trident melee = 1, trident throw = 2, others from WeaponAbility
+        int attackCost;
+        if (isTridentMelee) {
+            attackCost = 1;
+        } else if (isTridentThrow) {
+            attackCost = 2;
+        } else {
+            attackCost = WeaponAbility.getAttackCost(weapon);
+        }
+        if (apRemaining < attackCost) {
+            sendMessage("§cNeed " + attackCost + " AP to attack! (have " + apRemaining + ")");
+            return;
+        }
+
+        // Range check (scaffold tile grants +1 range for ranged) — trident range already validated above
+        if (weapon != Items.TRIDENT) {
+            int range = PlayerCombatStats.getWeaponRange(player);
+            if (range > 1) range += getScaffoldRangeBonus(pPos);
+
+            if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
+                if (!PlayerCombatStats.isInCrossbowLine(arena, pPos, tPos)) {
+                    sendMessage("§cCrossbow requires a clear straight line! (N/S/E/W only)");
+                    return;
+                }
+            } else {
+                boolean isRanged = PlayerCombatStats.isBow(player);
+                int dist;
+                if (target.getSize() > 1) {
+                    dist = target.minDistanceTo(pPos);
+                } else {
+                    dist = isRanged ? pPos.manhattanDistance(tPos)
+                        : Math.max(Math.abs(pPos.x() - tPos.x()), Math.abs(pPos.z() - tPos.z()));
+                }
+                if (dist > range) {
+                    sendMessage("§cTarget out of range! (distance: " + dist + ", range: " + range + ")");
+                    return;
+                }
             }
         }
 
@@ -1121,7 +1200,21 @@ public class CombatManager {
             }
         }
 
-        apRemaining -= attackCost;
+        // Special affinity: chance to not consume AP (hoes / Special weapons)
+        boolean freeApProc = false;
+        if (DamageType.fromWeapon(weapon) == DamageType.SPECIAL) {
+            PlayerProgression.PlayerStats specialStats = PlayerProgression.get(
+                (ServerWorld) player.getEntityWorld()).getStats(player);
+            int specialPts = specialStats.getAffinityPoints(PlayerProgression.Affinity.SPECIAL);
+            double freeApChance = specialPts * 0.03; // 0% base + 3% per point
+            if (freeApChance > 0 && Math.random() < freeApChance) {
+                freeApProc = true;
+                sendMessage("\u00a7d\u2728 Magic Surge! Attack costs no AP!");
+            }
+        }
+        if (!freeApProc) {
+            apRemaining -= attackCost;
+        }
 
         // Apply 10 durability damage per attack (tactical combat is hard on weapons)
         ItemStack weaponStack = player.getMainHandStack();
@@ -1132,9 +1225,47 @@ public class CombatManager {
             }
         }
 
+        // Trident throw: remove from hand and drop on arena (unless Loyalty)
+        if (isTridentThrow && !tridentHasLoyalty) {
+            droppedTridentStack = player.getMainHandStack().copy();
+            // Calculate landing tile: one tile before the nearest target tile along throw direction
+            int ddx = Integer.signum(tridentAimTile.x() - pPos.x());
+            int ddz = Integer.signum(tridentAimTile.z() - pPos.z());
+            GridPos landPos = new GridPos(tridentAimTile.x() - ddx, tridentAimTile.z() - ddz);
+            // If landing tile is the player's tile (distance 2 throw), step forward instead
+            if (landPos.equals(pPos)) landPos = new GridPos(pPos.x() + ddx, pPos.z() + ddz);
+            // If landing tile is occupied or not walkable, search backward along throw line
+            if (arena.isOccupied(landPos) || !arena.isInBounds(landPos)
+                    || arena.getTile(landPos) == null || !arena.getTile(landPos).isWalkable()) {
+                // Walk backward from the aim tile to find the first free tile
+                GridPos fallback = null;
+                for (int step = 2; step <= 5; step++) {
+                    GridPos candidate = new GridPos(tridentAimTile.x() - ddx * step, tridentAimTile.z() - ddz * step);
+                    if (!arena.isInBounds(candidate)) break;
+                    if (candidate.equals(pPos)) continue;
+                    if (!arena.isOccupied(candidate)) {
+                        var tile = arena.getTile(candidate);
+                        if (tile != null && tile.isWalkable()) { fallback = candidate; break; }
+                    }
+                }
+                landPos = fallback != null ? fallback : tridentAimTile;
+            }
+            droppedTridentPos = landPos;
+            player.getMainHandStack().decrement(1);
+            // Spawn a visual item entity on the ground
+            ServerWorld dropWorld = (ServerWorld) player.getEntityWorld();
+            BlockPos dropBlock = arena.gridToBlockPos(landPos);
+            droppedTridentEntity = new net.minecraft.entity.ItemEntity(dropWorld,
+                dropBlock.getX() + 0.5, dropBlock.getY() + 0.2, dropBlock.getZ() + 0.5,
+                droppedTridentStack.copy());
+            droppedTridentEntity.setPickupDelay(Integer.MAX_VALUE); // prevent vanilla pickup
+            droppedTridentEntity.setNeverDespawn();
+            dropWorld.spawnEntity(droppedTridentEntity);
+            sendMessage("§3Trident lodges in the ground at (" + landPos.x() + ", " + landPos.z() + ")! Walk there to retrieve it.");
+        }
+
         // Pre-calculate damage before the delay (snapshot current stats)
         boolean isRangedWeapon = weapon == Items.BOW || weapon == Items.CROSSBOW;
-        boolean isTridentWeapon = weapon == Items.TRIDENT;
         int progBonus = isRangedWeapon ? getProgRangedBonus() : getProgMeleeBonus();
         DamageType damageType = DamageType.fromWeapon(weapon);
         PlayerProgression.PlayerStats attackerStats = PlayerProgression.get(
@@ -1209,7 +1340,10 @@ public class CombatManager {
         final boolean fUsedTriple = usedTriple;
         final double fMobResistMult = mobResistMult;
         final boolean fIsRangedWeapon = isRangedWeapon;
-        final boolean fIsTridentWeapon = isTridentWeapon;
+        final boolean fIsTridentThrow = isTridentThrow;
+        final boolean fIsTridentMelee = isTridentMelee;
+        final int fTridentChanneling = tridentChannelingLevel;
+        final boolean fTridentHasLoyalty = tridentHasLoyalty;
         final boolean fLuckCrit = luckCrit;
         final String fTippedEffect = tippedEffect;
         final int fFireAspect = fireAspect;
@@ -1219,6 +1353,7 @@ public class CombatManager {
         final Item fWeapon = weapon;
         final GridPos fPPos = pPos;
         final GridPos fTPos = tPos;
+        final PlayerProgression.PlayerStats fAttackerStats = attackerStats;
 
         // Trigger client animation immediately (damage visuals are already delayed on client)
         sendToAllParty(new CombatEventPayload(
@@ -1227,14 +1362,14 @@ public class CombatManager {
         ));
 
         // Spawn projectile immediately for ranged (it needs flight time)
-        if (isRangedWeapon || isTridentWeapon) {
+        if (isRangedWeapon || isTridentThrow) {
             player.getWorld().playSound(null, player.getBlockPos(),
                 weapon == Items.CROSSBOW ? net.minecraft.sound.SoundEvents.ITEM_CROSSBOW_SHOOT : net.minecraft.sound.SoundEvents.ENTITY_ARROW_SHOOT,
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
             BlockPos playerBlock = arena.gridToBlockPos(pPos);
             BlockPos targetBlockForProj = arena.gridToBlockPos(tPos);
             ProjectileSpawner.spawnPlayerProjectile(
-                (ServerWorld) player.getEntityWorld(), playerBlock, targetBlockForProj, isTridentWeapon);
+                (ServerWorld) player.getEntityWorld(), playerBlock, targetBlockForProj, isTridentThrow);
         }
 
         sendSync(); // Update AP display immediately
@@ -1296,8 +1431,19 @@ public class CombatManager {
             sendMessage("§6Hit " + fTarget.getDisplayName() + " for " + dealt + "!" + tripleMsg + critMsg + typeMsg + resistMsg);
 
             // Weapon ability (cleave, pierce, etc.)
-            WeaponAbility.AttackResult abilityResult = WeaponAbility.applyAbility(player, fWeapon, fTarget, arena, fBaseDamage);
+            WeaponAbility.AttackResult abilityResult = WeaponAbility.applyAbility(player, fWeapon, fTarget, arena, fBaseDamage, fAttackerStats);
             for (String msg : abilityResult.messages()) sendMessage(msg);
+
+            // === TRIDENT CHANNELING: Lightning strike on throw hit ===
+            if (fIsTridentThrow && fTridentChanneling > 0 && fTarget.isAlive()) {
+                applyChannelingLightning(fTarget, fTridentChanneling, fBaseDamage);
+            }
+
+            // === TRIDENT LOYALTY: Return after throw ===
+            if (fIsTridentThrow && fTridentHasLoyalty) {
+                returnDroppedTrident();
+                sendMessage("§b↺ Loyalty! Trident returns to your hand.");
+            }
 
             // Send REAL damage event (client will show damage number at this point)
             sendToAllParty(new CombatEventPayload(
@@ -1328,6 +1474,213 @@ public class CombatManager {
                 handleVictory();
             }
         };
+    }
+
+    // === TRIDENT: Riptide Dash ===
+    // Dashes the player in a straight line toward the target direction until hitting a wall.
+    // Damages and pushes all mobs out of the way. Strength scales with enchant level.
+    private void handleRiptideDash(int riptideLevel, GridPos pPos, GridPos tPos) {
+        apRemaining -= 2;
+
+        int ddx = Integer.signum(tPos.x() - pPos.x());
+        int ddz = Integer.signum(tPos.z() - pPos.z());
+
+        // Calculate dash path — move until hitting arena edge or obstacle
+        List<GridPos> dashPath = new ArrayList<>();
+        GridPos check = new GridPos(pPos.x() + ddx, pPos.z() + ddz);
+        while (arena.isInBounds(check)) {
+            var tile = arena.getTile(check);
+            if (tile == null || !tile.isWalkable()) break;
+            dashPath.add(check);
+            check = new GridPos(check.x() + ddx, check.z() + ddz);
+        }
+
+        if (dashPath.isEmpty()) {
+            sendMessage("§cNo room to dash!");
+            sendSync();
+            return;
+        }
+
+        // Apply durability
+        ItemStack weaponStack = player.getMainHandStack();
+        if (weaponStack.isDamageable()) {
+            weaponStack.damage(10, player, net.minecraft.entity.EquipmentSlot.MAINHAND);
+        }
+
+        // Calculate damage: base weapon damage + riptide level * 3
+        int riptideDamage = PlayerCombatStats.getAttackPower(player) + riptideLevel * 3;
+        riptideDamage = (int)(riptideDamage * CrafticsMod.CONFIG.playerDamageMultiplier());
+        int knockbackStrength = 1 + riptideLevel;
+
+        // Sound effect
+        player.getWorld().playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.ITEM_TRIDENT_THROW.value(),
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.8f);
+
+        // Process each tile in the dash path
+        List<CombatEntity> hitEnemies = new ArrayList<>();
+        GridPos finalPos = pPos;
+        for (GridPos dashTile : dashPath) {
+            // Check for enemy at this tile
+            CombatEntity enemy = arena.getOccupant(dashTile);
+            if (enemy != null && enemy.isAlive() && !enemy.isAlly()) {
+                int dealt = enemy.takeDamage(riptideDamage);
+                hitEnemies.add(enemy);
+                sendMessage("§3⚡ Riptide hits " + enemy.getDisplayName() + " for " + dealt + "!");
+
+                // Knockback: push enemy perpendicular or forward from dash direction
+                int kbDx = Integer.signum(enemy.getGridPos().x() - pPos.x());
+                int kbDz = Integer.signum(enemy.getGridPos().z() - pPos.z());
+                // Push in dash direction
+                if (kbDx == 0 && kbDz == 0) { kbDx = ddx; kbDz = ddz; }
+                GridPos kbPos = enemy.getGridPos();
+                for (int k = 0; k < knockbackStrength; k++) {
+                    GridPos nextKb = new GridPos(kbPos.x() + kbDx, kbPos.z() + kbDz);
+                    if (!arena.isInBounds(nextKb) || arena.isOccupied(nextKb)) break;
+                    var kbTile = arena.getTile(nextKb);
+                    if (kbTile == null || !kbTile.isWalkable()) break;
+                    kbPos = nextKb;
+                }
+                if (!kbPos.equals(enemy.getGridPos())) {
+                    arena.moveEntity(enemy, kbPos);
+                    if (enemy.getMobEntity() != null) {
+                        var bp = arena.gridToBlockPos(kbPos);
+                        enemy.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                    }
+                    sendMessage("§b💨 " + enemy.getDisplayName() + " knocked back " + knockbackStrength + " tiles!");
+                }
+
+                // Particles on hit
+                ServerWorld dashWorld = (ServerWorld) player.getEntityWorld();
+                BlockPos hitBlock = arena.gridToBlockPos(enemy.getGridPos());
+                dashWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH,
+                    hitBlock.getX() + 0.5, hitBlock.getY() + 1.0, hitBlock.getZ() + 0.5,
+                    10, 0.3, 0.3, 0.3, 0.1);
+            }
+
+            // Player can pass through (enemy was knocked away or tile is free)
+            if (!arena.isEnemyOccupied(dashTile)) {
+                finalPos = dashTile;
+            } else {
+                break; // can't pass through if enemy is still there (e.g. couldn't be knocked back)
+            }
+        }
+
+        // Move player to final dash position
+        arena.setPlayerGridPos(finalPos);
+        BlockPos endBlock = arena.gridToBlockPos(finalPos);
+        player.teleport((ServerWorld) player.getEntityWorld(),
+            endBlock.getX() + 0.5, endBlock.getY(), endBlock.getZ() + 0.5,
+            java.util.Collections.emptySet(), player.getYaw(), 0f);
+
+        // Dash trail particles
+        ServerWorld dashWorld = (ServerWorld) player.getEntityWorld();
+        for (GridPos tile : dashPath) {
+            if (tile.equals(finalPos) || dashPath.indexOf(tile) > dashPath.indexOf(finalPos)) break;
+            BlockPos trailBlock = arena.gridToBlockPos(tile);
+            dashWorld.spawnParticles(net.minecraft.particle.ParticleTypes.BUBBLE,
+                trailBlock.getX() + 0.5, trailBlock.getY() + 0.5, trailBlock.getZ() + 0.5,
+                5, 0.3, 0.2, 0.3, 0.05);
+        }
+
+        // Check deaths
+        for (CombatEntity hit : hitEnemies) checkAndHandleDeath(hit);
+
+        if (hitEnemies.isEmpty()) {
+            sendMessage("§3Riptide dash! No enemies in path.");
+        }
+
+        sendSync();
+        refreshHighlights();
+
+        // Check win
+        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            handleVictory();
+        }
+    }
+
+    // === TRIDENT: Channeling Lightning ===
+    // On throw hit: lightning strike on target. Higher levels chain to adjacent enemies.
+    // Deals burning damage, extra damage if target is Soaked.
+    private void applyChannelingLightning(CombatEntity target, int channelingLevel, int baseDamage) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        // Base lightning damage: 4 + channeling level * 2
+        int lightningDmg = 4 + channelingLevel * 2;
+
+        // Soaked bonus: double lightning damage
+        boolean targetSoaked = target.getSoakedTurns() > 0;
+        if (targetSoaked) lightningDmg *= 2;
+
+        int dealt = target.takeDamage(lightningDmg);
+
+        // Apply burning (2 turns)
+        target.setBurningTurns(Math.max(target.getBurningTurns(), 2));
+        target.setBurningDamage(Math.max(target.getBurningDamage(), 2));
+
+        // Lightning visual + sound
+        BlockPos targetBlock = arena.gridToBlockPos(target.getGridPos());
+        world.playSound(null, targetBlock, net.minecraft.sound.SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.4f);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK,
+            targetBlock.getX() + 0.5, targetBlock.getY() + 1.5, targetBlock.getZ() + 0.5,
+            20, 0.3, 0.8, 0.3, 0.1);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.FLASH,
+            targetBlock.getX() + 0.5, targetBlock.getY() + 1.0, targetBlock.getZ() + 0.5,
+            1, 0, 0, 0, 0);
+
+        String soakedMsg = targetSoaked ? " §b(2x Soaked!)" : "";
+        sendMessage("§e⚡ Channeling! Lightning strikes " + target.getDisplayName() + " for " + dealt + "!" + soakedMsg);
+
+        // Chain to adjacent enemies (channelingLevel - 1 additional targets)
+        int chainCount = channelingLevel - 1;
+        if (chainCount > 0) {
+            List<CombatEntity> chainTargets = new ArrayList<>();
+            for (int cdx = -1; cdx <= 1; cdx++) {
+                for (int cdz = -1; cdz <= 1; cdz++) {
+                    if (cdx == 0 && cdz == 0) continue;
+                    GridPos adj = new GridPos(target.getGridPos().x() + cdx, target.getGridPos().z() + cdz);
+                    CombatEntity chainTarget = arena.getOccupant(adj);
+                    if (chainTarget != null && chainTarget.isAlive() && chainTarget != target && !chainTarget.isAlly()) {
+                        chainTargets.add(chainTarget);
+                        if (chainTargets.size() >= chainCount) break;
+                    }
+                }
+                if (chainTargets.size() >= chainCount) break;
+            }
+
+            for (CombatEntity chain : chainTargets) {
+                int chainDmg = lightningDmg / 2; // chain does half damage
+                boolean chainSoaked = chain.getSoakedTurns() > 0;
+                if (chainSoaked) chainDmg *= 2;
+                int chainDealt = chain.takeDamage(chainDmg);
+                chain.setBurningTurns(Math.max(chain.getBurningTurns(), 1));
+                chain.setBurningDamage(Math.max(chain.getBurningDamage(), 1));
+
+                // Chain lightning visual
+                BlockPos chainBlock = arena.gridToBlockPos(chain.getGridPos());
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK,
+                    chainBlock.getX() + 0.5, chainBlock.getY() + 1.0, chainBlock.getZ() + 0.5,
+                    15, 0.3, 0.5, 0.3, 0.1);
+
+                String chainSoakedMsg = chainSoaked ? " §b(2x Soaked!)" : "";
+                sendMessage("§e⚡ Chain lightning hits " + chain.getDisplayName() + " for " + chainDealt + "!" + chainSoakedMsg);
+                checkAndHandleDeath(chain);
+            }
+        }
+    }
+
+    // === TRIDENT: Return dropped trident to player ===
+    private void returnDroppedTrident() {
+        if (droppedTridentStack != null && player != null) {
+            player.getInventory().insertStack(droppedTridentStack.copy());
+            droppedTridentStack = null;
+            droppedTridentPos = null;
+            if (droppedTridentEntity != null) {
+                droppedTridentEntity.discard();
+                droppedTridentEntity = null;
+            }
+        }
     }
 
     private CombatEntity findEnemyById(int entityId) {
@@ -1905,6 +2258,20 @@ public class CombatManager {
                             }
                         }
                     }
+                    // Pet affinity: bonus HP and ATK based on Pet affinity points (3% per point)
+                    PlayerProgression.PlayerStats petOwnerStats = PlayerProgression.get(
+                        (ServerWorld) player.getEntityWorld()).getStats(player);
+                    int petPts = petOwnerStats.getAffinityPoints(PlayerProgression.Affinity.PET);
+                    if (petPts > 0) {
+                        double petBoostPct = petPts * 0.03;
+                        int hpBoost = Math.max(1, (int)(e.getMaxHp() * petBoostPct));
+                        int atkBoost = Math.max(0, (int)(e.getAttackPower() * petBoostPct));
+                        // Increase effective max HP via negative reduction, then heal
+                        e.addMaxHpReduction(-hpBoost);
+                        e.heal(hpBoost);
+                        if (atkBoost > 0) e.setAttackBoost(e.getAttackBoost() + atkBoost);
+                        sendMessage("\u00a7a\uD83D\uDC3E Pet Affinity: +" + hpBoost + " HP, +" + atkBoost + " ATK!");
+                    }
                     sendMessage("§a§l" + e.getDisplayName() + " has been tamed! They fight for you now!");
                     break;
                 }
@@ -1961,6 +2328,30 @@ public class CombatManager {
                 BlockPos bp = arena.gridToBlockPos(clearPos);
                 ServerWorld sw = (ServerWorld) player.getEntityWorld();
                 sw.setBlockState(bp, net.minecraft.block.Blocks.GRASS_BLOCK.getDefaultState());
+            } else if ("break".equals(effectType)) {
+                // Pickaxe: convert obstacle to walkable NORMAL tile
+                GridPos breakPos = new GridPos(tx, tz);
+                GridTile breakTile = arena.getTile(breakPos);
+                if (breakTile != null) {
+                    breakTile.setType(TileType.NORMAL);
+                }
+                // gridToBlockPos returns oy+1 (where the obstacle block sits)
+                BlockPos aboveBp = arena.gridToBlockPos(breakPos);
+                // Floor is one Y below
+                BlockPos floorBp = aboveBp.down();
+                ServerWorld sw = (ServerWorld) player.getEntityWorld();
+                // Clear the obstacle block at oy+1
+                sw.setBlockState(aboveBp, net.minecraft.block.Blocks.AIR.getDefaultState());
+                // Restore floor block at oy
+                sw.setBlockState(floorBp, breakTile != null ? breakTile.getBlockType().getDefaultState()
+                    : net.minecraft.block.Blocks.GRASS_BLOCK.getDefaultState());
+                // Break particles
+                sw.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    aboveBp.getX() + 0.5, aboveBp.getY() + 0.5, aboveBp.getZ() + 0.5,
+                    8, 0.3, 0.3, 0.3, 0.05);
+                player.getWorld().playSound(null, aboveBp,
+                    net.minecraft.sound.SoundEvents.BLOCK_STONE_BREAK,
+                    net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
             } else {
                 GridPos effectPos = new GridPos(tx, tz);
                 tileEffects.put(effectPos, effectType);
@@ -1993,10 +2384,27 @@ public class CombatManager {
                 }
             }
         }
-        // Ally buff (jukebox music)
+        // Ally buff (jukebox music, hay bale heal, echo shard)
         else if (result.startsWith(ItemUseHandler.ALLY_BUFF_PREFIX)) {
             String data = result.substring(ItemUseHandler.ALLY_BUFF_PREFIX.length());
             String[] parts = data.split("\\|", 2);
+            // Parse buff type: "heal:entityId:amount" or "music" or "echo"
+            String buffData = parts[0];
+            if (buffData.startsWith("heal:")) {
+                String[] healParts = buffData.split(":");
+                if (healParts.length >= 3) {
+                    try {
+                        int entityId = Integer.parseInt(healParts[1]);
+                        int healAmount = Integer.parseInt(healParts[2]);
+                        for (CombatEntity e : enemies) {
+                            if (e.getEntityId() == entityId && e.isAlive() && e.isAlly()) {
+                                e.heal(healAmount);
+                                break;
+                            }
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
             if (parts.length > 1) sendMessage(parts[1]);
         }
         // Fishing result — strip prefix, display the catch message
@@ -2182,8 +2590,8 @@ public class CombatManager {
             int arenaFloorY = arena.getOrigin().getY();
             if (player.getY() < arenaFloorY - 2) {
                 sendMessage("§c§l☠ You fell to your death!");
-                player.setHealth(0);
-                handleGameOver();
+                player.setHealth(1); // clamp threshold — getPlayerHp() returns 0
+                handlePlayerDeathOrGameOver();
                 return;
             }
         }
@@ -2424,6 +2832,33 @@ public class CombatManager {
                     net.minecraft.sound.SoundEvents.BLOCK_STONE_STEP,
                     net.minecraft.sound.SoundCategory.PLAYERS, 0.3f, 1.0f);
             }
+
+            // Check for dropped trident — pick it up
+            if (droppedTridentPos != null && next.equals(droppedTridentPos)) {
+                returnDroppedTrident();
+                sendMessage("§3You retrieve your trident!");
+            }
+
+            // Check for cake tile — heal player on step
+            if (tileEffects.containsKey(next) && tileEffects.get(next).startsWith("cake")) {
+                String cakeData = tileEffects.get(next);
+                int uses = 3;
+                if (cakeData.contains(":")) {
+                    try { uses = Integer.parseInt(cakeData.split(":")[1]); } catch (Exception ignored) {}
+                }
+                if (player.getHealth() < player.getMaxHealth()) {
+                    player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 2));
+                    sendMessage("§dYou eat cake! +2 HP");
+                }
+                uses--;
+                if (uses <= 0) {
+                    tileEffects.remove(next);
+                    sendMessage("§7The cake is all gone!");
+                } else {
+                    tileEffects.put(next, "cake:" + uses);
+                }
+            }
+
             lerpInitialized = false;
             movePathIndex++;
         }
@@ -2549,7 +2984,7 @@ public class CombatManager {
                     if (combatEffects.hasEffect(CombatEffects.EffectType.BURNING)) dmgSources.append("Fire ");
                     sendMessage("§c☠ " + dmgSources.toString().trim() + " dealt " + (-hpChange) + " damage");
                 }
-                if (getPlayerHp() <= 0) { handleGameOver(); return; }
+                if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
             }
 
             // Environmental hazards — check tile under player
@@ -2560,7 +2995,7 @@ public class CombatManager {
                 if (tileBlock == Blocks.MAGMA_BLOCK && !combatEffects.hasFireResistance()) {
                     player.setHealth(Math.max(0, player.getHealth() - 1));
                     sendMessage("§c🔥 Magma burns you for 1 damage!");
-                    if (getPlayerHp() <= 0) { handleGameOver(); return; }
+                    if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 } else if (tileBlock == Blocks.SOUL_SAND || tileBlock == Blocks.SOUL_SOIL) {
                     movePointsRemaining = Math.max(1, movePointsRemaining - 1);
                     sendMessage("§7☁ Soul sand slows your movement (-1 Speed)");
@@ -2612,7 +3047,7 @@ public class CombatManager {
                     if (arena.getPlayerGridPos().manhattanDistance(tPos) <= 1) {
                         player.setHealth(Math.max(0, player.getHealth() - 1));
                         sendMessage("§5You breathe in the poison cloud! -1 HP");
-                        if (getPlayerHp() <= 0) { handleGameOver(); return; }
+                        if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                     }
                 }
                 // Cactus: damage enemies standing on or adjacent to it
@@ -2651,6 +3086,25 @@ public class CombatManager {
             });
 
             turnNumber++;
+
+            // Check if only passives/neutrals remain (no hostile enemies)
+            boolean hasHostile = enemies.stream().anyMatch(e -> e.isAlive() && !e.isAlly());
+            if (!hasHostile) {
+                peacefulTurnCount++;
+                int remaining = 3 - peacefulTurnCount;
+                if (peacefulTurnCount >= 3) {
+                    sendMessage("§a§lNo enemies remain! Combat complete.");
+                    handleVictory();
+                    return;
+                } else {
+                    sendMessage("§a☮ No hostile enemies on the field. Auto-ending in §e" + remaining + "§a turn" + (remaining != 1 ? "s" : "") + "...");
+                }
+            } else {
+                peacefulTurnCount = 0;
+            }
+
+            endTurnHintSent = false; // reset per turn
+
             // Tick temporary terrain tiles (boss fire pools, obstacles, etc.)
             tickTemporaryTerrain();
             // Clear shield brace from previous turn
@@ -2824,7 +3278,7 @@ public class CombatManager {
                     int actual = Math.max(1, explode.damage() - playerDefense);
                     player.setHealth(Math.max(0, player.getHealth() - actual));
                     sendMessage("§c  Explosion hits you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                    if (getPlayerHp() <= 0) { handleGameOver(); return; }
+                    if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 }
                 // Damage other mobs caught in the blast (configurable friendly fire)
                 List<CombatEntity> blastTargets = new ArrayList<>();
@@ -2875,7 +3329,7 @@ public class CombatManager {
                 sendMessage("§c  Hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 applyEnemyHitEffect(currentEnemy.getEntityTypeId());
                 sendSync();
-                if (getPlayerHp() <= 0) { handleGameOver(); return; }
+                if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -2905,7 +3359,7 @@ public class CombatManager {
                     player.setHealth(Math.max(0, player.getHealth() - actual));
                     sendMessage("§c  Swoops through you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                     sendSync();
-                    if (getPlayerHp() <= 0) { handleGameOver(); return; }
+                    if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 }
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -3142,9 +3596,11 @@ public class CombatManager {
 
         int range = ally.getRange();
         if (targetDist <= range) {
-            // In range — attack! Apply pet damage type bonus from player's gear
+            // In range — attack! Apply pet damage type bonus from player's gear + affinity
+            PlayerProgression.PlayerStats allyOwnerStats = PlayerProgression.get(
+                (ServerWorld) player.getEntityWorld()).getStats(player);
             int petBonus = DamageType.getTotalBonus(
-                PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects, DamageType.PET);
+                PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects, DamageType.PET, allyOwnerStats);
             // Rally set bonus: allies get +1 Attack
             if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.RALLY) {
                 petBonus += 1;
@@ -3208,7 +3664,7 @@ public class CombatManager {
                 int actual = Math.max(1, atk.damage() - playerDefense);
                 player.setHealth(Math.max(0, player.getHealth() - actual));
                 sendMessage("§c  Hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                if (getPlayerHp() <= 0) handleGameOver();
+                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
             case EnemyAction.SummonMinions sm -> spawnBossMinions(sm);
             case EnemyAction.AreaAttack aa -> resolveAreaAttack(aa);
@@ -3240,7 +3696,7 @@ public class CombatManager {
                     int actual = Math.max(1, tpa.damage() - playerDefense);
                     player.setHealth(Math.max(0, player.getHealth() - actual));
                     sendMessage("§c  Teleport strike for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                    if (getPlayerHp() <= 0) handleGameOver();
+                    if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
                 }
             }
             case EnemyAction.RangedAttack ra -> {
@@ -3248,7 +3704,7 @@ public class CombatManager {
                 int actual = Math.max(1, ra.damage() - playerDefense);
                 player.setHealth(Math.max(0, player.getHealth() - actual));
                 sendMessage("§c  Ranged hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                if (getPlayerHp() <= 0) handleGameOver();
+                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
             case EnemyAction.CompositeAction ca -> {
                 for (EnemyAction sub : ca.actions()) {
@@ -3334,7 +3790,7 @@ public class CombatManager {
             if (aa.effectName() != null) {
                 applyBossAreaEffect(aa.effectName());
             }
-            if (getPlayerHp() <= 0) { handleGameOver(); return; }
+            if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
         }
 
         // Damage enemy mobs in the area (friendly fire for bosses)
@@ -3446,7 +3902,7 @@ public class CombatManager {
             int actual = Math.max(1, la.damage() - playerDefense);
             player.setHealth(Math.max(0, player.getHealth() - actual));
             sendMessage("§c  Line attack hits for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-            if (getPlayerHp() <= 0) handleGameOver();
+            if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
         }
     }
 
@@ -3498,7 +3954,7 @@ public class CombatManager {
                     int fallDmg = Math.max(1, 5 - playerDefense);
                     player.setHealth(Math.max(0, player.getHealth() - fallDmg));
                     sendMessage("§c  Pushed into the void for " + fallDmg + " damage! (HP: " + getPlayerHp() + ")");
-                    if (getPlayerHp() <= 0) { handleGameOver(); return; }
+                    if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                     break;
                 }
                 if (tile == null || !tile.isWalkable()) break;
@@ -3819,6 +4275,39 @@ public class CombatManager {
                 checkAndHandleDeath(currentEnemy);
             }
 
+            // Check for honey trap — enemy loses all remaining movement
+            if (tileEffects.containsKey(next) && "honey".equals(tileEffects.get(next))) {
+                sendMessage("§e" + currentEnemy.getDisplayName() + " is stuck in honey!");
+                tileEffects.remove(next);
+                enemyLerpInitialized = false;
+                // Skip remaining movement — go directly to DONE
+                enemyMovePathIndex = enemyMovePath.size();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                return;
+            }
+
+            // Check for cake — enemy heals 2 HP, one use consumed
+            if (tileEffects.containsKey(next) && tileEffects.get(next).startsWith("cake")) {
+                // cake format: "cake" or "cake:usesRemaining"
+                String cakeData = tileEffects.get(next);
+                int uses = 3;
+                if (cakeData.contains(":")) {
+                    try { uses = Integer.parseInt(cakeData.split(":")[1]); } catch (Exception ignored) {}
+                }
+                // Enemies heal from cake too
+                if (currentEnemy.getCurrentHp() < currentEnemy.getMaxHp()) {
+                    currentEnemy.heal(2);
+                    sendMessage("§d" + currentEnemy.getDisplayName() + " eats cake! +2 HP");
+                }
+                uses--;
+                if (uses <= 0) {
+                    tileEffects.remove(next);
+                } else {
+                    tileEffects.put(next, "cake:" + uses);
+                }
+            }
+
             enemyLerpInitialized = false;
             enemyMovePathIndex++;
         }
@@ -3951,6 +4440,8 @@ public class CombatManager {
         }
 
         int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
+        // Banner tile effect: +2 DEF if player is within 2 tiles of a banner
+        playerDefense += getBannerDefenseBonus(arena.getPlayerGridPos());
         damage = (int)(damage * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
         int actual = Math.max(1, damage - playerDefense);
         player.setHealth(Math.max(0, player.getHealth() - actual));
@@ -3975,15 +4466,47 @@ public class CombatManager {
             sendMessage("\u00a72Thorns reflects " + thornsDmg + " damage!");
         }
 
+        // Physical affinity: counterattack chance when attacked unarmed (fist / no weapon)
+        if (DamageType.fromWeapon(player.getMainHandStack().getItem()) == DamageType.PHYSICAL
+                && currentEnemy.isAlive()) {
+            PlayerProgression.PlayerStats pStats = PlayerProgression.get(
+                (ServerWorld) player.getEntityWorld()).getStats(player);
+            int physPts = pStats.getAffinityPoints(PlayerProgression.Affinity.PHYSICAL);
+            double counterChance = physPts * 0.03; // 0% base + 3% per point
+            if (counterChance > 0 && Math.random() < counterChance) {
+                int counterDmg = currentEnemy.takeDamage(PlayerCombatStats.getAttackPower(player));
+                sendMessage("\u00a77\u270A Counter! You strike back for " + counterDmg + " damage!");
+                if (!currentEnemy.isAlive()) {
+                    killEnemy(currentEnemy);
+                }
+            }
+        }
+
         sendSync();
 
         if (getPlayerHp() <= 0) {
-            handleGameOver();
+            handlePlayerDeathOrGameOver();
             return;
         }
 
         enemyTurnState = EnemyTurnState.DONE;
         enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+    }
+
+    /** Banner defense bonus: +2 DEF if pos is within 2 tiles of any banner tile effect. */
+    private int getBannerDefenseBonus(GridPos pos) {
+        for (var entry : tileEffects.entrySet()) {
+            if ("banner".equals(entry.getValue())) {
+                if (pos.manhattanDistance(entry.getKey()) <= 2) return 2;
+            }
+        }
+        return 0;
+    }
+
+    /** Scaffold range bonus: +1 range if player is standing on a scaffold tile. */
+    private int getScaffoldRangeBonus(GridPos pos) {
+        String effect = tileEffects.get(pos);
+        return "scaffold".equals(effect) ? 1 : 0;
     }
 
     /**
@@ -4073,6 +4596,59 @@ public class CombatManager {
         currentEnemy = null;
     }
 
+    /**
+     * Called when the active player's HP reaches 0. In a party, the dead player
+     * becomes a spectator and combat continues with the next alive member.
+     * Only triggers a full game over when ALL party members are dead (or solo play).
+     */
+    private void handlePlayerDeathOrGameOver() {
+        // Solo play or no party → original game over
+        if (partyPlayers.size() <= 1) {
+            handleGameOver();
+            return;
+        }
+
+        // Mark current player as dead
+        deadPartyMembers.add(player.getUuid());
+        player.setHealth(1); // keep at clamp threshold (avoids vanilla death screen)
+        player.changeGameMode(net.minecraft.world.GameMode.SPECTATOR);
+        sendMessage("§c§l☠ " + player.getName().getString() + " has fallen!");
+
+        // Find next alive party member
+        ServerPlayerEntity nextAlive = null;
+        for (ServerPlayerEntity member : partyPlayers) {
+            if (!deadPartyMembers.contains(member.getUuid())
+                    && member != null && !member.isRemoved() && !member.isDisconnected()) {
+                nextAlive = member;
+                break;
+            }
+        }
+
+        if (nextAlive == null) {
+            // Everyone dead → full game over
+            handleGameOver();
+            return;
+        }
+
+        // Transfer combat control to next alive member
+        sendMessage("§e" + nextAlive.getName().getString() + " takes over the fight!");
+        // Teleport new fighter to the current player's position on the grid
+        nextAlive.requestTeleport(player.getX(), player.getY(), player.getZ());
+        this.player = nextAlive;
+
+        // Recalculate stats for the new active player
+        PlayerProgression prog = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+        PlayerProgression.PlayerStats pStats = prog.getStats(player);
+        this.apRemaining = pStats.getEffective(PlayerProgression.Stat.AP)
+            + PlayerCombatStats.getSetApBonus(player);
+        this.movePointsRemaining = pStats.getEffective(PlayerProgression.Stat.SPEED)
+            + PlayerCombatStats.getSetSpeedBonus(player);
+        this.activeTrimScan = TrimEffects.scan(player);
+
+        sendSync();
+        refreshHighlights();
+    }
+
     private void handleGameOver() {
         // Test range: no penalties, just end cleanly
         if (testRange) {
@@ -4113,48 +4689,49 @@ public class CombatManager {
             sendMessage("§cLost " + emeraldLoss + " emeralds!");
         }
 
-        // If player continued past level 1 in a biome run, they lose ALL items
-        // (the "Continue" screen warns about this)
-        if (data.isInBiomeRun() && data.activeBiomeLevelIndex > 0) {
-            int itemsLost = 0;
-            for (int slot = 0; slot < player.getInventory().size(); slot++) {
-                ItemStack stack = player.getInventory().getStack(slot);
-                if (stack.isEmpty()) continue;
-                // Keep mod utility items (feather selector, guide book)
-                Item item = stack.getItem();
-                if (item == Items.FEATHER || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
-                player.getInventory().setStack(slot, ItemStack.EMPTY);
-                itemsLost++;
-            }
-            // Also clear armor slots
-            for (int slot = 0; slot < player.getInventory().armor.size(); slot++) {
-                if (!player.getInventory().armor.get(slot).isEmpty()) {
-                    player.getInventory().armor.set(slot, ItemStack.EMPTY);
+        // Strip items from ALL party members (full team wipe)
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (data.isInBiomeRun() && data.activeBiomeLevelIndex > 0) {
+                // Past level 1: lose ALL items (the "Continue" screen warns about this)
+                int itemsLost = 0;
+                for (int slot = 0; slot < p.getInventory().size(); slot++) {
+                    ItemStack stack = p.getInventory().getStack(slot);
+                    if (stack.isEmpty()) continue;
+                    Item item = stack.getItem();
+                    if (item == Items.FEATHER || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
+                    p.getInventory().setStack(slot, ItemStack.EMPTY);
                     itemsLost++;
                 }
-            }
-            // Clear offhand
-            if (!player.getOffHandStack().isEmpty()) {
-                player.setStackInHand(net.minecraft.util.Hand.OFF_HAND, ItemStack.EMPTY);
-                itemsLost++;
-            }
-            if (itemsLost > 0) {
-                sendMessage("§c§lLost all items! (" + itemsLost + " items)");
-            }
-        } else {
-            // First level of a biome run (or no run) — only drop main hand weapon
-            var mainHand = player.getMainHandStack();
-            if (!mainHand.isEmpty() && mainHand.getItem() != Items.FEATHER) {
-                sendMessage("§cDropped: " + mainHand.getName().getString());
-                player.getInventory().setStack(player.getInventory().selectedSlot, ItemStack.EMPTY);
+                for (int slot = 0; slot < p.getInventory().armor.size(); slot++) {
+                    if (!p.getInventory().armor.get(slot).isEmpty()) {
+                        p.getInventory().armor.set(slot, ItemStack.EMPTY);
+                        itemsLost++;
+                    }
+                }
+                if (!p.getOffHandStack().isEmpty()) {
+                    p.setStackInHand(net.minecraft.util.Hand.OFF_HAND, ItemStack.EMPTY);
+                    itemsLost++;
+                }
+                if (itemsLost > 0) {
+                    sendMessageTo(p, "§c§lLost all items! (" + itemsLost + " items)");
+                }
+            } else {
+                // First level or no run: only drop main hand weapon
+                var mainHand = p.getMainHandStack();
+                if (!mainHand.isEmpty() && mainHand.getItem() != Items.FEATHER) {
+                    sendMessageTo(p, "§cDropped: " + mainHand.getName().getString());
+                    p.getInventory().setStack(p.getInventory().selectedSlot, ItemStack.EMPTY);
+                }
             }
         }
 
-        // Heal player between levels (configurable)
-        if (CrafticsMod.CONFIG.healBetweenLevels()) {
-            player.setHealth(player.getMaxHealth());
+        // Heal all participants (including dead spectators returning home)
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (CrafticsMod.CONFIG.healBetweenLevels()) {
+                p.setHealth(p.getMaxHealth());
+            }
+            p.clearStatusEffects();
         }
-        player.clearStatusEffects();
 
         // Reset biome run
         data.endBiomeRun();
@@ -4214,6 +4791,20 @@ public class CombatManager {
         }
         phase = CombatPhase.LEVEL_COMPLETE;
         sendMessage("§a§l*** VICTORY! ***");
+
+        // Revive fallen party members with 2 hearts (4 HP)
+        if (!deadPartyMembers.isEmpty()) {
+            for (ServerPlayerEntity p : getAllParticipants()) {
+                if (deadPartyMembers.contains(p.getUuid())) {
+                    p.setHealth(4); // 2 hearts
+                    p.clearStatusEffects();
+                    p.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
+                    sendMessageTo(p, "§a§l\u2726 REVIVED! §rYour party won — you're back with 2 hearts!");
+                }
+            }
+            sendMessage("§aFallen allies have been revived!");
+            deadPartyMembers.clear();
+        }
 
         // Give mob drops to all party participants (Luck stat adds bonus items per mob)
         List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
@@ -4585,7 +5176,8 @@ public class CombatManager {
                     float cTraveler = cShrine + CrafticsMod.CONFIG.travelerChance();
                     float cVault = cTraveler + CrafticsMod.CONFIG.vaultChance();
                     float cDigSite = cVault + CrafticsMod.CONFIG.digSiteChance();
-                    float cTrader = cDigSite + CrafticsMod.CONFIG.traderSpawnChance();
+                    float cEnchanter = cDigSite + 0.06f; // 6% enchanter chance
+                    float cTrader = cEnchanter + CrafticsMod.CONFIG.traderSpawnChance();
 
                     if (skipEvents) {
                         // No event — go straight to next level
@@ -4652,6 +5244,11 @@ public class CombatManager {
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         offerDigSite(savedPlayer, biome);
+                    } else if (forced != null ? forced.equals("enchanter") : (eventRoll < cEnchanter)) {
+                        // Enchanter — enhance a weapon or armor piece
+                        pendingNextLevelDef = nextLevelDef;
+                        pendingBiome = biome;
+                        offerEnchanter(savedPlayer);
                     } else if (forced != null ? forced.equals("trader") : (eventRoll < cTrader)) {
                         // Configurable chance: Wandering Trader
                         pendingNextLevelDef = nextLevelDef;
@@ -5052,9 +5649,9 @@ public class CombatManager {
 
     // ── Interactive Event Rooms (Shrine, Traveler, Vault) ──
 
-    private BlockPos getEventRoomOrigin() {
-        if (worldOwnerUuid != null) {
-            ServerWorld w = (ServerWorld) player.getEntityWorld();
+    private BlockPos getEventRoomOrigin(ServerPlayerEntity refPlayer) {
+        if (worldOwnerUuid != null && refPlayer != null) {
+            ServerWorld w = (ServerWorld) refPlayer.getEntityWorld();
             CrafticsSavedData d = CrafticsSavedData.get(w);
             BlockPos origin = d.getTraderOrigin(worldOwnerUuid);
             if (origin != null) return origin;
@@ -5076,10 +5673,11 @@ public class CombatManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         int playerEmeralds = data.emeralds;
 
-        buildShrineArea(world, getEventRoomOrigin());
+        BlockPos shrineOrigin = getEventRoomOrigin(savedPlayer);
+        buildShrineArea(world, shrineOrigin);
         for (ServerPlayerEntity p : members) {
             p.requestTeleport(
-                getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 1, getEventRoomOrigin().getZ() + 4.5);
+                shrineOrigin.getX() + 4.5, shrineOrigin.getY() + 1, shrineOrigin.getZ() + 4.5);
         }
 
         String eventData = shrineCosts[0] + ":" + shrineCosts[1] + ":" + shrineCosts[2] + ":" + playerEmeralds;
@@ -5111,18 +5709,19 @@ public class CombatManager {
             }
         }
 
-        buildTravelerArea(world, getEventRoomOrigin());
+        BlockPos travelerOrigin = getEventRoomOrigin(savedPlayer);
+        buildTravelerArea(world, travelerOrigin);
         for (ServerPlayerEntity p : members) {
             p.requestTeleport(
-                getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 1, getEventRoomOrigin().getZ() + 4.5);
+                travelerOrigin.getX() + 4.5, travelerOrigin.getY() + 1, travelerOrigin.getZ() + 4.5);
         }
 
         // Spawn a villager NPC
         spawnedTraveler = (net.minecraft.entity.passive.VillagerEntity)
-            net.minecraft.entity.EntityType.VILLAGER.spawn(world, getEventRoomOrigin().up(), net.minecraft.entity.SpawnReason.EVENT);
+            net.minecraft.entity.EntityType.VILLAGER.spawn(world, travelerOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
         if (spawnedTraveler != null) {
             spawnedTraveler.refreshPositionAndAngles(
-                getEventRoomOrigin().getX() + 6.5, getEventRoomOrigin().getY() + 1, getEventRoomOrigin().getZ() + 4.5,
+                travelerOrigin.getX() + 6.5, travelerOrigin.getY() + 1, travelerOrigin.getZ() + 4.5,
                 -90f, 0f);
             spawnedTraveler.setAiDisabled(true);
             spawnedTraveler.setInvulnerable(true);
@@ -5131,6 +5730,152 @@ public class CombatManager {
         }
 
         ServerPlayNetworking.send(savedPlayer, new EventRoomPayload("traveler", foodData.toString()));
+    }
+
+    // ---- Enchanter Event ----
+
+    /** Tracks which inventory slots are enchantable for the current enchanter event. */
+    private java.util.List<int[]> enchanterSlots; // list of [inventorySlot, isArmor(0/1)]
+
+    private void offerEnchanter(ServerPlayerEntity savedPlayer) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
+
+        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
+        eventRoomPending = true;
+        eventRoomType = "enchanter";
+
+        // Scan player for weapons and armor that can be enhanced
+        enchanterSlots = new java.util.ArrayList<>();
+        StringBuilder itemData = new StringBuilder();
+
+        // Scan entire inventory for a weapon (main hand may be empty after feather removal)
+        for (int i = 0; i < savedPlayer.getInventory().size(); i++) {
+            ItemStack stack = savedPlayer.getInventory().getStack(i);
+            if (stack.isEmpty()) continue;
+            Item item = stack.getItem();
+            if (item == Items.FEATHER || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
+            if (item instanceof net.minecraft.item.SwordItem || item instanceof net.minecraft.item.AxeItem
+                    || item instanceof net.minecraft.item.HoeItem || item instanceof net.minecraft.item.ShovelItem
+                    || item instanceof net.minecraft.item.MaceItem || item instanceof net.minecraft.item.TridentItem
+                    || item instanceof net.minecraft.item.BowItem || item instanceof net.minecraft.item.CrossbowItem
+                    || item == Items.STICK || item == Items.BAMBOO
+                    || item == Items.BLAZE_ROD || item == Items.BREEZE_ROD
+                    || item == Items.TUBE_CORAL || item == Items.BRAIN_CORAL
+                    || item == Items.BUBBLE_CORAL || item == Items.FIRE_CORAL
+                    || item == Items.HORN_CORAL) {
+                enchanterSlots.add(new int[]{i, 0});
+                if (itemData.length() > 0) itemData.append("|");
+                itemData.append(i).append(":").append(stack.getName().getString()).append(":weapon");
+                break; // only offer one weapon
+            }
+        }
+        // Check armor slots
+        for (int i = 0; i < savedPlayer.getInventory().armor.size(); i++) {
+            ItemStack armor = savedPlayer.getInventory().armor.get(i);
+            if (!armor.isEmpty()) {
+                int slotId = 100 + i; // use 100+ to distinguish armor slots
+                enchanterSlots.add(new int[]{slotId, 1});
+                if (itemData.length() > 0) itemData.append("|");
+                itemData.append(slotId).append(":").append(armor.getName().getString()).append(":armor");
+            }
+        }
+
+        BlockPos enchanterOrigin = getEventRoomOrigin(savedPlayer);
+        buildShrineArea(world, enchanterOrigin); // reuse shrine room
+        for (ServerPlayerEntity p : members) {
+            p.requestTeleport(
+                enchanterOrigin.getX() + 4.5, enchanterOrigin.getY() + 1, enchanterOrigin.getZ() + 4.5);
+        }
+
+        // Spawn an enchanter villager
+        spawnedTraveler = (net.minecraft.entity.passive.VillagerEntity)
+            net.minecraft.entity.EntityType.VILLAGER.spawn(world, enchanterOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
+        if (spawnedTraveler != null) {
+            spawnedTraveler.refreshPositionAndAngles(
+                enchanterOrigin.getX() + 4.5, enchanterOrigin.getY() + 1, enchanterOrigin.getZ() + 2.5,
+                0f, 0f);
+            spawnedTraveler.setAiDisabled(true);
+            spawnedTraveler.setInvulnerable(true);
+            spawnedTraveler.setBaby(false);
+            world.spawnEntity(spawnedTraveler);
+        }
+
+        for (ServerPlayerEntity p : members) {
+            sendMessageTo(p, "\u00a7d\u00a7l\u2728 A Wandering Enchanter appears!");
+            sendMessageTo(p, "\u00a77\"Give me an item and I'll enhance it...\"");
+        }
+
+        ServerPlayNetworking.send(savedPlayer, new EventRoomPayload("enchanter", itemData.toString()));
+    }
+
+    /** Apply a random enchantment to a weapon or a random trim to armor. */
+    private void applyRandomEnhancement(ServerPlayerEntity player, int slotId, boolean isArmor) {
+        java.util.Random rng = new java.util.Random();
+        ItemStack stack;
+        if (slotId >= 100) {
+            stack = player.getInventory().armor.get(slotId - 100);
+        } else {
+            stack = player.getInventory().getStack(slotId);
+        }
+        if (stack.isEmpty()) return;
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        if (isArmor) {
+            // Add a random trim (pattern + material)
+            String[] patterns = {"sentry", "dune", "coast", "wild", "ward", "eye", "vex", "tide",
+                "snout", "rib", "spire", "wayfinder", "shaper", "silence", "raiser", "host", "flow", "bolt"};
+            String[] materials = {"iron", "copper", "gold", "lapis", "emerald", "diamond", "netherite",
+                "redstone", "amethyst", "quartz"};
+            String pattern = patterns[rng.nextInt(patterns.length)];
+            String material = materials[rng.nextInt(materials.length)];
+
+            // Apply trim via ArmorTrim component
+            var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            var patternEntry = patternRegistry.streamEntries()
+                .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(pattern))
+                .findFirst().orElse(null);
+            var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            var materialEntry = materialRegistry.streamEntries()
+                .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(material))
+                .findFirst().orElse(null);
+
+            if (patternEntry != null && materialEntry != null) {
+                var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
+                stack.set(DataComponentTypes.TRIM, trim);
+                sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " received a §e" + pattern + " §dtrim with §e" + material + " §dmaterial!");
+            } else {
+                // Fallback: add enchant glint
+                stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " shimmers with new power!");
+            }
+        } else {
+            // Add a random weapon enchantment
+            String[] enchantKeys = {"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
+                "knockback", "looting", "sweeping_edge", "unbreaking"};
+            String chosenKey = enchantKeys[rng.nextInt(enchantKeys.length)];
+            int level = 1 + rng.nextInt(3); // level 1-3
+
+            var enchantRegistry = world.getRegistryManager()
+                .get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+            var enchantEntry = enchantRegistry.streamEntries()
+                .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(chosenKey))
+                .findFirst().orElse(null);
+
+            if (enchantEntry != null) {
+                ItemEnchantmentsComponent.Builder builder = new ItemEnchantmentsComponent.Builder(
+                    stack.getOrDefault(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT));
+                builder.add(enchantEntry, level);
+                stack.set(DataComponentTypes.ENCHANTMENTS, builder.build());
+                sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " received §e" + chosenKey.replace('_', ' ') + " " + level + "§d!");
+            } else {
+                stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " shimmers with new power!");
+            }
+        }
     }
 
     private void offerVault(ServerPlayerEntity savedPlayer, int biomeOrdinal) {
@@ -5143,10 +5888,11 @@ public class CombatManager {
         eventRoomPending = true;
         eventRoomType = "vault";
 
-        buildVaultArea(world, getEventRoomOrigin());
+        BlockPos vaultOrigin = getEventRoomOrigin(savedPlayer);
+        buildVaultArea(world, vaultOrigin);
         for (ServerPlayerEntity p : members) {
             p.requestTeleport(
-                getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 1, getEventRoomOrigin().getZ() + 4.5);
+                vaultOrigin.getX() + 4.5, vaultOrigin.getY() + 1, vaultOrigin.getZ() + 4.5);
         }
 
         ServerPlayNetworking.send(savedPlayer, new EventRoomPayload("vault", String.valueOf(biomeOrdinal)));
@@ -5236,7 +5982,7 @@ public class CombatManager {
                     }
                     // Particles
                     world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANT,
-                        getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 2.5, getEventRoomOrigin().getZ() + 4.5,
+                        getEventRoomOrigin(choicePlayer).getX() + 4.5, getEventRoomOrigin(choicePlayer).getY() + 2.5, getEventRoomOrigin(choicePlayer).getZ() + 4.5,
                         30, 0.5, 1.0, 0.5, 0.1);
                 } else {
                     for (ServerPlayerEntity p : partyMsg) {
@@ -5312,7 +6058,7 @@ public class CombatManager {
                     }
                     // Particles
                     world.spawnParticles(net.minecraft.particle.ParticleTypes.HEART,
-                        getEventRoomOrigin().getX() + 6.5, getEventRoomOrigin().getY() + 2.5, getEventRoomOrigin().getZ() + 4.5,
+                        getEventRoomOrigin(choicePlayer).getX() + 6.5, getEventRoomOrigin(choicePlayer).getY() + 2.5, getEventRoomOrigin(choicePlayer).getZ() + 4.5,
                         10, 0.3, 0.5, 0.3, 0.02);
                 }
             } else {
@@ -5346,13 +6092,43 @@ public class CombatManager {
                 }
                 // Particles
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.TOTEM_OF_UNDYING,
-                    getEventRoomOrigin().getX() + 4.5, getEventRoomOrigin().getY() + 2, getEventRoomOrigin().getZ() + 4.5,
+                    getEventRoomOrigin(choicePlayer).getX() + 4.5, getEventRoomOrigin(choicePlayer).getY() + 2, getEventRoomOrigin(choicePlayer).getZ() + 4.5,
                     50, 1.0, 1.0, 1.0, 0.3);
             } else {
                 for (ServerPlayerEntity p : partyMsg) {
                     sendMessageTo(p, "§7You leave the vault untouched...");
                 }
             }
+        } else if ("enchanter".equals(type)) {
+            // Despawn the enchanter villager
+            if (spawnedTraveler != null && spawnedTraveler.isAlive()) {
+                spawnedTraveler.discard();
+                spawnedTraveler = null;
+            }
+
+            if (choiceIndex >= 0 && enchanterSlots != null) {
+                // Find the slot matching the choice
+                int[] chosen = null;
+                for (int[] slot : enchanterSlots) {
+                    if (slot[0] == choiceIndex) { chosen = slot; break; }
+                }
+                if (chosen != null) {
+                    applyRandomEnhancement(choicePlayer, chosen[0], chosen[1] == 1);
+                    // Particles
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANT,
+                        getEventRoomOrigin(choicePlayer).getX() + 4.5, getEventRoomOrigin(choicePlayer).getY() + 2.5, getEventRoomOrigin(choicePlayer).getZ() + 4.5,
+                        40, 0.5, 1.0, 0.5, 0.1);
+                } else {
+                    for (ServerPlayerEntity p : partyMsg) {
+                        sendMessageTo(p, "\u00a77The enchanter couldn't find that item...");
+                    }
+                }
+            } else {
+                for (ServerPlayerEntity p : partyMsg) {
+                    sendMessageTo(p, "\u00a77You decline the enchanter's offer...");
+                }
+            }
+            enchanterSlots = null;
         }
 
         // Transition to next level after a short delay
@@ -5659,6 +6435,9 @@ public class CombatManager {
         clearHighlights();
         clearWarningBlocks();
 
+        // Return dropped trident to player before ending
+        returnDroppedTrident();
+
         // Re-enable natural health regeneration and restore survival mode for all participants
         if (player != null) {
             ServerWorld world = (ServerWorld) player.getEntityWorld();
@@ -5934,6 +6713,41 @@ public class CombatManager {
         // Auto-end turn when AP is depleted (configurable)
         if (CrafticsMod.CONFIG.autoEndTurn() && apRemaining <= 0 && movePointsRemaining <= 0) {
             handleEndTurn();
+            return;
+        }
+
+        // Hint: "Press R to end turn" when player has no movement and no weapon can reach any enemy
+        if (!endTurnHintSent && movePointsRemaining <= 0 && apRemaining > 0) {
+            boolean canReachAny = false;
+            GridPos playerPos = arena.getPlayerGridPos();
+            // Check held weapon
+            int heldRange = PlayerCombatStats.getWeaponRange(player);
+            for (CombatEntity enemy : enemies) {
+                if (!enemy.isAlive() || enemy.isAlly()) continue;
+                if (heldRange == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
+                    for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                        if (PlayerCombatStats.isInCrossbowLine(arena, playerPos, tile)) { canReachAny = true; break; }
+                    }
+                } else if (enemy.minDistanceTo(playerPos) <= heldRange) {
+                    canReachAny = true;
+                }
+                if (canReachAny) break;
+            }
+            // Also check if player has usable items (potions, throwables, sherds, etc.)
+            if (!canReachAny) {
+                for (int slot = 0; slot < player.getInventory().size(); slot++) {
+                    var stack = player.getInventory().getStack(slot);
+                    if (stack.isEmpty()) continue;
+                    if (ItemUseHandler.isUsableItem(stack.getItem()) || PotterySherdSpells.isPotterySherd(stack.getItem())) {
+                        canReachAny = true;
+                        break;
+                    }
+                }
+            }
+            if (!canReachAny) {
+                sendMessage("§7§oNo actions available. Press §fR§7§o to end your turn.");
+                endTurnHintSent = true;
+            }
         }
     }
 
@@ -6042,11 +6856,31 @@ public class CombatManager {
             + PlayerCombatStats.getSetSpeedBonus(player)
             + (playerMounted ? MOUNT_SPEED_BONUS : 0);
 
+        // Build party HP data: "uuid,name,hp,maxHp,dead|..." (empty when solo)
+        String partyHpData = "";
+        if (partyPlayers.size() > 1) {
+            StringBuilder phb = new StringBuilder();
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (member == null || member.isRemoved()) continue;
+                if (phb.length() > 0) phb.append("|");
+                boolean isDead = deadPartyMembers.contains(member.getUuid());
+                int memberHp = isDead ? 0 : ((int) member.getHealth() <= 1 ? 0 : (int) member.getHealth());
+                int memberMaxHp = (int) member.getMaxHealth();
+                phb.append(member.getUuid().toString()).append(",")
+                   .append(member.getName().getString()).append(",")
+                   .append(memberHp).append(",")
+                   .append(memberMaxHp).append(",")
+                   .append(isDead ? 1 : 0);
+            }
+            partyHpData = phb.toString();
+        }
+
         sendToAllParty(new CombatSyncPayload(
             phase.ordinal(), apRemaining, movePointsRemaining,
             getPlayerHp(), (int) player.getMaxHealth(), turnNumber,
             maxAp, maxSpeed, enemyData, typeIds.toString(),
-            combatEffects.getDisplayString(), killStreak
+            combatEffects.getDisplayString(), killStreak,
+            partyHpData
         ));
     }
 
