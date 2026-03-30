@@ -6,11 +6,11 @@
 
 :root {
   --bg: #2a2a2e;
-  --surface: #333338;
-  --surface-alt: #2e2e33;
+  --surface: rgba(30, 30, 34, 0.92);
+  --surface-alt: rgba(26, 26, 30, 0.92);
   --border: #4a4a52;
-  --text: #d4d4d8;
-  --muted: #9898a0;
+  --text: #e8e8ec;
+  --muted: #a8a8b0;
   --accent: #5b9bd5;
   --accent-dim: rgba(91, 155, 213, 0.12);
   --amber: #e8a830;
@@ -31,10 +31,10 @@ html { scroll-behavior: smooth; scroll-padding-top: calc(var(--nav-height) + 24p
 
 
 body {
-  background-color: #333;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23707070'/%3E%3Crect x='0' y='0' width='16' height='16' fill='%23737373'/%3E%3Crect x='16' y='0' width='16' height='16' fill='%236e6e6e'/%3E%3Crect x='32' y='0' width='16' height='16' fill='%23717171'/%3E%3Crect x='48' y='0' width='16' height='16' fill='%236c6c6c'/%3E%3Crect x='0' y='16' width='16' height='16' fill='%236f6f6f'/%3E%3Crect x='16' y='16' width='16' height='16' fill='%23747474'/%3E%3Crect x='32' y='16' width='16' height='16' fill='%236d6d6d'/%3E%3Crect x='48' y='16' width='16' height='16' fill='%23727272'/%3E%3Crect x='0' y='32' width='16' height='16' fill='%23727272'/%3E%3Crect x='16' y='32' width='16' height='16' fill='%236b6b6b'/%3E%3Crect x='32' y='32' width='16' height='16' fill='%23757575'/%3E%3Crect x='48' y='32' width='16' height='16' fill='%236e6e6e'/%3E%3Crect x='0' y='48' width='16' height='16' fill='%236d6d6d'/%3E%3Crect x='16' y='48' width='16' height='16' fill='%23717171'/%3E%3Crect x='32' y='48' width='16' height='16' fill='%236c6c6c'/%3E%3Crect x='48' y='48' width='16' height='16' fill='%23737373'/%3E%3Crect x='24' y='8' width='4' height='4' fill='%23696050' opacity='0.6'/%3E%3Crect x='52' y='36' width='4' height='4' fill='%23696050' opacity='0.6'/%3E%3Crect x='8' y='44' width='4' height='4' fill='%234a6e5a' opacity='0.4'/%3E%3Crect x='40' y='20' width='4' height='4' fill='%23786040' opacity='0.5'/%3E%3C/svg%3E");
-  background-size: 64px 64px;
+  background-color: #555;
+  background-image: url("../img/stone.png");
+  background-size: 256px 256px;
+  background-repeat: repeat;
   image-rendering: pixelated;
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
@@ -157,7 +157,7 @@ a:hover { color: #7bb8e8; }
   overflow-y: auto;
   padding: 24px 16px 24px 24px;
   border-right: 1px solid var(--border);
-  background: var(--surface);
+  background: rgba(22, 22, 26, 0.95);
 }
 
 .sidebar-label {
@@ -201,6 +201,7 @@ a:hover { color: #7bb8e8; }
   min-width: 0;
   padding: 40px 48px 60px 36px;
   max-width: 900px;
+  background: rgba(22, 22, 26, 0.88);
 }
 
 
@@ -343,7 +344,7 @@ pre code {
    CARDS
    ================================================================ */
 .card {
-  background: var(--surface);
+  background: rgba(22, 22, 26, 0.92);
   border: 1px solid var(--border);
   border-top: 3px solid var(--amber);
   border-radius: 8px;
@@ -430,6 +431,7 @@ pre code {
   padding: 80px 24px 48px;
   max-width: 800px;
   margin: 0 auto;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.6);
 }
 
 .hero h1 {
@@ -585,7 +587,7 @@ pre code {
 }
 
 .dimension-card {
-  background: var(--surface);
+  background: rgba(22, 22, 26, 0.92);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 24px;
@@ -848,6 +850,8 @@ footer {
   text-align: center;
   color: var(--muted);
   font-size: 13px;
+  background: rgba(22, 22, 26, 0.9);
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
 }
 
 footer a {
