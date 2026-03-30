@@ -96,6 +96,15 @@ public class CombatHudOverlay implements HudRenderCallback {
     // ─── 1. Player Status Panel (Top-Left) ───────────────────────────────
 
     private void renderPlayerStatusPanel(DrawContext ctx, MinecraftClient client, int screenW) {
+        java.util.List<CombatState.PartyMemberHp> partyList = CombatState.getPartyHpList();
+
+        if (!partyList.isEmpty()) {
+            // Party mode: show HP list for all members (self at top)
+            renderPartyHpList(ctx, client, partyList);
+            return;
+        }
+
+        // Solo mode: single HP bar
         int hp = CombatState.getPlayerHp();
         int maxHp = CombatState.getPlayerMaxHp();
         float hpPct = maxHp > 0 ? (float) hp / maxHp : 0;
@@ -146,6 +155,74 @@ public class CombatHudOverlay implements HudRenderCallback {
                 }
                 iconX += iconW + 2;
             }
+        }
+    }
+
+    /** Renders the party HP list — one row per member, self always first. */
+    private void renderPartyHpList(DrawContext ctx, MinecraftClient client,
+                                    java.util.List<CombatState.PartyMemberHp> members) {
+        int panelPad = 6;
+        int barW = 90;
+        int barH = 8;
+        int nameW = 50;
+        int rowH = barH + 4;
+        int panelW = panelPad + nameW + 4 + barW + panelPad;
+        int panelH = panelPad + members.size() * rowH + panelPad - 2;
+        int panelX = 8;
+        int panelY = 6;
+
+        drawPanel(ctx, panelX, panelY, panelW, panelH);
+
+        int y = panelY + panelPad;
+        boolean first = true;
+        for (CombatState.PartyMemberHp member : members) {
+            float hpPct = member.maxHp() > 0 ? (float) member.hp() / member.maxHp() : 0;
+            int nameColor;
+            int hpBarColor;
+            String prefix;
+
+            if (member.dead()) {
+                nameColor = 0xFF888888;
+                hpBarColor = 0xFF553333;
+                prefix = "\u2620 "; // skull
+            } else if (first) {
+                nameColor = 0xFFFFFF55; // yellow for self
+                hpBarColor = hpPct > 0.5f ? 0xFF55FF55 : hpPct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
+                prefix = "";
+            } else {
+                nameColor = 0xFFAAFFAA;
+                hpBarColor = hpPct > 0.5f ? 0xFF44BB44 : hpPct > 0.25f ? 0xFFBBBB44 : 0xFFBB4444;
+                prefix = "";
+            }
+
+            // Truncate long names
+            String displayName = prefix + member.name();
+            if (client.textRenderer.getWidth(displayName) > nameW) {
+                while (client.textRenderer.getWidth(displayName + "..") > nameW && displayName.length() > prefix.length() + 1) {
+                    displayName = displayName.substring(0, displayName.length() - 1);
+                }
+                displayName += "..";
+            }
+
+            // Name
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal(displayName), panelX + panelPad, y, nameColor);
+
+            // HP bar
+            int barX = panelX + panelPad + nameW + 4;
+            ctx.fill(barX, y, barX + barW, y + barH, 0xFF222222);
+            if (!member.dead()) {
+                ctx.fill(barX, y, barX + (int)(barW * hpPct), y + barH, hpBarColor);
+            }
+
+            // HP text
+            String hpText = member.dead() ? "DEAD" : member.hp() + "/" + member.maxHp();
+            int tw = client.textRenderer.getWidth(hpText);
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal(hpText), barX + (barW - tw) / 2, y, member.dead() ? 0xFFFF5555 : 0xFFFFFFFF);
+
+            y += rowH;
+            first = false;
         }
     }
 

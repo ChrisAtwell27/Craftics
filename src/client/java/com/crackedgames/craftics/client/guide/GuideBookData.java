@@ -166,8 +166,19 @@ public class GuideBookData {
                 "- Netherite: +4"),
             new Page("Ranged Weapons",
                 "Bows & Crossbows - Range 3-4. Require arrows.\n\n" +
-                "Tridents - Melee (range 1) or thrown (range 3).\n\n" +
-                "Eggs & Snowballs - Low damage utility items.")
+                "Tridents - Melee stab (1 AP) when adjacent.\n" +
+                "Throw (2 AP) in straight/diagonal lines.\n" +
+                "Lodges in ground — walk to retrieve.\n" +
+                "Loyalty: auto-returns. Riptide: dash.\n" +
+                "Channeling: lightning strike on throw.\n\n" +
+                "Eggs & Snowballs - Low damage utility items."),
+            new Page("Special & Pet Weapons",
+                "Hoes - Special damage type. Low base damage but\n" +
+                "boosted by Special affinity. The main melee\n" +
+                "for effect-based builds.\n\n" +
+                "Shovels - Pet damage type. Moderate damage\n" +
+                "boosted by Pet affinity. The main melee\n" +
+                "for pet/companion builds.")
         )));
         CATEGORIES.add(new Category("Combat Basics", "minecraft:iron_sword",
             "Learn the fundamentals of grid combat.", basics));
@@ -180,11 +191,11 @@ public class GuideBookData {
         enemies.add(mob("Sheep", "Speed: 2 | Passive\n\nHarmless farm animal. Drops mutton on defeat."));
         enemies.add(mob("Chicken", "Speed: 2 | Passive\n\nHarmless bird. Drops chicken on defeat."));
         enemies.add(mob("Horse", "Speed: 2 | Passive\n\nCan be tamed with golden items + saddle for +3 Speed mount!"));
-        enemies.add(mob("Wolf", "Speed: 3 | Passive until hit\n\nTame with bone to gain an ally! Weak to Magic."));
+        enemies.add(mob("Wolf", "Speed: 3 | Passive until hit\n\nTame with bone to gain an ally! Weak to Special."));
         enemies.add(mob("Cat", "Speed: 2 | Passive\n\nTame with fish. Creepers avoid cats!"));
         enemies.add(mob("Fox", "Speed: 2 | Passive\n\nShy and quick. Will flee from you."));
         enemies.add(mob("Rabbit", "Speed: 2 | Passive\n\nTiny and fast. Harmless."));
-        enemies.add(mob("Goat", "Speed: 2 | Passive\n\nCharges and rams! Weak to Sword."));
+        enemies.add(mob("Goat", "Speed: 2 | Passive\n\nCharges and rams! Weak to Slashing."));
         enemies.add(mob("Parrot", "Speed: 2 | Passive\n\nColorful companion. Tame with seeds."));
         enemies.add(mob("Bee", "Speed: 2 | Passive until hit\n\nStings once then dies. Weak but annoying in groups."));
         enemies.add(mob("Cod", "Speed: 2 | Passive\n\nAquatic. Only found in water biomes."));
@@ -194,24 +205,24 @@ public class GuideBookData {
         enemies.add(mob("Drowned", "Speed: 2 | Range: 1-3\n\nAquatic zombie. Some carry tridents for ranged attacks.\n\nWeak to: Blunt, Cleaving\nResist: Water"));
         enemies.add(mob("Skeleton", "Speed: 2 | Range: 3\n\nRanged archer. Keeps distance and retreats if you close in.\n\nWeak to: Blunt\nResist: Ranged"));
         enemies.add(mob("Stray", "Speed: 2 | Range: 3\n\nFrozen skeleton variant. Slowness arrows!\n\nWeak to: Blunt\nResist: Ranged, Water"));
-        enemies.add(mob("Creeper", "Speed: 2 | Special: Explode\n\nSneaks close then detonates! Massive AoE damage to everything nearby.\n\nWeak to: Ranged, Cleaving\nResist: Sword"));
-        enemies.add(mob("Spider", "Speed: 3 | Size: 2x2\n\nFast 2x2 predator that pounces! Takes up 4 tiles.\n\nWeak to: Cleaving, Magic\nResist: Blunt"));
-        enemies.add(mob("Pillager", "Speed: 2 | Range: 3\n\nCrossbow-wielding raider. Fires from distance.\n\nWeak to: Sword, Cleaving\nResist: Ranged"));
+        enemies.add(mob("Creeper", "Speed: 2 | Special: Explode\n\nSneaks close then detonates! Massive AoE damage to everything nearby.\n\nWeak to: Ranged, Cleaving\nResist: Slashing"));
+        enemies.add(mob("Spider", "Speed: 3 | Size: 2x2\n\nFast 2x2 predator that pounces! Takes up 4 tiles.\n\nWeak to: Cleaving, Special\nResist: Blunt"));
+        enemies.add(mob("Pillager", "Speed: 2 | Range: 3\n\nCrossbow-wielding raider. Fires from distance.\n\nWeak to: Slashing, Cleaving\nResist: Ranged"));
         enemies.add(mob("Vindicator", "Speed: 3 | Range: 1\n\nAxe-wielding berserker. Charges in aggressively!\n\nWeak to: Ranged\nResist: Cleaving"));
         enemies.add(mob("Evoker", "Speed: 2 | Range: 4\n\nSummons vex fangs from distance. High priority target!"));
-        enemies.add(mob("Phantom", "Speed: 4 | Special: Swoop\n\nFlying enemy that swoops from distance, hits, and retreats.\n\nWeak to: Ranged\nResist: Sword"));
+        enemies.add(mob("Phantom", "Speed: 4 | Special: Swoop\n\nFlying enemy that swoops from distance, hits, and retreats.\n\nWeak to: Ranged\nResist: Slashing"));
         // Hostile - Nether
-        enemies.add(mob("Blaze", "Speed: 2 | Range: 3\n\nHovering ranged attacker. Fireball deals area damage.\n\nWeak to: Water\nResist: Magic, Ranged"));
-        enemies.add(mob("Ghast", "Speed: 1 | Range: 5\n\nSlow but extreme range. Fireball explosions!\n\nWeak to: Ranged, Sword\nResist: Magic"));
+        enemies.add(mob("Blaze", "Speed: 2 | Range: 3\n\nHovering ranged attacker. Fireball deals area damage.\n\nWeak to: Water\nResist: Special, Ranged"));
+        enemies.add(mob("Ghast", "Speed: 1 | Range: 5\n\nSlow but extreme range. Fireball explosions!\n\nWeak to: Ranged, Slashing\nResist: Special"));
         enemies.add(mob("Magma Cube", "Speed: 3 | Range: 1\n\nBouncy slime. Splits on death!\n\nWeak to: Water\nResist: Blunt"));
-        enemies.add(mob("Wither Skeleton", "Speed: 3 | Range: 1\n\nRelentless pursuer with stone sword.\n\nWeak to: Blunt, Water\nResist: Magic"));
-        enemies.add(mob("Hoglin", "Speed: 3 | Range: 1\n\nCharging beast. Hits hard!\n\nWeak to: Magic\nResist: Blunt"));
-        enemies.add(mob("Piglin", "Speed: 2 | Range: 3\n\nCrossbow or gold sword. Trades if you have gold!\n\nWeak to: Magic, Water\nResist: Ranged"));
+        enemies.add(mob("Wither Skeleton", "Speed: 3 | Range: 1\n\nRelentless pursuer with stone sword.\n\nWeak to: Blunt, Water\nResist: Special"));
+        enemies.add(mob("Hoglin", "Speed: 3 | Range: 1\n\nCharging beast. Hits hard!\n\nWeak to: Special\nResist: Blunt"));
+        enemies.add(mob("Piglin", "Speed: 2 | Range: 3\n\nCrossbow or gold sword. Trades if you have gold!\n\nWeak to: Special, Water\nResist: Ranged"));
         enemies.add(mob("Zombified Piglin", "Speed: 2 | Range: 1\n\nNeutral until hit, then swarms!"));
         // Hostile - End
-        enemies.add(mob("Enderman", "Speed: 5 | Special: Teleport\n\nTeleports anywhere! Very hard to run from.\n\nWeak to: Water, Magic\nResist: Ranged"));
-        enemies.add(mob("Shulker", "Speed: 1 | Range: 4\n\nStationary turret. Levitation projectiles!\n\nWeak to: Blunt\nResist: Ranged, Sword"));
-        enemies.add(mob("Witch", "Speed: 2 | Range: 4\n\nThrows harmful potions from long range.\n\nWeak to: Sword, Cleaving\nResist: Magic\nImmune: Water"));
+        enemies.add(mob("Enderman", "Speed: 5 | Special: Teleport\n\nTeleports anywhere! Very hard to run from.\n\nWeak to: Water, Special\nResist: Ranged"));
+        enemies.add(mob("Shulker", "Speed: 1 | Range: 4\n\nStationary turret. Levitation projectiles!\n\nWeak to: Blunt\nResist: Ranged, Slashing"));
+        enemies.add(mob("Witch", "Speed: 2 | Range: 4\n\nThrows harmful potions from long range.\n\nWeak to: Slashing, Cleaving\nResist: Special\nImmune: Water"));
         // Bosses
         enemies.add(mob("The Revenant", "BOSS | Zombie | 20HP / 4ATK / 2DEF / Speed 2\nPlains biome boss.\n\n" +
             "Abilities:\n- Raise the Dead: Summons 1-2 Zombies every 3 turns\n- Death Charge: 3-tile line charge, ATK+2\n- Shield Bash: Knockback 2 tiles\n\n" +
@@ -264,8 +275,8 @@ public class GuideBookData {
         enemies.add(mob("The Wither", "BOSS | Wither | 65HP / 8ATK / 5DEF / Range 5 / Speed 2\nBasalt Deltas final boss.\n\n" +
             "Abilities:\n- Wither Skull Barrage: 3 destroyable skull projectiles\n- Decay Aura: Tiles near Wither become fire\n- Summon Wither Skeletons (max 4)\n- Charge: 4-tile dash, ATK+3\n\n" +
             "Phase 2 — Wither Armor: Immune to ranged, transition explosion, 5 skulls, larger decay."));
-        enemies.add(mob("Warden", "BOSS | Warden | Speed 3\nDeep Dark boss. Sonic boom ignores defense. Massive HP.\n\nWeak to: Ranged\nResist: Blunt, Sword"));
-        enemies.add(mob("Ender Dragon", "BOSS | Ender Dragon | Speed 4\nFinal boss. Massive, fast, devastating. Triggers NG+!\n\nWeak to: Ranged, Magic\nResist: Water"));
+        enemies.add(mob("Warden", "BOSS | Warden | Speed 3\nDeep Dark boss. Sonic boom ignores defense. Massive HP.\n\nWeak to: Ranged\nResist: Blunt, Slashing"));
+        enemies.add(mob("Ender Dragon", "BOSS | Ender Dragon | Speed 4\nFinal boss. Massive, fast, devastating. Triggers NG+!\n\nWeak to: Ranged, Special\nResist: Water"));
         CATEGORIES.add(new Category("Enemy Bestiary", "minecraft:zombie_head",
             "Know your foes. Entries unlock as you encounter them.", enemies));
 
@@ -307,9 +318,9 @@ public class GuideBookData {
             new Page("Set Bonuses",
                 "Wear a full matching armor set for combat bonuses!\n\n" +
                 "Leather (Brawler): +2 Speed, +1 AP, +2 Physical dmg, 2x kill streak multiplier\n" +
-                "Chainmail (Rogue): +1 Speed, -1 AP cost, +2 Sword dmg\n" +
+                "Chainmail (Rogue): +1 Speed, -1 AP cost, +2 Slashing dmg\n" +
                 "Iron (Guard): +2 DEF, KB immune, +2 Cleaving dmg\n" +
-                "Gold (Gambler): +15% crit, +1 emerald/kill, +2 Magic dmg"),
+                "Gold (Gambler): +15% crit, +1 emerald/kill, +2 Special dmg"),
             new Page("Advanced Sets",
                 "Diamond (Knight): +3 DEF, +1 ATK, +2 Blunt dmg\n" +
                 "Netherite (Juggernaut): +4 DEF, +2 ATK, fire immune, +1 ALL dmg types\n" +
@@ -398,7 +409,7 @@ public class GuideBookData {
                 "TNT (1 AP): AoE explosion, self-damage risk\n" +
                 "Bell (2 AP): Stun all enemies in 2 tiles\n" +
                 "Crossbow (2 AP): 3 DMG, 4-tile range, pierces\n" +
-                "Trident (2 AP): 4 DMG, 3-tile range, returns\n" +
+                "Trident: Melee (1 AP) or Throw (2 AP)\n" +
                 "Spore Blossom (1 AP): AoE -1 Speed to enemies"),
             new Page("Defensive & Utility",
                 "Totem (Passive): Auto-revive on death!\n" +
@@ -454,20 +465,20 @@ public class GuideBookData {
             new Page("Nether Trims",
                 "Ward: +1 Defense /piece\n  Full Set: Fortress (50% less dmg when stationary)\n\n" +
                 "Snout: +1 Cleaving Power /piece\n  Full Set: Brute Force (splash damage)\n\n" +
-                "Rib: +1 Magic Power /piece\n  Full Set: Infernal (fire +3 bonus dmg)\n\n" +
+                "Rib: +1 Special Power /piece\n  Full Set: Infernal (fire +3 bonus dmg)\n\n" +
                 "Eye: +1 Attack Range /piece\n  Full Set: All-Seeing (see enemy stats)"),
             new Page("End & Trial Trims",
                 "Spire: +1 Luck /piece\n  Full Set: Fortune's Peak (double emeralds)\n\n" +
                 "Vex: Ignore 1 enemy DEF /piece\n  Full Set: Ethereal (20% dodge)\n\n" +
                 "Silence: +1 stealth range /piece\n  Full Set: Phantom (invisible 2 turns)\n\n" +
                 "Flow: +1 Speed /piece\n  Full Set: Current (kills refund 1 AP)\n\n" +
-                "Bolt: +1 Sword Power /piece\n  Full Set: Thunderstrike (crits stun)"),
+                "Bolt: +1 Slashing Power /piece\n  Full Set: Thunderstrike (crits stun)"),
             new Page("Trim Materials",
                 "The MATERIAL you use to apply a trim also grants a bonus!\n\n" +
                 "Iron: +1 Defense /piece\n" +
                 "Copper: +1 Speed /piece\n" +
                 "Gold: +1 Luck /piece\n" +
-                "Lapis: +1 Magic Power /piece\n" +
+                "Lapis: +1 Special Power /piece\n" +
                 "Emerald: +1 AP /piece"),
             new Page("Trim Materials (cont.)",
                 "Diamond: +1 Melee Power /piece\n" +

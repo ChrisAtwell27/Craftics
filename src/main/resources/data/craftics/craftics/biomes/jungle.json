@@ -21,8 +21,9 @@
     ],
     "hostile": [
       {"type": "minecraft:spider", "weight": 6, "hp": 10, "attack": 3, "defense": 1, "range": 1},
-      {"type": "minecraft:creeper", "weight": 5, "hp": 11, "attack": 4, "defense": 0, "range": 1},
-      {"type": "minecraft:zombie", "weight": 4, "hp": 10, "attack": 3, "defense": 1, "range": 1}
+      {"type": "minecraft:cave_spider", "weight": 5, "hp": 8, "attack": 3, "defense": 0, "range": 1},
+      {"type": "minecraft:creeper", "weight": 6, "hp": 11, "attack": 4, "defense": 0, "range": 1},
+      {"type": "minecraft:zombie", "weight": 2, "hp": 10, "attack": 3, "defense": 1, "range": 1}
     ],
     "boss": {"type": "minecraft:spider", "hp": 50, "attack": 5, "defense": 2, "range": 1}
   },

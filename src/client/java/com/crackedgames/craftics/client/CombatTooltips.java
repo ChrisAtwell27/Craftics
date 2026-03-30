@@ -200,8 +200,8 @@ public class CombatTooltips implements ItemTooltipCallback {
 
             // Trident
             case "loyalty" -> "\u00a7b\u21BA Loyalty " + toRoman(level) + ": \u00a77Trident returns after throwing";
-            case "riptide" -> "\u00a73\u2B06 Riptide " + toRoman(level) + ": \u00a77Teleport to trident on water tiles";
-            case "channeling" -> "\u00a7e\u26A1 Channeling: \u00a77Lightning strike on hit (4 bonus damage)";
+            case "riptide" -> "\u00a73\u2B06 Riptide " + toRoman(level) + ": \u00a77Dash in a line, hit + knockback " + (1 + level) + " all enemies";
+            case "channeling" -> "\u00a7e\u26A1 Channeling " + toRoman(level) + ": \u00a77Lightning on throw (" + (4 + level * 2) + " dmg, 2x if Soaked, chains to " + Math.max(0, level - 1) + ")";
 
             default -> null;
         };
@@ -277,7 +277,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "instant_damage" -> prefix + "\u00a74Harming" + lvl + ": \u00a77Deal " + (4 + amplifier * 4) + " damage";
             case "regeneration" -> prefix + "\u00a7dRegen" + lvl + ": \u00a77+2 HP/turn for 3 turns";
             case "resistance" -> prefix + "\u00a79Resistance" + lvl + ": \u00a77+2 defense for 3 turns";
-            case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for 3 turns, \u00a75+1 Magic Power";
+            case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for 3 turns, \u00a75+1 Special Power";
             case "poison" -> prefix + "\u00a72Poison" + lvl + ": \u00a77-" + (1 + amplifier) + " HP/turn for 3 turns";
             case "invisibility" -> prefix + "\u00a77Invisibility: \u00a77Enemies skip your turn for 2 turns";
             case "night_vision" -> prefix + "\u00a7eNight Vision: \u00a77See in darkness (no combat effect)";
@@ -312,7 +312,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "healing" -> prefix + "\u00a7aHealing" + lvl + ": \u00a77Restore " + (strong ? 8 : 4) + " HP instantly";
             case "harming" -> prefix + "\u00a74Harming" + lvl + ": \u00a77Deal " + (strong ? 8 : 4) + " damage";
             case "regeneration" -> prefix + "\u00a7dRegen" + lvl + ": \u00a77+2 HP/turn for 3 turns";
-            case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for 3 turns, \u00a75+1 Magic Power";
+            case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for 3 turns, \u00a75+1 Special Power";
             case "poison" -> prefix + "\u00a72Poison" + lvl + ": \u00a77-1 HP/turn for 3 turns";
             case "invisibility" -> prefix + "\u00a77Invisibility: \u00a77Enemies skip you for 2 turns";
             case "night_vision" -> prefix + "\u00a7eNight Vision: \u00a77(no combat effect)";
@@ -370,7 +370,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "vex"       -> "Ignore 1 enemy DEF per piece";
             case "tide"      -> "+1 HP regen per 2 turns per piece";
             case "snout"     -> "+1 Cleaving Power per piece";
-            case "rib"       -> "+1 Magic Power per piece";
+            case "rib"       -> "+1 Special Power per piece";
             case "spire"     -> "+1 Luck per piece";
             case "wayfinder" -> "+1 Speed per piece";
             case "shaper"    -> "+1 Defense per piece";
@@ -378,7 +378,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "raiser"    -> "+1 ally damage per piece";
             case "host"      -> "+2 max HP per piece";
             case "flow"      -> "+1 Speed per piece";
-            case "bolt"      -> "+1 Sword Power per piece";
+            case "bolt"      -> "+1 Slashing Power per piece";
             default -> "";
         };
     }
@@ -433,32 +433,48 @@ public class CombatTooltips implements ItemTooltipCallback {
 
     private static String getTooltipFor(Item item) {
         // ── Weapons ──
-        if (item == Items.WOODEN_SWORD) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7cSword\n\u00a77Basic melee weapon";
-        if (item == Items.STONE_SWORD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a7cSword\n\u00a77Reliable melee weapon";
-        if (item == Items.IRON_SWORD) return "\u00a7c5 DMG \u00a77| Range 1 | 1 AP | \u00a7cSword\n\u00a7e\u2694 Cleave: \u00a77Splashes 50% damage to adjacent enemy";
-        if (item == Items.DIAMOND_SWORD) return "\u00a7c6 DMG \u00a77| Range 1 | 1 AP | \u00a7cSword\n\u00a7e\u2694 Cleave + \u00a7630% Crit \u00a77(double damage)";
-        if (item == Items.GOLDEN_SWORD) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7cSword\n\u00a77Fragile but flashy";
-        if (item == Items.NETHERITE_SWORD) return "\u00a7c7 DMG \u00a77| Range 1 | 1 AP | \u00a7cSword\n\u00a7e\u2694 Cleave + \u00a74Execute \u00a77(3x if target <30% HP)";
+        if (item == Items.WOODEN_SWORD) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
+        if (item == Items.STONE_SWORD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
+        if (item == Items.IRON_SWORD) return "\u00a7c5 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
+        if (item == Items.DIAMOND_SWORD) return "\u00a7c6 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep + \u00a7630% Crit \u00a77(double damage)";
+        if (item == Items.GOLDEN_SWORD) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
+        if (item == Items.NETHERITE_SWORD) return "\u00a7c7 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep + \u00a74Execute \u00a77(3x if target <30% HP)";
 
         // Axes
-        if (item == Items.WOODEN_AXE) return "\u00a7c4 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a7c\u2716 Stun: \u00a77Target skips next turn";
-        if (item == Items.STONE_AXE) return "\u00a7c5 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a7c\u2716 Stun: \u00a77Target skips next turn";
-        if (item == Items.IRON_AXE) return "\u00a7c6 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a7c\u2716 Stun: \u00a77Target skips next turn";
-        if (item == Items.DIAMOND_AXE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a7c\u2716 Stun: \u00a77Target skips next turn";
-        if (item == Items.GOLDEN_AXE) return "\u00a7c4 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a7c\u2716 Stun: \u00a77Target skips next turn";
-        if (item == Items.NETHERITE_AXE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a7c\u2716 Stun: \u00a77Target skips next turn";
+        if (item == Items.WOODEN_AXE) return "\u00a7c4 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.STONE_AXE) return "\u00a7c5 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.IRON_AXE) return "\u00a7c6 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.DIAMOND_AXE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.GOLDEN_AXE) return "\u00a7c4 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.NETHERITE_AXE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
 
         // Mace
         if (item == Items.MACE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a78Blunt\n\u00a76AoE: \u00a77Half damage to all in 3x3\n\u00a76Knockback: \u00a77Pushes target back\n\u00a7dDensity: \u00a77+AoE dmg | \u00a74Breach: \u00a77Armor pen | \u00a7bWind Burst: \u00a77+KB range";
-        if (item == Items.STICK) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a77A humble stick. Surprisingly effective.";
-        if (item == Items.BAMBOO) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a77Sturdy jungle staff. Better than a stick.";
-        if (item == Items.BLAZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a76\u2716 Fire: \u00a77Scorches target for +1 fire damage";
-        if (item == Items.BREEZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a7b\u2716 Knockback: \u00a77Pushes target back 1 tile";
+        if (item == Items.STICK) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a78\u2716 Stun: \u00a775% chance to stun target";
+        if (item == Items.BAMBOO) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a78\u2716 Stun: \u00a775% chance to stun target";
+        if (item == Items.BLAZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a76\u2716 Fire: \u00a77+1 fire dmg | \u00a78Stun: \u00a775% chance";
+        if (item == Items.BREEZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a7b\u2716 Knockback: \u00a77Push back 1 | \u00a78Stun: \u00a775% chance";
+
+        // Hoes — Special type (low damage, effects/utility)
+        if (item == Items.WOODEN_HOE) return "\u00a7c1 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a77Weak but channels special energy";
+        if (item == Items.STONE_HOE) return "\u00a7c1 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a77Weak but channels special energy";
+        if (item == Items.IRON_HOE) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a7d\u2728 Special weapon: \u00a77Low damage, boosted by Special affinity";
+        if (item == Items.GOLDEN_HOE) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a7d\u2728 Special weapon: \u00a77Enchanted gold channels power";
+        if (item == Items.DIAMOND_HOE) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a7d\u2728 Special weapon: \u00a77Strong special conduit";
+        if (item == Items.NETHERITE_HOE) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a7d\u2728 Special weapon: \u00a77Ultimate special conduit";
+
+        // Shovels — Pet type (boosted by Pet affinity)
+        if (item == Items.WOODEN_SHOVEL) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Boosted by Pet affinity";
+        if (item == Items.STONE_SHOVEL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Solid companion blade";
+        if (item == Items.IRON_SHOVEL) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Reliable pet synergy";
+        if (item == Items.GOLDEN_SHOVEL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Golden beast bond";
+        if (item == Items.DIAMOND_SHOVEL) return "\u00a7c5 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Strong pet synergy";
+        if (item == Items.NETHERITE_SHOVEL) return "\u00a7c6 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Ultimate beastmaster blade";
 
         // Ranged
         if (item == Items.BOW) return "\u00a7c5 DMG \u00a77| \u00a7bRange 3 \u00a77| 1 AP | \u00a7bRanged\n\u00a77Consumes arrows. Tipped arrows apply effects.\n\u00a7dPower: \u00a77+1 DMG/lvl | \u00a76Flame: \u00a77Ignite | \u00a7eInfinity: \u00a77Free ammo";
         if (item == Items.CROSSBOW) return "\u00a7c6 DMG \u00a77| \u00a7bRange 4 \u00a77| \u00a7c2 AP \u00a77| \u00a7bRanged\n\u00a7bPierce: \u00a77Bolt hits 2nd target for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.";
-        if (item == Items.TRIDENT) return "\u00a7c5 DMG \u00a77| \u00a7bRange 3 \u00a77| \u00a7c2 AP \u00a77| \u00a73Water\n\u00a77No ammo needed. Returns after throwing.";
+        if (item == Items.TRIDENT) return "\u00a7c8 DMG \u00a77| \u00a73Water\n\u00a77Melee (1 AP) when adjacent.\n\u00a77Throw (2 AP) in straight/diagonal lines.\n\u00a77Thrown trident lodges in ground \u2014 retrieve manually.\n\u00a7bLoyalty: \u00a77auto-returns | \u00a73Riptide: \u00a77dash | \u00a7eChanneling: \u00a77lightning";
 
         // ── Food ──
         if (item == Items.APPLE) return "\u00a7a+2 HP \u00a77| 1 AP";
@@ -587,7 +603,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Chainmail
         if (item == Items.CHAINMAIL_HELMET || item == Items.CHAINMAIL_CHESTPLATE
             || item == Items.CHAINMAIL_LEGGINGS || item == Items.CHAINMAIL_BOOTS)
-            return "\u00a77Set Bonus (full set): Rogue\n\u00a77+1 Speed, attacks cost -1 AP (min 1)\n\u00a7cType Affinity: \u00a77+2 Sword Power";
+            return "\u00a77Set Bonus (full set): Rogue\n\u00a77+1 Speed, attacks cost -1 AP (min 1)\n\u00a7cType Affinity: \u00a77+2 Slashing Power";
         // Iron
         if (item == Items.IRON_HELMET || item == Items.IRON_CHESTPLATE
             || item == Items.IRON_LEGGINGS || item == Items.IRON_BOOTS)
@@ -595,7 +611,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Gold
         if (item == Items.GOLDEN_HELMET || item == Items.GOLDEN_CHESTPLATE
             || item == Items.GOLDEN_LEGGINGS || item == Items.GOLDEN_BOOTS)
-            return "\u00a76Set Bonus (full set): Gambler\n\u00a77+15% crit chance, +1 emerald/kill\n\u00a75Type Affinity: \u00a77+2 Magic Power";
+            return "\u00a76Set Bonus (full set): Gambler\n\u00a77+15% crit chance, +1 emerald/kill\n\u00a75Type Affinity: \u00a77+2 Special Power";
         // Diamond
         if (item == Items.DIAMOND_HELMET || item == Items.DIAMOND_CHESTPLATE
             || item == Items.DIAMOND_LEGGINGS || item == Items.DIAMOND_BOOTS)
@@ -689,7 +705,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "iron"      -> "+1 Defense per piece";
             case "copper"    -> "+1 Speed per piece";
             case "gold"      -> "+1 Luck per piece";
-            case "lapis"     -> "+1 Magic Power per piece";
+            case "lapis"     -> "+1 Special Power per piece";
             case "emerald"   -> "+1 AP per piece";
             case "diamond"   -> "+1 Melee Power per piece";
             case "netherite" -> "+1 Armor Penetration per piece";

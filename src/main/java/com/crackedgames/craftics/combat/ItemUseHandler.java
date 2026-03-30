@@ -176,7 +176,7 @@ public class ItemUseHandler {
 
     // Items with special AP costs
     private static final Set<Item> TWO_AP_ITEMS = Set.of(
-        Items.BELL, Items.TRIDENT, Items.JUKEBOX, Items.CROSSBOW
+        Items.BELL, Items.JUKEBOX, Items.CROSSBOW
     );
 
     public static int getApCost(Item item) {
@@ -201,7 +201,7 @@ public class ItemUseHandler {
     private static final Set<Item> EXTRA_USABLE = Set.of(
         Items.SPYGLASS, Items.COMPASS, Items.BELL, Items.LAVA_BUCKET,
         Items.SCAFFOLDING, Items.CAMPFIRE, Items.ANVIL, Items.HONEY_BLOCK,
-        Items.POWDER_SNOW_BUCKET, Items.TRIDENT, Items.JUKEBOX,
+        Items.POWDER_SNOW_BUCKET, Items.JUKEBOX,
         Items.WHITE_BANNER, Items.BLACK_BANNER, Items.RED_BANNER,
         Items.BLUE_BANNER, Items.GREEN_BANNER, Items.YELLOW_BANNER,
         Items.ORANGE_BANNER, Items.PURPLE_BANNER, Items.CYAN_BANNER,
@@ -298,8 +298,6 @@ public class ItemUseHandler {
             return useHoneyBlock(arena, targetTile, held);
         } else if (item == Items.POWDER_SNOW_BUCKET) {
             return usePowderSnow(arena, targetTile, held);
-        } else if (item == Items.TRIDENT) {
-            return useTrident(arena, targetTile, held);
         } else if (item == Items.JUKEBOX) {
             return useJukebox(arena, held);
         } else if (isBanner(item)) {
@@ -328,8 +326,6 @@ public class ItemUseHandler {
             return useSporeBlossom(arena, targetTile, held);
         } else if (item == Items.LANTERN) {
             return useLantern(arena, targetTile, held);
-        } else if (item == Items.GOAT_HORN) {
-            return useGoatHorn(arena, held);
         } else if (item == Items.ECHO_SHARD) {
             return useEchoShard(arena, held);
         } else if (item == Items.BRUSH) {
@@ -626,7 +622,7 @@ public class ItemUseHandler {
                         // Magic damage type bonus from player's gear/effects
                         int magicBonus = DamageType.getTotalBonus(
                             PlayerCombatStats.getArmorSet(player), CombatManager.get(player).getTrimScan(),
-                            effects, DamageType.MAGIC);
+                            effects, DamageType.SPECIAL);
                         int dealt = target.takeDamage(3 * (amp + 1) + magicBonus);
                         msg.append("§5").append(target.getDisplayName()).append(" -").append(dealt).append("HP ");
                     } else if (effectType == StatusEffects.POISON.value()) {
@@ -862,7 +858,7 @@ public class ItemUseHandler {
             rarity = "§a";
         } else if (roll < 90) {
             // Good items (15%)
-            int goodRoll = rng.nextInt(22);
+            int goodRoll = rng.nextInt(23);
             loot = switch (goodRoll) {
                 case 0 -> Items.NAME_TAG;
                 case 1 -> Items.SADDLE;
@@ -886,12 +882,13 @@ public class ItemUseHandler {
                 case 19 -> Items.HEART_OF_THE_SEA;
                 case 20 -> Items.TURTLE_SCUTE;
                 case 21 -> Items.CROSSBOW;
+                case 22 -> Items.TRIDENT;
                 default -> Items.DEAD_HORN_CORAL;
             };
             rarity = "§b";
         } else {
             // Rare treasure (10%)
-            loot = switch (rng.nextInt(7)) {
+            loot = switch (rng.nextInt(8)) {
                 case 0 -> Items.DIAMOND;
                 case 1 -> Items.EMERALD;
                 case 2 -> Items.GOLDEN_APPLE;
@@ -899,6 +896,7 @@ public class ItemUseHandler {
                 case 4 -> Items.ENCHANTED_GOLDEN_APPLE;
                 case 5 -> Items.AXOLOTL_BUCKET;
                 case 6 -> Items.WATER_BUCKET;
+                case 7 -> Items.TRIDENT;
                 default -> Items.HEART_OF_THE_SEA;
             };
             rarity = "§d";
@@ -1016,23 +1014,6 @@ public class ItemUseHandler {
         int dealt = enemy.takeDamage(1);
         enemy.setStunned(true);
         return "§bFrozen! " + enemy.getDisplayName() + " takes " + dealt + " cold damage and skips next turn.";
-    }
-
-    // --- Trident: ranged 3-tile attack, returns to player (2 AP, durability cost) ---
-    private static String useTrident(GridArena arena, GridPos targetTile, ItemStack stack) {
-        if (targetTile == null) return "§cNeed to target an enemy!";
-        CombatEntity enemy = arena.getOccupant(targetTile);
-        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
-        GridPos playerPos = arena.getPlayerGridPos();
-        int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
-        if (dist > 3) return "§cOut of range! (max 3 tiles)";
-        if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
-            stack.decrement(1);
-        } else {
-            stack.setDamage(stack.getDamage() + 1);
-        }
-        int dealt = enemy.takeDamage(4);
-        return "§3Trident strikes " + enemy.getDisplayName() + " for " + dealt + " damage! It returns to your hand.";
     }
 
     // --- Jukebox: play music — buff all allies +1 speed for this battle (2 AP, consumes) ---

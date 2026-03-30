@@ -34,6 +34,7 @@ public class EventRoomScreen extends Screen {
             case "shrine" -> initShrine();
             case "traveler" -> initTraveler();
             case "vault" -> initVault();
+            case "enchanter" -> initEnchanter();
         }
     }
 
@@ -138,6 +139,41 @@ public class EventRoomScreen extends Screen {
         ).dimensions(cx - BTN_W / 2, startY + count * (BTN_H + BTN_GAP) + 6, BTN_W, BTN_H).build());
     }
 
+    // ── Enchanter ──
+    // Data format: "slotId:itemName:weapon|slotId:itemName:armor|..."
+    private void initEnchanter() {
+        int cx = this.width / 2;
+        int startY = this.height / 2 + 10;
+
+        if (eventData.isEmpty()) {
+            this.addDrawableChild(ButtonWidget.builder(
+                Text.literal("§c✗ You have nothing to enchant..."),
+                b -> sendChoice(-1)
+            ).dimensions(cx - BTN_W / 2, startY, BTN_W, BTN_H).build());
+            return;
+        }
+
+        String[] entries = eventData.split("\\|");
+        int count = Math.min(entries.length, 6);
+        for (int i = 0; i < count; i++) {
+            String[] parts = entries[i].split(":");
+            int slotId = Integer.parseInt(parts[0]);
+            String itemName = parts[1];
+            boolean isArmor = "armor".equals(parts[2]);
+            String hint = isArmor ? "§b+Random Trim" : "§d+Random Enchantment";
+            ButtonWidget btn = ButtonWidget.builder(
+                Text.literal("§f✦ Enhance " + itemName + "  " + hint),
+                b -> sendChoice(slotId)
+            ).dimensions(cx - BTN_W / 2, startY + i * (BTN_H + BTN_GAP), BTN_W, BTN_H).build();
+            this.addDrawableChild(btn);
+        }
+
+        this.addDrawableChild(ButtonWidget.builder(
+            Text.literal("§7✗ Decline"),
+            b -> sendChoice(-1)
+        ).dimensions(cx - BTN_W / 2, startY + count * (BTN_H + BTN_GAP) + 6, BTN_W, BTN_H).build());
+    }
+
     // ── Treasure Vault ──
     private void initVault() {
         int cx = this.width / 2;
@@ -170,6 +206,7 @@ public class EventRoomScreen extends Screen {
             case "shrine" -> renderShrineHeader(context, cx, headerY);
             case "traveler" -> renderTravelerHeader(context, cx, headerY);
             case "vault" -> renderVaultHeader(context, cx, headerY);
+            case "enchanter" -> renderEnchanterHeader(context, cx, headerY);
         }
     }
 
@@ -191,6 +228,15 @@ public class EventRoomScreen extends Screen {
             Text.literal("§7A wounded traveler begs for food..."), cx, y + 14, 0xAAAAAA);
         ctx.drawCenteredTextWithShadow(this.textRenderer,
             Text.literal("§fBetter food = better reward!"), cx, y + 28, 0xFFFFFF);
+    }
+
+    private void renderEnchanterHeader(DrawContext ctx, int cx, int y) {
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            Text.literal("§d§l✨ WANDERING ENCHANTER ✨"), cx, y, 0xFF55FF);
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            Text.literal("§7\"Give me an item and I'll enhance it...\""), cx, y + 14, 0xAAAAAA);
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            Text.literal("§fWeapons get enchantments, armor gets trims."), cx, y + 28, 0xFFFFFF);
     }
 
     private void renderVaultHeader(DrawContext ctx, int cx, int y) {
