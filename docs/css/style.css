@@ -13,9 +13,16 @@
   --muted: #666;
   --accent: #0074d9;
   --accent-dim: #e6f0fa;
+  --amber: #c87000;
+  --amber-dim: rgba(200, 112, 0, 0.1);
+  --emerald: #1a8f6e;
+  --emerald-dim: rgba(26, 143, 110, 0.1);
+  --overworld: #1a8f4e;
+  --nether: #c94040;
+  --end: #7c44c9;
   --code-bg: #f4f4f4;
   --nav-height: 60px;
-  --sidebar-width: 240px;
+  --sidebar-width: 220px;
 }
 
 /* ---- Reset ---- */
@@ -96,21 +103,21 @@ a:hover { color: #005fa3; }
 }
 
 .nav-links a:hover { color: var(--accent); background: var(--accent-dim); }
-.nav-links a.active { color: #fff; background: var(--accent); }
+.nav-links a.active { color: #fff; background: var(--accent); border-radius: 6px; }
 
+.nav-github {
   font-family: Arial, Helvetica, sans-serif;
-  color: var(--text) !important;
-  padding: 6px 14px !important;
+  color: var(--text);
+  padding: 6px 14px;
   border: 1px solid var(--border);
-  border-radius: 6px !important;
-  font-size: 13px !important;
+  border-radius: 6px;
+  font-size: 13px;
   margin-left: 8px;
 }
 
 .nav-github:hover {
-  border-color: var(--amber) !important;
-  color: var(--amber) !important;
-  font-family: Arial, Helvetica, sans-serif;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .nav-hamburger {
@@ -130,10 +137,11 @@ a:hover { color: #005fa3; }
    ================================================================ */
 .page-layout {
   display: flex;
-  max-width: 1400px;
+  max-width: 1200px;
   margin: 0 auto;
-  font-family: monospace;
-  gap: 48px;
+  font-family: Arial, Helvetica, sans-serif;
+  gap: 24px;
+  padding: 0 24px;
   min-height: calc(100vh - var(--nav-height) - 80px);
 }
 
@@ -160,6 +168,7 @@ a:hover { color: #005fa3; }
 
 .sidebar-nav { display: flex; flex-direction: column; gap: 1px; }
 
+.sidebar-nav a {
   font-family: Arial, Helvetica, sans-serif;
   display: block;
   padding: 6px 12px;
@@ -169,7 +178,7 @@ a:hover { color: #005fa3; }
   border-left: 2px solid transparent;
   border-radius: 0 4px 4px 0;
   transition: all 0.15s;
-  font-family: Arial, Helvetica, sans-serif;
+}
 
 .sidebar-nav a:hover {
   color: var(--text);
@@ -181,7 +190,7 @@ a:hover { color: #005fa3; }
   padding-left: 24px;
   font-size: 12px;
 }
-  font-family: Arial, Helvetica, sans-serif;
+
 /* ---- Main content ---- */
 .content {
   flex: 1;
@@ -192,7 +201,6 @@ a:hover { color: #005fa3; }
 
 .content > h1 {
   font-family: Arial, Helvetica, sans-serif;
-  font-family: monospace;
   color: var(--accent);
   margin-bottom: 8px;
   font-weight: bold;
@@ -420,7 +428,7 @@ pre code {
 }
 
 .hero h1 {
-  font-family: 'Cinzel', serif;
+  font-family: Arial, Helvetica, sans-serif;
   font-size: clamp(48px, 8vw, 80px);
   font-weight: 700;
   color: var(--amber);
@@ -525,7 +533,7 @@ pre code {
 }
 
 .section-header h2 {
-  font-family: 'Cinzel', serif;
+  font-family: Arial, Helvetica, sans-serif;
   font-size: 24px;
   color: var(--text);
   margin-bottom: 8px;
@@ -563,7 +571,7 @@ pre code {
 .dimension-card.end       { border-top: 3px solid var(--end); }
 
 .dimension-card h3 {
-  font-family: 'Cinzel', serif;
+  font-family: Arial, Helvetica, sans-serif;
   font-size: 17px;
   margin: 0 0 6px;
   color: var(--text);
@@ -641,7 +649,7 @@ pre code {
   background: var(--surface);
   border-left: 3px solid var(--amber);
   border-radius: 0 6px 6px 0;
-  font-family: 'Cinzel', serif;
+  font-family: Arial, Helvetica, sans-serif;
   font-size: 17px;
   color: var(--amber);
   font-weight: 600;
@@ -809,7 +817,7 @@ footer .sep { color: var(--border); margin: 0 4px; }
 .infobox-title {
   background: var(--surface-alt);
   padding: 10px 14px;
-  font-family: 'Cinzel', serif;
+  font-family: Arial, Helvetica, sans-serif;
   font-size: 14px;
   font-weight: 700;
   color: var(--amber);

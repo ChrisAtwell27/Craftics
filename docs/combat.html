@@ -4,9 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Craftics - Combat System</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -16,7 +13,7 @@
      ============================================================ -->
 <nav class="top-nav">
   <div class="nav-inner">
-    <a href="index.html" class="nav-logo">Craftics</a>
+    <a href="index.html" class="nav-logo"><img src="https://media.forgecdn.net/avatars/thumbnails/1730/614/64/64/639101389968942522.png" alt="Craftics Logo" style="height:32px;width:32px;vertical-align:middle;border-radius:6px;margin-right:10px;">Craftics</a>
     <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
     <ul class="nav-links">
       <li><a href="index.html">Home</a></li>
@@ -69,6 +66,8 @@
     <p>
       The player receives <strong>3 AP per turn</strong> (base stat), modified by armor trims, potions, and set bonuses. Each action costs a certain number of AP. When you run out, your turn ends. Any remaining AP is lost when you end your turn early with <code>R</code>.
     </p>
+    <img src="https://media.forgecdn.net/attachments/1605/26/screenshot-2026-03-29-201518.png" alt="AP and Speed display" style="width:100%;max-width:700px;border-radius:8px;border:1px solid #d0d0d7;margin:12px 0 20px;">
+    <img src="https://media.forgecdn.net/attachments/1605/28/screenshot-2026-03-29-201552.png" alt="Attacking an enemy" style="width:100%;max-width:700px;border-radius:8px;border:1px solid #d0d0d7;margin:0 0 20px;">
     <div class="table-wrap">
       <table>
         <thead>
@@ -125,6 +124,7 @@
     <p>
       Every vanilla weapon has an Attack value, an AP cost, a Range, and an optional special Ability. Higher-tier weapons gain stronger abilities. Each attack costs <strong>10 weapon durability</strong>.
     </p>
+    <img src="https://media.forgecdn.net/attachments/1605/29/screenshot-2026-03-29-201703.png" alt="Weapon tooltip information" style="width:100%;max-width:700px;border-radius:8px;border:1px solid #d0d0d7;margin:12px 0 20px;">
     <div class="table-wrap">
       <table>
         <thead>
@@ -296,6 +296,7 @@
     <p>
       Each full armor set assigns a <strong>class</strong> with unique stat bonuses and a damage type affinity. Data sourced from <code>PlayerCombatStats.java</code>.
     </p>
+    <img src="https://media.forgecdn.net/attachments/1605/32/screenshot-2026-03-29-201806.png" alt="Armor set information" style="width:100%;max-width:700px;border-radius:8px;border:1px solid #d0d0d7;margin:12px 0 20px;">
     <div class="table-wrap">
       <table>
         <thead>
@@ -360,6 +361,7 @@
     <p>
       Every trim pattern gives a <strong>per-piece bonus</strong> that stacks up to 4 (one per armor slot), plus a powerful <strong>full-set bonus</strong> when all 4 pieces share the same trim pattern. Data sourced from <code>TrimEffects.java</code>.
     </p>
+    <img src="https://media.forgecdn.net/attachments/1605/36/screenshot-2026-03-29-201905.png" alt="Smithing template trim information" style="width:100%;max-width:700px;border-radius:8px;border:1px solid #d0d0d7;margin:12px 0 20px;">
 
     <h3>Per-Piece Trim Pattern Bonuses</h3>
     <div class="table-wrap">
@@ -469,6 +471,7 @@
     <p>
       Goat horns are rare drops from goats (<strong>10% chance</strong>). There are 8 variants, each with a unique sound and a powerful tactical effect. Horns are reusable but cost AP to play.
     </p>
+    <img src="https://media.forgecdn.net/attachments/1605/46/screenshot-2026-03-29-201944.png" alt="Goat horn information" style="width:100%;max-width:700px;border-radius:8px;border:1px solid #d0d0d7;margin:12px 0 20px;">
     <div class="table-wrap">
       <table>
         <thead>
