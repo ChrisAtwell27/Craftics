@@ -17,13 +17,15 @@
   "night": false,
   "enemies": {
     "passive": [
-      {"type": "minecraft:goat", "weight": 4, "hp": 6, "attack": 1, "defense": 0, "range": 1},
+      {"type": "minecraft:goat", "weight": 4, "hp": 8, "attack": 1, "defense": 0, "range": 1},
+      {"type": "minecraft:llama", "weight": 3, "hp": 8, "attack": 2, "defense": 1, "range": 1},
       {"type": "minecraft:bee", "weight": 2, "hp": 3, "attack": 1, "defense": 0, "range": 1}
     ],
     "hostile": [
       {"type": "minecraft:pillager", "weight": 6, "hp": 8, "attack": 3, "defense": 1, "range": 3},
       {"type": "minecraft:vindicator", "weight": 5, "hp": 10, "attack": 4, "defense": 1, "range": 1},
-      {"type": "minecraft:zombie", "weight": 3, "hp": 9, "attack": 2, "defense": 1, "range": 1}
+      {"type": "minecraft:witch", "weight": 3, "hp": 12, "attack": 5, "defense": 2, "range": 3},
+      {"type": "minecraft:zombie", "weight": 2, "hp": 9, "attack": 2, "defense": 1, "range": 1}
     ],
     "boss": {"type": "minecraft:vindicator", "hp": 40, "attack": 5, "defense": 2, "range": 1}
   },

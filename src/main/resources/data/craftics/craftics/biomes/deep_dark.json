@@ -21,7 +21,8 @@
       {"type": "minecraft:zombie", "weight": 4, "hp": 15, "attack": 4, "defense": 2, "range": 1},
       {"type": "minecraft:skeleton", "weight": 4, "hp": 12, "attack": 5, "defense": 2, "range": 3},
       {"type": "minecraft:creeper", "weight": 3, "hp": 14, "attack": 6, "defense": 1, "range": 1},
-      {"type": "minecraft:spider", "weight": 3, "hp": 12, "attack": 4, "defense": 2, "range": 1}
+      {"type": "minecraft:spider", "weight": 3, "hp": 12, "attack": 4, "defense": 2, "range": 1},
+      {"type": "minecraft:enderman", "weight": 2, "hp": 18, "attack": 7, "defense": 3, "range": 1}
     ],
     "boss": {"type": "minecraft:warden", "hp": 60, "attack": 8, "defense": 4, "range": 1}
   },
