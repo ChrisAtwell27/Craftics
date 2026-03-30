@@ -32,7 +32,9 @@ public class CombatEffects {
         BLINDNESS("Blindness", "-2 range"),
         MINING_FATIGUE("Mining Fatigue", "-1 AP"),
         LEVITATION("Levitation", "-1 movement"),
-        DARKNESS("Darkness", "-1 range");
+        DARKNESS("Darkness", "-1 range"),
+        SOAKED("Soaked", "-1 speed, 2x lightning"),
+        CONFUSION("Confusion", "attack allies");
 
         public final String displayName;
         public final String description;

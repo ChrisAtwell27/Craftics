@@ -2505,6 +2505,16 @@ public class CombatManager {
                 }
             }
 
+            // Tick enemy soaked duration
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.getSoakedTurns() <= 0) continue;
+                e.setSoakedTurns(e.getSoakedTurns() - 1);
+                if (e.getSoakedTurns() <= 0) {
+                    e.setSoakedAmplifier(0);
+                    sendMessage("§3" + e.getDisplayName() + " dried off.");
+                }
+            }
+
             // Tick hex trap duration
             if (hexTrapTurnsRemaining > 0) {
                 hexTrapTurnsRemaining--;
@@ -2626,11 +2636,14 @@ public class CombatManager {
                         if (!e.isAlive() || e.isAlly()) continue;
                         int d = Math.abs(e.getGridPos().x() - tPos.x()) + Math.abs(e.getGridPos().z() - tPos.z());
                         if (d <= 1) {
-                            e.takeDamage(4);
+                            int lightningDmg = 4;
+                            // Soaked doubles lightning damage
+                            if (e.getSoakedTurns() > 0) lightningDmg *= 2;
+                            e.takeDamage(lightningDmg);
                             hit++;
                         }
                     }
-                    if (hit > 0) sendMessage("§e⚡ Lightning strikes! " + hit + " enemies hit for 4 damage!");
+                    if (hit > 0) sendMessage("§e⚡ Lightning strikes! " + hit + " enemies hit!");
                     else sendMessage("§eLightning rod fizzles — no enemies nearby.");
                     return true; // remove after striking
                 }
@@ -2656,6 +2669,10 @@ public class CombatManager {
                     + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
                     + (playerMounted ? MOUNT_SPEED_BONUS : 0);
                 movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
+                // Soaked reduces player movement by 1
+                if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
+                    movePointsRemaining = Math.max(1, movePointsRemaining - 1);
+                }
             }
             phase = CombatPhase.PLAYER_TURN;
             // Sound: player turn start
@@ -2681,6 +2698,35 @@ public class CombatManager {
             enemyTurnState = EnemyTurnState.DONE;
             enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             return;
+        }
+
+        // Confused entities attack a random teammate instead
+        if (currentEnemy.getConfusionTurns() > 0 && !currentEnemy.isAlly()) {
+            // Find a random alive non-ally teammate to attack
+            java.util.List<CombatEntity> teammates = new java.util.ArrayList<>();
+            for (CombatEntity e : enemies) {
+                if (e != currentEnemy && e.isAlive() && !e.isAlly()) teammates.add(e);
+            }
+            if (!teammates.isEmpty()) {
+                CombatEntity victim = teammates.get((int)(Math.random() * teammates.size()));
+                sendMessage("§d" + currentEnemy.getDisplayName() + " is confused and attacks " + victim.getDisplayName() + "!");
+                // Pathfind toward the victim and attack
+                java.util.List<GridPos> path = Pathfinding.findPath(arena, currentEnemy.getGridPos(),
+                    victim.getGridPos(), currentEnemy.getMoveSpeed(), false);
+                pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.MoveAndAttackMob(
+                    path, victim.getEntityId(), currentEnemy.getAttackPower());
+                currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
+                if (path != null && !path.isEmpty()) {
+                    startEnemyMove(path);
+                } else {
+                    // Adjacent already — attack directly
+                    startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+                }
+                return;
+            }
+            // No teammates to hit — confusion wasted, tick it down
+            currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
+            sendMessage("§d" + currentEnemy.getDisplayName() + " is confused but has no allies to hit!");
         }
 
         // === ALLY PET AI ===
@@ -5938,7 +5984,7 @@ public class CombatManager {
             case HASTE -> net.minecraft.entity.effect.StatusEffects.HASTE;
             case SLOW_FALLING -> net.minecraft.entity.effect.StatusEffects.SLOW_FALLING;
             case WATER_BREATHING -> net.minecraft.entity.effect.StatusEffects.WATER_BREATHING;
-            case BURNING -> null; // no vanilla equivalent
+            case BURNING, SOAKED, CONFUSION -> null; // no vanilla equivalent
         };
     }
 
@@ -5982,6 +6028,8 @@ public class CombatManager {
             if (e.getPoisonTurns() > 0) efx.append(";Poisoned(" + e.getPoisonTurns() + "t)");
             if (e.getAttackPenalty() > 0) efx.append(";Weakened(-" + e.getAttackPenalty() + "ATK)");
             if (e.getMobEntity() != null && e.getMobEntity().isOnFire()) efx.append(";Burning");
+            if (e.getSoakedTurns() > 0) efx.append(";Soaked(" + e.getSoakedTurns() + "t)");
+            if (e.getConfusionTurns() > 0) efx.append(";Confused(" + e.getConfusionTurns() + "t)");
             typeIds.append(efx);
         }
 

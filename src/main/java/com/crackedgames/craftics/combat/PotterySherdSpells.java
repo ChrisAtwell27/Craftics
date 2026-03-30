@@ -78,6 +78,7 @@ public class PotterySherdSpells {
         Items.MOURNER_POTTERY_SHERD,
         Items.BREWER_POTTERY_SHERD,
         Items.PLENTY_POTTERY_SHERD,
+        Items.GUSTER_POTTERY_SHERD,
         // 5 AP
         Items.ARCHER_POTTERY_SHERD,
         Items.HOWL_POTTERY_SHERD,
@@ -103,7 +104,8 @@ public class PotterySherdSpells {
         if (item == Items.BLADE_POTTERY_SHERD || item == Items.BURN_POTTERY_SHERD
             || item == Items.SNORT_POTTERY_SHERD || item == Items.SHELTER_POTTERY_SHERD
             || item == Items.FLOW_POTTERY_SHERD || item == Items.MOURNER_POTTERY_SHERD
-            || item == Items.BREWER_POTTERY_SHERD || item == Items.PLENTY_POTTERY_SHERD) return 4;
+            || item == Items.BREWER_POTTERY_SHERD || item == Items.PLENTY_POTTERY_SHERD
+            || item == Items.GUSTER_POTTERY_SHERD) return 4;
         // 5 AP — Powerful spells
         if (item == Items.ARCHER_POTTERY_SHERD || item == Items.HOWL_POTTERY_SHERD
             || item == Items.ARMS_UP_POTTERY_SHERD || item == Items.PRIZE_POTTERY_SHERD) return 5;
@@ -127,7 +129,8 @@ public class PotterySherdSpells {
         if (item == Items.SCRAPE_POTTERY_SHERD || item == Items.ANGLER_POTTERY_SHERD
             || item == Items.HEARTBREAK_POTTERY_SHERD || item == Items.SHEAF_POTTERY_SHERD
             || item == Items.DANGER_POTTERY_SHERD || item == Items.BURN_POTTERY_SHERD
-            || item == Items.MOURNER_POTTERY_SHERD || item == Items.SKULL_POTTERY_SHERD) return 3;
+            || item == Items.MOURNER_POTTERY_SHERD || item == Items.SKULL_POTTERY_SHERD
+            || item == Items.GUSTER_POTTERY_SHERD) return 3;
         if (item == Items.MINER_POTTERY_SHERD || item == Items.SNORT_POTTERY_SHERD) return 2;
         if (item == Items.BLADE_POTTERY_SHERD) return 1;
         return 3;
@@ -175,6 +178,7 @@ public class PotterySherdSpells {
         if (item == Items.ARMS_UP_POTTERY_SHERD) return useArmsUpSherd(player, world, playerBlock, combatEffects);
         if (item == Items.PRIZE_POTTERY_SHERD) return usePrizeSherd(player, world, playerBlock, combatEffects);
         if (item == Items.SKULL_POTTERY_SHERD) return useSkullSherd(player, arena, world, targetTile, playerPos, playerBlock);
+        if (item == Items.GUSTER_POTTERY_SHERD) return useGusterSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
 
         return null;
     }
@@ -1362,6 +1366,84 @@ public class PotterySherdSpells {
         }
     }
 
+    /** Guster Sherd — "Chain Lightning": Bolt hits target, then arcs to nearby mobs within 2 tiles.
+     *  Soaked enemies take 2x damage. Each arc deals slightly less damage. */
+    private static String useGusterSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
+                                          GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
+                                          List<CombatEntity> enemies) {
+        CombatEntity target = arena.getOccupant(targetTile);
+
+        // Phase 0 — Cast: storm charging
+        world.playSound(null, playerBlock, SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.PLAYERS, 0.8f, 1.4f);
+        world.spawnParticles(ParticleTypes.ELECTRIC_SPARK, playerBlock.getX() + 0.5, playerBlock.getY() + 1.5,
+            playerBlock.getZ() + 0.5, 15, 0.3, 0.4, 0.3, 0.15);
+
+        // Chain lightning: BFS from the target, chaining to enemies within 2 tiles of each hit
+        int baseDamage = 8;
+        int chainDecay = 1; // damage reduces per chain
+        Set<CombatEntity> hit = new LinkedHashSet<>();
+        java.util.Deque<CombatEntity> queue = new java.util.ArrayDeque<>();
+        Map<CombatEntity, Integer> chainDepth = new HashMap<>();
+
+        hit.add(target);
+        queue.add(target);
+        chainDepth.put(target, 0);
+
+        // BFS: find all chained enemies
+        while (!queue.isEmpty()) {
+            CombatEntity current = queue.poll();
+            int depth = chainDepth.get(current);
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.isAlly() || hit.contains(e)) continue;
+                if (e.getGridPos().manhattanDistance(current.getGridPos()) <= 2) {
+                    hit.add(e);
+                    queue.add(e);
+                    chainDepth.put(e, depth + 1);
+                }
+            }
+        }
+
+        // Apply damage in chain order
+        StringBuilder msg = new StringBuilder("§e§lChain Lightning!");
+        List<BlockPos> chainBlocks = new ArrayList<>();
+        List<BlockPos> prevBlocks = new ArrayList<>();
+        prevBlocks.add(playerBlock);
+        int chainIndex = 0;
+        for (CombatEntity e : hit) {
+            int depth = chainDepth.get(e);
+            int dmg = Math.max(3, baseDamage - (depth * chainDecay));
+            // Soaked enemies take 2x lightning damage
+            if (e.getSoakedTurns() > 0) dmg *= 2;
+            int dealt = e.takeDamage(dmg);
+            BlockPos eBlock = arena.gridToBlockPos(e.getGridPos());
+            chainBlocks.add(eBlock);
+
+            String soakedTag = e.getSoakedTurns() > 0 ? " §3(2x Soaked!)" : "";
+            msg.append(" §e⚡ ").append(e.getDisplayName()).append(" -").append(dealt).append("HP").append(soakedTag);
+
+            // Delayed arc particles per chain step
+            final int delay = 3 + (chainIndex * 4);
+            final BlockPos fromBlock = chainIndex == 0 ? playerBlock : chainBlocks.get(Math.max(0, chainIndex - 1));
+            final BlockPos toBlock = eBlock;
+            final boolean isSoaked = e.getSoakedTurns() > 0;
+            queueEffect(delay, () -> {
+                ProjectileSpawner.spawnSpellTrail(world, fromBlock, toBlock,
+                    ParticleTypes.ELECTRIC_SPARK, ParticleTypes.SOUL_FIRE_FLAME, 10, 1.5);
+                world.spawnParticles(ParticleTypes.ELECTRIC_SPARK, toBlock.getX() + 0.5, toBlock.getY() + 1.0,
+                    toBlock.getZ() + 0.5, 20, 0.3, 0.5, 0.3, 0.15);
+                if (isSoaked) {
+                    world.spawnParticles(ParticleTypes.SPLASH, toBlock.getX() + 0.5, toBlock.getY() + 1.0,
+                        toBlock.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.1);
+                }
+                world.playSound(null, toBlock, SoundEvents.ENTITY_LIGHTNING_BOLT_IMPACT, SoundCategory.PLAYERS, 0.6f, 1.2f + depth * 0.1f);
+            });
+            chainIndex++;
+        }
+
+        msg.append(" §7(").append(hit.size()).append(" enemies chained)");
+        return msg.toString();
+    }
+
     // ================================
     // Tooltip Descriptions
     // ================================
@@ -1390,6 +1472,7 @@ public class PotterySherdSpells {
         if (item == Items.ARMS_UP_POTTERY_SHERD) return "§6[5 AP] War Cry §7— STR IV (+12 ATK) + SPD III (+6 SPD) (4 turns)";
         if (item == Items.PRIZE_POTTERY_SHERD) return "§6[5 AP] Fortune's Favor §7— Next attack = TRIPLE damage + Luck II (4t)";
         if (item == Items.SKULL_POTTERY_SHERD) return "§4[6 AP] Death Mark §7— Execute <50% HP or 10 dmg + Wither IV (4t)";
+        if (item == Items.GUSTER_POTTERY_SHERD) return "§e[4 AP] Chain Lightning §7— 8 dmg, chains to enemies within 2 tiles (2x on Soaked)";
         return null;
     }
 }

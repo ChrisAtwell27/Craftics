@@ -29,6 +29,10 @@ public class CombatEntity {
     private int defensePenaltyTurns = 0;
     private int burningTurns = 0; // fire damage over time
     private int burningDamage = 0; // damage per turn while burning
+    private int soakedTurns = 0; // turns of soaked remaining
+    private int soakedAmplifier = 0; // 0 = level I, 1 = level II, etc.
+    private int confusionTurns = 0; // turns of confusion remaining
+    private int confusionAmplifier = 0; // 0 = level I, 1 = level II, etc.
     private int attackBoost = 0; // permanent attack boost (from pet stats override)
     private int defenseBoost = 0; // permanent defense boost (from pet stats override)
     private int rangeOverride = -1; // if set, overrides base range
@@ -88,6 +92,8 @@ public class CombatEntity {
     }
     public int getMoveSpeed() {
         int base = moveSpeed + speedBonus;
+        // Soaked reduces movement by 1
+        if (soakedTurns > 0) base -= 1;
         float mult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyMoveSpeedMultiplier();
         return Math.max(1, (int)(base * mult));
     }
@@ -155,6 +161,14 @@ public class CombatEntity {
     public void setBurningTurns(int t) { this.burningTurns = t; }
     public int getBurningDamage() { return burningDamage; }
     public void setBurningDamage(int d) { this.burningDamage = d; }
+    public int getSoakedTurns() { return soakedTurns; }
+    public void setSoakedTurns(int t) { this.soakedTurns = t; }
+    public int getSoakedAmplifier() { return soakedAmplifier; }
+    public void setSoakedAmplifier(int a) { this.soakedAmplifier = a; }
+    public int getConfusionTurns() { return confusionTurns; }
+    public void setConfusionTurns(int t) { this.confusionTurns = t; }
+    public int getConfusionAmplifier() { return confusionAmplifier; }
+    public void setConfusionAmplifier(int a) { this.confusionAmplifier = a; }
 
     public int getEffectiveDefense() {
         return Math.max(0, defense - defensePenalty);
