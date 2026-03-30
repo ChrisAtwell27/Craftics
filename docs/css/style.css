@@ -91,14 +91,14 @@ a:hover { color: #005fa3; }
   font-size: 15px;
   font-weight: 500;
   padding: 6px 12px;
-  border-radius: 6px;
+  font-family: Arial, Helvetica, sans-serif;
   transition: color 0.15s, background 0.15s;
 }
 
 .nav-links a:hover { color: var(--accent); background: var(--accent-dim); }
 .nav-links a.active { color: #fff; background: var(--accent); }
 
-.nav-github {
+  font-family: Arial, Helvetica, sans-serif;
   color: var(--text) !important;
   padding: 6px 14px !important;
   border: 1px solid var(--border);
@@ -110,7 +110,7 @@ a:hover { color: #005fa3; }
 .nav-github:hover {
   border-color: var(--amber) !important;
   color: var(--amber) !important;
-  background: transparent !important;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 .nav-hamburger {
@@ -118,7 +118,7 @@ a:hover { color: #005fa3; }
   background: none;
   border: none;
   color: var(--text);
-  cursor: pointer;
+  font-family: Arial, Helvetica, sans-serif;
   font-size: 22px;
   margin-left: auto;
   padding: 4px;
@@ -132,7 +132,7 @@ a:hover { color: #005fa3; }
   display: flex;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 48px;
+  font-family: monospace;
   gap: 48px;
   min-height: calc(100vh - var(--nav-height) - 80px);
 }
@@ -141,7 +141,7 @@ a:hover { color: #005fa3; }
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
-  padding: 32px 0 32px 0;
+  font-family: Arial, Helvetica, sans-serif;
   position: sticky;
   top: var(--nav-height);
   height: calc(100vh - var(--nav-height));
@@ -151,7 +151,7 @@ a:hover { color: #005fa3; }
 .sidebar-label {
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
+  font-family: Arial, Helvetica, sans-serif;
   letter-spacing: 0.08em;
   color: var(--muted);
   margin-bottom: 12px;
@@ -160,7 +160,7 @@ a:hover { color: #005fa3; }
 
 .sidebar-nav { display: flex; flex-direction: column; gap: 1px; }
 
-.sidebar-nav a {
+  font-family: Arial, Helvetica, sans-serif;
   display: block;
   padding: 6px 12px;
   color: var(--muted);
@@ -169,7 +169,7 @@ a:hover { color: #005fa3; }
   border-left: 2px solid transparent;
   border-radius: 0 4px 4px 0;
   transition: all 0.15s;
-}
+  font-family: Arial, Helvetica, sans-serif;
 
 .sidebar-nav a:hover {
   color: var(--text);
@@ -181,7 +181,7 @@ a:hover { color: #005fa3; }
   padding-left: 24px;
   font-size: 12px;
 }
-
+  font-family: Arial, Helvetica, sans-serif;
 /* ---- Main content ---- */
 .content {
   flex: 1;
@@ -192,7 +192,7 @@ a:hover { color: #005fa3; }
 
 .content > h1 {
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 32px;
+  font-family: monospace;
   color: var(--accent);
   margin-bottom: 8px;
   font-weight: bold;
