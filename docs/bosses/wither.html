@@ -50,6 +50,7 @@
     <nav class="sidebar-nav">
       <a href="warden.html">The Warden</a>
       <a href="ender-dragon.html">Ender Dragon</a>
+      <a href="wither.html" class="active">The Wither</a>
     </nav>
   </aside>
 
@@ -61,9 +62,12 @@
         The Wither
         <span class="infobox-subtitle">Basalt Deltas Boss</span>
       </div>
+      <div class="infobox-image">
+        <img src="https://static.wikia.nocookie.net/minecraft_gamepedia/images/a/a4/Wither_JE2_BE2.png" alt="Wither">
+      </div>
       <table>
         <tr><th>Type</th><td>Wither</td></tr>
-        <tr><th>HP</th><td>65</td></tr>
+        <tr><th>HP</th><td>75</td></tr>
         <tr><th>Attack</th><td>8</td></tr>
         <tr><th>Defense</th><td>5</td></tr>
         <tr><th>Range</th><td>5</td></tr>
@@ -79,6 +83,9 @@
       <ol>
         <li><a href="#abilities">Abilities</a></li>
         <li><a href="#skull-barrage">Wither Skull Barrage</a></li>
+        <li><a href="#decay-aura">Decay Aura</a></li>
+        <li><a href="#summon">Summon Wither Skeletons</a></li>
+        <li><a href="#charge">Charge</a></li>
         <li><a href="#phase-2">Phase 2 &mdash; Wither Armor</a></li>
         <li><a href="#strategy">Strategy</a></li>
       </ol>
@@ -92,33 +99,42 @@
 
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Wither Skull Barrage</strong> (every 2 turns): Launches 3 Wither Skull mobs (3 HP / 5 ATK) that travel in a straight line toward the player&rsquo;s position. Skulls move 2 tiles per turn and deal 5 damage + 2 turns of Wither on contact. They can be destroyed (3 HP). Max 6 skulls alive. Telegraphed with dark gathering particles.</li>
-        <li><strong>Decay Aura</strong> (passive, every turn): All tiles within 2 of the Wither become fire tiles (2 damage/turn). Refreshed each turn. The Wither poisons the ground just by existing.</li>
-        <li><strong>Summon Wither Skeletons</strong> (every 4 turns): Spawns 2 Wither Skeletons (10 HP / 5 ATK / 1 DEF) on random empty tiles. Max 4 alive. Telegraphed with ground crack particles.</li>
-        <li><strong>Charge</strong> (when player at range 3+): Dashes up to 4 tiles in a straight line, dealing ATK+3 damage to everything in the path. Telegraphed with highlighted path tiles for 1 turn.</li>
+        <li><strong>Wither Skull Barrage</strong> (every 2 turns): Launches 3 Wither Skull entities that travel in a straight line toward the player. Skulls have 3 HP and 5 ATK. They can be destroyed. Max 6 skulls alive at once. Telegraphed with dark gathering particles 1 turn before launch.</li>
+        <li><strong>Decay Aura</strong> (passive, every turn): All tiles within 2 of the Wither become fire tiles that deal 2 damage per turn. Refreshed each turn automatically.</li>
+        <li><strong>Summon Wither Skeletons</strong> (every 4 turns): Spawns 2 Wither Skeletons (10 HP / 5 ATK / 1 DEF) on random empty tiles. Max 4 alive at once. Telegraphed with ground crack particles 1 turn before spawn.</li>
+        <li><strong>Charge</strong> (when player is 3+ tiles away, 3 turn cooldown): Dashes up to 4 tiles in a straight line toward the player, dealing ATK+3 damage to everything in the path. Telegraphed with highlighted path tiles for 1 turn.</li>
       </ul>
 
       <h2 id="skull-barrage">Wither Skull Barrage</h2>
-      <p>The signature mechanic. Wither Skulls are <strong>actual mob entities</strong> on the grid, not instant damage. They spawn adjacent to the Wither and travel in a straight line (cardinal or diagonal) toward where the player was standing when they were fired. Each turn, skulls advance 2 tiles. They deal 5 damage and apply Wither on contact, then despawn. Skulls can be destroyed by the player (3 HP &mdash; one hit with most weapons).</p>
-      <p>Every 2 turns, 3 new skulls launch, creating a constant stream of incoming projectiles to weave through. The board becomes increasingly chaotic as skulls accumulate from different angles.</p>
+      <p>The signature mechanic. Wither Skulls are actual mob entities on the grid, not instant damage. They spawn adjacent to the Wither and travel in a straight line toward where the player was standing when they were fired. They deal 5 damage and apply Wither on contact, then despawn. Skulls can be destroyed by the player since they only have 3 HP.</p>
+      <p>Every 2 turns, 3 new skulls launch. The board becomes increasingly chaotic as skulls accumulate from different angles. Destroying them early is critical.</p>
 
-      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Wither Armor&rdquo;</h2>
+      <h2 id="decay-aura">Decay Aura</h2>
+      <p>A passive ability that fires every single turn. All tiles within 2 of the Wither become fire tiles (2 damage per turn). This refreshes every turn, so the fire zone follows the Wither wherever it moves. Standing near the Wither means taking constant chip damage from decayed ground.</p>
+
+      <h2 id="summon">Summon Wither Skeletons</h2>
+      <p>Every 4 turns, the Wither summons 2 Wither Skeletons as reinforcements. These have 10 HP, 5 ATK, and 1 DEF. The maximum number of skeletons alive at once is 4. They are telegraphed with ground crack particles 1 turn before spawning.</p>
+
+      <h2 id="charge">Charge</h2>
+      <p>When the player is 3 or more tiles away, the Wither can dash up to 4 tiles in a straight line, dealing ATK+3 damage (11 total) to everything in its path. The path is highlighted for 1 full turn before the charge executes, giving you time to move out of the way. Has a 3 turn cooldown.</p>
+
+      <h2 id="phase-2">Phase 2 &mdash; "Wither Armor"</h2>
       <div class="phase2-callout">
-        <p><strong>Triggers at &le; 50% HP.</strong></p>
+        <p><strong>Triggers at 50% HP or below (37 HP).</strong></p>
         <ul>
           <li><strong>Transition Explosion:</strong> 8 damage to all entities within 3 tiles. Telegraphed with a white flash for 1 full turn before detonation.</li>
-          <li><strong>Ranged Immunity:</strong> Completely immune to ranged/projectile attacks. Must be hit in melee.</li>
-          <li><strong>Skull Barrage:</strong> 5 skulls instead of 3. Speed 3 tiles/turn. Max 10.</li>
-          <li><strong>Decay Aura:</strong> Range extends to 3 tiles.</li>
-          <li><strong>Summon:</strong> 3 Wither Skeletons. Cap 6.</li>
-          <li><strong>Charge:</strong> Leaves decay trail behind it.</li>
+          <li><strong>Ranged Immunity:</strong> Completely immune to all ranged and projectile attacks. Must be hit in melee.</li>
+          <li><strong>Skull Barrage:</strong> 5 skulls instead of 3. Max 10 alive.</li>
+          <li><strong>Decay Aura:</strong> Radius extends from 2 to 3 tiles.</li>
+          <li><strong>Summon:</strong> 3 Wither Skeletons per summon. Max 6 alive.</li>
+          <li><strong>Charge:</strong> Now leaves a fire decay trail behind the dash path (3 turn duration).</li>
         </ul>
       </div>
 
       <h2 id="strategy">Strategy</h2>
-      <p><strong>Phase 1</strong> is a ranged artillery fight. Dodge skull projectiles, avoid decayed ground, clear Wither Skeleton adds, and chip away from range. Prioritize destroying skulls before they reach you &mdash; they only have 3 HP.</p>
-      <p><strong>Phase 2</strong> flips everything. Ranged immunity forces melee, but the expanded Decay Aura punishes proximity. Faster and more numerous skulls make the board chaotic. The Charge leaves decay trails cutting off retreat paths. The transition Explosion punishes early melee positioning.</p>
-      <p>Bring high melee damage for Phase 2. This is the hardest fight in the Nether.</p>
+      <p><strong>Phase 1</strong> is a ranged artillery fight. Dodge skull projectiles, avoid decayed ground, clear Wither Skeleton adds, and chip away from range. Prioritize destroying skulls before they reach you &mdash; they only have 3 HP so most weapons one-shot them.</p>
+      <p><strong>Phase 2</strong> flips everything. Ranged immunity forces melee engagement, but the expanded 3-tile Decay Aura punishes being close. More and faster skulls make the board chaotic. The Charge now leaves fire trails that cut off retreat paths. The transition Explosion punishes players who were already in melee range.</p>
+      <p>Bring high melee damage for Phase 2. Fire Resistance potions help with the expanded decay aura. This is the hardest fight in the Nether.</p>
     </div>
 
     <div class="boss-nav">
@@ -135,7 +151,7 @@
 </div>
 
 <footer>
-  <span>Craftics by CrackedGames</span>
+  <span>Craftics by Cracked Games LLC</span>
   <span class="sep">&middot;</span>
   <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
   <span class="sep">&middot;</span>
