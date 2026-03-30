@@ -502,7 +502,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.POISONOUS_POTATO) return "\u00a7a+1 HP \u00a77| 1 AP \u00a7c(Risky!)";
         if (item == Items.SPIDER_EYE) return "\u00a7a+1 HP \u00a77| 1 AP \u00a7c(Risky!)";
         if (item == Items.ROTTEN_FLESH) return "\u00a7a+2 HP \u00a77| 1 AP \u00a7c(Risky!)";
-        if (item == Items.PUFFERFISH) return "\u00a7a+1 HP \u00a77| 1 AP \u00a7c(Risky!)";
+        if (item == Items.PUFFERFISH) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 2)\n\u00a7c3 DMG \u00a77| Radius 2 | \u00a73Water\n\u00a73Soaked II \u00a77+ \u00a72Poison I";
 
         // ── Potions ──
         // Potions handled dynamically in getTooltip — these are fallbacks for potions without POTION_CONTENTS
@@ -515,6 +515,31 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.EGG) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7c1 DMG \u00a77+ minor annoyance";
         if (item == Items.ENDER_PEARL) return "\u00a751 AP \u00a77- Click any empty tile\n\u00a75Teleport instantly! \u00a7c(Costs 2 HP)";
         if (item == Items.FIRE_CHARGE) return "\u00a761 AP \u00a77- Ranged fire attack\n\u00a7c4 DMG \u00a77+ sets enemy on fire";
+
+        // ── Water AoE Throwables ──
+        if (item == Items.TURTLE_EGG) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 1)\n\u00a7c2 DMG \u00a77| Radius 1 | \u00a73Water\n\u00a73Soaked I";
+        if (item == Items.NAUTILUS_SHELL) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 3)\n\u00a7c4 DMG \u00a77| Radius 2 | \u00a73Water\n\u00a73Soaked III \u00a77+ \u00a7dConfusion I";
+        if (item == Items.HEART_OF_THE_SEA) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 4)\n\u00a7c5 DMG \u00a77| Radius 3 | \u00a73Water\n\u00a73Soaked IV \u00a77+ \u00a7dConfusion II";
+
+        // ── Coral Weapons (Water-type melee) ──
+        if (item == Items.TUBE_CORAL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a73\u2716 Soaked: \u00a77-1 Speed, 2x lightning dmg (1 turn)";
+        if (item == Items.BRAIN_CORAL) return "\u00a7c5 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7d\u2716 Confuse: \u00a7740% chance enemy attacks allies";
+        if (item == Items.BUBBLE_CORAL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7b\u2716 Knockback: \u00a77Bubble burst pushes enemy 1 tile";
+        if (item == Items.FIRE_CORAL) return "\u00a7c7 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a76\u2716 Searing: \u00a77+3 bonus DMG to burning enemies";
+        if (item == Items.HORN_CORAL) return "\u00a7c6 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7e\u2716 Pierce: \u00a77Ignores 3 armor for 1 turn";
+        // Dead corals
+        if (item == Items.DEAD_TUBE_CORAL || item == Items.DEAD_BRAIN_CORAL
+            || item == Items.DEAD_BUBBLE_CORAL || item == Items.DEAD_FIRE_CORAL
+            || item == Items.DEAD_HORN_CORAL
+            || item == Items.DEAD_TUBE_CORAL_FAN || item == Items.DEAD_BRAIN_CORAL_FAN
+            || item == Items.DEAD_BUBBLE_CORAL_FAN || item == Items.DEAD_FIRE_CORAL_FAN
+            || item == Items.DEAD_HORN_CORAL_FAN)
+            return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a77\u2716 Weakened: \u00a77Saps enemy ATK by 2 for 1 turn";
+        // Coral fans
+        if (item == Items.TUBE_CORAL_FAN || item == Items.BRAIN_CORAL_FAN
+            || item == Items.BUBBLE_CORAL_FAN || item == Items.FIRE_CORAL_FAN
+            || item == Items.HORN_CORAL_FAN)
+            return "\u00a7c1 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a73\u2716 Splash: \u00a77Hits all enemies adjacent to target";
 
         // ── Utility Items ──
         if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+2 DEF when in offhand\n\u00a79Brace: \u00a77End turn for +5 DEF total\n\u00a77No AP cost \u2014 equip in offhand slot";
@@ -654,6 +679,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.ARMS_UP_POTTERY_SHERD) return "\u00a76[5 AP] War Cry \u00a77\u2014 STR III (+9 ATK) + SPD II (3 turns)";
         if (item == Items.PRIZE_POTTERY_SHERD) return "\u00a76[5 AP] Fortune's Favor \u00a77\u2014 Next attack = TRIPLE damage + Luck II";
         if (item == Items.SKULL_POTTERY_SHERD) return "\u00a74[6 AP] Death Mark \u00a77\u2014 Execute <40% HP or 5 dmg + Wither III";
+        if (item == Items.GUSTER_POTTERY_SHERD) return "\u00a7e[4 AP] Chain Lightning \u00a77\u2014 8 dmg, chains within 2 tiles (2x on Soaked)";
 
         return null;
     }

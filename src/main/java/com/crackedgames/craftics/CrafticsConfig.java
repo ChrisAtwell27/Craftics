@@ -153,6 +153,22 @@ public class CrafticsConfig {
     @RangeConstraint(min = 0, max = 20)
     public int dmgBreezeRod = 8;
 
+    // Coral weapons (Water-type melee)
+    @RangeConstraint(min = 0, max = 20)
+    public int dmgCoralTube = 3;
+    @RangeConstraint(min = 0, max = 20)
+    public int dmgCoralBrain = 5;
+    @RangeConstraint(min = 0, max = 20)
+    public int dmgCoralBubble = 3;
+    @RangeConstraint(min = 0, max = 20)
+    public int dmgCoralFire = 7;
+    @RangeConstraint(min = 0, max = 20)
+    public int dmgCoralHorn = 6;
+    @RangeConstraint(min = 0, max = 20)
+    public int dmgCoralDead = 2;
+    @RangeConstraint(min = 0, max = 20)
+    public int dmgCoralFan = 1;
+
     // ===== Arena & Progression =====
 
     @RangeConstraint(min = 0, max = 10)

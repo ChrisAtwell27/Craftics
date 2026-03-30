@@ -43,8 +43,26 @@ public enum DamageType {
         if (weapon == Items.MACE || weapon == Items.STICK || weapon == Items.BAMBOO
             || weapon == Items.BLAZE_ROD || weapon == Items.BREEZE_ROD) return BLUNT;
         if (weapon == Items.TRIDENT) return WATER;
+        // Coral weapons — all Water type
+        if (isCoral(weapon)) return WATER;
         if (weapon == Items.BOW || weapon == Items.CROSSBOW) return RANGED;
         return PHYSICAL;
+    }
+
+    /** Check if an item is any coral weapon (live, dead, or fan). */
+    public static boolean isCoral(Item weapon) {
+        return weapon == Items.TUBE_CORAL || weapon == Items.BRAIN_CORAL
+            || weapon == Items.BUBBLE_CORAL || weapon == Items.FIRE_CORAL
+            || weapon == Items.HORN_CORAL
+            || weapon == Items.DEAD_TUBE_CORAL || weapon == Items.DEAD_BRAIN_CORAL
+            || weapon == Items.DEAD_BUBBLE_CORAL || weapon == Items.DEAD_FIRE_CORAL
+            || weapon == Items.DEAD_HORN_CORAL
+            || weapon == Items.TUBE_CORAL_FAN || weapon == Items.BRAIN_CORAL_FAN
+            || weapon == Items.BUBBLE_CORAL_FAN || weapon == Items.FIRE_CORAL_FAN
+            || weapon == Items.HORN_CORAL_FAN
+            || weapon == Items.DEAD_TUBE_CORAL_FAN || weapon == Items.DEAD_BRAIN_CORAL_FAN
+            || weapon == Items.DEAD_BUBBLE_CORAL_FAN || weapon == Items.DEAD_FIRE_CORAL_FAN
+            || weapon == Items.DEAD_HORN_CORAL_FAN;
     }
 
     /**

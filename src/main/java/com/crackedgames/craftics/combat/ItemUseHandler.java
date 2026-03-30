@@ -18,6 +18,56 @@ import java.util.Set;
  * Handles item usage during combat (food, potions, throwables, utilities).
  */
 public class ItemUseHandler {
+    // --- AoE Water Throwables: Turtle Egg, Pufferfish, Nautilus Shell, Heart of the Sea --- 
+    private static String useWaterThrowable(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack, Item item) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+
+        // Determine tier and effect
+        int radius = 1, waterDamage = 2, soakedLevel = 1, confusionLevel = 0, poisonLevel = 0;
+        String name = stack.getName().getString();
+        if (item == Items.TURTLE_EGG) {
+            radius = 1; waterDamage = 2; soakedLevel = 1;
+        } else if (item == Items.PUFFERFISH) {
+            radius = 2; waterDamage = 3; soakedLevel = 2; poisonLevel = 1;
+        } else if (item == Items.NAUTILUS_SHELL) {
+            radius = 2; waterDamage = 4; soakedLevel = 3; confusionLevel = 1;
+        } else if (item == Items.HEART_OF_THE_SEA) {
+            radius = 3; waterDamage = 5; soakedLevel = 4; confusionLevel = 2;
+        }
+
+        stack.decrement(1);
+        int hitCount = 0;
+        StringBuilder msg = new StringBuilder();
+        for (CombatEntity enemy : arena.getOccupants().values()) {
+            if (!enemy.isAlive() || enemy.isAlly()) continue;
+            if (enemy.getGridPos().manhattanDistance(targetTile) <= radius) {
+                // Deal Water-type damage (assume Water type is handled in takeDamage or add a param if needed)
+                int dealt = enemy.takeDamage(waterDamage); // TODO: Pass Water type if needed
+                // Apply Soaked
+                enemy.setSoakedTurns(Math.max(enemy.getSoakedTurns(), soakedLevel));
+                enemy.setSoakedAmplifier(Math.max(enemy.getSoakedAmplifier(), soakedLevel - 1));
+                // Apply Poison if pufferfish
+                if (poisonLevel > 0) {
+                    enemy.setPoisonTurns(Math.max(enemy.getPoisonTurns(), poisonLevel));
+                    enemy.setPoisonAmplifier(Math.max(enemy.getPoisonAmplifier(), poisonLevel - 1));
+                }
+                // Apply Confusion if nautilus/heart
+                if (confusionLevel > 0) {
+                    enemy.setConfusionTurns(Math.max(enemy.getConfusionTurns(), confusionLevel));
+                    enemy.setConfusionAmplifier(Math.max(enemy.getConfusionAmplifier(), confusionLevel - 1));
+                }
+                hitCount++;
+                msg.append("§b").append(enemy.getDisplayName()).append(" -").append(dealt).append("HP ");
+            }
+        }
+        // Visual/sound feedback (optional)
+        // TODO: Add splash particles and water sound
+        if (hitCount > 0) {
+            return "§3" + name + " splashed " + hitCount + "! " + msg.toString().trim();
+        }
+        return "§3" + name + " splashed, but hit no enemies.";
+    }
 
     // Food items and their heal values
     private static final Map<Item, Integer> FOOD_HEAL = Map.ofEntries(
@@ -59,8 +109,7 @@ public class ItemUseHandler {
         Map.entry(Items.BEETROOT_SOUP, 4),
         Map.entry(Items.RABBIT_STEW, 6),
         Map.entry(Items.SPIDER_EYE, 1),
-        Map.entry(Items.ROTTEN_FLESH, 2),
-        Map.entry(Items.PUFFERFISH, 1)
+        Map.entry(Items.ROTTEN_FLESH, 2)
     );
 
     // Items that are "usable" in combat
@@ -171,9 +220,17 @@ public class ItemUseHandler {
         return item.toString().contains("banner");
     }
 
+    private static final Set<Item> WATER_THROWABLES = Set.of(
+        Items.TURTLE_EGG, Items.PUFFERFISH, Items.NAUTILUS_SHELL, Items.HEART_OF_THE_SEA
+    );
+
+    public static boolean isWaterThrowable(Item item) {
+        return WATER_THROWABLES.contains(item);
+    }
+
     public static boolean isUsableItem(Item item) {
         return isFood(item) || isPotion(item) || isSplashPotion(item)
-            || isThrowable(item) || item == Items.TNT || item == Items.SHIELD
+            || isThrowable(item) || isWaterThrowable(item) || item == Items.TNT || item == Items.SHIELD
             || item == Items.MILK_BUCKET || item == Items.BUCKET || item == Items.TOTEM_OF_UNDYING
             || item == Items.COBWEB || item == Items.FLINT_AND_STEEL
             || isAnyBreedingItem(item) || isFishingRod(item)
@@ -221,6 +278,8 @@ public class ItemUseHandler {
             return useBreedingItem(player, arena, targetTile, held);
         } else if (isFishingRod(item)) {
             return useFishingRod(player, arena, targetTile, held);
+        } else if (item == Items.TURTLE_EGG || item == Items.PUFFERFISH || item == Items.NAUTILUS_SHELL || item == Items.HEART_OF_THE_SEA) {
+            return useWaterThrowable(player, arena, targetTile, held, item);
         } else if (item == Items.SPYGLASS) {
             return useSpyglass(arena, targetTile);
         } else if (item == Items.COMPASS) {
@@ -405,6 +464,7 @@ public class ItemUseHandler {
             case WITHER, BURNING -> 3;
             case LUCK, HASTE, SLOW_FALLING -> 4;
             case BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS -> 3;
+            case SOAKED, CONFUSION -> 3;
         };
         // Extended potions (long vanilla duration > 4 min) double the combat turn count
         if (vanillaDurationTicks > 4800) {
@@ -776,38 +836,69 @@ public class ItemUseHandler {
         if (roll < 50) {
             // Common fish (50%)
             loot = switch (rng.nextInt(4)) {
-                case 0 -> Items.COD;
+                case 0 -> Items.PUFFERFISH;
                 case 1 -> Items.SALMON;
                 case 2 -> Items.TROPICAL_FISH;
-                default -> Items.PUFFERFISH;
+                default -> Items.COD;
             };
             rarity = "§7";
         } else if (roll < 75) {
             // Useful items (25%)
-            loot = switch (rng.nextInt(5)) {
+            int usefulRoll = rng.nextInt(11);
+            loot = switch (usefulRoll) {
                 case 0 -> Items.BONE;
                 case 1 -> Items.STRING;
                 case 2 -> Items.LILY_PAD;
                 case 3 -> Items.INK_SAC;
-                default -> Items.LEATHER;
+                case 4 -> Items.LEATHER;
+                case 5 -> Items.GLOW_INK_SAC;
+                case 6 -> Items.PRISMARINE_SHARD;
+                case 7 -> Items.PRISMARINE_CRYSTALS;
+                case 8 -> Items.OBSIDIAN;
+                case 9 -> Items.SLIME_BALL;
+                case 10 -> Items.NAME_TAG;
+                default -> Items.TURTLE_EGG;
             };
             rarity = "§a";
         } else if (roll < 90) {
             // Good items (15%)
-            loot = switch (rng.nextInt(5)) {
+            int goodRoll = rng.nextInt(22);
+            loot = switch (goodRoll) {
                 case 0 -> Items.NAME_TAG;
                 case 1 -> Items.SADDLE;
                 case 2 -> Items.NAUTILUS_SHELL;
                 case 3 -> Items.BOW;
-                default -> Items.ENCHANTED_BOOK;
+                case 4 -> Items.ENCHANTED_BOOK;
+                case 5 -> Items.TUBE_CORAL;
+                case 6 -> Items.BRAIN_CORAL;
+                case 7 -> Items.BUBBLE_CORAL;
+                case 8 -> Items.FIRE_CORAL;
+                case 9 -> Items.HORN_CORAL;
+                case 10 -> Items.TUBE_CORAL_FAN;
+                case 11 -> Items.BRAIN_CORAL_FAN;
+                case 12 -> Items.BUBBLE_CORAL_FAN;
+                case 13 -> Items.FIRE_CORAL_FAN;
+                case 14 -> Items.HORN_CORAL_FAN;
+                case 15 -> Items.DEAD_TUBE_CORAL;
+                case 16 -> Items.DEAD_BRAIN_CORAL;
+                case 17 -> Items.DEAD_BUBBLE_CORAL;
+                case 18 -> Items.DEAD_FIRE_CORAL;
+                case 19 -> Items.HEART_OF_THE_SEA;
+                case 20 -> Items.TURTLE_SCUTE;
+                case 21 -> Items.CROSSBOW;
+                default -> Items.DEAD_HORN_CORAL;
             };
             rarity = "§b";
         } else {
             // Rare treasure (10%)
-            loot = switch (rng.nextInt(4)) {
+            loot = switch (rng.nextInt(7)) {
                 case 0 -> Items.DIAMOND;
                 case 1 -> Items.EMERALD;
                 case 2 -> Items.GOLDEN_APPLE;
+                case 3 -> Items.TURTLE_SCUTE;
+                case 4 -> Items.ENCHANTED_GOLDEN_APPLE;
+                case 5 -> Items.AXOLOTL_BUCKET;
+                case 6 -> Items.WATER_BUCKET;
                 default -> Items.HEART_OF_THE_SEA;
             };
             rarity = "§d";

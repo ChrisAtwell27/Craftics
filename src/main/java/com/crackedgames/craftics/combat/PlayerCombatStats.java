@@ -39,6 +39,24 @@ public class PlayerCombatStats {
         if (weapon == Items.BAMBOO) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBamboo();
         if (weapon == Items.BLAZE_ROD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBlazeRod();
         if (weapon == Items.BREEZE_ROD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBreezeRod();
+        // Coral weapons
+        if (weapon == Items.TUBE_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralTube();
+        if (weapon == Items.BRAIN_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralBrain();
+        if (weapon == Items.BUBBLE_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralBubble();
+        if (weapon == Items.FIRE_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralFire();
+        if (weapon == Items.HORN_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralHorn();
+        // Dead corals
+        if (weapon == Items.DEAD_TUBE_CORAL || weapon == Items.DEAD_BRAIN_CORAL
+            || weapon == Items.DEAD_BUBBLE_CORAL || weapon == Items.DEAD_FIRE_CORAL
+            || weapon == Items.DEAD_HORN_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralDead();
+        // Coral fans
+        if (weapon == Items.TUBE_CORAL_FAN || weapon == Items.BRAIN_CORAL_FAN
+            || weapon == Items.BUBBLE_CORAL_FAN || weapon == Items.FIRE_CORAL_FAN
+            || weapon == Items.HORN_CORAL_FAN) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralFan();
+        // Dead coral fans (same as dead corals)
+        if (weapon == Items.DEAD_TUBE_CORAL_FAN || weapon == Items.DEAD_BRAIN_CORAL_FAN
+            || weapon == Items.DEAD_BUBBLE_CORAL_FAN || weapon == Items.DEAD_FIRE_CORAL_FAN
+            || weapon == Items.DEAD_HORN_CORAL_FAN) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralDead();
         return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgFist();
     }
 

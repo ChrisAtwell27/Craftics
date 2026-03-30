@@ -189,6 +189,85 @@ public class WeaponAbility {
             }
         }
 
+        // === CORAL WEAPONS ===
+        if (DamageType.isCoral(weapon)) {
+            // Tube Coral: Soaked (reduces speed)
+            if (weapon == Items.TUBE_CORAL) {
+                target.setSoakedTurns(Math.max(target.getSoakedTurns(), 1));
+                target.setSoakedAmplifier(Math.max(target.getSoakedAmplifier(), 0));
+                messages.add("\u00a73\u2716 Soaked! " + target.getDisplayName() + " is drenched and slowed!");
+            }
+            // Brain Coral: Confusion (chance to skip action)
+            if (weapon == Items.BRAIN_CORAL) {
+                if (Math.random() < 0.4) {
+                    target.setConfusionTurns(Math.max(target.getConfusionTurns(), 1));
+                    target.setConfusionAmplifier(Math.max(target.getConfusionAmplifier(), 0));
+                    messages.add("\u00a7d\u2716 Confused! " + target.getDisplayName() + " is disoriented!");
+                }
+            }
+            // Bubble Coral: Knockback 1 tile
+            if (weapon == Items.BUBBLE_CORAL) {
+                GridPos pPos = arena.getPlayerGridPos();
+                int bdx = Integer.signum(target.getGridPos().x() - pPos.x());
+                int bdz = Integer.signum(target.getGridPos().z() - pPos.z());
+                GridPos kbPos = new GridPos(target.getGridPos().x() + bdx, target.getGridPos().z() + bdz);
+                if (arena.isInBounds(kbPos) && !arena.isOccupied(kbPos)) {
+                    var tile = arena.getTile(kbPos);
+                    if (tile != null && tile.isWalkable()) {
+                        arena.moveEntity(target, kbPos);
+                        if (target.getMobEntity() != null) {
+                            var bp = arena.gridToBlockPos(kbPos);
+                            target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                        }
+                        messages.add("\u00a7b\u2716 Bubble burst! " + target.getDisplayName() + " knocked back 1 tile!");
+                    }
+                }
+            }
+            // Fire Coral: Extra damage to burning enemies
+            if (weapon == Items.FIRE_CORAL) {
+                if (target.getBurningTurns() > 0) {
+                    int bonusDmg = target.takeDamage(3);
+                    totalExtra += bonusDmg;
+                    messages.add("\u00a76\u2716 Searing sting! +" + bonusDmg + " bonus damage to burning target!");
+                }
+            }
+            // Horn Coral: Defense pierce (ignores 3 defense)
+            if (weapon == Items.HORN_CORAL) {
+                int currentPenalty = target.getDefensePenalty();
+                target.setDefensePenalty(currentPenalty + 3);
+                target.setDefensePenaltyTurns(Math.max(target.getDefensePenaltyTurns(), 1));
+                messages.add("\u00a7e\u2716 Armor pierced! " + target.getDisplayName() + " loses 3 DEF for 1 turn!");
+            }
+            // Dead Corals: Weakened (reduce attack)
+            if (weapon == Items.DEAD_TUBE_CORAL || weapon == Items.DEAD_BRAIN_CORAL
+                || weapon == Items.DEAD_BUBBLE_CORAL || weapon == Items.DEAD_FIRE_CORAL
+                || weapon == Items.DEAD_HORN_CORAL
+                || weapon == Items.DEAD_TUBE_CORAL_FAN || weapon == Items.DEAD_BRAIN_CORAL_FAN
+                || weapon == Items.DEAD_BUBBLE_CORAL_FAN || weapon == Items.DEAD_FIRE_CORAL_FAN
+                || weapon == Items.DEAD_HORN_CORAL_FAN) {
+                target.setAttackPenalty(Math.max(target.getAttackPenalty(), 2));
+                messages.add("\u00a77\u2716 Weakened! " + target.getDisplayName() + " loses 2 ATK for 1 turn!");
+            }
+            // Coral Fans: AoE splash to all adjacent enemies
+            if (weapon == Items.TUBE_CORAL_FAN || weapon == Items.BRAIN_CORAL_FAN
+                || weapon == Items.BUBBLE_CORAL_FAN || weapon == Items.FIRE_CORAL_FAN
+                || weapon == Items.HORN_CORAL_FAN) {
+                for (int fdx = -1; fdx <= 1; fdx++) {
+                    for (int fdz = -1; fdz <= 1; fdz++) {
+                        if (fdx == 0 && fdz == 0) continue;
+                        GridPos adj = new GridPos(target.getGridPos().x() + fdx, target.getGridPos().z() + fdz);
+                        CombatEntity splash = arena.getOccupant(adj);
+                        if (splash != null && splash.isAlive() && splash != target) {
+                            int splashDmg = splash.takeDamage(baseDamage);
+                            extraTargets.add(splash);
+                            totalExtra += splashDmg;
+                            messages.add("\u00a73\u2716 Splash! " + splash.getDisplayName() + " hit for " + splashDmg + "!");
+                        }
+                    }
+                }
+            }
+        }
+
         // === CROSSBOW: Pierce through ===
         // Bolt continues through the first target to hit a second
         if (weapon == Items.CROSSBOW) {
@@ -244,6 +323,8 @@ public class WeaponAbility {
         if (item == Items.CROSSBOW) return true;
         // Blunt rods
         if (item == Items.BLAZE_ROD || item == Items.BREEZE_ROD) return true;
+        // Coral weapons
+        if (DamageType.isCoral(item)) return true;
         return false;
     }
 
