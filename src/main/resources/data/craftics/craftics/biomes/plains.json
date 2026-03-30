@@ -39,6 +39,7 @@
     {"item": "minecraft:beetroot_seeds", "weight": 3},
     {"item": "minecraft:leather", "weight": 5},
     {"item": "minecraft:coal", "weight": 2},
-    {"item": "minecraft:copper_ingot", "weight": 1}
+    {"item": "minecraft:copper_ingot", "weight": 1},
+    {"item": "minecraft:oak_sapling", "weight": 1}
   ]
 }
