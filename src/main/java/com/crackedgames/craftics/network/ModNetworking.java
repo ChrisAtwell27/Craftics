@@ -131,17 +131,34 @@ public class ModNetworking {
             leaderCm.addPartyMember(player);
 
             // Teleport and register all online party members into the same combat
+            int memberOffset = 0;
             for (java.util.UUID memberUuid : partyMembers) {
                 if (memberUuid.equals(player.getUuid())) continue;
                 ServerPlayerEntity member = world.getServer().getPlayerManager().getPlayer(memberUuid);
                 if (member != null) {
-                    member.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
+                    // Offset each party member so they don't stack on the same tile
+                    memberOffset++;
+                    int offsetZ = (memberOffset % 2 == 1) ? memberOffset : -memberOffset;
+                    member.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5 + offsetZ);
                     member.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
                     ServerPlayNetworking.send(member, new EnterCombatPayload(
                         origin.getX(), origin.getY(), origin.getZ(),
                         arena.getWidth(), arena.getHeight(), cameraYaw
                     ));
                     leaderCm.addPartyMember(member);
+                    // Give party member the Move feather (same as leader gets in startCombat)
+                    net.minecraft.item.ItemStack displaced = member.getInventory().getStack(8);
+                    if (!displaced.isEmpty()) {
+                        int emptySlot = member.getInventory().getEmptySlot();
+                        if (emptySlot != -1) {
+                            member.getInventory().setStack(emptySlot, displaced);
+                        }
+                    }
+                    net.minecraft.item.ItemStack moveItem = new net.minecraft.item.ItemStack(net.minecraft.item.Items.FEATHER);
+                    moveItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
+                        net.minecraft.text.Text.literal("\u00a7aMove"));
+                    member.getInventory().setStack(8, moveItem);
+                    member.getInventory().selectedSlot = 8;
                     // Also set EventManager on their CombatManager for between-level coordination
                     CombatManager.get(memberUuid).setEventManager(em);
                     CrafticsMod.LOGGER.info("Party member {} joined combat (biome {}, level {})",
@@ -154,9 +171,10 @@ public class ModNetworking {
                 partyMembers.size());
         });
 
-        // Handle combat actions — route to party leader's CombatManager
+        // Handle combat actions — route to party leader's CombatManager with sender validation
         ServerPlayNetworking.registerGlobalReceiver(CombatActionPayload.ID, (payload, context) -> {
-            CombatManager.getActiveCombat(context.player().getUuid()).handleAction(payload);
+            CombatManager.getActiveCombat(context.player().getUuid())
+                .handleAction(payload, context.player().getUuid());
         });
 
         // Handle post-level choice (Go Home vs Continue) — route to party leader

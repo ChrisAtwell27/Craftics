@@ -248,43 +248,12 @@ public class ArenaBuilder {
     private static boolean tryLoadStructure(ServerWorld world, int ox, int oy, int oz,
                                               int w, int h, GridTile[][] tiles,
                                               String biomeId, boolean isBoss, Random rng) {
-        var manager = world.getStructureTemplateManager();
-
-        // Try numbered presets: arenas/<biome>/1.nbt, arenas/<biome>/2.nbt, etc.
-        // Also try boss-specific: arenas/<biome>/boss_1.nbt
-        List<Identifier> candidates = new ArrayList<>();
-        String prefix = isBoss ? "boss_" : "";
-
-        for (int i = 1; i <= 10; i++) {
-            Identifier id = Identifier.of("craftics", "arenas/" + biomeId + "/" + prefix + i);
-            var template = manager.getTemplate(id);
-            if (template.isPresent()) {
-                candidates.add(id);
-            } else {
-                break; // stop at first missing number
-            }
-        }
-
-        // If no boss-specific, try regular presets for boss too
-        if (candidates.isEmpty() && isBoss) {
-            for (int i = 1; i <= 10; i++) {
-                Identifier id = Identifier.of("craftics", "arenas/" + biomeId + "/" + i);
-                var template = manager.getTemplate(id);
-                if (template.isPresent()) {
-                    candidates.add(id);
-                } else {
-                    break;
-                }
-            }
-        }
-
-        // Also search for .schem files (WorldEdit Sponge format) on disk.
-        // Boss levels use boss.schem; non-boss levels use numbered schematics.
-        List<java.nio.file.Path> schemCandidates = new ArrayList<>();
+        // === 1. Search for .schem files on disk (filesystem overrides) ===
+        List<java.nio.file.Path> diskSchemCandidates = new ArrayList<>();
         try {
             var server = world.getServer();
             java.nio.file.Path datapacksDir = server.getSavePath(net.minecraft.util.WorldSavePath.DATAPACKS);
-            searchSchemFiles(datapacksDir, biomeId, isBoss, schemCandidates);
+            searchSchemFiles(datapacksDir, biomeId, isBoss, diskSchemCandidates);
 
             java.nio.file.Path currentDir = java.nio.file.Path.of("").toAbsolutePath();
             List<java.nio.file.Path> searchRoots = new ArrayList<>();
@@ -295,31 +264,83 @@ public class ArenaBuilder {
 
             for (java.nio.file.Path root : searchRoots) {
                 CrafticsMod.LOGGER.debug("Searching for .schem arenas in: {}", root);
-                searchSchemFiles(root, biomeId, isBoss, schemCandidates);
+                searchSchemFiles(root, biomeId, isBoss, diskSchemCandidates);
             }
         } catch (Exception e) {
             CrafticsMod.LOGGER.debug("Error while searching for .schem arenas: {}", e.getMessage());
         }
 
-        if (!schemCandidates.isEmpty()) {
-            CrafticsMod.LOGGER.info("Found {} .schem candidate(s) for biome '{}': {}",
-                schemCandidates.size(), biomeId, schemCandidates);
+        // Disk overrides take priority — use them if found
+        if (!diskSchemCandidates.isEmpty()) {
+            CrafticsMod.LOGGER.info("Found {} disk .schem candidate(s) for biome '{}': {}",
+                diskSchemCandidates.size(), biomeId, diskSchemCandidates);
+            java.nio.file.Path chosenSchem = diskSchemCandidates.get(rng.nextInt(diskSchemCandidates.size()));
+            return loadAndPlaceSchem(world, chosenSchem, ox, oy, oz, w, h, tiles, biomeId, isBoss);
         }
 
-        if (candidates.isEmpty() && schemCandidates.isEmpty()) {
+        // === 2. Search for bundled .schem files in mod resources (JAR) ===
+        // Path: data/craftics/arenas/<biome>/<name>.schem
+        List<Identifier> bundledCandidates = new ArrayList<>();
+        net.minecraft.resource.ResourceManager resourceManager = world.getServer().getResourceManager();
+
+        if (isBoss) {
+            Identifier bossId = Identifier.of("craftics", "arenas/" + biomeId + "/boss.schem");
+            if (resourceManager.getResource(bossId).isPresent()) {
+                bundledCandidates.add(bossId);
+            }
+        }
+        if (bundledCandidates.isEmpty()) {
+            for (int i = 1; i <= 10; i++) {
+                Identifier id = Identifier.of("craftics", "arenas/" + biomeId + "/" + i + ".schem");
+                if (resourceManager.getResource(id).isPresent()) {
+                    bundledCandidates.add(id);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if (!bundledCandidates.isEmpty()) {
+            Identifier chosen = bundledCandidates.get(rng.nextInt(bundledCandidates.size()));
+            CrafticsMod.LOGGER.info("Loading bundled arena: {} ({} candidates)", chosen, bundledCandidates.size());
+            return loadAndPlaceBundledSchem(world, resourceManager, chosen, ox, oy, oz, w, h, tiles, biomeId, isBoss);
+        }
+
+        // === 3. Try .nbt structure files via StructureTemplateManager ===
+        var manager = world.getStructureTemplateManager();
+        List<Identifier> nbtCandidates = new ArrayList<>();
+        String prefix = isBoss ? "boss_" : "";
+
+        for (int i = 1; i <= 10; i++) {
+            Identifier id = Identifier.of("craftics", "arenas/" + biomeId + "/" + prefix + i);
+            var template = manager.getTemplate(id);
+            if (template.isPresent()) {
+                nbtCandidates.add(id);
+            } else {
+                break;
+            }
+        }
+
+        if (nbtCandidates.isEmpty() && isBoss) {
+            for (int i = 1; i <= 10; i++) {
+                Identifier id = Identifier.of("craftics", "arenas/" + biomeId + "/" + i);
+                var template = manager.getTemplate(id);
+                if (template.isPresent()) {
+                    nbtCandidates.add(id);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if (nbtCandidates.isEmpty()) {
             CrafticsMod.LOGGER.info("No structure presets found for biome '{}' (boss={}), using procedural",
                 biomeId, isBoss);
             return false;
         }
 
-        // If we have .schem files, use those (prefer .schem over .nbt since the builder uses WorldEdit)
-        if (!schemCandidates.isEmpty()) {
-            java.nio.file.Path chosenSchem = schemCandidates.get(rng.nextInt(schemCandidates.size()));
-            return loadAndPlaceSchem(world, chosenSchem, ox, oy, oz, w, h, tiles, biomeId, isBoss);
-        }
-
-        // Otherwise use .nbt structure files
-        if (candidates.isEmpty()) return false;
+        // Fall through to existing .nbt loading below
+        List<Identifier> candidates = nbtCandidates;
 
         // Pick a random preset
         Identifier chosen = candidates.get(rng.nextInt(candidates.size()));
@@ -700,6 +721,55 @@ public class ArenaBuilder {
         return processPlacedStructure(world, placeX, placeY, placeZ,
             schem.width(), schem.height(), schem.length(), ox, oy, oz, w, h, tiles,
             schemPath.getFileName().toString(), biomeId, preserveSchematicGround);
+    }
+
+    /** Load a bundled .schem from mod resources (JAR) and place it as an arena. */
+    private static boolean loadAndPlaceBundledSchem(ServerWorld world,
+                                                     net.minecraft.resource.ResourceManager resourceManager,
+                                                     Identifier resourceId,
+                                                     int ox, int oy, int oz, int w, int h, GridTile[][] tiles,
+                                                     String biomeId, boolean isBoss) {
+        try {
+            var resource = resourceManager.getResource(resourceId);
+            if (resource.isEmpty()) return false;
+
+            SchemLoader.SchemData schem;
+            try (java.io.InputStream in = resource.get().getInputStream()) {
+                schem = SchemLoader.load(in, resourceId.toString());
+            }
+            if (schem == null) return false;
+
+            CrafticsMod.LOGGER.info("Placing bundled .schem arena: {} ({}x{}x{})",
+                resourceId, schem.width(), schem.height(), schem.length());
+
+            // Clear the area
+            int clearPad = 3;
+            int placeX = ox + w / 2 - schem.width() / 2;
+            int placeY = oy;
+            int placeZ = oz + h / 2 - schem.length() / 2;
+
+            for (int x = -clearPad; x < schem.width() + clearPad; x++) {
+                for (int z = -clearPad; z < schem.length() + clearPad; z++) {
+                    for (int y = -3; y <= schem.height() + 3; y++) {
+                        BlockPos bp = new BlockPos(placeX + x, placeY + y, placeZ + z);
+                        if (!world.getBlockState(bp).isAir()) {
+                            world.setBlockState(bp, Blocks.AIR.getDefaultState(), SET_FLAGS);
+                        }
+                    }
+                }
+            }
+
+            // Place the schematic
+            schem.place(world, placeX, placeY, placeZ);
+
+            // Use shared marker processing
+            return processPlacedStructure(world, placeX, placeY, placeZ,
+                schem.width(), schem.height(), schem.length(), ox, oy, oz, w, h, tiles,
+                resourceId.getPath(), biomeId, isBoss);
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.error("Failed to load bundled arena: {}", resourceId, e);
+            return false;
+        }
     }
 
     // ==================== ARENA LIGHTING ====================

@@ -58,72 +58,89 @@ public class SchemLoader {
     }
 
     /**
-     * Try to load a .schem file from the given path.
+     * Load a .schem from an InputStream (for loading from mod resources/JAR).
+     * Returns null if the stream can't be parsed.
+     */
+    public static SchemData load(InputStream in, String sourceName) {
+        try {
+            return parseSchem(in, sourceName);
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.error("Failed to load .schem from resource: {}", sourceName, e);
+            return null;
+        }
+    }
+
+    /**
+     * Try to load a .schem file from the given filesystem path.
      * Returns null if the file doesn't exist or can't be parsed.
      */
     public static SchemData load(Path schemPath) {
         if (!Files.exists(schemPath)) return null;
-
         try (InputStream in = Files.newInputStream(schemPath)) {
-            NbtCompound root = NbtIo.readCompressed(in, NbtSizeTracker.ofUnlimitedBytes());
-
-            // Sponge v3 wraps in a "Schematic" compound; v2 is flat
-            NbtCompound schem;
-            if (root.contains("Schematic")) {
-                schem = root.getCompound("Schematic");
-            } else {
-                schem = root;
-            }
-
-            int schemWidth = schem.getShort("Width") & 0xFFFF;
-            int schemHeight = schem.getShort("Height") & 0xFFFF;
-            int schemLength = schem.getShort("Length") & 0xFFFF;
-
-            if (schemWidth == 0 || schemHeight == 0 || schemLength == 0) {
-                CrafticsMod.LOGGER.warn("Invalid schematic dimensions: {}x{}x{}", schemWidth, schemHeight, schemLength);
-                return null;
-            }
-
-            // Parse palette and block data — differs between v2 and v3
-            NbtCompound paletteNbt;
-            byte[] blockDataBytes;
-
-            if (schem.contains("Blocks")) {
-                // Sponge v3: palette and data are inside a "Blocks" compound
-                NbtCompound blocks = schem.getCompound("Blocks");
-                paletteNbt = blocks.getCompound("Palette");
-                blockDataBytes = blocks.getByteArray("Data");
-            } else {
-                // Sponge v2: palette and data are at the root level
-                paletteNbt = schem.getCompound("Palette");
-                blockDataBytes = schem.getByteArray("BlockData");
-            }
-
-            // Build palette: map block state strings to integer IDs
-            int maxId = 0;
-            Map<String, Integer> paletteMap = new HashMap<>();
-            for (String key : paletteNbt.getKeys()) {
-                int id = paletteNbt.getInt(key);
-                paletteMap.put(key, id);
-                if (id > maxId) maxId = id;
-            }
-
-            BlockState[] palette = new BlockState[maxId + 1];
-            for (Map.Entry<String, Integer> entry : paletteMap.entrySet()) {
-                String blockStr = entry.getKey();
-                int id = entry.getValue();
-                palette[id] = parseBlockState(blockStr);
-            }
-
-            CrafticsMod.LOGGER.info("Loaded .schem: {}x{}x{}, {} palette entries",
-                schemWidth, schemHeight, schemLength, paletteMap.size());
-
-            return new SchemData(schemWidth, schemHeight, schemLength, palette, blockDataBytes);
-
+            return parseSchem(in, schemPath.toString());
         } catch (Exception e) {
             CrafticsMod.LOGGER.error("Failed to load .schem file: {}", schemPath, e);
             return null;
         }
+    }
+
+    /** Shared parsing logic for both filesystem and resource-based loading. */
+    private static SchemData parseSchem(InputStream in, String sourceName) throws Exception {
+        NbtCompound root = NbtIo.readCompressed(in, NbtSizeTracker.ofUnlimitedBytes());
+
+        // Sponge v3 wraps in a "Schematic" compound; v2 is flat
+        NbtCompound schem;
+        if (root.contains("Schematic")) {
+            schem = root.getCompound("Schematic");
+        } else {
+            schem = root;
+        }
+
+        int schemWidth = schem.getShort("Width") & 0xFFFF;
+        int schemHeight = schem.getShort("Height") & 0xFFFF;
+        int schemLength = schem.getShort("Length") & 0xFFFF;
+
+        if (schemWidth == 0 || schemHeight == 0 || schemLength == 0) {
+            CrafticsMod.LOGGER.warn("Invalid schematic dimensions in {}: {}x{}x{}",
+                sourceName, schemWidth, schemHeight, schemLength);
+            return null;
+        }
+
+        // Parse palette and block data — differs between v2 and v3
+        NbtCompound paletteNbt;
+        byte[] blockDataBytes;
+
+        if (schem.contains("Blocks")) {
+            // Sponge v3: palette and data are inside a "Blocks" compound
+            NbtCompound blocks = schem.getCompound("Blocks");
+            paletteNbt = blocks.getCompound("Palette");
+            blockDataBytes = blocks.getByteArray("Data");
+        } else {
+            // Sponge v2: palette and data are at the root level
+            paletteNbt = schem.getCompound("Palette");
+            blockDataBytes = schem.getByteArray("BlockData");
+        }
+
+        // Build palette: map block state strings to integer IDs
+        int maxId = 0;
+        Map<String, Integer> paletteMap = new HashMap<>();
+        for (String key : paletteNbt.getKeys()) {
+            int id = paletteNbt.getInt(key);
+            paletteMap.put(key, id);
+            if (id > maxId) maxId = id;
+        }
+
+        BlockState[] palette = new BlockState[maxId + 1];
+        for (Map.Entry<String, Integer> entry : paletteMap.entrySet()) {
+            String blockStr = entry.getKey();
+            int id = entry.getValue();
+            palette[id] = parseBlockState(blockStr);
+        }
+
+        CrafticsMod.LOGGER.info("Loaded .schem {}: {}x{}x{}, {} palette entries",
+            sourceName, schemWidth, schemHeight, schemLength, paletteMap.size());
+
+        return new SchemData(schemWidth, schemHeight, schemLength, palette, blockDataBytes);
     }
 
     /**
