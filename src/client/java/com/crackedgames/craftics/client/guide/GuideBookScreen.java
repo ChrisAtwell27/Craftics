@@ -120,7 +120,7 @@ public class GuideBookScreen extends Screen {
 
         // Page navigation arrows
         GuideBookData.Category currentCat = cats.get(selectedCategory);
-        if (selectedEntry < currentCat.entries().size()) {
+        if (selectedEntry >= 0 && selectedEntry < currentCat.entries().size()) {
             GuideBookData.Entry entry = currentCat.entries().get(selectedEntry);
             if (GuideBookData.isUnlocked(entry.name())) {
                 int navY = bookY + BOOK_HEIGHT - 24;
@@ -203,7 +203,7 @@ public class GuideBookScreen extends Screen {
             return;
         }
 
-        if (selectedEntry >= cat.entries().size()) return;
+        if (selectedEntry < 0 || selectedEntry >= cat.entries().size()) return;
         GuideBookData.Entry entry = cat.entries().get(selectedEntry);
         if (!GuideBookData.isUnlocked(entry.name())) {
             int cx = bookX + SIDEBAR_WIDTH + (BOOK_WIDTH - SIDEBAR_WIDTH) / 2;
