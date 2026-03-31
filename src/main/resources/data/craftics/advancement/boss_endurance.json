@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:shield"
+    },
+    "title": "Endurance",
+    "description": "Survive a boss fight lasting 30+ turns",
+    "frame": "goal"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:boss_speed_run"
+}

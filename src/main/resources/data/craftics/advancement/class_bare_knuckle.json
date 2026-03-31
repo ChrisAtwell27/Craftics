@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:barrier"
+    },
+    "title": "Bare Knuckle",
+    "description": "Defeat an End boss with only your fists",
+    "frame": "challenge"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:class_sharpshooter"
+}

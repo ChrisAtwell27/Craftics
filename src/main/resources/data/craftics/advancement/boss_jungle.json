@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:vine"
+    },
+    "title": "Jungle\u2019s Reckoning",
+    "description": "Defeat the Dense Jungle boss",
+    "frame": "task"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:boss_desert"
+}

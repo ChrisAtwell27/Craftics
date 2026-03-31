@@ -36,6 +36,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(TileSetPayload.ID, TileSetPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TeammateHoverPayload.ID, TeammateHoverPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(EventRoomPayload.ID, EventRoomPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(AchievementUnlockPayload.ID, AchievementUnlockPayload.CODEC);
 
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);
@@ -255,6 +256,7 @@ public class ModNetworking {
                     player.sendMessage(net.minecraft.text.Text.literal(
                         "§6+" + affinities[ordinal].displayName + " affinity! §7(Now +" +
                         ps.getAffinityPoints(affinities[ordinal]) + ")"), false);
+                    com.crackedgames.craftics.achievement.AchievementManager.checkProgression(player);
 
                     // Re-sync stats (including affinity) to client
                     com.crackedgames.craftics.combat.PlayerProgression.Stat[] stats2 =

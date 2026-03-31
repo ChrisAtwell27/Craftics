@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:totem_of_undying"
+    },
+    "title": "Second Wind",
+    "description": "Defeat a boss after Totem revival",
+    "frame": "challenge"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:boss_endurance"
+}

@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:cooked_beef"
+    },
+    "title": "Chef\u2019s Kiss",
+    "description": "Eat 5 different food items in a single combat",
+    "frame": "task"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:feat_lightning_strike"
+}

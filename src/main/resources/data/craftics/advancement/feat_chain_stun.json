@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:stick"
+    },
+    "title": "Chain Stun",
+    "description": "Stun the same enemy 3 turns in a row",
+    "frame": "task"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:feat_mind_games"
+}

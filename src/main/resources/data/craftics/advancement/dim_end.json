@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:end_stone"
+    },
+    "title": "Ender of Ends",
+    "description": "Defeat all End bosses",
+    "frame": "challenge"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:boss_dragons_nest"
+}

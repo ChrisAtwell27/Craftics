@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:lightning_rod"
+    },
+    "title": "Lightning Strike",
+    "description": "Kill a Soaked enemy with a Lightning Rod",
+    "frame": "task"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:feat_demolitions"
+}

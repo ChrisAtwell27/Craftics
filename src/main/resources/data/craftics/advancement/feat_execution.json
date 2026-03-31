@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:netherite_sword"
+    },
+    "title": "Execution",
+    "description": "Kill an enemy with Netherite Sword\u2019s Execute ability",
+    "frame": "task"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:feat_whirlwind"
+}

@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:bone"
+    },
+    "title": "Pet Collector",
+    "description": "Tame 5 different species",
+    "frame": "goal"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:collect_full_set"
+}

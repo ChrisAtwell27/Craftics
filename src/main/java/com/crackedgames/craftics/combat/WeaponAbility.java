@@ -451,4 +451,44 @@ public class WeaponAbility {
         // Spears not available in 1.21.1
         return false;
     }
+
+    /**
+     * Get the break chance for non-durable weapons (items without vanilla durability).
+     * Returns 0.0 for items that don't break (durable items or non-weapons).
+     * These items have a chance to be consumed on each attack.
+     */
+    public static double getBreakChance(Item item) {
+        // Sticks — fragile
+        if (item == Items.STICK) return 0.10;
+        // Bamboo — slightly sturdier
+        if (item == Items.BAMBOO) return 0.05;
+        // Elemental rods — magical, rarely break
+        if (item == Items.BLAZE_ROD) return 0.01;
+        if (item == Items.BREEZE_ROD) return 0.01;
+        // Live corals — organic, slightly fragile
+        if (item == Items.TUBE_CORAL || item == Items.BRAIN_CORAL
+            || item == Items.BUBBLE_CORAL || item == Items.FIRE_CORAL
+            || item == Items.HORN_CORAL) return 0.01;
+        // Dead corals — brittle
+        if (item == Items.DEAD_TUBE_CORAL || item == Items.DEAD_BRAIN_CORAL
+            || item == Items.DEAD_BUBBLE_CORAL || item == Items.DEAD_FIRE_CORAL
+            || item == Items.DEAD_HORN_CORAL) return 0.05;
+        // Live coral fans — delicate
+        if (item == Items.TUBE_CORAL_FAN || item == Items.BRAIN_CORAL_FAN
+            || item == Items.BUBBLE_CORAL_FAN || item == Items.FIRE_CORAL_FAN
+            || item == Items.HORN_CORAL_FAN) return 0.03;
+        // Dead coral fans — very brittle
+        if (item == Items.DEAD_TUBE_CORAL_FAN || item == Items.DEAD_BRAIN_CORAL_FAN
+            || item == Items.DEAD_BUBBLE_CORAL_FAN || item == Items.DEAD_FIRE_CORAL_FAN
+            || item == Items.DEAD_HORN_CORAL_FAN) return 0.05;
+        return 0.0;
+    }
+
+    /** Get a display string for the break chance (e.g., "10%" or null if no break chance). */
+    public static String getBreakChanceDisplay(Item item) {
+        double chance = getBreakChance(item);
+        if (chance <= 0.0) return null;
+        int pct = (int) (chance * 100);
+        return pct + "%";
+    }
 }

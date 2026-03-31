@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:netherite_sword"
+    },
+    "title": "Swordmaster",
+    "description": "Defeat the Warden using only Slashing weapons",
+    "frame": "challenge"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:root"
+}

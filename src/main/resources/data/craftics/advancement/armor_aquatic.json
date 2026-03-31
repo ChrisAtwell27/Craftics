@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:turtle_helmet"
+    },
+    "title": "Aquatic Assault",
+    "description": "Defeat a Nether boss in full Turtle armor",
+    "frame": "challenge"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:armor_juggernaut"
+}

@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:experience_bottle"
+    },
+    "title": "Max Level",
+    "description": "Reach player level 20",
+    "frame": "challenge"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:prog_ng_plus_2"
+}

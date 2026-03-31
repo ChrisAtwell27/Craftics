@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:tube_coral"
+    },
+    "title": "Coral Crusader",
+    "description": "Defeat a boss using only Coral weapons",
+    "frame": "challenge"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:root"
+}
