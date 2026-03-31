@@ -81,12 +81,12 @@
 
     <div class="marker-diagram">  &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
   &#9474;      Decorations...          &#9474;
-  &#9474;  <span class="em">EMERALD</span>&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;<span class="em">EMERALD</span> &#9474;  &#8592; Emerald corners OUTSIDE the grid
+  &#9474;  <span class="go">DIAMOND</span>&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;<span class="em">EMERALD</span> &#9474;  &#8592; Diamond + Emerald on opposite corners OUTSIDE grid
   &#9474;  &#9474;  <span class="go">GOLD</span>                  &#9474;  &#9474;  &#8592; Gold = Player 1 spawn (inside grid)
   &#9474;  &#9474;     (playable grid)    &#9474;  &#9474;
   &#9474;  &#9474;  <span class="ir">IRON</span>                  &#9474;  &#9474;  &#8592; Iron = Player 2 spawn (optional)
   &#9474;  &#9474;                        &#9474;  &#9474;
-  &#9474;  <span class="em">EMERALD</span>&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;<span class="em">EMERALD</span> &#9474;
+  &#9474;  &#9474;                        &#9474;  &#9474;
   &#9474;      More terrain...         &#9474;
   &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</div>
 
@@ -101,8 +101,12 @@
         </thead>
         <tbody>
           <tr>
+            <td>Diamond Block</td>
+            <td>Camera corner. Place on one corner outside the grid (required).</td>
+          </tr>
+          <tr>
             <td>Emerald Block</td>
-            <td>Arena boundary corner. Place 2+ on opposite corners outside the grid.</td>
+            <td>Opposite corner. Place on the corner diagonally opposite the Diamond Block (required).</td>
           </tr>
           <tr>
             <td>Gold Block</td>
@@ -413,8 +417,8 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
       All mobs below have registered AI classes and are supported in custom biomes:
     </p>
     <ul>
-      <li><strong>Passive:</strong> <code>minecraft:cow</code>, <code>minecraft:pig</code>, <code>minecraft:sheep</code>, <code>minecraft:chicken</code>, <code>minecraft:rabbit</code>, <code>minecraft:bat</code>, <code>minecraft:cod</code>, <code>minecraft:salmon</code>, <code>minecraft:axolotl</code>, <code>minecraft:cat</code>, <code>minecraft:ocelot</code>, <code>minecraft:bee</code>, <code>minecraft:wolf</code>, <code>minecraft:goat</code>, <code>minecraft:polar_bear</code>, <code>minecraft:llama</code></li>
-      <li><strong>Hostile:</strong> <code>minecraft:zombie</code>, <code>minecraft:husk</code>, <code>minecraft:drowned</code>, <code>minecraft:skeleton</code>, <code>minecraft:stray</code>, <code>minecraft:bogged</code>, <code>minecraft:spider</code>, <code>minecraft:cave_spider</code>, <code>minecraft:creeper</code>, <code>minecraft:vindicator</code>, <code>minecraft:pillager</code>, <code>minecraft:witch</code>, <code>minecraft:enderman</code>, <code>minecraft:phantom</code>, <code>minecraft:silverfish</code>, <code>minecraft:slime</code>, <code>minecraft:blaze</code>, <code>minecraft:ghast</code>, <code>minecraft:shulker</code>, <code>minecraft:breeze</code>, <code>minecraft:magma_cube</code>, <code>minecraft:wither_skeleton</code></li>
+      <li><strong>Passive:</strong> <code>minecraft:cow</code>, <code>minecraft:pig</code>, <code>minecraft:sheep</code>, <code>minecraft:chicken</code>, <code>minecraft:horse</code>, <code>minecraft:donkey</code>, <code>minecraft:panda</code>, <code>minecraft:parrot</code>, <code>minecraft:rabbit</code>, <code>minecraft:bat</code>, <code>minecraft:cod</code>, <code>minecraft:salmon</code>, <code>minecraft:axolotl</code>, <code>minecraft:cat</code>, <code>minecraft:ocelot</code>, <code>minecraft:fox</code>, <code>minecraft:bee</code>, <code>minecraft:wolf</code>, <code>minecraft:goat</code>, <code>minecraft:polar_bear</code>, <code>minecraft:llama</code></li>
+      <li><strong>Hostile:</strong> <code>minecraft:zombie</code>, <code>minecraft:zombie_villager</code>, <code>minecraft:husk</code>, <code>minecraft:drowned</code>, <code>minecraft:zombified_piglin</code>, <code>minecraft:skeleton</code>, <code>minecraft:stray</code>, <code>minecraft:bogged</code>, <code>minecraft:spider</code>, <code>minecraft:cave_spider</code>, <code>minecraft:creeper</code>, <code>minecraft:vindicator</code>, <code>minecraft:evoker</code>, <code>minecraft:pillager</code>, <code>minecraft:ravager</code>, <code>minecraft:witch</code>, <code>minecraft:enderman</code>, <code>minecraft:endermite</code>, <code>minecraft:phantom</code>, <code>minecraft:silverfish</code>, <code>minecraft:slime</code>, <code>minecraft:hoglin</code>, <code>minecraft:piglin</code>, <code>minecraft:blaze</code>, <code>minecraft:ghast</code>, <code>minecraft:shulker</code>, <code>minecraft:breeze</code>, <code>minecraft:magma_cube</code>, <code>minecraft:wither_skeleton</code></li>
       <li><strong>Boss:</strong> <code>minecraft:warden</code>, <code>minecraft:ender_dragon</code></li>
     </ul>
 
@@ -491,10 +495,10 @@ int total = CrafticsAPI.getTotalLevels();</code></pre>
 
     <h4>Action Types</h4>
     <p>
-      13 action types are available for custom AI:
+      27 action types are available for custom AI:
     </p>
     <p>
-      <code>Move</code>, <code>Attack</code>, <code>MoveAndAttack</code>, <code>Flee</code>, <code>Teleport</code>, <code>TeleportAndAttack</code>, <code>Pounce</code>, <code>Explode</code>, <code>RangedAttack</code>, <code>Swoop</code>, <code>StartFuse</code>, <code>Detonate</code>, <code>Idle</code>
+      <code>Move</code>, <code>Attack</code>, <code>MoveAndAttack</code>, <code>Flee</code>, <code>Teleport</code>, <code>TeleportAndAttack</code>, <code>Pounce</code>, <code>Explode</code>, <code>RangedAttack</code>, <code>Swoop</code>, <code>StartFuse</code>, <code>Detonate</code>, <code>Idle</code>, <code>AttackMob</code>, <code>MoveAndAttackMob</code>, <code>AttackWithKnockback</code>, <code>MoveAndAttackWithKnockback</code>, <code>SummonMinions</code>, <code>AreaAttack</code>, <code>CreateTerrain</code>, <code>LineAttack</code>, <code>ModifySelf</code>, <code>ForcedMovement</code>, <code>BossAbility</code>, <code>CeilingAscend</code>, <code>CeilingDrop</code>, <code>CompositeAction</code>
     </p>
 
     <!-- ================================================================

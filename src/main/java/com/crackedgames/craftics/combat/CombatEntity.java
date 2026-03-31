@@ -161,6 +161,27 @@ public class CombatEntity {
     public void addMaxHpReduction(int amount) { this.maxHpReduction += amount; }
     public int getEffectiveMaxHp() { return Math.max(1, maxHp - maxHpReduction); }
 
+    // Projectile state — for boss-spawned projectile entities (fireballs, wither skulls)
+    private boolean projectile = false;
+    private int projectileDirX = 0;
+    private int projectileDirZ = 0;
+    private String projectileType = null; // "ghast_fireball" or "wither_skull"
+    private int projectileOwnerId = -1;
+    private boolean projectileRedirected = false;
+
+    public boolean isProjectile() { return projectile; }
+    public void setProjectile(boolean p) { this.projectile = p; }
+    public int getProjectileDirX() { return projectileDirX; }
+    public void setProjectileDirX(int d) { this.projectileDirX = d; }
+    public int getProjectileDirZ() { return projectileDirZ; }
+    public void setProjectileDirZ(int d) { this.projectileDirZ = d; }
+    public String getProjectileType() { return projectileType; }
+    public void setProjectileType(String t) { this.projectileType = t; }
+    public int getProjectileOwnerId() { return projectileOwnerId; }
+    public void setProjectileOwnerId(int id) { this.projectileOwnerId = id; }
+    public boolean isProjectileRedirected() { return projectileRedirected; }
+    public void setProjectileRedirected(boolean r) { this.projectileRedirected = r; }
+
     private boolean ally = false;
     public boolean isAlly() { return ally; }
     public void setAlly(boolean a) { this.ally = a; }

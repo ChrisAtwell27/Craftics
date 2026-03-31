@@ -28,6 +28,9 @@ public abstract class BossAI implements EnemyAI {
     // Summoned minion tracking — boss AI can check how many are alive
     protected final List<Integer> summonedMinionIds = new ArrayList<>();
 
+    // Projectile tracking — separate from minions
+    protected final List<Integer> projectileIds = new ArrayList<>();
+
     /**
      * Grid size for this boss. Override in subclasses for naturally large mobs.
      * Default is 1 (humanoid-sized bosses). Return 2 for large mobs (spider, hoglin, ghast, etc.)
@@ -53,6 +56,14 @@ public abstract class BossAI implements EnemyAI {
                 if (e.getEntityId() == id && e.isAlive()) return false;
             }
             return true; // not found or dead
+        });
+
+        // Clean up dead projectiles
+        projectileIds.removeIf(id -> {
+            for (CombatEntity e : arena.getOccupants().values()) {
+                if (e.getEntityId() == id && e.isAlive()) return false;
+            }
+            return true;
         });
 
         // Tick pending warning countdown, then check if it should resolve
@@ -92,6 +103,20 @@ public abstract class BossAI implements EnemyAI {
 
     protected int getAliveMinionCount() {
         return summonedMinionIds.size();
+    }
+
+    protected int getAliveProjectileCount() {
+        return projectileIds.size();
+    }
+
+    /** Called by CombatManager after spawning a projectile entity. */
+    public void registerSpawnedProjectile(int entityId) {
+        projectileIds.add(entityId);
+    }
+
+    /** Called by CombatManager after spawning a minion entity. */
+    public void registerSpawnedMinion(int entityId) {
+        summonedMinionIds.add(entityId);
     }
 
     protected boolean isPhaseTwo() {
@@ -256,6 +281,37 @@ public abstract class BossAI implements EnemyAI {
             current = next;
         }
         return path;
+    }
+
+    /**
+     * Find spawn positions in front of the boss toward the player for projectile spawning.
+     * For a sized boss (e.g. 2×2), positions are on the edge facing the player, 1-2 tiles out.
+     */
+    protected List<GridPos> getProjectileSpawnPositions(GridArena arena, GridPos bossPos, int bossSize,
+                                                         GridPos playerPos, int count) {
+        int[] dir = getDirectionToward(bossPos, playerPos);
+        List<GridPos> candidates = new ArrayList<>();
+
+        // Search 1-2 tiles ahead of the boss edge, spreading perpendicular
+        for (int depth = 1; depth <= 2 && candidates.size() < count; depth++) {
+            for (int offset = -1; offset <= bossSize; offset++) {
+                GridPos pos;
+                if (dir[0] != 0) {
+                    int frontX = dir[0] > 0 ? bossPos.x() + bossSize - 1 + depth : bossPos.x() - depth;
+                    pos = new GridPos(frontX, bossPos.z() + offset);
+                } else {
+                    int frontZ = dir[1] > 0 ? bossPos.z() + bossSize - 1 + depth : bossPos.z() - depth;
+                    pos = new GridPos(bossPos.x() + offset, frontZ);
+                }
+                if (arena.isInBounds(pos) && !arena.isOccupied(pos)
+                        && arena.getTile(pos) != null && arena.getTile(pos).isWalkable()) {
+                    candidates.add(pos);
+                }
+                if (candidates.size() >= count) break;
+            }
+        }
+
+        return candidates.subList(0, Math.min(count, candidates.size()));
     }
 
     /**

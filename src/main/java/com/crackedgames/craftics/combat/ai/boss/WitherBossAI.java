@@ -14,8 +14,9 @@ import java.util.List;
  * Entity: Wither | 65HP / 8ATK / 5DEF / Range 5 / Speed 2 | Size 2×2
  *
  * Abilities:
- * - Wither Skull Barrage: Launches 3 (P2: 5) Wither Skull mobs that travel 2 (P2: 3) tiles/turn
- *   toward the player's position. Skulls are 3HP entities — destroyable. Deal 5 dmg + Wither on contact.
+ * - Wither Skull Barrage: Spawns 3 (P2: 5) Wither Skull projectile entities that travel
+ *   2 tiles/turn in a straight line. Skulls are 3HP — killable by the player.
+ *   Deal 5 dmg + Wither on player contact. No AOE.
  * - Decay Aura: Passive — tiles within 2 (P2: 3) of the Wither become FIRE (wither decay).
  *   Refreshed every turn.
  * - Summon Wither Skeletons: Spawns 2 (P2: 3) Wither Skeletons. Max 4 (P2: 6) alive.
@@ -24,7 +25,7 @@ import java.util.List;
  * Phase 2 — "Wither Armor" (≤50% HP):
  * - Immune to ranged attacks (melee only) — handled by CombatManager via isPhaseTwo()
  * - Transition explosion: 8 damage to all within 3 tiles
- * - More skulls (5), faster (3/turn), more skeletons, larger decay aura
+ * - More skulls (5), more skeletons, larger decay aura
  */
 public class WitherBossAI extends BossAI {
     @Override public int getGridSize() { return 2; }
@@ -39,15 +40,11 @@ public class WitherBossAI extends BossAI {
     private static final int MAX_SKELETONS_P1 = 4;
     private static final int MAX_SKELETONS_P2 = 6;
 
-    // Track skull IDs separately from skeleton IDs
-    private final List<Integer> skullMinionIds = new ArrayList<>();
-
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
 
         // Phase 2 transition explosion — 8 damage to all within 3 tiles
-        // Telegraphed: warning for 1 turn before detonation
         List<GridPos> blastTiles = getAreaTiles(arena, self.getGridPos(), 3);
         EnemyAction explosion = new EnemyAction.AreaAttack(self.getGridPos(), 3, 8, "wither_explosion");
         pendingWarning = new BossWarning(
@@ -63,38 +60,27 @@ public class WitherBossAI extends BossAI {
         int maxSkulls = isPhaseTwo() ? MAX_SKULLS_P2 : MAX_SKULLS_P1;
         int maxSkeletons = isPhaseTwo() ? MAX_SKELETONS_P2 : MAX_SKELETONS_P1;
 
-        // Clean up dead skulls
-        skullMinionIds.removeIf(id -> {
-            for (CombatEntity e : arena.getOccupants().values()) {
-                if (e.getEntityId() == id && e.isAlive()) return false;
-            }
-            return true;
-        });
-
         // === Decay Aura (passive, every turn) ===
         if (!isOnCooldown(CD_DECAY)) {
             setCooldown(CD_DECAY, 1); // refreshes every turn
-            int decayRadius = isPhaseTwo() ? 3 : 2;
-            List<GridPos> decayTiles = getAreaTiles(arena, myPos, decayRadius);
-            // Remove tiles the boss is standing on (don't decay own position)
-            decayTiles.removeIf(p -> p.equals(myPos));
-            // Decay = fire tiles (2 damage/turn), 2 turns duration (refreshed each turn)
-            // This is a secondary action — we'll compose it with the main ability
         }
 
-        // === Wither Skull Barrage (every 2 turns) ===
-        if (!isOnCooldown(CD_SKULLS) && skullMinionIds.size() < maxSkulls) {
+        // === Wither Skull Barrage (every 2 turns) — spawn projectile entities ===
+        if (!isOnCooldown(CD_SKULLS) && getAliveProjectileCount() < maxSkulls) {
             setCooldown(CD_SKULLS, 2);
             int skullCount = isPhaseTwo() ? 5 : 3;
-            // Skulls spawn adjacent to the Wither and travel toward the player
-            List<GridPos> skullSpawnPositions = findSummonPositionsNear(arena, myPos, 1, skullCount);
+            int[] dir = getDirectionToward(myPos, playerPos);
+            List<GridPos> skullSpawnPositions = getProjectileSpawnPositions(arena, myPos, getGridSize(), playerPos, skullCount);
+
             if (!skullSpawnPositions.isEmpty()) {
-                // Skulls are low-HP mobs that the CombatManager will move each turn
-                // Using wither_skeleton as the skull entity (small, dark)
-                // 3 HP, 5 ATK, 0 DEF — fragile but dangerous
-                EnemyAction spawnSkulls = new EnemyAction.SummonMinions(
-                    "minecraft:wither_skeleton", skullSpawnPositions.size(), skullSpawnPositions,
-                    3, 5, 0
+                List<int[]> directions = new ArrayList<>();
+                for (int i = 0; i < skullSpawnPositions.size(); i++) {
+                    directions.add(new int[]{dir[0], dir[1]});
+                }
+
+                EnemyAction spawnSkulls = new EnemyAction.SpawnProjectile(
+                    "minecraft:wither_skeleton", skullSpawnPositions, directions,
+                    3, 5, 0, "wither_skull"
                 );
 
                 // Also apply decay aura as part of this turn
@@ -102,7 +88,6 @@ public class WitherBossAI extends BossAI {
                 List<GridPos> decayTiles = getAreaTiles(arena, myPos, decayRadius);
                 decayTiles.removeIf(p -> p.equals(myPos));
 
-                // Telegraph the skull launch
                 List<GridPos> warningTiles = new ArrayList<>(skullSpawnPositions);
                 EnemyAction combined = new EnemyAction.CompositeAction(List.of(
                     spawnSkulls,
@@ -117,7 +102,7 @@ public class WitherBossAI extends BossAI {
         }
 
         // === Summon Wither Skeletons (every 4 turns) ===
-        if (!isOnCooldown(CD_SUMMON) && getAliveMinionCount() - skullMinionIds.size() < maxSkeletons) {
+        if (!isOnCooldown(CD_SUMMON) && getAliveMinionCount() < maxSkeletons) {
             setCooldown(CD_SUMMON, 4);
             int summonCount = isPhaseTwo() ? 3 : 2;
             List<GridPos> summonPositions = findSummonPositions(arena, summonCount);
