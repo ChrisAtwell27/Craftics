@@ -23,7 +23,8 @@
       {"type": "minecraft:horse", "weight": 1, "hp": 6, "attack": 0, "defense": 0, "range": 1}
     ],
     "hostile": [
-      {"type": "minecraft:zombie", "weight": 8, "hp": 6, "attack": 2, "defense": 0, "range": 1}
+      {"type": "minecraft:zombie", "weight": 8, "hp": 6, "attack": 2, "defense": 0, "range": 1},
+      {"type": "minecraft:zombie_villager", "weight": 4, "hp": 6, "attack": 2, "defense": 0, "range": 1}
     ],
     "boss": {"type": "minecraft:zombie", "hp": 30, "attack": 3, "defense": 1, "range": 1}
   },

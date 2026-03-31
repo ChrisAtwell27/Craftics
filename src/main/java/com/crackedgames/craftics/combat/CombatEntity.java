@@ -224,6 +224,13 @@ public class CombatEntity {
 
     private static int getDefaultMoveSpeed(String entityTypeId) {
         return switch (entityTypeId) {
+
+            // Basic movement
+            case "minecraft:zombie" -> 1;
+
+            // Fast Passive
+            case "minecraft:parrot" -> 3;       // agile swimmer
+            
             // Fast predators
             case "minecraft:spider" -> 3;         // pounce + web
             case "minecraft:ocelot" -> 4;          // hit-and-run specialist
@@ -233,6 +240,7 @@ public class CombatEntity {
             case "minecraft:vindicator" -> 3;      // axe berserker
             case "minecraft:hoglin" -> 3;           // charging beast
             case "minecraft:wither_skeleton" -> 3;  // relentless pursuer
+            case "minecraft:ravager" -> 3;          // mounted melee, charges + stomps
 
             // Ranged (move + shoot)
             case "minecraft:skeleton", "minecraft:stray" -> 2;
