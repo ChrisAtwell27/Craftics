@@ -284,17 +284,40 @@ table {
   font-size: 14px;
 }
 
-th {
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 10px 14px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
+
+body {
+  background-color: #555;
+  background-image: url("../img/stone.png");
+  background-size: 256px 256px;
+  background-repeat: repeat;
+  image-rendering: pixelated;
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Improve contrast for muted/secondary text on stone background */
+body .nav-links a,
+body .sidebar-label,
+body .sidebar-nav a,
+body .content > .page-desc,
+body .content h4,
+body .card p,
+body .dimension-card .dim-meta,
+body .build-label,
+body .build-strategy,
+body .req-pill,
+body .section-header p,
+body footer,
+body .footer,
+body .infobox-subtitle,
+body th,
+body .marker-diagram,
+body .dimension-card p,
+body .sidebar-nav a.sub {
+  color: #333 !important;
 }
 
 td {
