@@ -53,6 +53,7 @@ public class AIRegistry {
 
         // === Basic melee hostiles ===
         register("minecraft:zombie", new ZombieAI());
+        register("minecraft:zombie_villager", new ZombieVillagerAI());
         register("minecraft:husk", new HuskAI());        // desert zombie, extra damage
         register("minecraft:drowned", new DrownedAI());   // aquatic zombie + trident throw
 
@@ -71,7 +72,7 @@ public class AIRegistry {
         register("minecraft:enderman", new EndermanAI());     // teleport behind player + attack
         register("minecraft:phantom", new PhantomAI());       // swooping dive attacks
         register("minecraft:ocelot", new OcelotAI());         // fast hit-and-run
-
+        register("minecraft:ravager", new RavagerAI());       // mounted melee, charges + stomps
         // === Boss mobs (vanilla AI fallback when not boss-flagged) ===
         register("minecraft:warden", new WardenAI());  // Deep Dark boss, phase-shifting
         register("minecraft:guardian", new StrayAI()); // reuses stray pattern — ranged kiter
