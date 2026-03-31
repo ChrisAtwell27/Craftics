@@ -48,7 +48,7 @@ public class ModNetworking {
 
             CrafticsSavedData data = CrafticsSavedData.get(world);
             data.claimLegacyData(player.getUuid());
-            data.loadPlayerIntoLegacy(player.getUuid());
+            CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
 
             // Require a personal world before starting biome runs
             java.util.UUID effectiveOwner = data.getEffectiveWorldOwner(player.getUuid());
@@ -74,29 +74,31 @@ public class ModNetworking {
             }
 
             // Check if this biome is unlocked (using path order, not registry order)
-            java.util.List<String> fullPath = BiomePath.getFullPath(Math.max(0, data.branchChoice));
+            pd.initBranchIfNeeded();
+            java.util.List<String> fullPath = BiomePath.getFullPath(Math.max(0, pd.branchChoice));
             int biomeOrder = fullPath.indexOf(biomeId) + 1; // 1-based
-            if (biomeOrder <= 0 || biomeOrder > data.highestBiomeUnlocked) {
+            if (biomeOrder <= 0 || biomeOrder > pd.highestBiomeUnlocked) {
                 CrafticsMod.LOGGER.warn("Player {} tried to start locked biome {} (unlocked={}, needed={})",
-                    player.getName().getString(), biomeId, data.highestBiomeUnlocked, biomeOrder);
+                    player.getName().getString(), biomeId, pd.highestBiomeUnlocked, biomeOrder);
                 ServerPlayNetworking.send(player, new ExitCombatPayload(false));
                 return;
             }
 
             // Start or resume biome run
             int levelIndex;
-            if (data.isInBiomeRun() && data.activeBiomeId.equals(biome.biomeId)) {
+            if (pd.isInBiomeRun() && pd.activeBiomeId.equals(biome.biomeId)) {
                 // Resuming — continue from where they left off
-                levelIndex = data.activeBiomeLevelIndex;
+                levelIndex = pd.activeBiomeLevelIndex;
             } else {
                 // New run — start from beginning
-                data.startBiomeRun(biome.biomeId);
-                data.discoverBiome(biome.biomeId);
+                pd.startBiomeRun(biome.biomeId);
+                pd.discoverBiome(biome.biomeId);
+                data.markDirty();
                 levelIndex = 0;
             }
 
             int globalLevel = biome.startLevel + levelIndex;
-            LevelDefinition levelDef = LevelRegistry.get(globalLevel, data.branchChoice);
+            LevelDefinition levelDef = LevelRegistry.get(globalLevel, pd.branchChoice);
             if (levelDef == null) {
                 CrafticsMod.LOGGER.warn("No definition for level {}", globalLevel);
                 ServerPlayNetworking.send(player, new ExitCombatPayload(false));
@@ -118,7 +120,6 @@ public class ModNetworking {
             ));
 
             CombatManager.get(player).startCombat(player, arena, levelDef);
-            data.saveLegacyToPlayer(player.getUuid());
 
             // Create EventManager for this party/solo run and assign to CombatManager
             java.util.List<java.util.UUID> partyMembers = data.getPartyMemberUuids(player.getUuid());
@@ -226,7 +227,7 @@ public class ModNetworking {
                     }
                     CrafticsSavedData data = CrafticsSavedData.get(overworld);
                     ServerPlayNetworking.send(player, new PlayerStatsSyncPayload(
-                        ps.level, ps.unspentPoints, statData.toString(), data.emeralds, affData.toString()
+                        ps.level, ps.unspentPoints, statData.toString(), data.getPlayerData(player.getUuid()).emeralds, affData.toString()
                     ));
 
                     // Mark that player now needs to pick an affinity
@@ -270,7 +271,7 @@ public class ModNetworking {
                     }
                     CrafticsSavedData data2 = CrafticsSavedData.get(overworld);
                     ServerPlayNetworking.send(player, new PlayerStatsSyncPayload(
-                        ps.level, ps.unspentPoints, statData2.toString(), data2.emeralds, affData2.toString()
+                        ps.level, ps.unspentPoints, statData2.toString(), data2.getPlayerData(player.getUuid()).emeralds, affData2.toString()
                     ));
                 }
             }

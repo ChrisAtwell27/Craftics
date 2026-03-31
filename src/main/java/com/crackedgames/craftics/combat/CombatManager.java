@@ -164,6 +164,9 @@ public class CombatManager {
     /** The UUID of the world owner for this combat (determines arena/event positions). */
     private java.util.UUID worldOwnerUuid;
 
+    /** The UUID of the player who owns the biome run data (leader who started the level). */
+    private java.util.UUID leaderUuid;
+
     /** Persisted pet data across level transitions within a biome run. */
     private record PetData(String entityType, int hp, int maxHp, int atk, int def, int speed, int range) {}
     private final List<PetData> savedPets = new ArrayList<>();
@@ -833,7 +836,7 @@ public class CombatManager {
 
         // NG+ scaling
         CrafticsSavedData ngData = CrafticsSavedData.get(world);
-        float ngMult = ngData.getNgPlusMultiplier();
+        float ngMult = ngData.getPlayerData(player.getUuid()).getNgPlusMultiplier();
 
         // Determine if this is a boss level and which entity type is the boss
         String bossEntityTypeId = null;
@@ -1070,9 +1073,17 @@ public class CombatManager {
 
         // Persist inCombat so a disconnect/rejoin can restart this fight
         CrafticsSavedData startData = CrafticsSavedData.get((ServerWorld) player.getEntityWorld());
-        startData.loadPlayerIntoLegacy(player.getUuid());
-        startData.inCombat = true;
+        CrafticsSavedData.PlayerData startPd = startData.getPlayerData(player.getUuid());
+        startPd.inCombat = true;
         startData.markDirty();
+
+        // Track which player owns the biome run data
+        this.leaderUuid = player.getUuid();
+
+        // Build turn queue now so player 2 gets their turn in the first cycle
+        if (partyPlayers.size() > 1) {
+            rebuildTurnQueue();
+        }
     }
 
     public void handleAction(CombatActionPayload action, java.util.UUID senderUuid) {
@@ -4929,25 +4940,26 @@ public class CombatManager {
 
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData ld = data.getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid());
 
         // Permadeath mode: lose ALL emeralds and reset biome progress
         if (CrafticsMod.CONFIG.permadeathMode()) {
-            int allEmeralds = data.emeralds;
-            if (allEmeralds > 0) data.spendEmeralds(allEmeralds);
-            data.highestBiomeUnlocked = 1;
+            int allEmeralds = ld.emeralds;
+            if (allEmeralds > 0) ld.spendEmeralds(allEmeralds);
+            ld.highestBiomeUnlocked = 1;
             sendMessage("§4§lPERMADEATH: All progress lost!");
         }
 
         // Death penalty: lose 50% emeralds
-        int emeraldLoss = CrafticsMod.CONFIG.permadeathMode() ? 0 : data.emeralds / 2;
+        int emeraldLoss = CrafticsMod.CONFIG.permadeathMode() ? 0 : ld.emeralds / 2;
         if (emeraldLoss > 0) {
-            data.spendEmeralds(emeraldLoss);
+            ld.spendEmeralds(emeraldLoss);
             sendMessage("§cLost " + emeraldLoss + " emeralds!");
         }
 
         // Strip items from ALL party members (full team wipe)
         for (ServerPlayerEntity p : getAllParticipants()) {
-            if (data.isInBiomeRun() && data.activeBiomeLevelIndex > 0) {
+            if (ld.isInBiomeRun() && ld.activeBiomeLevelIndex > 0) {
                 // Past level 1: lose ALL items (the "Continue" screen warns about this)
                 int itemsLost = 0;
                 for (int slot = 0; slot < p.getInventory().size(); slot++) {
@@ -4990,14 +5002,12 @@ public class CombatManager {
         }
 
         // Reset biome run
-        data.endBiomeRun();
-        data.inCombat = false;
-        // Persist legacy fields (including emerald loss) back to per-player data
-        data.saveLegacyToPlayer(player.getUuid());
+        ld.endBiomeRun();
+        ld.inCombat = false;
         data.markDirty();
 
         sendMessage("§7Returning to hub... Your biome run has ended.");
-        sendMessage("§7Remaining emeralds: " + data.emeralds);
+        sendMessage("§7Remaining emeralds: " + ld.emeralds);
 
         // Teleport all party members home, restore daytime
         world.setTimeOfDay(6000);
@@ -5103,20 +5113,23 @@ public class CombatManager {
         // Award emeralds (scales with biome progression)
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
-        int biomeIndex = data.activeBiomeLevelIndex;
+        java.util.UUID dataOwner = leaderUuid != null ? leaderUuid : player.getUuid();
+        CrafticsSavedData.PlayerData ld = data.getPlayerData(dataOwner);
+        int biomeIndex = ld.activeBiomeLevelIndex;
         com.crackedgames.craftics.level.BiomeTemplate biomeTemplate = null;
         if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
             biomeTemplate = gld.getBiomeTemplate();
         }
         // Fallback: look up biome from active biome run (covers event levels like treasure vault)
-        if (biomeTemplate == null && data.isInBiomeRun()) {
+        if (biomeTemplate == null && ld.isInBiomeRun()) {
             for (var b : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {
-                if (b.biomeId.equals(data.activeBiomeId)) { biomeTemplate = b; break; }
+                if (b.biomeId.equals(ld.activeBiomeId)) { biomeTemplate = b; break; }
             }
         }
         // Use path order for biome progression (not registry order)
+        ld.initBranchIfNeeded();
         java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-            .getFullPath(Math.max(0, data.branchChoice));
+            .getFullPath(Math.max(0, ld.branchChoice));
         int biomeOrdinal = biomeTemplate != null
             ? fullPath.indexOf(biomeTemplate.biomeId) : 0;
         if (biomeOrdinal < 0) biomeOrdinal = 0;
@@ -5130,14 +5143,14 @@ public class CombatManager {
             CrafticsSavedData.PlayerData pd = data.getPlayerData(recipient.getUuid());
             pd.addEmeralds(emeraldsEarned);
         }
-        data.addEmeralds(emeraldsEarned); // also update legacy fields for leader
+        data.markDirty();
         sendMessage("§a+ " + emeraldsEarned + " Emeralds");
 
         // Boss trim template drops (semi-rare: ~35% chance)
         if (isBoss && Math.random() < CrafticsMod.CONFIG.trimDropChance()) {
             // Determine dimension from biome position
             int overworldCount = com.crackedgames.craftics.level.BiomePath
-                .getPath(Math.max(0, data.branchChoice)).size();
+                .getPath(Math.max(0, ld.branchChoice)).size();
             int netherCount = com.crackedgames.craftics.level.BiomePath.getNetherPath().size();
             String dimension;
             if (biomeOrdinal < overworldCount) dimension = "overworld";
@@ -5171,10 +5184,10 @@ public class CombatManager {
             // Boss defeated — biome complete! Unlock next biome, go home
             sendMessage("§6§l*** BIOME COMPLETE! ***");
             int currentBiomeOrder = biomeOrdinal + 1;
-            if (data.highestBiomeUnlocked <= currentBiomeOrder) {
-                data.highestBiomeUnlocked = currentBiomeOrder + 1;
+            if (ld.highestBiomeUnlocked <= currentBiomeOrder) {
+                ld.highestBiomeUnlocked = currentBiomeOrder + 1;
                 data.markDirty();
-                com.crackedgames.craftics.CrafticsMod.updateWorldIcon(player.getServer(), data);
+                com.crackedgames.craftics.CrafticsMod.updateWorldIcon(player.getServer(), ld);
                 // Unlock biome for all party members
                 for (ServerPlayerEntity recipient : rewardRecipients) {
                     CrafticsSavedData.PlayerData pd = data.getPlayerData(recipient.getUuid());
@@ -5184,7 +5197,7 @@ public class CombatManager {
                 }
                 // Special messages when unlocking new dimensions
                 int overworldBiomeCount = com.crackedgames.craftics.level.BiomePath
-                    .getPath(Math.max(0, data.branchChoice)).size();
+                    .getPath(Math.max(0, ld.branchChoice)).size();
                 int netherBiomeCount = com.crackedgames.craftics.level.BiomePath
                     .getNetherPath().size();
                 if (currentBiomeOrder == overworldBiomeCount) {
@@ -5197,13 +5210,13 @@ public class CombatManager {
                     .getEndPath().size();
                 int totalBiomes = overworldBiomeCount + netherBiomeCount + endBiomeCount;
                 if (currentBiomeOrder == totalBiomes) {
-                    data.startNewGamePlus();
-                    sendMessage("§6§l\u2605 NEW GAME+ " + data.ngPlusLevel + " UNLOCKED! \u2605");
+                    ld.startNewGamePlus();
+                    sendMessage("§6§l\u2605 NEW GAME+ " + ld.ngPlusLevel + " UNLOCKED! \u2605");
                     sendMessage("§eAll biomes reset. Enemies are now stronger. Your stats carry over.");
                 }
             }
-            data.endBiomeRun();
-            data.inCombat = false;
+            ld.endBiomeRun();
+            ld.inCombat = false;
             data.markDirty();
             world.setTimeOfDay(6000);
             // Teleport all party members home
@@ -5255,15 +5268,16 @@ public class CombatManager {
             // Non-boss: show Go Home / Continue choice
             // Don't advance if this was a trial/ambush — those are bonus fights, not real levels
             if (!lastFightWasTrial) {
-                data.advanceBiomeRun();
+                ld.advanceBiomeRun();
+                data.markDirty();
             }
             String biomeName = biomeTemplate != null ? biomeTemplate.displayName : "Unknown";
-            int displayIndex = data.activeBiomeLevelIndex;
+            int displayIndex = ld.activeBiomeLevelIndex;
 
             // Send choice screen to the party leader (first party member, or solo player)
             ServerPlayerEntity decisionPlayer = partyPlayers.isEmpty() ? player : partyPlayers.get(0);
             ServerPlayNetworking.send(decisionPlayer, new VictoryChoicePayload(
-                emeraldsEarned, data.emeralds, false, biomeName, displayIndex
+                emeraldsEarned, ld.emeralds, false, biomeName, displayIndex
             ));
             for (ServerPlayerEntity member : getAllParticipants()) {
                 if (!member.getUuid().equals(decisionPlayer.getUuid())) {
@@ -5343,6 +5357,14 @@ public class CombatManager {
         List<ServerPlayerEntity> savedMembers = new ArrayList<>(getAllParticipants());
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
+        java.util.UUID dataOwner = leaderUuid != null ? leaderUuid : savedPlayer.getUuid();
+        CrafticsSavedData.PlayerData ld = data.getPlayerData(dataOwner);
+
+        // Snapshot biome state BEFORE endCombat can interfere
+        String biomeId = ld.activeBiomeId;
+        int levelIndex = ld.activeBiomeLevelIndex;
+        int branchChoice = ld.branchChoice;
+        int ngPlusLevel = ld.ngPlusLevel;
 
         // Persist tamed pets so they carry over to the next level
         savePets();
@@ -5368,8 +5390,8 @@ public class CombatManager {
                 }
                 savedPets.clear();
             }
-            data.endBiomeRun();
-            data.inCombat = false;
+            ld.endBiomeRun();
+            ld.inCombat = false;
             data.markDirty();
             world.setTimeOfDay(6000);
             // Teleport all party members home
@@ -5387,9 +5409,7 @@ public class CombatManager {
             endCombat();
 
             try {
-            // Start next level directly
-            String biomeId = data.activeBiomeId;
-            int levelIndex = data.activeBiomeLevelIndex;
+            // Start next level — use snapshotted biome state (safe from endCombat clobbering)
             com.crackedgames.craftics.level.BiomeTemplate biome = null;
             for (var b : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {
                 if (b.biomeId.equals(biomeId)) { biome = b; break; }
@@ -5397,14 +5417,14 @@ public class CombatManager {
             if (biome != null) {
                 int globalLevel = biome.startLevel + levelIndex;
                 com.crackedgames.craftics.level.LevelDefinition nextLevelDef =
-                    com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, data.branchChoice);
+                    com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, branchChoice);
                 if (nextLevelDef != null) {
                     java.util.Random eventRng = new java.util.Random();
                     float eventRoll = eventRng.nextFloat();
 
                     // Calculate biome position for difficulty scaling (use path ordinal, not registry index)
                     java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-                            .getFullPath(Math.max(0, data.branchChoice));
+                            .getFullPath(Math.max(0, branchChoice));
                     int biomeOrdinal = fullPath.indexOf(biome.biomeId);
                     if (biomeOrdinal < 0) biomeOrdinal = 0;
 
@@ -5449,7 +5469,7 @@ public class CombatManager {
                         // Ominous Trial Chamber (late game only)
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
-                        trialChamberLevelDef = RandomEvents.generateOminousTrial(biomeOrdinal, data.ngPlusLevel);
+                        trialChamberLevelDef = RandomEvents.generateOminousTrial(biomeOrdinal, ngPlusLevel);
                         trialChamberPending = true;
                         for (ServerPlayerEntity p : partyMsg) {
                             sendMessageTo(p, "\u00a74\u00a7l\u2694 OMINOUS TRIAL CHAMBER! \u2694");
@@ -5458,13 +5478,13 @@ public class CombatManager {
                         }
                         // Only leader gets the choice screen
                         ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
-                            0, data.emeralds, false, "Ominous Trial", -1
+                            0, ld.emeralds, false, "Ominous Trial", -1
                         ));
                     } else if (forced != null ? forced.equals("trial") : (eventRoll < cTrial)) {
                         // Trial Chamber
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
-                        trialChamberLevelDef = TrialChamberEvent.generate(biomeOrdinal, data.ngPlusLevel);
+                        trialChamberLevelDef = TrialChamberEvent.generate(biomeOrdinal, ngPlusLevel);
                         trialChamberPending = true;
                         for (ServerPlayerEntity p : partyMsg) {
                             sendMessageTo(p, "\u00a76\u00a7l\u2694 TRIAL CHAMBER DISCOVERED! \u2694");
@@ -5472,13 +5492,13 @@ public class CombatManager {
                             sendMessageTo(p, "\u00a7eAccept the challenge for rare loot?");
                         }
                         ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
-                            0, data.emeralds, false, "Trial Chamber", -1
+                            0, ld.emeralds, false, "Trial Chamber", -1
                         ));
                     } else if (forced != null ? forced.equals("ambush") : (eventRoll < cAmbush)) {
                         // Ambush (unavoidable!)
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
-                        var ambushDef = RandomEvents.generateAmbush(biomeOrdinal, data.ngPlusLevel);
+                        var ambushDef = RandomEvents.generateAmbush(biomeOrdinal, ngPlusLevel);
                         for (ServerPlayerEntity p : partyMsg) {
                             sendMessageTo(p, "\u00a7c\u00a7l\u26a0 AMBUSH! \u26a0");
                             sendMessageTo(p, "\u00a7cEnemies surround you! No escape!");
@@ -5526,12 +5546,17 @@ public class CombatManager {
             } catch (Exception ex) {
                 CrafticsMod.LOGGER.error("Failed to start next level, sending player home", ex);
                 sendMessageTo(savedPlayer, "§cError loading next level! Returning to hub...");
-                data.endBiomeRun();
-                data.inCombat = false;
-                data.saveLegacyToPlayer(savedPlayer.getUuid());
+                ld.endBiomeRun();
+                ld.inCombat = false;
                 data.markDirty();
                 teleportToHub(savedPlayer);
-                ServerPlayNetworking.send(savedPlayer, new ExitCombatPayload(false));
+                // Send all party members home on error, not just the leader
+                for (ServerPlayerEntity m : savedMembers) {
+                    if (!m.getUuid().equals(savedPlayer.getUuid())) {
+                        teleportToHub(m);
+                    }
+                    ServerPlayNetworking.send(m, new ExitCombatPayload(false));
+                }
             }
         }
     }
@@ -5725,7 +5750,8 @@ public class CombatManager {
 
         // Give player emerald items from their currency
         CrafticsSavedData data = CrafticsSavedData.get(world);
-        traderEmeraldsGiven = data.emeralds;
+        CrafticsSavedData.PlayerData traderPd = data.getPlayerData(leaderUuid != null ? leaderUuid : savedPlayer.getUuid());
+        traderEmeraldsGiven = traderPd.emeralds;
         if (traderEmeraldsGiven > 0) {
             int remaining = traderEmeraldsGiven;
             while (remaining > 0) {
@@ -5733,7 +5759,7 @@ public class CombatManager {
                 savedPlayer.getInventory().insertStack(new ItemStack(Items.EMERALD, stackSize));
                 remaining -= stackSize;
             }
-            data.emeralds = 0;
+            traderPd.emeralds = 0;
             data.markDirty();
         }
 
@@ -5776,8 +5802,9 @@ public class CombatManager {
 
         // Signal client that trader is active (for auto-done detection)
         CrafticsSavedData signalData = CrafticsSavedData.get(world);
+        int signalEmeralds = signalData.getPlayerData(leaderUuid != null ? leaderUuid : savedPlayer.getUuid()).emeralds;
         ServerPlayNetworking.send(savedPlayer, new com.crackedgames.craftics.network.TraderOfferPayload(
-            activeTraderOffer.type().displayName, activeTraderOffer.type().icon, "", signalData.emeralds
+            activeTraderOffer.type().displayName, activeTraderOffer.type().icon, "", signalEmeralds
         ));
 
         sendMessageTo(savedPlayer, "§e§lA wandering trader appears!");
@@ -5933,7 +5960,7 @@ public class CombatManager {
         shrineCosts = new int[]{2, 5, 10};
 
         CrafticsSavedData data = CrafticsSavedData.get(world);
-        int playerEmeralds = data.emeralds;
+        int playerEmeralds = data.getPlayerData(leaderUuid != null ? leaderUuid : savedPlayer.getUuid()).emeralds;
 
         BlockPos shrineOrigin = getEventRoomOrigin(savedPlayer);
         buildShrineArea(world, shrineOrigin);
@@ -6188,13 +6215,14 @@ public class CombatManager {
 
         ServerWorld world = (ServerWorld) choicePlayer.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData ld = data.getPlayerData(leaderUuid != null ? leaderUuid : choicePlayer.getUuid());
         List<ServerPlayerEntity> partyMsg = getOnlinePartyMembers(choicePlayer);
 
         if ("shrine".equals(type)) {
             if (choiceIndex >= 0 && choiceIndex < 3) {
                 int cost = shrineCosts[choiceIndex];
-                if (data.emeralds >= cost) {
-                    data.spendEmeralds(cost);
+                if (ld.emeralds >= cost) {
+                    ld.spendEmeralds(cost);
                     java.util.Random rng = new java.util.Random();
                     // Better offering = better odds
                     int roll = rng.nextInt(100);
@@ -6230,7 +6258,8 @@ public class CombatManager {
                         desc = "§d§lThe shrine erupts with light!";
                     } else {
                         // Jackpot
-                        data.addEmeralds(cost * 3);
+                        ld.addEmeralds(cost * 3);
+                        data.markDirty();
                         reward = new ItemStack(Items.EMERALD, cost * 3);
                         desc = "§6§l✦ JACKPOT! ✦ §r§6Triple emeralds returned!";
                     }
@@ -6336,7 +6365,7 @@ public class CombatManager {
                 try { biomeOrdinal = Integer.parseInt(eventRoomType != null ? "0" : "0"); } catch (Exception ignored) {}
                 // Use the pending biome ordinal
                 java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-                    .getFullPath(Math.max(0, CrafticsSavedData.get(world).branchChoice));
+                    .getFullPath(Math.max(0, CrafticsSavedData.get(world).getPlayerData(leaderUuid != null ? leaderUuid : choicePlayer.getUuid()).branchChoice));
                 if (pendingBiome != null) {
                     biomeOrdinal = fullPath.indexOf(pendingBiome.biomeId);
                     if (biomeOrdinal < 0) biomeOrdinal = 0;
@@ -6617,6 +6646,7 @@ public class CombatManager {
         // Collect remaining emerald items from inventory back into currency
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData traderPd = data.getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid());
         int collectedEmeralds = 0;
         for (int i = 0; i < player.getInventory().size(); i++) {
             ItemStack stack = player.getInventory().getStack(i);
@@ -6625,7 +6655,7 @@ public class CombatManager {
                 player.getInventory().removeStack(i);
             }
         }
-        data.emeralds = collectedEmeralds;
+        traderPd.emeralds = collectedEmeralds;
         data.markDirty();
 
         // Despawn the trader
@@ -6771,9 +6801,7 @@ public class CombatManager {
             if (p != null) {
                 ServerWorld clearWorld = (ServerWorld) p.getEntityWorld();
                 CrafticsSavedData clearData = CrafticsSavedData.get(clearWorld);
-                clearData.loadPlayerIntoLegacy(p.getUuid());
-                clearData.inCombat = false;
-                clearData.saveLegacyToPlayer(p.getUuid());
+                clearData.getPlayerData(p.getUuid()).inCombat = false;
                 clearData.markDirty();
             }
         }
@@ -6784,6 +6812,7 @@ public class CombatManager {
         arena = null;
         enemies = null;
         player = null;
+        leaderUuid = null;
         movePath = null;
         active = false;
         testRange = false;
@@ -7185,7 +7214,7 @@ public class CombatManager {
             ServerWorld world = (ServerWorld) player.getEntityWorld();
             com.crackedgames.craftics.world.CrafticsSavedData data =
                 com.crackedgames.craftics.world.CrafticsSavedData.get(world);
-            data.emeralds += bonusEmeralds;
+            data.getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid()).addEmeralds(bonusEmeralds);
             data.markDirty();
         }
     }

@@ -27,19 +27,21 @@ public class LevelSelectBlockEntity extends BlockEntity
     @Override
     public ScreenHandler createMenu(int syncId, PlayerInventory playerInventory, PlayerEntity player) {
         CrafticsSavedData data = getData();
-        data.loadPlayerIntoLegacy(player.getUuid());
-        data.initBranchIfNeeded();
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+        pd.initBranchIfNeeded();
+        data.markDirty();
         return new LevelSelectScreenHandler(syncId, playerInventory,
-            data.highestBiomeUnlocked, data.branchChoice, data.discoveredBiomes);
+            pd.highestBiomeUnlocked, pd.branchChoice, pd.discoveredBiomes);
     }
 
     @Override
     public LevelSelectScreenHandler.LevelSelectData getScreenOpeningData(ServerPlayerEntity player) {
         CrafticsSavedData data = getData();
-        data.loadPlayerIntoLegacy(player.getUuid());
-        data.initBranchIfNeeded();
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+        pd.initBranchIfNeeded();
+        data.markDirty();
         return new LevelSelectScreenHandler.LevelSelectData(
-            data.highestBiomeUnlocked, data.branchChoice, data.discoveredBiomes);
+            pd.highestBiomeUnlocked, pd.branchChoice, pd.discoveredBiomes);
     }
 
     private CrafticsSavedData getData() {
