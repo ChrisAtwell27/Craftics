@@ -94,8 +94,16 @@ public class CrafticsClient implements ClientModInitializer {
                             CombatState.focusOnTile(payload.targetX(), payload.targetZ());
                         }
                         if (payload.valueA() == 0) {
-                            // Animation trigger event (0 damage) — start the attack animation
-                            if (context.client().player != null) {
+                            // Animation trigger event (0 damage) — animate the attacker, not local player
+                            // valueB carries the attacker's entity ID
+                            int attackerEntityId = payload.valueB();
+                            var attackerEntity = context.client().world != null
+                                ? context.client().world.getEntityById(attackerEntityId) : null;
+                            if (attackerEntity instanceof net.minecraft.client.network.AbstractClientPlayerEntity attacker) {
+                                CombatAnimations.playWeaponAttack(attacker);
+                            } else if (context.client().player != null
+                                    && context.client().player.getId() == attackerEntityId) {
+                                // Fallback: if entity lookup fails but it's us, animate self
                                 CombatAnimations.playWeaponAttack(context.client().player);
                             }
                         } else {

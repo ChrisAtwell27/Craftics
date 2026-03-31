@@ -60,6 +60,12 @@ public class CombatManager {
         if (cm != null && cm.active) cm.endCombat();
     }
 
+    /** Clear all static state between world loads (prevents leaking across saves in singleplayer). */
+    public static void clearAll() {
+        INSTANCES.clear();
+        PARTY_COMBAT_LEADER.clear();
+    }
+
     /** Tick all active combat instances. */
     public static void tickAll() {
         for (CombatManager cm : INSTANCES.values()) {
@@ -144,6 +150,12 @@ public class CombatManager {
     private int peacefulTurnCount = 0; // consecutive turns with no hostile enemies
     private boolean endTurnHintSent = false; // avoid spamming the "press R" hint
     private ServerPlayerEntity player;
+
+    // === Per-player turn rotation for party combat ===
+    /** Ordered list of party member UUIDs who take turns this round. */
+    private final List<java.util.UUID> turnQueue = new ArrayList<>();
+    /** Index into turnQueue for whose sub-turn it currently is. */
+    private int currentTurnIndex = 0;
     private final CombatEffects combatEffects = new CombatEffects();
 
     /** Shared event manager for this biome run (shared across party members). */
@@ -188,6 +200,72 @@ public class CombatManager {
     public void removePartyMember(java.util.UUID memberUuid) {
         partyPlayers.removeIf(p -> p.getUuid().equals(memberUuid));
         PARTY_COMBAT_LEADER.remove(memberUuid);
+    }
+
+    /**
+     * Gracefully remove a single player from party combat (e.g. /home while in party).
+     * Cleans up their state without ending combat for everyone else.
+     * If the leaving player is the active fighter, transfers control.
+     * If they're the last one, ends combat entirely.
+     */
+    public void leavePartyCombat(ServerPlayerEntity leaver) {
+        if (!active) return;
+        java.util.UUID leaverUuid = leaver.getUuid();
+
+        // Remove feather from leaver's inventory
+        for (int i = 0; i < leaver.getInventory().size(); i++) {
+            if (leaver.getInventory().getStack(i).getItem() == Items.FEATHER) {
+                leaver.getInventory().removeStack(i);
+            }
+        }
+        leaver.clearStatusEffects();
+        leaver.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+
+        // Send exit combat to just this player
+        if (leaver.networkHandler != null) {
+            ServerPlayNetworking.send(leaver, new com.crackedgames.craftics.network.ExitCombatPayload(false));
+        }
+
+        // Remove from tracking
+        deadPartyMembers.remove(leaverUuid);
+        removePartyMember(leaverUuid);
+
+        // Notify remaining players
+        sendMessage("§e" + leaver.getName().getString() + " left the battle.");
+
+        // If leaver was the active fighter, transfer control
+        if (player != null && player.getUuid().equals(leaverUuid)) {
+            ServerPlayerEntity nextAlive = null;
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (!deadPartyMembers.contains(member.getUuid())
+                        && member != null && !member.isRemoved() && !member.isDisconnected()) {
+                    nextAlive = member;
+                    break;
+                }
+            }
+            if (nextAlive != null) {
+                sendMessage("§e" + nextAlive.getName().getString() + " takes over the fight!");
+                nextAlive.requestTeleport(player.getX(), player.getY(), player.getZ());
+                this.player = nextAlive;
+                PlayerProgression prog = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+                PlayerProgression.PlayerStats pStats = prog.getStats(player);
+                this.apRemaining = pStats.getEffective(PlayerProgression.Stat.AP)
+                    + PlayerCombatStats.getSetApBonus(player);
+                this.movePointsRemaining = pStats.getEffective(PlayerProgression.Stat.SPEED)
+                    + PlayerCombatStats.getSetSpeedBonus(player);
+                this.activeTrimScan = TrimEffects.scan(player);
+                sendSync();
+                refreshHighlights();
+            } else {
+                // Nobody left — end combat
+                endCombat();
+            }
+        }
+
+        // If only one player remains, combat continues normally for them
+        if (partyPlayers.size() == 0) {
+            endCombat();
+        }
     }
 
     /** Get the CombatManager that handles this player's active combat (follows party leader). */
@@ -272,12 +350,55 @@ public class CombatManager {
                 member.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
             }
         }
+
+        // Register party members BEFORE startCombat so that sendSync/highlights
+        // inside startCombat reach all participants, not just the leader
+        for (ServerPlayerEntity member : members) {
+            addPartyMember(member);
+        }
+
         startCombat(leader, newArena, newLevelDef);
         // Respawn tamed pets from previous level
         spawnSavedPets();
-        // Re-register party members on the new combat instance
-        for (ServerPlayerEntity member : members) {
-            addPartyMember(member);
+
+        // startCombat only sends chunks/feather/title to the leader — replicate for party members
+        if (members.size() > 1) {
+            ServerWorld world = (ServerWorld) leader.getEntityWorld();
+            BlockPos origin = newArena.getOrigin();
+            int chunkMargin = 48;
+            int minCX = (origin.getX() - chunkMargin) >> 4;
+            int maxCX = (origin.getX() + newArena.getWidth() + chunkMargin) >> 4;
+            int minCZ = (origin.getZ() - chunkMargin) >> 4;
+            int maxCZ = (origin.getZ() + newArena.getHeight() + chunkMargin) >> 4;
+
+            for (ServerPlayerEntity member : members) {
+                if (member.getUuid().equals(leader.getUuid())) continue;
+                // Resend arena chunks so member can see the arena
+                for (int cx = minCX; cx <= maxCX; cx++) {
+                    for (int cz = minCZ; cz <= maxCZ; cz++) {
+                        var chunk = world.getChunk(cx, cz);
+                        if (chunk != null) {
+                            member.networkHandler.chunkDataSender.add(chunk);
+                        }
+                    }
+                }
+                // Give Move feather
+                ItemStack displaced = member.getInventory().getStack(8);
+                if (!displaced.isEmpty()) {
+                    int emptySlot = member.getInventory().getEmptySlot();
+                    if (emptySlot != -1) {
+                        member.getInventory().setStack(emptySlot, displaced);
+                    }
+                }
+                ItemStack moveItem = new ItemStack(Items.FEATHER);
+                moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("\u00a7aMove"));
+                member.getInventory().setStack(8, moveItem);
+                member.getInventory().selectedSlot = 8;
+                // Show level title
+                member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 40, 15));
+                member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
+                    Text.literal("\u00a7e" + newLevelDef.getName())));
+            }
         }
     }
 
@@ -954,10 +1075,16 @@ public class CombatManager {
         startData.markDirty();
     }
 
-    public void handleAction(CombatActionPayload action) {
+    public void handleAction(CombatActionPayload action, java.util.UUID senderUuid) {
         if (!active) return;
 
         if (phase != CombatPhase.PLAYER_TURN) return;
+
+        // In party combat, only the active turn player can act
+        if (!turnQueue.isEmpty() && player != null && !player.getUuid().equals(senderUuid)) {
+            // Not your turn — silently ignore
+            return;
+        }
 
         // Block input during spell cast animations (particles still staging)
         if (spellAnimCooldown > 0) return;
@@ -968,6 +1095,11 @@ public class CombatManager {
             case CombatActionPayload.ACTION_END_TURN -> handleEndTurn();
             case CombatActionPayload.ACTION_USE_ITEM -> handleUseItem(new GridPos(action.targetX(), action.targetZ()));
         }
+    }
+
+    /** Legacy overload for solo combat / internal calls. */
+    public void handleAction(CombatActionPayload action) {
+        handleAction(action, player != null ? player.getUuid() : null);
     }
 
     private void handleMove(GridPos target) {
@@ -1356,9 +1488,10 @@ public class CombatManager {
         final PlayerProgression.PlayerStats fAttackerStats = attackerStats;
 
         // Trigger client animation immediately (damage visuals are already delayed on client)
+        // valueB = attacker entity ID so clients animate the correct player, not themselves
         sendToAllParty(new CombatEventPayload(
             CombatEventPayload.EVENT_DAMAGED, target.getEntityId(),
-            0, target.getCurrentHp(), tPos.x(), tPos.z()  // 0 damage placeholder — triggers animation
+            0, player.getId(), tPos.x(), tPos.z()  // 0 damage = animation trigger, valueB = attacker entity ID
         ));
 
         // Spawn projectile immediately for ranged (it needs flight time)
@@ -2551,10 +2684,104 @@ public class CombatManager {
             shieldBraced = true;
             sendMessage("§9§lShield braced! §r§7(+" + (SHIELD_PASSIVE_DEFENSE + SHIELD_BRACE_DEFENSE) + " defense this enemy turn)");
         }
+
+        // Party turn rotation: advance to next alive player before enemy turn
+        if (turnQueue.size() > 1) {
+            currentTurnIndex++;
+            if (currentTurnIndex < turnQueue.size()) {
+                // Next player's sub-turn — switch active player
+                switchToTurnPlayer();
+                return; // Don't start enemy turn yet
+            }
+            // All players have acted — fall through to enemy turn
+            currentTurnIndex = 0;
+        }
+
         // Tick boss warning telegraphs
         tickBossWarnings();
 
         startEnemyTurn();
+    }
+
+    /**
+     * Build the turn queue from alive, online party members. Called at the start of each
+     * player turn round. Skips dead/disconnected members.
+     */
+    private void rebuildTurnQueue() {
+        turnQueue.clear();
+        for (ServerPlayerEntity member : partyPlayers) {
+            if (member != null && !member.isRemoved() && !member.isDisconnected()
+                    && !deadPartyMembers.contains(member.getUuid())) {
+                turnQueue.add(member.getUuid());
+            }
+        }
+        // Solo play — queue stays empty, no rotation needed
+        currentTurnIndex = 0;
+    }
+
+    /**
+     * Switch the active player to whoever is at currentTurnIndex in the turn queue.
+     * Recalculates AP/Move from that player's stats and notifies all clients.
+     */
+    private void switchToTurnPlayer() {
+        if (turnQueue.isEmpty()) return;
+        java.util.UUID nextUuid = turnQueue.get(currentTurnIndex);
+        ServerPlayerEntity nextPlayer = null;
+        for (ServerPlayerEntity member : partyPlayers) {
+            if (member.getUuid().equals(nextUuid)) { nextPlayer = member; break; }
+        }
+        if (nextPlayer == null || nextPlayer.isRemoved() || nextPlayer.isDisconnected()) {
+            // Skip disconnected/dead player, try next
+            turnQueue.remove(currentTurnIndex);
+            if (currentTurnIndex >= turnQueue.size()) {
+                currentTurnIndex = 0;
+                tickBossWarnings();
+                startEnemyTurn();
+                return;
+            }
+            switchToTurnPlayer(); // recurse to next
+            return;
+        }
+
+        this.player = nextPlayer;
+
+        // Sync the arena's tracked player grid position to this player's actual position
+        if (arena != null) {
+            net.minecraft.util.math.BlockPos origin = arena.getOrigin();
+            net.minecraft.util.math.BlockPos pBlock = player.getBlockPos();
+            arena.setPlayerGridPos(new GridPos(
+                pBlock.getX() - origin.getX(),
+                pBlock.getZ() - origin.getZ()
+            ));
+        }
+
+        // Recalculate AP and Move from this player's stats
+        if (testRange) {
+            apRemaining = 999;
+            movePointsRemaining = 999;
+        } else {
+            PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+            PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
+            apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP)
+                + PlayerCombatStats.getSetApBonus(player);
+            movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
+                + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
+                + (playerMounted ? MOUNT_SPEED_BONUS : 0)
+                + PlayerCombatStats.getSetSpeedBonus(player);
+            if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
+                movePointsRemaining = Math.max(1, movePointsRemaining - 1);
+            }
+        }
+
+        this.activeTrimScan = TrimEffects.scan(player);
+
+        // Sound + announce
+        player.getWorld().playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(),
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.2f);
+        sendMessage("§e" + player.getName().getString() + "'s turn! §aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
+        sendSync();
+        refreshHighlights();
     }
 
     private void startEnemyTurn() {
@@ -3109,12 +3336,36 @@ public class CombatManager {
             tickTemporaryTerrain();
             // Clear shield brace from previous turn
             shieldBraced = false;
+
+            // Rebuild party turn queue for this round (skips dead/offline members)
+            if (partyPlayers.size() > 1) {
+                rebuildTurnQueue();
+                if (!turnQueue.isEmpty()) {
+                    // Set active player to first in queue
+                    currentTurnIndex = 0;
+                    java.util.UUID firstUuid = turnQueue.get(0);
+                    for (ServerPlayerEntity member : partyPlayers) {
+                        if (member.getUuid().equals(firstUuid)) { this.player = member; break; }
+                    }
+                    // Sync arena grid position to this player's actual position
+                    if (arena != null) {
+                        net.minecraft.util.math.BlockPos qOrigin = arena.getOrigin();
+                        net.minecraft.util.math.BlockPos qBlock = player.getBlockPos();
+                        arena.setPlayerGridPos(new GridPos(
+                            qBlock.getX() - qOrigin.getX(),
+                            qBlock.getZ() - qOrigin.getZ()
+                        ));
+                    }
+                    this.activeTrimScan = TrimEffects.scan(player);
+                }
+            }
+
             if (testRange) {
                 // Infinite AP and movement in test range
                 apRemaining = 999;
                 movePointsRemaining = 999;
             } else {
-                // Read base stats from progression
+                // Read base stats from progression (uses current `player` which may have been set by turn queue)
                 PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
                 PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
                 apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP);
@@ -3133,7 +3384,12 @@ public class CombatManager {
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(),
                 net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.2f);
-            sendMessage("§aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
+            // Announce whose turn it is in party combat
+            if (turnQueue.size() > 1) {
+                sendMessage("§e" + player.getName().getString() + "'s turn! §aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
+            } else {
+                sendMessage("§aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
+            }
             sendSync();
             refreshHighlights();
             sendToAllParty(new CombatEventPayload(
@@ -5004,12 +5260,13 @@ public class CombatManager {
             String biomeName = biomeTemplate != null ? biomeTemplate.displayName : "Unknown";
             int displayIndex = data.activeBiomeLevelIndex;
 
-            // Send choice screen to leader, waiting message to party members
-            ServerPlayNetworking.send(player, new VictoryChoicePayload(
+            // Send choice screen to the party leader (first party member, or solo player)
+            ServerPlayerEntity decisionPlayer = partyPlayers.isEmpty() ? player : partyPlayers.get(0);
+            ServerPlayNetworking.send(decisionPlayer, new VictoryChoicePayload(
                 emeraldsEarned, data.emeralds, false, biomeName, displayIndex
             ));
             for (ServerPlayerEntity member : getAllParticipants()) {
-                if (!member.getUuid().equals(player.getUuid())) {
+                if (!member.getUuid().equals(decisionPlayer.getUuid())) {
                     sendMessageTo(member, "§7Waiting for party leader to decide...");
                 }
             }
@@ -5077,8 +5334,9 @@ public class CombatManager {
         }
         lastFightWasTrial = false;
 
-        // Only accept choice from the combat leader
-        if (player == null || !choicePlayer.equals(player)) return;
+        // Only accept choice from the party leader (first party member, or current player if solo)
+        ServerPlayerEntity leader = partyPlayers.isEmpty() ? player : partyPlayers.get(0);
+        if (leader == null || !choicePlayer.getUuid().equals(leader.getUuid())) return;
 
         // Save references before endCombat() nulls them
         ServerPlayerEntity savedPlayer = player;
@@ -5122,7 +5380,10 @@ public class CombatManager {
             endCombat();
         } else {
             // Continue to next level
-            sendMessage("§aOnward!");
+            // Broadcast to all BEFORE endCombat clears party state
+            for (ServerPlayerEntity m : savedMembers) {
+                sendMessageTo(m, "§aOnward!");
+            }
             endCombat();
 
             try {
@@ -5166,7 +5427,8 @@ public class CombatManager {
                     }
 
                     // Helper: broadcast event messages to all party members
-                    List<ServerPlayerEntity> partyMsg = getOnlinePartyMembers(savedPlayer);
+                    // Use savedMembers (captured before endCombat) since party state is already cleared
+                    List<ServerPlayerEntity> partyMsg = savedMembers;
 
                     // Build cumulative thresholds from config
                     float cOminous = CrafticsMod.CONFIG.ominousTrialChance();
@@ -6500,6 +6762,19 @@ public class CombatManager {
         for (ServerPlayerEntity p : getAllParticipants()) {
             if (p != null) {
                 p.clearStatusEffects();
+            }
+        }
+
+        // Clear the inCombat flag for all participants so they don't get thrown
+        // back into combat on rejoin (the flag is only useful for disconnect-recovery)
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null) {
+                ServerWorld clearWorld = (ServerWorld) p.getEntityWorld();
+                CrafticsSavedData clearData = CrafticsSavedData.get(clearWorld);
+                clearData.loadPlayerIntoLegacy(p.getUuid());
+                clearData.inCombat = false;
+                clearData.saveLegacyToPlayer(p.getUuid());
+                clearData.markDirty();
             }
         }
 

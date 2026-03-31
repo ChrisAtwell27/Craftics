@@ -87,6 +87,11 @@ public class CrafticsMod implements ModInitializer {
             return net.minecraft.util.ActionResult.PASS;
         });
 
+        // Clear static combat state between world loads (prevents leaking across saves in singleplayer)
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            CombatManager.clearAll();
+        });
+
         // When the overworld loads, check if we need to build the hub
         ServerWorldEvents.LOAD.register((server, world) -> {
             if (world.getRegistryKey() == World.OVERWORLD) {
@@ -703,8 +708,18 @@ public class CrafticsMod implements ModInitializer {
                     return 0;
                 }
 
-                CombatManager cm = CombatManager.get(player);
-                if (cm.isActive()) cm.endCombat();
+                // Handle party combat: gracefully remove this player instead of ending for everyone
+                CombatManager playerCm = CombatManager.get(player);
+                CombatManager activeCm = CombatManager.getActiveCombat(player.getUuid());
+                if (activeCm != null && activeCm.isActive()) {
+                    // Player is in party combat — remove them gracefully
+                    activeCm.leavePartyCombat(player);
+                } else if (playerCm.isActive()) {
+                    // Solo combat — end normally
+                    playerCm.endCombat();
+                    net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+                        new com.crackedgames.craftics.network.ExitCombatPayload(false));
+                }
 
                 net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(player.getUuid());
                 player.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
