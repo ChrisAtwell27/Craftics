@@ -13,11 +13,11 @@
   "enemies": {
     "passive": [],
     "hostile": [
-      {"type": "minecraft:enderman", "weight": 5, "hp": 20, "attack": 8},
-      {"type": "minecraft:shulker", "weight": 5, "hp": 16, "attack": 7, "range": 4},
-      {"type": "minecraft:phantom", "weight": 3, "hp": 12, "attack": 6}
+      {"type": "minecraft:enderman", "weight": 5, "hp": 20, "attack": 8, "defense": 1},
+      {"type": "minecraft:shulker", "weight": 5, "hp": 16, "attack": 7, "defense": 2, "range": 4},
+      {"type": "minecraft:phantom", "weight": 3, "hp": 12, "attack": 6, "defense": 0}
     ],
-    "boss": {"type": "minecraft:enderman", "hp": 80, "attack": 12}
+    "boss": {"type": "minecraft:enderman", "hp": 80, "attack": 12, "defense": 3}
   },
   "loot": [
     {"item": "minecraft:chorus_fruit", "weight": 8},

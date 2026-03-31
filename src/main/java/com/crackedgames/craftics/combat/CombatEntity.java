@@ -208,7 +208,13 @@ public class CombatEntity {
         String id = entityTypeId;
         int colon = id.indexOf(':');
         if (colon >= 0) id = id.substring(colon + 1);
-        return id.substring(0, 1).toUpperCase() + id.substring(1);
+        String[] words = id.split("_");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) sb.append(' ');
+            sb.append(Character.toUpperCase(words[i].charAt(0))).append(words[i].substring(1));
+        }
+        return sb.toString();
     }
 
     public static int getDefaultSizeStatic(String entityTypeId) {
@@ -217,7 +223,8 @@ public class CombatEntity {
 
     private static int getDefaultSize(String entityTypeId) {
         return switch (entityTypeId) {
-            case "minecraft:spider", "minecraft:hoglin" -> 2;
+            case "minecraft:spider", "minecraft:hoglin",
+                 "minecraft:slime", "minecraft:magma_cube" -> 2;
             default -> 1;
         };
     }

@@ -13,10 +13,13 @@
   "enemies": {
     "passive": [],
     "hostile": [
-      {"type": "minecraft:zombified_piglin", "weight": 6, "hp": 10, "attack": 4},
-      {"type": "minecraft:magma_cube", "weight": 4, "hp": 8, "attack": 3}
+      {"type": "minecraft:zombified_piglin", "weight": 7, "hp": 10, "attack": 4, "defense": 1},
+      {"type": "minecraft:magma_cube", "weight": 2, "hp": 8, "attack": 3, "defense": 1},
+      {"type": "minecraft:blaze", "weight": 2, "hp": 14, "attack": 6, "range": 4},
+      {"type": "minecraft:ghast", "weight": 1, "hp": 12, "attack": 6, "defense": 0, "range": 5},
+      {"type": "minecraft:piglin", "weight": 3, "hp": 10, "attack": 4, "defense": 1, "range": 4}
     ],
-    "boss": {"type": "minecraft:magma_cube", "hp": 55, "attack": 6}
+    "boss": {"type": "minecraft:magma_cube", "hp": 55, "attack": 6, "defense": 3}
   },
   "loot": [
     {"item": "minecraft:gold_nugget", "weight": 10},

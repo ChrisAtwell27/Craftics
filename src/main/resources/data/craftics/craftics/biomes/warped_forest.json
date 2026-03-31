@@ -13,10 +13,12 @@
   "enemies": {
     "passive": [],
     "hostile": [
-      {"type": "minecraft:enderman", "weight": 5, "hp": 16, "attack": 6},
-      {"type": "minecraft:piglin", "weight": 4, "hp": 12, "attack": 5, "range": 4}
+      {"type": "minecraft:enderman", "weight": 5, "hp": 16, "attack": 6, "defense": 1},
+      {"type": "minecraft:piglin", "weight": 3, "hp": 12, "attack": 5, "defense": 1, "range": 4},
+      {"type": "minecraft:zombified_piglin", "weight": 3, "hp": 10, "attack": 4, "defense": 1},
+      {"type": "minecraft:endermite", "weight": 4, "hp": 8, "attack": 3, "defense": 0}
     ],
-    "boss": {"type": "minecraft:enderman", "hp": 65, "attack": 9}
+    "boss": {"type": "minecraft:enderman", "hp": 65, "attack": 9, "defense": 2}
   },
   "loot": [
     {"item": "minecraft:warped_planks", "weight": 8},
