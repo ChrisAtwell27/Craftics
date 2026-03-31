@@ -10,7 +10,7 @@
   --surface-alt: rgba(26, 26, 30, 0.92);
   --border: #4a4a52;
   --text: #e8e8ec;
-  --muted: #a8a8b0;
+  --muted: #fff;
   --accent: #5b9bd5;
   --accent-dim: rgba(91, 155, 213, 0.12);
   --amber: #e8a830;
@@ -174,7 +174,7 @@ a:hover { color: #7bb8e8; }
   font-weight: 600;
   font-family: Arial, Helvetica, sans-serif;
   letter-spacing: 0.08em;
-  color: var(--muted);
+  color: #fff;
   margin-bottom: 12px;
   padding-left: 12px;
 }
@@ -185,7 +185,7 @@ a:hover { color: #7bb8e8; }
   font-family: Arial, Helvetica, sans-serif;
   display: block;
   padding: 6px 12px;
-  color: var(--muted);
+  color: #fff;
   text-decoration: none;
   font-size: 13px;
   border-left: 2px solid transparent;
@@ -222,7 +222,7 @@ a:hover { color: #7bb8e8; }
 }
 
 .content > .page-desc {
-  color: var(--muted);
+  color: #fff;
   font-size: 15px;
   margin-bottom: 36px;
 }
@@ -254,7 +254,7 @@ a:hover { color: #7bb8e8; }
 .content h4 {
   font-size: 15px;
   font-weight: bold;
-  color: var(--muted);
+  color: #fff;
   margin: 20px 0 8px;
   text-transform: none;
   letter-spacing: 0.01em;
@@ -398,7 +398,7 @@ pre code {
 
 .card p {
   font-size: 14px;
-  color: var(--muted);
+  color: #fff;
   margin: 0;
   line-height: 1.6;
 }
@@ -638,13 +638,13 @@ pre code {
 
 .dimension-card .dim-meta {
   font-size: 13px;
-  color: var(--muted);
+  color: #fff;
   margin-bottom: 10px;
 }
 
 .dimension-card p {
   font-size: 14px;
-  color: var(--muted);
+  color: #fff;
   margin: 0;
   line-height: 1.55;
 }
@@ -844,7 +844,7 @@ pre code {
 .build-row:nth-child(even) { background: var(--surface-alt); }
 
 .build-label {
-  color: var(--muted);
+  color: #fff;
   font-weight: 600;
   text-transform: uppercase;
   font-size: 10px;
@@ -867,7 +867,7 @@ pre code {
   background: rgba(245, 158, 11, 0.03);
   border-top: 1px solid var(--border);
   font-size: 12px;
-  color: var(--muted);
+  color: #fff;
   line-height: 1.55;
 }
 
@@ -880,14 +880,14 @@ footer {
   border-top: 1px solid var(--border);
   padding: 28px 24px;
   text-align: center;
-  color: var(--muted);
+  color: #fff;
   font-size: 13px;
   background: rgba(22, 22, 26, 0.9);
   text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
 }
 
 footer a {
-  color: var(--muted);
+  color: #fff;
   text-decoration: none;
   margin: 0 12px;
   transition: color 0.15s;
@@ -959,7 +959,7 @@ footer .sep { color: var(--border); margin: 0 4px; }
 
 .infobox-subtitle {
   font-size: 11px;
-  color: var(--muted);
+  color: #fff;
   font-family: 'Inter', sans-serif;
   font-weight: 400;
   display: block;
@@ -991,7 +991,7 @@ footer .sep { color: var(--border); margin: 0 4px; }
 
 .infobox th {
   background: none;
-  color: var(--muted);
+  color: #fff;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -1036,7 +1036,7 @@ footer .sep { color: var(--border); margin: 0 4px; }
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: #fff;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
