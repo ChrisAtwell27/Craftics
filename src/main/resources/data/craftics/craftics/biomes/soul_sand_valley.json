@@ -13,10 +13,11 @@
   "enemies": {
     "passive": [],
     "hostile": [
-      {"type": "minecraft:skeleton", "weight": 6, "hp": 10, "attack": 5, "range": 3},
-      {"type": "minecraft:ghast", "weight": 3, "hp": 12, "attack": 6, "range": 5}
+      {"type": "minecraft:skeleton", "weight": 6, "hp": 10, "attack": 5, "defense": 0, "range": 3},
+      {"type": "minecraft:ghast", "weight": 3, "hp": 12, "attack": 6, "defense": 0, "range": 5},
+      {"type": "minecraft:wither_skeleton", "weight": 4, "hp": 16, "attack": 7, "defense": 1, "range": 2}
     ],
-    "boss": {"type": "minecraft:ghast", "hp": 60, "attack": 8, "range": 6}
+    "boss": {"type": "minecraft:ghast", "hp": 60, "attack": 8, "defense": 2, "range": 6}
   },
   "loot": [
     {"item": "minecraft:bone", "weight": 10},

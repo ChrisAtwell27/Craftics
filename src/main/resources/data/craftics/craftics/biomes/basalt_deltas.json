@@ -14,7 +14,9 @@
     "passive": [],
     "hostile": [
       {"type": "minecraft:blaze", "weight": 5, "hp": 14, "attack": 6, "range": 4},
-      {"type": "minecraft:wither_skeleton", "weight": 5, "hp": 16, "attack": 7}
+      {"type": "minecraft:wither_skeleton", "weight": 5, "hp": 16, "attack": 7},
+      {"type": "minecraft:magma_cube", "weight": 4, "hp": 8, "attack": 3, "defense": 1}
+
     ],
     "boss": {"type": "minecraft:wither", "hp": 75, "attack": 8, "defense": 5, "range": 5, "speed": 2}
   },

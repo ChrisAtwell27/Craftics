@@ -1887,6 +1887,11 @@ public class CombatManager {
             }
             sendMessage("§a" + entity.getDisplayName() + " defeated!");
             GridPos deathPos = entity.getGridPos();
+            int deathSize = entity.getSize();
+            String deathType = entity.getEntityTypeId();
+            int deathMaxHp = entity.getMaxHp();
+            int deathAtk = entity.getAttackPower();
+            int deathDef = entity.getDefense();
             arena.removeEntity(entity);
 
             // Death particles (big poof)
@@ -1913,6 +1918,95 @@ public class CombatManager {
                 CombatEventPayload.EVENT_DIED, entity.getEntityId(), 0, 0,
                 deathPos.x(), deathPos.z()
             ));
+
+            // Slime/Magma Cube split: 2x2 splits into 2 mini 1x1 versions
+            if (deathSize >= 2 && isSplittableMob(deathType)) {
+                trySplitOnDeath(deathType, deathPos, deathSize, deathMaxHp, deathAtk, deathDef);
+            }
+        }
+    }
+
+    /** Returns true if this mob type splits into smaller versions on death. */
+    private static boolean isSplittableMob(String entityTypeId) {
+        return switch (entityTypeId) {
+            case "minecraft:slime", "minecraft:magma_cube" -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * Spawn 2 mini (1x1) versions of a slime/magma cube after the 2x2 parent dies.
+     * Mini versions have 1/3 HP and 1/2 ATK of the parent. They do NOT split again.
+     */
+    private void trySplitOnDeath(String entityTypeId, GridPos deathPos, int parentSize,
+                                  int parentMaxHp, int parentAtk, int parentDef) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        EntityType<?> type = Registries.ENTITY_TYPE.get(Identifier.of(entityTypeId));
+
+        // Find spawn positions from the tiles the parent occupied
+        List<GridPos> candidates = new ArrayList<>();
+        for (int dx = 0; dx < parentSize; dx++) {
+            for (int dz = 0; dz < parentSize; dz++) {
+                GridPos tile = new GridPos(deathPos.x() + dx, deathPos.z() + dz);
+                if (arena.isInBounds(tile) && !arena.isOccupied(tile)) {
+                    GridTile gt = arena.getTile(tile);
+                    if (gt != null && gt.isWalkable()) candidates.add(tile);
+                }
+            }
+        }
+        if (candidates.size() < 2) return; // not enough room to split
+        java.util.Collections.shuffle(candidates);
+
+        int miniHp = Math.max(2, parentMaxHp / 3);
+        int miniAtk = Math.max(1, parentAtk / 2);
+        int spawned = 0;
+
+        for (GridPos pos : candidates) {
+            if (spawned >= 2) break;
+            if (arena.isOccupied(pos)) continue; // re-check in case first spawn took it
+
+            BlockPos spawnPos = arena.gridToBlockPos(pos);
+            var rawEntity = type.create(world, null, spawnPos, SpawnReason.MOB_SUMMONED, false, false);
+            if (rawEntity == null) continue;
+            rawEntity.refreshPositionAndAngles(
+                spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, 0, 0);
+            if (rawEntity instanceof MobEntity mob) {
+                mob.setAiDisabled(true);
+                mob.setInvulnerable(true);
+                mob.setNoGravity(true);
+                mob.noClip = true;
+                mob.setPersistent();
+                mob.addCommandTag("craftics_arena");
+            }
+            world.spawnEntity(rawEntity);
+            if (rawEntity instanceof MobEntity mob) {
+                // Force size 1 override so minis are 1x1 and don't split again
+                CombatEntity ce = new CombatEntity(
+                    mob.getId(), entityTypeId, pos,
+                    miniHp, miniAtk, parentDef, 1, 1
+                );
+                ce.setMobEntity(mob);
+                enemies.add(ce);
+                arena.placeEntity(ce);
+                spawned++;
+                // Spawn particles (slimey poof)
+                world.spawnParticles(
+                    entityTypeId.equals("minecraft:magma_cube")
+                        ? net.minecraft.particle.ParticleTypes.FLAME
+                        : net.minecraft.particle.ParticleTypes.ITEM_SLIME,
+                    spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5,
+                    8, 0.3, 0.3, 0.3, 0.05);
+            }
+        }
+        if (spawned > 0) {
+            String name = entityTypeId.substring(entityTypeId.indexOf(':') + 1).replace('_', ' ');
+            sendMessage("§d  Split into " + spawned + " mini " + name + "s!");
+            // Slime squish sound
+            if (player != null) {
+                player.getWorld().playSound(null, arena.gridToBlockPos(deathPos),
+                    net.minecraft.sound.SoundEvents.ENTITY_SLIME_SQUISH,
+                    net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.5f);
+            }
         }
     }
 
@@ -2078,8 +2172,7 @@ public class CombatManager {
             case "deep_dark" -> { // The Warden — keep existing
                 mob.setCustomName(Text.literal("§8§lThe Warden"));
                 mob.setCustomNameVisible(true);
-                // No equipment changes — Warden's model is already imposing
-                scaleBoss(mob, 1.3); // Warden is already large; slight boost
+                // No equipment changes — Warden's model is already imposing and large
             }
             case "nether_wastes" -> { // The Molten King — Magma Cube
                 mob.setCustomName(Text.literal("§c§lThe Molten King"));
@@ -2108,8 +2201,7 @@ public class CombatManager {
             case "basalt_deltas" -> { // The Wither
                 mob.setCustomName(Text.literal("§0§lThe Wither"));
                 mob.setCustomNameVisible(true);
-                // Wither is naturally large — no equipment needed, just scale
-                scaleBoss(mob, 1.5);
+                // Wither is naturally large — no scaling needed
             }
             case "outer_end" -> { // The Void Herald — Enderman
                 mob.setCustomName(Text.literal("§d§lThe Void Herald"));

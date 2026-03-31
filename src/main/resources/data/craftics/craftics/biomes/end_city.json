@@ -13,10 +13,10 @@
   "enemies": {
     "passive": [],
     "hostile": [
-      {"type": "minecraft:shulker", "weight": 6, "hp": 14, "attack": 6, "range": 4},
-      {"type": "minecraft:enderman", "weight": 5, "hp": 18, "attack": 7}
+      {"type": "minecraft:shulker", "weight": 6, "hp": 14, "attack": 6, "defense": 2, "range": 4},
+      {"type": "minecraft:enderman", "weight": 5, "hp": 18, "attack": 7, "defense": 1}
     ],
-    "boss": {"type": "minecraft:shulker", "hp": 75, "attack": 9, "range": 5}
+    "boss": {"type": "minecraft:shulker", "hp": 75, "attack": 9, "defense": 4, "range": 5}
   },
   "loot": [
     {"item": "minecraft:purpur_block", "weight": 8},

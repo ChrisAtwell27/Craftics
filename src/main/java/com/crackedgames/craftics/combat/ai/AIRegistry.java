@@ -73,6 +73,9 @@ public class AIRegistry {
         register("minecraft:phantom", new PhantomAI());       // swooping dive attacks
         register("minecraft:ocelot", new OcelotAI());         // fast hit-and-run
         register("minecraft:ravager", new RavagerAI());       // mounted melee, charges + stomps
+        // === Spellcasters ===
+        register("minecraft:evoker", new EvokerAI());    // fang attacks, keeps distance
+
         // === Boss mobs (vanilla AI fallback when not boss-flagged) ===
         register("minecraft:warden", new WardenAI());  // Deep Dark boss, phase-shifting
         register("minecraft:guardian", new StrayAI()); // reuses stray pattern — ranged kiter
@@ -96,6 +99,9 @@ public class AIRegistry {
         register("minecraft:cave_spider", new CaveSpiderAI());   // fast venomous pouncer
         register("minecraft:silverfish", new SilverfishAI());     // swarmer flanker
         register("minecraft:slime", new SlimeAI());               // bouncy pounce charger
+
+        // === End pests ===
+        register("minecraft:endermite", new EndermiteAI()); // blink-swarmer, short-range teleport + attack
 
         // === End mobs ===
         register("minecraft:shulker", new ShulkerAI());             // stationary turret, ranged projectiles

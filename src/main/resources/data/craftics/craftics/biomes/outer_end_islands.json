@@ -13,10 +13,10 @@
   "enemies": {
     "passive": [],
     "hostile": [
-      {"type": "minecraft:enderman", "weight": 8, "hp": 18, "attack": 7},
-      {"type": "minecraft:phantom", "weight": 3, "hp": 10, "attack": 5}
+      {"type": "minecraft:enderman", "weight": 8, "hp": 18, "attack": 7, "defense": 1},
+      {"type": "minecraft:phantom", "weight": 3, "hp": 10, "attack": 5, "defense": 0}
     ],
-    "boss": {"type": "minecraft:enderman", "hp": 70, "attack": 10}
+    "boss": {"type": "minecraft:enderman", "hp": 70, "attack": 10, "defense": 3}
   },
   "loot": [
     {"item": "minecraft:end_stone", "weight": 8},
