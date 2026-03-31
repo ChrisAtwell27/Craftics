@@ -33,11 +33,12 @@ html { scroll-behavior: smooth; scroll-padding-top: calc(var(--nav-height) + 24p
 body {
   /* Force strong contrast for badges/pills and hero/section subtitles on stone background */
   body .req-pill,
+  body .feature-grid p,
   body .badge,
   body .section-header p,
   body .hero .tagline,
   body .hero .sub-tagline {
-    color: #232323 !important;
+    color: #ffffff !important;
     text-shadow: 0 1px 2px #fff4, 0 0 1px #fff2;
   }
   background-color: #555;
