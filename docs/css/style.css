@@ -5,6 +5,32 @@
 
 
 :root {
+  /* Force all text everywhere to be white for maximum readability */
+  *, *::before, *::after {
+    color: #fff !important;
+    border-color: inherit;
+  }
+
+  /* Restore accent colors for links and special elements */
+  a, a:visited { color: var(--accent) !important; }
+  a:hover { color: #7bb8e8 !important; }
+  .nav-logo { color: var(--accent) !important; }
+  .nav-links a.active { color: #fff !important; background: var(--amber) !important; }
+  .build-card-header .build-class { color: var(--amber) !important; background: var(--amber-dim) !important; }
+  .card h3 { color: var(--amber) !important; }
+  .dimension-card.overworld { border-top: 3px solid var(--overworld) !important; }
+  .dimension-card.nether { border-top: 3px solid var(--nether) !important; }
+  .dimension-card.end { border-top: 3px solid var(--end) !important; }
+  .progression-map .ow { color: var(--overworld) !important; }
+  .progression-map .nt { color: var(--nether) !important; }
+  .progression-map .en { color: var(--end) !important; }
+  .progression-map .boss { color: var(--amber) !important; }
+  .marker-diagram .em { color: var(--emerald) !important; }
+  .marker-diagram .go { color: var(--amber) !important; }
+  .marker-diagram .ir { color: #a1a1aa !important; }
+  .build-value strong { color: var(--amber) !important; }
+  .build-value .green { color: var(--emerald) !important; }
+  .footer .sep { color: var(--border) !important; }
   --bg: #2a2a2e;
   --surface: rgba(30, 30, 34, 0.92);
   --surface-alt: rgba(26, 26, 30, 0.92);
