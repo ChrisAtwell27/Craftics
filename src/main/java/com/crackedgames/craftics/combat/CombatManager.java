@@ -1564,6 +1564,30 @@ public class CombatManager {
                 }
             }
 
+            // Projectile redirect: hitting a ghast fireball reverses its direction
+            if (fTarget.isProjectile() && "ghast_fireball".equals(fTarget.getProjectileType())) {
+                GridPos fireballPos = fTarget.getGridPos();
+                GridPos deflectPlayerPos = arena.getPlayerGridPos();
+                int rdx = fireballPos.x() - deflectPlayerPos.x();
+                int rdz = fireballPos.z() - deflectPlayerPos.z();
+                // Normalize to cardinal direction (away from the player)
+                if (Math.abs(rdx) >= Math.abs(rdz)) {
+                    rdx = Integer.signum(rdx); rdz = 0;
+                } else {
+                    rdx = 0; rdz = Integer.signum(rdz);
+                }
+                if (rdx == 0 && rdz == 0) { rdx = 0; rdz = -1; } // fallback
+                fTarget.setProjectileDirX(rdx);
+                fTarget.setProjectileDirZ(rdz);
+                fTarget.setProjectileRedirected(true);
+                sendMessage("§a\u2604 You deflect the fireball!");
+                player.getWorld().playSound(null, player.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.ENTITY_GHAST_SHOOT,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.2f);
+                sendSync();
+                return;
+            }
+
             int dealt = fTarget.takeDamage(fBaseDamage);
 
             // Boss reaction callback
@@ -3953,6 +3977,27 @@ public class CombatManager {
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay() + 2;
             }
 
+            // === Projectile action types ===
+
+            case EnemyAction.SpawnProjectile sp -> {
+                sendMessage("§5" + currentEnemy.getDisplayName() + " launches projectiles!");
+                spawnProjectiles(sp);
+                sendSync();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay() + 4;
+            }
+            case EnemyAction.ProjectileMove pm -> {
+                if (pm.path().isEmpty()) {
+                    if (pm.impacts()) {
+                        resolveProjectileImpact(currentEnemy, pm.impactPos());
+                    }
+                    enemyTurnState = EnemyTurnState.DONE;
+                    enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                } else {
+                    startEnemyMove(pm.path());
+                }
+            }
+
             default -> {
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
@@ -4097,6 +4142,7 @@ public class CombatManager {
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
             case EnemyAction.SummonMinions sm -> spawnBossMinions(sm);
+            case EnemyAction.SpawnProjectile sp -> spawnProjectiles(sp);
             case EnemyAction.AreaAttack aa -> resolveAreaAttack(aa);
             case EnemyAction.CreateTerrain ct -> resolveCreateTerrain(ct);
             case EnemyAction.LineAttack la -> resolveLineAttack(la);
@@ -4181,6 +4227,13 @@ public class CombatManager {
                 enemies.add(ce);
                 arena.placeEntity(ce);
                 spawned++;
+                // Register with boss AI for tracking
+                if (currentEnemy != null && currentEnemy.isBoss()) {
+                    EnemyAI bAi = AIRegistry.get(currentEnemy.getAiKey());
+                    if (bAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bossAi) {
+                        bossAi.registerSpawnedMinion(ce.getEntityId());
+                    }
+                }
                 // Spawn particles
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.POOF,
                     spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5,
@@ -4191,6 +4244,153 @@ public class CombatManager {
             sendMessage("§5  " + spawned + " " + sm.entityTypeId().substring(sm.entityTypeId().indexOf(':') + 1)
                 + "(s) appeared!");
         }
+    }
+
+    /**
+     * Spawn projectile entities for a boss SpawnProjectile action.
+     */
+    private void spawnProjectiles(EnemyAction.SpawnProjectile sp) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        EntityType<?> type = Registries.ENTITY_TYPE.get(Identifier.of(sp.entityTypeId()));
+        int spawned = 0;
+
+        for (int i = 0; i < sp.positions().size(); i++) {
+            GridPos pos = sp.positions().get(i);
+            int[] dir = sp.directions().get(i);
+
+            if (!arena.isInBounds(pos) || arena.isOccupied(pos)) continue;
+            GridTile tile = arena.getTile(pos);
+            if (tile == null || !tile.isWalkable()) continue;
+
+            BlockPos spawnPos = arena.gridToBlockPos(pos);
+            var rawEntity = type.create(world, null, spawnPos, SpawnReason.MOB_SUMMONED, false, false);
+            if (rawEntity == null) continue;
+
+            rawEntity.refreshPositionAndAngles(
+                spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, 0, 0);
+            if (rawEntity instanceof MobEntity mob) {
+                mob.setAiDisabled(true);
+                mob.setInvulnerable(true);
+                mob.setNoGravity(true);
+                mob.noClip = true;
+                mob.setPersistent();
+                mob.addCommandTag("craftics_arena");
+            }
+            world.spawnEntity(rawEntity);
+
+            if (rawEntity instanceof MobEntity mob) {
+                CombatEntity ce = new CombatEntity(
+                    mob.getId(), sp.entityTypeId(), pos,
+                    sp.hp(), sp.atk(), sp.def(), 1
+                );
+                ce.setMobEntity(mob);
+                ce.setAiOverrideKey("projectile");
+                ce.setProjectile(true);
+                ce.setProjectileDirX(dir[0]);
+                ce.setProjectileDirZ(dir[1]);
+                ce.setProjectileType(sp.projectileType());
+                ce.setProjectileOwnerId(currentEnemy != null ? currentEnemy.getEntityId() : -1);
+                // Display name based on projectile type
+                if ("ghast_fireball".equals(sp.projectileType())) {
+                    ce.setBossDisplayName("Ghast Fireball");
+                } else if ("wither_skull".equals(sp.projectileType())) {
+                    ce.setBossDisplayName("Wither Skull");
+                }
+                enemies.add(ce);
+                arena.placeEntity(ce);
+                spawned++;
+
+                // Register with boss AI for tracking
+                if (currentEnemy != null && currentEnemy.isBoss()) {
+                    EnemyAI bAi = AIRegistry.get(currentEnemy.getAiKey());
+                    if (bAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bossAi) {
+                        bossAi.registerSpawnedProjectile(ce.getEntityId());
+                    }
+                }
+
+                // Spawn particles
+                net.minecraft.particle.ParticleEffect particle = "ghast_fireball".equals(sp.projectileType())
+                    ? net.minecraft.particle.ParticleTypes.FLAME
+                    : net.minecraft.particle.ParticleTypes.SOUL;
+                world.spawnParticles(particle,
+                    spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5,
+                    8, 0.3, 0.3, 0.3, 0.02);
+            }
+        }
+        if (spawned > 0) {
+            String name = "ghast_fireball".equals(sp.projectileType()) ? "fireball" : "wither skull";
+            sendMessage("§5  " + spawned + " " + name + "(s) launched!");
+        }
+    }
+
+    /**
+     * Resolve a projectile impact — AOE explosion for fireballs, wither effect for skulls.
+     */
+    private void resolveProjectileImpact(CombatEntity projectile, GridPos impactPos) {
+        if (!projectile.isProjectile() || !projectile.isAlive()) return;
+
+        String type = projectile.getProjectileType();
+        int damage = projectile.getAttackPower();
+        boolean redirected = projectile.isProjectileRedirected();
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        GridPos effectCenter = impactPos != null ? impactPos : projectile.getGridPos();
+        BlockPos bp = arena.gridToBlockPos(effectCenter);
+
+        if ("ghast_fireball".equals(type)) {
+            sendMessage("§c\uD83D\uDD25 Fireball explodes!");
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 5, 0.5, 0.5, 0.5, 0.0);
+            player.getWorld().playSound(null, bp,
+                net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+                net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.0f);
+
+            int aoeRadius = 1;
+            GridPos playerGridPos = arena.getPlayerGridPos();
+
+            // Damage player if in AOE (skip for redirected fireballs — they're heading away)
+            if (!redirected
+                    && Math.abs(playerGridPos.x() - effectCenter.x()) <= aoeRadius
+                    && Math.abs(playerGridPos.z() - effectCenter.z()) <= aoeRadius) {
+                int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
+                int actual = Math.max(1, damage - playerDefense);
+                player.setHealth(Math.max(0, player.getHealth() - actual));
+                sendMessage("§c  Explosion hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                if (!combatEffects.hasFireResistance()) {
+                    combatEffects.addEffect(CombatEffects.EffectType.BURNING, 2, 0);
+                    sendMessage("§6  You're burning! (-1 HP/turn for 2 turns)");
+                }
+                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            }
+
+            // Damage all enemies in AOE (always — this is how redirected fireballs damage the boss)
+            for (CombatEntity e : new ArrayList<>(enemies)) {
+                if (e == projectile || !e.isAlive()) continue;
+                if (e.minDistanceTo(effectCenter) <= aoeRadius) {
+                    int dealt = e.takeDamage(damage);
+                    sendMessage("§6  Explosion hits " + e.getDisplayName() + " for " + dealt + "!");
+                    checkAndHandleDeath(e);
+                }
+            }
+        } else if ("wither_skull".equals(type)) {
+            sendMessage("§8\u2620 Wither Skull impacts!");
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.02);
+
+            // Damage + wither to player if hit
+            GridPos playerGridPos = arena.getPlayerGridPos();
+            if (effectCenter.equals(playerGridPos)) {
+                int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
+                int actual = Math.max(1, damage - playerDefense);
+                player.setHealth(Math.max(0, player.getHealth() - actual));
+                sendMessage("§8  Wither Skull hits for " + actual + " damage!");
+                combatEffects.addEffect(CombatEffects.EffectType.WITHER, 3, 0);
+                sendMessage("§8  Wither applied! (-2 HP/turn for 3 turns)");
+                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            }
+        }
+
+        // Kill the projectile entity
+        killEnemy(projectile);
     }
 
     /**
@@ -4631,6 +4831,15 @@ public class CombatManager {
         if (enemyMovePathIndex >= enemyMovePath.size()) {
             // Movement done
             enemyLerpInitialized = false;
+
+            // Projectile impact after movement completes
+            if (pendingAction instanceof EnemyAction.ProjectileMove pm && pm.impacts()) {
+                resolveProjectileImpact(currentEnemy, pm.impactPos());
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                return;
+            }
+
             // If MoveAndAttack (any variant), proceed to attack
             if (pendingAction instanceof EnemyAction.MoveAndAttack
                     || pendingAction instanceof EnemyAction.MoveAndAttackMob

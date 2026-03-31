@@ -103,6 +103,9 @@ public class AIRegistry {
         // === End pests ===
         register("minecraft:endermite", new EndermiteAI()); // blink-swarmer, short-range teleport + attack
 
+        // === Projectile entities (boss-spawned fireballs, wither skulls) ===
+        register("projectile", new ProjectileAI());
+
         // === End mobs ===
         register("minecraft:shulker", new ShulkerAI());             // stationary turret, ranged projectiles
         register("minecraft:ender_dragon", new DragonAI());         // final boss, phase-shifting swoop/charge

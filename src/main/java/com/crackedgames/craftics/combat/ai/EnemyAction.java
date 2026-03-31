@@ -69,4 +69,15 @@ public sealed interface EnemyAction {
 
     /** Multi-action: execute multiple actions in sequence (e.g., teleport + attack + create terrain). */
     record CompositeAction(List<EnemyAction> actions) implements EnemyAction {}
+
+    // === Projectile action types ===
+
+    /** Boss spawns projectile entities that travel in a straight line.
+     *  Each position is paired with a direction (dx, dz) from the directions list. */
+    record SpawnProjectile(String entityTypeId, List<GridPos> positions, List<int[]> directions,
+                           int hp, int atk, int def, String projectileType) implements EnemyAction {}
+
+    /** Projectile entity moves in its set direction; impacts=true means it hits wall/player/enemy at path end.
+     *  impactPos is the center of the explosion/effect (null if no impact). */
+    record ProjectileMove(List<GridPos> path, boolean impacts, GridPos impactPos) implements EnemyAction {}
 }

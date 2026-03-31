@@ -50,7 +50,7 @@
 
   <main class="content">
     <h1>All Mobs &amp; AI Behaviors</h1>
-    <p class="page-desc">Every mob in Craftics has unique combat intelligence. 57 mobs with 40+ distinct AI strategies across 3 dimensions.</p>
+    <p class="page-desc">Every mob in Craftics has unique combat intelligence. 60+ mobs with 67 distinct AI strategies across 3 dimensions.</p>
 
     <!-- ── How AI Works ── -->
     <h2 id="how-ai-works">How AI Works</h2>
@@ -72,7 +72,7 @@
           <tr><td>Horse</td><td>Passive</td><td>2</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
           <tr><td>Donkey</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
           <tr><td>Panda</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
-          <tr><td>Parrot</td><td>Passive</td><td>1</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
+          <tr><td>Parrot</td><td>Passive</td><td>3</td><td>Wanders 1-2 tiles. Flees 2 tiles when hit.</td></tr>
           <tr><td>Rabbit</td><td>Skittish</td><td>2</td><td>Always flees if player within 2 tiles. Wanders otherwise.</td></tr>
           <tr><td>Bat</td><td>Restless</td><td>2</td><td>Always wanders 1-2 tiles. Flees when hit. Never stands still.</td></tr>
         </tbody>
@@ -151,7 +151,7 @@
       <table>
         <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Special</th></tr></thead>
         <tbody>
-          <tr><td>Zombie</td><td>Horde Fighter</td><td>2</td><td>Always moves + attacks in same turn. +1 ATK per adjacent undead ally (horde bonus). Never retreats.</td></tr>
+          <tr><td>Zombie</td><td>Horde Fighter</td><td>1</td><td>Always moves + attacks in same turn. +1 ATK per adjacent undead ally (horde bonus). Never retreats.</td></tr>
           <tr><td>Husk</td><td>Desert Zombie</td><td>2</td><td>Applies Weakness on hit. +1 hunger damage. Gets +1 Speed below 50% HP (desperation charge).</td></tr>
           <tr><td>Drowned</td><td>Versatile</td><td>2</td><td>Throws trident at range 3 with cardinal line of sight. Falls back to melee rush if no LOS.</td></tr>
         </tbody>
@@ -184,7 +184,7 @@
       <table>
         <thead><tr><th>Mob</th><th>AI</th><th>Speed</th><th>Size</th><th>Special</th></tr></thead>
         <tbody>
-          <tr><td>Vindicator</td><td>Axe Berserker</td><td>2</td><td>1&times;1</td><td>Permanently enraged when hit. +50% damage while enraged. Charges with full speed.</td></tr>
+          <tr><td>Vindicator</td><td>Axe Berserker</td><td>3</td><td>1&times;1</td><td>Permanently enraged when hit. +50% damage while enraged. Charges with full speed.</td></tr>
           <tr><td>Spider</td><td>Pouncing Predator</td><td>3</td><td>2&times;2</td><td>Pounces up to 3 tiles to land adjacent. Applies Slowness. Aggressive flanker.</td></tr>
           <tr><td>Creeper</td><td>Suicidal Bomber</td><td>2</td><td>1&times;1</td><td>Walks adjacent then primes fuse. Explodes next turn if still adjacent. Radius 2 AoE.</td></tr>
         </tbody>
@@ -219,10 +219,10 @@
           <tr><td>Zombified Piglin</td><td>Horde Fighter</td><td>2</td><td>Same as Zombie. Undead horde bonus. Relentless melee.</td></tr>
           <tr><td>Magma Cube</td><td>Bouncing Pouncer</td><td>3</td><td>Pounces like Spider. 2&times;2 size. Aggressive charger.</td></tr>
           <tr><td>Ghast</td><td>Artillery</td><td>1</td><td>Long-range fireball at range 5-6. Flees if player within 3 tiles. Applies burning.</td></tr>
-          <tr><td>Hoglin</td><td>Berserker</td><td>2</td><td>Rush melee charger. Same AI as Vindicator. Enrages when hit.</td></tr>
+          <tr><td>Hoglin</td><td>Berserker</td><td>3</td><td>Rush melee charger. Same AI as Vindicator. Enrages when hit.</td></tr>
           <tr><td>Piglin</td><td>Crossbow Tactical</td><td>2</td><td>Same AI as Pillager. Range 4 crossbow. Maintains distance.</td></tr>
           <tr><td>Blaze</td><td>Fire Artillery</td><td>1</td><td>Range 4 any direction. Hovers backward if within 2 tiles. Applies burning. High defense.</td></tr>
-          <tr><td>Wither Skeleton</td><td>Wither Melee</td><td>2</td><td>Melee fighter. Applies Wither on hit (HP drain). Aggressive charger.</td></tr>
+          <tr><td>Wither Skeleton</td><td>Wither Melee</td><td>3</td><td>Melee fighter. Applies Wither on hit (HP drain). Aggressive charger.</td></tr>
         </tbody>
       </table>
     </div>
@@ -269,15 +269,15 @@
       <table>
         <thead><tr><th>Boss</th><th>Biome</th><th>Entity</th><th>HP</th><th>ATK</th><th>Size</th><th>Signature</th></tr></thead>
         <tbody>
-          <tr><td><a href="bosses/revenant.html">The Revenant</a></td><td>Plains</td><td>Zombie</td><td>20</td><td>4</td><td>2&times;2</td><td>Raise Dead, Death Charge, Shield Bash</td></tr>
-          <tr><td><a href="bosses/hexweaver.html">The Hexweaver</a></td><td>Dark Forest</td><td>Evoker</td><td>28</td><td>5</td><td>2&times;2</td><td>Vex Swarm, Fang Line, Cursed Fog</td></tr>
-          <tr><td><a href="bosses/frostbound-huntsman.html">Frostbound Huntsman</a></td><td>Snowy Tundra</td><td>Stray</td><td>25</td><td>5</td><td>2&times;2</td><td>Blizzard, Ice Wall, Glacial Trap</td></tr>
-          <tr><td><a href="bosses/rockbreaker.html">The Rockbreaker</a></td><td>Stony Peaks</td><td>Vindicator</td><td>30</td><td>6</td><td>2&times;2</td><td>Seismic Slam, Boulder Toss, Avalanche</td></tr>
-          <tr><td><a href="bosses/tidecaller.html">The Tidecaller</a></td><td>River Delta</td><td>Drowned</td><td>30</td><td>5</td><td>2&times;2</td><td>Tidal Wave, Trident Storm, Riptide Charge</td></tr>
-          <tr><td><a href="bosses/broodmother.html">The Broodmother</a></td><td>Dense Jungle</td><td>Spider</td><td>35</td><td>6</td><td>3&times;3</td><td>Spawn Brood, Web Spray, Venomous Bite</td></tr>
-          <tr><td><a href="bosses/sandstorm-pharaoh.html">Sandstorm Pharaoh</a></td><td>Scorching Desert</td><td>Husk</td><td>25</td><td>6</td><td>2&times;2</td><td>Plant Mine, Sand Burial, Sandstorm</td></tr>
-          <tr><td><a href="bosses/hollow-king.html">The Hollow King</a></td><td>Underground Caverns</td><td>Zombie</td><td>40</td><td>7</td><td>2&times;2</td><td>Cave-In, Miner's Fury, Lights Out</td></tr>
-          <tr><td><a href="bosses/warden.html">The Warden</a></td><td>Deep Dark</td><td>Warden</td><td>50</td><td>8</td><td>2&times;2</td><td>Vibration Sense, Sculk Spread, Darkness Pulse</td></tr>
+          <tr><td><a href="bosses/revenant.html">The Revenant</a></td><td>Plains</td><td>Zombie</td><td>30</td><td>3</td><td>2&times;2</td><td>Raise Dead, Death Charge, Shield Bash</td></tr>
+          <tr><td><a href="bosses/hexweaver.html">The Hexweaver</a></td><td>Dark Forest</td><td>Evoker</td><td>35</td><td>5</td><td>2&times;2</td><td>Vex Swarm, Fang Line, Cursed Fog</td></tr>
+          <tr><td><a href="bosses/frostbound-huntsman.html">Frostbound Huntsman</a></td><td>Snowy Tundra</td><td>Stray</td><td>40</td><td>4</td><td>2&times;2</td><td>Blizzard, Ice Wall, Glacial Trap</td></tr>
+          <tr><td><a href="bosses/rockbreaker.html">The Rockbreaker</a></td><td>Stony Peaks</td><td>Vindicator</td><td>40</td><td>5</td><td>2&times;2</td><td>Seismic Slam, Boulder Toss, Avalanche</td></tr>
+          <tr><td><a href="bosses/tidecaller.html">The Tidecaller</a></td><td>River Delta</td><td>Drowned</td><td>45</td><td>5</td><td>2&times;2</td><td>Tidal Wave, Trident Storm, Riptide Charge</td></tr>
+          <tr><td><a href="bosses/broodmother.html">The Broodmother</a></td><td>Dense Jungle</td><td>Spider</td><td>50</td><td>5</td><td>3&times;3</td><td>Spawn Brood, Web Spray, Venomous Bite</td></tr>
+          <tr><td><a href="bosses/sandstorm-pharaoh.html">Sandstorm Pharaoh</a></td><td>Scorching Desert</td><td>Husk</td><td>45</td><td>6</td><td>2&times;2</td><td>Plant Mine, Sand Burial, Sandstorm</td></tr>
+          <tr><td><a href="bosses/hollow-king.html">The Hollow King</a></td><td>Underground Caverns</td><td>Zombie</td><td>55</td><td>6</td><td>2&times;2</td><td>Cave-In, Miner's Fury, Lights Out</td></tr>
+          <tr><td><a href="bosses/warden.html">The Warden</a></td><td>Deep Dark</td><td>Warden</td><td>60</td><td>8</td><td>2&times;2</td><td>Vibration Sense, Sculk Spread, Darkness Pulse</td></tr>
         </tbody>
       </table>
     </div>
@@ -290,10 +290,10 @@
       <table>
         <thead><tr><th>Boss</th><th>Biome</th><th>Entity</th><th>HP</th><th>ATK</th><th>Size</th><th>Signature</th></tr></thead>
         <tbody>
-          <tr><td><a href="bosses/molten-king.html">The Molten King</a></td><td>Nether Wastes</td><td>Magma Cube</td><td>35</td><td>7</td><td>2&times;2</td><td>Magma Eruption, Split, Lava Trail</td></tr>
-          <tr><td><a href="bosses/wailing-revenant.html">Wailing Revenant</a></td><td>Soul Sand Valley</td><td>Wither Skeleton</td><td>32</td><td>8</td><td>2&times;2</td><td>Wither Curse, Soul Chain, Soul Torrent</td></tr>
-          <tr><td><a href="bosses/crimson-ravager.html">Crimson Ravager</a></td><td>Crimson Forest</td><td>Hoglin</td><td>40</td><td>8</td><td>2&times;2</td><td>Savage Charge, Spore Cloud, Rampage</td></tr>
-          <tr><td><a href="bosses/void-walker.html">The Void Walker</a></td><td>Warped Forest</td><td>Enderman</td><td>28</td><td>6</td><td>2&times;2</td><td>Void Spike, Blink Away, Rift</td></tr>
+          <tr><td><a href="bosses/molten-king.html">The Molten King</a></td><td>Nether Wastes</td><td>Magma Cube</td><td>55</td><td>6</td><td>2&times;2</td><td>Magma Eruption, Split, Lava Trail</td></tr>
+          <tr><td><a href="bosses/wailing-revenant.html">Wailing Revenant</a></td><td>Soul Sand Valley</td><td>Ghast</td><td>60</td><td>8</td><td>2&times;2</td><td>Wither Curse, Soul Chain, Soul Torrent</td></tr>
+          <tr><td><a href="bosses/crimson-ravager.html">Crimson Ravager</a></td><td>Crimson Forest</td><td>Hoglin</td><td>65</td><td>8</td><td>2&times;2</td><td>Savage Charge, Spore Cloud, Rampage</td></tr>
+          <tr><td><a href="bosses/void-walker.html">The Void Walker</a></td><td>Warped Forest</td><td>Enderman</td><td>65</td><td>9</td><td>2&times;2</td><td>Void Spike, Blink Away, Rift</td></tr>
           <tr><td><a href="bosses/wither.html">The Wither</a></td><td>Basalt Deltas</td><td>Wither</td><td>75</td><td>8</td><td>2&times;2</td><td>Skull Barrage, Decay Aura, Summon Wither Skeletons, Charge. Phase 2: Ranged immune, expanded aura, decay trail.</td></tr>
         </tbody>
       </table>
@@ -307,10 +307,10 @@
       <table>
         <thead><tr><th>Boss</th><th>Biome</th><th>Entity</th><th>HP</th><th>ATK</th><th>Size</th><th>Signature</th></tr></thead>
         <tbody>
-          <tr><td><a href="bosses/void-herald.html">The Void Herald</a></td><td>Outer End Islands</td><td>Enderman</td><td>-</td><td>-</td><td>2&times;2</td><td>Storm Abilities</td></tr>
-          <tr><td><a href="bosses/shulker-architect.html">Shulker Architect</a></td><td>End City</td><td>Shulker</td><td>32</td><td>6</td><td>2&times;2</td><td>Bullet Barrage, Summon Shulkerlings, Shell Defense</td></tr>
-          <tr><td><a href="bosses/chorus-mind.html">The Chorus Mind</a></td><td>Chorus Grove</td><td>Evoker</td><td>36</td><td>6</td><td>2&times;2</td><td>Chorus Teleport, Vex Legion, Harmonic Resonance</td></tr>
-          <tr><td><a href="bosses/ender-dragon.html">Ender Dragon</a></td><td>Dragon's Nest</td><td>Ender Dragon</td><td>80</td><td>15</td><td>3&times;3</td><td>End Crystal Shield, Dragon Breath, Wing Gust, Swoop, Fury Charge</td></tr>
+          <tr><td><a href="bosses/void-herald.html">The Void Herald</a></td><td>Outer End Islands</td><td>Enderman</td><td>70</td><td>10</td><td>2&times;2</td><td>Storm Abilities</td></tr>
+          <tr><td><a href="bosses/shulker-architect.html">Shulker Architect</a></td><td>End City</td><td>Shulker</td><td>75</td><td>9</td><td>2&times;2</td><td>Bullet Barrage, Summon Shulkerlings, Shell Defense</td></tr>
+          <tr><td><a href="bosses/chorus-mind.html">The Chorus Mind</a></td><td>Chorus Grove</td><td>Evoker</td><td>80</td><td>12</td><td>2&times;2</td><td>Chorus Teleport, Vex Legion, Harmonic Resonance</td></tr>
+          <tr><td><a href="bosses/ender-dragon.html">Ender Dragon</a></td><td>Dragon's Nest</td><td>Ender Dragon</td><td>100</td><td>15</td><td>3&times;3</td><td>End Crystal Shield, Dragon Breath, Wing Gust, Swoop, Fury Charge</td></tr>
         </tbody>
       </table>
     </div>
