@@ -202,10 +202,14 @@ public class CombatManager {
         }
     }
 
-    /** Remove a party member (disconnect/leave). */
+    /** Remove a party member (disconnect/leave). Also cleans up turn queue. */
     public void removePartyMember(java.util.UUID memberUuid) {
         partyPlayers.removeIf(p -> p.getUuid().equals(memberUuid));
         PARTY_COMBAT_LEADER.remove(memberUuid);
+        turnQueue.remove(memberUuid);
+        if (currentTurnIndex >= turnQueue.size() && !turnQueue.isEmpty()) {
+            currentTurnIndex = 0;
+        }
     }
 
     /**
@@ -364,6 +368,16 @@ public class CombatManager {
         }
 
         startCombat(leader, newArena, newLevelDef);
+
+        // Re-register PARTY_COMBAT_LEADER mappings now that this.player is set.
+        // addPartyMember above ran while player was null (cleared by prior endCombat),
+        // so the leader routing for non-leader members wasn't established.
+        for (ServerPlayerEntity member : members) {
+            if (!member.getUuid().equals(leader.getUuid())) {
+                PARTY_COMBAT_LEADER.put(member.getUuid(), leader.getUuid());
+            }
+        }
+
         // Respawn tamed pets from previous level
         spawnSavedPets();
 
@@ -2832,6 +2846,11 @@ public class CombatManager {
         }
 
         // Party turn rotation: advance to next alive player before enemy turn
+        // Lazy init: on the initial level start, party members are registered AFTER startCombat,
+        // so the queue built inside startCombat was empty. Build it now on first use.
+        if (partyPlayers.size() > 1 && turnQueue.size() <= 1) {
+            rebuildTurnQueue();
+        }
         if (turnQueue.size() > 1) {
             currentTurnIndex++;
             if (currentTurnIndex < turnQueue.size()) {

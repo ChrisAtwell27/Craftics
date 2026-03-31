@@ -233,6 +233,25 @@ public class CrafticsMod implements ModInitializer {
             CombatManager cm = CombatManager.get(playerUuid);
             if (cm.isActive()) {
                 LOGGER.info("Player {} disconnected during combat — cleaning up", playerName);
+
+                // If leader disconnects, send all remaining party members home first
+                if (cm.getEventManager() != null) {
+                    ServerWorld world = server.getOverworld();
+                    for (ServerPlayerEntity member : cm.getEventManager().getOnlineParticipants(world)) {
+                        if (!member.getUuid().equals(playerUuid)) {
+                            member.sendMessage(net.minecraft.text.Text.literal(
+                                "\u00a7cParty leader disconnected. Returning to hub..."), false);
+                            net.minecraft.util.math.BlockPos hub = CrafticsSavedData.get(world)
+                                .getHubTeleportPos(member.getUuid());
+                            member.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+                            member.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+                            member.clearStatusEffects();
+                            net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(member,
+                                new com.crackedgames.craftics.network.ExitCombatPayload(false));
+                        }
+                    }
+                }
+
                 cm.endCombat();
             }
             CombatManager.remove(playerUuid);
