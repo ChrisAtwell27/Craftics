@@ -14,15 +14,15 @@ public class RandomEvents {
 
     // ── Shrine of Fortune ──
     // Player spends emeralds to gamble for rewards
-    public static String handleShrine(ServerPlayerEntity player, com.crackedgames.craftics.world.CrafticsSavedData data) {
+    public static String handleShrine(ServerPlayerEntity player, com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd) {
         Random rng = new Random();
         int cost = 3 + rng.nextInt(3); // 3-5 emeralds
 
-        if (data.emeralds < cost) {
-            return "\u00a7e\u00a7lShrine of Fortune \u00a7r\u00a77appears!\n\u00a7cYou need " + cost + " emeralds to make an offering. (Have: " + data.emeralds + ")";
+        if (pd.emeralds < cost) {
+            return "\u00a7e\u00a7lShrine of Fortune \u00a7r\u00a77appears!\n\u00a7cYou need " + cost + " emeralds to make an offering. (Have: " + pd.emeralds + ")";
         }
 
-        data.spendEmeralds(cost);
+        pd.spendEmeralds(cost);
 
         // Roll reward
         int roll = rng.nextInt(100);
@@ -57,7 +57,7 @@ public class RandomEvents {
             desc = "\u00a7d\u00a7lThe shrine erupts with light!";
         } else {
             // Jackpot: refund + bonus
-            data.addEmeralds(cost * 3);
+            pd.addEmeralds(cost * 3);
             reward = new ItemStack(Items.EMERALD, cost * 3);
             desc = "\u00a76\u00a7l\u2726 JACKPOT! \u2726 \u00a7r\u00a76Triple emeralds returned!";
         }
@@ -181,9 +181,9 @@ public class RandomEvents {
     public static void handleShrineForAll(java.util.List<ServerPlayerEntity> participants,
                                            com.crackedgames.craftics.world.CrafticsSavedData data) {
         for (ServerPlayerEntity player : participants) {
-            data.loadPlayerIntoLegacy(player.getUuid());
-            String result = handleShrine(player, data);
-            data.saveLegacyToPlayer(player.getUuid());
+            com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+            String result = handleShrine(player, pd);
+            data.markDirty();
             player.sendMessage(net.minecraft.text.Text.literal(result), false);
         }
     }

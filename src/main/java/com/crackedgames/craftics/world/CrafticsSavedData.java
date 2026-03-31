@@ -38,9 +38,6 @@ public class CrafticsSavedData extends PersistentState {
     private final Map<UUID, Party> parties = new HashMap<>();
     private final Map<UUID, UUID> playerToParty = new HashMap<>(); // playerUuid -> partyId
 
-    // Tracks which player's data is loaded into the legacy fields
-    private UUID currentLegacyPlayerId = null;
-
     /** Per-player game data. */
     public static class PlayerData {
         public int highestBiomeUnlocked = 1;
@@ -163,100 +160,8 @@ public class CrafticsSavedData extends PersistentState {
         return getPlayerData(player.getUuid());
     }
 
-    // === Convenience shortcuts that delegate to per-player data ===
-    // These maintain backwards compatibility with existing code that uses `data.emeralds` etc.
-    // For new code, prefer `data.getPlayerData(player).emeralds` directly.
-
-    /** @deprecated Use getPlayerData(player).highestBiomeUnlocked */
-    public int highestBiomeUnlocked = 1;
-    /** @deprecated Use getPlayerData(player).emeralds */
-    public int emeralds = 0;
-    /** @deprecated Use getPlayerData(player).activeBiomeId */
-    public String activeBiomeId = "";
-    /** @deprecated Use getPlayerData(player).activeBiomeLevelIndex */
-    public int activeBiomeLevelIndex = 0;
-    /** @deprecated Use getPlayerData(player).branchChoice */
-    public int branchChoice = -1;
-    /** @deprecated Use getPlayerData(player).discoveredBiomes */
-    public String discoveredBiomes = "";
-    /** @deprecated Use getPlayerData(player).ngPlusLevel */
-    public int ngPlusLevel = 0;
-    /** @deprecated Use getPlayerData(player).inCombat */
-    public boolean inCombat = false;
-
-    /** Load a specific player's data into the legacy fields (for backwards compat). */
-    public void loadPlayerIntoLegacy(UUID playerId) {
-        currentLegacyPlayerId = playerId;
-        PlayerData pd = getPlayerData(playerId);
-        this.highestBiomeUnlocked = pd.highestBiomeUnlocked;
-        this.emeralds = pd.emeralds;
-        this.activeBiomeId = pd.activeBiomeId;
-        this.activeBiomeLevelIndex = pd.activeBiomeLevelIndex;
-        this.branchChoice = pd.branchChoice;
-        this.discoveredBiomes = pd.discoveredBiomes;
-        this.ngPlusLevel = pd.ngPlusLevel;
-        this.inCombat = pd.inCombat;
-    }
-
-    /** Save legacy fields back into a specific player's data. */
-    public void saveLegacyToPlayer(UUID playerId) {
-        PlayerData pd = getPlayerData(playerId);
-        pd.highestBiomeUnlocked = this.highestBiomeUnlocked;
-        pd.emeralds = this.emeralds;
-        pd.activeBiomeId = this.activeBiomeId;
-        pd.activeBiomeLevelIndex = this.activeBiomeLevelIndex;
-        pd.branchChoice = this.branchChoice;
-        pd.discoveredBiomes = this.discoveredBiomes;
-        pd.ngPlusLevel = this.ngPlusLevel;
-        pd.inCombat = this.inCombat;
-        markDirty();
-    }
-
-    // === Legacy convenience methods (delegate to legacy fields) ===
-
-    public boolean isInBiomeRun() { return activeBiomeId != null && !activeBiomeId.isEmpty(); }
-    public void startBiomeRun(String biomeId) { this.activeBiomeId = biomeId; this.activeBiomeLevelIndex = 0; markDirty(); }
-    public void advanceBiomeRun() { this.activeBiomeLevelIndex++; markDirty(); }
-    public void endBiomeRun() { this.activeBiomeId = ""; this.activeBiomeLevelIndex = 0; markDirty(); }
-    public void addEmeralds(int amount) { this.emeralds += amount; markDirty(); }
-    public boolean spendEmeralds(int amount) { if (emeralds >= amount) { emeralds -= amount; markDirty(); return true; } return false; }
-    public boolean isBiomeDiscovered(String biomeId) { return discoveredBiomes.contains(biomeId); }
-    public void discoverBiome(String biomeId) {
-        if (!isBiomeDiscovered(biomeId)) {
-            discoveredBiomes = discoveredBiomes.isEmpty() ? biomeId : discoveredBiomes + "," + biomeId;
-            markDirty();
-        }
-    }
-    public void initBranchIfNeeded() { if (branchChoice < 0) { branchChoice = new java.util.Random().nextInt(2); markDirty(); } }
-    public java.util.List<String> getPath() {
-        initBranchIfNeeded();
-        return com.crackedgames.craftics.level.BiomePath.getPath(branchChoice);
-    }
-    public void startNewGamePlus() {
-        ngPlusLevel++; highestBiomeUnlocked = 1; discoveredBiomes = ""; activeBiomeId = "";
-        activeBiomeLevelIndex = 0; branchChoice = new java.util.Random().nextInt(2); markDirty();
-    }
-    public float getNgPlusMultiplier() { return 1.0f + ngPlusLevel * 0.25f; }
-
-    /**
-     * Auto-sync legacy fields back to PlayerData whenever the state is marked dirty.
-     * This prevents desync when code modifies legacy fields without calling saveLegacyToPlayer().
-     */
-    @Override
-    public void markDirty() {
-        if (currentLegacyPlayerId != null) {
-            PlayerData pd = getPlayerData(currentLegacyPlayerId);
-            pd.highestBiomeUnlocked = this.highestBiomeUnlocked;
-            pd.emeralds = this.emeralds;
-            pd.activeBiomeId = this.activeBiomeId;
-            pd.activeBiomeLevelIndex = this.activeBiomeLevelIndex;
-            pd.branchChoice = this.branchChoice;
-            pd.discoveredBiomes = this.discoveredBiomes;
-            pd.ngPlusLevel = this.ngPlusLevel;
-            pd.inCombat = this.inCombat;
-        }
-        super.markDirty();
-    }
+    // All player-specific data is accessed via getPlayerData(uuid).
+    // The legacy shared-field system has been removed to prevent multiplayer data corruption.
 
     // === Serialization ===
 

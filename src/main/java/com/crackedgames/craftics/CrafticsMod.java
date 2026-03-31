@@ -152,32 +152,33 @@ public class CrafticsMod implements ModInitializer {
                     affData.append(stats.getAffinityPoints(a));
                 }
                 CrafticsSavedData data = CrafticsSavedData.get(overworld);
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
                 net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
                     new com.crackedgames.craftics.network.PlayerStatsSyncPayload(
-                        stats.level, stats.unspentPoints, statData.toString(), data.emeralds,
+                        stats.level, stats.unspentPoints, statData.toString(), pd.emeralds,
                         affData.toString()
                     ));
 
                 // If the player disconnected mid-battle, restart the fight after they load in
-                data.loadPlayerIntoLegacy(player.getUuid());
-                updateWorldIcon(server, data);
-                if (data.inCombat && data.isInBiomeRun()) {
+                updateWorldIcon(server, pd);
+                if (pd.inCombat && pd.isInBiomeRun()) {
                     final ServerPlayerEntity rejoinPlayer = player;
                     final ServerWorld rejoinWorld = overworld;
+                    final CrafticsSavedData.PlayerData rejoinPd = pd;
                     // Schedule 2-tick delay so client finishes loading before we send combat packets
                     server.execute(() -> server.execute(() -> {
                         try {
                             com.crackedgames.craftics.level.BiomeTemplate biome = null;
                             for (var b : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {
-                                if (b.biomeId.equals(data.activeBiomeId)) { biome = b; break; }
+                                if (b.biomeId.equals(rejoinPd.activeBiomeId)) { biome = b; break; }
                             }
-                            if (biome == null) { data.inCombat = false; data.markDirty(); return; }
+                            if (biome == null) { rejoinPd.inCombat = false; data.markDirty(); return; }
 
-                            int levelIndex = data.activeBiomeLevelIndex;
+                            int levelIndex = rejoinPd.activeBiomeLevelIndex;
                             int globalLevel = biome.startLevel + levelIndex;
                             com.crackedgames.craftics.level.LevelDefinition levelDef =
-                                com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, data.branchChoice);
-                            if (levelDef == null) { data.inCombat = false; data.markDirty(); return; }
+                                com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, rejoinPd.branchChoice);
+                            if (levelDef == null) { rejoinPd.inCombat = false; data.markDirty(); return; }
 
                             java.util.UUID rejoinWorldOwner = data.getEffectiveWorldOwner(rejoinPlayer.getUuid());
                             com.crackedgames.craftics.core.GridArena arena =
@@ -194,10 +195,10 @@ public class CrafticsMod implements ModInitializer {
                                 ));
                             CombatManager.get(rejoinPlayer).startCombat(rejoinPlayer, arena, levelDef);
                             LOGGER.info("Restarted combat for {} (biome {}, level {})",
-                                rejoinPlayer.getName().getString(), data.activeBiomeId, levelIndex + 1);
+                                rejoinPlayer.getName().getString(), rejoinPd.activeBiomeId, levelIndex + 1);
                         } catch (Exception ex) {
                             LOGGER.error("Failed to restart combat for {} on rejoin: {}", rejoinPlayer.getName().getString(), ex.getMessage());
-                            data.inCombat = false;
+                            rejoinPd.inCombat = false;
                             data.markDirty();
                         }
                     }));
@@ -287,12 +288,12 @@ public class CrafticsMod implements ModInitializer {
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 ServerWorld overworld = src.getServer().getOverworld();
                 CrafticsSavedData data = CrafticsSavedData.get(overworld);
-                data.loadPlayerIntoLegacy(cmdPlayer.getUuid());
-                data.initBranchIfNeeded();
-                int totalBiomes = com.crackedgames.craftics.level.BiomePath.getFullPath(data.branchChoice).size();
-                data.highestBiomeUnlocked = totalBiomes;
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(cmdPlayer.getUuid());
+                pd.initBranchIfNeeded();
+                int totalBiomes = com.crackedgames.craftics.level.BiomePath.getFullPath(pd.branchChoice).size();
+                pd.highestBiomeUnlocked = totalBiomes;
                 data.markDirty();
-                updateWorldIcon(src.getServer(), data);
+                updateWorldIcon(src.getServer(), pd);
                 src.sendFeedback(() -> Text.literal("§aUnlocked all " + totalBiomes + " biomes."), true);
                 return 1;
             }));
@@ -302,9 +303,9 @@ public class CrafticsMod implements ModInitializer {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
-                data.loadPlayerIntoLegacy(cmdPlayer.getUuid());
-                String biomeId = data.activeBiomeId;
-                data.activeBiomeLevelIndex = 0;
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(cmdPlayer.getUuid());
+                String biomeId = pd.activeBiomeId;
+                pd.activeBiomeLevelIndex = 0;
                 data.markDirty();
                 String label = (biomeId != null && !biomeId.isEmpty()) ? biomeId : "current biome";
                 src.sendFeedback(() -> Text.literal("§eReset " + label + " progress back to level 1."), true);
@@ -319,8 +320,7 @@ public class CrafticsMod implements ModInitializer {
                         int amount = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "amount");
                         ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                         CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
-                        data.loadPlayerIntoLegacy(cmdPlayer.getUuid());
-                        data.emeralds = amount;
+                        data.getPlayerData(cmdPlayer.getUuid()).emeralds = amount;
                         data.markDirty();
                         src.sendFeedback(() -> Text.literal("§aSet emeralds to " + amount + "."), true);
                         return 1;
@@ -348,15 +348,15 @@ public class CrafticsMod implements ModInitializer {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
-                data.loadPlayerIntoLegacy(cmdPlayer.getUuid());
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(cmdPlayer.getUuid());
                 src.sendFeedback(() -> Text.literal(
                     "§6--- Craftics Debug Info ---\n" +
-                    "§fBiomes unlocked: §e" + data.highestBiomeUnlocked + "\n" +
-                    "§fEmeralds: §a" + data.emeralds + "\n" +
-                    "§fNG+ level: §d" + data.ngPlusLevel + "\n" +
-                    "§fBranch choice: §b" + data.branchChoice + "\n" +
-                    "§fActive biome: §c" + (data.activeBiomeId.isEmpty() ? "none" : data.activeBiomeId) + "\n" +
-                    "§fDiscovered: §7" + (data.discoveredBiomes.isEmpty() ? "none" : data.discoveredBiomes)
+                    "§fBiomes unlocked: §e" + pd.highestBiomeUnlocked + "\n" +
+                    "§fEmeralds: §a" + pd.emeralds + "\n" +
+                    "§fNG+ level: §d" + pd.ngPlusLevel + "\n" +
+                    "§fBranch choice: §b" + pd.branchChoice + "\n" +
+                    "§fActive biome: §c" + (pd.activeBiomeId.isEmpty() ? "none" : pd.activeBiomeId) + "\n" +
+                    "§fDiscovered: §7" + (pd.discoveredBiomes.isEmpty() ? "none" : pd.discoveredBiomes)
                 ), false);
                 return 1;
             }));
@@ -436,8 +436,9 @@ public class CrafticsMod implements ModInitializer {
                     .executes(ctx -> {
                         ServerCommandSource src = ctx.getSource();
                         int level = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "level");
+                        ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
                         CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
-                        data.ngPlusLevel = level;
+                        data.getPlayerData(cmdPlayer.getUuid()).ngPlusLevel = level;
                         data.markDirty();
                         src.sendFeedback(() -> Text.literal("§aSet NG+ level to " + level + "."), true);
                         return 1;
@@ -702,7 +703,9 @@ public class CrafticsMod implements ModInitializer {
                 ServerWorld overworld = player.getServerWorld();
                 CrafticsSavedData data = CrafticsSavedData.get(overworld);
 
-                if (!data.hasPersonalWorld(player.getUuid())) {
+                // Check effective world owner (party leader's world if in a party)
+                java.util.UUID effectiveOwner = data.getEffectiveWorldOwner(player.getUuid());
+                if (!data.hasPersonalWorld(effectiveOwner)) {
                     ctx.getSource().sendError(Text.literal(
                         "\u00a7cYou don't have a personal world yet. Use \u00a7e/new\u00a7c to create one."));
                     return 0;
@@ -1093,13 +1096,13 @@ public class CrafticsMod implements ModInitializer {
      * Writes the biome icon of the player's highest unlocked biome as the world's icon.png,
      * so the world-select screen shows progression at a glance. No-ops on non-Craftics worlds.
      */
-    public static void updateWorldIcon(net.minecraft.server.MinecraftServer server, CrafticsSavedData data) {
+    public static void updateWorldIcon(net.minecraft.server.MinecraftServer server, CrafticsSavedData.PlayerData pd) {
         if (!(server.getOverworld().getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator)) return;
         try {
-            data.initBranchIfNeeded();
+            pd.initBranchIfNeeded();
             java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-                .getFullPath(Math.max(0, data.branchChoice));
-            int idx = Math.max(0, Math.min(data.highestBiomeUnlocked - 1, fullPath.size() - 1));
+                .getFullPath(Math.max(0, pd.branchChoice));
+            int idx = Math.max(0, Math.min(pd.highestBiomeUnlocked - 1, fullPath.size() - 1));
             String biomeId = fullPath.get(idx);
             String resourcePath = "/assets/craftics/textures/gui/biomes/" + biomeId + ".png";
             try (java.io.InputStream iconStream = CrafticsMod.class.getResourceAsStream(resourcePath)) {
@@ -1124,7 +1127,7 @@ public class CrafticsMod implements ModInitializer {
                         java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING)) {
                     javax.imageio.ImageIO.write(scaled, "PNG", out);
                 }
-                LOGGER.debug("Updated world icon to biome '{}' (64x64, highestUnlocked={})", biomeId, data.highestBiomeUnlocked);
+                LOGGER.debug("Updated world icon to biome '{}' (64x64, highestUnlocked={})", biomeId, pd.highestBiomeUnlocked);
             }
         } catch (Exception ex) {
             LOGGER.warn("Failed to update world icon: {}", ex.getMessage());
