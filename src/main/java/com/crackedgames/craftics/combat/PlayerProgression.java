@@ -6,6 +6,8 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.PersistentState;
 
+import com.crackedgames.craftics.achievement.Achievement;
+
 import java.util.*;
 
 /**
@@ -74,6 +76,8 @@ public class PlayerProgression extends PersistentState {
         // Permanent damage affinity bonuses from level-ups
         private final EnumMap<Affinity, Integer> affinityPoints = new EnumMap<>(Affinity.class);
         public boolean pendingAffinityChoice = false; // set after stat choice, cleared after affinity choice
+        // Unlocked achievements (stored by enum name)
+        private final Set<String> achievements = new HashSet<>();
 
         public PlayerStats() {
             for (Stat s : Stat.values()) {
@@ -91,6 +95,23 @@ public class PlayerProgression extends PersistentState {
         public void allocateAffinity(Affinity affinity) {
             affinityPoints.put(affinity, getAffinityPoints(affinity) + 1);
             pendingAffinityChoice = false;
+        }
+
+        public boolean hasAchievement(Achievement achievement) {
+            return achievements.contains(achievement.name());
+        }
+
+        /** Grant an achievement. Returns true if newly unlocked (false if already had it). */
+        public boolean grantAchievement(Achievement achievement) {
+            return achievements.add(achievement.name());
+        }
+
+        public Set<String> getAchievements() {
+            return Collections.unmodifiableSet(achievements);
+        }
+
+        public int getAchievementCount() {
+            return achievements.size();
         }
 
         /** Record a boss kill for a biome and return true if this kill earns a level-up. */
@@ -153,7 +174,7 @@ public class PlayerProgression extends PersistentState {
             unspentPoints++;
         }
 
-        // Serialize: "level:unspent:s0:s1:...:s7|bossKills|affinities"
+        // Serialize: "level:unspent:s0:s1:...:s7|bossKills|affinities|achievements"
         public String serialize() {
             StringBuilder sb = new StringBuilder();
             sb.append(level).append(':').append(unspentPoints);
@@ -183,16 +204,20 @@ public class PlayerProgression extends PersistentState {
                     }
                 }
             }
+            // Section 4: achievements
+            sb.append('|');
+            sb.append(String.join(",", achievements));
             return sb.toString();
         }
 
         public static PlayerStats deserialize(String data) {
             PlayerStats ps = new PlayerStats();
-            // Split into sections: stats | bossKills | affinities
+            // Split into sections: stats | bossKills | affinities | achievements
             String[] sections = data.split("\\|", -1);
             String statPart = sections[0];
             String bossPart = sections.length > 1 ? sections[1] : "";
             String affinityPart = sections.length > 2 ? sections[2] : "";
+            String achievementPart = sections.length > 3 ? sections[3] : "";
 
             String[] parts = statPart.split(":");
             if (parts.length >= 2) {
@@ -224,6 +249,15 @@ public class PlayerProgression extends PersistentState {
                             Affinity a = Affinity.valueOf(affinityName);
                             ps.affinityPoints.put(a, Integer.parseInt(kv[1]));
                         } catch (Exception ignored) {}
+                    }
+                }
+            }
+            // Parse achievements
+            if (!achievementPart.isEmpty()) {
+                for (String name : achievementPart.split(",")) {
+                    String trimmed = name.trim();
+                    if (!trimmed.isEmpty()) {
+                        ps.achievements.add(trimmed);
                     }
                 }
             }

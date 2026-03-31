@@ -159,6 +159,10 @@ public class CrafticsMod implements ModInitializer {
                         affData.toString()
                     ));
 
+                // Grant the Craftics advancement root so the tab is visible,
+                // plus re-grant any already-unlocked achievements (persisted in PlayerProgression)
+                com.crackedgames.craftics.achievement.AchievementManager.syncVanillaAdvancements(player);
+
                 // If the player disconnected mid-battle, restart the fight after they load in
                 updateWorldIcon(server, pd);
                 if (pd.inCombat && pd.isInBiomeRun()) {

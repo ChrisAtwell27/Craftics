@@ -36,6 +36,8 @@ import com.crackedgames.craftics.combat.ai.boss.ShulkerArchitectAI;
 import com.crackedgames.craftics.combat.ai.boss.WailingRevenantAI;
 import com.crackedgames.craftics.core.GridTile;
 import com.crackedgames.craftics.core.TileType;
+import com.crackedgames.craftics.achievement.AchievementManager;
+import com.crackedgames.craftics.achievement.CombatAchievementTracker;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -157,6 +159,7 @@ public class CombatManager {
     /** Index into turnQueue for whose sub-turn it currently is. */
     private int currentTurnIndex = 0;
     private final CombatEffects combatEffects = new CombatEffects();
+    private CombatAchievementTracker achievementTracker = new CombatAchievementTracker();
 
     /** Shared event manager for this biome run (shared across party members). */
     private EventManager eventManager;
@@ -506,6 +509,7 @@ public class CombatManager {
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
         player.setHealth(Math.max(1, player.getHealth() - actual));
         onPlayerDamaged(); // reset kill streak
+        achievementTracker.recordPlayerTookDamage();
 
         // Totem of Undying: if player would die (HP <= 1), check for totem in inventory
         if (getPlayerHp() <= 0) {
@@ -516,6 +520,7 @@ public class CombatManager {
                     player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
                         net.minecraft.entity.effect.StatusEffects.REGENERATION, 900, 1));
                     sendMessage("\u00a76\u00a7l\u2726 TOTEM OF UNDYING ACTIVATES! \u2726 \u00a7rResurrected with half health!");
+                    achievementTracker.recordTotemProc();
                     break;
                 }
             }
@@ -754,6 +759,7 @@ public class CombatManager {
         this.levelDef = levelDef;
         this.enemies = new ArrayList<>();
         this.phase = CombatPhase.PLAYER_TURN;
+        this.achievementTracker = new CombatAchievementTracker();
         // Read base stats from player progression
         PlayerProgression prog = PlayerProgression.get((ServerWorld) player.getEntityWorld());
         PlayerProgression.PlayerStats pStats = prog.getStats(player);
@@ -1366,6 +1372,14 @@ public class CombatManager {
             if (weaponStack.isEmpty() || weaponStack.getDamage() >= weaponStack.getMaxDamage()) {
                 sendMessage("§c§lYour weapon broke!");
             }
+        } else {
+            // Non-durable weapons have a chance to break (consumed on use)
+            double breakChance = WeaponAbility.getBreakChance(weapon);
+            if (breakChance > 0 && Math.random() < breakChance) {
+                weaponStack.decrement(1);
+                int pct = (int) (breakChance * 100);
+                sendMessage("§c§lYour " + weaponStack.getName().getString() + " broke! §7(" + pct + "% chance)");
+            }
         }
 
         // Trident throw: remove from hand and drop on arena (unless Loyalty)
@@ -1406,6 +1420,10 @@ public class CombatManager {
             dropWorld.spawnEntity(droppedTridentEntity);
             sendMessage("§3Trident lodges in the ground at (" + landPos.x() + ", " + landPos.z() + ")! Walk there to retrieve it.");
         }
+
+        // Track weapon usage for achievements
+        achievementTracker.recordWeaponUsed(weapon);
+        achievementTracker.recordPlayerDealtDamage();
 
         // Pre-calculate damage before the delay (snapshot current stats)
         boolean isRangedWeapon = weapon == Items.BOW || weapon == Items.CROSSBOW;
@@ -1577,6 +1595,31 @@ public class CombatManager {
             // Weapon ability (cleave, pierce, etc.)
             WeaponAbility.AttackResult abilityResult = WeaponAbility.applyAbility(player, fWeapon, fTarget, arena, fBaseDamage, fAttackerStats);
             for (String msg : abilityResult.messages()) sendMessage(msg);
+
+            // Track achievement stats from weapon ability results
+            achievementTracker.recordDamageDealt(dealt);
+            int extraHits = abilityResult.extraTargets().size();
+            if (fWeapon == Items.CROSSBOW && extraHits > 0) {
+                achievementTracker.recordPierceTargets(1 + extraHits); // original + pierced
+            }
+            if (fWeapon == Items.MACE && extraHits > 0) {
+                achievementTracker.recordShockwaveTargets(extraHits);
+            }
+            // Check ability messages for specific achievement events
+            for (String msg : abilityResult.messages()) {
+                if (msg.contains("Sweep!")) achievementTracker.recordSweepTargets(extraHits);
+                if (msg.contains("CRITICAL HIT")) achievementTracker.recordCrit();
+                if (msg.contains("EXECUTE!") && !fTarget.isAlive()) achievementTracker.recordExecutionKill();
+                if (msg.contains("ARMOR CRUSH")) {
+                    achievementTracker.recordArmorCrush(fTarget.getDefense());
+                }
+                if (msg.contains("STUNNED")) achievementTracker.recordStun(fTarget.getEntityId());
+                if (msg.contains("Splash!")) achievementTracker.recordCoralFanTargets(extraHits);
+                if (msg.contains("Confused!")) achievementTracker.recordEnemyConfused(fTarget.getEntityId());
+            }
+            // Reset crit streak on non-crit
+            boolean wasCrit = abilityResult.messages().stream().anyMatch(m -> m.contains("CRITICAL HIT"));
+            if (!wasCrit) achievementTracker.resetCritStreak();
 
             // === TRIDENT CHANNELING: Lightning strike on throw hit ===
             if (fIsTridentThrow && fTridentChanneling > 0 && fTarget.isAlive()) {
@@ -3127,6 +3170,7 @@ public class CombatManager {
             // Tick enemy poison DoT
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getPoisonTurns() <= 0) continue;
+                boolean wasAlive = e.isAlive();
                 int poisonDmg = e.takeDamage(1 + e.getPoisonAmplifier());
                 e.setPoisonTurns(e.getPoisonTurns() - 1);
                 sendMessage("§2" + e.getDisplayName() + " took " + poisonDmg + " poison damage.");
@@ -3136,6 +3180,7 @@ public class CombatManager {
                         e.getMobEntity().getX(), e.getMobEntity().getY() + 1.0, e.getMobEntity().getZ(),
                         8, 0.3, 0.3, 0.3, 0.05);
                 }
+                if (wasAlive && !e.isAlive()) achievementTracker.recordPoisonKill();
                 checkAndHandleDeath(e);
             }
 
@@ -3148,6 +3193,7 @@ public class CombatManager {
             // Tick enemy burning DoT
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getBurningTurns() <= 0) continue;
+                boolean wasAlive = e.isAlive();
                 int burnDmg = e.takeDamage(e.getBurningDamage());
                 e.setBurningTurns(e.getBurningTurns() - 1);
                 sendMessage("§6" + e.getDisplayName() + " burned for " + burnDmg + ".");
@@ -3160,6 +3206,7 @@ public class CombatManager {
                 if (e.getBurningTurns() <= 0) {
                     e.setBurningDamage(0);
                 }
+                if (wasAlive && !e.isAlive()) achievementTracker.recordBurnKill();
                 checkAndHandleDeath(e);
             }
 
@@ -3324,6 +3371,11 @@ public class CombatManager {
             });
 
             turnNumber++;
+            achievementTracker.recordTurnCompleted();
+
+            // Track living allies for Zookeeper achievement
+            long allyCount = enemies.stream().filter(e -> e.isAlive() && e.isAlly()).count();
+            achievementTracker.recordLivingAllies((int) allyCount);
 
             // Check if only passives/neutrals remain (no hostile enemies)
             boolean hasHostile = enemies.stream().anyMatch(e -> e.isAlive() && !e.isAlly());
@@ -4744,6 +4796,7 @@ public class CombatManager {
                 int counterDmg = currentEnemy.takeDamage(PlayerCombatStats.getAttackPower(player));
                 sendMessage("\u00a77\u270A Counter! You strike back for " + counterDmg + " damage!");
                 if (!currentEnemy.isAlive()) {
+                    achievementTracker.recordCounterKill();
                     killEnemy(currentEnemy);
                 }
             }
@@ -5177,6 +5230,14 @@ public class CombatManager {
             }
         }
 
+        // Check combat feat achievements for ALL victories (boss and non-boss)
+        if (!isBoss) {
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                AchievementManager.checkCombatFeats(recipient, achievementTracker);
+                AchievementManager.checkCollections(recipient, data.getPlayerData(recipient.getUuid()).emeralds);
+            }
+        }
+
         if (isBoss) {
             // Boss fights end the biome run immediately.
             sendToAllParty(new ExitCombatPayload(true));
@@ -5224,6 +5285,25 @@ public class CombatManager {
                 teleportToHub(p);
             }
 
+            // Check achievements before endCombat() clears state
+            String achievBiomeId = biomeTemplate != null ? biomeTemplate.biomeId : "";
+            String achievArmorSet = PlayerCombatStats.getArmorSet(player);
+            CombatAchievementTracker savedTracker = achievementTracker;
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                AchievementManager.checkBossVictory(recipient, achievBiomeId, achievArmorSet, savedTracker);
+            }
+            // Check NG+ achievements
+            if (ld.ngPlusLevel > 0) {
+                for (ServerPlayerEntity recipient : rewardRecipients) {
+                    AchievementManager.checkNewGamePlus(recipient, ld.ngPlusLevel);
+                }
+            }
+            // Check emerald collection achievement
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                CrafticsSavedData.PlayerData rpd = data.getPlayerData(recipient.getUuid());
+                AchievementManager.checkCollections(recipient, rpd.emeralds);
+            }
+
             // Save party list before endCombat() clears it
             List<ServerPlayerEntity> savedParty = new ArrayList<>(rewardRecipients);
             ServerPlayerEntity savedPlayer = player;
@@ -5239,6 +5319,7 @@ public class CombatManager {
                 if (earned) {
                     stats.grantLevelUp();
                     progression.saveStats(member);
+                    AchievementManager.checkProgression(member);
                 } else {
                     int remaining = stats.getKillsUntilNextLevel(bossbiomeId);
                     sendMessageTo(member, "§7Defeat this boss §e" + remaining + "§7 more time" + (remaining != 1 ? "s" : "") + " for a level up.");

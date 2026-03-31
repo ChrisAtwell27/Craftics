@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:brain_coral"
+    },
+    "title": "Brain Drain",
+    "description": "Confuse 5 different enemies in one combat",
+    "frame": "task"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:coral_crusader"
+}

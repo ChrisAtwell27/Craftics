@@ -10,6 +10,7 @@ import com.crackedgames.craftics.client.CombatAnimations;
 import com.crackedgames.craftics.client.CombatVisualEffects;
 import com.crackedgames.craftics.client.LevelSelectScreen;
 import com.crackedgames.craftics.client.TransitionOverlay;
+import com.crackedgames.craftics.client.AchievementToast;
 import com.crackedgames.craftics.network.CombatSyncPayload;
 import com.crackedgames.craftics.network.EnterCombatPayload;
 import com.crackedgames.craftics.network.ExitCombatPayload;
@@ -262,15 +263,26 @@ public class CrafticsClient implements ClientModInitializer {
         // --- Player combat animations (PlayerAnimator) ---
         CombatAnimations.register();
 
+        // Achievement unlock toast
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.AchievementUnlockPayload.ID, (payload, context) -> {
+                AchievementToast.enqueue(payload.displayName(), payload.description(), payload.categoryColor());
+            }
+        );
+
         // --- Renderers ---
         HudRenderCallback.EVENT.register(new CombatHudOverlay());
         HudRenderCallback.EVENT.register(TransitionOverlay::render);
+        HudRenderCallback.EVENT.register(new AchievementToast());
         CombatTooltips.register();
         TileOverlayRenderer.register();
 
         // --- Client tick ---
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Tick achievement toast animations
+            AchievementToast.tick();
+
             // F6: debug toggle
             while (combatToggleKey.wasPressed()) {
                 CombatState.toggleCombat();

@@ -450,10 +450,10 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         // Mace
         if (item == Items.MACE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a78Blunt\n\u00a76AoE: \u00a77Half damage to all in 3x3\n\u00a76Knockback: \u00a77Pushes target back\n\u00a7dDensity: \u00a77+AoE dmg | \u00a74Breach: \u00a77Armor pen | \u00a7bWind Burst: \u00a77+KB range";
-        if (item == Items.STICK) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a78\u2716 Stun: \u00a775% chance to stun target";
-        if (item == Items.BAMBOO) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a78\u2716 Stun: \u00a775% chance to stun target";
-        if (item == Items.BLAZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a76\u2716 Fire: \u00a77+1 fire dmg | \u00a78Stun: \u00a775% chance";
-        if (item == Items.BREEZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a7b\u2716 Knockback: \u00a77Push back 1 | \u00a78Stun: \u00a775% chance";
+        if (item == Items.STICK) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a78\u2716 Stun: \u00a775% chance to stun target\n\u00a7c\u26A0 10% break chance per attack";
+        if (item == Items.BAMBOO) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a78\u2716 Stun: \u00a775% chance to stun target\n\u00a7c\u26A0 5% break chance per attack";
+        if (item == Items.BLAZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a76\u2716 Fire: \u00a77+1 fire dmg | \u00a78Stun: \u00a775% chance\n\u00a7e\u26A0 1% break chance per attack";
+        if (item == Items.BREEZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a7b\u2716 Knockback: \u00a77Push back 1 | \u00a78Stun: \u00a775% chance\n\u00a7e\u26A0 1% break chance per attack";
 
         // Hoes — Special type (low damage, effects/utility)
         if (item == Items.WOODEN_HOE) return "\u00a7c1 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a77Weak but channels special energy";
@@ -538,11 +538,11 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.HEART_OF_THE_SEA) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 4)\n\u00a7c5 DMG \u00a77| Radius 3 | \u00a73Water\n\u00a73Soaked IV \u00a77+ \u00a7dConfusion II";
 
         // ── Coral Weapons (Water-type melee) ──
-        if (item == Items.TUBE_CORAL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a73\u2716 Soaked: \u00a77-1 Speed, 2x lightning dmg (1 turn)";
-        if (item == Items.BRAIN_CORAL) return "\u00a7c5 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7d\u2716 Confuse: \u00a7740% chance enemy attacks allies";
-        if (item == Items.BUBBLE_CORAL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7b\u2716 Knockback: \u00a77Bubble burst pushes enemy 1 tile";
-        if (item == Items.FIRE_CORAL) return "\u00a7c7 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a76\u2716 Searing: \u00a77+3 bonus DMG to burning enemies";
-        if (item == Items.HORN_CORAL) return "\u00a7c6 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7e\u2716 Pierce: \u00a77Ignores 3 armor for 1 turn";
+        if (item == Items.TUBE_CORAL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a73\u2716 Soaked: \u00a77-1 Speed, 2x lightning dmg (1 turn)\n\u00a7e\u26A0 1% break chance per attack";
+        if (item == Items.BRAIN_CORAL) return "\u00a7c5 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7d\u2716 Confuse: \u00a7740% chance enemy attacks allies\n\u00a7e\u26A0 1% break chance per attack";
+        if (item == Items.BUBBLE_CORAL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7b\u2716 Knockback: \u00a77Bubble burst pushes enemy 1 tile\n\u00a7e\u26A0 1% break chance per attack";
+        if (item == Items.FIRE_CORAL) return "\u00a7c7 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a76\u2716 Searing: \u00a77+3 bonus DMG to burning enemies\n\u00a7e\u26A0 1% break chance per attack";
+        if (item == Items.HORN_CORAL) return "\u00a7c6 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7e\u2716 Pierce: \u00a77Ignores 3 armor for 1 turn\n\u00a7e\u26A0 1% break chance per attack";
         // Dead corals
         if (item == Items.DEAD_TUBE_CORAL || item == Items.DEAD_BRAIN_CORAL
             || item == Items.DEAD_BUBBLE_CORAL || item == Items.DEAD_FIRE_CORAL
@@ -550,12 +550,12 @@ public class CombatTooltips implements ItemTooltipCallback {
             || item == Items.DEAD_TUBE_CORAL_FAN || item == Items.DEAD_BRAIN_CORAL_FAN
             || item == Items.DEAD_BUBBLE_CORAL_FAN || item == Items.DEAD_FIRE_CORAL_FAN
             || item == Items.DEAD_HORN_CORAL_FAN)
-            return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a77\u2716 Weakened: \u00a77Saps enemy ATK by 2 for 1 turn";
+            return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a77\u2716 Weakened: \u00a77Saps enemy ATK by 2 for 1 turn\n\u00a7c\u26A0 5% break chance per attack";
         // Coral fans
         if (item == Items.TUBE_CORAL_FAN || item == Items.BRAIN_CORAL_FAN
             || item == Items.BUBBLE_CORAL_FAN || item == Items.FIRE_CORAL_FAN
             || item == Items.HORN_CORAL_FAN)
-            return "\u00a7c1 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a73\u2716 Splash: \u00a77Hits all enemies adjacent to target";
+            return "\u00a7c1 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a73\u2716 Splash: \u00a77Hits all enemies adjacent to target\n\u00a7e\u26A0 3% break chance per attack";
 
         // ── Utility Items ──
         if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+2 DEF when in offhand\n\u00a79Brace: \u00a77End turn for +5 DEF total\n\u00a77No AP cost \u2014 equip in offhand slot";

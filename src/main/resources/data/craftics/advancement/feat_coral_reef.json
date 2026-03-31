@@ -1,0 +1,16 @@
+{
+  "display": {
+    "icon": {
+      "id": "minecraft:horn_coral_fan"
+    },
+    "title": "Coral Reef",
+    "description": "Hit 4+ enemies with a single Coral Fan splash",
+    "frame": "task"
+  },
+  "criteria": {
+    "requirement": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "parent": "craftics:feat_shockwave"
+}
