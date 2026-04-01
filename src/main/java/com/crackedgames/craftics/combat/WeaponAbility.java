@@ -34,9 +34,9 @@ public class WeaponAbility {
      * Note: Trident AP cost is dynamic (1 melee / 2 throw) — handled in CombatManager.
      */
     public static int getAttackCost(Item weapon) {
-        // Heavy weapons cost 2 AP
+        // Heavy weapons cost 2+ AP
         if (weapon == Items.MACE) return 2;
-        if (weapon == Items.CROSSBOW) return 2;
+        if (weapon == Items.CROSSBOW) return 4; // Quick Charge reduces this in CombatManager
         if (weapon == Items.WOODEN_AXE || weapon == Items.STONE_AXE || weapon == Items.GOLDEN_AXE) return 2;
         if (weapon == Items.IRON_AXE || weapon == Items.DIAMOND_AXE || weapon == Items.NETHERITE_AXE) return 2;
         // Trident defaults to 1 AP (melee); throw cost (2 AP) overridden in CombatManager
@@ -364,23 +364,56 @@ public class WeaponAbility {
         }
 
         // === CROSSBOW: Pierce through ===
-        // Bolt continues through the first target to hit a second
+        // Bolt continues through the first target; Piercing enchantment increases max pierce targets
         if (weapon == Items.CROSSBOW) {
+            int piercingLevel = PlayerCombatStats.getPiercing(player);
+            int maxPierceTargets = 1 + piercingLevel; // base 1, +1 per Piercing level
+            int pierceCount = 0;
             GridPos pPos = arena.getPlayerGridPos();
             int dx = Integer.signum(target.getGridPos().x() - pPos.x());
             int dz = Integer.signum(target.getGridPos().z() - pPos.z());
             // Check all tiles beyond target in line
             GridPos check = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
-            while (arena.isInBounds(check)) {
+            while (arena.isInBounds(check) && pierceCount < maxPierceTargets) {
                 CombatEntity pierced = arena.getOccupant(check);
                 if (pierced != null && pierced.isAlive()) {
                     int pierceDmg = pierced.takeDamage(baseDamage / 2);
                     extraTargets.add(pierced);
                     totalExtra += pierceDmg;
                     messages.add("§b⚔ Bolt pierces through to " + pierced.getDisplayName() + " for " + pierceDmg + "!");
-                    break;
+                    pierceCount++;
                 }
                 check = new GridPos(check.x() + dx, check.z() + dz);
+            }
+
+            // === CROSSBOW: Multishot — 2 extra diagonal bolts ===
+            if (PlayerCombatStats.hasMultishot(player)) {
+                // Determine the two diagonal directions from the cardinal shot direction
+                int[][] diagonals;
+                if (dz == 0) {
+                    // Shooting East/West → diagonals are (dx, -1) and (dx, 1)
+                    diagonals = new int[][]{{dx, -1}, {dx, 1}};
+                } else if (dx == 0) {
+                    // Shooting North/South → diagonals are (-1, dz) and (1, dz)
+                    diagonals = new int[][]{{-1, dz}, {1, dz}};
+                } else {
+                    // Already diagonal (shouldn't happen for crossbow rook pattern) — skip
+                    diagonals = new int[0][];
+                }
+                for (int[] diag : diagonals) {
+                    GridPos diagCheck = new GridPos(pPos.x() + diag[0], pPos.z() + diag[1]);
+                    while (arena.isInBounds(diagCheck)) {
+                        CombatEntity diagTarget = arena.getOccupant(diagCheck);
+                        if (diagTarget != null && diagTarget.isAlive()) {
+                            int diagDmg = diagTarget.takeDamage(baseDamage / 2);
+                            extraTargets.add(diagTarget);
+                            totalExtra += diagDmg;
+                            messages.add("§d⚔ Multishot bolt hits " + diagTarget.getDisplayName() + " for " + diagDmg + "!");
+                            break; // Each diagonal bolt hits only the first target
+                        }
+                        diagCheck = new GridPos(diagCheck.x() + diag[0], diagCheck.z() + diag[1]);
+                    }
+                }
             }
         }
 
