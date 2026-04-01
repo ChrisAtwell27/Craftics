@@ -254,9 +254,10 @@ public class GuideBookData {
         enemies.add(mob("Crimson Ravager", "BOSS | Hoglin | 45HP / 8ATK / 3DEF / Speed 3\nCrimson Forest boss.\n\n" +
             "Abilities:\n- Gore Charge: 4-tile charge, ATK+3, knockback 3\n- Fungal Growth: 3x3 heal zone\n- Rampage: AoE all adjacent tiles\n- Summon Pack: 2 Piglins (once)\n\n" +
             "Phase 2 — Blood Frenzy: +4 ATK, fire trail, 2-tile rampage, speed 4."));
-        enemies.add(mob("Wailing Revenant", "BOSS | Ghast | 40HP / 8ATK / 1DEF / Range 6 / Speed 1\nSoul Sand Valley boss.\n\n" +
-            "Abilities:\n- Soul Barrage: 3 fireballs at different tiles\n- Wail of Despair: AoE -2 ATK debuff\n- Soul Chain: Tethers player, 2 dmg/turn\n- Phase Shift: Teleports when player gets close\n\n" +
-            "Phase 2 — Requiem: 5 fireballs, wail + slowness, 2 chains, speed 2."));
+        enemies.add(mob("Wailing Revenant", "BOSS | Ghast | 60HP / 8ATK / 2DEF / Stationary\nSoul Sand Valley boss.\n\n" +
+            "Hovers outside the arena edge — attack the front row to hit it.\nNo regular ghasts spawn; only Wither Skeletons.\n\n" +
+            "Abilities:\n- Fireball Barrage: 3 fireballs fly across the arena\n- Raining Fireballs: Half the arena warned, 5 dmg each\n- Magma Rows: Random rows turn to magma for 2 turns\n- Summon Wither Skeletons: 2 skeletons (max 4)\n\n" +
+            "Phase 2 — Requiem: 5 fireballs, 2 magma rows, 3 skeletons."));
         enemies.add(mob("Ashen Warlord", "BOSS | Wither Skeleton | 55HP / 10ATK / 4DEF / Speed 3\nBasalt Deltas boss.\n\n" +
             "Abilities:\n- Wither Slash: ATK + permanent max HP reduction\n- Summon Blaze Guard: 2 Blazes every 4 turns\n\n" +
             "Phase 2 — Warlord's Command: Arc wither slash, summons Wither Skeletons instead, speed 4."));

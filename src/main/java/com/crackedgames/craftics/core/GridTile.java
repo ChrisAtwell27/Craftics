@@ -7,11 +7,20 @@ public class GridTile {
     private TileType type;
     private Block blockType;
     private int turnsRemaining; // for temporary tiles like fire
+    private boolean permanent; // permanent obstacles cannot be broken by pickaxes
 
     public GridTile(TileType type, Block blockType) {
         this.type = type;
         this.blockType = blockType;
         this.turnsRemaining = -1; // permanent by default
+        this.permanent = false;
+    }
+
+    public GridTile(TileType type, Block blockType, boolean permanent) {
+        this.type = type;
+        this.blockType = blockType;
+        this.turnsRemaining = -1;
+        this.permanent = permanent;
     }
 
     public GridTile(TileType type) {
@@ -43,6 +52,14 @@ public class GridTile {
 
     public boolean isWater() {
         return type == TileType.WATER;
+    }
+
+    public boolean isPermanent() {
+        return permanent;
+    }
+
+    public void setPermanent(boolean permanent) {
+        this.permanent = permanent;
     }
 
     public int getDamageOnStep() {

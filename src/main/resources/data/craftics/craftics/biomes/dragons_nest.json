@@ -28,6 +28,10 @@
     {"item": "minecraft:dragon_egg", "weight": 1},
     {"item": "minecraft:cobblestone", "weight": 4},
     {"item": "minecraft:emerald", "weight": 2},
-    {"item": "minecraft:amethyst_shard", "weight": 2}
+    {"item": "minecraft:amethyst_shard", "weight": 2},
+    {"item": "minecraft:enchanted_book", "weight": 1}
+  ],
+  "enchantment_loot": [
+    {"enchantment": "minecraft:mending", "weight": 1}
   ]
 }

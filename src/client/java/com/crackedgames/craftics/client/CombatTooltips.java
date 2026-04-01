@@ -561,13 +561,14 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+2 DEF when in offhand\n\u00a79Brace: \u00a77End turn for +5 DEF total\n\u00a77No AP cost \u2014 equip in offhand slot";
         if (item == Items.TOTEM_OF_UNDYING) return "\u00a76Passive: \u00a77Auto-activates on fatal hit\n\u00a77Restores 50% HP + Regen II\n\u00a77Consumed from inventory automatically";
         if (item == Items.MILK_BUCKET) return "\u00a7f1 AP \u00a77- Clears ALL status effects\n\u00a77Good and bad effects removed. Returns bucket.";
-        if (item == Items.TNT) return "\u00a7c1 AP \u00a77- Place on target tile\n\u00a7c8/5/3 DMG \u00a77in AoE (distance-based)\n\u00a7cSelf-damage if too close!";
+        if (item == Items.TNT) return "\u00a7c1 AP \u00a77- Place TNT on target tile\n\u00a7eExplodes next round!\n\u00a7c8/5/3 DMG \u00a77in AoE (distance-based)\n\u00a7cSelf-damage if within 2 tiles!";
         if (item == Items.COBWEB) return "\u00a771 AP \u00a77- Throw at enemy\n\u00a77Stuns target \u2014 they skip next turn";
         if (item == Items.FLINT_AND_STEEL) return "\u00a761 AP \u00a77- Set enemy on fire\n\u00a7c2 DMG \u00a77+ burns for 5 seconds\n\u00a77Uses durability";
         if (item == Items.FISHING_ROD) return "\u00a7b3 AP \u00a77- Cast into adjacent water tile\n\u00a77Random loot! Fish, treasure, rare items\n\u00a77Must stand next to water";
         if (item == Items.SADDLE) return "\u00a7e\u00a7lMount Item\n\u00a77Tame a horse/donkey/camel with its\n\u00a77breeding item + saddle for +3 Speed!";
         if (item == Items.SPYGLASS) return "\u00a7e1 AP \u00a77- Target an enemy\n\u00a77Reveals HP, ATK, DEF, Range, Speed";
         if (item == Items.COMPASS) return "\u00a761 AP \u00a77- Reveals all enemy positions\n\u00a77Shows grid coordinates of every enemy";
+        if (item == Items.RECOVERY_COMPASS) return "\u00a76Passive: \u00a77Consumed on death\n\u00a77Saves your full inventory one time instead of losing it";
         if (item == Items.BELL) return "\u00a762 AP \u00a77- Ring at target tile\n\u00a77Stuns ALL enemies within 2 tiles";
         if (item == Items.ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7c5 DMG \u00a77| Consumed on use";
         if (item == Items.HONEY_BLOCK) return "\u00a7e1 AP \u00a77- Place sticky trap\n\u00a77Enemies that step on it lose all movement";

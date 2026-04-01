@@ -37,6 +37,13 @@
     {"item": "minecraft:oak_log", "weight": 3},
     {"item": "minecraft:cobblestone", "weight": 4},
     {"item": "minecraft:lapis_lazuli", "weight": 2},
-    {"item": "minecraft:copper_ingot", "weight": 1}
+    {"item": "minecraft:copper_ingot", "weight": 1},
+    {"item": "minecraft:enchanted_book", "weight": 1}
+  ],
+  "enchantment_loot": [
+    {"enchantment": "minecraft:loyalty", "weight": 4},
+    {"enchantment": "minecraft:impaling", "weight": 3},
+    {"enchantment": "minecraft:riptide", "weight": 2},
+    {"enchantment": "minecraft:channeling", "weight": 1}
   ]
 }

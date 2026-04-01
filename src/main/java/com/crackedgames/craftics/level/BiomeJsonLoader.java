@@ -151,6 +151,23 @@ public class BiomeJsonLoader {
                 lootWeights[i] = lootEntry.has("weight") ? lootEntry.get("weight").getAsInt() : 5;
             }
 
+            // Enchantment loot (optional — biome-specific book enchantments)
+            String[] enchantmentLootIds;
+            int[] enchantmentLootWeights;
+            if (json.has("enchantment_loot")) {
+                JsonArray enchArray = json.getAsJsonArray("enchantment_loot");
+                enchantmentLootIds = new String[enchArray.size()];
+                enchantmentLootWeights = new int[enchArray.size()];
+                for (int i = 0; i < enchArray.size(); i++) {
+                    JsonObject e = enchArray.get(i).getAsJsonObject();
+                    enchantmentLootIds[i] = e.get("enchantment").getAsString();
+                    enchantmentLootWeights[i] = e.has("weight") ? e.get("weight").getAsInt() : 1;
+                }
+            } else {
+                enchantmentLootIds = new String[0];
+                enchantmentLootWeights = new int[0];
+            }
+
             return new BiomeTemplate(
                 id, name, order, levels,
                 baseWidth, baseHeight, widthGrowth, heightGrowth,
@@ -158,6 +175,7 @@ public class BiomeJsonLoader {
                 obstacleDensity, obstacleDensityGrowth,
                 passive, hostile, boss,
                 lootItems, lootWeights,
+                enchantmentLootIds, enchantmentLootWeights,
                 night, envStyle
             );
         } catch (Exception e) {

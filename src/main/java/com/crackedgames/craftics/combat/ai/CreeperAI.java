@@ -32,15 +32,9 @@ public class CreeperAI implements EnemyAI {
             ? self.getAttackPower() * 2
             : self.getAttackPower() + 3;
 
-        // Fuse active from last turn — creeper is LOCKED IN PLACE
+        // Fuse active from last turn — creeper ALWAYS explodes, no movement allowed
         if (self.getFuseTimer() > 0) {
-            if (dist <= explosionRadius) {
-                // BOOM!
-                return new EnemyAction.Explode(explosionDamage, explosionRadius);
-            } else {
-                // Player ran — fuse resets, creeper can move again
-                self.setFuseTimer(0);
-            }
+            return new EnemyAction.Explode(explosionDamage, explosionRadius);
         }
 
         // Adjacent — prime fuse (explodes NEXT turn)
