@@ -173,8 +173,8 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "infinity" -> "\u00a7e\u221E Infinity: \u00a77Unlimited arrows (no ammo cost)";
             case "punch" -> "\u00a7e\u2B05 Punch " + toRoman(level) + ": \u00a77Arrows push target " + level + " tile(s)";
             case "piercing" -> "\u00a78\u27B3 Piercing " + toRoman(level) + ": \u00a77Bolt hits " + (level + 1) + " targets";
-            case "multishot" -> "\u00a7d\u27B3 Multishot: \u00a77Fires 3 projectiles at once";
-            case "quick_charge" -> "\u00a7a\u26A1 Quick Charge " + toRoman(level) + ": \u00a77Crossbow costs " + Math.max(1, 2 - level) + " AP";
+            case "multishot" -> "\u00a7d\u27B3 Multishot: \u00a77Fires 2 extra bolts diagonally";
+            case "quick_charge" -> "\u00a7a\u26A1 Quick Charge " + toRoman(level) + ": \u00a77Crossbow costs " + Math.max(1, 4 - level) + " AP";
 
             // Armor defense
             case "protection" -> "\u00a79\u26E8 Protection " + toRoman(level) + ": \u00a77+" + (level / 2 + 1) + " defense";
@@ -473,7 +473,7 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         // Ranged
         if (item == Items.BOW) return "\u00a7c5 DMG \u00a77| \u00a7bRange 3 \u00a77| 1 AP | \u00a7bRanged\n\u00a77Consumes arrows. Tipped arrows apply effects.\n\u00a7dPower: \u00a77+1 DMG/lvl | \u00a76Flame: \u00a77Ignite | \u00a7eInfinity: \u00a77Free ammo";
-        if (item == Items.CROSSBOW) return "\u00a7c6 DMG \u00a77| \u00a7bRange 4 \u00a77| \u00a7c2 AP \u00a77| \u00a7bRanged\n\u00a7bPierce: \u00a77Bolt hits 2nd target for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.";
+        if (item == Items.CROSSBOW) return "\u00a7c6 DMG \u00a77| \u00a7bRange 4 \u00a77| \u00a7c4 AP \u00a77| \u00a7bRanged\n\u00a7bPierce: \u00a77Bolt hits targets behind for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.";
         if (item == Items.TRIDENT) return "\u00a7c8 DMG \u00a77| \u00a73Water\n\u00a77Melee (1 AP) when adjacent.\n\u00a77Throw (2 AP) in straight/diagonal lines.\n\u00a77Thrown trident lodges in ground \u2014 retrieve manually.\n\u00a7bLoyalty: \u00a77auto-returns | \u00a73Riptide: \u00a77dash | \u00a7eChanneling: \u00a77lightning";
 
         // ── Food ──

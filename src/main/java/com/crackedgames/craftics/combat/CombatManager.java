@@ -1333,6 +1333,11 @@ public class CombatManager {
             attackCost = 2;
         } else {
             attackCost = WeaponAbility.getAttackCost(weapon);
+            // Quick Charge reduces crossbow AP cost by 1 per level (min 1)
+            if (weapon == Items.CROSSBOW) {
+                int quickCharge = PlayerCombatStats.getQuickCharge(player);
+                attackCost = Math.max(1, attackCost - quickCharge);
+            }
         }
         if (apRemaining < attackCost) {
             sendMessage("§cNeed " + attackCost + " AP to attack! (have " + apRemaining + ")");

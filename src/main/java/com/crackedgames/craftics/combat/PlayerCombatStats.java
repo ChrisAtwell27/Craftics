@@ -394,6 +394,23 @@ public class PlayerCombatStats {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:punch");
     }
 
+    // ─── Crossbow enchantments ────────────────────────────────────────────
+
+    /** Quick Charge: reduces crossbow AP cost by 1 per level. */
+    public static int getQuickCharge(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:quick_charge");
+    }
+
+    /** Multishot: fires 2 extra diagonal bolts. */
+    public static boolean hasMultishot(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:multishot") > 0;
+    }
+
+    /** Piercing: bolt hits additional targets in line. Returns level (0 = none). */
+    public static int getPiercing(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:piercing");
+    }
+
     // ─── Mace enchantments ──────────────────────────────────────────────
 
     /** Density: bonus damage per level to mace AoE shockwave. */
