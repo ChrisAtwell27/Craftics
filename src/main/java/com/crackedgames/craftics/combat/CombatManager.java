@@ -1143,7 +1143,7 @@ public class CombatManager {
 
         switch (action.actionType()) {
             case CombatActionPayload.ACTION_MOVE -> handleMove(new GridPos(action.targetX(), action.targetZ()));
-            case CombatActionPayload.ACTION_ATTACK -> handleAttack(action.targetEntityId());
+            case CombatActionPayload.ACTION_ATTACK -> handleAttack(action.targetEntityId(), new GridPos(action.targetX(), action.targetZ()));
             case CombatActionPayload.ACTION_END_TURN -> handleEndTurn();
             case CombatActionPayload.ACTION_USE_ITEM -> handleUseItem(new GridPos(action.targetX(), action.targetZ()));
         }
@@ -1259,7 +1259,7 @@ public class CombatManager {
         return 6; // sword/fist default
     }
 
-    private void handleAttack(int targetEntityId) {
+    private void handleAttack(int targetEntityId, GridPos clickedTile) {
         // Block input while a previous attack is still resolving
         if (pendingAttackAction != null) return;
 
@@ -1345,7 +1345,19 @@ public class CombatManager {
             if (range > 1) range += getScaffoldRangeBonus(pPos);
 
             if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
-                if (!PlayerCombatStats.isInCrossbowLine(arena, pPos, tPos)) {
+                boolean crossbowInLine = false;
+                if (target.isBackgroundBoss()) {
+                    for (var occEntry : arena.getOccupants().entrySet()) {
+                        if (occEntry.getValue() == target
+                                && PlayerCombatStats.isInCrossbowLine(arena, pPos, occEntry.getKey())) {
+                            crossbowInLine = true;
+                            break;
+                        }
+                    }
+                } else {
+                    crossbowInLine = PlayerCombatStats.isInCrossbowLine(arena, pPos, tPos);
+                }
+                if (!crossbowInLine) {
                     sendMessage("§cCrossbow requires a clear straight line! (N/S/E/W only)");
                     return;
                 }
@@ -1564,9 +1576,11 @@ public class CombatManager {
 
         // Trigger client animation immediately (damage visuals are already delayed on client)
         // valueB = attacker entity ID so clients animate the correct player, not themselves
+        // For background bosses, use the clicked tile for camera zoom instead of the anchor
+        GridPos cameraTarget = (target.isBackgroundBoss() && clickedTile != null) ? clickedTile : tPos;
         sendToAllParty(new CombatEventPayload(
             CombatEventPayload.EVENT_DAMAGED, target.getEntityId(),
-            0, player.getId(), tPos.x(), tPos.z()  // 0 damage = animation trigger, valueB = attacker entity ID
+            0, player.getId(), cameraTarget.x(), cameraTarget.z()
         ));
 
         // Spawn projectile immediately for ranged (it needs flight time)
@@ -6754,7 +6768,12 @@ public class CombatManager {
 
     private void killEnemy(CombatEntity enemy) {
         enemy.takeDamage(9999);
-        arena.removeEntity(enemy); // free the tile for pathfinding
+        // Background bosses occupy many manually-registered tiles — clear them all
+        if (enemy.isBackgroundBoss()) {
+            arena.getOccupants().values().removeIf(e -> e == enemy);
+        } else {
+            arena.removeEntity(enemy);
+        }
         onEnemyKilled(enemy); // track kill streak
         // Clean up visual projectile entity
         if (enemy.isProjectile()) {
@@ -6762,6 +6781,20 @@ public class CombatManager {
         }
         MobEntity mob = enemy.getMobEntity();
         if (mob != null && mob.isAlive()) {
+            // Background boss death: big explosion + scream, then discard
+            if (enemy.isBackgroundBoss() && mob instanceof net.minecraft.entity.mob.GhastEntity ghast) {
+                ghast.setShooting(true); // scream face
+                ServerWorld world = (ServerWorld) player.getEntityWorld();
+                world.playSound(null, mob.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.ENTITY_GHAST_DEATH,
+                    net.minecraft.sound.SoundCategory.HOSTILE, 2.0f, 0.8f);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION_EMITTER,
+                    mob.getX(), mob.getY() + 2.0, mob.getZ(), 3, 1.0, 1.0, 1.0, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
+                    mob.getX(), mob.getY() + 2.0, mob.getZ(), 30, 2.0, 2.0, 2.0, 0.05);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                    mob.getX(), mob.getY() + 1.0, mob.getZ(), 20, 2.0, 1.5, 2.0, 0.03);
+            }
             // Pehkui death shrink — mob shrinks to 0 then gets discarded after delay
             startDeathShrink(mob);
             dyingMobs.add(mob);
