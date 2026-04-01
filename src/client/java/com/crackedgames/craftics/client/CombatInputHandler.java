@@ -163,7 +163,7 @@ public class CombatInputHandler {
                 int entityId = mappedId != null ? mappedId : -1;
                 if (entityId != -1) {
                     ClientPlayNetworking.send(new CombatActionPayload(
-                        CombatActionPayload.ACTION_ATTACK, 0, 0, entityId
+                        CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), entityId
                     ));
                 } else if (client.player != null) {
                     client.player.sendMessage(

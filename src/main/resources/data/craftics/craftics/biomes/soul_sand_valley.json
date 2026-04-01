@@ -17,7 +17,7 @@
       {"type": "minecraft:ghast", "weight": 3, "hp": 12, "attack": 6, "defense": 0, "range": 5},
       {"type": "minecraft:wither_skeleton", "weight": 4, "hp": 16, "attack": 7, "defense": 1, "range": 2}
     ],
-    "boss": {"type": "minecraft:ghast", "hp": 60, "attack": 8, "defense": 2, "range": 6}
+    "boss": {"type": "minecraft:ghast", "hp": 90, "attack": 10, "defense": 3, "range": 6}
   },
   "loot": [
     {"item": "minecraft:bone", "weight": 10},
