@@ -24,6 +24,7 @@ public record CombatEventPayload(int eventType, int entityId,
     public static final int EVENT_COMBAT_LOST = 5;
     public static final int EVENT_TILE_WARNING = 6;
     public static final int EVENT_MOB_ATTACK_ANIM = 7;
+    public static final int EVENT_PLAYER_DOWNED = 8;
 
     public static final CustomPayload.Id<CombatEventPayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "combat_event"));

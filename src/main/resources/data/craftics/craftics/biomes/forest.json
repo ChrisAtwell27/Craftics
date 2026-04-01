@@ -41,6 +41,12 @@
     {"item": "minecraft:brown_mushroom", "weight": 3},
     {"item": "minecraft:iron_ingot", "weight": 2},
     {"item": "minecraft:amethyst_shard", "weight": 1},
-    {"item": "minecraft:leather", "weight": 4}
+    {"item": "minecraft:leather", "weight": 4},
+    {"item": "minecraft:enchanted_book", "weight": 1}
+  ],
+  "enchantment_loot": [
+    {"enchantment": "minecraft:quick_charge", "weight": 4},
+    {"enchantment": "minecraft:piercing", "weight": 3},
+    {"enchantment": "minecraft:multishot", "weight": 2}
   ]
 }

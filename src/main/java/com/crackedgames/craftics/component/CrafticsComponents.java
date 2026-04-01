@@ -16,6 +16,13 @@ public final class CrafticsComponents {
             PlayerProgressionComponent.class
         );
 
+    /** One-shot death protection state used by the recovery compass. */
+    public static final ComponentKey<DeathProtectionComponent> DEATH_PROTECTION =
+        ComponentRegistryV3.INSTANCE.getOrCreate(
+            Identifier.of("craftics", "death_protection"),
+            DeathProtectionComponent.class
+        );
+
     /** World-level game data: emeralds, biome progress, NG+. Attached to the overworld. */
     public static final ComponentKey<WorldDataComponent> WORLD_DATA =
         ComponentRegistryV3.INSTANCE.getOrCreate(

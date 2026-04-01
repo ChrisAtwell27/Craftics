@@ -18,7 +18,7 @@
   "enemies": {
     "passive": [],
     "hostile": [
-      {"type": "minecraft:zombie", "weight": 4, "hp": 15, "attack": 4, "defense": 2, "range": 1},
+      {"type": "minecraft:silverfish", "weight": 4, "hp": 15, "attack": 4, "defense": 2, "range": 1},
       {"type": "minecraft:skeleton", "weight": 4, "hp": 12, "attack": 5, "defense": 2, "range": 3},
       {"type": "minecraft:creeper", "weight": 3, "hp": 14, "attack": 6, "defense": 1, "range": 1},
       {"type": "minecraft:spider", "weight": 3, "hp": 12, "attack": 4, "defense": 2, "range": 1},
@@ -38,6 +38,11 @@
     {"item": "minecraft:lapis_lazuli", "weight": 3},
     {"item": "minecraft:copper_ingot", "weight": 2},
     {"item": "minecraft:amethyst_shard", "weight": 2},
-    {"item": "minecraft:emerald", "weight": 2}
+    {"item": "minecraft:emerald", "weight": 2},
+    {"item": "minecraft:recovery_compass", "weight": 1},
+    {"item": "minecraft:enchanted_book", "weight": 1}
+  ],
+  "enchantment_loot": [
+    {"enchantment": "minecraft:swift_sneak", "weight": 1}
   ]
 }

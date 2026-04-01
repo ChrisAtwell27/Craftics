@@ -20,6 +20,12 @@ public class ComponentInit implements EntityComponentInitializer, WorldComponent
             player -> new PlayerProgressionComponent(),
             RespawnCopyStrategy.ALWAYS_COPY
         );
+
+        registry.registerForPlayers(
+            CrafticsComponents.DEATH_PROTECTION,
+            player -> new DeathProtectionComponent(),
+            RespawnCopyStrategy.ALWAYS_COPY
+        );
     }
 
     @Override

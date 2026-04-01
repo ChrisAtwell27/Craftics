@@ -26,6 +26,10 @@
     {"item": "minecraft:end_rod", "weight": 6},
     {"item": "minecraft:cobblestone", "weight": 4},
     {"item": "minecraft:diamond", "weight": 2},
-    {"item": "minecraft:emerald", "weight": 1}
+    {"item": "minecraft:emerald", "weight": 1},
+    {"item": "minecraft:enchanted_book", "weight": 1}
+  ],
+  "enchantment_loot": [
+    {"enchantment": "minecraft:mending", "weight": 1}
   ]
 }

@@ -127,6 +127,15 @@ public class CrafticsClient implements ClientModInitializer {
                         CombatVisualEffects.spawnDeathTextAtEntity(
                             payload.entityId(), "Enemy");
                     }
+                    case com.crackedgames.craftics.network.CombatEventPayload.EVENT_COMBAT_LOST -> {
+                        // Full death: dark red vignette that fades in over the death animation
+                        CombatVisualEffects.startDeathOverlay(payload.valueA());
+                    }
+                    case com.crackedgames.craftics.network.CombatEventPayload.EVENT_PLAYER_DOWNED -> {
+                        // Downed (multiplayer): brief orange flash, shake, "DOWNED" text
+                        CombatVisualEffects.flashDowned();
+                        CombatVisualEffects.triggerShake(0.8f);
+                    }
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_MOB_ATTACK_ANIM -> {
                         // Focus camera on attacker
                         if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
@@ -166,6 +175,7 @@ public class CrafticsClient implements ClientModInitializer {
         // Server tells us to exit combat mode
         ClientPlayNetworking.registerGlobalReceiver(ExitCombatPayload.ID, (payload, context) -> {
             CombatState.setInCombat(false);
+            CombatVisualEffects.resetOverlays();
             context.client().options.getBobView().setValue(previousBobView);
             context.client().options.getChatScale().setValue(previousChatScale);
             context.client().options.getChatWidth().setValue(previousChatWidth);

@@ -61,11 +61,15 @@ public class GridArena {
     // --- Occupant tracking ---
 
     public boolean isOccupied(GridPos pos) {
-        return occupants.containsKey(pos) || pos.equals(playerGridPos);
+        if (pos.equals(playerGridPos)) return true;
+        var occupant = occupants.get(pos);
+        // Background bosses don't block movement — they're targetable but pass-through
+        return occupant != null && !occupant.isBackgroundBoss();
     }
 
     public boolean isEnemyOccupied(GridPos pos) {
-        return occupants.containsKey(pos);
+        var occupant = occupants.get(pos);
+        return occupant != null && !occupant.isBackgroundBoss();
     }
 
     public CombatEntity getOccupant(GridPos pos) {

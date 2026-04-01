@@ -17,6 +17,7 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
@@ -34,6 +35,7 @@ import com.crackedgames.craftics.combat.ai.boss.BroodmotherAI;
 import com.crackedgames.craftics.combat.ai.boss.MoltenKingAI;
 import com.crackedgames.craftics.combat.ai.boss.ShulkerArchitectAI;
 import com.crackedgames.craftics.combat.ai.boss.WailingRevenantAI;
+import com.crackedgames.craftics.component.DeathProtectionComponent;
 import com.crackedgames.craftics.core.GridTile;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.achievement.AchievementManager;
@@ -145,7 +147,10 @@ public class CombatManager {
     // Mobs shrinking via Pehkui death anim — (mob, ticksRemaining)
     private final List<MobEntity> dyingMobs = new ArrayList<>();
     private final List<Integer> dyingMobTimers = new ArrayList<>();
+    private final List<Float> dyingMobStartScales = new ArrayList<>(); // original scale for gradual shrink
     private CombatPhase phase;
+    private int playerDeathAnimTick = 0;
+    private static final int PLAYER_DEATH_ANIM_TICKS = 60; // ~3 seconds at 20 TPS
     private int apRemaining;
     private int movePointsRemaining;
     private int turnNumber;
@@ -476,8 +481,9 @@ public class CombatManager {
     private record PendingBossWarning(CombatEntity boss, EnemyAction.BossAbility ability) {}
     private final List<PendingBossWarning> pendingBossWarnings = new ArrayList<>();
 
-    // Physical warning blocks — original blocks saved for restoration
-    private final java.util.Map<BlockPos, net.minecraft.block.BlockState> warningOriginalBlocks = new java.util.HashMap<>();
+    // Pending TNT explosions — placed this turn, detonate at the start of next round
+    private record PendingTnt(GridPos tile, BlockPos blockPos) {}
+    private final List<PendingTnt> pendingTnts = new ArrayList<>();
 
     // Pottery Sherd spell state — Prize sherd sets this, consumed on next attack
     private boolean tripleDamageNextAttack = false;
@@ -524,21 +530,7 @@ public class CombatManager {
         player.setHealth(Math.max(1, player.getHealth() - actual));
         onPlayerDamaged(); // reset kill streak
         achievementTracker.recordPlayerTookDamage();
-
-        // Totem of Undying: if player would die (HP <= 1), check for totem in inventory
-        if (getPlayerHp() <= 0) {
-            for (int i = 0; i < player.getInventory().size(); i++) {
-                if (player.getInventory().getStack(i).getItem() == Items.TOTEM_OF_UNDYING) {
-                    player.getInventory().getStack(i).decrement(1);
-                    player.setHealth(player.getMaxHealth() / 2);
-                    player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
-                        net.minecraft.entity.effect.StatusEffects.REGENERATION, 900, 1));
-                    sendMessage("\u00a76\u00a7l\u2726 TOTEM OF UNDYING ACTIVATES! \u2726 \u00a7rResurrected with half health!");
-                    achievementTracker.recordTotemProc();
-                    break;
-                }
-            }
-        }
+        // Totem check is handled in handlePlayerDeathOrGameOver()
     }
 
     /** Get melee bonus from progression. */
@@ -587,6 +579,11 @@ public class CombatManager {
     private static final int ATTACK_ANIM_RETURN_TICKS = 4;
     private static final int ATTACK_ANIM_TOTAL_TICKS = ATTACK_ANIM_LUNGE_TICKS + ATTACK_ANIM_RETURN_TICKS;
     private static final double ATTACK_LUNGE_DISTANCE = 0.55;
+    // Ranged attack animation (lean back to aim, then snap forward on release)
+    private static final int RANGED_ANIM_DRAW_TICKS = 6;
+    private static final int RANGED_ANIM_RELEASE_TICKS = 3;
+    private static final int RANGED_ANIM_TOTAL_TICKS = RANGED_ANIM_DRAW_TICKS + RANGED_ANIM_RELEASE_TICKS;
+    private static final double RANGED_LEAN_DISTANCE = 0.35;
     private int attackAnimTick;
     private double attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ;
     private double attackAnimLungeX, attackAnimLungeZ; // direction unit vector
@@ -881,8 +878,18 @@ public class CombatManager {
         // Spawn enemies — remap definition coordinates to the live arena size and
         // resolve to the nearest valid tile if environment bleed or custom arena
         // geometry made the exact spot unusable.
+        // Check if this is a ghast boss fight — if so, skip regular ghast spawns
+        boolean isGhastBossFight = "minecraft:ghast".equals(bossEntityTypeId);
+
         boolean bossSpawned = false;
         for (LevelDefinition.EnemySpawn spawn : levelDef.getEnemySpawns()) {
+            // In ghast boss fights, skip all regular ghasts (only the boss ghast spawns)
+            boolean isBossSpawn = !bossSpawned && bossEntityTypeId != null
+                && spawn.entityTypeId().equals(bossEntityTypeId);
+            if (isGhastBossFight && "minecraft:ghast".equals(spawn.entityTypeId()) && !isBossSpawn) {
+                continue;
+            }
+
             GridPos requestedPos = spawn.position();
             GridPos adaptedPos = adaptSpawnToArena(requestedPos, levelDef, arena);
             int size = CombatEntity.getDefaultSizeStatic(spawn.entityTypeId());
@@ -959,8 +966,10 @@ public class CombatManager {
                 // Position entity at center of occupied area
                 // 1x1 mobs: center of tile (+0.5), 2x2 mobs: corner where 4 tiles meet (+1.0)
                 double offset = size > 1 ? 1.0 : 0.5;
+                // Ghasts float 1 block higher so they don't phase into the ground
+                double spawnY = spawnPos.getY() + ("minecraft:ghast".equals(spawn.entityTypeId()) ? 1.0 : 0.0);
                 mob.refreshPositionAndAngles(
-                    spawnPos.getX() + offset, spawnPos.getY(), spawnPos.getZ() + offset,
+                    spawnPos.getX() + offset, spawnY, spawnPos.getZ() + offset,
                     mob.getYaw(), mob.getPitch()
                 );
                 mob.setAiDisabled(true);
@@ -970,6 +979,15 @@ public class CombatManager {
                 mob.setPersistent();
                 mob.setHealth(mob.getMaxHealth()); // Ensure full vanilla health after spawn
                 mob.addCommandTag("craftics_arena");
+
+                // Scale down naturally oversized mobs to fit their grid size
+                if ("minecraft:ghast".equals(spawn.entityTypeId())) {
+                    scaleBoss(mob, 0.5); // Vanilla ghast is 4x4x4; 0.5 → ~2x2 blocks
+                    // Ghasts must face a cardinal direction — snap to nearest 90°
+                    float ghastYaw = snapToCardinalYaw(mob.getYaw());
+                    mob.setYaw(ghastYaw);
+                    mob.setHeadYaw(ghastYaw);
+                }
 
                 boolean isBoss = !bossSpawned && bossEntityTypeId != null
                     && spawn.entityTypeId().equals(bossEntityTypeId);
@@ -1078,6 +1096,9 @@ public class CombatManager {
         if (CrafticsMod.CONFIG.showEnemyIntentions()) {
             showEnemyIntentionPreviews();
         }
+
+        // Create a no-collision team for all arena entities to prevent player pushing
+        setupNoCollisionTeam();
 
         sendSync();
         refreshHighlights();
@@ -1331,7 +1352,18 @@ public class CombatManager {
             } else {
                 boolean isRanged = PlayerCombatStats.isBow(player);
                 int dist;
-                if (target.getSize() > 1) {
+                if (target.isBackgroundBoss()) {
+                    // Background boss: find min distance to any tile it occupies
+                    dist = Integer.MAX_VALUE;
+                    for (var occEntry : arena.getOccupants().entrySet()) {
+                        if (occEntry.getValue() == target) {
+                            int d = isRanged ? pPos.manhattanDistance(occEntry.getKey())
+                                : Math.max(Math.abs(pPos.x() - occEntry.getKey().x()),
+                                           Math.abs(pPos.z() - occEntry.getKey().z()));
+                            if (d < dist) dist = d;
+                        }
+                    }
+                } else if (target.getSize() > 1) {
                     dist = target.minDistanceTo(pPos);
                 } else {
                     dist = isRanged ? pPos.manhattanDistance(tPos)
@@ -1917,6 +1949,30 @@ public class CombatManager {
 
     public void checkAndHandleDeathPublic(CombatEntity entity) { checkAndHandleDeath(entity); }
 
+    /**
+     * Check if an enemy has landed on a void/death tile and kill it instantly if so.
+     * Returns true if the enemy fell to its death.
+     */
+    private boolean checkEnemyFallDeath(CombatEntity entity) {
+        if (entity == null || !entity.isAlive()) return false;
+        GridPos pos = entity.getGridPos();
+        if (pos == null || !arena.isInBounds(pos)) return false;
+        GridTile tile = arena.getTile(pos);
+        if (tile != null && tile.getType() == TileType.VOID) {
+            sendMessage("§c" + entity.getDisplayName() + " fell to its death!");
+            // Death particles at the edge
+            if (entity.getMobEntity() != null) {
+                ServerWorld world = (ServerWorld) player.getEntityWorld();
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    entity.getMobEntity().getX(), entity.getMobEntity().getY(), entity.getMobEntity().getZ(),
+                    10, 0.3, 0.3, 0.3, 0.05);
+            }
+            killEnemy(entity);
+            return true;
+        }
+        return false;
+    }
+
     private void checkAndHandleDeath(CombatEntity entity) {
         if (!entity.isAlive()) {
             // Notify bosses of minion death (crystals, turrets, chains, etc.)
@@ -1949,8 +2005,12 @@ public class CombatManager {
                     net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 0.8f);
             }
 
-            if (entity.getMobEntity() != null) {
-                entity.getMobEntity().discard();
+            // Shrink animation then discard (instead of instant removal)
+            MobEntity mob = entity.getMobEntity();
+            if (mob != null) {
+                startDeathShrink(mob);
+                dyingMobs.add(mob);
+                dyingMobTimers.add(20);
             }
             sendToAllParty(new CombatEventPayload(
                 CombatEventPayload.EVENT_DIED, entity.getEntityId(), 0, 0,
@@ -2222,7 +2282,7 @@ public class CombatManager {
                 mob.setCustomName(Text.literal("§9§lThe Wailing Revenant"));
                 mob.setCustomNameVisible(true);
                 // No equipment — ghast is already ghostly
-                scaleBoss(mob, 1.4); // Ghast is already large
+                scaleBoss(mob, 2.0); // Huge ghast looming over the edge of the arena
             }
             case "crimson_forest" -> { // The Crimson Ravager — Hoglin
                 mob.setCustomName(Text.literal("§4§lThe Crimson Ravager"));
@@ -2282,6 +2342,15 @@ public class CombatManager {
         if (scaleAttr != null) {
             scaleAttr.setBaseValue(scale);
         }
+    }
+
+    /** Snap a yaw angle to the nearest cardinal direction (0, 90, 180, -90). */
+    private static float snapToCardinalYaw(float yaw) {
+        float normalized = ((yaw % 360) + 360) % 360; // 0..360
+        if (normalized < 45 || normalized >= 315) return 0f;
+        if (normalized < 135) return 90f;
+        if (normalized < 225) return 180f;
+        return -90f; // 225..315
     }
 
     /**
@@ -2415,11 +2484,20 @@ public class CombatManager {
         }
     }
 
-    /** Shrink a dying mob to near-zero (death animation). */
-    private static void startDeathShrink(MobEntity mob) {
+    /** Start a dying mob's gradual shrink + death particles. */
+    private void startDeathShrink(MobEntity mob) {
         var scaleAttr = mob.getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
-        if (scaleAttr != null) {
-            scaleAttr.setBaseValue(0.05); // near-zero, vanishes visually
+        float startScale = scaleAttr != null ? (float) scaleAttr.getBaseValue() : 1.0f;
+        dyingMobStartScales.add(startScale);
+
+        // Hurt flash + death sound
+        mob.setHealth(0);
+
+        // Initial death poof particles
+        if (mob.getWorld() instanceof ServerWorld sw) {
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.POOF,
+                mob.getX(), mob.getY() + mob.getHeight() / 2, mob.getZ(),
+                10, 0.3, 0.3, 0.3, 0.02);
         }
     }
 
@@ -2452,6 +2530,9 @@ public class CombatManager {
             int dx = next.x() - prev.x();
             int dz = next.z() - prev.z();
             float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            if ("minecraft:ghast".equals(currentEnemy.getEntityTypeId())) {
+                yaw = snapToCardinalYaw(yaw);
+            }
             mob.setYaw(yaw);
             mob.setHeadYaw(yaw);
         }
@@ -2620,6 +2701,19 @@ public class CombatManager {
                     break;
                 }
             }
+        }
+        // Handle TNT placement — track for detonation next round
+        else if (result.startsWith(ItemUseHandler.TNT_PREFIX)) {
+            String coords = result.substring(ItemUseHandler.TNT_PREFIX.length());
+            String[] parts = coords.split(",");
+            int tx = Integer.parseInt(parts[0]);
+            int tz = Integer.parseInt(parts[1]);
+            GridPos tntPos = new GridPos(tx, tz);
+            BlockPos tntBp = arena.gridToBlockPos(tntPos);
+            pendingTnts.add(new PendingTnt(tntPos, tntBp));
+            // Mark the tile as a warning so the red overlay shows
+            highlightWarningTile(tntPos);
+            sendMessage("§e§lTNT placed! §r§7It will explode at the start of next round!");
         }
         else {
             sendMessage(result);
@@ -3001,13 +3095,47 @@ public class CombatManager {
 
         tickCounter++;
 
-        // Fall death: if player drops more than 2 blocks below arena floor, instant death
+        // Fall death: if player drops more than 2 blocks below arena floor, instant death.
+        // This bypasses totem — falling off the arena is environmental, not combat.
+        // Teleport back first to prevent vanilla lava/void damage loops.
         if (arena != null) {
             int arenaFloorY = arena.getOrigin().getY();
             if (player.getY() < arenaFloorY - 2) {
+                // Immediately teleport back to arena to stop vanilla damage
+                BlockPos safePos = arena.getPlayerStartBlockPos();
+                if (safePos != null) {
+                    player.requestTeleport(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
+                }
+                player.setFireTicks(0); // extinguish
+                player.setFrozenTicks(0);
+                player.setHealth(1);
                 sendMessage("§c§l☠ You fell to your death!");
-                player.setHealth(1); // clamp threshold — getPlayerHp() returns 0
-                handlePlayerDeathOrGameOver();
+                // Skip totem — go straight to death/game over
+                if (partyPlayers.size() <= 1) {
+                    startPlayerDeathAnimation();
+                } else {
+                    deadPartyMembers.add(player.getUuid());
+                    player.changeGameMode(net.minecraft.world.GameMode.SPECTATOR);
+                    sendMessage("§c§l☠ " + player.getName().getString() + " has fallen!");
+                    ServerPlayerEntity nextAlive = null;
+                    for (ServerPlayerEntity member : partyPlayers) {
+                        if (!deadPartyMembers.contains(member.getUuid())
+                                && member != null && !member.isRemoved() && !member.isDisconnected()) {
+                            nextAlive = member;
+                            break;
+                        }
+                    }
+                    if (nextAlive == null) {
+                        startPlayerDeathAnimation();
+                    } else {
+                        sendMessage("§e" + nextAlive.getName().getString() + " takes over the fight!");
+                        nextAlive.requestTeleport(
+                            arena.getPlayerStartBlockPos().getX() + 0.5,
+                            arena.getPlayerStartBlockPos().getY(),
+                            arena.getPlayerStartBlockPos().getZ() + 0.5);
+                        this.player = nextAlive;
+                    }
+                }
                 return;
             }
         }
@@ -3119,9 +3247,10 @@ public class CombatManager {
                 }
 
                 // Snap idle mobs to their grid position to prevent entity drift
-                // Skip the mob currently being animated
-                if (e != currentEnemy || enemyTurnState == EnemyTurnState.DONE
-                        || enemyTurnState == EnemyTurnState.DECIDING) {
+                // Skip the mob currently being animated and background bosses (positioned off-grid)
+                if (!e.isBackgroundBoss()
+                        && (e != currentEnemy || enemyTurnState == EnemyTurnState.DONE
+                        || enemyTurnState == EnemyTurnState.DECIDING)) {
                     BlockPos gridBlock = arena.gridToBlockPos(e.getGridPos());
                     double sizeOffset = e.getSize() > 1 ? e.getSize() / 2.0 : 0.5;
                     double targetX = gridBlock.getX() + sizeOffset;
@@ -3130,6 +3259,10 @@ public class CombatManager {
                     double driftZ = Math.abs(mob.getZ() - targetZ);
                     if (driftX > 0.1 || driftZ > 0.1) {
                         mob.requestTeleport(targetX, gridBlock.getY(), targetZ);
+                    }
+                    // Keep visual projectile entity synced with tracking mob
+                    if (e.isProjectile() && e.getVisualProjectileEntityId() != -1) {
+                        syncVisualProjectile(e, targetX, gridBlock.getY() + 0.5, targetZ);
                     }
                 }
             }
@@ -3144,15 +3277,33 @@ public class CombatManager {
             }
         }
 
-        // Tick dying mobs (Pehkui shrink animation then discard)
+        // Tick dying mobs (gradual shrink animation + particles then discard)
         for (int i = dyingMobs.size() - 1; i >= 0; i--) {
             int remaining = dyingMobTimers.get(i) - 1;
+            MobEntity dyingMob = dyingMobs.get(i);
             if (remaining <= 0) {
-                dyingMobs.get(i).discard();
+                dyingMob.discard();
                 dyingMobs.remove(i);
                 dyingMobTimers.remove(i);
+                dyingMobStartScales.remove(i);
             } else {
                 dyingMobTimers.set(i, remaining);
+                // Gradual shrink: interpolate from original scale to near-zero over 15 ticks
+                float startScale = i < dyingMobStartScales.size() ? dyingMobStartScales.get(i) : 1.0f;
+                int totalShrinkTicks = 15;
+                int elapsed = 20 - remaining; // total timer is 20
+                float progress = Math.min(1.0f, (float) elapsed / totalShrinkTicks);
+                float eased = progress * progress; // accelerating shrink
+                float currentScale = startScale * (1.0f - eased) + 0.01f * eased;
+                var scaleAttr = dyingMob.getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
+                if (scaleAttr != null) scaleAttr.setBaseValue(currentScale);
+
+                // Smoke particles during shrink
+                if (elapsed % 3 == 0 && dyingMob.getWorld() instanceof ServerWorld sw) {
+                    sw.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                        dyingMob.getX(), dyingMob.getY() + 0.3, dyingMob.getZ(),
+                        3, 0.2, 0.2, 0.2, 0.01);
+                }
             }
         }
 
@@ -3160,6 +3311,7 @@ public class CombatManager {
             case ANIMATING -> tickAnimation();
             case REACTING -> tickReacting();
             case ENEMY_TURN -> tickEnemyTurn();
+            case PLAYER_DYING -> tickPlayerDying();
             default -> {}
         }
     }
@@ -3393,7 +3545,7 @@ public class CombatManager {
             // Apply per-turn effects (regen, poison, wither, burning)
             int hpChange = combatEffects.applyPerTurnEffects();
             if (hpChange != 0 && player != null) {
-                float newHp = Math.max(0, Math.min(player.getMaxHealth(), player.getHealth() + hpChange));
+                float newHp = Math.max(1, Math.min(player.getMaxHealth(), player.getHealth() + hpChange));
                 player.setHealth(newHp);
                 if (hpChange > 0) {
                     sendMessage("§a♥ Regeneration healed " + hpChange + " HP");
@@ -3413,7 +3565,7 @@ public class CombatManager {
             if (playerTile != null) {
                 net.minecraft.block.Block tileBlock = playerTile.getBlockType();
                 if (tileBlock == Blocks.MAGMA_BLOCK && !combatEffects.hasFireResistance()) {
-                    player.setHealth(Math.max(0, player.getHealth() - 1));
+                    player.setHealth(Math.max(1, player.getHealth() - 1));
                     sendMessage("§c🔥 Magma burns you for 1 damage!");
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 } else if (tileBlock == Blocks.SOUL_SAND || tileBlock == Blocks.SOUL_SOIL) {
@@ -3465,7 +3617,7 @@ public class CombatManager {
                     }
                     // Also damage player if standing in the cloud
                     if (arena.getPlayerGridPos().manhattanDistance(tPos) <= 1) {
-                        player.setHealth(Math.max(0, player.getHealth() - 1));
+                        player.setHealth(Math.max(1, player.getHealth() - 1));
                         sendMessage("§5You breathe in the poison cloud! -1 HP");
                         if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                     }
@@ -3508,6 +3660,13 @@ public class CombatManager {
             turnNumber++;
             achievementTracker.recordTurnCompleted();
 
+            // Reset ghast scream face at start of player's turn
+            for (CombatEntity e : enemies) {
+                if (e.isAlive() && e.isBackgroundBoss()) {
+                    triggerGhastScream(e, false);
+                }
+            }
+
             // Track living allies for Zookeeper achievement
             long allyCount = enemies.stream().filter(e -> e.isAlive() && e.isAlly()).count();
             achievementTracker.recordLivingAllies((int) allyCount);
@@ -3532,6 +3691,8 @@ public class CombatManager {
 
             // Tick temporary terrain tiles (boss fire pools, obstacles, etc.)
             tickTemporaryTerrain();
+            // Detonate any TNT placed last round
+            detonatePendingTnts();
             // Clear shield brace from previous turn
             shieldBraced = false;
 
@@ -3650,8 +3811,6 @@ public class CombatManager {
 
         // Resolve any pending boss warnings from last turn before the boss acts again
         if (currentEnemy.isBoss()) {
-            // Clear physical warning blocks first
-            clearWarningBlocks();
             resolvePendingBossWarnings(currentEnemy);
         }
 
@@ -3730,13 +3889,13 @@ public class CombatManager {
                 if (dist <= explode.radius()) {
                     int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
                     int actual = Math.max(1, explode.damage() - playerDefense);
-                    player.setHealth(Math.max(0, player.getHealth() - actual));
+                    player.setHealth(Math.max(1, player.getHealth() - actual));
                     sendMessage("§c  Explosion hits you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 }
-                // Damage other mobs caught in the blast (configurable friendly fire)
+                // Damage other mobs caught in the blast (explosions always hit nearby mobs)
                 List<CombatEntity> blastTargets = new ArrayList<>();
-                if (CrafticsMod.CONFIG.friendlyFireEnabled()) for (CombatEntity other : enemies) {
+                for (CombatEntity other : enemies) {
                     if (other == currentEnemy || !other.isAlive()) continue;
                     if (selfPos.manhattanDistance(other.getGridPos()) <= explode.radius()) {
                         blastTargets.add(other);
@@ -3747,7 +3906,8 @@ public class CombatManager {
                     sendMessage("§6  Blast hits " + target.getDisplayName() + " for " + dealt + "!");
                     checkAndHandleDeath(target);
                 }
-                // Creeper dies from explosion
+                // Creeper dies from explosion — mark as self-exploded (no drops)
+                currentEnemy.setSelfExploded(true);
                 currentEnemy.takeDamage(9999);
                 killEnemy(currentEnemy);
                 sendSync();
@@ -3755,48 +3915,46 @@ public class CombatManager {
                 enemyTurnDelay = 8;
             }
             case EnemyAction.RangedAttack ra -> {
-                // Ranged attack — different messages by effect type
-                String attackVerb = switch (ra.effectName() != null ? ra.effectName() : "") {
-                    case "fireball" -> " hurls a fireball!";
-                    case "fire" -> " shoots a fire charge!";
-                    case "shulker_bullet" -> " fires a shulker bullet!";
-                    case "arrow" -> " shoots an arrow!";
-                    case "frost_arrow" -> " shoots a frost arrow!";
-                    case "crossbow" -> " fires a crossbow bolt!";
-                    case "trident" -> " hurls a trident!";
-                    case "sonic_boom" -> " unleashes a sonic boom!";
-                    case "llama_spit" -> " spits at you!";
-                    default -> " throws a potion!";
-                };
-                sendMessage("§d" + currentEnemy.getDisplayName() + attackVerb);
-
-                // Spawn visible projectile from enemy to player
-                BlockPos enemyBlock = arena.gridToBlockPos(currentEnemy.getGridPos());
-                BlockPos playerBlock = arena.gridToBlockPos(arena.getPlayerGridPos());
-                ProjectileSpawner.spawnProjectile(
-                    (ServerWorld) player.getEntityWorld(), enemyBlock, playerBlock,
-                    ra.effectName());
-
-                int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-                int actual = Math.max(1, ra.damage() - playerDefense);
-                player.setHealth(Math.max(0, player.getHealth() - actual));
-                sendMessage("§c  Hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                applyEnemyHitEffect(currentEnemy.getEntityTypeId());
-                sendSync();
-                if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
-                enemyTurnState = EnemyTurnState.DONE;
-                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                // Ranged attack — play aim animation first, then resolve in ATTACKING phase
+                startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
             case EnemyAction.Swoop swoop -> {
                 // Phantom swoop — fly along path, damage player if in the way
                 sendMessage("§8" + currentEnemy.getDisplayName() + " swoops!");
+                ServerWorld swoopWorld = (ServerWorld) player.getEntityWorld();
                 boolean hitPlayer = false;
                 GridPos playerGridPos = arena.getPlayerGridPos();
                 GridPos finalPos = currentEnemy.getGridPos();
+
+                // Determine swoop particle based on the boss
+                net.minecraft.particle.ParticleEffect swoopTrail = net.minecraft.particle.ParticleTypes.CLOUD;
+                net.minecraft.particle.ParticleEffect swoopAccent = net.minecraft.particle.ParticleTypes.SMOKE;
+                if (currentEnemy.getAiKey() != null) {
+                    String aiKey = currentEnemy.getAiKey();
+                    if (aiKey.contains("wither") || aiKey.contains("Wither")) {
+                        swoopTrail = net.minecraft.particle.ParticleTypes.SOUL;
+                        swoopAccent = net.minecraft.particle.ParticleTypes.LARGE_SMOKE;
+                    } else if (aiKey.contains("crimson") || aiKey.contains("Crimson")) {
+                        swoopTrail = net.minecraft.particle.ParticleTypes.CRIMSON_SPORE;
+                        swoopAccent = net.minecraft.particle.ParticleTypes.FLAME;
+                    } else if (aiKey.contains("revenant") || aiKey.contains("Revenant")) {
+                        swoopTrail = net.minecraft.particle.ParticleTypes.SMOKE;
+                        swoopAccent = net.minecraft.particle.ParticleTypes.SOUL;
+                    }
+                }
+
                 for (GridPos pos : swoop.path()) {
                     if (pos.equals(playerGridPos)) {
                         hitPlayer = true;
                     }
+                    // Trail particles along each swoop tile
+                    BlockPos swoopBp = arena.gridToBlockPos(pos);
+                    swoopWorld.spawnParticles(swoopTrail,
+                        swoopBp.getX() + 0.5, swoopBp.getY() + 1.0, swoopBp.getZ() + 0.5,
+                        4, 0.2, 0.3, 0.2, 0.02);
+                    swoopWorld.spawnParticles(swoopAccent,
+                        swoopBp.getX() + 0.5, swoopBp.getY() + 0.5, swoopBp.getZ() + 0.5,
+                        2, 0.15, 0.2, 0.15, 0.01);
                     finalPos = pos;
                 }
                 // Move phantom to end of swoop path
@@ -3810,8 +3968,13 @@ public class CombatManager {
                 if (hitPlayer) {
                     int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
                     int actual = Math.max(1, swoop.damage() - playerDefense);
-                    player.setHealth(Math.max(0, player.getHealth() - actual));
+                    player.setHealth(Math.max(1, player.getHealth() - actual));
                     sendMessage("§c  Swoops through you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                    // Impact burst on player
+                    swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                        player.getX(), player.getY() + 1.0, player.getZ(), 10, 0.3, 0.5, 0.3, 0.03);
+                    swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                        player.getX(), player.getY() + 0.8, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
                     sendSync();
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 }
@@ -3861,6 +4024,8 @@ public class CombatManager {
                             && ba.getPendingWarning() != null) {
                         renderBossWarning(ba.getPendingWarning());
                     }
+                    // Ghast scream animation when telegraphing an attack
+                    triggerGhastScream(currentEnemy, true);
                 }
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -3951,8 +4116,8 @@ public class CombatManager {
                         ba.abilityName().replace('_', ' ') + "!");
                     // Store pending warning for resolution next turn
                     pendingBossWarnings.add(new PendingBossWarning(currentEnemy, ba));
-                    // Place physical warning blocks on the grid
-                    placeWarningBlocks(ba.warningTiles());
+                    // Render warning particles on the telegraphed tiles
+                    spawnBossAbilityTelegraphParticles(ba);
                     // Clear BossAI's internal warning to prevent double-fire
                     EnemyAI bossAi = AIRegistry.get(currentEnemy.getAiKey());
                     if (bossAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bai) {
@@ -4117,12 +4282,32 @@ public class CombatManager {
      * Called before the boss chooses its new action.
      */
     private void resolvePendingBossWarnings(CombatEntity boss) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
         var iterator = pendingBossWarnings.iterator();
         while (iterator.hasNext()) {
             PendingBossWarning pw = iterator.next();
             if (pw.boss() == boss && boss.isAlive()) {
                 sendMessage("§c" + boss.getDisplayName() + "'s " +
                     pw.ability().abilityName().replace('_', ' ') + " resolves!");
+                // Resolution burst — particles flash on all warning tiles as the attack lands
+                java.util.List<GridPos> warnTiles = pw.ability().warningTiles();
+                if (warnTiles != null && !warnTiles.isEmpty()) {
+                    // Limit to 12 tiles max for burst to avoid lag on huge areas
+                    int burstCount = Math.min(warnTiles.size(), 12);
+                    for (int i = 0; i < burstCount; i++) {
+                        GridPos tile = warnTiles.get(i);
+                        if (!arena.isInBounds(tile)) continue;
+                        BlockPos bp = arena.gridToBlockPos(tile);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.FLASH,
+                            bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5,
+                            1, 0.0, 0.0, 0.0, 0.0);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                            bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5,
+                            4, 0.2, 0.4, 0.2, 0.03);
+                    }
+                }
+                // Ghast scream on attack resolution
+                triggerGhastScream(boss, true);
                 dispatchBossSubAction(pw.ability().resolvedAction());
                 iterator.remove();
             }
@@ -4133,11 +4318,17 @@ public class CombatManager {
      * Dispatch a single boss sub-action (used by BossAbility resolution and CompositeAction).
      */
     private void dispatchBossSubAction(EnemyAction action) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
         switch (action) {
             case EnemyAction.Attack atk -> {
                 int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
                 int actual = Math.max(1, atk.damage() - playerDefense);
-                player.setHealth(Math.max(0, player.getHealth() - actual));
+                player.setHealth(Math.max(1, player.getHealth() - actual));
+                // Impact particles at player
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                    player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.3, 0.3, 0.3, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                    player.getX(), player.getY() + 0.8, player.getZ(), 8, 0.4, 0.5, 0.4, 0.02);
                 sendMessage("§c  Hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
@@ -4150,11 +4341,21 @@ public class CombatManager {
             case EnemyAction.ForcedMovement fm -> resolveForcedMovement(fm);
             case EnemyAction.Teleport tp -> {
                 if (currentEnemy != null) {
+                    // Departure particles at old position
                     MobEntity mob = currentEnemy.getMobEntity();
                     if (mob != null) {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                            mob.getX(), mob.getY() + 1.0, mob.getZ(), 20, 0.3, 0.8, 0.3, 0.5);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+                            mob.getX(), mob.getY() + 0.5, mob.getZ(), 10, 0.2, 0.5, 0.2, 0.3);
                         double wx = arena.getOrigin().getX() + tp.target().x() + 0.5;
                         double wz = arena.getOrigin().getZ() + tp.target().z() + 0.5;
                         mob.requestTeleport(wx, arena.getOrigin().getY() + 1.0, wz);
+                        // Arrival particles at new position
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                            wx, arena.getOrigin().getY() + 2.0, wz, 20, 0.3, 0.8, 0.3, 0.5);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+                            wx, arena.getOrigin().getY() + 1.5, wz, 10, 0.2, 0.5, 0.2, 0.3);
                     }
                     arena.moveEntity(currentEnemy, tp.target());
                 }
@@ -4163,14 +4364,25 @@ public class CombatManager {
                 if (currentEnemy != null) {
                     MobEntity mob = currentEnemy.getMobEntity();
                     if (mob != null) {
+                        // Departure burst
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                            mob.getX(), mob.getY() + 1.0, mob.getZ(), 15, 0.3, 0.8, 0.3, 0.5);
                         double wx = arena.getOrigin().getX() + tpa.target().x() + 0.5;
+                        double wy = arena.getOrigin().getY() + 1.0;
                         double wz = arena.getOrigin().getZ() + tpa.target().z() + 0.5;
-                        mob.requestTeleport(wx, arena.getOrigin().getY() + 1.0, wz);
+                        mob.requestTeleport(wx, wy, wz);
+                        // Arrival + strike burst
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+                            wx, wy + 1.0, wz, 15, 0.3, 0.5, 0.3, 0.3);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                            wx, wy + 0.5, wz, 10, 0.4, 0.6, 0.4, 0.03);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.3, 0.3, 0.3, 0.01);
                     }
                     arena.moveEntity(currentEnemy, tpa.target());
                     int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
                     int actual = Math.max(1, tpa.damage() - playerDefense);
-                    player.setHealth(Math.max(0, player.getHealth() - actual));
+                    player.setHealth(Math.max(1, player.getHealth() - actual));
                     sendMessage("§c  Teleport strike for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
                 }
@@ -4178,7 +4390,39 @@ public class CombatManager {
             case EnemyAction.RangedAttack ra -> {
                 int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
                 int actual = Math.max(1, ra.damage() - playerDefense);
-                player.setHealth(Math.max(0, player.getHealth() - actual));
+                player.setHealth(Math.max(1, player.getHealth() - actual));
+                // Ranged impact particles based on attack type
+                String rangedType = ra.effectName() != null ? ra.effectName() : "";
+                switch (rangedType) {
+                    case "frost_arrow" -> {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 10, 0.3, 0.5, 0.3, 0.02);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT,
+                            player.getX(), player.getY() + 0.8, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
+                    }
+                    case "venomous_bite" -> {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME,
+                            player.getX(), player.getY() + 0.8, player.getZ(), 8, 0.3, 0.4, 0.3, 0.02);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
+                    }
+                    case "hex_bolt" -> {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 10, 0.3, 0.5, 0.3, 0.02);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
+                            player.getX(), player.getY() + 0.8, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
+                    }
+                    case "shulker_bullet" -> {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 8, 0.3, 0.5, 0.3, 0.02);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK,
+                            player.getX(), player.getY() + 0.8, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
+                    }
+                    default -> {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 8, 0.3, 0.5, 0.3, 0.02);
+                    }
+                }
                 sendMessage("§c  Ranged hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
@@ -4227,6 +4471,12 @@ public class CombatManager {
                 enemies.add(ce);
                 arena.placeEntity(ce);
                 spawned++;
+                // Add to no-collision team
+                net.minecraft.scoreboard.Scoreboard sb = world.getScoreboard();
+                net.minecraft.scoreboard.Team noCollideTeam = sb.getTeam(ARENA_TEAM_NAME);
+                if (noCollideTeam != null) {
+                    sb.addScoreHolderToTeam(mob.getUuidAsString(), noCollideTeam);
+                }
                 // Register with boss AI for tracking
                 if (currentEnemy != null && currentEnemy.isBoss()) {
                     EnemyAI bAi = AIRegistry.get(currentEnemy.getAiKey());
@@ -4234,10 +4484,53 @@ public class CombatManager {
                         bossAi.registerSpawnedMinion(ce.getEntityId());
                     }
                 }
-                // Spawn particles
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.POOF,
-                    spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5,
-                    5, 0.3, 0.3, 0.3, 0.02);
+                // Boss-themed spawn particles based on minion type
+                net.minecraft.particle.ParticleEffect spawnPrimary;
+                net.minecraft.particle.ParticleEffect spawnSecondary;
+                String minionType = sm.entityTypeId();
+                if (minionType.contains("zombie") || minionType.contains("husk")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.SMOKE;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.SOUL;
+                } else if (minionType.contains("spider") || minionType.contains("cave_spider")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.ITEM_SLIME;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.SMOKE;
+                } else if (minionType.contains("blaze")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.FLAME;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.LAVA;
+                } else if (minionType.contains("vex")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.WITCH;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.ENCHANT;
+                } else if (minionType.contains("silverfish")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.ASH;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE;
+                } else if (minionType.contains("wither_skeleton")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.SOUL;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.LARGE_SMOKE;
+                } else if (minionType.contains("enderman") || minionType.contains("endermite")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.PORTAL;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.REVERSE_PORTAL;
+                } else if (minionType.contains("drowned")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.SPLASH;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.BUBBLE;
+                } else if (minionType.contains("piglin")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.CRIMSON_SPORE;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.FLAME;
+                } else if (minionType.contains("shulker")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.END_ROD;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.ENCHANTED_HIT;
+                } else if (minionType.contains("magma_cube")) {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.LAVA;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.FLAME;
+                } else {
+                    spawnPrimary = net.minecraft.particle.ParticleTypes.POOF;
+                    spawnSecondary = net.minecraft.particle.ParticleTypes.CLOUD;
+                }
+                world.spawnParticles(spawnPrimary,
+                    spawnPos.getX() + 0.5, spawnPos.getY() + 0.8, spawnPos.getZ() + 0.5,
+                    6, 0.3, 0.5, 0.3, 0.02);
+                world.spawnParticles(spawnSecondary,
+                    spawnPos.getX() + 0.5, spawnPos.getY() + 0.3, spawnPos.getZ() + 0.5,
+                    4, 0.2, 0.3, 0.2, 0.01);
             }
         }
         if (spawned > 0) {
@@ -4254,6 +4547,13 @@ public class CombatManager {
         EntityType<?> type = Registries.ENTITY_TYPE.get(Identifier.of(sp.entityTypeId()));
         int spawned = 0;
 
+        // Determine which visual entity to spawn alongside the invisible tracking mob
+        String visualEntityId = switch (sp.projectileType()) {
+            case "ghast_fireball" -> "minecraft:fireball";
+            case "wither_skull" -> "minecraft:wither_skull";
+            default -> null;
+        };
+
         for (int i = 0; i < sp.positions().size(); i++) {
             GridPos pos = sp.positions().get(i);
             int[] dir = sp.directions().get(i);
@@ -4263,6 +4563,24 @@ public class CombatManager {
             if (tile == null || !tile.isWalkable()) continue;
 
             BlockPos spawnPos = arena.gridToBlockPos(pos);
+
+            // Spawn the visual projectile entity (fireball / wither skull)
+            int spawnedVisualId = -1;
+            if (visualEntityId != null) {
+                EntityType<?> visualType = Registries.ENTITY_TYPE.get(Identifier.of(visualEntityId));
+                var visualEntity = visualType.create(world);
+                if (visualEntity != null) {
+                    visualEntity.refreshPositionAndAngles(
+                        spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5, 0, 0);
+                    visualEntity.setNoGravity(true);
+                    visualEntity.addCommandTag("craftics_arena");
+                    visualEntity.addCommandTag("craftics_visual_projectile");
+                    world.spawnEntity(visualEntity);
+                    spawnedVisualId = visualEntity.getId();
+                }
+            }
+
+            // Spawn the invisible tracking mob for grid logic
             var rawEntity = type.create(world, null, spawnPos, SpawnReason.MOB_SUMMONED, false, false);
             if (rawEntity == null) continue;
 
@@ -4279,6 +4597,15 @@ public class CombatManager {
             world.spawnEntity(rawEntity);
 
             if (rawEntity instanceof MobEntity mob) {
+                // Hide the tracking mob when a visual projectile entity exists
+                if (visualEntityId != null) {
+                    mob.setInvisible(true);
+                    mob.setSilent(true);
+                    // Scale to near-zero so fire/particle effects don't render
+                    var scaleAttr = mob.getAttributeInstance(
+                        net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
+                    if (scaleAttr != null) scaleAttr.setBaseValue(0.01);
+                }
                 CombatEntity ce = new CombatEntity(
                     mob.getId(), sp.entityTypeId(), pos,
                     sp.hp(), sp.atk(), sp.def(), 1
@@ -4290,9 +4617,10 @@ public class CombatManager {
                 ce.setProjectileDirZ(dir[1]);
                 ce.setProjectileType(sp.projectileType());
                 ce.setProjectileOwnerId(currentEnemy != null ? currentEnemy.getEntityId() : -1);
+                ce.setVisualProjectileEntityId(spawnedVisualId);
                 // Display name based on projectile type
                 if ("ghast_fireball".equals(sp.projectileType())) {
-                    ce.setBossDisplayName("Ghast Fireball");
+                    ce.setBossDisplayName("Fireball");
                 } else if ("wither_skull".equals(sp.projectileType())) {
                     ce.setBossDisplayName("Wither Skull");
                 }
@@ -4308,18 +4636,64 @@ public class CombatManager {
                     }
                 }
 
-                // Spawn particles
-                net.minecraft.particle.ParticleEffect particle = "ghast_fireball".equals(sp.projectileType())
-                    ? net.minecraft.particle.ParticleTypes.FLAME
-                    : net.minecraft.particle.ParticleTypes.SOUL;
-                world.spawnParticles(particle,
-                    spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5,
-                    8, 0.3, 0.3, 0.3, 0.02);
+                // Themed projectile spawn particles
+                if ("ghast_fireball".equals(sp.projectileType())) {
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+                        spawnPos.getX() + 0.5, spawnPos.getY() + 0.8, spawnPos.getZ() + 0.5,
+                        10, 0.3, 0.5, 0.3, 0.03);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.LAVA,
+                        spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5,
+                        5, 0.2, 0.3, 0.2, 0.0);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                        spawnPos.getX() + 0.5, spawnPos.getY() + 1.0, spawnPos.getZ() + 0.5,
+                        4, 0.15, 0.3, 0.15, 0.01);
+                } else if ("wither_skull".equals(sp.projectileType())) {
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
+                        spawnPos.getX() + 0.5, spawnPos.getY() + 0.8, spawnPos.getZ() + 0.5,
+                        8, 0.3, 0.5, 0.3, 0.03);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME,
+                        spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5,
+                        5, 0.2, 0.3, 0.2, 0.02);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                        spawnPos.getX() + 0.5, spawnPos.getY() + 1.0, spawnPos.getZ() + 0.5,
+                        4, 0.15, 0.3, 0.15, 0.01);
+                } else {
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.POOF,
+                        spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5,
+                        6, 0.3, 0.3, 0.3, 0.02);
+                }
             }
         }
         if (spawned > 0) {
             String name = "ghast_fireball".equals(sp.projectileType()) ? "fireball" : "wither skull";
             sendMessage("§5  " + spawned + " " + name + "(s) launched!");
+        }
+    }
+
+    /**
+     * Sync the visual projectile entity to follow the invisible tracking mob.
+     * Uses the stored entity ID for direct lookup — no bounding box search.
+     */
+    private void syncVisualProjectile(CombatEntity ce, double x, double y, double z) {
+        int visualId = ce.getVisualProjectileEntityId();
+        if (visualId == -1) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        net.minecraft.entity.Entity visual = world.getEntityById(visualId);
+        if (visual != null) {
+            visual.refreshPositionAndAngles(x, y, z, visual.getYaw(), visual.getPitch());
+        }
+    }
+
+    /**
+     * Kill the visual projectile entity when the combat projectile is destroyed.
+     */
+    private void killVisualProjectileNear(CombatEntity ce) {
+        int visualId = ce.getVisualProjectileEntityId();
+        if (visualId == -1 || player == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        net.minecraft.entity.Entity visual = world.getEntityById(visualId);
+        if (visual != null) {
+            visual.discard();
         }
     }
 
@@ -4339,7 +4713,13 @@ public class CombatManager {
         if ("ghast_fireball".equals(type)) {
             sendMessage("§c\uD83D\uDD25 Fireball explodes!");
             world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION,
-                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 5, 0.5, 0.5, 0.5, 0.0);
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 3, 0.3, 0.3, 0.3, 0.0);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 15, 0.8, 0.8, 0.8, 0.04);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.LAVA,
+                bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 8, 0.5, 0.3, 0.5, 0.0);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                bp.getX() + 0.5, bp.getY() + 1.5, bp.getZ() + 0.5, 8, 0.6, 0.8, 0.6, 0.02);
             player.getWorld().playSound(null, bp,
                 net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
                 net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.0f);
@@ -4353,7 +4733,7 @@ public class CombatManager {
                     && Math.abs(playerGridPos.z() - effectCenter.z()) <= aoeRadius) {
                 int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
                 int actual = Math.max(1, damage - playerDefense);
-                player.setHealth(Math.max(0, player.getHealth() - actual));
+                player.setHealth(Math.max(1, player.getHealth() - actual));
                 sendMessage("§c  Explosion hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 if (!combatEffects.hasFireResistance()) {
                     combatEffects.addEffect(CombatEffects.EffectType.BURNING, 2, 0);
@@ -4374,14 +4754,18 @@ public class CombatManager {
         } else if ("wither_skull".equals(type)) {
             sendMessage("§8\u2620 Wither Skull impacts!");
             world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
-                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.02);
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 12, 0.4, 0.6, 0.4, 0.03);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME,
+                bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5, 8, 0.3, 0.4, 0.3, 0.02);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                bp.getX() + 0.5, bp.getY() + 1.3, bp.getZ() + 0.5, 6, 0.4, 0.5, 0.4, 0.01);
 
             // Damage + wither to player if hit
             GridPos playerGridPos = arena.getPlayerGridPos();
             if (effectCenter.equals(playerGridPos)) {
                 int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
                 int actual = Math.max(1, damage - playerDefense);
-                player.setHealth(Math.max(0, player.getHealth() - actual));
+                player.setHealth(Math.max(1, player.getHealth() - actual));
                 sendMessage("§8  Wither Skull hits for " + actual + " damage!");
                 combatEffects.addEffect(CombatEffects.EffectType.WITHER, 3, 0);
                 sendMessage("§8  Wither applied! (-2 HP/turn for 3 turns)");
@@ -4402,11 +4786,11 @@ public class CombatManager {
         int damage = aa.damage();
         ServerWorld world = (ServerWorld) player.getEntityWorld();
 
-        // Particles at center
+        // Boss-specific particles based on the attack effect
         BlockPos centerBlock = arena.gridToBlockPos(center);
-        world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION,
-            centerBlock.getX() + 0.5, centerBlock.getY() + 1.0, centerBlock.getZ() + 0.5,
-            3, radius * 0.5, 0.5, radius * 0.5, 0.0);
+        double cx = centerBlock.getX() + 0.5, cy = centerBlock.getY() + 1.0, cz = centerBlock.getZ() + 0.5;
+        double spread = Math.max(0.5, radius * 0.5);
+        spawnAreaAttackParticles(world, aa.effectName(), cx, cy, cz, spread, radius);
 
         // Check player
         GridPos playerGridPos = arena.getPlayerGridPos();
@@ -4414,7 +4798,7 @@ public class CombatManager {
             && Math.abs(playerGridPos.z() - center.z()) <= radius) {
             int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
             int actual = Math.max(1, damage - playerDefense);
-            player.setHealth(Math.max(0, player.getHealth() - actual));
+            player.setHealth(Math.max(1, player.getHealth() - actual));
             sendMessage("§c  Area hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
             // Apply named effects
             if (aa.effectName() != null) {
@@ -4450,7 +4834,7 @@ public class CombatManager {
                 combatEffects.addEffect(CombatEffects.EffectType.WEAKNESS, 2, 0);
                 sendMessage("§7  Weakness applied! (-2 attack for 2 turns)");
             }
-            case "burning", "fire", "magma" -> {
+            case "burning", "fire", "magma", "raining_fireball" -> {
                 if (!combatEffects.hasFireResistance()) {
                     combatEffects.addEffect(CombatEffects.EffectType.BURNING, 2, 0);
                     sendMessage("§6  You're burning! (-1 HP/turn for 2 turns)");
@@ -4468,6 +4852,197 @@ public class CombatManager {
                 sendMessage("§8  Darkness falls! Vision reduced.");
             }
             default -> {} // No special effect
+        }
+    }
+
+    /**
+     * Spawn thematic particles for boss area attacks based on the attack's effect name.
+     * Each boss gets unique particles that match their identity.
+     */
+    private void spawnAreaAttackParticles(ServerWorld world, String effectName,
+                                          double cx, double cy, double cz, double spread, int radius) {
+        if (effectName == null) {
+            // Generic fallback
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION,
+                cx, cy, cz, 3, spread, 0.5, spread, 0.0);
+            return;
+        }
+        switch (effectName) {
+            // === Molten King ===
+            case "magma_eruption" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LAVA, cx, cy, cz, 15, spread, 0.8, spread, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME, cx, cy + 0.5, cz, 20, spread, 1.0, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy, cz, 8, spread, 0.5, spread, 0.01);
+            }
+            // === Frostbound Huntsman ===
+            case "blizzard" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE, cx, cy + 1.0, cz, 25, spread, 1.2, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy + 0.5, cz, 10, spread, 0.6, spread, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, cx, cy, cz, 6, spread, 0.3, spread, 0.0);
+            }
+            case "glacial_trap" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE, cx, cy, cz, 12, spread, 0.3, spread, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, cx, cy + 0.2, cz, 8, spread, 0.2, spread, 0.0);
+            }
+            // === Hollow King ===
+            case "cave_in" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy + 0.5, cz, 12, spread, 0.8, spread, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH, cx, cy, cz, 20, spread + 0.5, 1.0, spread + 0.5, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 8, spread, 0.4, spread, 0.0);
+            }
+            case "lights_out" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy, cz, 15, spread + 1, 1.0, spread + 1, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy + 0.5, cz, 25, spread + 2, 1.5, spread + 2, 0.01);
+            }
+            // === Rockbreaker ===
+            case "seismic_slam" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy, cz, 15, spread, 0.3, spread, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy + 0.2, cz, 10, spread, 0.4, spread, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 12, spread, 0.5, spread, 0.02);
+            }
+            case "boulder_toss" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy + 0.5, cz, 8, 0.3, 0.5, 0.3, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy, cz, 6, 0.4, 0.3, 0.4, 0.0);
+            }
+            case "avalanche" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH, cx, cy + 1.5, cz, 30, spread + 1, 1.5, spread + 1, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy + 0.8, cz, 15, spread, 1.0, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy, cz, 10, spread, 0.5, spread, 0.01);
+            }
+            // === Sandstorm Pharaoh ===
+            case "sandstorm" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH, cx, cy + 1.0, cz, 30, spread + 0.5, 1.5, spread + 0.5, 0.04);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy, cz, 12, spread, 0.8, spread, 0.02);
+            }
+            case "sand_burial" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH, cx, cy, cz, 15, spread, 0.3, spread, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy + 0.1, cz, 6, spread, 0.2, spread, 0.0);
+            }
+            case "plant_mine" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH, cx, cy, cz, 3, 0.2, 0.1, 0.2, 0.0);
+            }
+            case "curse_of_sands" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH, cx, cy + 0.5, cz, 12, 0.3, 0.5, 0.3, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH, cx, cy + 1.0, cz, 5, 0.2, 0.3, 0.2, 0.0);
+            }
+            // === Chorus Mind ===
+            case "resonance_cascade" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD, cx, cy + 0.5, cz, 20, spread + 1, 1.0, spread + 1, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL, cx, cy, cz, 30, spread, 1.5, spread, 0.5);
+            }
+            case "entangle" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER, cx, cy, cz, 15, spread, 0.4, spread, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.COMPOSTER, cx, cy + 0.3, cz, 10, spread, 0.3, spread, 0.0);
+            }
+            case "chorus_bomb", "chorus_bomb_pull" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL, cx, cy, cz, 25, spread, 1.0, spread, 0.5);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL, cx, cy + 0.5, cz, 15, spread, 0.8, spread, 0.3);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD, cx, cy + 0.3, cz, 5, spread, 0.5, spread, 0.01);
+            }
+            // === Ashen Warlord ===
+            case "ash_storm" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH, cx, cy + 1.0, cz, 30, spread + 0.5, 1.5, spread + 0.5, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME, cx, cy + 0.5, cz, 10, spread, 0.8, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy, cz, 8, spread, 0.5, spread, 0.01);
+            }
+            case "wither_slash" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL, cx, cy + 0.5, cz, 12, spread, 0.6, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy, cz, 8, spread, 0.3, spread, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 6, spread, 0.4, spread, 0.0);
+            }
+            case "fire_pillar_x" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME, cx, cy + 1.0, cz, 20, spread, 1.5, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME, cx, cy + 0.5, cz, 10, spread, 1.0, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy, cz, 8, spread, 0.5, spread, 0.01);
+            }
+            // === Crimson Ravager ===
+            case "rampage" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.5, cz, 20, spread, 0.8, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR, cx, cy + 0.3, cz, 10, spread, 0.5, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIMSON_SPORE, cx, cy, cz, 15, spread + 0.5, 0.6, spread + 0.5, 0.01);
+            }
+            // === Broodmother ===
+            case "web_spray" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME, cx, cy + 0.5, cz, 15, spread, 0.8, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 8, spread, 0.3, spread, 0.0);
+            }
+            case "web_spray_poison" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME, cx, cy + 0.5, cz, 15, spread, 0.8, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER, cx, cy + 0.3, cz, 8, spread, 0.4, spread, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 5, spread, 0.3, spread, 0.0);
+            }
+            case "pounce" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 12, spread, 0.5, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 8, spread, 0.3, spread, 0.01);
+            }
+            // === Hexweaver ===
+            case "cursed_fog" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH, cx, cy + 0.8, cz, 20, spread, 1.0, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy, cz, 15, spread + 0.5, 0.5, spread + 0.5, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL, cx, cy + 0.5, cz, 6, spread, 0.6, spread, 0.01);
+            }
+            // === Shulker Architect ===
+            case "bullet_storm" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD, cx, cy + 0.5, cz, 15, spread, 0.8, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, cx, cy + 0.3, cz, 10, spread, 0.5, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK, cx, cy, cz, 8, spread, 0.3, spread, 0.01);
+            }
+            // === Tidecaller ===
+            case "trident_storm" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH, cx, cy + 0.5, cz, 20, spread, 0.8, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.BUBBLE, cx, cy, cz, 15, spread, 0.5, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.DRIPPING_WATER, cx, cy + 1.0, cz, 8, spread, 0.3, spread, 0.0);
+            }
+            // === Void Herald ===
+            case "lightning_strike" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK, cx, cy + 1.5, cz, 25, spread, 2.0, spread, 0.05);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.FLASH, cx, cy + 1.0, cz, 3, 0.1, 0.1, 0.1, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD, cx, cy, cz, 8, spread, 0.5, spread, 0.01);
+            }
+            case "blink_assault" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL, cx, cy, cz, 20, spread, 1.0, spread, 0.5);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL, cx, cy + 0.5, cz, 12, spread, 0.8, spread, 0.3);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 8, spread, 0.4, spread, 0.02);
+            }
+            // === Wither Boss ===
+            case "wither_explosion" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL, cx, cy + 1.0, cz, 25, spread + 1, 1.5, spread + 1, 0.04);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy + 0.5, cz, 15, spread, 1.0, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy, cz, 20, spread + 0.5, 0.8, spread + 0.5, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION, cx, cy, cz, 5, spread, 0.5, spread, 0.0);
+            }
+            // === Wailing Revenant ===
+            case "soul_chain" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL, cx, cy + 0.5, cz, 12, 0.3, 0.6, 0.3, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME, cx, cy + 0.3, cz, 8, 0.2, 0.4, 0.2, 0.01);
+            }
+            case "wail_despair", "wail_despair_slow" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL, cx, cy + 1.0, cz, 15, spread + 1, 1.5, spread + 1, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL, cx, cy + 0.5, cz, 20, spread + 2, 1.0, spread + 2, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy, cz, 10, spread, 0.5, spread, 0.01);
+            }
+            case "raining_fireball" -> {
+                // Individual fireball impact from the sky
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME, cx, cy + 2.0, cz, 12, 0.2, 1.5, 0.2, 0.04);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LAVA, cx, cy + 0.5, cz, 6, 0.3, 0.3, 0.3, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy + 1.0, cz, 5, 0.2, 0.8, 0.2, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION, cx, cy + 0.5, cz, 1, 0.1, 0.1, 0.1, 0.0);
+            }
+            // === Revenant ===
+            case "death_charge" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy + 0.5, cz, 12, spread, 0.8, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 8, spread, 0.5, spread, 0.01);
+            }
+            // === Fungal Growth (Crimson Ravager healing) ===
+            case "fungal_growth" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIMSON_SPORE, cx, cy + 0.5, cz, 20, spread, 0.8, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER, cx, cy + 0.3, cz, 8, spread, 0.4, spread, 0.0);
+            }
+            // === Generic fallback for unknown effects ===
+            default -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION,
+                    cx, cy, cz, 3, spread, 0.5, spread, 0.0);
+            }
         }
     }
 
@@ -4511,11 +5086,53 @@ public class CombatManager {
      */
     private void resolveLineAttack(EnemyAction.LineAttack la) {
         GridPos playerGridPos = arena.getPlayerGridPos();
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
         boolean hitPlayer = false;
+
+        // Determine line particle type based on the current boss
+        net.minecraft.particle.ParticleEffect lineParticle = net.minecraft.particle.ParticleTypes.CRIT;
+        net.minecraft.particle.ParticleEffect trailParticle = net.minecraft.particle.ParticleTypes.SMOKE;
+        if (currentEnemy != null) {
+            String aiKey = currentEnemy.getAiKey();
+            if (aiKey != null) {
+                if (aiKey.contains("ashen_warlord") || aiKey.contains("AshenWarlord")) {
+                    lineParticle = net.minecraft.particle.ParticleTypes.FLAME;
+                    trailParticle = net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME;
+                } else if (aiKey.contains("hexweaver") || aiKey.contains("Hexweaver")) {
+                    lineParticle = net.minecraft.particle.ParticleTypes.WITCH;
+                    trailParticle = net.minecraft.particle.ParticleTypes.SOUL;
+                } else if (aiKey.contains("hollow_king") || aiKey.contains("HollowKing")) {
+                    lineParticle = net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE;
+                    trailParticle = net.minecraft.particle.ParticleTypes.ASH;
+                } else if (aiKey.contains("revenant") || aiKey.contains("Revenant")) {
+                    lineParticle = net.minecraft.particle.ParticleTypes.SMOKE;
+                    trailParticle = net.minecraft.particle.ParticleTypes.SOUL;
+                } else if (aiKey.contains("crimson") || aiKey.contains("Crimson")) {
+                    lineParticle = net.minecraft.particle.ParticleTypes.CRIMSON_SPORE;
+                    trailParticle = net.minecraft.particle.ParticleTypes.FLAME;
+                } else if (aiKey.contains("wither") || aiKey.contains("Wither")) {
+                    lineParticle = net.minecraft.particle.ParticleTypes.SOUL;
+                    trailParticle = net.minecraft.particle.ParticleTypes.LARGE_SMOKE;
+                } else if (aiKey.contains("tidecaller") || aiKey.contains("Tidecaller")) {
+                    lineParticle = net.minecraft.particle.ParticleTypes.SPLASH;
+                    trailParticle = net.minecraft.particle.ParticleTypes.BUBBLE;
+                }
+            }
+        }
+
         for (int i = 0; i < la.length(); i++) {
             GridPos tile = new GridPos(la.start().x() + la.dx() * i, la.start().z() + la.dz() * i);
             if (!arena.isInBounds(tile)) continue;
             if (tile.equals(playerGridPos)) hitPlayer = true;
+
+            // Spawn line particles along each tile
+            BlockPos bp = arena.gridToBlockPos(tile);
+            world.spawnParticles(lineParticle,
+                bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5,
+                5, 0.2, 0.4, 0.2, 0.02);
+            world.spawnParticles(trailParticle,
+                bp.getX() + 0.5, bp.getY() + 0.3, bp.getZ() + 0.5,
+                3, 0.15, 0.2, 0.15, 0.01);
 
             // Damage enemies in the line (friendly fire)
             if (CrafticsMod.CONFIG.friendlyFireEnabled()) {
@@ -4530,7 +5147,7 @@ public class CombatManager {
         if (hitPlayer) {
             int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
             int actual = Math.max(1, la.damage() - playerDefense);
-            player.setHealth(Math.max(0, player.getHealth() - actual));
+            player.setHealth(Math.max(1, player.getHealth() - actual));
             sendMessage("§c  Line attack hits for " + actual + " damage! (HP: " + getPlayerHp() + ")");
             if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
         }
@@ -4540,29 +5157,67 @@ public class CombatManager {
      * Resolve a boss self-modification (buff/debuff).
      */
     private void resolveModifySelf(CombatEntity boss, EnemyAction.ModifySelf ms) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        MobEntity bMob = boss.getMobEntity();
+        double bx = bMob != null ? bMob.getX() : 0;
+        double by = bMob != null ? bMob.getY() + 1.0 : 0;
+        double bz = bMob != null ? bMob.getZ() : 0;
+
         switch (ms.stat()) {
             case "speed" -> {
                 boss.setSpeedBonus(boss.getSpeedBonus() + ms.amount());
+                // Speed boost — wind swirl
+                if (bMob != null) {
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                        bx, by, bz, 8, 0.4, 0.6, 0.4, 0.03);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                        bx, by - 0.3, bz, 2, 0.2, 0.1, 0.2, 0.0);
+                }
                 sendMessage("§d  " + boss.getDisplayName() + " gains +" + ms.amount() + " speed!");
             }
             case "defense" -> {
-                // Temporary defense boost — we'll track via defensePenalty (negative = boost)
                 boss.setDefensePenalty(boss.getDefensePenalty() - ms.amount());
                 if (ms.duration() > 0) {
                     boss.setDefensePenaltyTurns(ms.duration());
                 }
+                // Defense boost — armored shimmer
+                if (bMob != null) {
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT,
+                        bx, by, bz, 12, 0.4, 0.6, 0.4, 0.02);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+                        bx, by + 0.3, bz, 5, 0.3, 0.5, 0.3, 0.01);
+                }
                 sendMessage("§d  " + boss.getDisplayName() + " gains +" + ms.amount() + " defense!");
             }
             case "attack" -> {
-                // Temporary attack penalty (negative = boost)
                 boss.setAttackPenalty(boss.getAttackPenalty() - ms.amount());
+                // Attack boost — aggressive red sparks
+                if (bMob != null) {
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                        bx, by, bz, 10, 0.3, 0.5, 0.3, 0.03);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                        bx, by + 0.3, bz, 5, 0.2, 0.3, 0.2, 0.01);
+                }
                 sendMessage("§d  " + boss.getDisplayName() + " gains +" + ms.amount() + " attack!");
             }
-            case "heal" -> {
+            case "hp", "heal" -> {
                 boss.heal(ms.amount());
+                // Heal — green sparkles + hearts
+                if (bMob != null) {
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER,
+                        bx, by, bz, 10, 0.4, 0.6, 0.4, 0.02);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.HEART,
+                        bx, by + 0.5, bz, 3, 0.3, 0.3, 0.3, 0.0);
+                }
                 sendMessage("§a  " + boss.getDisplayName() + " heals for " + ms.amount() + " HP!");
             }
-            default -> sendMessage("§d  " + boss.getDisplayName() + " modifies " + ms.stat() + "!");
+            default -> {
+                if (bMob != null) {
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANT,
+                        bx, by, bz, 8, 0.3, 0.5, 0.3, 0.02);
+                }
+                sendMessage("§d  " + boss.getDisplayName() + " modifies " + ms.stat() + "!");
+            }
         }
     }
 
@@ -4570,8 +5225,9 @@ public class CombatManager {
      * Resolve forced movement — push/pull a target entity.
      */
     private void resolveForcedMovement(EnemyAction.ForcedMovement fm) {
+        ServerWorld fmWorld = (ServerWorld) player.getEntityWorld();
         if (fm.targetEntityId() == -1) {
-            // Move the player
+            // Move the player — spawn wind particles along push/pull path
             GridPos playerGridPos = arena.getPlayerGridPos();
             GridPos landingPos = playerGridPos;
             for (int i = 1; i <= fm.tiles(); i++) {
@@ -4582,18 +5238,30 @@ public class CombatManager {
                     // Player pushed into void — take fall damage
                     int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
                     int fallDmg = Math.max(1, 5 - playerDefense);
-                    player.setHealth(Math.max(0, player.getHealth() - fallDmg));
+                    player.setHealth(Math.max(1, player.getHealth() - fallDmg));
                     sendMessage("§c  Pushed into the void for " + fallDmg + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                     break;
                 }
                 if (tile == null || !tile.isWalkable()) break;
+                // Wind trail along movement path
+                BlockPos pathBp = arena.gridToBlockPos(candidate);
+                fmWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    pathBp.getX() + 0.5, pathBp.getY() + 0.8, pathBp.getZ() + 0.5,
+                    3, 0.2, 0.3, 0.2, 0.02);
+                fmWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                    pathBp.getX() + 0.5, pathBp.getY() + 0.5, pathBp.getZ() + 0.5,
+                    1, 0.1, 0.1, 0.1, 0.0);
                 landingPos = candidate;
             }
             if (!landingPos.equals(playerGridPos)) {
                 arena.setPlayerGridPos(landingPos);
                 BlockPos bp = arena.gridToBlockPos(landingPos);
                 player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                // Landing impact
+                fmWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5,
+                    5, 0.3, 0.3, 0.3, 0.01);
                 sendMessage("§e  Pushed " + playerGridPos.manhattanDistance(landingPos) + " tiles!");
             }
         } else {
@@ -4639,17 +5307,72 @@ public class CombatManager {
      */
     private void renderBossWarning(com.crackedgames.craftics.combat.ai.boss.BossWarning warning) {
         if (warning == null) return;
+        // Always highlight affected tiles via the client-side red overlay
         for (GridPos tile : warning.getAffectedTiles()) {
             highlightWarningTile(tile);
         }
 
-        if (warning.getType() == com.crackedgames.craftics.combat.ai.boss.BossWarning.WarningType.GROUND_CRACK) {
-            spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.ANGRY_VILLAGER, 2);
+        // Spawn thematic particles based on warning type and color
+        switch (warning.getType()) {
+            case GROUND_CRACK -> {
+                // Pick thematic crack particles based on boss color
+                net.minecraft.particle.ParticleEffect crackParticle = getWarningParticleForColor(warning.getColor());
+                spawnWarningParticles(warning.getAffectedTiles(), crackParticle, 3);
+                // Additional rumble particles for all ground cracks
+                spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, 1);
+            }
+            case GATHERING_PARTICLES -> {
+                // Converging particles — boss is charging up
+                net.minecraft.particle.ParticleEffect gatherParticle = getWarningParticleForColor(warning.getColor());
+                spawnWarningParticles(warning.getAffectedTiles(), gatherParticle, 2);
+                spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.ENCHANT, 3);
+            }
+            case TILE_HIGHLIGHT -> {
+                // Danger zone — subtle shimmer particles on top of the red overlay
+                net.minecraft.particle.ParticleEffect shimmerParticle = getWarningParticleForColor(warning.getColor());
+                spawnWarningParticles(warning.getAffectedTiles(), shimmerParticle, 2);
+            }
+            case DIRECTIONAL -> {
+                // Arrow-like — directional wind/spark particles
+                spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.CLOUD, 2);
+                spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.CRIT, 1);
+            }
+            case ENTITY_GLOW -> {
+                // Boss is powering up — bright sparks
+                spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.END_ROD, 2);
+                spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, 1);
+            }
+            case SOUND_ONLY -> {} // No particles for sound-only warnings
         }
+    }
 
-        if (warning.getType() == com.crackedgames.craftics.combat.ai.boss.BossWarning.WarningType.TILE_HIGHLIGHT) {
-            placeWarningBlocks(warning.getAffectedTiles());
-        }
+    /**
+     * Pick a thematic warning particle based on the boss warning ARGB color.
+     * Uses the dominant color channel to determine the boss theme.
+     */
+    private net.minecraft.particle.ParticleEffect getWarningParticleForColor(int argb) {
+        int r = (argb >> 16) & 0xFF;
+        int g = (argb >> 8) & 0xFF;
+        int b = argb & 0xFF;
+
+        // Fire/lava bosses: heavy red, low blue
+        if (r > 180 && b < 100 && g < 150) return net.minecraft.particle.ParticleTypes.FLAME;
+        // Ice/water bosses: heavy blue
+        if (b > 150 && r < 100) return net.minecraft.particle.ParticleTypes.SNOWFLAKE;
+        // Water/tidal: moderate blue with some green
+        if (b > 130 && g > 80 && r < 100) return net.minecraft.particle.ParticleTypes.SPLASH;
+        // Nature/chorus: heavy green
+        if (g > 150 && r < 150 && b < 150) return net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER;
+        // Void/ender: purple tones (r and b both high, g low)
+        if (r > 60 && b > 100 && g < 100) return net.minecraft.particle.ParticleTypes.PORTAL;
+        // Wither/dark: very dark colors
+        if (r < 80 && g < 80 && b < 80) return net.minecraft.particle.ParticleTypes.SOUL;
+        // Sand/earth: tan/brown
+        if (r > 150 && g > 100 && b < 100) return net.minecraft.particle.ParticleTypes.ASH;
+        // White/bright: phase transitions
+        if (r > 200 && g > 200 && b > 200) return net.minecraft.particle.ParticleTypes.FLASH;
+        // Default
+        return net.minecraft.particle.ParticleTypes.CRIT;
     }
 
     private void spawnWarningParticles(java.util.List<GridPos> tiles,
@@ -4675,34 +5398,44 @@ public class CombatManager {
     }
 
     /**
-     * Place physical warning blocks on the arena floor and save originals for restoration.
+     * Spawn telegraph particles when a BossAbility warning is first placed.
+     * These give the player an immediate visual cue that danger is incoming.
      */
-    private void placeWarningBlocks(java.util.List<GridPos> tiles) {
+    private void spawnBossAbilityTelegraphParticles(EnemyAction.BossAbility ba) {
         if (player == null || arena == null) return;
         ServerWorld world = (ServerWorld) player.getEntityWorld();
+        String name = ba.abilityName();
+        java.util.List<GridPos> tiles = ba.warningTiles();
+        if (tiles == null || tiles.isEmpty()) return;
+
+        // Pick telegraph particles based on ability name
+        net.minecraft.particle.ParticleEffect primary;
+        net.minecraft.particle.ParticleEffect secondary;
+        switch (name) {
+            case "ash_storm" -> { primary = net.minecraft.particle.ParticleTypes.ASH; secondary = net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME; }
+            case "wither_slash", "wither_applied" -> { primary = net.minecraft.particle.ParticleTypes.SOUL; secondary = net.minecraft.particle.ParticleTypes.SMOKE; }
+            case "fungal_growth" -> { primary = net.minecraft.particle.ParticleTypes.CRIMSON_SPORE; secondary = net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER; }
+            case "absorb" -> { primary = net.minecraft.particle.ParticleTypes.LAVA; secondary = net.minecraft.particle.ParticleTypes.FLAME; }
+            case "fortify_shell", "fortify_shell_reflect" -> { primary = net.minecraft.particle.ParticleTypes.END_ROD; secondary = net.minecraft.particle.ParticleTypes.ENCHANTED_HIT; }
+            case "soul_chain" -> { primary = net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME; secondary = net.minecraft.particle.ParticleTypes.SOUL; }
+            case "void_rift" -> { primary = net.minecraft.particle.ParticleTypes.PORTAL; secondary = net.minecraft.particle.ParticleTypes.REVERSE_PORTAL; }
+            case "lights_out" -> { primary = net.minecraft.particle.ParticleTypes.LARGE_SMOKE; secondary = net.minecraft.particle.ParticleTypes.SMOKE; }
+            default -> { primary = net.minecraft.particle.ParticleTypes.ENCHANT; secondary = net.minecraft.particle.ParticleTypes.CRIT; }
+        }
+
+        // Spawn a modest burst on each warned tile (not too many — these persist visually)
         for (GridPos tile : tiles) {
             if (!arena.isInBounds(tile)) continue;
-            BlockPos bp = arena.gridToBlockPos(tile).down();
-            net.minecraft.block.BlockState original = world.getBlockState(bp);
-            // Don't overwrite if already a warning block
-            if (original.getBlock() != Blocks.REDSTONE_BLOCK) {
-                warningOriginalBlocks.putIfAbsent(bp, original);
-                world.setBlockState(bp, Blocks.REDSTONE_BLOCK.getDefaultState());
-            }
+            BlockPos bp = arena.gridToBlockPos(tile);
+            world.spawnParticles(primary,
+                bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5,
+                3, 0.2, 0.3, 0.2, 0.01);
+            world.spawnParticles(secondary,
+                bp.getX() + 0.5, bp.getY() + 0.2, bp.getZ() + 0.5,
+                2, 0.15, 0.15, 0.15, 0.005);
         }
     }
 
-    /**
-     * Restore all warning blocks to their original state.
-     */
-    private void clearWarningBlocks() {
-        if (player == null || warningOriginalBlocks.isEmpty()) return;
-        ServerWorld world = (ServerWorld) player.getEntityWorld();
-        for (var entry : warningOriginalBlocks.entrySet()) {
-            world.setBlockState(entry.getKey(), entry.getValue());
-        }
-        warningOriginalBlocks.clear();
-    }
 
     /**
      * Tick all temporary terrain tiles (fire, lava, etc.) — called at the start of each turn.
@@ -4725,6 +5458,95 @@ public class CombatManager {
                 }
             }
         }
+    }
+
+    /**
+     * Detonate all pending TNT blocks. Called at the start of each new round.
+     * Deals AoE damage (8/5/3 by manhattan distance), damages the player too if close,
+     * removes the TNT block, and spawns a big explosion effect.
+     */
+    private void detonatePendingTnts() {
+        if (pendingTnts.isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        for (PendingTnt tnt : pendingTnts) {
+            GridPos center = tnt.tile();
+            BlockPos bp = tnt.blockPos();
+
+            // Remove the TNT block — replace with the arena floor
+            GridTile floorTile = arena.getTile(center);
+            if (floorTile != null) {
+                world.setBlockState(bp, floorTile.getBlockType().getDefaultState());
+            } else {
+                world.setBlockState(bp, Blocks.AIR.getDefaultState());
+            }
+
+            // --- Explosion particles ---
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION_EMITTER,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
+                1, 0.0, 0.0, 0.0, 0.0);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
+                5, 1.0, 0.8, 1.0, 0.0);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
+                25, 1.5, 1.0, 1.5, 0.05);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.LAVA,
+                bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5,
+                12, 1.0, 0.5, 1.0, 0.0);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                bp.getX() + 0.5, bp.getY() + 1.5, bp.getZ() + 0.5,
+                15, 1.2, 1.0, 1.2, 0.03);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE,
+                bp.getX() + 0.5, bp.getY() + 2.0, bp.getZ() + 0.5,
+                8, 0.8, 0.5, 0.8, 0.01);
+
+            // Explosion sound
+            world.playSound(null, bp,
+                net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+                net.minecraft.sound.SoundCategory.BLOCKS, 1.5f, 0.9f);
+
+            sendMessage("§c§lBOOM! §r§7TNT detonates!");
+
+            // --- AoE damage to enemies ---
+            int totalDamage = 0;
+            int enemiesHit = 0;
+            int killCount = 0;
+            for (CombatEntity enemy : new ArrayList<>(enemies)) {
+                if (!enemy.isAlive()) continue;
+                int dist = Math.abs(enemy.getGridPos().x() - center.x())
+                         + Math.abs(enemy.getGridPos().z() - center.z());
+                if (dist <= 2) {
+                    int dmg = dist == 0 ? 8 : (dist == 1 ? 5 : 3);
+                    int dealt = enemy.takeDamage(dmg);
+                    totalDamage += dealt;
+                    enemiesHit++;
+                    if (!enemy.isAlive()) {
+                        killCount++;
+                        checkAndHandleDeath(enemy);
+                    }
+                }
+            }
+
+            // Track TNT kills for achievement
+            if (killCount > 0) {
+                achievementTracker.recordTntKills(killCount);
+            }
+
+            // Self-damage if player is close
+            GridPos playerPos = arena.getPlayerGridPos();
+            int playerDist = Math.abs(playerPos.x() - center.x()) + Math.abs(playerPos.z() - center.z());
+            if (playerDist <= 2) {
+                int selfDmg = playerDist == 0 ? 6 : (playerDist == 1 ? 4 : 2);
+                player.setHealth(Math.max(1, player.getHealth() - selfDmg));
+                sendMessage("§c  Blast hit " + enemiesHit + " enemies for " + totalDamage + " total! You took " + selfDmg + " blast damage!");
+                if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
+            } else if (enemiesHit > 0) {
+                sendMessage("§7  Hit " + enemiesHit + " enemies for " + totalDamage + " total damage!");
+            }
+        }
+        pendingTnts.clear();
+        sendSync();
     }
 
     // ===== Boss Callback Hooks =====
@@ -4816,6 +5638,122 @@ public class CombatManager {
         if (ai instanceof BroodmotherAI broodmother) {
             broodmother.initEggSacs(arena);
         }
+
+        // Wailing Revenant (Ghast): position OUTSIDE the arena on the low-Z edge.
+        // The mob sits beyond the front row, facing +Z (toward the arena).
+        // The entire front row (z = 0) is registered as targetable.
+        if (ai instanceof WailingRevenantAI) {
+            int arenaW = arena.getWidth();
+            int arenaH = arena.getHeight();
+
+            // Remove from current grid position
+            arena.removeEntity(bossEntity);
+
+            // Mark as background boss — tiles it occupies don't block movement
+            bossEntity.setBackgroundBoss(true);
+
+            // Anchor at grid (0, 0) with size 1
+            bossEntity.setGridPos(new GridPos(0, 0));
+            bossEntity.setSize(1);
+
+            // Register the boss on every tile in the front row (z=0) for targeting.
+            // These tiles are still walkable thanks to the backgroundBoss flag.
+            // If another enemy already occupies a tile, move it away first.
+            for (int x = 0; x < arenaW; x++) {
+                GridPos bossSlot = new GridPos(x, 0);
+                CombatEntity existing = arena.getOccupant(bossSlot);
+                if (existing != null && existing != bossEntity) {
+                    // Relocate the existing enemy to the nearest open tile
+                    GridPos relocated = findNearestValidSpawn(arena, new GridPos(x, 1), existing.getSize());
+                    if (relocated != null) {
+                        arena.moveEntity(existing, relocated);
+                        MobEntity eMob = existing.getMobEntity();
+                        if (eMob != null) {
+                            BlockPos bp = arena.gridToBlockPos(relocated);
+                            eMob.refreshPositionAndAngles(
+                                bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5, eMob.getYaw(), eMob.getPitch());
+                        }
+                    }
+                }
+                arena.getOccupants().put(bossSlot, bossEntity);
+            }
+
+            // Place the mob entity OUTSIDE the arena, beyond the front edge.
+            MobEntity mob = bossEntity.getMobEntity();
+            if (mob != null) {
+                double bossX = arena.getOrigin().getX() + (arenaW - 1) / 2.0 + 0.5; // true center of grid
+                double bossZ = arena.getOrigin().getZ() - 10.0; // 10 blocks beyond front edge
+                double bossY = arena.getOrigin().getY() + 2.0;
+                mob.refreshPositionAndAngles(bossX, bossY, bossZ, 0.0f, 0.0f); // yaw 0 = face +Z
+                mob.setYaw(0.0f);
+                mob.setHeadYaw(0.0f);
+                mob.setBodyYaw(0.0f);
+            }
+        }
+    }
+
+    /**
+     * Trigger or reset the ghast scream animation (open mouth texture).
+     * Only affects ghast entities.
+     */
+    private void triggerGhastScream(CombatEntity entity, boolean screaming) {
+        MobEntity mob = entity.getMobEntity();
+        if (mob instanceof net.minecraft.entity.mob.GhastEntity ghast) {
+            ghast.setShooting(screaming);
+            if (screaming) {
+                // Play ghast scream sound
+                ServerWorld world = (ServerWorld) player.getEntityWorld();
+                world.playSound(null, mob.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.ENTITY_GHAST_SCREAM,
+                    net.minecraft.sound.SoundCategory.HOSTILE, 1.5f, 1.0f);
+            }
+        }
+    }
+
+    private static final String ARENA_TEAM_NAME = "craftics_nocollide";
+
+    /**
+     * Create a scoreboard team with collision disabled and add all arena mobs + players to it.
+     * This prevents vanilla entity pushing during combat.
+     */
+    private void setupNoCollisionTeam() {
+        if (player == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        net.minecraft.scoreboard.Scoreboard scoreboard = world.getScoreboard();
+
+        // Create or get the team
+        net.minecraft.scoreboard.Team team = scoreboard.getTeam(ARENA_TEAM_NAME);
+        if (team == null) {
+            team = scoreboard.addTeam(ARENA_TEAM_NAME);
+        }
+        team.setCollisionRule(net.minecraft.scoreboard.AbstractTeam.CollisionRule.NEVER);
+
+        // Add all arena mobs
+        for (CombatEntity e : enemies) {
+            MobEntity mob = e.getMobEntity();
+            if (mob != null) {
+                scoreboard.addScoreHolderToTeam(mob.getUuidAsString(), team);
+            }
+        }
+        // Add all players
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null) {
+                scoreboard.addScoreHolderToTeam(p.getUuidAsString(), team);
+            }
+        }
+    }
+
+    /**
+     * Remove the no-collision team on combat end.
+     */
+    private void cleanupNoCollisionTeam() {
+        if (player == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        net.minecraft.scoreboard.Scoreboard scoreboard = world.getScoreboard();
+        net.minecraft.scoreboard.Team team = scoreboard.getTeam(ARENA_TEAM_NAME);
+        if (team != null) {
+            scoreboard.removeTeam(team);
+        }
     }
 
     private void startEnemyMove(List<GridPos> path) {
@@ -4868,11 +5806,15 @@ public class CombatManager {
             enemyLerpStartZ = mob.getZ();
 
             // Face movement direction
+            // Face movement direction
             GridPos next = enemyMovePath.get(enemyMovePathIndex);
             GridPos prev = enemyMovePathIndex == 0 ? currentEnemy.getGridPos() : enemyMovePath.get(enemyMovePathIndex - 1);
             int dx = next.x() - prev.x();
             int dz = next.z() - prev.z();
             float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            if ("minecraft:ghast".equals(currentEnemy.getEntityTypeId())) {
+                yaw = snapToCardinalYaw(yaw);
+            }
             mob.setYaw(yaw);
             mob.setHeadYaw(yaw);
         }
@@ -4892,8 +5834,21 @@ public class CombatManager {
         double z = enemyLerpStartZ + (endZ - enemyLerpStartZ) * progress;
         mob.requestTeleport(x, y, z);
 
+        // Sync visual projectile entity position with the invisible tracking mob
+        if (currentEnemy.isProjectile()) {
+            syncVisualProjectile(currentEnemy, x, y + 0.5, z);
+        }
+
         if (enemyMoveTickCounter >= emTicks2) {
             arena.moveEntity(currentEnemy, next);
+
+            // Check if enemy walked onto a void/death tile
+            if (checkEnemyFallDeath(currentEnemy)) {
+                enemyLerpInitialized = false;
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                return;
+            }
 
             // Check for hex trap tile effect
             if (tileEffects.containsKey(next) && "hex_trap".equals(tileEffects.get(next))) {
@@ -4952,6 +5907,26 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Returns the ranged projectile effect name for a mob type, or null if melee.
+     * Used to determine animation style (ranged aim vs melee lunge).
+     */
+    private static String getRangedProjectileType(String entityTypeId) {
+        return switch (entityTypeId) {
+            case "minecraft:skeleton", "minecraft:bogged" -> "arrow";
+            case "minecraft:stray" -> "frost_arrow";
+            case "minecraft:pillager" -> "crossbow";
+            case "minecraft:blaze" -> "fireball";
+            case "minecraft:ghast" -> "fireball";
+            case "minecraft:witch" -> "potion";
+            case "minecraft:shulker" -> "shulker_bullet";
+            case "minecraft:llama", "minecraft:trader_llama" -> "llama_spit";
+            case "minecraft:drowned" -> "trident";
+            case "minecraft:breeze" -> "fireball";
+            default -> null;
+        };
+    }
+
     /** Initialize attack animation and transition to ANIMATING state. */
     private void startAttackAnimation(int delay) {
         attackAnimTick = 0;
@@ -4961,7 +5936,9 @@ public class CombatManager {
     }
 
     /**
-     * Attack animation phase: mob faces the player, swings arm, lunges forward then back.
+     * Attack animation phase: mob-type-specific animations before damage is applied.
+     * Ranged mobs lean back to aim then snap forward on release.
+     * Melee mobs lunge forward then return. Spider crouches before pouncing.
      * On completion, transitions to ATTACKING to apply damage.
      */
     private void tickEnemyAnimating() {
@@ -4973,7 +5950,12 @@ public class CombatManager {
 
         attackAnimTick++;
 
-        // Tick 1: Face the player and trigger arm swing
+        String entityType = currentEnemy.getEntityTypeId();
+        // Ranged mobs use ranged anim even when they MoveAndAttack (move to get LOS, then shoot)
+        boolean isRanged = pendingAction instanceof EnemyAction.RangedAttack
+            || (pendingAction instanceof EnemyAction.MoveAndAttack && getRangedProjectileType(entityType) != null);
+
+        // Tick 1: Face the player and initialize
         if (!attackAnimSwung) {
             attackAnimSwung = true;
             attackAnimOriginX = mob.getX();
@@ -4984,10 +5966,14 @@ public class CombatManager {
             double dx = player.getX() - mob.getX();
             double dz = player.getZ() - mob.getZ();
             float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            // Ghasts must always face a cardinal direction
+            if ("minecraft:ghast".equals(entityType)) {
+                yaw = snapToCardinalYaw(yaw);
+            }
             mob.setYaw(yaw);
             mob.setHeadYaw(yaw);
 
-            // Compute lunge direction unit vector
+            // Compute direction unit vector toward player
             double dist = Math.sqrt(dx * dx + dz * dz);
             if (dist > 0.01) {
                 attackAnimLungeX = dx / dist;
@@ -4997,13 +5983,15 @@ public class CombatManager {
                 attackAnimLungeZ = 1;
             }
 
-            // Swing main hand — vanilla syncs this to clients automatically
-            mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            // Arm swing — only for melee mobs (ranged mobs don't swing)
+            if (!isRanged) {
+                mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            }
 
             // Send attack anim event to client for mob-specific particles
-            // valueA: 0=melee, 1=knockback melee. valueB: entity type hash for client effects
-            int attackType = (pendingAction instanceof EnemyAction.AttackWithKnockback
-                || pendingAction instanceof EnemyAction.MoveAndAttackWithKnockback) ? 1 : 0;
+            int attackType = isRanged ? 2
+                : (pendingAction instanceof EnemyAction.AttackWithKnockback
+                    || pendingAction instanceof EnemyAction.MoveAndAttackWithKnockback) ? 1 : 0;
             GridPos playerGridPos = arena.getPlayerGridPos();
             ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.CombatEventPayload(
                 com.crackedgames.craftics.network.CombatEventPayload.EVENT_MOB_ATTACK_ANIM,
@@ -5012,33 +6000,276 @@ public class CombatManager {
             ));
         }
 
-        // Lunge phase: move toward the player
-        if (attackAnimTick <= ATTACK_ANIM_LUNGE_TICKS) {
-            float progress = (float) attackAnimTick / ATTACK_ANIM_LUNGE_TICKS;
-            // Ease-out for snappy lunge
-            float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
-            double offsetX = attackAnimLungeX * ATTACK_LUNGE_DISTANCE * eased;
-            double offsetZ = attackAnimLungeZ * ATTACK_LUNGE_DISTANCE * eased;
-            mob.requestTeleport(
-                attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
-        }
-        // Return phase: move back to original position
-        else if (attackAnimTick <= ATTACK_ANIM_TOTAL_TICKS) {
-            int returnTick = attackAnimTick - ATTACK_ANIM_LUNGE_TICKS;
-            float progress = (float) returnTick / ATTACK_ANIM_RETURN_TICKS;
-            float eased = progress * progress; // ease-in for smooth return
-            double offsetX = attackAnimLungeX * ATTACK_LUNGE_DISTANCE * (1.0 - eased);
-            double offsetZ = attackAnimLungeZ * ATTACK_LUNGE_DISTANCE * (1.0 - eased);
-            mob.requestTeleport(
-                attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
-        }
+        if (isRanged) {
+            // === RANGED ANIMATION: lean back (draw), then snap forward (release) ===
+            int totalTicks = RANGED_ANIM_TOTAL_TICKS;
 
-        // Animation complete — snap back and proceed to damage
-        if (attackAnimTick >= ATTACK_ANIM_TOTAL_TICKS) {
-            mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
-            enemyTurnState = EnemyTurnState.ATTACKING;
-            enemyTurnDelay = 0;
+            if (attackAnimTick <= RANGED_ANIM_DRAW_TICKS) {
+                // Draw phase — lean AWAY from the player (pull back to aim)
+                float progress = (float) attackAnimTick / RANGED_ANIM_DRAW_TICKS;
+                float eased = progress * progress; // ease-in for tension build
+                double offsetX = -attackAnimLungeX * RANGED_LEAN_DISTANCE * eased;
+                double offsetZ = -attackAnimLungeZ * RANGED_LEAN_DISTANCE * eased;
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+            } else if (attackAnimTick <= totalTicks) {
+                // Release phase — snap forward past origin (recoil from shot)
+                int releaseTick = attackAnimTick - RANGED_ANIM_DRAW_TICKS;
+                float progress = (float) releaseTick / RANGED_ANIM_RELEASE_TICKS;
+                float eased = 1.0f - (1.0f - progress) * (1.0f - progress); // ease-out
+                // Go from full lean-back to slightly forward, then back to origin
+                double leanBack = RANGED_LEAN_DISTANCE * (1.0 - eased);
+                double offsetX = -attackAnimLungeX * leanBack;
+                double offsetZ = -attackAnimLungeZ * leanBack;
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+
+                // Trigger arm swing on first release tick (the "fire" moment)
+                if (releaseTick == 1) {
+                    mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+                }
+            }
+
+            if (attackAnimTick >= totalTicks) {
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
+                enemyTurnState = EnemyTurnState.ATTACKING;
+                enemyTurnDelay = 0;
+            }
+        } else if (isSpiderLike(entityType)) {
+            // === SPIDER ANIMATION: crouch down then spring forward ===
+            int crouchTicks = 4;
+            int springTicks = 3;
+            int returnTicks = 3;
+            int total = crouchTicks + springTicks + returnTicks;
+
+            if (attackAnimTick <= crouchTicks) {
+                // Crouch: lower Y position
+                float progress = (float) attackAnimTick / crouchTicks;
+                float eased = progress * progress;
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY - 0.2 * eased, attackAnimOriginZ);
+            } else if (attackAnimTick <= crouchTicks + springTicks) {
+                // Spring forward and up
+                int springTick = attackAnimTick - crouchTicks;
+                float progress = (float) springTick / springTicks;
+                float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
+                double offsetX = attackAnimLungeX * 0.7 * eased;
+                double offsetZ = attackAnimLungeZ * 0.7 * eased;
+                double offsetY = -0.2 + 0.35 * eased; // rise from crouch
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
+                if (springTick == 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            } else if (attackAnimTick <= total) {
+                // Return
+                int retTick = attackAnimTick - crouchTicks - springTicks;
+                float progress = (float) retTick / returnTicks;
+                float eased = progress * progress;
+                double offsetX = attackAnimLungeX * 0.7 * (1.0 - eased);
+                double offsetZ = attackAnimLungeZ * 0.7 * (1.0 - eased);
+                double offsetY = 0.15 * (1.0 - eased);
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
+            }
+
+            if (attackAnimTick >= total) {
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
+                enemyTurnState = EnemyTurnState.ATTACKING;
+                enemyTurnDelay = 0;
+            }
+        } else if (isHeavyHitter(entityType)) {
+            // === HEAVY ANIMATION: slow wind-up overhead slam (iron golem, ravager, warden) ===
+            int windupTicks = 6;
+            int slamTicks = 2;
+            int recoverTicks = 4;
+            int total = windupTicks + slamTicks + recoverTicks;
+
+            if (attackAnimTick <= windupTicks) {
+                // Wind up: rise slightly (raising arms)
+                float progress = (float) attackAnimTick / windupTicks;
+                float eased = progress * progress;
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY + 0.25 * eased, attackAnimOriginZ);
+            } else if (attackAnimTick <= windupTicks + slamTicks) {
+                // Slam down: fast lunge forward + drop
+                int slamTick = attackAnimTick - windupTicks;
+                float progress = (float) slamTick / slamTicks;
+                float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
+                double offsetX = attackAnimLungeX * 0.6 * eased;
+                double offsetZ = attackAnimLungeZ * 0.6 * eased;
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY + 0.25 * (1.0 - eased), attackAnimOriginZ + offsetZ);
+                if (slamTick == 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            } else if (attackAnimTick <= total) {
+                // Recover: return to origin
+                int recTick = attackAnimTick - windupTicks - slamTicks;
+                float progress = (float) recTick / recoverTicks;
+                float eased = progress * progress;
+                double offsetX = attackAnimLungeX * 0.6 * (1.0 - eased);
+                double offsetZ = attackAnimLungeZ * 0.6 * (1.0 - eased);
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+            }
+
+            if (attackAnimTick >= total) {
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
+                enemyTurnState = EnemyTurnState.ATTACKING;
+                enemyTurnDelay = 0;
+            }
+        } else if (isSwiftPouncer(entityType)) {
+            // === SWIFT POUNCE: fast low dash forward (wolf, fox) ===
+            int dashTicks = 3;
+            int holdTicks = 2;
+            int returnTicks = 3;
+            int total = dashTicks + holdTicks + returnTicks;
+
+            if (attackAnimTick <= dashTicks) {
+                float progress = (float) attackAnimTick / dashTicks;
+                float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
+                double offsetX = attackAnimLungeX * 0.65 * eased;
+                double offsetZ = attackAnimLungeZ * 0.65 * eased;
+                double offsetY = -0.1 * eased; // low crouch during dash
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
+                if (attackAnimTick == 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            } else if (attackAnimTick <= dashTicks + holdTicks) {
+                // Hold at strike position
+                mob.requestTeleport(
+                    attackAnimOriginX + attackAnimLungeX * 0.65, attackAnimOriginY - 0.1, attackAnimOriginZ + attackAnimLungeZ * 0.65);
+            } else if (attackAnimTick <= total) {
+                int retTick = attackAnimTick - dashTicks - holdTicks;
+                float progress = (float) retTick / returnTicks;
+                float eased = progress * progress;
+                double offsetX = attackAnimLungeX * 0.65 * (1.0 - eased);
+                double offsetZ = attackAnimLungeZ * 0.65 * (1.0 - eased);
+                double offsetY = -0.1 * (1.0 - eased);
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
+            }
+
+            if (attackAnimTick >= total) {
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
+                enemyTurnState = EnemyTurnState.ATTACKING;
+                enemyTurnDelay = 0;
+            }
+        } else if (isBouncy(entityType)) {
+            // === BOUNCE SLAM: hop up then slam down (slime, magma cube) ===
+            int riseTicks = 4;
+            int slamTicks = 2;
+            int recoverTicks = 3;
+            int total = riseTicks + slamTicks + recoverTicks;
+
+            if (attackAnimTick <= riseTicks) {
+                float progress = (float) attackAnimTick / riseTicks;
+                float eased = (float) Math.sin(progress * Math.PI * 0.5); // smooth rise
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY + 0.6 * eased, attackAnimOriginZ);
+            } else if (attackAnimTick <= riseTicks + slamTicks) {
+                // Fast slam down toward player
+                int slamTick = attackAnimTick - riseTicks;
+                float progress = (float) slamTick / slamTicks;
+                float eased = progress * progress; // accelerate down
+                double offsetX = attackAnimLungeX * 0.5 * eased;
+                double offsetZ = attackAnimLungeZ * 0.5 * eased;
+                double offsetY = 0.6 * (1.0 - eased);
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
+                if (slamTick == 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            } else if (attackAnimTick <= total) {
+                int recTick = attackAnimTick - riseTicks - slamTicks;
+                float progress = (float) recTick / recoverTicks;
+                float eased = progress * progress;
+                double offsetX = attackAnimLungeX * 0.5 * (1.0 - eased);
+                double offsetZ = attackAnimLungeZ * 0.5 * (1.0 - eased);
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+            }
+
+            if (attackAnimTick >= total) {
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
+                enemyTurnState = EnemyTurnState.ATTACKING;
+                enemyTurnDelay = 0;
+            }
+        } else if (entityType != null && entityType.equals("minecraft:enderman")) {
+            // === ENDERMAN: flicker-dash — brief vanish then appear right next to target ===
+            int flickerTicks = 3;
+            int strikeTicks = 2;
+            int returnTicks = 4;
+            int total = flickerTicks + strikeTicks + returnTicks;
+
+            if (attackAnimTick <= flickerTicks) {
+                // "Vanish" by sinking slightly (visual flicker effect via particles on client)
+                float progress = (float) attackAnimTick / flickerTicks;
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY - 0.3 * progress, attackAnimOriginZ);
+            } else if (attackAnimTick <= flickerTicks + strikeTicks) {
+                // Appear close to player and strike
+                double offsetX = attackAnimLungeX * 0.7;
+                double offsetZ = attackAnimLungeZ * 0.7;
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+                if (attackAnimTick == flickerTicks + 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            } else if (attackAnimTick <= total) {
+                // Return smoothly
+                int retTick = attackAnimTick - flickerTicks - strikeTicks;
+                float progress = (float) retTick / returnTicks;
+                float eased = progress * progress;
+                double offsetX = attackAnimLungeX * 0.7 * (1.0 - eased);
+                double offsetZ = attackAnimLungeZ * 0.7 * (1.0 - eased);
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+            }
+
+            if (attackAnimTick >= total) {
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
+                enemyTurnState = EnemyTurnState.ATTACKING;
+                enemyTurnDelay = 0;
+            }
+        } else {
+            // === DEFAULT MELEE: lunge forward then return ===
+            if (attackAnimTick <= ATTACK_ANIM_LUNGE_TICKS) {
+                float progress = (float) attackAnimTick / ATTACK_ANIM_LUNGE_TICKS;
+                float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
+                double offsetX = attackAnimLungeX * ATTACK_LUNGE_DISTANCE * eased;
+                double offsetZ = attackAnimLungeZ * ATTACK_LUNGE_DISTANCE * eased;
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+            } else if (attackAnimTick <= ATTACK_ANIM_TOTAL_TICKS) {
+                int returnTick = attackAnimTick - ATTACK_ANIM_LUNGE_TICKS;
+                float progress = (float) returnTick / ATTACK_ANIM_RETURN_TICKS;
+                float eased = progress * progress;
+                double offsetX = attackAnimLungeX * ATTACK_LUNGE_DISTANCE * (1.0 - eased);
+                double offsetZ = attackAnimLungeZ * ATTACK_LUNGE_DISTANCE * (1.0 - eased);
+                mob.requestTeleport(
+                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+            }
+
+            if (attackAnimTick >= ATTACK_ANIM_TOTAL_TICKS) {
+                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
+                enemyTurnState = EnemyTurnState.ATTACKING;
+                enemyTurnDelay = 0;
+            }
         }
+    }
+
+    private static boolean isSpiderLike(String entityTypeId) {
+        return entityTypeId != null && (entityTypeId.equals("minecraft:spider")
+            || entityTypeId.equals("minecraft:cave_spider"));
+    }
+
+    private static boolean isHeavyHitter(String entityTypeId) {
+        return entityTypeId != null && (entityTypeId.equals("minecraft:iron_golem")
+            || entityTypeId.equals("minecraft:ravager")
+            || entityTypeId.equals("minecraft:warden")
+            || entityTypeId.equals("minecraft:hoglin")
+            || entityTypeId.equals("minecraft:zoglin"));
+    }
+
+    private static boolean isSwiftPouncer(String entityTypeId) {
+        return entityTypeId != null && (entityTypeId.equals("minecraft:wolf")
+            || entityTypeId.equals("minecraft:fox")
+            || entityTypeId.equals("minecraft:ocelot")
+            || entityTypeId.equals("minecraft:cat"));
+    }
+
+    private static boolean isBouncy(String entityTypeId) {
+        return entityTypeId != null && (entityTypeId.equals("minecraft:slime")
+            || entityTypeId.equals("minecraft:magma_cube"));
     }
 
     private void tickEnemyAttacking() {
@@ -5083,7 +6314,7 @@ public class CombatManager {
         playerDefense += getBannerDefenseBonus(arena.getPlayerGridPos());
         damage = (int)(damage * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
         int actual = Math.max(1, damage - playerDefense);
-        player.setHealth(Math.max(0, player.getHealth() - actual));
+        player.setHealth(Math.max(1, player.getHealth() - actual));
 
         // Combat sound: player hit
         player.getWorld().playSound(null, player.getBlockPos(),
@@ -5242,15 +6473,66 @@ public class CombatManager {
      * Only triggers a full game over when ALL party members are dead (or solo play).
      */
     private void handlePlayerDeathOrGameOver() {
-        // Solo play or no party → original game over
+        // Totem of Undying: save the player from downing/death entirely
+        for (int i = 0; i < player.getInventory().size(); i++) {
+            if (player.getInventory().getStack(i).getItem() == Items.TOTEM_OF_UNDYING) {
+                player.getInventory().getStack(i).decrement(1);
+                player.setHealth(player.getMaxHealth() / 2);
+                player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+                    net.minecraft.entity.effect.StatusEffects.REGENERATION, 900, 1));
+                player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+                    net.minecraft.entity.effect.StatusEffects.ABSORPTION, 100, 1));
+                player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+                    net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 800, 0));
+                // Particles + sound (vanilla totem effects)
+                ServerWorld world = (ServerWorld) player.getEntityWorld();
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.TOTEM_OF_UNDYING,
+                    player.getX(), player.getY() + 1.0, player.getZ(),
+                    100, 0.6, 1.0, 0.6, 0.5);
+                player.getWorld().playSound(null, player.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.ITEM_TOTEM_USE,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+                sendMessage("\u00a76\u00a7l\u2726 TOTEM OF UNDYING ACTIVATES! \u2726 \u00a7rResurrected with half health!");
+                achievementTracker.recordTotemProc();
+                sendSync();
+                return; // Player is saved — no downing, no game over
+            }
+        }
+
+        // Solo play or no party → start death animation before game over
         if (partyPlayers.size() <= 1) {
-            handleGameOver();
+            startPlayerDeathAnimation();
             return;
         }
 
         // Mark current player as dead
         deadPartyMembers.add(player.getUuid());
         player.setHealth(1); // keep at clamp threshold (avoids vanilla death screen)
+
+        // --- Downed animation: distinct from death (shorter, different effects) ---
+        // Downed sound: player hurt + anvil thud (not wither sounds like death)
+        ServerWorld downedWorld = (ServerWorld) player.getEntityWorld();
+        player.getWorld().playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.ENTITY_PLAYER_HURT,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.7f);
+        player.getWorld().playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.BLOCK_ANVIL_LAND,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.4f, 0.5f);
+
+        // Downed particles: red dust + damage indicator (NOT soul particles like death)
+        downedWorld.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+            player.getX(), player.getY() + 1.0, player.getZ(),
+            8, 0.3, 0.5, 0.3, 0.02);
+        downedWorld.spawnParticles(
+            new net.minecraft.particle.DustParticleEffect(
+                new org.joml.Vector3f(1.0f, 0.2f, 0.2f), 1.5f),
+            player.getX(), player.getY() + 0.5, player.getZ(),
+            12, 0.4, 0.3, 0.4, 0.01);
+
+        // Send downed event to client (orange vignette, different from red death vignette)
+        sendToAllParty(new CombatEventPayload(
+            CombatEventPayload.EVENT_PLAYER_DOWNED, 0, 0, 0, 0, 0));
+
         player.changeGameMode(net.minecraft.world.GameMode.SPECTATOR);
         sendMessage("§c§l☠ " + player.getName().getString() + " has fallen!");
 
@@ -5265,8 +6547,8 @@ public class CombatManager {
         }
 
         if (nextAlive == null) {
-            // Everyone dead → full game over
-            handleGameOver();
+            // Everyone dead → start death animation before game over
+            startPlayerDeathAnimation();
             return;
         }
 
@@ -5287,6 +6569,69 @@ public class CombatManager {
 
         sendSync();
         refreshHighlights();
+    }
+
+    /**
+     * Begin the player death animation sequence. Freezes combat, plays dramatic
+     * effects (sound, particles, camera event) over PLAYER_DEATH_ANIM_TICKS,
+     * then transitions to the real handleGameOver().
+     */
+    private void startPlayerDeathAnimation() {
+        phase = CombatPhase.PLAYER_DYING;
+        playerDeathAnimTick = 0;
+
+        // Clamp player health so vanilla death screen doesn't trigger
+        player.setHealth(1);
+
+        // Death sound — deep bass hit
+        player.getWorld().playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.ENTITY_PLAYER_DEATH,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.5f);
+
+        // Send death event to client for screen effects (red vignette, camera drop)
+        sendToAllParty(new CombatEventPayload(
+            CombatEventPayload.EVENT_COMBAT_LOST, 0, PLAYER_DEATH_ANIM_TICKS, 0, 0, 0));
+
+        sendMessage("§c§l☠ You have fallen...");
+    }
+
+    private void tickPlayerDying() {
+        playerDeathAnimTick++;
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        // Tick 1-15: rising soul particles from player
+        if (playerDeathAnimTick <= 15 && playerDeathAnimTick % 3 == 0) {
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
+                player.getX(), player.getY() + 1.0, player.getZ(),
+                5, 0.3, 0.5, 0.3, 0.02);
+        }
+
+        // Tick 10: secondary death echo sound
+        if (playerDeathAnimTick == 10) {
+            player.getWorld().playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_WITHER_HURT,
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.4f, 0.3f);
+        }
+
+        // Tick 20-40: smoke/ash particles (body fading)
+        if (playerDeathAnimTick >= 20 && playerDeathAnimTick <= 40 && playerDeathAnimTick % 4 == 0) {
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                player.getX(), player.getY() + 0.5, player.getZ(),
+                8, 0.4, 0.3, 0.4, 0.01);
+        }
+
+        // Tick 45: defeat sting
+        if (playerDeathAnimTick == 45) {
+            player.getWorld().playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_WITHER_DEATH,
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.5f, 0.5f);
+        }
+
+        // Animation complete → proceed to actual game over logic
+        if (playerDeathAnimTick >= PLAYER_DEATH_ANIM_TICKS) {
+            handleGameOver();
+        }
     }
 
     private void handleGameOver() {
@@ -5332,6 +6677,22 @@ public class CombatManager {
 
         // Strip items from ALL party members (full team wipe)
         for (ServerPlayerEntity p : getAllParticipants()) {
+            if (DeathProtectionComponent.hasRecoveryCompass(p)
+                && DeathProtectionComponent.protectCombatInventory(p)) {
+                // Particles + sound for recovery compass activation
+                ServerWorld compassWorld = (ServerWorld) p.getEntityWorld();
+                compassWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
+                    p.getX(), p.getY() + 1.0, p.getZ(),
+                    40, 0.5, 0.8, 0.5, 0.02);
+                compassWorld.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+                    p.getX(), p.getY() + 1.5, p.getZ(),
+                    25, 0.4, 0.6, 0.4, 0.05);
+                p.getWorld().playSound(null, p.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.BLOCK_RESPAWN_ANCHOR_CHARGE,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.2f);
+                sendMessageTo(p, "\u00a76\u00a7l\u2728 Recovery Compass activated! \u00a7rYour inventory was saved.");
+                continue;
+            }
             if (ld.isInBiomeRun() && ld.activeBiomeLevelIndex > 0) {
                 // Past level 1: lose ALL items (the "Continue" screen warns about this)
                 int itemsLost = 0;
@@ -5395,6 +6756,10 @@ public class CombatManager {
         enemy.takeDamage(9999);
         arena.removeEntity(enemy); // free the tile for pathfinding
         onEnemyKilled(enemy); // track kill streak
+        // Clean up visual projectile entity
+        if (enemy.isProjectile()) {
+            killVisualProjectileNear(enemy);
+        }
         MobEntity mob = enemy.getMobEntity();
         if (mob != null && mob.isAlive()) {
             // Pehkui death shrink — mob shrinks to 0 then gets discarded after delay
@@ -5450,6 +6815,8 @@ public class CombatManager {
         int luckBonusItems = PlayerProgression.get((ServerWorld) player.getEntityWorld())
             .getStats(player).getPoints(PlayerProgression.Stat.LUCK);
         for (CombatEntity enemy : enemies) {
+            // Skip drops for creepers that self-exploded (rewards killing them properly)
+            if (enemy.isSelfExploded()) continue;
             List<ItemStack> drops = getMobDrops(enemy.getEntityTypeId());
             for (ItemStack drop : drops) {
                 if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
@@ -5474,7 +6841,16 @@ public class CombatManager {
 
         // Give level completion loot to all party participants
         if (levelDef != null) {
-            List<ItemStack> loot = levelDef.rollCompletionLoot();
+            ServerWorld lootWorld = (ServerWorld) player.getEntityWorld();
+            com.crackedgames.craftics.level.BiomeTemplate lootBiome = null;
+            if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
+                lootBiome = gld.getBiomeTemplate();
+            }
+            final com.crackedgames.craftics.level.BiomeTemplate finalLootBiome = lootBiome;
+            List<ItemStack> loot = new ArrayList<>();
+            for (ItemStack stack : levelDef.rollCompletionLoot()) {
+                loot.add(stack.isOf(Items.ENCHANTED_BOOK) ? randomEnchantedBook(lootWorld, stack.getCount(), finalLootBiome) : stack);
+            }
             for (ItemStack item : loot) {
                 for (ServerPlayerEntity recipient : rewardRecipients) {
                     recipient.getInventory().insertStack(item.copy());
@@ -6873,6 +8249,42 @@ public class CombatManager {
         }
     }
 
+    private ItemStack randomEnchantedBook(ServerWorld world, int count, com.crackedgames.craftics.level.BiomeTemplate biome) {
+        var registry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
+        java.util.Random rng = new java.util.Random();
+
+        net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment> entry = null;
+
+        // Use biome-specific enchantment pool if defined
+        if (biome != null && biome.enchantmentLootIds.length > 0) {
+            int totalWeight = 0;
+            for (int w : biome.enchantmentLootWeights) totalWeight += w;
+            int roll = rng.nextInt(totalWeight);
+            int cumulative = 0;
+            for (int i = 0; i < biome.enchantmentLootIds.length; i++) {
+                cumulative += biome.enchantmentLootWeights[i];
+                if (roll < cumulative) {
+                    entry = registry.getEntry(net.minecraft.util.Identifier.of(biome.enchantmentLootIds[i])).orElse(null);
+                    break;
+                }
+            }
+        }
+
+        // Fall back to a random enchantment from the full registry
+        if (entry == null) {
+            var entries = registry.streamEntries().toList();
+            if (entries.isEmpty()) return new ItemStack(Items.ENCHANTED_BOOK, count);
+            entry = entries.get(rng.nextInt(entries.size()));
+        }
+
+        int level = 1 + rng.nextInt(entry.value().getMaxLevel());
+        ItemStack book = new ItemStack(Items.ENCHANTED_BOOK, count);
+        ItemEnchantmentsComponent.Builder builder = new ItemEnchantmentsComponent.Builder(ItemEnchantmentsComponent.DEFAULT);
+        builder.add(entry, level);
+        book.set(DataComponentTypes.STORED_ENCHANTMENTS, builder.build());
+        return book;
+    }
+
     // ── Event Room Builders ──
 
     private void buildShrineArea(ServerWorld world, BlockPos origin) {
@@ -7126,7 +8538,21 @@ public class CombatManager {
     public void endCombat() {
         if (!active) return;
         clearHighlights();
-        clearWarningBlocks();
+        cleanupNoCollisionTeam();
+
+        // Clean up any undetonated TNT blocks
+        if (!pendingTnts.isEmpty() && player != null) {
+            ServerWorld tntWorld = (ServerWorld) player.getEntityWorld();
+            for (PendingTnt tnt : pendingTnts) {
+                GridTile floorTile = arena.getTile(tnt.tile());
+                if (floorTile != null) {
+                    tntWorld.setBlockState(tnt.blockPos(), floorTile.getBlockType().getDefaultState());
+                } else {
+                    tntWorld.setBlockState(tnt.blockPos(), Blocks.AIR.getDefaultState());
+                }
+            }
+            pendingTnts.clear();
+        }
 
         // Return dropped trident to player before ending
         returnDroppedTrident();
@@ -7169,12 +8595,13 @@ public class CombatManager {
             }
         }
 
-        // Discard any lingering potion clouds tagged as arena entities
+        // Discard any lingering potion clouds and visual projectiles tagged as arena entities
         if (player != null) {
             ServerWorld cleanupWorld = (ServerWorld) player.getEntityWorld();
             for (net.minecraft.entity.Entity entity : cleanupWorld.iterateEntities()) {
-                if (entity instanceof net.minecraft.entity.AreaEffectCloudEntity
-                        && entity.getCommandTags().contains("craftics_arena")) {
+                if (entity.getCommandTags().contains("craftics_arena")
+                        && (entity instanceof net.minecraft.entity.AreaEffectCloudEntity
+                            || entity.getCommandTags().contains("craftics_visual_projectile"))) {
                     entity.discard();
                 }
             }
@@ -7318,21 +8745,46 @@ public class CombatManager {
                 CombatEntity enemy = entry.getValue();
                 if (!enemy.isAlive() || highlighted.contains(enemy)) continue;
 
-                boolean inRange;
-                if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
-                    inRange = false;
-                    for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
-                        if (PlayerCombatStats.isInCrossbowLine(arena, playerPos, tile)) { inRange = true; break; }
+                if (enemy.isBackgroundBoss()) {
+                    // Background boss: check range to any of its registered tiles
+                    boolean inRange = false;
+                    java.util.List<GridPos> bossTiles = new java.util.ArrayList<>();
+                    for (var occEntry : arena.getOccupants().entrySet()) {
+                        if (occEntry.getValue() == enemy) {
+                            bossTiles.add(occEntry.getKey());
+                            int dist = playerPos.manhattanDistance(occEntry.getKey());
+                            if (dist <= range) inRange = true;
+                            if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK
+                                    && PlayerCombatStats.isInCrossbowLine(arena, playerPos, occEntry.getKey())) {
+                                inRange = true;
+                            }
+                        }
+                    }
+                    if (inRange) {
+                        highlighted.add(enemy);
+                        for (GridPos tile : bossTiles) {
+                            attackList.add(tile.x());
+                            attackList.add(tile.z());
+                        }
                     }
                 } else {
-                    inRange = enemy.minDistanceTo(playerPos) <= range;
-                }
+                    // Normal entity range check
+                    boolean inRange;
+                    if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
+                        inRange = false;
+                        for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                            if (PlayerCombatStats.isInCrossbowLine(arena, playerPos, tile)) { inRange = true; break; }
+                        }
+                    } else {
+                        inRange = enemy.minDistanceTo(playerPos) <= range;
+                    }
 
-                if (inRange) {
-                    highlighted.add(enemy);
-                    for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
-                        attackList.add(tile.x());
-                        attackList.add(tile.z());
+                    if (inRange) {
+                        highlighted.add(enemy);
+                        for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                            attackList.add(tile.x());
+                            attackList.add(tile.z());
+                        }
                     }
                 }
             }
@@ -7372,11 +8824,23 @@ public class CombatManager {
             CombatEntity enemy = entry.getValue();
             if (!enemy.isAlive() || seen.contains(enemy)) continue;
             seen.add(enemy);
-            // Add ALL occupied tiles for multi-tile entities (e.g., 2x2 spider)
-            for (GridPos occupied : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
-                enemyMapList.add(occupied.x());
-                enemyMapList.add(occupied.z());
-                enemyMapList.add(enemy.getEntityId());
+
+            if (enemy.isBackgroundBoss()) {
+                // Background bosses are registered on many tiles manually — collect them all
+                for (var occEntry : arena.getOccupants().entrySet()) {
+                    if (occEntry.getValue() == enemy) {
+                        enemyMapList.add(occEntry.getKey().x());
+                        enemyMapList.add(occEntry.getKey().z());
+                        enemyMapList.add(enemy.getEntityId());
+                    }
+                }
+            } else {
+                // Normal entities: use getOccupiedTiles for multi-tile entities (e.g., 2x2 spider)
+                for (GridPos occupied : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                    enemyMapList.add(occupied.x());
+                    enemyMapList.add(occupied.z());
+                    enemyMapList.add(enemy.getEntityId());
+                }
             }
             if (enemyTypesBuilder.length() > 0) enemyTypesBuilder.append("|");
             enemyTypesBuilder.append(enemy.getEntityTypeId());

@@ -707,36 +707,33 @@ public class ItemUseHandler {
         return "§fDrank milk! All effects cleared.";
     }
 
-    // --- TNT: place on target tile, deals AoE damage to all adjacent enemies ---
+    // --- TNT: place on target tile, explodes at the start of next round ---
     private static String useTNT(ServerPlayerEntity player, GridArena arena,
                                   GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
 
+        // Place a physical TNT block on the arena floor
+        net.minecraft.server.world.ServerWorld world = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+        net.minecraft.util.math.BlockPos bp = arena.gridToBlockPos(targetTile);
+        world.setBlockState(bp, net.minecraft.block.Blocks.TNT.getDefaultState());
+
+        // Fuse particles — smoke rising from the placed TNT
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+            bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
+            8, 0.2, 0.3, 0.2, 0.01);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+            bp.getX() + 0.5, bp.getY() + 0.9, bp.getZ() + 0.5,
+            3, 0.05, 0.05, 0.05, 0.0);
+
+        // Play TNT fuse sound
+        world.playSound(null, bp,
+            net.minecraft.sound.SoundEvents.ENTITY_TNT_PRIMED,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+
         stack.decrement(1);
-        int totalDamage = 0;
-        int enemiesHit = 0;
-        // Damage all enemies within 2 tiles of target (3x3 area)
-        for (CombatEntity enemy : arena.getOccupants().values()) {
-            if (!enemy.isAlive()) continue;
-            int dist = Math.abs(enemy.getGridPos().x() - targetTile.x())
-                     + Math.abs(enemy.getGridPos().z() - targetTile.z());
-            if (dist <= 2) {
-                int dmg = dist == 0 ? 8 : (dist == 1 ? 5 : 3);
-                int dealt = enemy.takeDamage(dmg);
-                totalDamage += dealt;
-                enemiesHit++;
-            }
-        }
-        // Also damages the player if close
-        GridPos playerPos = arena.getPlayerGridPos();
-        int playerDist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
-        if (playerDist <= 2) {
-            int selfDmg = playerDist == 0 ? 6 : (playerDist == 1 ? 4 : 2);
-            player.setHealth(Math.max(1, player.getHealth() - selfDmg));
-            return "§6§lBOOM! §r§7Hit " + enemiesHit + " enemies for " + totalDamage + " total! You took " + selfDmg + " blast damage!";
-        }
-        return "§6§lBOOM! §r§7Hit " + enemiesHit + " enemies for " + totalDamage + " total damage!";
+        // Return special prefix so CombatManager tracks this for detonation
+        return TNT_PREFIX + targetTile.x() + "," + targetTile.z();
     }
 
     // --- Cobweb: slows an enemy (stuns for 1 turn) ---
@@ -913,6 +910,8 @@ public class ItemUseHandler {
     public static final String BEFRIEND_PREFIX = "§aBEFRIEND:";
     /** Prefix for mounting a tamed mob (horse/donkey/camel with saddle). */
     public static final String MOUNT_PREFIX = "§aMOUNT:";
+    /** Prefix for TNT placement — CombatManager tracks the tile for delayed detonation. */
+    public static final String TNT_PREFIX = "§6TNT:";
 
     /** Mobs that can be mounted in combat (require a saddle). */
     private static final Set<String> MOUNTABLE_MOBS = Set.of(
@@ -1089,6 +1088,7 @@ public class ItemUseHandler {
         GridTile tile = arena.getTile(targetTile);
         if (tile == null) return "§cInvalid tile!";
         if (tile.isWalkable()) return "§cThat tile is already walkable!";
+        if (tile.isPermanent()) return "§cThis obstacle is too solid to break!";
         GridPos playerPos = arena.getPlayerGridPos();
         int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
         if (dist > 1) return "§cToo far! Stand next to the obstacle.";

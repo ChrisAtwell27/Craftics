@@ -18,7 +18,8 @@ public class CombatEntity {
     // AI state
     private boolean damagedSinceLastTurn = false;
     private int fuseTimer = 0;
-    private final int size;
+    private boolean selfExploded = false; // creeper exploded on its own (no drops)
+    private int size;
     private final int moveSpeed;
     private int speedBonus = 0;
     private int attackPenalty = 0;
@@ -36,6 +37,8 @@ public class CombatEntity {
     private int attackBoost = 0; // permanent attack boost (from pet stats override)
     private int defenseBoost = 0; // permanent defense boost (from pet stats override)
     private int rangeOverride = -1; // if set, overrides base range
+    private boolean backgroundBoss = false; // true = occupies tiles for targeting but doesn't block movement
+    private int visualProjectileEntityId = -1; // MC entity ID of the visual fireball/skull entity
 
     public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
                         int maxHp, int attackPower, int defense, int range) {
@@ -73,6 +76,11 @@ public class CombatEntity {
     public void setRangeOverride(int r) { this.rangeOverride = r; }
     public boolean isAlive() { return alive; }
     public int getSize() { return size; }
+    public void setSize(int size) { this.size = size; }
+    public boolean isBackgroundBoss() { return backgroundBoss; }
+    public void setBackgroundBoss(boolean bg) { this.backgroundBoss = bg; }
+    public int getVisualProjectileEntityId() { return visualProjectileEntityId; }
+    public void setVisualProjectileEntityId(int id) { this.visualProjectileEntityId = id; }
 
     /** Minimum manhattan distance from a point to any tile this entity occupies. */
     public int minDistanceTo(GridPos from) {
@@ -132,6 +140,9 @@ public class CombatEntity {
 
     public int getFuseTimer() { return fuseTimer; }
     public void setFuseTimer(int timer) { this.fuseTimer = timer; }
+
+    public boolean isSelfExploded() { return selfExploded; }
+    public void setSelfExploded(boolean v) { this.selfExploded = v; }
 
     private boolean stunned = false;
     public boolean isStunned() { return stunned; }
@@ -245,7 +256,8 @@ public class CombatEntity {
     private static int getDefaultSize(String entityTypeId) {
         return switch (entityTypeId) {
             case "minecraft:spider", "minecraft:hoglin",
-                 "minecraft:slime", "minecraft:magma_cube" -> 2;
+                 "minecraft:slime", "minecraft:magma_cube",
+                 "minecraft:ghast" -> 2;
             default -> 1;
         };
     }

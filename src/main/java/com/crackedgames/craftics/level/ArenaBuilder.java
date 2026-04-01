@@ -150,13 +150,7 @@ public class ArenaBuilder {
             }
         }
 
-        // Under-floor lighting (always, regardless of structure or procedural)
         int floorX = finalOrigin.getX(), floorY = finalOrigin.getY(), floorZ = finalOrigin.getZ();
-        for (int x = -1; x < finalW + 1; x += 3) {
-            for (int z = -1; z < finalH + 1; z += 3) {
-                set(world, floorX + x, floorY - 1, floorZ + z, Blocks.GLOWSTONE);
-            }
-        }
 
         // Visible biome-themed lighting around the arena border
         placeLighting(world, floorX, floorY, floorZ, finalW, finalH, envStyle);
@@ -197,14 +191,29 @@ public class ArenaBuilder {
                 if (tile == null) continue;
                 BlockPos floorPos = new BlockPos(floorX + x, floorY, floorZ + z);
                 BlockPos abovePos = new BlockPos(floorX + x, floorY + 1, floorZ + z);
+                BlockPos headPos = new BlockPos(floorX + x, floorY + 2, floorZ + z);
                 net.minecraft.block.BlockState aboveState = world.getBlockState(abovePos);
+                net.minecraft.block.BlockState headState = world.getBlockState(headPos);
+
+                boolean hasObstacleBlock = !aboveState.isAir()
+                    && !(aboveState.getBlock() instanceof net.minecraft.block.CarpetBlock)
+                    && aboveState.isSolidBlock(world, abovePos);
+                boolean hasHeadBlock = !headState.isAir()
+                    && !(headState.getBlock() instanceof net.minecraft.block.CarpetBlock)
+                    && headState.isSolidBlock(world, headPos);
 
                 // Solid block above floor = obstacle (skip if tile is already non-walkable)
-                if (tile.isWalkable() && !aboveState.isAir()
-                    && !(aboveState.getBlock() instanceof net.minecraft.block.CarpetBlock)
-                    && aboveState.isSolidBlock(world, abovePos)) {
+                if (tile.isWalkable() && hasObstacleBlock) {
+                    // If there's also a block at head level (floorY+2), obstacle is permanent (can't be mined)
                     finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.OBSTACLE,
-                        aboveState.getBlock());
+                        aboveState.getBlock(), hasHeadBlock);
+                }
+
+                // No obstacle block at floorY+1 but solid block at head level (floorY+2) = suffocation risk
+                // Mark as permanent obstacle so the player can't walk under it
+                if (finalTiles[x][z].isWalkable() && !hasObstacleBlock && hasHeadBlock) {
+                    finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.OBSTACLE,
+                        headState.getBlock(), true);
                 }
 
                 // Water block at floor level = mark as WATER tile (for fishing, boat movement, etc.)
@@ -215,20 +224,16 @@ public class ArenaBuilder {
                         Blocks.WATER);
                 }
 
-                // Deep drop below arena floor = void (fall death)
+                // No floor block = void. If the floor level is air, void_air, or lava,
+                // there's nothing to stand on — mark as VOID regardless of drop depth.
                 if (finalTiles[x][z].isWalkable()) {
-                    if (floorState.isAir() || floorState.getBlock() == Blocks.VOID_AIR) {
-                        // Check how deep the drop is
-                        int dropDepth = 0;
-                        for (int dy = -1; dy >= -5; dy--) {
-                            BlockPos checkPos = new BlockPos(floorX + x, floorY + dy, floorZ + z);
-                            if (!world.getBlockState(checkPos).isAir()) break;
-                            dropDepth++;
-                        }
-                        if (dropDepth > 2) {
-                            finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.VOID,
-                                Blocks.AIR);
-                        }
+                    Block floorBlock = floorState.getBlock();
+                    boolean noFloor = floorState.isAir()
+                        || floorBlock == Blocks.VOID_AIR
+                        || floorBlock == Blocks.LAVA;
+                    if (noFloor) {
+                        finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.VOID,
+                            Blocks.AIR);
                     }
                 }
             }

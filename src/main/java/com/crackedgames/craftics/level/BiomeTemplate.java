@@ -23,6 +23,9 @@ public class BiomeTemplate {
     public final MobPoolEntry boss; // null if no boss
     public final Item[] lootItems;
     public final int[] lootWeights;
+    /** Specific enchantment IDs (e.g. "minecraft:swift_sneak") this biome's books can roll. Empty = all enchantments. */
+    public final String[] enchantmentLootIds;
+    public final int[] enchantmentLootWeights;
     public final boolean nightLevel;
     public final EnvironmentStyle environmentStyle;
 
@@ -33,6 +36,7 @@ public class BiomeTemplate {
                           MobPoolEntry[] passiveMobs, MobPoolEntry[] hostileMobs,
                           MobPoolEntry boss,
                           Item[] lootItems, int[] lootWeights,
+                          String[] enchantmentLootIds, int[] enchantmentLootWeights,
                           boolean nightLevel, EnvironmentStyle environmentStyle) {
         this.biomeId = biomeId;
         this.displayName = displayName;
@@ -51,6 +55,8 @@ public class BiomeTemplate {
         this.boss = boss;
         this.lootItems = lootItems;
         this.lootWeights = lootWeights;
+        this.enchantmentLootIds = enchantmentLootIds;
+        this.enchantmentLootWeights = enchantmentLootWeights;
         this.nightLevel = nightLevel;
         this.environmentStyle = environmentStyle;
     }

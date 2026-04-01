@@ -63,6 +63,7 @@ public class BiomeRegistry {
                     old.baseObstacleDensity, old.obstacleDensityGrowth,
                     old.passiveMobs, old.hostileMobs, old.boss,
                     old.lootItems, old.lootWeights,
+                    old.enchantmentLootIds, old.enchantmentLootWeights,
                     old.nightLevel, old.environmentStyle
                 ));
             }

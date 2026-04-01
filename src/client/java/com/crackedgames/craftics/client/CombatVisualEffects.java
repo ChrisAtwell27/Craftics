@@ -20,6 +20,13 @@ public class CombatVisualEffects {
     private static int screenFlashColor = 0;
     private static int attackFlashTicks = 0;
 
+    // Death overlay state (dark red vignette that fades in over death animation)
+    private static int deathOverlayTick = 0;
+    private static int deathOverlayDuration = 0;
+
+    // Downed overlay state (brief orange flash)
+    private static int downedFlashTicks = 0;
+
     // Screen shake state
     private static float shakeIntensity = 0f;
     private static float shakeOffsetX = 0f;
@@ -139,6 +146,37 @@ public class CombatVisualEffects {
     }
 
     /**
+     * Start the death overlay — a dark red vignette that gradually fades in over
+     * the death animation duration (used for the full death / game over sequence).
+     * Distinct from downed: slower, darker, more ominous.
+     */
+    public static void startDeathOverlay(int durationTicks) {
+        deathOverlayTick = 0;
+        deathOverlayDuration = durationTicks > 0 ? durationTicks : 60;
+    }
+
+    /**
+     * Flash when a party member is downed (NOT dead). Brief orange/amber flash
+     * distinct from the red death overlay or the damage flash.
+     */
+    public static void flashDowned() {
+        downedFlashTicks = 15;
+        screenFlashTicks = 10;
+        screenFlashColor = 0x88FF8800; // amber/orange
+    }
+
+    /**
+     * Reset all overlays (called when exiting combat).
+     */
+    public static void resetOverlays() {
+        deathOverlayTick = 0;
+        deathOverlayDuration = 0;
+        downedFlashTicks = 0;
+        screenFlashTicks = 0;
+        attackFlashTicks = 0;
+    }
+
+    /**
      * Trigger screen shake. Intensity scales with damage dealt.
      * @param intensity 0.0-1.0+ range (0.3 = light, 0.6 = medium, 1.0 = heavy)
      */
@@ -190,7 +228,10 @@ public class CombatVisualEffects {
     public static void tick() {
         if (screenFlashTicks > 0) screenFlashTicks--;
         if (attackFlashTicks > 0) attackFlashTicks--;
-
+        if (downedFlashTicks > 0) downedFlashTicks--;
+        if (deathOverlayDuration > 0 && deathOverlayTick < deathOverlayDuration) {
+            deathOverlayTick++;
+        }
         // Process delayed effects
         Iterator<DelayedEffect> dit = delayedEffects.iterator();
         while (dit.hasNext()) {
@@ -258,6 +299,46 @@ public class CombatVisualEffects {
 
             ctx.drawCenteredTextWithShadow(client.textRenderer,
                 Text.literal(ft.text), (int) ft.x, (int) ft.y, color);
+        }
+
+        // Death overlay — dark red vignette that fades in over the death animation
+        if (deathOverlayDuration > 0 && deathOverlayTick > 0) {
+            float progress = (float) deathOverlayTick / deathOverlayDuration;
+            // Ease-in: starts subtle, gets heavier
+            float eased = progress * progress;
+            int alpha = (int)(eased * 180); // max ~70% opacity
+            int deathColor = (alpha << 24) | 0x220000; // very dark red / near-black
+            ctx.fill(0, 0, screenW, screenH, deathColor);
+
+            // "YOU DIED" text fading in during the last third
+            if (progress > 0.65f) {
+                float textAlpha = (progress - 0.65f) / 0.35f;
+                int textColor = ((int)(textAlpha * 255) << 24) | 0xCC2222;
+                ctx.drawCenteredTextWithShadow(client.textRenderer,
+                    Text.literal("\u00a7l\u2620 YOU DIED \u2620"),
+                    screenW / 2, screenH / 2 - 10, textColor);
+            }
+        }
+
+        // Downed vignette — orange border pulse (distinct from death overlay)
+        if (downedFlashTicks > 0) {
+            float progress = (float) downedFlashTicks / 15.0f;
+            int alpha = (int)(progress * 160);
+            int borderColor = (alpha << 24) | 0xFF8800; // orange
+            int thickness = (int)(6 * progress) + 2;
+            ctx.fill(0, 0, screenW, thickness, borderColor);
+            ctx.fill(0, screenH - thickness, screenW, screenH, borderColor);
+            ctx.fill(0, 0, thickness, screenH, borderColor);
+            ctx.fill(screenW - thickness, 0, screenW, screenH, borderColor);
+
+            // "DOWNED" text briefly
+            if (downedFlashTicks > 5) {
+                float textAlpha = progress;
+                int textColor = ((int)(textAlpha * 255) << 24) | 0xFF8800;
+                ctx.drawCenteredTextWithShadow(client.textRenderer,
+                    Text.literal("\u00a7l\u00a76DOWNED"),
+                    screenW / 2, screenH / 2 - 10, textColor);
+            }
         }
     }
 

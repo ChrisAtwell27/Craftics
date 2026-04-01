@@ -4,6 +4,7 @@ import com.crackedgames.craftics.block.ModBlocks;
 import com.crackedgames.craftics.block.ModScreenHandlers;
 import com.crackedgames.craftics.combat.CombatManager;
 import com.crackedgames.craftics.network.ModNetworking;
+import com.crackedgames.craftics.component.CrafticsComponents;
 import com.crackedgames.craftics.world.CrafticsSavedData;
 import com.crackedgames.craftics.world.HubRoomBuilder;
 import com.crackedgames.craftics.world.VoidChunkGenerator;
@@ -11,6 +12,7 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
@@ -255,6 +257,23 @@ public class CrafticsMod implements ModInitializer {
                 cm.endCombat();
             }
             CombatManager.remove(playerUuid);
+        });
+
+        ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
+            var deathProtection = CrafticsComponents.DEATH_PROTECTION.get(newPlayer);
+            if (!deathProtection.hasPendingRestore()) return;
+
+            deathProtection.restoreTo(newPlayer);
+            // Particles on respawn to confirm restoration
+            if (newPlayer.getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
+                serverWorld.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+                    newPlayer.getX(), newPlayer.getY() + 1.0, newPlayer.getZ(),
+                    30, 0.5, 0.8, 0.5, 0.05);
+                newPlayer.getWorld().playSound(null, newPlayer.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.BLOCK_RESPAWN_ANCHOR_SET_SPAWN,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+            }
+            newPlayer.sendMessage(Text.literal("\u00a76\u00a7l\u2728 Recovery Compass \u00a7r\u00a76\u2014 Your inventory has been restored!"), false);
         });
 
         // Tick ALL active combat instances each server tick
