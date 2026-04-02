@@ -73,11 +73,12 @@
       </div>
       <table>
         <tr><th>Type</th><td>Ender Dragon</td></tr>
-        <tr><th>HP</th><td>Extremely High</td></tr>
-        <tr><th>Attack</th><td>Extremely High</td></tr>
-        <tr><th>Defense</th><td>2</td></tr>
+        <tr><th>HP</th><td>80</td></tr>
+        <tr><th>Attack</th><td>15</td></tr>
+        <tr><th>Defense</th><td>3</td></tr>
         <tr><th>Speed</th><td>4</td></tr>
-        <tr><th>Size</th><td>4&times;4</td></tr>
+        <tr><th>Size</th><td>3&times;3</td></tr>
+        <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
         <tr><th>Dimension</th><td><span class="badge badge-end">The End</span></td></tr>
       </table>
     </div>
@@ -86,26 +87,33 @@
       <div class="wiki-toc-title">Contents</div>
       <ol>
         <li><a href="#abilities">Abilities</a></li>
+        <li><a href="#phase-2">Phase 2</a></li>
         <li><a href="#strategy">Strategy</a></li>
       </ol>
     </div>
 
     <h1>Ender Dragon</h1>
-    <p class="page-desc">The final boss of Craftics &mdash; defeating the Ender Dragon unlocks New Game+.</p>
+    <p class="page-desc">The final boss of Craftics &mdash; a multi-phase spectacle with End Crystals, dragon breath, and escalating destruction. Defeating the Ender Dragon unlocks New Game+.</p>
 
     <div class="wiki-content">
-      <p>The Ender Dragon is the final challenge of Craftics, fought in the Dragon&rsquo;s Nest at the end of The End dimension. Defeating it triggers New Game+ (NG+), scaling all enemies and rewards for subsequent playthroughs. Its 4&times;4 body dominates a large portion of the arena at any given moment, and its attacks cover wide areas with very little safe ground to retreat to.</p>
+      <p>The Ender Dragon is fought in the Dragon&rsquo;s Nest at the end of The End dimension. Two End Crystals heal it continuously, forcing a multi-target priority puzzle. Its massive 3&times;3 body dominates the arena, and its attacks cover wide swaths of ground with lingering fire.</p>
 
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Devastating Swoop:</strong> Sweeps across the entire arena in a cardinal direction, dealing massive damage to everything in its path. Telegraphed 1 turn.</li>
-        <li><strong>Dragon&rsquo;s Breath:</strong> Leaves a 3&times;3 cloud of toxic breath at a targeted location, damaging any entity that enters it for 2 turns.</li>
-        <li><strong>Wing Buffet:</strong> Knocks all entities within 2 tiles away from the Dragon with heavy knockback.</li>
-        <li><strong>End Charge:</strong> Rushes directly to the player&rsquo;s position, dealing full attack damage on arrival. Cannot be outrun without going around.</li>
+        <li><strong>End Crystal Shield (passive):</strong> 2 End Crystals (8 HP each) spawn at random arena edges at fight start. Each active crystal regenerates the Dragon 3 HP per turn. Crystals must be destroyed as priority targets.</li>
+        <li><strong>Swoop (Phase 1):</strong> Flies up to 4 tiles in a cardinal line, dealing full ATK damage to everything in the path.</li>
+        <li><strong>Dragon Breath Pool:</strong> After a Swoop, leaves a 3&times;3 lingering damage zone at the landing point for 3 turns, dealing fire damage to anything inside.</li>
+        <li><strong>Wing Gust:</strong> Pushes all entities 2 tiles away from the Dragon. Used when the player is adjacent.</li>
+        <li><strong>Summon Endermites:</strong> Calls 3&ndash;4 Endermites (3 HP / 2 ATK / Speed 3) every 4 turns as swarm fodder.</li>
       </ul>
 
+      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Dragon&rsquo;s Fury&rdquo;</h2>
+      <div class="phase2-callout">
+        <p><strong>Triggers at &le; 50% HP.</strong> Destroyed End Crystals respawn once (must destroy them twice total). Dragon Breath Pools become permanent. Wing Gust pushes 3 tiles. Swoop attacks leave fire tiles along the flight path. Every 5 turns the Dragon perches on an arena edge and unleashes a full-width breath attack covering an entire row or column &mdash; the signature dodging moment. Fury Charge replaces Swoop: charges 4 tiles + AoE radius 2 + applies Weakness.</p>
+      </div>
+
       <h2 id="strategy">Strategy</h2>
-      <p>Learn the swoop lanes and stay out of the center. The Dragon&rsquo;s 4&times;4 body size means it controls a huge portion of the arena, so safe positions are limited and must be tracked carefully. Dragon&rsquo;s Breath clouds persist for 2 turns &mdash; memorize where they land before repositioning. Save your strongest abilities and consumables for this fight. Defeating the Ender Dragon triggers NG+ with no reset, so commit fully.</p>
+      <p>Destroy both End Crystals first or the Dragon out-heals you (6 HP/turn from 2 crystals). Dragon Breath Pools deny large sections of the arena, so keep track of where they land before repositioning. When you see the Dragon perch in Phase 2, immediately move off its row or column. Phase 2 crystal respawn means 4 total crystal kills are required. Save your strongest consumables and abilities for this fight.</p>
     </div>
 
     <div class="boss-nav">

@@ -73,12 +73,12 @@
       </div>
       <table>
         <tr><th>Type</th><td>Warden</td></tr>
-        <tr><th>HP</th><td>Very High</td></tr>
-        <tr><th>Attack</th><td>Very High</td></tr>
-        <tr><th>Defense</th><td>3</td></tr>
+        <tr><th>HP</th><td>50</td></tr>
+        <tr><th>Attack</th><td>8</td></tr>
+        <tr><th>Defense</th><td>4</td></tr>
         <tr><th>Speed</th><td>3</td></tr>
-        <tr><th>Range</th><td>2 (Sonic Boom)</td></tr>
         <tr><th>Size</th><td>2&times;2</td></tr>
+        <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
         <tr><th>Dimension</th><td><span class="badge badge-overworld">Overworld</span></td></tr>
       </table>
     </div>
@@ -86,27 +86,43 @@
     <div class="wiki-toc">
       <div class="wiki-toc-title">Contents</div>
       <ol>
+        <li><a href="#vibration">Vibration Sense</a></li>
         <li><a href="#abilities">Abilities</a></li>
+        <li><a href="#phase-2">Phase 2</a></li>
         <li><a href="#strategy">Strategy</a></li>
       </ol>
     </div>
 
     <h1>The Warden</h1>
-    <p class="page-desc">Special boss of The Deep Dark &mdash; the most dangerous encounter in the Overworld.</p>
+    <p class="page-desc">Special boss of The Deep Dark &mdash; a blind apex predator that hunts entirely by sound.</p>
 
     <div class="wiki-content">
-      <p>The Warden is the apex predator of the Deep Dark, encountered after surviving all 8 Overworld biomes. With the highest HP and attack of any Overworld encounter, it serves as the gatekeeping boss for the Nether. Its Sonic Boom renders conventional defense builds ineffective, demanding a different approach from every prior encounter.</p>
+      <p>The Warden is the ultimate Overworld challenge, encountered after surviving all 8 Overworld biomes. Unlike every other boss, the Warden is <strong>blind</strong> &mdash; it does not track the player by position but by <strong>vibration</strong>. This turns the fight into a stealth-action puzzle where sound management is as important as combat.</p>
+
+      <h2 id="vibration">Core Mechanic &mdash; Vibration Sense</h2>
+      <ul>
+        <li><strong>Projectile Distraction:</strong> Throw any projectile at an empty tile to create a vibration. The Warden prioritizes moving to and attacking the vibration target instead of the player. If it reaches the tile and finds nothing, it becomes confused and idles for 1 turn.</li>
+        <li><strong>Movement Vibrations:</strong> Moving 3+ tiles in a single turn causes the Warden to lock on to the player, overriding any active distraction.</li>
+        <li><strong>Vibration Priority:</strong> Projectile impact (highest) &gt; Shrieker trigger &gt; Player movement 3+ tiles &gt; Player movement 1&ndash;2 tiles (lowest).</li>
+      </ul>
 
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Sonic Boom:</strong> A ranged attack that completely ignores defense. Hits from up to 2 tiles.</li>
-        <li><strong>Darkness Aura:</strong> Reduces player visibility, limiting sight range for the duration of combat.</li>
-        <li><strong>Slam:</strong> A devastating melee strike targeting the center tile and all adjacent tiles.</li>
-        <li><strong>Locate:</strong> If the Warden loses line-of-sight, it sniffs the player&rsquo;s tile and moves directly toward them, ignoring obstacles.</li>
+        <li><strong>Sculk Spread:</strong> After the Warden attacks, the tile it attacked from becomes sculk. Each adjacent sculk tile gives the Warden +1 damage on melee attacks. Sculk persists for the entire fight.</li>
+        <li><strong>Sculk Shrieker:</strong> Places a shrieker trap on a tile. If any unit moves within 2 tiles of it, it triggers &mdash; dealing 3 damage and creating a high-priority vibration that overrides projectile distractions. Shriekers have 3 HP and can be destroyed.</li>
+        <li><strong>Darkness Pulse:</strong> All tiles go dark for 1 full turn &mdash; the player can only see 2 tiles around them. The Warden gains +2 Speed during darkness. Fires every 4 turns.</li>
+        <li><strong>Tremor Stomp:</strong> When confused (reached a distraction tile and found nothing), the Warden has a 50% chance to stomp, sending tremors in all 4 cardinal directions (3 tiles each) for 3 damage and revealing the player&rsquo;s exact position.</li>
+        <li><strong>Melee:</strong> Devastating close-range attack. Generates sculk at the attack location.</li>
+        <li><strong>Sonic Boom (Phase 2):</strong> Range 4 attack that ignores line of sight. Targets the highest-priority vibration source.</li>
       </ul>
 
+      <h2 id="phase-2">Phase 2 &mdash; &ldquo;The Ancient Awakens&rdquo;</h2>
+      <div class="phase2-callout">
+        <p><strong>Triggers at &le; 50% HP.</strong> Gains +3 bonus damage and Sonic Boom. Sculk tiles regenerate the Warden 1 HP/turn per sculk tile on the field. Darkness Pulse fires every 2 turns. 2 Sculk Shriekers are placed automatically. Projectile distractions only last 1 turn (it learns faster). Movement vibration threshold drops to 2+ tiles. Tremor Stomp always fires when confused (no longer 50%) and range extends to 4 tiles per direction.</p>
+      </div>
+
       <h2 id="strategy">Strategy</h2>
-      <p>Defense is meaningless against Sonic Boom &mdash; only raw HP matters. Kite the Warden with high-burst ranged attacks and avoid the slam pattern. The Darkness Aura limits how far ahead you can plan tile movements, so track the Warden&rsquo;s position carefully. Attempting to hide or break line-of-sight will trigger Locate, which negates the benefit entirely. Defeating the Warden unlocks access to the Nether.</p>
+      <p>This is a stealth puzzle boss. Throw projectiles to bait the Warden away, then sprint in for a free hit while it&rsquo;s confused. Move carefully &mdash; 3+ tiles of movement locks the Warden onto you. Destroy Sculk Shriekers early to keep your distractions working. Avoid fighting on sculk tiles since they buff the Warden&rsquo;s damage. In Phase 2 distractions expire after 1 turn, so time your attacks precisely.</p>
     </div>
 
     <div class="boss-nav">

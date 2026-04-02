@@ -79,6 +79,7 @@
     <div class="wiki-toc">
       <div class="wiki-toc-title">Contents</div>
       <ol>
+        <li><a href="#state-machine">Hunting / Nesting</a></li>
         <li><a href="#abilities">Abilities</a></li>
         <li><a href="#phase-2">Phase 2</a></li>
         <li><a href="#strategy">Strategy</a></li>
@@ -91,21 +92,29 @@
     <div class="wiki-content">
       <p>The Broodmother is a colossal spider that rules the Dense Jungle, deploying egg sacs across the arena to flood it with Cave Spiders. Destroy her eggs before the brood chain spirals out of control.</p>
 
+      <h2 id="state-machine">Behavior &mdash; Hunting / Nesting</h2>
+      <p>The Broodmother has a unique <strong>dual-state AI</strong>. She alternates between two modes based on the battlefield:</p>
+      <ul>
+        <li><strong>Hunting:</strong> Aggressive mode &mdash; uses Ceiling Ambush, Pounce, and Venomous Bite to pressure the player directly.</li>
+        <li><strong>Nesting:</strong> Defensive mode &mdash; retreats toward egg sacs to Spawn Brood and Web Spray. Triggered when an egg sac is destroyed or when no minions remain.</li>
+      </ul>
+
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Spawn Brood:</strong> Hatches 2&ndash;3 Cave Spiders (3 HP / 2 ATK) from 3 pre-deployed egg sacs every 3 turns.</li>
-        <li><strong>Web Spray:</strong> Fires a 3&times;3 web cloud at the player &mdash; stuns for 1 turn and applies Slowness for 1 turn.</li>
-        <li><strong>Venomous Bite:</strong> Melee attack that applies Poison (2 dmg/turn for 3 turns).</li>
-        <li><strong>Pounce:</strong> Leaps up to 3 tiles, landing in a 2&times;2 AoE for ATK+2 damage. Telegraphed 1 turn in advance.</li>
+        <li><strong>Ceiling Ambush (Hunting):</strong> The Broodmother ascends to the ceiling, becoming untargetable. Next turn, she dive-bombs the player&rsquo;s position in a 3&times;3 AoE for ATK+4 damage. Telegraphed with red tile highlights on the landing zone. 4-turn cooldown.</li>
+        <li><strong>Pounce (Hunting):</strong> Leaps up to 3 tiles, landing in a 2&times;2 AoE for ATK+2 damage. Telegraphed 1 turn in advance.</li>
+        <li><strong>Venomous Bite (Hunting):</strong> Melee attack that applies Poison (2 dmg/turn for 3 turns).</li>
+        <li><strong>Spawn Brood (Nesting):</strong> Hatches Cave Spiders (3 HP / 2 ATK) from living egg sacs. Maximum alive spiders equals the number of living egg sacs. 3-turn cooldown.</li>
+        <li><strong>Web Spray (Nesting):</strong> Fires a 3&times;3 web cloud at the player &mdash; stuns for 1 turn and applies Slowness for 1 turn.</li>
       </ul>
 
       <h2 id="phase-2">Phase 2 &mdash; &ldquo;Nest Awakening&rdquo;</h2>
       <div class="phase2-callout">
-        <p><strong>Triggers at &le; 50% HP.</strong> The Broodmother gains Speed 5 (+2) and immediately places 3 new egg sacs. Pounce range extends to 4 tiles. Web Spray also applies Poison on hit.</p>
+        <p><strong>Triggers at &le; 50% HP.</strong> The Broodmother gains Speed 5 (+2). Ceiling Ambush upgrades to <strong>Hunting Dive</strong>: she ascends, then on the next turn rains webs across 5 random tiles before setting the dive warning &mdash; a 3-turn aerial sequence. Pounce range extends to 4 tiles. Web Spray also applies Poison on hit. The Broodmother can place new egg sacs when fewer than 3 remain.</p>
       </div>
 
       <h2 id="strategy">Strategy</h2>
-      <p>Destroy the egg sacs early to cut off the brood chain. Cave Spiders stacking on top of Slowness and Poison will overwhelm you fast &mdash; letting them accumulate unchecked is the quickest way to lose.</p>
+      <p>Destroy the egg sacs early to limit brood spawns &mdash; max alive spiders equals living egg sacs. When the Broodmother ascends to the ceiling, watch for the red tile warning and move off the landing zone. In Nesting mode she retreats toward her eggs, giving you time to clear spiderlings. In Phase 2 the Hunting Dive drops webs before landing, restricting safe movement. Balance egg sac destruction with direct boss damage.</p>
     </div>
 
     <div class="boss-nav">

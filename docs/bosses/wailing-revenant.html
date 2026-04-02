@@ -65,12 +65,12 @@
         <img src="../img/mobs/ghast.png" alt="Ghast">
       </div>
       <table>
-        <tr><th>Type</th><td>Ghast</td></tr>
-        <tr><th>HP</th><td>40</td></tr>
-        <tr><th>Attack</th><td>8</td></tr>
-        <tr><th>Defense</th><td>1</td></tr>
-        <tr><th>Speed</th><td>1 (teleports)</td></tr>
+        <tr><th>Type</th><td>Ghast (2x scale)</td></tr>
+        <tr><th>HP</th><td>90</td></tr>
+        <tr><th>Attack</th><td>10</td></tr>
+        <tr><th>Defense</th><td>3</td></tr>
         <tr><th>Range</th><td>6</td></tr>
+        <tr><th>Speed</th><td>0 (stationary)</td></tr>
         <tr><th>Size</th><td>2&times;2</td></tr>
         <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
         <tr><th>Dimension</th><td><span class="badge badge-nether">Nether</span></td></tr>
@@ -80,6 +80,7 @@
     <div class="wiki-toc">
       <div class="wiki-toc-title">Contents</div>
       <ol>
+        <li><a href="#mechanic">Unique Mechanic</a></li>
         <li><a href="#abilities">Abilities</a></li>
         <li><a href="#phase-2">Phase 2</a></li>
         <li><a href="#strategy">Strategy</a></li>
@@ -87,26 +88,29 @@
     </div>
 
     <h1>The Wailing Revenant</h1>
-    <p class="page-desc">Soul Sand Valley biome boss &mdash; a specter bound by grief.</p>
+    <p class="page-desc">Soul Sand Valley biome boss &mdash; a stationary artillery ghast that rains destruction onto the arena from beyond its edge.</p>
 
     <div class="wiki-content">
-      <p>The Wailing Revenant drifts through the Soul Sand Valley, raining soul fire and tethering victims to anchor points with spectral chains. It uses Phase Shift to stay out of reach while the arena steadily fills with permanent flames.</p>
+      <p>The Wailing Revenant does not stand on the arena. It hovers outside the arena&rsquo;s back edge, scaled up to 2x size, raining attacks down onto the field. It never moves &mdash; this is a pure artillery boss that carpet-bombs the arena while summoning Wither Skeletons for ground pressure.</p>
+
+      <h2 id="mechanic">Unique Mechanic &mdash; Background Boss</h2>
+      <p>The entire front row (z=0) of the arena is registered as the ghast&rsquo;s hitbox. The player can attack any tile along that row to damage the boss. These tiles remain walkable &mdash; the ghast doesn&rsquo;t block movement. The boss uses a strict round-robin attack rotation, cycling through its abilities to prevent any single attack from dominating.</p>
 
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Soul Barrage:</strong> Fires 3 soul fireballs at scattered tiles near the player, dealing 4 dmg each and leaving soul fire lasting 2 turns. Telegraphed 1 turn in advance.</li>
-        <li><strong>Wail of Despair:</strong> AoE debuff within 4 tiles &mdash; all entities lose &ndash;2 ATK for 2 turns.</li>
-        <li><strong>Soul Chain:</strong> Tethers the player to an anchor point, dealing 2 dmg/turn. The chain breaks if the player moves 5 or more tiles from the anchor.</li>
-        <li><strong>Phase Shift:</strong> Teleports to the farthest arena corner when the player closes within 3 tiles.</li>
+        <li><strong>Fireball Barrage (every 2 turns):</strong> Spawns 3 fireball projectile entities at the front row that travel into the arena. Fireballs have 99 HP and deal 10 damage on contact. Max 8 fireballs alive at once. Telegraphed with gathering particles 1 turn before launch.</li>
+        <li><strong>Raining Fireballs (every 3 turns):</strong> Marks roughly half the arena tiles, then each marked tile takes 5 damage. Telegraphed with tile highlights 1 turn in advance.</li>
+        <li><strong>Magma Rows (every 3 turns):</strong> 1 random row of the arena turns to magma fire tiles for 2 turns. Telegraphed with ground crack particles.</li>
+        <li><strong>Summon Wither Skeletons (every 4 turns):</strong> Spawns 2 Wither Skeletons (12 HP / 6 ATK / 2 DEF) on random tiles. Max 4 alive at once.</li>
       </ul>
 
       <h2 id="phase-2">Phase 2 &mdash; &ldquo;Requiem&rdquo;</h2>
       <div class="phase2-callout">
-        <p><strong>Triggers at &le; 50% HP.</strong> Soul Barrage fires 5 fireballs and the soul fire it leaves becomes permanent. Wail of Despair also applies Slowness. The Revenant can maintain 2 active Soul Chains simultaneously. Gains Speed 2.</p>
+        <p><strong>Triggers at &le; 50% HP.</strong> Fireball Barrage fires every turn and launches 5 fireballs (max 12 alive). Raining Fireballs fires every 2 turns and deals 7 damage per tile. Magma Rows fires every 2 turns and converts 3 rows at once. Summon fires every 3 turns and spawns 3 Wither Skeletons (max 6 alive).</p>
       </div>
 
       <h2 id="strategy">Strategy</h2>
-      <p>Break the Soul Chain by creating distance, then close in before it Phase Shifts again. High burst damage helps end the fight before the arena fills with permanent soul fire and mobility becomes severely restricted.</p>
+      <p>Rush the front row to deal damage while dodging the rain of fireballs. The round-robin rotation means you can predict what&rsquo;s coming next. Clear Wither Skeletons quickly since they apply Wither on hit. In Phase 2 the arena becomes a carpet of fire and projectiles &mdash; staying alive is the real challenge. Prioritize avoiding Raining Fireballs (the half-arena attack) since it&rsquo;s the highest total damage ability.</p>
     </div>
 
     <div class="boss-nav">
