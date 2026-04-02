@@ -471,7 +471,7 @@ public class BroodmotherAI extends BossAI {
         setCooldown(CD_POUNCE, 2);
         // Find landing spot adjacent to player
         GridPos landingPos = null;
-        for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
+        for (int[] d : new int[][]{ {1,0},{-1,0},{0,1},{0,-1} }) {
             GridPos p = new GridPos(playerPos.x() + d[0], playerPos.z() + d[1]);
             if (arena.isInBounds(p) && !arena.isOccupied(p)
                     && arena.getTile(p) != null && arena.getTile(p).isWalkable()) {
@@ -525,7 +525,7 @@ public class BroodmotherAI extends BossAI {
         for (GridPos sacPos : eggSacs) {
             if (spawned >= canSpawn) break;
             // Find an adjacent walkable empty tile
-            for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
+            for (int[] d : new int[][]{ {1,0},{-1,0},{0,1},{0,-1} }) {
                 GridPos p = new GridPos(sacPos.x() + d[0], sacPos.z() + d[1]);
                 if (arena.isInBounds(p) && !arena.isOccupied(p)
                         && arena.getTile(p) != null && arena.getTile(p).isWalkable()) {
