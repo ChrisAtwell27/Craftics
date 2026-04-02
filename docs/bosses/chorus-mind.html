@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Craftics Wiki — The Chorus Mind</title>
+  <title>Craftics Wiki &mdash; The Chorus Mind</title>
   <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
@@ -66,11 +66,11 @@
       </div>
       <table>
         <tr><th>Type</th><td>Enderman</td></tr>
-        <tr><th>HP</th><td>30</td></tr>
-        <tr><th>Attack</th><td>6</td></tr>
+        <tr><th>HP</th><td>60</td></tr>
+        <tr><th>Attack</th><td>12</td></tr>
         <tr><th>Defense</th><td>3</td></tr>
-        <tr><th>Speed</th><td>2</td></tr>
-        <tr><th>Size</th><td>1 &times; 3</td></tr>
+        <tr><th>Speed</th><td>2 (+ chorus teleport)</td></tr>
+        <tr><th>Size</th><td>2 &times; 2</td></tr>
         <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
         <tr><th>Dimension</th><td><span class="badge badge-end">The End</span></td></tr>
       </table>
@@ -86,25 +86,26 @@
     </div>
 
     <h1>The Chorus Mind</h1>
-    <p class="page-desc">Chorus Grove biome boss &mdash; a psionic Enderman that bends perception and reshapes the battlefield.</p>
+    <p class="page-desc">Chorus Grove biome boss &mdash; a hive-mind entity fused with the chorus plants that turns the arena into a living network.</p>
 
     <div class="wiki-content">
-      <p>The Chorus Mind has lurked among the Chorus Fruit groves for eons, feeding on psychic energy from the plants and any creature foolish enough to enter. It has developed powerful telepathic abilities that go far beyond the teleportation of ordinary Endermen, able to fracture minds and reshape spatial awareness.</p>
+      <p>The Chorus Mind has merged with the chorus plant network, commanding it as an extension of its body. Chorus plants grow across the arena, and the boss teleports freely between them. The more plants on the field, the more powerful the boss becomes. Destroying the plants weakens it &mdash; ignoring them gives it total map control.</p>
 
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Mind Fracture:</strong> Confuses a target for 2 turns, reversing their movement controls. Range of 5 tiles.</li>
-        <li><strong>Chorus Pulse:</strong> Releases a psionic shockwave in a 3&times;3 area dealing 5 damage. Chains to adjacent enemies within 2 tiles of impact.</li>
-        <li><strong>Psionic Pull:</strong> Telekinetically drags a target player up to 3 tiles toward the Chorus Mind, ignoring terrain.</li>
+        <li><strong>Chorus Bloom:</strong> Grows chorus plant obstacles on 4&ndash;5 tiles. The boss can teleport to any chorus plant as a free action. Plants have 4 HP and are destructible.</li>
+        <li><strong>Entangle:</strong> Tendril roots erupt in a 2&times;2 area, immobilizing entities inside for 1 turn and dealing 4 damage. Telegraphed 1 turn in advance.</li>
+        <li><strong>Chorus Bomb:</strong> Lobs a chorus fruit at a tile (range 4). Explodes in a 2&times;2 AoE dealing 5 damage and teleporting anyone hit to a random tile.</li>
+        <li><strong>Resonance Cascade:</strong> Every chorus plant on the field pulses, dealing 3 damage to all tiles adjacent to any chorus plant. The more plants, the more damage coverage.</li>
       </ul>
 
-      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Psychic Eruption&rdquo;</h2>
+      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Overgrowth&rdquo;</h2>
       <div class="phase2-callout">
-        <p><strong>Triggers at &le; 50% HP.</strong> Mind Fracture becomes an area-of-effect ability hitting all players within 2 tiles simultaneously. Chorus Pulse chains are unlimited until no valid adjacent targets remain. The Chorus Mind also begins spawning Shulker Pods at random arena tiles each turn.</p>
+        <p><strong>Triggers at &le; 50% HP.</strong> Chorus plants auto-spread &mdash; each existing plant grows 1 adjacent plant per turn (max 3 new per turn). Resonance Cascade fires every 2 turns as a free action. Entangle area becomes 3&times;3. The boss teleports to a random chorus plant at the start of every turn. Chorus Bomb teleports the player toward the boss instead of to a random tile.</p>
       </div>
 
       <h2 id="strategy">Strategy</h2>
-      <p>Spread out to avoid chain Chorus Pulses hitting multiple players. A Milk Bucket cures the confusion from Mind Fracture. The Psionic Pull telegraphs with a particle beam &mdash; step diagonally to break line-of-sight on the turn prior. Destroy Shulker Pods in Phase 2 before their Levitation Bolt charges.</p>
+      <p>The chorus plants ARE the boss&rsquo;s power source. Burn AP clearing plants to reduce Resonance Cascade coverage and limit teleport options. If you let the garden grow unchecked, Phase 2&rsquo;s auto-spreading plants turn Resonance Cascade into a full-arena nuke. Balance plant clearing with boss damage &mdash; the boss can always grow more, but keeping the count low buys you breathing room.</p>
     </div>
 
     <div class="boss-nav">

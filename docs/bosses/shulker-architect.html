@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Craftics Wiki — The Shulker Architect</title>
+  <title>Craftics Wiki &mdash; The Shulker Architect</title>
   <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
@@ -66,11 +66,12 @@
       </div>
       <table>
         <tr><th>Type</th><td>Shulker</td></tr>
-        <tr><th>HP</th><td>36</td></tr>
-        <tr><th>Attack</th><td>7</td></tr>
-        <tr><th>Defense</th><td>6</td></tr>
+        <tr><th>HP</th><td>50</td></tr>
+        <tr><th>Attack</th><td>9</td></tr>
+        <tr><th>Defense</th><td>4</td></tr>
+        <tr><th>Range</th><td>5</td></tr>
         <tr><th>Speed</th><td>1</td></tr>
-        <tr><th>Size</th><td>1 &times; 1 (sealed)</td></tr>
+        <tr><th>Size</th><td>2 &times; 2</td></tr>
         <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
         <tr><th>Dimension</th><td><span class="badge badge-end">The End</span></td></tr>
       </table>
@@ -86,25 +87,26 @@
     </div>
 
     <h1>The Shulker Architect</h1>
-    <p class="page-desc">End City biome boss &mdash; a master builder Shulker that fills the arena with levitating mines and impenetrable shell barriers.</p>
+    <p class="page-desc">End City biome boss &mdash; a master engineer that builds a turret network and hides behind an impenetrable shell.</p>
 
     <div class="wiki-content">
-      <p>The Shulker Architect has spent countless eons reinforcing the End City, learning to manipulate its shell and surrounding constructs as weapons. Unlike ordinary Shulkers it moves by instantaneous teleportation and expands its shell at will, transforming the arena into a maze of floating hazards.</p>
+      <p>The Shulker Architect commands an army of stationary turrets, creating a bullet-hell siege. The boss itself is slow but tanky, deploying turrets for ranged cover and teleporting between them to avoid melee engagement. Dismantle the turret infrastructure or be overwhelmed by crossfire.</p>
 
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Levitation Bolt:</strong> Fires a homing bolt that inflicts Levitation on hit, preventing the target from moving for 2 turns. Range of 7 tiles.</li>
-        <li><strong>Shell Seal:</strong> Retracts fully into its shell, gaining +8 Defense. While sealed, melee attacks against the Architect deal 2 damage back to the attacker. Lasts 2 turns or until hit by a ranged attack.</li>
-        <li><strong>Construct Deploy:</strong> Places 1&ndash;2 Shulker Mines at random arena tiles. Mines detonate when a player steps adjacent, launching a Levitation Bolt.</li>
+        <li><strong>Bullet Storm:</strong> Fires 4 homing bullets in one turn. Each deals 3 damage and applies Levitation (target is moved 1 tile in a random direction at end of turn) for 1 turn.</li>
+        <li><strong>Deploy Turret:</strong> Spawns a stationary Shulker turret (6 HP, fires 1 bullet per turn at range 4, deals 2 damage). Maximum 3 active turrets.</li>
+        <li><strong>Fortify Shell:</strong> Reactive &mdash; when damaged, closes its shell for 80% damage reduction for 1 turn.</li>
+        <li><strong>Teleport Link:</strong> Teleports to the farthest active turret&rsquo;s position, destroying that turret in the process. Used to escape melee range.</li>
       </ul>
 
-      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Structured Chaos&rdquo;</h2>
+      <h2 id="phase-2">Phase 2 &mdash; &ldquo;Defense Protocol&rdquo;</h2>
       <div class="phase2-callout">
-        <p><strong>Triggers at &le; 50% HP.</strong> Construct Deploy now places 4 Mines simultaneously. Levitation duration extends to 3 turns. Shell Seal now reflects the full ATK value of melee attacks back at the attacker. The Architect teleports to a random location at the start of each of its turns.</p>
+        <p><strong>Triggers at &le; 50% HP.</strong> Bullet Storm fires 6 bullets. All turrets gain Levitation bullets. Fortify Shell also reflects 50% of incoming damage back to the attacker. Turret limit increases to 5. Turrets auto-deploy every 3 turns if below the cap.</p>
       </div>
 
       <h2 id="strategy">Strategy</h2>
-      <p>Prioritize ranged weapons throughout this fight &mdash; melee against a sealed Shell incurs heavy self-damage in Phase 2. Destroy Mines proactively by targeting them at range before moving through their trigger zones. A Feather Falling&ndash;enchanted boot piece or Slow Falling Potion dramatically reduces the impact of Levitation locks. Map the arena before committing movement.</p>
+      <p>Prioritize destroying turrets to reduce incoming bullet spam, but every AP spent on turrets is AP not spent on the boss. Time your burst damage around Fortify Shell &mdash; bait it with a weak hit, then commit when the shell is on cooldown. In Phase 2, turret auto-deploy means you can never fully clear them; balance between turret control and boss damage.</p>
     </div>
 
     <div class="boss-nav">
