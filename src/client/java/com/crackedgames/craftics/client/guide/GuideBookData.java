@@ -241,8 +241,8 @@ public class GuideBookData {
             "Abilities:\n- Hex Snare: telegraphed curse + 2-tile pull\n- Runic Prison: cardinal runes erupt + brief cage\n- Vex Swarm: Summons 2 Vexes every 3 turns\n- Cursed Fog: 3x3 debuff zone\n- Hex Bolt: Ranged ATK + Slowness\n\n" +
             "Phase 2 — Arcane Fury: Teleports away, full cross fangs, 3 Vexes."));
         enemies.add(mob("The Hollow King", "BOSS | Zombie | 40HP / 7ATK / 3DEF / Speed 2\nCaverns boss.\n\n" +
-            "Abilities:\n- Cave-In: Boulders fall on tiles\n- Miner's Fury: Line charge destroys obstacles\n- Summon Silverfish from rubble\n- Lights Out: Tiles go dark, enemies +2 ATK\n\n" +
-            "Phase 2 — Total Collapse: Permanent darkness, regen in dark."));
+            "Abilities:\n- Demolition Cache: telegraphed TNT that detonates next round\n- Rubble Toss: mines obstacle, throws it at marked tile\n- Cave-In: Boulders fall on tiles\n- Miner's Fury: Line charge destroys obstacles\n- Summon Silverfish from rubble\n- Lights Out: casts darkness (place Torches/Lanterns to negate)\n\n" +
+            "Phase 2 — Total Collapse: permanent darkness, auto cave-ins, 3 TNT charges. COUNTERPLAY: Bring Torches, Lanterns, or Campfires to maintain light zones."));
         enemies.add(mob("The Broodmother", "BOSS | Spider | 35HP / 6ATK / 2DEF / Speed 3 | Size 3x3\nJungle boss.\n\n" +
             "Abilities:\n- Spawn Brood: 2-3 Cave Spiders from egg sacs\n- Web Spray: 3x3 stun + slow\n- Venomous Bite: ATK + Poison\n- Pounce: Leap 3 tiles, 2x2 AoE\n\n" +
             "Phase 2 — Nest Awakening: +2 Speed, respawning egg sacs."));
@@ -425,12 +425,18 @@ public class GuideBookData {
             new Page("Placed Items",
                 "Some items create lasting tile effects:\n\n" +
                 "Lava Bucket: 3 fire DMG/turn to enemies\n" +
-                "Campfire: +1 HP/turn when adjacent\n" +
+                "Campfire: +1 HP/turn when adjacent + light zone (radius 3)\n" +
                 "Honey Block: Enemies lose all movement\n" +
                 "Lightning Rod: 4 AoE DMG next turn\n" +
                 "Cactus: 1 DMG/turn to adjacent enemies\n" +
                 "Banner: +2 DEF to allies within 2 tiles\n" +
-                "Cake: Heals 2 HP, 3 uses")
+                "Cake: Heals 2 HP, 3 uses"),
+            new Page("Light Sources (vs Darkness)",
+                "Place to negate darkness effects:\n\n" +
+                "Torch: Light radius 2 (small, fast)\n" +
+                "Lantern: Light radius 3 + enemy detection\n" +
+                "Campfire: Light radius 3 + healing\n\n" +
+                "Useful against bosses like The Hollow King in Phase 2 when darkness is permanent.")
         )));
         items.add(new Entry("Terrain Tools", "minecraft:iron_pickaxe", List.of(
             new Page("Modify the Arena",

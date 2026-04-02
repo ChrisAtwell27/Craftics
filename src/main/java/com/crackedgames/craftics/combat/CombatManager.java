@@ -467,6 +467,8 @@ public class CombatManager {
 
     // Tile effects placed by items (lava, campfire, honey, banner, scaffold)
     private final java.util.Map<GridPos, String> tileEffects = new java.util.HashMap<>();
+    // Light zones (torch/lantern placements that negate darkness in their radius)
+    private final java.util.Map<GridPos, Integer> litZones = new java.util.HashMap<>();
     // Turn counter for hex trap expiry (5 turns max)
     private int hexTrapTurnsRemaining = 0;
 
@@ -730,6 +732,7 @@ public class CombatManager {
         this.mountMob = null;
         clearAllRevenantSummonMarkers();
         tileEffects.clear();
+        litZones.clear();
         combatEffects.clear();
 
         player.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
@@ -796,6 +799,7 @@ public class CombatManager {
         this.mountMob = null;
         clearAllRevenantSummonMarkers();
         tileEffects.clear();
+        litZones.clear();
 
         // Adventure mode during combat (no block breaking)
         player.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
@@ -2774,11 +2778,7 @@ public class CombatManager {
             int tx = Integer.parseInt(parts[0]);
             int tz = Integer.parseInt(parts[1]);
             GridPos tntPos = new GridPos(tx, tz);
-            BlockPos tntBp = arena.gridToBlockPos(tntPos);
-            pendingTnts.add(new PendingTnt(tntPos, tntBp));
-            // Mark the tile as a warning so the red overlay shows
-            highlightWarningTile(tntPos);
-            sendMessage("§e§lTNT placed! §r§7It will explode at the start of next round!");
+            primePendingTnt(tntPos, "§e§lTNT placed! §r§7It will explode at the start of next round!");
         }
         else {
             sendMessage(result);
@@ -2800,6 +2800,7 @@ public class CombatManager {
                     clearTile.setType(TileType.NORMAL);
                 }
                 tileEffects.remove(clearPos);
+                unregisterLightZone(clearPos);
                 // Place the actual block
                 BlockPos bp = arena.gridToBlockPos(clearPos);
                 ServerWorld sw = (ServerWorld) player.getEntityWorld();
@@ -2831,6 +2832,13 @@ public class CombatManager {
             } else {
                 GridPos effectPos = new GridPos(tx, tz);
                 tileEffects.put(effectPos, effectType);
+                
+                // Register light zones for torches and lanterns (negate darkness)
+                if ("torch".equals(effectType) || "lantern".equals(effectType) || "campfire".equals(effectType)) {
+                    int lightRadius = "torch".equals(effectType) ? 2 : 3; // Torches: 2 tiles, Lanterns/Campfire: 3 tiles
+                    registerLightZone(effectPos, lightRadius);
+                }
+                
                 // Update the GridTile type so fishing/boat checks work
                 GridTile effectTile = arena.getTile(effectPos);
                 if (effectTile != null) {
@@ -4935,6 +4943,11 @@ public class CombatManager {
                 }
             }
         }
+
+        // Special scripted effect: prime a TNT charge on this tile.
+        if ("hollow_tnt_prime".equals(aa.effectName())) {
+            primePendingTnt(center, "§6  The Hollow King primes a TNT cache!");
+        }
     }
 
     /**
@@ -4965,7 +4978,12 @@ public class CombatManager {
                 sendMessage("§8  Wither applied! (-2 HP/turn for 3 turns)");
             }
             case "darkness", "lights_out" -> {
-                sendMessage("§8  Darkness falls! Vision reduced.");
+                // Check if the player is standing in a lit zone (torch/lantern)
+                if (!isPositionLit(arena.getPlayerGridPos())) {
+                    sendMessage("§8  Darkness falls! Vision reduced.");
+                } else {
+                    sendMessage("§8  Darkness tries to encroach... §eYour light holds it back!");
+                }
             }
             case "web_spray" -> {
                 combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
@@ -5028,6 +5046,15 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy + 0.5, cz, 12, spread, 0.8, spread, 0.01);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH, cx, cy, cz, 20, spread + 0.5, 1.0, spread + 0.5, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 8, spread, 0.4, spread, 0.0);
+            }
+            case "hollow_tnt_prime" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy + 0.6, cz, 12, 0.3, 0.4, 0.3, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME, cx, cy + 0.5, cz, 8, 0.2, 0.3, 0.2, 0.01);
+            }
+            case "rubble_toss" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy + 0.5, cz, 10, spread, 0.6, spread, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 8, spread, 0.4, spread, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 8, spread, 0.3, spread, 0.0);
             }
             case "lights_out" -> {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy, cz, 15, spread + 1, 1.0, spread + 1, 0.02);
@@ -5742,6 +5769,60 @@ public class CombatManager {
                 }
             }
         }
+    }
+
+    private void primePendingTnt(GridPos tile, String message) {
+        if (!arena.isInBounds(tile)) return;
+
+        for (PendingTnt existing : pendingTnts) {
+            if (existing.tile().equals(tile)) return;
+        }
+
+        BlockPos tntBp = arena.gridToBlockPos(tile);
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        world.setBlockState(tntBp, Blocks.TNT.getDefaultState());
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+            tntBp.getX() + 0.5, tntBp.getY() + 0.8, tntBp.getZ() + 0.5,
+            8, 0.2, 0.3, 0.2, 0.01);
+        highlightWarningTile(tile);
+        pendingTnts.add(new PendingTnt(tile, tntBp));
+        if (message != null && !message.isEmpty()) {
+            sendMessage(message);
+        }
+    }
+
+    /**
+     * Register a light zone at the given position with specified radius.
+     * Light zones negate darkness effects for the player standing within them.
+     */
+    private void registerLightZone(GridPos pos, int radius) {
+        if (arena.isInBounds(pos)) {
+            litZones.put(pos, radius);
+        }
+    }
+
+    /**
+     * Unregister a light zone at the given position.
+     */
+    private void unregisterLightZone(GridPos pos) {
+        litZones.remove(pos);
+    }
+
+    /**
+     * Check if a given position is within a lit zone (torch/lantern radius).
+     * Returns true if the position is within the radius of any light source.
+     */
+    private boolean isPositionLit(GridPos pos) {
+        if (pos == null) return false;
+        for (java.util.Map.Entry<GridPos, Integer> light : litZones.entrySet()) {
+            GridPos lightPos = light.getKey();
+            int radius = light.getValue();
+            int dist = Math.max(Math.abs(pos.x() - lightPos.x()), Math.abs(pos.z() - lightPos.z()));
+            if (dist <= radius) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
