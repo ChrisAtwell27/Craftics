@@ -15,14 +15,18 @@ import java.util.List;
  * Entity: Zombie | 40HP / 7ATK / 3DEF / Speed 2 | Size 2×2
  *
  * Abilities:
- * - Cave-In: 3×3 AoE 5 dmg + rubble obstacles
- * - Miner's Fury: Line charge (3 tiles) destroys obstacles, ATK+2
- * - Swarm Call: 3-4 Silverfish from arena edges
- * - Lights Out: Tiles beyond 3 from player go dark, enemies +2 ATK
+ * - Demolition Cache: telegraphed TNT charges that detonate next round.
+ * - Rubble Toss: throws mined rubble at the player and clears one obstacle tile.
+ * - Cave-In: 3×3 AoE 5 dmg + rubble obstacles.
+ * - Miner's Fury: Line charge (3 tiles) destroys obstacles, ATK+2.
+ * - Swarm Call: 3-4 Silverfish from arena edges.
+ * - Lights Out: Tiles beyond 3 from player go dark, enemies +2 ATK.
  *
- * Phase 2 — "Total Collapse": Auto cave-in, permanent darkness, regen in dark, silverfish from rubble.
+ * Phase 2 — "Total Collapse": Auto cave-in, permanent darkness, extra TNT pressure.
  */
 public class HollowKingAI extends BossAI {
+    private static final String CD_TNT = "demolition_cache";
+    private static final String CD_RUBBLE = "rubble_toss";
     private static final String CD_CAVEIN = "cave_in";
     private static final String CD_SWARM = "swarm_call";
     private static final String CD_LIGHTS = "lights_out";
@@ -53,6 +57,18 @@ public class HollowKingAI extends BossAI {
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                 caveInTiles, 1, caveIn, 0xFFAA4400);
             return new EnemyAction.Idle();
+        }
+
+        // Demolition Cache: prime TNT charges that explode next round.
+        if (!isOnCooldown(CD_TNT) && dist <= 5) {
+            EnemyAction tnt = tryDemolitionCache(self, arena, playerPos);
+            if (tnt != null) return tnt;
+        }
+
+        // Rubble Toss: consume one obstacle and hurl it at player.
+        if (!isOnCooldown(CD_RUBBLE) && dist <= 5) {
+            EnemyAction toss = tryRubbleToss(self, arena, playerPos);
+            if (toss != null) return toss;
         }
 
         // Lights Out — blanket darkness
@@ -109,6 +125,67 @@ public class HollowKingAI extends BossAI {
         }
 
         return meleeOrApproach(self, arena, playerPos, 0);
+    }
+
+    private EnemyAction tryDemolitionCache(CombatEntity self, GridArena arena, GridPos playerPos) {
+        int maxCharges = isPhaseTwo() ? 3 : 2;
+        List<GridPos> charges = new ArrayList<>();
+        charges.add(playerPos);
+
+        for (int[] d : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+            if (charges.size() >= maxCharges) break;
+            GridPos p = new GridPos(playerPos.x() + d[0], playerPos.z() + d[1]);
+            if (!arena.isInBounds(p)) continue;
+            if (arena.isOccupied(p)) continue;
+            if (arena.getTile(p) == null || !arena.getTile(p).isWalkable()) continue;
+            charges.add(p);
+        }
+
+        if (charges.isEmpty()) return null;
+
+        List<EnemyAction> primeActions = new ArrayList<>();
+        for (GridPos p : charges) {
+            primeActions.add(new EnemyAction.AreaAttack(p, 0, 0, "hollow_tnt_prime"));
+        }
+
+        setCooldown(CD_TNT, isPhaseTwo() ? 3 : 4);
+        pendingWarning = new BossWarning(
+            self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
+            charges, 1, new EnemyAction.CompositeAction(primeActions), 0xFFFFAA22);
+        return new EnemyAction.Idle();
+    }
+
+    private EnemyAction tryRubbleToss(CombatEntity self, GridArena arena, GridPos playerPos) {
+        GridPos rubble = findNearestObstacle(arena, self.getGridPos());
+        if (rubble == null) return null;
+
+        setCooldown(CD_RUBBLE, 3);
+        EnemyAction resolve = new EnemyAction.CompositeAction(List.of(
+            new EnemyAction.CreateTerrain(List.of(rubble), TileType.NORMAL, 0),
+            new EnemyAction.AreaAttack(playerPos, 0, 4, "rubble_toss")
+        ));
+        pendingWarning = new BossWarning(
+            self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
+            List.of(playerPos, rubble), 1, resolve, 0xFF996633);
+        return new EnemyAction.Idle();
+    }
+
+    private GridPos findNearestObstacle(GridArena arena, GridPos from) {
+        GridPos best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos p = new GridPos(x, z);
+                if (arena.getTile(p) == null) continue;
+                if (arena.getTile(p).getType() != TileType.OBSTACLE) continue;
+                int d = Math.abs(from.x() - x) + Math.abs(from.z() - z);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = p;
+                }
+            }
+        }
+        return best;
     }
 
     public boolean isLightsOutPermanent() { return lightsOutPermanent; }

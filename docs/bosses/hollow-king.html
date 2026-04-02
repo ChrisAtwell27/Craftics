@@ -62,10 +62,10 @@
         <span class="infobox-subtitle">Underground Caverns Boss</span>
       </div>
       <div class="infobox-image">
-        <img src="../img/mobs/wither_skeleton.png" alt="Wither Skeleton">
+        <img src="../img/mobs/zombie.png" alt="Zombie">
       </div>
       <table>
-        <tr><th>Type</th><td>Wither Skeleton</td></tr>
+        <tr><th>Type</th><td>Zombie</td></tr>
         <tr><th>HP</th><td>40</td></tr>
         <tr><th>Attack</th><td>7</td></tr>
         <tr><th>Defense</th><td>3</td></tr>
@@ -93,19 +93,23 @@
 
       <h2 id="abilities">Abilities</h2>
       <ul>
+        <li><strong>Demolition Cache:</strong> Telegraphs and places 2 TNT caches (3 in Phase 2) around your position. They detonate at the start of the next round.</li>
+        <li><strong>Rubble Toss:</strong> Mines a nearby obstacle tile and hurls the rubble at your marked position for direct impact damage.</li>
         <li><strong>Cave-In:</strong> 3&times;3 AoE at the player, dealing 5 dmg and creating rubble obstacles on affected tiles. Telegraphed 1 turn in advance.</li>
         <li><strong>Miner&rsquo;s Fury:</strong> 3-tile directional charge dealing ATK+2 damage, destroying any obstacles in its path.</li>
         <li><strong>Swarm Call:</strong> Summons 3&ndash;4 Silverfish from the arena edges.</li>
-        <li><strong>Lights Out:</strong> Projects a darkness field &mdash; all tiles beyond 3 from the player go dark, and every enemy inside the darkness gains +2 ATK.</li>
+        <li><strong>Lights Out:</strong> Projects a darkness field &mdash; darkness negates player vision. <strong>Counterplay:</strong> Place <strong>Torches</strong> (radius 2 light), <strong>Lanterns</strong> (radius 3), or <strong>Campfires</strong> (radius 3 + healing) to negate darkness in their zones.</li>
       </ul>
 
       <h2 id="phase-2">Phase 2 &mdash; &ldquo;Total Collapse&rdquo;</h2>
       <div class="phase2-callout">
-        <p><strong>Triggers at &le; 50% HP.</strong> Cave-In fires automatically every 2 turns. The darkness field becomes permanent. The Hollow King regenerates HP while standing in dark areas. Swarm Call now summons 4 Silverfish.</p>
+        <p><strong>Triggers at &le; 50% HP.</strong> Cave-In fires automatically every 2 turns. Demolition Cache increases to 3 TNT charges. The darkness field becomes permanent (you must maintain light zones to avoid being blinded). Swarm Call now summons 4 Silverfish.</p>
       </div>
 
       <h2 id="strategy">Strategy</h2>
-      <p>Stay near the center to maintain your light radius. Cave-In rubble will fragment the arena over time &mdash; keep escape routes open and deal with Silverfish before they flank and drive you into the dark.</p>
+      <p><strong>Early Phase:</strong> Place light sources preemptively to prepare for Lights Out. Torches are cheap and fast to place; Lanterns and Campfires provide more coverage (3-tile radius) plus detection/healing respectively.</p>
+      <p><strong>TNT Timing:</strong> If a cache is primed near you, spend your movement to clear blast distance before ending turn. Keep lanes open by exploiting Rubble Toss (it consumes one obstacle), and clear Silverfish quickly so they do not body-block your TNT escape path.</p>
+      <p><strong>Phase 2:</strong> Darkness becomes permanent. Maintain at least one active light zone to stay combat-effective. Weigh the AP cost of placing torches against TNT dodging and healing needs.</p>
     </div>
 
     <div class="boss-nav">

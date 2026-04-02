@@ -213,7 +213,7 @@ public class ItemUseHandler {
         Items.WOODEN_PICKAXE, Items.GOLDEN_PICKAXE, Items.CROSSBOW,
         Items.LINGERING_POTION, Items.LIGHTNING_ROD, Items.CACTUS,
         Items.HAY_BLOCK, Items.CAKE, Items.SPORE_BLOSSOM,
-        Items.LANTERN, Items.GOAT_HORN, Items.ECHO_SHARD, Items.BRUSH
+        Items.LANTERN, Items.TORCH, Items.GOAT_HORN, Items.ECHO_SHARD, Items.BRUSH
     );
 
     private static boolean isBanner(Item item) {
@@ -326,6 +326,8 @@ public class ItemUseHandler {
             return useSporeBlossom(arena, targetTile, held);
         } else if (item == Items.LANTERN) {
             return useLantern(arena, targetTile, held);
+        } else if (item == Items.TORCH) {
+            return useTorch(arena, targetTile, held);
         } else if (item == Items.ECHO_SHARD) {
             return useEchoShard(arena, held);
         } else if (item == Items.BRUSH) {
@@ -976,13 +978,13 @@ public class ItemUseHandler {
             + "|§aPlaced scaffolding! +1 range for ranged attacks from this tile.";
     }
 
-    // --- Campfire: place healing zone — heals 1 HP per turn when adjacent (1 AP) ---
+    // --- Campfire: place healing zone — heals 1 HP per turn when adjacent (1 AP) + creates light zone ---
     private static String useCampfire(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "campfire:" + targetTile.x() + ":" + targetTile.z()
-            + "|§6Placed campfire! Heals 1 HP per turn when standing on or next to it.";
+            + "|§6Placed campfire! Heals 1 HP per turn when standing on or next to it + creates light (negate darkness).";
     }
 
     // --- Anvil: drop on enemy — 5 damage, consumes item (1 AP) ---
@@ -1222,7 +1224,16 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "lantern:" + targetTile.x() + ":" + targetTile.z()
-            + "|§eLantern placed! Reveals hidden enemies within 3 tiles.";
+            + "|§eLight zone created! Reveals hidden enemies within 3 tiles + negates darkness.";
+    }
+
+    // --- Torch: place lightweight light source (1 AP) — creates light (radius 2, negates darkness) ---
+    private static String useTorch(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "torch:" + targetTile.x() + ":" + targetTile.z()
+            + "|§eLight from torch! Creates a smaller light zone (radius 2) that negates darkness.";
     }
 
     // --- Goat Horn: taunt all enemies to target you next turn (1 AP, no consume) ---
