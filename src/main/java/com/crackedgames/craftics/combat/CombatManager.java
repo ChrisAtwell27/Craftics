@@ -4942,11 +4942,11 @@ public class CombatManager {
      */
     private void applyBossAreaEffect(String effectName) {
         switch (effectName) {
-            case "slowness", "blizzard", "frost" -> {
+            case "slowness", "blizzard", "frost", "frost_harpoon", "whiteout_ring" -> {
                 combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 2, 0);
                 sendMessage("§b  Slowness applied! (-1 movement for 2 turns)");
             }
-            case "weakness", "cursed_fog", "wail" -> {
+            case "weakness", "cursed_fog", "wail", "hex_snare" -> {
                 combatEffects.addEffect(CombatEffects.EffectType.WEAKNESS, 2, 0);
                 sendMessage("§7  Weakness applied! (-2 attack for 2 turns)");
             }
@@ -5012,6 +5012,16 @@ public class CombatManager {
             case "glacial_trap" -> {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE, cx, cy, cz, 12, spread, 0.3, spread, 0.0);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, cx, cy + 0.2, cz, 8, spread, 0.2, spread, 0.0);
+            }
+            case "frost_harpoon" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE, cx, cy + 0.7, cz, 16, spread, 0.6, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK, cx, cy + 0.4, cz, 3, spread, 0.3, spread, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 10, spread, 0.4, spread, 0.01);
+            }
+            case "whiteout_ring" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE, cx, cy + 0.8, cz, 20, spread, 0.9, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy + 0.5, cz, 12, spread, 0.5, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, cx, cy, cz, 6, spread, 0.3, spread, 0.0);
             }
             // === Hollow King ===
             case "cave_in" -> {
@@ -5121,6 +5131,11 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH, cx, cy + 0.8, cz, 20, spread, 1.0, spread, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy, cz, 15, spread + 0.5, 0.5, spread + 0.5, 0.01);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL, cx, cy + 0.5, cz, 6, spread, 0.6, spread, 0.01);
+            }
+            case "hex_snare" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH, cx, cy + 0.8, cz, 18, spread, 0.8, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANT, cx, cy + 0.5, cz, 16, spread, 0.5, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL, cx, cy, cz, 10, spread, 0.4, spread, 0.01);
             }
             // === Shulker Architect ===
             case "bullet_storm" -> {

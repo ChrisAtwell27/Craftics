@@ -232,13 +232,14 @@ public class GuideBookData {
             "Phase 2 — Tomb Wrath: 2 mines/turn, 3x3 burial, summons 2 Husks."));
         enemies.add(mob("Frostbound Huntsman", "BOSS | Stray | 25HP / 5ATK / 2DEF / Range 4 / Speed 2\nSnowy Tundra boss.\n\n" +
             "Abilities:\n- Blizzard: 3x3 AoE + frozen tiles (1-turn stun)\n- Frost Arrow: Range 4, ATK + Slowness\n- Ice Wall: Creates obstacle line\n\n" +
+            "- Harpoon Pull: telegraphed pull 2 tiles toward the boss\n- Whiteout Ring: ring burst with one safe gap\n\n" +
             "Phase 2 — Permafrost: Speed 3, random frozen tiles every 2 turns."));
         enemies.add(mob("The Rockbreaker", "BOSS | Vindicator | 30HP / 6ATK / 3DEF / Speed 2\nStony Peaks boss.\n\n" +
             "Abilities:\n- Seismic Slam: Cross pattern, 5 dmg\n- Boulder Toss: Range 4, creates obstacle\n- Fortify: +5 DEF for 2 turns\n- Avalanche: Full-row attack\n\n" +
             "Phase 2: Permanent +3 DEF, 2 boulders, 2 rows avalanche."));
         enemies.add(mob("The Hexweaver", "BOSS | Evoker | 28HP / 5ATK / 2DEF / Range 4 / Speed 2\nDark Forest boss.\n\n" +
-            "Abilities:\n- Vex Swarm: Summons 2 Vexes every 3 turns\n- Cursed Fog: 3x3 debuff zone\n- Hex Bolt: Ranged ATK + Slowness\n\n" +
-            "Phase 2 — Arcane Fury: Teleports away, cross fangs, 3 Vexes."));
+            "Abilities:\n- Hex Snare: telegraphed curse + 2-tile pull\n- Runic Prison: cardinal runes erupt + brief cage\n- Vex Swarm: Summons 2 Vexes every 3 turns\n- Cursed Fog: 3x3 debuff zone\n- Hex Bolt: Ranged ATK + Slowness\n\n" +
+            "Phase 2 — Arcane Fury: Teleports away, full cross fangs, 3 Vexes."));
         enemies.add(mob("The Hollow King", "BOSS | Zombie | 40HP / 7ATK / 3DEF / Speed 2\nCaverns boss.\n\n" +
             "Abilities:\n- Cave-In: Boulders fall on tiles\n- Miner's Fury: Line charge destroys obstacles\n- Summon Silverfish from rubble\n- Lights Out: Tiles go dark, enemies +2 ATK\n\n" +
             "Phase 2 — Total Collapse: Permanent darkness, regen in dark."));

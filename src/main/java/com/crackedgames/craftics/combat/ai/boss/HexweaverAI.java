@@ -6,6 +6,7 @@ import com.crackedgames.craftics.combat.ai.AIUtils;
 import com.crackedgames.craftics.combat.ai.EnemyAction;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
+import com.crackedgames.craftics.core.TileType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,9 +16,11 @@ import java.util.List;
  * Entity: Evoker | 28HP / 5ATK / 2DEF / Range 4 / Speed 2 | Size 2×2
  *
  * Abilities:
- * - Vex Swarm: Summons 2 Vexes (3HP/2ATK). P2: 3 Vexes, cap 6. Every 3 turns.
- * - Fang Line: 5-tile line toward player, 4 dmg each. P2: cross (both cardinal).
- * - Cursed Fog: 3×3 cloud, enemies +3 DEF, player -2 ATK. 3 turns. P2: +2 dmg/turn.
+ * - Hex Snare: telegraphed curse bolt that pulls player 2 tiles toward boss.
+ * - Runic Prison: telegraphed cardinal runes around player, then erupts and cages briefly.
+ * - Vex Swarm: Summons 2 Vexes (3HP/2ATK). P2: 3 Vexes, cap 6.
+ * - Fang Line: 5-tile line toward player, 4 dmg each. P2: full cross burst.
+ * - Cursed Fog: 3×3 debuff cloud centered on player.
  * - Hex Bolt: Ranged ATK, 1-turn Slowness.
  *
  * Phase 2 — "Arcane Fury": Teleports when adjacent, cross fangs, stronger vex swarm.
@@ -26,6 +29,8 @@ public class HexweaverAI extends BossAI {
     private static final String CD_VEX = "vex_swarm";
     private static final String CD_FANG = "fang_line";
     private static final String CD_FOG = "cursed_fog";
+    private static final String CD_SNARE = "hex_snare";
+    private static final String CD_PRISON = "runic_prison";
 
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
@@ -43,6 +48,22 @@ public class HexweaverAI extends BossAI {
             GridPos fleeTarget = AIUtils.getFleeTarget(arena, myPos, playerPos, 3);
             if (fleeTarget != null) {
                 return new EnemyAction.Teleport(fleeTarget);
+            }
+        }
+
+        // Hex Snare: telegraphed pull to punish overextension.
+        if (!isOnCooldown(CD_SNARE) && dist >= 2 && dist <= 5) {
+            EnemyAction snare = castHexSnare(self, arena, myPos, playerPos);
+            if (snare != null) {
+                return snare;
+            }
+        }
+
+        // Runic Prison: lock nearby lanes around the player after warning.
+        if (!isOnCooldown(CD_PRISON) && dist <= 5) {
+            EnemyAction prison = castRunicPrison(self, arena, playerPos);
+            if (prison != null) {
+                return prison;
             }
         }
 
@@ -68,12 +89,13 @@ public class HexweaverAI extends BossAI {
             if (!fangTiles.isEmpty()) {
                 setCooldown(CD_FANG, 2);
                 if (isPhaseTwo()) {
-                    // Cross pattern: both perpendicular directions too
-                    List<GridPos> crossTiles = new ArrayList<>(fangTiles);
-                    crossTiles.addAll(getLineTiles(arena, myPos, -dir[0], -dir[1], 5));
-                    EnemyAction fangAttack = new EnemyAction.LineAttack(myPos, dir[0], dir[1], 5, 4);
-                    EnemyAction reverseFang = new EnemyAction.LineAttack(myPos, -dir[0], -dir[1], 5, 4);
-                    EnemyAction combined = new EnemyAction.CompositeAction(List.of(fangAttack, reverseFang));
+                    List<GridPos> crossTiles = getCrossTiles(arena, myPos, 5);
+                    EnemyAction combined = new EnemyAction.CompositeAction(List.of(
+                        new EnemyAction.LineAttack(myPos, 1, 0, 5, 4),
+                        new EnemyAction.LineAttack(myPos, -1, 0, 5, 4),
+                        new EnemyAction.LineAttack(myPos, 0, 1, 5, 4),
+                        new EnemyAction.LineAttack(myPos, 0, -1, 5, 4)
+                    ));
                     pendingWarning = new BossWarning(
                         self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
                         crossTiles, 1, combined, 0xFF664422);
@@ -116,5 +138,48 @@ public class HexweaverAI extends BossAI {
         }
 
         return meleeOrApproach(self, arena, playerPos, 0);
+    }
+
+    private EnemyAction castHexSnare(CombatEntity self, GridArena arena, GridPos myPos, GridPos playerPos) {
+        int[] pullDir = getDirectionToward(playerPos, myPos);
+        if (pullDir[0] == 0 && pullDir[1] == 0) return null;
+
+        List<GridPos> warnTiles = new ArrayList<>();
+        warnTiles.add(playerPos);
+        warnTiles.addAll(getLineTiles(arena, playerPos, pullDir[0], pullDir[1], 2));
+
+        EnemyAction resolve = new EnemyAction.CompositeAction(List.of(
+            new EnemyAction.AreaAttack(playerPos, 0, 3, "hex_snare"),
+            new EnemyAction.ForcedMovement(-1, pullDir[0], pullDir[1], 2)
+        ));
+
+        setCooldown(CD_SNARE, 3);
+        pendingWarning = new BossWarning(
+            self.getEntityId(), BossWarning.WarningType.DIRECTIONAL,
+            warnTiles, 1, resolve, 0xFFAA55FF);
+        return new EnemyAction.Idle();
+    }
+
+    private EnemyAction castRunicPrison(CombatEntity self, GridArena arena, GridPos playerPos) {
+        List<GridPos> runeTiles = new ArrayList<>();
+        for (int[] d : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+            GridPos p = new GridPos(playerPos.x() + d[0], playerPos.z() + d[1]);
+            if (arena.isInBounds(p)) {
+                runeTiles.add(p);
+            }
+        }
+        if (runeTiles.size() < 2) return null;
+
+        List<EnemyAction> effects = new ArrayList<>();
+        for (GridPos rune : runeTiles) {
+            effects.add(new EnemyAction.AreaAttack(rune, 0, 3, "cursed_fog"));
+        }
+        effects.add(new EnemyAction.CreateTerrain(runeTiles, TileType.OBSTACLE, 2));
+
+        setCooldown(CD_PRISON, 4);
+        pendingWarning = new BossWarning(
+            self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
+            runeTiles, 1, new EnemyAction.CompositeAction(effects), 0xFF7A2BAA);
+        return new EnemyAction.Idle();
     }
 }

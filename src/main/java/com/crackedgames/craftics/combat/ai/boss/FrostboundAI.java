@@ -16,6 +16,8 @@ import java.util.List;
  * Entity: Stray | 25HP / 5ATK / 2DEF / Range 4 / Speed 2 | Size 2×2
  *
  * Abilities:
+ * - Harpoon Pull: telegraphed pull that drags player 2 tiles toward the huntsman.
+ * - Whiteout Ring: telegraphed ring blast with one safe gap tile.
  * - Blizzard: 3×3 AoE, 3 dmg + Slowness 2 turns. P2: center tile stuns.
  * - Ice Wall: Line of 3 obstacle tiles, 3 turns. Blocks movement + LOS.
  * - Frost Arrow: Range 4, ATK dmg + 1-turn Slowness.
@@ -27,6 +29,8 @@ public class FrostboundAI extends BossAI {
     private static final String CD_BLIZZARD = "blizzard";
     private static final String CD_ICE_WALL = "ice_wall";
     private static final String CD_TRAP = "glacial_trap";
+    private static final String CD_HARPOON = "harpoon_pull";
+    private static final String CD_WHITEOUT = "whiteout_ring";
 
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
@@ -45,6 +49,22 @@ public class FrostboundAI extends BossAI {
             if (!freezeTiles.isEmpty()) {
                 // This passive effect layers on top of the ability chosen below
                 // CombatManager handles this via BossAI phase 2 passive check
+            }
+        }
+
+        // Harpoon pull: drag player into follow-up threat zones.
+        if (!isOnCooldown(CD_HARPOON) && dist >= 2 && dist <= 5) {
+            EnemyAction harpoon = castHarpoonPull(self, arena, myPos, playerPos);
+            if (harpoon != null) {
+                return harpoon;
+            }
+        }
+
+        // Whiteout ring: telegraphed ring burst with one safe tile.
+        if (!isOnCooldown(CD_WHITEOUT) && dist <= 5) {
+            EnemyAction whiteout = castWhiteoutRing(self, arena, myPos, playerPos);
+            if (whiteout != null) {
+                return whiteout;
             }
         }
 
@@ -120,5 +140,64 @@ public class FrostboundAI extends BossAI {
         }
 
         return meleeOrApproach(self, arena, playerPos, 0);
+    }
+
+    private EnemyAction castHarpoonPull(CombatEntity self, GridArena arena, GridPos myPos, GridPos playerPos) {
+        int[] pullDir = getDirectionToward(playerPos, myPos);
+        if (pullDir[0] == 0 && pullDir[1] == 0) return null;
+
+        List<GridPos> warningTiles = new ArrayList<>();
+        warningTiles.add(playerPos);
+        warningTiles.addAll(getLineTiles(arena, playerPos, pullDir[0], pullDir[1], 2));
+
+        EnemyAction resolve = new EnemyAction.CompositeAction(List.of(
+            new EnemyAction.AreaAttack(playerPos, 0, 2, "frost_harpoon"),
+            new EnemyAction.ForcedMovement(-1, pullDir[0], pullDir[1], 2)
+        ));
+
+        setCooldown(CD_HARPOON, 3);
+        pendingWarning = new BossWarning(
+            self.getEntityId(), BossWarning.WarningType.DIRECTIONAL,
+            warningTiles, 1, resolve, 0xFF66DDFF);
+        return new EnemyAction.Idle();
+    }
+
+    private EnemyAction castWhiteoutRing(CombatEntity self, GridArena arena, GridPos myPos, GridPos playerPos) {
+        List<GridPos> ring = new ArrayList<>();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                GridPos p = new GridPos(playerPos.x() + dx, playerPos.z() + dz);
+                if (arena.isInBounds(p)) {
+                    ring.add(p);
+                }
+            }
+        }
+        if (ring.size() < 3) return null;
+
+        GridPos safeTile = ring.get(0);
+        int best = Integer.MIN_VALUE;
+        for (GridPos p : ring) {
+            int score = p.manhattanDistance(myPos);
+            if (score > best) {
+                best = score;
+                safeTile = p;
+            }
+        }
+
+        List<GridPos> dangerTiles = new ArrayList<>(ring);
+        dangerTiles.remove(safeTile);
+        if (dangerTiles.isEmpty()) return null;
+
+        List<EnemyAction> blasts = new ArrayList<>();
+        for (GridPos p : dangerTiles) {
+            blasts.add(new EnemyAction.AreaAttack(p, 0, 3, "whiteout_ring"));
+        }
+
+        setCooldown(CD_WHITEOUT, 4);
+        pendingWarning = new BossWarning(
+            self.getEntityId(), BossWarning.WarningType.GATHERING_PARTICLES,
+            dangerTiles, 1, new EnemyAction.CompositeAction(blasts), 0xFFBDEFFF);
+        return new EnemyAction.Idle();
     }
 }
