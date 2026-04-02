@@ -72,7 +72,15 @@ public abstract class BossAI implements EnemyAI {
             if (pendingWarning.isReady()) {
                 EnemyAction resolvedAction = pendingWarning.getResolveAction();
                 pendingWarning = null;
-                return resolvedAction;
+                if (!shouldQueueAbilityAfterWarningResolve()) {
+                    return resolvedAction;
+                }
+
+                EnemyAction followUpAction = chooseAbility(self, arena, playerPos);
+                if (followUpAction == null || followUpAction instanceof EnemyAction.Idle) {
+                    return resolvedAction;
+                }
+                return new EnemyAction.CompositeAction(List.of(resolvedAction, followUpAction));
             }
         }
 
@@ -90,6 +98,14 @@ public abstract class BossAI implements EnemyAI {
      * Choose which ability to use this turn. Called every turn after phase/cooldown handling.
      */
     protected abstract EnemyAction chooseAbility(CombatEntity self, GridArena arena, GridPos playerPos);
+
+    /**
+     * If true, a boss can queue its next ability on the same turn a warning resolves.
+     * Default true so all bosses resolve+queue in one turn.
+     */
+    protected boolean shouldQueueAbilityAfterWarningResolve() {
+        return true;
+    }
 
     // === Utility methods for subclasses ===
 

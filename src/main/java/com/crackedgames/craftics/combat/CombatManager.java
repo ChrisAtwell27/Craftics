@@ -42,7 +42,9 @@ import com.crackedgames.craftics.achievement.AchievementManager;
 import com.crackedgames.craftics.achievement.CombatAchievementTracker;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class CombatManager {
     // Per-player combat instances
@@ -1387,6 +1389,17 @@ public class CombatManager {
             return;
         }
 
+        // Ranged ammo requirement: bows/crossbows need ammo unless bow has Infinity.
+        boolean isBowWeapon = weapon == Items.BOW;
+        boolean isCrossbowWeapon = weapon == Items.CROSSBOW;
+        if (isBowWeapon || isCrossbowWeapon) {
+            boolean hasInfinity = isBowWeapon && PlayerCombatStats.hasInfinity(player);
+            if (!hasInfinity && !PlayerCombatStats.hasArrows(player)) {
+                sendMessage("§cYou need arrows to use ranged weapons!");
+                return;
+            }
+        }
+
         // Range check (scaffold tile grants +1 range for ranged) — trident range already validated above
         if (weapon != Items.TRIDENT) {
             int range = PlayerCombatStats.getWeaponRange(player);
@@ -1584,6 +1597,7 @@ public class CombatManager {
 
         // Apply mob-type vulnerability/resistance multiplier
         double mobResistMult = MobResistances.getDamageMultiplier(target.getEntityTypeId(), damageType);
+        int baseDamageBeforeResist = baseDamage;
         if (mobResistMult == 0.0) {
             baseDamage = 0; // immune
         } else if (mobResistMult != 1.0) {
@@ -1617,6 +1631,7 @@ public class CombatManager {
         final boolean fHasBowFlame = hasBowFlame;
         final DamageType fDamageType = damageType;
         final int fDamageTypeBonus = damageTypeBonus;
+        final int fBaseDamageBeforeResist = baseDamageBeforeResist;
         final Item fWeapon = weapon;
         final GridPos fPPos = pPos;
         final GridPos fTPos = tPos;
@@ -1781,6 +1796,56 @@ public class CombatManager {
                 5, 0.4, 0.4, 0.4, 0.2);
             ProjectileSpawner.spawnImpact(attackWorld, targetBlock, fLuckCrit ? "critical" : "melee");
 
+            // Ranged affinity ricochet chain: 0% base, +5% chance per ranged affinity point.
+            if (fIsRangedWeapon) {
+                int rangedAffinity = fAttackerStats != null
+                    ? fAttackerStats.getAffinityPoints(PlayerProgression.Affinity.RANGED)
+                    : 0;
+                double ricochetChance = rangedAffinity * 0.05;
+                if (ricochetChance > 0) {
+                    Set<Integer> hitIds = new HashSet<>();
+                    hitIds.add(fTarget.getEntityId());
+                    CombatEntity ricochetSource = fTarget;
+
+                    while (Math.random() < ricochetChance) {
+                        CombatEntity ricochetTarget = findRicochetTarget(ricochetSource, hitIds);
+                        if (ricochetTarget == null) break;
+
+                        int ricRawDamage = fBaseDamageBeforeResist;
+                        double ricResistMult = MobResistances.getDamageMultiplier(ricochetTarget.getEntityTypeId(), fDamageType);
+                        if (ricResistMult == 0.0) {
+                            sendMessage("§b↷ Ricochet! " + ricochetTarget.getDisplayName() + " is immune.");
+                            hitIds.add(ricochetTarget.getEntityId());
+                            ricochetSource = ricochetTarget;
+                            continue;
+                        }
+                        if (ricResistMult != 1.0) {
+                            ricRawDamage = Math.max(1, (int)(ricRawDamage * ricResistMult));
+                        }
+
+                        int ricDealt = ricochetTarget.takeDamage(ricRawDamage);
+                        notifyBossOfDamage(ricochetTarget, ricDealt);
+                        achievementTracker.recordDamageDealt(ricDealt);
+                        hitIds.add(ricochetTarget.getEntityId());
+
+                        sendMessage("§b↷ Ricochet! " + ricochetTarget.getDisplayName() + " takes " + ricDealt + " damage!");
+                        sendToAllParty(new CombatEventPayload(
+                            CombatEventPayload.EVENT_DAMAGED, ricochetTarget.getEntityId(),
+                            ricDealt, ricochetTarget.getCurrentHp(), ricochetTarget.getGridPos().x(), ricochetTarget.getGridPos().z()
+                        ));
+
+                        BlockPos ricBlock = arena.gridToBlockPos(ricochetTarget.getGridPos());
+                        attackWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                            ricBlock.getX() + 0.5, ricBlock.getY() + 1.0, ricBlock.getZ() + 0.5,
+                            4, 0.35, 0.35, 0.35, 0.15);
+                        ProjectileSpawner.spawnImpact(attackWorld, ricBlock, "critical");
+
+                        checkAndHandleDeath(ricochetTarget);
+                        ricochetSource = ricochetTarget;
+                    }
+                }
+            }
+
             // Check death
             checkAndHandleDeath(fTarget);
             for (CombatEntity extra : abilityResult.extraTargets()) checkAndHandleDeath(extra);
@@ -1793,6 +1858,30 @@ public class CombatManager {
                 handleVictory();
             }
         };
+    }
+
+    /**
+     * Find the nearest enemy within 2 tiles of the source that has not already been hit.
+     */
+    private CombatEntity findRicochetTarget(CombatEntity source, Set<Integer> hitIds) {
+        GridPos sourcePos = source.getGridPos();
+        CombatEntity best = null;
+        int bestDist = Integer.MAX_VALUE;
+
+        for (CombatEntity candidate : enemies) {
+            if (candidate == null || !candidate.isAlive()) continue;
+            if (candidate.isAlly() || candidate.isProjectile()) continue;
+            if (hitIds.contains(candidate.getEntityId())) continue;
+
+            int dist = candidate.minDistanceTo(sourcePos);
+            if (dist > 2) continue;
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = candidate;
+            }
+        }
+
+        return best;
     }
 
     // === TRIDENT: Riptide Dash ===
@@ -9019,6 +9108,8 @@ public class CombatManager {
                 .add(Items.MUTTON, 5).add(Items.WHITE_WOOL, 5);
             case "minecraft:chicken" -> new LootPool()
                 .add(Items.CHICKEN, 5).add(Items.FEATHER, 5);
+            case "minecraft:parrot" -> new LootPool()
+                .add(Items.FEATHER, 8);
             case "minecraft:goat" -> new LootPool()
                 .add(Items.LEATHER, 5).add(Items.MUTTON, 3);
             default -> null;

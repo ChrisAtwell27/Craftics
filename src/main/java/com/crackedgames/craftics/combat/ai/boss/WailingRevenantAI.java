@@ -25,9 +25,9 @@ import java.util.List;
  * SPAWNING: No regular ghasts spawn during this fight. Only wither skeletons appear
  * as minions alongside the boss.
  *
- * Attack rotation: Uses turn counter mod 4 to cycle through attacks, ensuring all
- * abilities get used regularly. Falls through to any available attack if the slotted
- * one is on cooldown.
+ * Attack rotation: Strict round-robin over available attacks. The boss remembers
+ * the next attack slot and advances after each successful queue, preventing
+ * priority bias toward early checks.
  *
  * Abilities:
  * - Fireball Barrage (P1: 2-turn CD, P2: 1-turn): 3 (P2: 5) fireball projectiles at z=1.
@@ -40,6 +40,9 @@ import java.util.List;
  */
 public class WailingRevenantAI extends BossAI {
     @Override public int getGridSize() { return 2; } // Overridden at runtime by CombatManager
+
+    private static final int ATTACK_COUNT = 4;
+    private int nextAttackIndex = 0;
 
     private static final String CD_BARRAGE = "fireball_barrage";
     private static final String CD_RAIN = "raining_fireballs";
@@ -61,25 +64,24 @@ public class WailingRevenantAI extends BossAI {
         int maxFireballs = isPhaseTwo() ? MAX_FIREBALLS_P2 : MAX_FIREBALLS_P1;
         int maxSkeletons = isPhaseTwo() ? MAX_SKELETONS_P2 : MAX_SKELETONS_P1;
 
-        // Rotate through attack types so all abilities get used.
-        // Try the slotted attack first, then fall through to any available.
-        int slot = getTurnCounter() % 4; // 0=barrage, 1=rain, 2=magma, 3=summon
+        // Round-robin from the next slot; take the first attack that is currently usable.
+        for (int i = 0; i < ATTACK_COUNT; i++) {
+            int slot = (nextAttackIndex + i) % ATTACK_COUNT;
+            EnemyAction action = switch (slot) {
+                case 0 -> tryBarrage(self, arena, maxFireballs);
+                case 1 -> tryRain(self, arena);
+                case 2 -> tryMagma(self, arena);
+                case 3 -> trySummon(self, arena, maxSkeletons);
+                default -> null;
+            };
 
-        EnemyAction action = switch (slot) {
-            case 0 -> tryBarrage(self, arena, maxFireballs);
-            case 1 -> tryRain(self, arena);
-            case 2 -> tryMagma(self, arena);
-            case 3 -> trySummon(self, arena, maxSkeletons);
-            default -> null;
-        };
+            if (action != null) {
+                nextAttackIndex = (slot + 1) % ATTACK_COUNT;
+                return action;
+            }
+        }
 
-        // If the slotted attack couldn't fire, try the others in order
-        if (action == null) action = tryBarrage(self, arena, maxFireballs);
-        if (action == null) action = tryRain(self, arena);
-        if (action == null) action = tryMagma(self, arena);
-        if (action == null) action = trySummon(self, arena, maxSkeletons);
-
-        return action != null ? action : new EnemyAction.Idle();
+        return new EnemyAction.Idle();
     }
 
     private EnemyAction tryBarrage(CombatEntity self, GridArena arena, int maxFireballs) {
