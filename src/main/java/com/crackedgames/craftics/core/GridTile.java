@@ -5,12 +5,14 @@ import net.minecraft.block.Blocks;
 
 public class GridTile {
     private TileType type;
+    private TileType restoreType;
     private Block blockType;
     private int turnsRemaining; // for temporary tiles like fire
     private boolean permanent; // permanent obstacles cannot be broken by pickaxes
 
     public GridTile(TileType type, Block blockType) {
         this.type = type;
+        this.restoreType = type;
         this.blockType = blockType;
         this.turnsRemaining = -1; // permanent by default
         this.permanent = false;
@@ -18,6 +20,7 @@ public class GridTile {
 
     public GridTile(TileType type, Block blockType, boolean permanent) {
         this.type = type;
+        this.restoreType = type;
         this.blockType = blockType;
         this.turnsRemaining = -1;
         this.permanent = permanent;
@@ -34,6 +37,23 @@ public class GridTile {
     public void setType(TileType type) {
         this.type = type;
         this.blockType = defaultBlockFor(type);
+        if (turnsRemaining <= 0) {
+            this.restoreType = type;
+        }
+    }
+
+    /** Apply a temporary terrain override and restore the previous type when it expires. */
+    public void setTemporaryType(TileType tempType, int turns) {
+        if (turns <= 0) {
+            setType(tempType);
+            return;
+        }
+        if (turnsRemaining <= 0) {
+            restoreType = type;
+        }
+        type = tempType;
+        blockType = defaultBlockFor(tempType);
+        turnsRemaining = turns;
     }
 
     public Block getBlockType() {
@@ -78,7 +98,11 @@ public class GridTile {
         if (turnsRemaining > 0) {
             turnsRemaining--;
             if (turnsRemaining == 0) {
-                setType(TileType.NORMAL);
+                TileType fallback = restoreType != null ? restoreType : TileType.NORMAL;
+                type = fallback;
+                blockType = defaultBlockFor(fallback);
+                restoreType = fallback;
+                turnsRemaining = -1;
             }
         }
     }

@@ -225,7 +225,7 @@ public class GuideBookData {
         enemies.add(mob("Witch", "Speed: 2 | Range: 4\n\nThrows harmful potions from long range.\n\nWeak to: Slashing, Cleaving\nResist: Special\nImmune: Water"));
         // Bosses
         enemies.add(mob("The Revenant", "BOSS | Zombie | 20HP / 4ATK / 2DEF / Speed 2\nPlains biome boss.\n\n" +
-            "Abilities:\n- Raise the Dead: Summons 1-2 Zombies every 3 turns\n- Death Charge: 3-tile line charge, ATK+2\n- Shield Bash: Knockback 2 tiles\n\n" +
+            "Abilities:\n- Raise the Dead: Summons 1-2 Zombies every 3 turns\n- Death Charge: 3-tile line from center, ATK+2\n- Gravefire Grid: Telegraphs a magma checker-grid for 1 turn\n- Shield Bash: Knockback 2 tiles\n\n" +
             "Phase 2 — Undying Rage: Regeneration, faster summons, fire trail on charge."));
         enemies.add(mob("Sandstorm Pharaoh", "BOSS | Husk | 25HP / 6ATK / 1DEF / Speed 2\nDesert biome boss.\n\n" +
             "Abilities:\n- Plant Mine: Invisible mine, 6 dmg on contact\n- Sand Burial: 2x2 quicksand stun\n- Sandstorm: 3x3 AoE + accuracy debuff\n- Curse of the Sands: Tiles you leave become quicksand\n\n" +
@@ -251,7 +251,7 @@ public class GuideBookData {
         enemies.add(mob("The Molten King", "BOSS | Magma Cube | 35HP / 7ATK / 2DEF / Speed 2\nNether Wastes boss.\n\n" +
             "Abilities:\n- Eruption: Ring of fire AoE around self\n- Lava Trail: Leaves fire on tiles moved\n- Absorb: Merges with nearby cube to heal\n\n" +
             "Phase 2 — Meltdown: Permanent fire tiles, constant eruptions."));
-        enemies.add(mob("Crimson Ravager", "BOSS | Hoglin | 45HP / 8ATK / 3DEF / Speed 3\nCrimson Forest boss.\n\n" +
+        enemies.add(mob("The Bastion Brute", "BOSS | Skeleton (Piglin wargear) | 45HP / 8ATK / 3DEF / Speed 3\nCrimson Forest boss.\n\n" +
             "Abilities:\n- Gore Charge: 4-tile charge, ATK+3, knockback 3\n- Fungal Growth: 3x3 heal zone\n- Rampage: AoE all adjacent tiles\n- Summon Pack: 2 Piglins (once)\n\n" +
             "Phase 2 — Blood Frenzy: +4 ATK, fire trail, 2-tile rampage, speed 4."));
         enemies.add(mob("Wailing Revenant", "BOSS | Ghast | 60HP / 8ATK / 2DEF / Stationary\nSoul Sand Valley boss.\n\n" +

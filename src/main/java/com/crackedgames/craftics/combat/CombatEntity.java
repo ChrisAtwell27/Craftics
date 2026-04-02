@@ -157,6 +157,11 @@ public class CombatEntity {
     public boolean isOnCeiling() { return onCeiling; }
     public void setOnCeiling(boolean v) { this.onCeiling = v; }
 
+    /** If true, boss entities can pathfind through this entity (e.g., egg sacs). */
+    private boolean passableForBoss = false;
+    public boolean isPassableForBoss() { return passableForBoss; }
+    public void setPassableForBoss(boolean v) { this.passableForBoss = v; }
+
     private String bossDisplayName = null;
     public void setBossDisplayName(String name) { this.bossDisplayName = name; }
 

@@ -342,7 +342,7 @@ The Warden is **blind**. It doesn't track the player by position — it tracks b
 
 ---
 
-### 12. Crimson Forest — "The Crimson Ravager"
+### 12. Crimson Forest — "The Bastion Brute"
 
 **Entity:** Hoglin (custom — massive crimson fungal growths covering body, red-mist breath, oversized tusks)
 **Stats:** 45 HP / 8 ATK / 3 DEF / Speed 3
@@ -557,7 +557,7 @@ Every boss already drops emeralds (+3 bonus) and has a 35% chance for a Trim Tem
 | The Warden | Echo Shard ×4 + Swift Sneak III book |
 | The Molten King | Blaze Rod ×8 + Magma Cream ×6 |
 | The Wailing Revenant | Ghast Tear ×3 + Soul Lantern ×4 (placeable in hub) |
-| The Crimson Ravager | Netherite Scrap ×2 |
+| The Bastion Brute | Netherite Scrap ×2 |
 | The Void Walker | Ender Pearl ×8 + Chorus Fruit ×6 |
 | The Ashen Warlord | Wither Skull ×1 (extremely rare — Wither fight potential?) |
 | The Void Herald | Elytra Fragment (collect 2 to craft Elytra — combat glider) |
@@ -607,7 +607,7 @@ BossAI (abstract)
 ├── WardenAI extends BossAI (refactored from current)
 ├── MoltenKingAI extends BossAI
 ├── WailingRevenantAI extends BossAI
-├── CrimsonRavagerAI extends BossAI
+├── BastionBruteAI extends BossAI
 ├── VoidWalkerAI extends BossAI
 ├── AshenWarlordAI extends BossAI
 ├── VoidHeraldAI extends BossAI

@@ -14,8 +14,9 @@ import java.util.List;
  * Entity: Zombie | 20HP / 4ATK / 2DEF / Speed 2 | Size 2×2
  *
  * Abilities:
- * - Raise the Dead: Summons 1–2 Zombies (6HP/2ATK) every 3 turns (2 in P2). Cap 3 alive.
- * - Death Charge: Straight line charge up to 3 tiles, ATK+2 damage. P2: ATK+4 + fire trail.
+ * - Raise the Dead: Places zombie-head markers; destroying one prevents that zombie from spawning.
+ * - Death Charge: Charges in a straight line from core position up to 3 tiles, ATK+2 damage. P2: ATK+4 + fire trail.
+ * - Gravefire Grid: Telegraphs a giant checker-grid of magma tiles for 1 turn.
  * - Shield Bash: Adjacent knockback 2 tiles, half ATK damage.
  *
  * Phase 2 (≤50% HP) — "Undying Rage":
@@ -27,6 +28,7 @@ public class RevenantAI extends BossAI {
     private static final int SUMMON_CAP = 3;
     private static final String CD_RAISE = "raise_dead";
     private static final String CD_CHARGE = "death_charge";
+    private static final String CD_GRAVEFIRE_GRID = "gravefire_grid";
 
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
@@ -35,7 +37,6 @@ public class RevenantAI extends BossAI {
 
     @Override
     protected EnemyAction chooseAbility(CombatEntity self, GridArena arena, GridPos playerPos) {
-        GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
         int summonInterval = isPhaseTwo() ? 2 : 3;
 
@@ -48,23 +49,28 @@ public class RevenantAI extends BossAI {
                 int chargeDmg = self.getAttackPower() + (isPhaseTwo() ? 4 : 2);
                 setCooldown(CD_CHARGE, 2);
 
-                List<EnemyAction> actions = new ArrayList<>();
-                actions.add(new EnemyAction.LineAttack(
-                    charge.start(), charge.dx(), charge.dz(), charge.tiles().size(), chargeDmg));
-                if (isPhaseTwo()) {
-                    actions.add(new EnemyAction.CreateTerrain(charge.tiles(), TileType.FIRE, 3));
-                }
-                EnemyAction resolved = actions.size() == 1 ? actions.get(0)
-                    : new EnemyAction.CompositeAction(actions);
-
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                    charge.tiles(), 1, resolved, 0xFFFF4444);
+                    charge.warningTiles(), 1, new EnemyAction.MoveAndAttack(charge.path(), chargeDmg), 0xFFFF4444);
                 return new EnemyAction.Idle();
             }
         }
 
-        // Priority 3: Raise the Dead on schedule
+        // Priority 3: Gravefire Grid (telegraphed magma checkerboard for one turn)
+        if (!isOnCooldown(CD_GRAVEFIRE_GRID)) {
+            List<GridPos> magmaTiles = getGravefireGridTiles(arena, playerPos);
+            if (magmaTiles.size() >= 6) {
+                int gridCd = isPhaseTwo() ? 3 : 4;
+                setCooldown(CD_GRAVEFIRE_GRID, gridCd);
+                EnemyAction magmaGrid = new EnemyAction.CreateTerrain(magmaTiles, TileType.FIRE, 1);
+                pendingWarning = new BossWarning(
+                    self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
+                    magmaTiles, 1, magmaGrid, 0xFFFF8800);
+                return new EnemyAction.Idle();
+            }
+        }
+
+        // Priority 4: Raise the Dead on schedule
         if (!isOnCooldown(CD_RAISE) && getAliveMinionCount() < SUMMON_CAP) {
             int count = isPhaseTwo() ? 2 : (getAliveMinionCount() == 0 ? 2 : 1);
             List<GridPos> positions = findSummonPositions(arena, count);
@@ -80,58 +86,41 @@ public class RevenantAI extends BossAI {
             }
         }
 
-        // Priority 4: Shield Bash if player is adjacent
+        // Priority 5: Shield Bash if player is adjacent
         if (dist <= 1) {
-            // Determine knockback direction: away from boss
+            GridPos myPos = self.getGridPos();
             int kdx = Integer.signum(playerPos.x() - myPos.x());
             int kdz = Integer.signum(playerPos.z() - myPos.z());
             if (kdx == 0 && kdz == 0) kdx = 1; // fallback
             return new EnemyAction.ForcedMovement(-1, kdx, kdz, 2);
         }
 
-        // Priority 5: Melee attack or approach
+        // Priority 6: Melee attack or approach
         return meleeOrApproach(self, arena, playerPos, isPhaseTwo() ? 2 : 0);
     }
 
     private ChargePattern findChargePattern(CombatEntity self, GridArena arena, GridPos playerPos) {
-        GridPos myPos = self.getGridPos();
-        ChargePattern best = null;
+        // Single-anchor origin keeps the line attack consistent and readable.
+        GridPos anchor = self.getGridPos();
+        return buildChargePattern(arena, anchor, playerPos);
+    }
 
-        // Check charge from each occupied tile (1 for 1x1, 4 for 2x2)
-        for (GridPos occupiedTile : GridArena.getOccupiedTiles(myPos, self.getSize())) {
-            ChargePattern candidate = buildChargePattern(arena, occupiedTile, playerPos);
-            if (candidate == null) continue;
-            if (best == null || candidate.tiles().size() > best.tiles().size()) {
-                best = candidate;
-            }
-        }
+    private List<GridPos> getGravefireGridTiles(GridArena arena, GridPos playerPos) {
+        List<GridPos> tiles = new ArrayList<>();
+        int parity = getTurnCounter() % 2;
 
-        // For 1x1 bosses: also try charging after a 1-tile sidestep to align
-        // This compensates for not having multiple occupied tiles to check from
-        if (best == null && self.getSize() == 1) {
-            GridPos[] sidesteps = {
-                new GridPos(myPos.x() + 1, myPos.z()),
-                new GridPos(myPos.x() - 1, myPos.z()),
-                new GridPos(myPos.x(), myPos.z() + 1),
-                new GridPos(myPos.x(), myPos.z() - 1)
-            };
-            for (GridPos step : sidesteps) {
-                if (!arena.isInBounds(step) || arena.isOccupied(step)) continue;
-                var tile = arena.getTile(step);
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos pos = new GridPos(x, z);
+                if (((x + z) & 1) != parity) continue;
+                if (pos.manhattanDistance(playerPos) <= 1) continue;
+                var tile = arena.getTile(pos);
                 if (tile == null || !tile.isWalkable()) continue;
-                ChargePattern candidate = buildChargePattern(arena, step, playerPos);
-                if (candidate != null && (best == null || candidate.tiles().size() > best.tiles().size())) {
-                    best = candidate;
-                    // Include the sidestep move by prepending it to the charge
-                    List<GridPos> fullPath = new java.util.ArrayList<>();
-                    fullPath.add(step);
-                    fullPath.addAll(candidate.tiles());
-                    best = new ChargePattern(step, candidate.dx(), candidate.dz(), fullPath);
-                }
+                tiles.add(pos);
             }
         }
 
-        return best;
+        return tiles;
     }
 
     private ChargePattern buildChargePattern(GridArena arena, GridPos startTile, GridPos playerPos) {
@@ -145,12 +134,35 @@ public class RevenantAI extends BossAI {
             return null;
         }
 
-        List<GridPos> path = getChargePath(arena, startTile, dx, dz, 3);
-        if (path.isEmpty() || !path.contains(playerPos)) {
+        int distance = Math.abs(playerPos.x() - startTile.x()) + Math.abs(playerPos.z() - startTile.z());
+        if (distance < 2) {
             return null;
         }
-        return new ChargePattern(path.get(0), dx, dz, path);
+
+        int pathLength = Math.min(3, distance - 1);
+        List<GridPos> path = new ArrayList<>();
+        GridPos current = startTile;
+        for (int i = 0; i < pathLength; i++) {
+            GridPos next = new GridPos(current.x() + dx, current.z() + dz);
+            if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
+            var tile = arena.getTile(next);
+            if (tile == null || !tile.isWalkable()) break;
+            path.add(next);
+            current = next;
+        }
+        if (path.isEmpty()) {
+            return null;
+        }
+
+        GridPos finalPos = path.get(path.size() - 1);
+        if (finalPos.manhattanDistance(playerPos) > 1) {
+            return null;
+        }
+
+        List<GridPos> warningTiles = new ArrayList<>(path);
+        warningTiles.add(playerPos);
+        return new ChargePattern(path.get(0), dx, dz, path, warningTiles);
     }
 
-    private record ChargePattern(GridPos start, int dx, int dz, List<GridPos> tiles) {}
+    private record ChargePattern(GridPos start, int dx, int dz, List<GridPos> path, List<GridPos> warningTiles) {}
 }

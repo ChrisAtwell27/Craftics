@@ -17,7 +17,7 @@ public enum Achievement {
     BOSS_DEEP_DARK("Silence the Dark", "Defeat the Warden", Category.BOSS),
     BOSS_NETHER_WASTES("Nether Survivor", "Defeat the Nether Wastes boss", Category.BOSS),
     BOSS_SOUL_SAND("Soul Reaper", "Defeat the Hollow King", Category.BOSS),
-    BOSS_CRIMSON("Crimson Clearer", "Defeat the Crimson Ravager", Category.BOSS),
+    BOSS_CRIMSON("Crimson Clearer", "Defeat the Bastion Brute", Category.BOSS),
     BOSS_WARPED("Hex Breaker", "Defeat the Hexweaver", Category.BOSS),
     BOSS_BASALT("Molten Slayer", "Defeat the Molten King", Category.BOSS),
     BOSS_OUTER_END("Void Touched", "Defeat the Void Walker", Category.BOSS),

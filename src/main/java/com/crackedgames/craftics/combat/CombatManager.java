@@ -144,6 +144,7 @@ public class CombatManager {
     private GridArena arena;
     private LevelDefinition levelDef;
     private List<CombatEntity> enemies;
+    private int eggSacIdCounter = 10000;
     // Mobs shrinking via Pehkui death anim — (mob, ticksRemaining)
     private final List<MobEntity> dyingMobs = new ArrayList<>();
     private final List<Integer> dyingMobTimers = new ArrayList<>();
@@ -462,6 +463,8 @@ public class CombatManager {
     private MobEntity mountMob = null;
     private static final int MOUNT_SPEED_BONUS = 3;
 
+    private static final String TILE_EFFECT_REVENANT_HEAD = "revenant_head";
+
     // Tile effects placed by items (lava, campfire, honey, banner, scaffold)
     private final java.util.Map<GridPos, String> tileEffects = new java.util.HashMap<>();
     // Turn counter for hex trap expiry (5 turns max)
@@ -517,20 +520,23 @@ public class CombatManager {
         return hp <= 1 ? 0 : hp;
     }
 
-    private void damagePlayer(int rawDamage) {
+    private int damagePlayer(int rawDamage) {
         int defense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus() + PlayerCombatStats.getSetDefenseBonus(player) + PlayerCombatStats.getTotalProtection(player);
         // Shield: passive +2 when in offhand, +3 extra when braced (end turn with shield)
         if (PlayerCombatStats.hasShield(player)) {
             defense += SHIELD_PASSIVE_DEFENSE;
             if (shieldBraced) defense += SHIELD_BRACE_DEFENSE;
         }
+        // Banner tile effect
+        defense += getBannerDefenseBonus(arena.getPlayerGridPos());
         // Percentage-based defense: each point = 5% reduction, capped at 60%
         double reduction = Math.min(0.60, defense * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
         player.setHealth(Math.max(1, player.getHealth() - actual));
-        onPlayerDamaged(); // reset kill streak
+        onPlayerDamaged();
         achievementTracker.recordPlayerTookDamage();
         // Totem check is handled in handlePlayerDeathOrGameOver()
+        return actual;
     }
 
     /** Get melee bonus from progression. */
@@ -722,6 +728,7 @@ public class CombatManager {
         this.active = true;
         this.playerMounted = false;
         this.mountMob = null;
+        clearAllRevenantSummonMarkers();
         tileEffects.clear();
         combatEffects.clear();
 
@@ -787,6 +794,7 @@ public class CombatManager {
         this.active = true;
         this.playerMounted = false;
         this.mountMob = null;
+        clearAllRevenantSummonMarkers();
         tileEffects.clear();
 
         // Adventure mode during combat (no block breaking)
@@ -1260,6 +1268,37 @@ public class CombatManager {
     }
 
     private void handleAttack(int targetEntityId, GridPos clickedTile) {
+        if (clickedTile != null && isRevenantSummonMarker(clickedTile)) {
+            if (tryDestroyRevenantSummonMarker(clickedTile)) {
+                sendSync();
+                refreshHighlights();
+            }
+            return;
+        }
+
+        // Web breaking: player can break a web on clicked tile with sword or axe
+        if (arena.hasWebOverlay(clickedTile)) {
+            int webDist = arena.getPlayerGridPos().manhattanDistance(clickedTile);
+            if (webDist <= 1) {
+                // Check if player has a sword or axe
+                net.minecraft.item.ItemStack mainHand = player.getMainHandStack();
+                if (mainHand != null && !mainHand.isEmpty()) {
+                    String itemId = net.minecraft.registry.Registries.ITEM.getId(mainHand.getItem()).toString();
+                    if (itemId.contains("sword") || itemId.contains("axe")) {
+                        removeWebOverlay(clickedTile);
+                        apRemaining -= 1;
+                        sendMessage("§a  You cut through the cobweb!");
+                        player.getWorld().playSound(null, arena.gridToBlockPos(clickedTile),
+                            net.minecraft.sound.SoundEvents.BLOCK_WOOL_BREAK,
+                            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+                        sendSync();
+                        refreshHighlights();
+                        return;
+                    }
+                }
+            }
+        }
+
         // Block input while a previous attack is still resolving
         if (pendingAttackAction != null) return;
 
@@ -1431,7 +1470,7 @@ public class CombatManager {
         // Apply 10 durability damage per attack (tactical combat is hard on weapons)
         ItemStack weaponStack = player.getMainHandStack();
         if (weaponStack.isDamageable()) {
-            weaponStack.damage(10, player, net.minecraft.entity.EquipmentSlot.MAINHAND);
+            weaponStack.damage(7, player, net.minecraft.entity.EquipmentSlot.MAINHAND);
             if (weaponStack.isEmpty() || weaponStack.getDamage() >= weaponStack.getMaxDamage()) {
                 sendMessage("§c§lYour weapon broke!");
             }
@@ -2171,7 +2210,7 @@ public class CombatManager {
             case "deep_dark" -> "The Warden";
             case "nether_wastes" -> "The Molten King";
             case "soul_sand_valley" -> "The Wailing Revenant";
-            case "crimson_forest" -> "The Crimson Ravager";
+            case "crimson_forest" -> "The Bastion Brute";
             case "warped_forest" -> "The Void Walker";
             case "basalt_deltas" -> "The Wither";
             case "outer_end" -> "The Void Herald";
@@ -2191,8 +2230,7 @@ public class CombatManager {
             case "plains" -> { // The Revenant — Zombie
                 mob.setCustomName(Text.literal("§4§lThe Revenant"));
                 mob.setCustomNameVisible(true);
-                ItemStack helmet = new ItemStack(Items.CHAINMAIL_HELMET);
-                helmet.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                ItemStack helmet = new ItemStack(Items.SKELETON_SKULL);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, helmet);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.CHAINMAIL_CHESTPLATE));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.LEGS, new ItemStack(Items.IRON_LEGGINGS));
@@ -2303,11 +2341,19 @@ public class CombatManager {
                 // No equipment — ghast is already ghostly
                 scaleBoss(mob, 2.0); // Huge ghast looming over the edge of the arena
             }
-            case "crimson_forest" -> { // The Crimson Ravager — Hoglin
-                mob.setCustomName(Text.literal("§4§lThe Crimson Ravager"));
+            case "crimson_forest" -> { // The Bastion Brute — Skeleton in Piglin wargear
+                mob.setCustomName(Text.literal("§4§lThe Bastion Brute"));
                 mob.setCustomNameVisible(true);
-                // No equipment — organic beast; big scale
-                scaleBoss(mob, 1.8);
+                ItemStack piglinHead = new ItemStack(Items.PIGLIN_HEAD);
+                piglinHead.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, piglinHead);
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.GOLDEN_CHESTPLATE));
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.LEGS, new ItemStack(Items.GOLDEN_LEGGINGS));
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.FEET, new ItemStack(Items.GOLDEN_BOOTS));
+                ItemStack goldenAxe = new ItemStack(Items.GOLDEN_AXE);
+                goldenAxe.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, goldenAxe);
+                scaleBoss(mob, 1.35);
             }
             case "warped_forest" -> { // The Void Walker — Enderman
                 mob.setCustomName(Text.literal("§5§lThe Void Walker"));
@@ -3346,6 +3392,16 @@ public class CombatManager {
             // Notify bosses of player movement (Warden vibration sense)
             notifyBossesPlayerMoved(finalPos, tilesMoved);
 
+            // Web overlay slowness (Broodmother)
+            if (arena.hasWebOverlay(finalPos)) {
+                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                sendMessage("§7  Cobwebs slow your movement! (-1 speed next turn)");
+            }
+
+            // Prevent vanilla cobweb physics from causing desync
+            player.setVelocity(0, 0, 0);
+            player.velocityModified = true;
+
             phase = CombatPhase.PLAYER_TURN;
             sendSync();
             refreshHighlights();
@@ -3549,6 +3605,17 @@ public class CombatManager {
                 }
             }
 
+            // Tick web overlay durations
+            List<GridPos> expiredWebs = arena.tickWebOverlays();
+            if (!expiredWebs.isEmpty()) {
+                ServerWorld world = (ServerWorld) player.getEntityWorld();
+                for (GridPos pos : expiredWebs) {
+                    BlockPos bp = arena.gridToBlockPos(pos);
+                    world.setBlockState(bp.up(1), net.minecraft.block.Blocks.AIR.getDefaultState(),
+                        net.minecraft.block.Block.NOTIFY_ALL);
+                }
+            }
+
             // Tick combat effects (decrement turn counters, remove expired)
             String expired = combatEffects.tickTurn();
             if (expired != null) {
@@ -3748,6 +3815,7 @@ public class CombatManager {
                 PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
                 apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP);
                 apRemaining += PlayerCombatStats.getSetApBonus(player);
+                apRemaining = Math.max(0, apRemaining - combatEffects.getMiningFatiguePenalty());
                 movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
                     + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
                     + (playerMounted ? MOUNT_SPEED_BONUS : 0);
@@ -3906,9 +3974,7 @@ public class CombatManager {
                 GridPos playerGridPos = arena.getPlayerGridPos();
                 int dist = selfPos.manhattanDistance(playerGridPos);
                 if (dist <= explode.radius()) {
-                    int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-                    int actual = Math.max(1, explode.damage() - playerDefense);
-                    player.setHealth(Math.max(1, player.getHealth() - actual));
+                    int actual = damagePlayer(explode.damage());
                     sendMessage("§c  Explosion hits you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 }
@@ -3985,9 +4051,7 @@ public class CombatManager {
                     arena.moveEntity(currentEnemy, finalPos);
                 }
                 if (hitPlayer) {
-                    int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-                    int actual = Math.max(1, swoop.damage() - playerDefense);
-                    player.setHealth(Math.max(1, player.getHealth() - actual));
+                    int actual = damagePlayer(swoop.damage());
                     sendMessage("§c  Swoops through you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                     // Impact burst on player
                     swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
@@ -4340,9 +4404,7 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         switch (action) {
             case EnemyAction.Attack atk -> {
-                int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-                int actual = Math.max(1, atk.damage() - playerDefense);
-                player.setHealth(Math.max(1, player.getHealth() - actual));
+                int actual = damagePlayer(atk.damage());
                 // Impact particles at player
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
                     player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.3, 0.3, 0.3, 0.01);
@@ -4399,17 +4461,13 @@ public class CombatManager {
                             player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.3, 0.3, 0.3, 0.01);
                     }
                     arena.moveEntity(currentEnemy, tpa.target());
-                    int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-                    int actual = Math.max(1, tpa.damage() - playerDefense);
-                    player.setHealth(Math.max(1, player.getHealth() - actual));
+                    int actual = damagePlayer(tpa.damage());
                     sendMessage("§c  Teleport strike for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
                 }
             }
             case EnemyAction.RangedAttack ra -> {
-                int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-                int actual = Math.max(1, ra.damage() - playerDefense);
-                player.setHealth(Math.max(1, player.getHealth() - actual));
+                int actual = damagePlayer(ra.damage());
                 // Ranged impact particles based on attack type
                 String rangedType = ra.effectName() != null ? ra.effectName() : "";
                 switch (rangedType) {
@@ -4424,6 +4482,8 @@ public class CombatManager {
                             player.getX(), player.getY() + 0.8, player.getZ(), 8, 0.3, 0.4, 0.3, 0.02);
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER,
                             player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
+                        combatEffects.addEffect(CombatEffects.EffectType.POISON, 3, 1);
+                        sendMessage("§2  Poisoned! (-2 HP/turn for 3 turns)");
                     }
                     case "hex_bolt" -> {
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH,
@@ -4445,6 +4505,20 @@ public class CombatManager {
                 sendMessage("§c  Ranged hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
+            case EnemyAction.CeilingDrop drop -> {
+                if (currentEnemy != null) {
+                    currentEnemy.setOnCeiling(false);
+                    currentEnemy.setGridPos(drop.landingPos());
+                    arena.placeEntity(currentEnemy);
+                    MobEntity dropMob = currentEnemy.getMobEntity();
+                    if (dropMob != null) {
+                        dropMob.setInvisible(false);
+                        BlockPos landBlock = arena.gridToBlockPos(drop.landingPos());
+                        dropMob.requestTeleport(landBlock.getX() + 0.5, landBlock.getY() + 1.0, landBlock.getZ() + 0.5);
+                    }
+                    sendMessage("§c  " + currentEnemy.getDisplayName() + " slams down from the ceiling!");
+                }
+            }
             case EnemyAction.CompositeAction ca -> {
                 for (EnemyAction sub : ca.actions()) {
                     dispatchBossSubAction(sub);
@@ -4458,10 +4532,39 @@ public class CombatManager {
      * Spawn minions for a boss SummonMinions action.
      */
     private void spawnBossMinions(EnemyAction.SummonMinions sm) {
+        // Special handling: Broodmother egg sac placement (not a real mob spawn)
+        if ("craftics:egg_sac".equals(sm.entityTypeId())) {
+            EnemyAI bossAi = AIRegistry.get(currentEnemy.getAiKey());
+            if (bossAi instanceof BroodmotherAI broodmother) {
+                ServerWorld world = (ServerWorld) player.getEntityWorld();
+                for (GridPos pos : sm.positions()) {
+                    placeEggSacEntity(broodmother, pos, world);
+                    broodmother.registerEggSac(pos);
+                }
+                sendMessage("§e  The Broodmother lays new eggs!");
+            }
+            return;
+        }
+
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         EntityType<?> type = Registries.ENTITY_TYPE.get(Identifier.of(sm.entityTypeId()));
         int spawned = 0;
-        for (GridPos pos : sm.positions()) {
+        java.util.List<GridPos> spawnPositions = sm.positions();
+        if (isRevenantZombieSummon(sm)) {
+            boolean hasAnyMarkers = spawnPositions.stream().anyMatch(this::isRevenantSummonMarker);
+            if (hasAnyMarkers) {
+                spawnPositions = spawnPositions.stream()
+                    .filter(this::isRevenantSummonMarker)
+                    .toList();
+            }
+            clearRevenantSummonMarkers(sm.positions());
+            if (spawnPositions.isEmpty()) {
+                sendMessage("§a  You shattered the grave markers before anything could emerge!");
+                return;
+            }
+        }
+
+        for (GridPos pos : spawnPositions) {
             if (spawned >= sm.count()) break;
             if (!arena.isInBounds(pos) || arena.isOccupied(pos)) continue;
             GridTile tile = arena.getTile(pos);
@@ -4750,9 +4853,7 @@ public class CombatManager {
             if (!redirected
                     && Math.abs(playerGridPos.x() - effectCenter.x()) <= aoeRadius
                     && Math.abs(playerGridPos.z() - effectCenter.z()) <= aoeRadius) {
-                int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-                int actual = Math.max(1, damage - playerDefense);
-                player.setHealth(Math.max(1, player.getHealth() - actual));
+                int actual = damagePlayer(damage);
                 sendMessage("§c  Explosion hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 if (!combatEffects.hasFireResistance()) {
                     combatEffects.addEffect(CombatEffects.EffectType.BURNING, 2, 0);
@@ -4782,9 +4883,7 @@ public class CombatManager {
             // Damage + wither to player if hit
             GridPos playerGridPos = arena.getPlayerGridPos();
             if (effectCenter.equals(playerGridPos)) {
-                int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-                int actual = Math.max(1, damage - playerDefense);
-                player.setHealth(Math.max(1, player.getHealth() - actual));
+                int actual = damagePlayer(damage);
                 sendMessage("§8  Wither Skull hits for " + actual + " damage!");
                 combatEffects.addEffect(CombatEffects.EffectType.WITHER, 3, 0);
                 sendMessage("§8  Wither applied! (-2 HP/turn for 3 turns)");
@@ -4815,9 +4914,7 @@ public class CombatManager {
         GridPos playerGridPos = arena.getPlayerGridPos();
         if (Math.abs(playerGridPos.x() - center.x()) <= radius
             && Math.abs(playerGridPos.z() - center.z()) <= radius) {
-            int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-            int actual = Math.max(1, damage - playerDefense);
-            player.setHealth(Math.max(1, player.getHealth() - actual));
+            int actual = damagePlayer(damage);
             sendMessage("§c  Area hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
             // Apply named effects
             if (aa.effectName() != null) {
@@ -4869,6 +4966,19 @@ public class CombatManager {
             }
             case "darkness", "lights_out" -> {
                 sendMessage("§8  Darkness falls! Vision reduced.");
+            }
+            case "web_spray" -> {
+                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                // Stun: use MINING_FATIGUE with high amplifier to zero out AP next turn
+                combatEffects.addEffect(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
+                sendMessage("§7  Webbed! Stunned + slowed!");
+            }
+            case "web_spray_poison" -> {
+                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                combatEffects.addEffect(CombatEffects.EffectType.POISON, 2, 0);
+                // Stun: use MINING_FATIGUE with high amplifier to zero out AP next turn
+                combatEffects.addEffect(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
+                sendMessage("§7  Webbed! Stunned + slowed + poisoned!");
             }
             default -> {} // No special effect
         }
@@ -4974,7 +5084,7 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME, cx, cy + 0.5, cz, 10, spread, 1.0, spread, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy, cz, 8, spread, 0.5, spread, 0.01);
             }
-            // === Crimson Ravager ===
+            // === Bastion Brute ===
             case "rampage" -> {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.5, cz, 20, spread, 0.8, spread, 0.03);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR, cx, cy + 0.3, cz, 10, spread, 0.5, spread, 0.02);
@@ -4989,6 +5099,18 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME, cx, cy + 0.5, cz, 15, spread, 0.8, spread, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER, cx, cy + 0.3, cz, 8, spread, 0.4, spread, 0.01);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 5, spread, 0.3, spread, 0.0);
+            }
+            // === Broodmother ceiling attacks ===
+            case "ceiling_slam" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 20, spread + 0.5, 0.3, spread + 0.5, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.5, cz, 15, spread, 0.8, spread, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME, cx, cy, cz, 10, spread, 0.5, spread, 0.01);
+            }
+            case "hunting_dive_slam" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 25, spread + 0.5, 0.3, spread + 0.5, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.5, cz, 20, spread, 1.0, spread, 0.04);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME, cx, cy, cz, 15, spread + 0.3, 0.6, spread + 0.3, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, cx, cy + 0.3, cz, 8, spread, 0.4, spread, 0.01);
             }
             case "pounce" -> {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 12, spread, 0.5, spread, 0.02);
@@ -5052,7 +5174,7 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy + 0.5, cz, 12, spread, 0.8, spread, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 8, spread, 0.5, spread, 0.01);
             }
-            // === Fungal Growth (Crimson Ravager healing) ===
+            // === Fungal Growth (Bastion Brute healing) ===
             case "fungal_growth" -> {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIMSON_SPORE, cx, cy + 0.5, cz, 20, spread, 0.8, spread, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER, cx, cy + 0.3, cz, 8, spread, 0.4, spread, 0.0);
@@ -5070,15 +5192,23 @@ public class CombatManager {
      */
     private void resolveCreateTerrain(EnemyAction.CreateTerrain ct) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
+        int duration = ct.duration();
+        if (currentEnemy != null && currentEnemy.isBoss()
+                && (ct.terrainType() == TileType.FIRE || ct.terrainType() == TileType.LAVA)
+                && duration <= 0) {
+            // Prevent permanent trap patterns from boss lava/magma; always decay.
+            duration = 3;
+        }
         int changed = 0;
         for (GridPos pos : ct.tiles()) {
             if (!arena.isInBounds(pos)) continue;
             GridTile tile = arena.getTile(pos);
             if (tile == null) continue;
 
-            tile.setType(ct.terrainType());
-            if (ct.duration() > 0) {
-                tile.setTurnsRemaining(ct.duration());
+            if (duration > 0) {
+                tile.setTemporaryType(ct.terrainType(), duration);
+            } else {
+                tile.setType(ct.terrainType());
             }
             // Update the visual block in the world (floor level, not above)
             BlockPos bp = new BlockPos(
@@ -5164,11 +5294,132 @@ public class CombatManager {
             }
         }
         if (hitPlayer) {
-            int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-            int actual = Math.max(1, la.damage() - playerDefense);
-            player.setHealth(Math.max(1, player.getHealth() - actual));
+            int actual = damagePlayer(la.damage());
             sendMessage("§c  Line attack hits for " + actual + " damage! (HP: " + getPlayerHp() + ")");
             if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+        }
+    }
+
+    private boolean tryDestroyRevenantSummonMarker(GridPos clickedTile) {
+        GridPos playerPos = arena.getPlayerGridPos();
+        Item weapon = player.getMainHandStack().getItem();
+        int range = PlayerCombatStats.getWeaponRange(player);
+        if (range > 1) range += getScaffoldRangeBonus(playerPos);
+
+        int dist = PlayerCombatStats.isBow(player)
+            ? playerPos.manhattanDistance(clickedTile)
+            : Math.max(Math.abs(playerPos.x() - clickedTile.x()), Math.abs(playerPos.z() - clickedTile.z()));
+        if (dist > range) {
+            sendMessage("§cThat grave marker is out of range!");
+            return false;
+        }
+
+        int attackCost = WeaponAbility.getAttackCost(weapon);
+        if (weapon == Items.CROSSBOW) {
+            attackCost = Math.max(1, attackCost - PlayerCombatStats.getQuickCharge(player));
+        }
+        if (apRemaining < attackCost) {
+            sendMessage("§cNeed " + attackCost + " AP to attack! (have " + apRemaining + ")");
+            return false;
+        }
+
+        apRemaining -= attackCost;
+        ItemStack weaponStack = player.getMainHandStack();
+        if (weaponStack.isDamageable()) {
+            weaponStack.damage(7, player, net.minecraft.entity.EquipmentSlot.MAINHAND);
+            if (weaponStack.isEmpty() || weaponStack.getDamage() >= weaponStack.getMaxDamage()) {
+                sendMessage("§c§lYour weapon broke!");
+            }
+        }
+
+        removeRevenantSummonMarker(clickedTile);
+        player.getWorld().playSound(null, arena.gridToBlockPos(clickedTile),
+            net.minecraft.sound.SoundEvents.BLOCK_BONE_BLOCK_BREAK,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.9f);
+        sendMessage("§aYou smash the zombie head before the corpse can rise!");
+        return true;
+    }
+
+    private boolean isRevenantZombieSummon(EnemyAction.SummonMinions sm) {
+        return currentEnemy != null
+            && currentEnemy.getAiKey() != null
+            && currentEnemy.getAiKey().contains("revenant")
+            && "minecraft:zombie".equals(sm.entityTypeId());
+    }
+
+    private boolean isRevenantSummonMarker(GridPos pos) {
+        return TILE_EFFECT_REVENANT_HEAD.equals(tileEffects.get(pos));
+    }
+
+    private void syncSpecialBossWarningMarkers(com.crackedgames.craftics.combat.ai.boss.BossWarning warning) {
+        EnemyAction resolveAction = warning.getResolveAction();
+        if (resolveAction instanceof EnemyAction.SummonMinions sm
+                && "minecraft:zombie".equals(sm.entityTypeId())
+                && currentEnemy != null
+                && currentEnemy.getAiKey() != null
+                && currentEnemy.getAiKey().contains("revenant")) {
+            syncRevenantSummonMarkers(warning.getAffectedTiles());
+        }
+    }
+
+    private void syncRevenantSummonMarkers(java.util.List<GridPos> desiredTiles) {
+        java.util.Set<GridPos> desired = new java.util.HashSet<>(desiredTiles);
+        java.util.List<GridPos> existing = new java.util.ArrayList<>();
+        for (var entry : tileEffects.entrySet()) {
+            if (TILE_EFFECT_REVENANT_HEAD.equals(entry.getValue())) {
+                existing.add(entry.getKey());
+            }
+        }
+        for (GridPos pos : existing) {
+            if (!desired.contains(pos)) {
+                removeRevenantSummonMarker(pos);
+            }
+        }
+        for (GridPos pos : desired) {
+            placeRevenantSummonMarker(pos);
+        }
+    }
+
+    private void clearRevenantSummonMarkers(java.util.List<GridPos> positions) {
+        for (GridPos pos : positions) {
+            removeRevenantSummonMarker(pos);
+        }
+    }
+
+    private void clearAllRevenantSummonMarkers() {
+        java.util.List<GridPos> markers = new java.util.ArrayList<>();
+        for (var entry : tileEffects.entrySet()) {
+            if (TILE_EFFECT_REVENANT_HEAD.equals(entry.getValue())) {
+                markers.add(entry.getKey());
+            }
+        }
+        clearRevenantSummonMarkers(markers);
+    }
+
+    private void placeRevenantSummonMarker(GridPos pos) {
+        tileEffects.put(pos, TILE_EFFECT_REVENANT_HEAD);
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos headPos = arena.gridToBlockPos(pos).up();
+        if (!world.getBlockState(headPos).isAir() && !world.getBlockState(headPos).isOf(Blocks.ZOMBIE_HEAD)) {
+            return;
+        }
+        world.setBlockState(headPos,
+            Blocks.ZOMBIE_HEAD.getDefaultState().with(net.minecraft.block.SkullBlock.ROTATION, 0));
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH,
+            headPos.getX() + 0.5, headPos.getY() + 0.2, headPos.getZ() + 0.5,
+            5, 0.2, 0.1, 0.2, 0.01);
+    }
+
+    private void removeRevenantSummonMarker(GridPos pos) {
+        tileEffects.remove(pos, TILE_EFFECT_REVENANT_HEAD);
+        if (player == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos headPos = arena.gridToBlockPos(pos).up();
+        if (world.getBlockState(headPos).isOf(Blocks.ZOMBIE_HEAD)) {
+            world.setBlockState(headPos, Blocks.AIR.getDefaultState());
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.POOF,
+                headPos.getX() + 0.5, headPos.getY() + 0.2, headPos.getZ() + 0.5,
+                4, 0.15, 0.1, 0.15, 0.01);
         }
     }
 
@@ -5255,9 +5506,7 @@ public class CombatManager {
                 GridTile tile = arena.getTile(candidate);
                 if (tile != null && tile.getType() == TileType.VOID) {
                     // Player pushed into void — take fall damage
-                    int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-                    int fallDmg = Math.max(1, 5 - playerDefense);
-                    player.setHealth(Math.max(1, player.getHealth() - fallDmg));
+                    int fallDmg = damagePlayer(5);
                     sendMessage("§c  Pushed into the void for " + fallDmg + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                     break;
@@ -5326,6 +5575,7 @@ public class CombatManager {
      */
     private void renderBossWarning(com.crackedgames.craftics.combat.ai.boss.BossWarning warning) {
         if (warning == null) return;
+        syncSpecialBossWarningMarkers(warning);
         // Always highlight affected tiles via the client-side red overlay
         for (GridPos tile : warning.getAffectedTiles()) {
             highlightWarningTile(tile);
@@ -5465,9 +5715,9 @@ public class CombatManager {
             for (int z = 0; z < arena.getHeight(); z++) {
                 GridTile tile = arena.getTile(x, z);
                 if (tile != null && tile.getTurnsRemaining() > 0) {
+                    TileType before = tile.getType();
                     tile.tickTurn();
-                    // If tile reset to NORMAL, restore the floor block
-                    if (tile.getType() == TileType.NORMAL) {
+                    if (tile.getType() != before) {
                         BlockPos bp = new BlockPos(
                             arena.getOrigin().getX() + x,
                             arena.getOrigin().getY(),
@@ -5644,6 +5894,27 @@ public class CombatManager {
                     sa.removeTurret(deadEntity.getGridPos());
                 }
             }
+
+            // Broodmother: egg sac destroyed
+            if (ai instanceof BroodmotherAI bm) {
+                if ("craftics:egg_sac".equals(deadEntity.getEntityTypeId())) {
+                    GridPos sacPos = deadEntity.getGridPos();
+                    bm.onEggSacDestroyed(sacPos);
+                    sendMessage("§a✦ Egg sac destroyed! Spawn capacity reduced.");
+                    // Remove turtle egg block from world
+                    ServerWorld world = (ServerWorld) player.getEntityWorld();
+                    BlockPos bp = arena.gridToBlockPos(sacPos);
+                    world.setBlockState(bp.up(1), Blocks.AIR.getDefaultState(),
+                        net.minecraft.block.Block.NOTIFY_ALL);
+                    // Destruction particles
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME,
+                        bp.getX() + 0.5, bp.getY() + 1.5, bp.getZ() + 0.5,
+                        12, 0.3, 0.3, 0.3, 0.02);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                        bp.getX() + 0.5, bp.getY() + 1.5, bp.getZ() + 0.5,
+                        5, 0.2, 0.2, 0.2, 0.01);
+                }
+            }
         }
     }
 
@@ -5655,7 +5926,11 @@ public class CombatManager {
         EnemyAI ai = AIRegistry.get(bossEntity.getAiKey());
 
         if (ai instanceof BroodmotherAI broodmother) {
-            broodmother.initEggSacs(arena);
+            List<GridPos> sacPositions = broodmother.initEggSacs(arena);
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            for (GridPos pos : sacPositions) {
+                placeEggSacEntity(broodmother, pos, world);
+            }
         }
 
         // Wailing Revenant (Ghast): position OUTSIDE the arena on the low-Z edge.
@@ -5709,6 +5984,62 @@ public class CombatManager {
                 mob.setBodyYaw(0.0f);
             }
         }
+    }
+
+    /**
+     * Place a single egg sac entity at the given position.
+     * Egg sacs are 1HP destructible entities that block all entities except the Broodmother.
+     */
+    private void placeEggSacEntity(BroodmotherAI broodmother, GridPos pos, ServerWorld world) {
+        int fakeEntityId = -(eggSacIdCounter++);
+        // attackPower=0 intended (egg sacs don't attack), but CombatEntity clamps to min 1
+        CombatEntity eggSac = new CombatEntity(fakeEntityId, "craftics:egg_sac", pos,
+            1, 0, 0, 1);
+        eggSac.setPassableForBoss(true);
+        eggSac.setAiOverrideKey("craftics:egg_sac");
+
+        enemies.add(eggSac);
+        arena.placeEntity(eggSac);
+
+        // Place turtle egg block in the world
+        BlockPos bp = arena.gridToBlockPos(pos);
+        world.setBlockState(bp.up(1), Blocks.TURTLE_EGG.getDefaultState(),
+            net.minecraft.block.Block.NOTIFY_ALL);
+
+        // Spawn placement particles
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME,
+            bp.getX() + 0.5, bp.getY() + 1.5, bp.getZ() + 0.5,
+            8, 0.3, 0.2, 0.3, 0.01);
+    }
+
+    /**
+     * Place cobweb blocks at Y+1 and register web overlays in the arena.
+     * Webs apply slowness and last the given number of turns.
+     */
+    private void placeWebOverlays(List<GridPos> positions, int turns) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        for (GridPos pos : positions) {
+            if (!arena.isInBounds(pos)) continue;
+            arena.setWebOverlay(pos, turns);
+            BlockPos bp = arena.gridToBlockPos(pos);
+            world.setBlockState(bp.up(1), net.minecraft.block.Blocks.COBWEB.getDefaultState(),
+                net.minecraft.block.Block.NOTIFY_ALL);
+            // Placement particles
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME,
+                bp.getX() + 0.5, bp.getY() + 1.5, bp.getZ() + 0.5,
+                5, 0.3, 0.2, 0.3, 0.01);
+        }
+    }
+
+    /**
+     * Remove a web overlay at the given position — clears the cobweb block and arena tracking.
+     */
+    private void removeWebOverlay(GridPos pos) {
+        arena.clearWebOverlay(pos);
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos bp = arena.gridToBlockPos(pos);
+        world.setBlockState(bp.up(1), net.minecraft.block.Blocks.AIR.getDefaultState(),
+            net.minecraft.block.Block.NOTIFY_ALL);
     }
 
     /**
@@ -5918,6 +6249,24 @@ public class CombatManager {
                     tileEffects.remove(next);
                 } else {
                     tileEffects.put(next, "cake:" + uses);
+                }
+            }
+
+            if (pendingAction instanceof EnemyAction.MoveAndAttack
+                    && currentEnemy != null
+                    && currentEnemy.isEnraged()
+                    && currentEnemy.getAiKey() != null
+                    && currentEnemy.getAiKey().contains("revenant")) {
+                GridTile trailTile = arena.getTile(next);
+                if (trailTile != null && trailTile.isWalkable()) {
+                    trailTile.setType(TileType.FIRE);
+                    trailTile.setTurnsRemaining(3);
+                    BlockPos firePos = arena.gridToBlockPos(next);
+                    ServerWorld fireWorld = (ServerWorld) player.getEntityWorld();
+                    fireWorld.setBlockState(firePos, trailTile.getBlockType().getDefaultState());
+                    fireWorld.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+                        firePos.getX() + 0.5, firePos.getY() + 0.2, firePos.getZ() + 0.5,
+                        3, 0.15, 0.05, 0.15, 0.01);
                 }
             }
 
@@ -6328,12 +6677,8 @@ public class CombatManager {
             knockbackTiles = maakb.knockbackTiles();
         }
 
-        int playerDefense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus();
-        // Banner tile effect: +2 DEF if player is within 2 tiles of a banner
-        playerDefense += getBannerDefenseBonus(arena.getPlayerGridPos());
         damage = (int)(damage * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
-        int actual = Math.max(1, damage - playerDefense);
-        player.setHealth(Math.max(1, player.getHealth() - actual));
+        int actual = damagePlayer(damage);
 
         // Combat sound: player hit
         player.getWorld().playSound(null, player.getBlockPos(),
@@ -6479,6 +6824,18 @@ public class CombatManager {
     }
 
     private void tickEnemyDone() {
+        // Broodmother: consume pending web rain (Hunting Dive phase 2)
+        if (currentEnemy != null && currentEnemy.isBoss()) {
+            EnemyAI bossAi = AIRegistry.get(currentEnemy.getAiKey());
+            if (bossAi instanceof BroodmotherAI bm) {
+                List<GridPos> webRain = bm.consumeWebRain();
+                if (webRain != null && !webRain.isEmpty()) {
+                    placeWebOverlays(webRain, 2);
+                    sendMessage("§e  The Broodmother rains webs from the ceiling!");
+                }
+            }
+        }
+
         enemyTurnIndex++;
         enemyTurnState = EnemyTurnState.DECIDING;
         enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
@@ -8675,6 +9032,27 @@ public class CombatManager {
         // Clean up party tracking
         cleanupPartyTracking();
 
+        // Clean up Broodmother web overlays
+        if (arena != null) {
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            for (GridPos pos : new ArrayList<>(arena.getWebOverlays().keySet())) {
+                BlockPos bp = arena.gridToBlockPos(pos);
+                world.setBlockState(bp.up(1), net.minecraft.block.Blocks.AIR.getDefaultState(),
+                    net.minecraft.block.Block.NOTIFY_ALL);
+            }
+            arena.clearAllWebOverlays();
+
+            // Clean up remaining egg sac blocks
+            for (CombatEntity e : enemies) {
+                if ("craftics:egg_sac".equals(e.getEntityTypeId()) && e.getGridPos() != null) {
+                    BlockPos bp = arena.gridToBlockPos(e.getGridPos());
+                    world.setBlockState(bp.up(1), net.minecraft.block.Blocks.AIR.getDefaultState(),
+                        net.minecraft.block.Block.NOTIFY_ALL);
+                }
+            }
+        }
+
+        clearAllRevenantSummonMarkers();
         arena = null;
         enemies = null;
         player = null;
@@ -9032,11 +9410,12 @@ public class CombatManager {
             // Append boss metadata if this is a boss enemy
             if (e.isBoss()) {
                 typeIds.append(";boss=").append(e.getDisplayName());
-                typeIds.append(";atk=").append(e.getAttackPower());
-                typeIds.append(";def=").append(e.getDefense());
-                typeIds.append(";spd=").append(e.getMoveSpeed());
-                typeIds.append(";range=").append(e.getRange());
             }
+            // Always send actual stats so client hover panel is accurate
+            typeIds.append(";atk=").append(e.getAttackPower());
+            typeIds.append(";def=").append(e.getDefense());
+            typeIds.append(";spd=").append(e.getMoveSpeed());
+            typeIds.append(";range=").append(e.getRange());
             // Tag allies so client can display them separately
             if (e.isAlly()) {
                 typeIds.append(";ally");
