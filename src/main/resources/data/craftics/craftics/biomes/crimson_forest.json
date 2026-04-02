@@ -18,7 +18,7 @@
       {"type": "minecraft:piglin_brute", "weight": 3, "hp": 20, "attack": 10, "defense": 3},
       {"type": "minecraft:zombified_piglin", "weight": 4, "hp": 8, "attack": 3, "defense": 1}
     ],
-    "boss": {"type": "minecraft:hoglin", "hp": 65, "attack": 8, "defense": 3}
+    "boss": {"type": "minecraft:skeleton", "hp": 65, "attack": 8, "defense": 3}
   },
   "loot": [
     {"item": "minecraft:crimson_planks", "weight": 8},

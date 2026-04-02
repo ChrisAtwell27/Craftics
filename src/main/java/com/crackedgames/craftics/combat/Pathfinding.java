@@ -124,7 +124,10 @@ public class Pathfinding {
         CombatEntity occupant = arena.getOccupant(pos);
         if (occupant == null) return false;
         // Don't block on our own tile
-        return self == null || occupant != self;
+        if (self != null && occupant == self) return false;
+        // Boss entities can walk through passable entities (e.g., egg sacs)
+        if (self != null && self.isBoss() && occupant.isPassableForBoss()) return false;
+        return true;
     }
 
     /**

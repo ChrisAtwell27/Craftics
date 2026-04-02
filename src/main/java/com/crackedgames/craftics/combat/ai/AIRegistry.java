@@ -22,12 +22,6 @@ public class AIRegistry {
         register("minecraft:donkey", passive);
         register("minecraft:mule", passive);
 
-        // === Wander + flee mobs ===
-        register("minecraft:bat", new BatAI()); // always wanders, flees when hit
-
-        // === Aquatic mobs ===
-        register("minecraft:axolotl", new AxolotlAI()); // water-only, attacks hostiles in water
-
         // === Territorial mobs ===
         register("minecraft:llama", new LlamaAI());         // farm animal, spits at range 2 when agro
         register("minecraft:polar_bear", new PolarBearAI()); // agro if player within 2, stays agro
@@ -37,11 +31,13 @@ public class AIRegistry {
 
         // === Skittish mobs ===
         register("minecraft:rabbit", new RabbitAI()); // always flees within 2 blocks
+        register("minecraft:bat", new BatAI()); // always wanders, flees when hit
 
         // === Aquatic mobs (water tiles only) ===
         EnemyAI fish = new CodAI();
         register("minecraft:cod", fish);
         register("minecraft:salmon", fish);
+        register("minecraft:axolotl", new AxolotlAI()); // water-only, attacks hostiles in water
 
         // === Predators (hunt prey, agro if attacked) ===
         register("minecraft:wolf", new WolfAI());   // hunts sheep, chickens, skeletons
@@ -122,13 +118,16 @@ public class AIRegistry {
         register("boss:deep_dark", new WardenAI());
         register("boss:nether_wastes", new MoltenKingAI());
         register("boss:soul_sand_valley", new WailingRevenantAI());
-        register("boss:crimson_forest", new CrimsonRavagerAI());
+        register("boss:crimson_forest", new BastionBruteAI());
         register("boss:warped_forest", new VoidWalkerAI());
         register("boss:basalt_deltas", new WitherBossAI());
         register("boss:outer_end_islands", new VoidHeraldAI());
         register("boss:end_city", new ShulkerArchitectAI());
         register("boss:chorus_grove", new ChorusMindAI());
         register("boss:dragons_nest", new DragonAI());
+
+        // === Structures (non-acting entities) ===
+        register("craftics:egg_sac", passive);
     }
 
     public static void register(String entityTypeId, EnemyAI ai) {

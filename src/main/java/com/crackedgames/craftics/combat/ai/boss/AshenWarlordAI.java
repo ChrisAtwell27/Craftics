@@ -18,15 +18,15 @@ import java.util.List;
  *   P2: 180° arc (3 tiles in front).
  * - Summon Blaze Guard: 2 Blazes (10HP/5ATK/Range 4). Every 4 turns, max 3.
  *   P2: Wither Skeletons (12HP/6ATK, also apply Wither) instead.
- * - Ash Storm: 4×4 area, -1 speed, -50% ranged accuracy, 2 turns.
- * - Fire Pillar: 1×4 line, 6 damage. P2: X pattern (two crossing diagonals).
+ * - Ash Brand: Marks the player's row and column, then scorches both lanes.
+ * - Fire Pillar: Forward line strike. P2 adds mirrored reverse lane.
  *
  * Phase 2 — "Warlord's Command": Arc wither slash, wither skeletons, speed 4,
  * double wither stacking, X-pattern fire pillar.
  */
 public class AshenWarlordAI extends BossAI {
     private static final String CD_SUMMON = "summon_guard";
-    private static final String CD_ASH = "ash_storm";
+    private static final String CD_BRAND = "ash_brand";
     private static final String CD_PILLAR = "fire_pillar";
 
     @Override
@@ -39,6 +39,23 @@ public class AshenWarlordAI extends BossAI {
     protected EnemyAction chooseAbility(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
+
+        // Ash Brand — lane-control signature move.
+        if (!isOnCooldown(CD_BRAND) && dist <= 6) {
+            setCooldown(CD_BRAND, isPhaseTwo() ? 2 : 3);
+            List<GridPos> brandTiles = getBrandTiles(arena, playerPos);
+            if (!brandTiles.isEmpty()) {
+                int burnDmg = isPhaseTwo() ? 6 : 4;
+                EnemyAction brand = new EnemyAction.CompositeAction(List.of(
+                    new EnemyAction.AreaAttack(playerPos, 0, burnDmg, "burning"),
+                    new EnemyAction.CreateTerrain(brandTiles, TileType.FIRE, 2)
+                ));
+                pendingWarning = new BossWarning(
+                    self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
+                    brandTiles, 1, brand, 0xFFCC7722);
+                return new EnemyAction.Idle();
+            }
+        }
 
         // Summon Blaze Guard / Wither Skeleton Guard
         if (!isOnCooldown(CD_SUMMON) && getAliveMinionCount() < 3) {
@@ -62,16 +79,11 @@ public class AshenWarlordAI extends BossAI {
             List<GridPos> pillarTiles = getLineTiles(arena, myPos, dir[0], dir[1], 4);
             EnemyAction pillarAction;
             if (isPhaseTwo()) {
-                // X pattern — two crossing diagonal lines
                 List<GridPos> xTiles = new ArrayList<>(pillarTiles);
-                // Add perpendicular diagonal
-                int perpDx = dir[1] != 0 ? 1 : 0;
-                int perpDz = dir[0] != 0 ? 1 : 0;
-                xTiles.addAll(getLineTiles(arena, myPos, perpDx, perpDz, 4));
-                xTiles.addAll(getLineTiles(arena, myPos, -perpDx, -perpDz, 4));
+                xTiles.addAll(getLineTiles(arena, myPos, -dir[0], -dir[1], 4));
                 pillarAction = new EnemyAction.CompositeAction(List.of(
                     new EnemyAction.LineAttack(myPos, dir[0], dir[1], 4, 6),
-                    new EnemyAction.AreaAttack(myPos, 0, 6, "fire_pillar_x")
+                    new EnemyAction.LineAttack(myPos, -dir[0], -dir[1], 4, 6)
                 ));
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
@@ -83,15 +95,6 @@ public class AshenWarlordAI extends BossAI {
                     pillarTiles, 1, pillarAction, 0xFFFF6600);
             }
             return new EnemyAction.Idle();
-        }
-
-        // Ash Storm — area denial
-        if (!isOnCooldown(CD_ASH) && dist <= 5) {
-            setCooldown(CD_ASH, 3);
-            List<GridPos> ashTiles = getAreaTiles(arena, playerPos, 2); // 5×5 centered on player
-            return new EnemyAction.BossAbility("ash_storm",
-                new EnemyAction.AreaAttack(playerPos, 2, 0, "ash_storm"),
-                ashTiles);
         }
 
         // Wither Slash — melee attack
@@ -118,5 +121,13 @@ public class AshenWarlordAI extends BossAI {
         }
 
         return meleeOrApproach(self, arena, playerPos, 0);
+    }
+
+    private List<GridPos> getBrandTiles(GridArena arena, GridPos playerPos) {
+        List<GridPos> tiles = new ArrayList<>();
+        tiles.addAll(getRowTiles(arena, playerPos.z()));
+        tiles.addAll(getColumnTiles(arena, playerPos.x()));
+        tiles.removeIf(p -> !arena.isInBounds(p));
+        return tiles.stream().distinct().toList();
     }
 }

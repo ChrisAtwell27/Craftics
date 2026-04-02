@@ -16,6 +16,7 @@ public class GridArena {
 
     private final Map<GridPos, CombatEntity> occupants = new HashMap<>();
     private GridPos playerGridPos;
+    private final Map<GridPos, Integer> webOverlays = new HashMap<>();
 
     public GridArena(int width, int height, GridTile[][] tiles, BlockPos origin,
                      int levelNumber, GridPos playerStart) {
@@ -113,6 +114,45 @@ public class GridArena {
 
     public Map<GridPos, CombatEntity> getOccupants() {
         return occupants;
+    }
+
+    // --- Web overlay tracking (Broodmother) ---
+
+    public boolean hasWebOverlay(GridPos pos) {
+        return webOverlays.containsKey(pos);
+    }
+
+    public void setWebOverlay(GridPos pos, int turns) {
+        webOverlays.put(pos, turns);
+    }
+
+    public void clearWebOverlay(GridPos pos) {
+        webOverlays.remove(pos);
+    }
+
+    /** Tick all web overlays. Returns positions where webs expired this tick. */
+    public java.util.List<GridPos> tickWebOverlays() {
+        java.util.List<GridPos> expired = new java.util.ArrayList<>();
+        var it = webOverlays.entrySet().iterator();
+        while (it.hasNext()) {
+            var entry = it.next();
+            int remaining = entry.getValue() - 1;
+            if (remaining <= 0) {
+                expired.add(entry.getKey());
+                it.remove();
+            } else {
+                entry.setValue(remaining);
+            }
+        }
+        return expired;
+    }
+
+    public Map<GridPos, Integer> getWebOverlays() {
+        return webOverlays;
+    }
+
+    public void clearAllWebOverlays() {
+        webOverlays.clear();
     }
 
     // --- Player position ---

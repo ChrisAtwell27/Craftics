@@ -89,11 +89,12 @@
     <p class="page-desc">Nether Wastes biome boss &mdash; sovereign of molten rock.</p>
 
     <div class="wiki-content">
-      <p>The Molten King is a massive magma cube that erupts, splits, and reabsorbs its own fragments to heal. Every step it takes leaves fire in its wake, steadily consuming the arena and cutting off safe ground.</p>
+      <p>The Molten King is a massive magma cube that erupts, cages movement with lava, and reabsorbs its own fragments to heal. In Phase 2, molten rings creep inward every other round, shrinking safe space while still leaving narrow escape gaps.</p>
 
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Magma Eruption:</strong> Leaps to a tile near the player, dealing 5 dmg in a 3&times;3 AoE and leaving a fire ring around the blast zone lasting 2 turns. Telegraphed 1 turn in advance.</li>
+        <li><strong>Magma Eruption:</strong> Telegraphs a leap, relocates near the player, then detonates for 5 dmg in a 3&times;3 AoE and leaves a fire ring.</li>
+        <li><strong>Lava Cage:</strong> Creates a plus-shaped magma ring around the player to limit escape options.</li>
         <li><strong>Split (reactive):</strong> If hit for 8 or more damage in a single strike, splits once into 2 medium Magma Cubes (15 HP / 4 ATK).</li>
         <li><strong>Lava Trail (passive):</strong> Movement leaves fire tiles behind, each lasting 2 turns.</li>
         <li><strong>Absorb:</strong> Merges with an adjacent split cube, healing for that cube&rsquo;s remaining HP.</li>
@@ -101,11 +102,11 @@
 
       <h2 id="phase-2">Phase 2 &mdash; &ldquo;Meltdown&rdquo;</h2>
       <div class="phase2-callout">
-        <p><strong>Triggers at &le; 50% HP.</strong> Lava Trail tiles become permanent. Eruption fire rings are permanent. Absorb range extends to 2 tiles.</p>
+        <p><strong>Triggers at &le; 50% HP.</strong> Every other boss round, a circular lava ring creeps toward the center of the arena. The ring rotates safe gaps over time, creating high pressure without hard-locking all movement. Absorb range extends to 2 tiles.</p>
       </div>
 
       <h2 id="strategy">Strategy</h2>
-      <p>Kill the halves immediately after a Split before the Molten King can Absorb them to heal. Avoid clustering on the same tiles &mdash; Magma Eruption catches the center blast zone for the full 5 dmg.</p>
+      <p>Kill split cubes quickly to deny Absorb heals. Against Lava Cage and creeping rings, rotate early toward the current gap instead of waiting for the final telegraph tile to light up.</p>
     </div>
 
     <div class="boss-nav">
