@@ -53,7 +53,7 @@ public class AshenWarlordAI extends BossAI {
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                     brandTiles, 1, brand, 0xFFCC7722);
-                return new EnemyAction.Idle();
+                return advanceWhileCharging(self, arena, playerPos);
             }
         }
 
@@ -94,7 +94,7 @@ public class AshenWarlordAI extends BossAI {
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                     pillarTiles, 1, pillarAction, 0xFFFF6600);
             }
-            return new EnemyAction.Idle();
+            return advanceWhileCharging(self, arena, playerPos);
         }
 
         // Wither Slash — melee attack

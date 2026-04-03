@@ -32,6 +32,8 @@
     {"item": "minecraft:oak_planks", "weight": 10},
     {"item": "minecraft:oak_log", "weight": 8},
     {"item": "minecraft:dirt", "weight": 6},
+    {"item": "minecraft:wheat", "weight": 4},
+    {"item": "minecraft:feather", "weight": 5},
     {"item": "minecraft:flint", "weight": 5},
     {"item": "minecraft:apple", "weight": 4},
     {"item": "minecraft:stick", "weight": 6},

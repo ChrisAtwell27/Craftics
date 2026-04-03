@@ -361,8 +361,11 @@ public class CombatManager {
             }
         }
 
-        for (ServerPlayerEntity member : members) {
-            member.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
+        // Spread party members across adjacent tiles so they don't stack
+        int spawnOffset = -(members.size() - 1) / 2; // center the group around startPos
+        for (int i = 0; i < members.size(); i++) {
+            ServerPlayerEntity member = members.get(i);
+            member.requestTeleport(startPos.getX() + 0.5 + (spawnOffset + i), startPos.getY(), startPos.getZ() + 0.5);
             ServerPlayNetworking.send(member, enterPayload);
             if (!member.getUuid().equals(leader.getUuid())) {
                 member.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
@@ -1042,7 +1045,10 @@ public class CombatManager {
                 }
 
                 // Apply NG+ scaling + config multiplier (biome progression bonus already in spawn.hp() from LevelGenerator)
-                int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier()));
+                // Scale HP by 1.25x per extra player in the party
+                int partySize = getAllParticipants().size();
+                double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * 0.25 : 1.0;
+                int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier() * partyHpMult));
                 int scaledAtk = Math.max(1, (int)((spawn.attack() + equipAtkBonus) * ngMult));
                 int finalDef = spawn.defense() + equipDefBonus;
 
@@ -1707,17 +1713,31 @@ public class CombatManager {
                 net.minecraft.sound.SoundEvents.ENTITY_PLAYER_ATTACK_STRONG,
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.9f + (float)(Math.random() * 0.2));
 
-            // Fire Aspect
-            if (fFireAspect > 0 && !fIsRangedWeapon && fTarget.getMobEntity() != null) {
-                fTarget.getMobEntity().setFireTicks(fFireAspect * 80);
-                sendMessage("\u00a76Fire Aspect! Enemy burns.");
+            // Fire Aspect — apply combat burn DoT
+            if (fFireAspect > 0 && !fIsRangedWeapon) {
+                int burnTurns = fFireAspect + 1; // Fire Aspect I = 2 turns, II = 3 turns
+                int burnDmg = 1 + fFireAspect;   // Fire Aspect I = 2 dmg/turn, II = 3 dmg/turn
+                fTarget.setBurningTurns(Math.max(fTarget.getBurningTurns(), burnTurns));
+                fTarget.setBurningDamage(Math.max(fTarget.getBurningDamage(), burnDmg));
+                if (fTarget.getMobEntity() != null) {
+                    fTarget.getMobEntity().setFireTicks(burnTurns * 80);
+                }
+                sendMessage("\u00a76Fire Aspect! Enemy burns for " + burnTurns + " turns.");
             }
 
             // Tipped arrow effects
             if (fTippedEffect != null) {
                 switch (fTippedEffect) {
-                    case "poison" -> { fTarget.takeDamage(2); sendMessage("\u00a75Poison arrow! +2 poison damage."); }
-                    case "slowness" -> { fTarget.setSpeedBonus(fTarget.getSpeedBonus() - 2); sendMessage("\u00a77Slowness arrow! Enemy slowed."); }
+                    case "poison" -> {
+                        fTarget.setPoisonTurns(Math.max(fTarget.getPoisonTurns(), 3));
+                        fTarget.setPoisonAmplifier(Math.max(fTarget.getPoisonAmplifier(), 0));
+                        sendMessage("\u00a75Poison arrow! Enemy poisoned for 3 turns.");
+                    }
+                    case "slowness" -> {
+                        fTarget.setSlownessTurns(Math.max(fTarget.getSlownessTurns(), 2));
+                        fTarget.setSlownessPenalty(Math.max(fTarget.getSlownessPenalty(), 1));
+                        sendMessage("\u00a77Slowness arrow! Enemy slowed for 2 turns.");
+                    }
                     case "weakness" -> { fTarget.setStunned(true); sendMessage("\u00a77Weakness arrow! Enemy stunned."); }
                     case "harming" -> { fTarget.takeDamage(4); sendMessage("\u00a74Harming arrow! +4 bonus damage."); }
                     case "healing" -> { player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 4)); sendMessage("\u00a7dHealing arrow! Restored 4 HP."); }
@@ -1725,10 +1745,14 @@ public class CombatManager {
                 }
             }
 
-            // Bow Flame
-            if (fHasBowFlame && fTarget.getMobEntity() != null) {
-                fTarget.getMobEntity().setFireTicks(100);
-                sendMessage("\u00a76Flame arrow! Enemy burns.");
+            // Bow Flame — apply combat burn DoT
+            if (fHasBowFlame) {
+                fTarget.setBurningTurns(Math.max(fTarget.getBurningTurns(), 2));
+                fTarget.setBurningDamage(Math.max(fTarget.getBurningDamage(), 2));
+                if (fTarget.getMobEntity() != null) {
+                    fTarget.getMobEntity().setFireTicks(100);
+                }
+                sendMessage("\u00a76Flame arrow! Enemy burns for 2 turns.");
             }
 
             String tripleMsg = fUsedTriple ? " §d§l\u2726 TRIPLE!" : "";
@@ -3691,6 +3715,16 @@ public class CombatManager {
                 if (e.getSoakedTurns() <= 0) {
                     e.setSoakedAmplifier(0);
                     sendMessage("§3" + e.getDisplayName() + " dried off.");
+                }
+            }
+
+            // Tick enemy slowness duration
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.getSlownessTurns() <= 0) continue;
+                e.setSlownessTurns(e.getSlownessTurns() - 1);
+                if (e.getSlownessTurns() <= 0) {
+                    e.setSlownessPenalty(0);
+                    sendMessage("§7" + e.getDisplayName() + " is no longer slowed.");
                 }
             }
 
@@ -6840,6 +6874,30 @@ public class CombatManager {
             return;
         }
 
+        // Handle ranged attacks — no adjacency required
+        if (pendingAction instanceof EnemyAction.RangedAttack ra) {
+            int raDamage = (int)(ra.damage() * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
+            int raActual = damagePlayer(raDamage);
+
+            player.getWorld().playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_ARROW_HIT_PLAYER,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+
+            sendMessage("§c" + currentEnemy.getDisplayName() + " hits you for " + raActual + "!");
+            applyEnemyHitEffect(currentEnemy.getEntityTypeId());
+
+            sendSync();
+
+            if (getPlayerHp() <= 0) {
+                handlePlayerDeathOrGameOver();
+                return;
+            }
+
+            enemyTurnState = EnemyTurnState.DONE;
+            enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            return;
+        }
+
         // Validate melee range — enemy must be adjacent to the player to hit
         int distToPlayer = currentEnemy.minDistanceTo(arena.getPlayerGridPos());
         if (distToPlayer > 1) {
@@ -7390,36 +7448,43 @@ public class CombatManager {
             deadPartyMembers.clear();
         }
 
-        // Give mob drops to all party participants (Luck stat adds bonus items per mob)
+        // Give mob drops to each party participant individually (each player rolls their own loot)
         List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
         int luckBonusItems = PlayerProgression.get((ServerWorld) player.getEntityWorld())
             .getStats(player).getPoints(PlayerProgression.Stat.LUCK);
         for (CombatEntity enemy : enemies) {
             // Skip drops for creepers that self-exploded (rewards killing them properly)
             if (enemy.isSelfExploded()) continue;
-            List<ItemStack> drops = getMobDrops(enemy.getEntityTypeId());
-            for (ItemStack drop : drops) {
-                if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
-                    drop.setCount(drop.getCount() + 1);
+            // Each player gets their own independent drop roll
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                List<ItemStack> drops = getMobDrops(enemy.getEntityTypeId());
+                for (ItemStack drop : drops) {
+                    if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
+                        drop.setCount(drop.getCount() + 1);
+                    }
+                    recipient.getInventory().insertStack(drop);
                 }
-                for (ServerPlayerEntity recipient : rewardRecipients) {
-                    recipient.getInventory().insertStack(drop.copy());
-                }
+            }
+            // Broadcast a representative message (leader's perspective)
+            List<ItemStack> displayDrops = getMobDrops(enemy.getEntityTypeId());
+            for (ItemStack drop : displayDrops) {
                 sendMessage("§e+ " + drop.getCount() + "x " + drop.getName().getString());
             }
-            // Rare goat horn drop (10% chance per goat)
-            if ("minecraft:goat".equals(enemy.getEntityTypeId()) && Math.random() < CrafticsMod.CONFIG.goatHornDropChance()) {
-                ItemStack horn = GoatHornEffects.createRandomHorn(player.getRegistryManager());
-                if (horn != null) {
-                    for (ServerPlayerEntity recipient : rewardRecipients) {
-                        recipient.getInventory().insertStack(horn.copy());
+            // Rare goat horn drop (rolled independently per player)
+            if ("minecraft:goat".equals(enemy.getEntityTypeId())) {
+                for (ServerPlayerEntity recipient : rewardRecipients) {
+                    if (Math.random() < CrafticsMod.CONFIG.goatHornDropChance()) {
+                        ItemStack horn = GoatHornEffects.createRandomHorn(player.getRegistryManager());
+                        if (horn != null) {
+                            recipient.getInventory().insertStack(horn);
+                            sendMessageTo(recipient, "§6§l+ Goat Horn! " + horn.getName().getString());
+                        }
                     }
-                    sendMessage("§6§l+ Goat Horn! " + horn.getName().getString());
                 }
             }
         }
 
-        // Give level completion loot to all party participants
+        // Give level completion loot to each party participant individually
         if (levelDef != null) {
             ServerWorld lootWorld = (ServerWorld) player.getEntityWorld();
             com.crackedgames.craftics.level.BiomeTemplate lootBiome = null;
@@ -7427,14 +7492,19 @@ public class CombatManager {
                 lootBiome = gld.getBiomeTemplate();
             }
             final com.crackedgames.craftics.level.BiomeTemplate finalLootBiome = lootBiome;
-            List<ItemStack> loot = new ArrayList<>();
-            for (ItemStack stack : levelDef.rollCompletionLoot()) {
-                loot.add(stack.isOf(Items.ENCHANTED_BOOK) ? randomEnchantedBook(lootWorld, stack.getCount(), finalLootBiome) : stack);
-            }
-            for (ItemStack item : loot) {
-                for (ServerPlayerEntity recipient : rewardRecipients) {
-                    recipient.getInventory().insertStack(item.copy());
+            // Each player rolls their own completion loot
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                List<ItemStack> loot = new ArrayList<>();
+                for (ItemStack stack : levelDef.rollCompletionLoot()) {
+                    loot.add(stack.isOf(Items.ENCHANTED_BOOK) ? randomEnchantedBook(lootWorld, stack.getCount(), finalLootBiome) : stack);
                 }
+                for (ItemStack item : loot) {
+                    recipient.getInventory().insertStack(item);
+                }
+            }
+            // Show a representative loot message
+            List<ItemStack> displayLoot = levelDef.rollCompletionLoot();
+            for (ItemStack item : displayLoot) {
                 sendMessage("§e+ " + item.getCount() + "x " + item.getName().getString());
             }
         }
@@ -9611,12 +9681,15 @@ public class CombatManager {
             StringBuilder efx = new StringBuilder();
             if (e.isStunned()) efx.append(";Stunned");
             if (e.isEnraged()) efx.append(";Enraged");
-            if (e.getSpeedBonus() < 0) efx.append(";Slowed");
+            if (e.getSlownessTurns() > 0) efx.append(";Slowed(" + e.getSlownessTurns() + "t)");
+            else if (e.getSpeedBonus() < 0) efx.append(";Slowed");
             if (e.getPoisonTurns() > 0) efx.append(";Poisoned(" + e.getPoisonTurns() + "t)");
             if (e.getAttackPenalty() > 0) efx.append(";Weakened(-" + e.getAttackPenalty() + "ATK)");
-            if (e.getMobEntity() != null && e.getMobEntity().isOnFire()) efx.append(";Burning");
+            if (e.getBurningTurns() > 0) efx.append(";Burning(" + e.getBurningTurns() + "t)");
+            else if (e.getMobEntity() != null && e.getMobEntity().isOnFire()) efx.append(";Burning");
             if (e.getSoakedTurns() > 0) efx.append(";Soaked(" + e.getSoakedTurns() + "t)");
             if (e.getConfusionTurns() > 0) efx.append(";Confused(" + e.getConfusionTurns() + "t)");
+            if (e.getDefensePenaltyTurns() > 0) efx.append(";Exposed(-" + e.getDefensePenalty() + "DEF," + e.getDefensePenaltyTurns() + "t)");
             typeIds.append(efx);
         }
 

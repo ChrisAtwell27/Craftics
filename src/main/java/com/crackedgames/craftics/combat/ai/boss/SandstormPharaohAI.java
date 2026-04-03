@@ -88,7 +88,7 @@ public class SandstormPharaohAI extends BossAI {
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.GATHERING_PARTICLES,
                 stormTiles, 1, storm, 0xFFDDAA44);
-            return new EnemyAction.Idle();
+            return advanceWhileCharging(self, arena, playerPos);
         }
 
         // Sand Burial
@@ -110,7 +110,7 @@ public class SandstormPharaohAI extends BossAI {
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                 burialTiles, 1, burial, 0xFFCC9933);
-            return new EnemyAction.Idle();
+            return advanceWhileCharging(self, arena, playerPos);
         }
 
         // Default: melee approach
