@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
+import net.minecraft.nbt.NbtList;
 import java.util.Map;
 import java.util.UUID;
 
@@ -49,12 +50,32 @@ public class CrafticsSavedData extends PersistentState {
         public int ngPlusLevel = 0;
         /** True while the player is mid-battle — used to restart the fight on rejoin. */
         public boolean inCombat = false;
+        /** Tracks whether the starter tactics manual has already been granted. */
+        public boolean starterGuideGranted = false;
         /** Per-player world slot index (-1 = no personal world created yet). */
         public int worldSlot = -1;
         /** Whether this player's personal hub has been built. */
         public boolean personalHubBuilt = false;
         /** Version of the player's personal hub (for rebuild detection). */
         public int personalHubVersion = 0;
+        /** Pets tamed during a biome run and waiting at the hub to rejoin next fight. */
+        private final java.util.List<net.minecraft.nbt.NbtCompound> hubPets = new java.util.ArrayList<>();
+
+        /** Save one pet's data so it persists through a hub visit. */
+        public void pushHubPet(String type, int hp, int maxHp, int atk, int def, int speed, int range) {
+            net.minecraft.nbt.NbtCompound n = new net.minecraft.nbt.NbtCompound();
+            n.putString("type", type); n.putInt("hp", hp); n.putInt("maxHp", maxHp);
+            n.putInt("atk", atk);      n.putInt("def", def);
+            n.putInt("speed", speed);  n.putInt("range", range);
+            hubPets.add(n);
+        }
+
+        /** Drain all persisted hub pets (clears the list) and return them. */
+        public java.util.List<net.minecraft.nbt.NbtCompound> drainHubPets() {
+            var pets = new java.util.ArrayList<>(hubPets);
+            hubPets.clear();
+            return pets;
+        }
 
         public boolean isInBiomeRun() {
             return activeBiomeId != null && !activeBiomeId.isEmpty();
@@ -125,9 +146,13 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putString("discoveredBiomes", discoveredBiomes);
             nbt.putInt("ngPlusLevel", ngPlusLevel);
             nbt.putBoolean("inCombat", inCombat);
+            nbt.putBoolean("starterGuideGranted", starterGuideGranted);
             nbt.putInt("worldSlot", worldSlot);
             nbt.putBoolean("personalHubBuilt", personalHubBuilt);
             nbt.putInt("personalHubVersion", personalHubVersion);
+            NbtList petList = new NbtList();
+            hubPets.forEach(petList::add);
+            nbt.put("hubPets", petList);
             return nbt;
         }
 
@@ -141,9 +166,14 @@ public class CrafticsSavedData extends PersistentState {
             pd.discoveredBiomes = nbt.contains("discoveredBiomes") ? nbt.getString("discoveredBiomes") : "";
             pd.ngPlusLevel = nbt.contains("ngPlusLevel") ? nbt.getInt("ngPlusLevel") : 0;
             pd.inCombat = nbt.contains("inCombat") && nbt.getBoolean("inCombat");
+            pd.starterGuideGranted = nbt.contains("starterGuideGranted") && nbt.getBoolean("starterGuideGranted");
             pd.worldSlot = nbt.contains("worldSlot") ? nbt.getInt("worldSlot") : -1;
             pd.personalHubBuilt = nbt.contains("personalHubBuilt") && nbt.getBoolean("personalHubBuilt");
             pd.personalHubVersion = nbt.contains("personalHubVersion") ? nbt.getInt("personalHubVersion") : 0;
+            if (nbt.contains("hubPets")) {
+                NbtList pl = nbt.getList("hubPets", net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
+                for (int i = 0; i < pl.size(); i++) pd.hubPets.add(pl.getCompound(i));
+            }
             return pd;
         }
     }

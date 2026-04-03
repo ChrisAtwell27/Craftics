@@ -54,6 +54,12 @@ public abstract class LevelDefinition {
      */
     public boolean isNightLevel() { return false; }
 
+    /**
+     * Optional arena biome override used for structure/schematic selection.
+     * Return null to use the normal generated-biome detection path.
+     */
+    public String getArenaBiomeId() { return null; }
+
     public record EnemySpawn(String entityTypeId, GridPos position,
                               int hp, int attack, int defense, int range) {}
 }

@@ -182,6 +182,13 @@ public class CombatManager {
     private record PetData(String entityType, int hp, int maxHp, int atk, int def, int speed, int range) {}
     private final List<PetData> savedPets = new ArrayList<>();
 
+    /** Target an ally pet is about to attack (used to face the right direction during animation). */
+    private CombatEntity pendingAllyAttackTarget = null;
+    /** Pet bonus message fragment ("§a+N Pet") stored until the post-animation damage message. */
+    private String pendingAllyPetMsg = "";
+    /** Non-ally target chosen this turn when an enemy should focus a pet that damaged it. */
+    private CombatEntity currentEnemyPetAggroTarget = null;
+
     public EventManager getEventManager() { return eventManager; }
     public void setEventManager(EventManager em) { this.eventManager = em; }
 
@@ -230,9 +237,10 @@ public class CombatManager {
         if (!active) return;
         java.util.UUID leaverUuid = leaver.getUuid();
 
-        // Remove feather from leaver's inventory
+        // Remove only the named Move feather from leaver's inventory
         for (int i = 0; i < leaver.getInventory().size(); i++) {
-            if (leaver.getInventory().getStack(i).getItem() == Items.FEATHER) {
+            ItemStack s = leaver.getInventory().getStack(i);
+            if (s.getItem() == Items.FEATHER && s.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME)) {
                 leaver.getInventory().removeStack(i);
             }
         }
@@ -449,6 +457,52 @@ public class CombatManager {
         p.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
     }
 
+    /**
+     * Best-effort reapplication of vanilla tame state for hub pets.
+     * Uses reflection so this stays resilient across mapping/name changes.
+     */
+    private static void applyHubTamingState(net.minecraft.entity.Entity entity, java.util.UUID ownerUuid) {
+        try {
+            // Most tameables/rideables expose setOwnerUuid(UUID)
+            java.lang.reflect.Method setOwnerUuid = entity.getClass().getMethod("setOwnerUuid", java.util.UUID.class);
+            setOwnerUuid.invoke(entity, ownerUuid);
+        } catch (ReflectiveOperationException ignored) {
+            // Not owner-based or method name differs in this class.
+        }
+
+        try {
+            // Wolves/cats/parrots style API in some mappings
+            java.lang.reflect.Method setTamed = entity.getClass().getMethod("setTamed", boolean.class);
+            setTamed.invoke(entity, true);
+        } catch (ReflectiveOperationException ignored) {
+            // Fall through to horse-style API.
+        }
+
+        try {
+            // Horses and some other entities use setTame(boolean)
+            java.lang.reflect.Method setTame = entity.getClass().getMethod("setTame", boolean.class);
+            setTame.invoke(entity, true);
+        } catch (ReflectiveOperationException ignored) {
+            // Not a setTame-style class.
+        }
+
+        try {
+            // Keep pets active in hub rather than immediately sitting.
+            java.lang.reflect.Method setSitting = entity.getClass().getMethod("setSitting", boolean.class);
+            setSitting.invoke(entity, false);
+        } catch (ReflectiveOperationException ignored) {
+            // Not a sitting-capable pet.
+        }
+
+        try {
+            // Alternate sitting API used by some tameables.
+            java.lang.reflect.Method setOrderedToSit = entity.getClass().getMethod("setOrderedToSit", boolean.class);
+            setOrderedToSit.invoke(entity, false);
+        } catch (ReflectiveOperationException ignored) {
+            // Not supported by this entity.
+        }
+    }
+
     /** Teleport all party members home and send ExitCombat. */
     private void sendPartyHome(ServerPlayerEntity referencePlayer) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(referencePlayer);
@@ -563,6 +617,25 @@ public class CombatManager {
         if (player == null) return 0;
         return PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player).getPoints(PlayerProgression.Stat.DEFENSE);
     }
+
+    private int getSpecialUtilityDamageBonus() {
+        if (player == null) return 0;
+        PlayerProgression.PlayerStats playerStats = PlayerProgression.get(
+            (ServerWorld) player.getEntityWorld()).getStats(player);
+        return DamageType.getTotalBonus(
+            PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects,
+            DamageType.SPECIAL, playerStats);
+    }
+
+    private int applySpecialUtilityDamage(CombatEntity target, int baseDamage) {
+        int adjustedDamage = MobResistances.applyResistance(
+            target.getEntityTypeId(), DamageType.SPECIAL, baseDamage + getSpecialUtilityDamageBonus());
+        if (adjustedDamage <= 0) {
+            return 0;
+        }
+        return target.takeDamage(adjustedDamage);
+    }
+
     private float playerMoveYaw; // tracked for smooth facing during movement
 
     // Animation state
@@ -867,6 +940,10 @@ public class CombatManager {
         for (var entity : world.getEntitiesByClass(net.minecraft.entity.mob.MobEntity.class, arenaBox, e -> true)) {
             entity.discard();
         }
+        // Also clear leftover end crystals (not a MobEntity)
+        for (var crystal : world.getEntitiesByClass(net.minecraft.entity.decoration.EndCrystalEntity.class, arenaBox, e -> true)) {
+            crystal.discard();
+        }
 
         // NG+ scaling
         CrafticsSavedData ngData = CrafticsSavedData.get(world);
@@ -1083,6 +1160,21 @@ public class CombatManager {
                 if (isBoss) {
                     initBossSetup(ce);
                 }
+            } else if ("minecraft:end_crystal".equals(spawn.entityTypeId())) {
+                // End crystals are not MobEntity — register as a non-mob combat entity
+                int partySize = getAllParticipants().size();
+                double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * 0.25 : 1.0;
+                int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult
+                    * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier() * partyHpMult));
+                int scaledAtk = Math.max(1, (int)(spawn.attack() * ngMult));
+                CombatEntity ce = new CombatEntity(
+                    rawEntity.getId(), spawn.entityTypeId(), resolvedPos,
+                    scaledHp, scaledAtk, spawn.defense(), spawn.range()
+                );
+                // mobEntity is null; the EndCrystalEntity in the world serves as visual only
+                enemies.add(ce);
+                arena.placeEntity(ce);
+                rawEntity.addCommandTag("craftics_arena");
             }
         }
 
@@ -1717,8 +1809,7 @@ public class CombatManager {
             if (fFireAspect > 0 && !fIsRangedWeapon) {
                 int burnTurns = fFireAspect + 1; // Fire Aspect I = 2 turns, II = 3 turns
                 int burnDmg = 1 + fFireAspect;   // Fire Aspect I = 2 dmg/turn, II = 3 dmg/turn
-                fTarget.setBurningTurns(Math.max(fTarget.getBurningTurns(), burnTurns));
-                fTarget.setBurningDamage(Math.max(fTarget.getBurningDamage(), burnDmg));
+                fTarget.stackBurning(burnTurns, burnDmg);
                 if (fTarget.getMobEntity() != null) {
                     fTarget.getMobEntity().setFireTicks(burnTurns * 80);
                 }
@@ -1729,13 +1820,11 @@ public class CombatManager {
             if (fTippedEffect != null) {
                 switch (fTippedEffect) {
                     case "poison" -> {
-                        fTarget.setPoisonTurns(Math.max(fTarget.getPoisonTurns(), 3));
-                        fTarget.setPoisonAmplifier(Math.max(fTarget.getPoisonAmplifier(), 0));
+                        fTarget.stackPoison(3, 1);
                         sendMessage("\u00a75Poison arrow! Enemy poisoned for 3 turns.");
                     }
                     case "slowness" -> {
-                        fTarget.setSlownessTurns(Math.max(fTarget.getSlownessTurns(), 2));
-                        fTarget.setSlownessPenalty(Math.max(fTarget.getSlownessPenalty(), 1));
+                        fTarget.stackSlowness(2, 1);
                         sendMessage("\u00a77Slowness arrow! Enemy slowed for 2 turns.");
                     }
                     case "weakness" -> { fTarget.setStunned(true); sendMessage("\u00a77Weakness arrow! Enemy stunned."); }
@@ -1747,8 +1836,7 @@ public class CombatManager {
 
             // Bow Flame — apply combat burn DoT
             if (fHasBowFlame) {
-                fTarget.setBurningTurns(Math.max(fTarget.getBurningTurns(), 2));
-                fTarget.setBurningDamage(Math.max(fTarget.getBurningDamage(), 2));
+                fTarget.stackBurning(2, 2);
                 if (fTarget.getMobEntity() != null) {
                     fTarget.getMobEntity().setFireTicks(100);
                 }
@@ -2047,8 +2135,7 @@ public class CombatManager {
         int dealt = target.takeDamage(lightningDmg);
 
         // Apply burning (2 turns)
-        target.setBurningTurns(Math.max(target.getBurningTurns(), 2));
-        target.setBurningDamage(Math.max(target.getBurningDamage(), 2));
+        target.stackBurning(2, 2);
 
         // Lightning visual + sound
         BlockPos targetBlock = arena.gridToBlockPos(target.getGridPos());
@@ -2086,8 +2173,7 @@ public class CombatManager {
                 boolean chainSoaked = chain.getSoakedTurns() > 0;
                 if (chainSoaked) chainDmg *= 2;
                 int chainDealt = chain.takeDamage(chainDmg);
-                chain.setBurningTurns(Math.max(chain.getBurningTurns(), 1));
-                chain.setBurningDamage(Math.max(chain.getBurningDamage(), 1));
+                chain.stackBurning(1, 1);
 
                 // Chain lightning visual
                 BlockPos chainBlock = arena.gridToBlockPos(chain.getGridPos());
@@ -2120,6 +2206,25 @@ public class CombatManager {
             if (e.getEntityId() == entityId && e.isAlive()) return e;
         }
         return null;
+    }
+
+    /**
+     * If this enemy was damaged by a pet, choose that pet as target only when it is
+     * strictly closer than the player. Otherwise the enemy keeps targeting the player.
+     */
+    private CombatEntity resolveAggroPetTarget(CombatEntity attacker) {
+        int allyId = attacker.getAggroAllyEntityId();
+        if (allyId < 0) return null;
+
+        CombatEntity pet = findEnemyById(allyId);
+        if (pet == null || !pet.isAlly() || !pet.isAlive()) {
+            attacker.setAggroAllyEntityId(-1);
+            return null;
+        }
+
+        int distToPet = attacker.minDistanceTo(pet.getGridPos());
+        int distToPlayer = attacker.minDistanceTo(arena.getPlayerGridPos());
+        return distToPet < distToPlayer ? pet : null;
     }
 
     public void checkAndHandleDeathPublic(CombatEntity entity) { checkAndHandleDeath(entity); }
@@ -3828,8 +3933,8 @@ public class CombatManager {
                         }
                     }
                     for (CombatEntity hit : cloudHits) {
-                        hit.takeDamage(2);
-                        sendMessage("§5" + hit.getDisplayName() + " chokes in poison cloud for 2 damage!");
+                        int dealt = applySpecialUtilityDamage(hit, 2);
+                        sendMessage("§5" + hit.getDisplayName() + " chokes in poison cloud for " + dealt + " damage!");
                         checkAndHandleDeath(hit);
                     }
                     // Also damage player if standing in the cloud
@@ -3863,7 +3968,7 @@ public class CombatManager {
                             int lightningDmg = 4;
                             // Soaked doubles lightning damage
                             if (e.getSoakedTurns() > 0) lightningDmg *= 2;
-                            e.takeDamage(lightningDmg);
+                            applySpecialUtilityDamage(e, lightningDmg);
                             hit++;
                         }
                     }
@@ -3977,6 +4082,7 @@ public class CombatManager {
         }
 
         currentEnemy = enemies.get(enemyTurnIndex);
+        currentEnemyPetAggroTarget = null;
 
         // Stunned entities skip their turn
         if (currentEnemy.isStunned()) {
@@ -4037,7 +4143,11 @@ public class CombatManager {
             CrafticsMod.LOGGER.info("[BOSS DEBUG] Boss '{}' aiKey='{}' resolved AI class={}",
                 currentEnemy.getDisplayName(), currentEnemy.getAiKey(), ai.getClass().getSimpleName());
         }
-        pendingAction = ai.decideAction(currentEnemy, arena, arena.getPlayerGridPos());
+        currentEnemyPetAggroTarget = resolveAggroPetTarget(currentEnemy);
+        GridPos aiTargetPos = currentEnemyPetAggroTarget != null
+            ? currentEnemyPetAggroTarget.getGridPos()
+            : arena.getPlayerGridPos();
+        pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
 
         switch (pendingAction) {
             case EnemyAction.Move move -> startEnemyMove(move.path());
@@ -4450,7 +4560,7 @@ public class CombatManager {
 
         int range = ally.getRange();
         if (targetDist <= range) {
-            // In range — attack! Apply pet damage type bonus from player's gear + affinity
+            // In range — compute damage with pet bonuses, then stage the attack animation
             PlayerProgression.PlayerStats allyOwnerStats = PlayerProgression.get(
                 (ServerWorld) player.getEntityWorld()).getStats(player);
             int petBonus = DamageType.getTotalBonus(
@@ -4459,14 +4569,13 @@ public class CombatManager {
             if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.RALLY) {
                 petBonus += 1;
             }
-            int dealt = target.takeDamage(ally.getAttackPower() + petBonus);
-            String petMsg = petBonus > 0 ? " \u00a7a+" + petBonus + " Pet" : "";
-            sendMessage("§a" + ally.getDisplayName() + " attacks " + target.getDisplayName() + " for " + dealt + " damage!" + petMsg);
-            if (!target.isAlive()) {
-                killEnemy(target);
-            }
-            enemyTurnState = EnemyTurnState.DONE;
-            enemyTurnDelay = 8;
+            int totalDamage = ally.getAttackPower() + petBonus;
+            pendingAllyPetMsg = petBonus > 0 ? " \u00a7a+" + petBonus + " Pet" : "";
+            pendingAllyAttackTarget = target;
+            pendingAction = new EnemyAction.MoveAndAttackMob(
+                java.util.List.of(), target.getEntityId(), totalDamage);
+            startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+            return; // damage resolves in tickEnemyAttacking after the animation
         } else {
             // Move toward target
             List<GridPos> path = Pathfinding.findPath(arena, allyPos, target.getGridPos(), ally.getMoveSpeed(), false);
@@ -6006,7 +6115,7 @@ public class CombatManager {
                          + Math.abs(enemy.getGridPos().z() - center.z());
                 if (dist <= 2) {
                     int dmg = dist == 0 ? 8 : (dist == 1 ? 5 : 3);
-                    int dealt = enemy.takeDamage(dmg);
+                    int dealt = applySpecialUtilityDamage(enemy, dmg);
                     totalDamage += dealt;
                     enemiesHit++;
                     if (!enemy.isAlive()) {
@@ -6509,7 +6618,7 @@ public class CombatManager {
             case "minecraft:shulker" -> "shulker_bullet";
             case "minecraft:llama", "minecraft:trader_llama" -> "llama_spit";
             case "minecraft:drowned" -> "trident";
-            case "minecraft:breeze" -> "fireball";
+            case "minecraft:breeze" -> "wind_charge";
             default -> null;
         };
     }
@@ -6549,9 +6658,34 @@ public class CombatManager {
             attackAnimOriginY = mob.getY();
             attackAnimOriginZ = mob.getZ();
 
-            // Face toward the player
-            double dx = player.getX() - mob.getX();
-            double dz = player.getZ() - mob.getZ();
+            // Face toward the target — allies face their enemy target, enemies face chosen aggro target or player
+            double dx, dz;
+            if (currentEnemy.isAlly() && pendingAllyAttackTarget != null) {
+                net.minecraft.entity.mob.MobEntity tgtMob = pendingAllyAttackTarget.getMobEntity();
+                if (tgtMob != null) {
+                    dx = tgtMob.getX() - mob.getX();
+                    dz = tgtMob.getZ() - mob.getZ();
+                } else {
+                    net.minecraft.util.math.BlockPos tgtBlock =
+                        arena.gridToBlockPos(pendingAllyAttackTarget.getGridPos());
+                    dx = tgtBlock.getX() + 0.5 - mob.getX();
+                    dz = tgtBlock.getZ() + 0.5 - mob.getZ();
+                }
+            } else if (currentEnemyPetAggroTarget != null) {
+                net.minecraft.entity.mob.MobEntity tgtMob = currentEnemyPetAggroTarget.getMobEntity();
+                if (tgtMob != null) {
+                    dx = tgtMob.getX() - mob.getX();
+                    dz = tgtMob.getZ() - mob.getZ();
+                } else {
+                    net.minecraft.util.math.BlockPos tgtBlock =
+                        arena.gridToBlockPos(currentEnemyPetAggroTarget.getGridPos());
+                    dx = tgtBlock.getX() + 0.5 - mob.getX();
+                    dz = tgtBlock.getZ() + 0.5 - mob.getZ();
+                }
+            } else {
+                dx = player.getX() - mob.getX();
+                dz = player.getZ() - mob.getZ();
+            }
             float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
             // Ghasts must always face a cardinal direction
             if ("minecraft:ghast".equals(entityType)) {
@@ -6860,6 +6994,25 @@ public class CombatManager {
     }
 
     private void tickEnemyAttacking() {
+        // Ally pet attack resolution — damage applies after the animation completes
+        if (currentEnemy.isAlly() && pendingAction instanceof EnemyAction.MoveAndAttackMob maam) {
+            CombatEntity allyTarget = findEnemyById(maam.targetEntityId());
+            String petMsg = pendingAllyPetMsg;
+            pendingAllyAttackTarget = null;
+            pendingAllyPetMsg = "";
+            if (allyTarget != null && allyTarget.isAlive()) {
+                int dealt = allyTarget.takeDamage(maam.damage());
+                allyTarget.setAggroAllyEntityId(currentEnemy.getEntityId());
+                sendMessage("§a" + currentEnemy.getDisplayName() + " attacks "
+                    + allyTarget.getDisplayName() + " for " + dealt + " damage!" + petMsg);
+                if (!allyTarget.isAlive()) killEnemy(allyTarget);
+            }
+            sendSync();
+            enemyTurnState = EnemyTurnState.DONE;
+            enemyTurnDelay = 8;
+            return;
+        }
+
         // Handle mob-vs-mob attacks (MoveAndAttackMob)
         if (pendingAction instanceof EnemyAction.MoveAndAttackMob maam) {
             CombatEntity target = findEnemyById(maam.targetEntityId());
@@ -6874,33 +7027,58 @@ public class CombatManager {
             return;
         }
 
-        // Handle ranged attacks — no adjacency required
+        // Handle ranged attacks — no adjacency required.
+        // Some AIs (like Breeze) use MoveAndAttack to reposition and then fire.
+        EnemyAction.RangedAttack resolvedRanged = null;
         if (pendingAction instanceof EnemyAction.RangedAttack ra) {
-            int raDamage = (int)(ra.damage() * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
-            int raActual = damagePlayer(raDamage);
+            resolvedRanged = ra;
+        } else if (pendingAction instanceof EnemyAction.MoveAndAttack maa) {
+            String projectileType = getRangedProjectileType(currentEnemy.getEntityTypeId());
+            if (projectileType != null) {
+                resolvedRanged = new EnemyAction.RangedAttack(maa.damage(), projectileType);
+            }
+        }
 
-            player.getWorld().playSound(null, player.getBlockPos(),
-                net.minecraft.sound.SoundEvents.ENTITY_ARROW_HIT_PLAYER,
-                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        if (resolvedRanged != null) {
+            int raDamage = (int)(resolvedRanged.damage() * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
+            CombatEntity petTarget = (currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
+                ? currentEnemyPetAggroTarget : null;
+            if (petTarget != null) {
+                int raActual = petTarget.takeDamage(raDamage);
+                sendMessage("§c" + currentEnemy.getDisplayName() + " hits "
+                    + petTarget.getDisplayName() + " for " + raActual + "!");
+                checkAndHandleDeath(petTarget);
+            } else {
+                int raActual = damagePlayer(raDamage);
 
-            sendMessage("§c" + currentEnemy.getDisplayName() + " hits you for " + raActual + "!");
-            applyEnemyHitEffect(currentEnemy.getEntityTypeId());
+                player.getWorld().playSound(null, player.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.ENTITY_ARROW_HIT_PLAYER,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+
+                sendMessage("§c" + currentEnemy.getDisplayName() + " hits you for " + raActual + "!");
+                applyEnemyHitEffect(currentEnemy.getEntityTypeId());
+
+                if (getPlayerHp() <= 0) {
+                    sendSync();
+                    handlePlayerDeathOrGameOver();
+                    return;
+                }
+            }
 
             sendSync();
-
-            if (getPlayerHp() <= 0) {
-                handlePlayerDeathOrGameOver();
-                return;
-            }
 
             enemyTurnState = EnemyTurnState.DONE;
             enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             return;
         }
 
-        // Validate melee range — enemy must be adjacent to the player to hit
-        int distToPlayer = currentEnemy.minDistanceTo(arena.getPlayerGridPos());
-        if (distToPlayer > 1) {
+        CombatEntity petTarget = (currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
+            ? currentEnemyPetAggroTarget : null;
+        GridPos targetPos = petTarget != null ? petTarget.getGridPos() : arena.getPlayerGridPos();
+
+        // Validate melee range — enemy must be adjacent to its chosen target to hit
+        int distToTarget = currentEnemy.minDistanceTo(targetPos);
+        if (distToTarget > 1) {
             // Not in range — skip attack
             enemyTurnState = EnemyTurnState.DONE;
             enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -6921,51 +7099,59 @@ public class CombatManager {
         }
 
         damage = (int)(damage * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
-        int actual = damagePlayer(damage);
+        if (petTarget != null) {
+            int actual = petTarget.takeDamage(damage);
+            sendMessage("§c" + currentEnemy.getDisplayName() + " hits "
+                + petTarget.getDisplayName() + " for " + actual + "!");
+            checkAndHandleDeath(petTarget);
+        } else {
+            int actual = damagePlayer(damage);
 
-        // Combat sound: player hit
-        player.getWorld().playSound(null, player.getBlockPos(),
-            net.minecraft.sound.SoundEvents.ENTITY_PLAYER_HURT,
-            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+            // Combat sound: player hit
+            player.getWorld().playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_PLAYER_HURT,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
 
-        sendMessage("§c" + currentEnemy.getDisplayName() + " hits you for " + actual + "!");
-        applyEnemyHitEffect(currentEnemy.getEntityTypeId());
+            sendMessage("§c" + currentEnemy.getDisplayName() + " hits you for " + actual + "!");
+            applyEnemyHitEffect(currentEnemy.getEntityTypeId());
 
-        // Apply knockback to player
-        if (knockbackTiles > 0) {
-            applyPlayerKnockback(currentEnemy.getGridPos(), knockbackTiles);
-        }
+            // Apply knockback to player
+            if (knockbackTiles > 0) {
+                applyPlayerKnockback(currentEnemy.getGridPos(), knockbackTiles);
+            }
 
-        // Thorns: reflect damage back to attacker
-        int thornsLevel = PlayerCombatStats.getThorns(player);
-        if (thornsLevel > 0 && Math.random() < (thornsLevel * 0.15)) {
-            int thornsDmg = currentEnemy.takeDamage(thornsLevel);
-            sendMessage("\u00a72Thorns reflects " + thornsDmg + " damage!");
-        }
+            // Thorns: reflect damage back to attacker
+            int thornsLevel = PlayerCombatStats.getThorns(player);
+            if (thornsLevel > 0 && Math.random() < (thornsLevel * 0.15)) {
+                int thornsDmg = currentEnemy.takeDamage(thornsLevel);
+                sendMessage("\u00a72Thorns reflects " + thornsDmg + " damage!");
+            }
 
-        // Physical affinity: counterattack chance when attacked unarmed (fist / no weapon)
-        if (DamageType.fromWeapon(player.getMainHandStack().getItem()) == DamageType.PHYSICAL
-                && currentEnemy.isAlive()) {
-            PlayerProgression.PlayerStats pStats = PlayerProgression.get(
-                (ServerWorld) player.getEntityWorld()).getStats(player);
-            int physPts = pStats.getAffinityPoints(PlayerProgression.Affinity.PHYSICAL);
-            double counterChance = physPts * 0.03; // 0% base + 3% per point
-            if (counterChance > 0 && Math.random() < counterChance) {
-                int counterDmg = currentEnemy.takeDamage(PlayerCombatStats.getAttackPower(player));
-                sendMessage("\u00a77\u270A Counter! You strike back for " + counterDmg + " damage!");
-                if (!currentEnemy.isAlive()) {
-                    achievementTracker.recordCounterKill();
-                    killEnemy(currentEnemy);
+            // Physical affinity: counterattack chance when attacked unarmed (fist / no weapon)
+            if (DamageType.fromWeapon(player.getMainHandStack().getItem()) == DamageType.PHYSICAL
+                    && currentEnemy.isAlive()) {
+                PlayerProgression.PlayerStats pStats = PlayerProgression.get(
+                    (ServerWorld) player.getEntityWorld()).getStats(player);
+                int physPts = pStats.getAffinityPoints(PlayerProgression.Affinity.PHYSICAL);
+                double counterChance = physPts * 0.03; // 0% base + 3% per point
+                if (counterChance > 0 && Math.random() < counterChance) {
+                    int counterDmg = currentEnemy.takeDamage(PlayerCombatStats.getAttackPower(player));
+                    sendMessage("\u00a77\u270A Counter! You strike back for " + counterDmg + " damage!");
+                    if (!currentEnemy.isAlive()) {
+                        achievementTracker.recordCounterKill();
+                        killEnemy(currentEnemy);
+                    }
                 }
+            }
+
+            if (getPlayerHp() <= 0) {
+                sendSync();
+                handlePlayerDeathOrGameOver();
+                return;
             }
         }
 
         sendSync();
-
-        if (getPlayerHp() <= 0) {
-            handlePlayerDeathOrGameOver();
-            return;
-        }
 
         enemyTurnState = EnemyTurnState.DONE;
         enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -7050,6 +7236,10 @@ public class CombatManager {
                     combatEffects.addEffect(CombatEffects.EffectType.BURNING, 2, 0);
                     sendMessage("§6  Fireball burns you! (-1 HP/turn for 2 turns)");
                 }
+            }
+            case "minecraft:breeze" -> {
+                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                sendMessage("§b  Wind blast pushes you off balance! (-1 movement next turn)");
             }
             case "minecraft:ender_dragon" -> {
                 combatEffects.addEffect(CombatEffects.EffectType.WEAKNESS, 2, 0);
@@ -7385,6 +7575,12 @@ public class CombatManager {
             killVisualProjectileNear(enemy);
         }
         MobEntity mob = enemy.getMobEntity();
+        if (mob == null && player != null) {
+            // Non-mob entity (e.g., end crystal) — discard the world entity by ID
+            ServerWorld deathWorld = (ServerWorld) player.getEntityWorld();
+            net.minecraft.entity.Entity rawEnt = deathWorld.getEntityById(enemy.getEntityId());
+            if (rawEnt != null) rawEnt.discard();
+        }
         if (mob != null && mob.isAlive()) {
             // Background boss death: big explosion + scream, then discard
             if (enemy.isBackgroundBoss() && mob instanceof net.minecraft.entity.mob.GhastEntity ghast) {
@@ -7800,19 +7996,28 @@ public class CombatManager {
             sendMessage("§7Returning to hub...");
             // Spawn saved pets at hub as permanent tamed mobs
             if (!savedPets.isEmpty()) {
+                // Persist pets to disk so they rejoin the player's NEXT fight from the hub
+                com.crackedgames.craftics.world.CrafticsSavedData.PlayerData petPd =
+                    data.getPlayerData(savedPlayer.getUuid());
+                for (PetData pet : savedPets) {
+                    petPd.pushHubPet(pet.entityType(), pet.hp(), pet.maxHp(),
+                        pet.atk(), pet.def(), pet.speed(), pet.range());
+                }
+                // Spawn visual hub mobs so the player can see their pets at home
                 BlockPos hubPos = data.getHubTeleportPos(savedPlayer.getUuid());
                 for (PetData pet : savedPets) {
                     var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
                     var rawEntity = entityType.create(world, null, hubPos,
                         net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
                     if (rawEntity instanceof net.minecraft.entity.mob.MobEntity mob) {
+                        applyHubTamingState(mob, savedPlayer.getUuid());
                         mob.requestTeleport(hubPos.getX() + 1.5, hubPos.getY(), hubPos.getZ() + 0.5);
                         mob.setPersistent();
                         mob.setAiDisabled(false);
                         mob.setSilent(false);
                         world.spawnEntity(mob);
                         sendMessage("\u00a7a" + pet.entityType().substring(pet.entityType().indexOf(':') + 1).replace('_', ' ')
-                            + " has been sent to your hub!");
+                            + " will rejoin you next fight!");
                     }
                 }
                 savedPets.clear();
@@ -7925,7 +8130,7 @@ public class CombatManager {
                         // Ambush (unavoidable!)
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
-                        var ambushDef = RandomEvents.generateAmbush(biomeOrdinal, ngPlusLevel);
+                        var ambushDef = RandomEvents.generateAmbush(biome.biomeId, biomeOrdinal, ngPlusLevel);
                         for (ServerPlayerEntity p : partyMsg) {
                             sendMessageTo(p, "\u00a7c\u00a7l\u26a0 AMBUSH! \u26a0");
                             sendMessageTo(p, "\u00a7cEnemies surround you! No escape!");
@@ -9220,12 +9425,12 @@ public class CombatManager {
             }
         }
 
-        // Remove the Move feather from all participants' inventories
+        // Remove only the named Move feather from all participants' inventories
         for (ServerPlayerEntity p : getAllParticipants()) {
             if (p != null) {
                 for (int i = 0; i < p.getInventory().size(); i++) {
                     ItemStack stack = p.getInventory().getStack(i);
-                    if (stack.getItem() == Items.FEATHER) {
+                    if (stack.getItem() == Items.FEATHER && stack.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME)) {
                         p.getInventory().removeStack(i);
                     }
                 }
@@ -9244,6 +9449,11 @@ public class CombatManager {
         for (CombatEntity e : enemies) {
             if (e.getMobEntity() != null && e.getMobEntity().isAlive()) {
                 e.getMobEntity().discard();
+            } else if (e.getMobEntity() == null && player != null) {
+                // Non-mob entity (e.g., end crystal) — discard by entity ID
+                ServerWorld cleanW = (ServerWorld) player.getEntityWorld();
+                net.minecraft.entity.Entity rawE = cleanW.getEntityById(e.getEntityId());
+                if (rawE != null && rawE.isAlive()) rawE.discard();
             }
         }
 
@@ -9340,6 +9550,21 @@ public class CombatManager {
 
     /** Spawn previously saved pets into the current arena near the player start. */
     private void spawnSavedPets() {
+        // If no in-memory pets, check disk persistence (pets that survived a hub visit)
+        if (savedPets.isEmpty() && player != null) {
+            ServerWorld loadWorld = (ServerWorld) player.getEntityWorld();
+            com.crackedgames.craftics.world.CrafticsSavedData saveData =
+                com.crackedgames.craftics.world.CrafticsSavedData.get(loadWorld);
+            com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd =
+                saveData.getPlayerData(player.getUuid());
+            for (var n : pd.drainHubPets()) {
+                savedPets.add(new PetData(
+                    n.getString("type"), n.getInt("hp"), n.getInt("maxHp"),
+                    n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range")));
+            }
+            if (!savedPets.isEmpty()) saveData.markDirty();
+        }
+
         if (savedPets.isEmpty() || arena == null || player == null) return;
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         GridPos playerStart = arena.getPlayerGridPos();

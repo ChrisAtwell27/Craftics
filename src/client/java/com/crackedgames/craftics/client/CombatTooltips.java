@@ -65,7 +65,9 @@ public class CombatTooltips implements ItemTooltipCallback {
             }
         }
 
-        String tip = getTooltipFor(item);
+        // The Move feather has a custom name; plain loot feathers should not get a tooltip
+        String tip = (item == net.minecraft.item.Items.FEATHER && !stack.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME))
+            ? null : getTooltipFor(item);
         if (tip != null) {
             lines.add(Text.empty());
             lines.add(Text.literal("\u00a76\u00a7lCraftics Combat:"));

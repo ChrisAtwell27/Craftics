@@ -4,6 +4,7 @@ import com.crackedgames.craftics.CrafticsMod;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.FallingBlock;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtSizeTracker;
@@ -27,6 +28,8 @@ public class SchemLoader {
 
         /** Place this schematic into the world at the given position. */
         public void place(ServerWorld world, int placeX, int placeY, int placeZ) {
+            int total = width * height * length;
+            int[] paletteIds = new int[total];
             int index = 0;
             for (int y = 0; y < height; y++) {
                 for (int z = 0; z < length; z++) {
@@ -42,9 +45,41 @@ public class SchemLoader {
                             shift += 7;
                         } while ((b & 0x80) != 0);
 
+                        int flat = ((y * length) + z) * width + x;
+                        paletteIds[flat] = paletteId;
+                    }
+                }
+            }
+
+            // Pass 1: place non-gravity blocks first (including air from schematic).
+            // This preserves intentional voids and makes supports exist before sand/gravel/concrete powder.
+            for (int y = 0; y < height; y++) {
+                for (int z = 0; z < length; z++) {
+                    for (int x = 0; x < width; x++) {
+                        int flat = ((y * length) + z) * width + x;
+                        int paletteId = paletteIds[flat];
                         if (paletteId >= 0 && paletteId < palette.length) {
                             BlockState state = palette[paletteId];
-                            if (state != null && !state.isAir()) {
+                            if (state != null && !(state.getBlock() instanceof FallingBlock)) {
+                                world.setBlockState(
+                                    new BlockPos(placeX + x, placeY + y, placeZ + z),
+                                    state, ArenaBuilder.SET_FLAGS
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Pass 2: place gravity blocks after supports are in place.
+            for (int y = 0; y < height; y++) {
+                for (int z = 0; z < length; z++) {
+                    for (int x = 0; x < width; x++) {
+                        int flat = ((y * length) + z) * width + x;
+                        int paletteId = paletteIds[flat];
+                        if (paletteId >= 0 && paletteId < palette.length) {
+                            BlockState state = palette[paletteId];
+                            if (state != null && (state.getBlock() instanceof FallingBlock)) {
                                 world.setBlockState(
                                     new BlockPos(placeX + x, placeY + y, placeZ + z),
                                     state, ArenaBuilder.SET_FLAGS

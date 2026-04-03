@@ -15,6 +15,7 @@ import net.minecraft.structure.StructurePlacementData;
 import net.minecraft.structure.StructureTemplate;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.world.biome.Biome;
 
 import java.util.ArrayList;
@@ -52,6 +53,8 @@ public class ArenaBuilder {
     private static GridPos structurePlayerStart = null;
     /** Grid dimensions from structure markers (-1 = use level definition). */
     private static int structureGridW = -1, structureGridH = -1;
+    /** Height from the placed structure for relight bounds (-1 = unknown). */
+    private static int structureHeight = -1;
 
     /** Get and clear the pending camera yaw from the last structure load. */
     public static float consumePendingCameraYaw() {
@@ -115,11 +118,26 @@ public class ArenaBuilder {
             }
         }
 
+        String arenaBiomeOverride = levelDef.getArenaBiomeId();
+        if (arenaBiomeOverride != null && !arenaBiomeOverride.isBlank()) {
+            biomeId = arenaBiomeOverride;
+            isBoss = false;
+        }
+
+        // Random event arenas use custom LevelDefinition types.
+        // Route trial chambers to their own schematic folder instead of plains.
+        String levelName = levelDef.getName();
+        if (levelName != null && levelName.toLowerCase(java.util.Locale.ROOT).contains("trial chamber")) {
+            biomeId = "trial_chamber";
+            isBoss = false;
+        }
+
         // Reset structure overrides
         structureOrigin = null;
         structurePlayerStart = null;
         structureGridW = -1;
         structureGridH = -1;
+        structureHeight = -1;
 
         // Try to load a structure preset
         boolean structureLoaded = tryLoadStructure(world, ox, oy, oz, w, h, tiles, biomeId, isBoss, rng);
@@ -154,6 +172,10 @@ public class ArenaBuilder {
 
         // Visible biome-themed lighting around the arena border
         placeLighting(world, floorX, floorY, floorZ, finalW, finalH, envStyle);
+
+        // FORCE_STATE placement can leave stale light. Explicitly re-check block light in arena bounds.
+        int relightTop = floorY + Math.max(12, structureHeight > 0 ? structureHeight + 3 : 12);
+        relightArena(world, floorX, floorY - 3, floorZ, finalW, finalH, relightTop);
 
         // Force-load arena chunks so the client receives blocks before player teleport
         int minCX = (finalOrigin.getX() - 2) >> 4;
@@ -263,8 +285,12 @@ public class ArenaBuilder {
             java.nio.file.Path currentDir = java.nio.file.Path.of("").toAbsolutePath();
             List<java.nio.file.Path> searchRoots = new ArrayList<>();
             searchRoots.add(currentDir.resolve("craftics_arenas"));
+            searchRoots.add(currentDir.resolve("run/config/worldedit/schematics"));
+            searchRoots.add(currentDir.resolve("config/worldedit/schematics"));
             if (currentDir.getParent() != null) {
                 searchRoots.add(currentDir.getParent().resolve("craftics_arenas"));
+                searchRoots.add(currentDir.getParent().resolve("run/config/worldedit/schematics"));
+                searchRoots.add(currentDir.getParent().resolve("config/worldedit/schematics"));
             }
 
             for (java.nio.file.Path root : searchRoots) {
@@ -456,6 +482,7 @@ public class ArenaBuilder {
         int gridMaxZ = borderMaxZ - 1;
         int gridW = gridMaxX - gridMinX + 1;
         int gridH = gridMaxZ - gridMinZ + 1;
+        structureHeight = sizeY;
 
         if (gridW <= 0 || gridH <= 0) {
             CrafticsMod.LOGGER.warn("Structure {} produced invalid inner arena size {}x{}. Falling back to default overlay.", sourceName, gridW, gridH);
@@ -489,6 +516,12 @@ public class ArenaBuilder {
         Block floorBlock = tiles[0][0].getBlockType();
         Block borderConcrete = getBorderConcreteForBiome(biomeId, tiles);
 
+        // Replace corner markers with the most common touching block so they blend into the map.
+        Block diamondReplacement = getMostCommonTouchingBlock(world, diamondPos, borderConcrete);
+        Block emeraldReplacement = getMostCommonTouchingBlock(world, emeraldPos, borderConcrete);
+        world.setBlockState(diamondPos, diamondReplacement.getDefaultState(), SET_FLAGS);
+        world.setBlockState(emeraldPos, emeraldReplacement.getDefaultState(), SET_FLAGS);
+
         if (!preserveSchematicGround) {
             // Replace outside perimeter with biome-themed concrete outline.
             for (int x = borderMinX; x <= borderMaxX; x++) {
@@ -513,6 +546,11 @@ public class ArenaBuilder {
                         : new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, floorBlock);
 
                     if (!world.getBlockState(floorPos).getFluidState().isEmpty()) {
+                        continue;
+                    }
+
+                    // Keep intentional schematic voids/openings at floor level.
+                    if (world.getBlockState(floorPos).isAir()) {
                         continue;
                     }
 
@@ -649,6 +687,39 @@ public class ArenaBuilder {
                                           boolean isBoss, List<java.nio.file.Path> results) {
         if (!java.nio.file.Files.isDirectory(searchDir)) return;
         try {
+            // Support flat WorldEdit-style naming directly in the folder:
+            //   <biome>.schem, <biome>_2.schem, <biome>_boss.schem, trial_chamber.schem, etc.
+            java.util.List<String> aliases = new java.util.ArrayList<>();
+            aliases.add(biomeId);
+            if (biomeId.endsWith("s") && biomeId.length() > 1) {
+                aliases.add(biomeId.substring(0, biomeId.length() - 1));
+            }
+            if ("trial_chamber".equals(biomeId) || "trial_chambers".equals(biomeId)) {
+                aliases.add("trial_chamber");
+                aliases.add("trial_chambers");
+            }
+
+            for (String alias : aliases) {
+                java.nio.file.Path direct = searchDir.resolve(alias + ".schem");
+                if (java.nio.file.Files.exists(direct) && !results.contains(direct)) {
+                    results.add(direct);
+                }
+
+                if (isBoss) {
+                    java.nio.file.Path bossFlat = searchDir.resolve(alias + "_boss.schem");
+                    if (java.nio.file.Files.exists(bossFlat) && !results.contains(bossFlat)) {
+                        results.add(bossFlat);
+                    }
+                } else {
+                    for (int i = 1; i <= 10; i++) {
+                        java.nio.file.Path numberedFlat = searchDir.resolve(alias + "_" + i + ".schem");
+                        if (java.nio.file.Files.exists(numberedFlat) && !results.contains(numberedFlat)) {
+                            results.add(numberedFlat);
+                        }
+                    }
+                }
+            }
+
             java.nio.file.Path biomeDir = null;
 
             java.nio.file.Path direct = searchDir.resolve(biomeId);
@@ -662,6 +733,21 @@ public class ArenaBuilder {
                             biomeDir = nested;
                             break;
                         }
+                    }
+                }
+            }
+
+            // Also allow plain numbered/boss files directly in this folder.
+            if (isBoss) {
+                java.nio.file.Path bossRoot = searchDir.resolve("boss.schem");
+                if (java.nio.file.Files.exists(bossRoot) && !results.contains(bossRoot)) {
+                    results.add(bossRoot);
+                }
+            } else {
+                for (int i = 1; i <= 10; i++) {
+                    java.nio.file.Path rootNumbered = searchDir.resolve(i + ".schem");
+                    if (java.nio.file.Files.exists(rootNumbered) && !results.contains(rootNumbered)) {
+                        results.add(rootNumbered);
                     }
                 }
             }
@@ -721,6 +807,8 @@ public class ArenaBuilder {
 
         // Place the schematic
         schem.place(world, placeX, placeY, placeZ);
+        buildBarrierContainmentShell(world, placeX, placeY, placeZ,
+            schem.width(), schem.height(), schem.length());
 
         // Use shared marker processing
         return processPlacedStructure(world, placeX, placeY, placeZ,
@@ -766,6 +854,8 @@ public class ArenaBuilder {
 
             // Place the schematic
             schem.place(world, placeX, placeY, placeZ);
+            buildBarrierContainmentShell(world, placeX, placeY, placeZ,
+                schem.width(), schem.height(), schem.length());
 
             // Use shared marker processing
             return processPlacedStructure(world, placeX, placeY, placeZ,
@@ -774,6 +864,40 @@ public class ArenaBuilder {
         } catch (Exception e) {
             CrafticsMod.LOGGER.error("Failed to load bundled arena: {}", resourceId, e);
             return false;
+        }
+    }
+
+    /**
+     * Builds a barrier containment cube around the placed schematic footprint.
+     * Includes floor + side walls, but no ceiling.
+     */
+    private static void buildBarrierContainmentShell(ServerWorld world,
+                                                      int placeX, int placeY, int placeZ,
+                                                      int sizeX, int sizeY, int sizeZ) {
+        int minX = placeX - 1;
+        int maxX = placeX + sizeX;
+        int minZ = placeZ - 1;
+        int maxZ = placeZ + sizeZ;
+        int floorY = placeY - 1;
+        int topY = placeY + sizeY + 1;
+
+        // Bottom of the cube to catch liquids.
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                world.setBlockState(new BlockPos(x, floorY, z), Blocks.BARRIER.getDefaultState(), SET_FLAGS);
+            }
+        }
+
+        // Side walls only (no top).
+        for (int y = floorY; y <= topY; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                world.setBlockState(new BlockPos(x, y, minZ), Blocks.BARRIER.getDefaultState(), SET_FLAGS);
+                world.setBlockState(new BlockPos(x, y, maxZ), Blocks.BARRIER.getDefaultState(), SET_FLAGS);
+            }
+            for (int z = minZ; z <= maxZ; z++) {
+                world.setBlockState(new BlockPos(minX, y, z), Blocks.BARRIER.getDefaultState(), SET_FLAGS);
+                world.setBlockState(new BlockPos(maxX, y, z), Blocks.BARRIER.getDefaultState(), SET_FLAGS);
+            }
         }
     }
 
@@ -923,6 +1047,45 @@ public class ArenaBuilder {
         BlockPos pos = new BlockPos(x, y, z);
         if (world.getBlockState(pos).isAir()) {
             world.setBlockState(pos, block.getDefaultState(), SET_FLAGS);
+        }
+    }
+
+    private static Block getMostCommonTouchingBlock(ServerWorld world, BlockPos pos, Block fallback) {
+        Map<Block, Integer> counts = new HashMap<>();
+        for (Direction dir : Direction.values()) {
+            Block neighbor = world.getBlockState(pos.offset(dir)).getBlock();
+            if (neighbor == Blocks.AIR || neighbor == Blocks.CAVE_AIR || neighbor == Blocks.VOID_AIR) continue;
+            if (neighbor == Blocks.DIAMOND_BLOCK || neighbor == Blocks.EMERALD_BLOCK
+                || neighbor == Blocks.GOLD_BLOCK || neighbor == Blocks.IRON_BLOCK
+                || neighbor == Blocks.COPPER_BLOCK || neighbor == Blocks.COAL_BLOCK) {
+                continue;
+            }
+            counts.merge(neighbor, 1, Integer::sum);
+        }
+
+        Block best = fallback;
+        int bestCount = -1;
+        for (Map.Entry<Block, Integer> e : counts.entrySet()) {
+            if (e.getValue() > bestCount) {
+                best = e.getKey();
+                bestCount = e.getValue();
+            }
+        }
+        return best;
+    }
+
+    private static void relightArena(ServerWorld world, int ox, int minY, int oz, int w, int h, int maxY) {
+        int pad = 3;
+        int fromY = Math.max(world.getBottomY(), minY);
+        int toY = Math.min(world.getTopY() - 1, maxY);
+        var lighting = world.getLightingProvider();
+
+        for (int x = ox - pad; x < ox + w + pad; x++) {
+            for (int z = oz - pad; z < oz + h + pad; z++) {
+                for (int y = fromY; y <= toY; y++) {
+                    lighting.checkBlock(new BlockPos(x, y, z));
+                }
+            }
         }
     }
 

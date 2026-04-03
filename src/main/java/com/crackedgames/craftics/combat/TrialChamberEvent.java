@@ -159,7 +159,7 @@ public class TrialChamberEvent {
     }
 
     /** Generate a small quick ambush encounter — 2-3 fast enemies, tiny arena. */
-    public static LevelDefinition generateAmbush(int biomeOrdinal, int ngPlusLevel) {
+    public static LevelDefinition generateAmbush(String arenaBiomeId, int biomeOrdinal, int ngPlusLevel) {
         Random rng = new Random();
         // Gentler scaling — ambushes are unavoidable so shouldn't be punishing
         float diffMultiplier = 1.0f + (biomeOrdinal * 0.03f) + (ngPlusLevel * 0.08f);
@@ -188,10 +188,14 @@ public class TrialChamberEvent {
                 Integer.parseInt(mob[3]), Integer.parseInt(mob[4])));
         }
 
+        final String resolvedArenaBiomeId = (arenaBiomeId == null || arenaBiomeId.isBlank())
+            ? "plains" : arenaBiomeId;
+
         return new TrialChamberLevelDef(8, 8, spawns, rng) {
             @Override public String getName() { return "Ambush!"; }
             @Override public GridPos getPlayerStart() { return new GridPos(3, 3); }
             @Override public Block getFloorBlock() { return Blocks.DIRT; }
+            @Override public String getArenaBiomeId() { return resolvedArenaBiomeId; }
         };
     }
 

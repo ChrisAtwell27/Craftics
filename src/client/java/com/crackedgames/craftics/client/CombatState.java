@@ -159,6 +159,18 @@ public class CombatState {
         focusZoomTarget = combatCameraDistance;
     }
 
+    /**
+     * Release focus while keeping camera anchored near the focused location.
+     * This avoids snapping back to an old pan position after attack/move focus events.
+     */
+    private static void settleFocusAsPan() {
+        cameraPanX = Math.max(-MAX_PAN, Math.min(MAX_PAN, focusTargetX - arenaBaseCenterX));
+        cameraPanZ = Math.max(-MAX_PAN, Math.min(MAX_PAN, focusTargetZ - arenaBaseCenterZ));
+        arenaCenterX = arenaBaseCenterX + cameraPanX;
+        arenaCenterZ = arenaBaseCenterZ + cameraPanZ;
+        releaseFocus();
+    }
+
     /** Tick camera focus lerp (call each client tick). */
     public static void tickCameraFocus() {
         if (!isInCombat()) return;
@@ -166,7 +178,7 @@ public class CombatState {
         if (hasFocus) {
             focusTimer--;
             if (focusTimer <= 0) {
-                releaseFocus();
+                settleFocusAsPan();
             }
         }
 
