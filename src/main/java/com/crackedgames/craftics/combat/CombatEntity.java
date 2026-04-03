@@ -34,6 +34,8 @@ public class CombatEntity {
     private int soakedAmplifier = 0; // 0 = level I, 1 = level II, etc.
     private int confusionTurns = 0; // turns of confusion remaining
     private int confusionAmplifier = 0; // 0 = level I, 1 = level II, etc.
+    private int slownessTurns = 0; // turns of slowness remaining
+    private int slownessPenalty = 0; // speed reduction while slowed
     private int attackBoost = 0; // permanent attack boost (from pet stats override)
     private int defenseBoost = 0; // permanent defense boost (from pet stats override)
     private int rangeOverride = -1; // if set, overrides base range
@@ -118,6 +120,8 @@ public class CombatEntity {
         int base = moveSpeed + speedBonus;
         // Soaked reduces movement by 1
         if (soakedTurns > 0) base -= 1;
+        // Slowness reduces movement
+        if (slownessTurns > 0) base -= slownessPenalty;
         float mult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyMoveSpeedMultiplier();
         return Math.max(1, (int)(base * mult));
     }
@@ -222,6 +226,10 @@ public class CombatEntity {
     public void setConfusionTurns(int t) { this.confusionTurns = t; }
     public int getConfusionAmplifier() { return confusionAmplifier; }
     public void setConfusionAmplifier(int a) { this.confusionAmplifier = a; }
+    public int getSlownessTurns() { return slownessTurns; }
+    public void setSlownessTurns(int t) { this.slownessTurns = t; }
+    public int getSlownessPenalty() { return slownessPenalty; }
+    public void setSlownessPenalty(int p) { this.slownessPenalty = p; }
 
     public int getEffectiveDefense() {
         return Math.max(0, defense - defensePenalty);

@@ -44,7 +44,7 @@ public class RockbreakerAI extends BossAI {
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
                 crossTiles, 1, slamAction, 0xFFFF6644);
-            return new EnemyAction.Idle();
+            return advanceWhileCharging(self, arena, playerPos);
         }
 
         // Boulder Toss if in range

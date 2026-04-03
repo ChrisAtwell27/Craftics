@@ -34,6 +34,9 @@
   "loot": [
     {"item": "minecraft:dark_oak_log", "weight": 8},
     {"item": "minecraft:spruce_log", "weight": 8},
+    {"item": "minecraft:feather", "weight": 8},
+    {"item": "minecraft:flint", "weight": 6},
+    {"item": "minecraft:arrow", "weight": 4},
     {"item": "minecraft:string", "weight": 6},
     {"item": "minecraft:spider_eye", "weight": 4},
     {"item": "minecraft:mushroom_stew", "weight": 3},

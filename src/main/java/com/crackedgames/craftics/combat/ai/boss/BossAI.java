@@ -340,4 +340,22 @@ public abstract class BossAI implements EnemyAI {
         }
         return AIUtils.seekOrWander(self, arena, playerPos);
     }
+
+    /**
+     * Advance toward the player while a warning is charging.
+     * Melee bosses should call this instead of returning Idle when setting a pendingWarning,
+     * so they close distance during the telegraph turn rather than standing still.
+     * If already adjacent, attacks for base ATK. If unable to move, falls back to Idle.
+     */
+    protected EnemyAction advanceWhileCharging(CombatEntity self, GridArena arena, GridPos playerPos) {
+        int dist = self.minDistanceTo(playerPos);
+        if (dist <= 1) {
+            return new EnemyAction.Attack(self.getAttackPower());
+        }
+        EnemyAction move = AIUtils.seekOrWander(self, arena, playerPos);
+        if (move instanceof EnemyAction.Idle) {
+            return move;
+        }
+        return move;
+    }
 }

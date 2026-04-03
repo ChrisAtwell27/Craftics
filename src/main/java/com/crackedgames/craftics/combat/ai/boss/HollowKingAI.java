@@ -56,7 +56,7 @@ public class HollowKingAI extends BossAI {
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                 caveInTiles, 1, caveIn, 0xFFAA4400);
-            return new EnemyAction.Idle();
+            return advanceWhileCharging(self, arena, playerPos);
         }
 
         // Demolition Cache: prime TNT charges that explode next round.
@@ -90,7 +90,7 @@ public class HollowKingAI extends BossAI {
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                 caveInTiles, 1, caveIn, 0xFFAA4400);
-            return new EnemyAction.Idle();
+            return advanceWhileCharging(self, arena, playerPos);
         }
 
         // Swarm Call — silverfish from edges
@@ -115,7 +115,7 @@ public class HollowKingAI extends BossAI {
                     chargePath, 1,
                     new EnemyAction.LineAttack(myPos, dir[0], dir[1], 3, self.getAttackPower() + 2),
                     0xFFFF6600);
-                return new EnemyAction.Idle();
+                return advanceWhileCharging(self, arena, playerPos);
             }
         }
 
@@ -152,7 +152,7 @@ public class HollowKingAI extends BossAI {
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
             charges, 1, new EnemyAction.CompositeAction(primeActions), 0xFFFFAA22);
-        return new EnemyAction.Idle();
+        return advanceWhileCharging(self, arena, playerPos);
     }
 
     private EnemyAction tryRubbleToss(CombatEntity self, GridArena arena, GridPos playerPos) {
@@ -167,7 +167,7 @@ public class HollowKingAI extends BossAI {
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
             List.of(playerPos, rubble), 1, resolve, 0xFF996633);
-        return new EnemyAction.Idle();
+        return advanceWhileCharging(self, arena, playerPos);
     }
 
     private GridPos findNearestObstacle(GridArena arena, GridPos from) {

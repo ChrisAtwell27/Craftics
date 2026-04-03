@@ -67,7 +67,7 @@ public class BastionBruteAI extends BossAI {
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                 chargePath, 1, chargeAction, 0xFFCC0000);
-            return new EnemyAction.Idle();
+            return advanceWhileCharging(self, arena, playerPos);
         }
 
         // Rampage — if adjacent or close

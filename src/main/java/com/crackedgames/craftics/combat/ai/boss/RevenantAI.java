@@ -52,7 +52,7 @@ public class RevenantAI extends BossAI {
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                     charge.warningTiles(), 1, new EnemyAction.MoveAndAttack(charge.path(), chargeDmg), 0xFFFF4444);
-                return new EnemyAction.Idle();
+                return advanceWhileCharging(self, arena, playerPos);
             }
         }
 
@@ -66,7 +66,7 @@ public class RevenantAI extends BossAI {
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
                     magmaTiles, 1, magmaGrid, 0xFFFF8800);
-                return new EnemyAction.Idle();
+                return advanceWhileCharging(self, arena, playerPos);
             }
         }
 
