@@ -210,6 +210,11 @@ public class CombatEntity {
     public boolean isMounted() { return mounted; }
     public void setMounted(boolean m) { this.mounted = m; }
 
+    // Ally aggro tracking: if a pet damages this entity, store that pet ID for target selection.
+    private int aggroAllyEntityId = -1;
+    public int getAggroAllyEntityId() { return aggroAllyEntityId; }
+    public void setAggroAllyEntityId(int id) { this.aggroAllyEntityId = id; }
+
     public int getDefensePenalty() { return defensePenalty; }
     public void setDefensePenalty(int p) { this.defensePenalty = p; }
     public int getDefensePenaltyTurns() { return defensePenaltyTurns; }
@@ -230,6 +235,47 @@ public class CombatEntity {
     public void setSlownessTurns(int t) { this.slownessTurns = t; }
     public int getSlownessPenalty() { return slownessPenalty; }
     public void setSlownessPenalty(int p) { this.slownessPenalty = p; }
+
+    // === Effect stacking helpers ===
+    // Duration refreshes to the longer value; intensity stacks additively up to a cap.
+
+    private static final int MAX_EFFECT_AMPLIFIER = 10; // cap at level X
+
+    /** Stack poison: refresh duration, add amplifier. */
+    public void stackPoison(int turns, int ampIncrease) {
+        poisonTurns = Math.max(poisonTurns, turns);
+        poisonAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, poisonAmplifier + ampIncrease);
+    }
+
+    /** Stack burning: refresh duration, add damage per turn. */
+    public void stackBurning(int turns, int dmgIncrease) {
+        burningTurns = Math.max(burningTurns, turns);
+        burningDamage = Math.min(MAX_EFFECT_AMPLIFIER + 1, burningDamage + dmgIncrease);
+    }
+
+    /** Stack soaked: refresh duration, add amplifier. */
+    public void stackSoaked(int turns, int ampIncrease) {
+        soakedTurns = Math.max(soakedTurns, turns);
+        soakedAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, soakedAmplifier + ampIncrease);
+    }
+
+    /** Stack slowness: refresh duration, add penalty. */
+    public void stackSlowness(int turns, int penaltyIncrease) {
+        slownessTurns = Math.max(slownessTurns, turns);
+        slownessPenalty = Math.min(MAX_EFFECT_AMPLIFIER, slownessPenalty + penaltyIncrease);
+    }
+
+    /** Stack confusion: refresh duration, add amplifier. */
+    public void stackConfusion(int turns, int ampIncrease) {
+        confusionTurns = Math.max(confusionTurns, turns);
+        confusionAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, confusionAmplifier + ampIncrease);
+    }
+
+    /** Stack defense penalty: refresh duration, add penalty. */
+    public void stackDefensePenalty(int turns, int penaltyIncrease) {
+        defensePenaltyTurns = Math.max(defensePenaltyTurns, turns);
+        defensePenalty = Math.min(MAX_EFFECT_AMPLIFIER, defensePenalty + penaltyIncrease);
+    }
 
     public int getEffectiveDefense() {
         return Math.max(0, defense - defensePenalty);

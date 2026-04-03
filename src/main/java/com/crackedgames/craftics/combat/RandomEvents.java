@@ -169,8 +169,8 @@ public class RandomEvents {
 
     // ── Ambush ──
     // Quick unavoidable fight with 2-3 fast enemies
-    public static com.crackedgames.craftics.level.LevelDefinition generateAmbush(int biomeOrdinal, int ngPlusLevel) {
-        return TrialChamberEvent.generateAmbush(biomeOrdinal, ngPlusLevel);
+    public static com.crackedgames.craftics.level.LevelDefinition generateAmbush(String arenaBiomeId, int biomeOrdinal, int ngPlusLevel) {
+        return TrialChamberEvent.generateAmbush(arenaBiomeId, biomeOrdinal, ngPlusLevel);
     }
 
     // === Multi-player reward methods ===

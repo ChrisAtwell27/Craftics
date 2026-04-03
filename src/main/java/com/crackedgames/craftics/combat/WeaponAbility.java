@@ -138,8 +138,7 @@ public class WeaponAbility {
 
             if (Math.random() < waterChance) {
                 // Apply Soaked (Wet) debuff
-                target.setSoakedTurns(Math.max(target.getSoakedTurns(), 2));
-                target.setSoakedAmplifier(Math.max(target.getSoakedAmplifier(), 0));
+                target.stackSoaked(2, 1);
 
                 // Knockback 1 tile
                 GridPos pPos = arena.getPlayerGridPos();
@@ -288,15 +287,13 @@ public class WeaponAbility {
         if (DamageType.isCoral(weapon)) {
             // Tube Coral: Soaked (reduces speed)
             if (weapon == Items.TUBE_CORAL) {
-                target.setSoakedTurns(Math.max(target.getSoakedTurns(), 1));
-                target.setSoakedAmplifier(Math.max(target.getSoakedAmplifier(), 0));
+                target.stackSoaked(1, 1);
                 messages.add("\u00a73\u2716 Soaked! " + target.getDisplayName() + " is drenched and slowed!");
             }
             // Brain Coral: Confusion (chance to skip action)
             if (weapon == Items.BRAIN_CORAL) {
                 if (Math.random() < 0.4) {
-                    target.setConfusionTurns(Math.max(target.getConfusionTurns(), 1));
-                    target.setConfusionAmplifier(Math.max(target.getConfusionAmplifier(), 0));
+                    target.stackConfusion(1, 1);
                     messages.add("\u00a7d\u2716 Confused! " + target.getDisplayName() + " is disoriented!");
                 }
             }
@@ -328,9 +325,7 @@ public class WeaponAbility {
             }
             // Horn Coral: Defense pierce (ignores 3 defense)
             if (weapon == Items.HORN_CORAL) {
-                int currentPenalty = target.getDefensePenalty();
-                target.setDefensePenalty(currentPenalty + 3);
-                target.setDefensePenaltyTurns(Math.max(target.getDefensePenaltyTurns(), 1));
+                target.stackDefensePenalty(1, 3);
                 messages.add("\u00a7e\u2716 Armor pierced! " + target.getDisplayName() + " loses 3 DEF for 1 turn!");
             }
             // Dead Corals: Weakened (reduce attack)

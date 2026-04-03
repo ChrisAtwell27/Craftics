@@ -124,16 +124,15 @@ public class CrafticsMod implements ModInitializer {
                 player.requestTeleport(0, 65, 0);
                 player.changeGameMode(GameMode.SURVIVAL);
 
-                // Give guide book on first join (if they don't already have one)
-                boolean hasBook = false;
-                for (int i = 0; i < player.getInventory().size(); i++) {
-                    if (player.getInventory().getStack(i).getItem() == com.crackedgames.craftics.item.ModItems.GUIDE_BOOK) {
-                        hasBook = true;
-                        break;
-                    }
-                }
-                if (!hasBook) {
+                // Give the starter guide once per saved player profile.
+                com.crackedgames.craftics.world.CrafticsSavedData joinData =
+                    com.crackedgames.craftics.world.CrafticsSavedData.get(overworld);
+                com.crackedgames.craftics.world.CrafticsSavedData.PlayerData joinPd =
+                    joinData.getPlayerData(player.getUuid());
+                if (!joinPd.starterGuideGranted) {
                     player.giveItemStack(new net.minecraft.item.ItemStack(com.crackedgames.craftics.item.ModItems.GUIDE_BOOK));
+                    joinPd.starterGuideGranted = true;
+                    joinData.markDirty();
                 }
 
                 // Sync player stats to client for inventory display

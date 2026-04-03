@@ -30,6 +30,8 @@
   "loot": [
     {"item": "minecraft:snowball", "weight": 8},
     {"item": "minecraft:ice", "weight": 6},
+    {"item": "minecraft:pumpkin", "weight": 4},
+    {"item": "minecraft:campfire", "weight": 1},
     {"item": "minecraft:bone", "weight": 5},
     {"item": "minecraft:arrow", "weight": 5},
     {"item": "minecraft:leather", "weight": 4},
@@ -38,6 +40,8 @@
     {"item": "minecraft:spruce_log", "weight": 4},
     {"item": "minecraft:cobblestone", "weight": 4},
     {"item": "minecraft:iron_ingot", "weight": 2},
+    {"item": "minecraft:amethyst_shard", "weight": 1},
     {"item": "minecraft:diamond", "weight": 1}
+
   ]
 }

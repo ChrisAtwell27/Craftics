@@ -98,6 +98,7 @@ public class AIRegistry {
 
         // === End pests ===
         register("minecraft:endermite", new EndermiteAI()); // blink-swarmer, short-range teleport + attack
+        register("minecraft:end_crystal", new EndCrystalAI()); // stationary hazard, explodes when damaged
 
         // === Projectile entities (boss-spawned fireballs, wither skulls) ===
         register("projectile", new ProjectileAI());

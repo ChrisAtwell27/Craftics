@@ -386,8 +386,7 @@ public class PotterySherdSpells {
 
         // Damage + debuff immediately (game state): 5 dmg (buffed from 3), -7 DEF (buffed from -5)
         int dealt = target.takeDamage(5);
-        target.setDefensePenalty(target.getDefensePenalty() + 7);
-        target.setDefensePenaltyTurns(Math.max(target.getDefensePenaltyTurns(), 3));
+        target.stackDefensePenalty(3, 7);
 
         // Phase 1 (4 ticks) — Acid trail
         queueEffect(4, () -> {
@@ -740,8 +739,7 @@ public class PotterySherdSpells {
 
         // 9 fire damage to target + burning for 3 turns (3 dmg/turn, buffed from 6/2)
         int dealt = target.takeDamage(9);
-        target.setBurningTurns(3);
-        target.setBurningDamage(3); // buffed from 2
+        target.stackBurning(3, 3); // buffed from 2
         if (target.getMobEntity() != null) target.getMobEntity().setFireTicks(200);
 
         // Collect AoE hit info for delayed particles
@@ -751,8 +749,7 @@ public class PotterySherdSpells {
             if (!e.isAlive() || e.isAlly() || e == target) continue;
             if (e.getGridPos().manhattanDistance(targetTile) <= 1) {
                 int aoeDmg = e.takeDamage(5); // buffed from 3
-                e.setBurningTurns(Math.max(e.getBurningTurns(), 1));
-                e.setBurningDamage(Math.max(e.getBurningDamage(), 3)); // buffed from 2
+                e.stackBurning(1, 3); // buffed from 2
                 if (e.getMobEntity() != null) e.getMobEntity().setFireTicks(60);
                 aoeBlocks.add(arena.gridToBlockPos(e.getGridPos()));
                 msg.append(" §6").append(e.getDisplayName()).append(" caught in blast for ").append(aoeDmg).append(" fire damage!");
@@ -1348,8 +1345,7 @@ public class PotterySherdSpells {
         } else {
             // Game state immediately — 10 damage (buffed from 5) + Wither IV for 4 turns (buffed from III/3)
             int dealt = target.takeDamage(10);
-            target.setPoisonTurns(4);
-            target.setPoisonAmplifier(3); // Wither IV: 2 * (3+1) = 8 dmg/turn
+            target.stackPoison(4, 4); // Wither IV: 2 * (3+1) = 8 dmg/turn
 
             // Phase 2 (8 ticks) — Wither curse impact
             queueEffect(8, () -> {

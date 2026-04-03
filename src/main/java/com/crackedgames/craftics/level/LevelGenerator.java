@@ -186,6 +186,20 @@ public class LevelGenerator {
             ));
         }
 
+        // Dragon's Nest: place one End Crystal at the grid center
+        // It functions as an enemy — can't move, explodes the turn after it's damaged
+        if ("dragons_nest".equals(biome.biomeId)) {
+            GridPos center = new GridPos(w / 2, h / 2);
+            validPositions.removeIf(p -> p.equals(center));
+            spawns.add(new LevelDefinition.EnemySpawn(
+                "minecraft:end_crystal", center,
+                8 + hpBonus,   // HP scales with biome progression
+                12 + atkBonus, // explosion damage scales with progression
+                0,             // no defense
+                0              // range unused (explosion is fixed-radius)
+            ));
+        }
+
         // Bee swarm rule: if any bee spawned, replace all other passives with bees (configurable)
         boolean hasBee = spawns.stream().anyMatch(s -> "minecraft:bee".equals(s.entityTypeId()));
         if (hasBee && com.crackedgames.craftics.CrafticsMod.CONFIG.beeSwarmReplacesPassives()) {

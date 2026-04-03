@@ -9,6 +9,7 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.Map;
@@ -45,17 +46,14 @@ public class ItemUseHandler {
                 // Deal Water-type damage (assume Water type is handled in takeDamage or add a param if needed)
                 int dealt = enemy.takeDamage(waterDamage); // TODO: Pass Water type if needed
                 // Apply Soaked
-                enemy.setSoakedTurns(Math.max(enemy.getSoakedTurns(), soakedLevel));
-                enemy.setSoakedAmplifier(Math.max(enemy.getSoakedAmplifier(), soakedLevel - 1));
+                enemy.stackSoaked(soakedLevel, soakedLevel);
                 // Apply Poison if pufferfish
                 if (poisonLevel > 0) {
-                    enemy.setPoisonTurns(Math.max(enemy.getPoisonTurns(), poisonLevel));
-                    enemy.setPoisonAmplifier(Math.max(enemy.getPoisonAmplifier(), poisonLevel - 1));
+                    enemy.stackPoison(poisonLevel, poisonLevel);
                 }
                 // Apply Confusion if nautilus/heart
                 if (confusionLevel > 0) {
-                    enemy.setConfusionTurns(Math.max(enemy.getConfusionTurns(), confusionLevel));
-                    enemy.setConfusionAmplifier(Math.max(enemy.getConfusionAmplifier(), confusionLevel - 1));
+                    enemy.stackConfusion(confusionLevel, confusionLevel);
                 }
                 hitCount++;
                 msg.append("§b").append(enemy.getDisplayName()).append(" -").append(dealt).append("HP ");
@@ -293,11 +291,11 @@ public class ItemUseHandler {
         } else if (item == Items.CAMPFIRE) {
             return useCampfire(arena, targetTile, held);
         } else if (item == Items.ANVIL) {
-            return useAnvil(arena, targetTile, held);
+            return useAnvil(player, arena, targetTile, held);
         } else if (item == Items.HONEY_BLOCK) {
             return useHoneyBlock(arena, targetTile, held);
         } else if (item == Items.POWDER_SNOW_BUCKET) {
-            return usePowderSnow(arena, targetTile, held);
+            return usePowderSnow(player, arena, targetTile, held);
         } else if (item == Items.JUKEBOX) {
             return useJukebox(arena, held);
         } else if (isBanner(item)) {
@@ -346,12 +344,33 @@ public class ItemUseHandler {
     /** Prefix for ally buff — CombatManager processes this. */
     public static final String ALLY_BUFF_PREFIX = "§dBUFF:";
 
+    private static boolean isMoveFeather(ItemStack s) {
+        return s.getItem() == Items.FEATHER && s.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME);
+    }
+
     private static String useFood(ServerPlayerEntity player, ItemStack stack, Item food) {
         int healAmount = FOOD_HEAL.getOrDefault(food, 1);
         float maxHealth = player.getMaxHealth();
         float newHealth = Math.min(maxHealth, player.getHealth() + healAmount);
         player.setHealth(newHealth);
         stack.decrement(1);
+
+        // Risky foods — apply debuff effects
+        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        java.util.Random rng = java.util.concurrent.ThreadLocalRandom.current();
+        if (food == Items.POISONOUS_POTATO && rng.nextFloat() < 0.60f) {
+            effects.addEffect(CombatEffects.EffectType.POISON, 2, 0);
+            player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.POISON, -1, 0, false, true));
+            return "§aAte Poisonous Potato! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)";
+        } else if (food == Items.SPIDER_EYE) {
+            effects.addEffect(CombatEffects.EffectType.POISON, 2, 0);
+            player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.POISON, -1, 0, false, true));
+            return "§aAte Spider Eye! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)";
+        } else if (food == Items.ROTTEN_FLESH && rng.nextFloat() < 0.80f) {
+            effects.addEffect(CombatEffects.EffectType.WEAKNESS, 2, 0);
+            player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.WEAKNESS, -1, 0, false, true));
+            return "§aAte Rotten Flesh! Healed " + healAmount + " HP §c(Weakened for 2 turns!)";
+        }
 
         // Golden apple also gives absorption
         if (food == Items.GOLDEN_APPLE) {
@@ -393,18 +412,20 @@ public class ItemUseHandler {
                 var effectType = sei.getEffectType().value();
                 CombatEffects.EffectType combatType = mapStatusEffect(effectType);
                 if (combatType != null) {
-                    int turns = getTurnsForPotion(combatType, sei.getDuration());
-                    effects.addEffect(combatType, turns, sei.getAmplifier());
+                    int scaledAmplifier = getScaledPotionAmplifier(player, sei.getAmplifier());
+                    int turns = getScaledPotionTurns(player, combatType, sei.getDuration());
+                    effects.addEffect(combatType, turns, scaledAmplifier);
                     // Apply vanilla effect for particles (infinite duration, removed when combat effect expires)
                     player.addStatusEffect(new StatusEffectInstance(
-                        sei.getEffectType(), -1, sei.getAmplifier(), false, true));
+                        sei.getEffectType(), -1, scaledAmplifier, false, true));
                     if (applied.length() > 0) applied.append(", ");
-                    String level = sei.getAmplifier() > 0 ? " II" : "";
-                    applied.append(combatType.displayName).append(level).append(" (").append(turns).append("t)");
+                    applied.append(combatType.displayName)
+                        .append(formatPotionLevel(scaledAmplifier))
+                        .append(" (").append(turns).append("t)");
                 }
                 // Instant effects
                 if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
-                    int healAmount = 4 * (sei.getAmplifier() + 1);
+                    int healAmount = 4 * (sei.getAmplifier() + 1) + getSpecialAffinityPoints(player);
                     player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + healAmount));
                     if (applied.length() > 0) applied.append(", ");
                     applied.append("Healed ").append(healAmount);
@@ -475,6 +496,61 @@ public class ItemUseHandler {
         return getTurnsForPotion(type, 0);
     }
 
+    private static PlayerProgression.PlayerStats getPlayerStats(ServerPlayerEntity player) {
+        return PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player);
+    }
+
+    private static int getSpecialAffinityPoints(ServerPlayerEntity player) {
+        return getPlayerStats(player).getAffinityPoints(PlayerProgression.Affinity.SPECIAL);
+    }
+
+    private static int getPotionPotencyBonus(ServerPlayerEntity player) {
+        return getSpecialAffinityPoints(player) / 3;
+    }
+
+    private static int getPotionDurationBonus(ServerPlayerEntity player) {
+        int specialPoints = getSpecialAffinityPoints(player);
+        return specialPoints > 0 ? 1 + ((specialPoints - 1) / 4) : 0;
+    }
+
+    private static int getScaledPotionTurns(ServerPlayerEntity player, CombatEffects.EffectType type,
+                                            int vanillaDurationTicks) {
+        int turns = getTurnsForPotion(type, vanillaDurationTicks) + getPotionDurationBonus(player);
+        return Math.min(turns, com.crackedgames.craftics.CrafticsMod.CONFIG.maxCombatEffectDuration());
+    }
+
+    private static int getScaledPotionAmplifier(ServerPlayerEntity player, int vanillaAmplifier) {
+        return vanillaAmplifier + getPotionPotencyBonus(player);
+    }
+
+    private static int getTypedDamageBonus(ServerPlayerEntity player, CombatEffects effects, DamageType type) {
+        return DamageType.getTotalBonus(
+            PlayerCombatStats.getArmorSet(player), CombatManager.get(player).getTrimScan(), effects,
+            type, getPlayerStats(player));
+    }
+
+    private static int applyTypedDamage(ServerPlayerEntity player, CombatEntity target, int baseDamage,
+                                        DamageType type) {
+        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        int rawDamage = baseDamage + getTypedDamageBonus(player, effects, type);
+        int adjustedDamage = MobResistances.applyResistance(target.getEntityTypeId(), type, rawDamage);
+        if (adjustedDamage <= 0) {
+            return 0;
+        }
+        return target.takeDamage(adjustedDamage);
+    }
+
+    private static String formatPotionLevel(int amplifier) {
+        return switch (amplifier) {
+            case 0 -> "";
+            case 1 -> " II";
+            case 2 -> " III";
+            case 3 -> " IV";
+            case 4 -> " V";
+            default -> " " + (amplifier + 1);
+        };
+    }
+
     private static String useSnowball(ServerPlayerEntity player, GridArena arena,
                                        GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
@@ -482,6 +558,7 @@ public class ItemUseHandler {
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
         stack.decrement(1);
+        int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
 
         // Knockback: push enemy 1 tile away from player
         GridPos playerPos = arena.getPlayerGridPos();
@@ -497,10 +574,10 @@ public class ItemUseHandler {
                     var bp = arena.gridToBlockPos(knockbackPos);
                     enemy.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
                 }
-                return "§bSnowball hit! " + enemy.getDisplayName() + " knocked back!";
+                return "§bSnowball hit! " + enemy.getDisplayName() + " took " + dealt + " Special damage and was knocked back!";
             }
         }
-        return "§bSnowball hit " + enemy.getDisplayName() + "! (no knockback room)";
+        return "§bSnowball hit " + enemy.getDisplayName() + " for " + dealt + " Special damage! (no knockback room)";
     }
 
     private static String useEgg(ServerPlayerEntity player, GridArena arena,
@@ -510,8 +587,8 @@ public class ItemUseHandler {
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
         stack.decrement(1);
-        int dealt = enemy.takeDamage(1); // small damage
-        return "§eEgg hit " + enemy.getDisplayName() + " for " + dealt + " damage!";
+        int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
+        return "§eEgg hit " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
     }
 
     private static String useEnderPearl(ServerPlayerEntity player, GridArena arena,
@@ -590,6 +667,7 @@ public class ItemUseHandler {
         if (potionContents != null) {
             CombatEffects effects = CombatManager.get(player).getCombatEffects();
             GridPos playerPos = arena.getPlayerGridPos();
+            int specialDamageBonus = getTypedDamageBonus(player, effects, DamageType.SPECIAL);
             int hitCount = 0;
             StringBuilder msg = new StringBuilder();
 
@@ -612,41 +690,37 @@ public class ItemUseHandler {
             for (StatusEffectInstance sei : potionContents.getEffects()) {
                 var effectType = sei.getEffectType().value();
                 int amp = sei.getAmplifier();
+                int scaledAmp = getScaledPotionAmplifier(player, amp);
 
                 // === Apply debuffs to ALL enemies in 3x3 ===
                 for (CombatEntity target : aoeEnemies) {
                     // Vanilla particles on mob
                     if (target.getMobEntity() != null) {
                         target.getMobEntity().addStatusEffect(new StatusEffectInstance(
-                            sei.getEffectType(), -1, amp, false, true));
+                            sei.getEffectType(), -1, scaledAmp, false, true));
                     }
                     if (effectType == StatusEffects.INSTANT_DAMAGE.value()) {
-                        // Magic damage type bonus from player's gear/effects
-                        int magicBonus = DamageType.getTotalBonus(
-                            PlayerCombatStats.getArmorSet(player), CombatManager.get(player).getTrimScan(),
-                            effects, DamageType.SPECIAL);
-                        int dealt = target.takeDamage(3 * (amp + 1) + magicBonus);
+                        int dealt = target.takeDamage(3 * (scaledAmp + 1) + specialDamageBonus);
                         msg.append("§5").append(target.getDisplayName()).append(" -").append(dealt).append("HP ");
                     } else if (effectType == StatusEffects.POISON.value()) {
-                        target.takeDamage(1 + amp);
-                        int poisonTurns = getTurnsForPotion(CombatEffects.EffectType.POISON, sei.getDuration());
-                        target.setPoisonTurns(Math.max(target.getPoisonTurns(), poisonTurns));
-                        target.setPoisonAmplifier(Math.max(target.getPoisonAmplifier(), amp));
+                        target.takeDamage(1 + scaledAmp);
+                        int poisonTurns = getScaledPotionTurns(player, CombatEffects.EffectType.POISON, sei.getDuration());
+                        target.stackPoison(poisonTurns, scaledAmp + 1);
                         msg.append("§2").append(target.getDisplayName()).append(" poisoned ");
                     } else if (effectType == StatusEffects.SLOWNESS.value()) {
-                        target.setSpeedBonus(target.getSpeedBonus() - (1 + amp));
+                        target.setSpeedBonus(target.getSpeedBonus() - (1 + scaledAmp));
                         msg.append("§7").append(target.getDisplayName()).append(" slowed ");
                     } else if (effectType == StatusEffects.WEAKNESS.value()) {
-                        target.setAttackPenalty(target.getAttackPenalty() + 2 + amp);
+                        target.setAttackPenalty(target.getAttackPenalty() + 2 + scaledAmp);
                         msg.append("§8").append(target.getDisplayName()).append(" weakened ");
                     } else if (effectType == StatusEffects.WITHER.value()) {
-                        target.takeDamage(2 + amp);
+                        target.takeDamage(2 + scaledAmp + specialDamageBonus);
                         msg.append("§8").append(target.getDisplayName()).append(" withered ");
                     } else if (effectType == StatusEffects.BLINDNESS.value() || effectType == StatusEffects.DARKNESS.value()) {
                         target.setStunned(true);
                         msg.append("§8").append(target.getDisplayName()).append(" stunned ");
                     } else if (effectType == StatusEffects.LEVITATION.value()) {
-                        target.setSpeedBonus(target.getSpeedBonus() - 1);
+                        target.setSpeedBonus(target.getSpeedBonus() - (1 + scaledAmp));
                         msg.append("§d").append(target.getDisplayName()).append(" levitating ");
                     }
                     hitCount++;
@@ -656,16 +730,17 @@ public class ItemUseHandler {
                 if (playerInRange) {
                     CombatEffects.EffectType combatType = mapStatusEffect(effectType);
                     if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
-                        int heal = 4 * (amp + 1);
+                        int heal = 4 * (amp + 1) + getSpecialAffinityPoints(player);
                         player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + heal));
                         msg.append("§a+").append(heal).append("HP ");
                         hitCount++;
                     } else if (combatType != null && isBuffEffect(combatType)) {
-                        int turns = getTurnsForPotion(combatType, sei.getDuration());
-                        effects.addEffect(combatType, turns, amp);
+                        int turns = getScaledPotionTurns(player, combatType, sei.getDuration());
+                        effects.addEffect(combatType, turns, scaledAmp);
                         player.addStatusEffect(new StatusEffectInstance(
-                            sei.getEffectType(), -1, amp, false, true));
-                        msg.append("§d").append(combatType.displayName).append(" ");
+                            sei.getEffectType(), -1, scaledAmp, false, true));
+                        msg.append("§d").append(combatType.displayName)
+                            .append(formatPotionLevel(scaledAmp)).append(" ");
                         hitCount++;
                     }
                 }
@@ -691,12 +766,12 @@ public class ItemUseHandler {
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
         stack.decrement(1);
-        int dealt = enemy.takeDamage(4);
+        int dealt = applyTypedDamage(player, enemy, 4, DamageType.SPECIAL);
         // Set mob on fire visually for 3 seconds
         if (enemy.getMobEntity() != null) {
             enemy.getMobEntity().setFireTicks(60);
         }
-        return "§6Fire charge hit " + enemy.getDisplayName() + " for " + dealt + " fire damage!";
+        return "§6Fire charge hit " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
     }
 
     // --- Milk Bucket: clears all status effects (good and bad) ---
@@ -770,11 +845,11 @@ public class ItemUseHandler {
         } else {
             stack.setDamage(stack.getDamage() + 1);
         }
-        int dealt = enemy.takeDamage(2);
+        int dealt = applyTypedDamage(player, enemy, 2, DamageType.SPECIAL);
         if (enemy.getMobEntity() != null) {
             enemy.getMobEntity().setFireTicks(100); // 5 seconds of fire
         }
-        return "§6Set " + enemy.getDisplayName() + " on fire! " + dealt + " damage.";
+        return "§6Set " + enemy.getDisplayName() + " on fire! " + dealt + " Special damage.";
     }
 
     // --- Totem of Undying: prevents death once, full heal ---
@@ -988,13 +1063,13 @@ public class ItemUseHandler {
     }
 
     // --- Anvil: drop on enemy — 5 damage, consumes item (1 AP) ---
-    private static String useAnvil(GridArena arena, GridPos targetTile, ItemStack stack) {
+    private static String useAnvil(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target an enemy!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
         stack.decrement(1);
-        int dealt = enemy.takeDamage(5);
-        return "§8Anvil dropped on " + enemy.getDisplayName() + " for " + dealt + " damage!";
+        int dealt = applyTypedDamage(player, enemy, 15, DamageType.SPECIAL);
+        return "§8Anvil dropped on " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
     }
 
     // --- Honey Block: place sticky trap — enemies lose all movement when stepping on it (1 AP) ---
@@ -1007,14 +1082,14 @@ public class ItemUseHandler {
     }
 
     // --- Powder Snow Bucket: freeze enemy — stun + 1 cold damage (1 AP) ---
-    private static String usePowderSnow(GridArena arena, GridPos targetTile, ItemStack stack) {
+    private static String usePowderSnow(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target an enemy!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
         stack.decrement(1);
-        int dealt = enemy.takeDamage(1);
+        int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
         enemy.setStunned(true);
-        return "§bFrozen! " + enemy.getDisplayName() + " takes " + dealt + " cold damage and skips next turn.";
+        return "§bFrozen! " + enemy.getDisplayName() + " takes " + dealt + " Special damage and skips next turn.";
     }
 
     // --- Jukebox: play music — buff all allies +1 speed for this battle (2 AP, consumes) ---

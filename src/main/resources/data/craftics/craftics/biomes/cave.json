@@ -28,16 +28,19 @@
   },
   "loot": [
     {"item": "minecraft:iron_ingot", "weight": 8},
-    {"item": "minecraft:gold_ingot", "weight": 5},
-    {"item": "minecraft:diamond", "weight": 2},
+    {"item": "minecraft:gold_ingot", "weight": 6},
+    {"item": "minecraft:diamond", "weight": 3},
     {"item": "minecraft:coal", "weight": 7},
     {"item": "minecraft:redstone", "weight": 5},
-    {"item": "minecraft:lapis_lazuli", "weight": 4},
+    {"item": "minecraft:lapis_lazuli", "weight": 5},
     {"item": "minecraft:pumpkin_seeds", "weight": 2},
     {"item": "minecraft:glow_berries", "weight": 3},
-    {"item": "minecraft:cobblestone", "weight": 4},
-    {"item": "minecraft:copper_ingot", "weight": 3},
-    {"item": "minecraft:amethyst_shard", "weight": 2},
-    {"item": "minecraft:emerald", "weight": 2}
+    {"item": "minecraft:cobblestone", "weight": 6},
+    {"item": "minecraft:copper_ingot", "weight": 4},
+    {"item": "minecraft:amethyst_shard", "weight": 3},
+    {"item": "minecraft:emerald", "weight": 2},
+    {"item": "minecraft:axolotl_bucket", "weight": 1},
+    {"item": "minecraft:name_tag", "weight": 1},
+    {"item": "minecraft:pointed_dripstone", "weight": 1}
   ]
 }

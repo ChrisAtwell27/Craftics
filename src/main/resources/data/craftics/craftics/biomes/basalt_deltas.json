@@ -22,7 +22,7 @@
   },
   "loot": [
     {"item": "minecraft:blackstone", "weight": 8},
-    {"item": "minecraft:blaze_rod", "weight": 4},
+    {"item": "minecraft:blaze_rod", "weight": 5},
     {"item": "minecraft:wither_skeleton_skull", "weight": 1},
     {"item": "minecraft:nether_brick", "weight": 6},
     {"item": "minecraft:netherite_scrap", "weight": 2},

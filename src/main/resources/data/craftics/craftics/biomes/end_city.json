@@ -27,6 +27,7 @@
     {"item": "minecraft:cobblestone", "weight": 4},
     {"item": "minecraft:diamond", "weight": 2},
     {"item": "minecraft:emerald", "weight": 1},
+    {"item": "minecraft:echo_shard", "weight": 1},
     {"item": "minecraft:enchanted_book", "weight": 1}
   ],
   "enchantment_loot": [

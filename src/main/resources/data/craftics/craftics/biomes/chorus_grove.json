@@ -26,7 +26,7 @@
     {"item": "minecraft:ender_pearl", "weight": 4},
     {"item": "minecraft:diamond", "weight": 2},
     {"item": "minecraft:cobblestone", "weight": 4},
-    {"item": "minecraft:amethyst_shard", "weight": 2},
+    {"item": "minecraft:amethyst_shard", "weight": 3},
     {"item": "minecraft:emerald", "weight": 1},
     {"item": "minecraft:enchanted_book", "weight": 1}
   ],

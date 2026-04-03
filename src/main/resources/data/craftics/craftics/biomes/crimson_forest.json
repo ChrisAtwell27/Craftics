@@ -23,7 +23,7 @@
   "loot": [
     {"item": "minecraft:crimson_planks", "weight": 8},
     {"item": "minecraft:leather", "weight": 6},
-    {"item": "minecraft:gold_ingot", "weight": 5},
+    {"item": "minecraft:gold_ingot", "weight": 6},
     {"item": "minecraft:shroomlight", "weight": 3},
     {"item": "minecraft:cobblestone", "weight": 4},
     {"item": "minecraft:quartz", "weight": 2}

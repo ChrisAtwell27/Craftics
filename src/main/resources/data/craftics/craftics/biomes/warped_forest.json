@@ -23,11 +23,11 @@
   "loot": [
     {"item": "minecraft:warped_planks", "weight": 8},
     {"item": "minecraft:ender_pearl", "weight": 4},
-    {"item": "minecraft:gold_ingot", "weight": 5},
+    {"item": "minecraft:gold_ingot", "weight": 6},
     {"item": "minecraft:twisting_vines", "weight": 6},
     {"item": "minecraft:cobblestone", "weight": 4},
     {"item": "minecraft:quartz", "weight": 2},
-    {"item": "minecraft:amethyst_shard", "weight": 1},
-    {"item": "minecraft:breeze_rod", "weight": 2}
+    {"item": "minecraft:amethyst_shard", "weight": 2},
+    {"item": "minecraft:breeze_rod", "weight": 3}
   ]
 }
