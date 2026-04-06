@@ -45,6 +45,7 @@ public class CombatEntity {
     private int rangeOverride = -1; // if set, overrides base range
     private boolean backgroundBoss = false; // true = occupies tiles for targeting but doesn't block movement
     private int visualProjectileEntityId = -1; // MC entity ID of the visual fireball/skull entity
+    private boolean deathProcessed = false; // guards against double death handling
 
     public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
                         int maxHp, int attackPower, int defense, int range) {
@@ -87,6 +88,8 @@ public class CombatEntity {
     public void setBackgroundBoss(boolean bg) { this.backgroundBoss = bg; }
     public int getVisualProjectileEntityId() { return visualProjectileEntityId; }
     public void setVisualProjectileEntityId(int id) { this.visualProjectileEntityId = id; }
+    public boolean isDeathProcessed() { return deathProcessed; }
+    public void markDeathProcessed() { this.deathProcessed = true; }
 
     /** Minimum manhattan distance from a point to any tile this entity occupies. */
     public int minDistanceTo(GridPos from) {

@@ -116,10 +116,12 @@ public class PlayerCombatStats {
         int cx = from.x() + dx;
         int cz = from.z() + dz;
 
-        // Walk along the line checking for obstacles
+        // Walk along the line checking for obstacles and blocking entities
         while (cx != to.x() || cz != to.z()) {
-            var tile = arena.getTile(new com.crackedgames.craftics.core.GridPos(cx, cz));
+            var intermediatePos = new com.crackedgames.craftics.core.GridPos(cx, cz);
+            var tile = arena.getTile(intermediatePos);
             if (tile == null || !tile.isWalkable()) return false; // blocked by wall/obstacle
+            if (arena.isEnemyOccupied(intermediatePos)) return false; // blocked by entity in the way
             cx += dx;
             cz += dz;
         }
@@ -262,14 +264,18 @@ public class PlayerCombatStats {
                 if (potionContents != null) {
                     for (var effect : potionContents.getEffects()) {
                         var effectType = effect.getEffectType().value();
-                        stack.decrement(1);
-                        if (effectType == net.minecraft.entity.effect.StatusEffects.POISON.value()) return "poison";
-                        if (effectType == net.minecraft.entity.effect.StatusEffects.SLOWNESS.value()) return "slowness";
-                        if (effectType == net.minecraft.entity.effect.StatusEffects.WEAKNESS.value()) return "weakness";
-                        if (effectType == net.minecraft.entity.effect.StatusEffects.INSTANT_DAMAGE.value()) return "harming";
-                        if (effectType == net.minecraft.entity.effect.StatusEffects.INSTANT_HEALTH.value()) return "healing";
-                        if (effectType == net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE.value()) return "fire_resistance";
-                        return "unknown";
+                        String result = null;
+                        if (effectType == net.minecraft.entity.effect.StatusEffects.POISON.value()) result = "poison";
+                        else if (effectType == net.minecraft.entity.effect.StatusEffects.SLOWNESS.value()) result = "slowness";
+                        else if (effectType == net.minecraft.entity.effect.StatusEffects.WEAKNESS.value()) result = "weakness";
+                        else if (effectType == net.minecraft.entity.effect.StatusEffects.INSTANT_DAMAGE.value()) result = "harming";
+                        else if (effectType == net.minecraft.entity.effect.StatusEffects.INSTANT_HEALTH.value()) result = "healing";
+                        else if (effectType == net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE.value()) result = "fire_resistance";
+                        if (result != null) {
+                            stack.decrement(1);
+                            return result;
+                        }
+                        // Unrecognized effect — don't consume, skip to next effect
                     }
                 }
                 // Regular tipped arrow with no recognized effect — consume as normal arrow

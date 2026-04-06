@@ -74,7 +74,7 @@ public class CombatManager {
 
     /** Tick all active combat instances. */
     public static void tickAll() {
-        for (CombatManager cm : INSTANCES.values()) {
+        for (CombatManager cm : new java.util.ArrayList<>(INSTANCES.values())) {
             cm.tick();
         }
     }
@@ -226,10 +226,11 @@ public class CombatManager {
     private LevelDefinition levelDef;
     private List<CombatEntity> enemies;
     private int eggSacIdCounter = 10000;
-    // Mobs shrinking via Pehkui death anim — (mob, ticksRemaining)
-    private final List<MobEntity> dyingMobs = new ArrayList<>();
-    private final List<Integer> dyingMobTimers = new ArrayList<>();
-    private final List<Float> dyingMobStartScales = new ArrayList<>(); // original scale for gradual shrink
+    // Mobs shrinking via Pehkui death anim
+    private record DyingMob(MobEntity mob, int timer, float startScale) {
+        DyingMob withTimer(int t) { return new DyingMob(mob, t, startScale); }
+    }
+    private final List<DyingMob> dyingMobs = new ArrayList<>();
     private CombatPhase phase;
     private int playerDeathAnimTick = 0;
     private static final int PLAYER_DEATH_ANIM_TICKS = 60; // ~3 seconds at 20 TPS
@@ -367,6 +368,7 @@ public class CombatManager {
             } else {
                 // Nobody left — end combat
                 endCombat();
+                return;
             }
         }
 
@@ -800,9 +802,8 @@ public class CombatManager {
                 e.takeDamage(e.getCurrentHp() + e.getDefense() + 9999);
                 MobEntity mob = e.getMobEntity();
                 if (mob != null && mob.isAlive()) {
-                    startDeathShrink(mob);
-                    dyingMobs.add(mob);
-                    dyingMobTimers.add(20);
+                    float scale = startDeathShrink(mob);
+                    dyingMobs.add(new DyingMob(mob, 20, scale));
                 }
             }
         }
@@ -2532,7 +2533,8 @@ public class CombatManager {
     }
 
     private void checkAndHandleDeath(CombatEntity entity) {
-        if (!entity.isAlive()) {
+        if (!entity.isAlive() && !entity.isDeathProcessed()) {
+            entity.markDeathProcessed();
             // Notify bosses of minion death (crystals, turrets, chains, etc.)
             if (!entity.isBoss()) {
                 notifyBossOfMinionDeath(entity);
@@ -2571,9 +2573,8 @@ public class CombatManager {
             // Shrink animation then discard (instead of instant removal)
             MobEntity mob = entity.getMobEntity();
             if (mob != null) {
-                startDeathShrink(mob);
-                dyingMobs.add(mob);
-                dyingMobTimers.add(20);
+                float scale = startDeathShrink(mob);
+                dyingMobs.add(new DyingMob(mob, 20, scale));
             }
             sendToAllParty(new CombatEventPayload(
                 CombatEventPayload.EVENT_DIED, entity.getEntityId(), 0, 0,
@@ -3054,11 +3055,10 @@ public class CombatManager {
         }
     }
 
-    /** Start a dying mob's gradual shrink + death particles. */
-    private void startDeathShrink(MobEntity mob) {
+    /** Start a dying mob's gradual shrink + death particles. Returns original scale. */
+    private float startDeathShrink(MobEntity mob) {
         var scaleAttr = mob.getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
         float startScale = scaleAttr != null ? (float) scaleAttr.getBaseValue() : 1.0f;
-        dyingMobStartScales.add(startScale);
 
         // Hurt flash + death sound
         mob.setHealth(0);
@@ -3069,6 +3069,7 @@ public class CombatManager {
                 mob.getX(), mob.getY() + mob.getHeight() / 2, mob.getZ(),
                 10, 0.3, 0.3, 0.3, 0.02);
         }
+        return startScale;
     }
 
     private void tickReacting() {
@@ -3861,29 +3862,26 @@ public class CombatManager {
 
         // Tick dying mobs (gradual shrink animation + particles then discard)
         for (int i = dyingMobs.size() - 1; i >= 0; i--) {
-            int remaining = dyingMobTimers.get(i) - 1;
-            MobEntity dyingMob = dyingMobs.get(i);
+            DyingMob dm = dyingMobs.get(i);
+            int remaining = dm.timer() - 1;
             if (remaining <= 0) {
-                dyingMob.discard();
+                dm.mob().discard();
                 dyingMobs.remove(i);
-                dyingMobTimers.remove(i);
-                dyingMobStartScales.remove(i);
             } else {
-                dyingMobTimers.set(i, remaining);
+                dyingMobs.set(i, dm.withTimer(remaining));
                 // Gradual shrink: interpolate from original scale to near-zero over 15 ticks
-                float startScale = i < dyingMobStartScales.size() ? dyingMobStartScales.get(i) : 1.0f;
                 int totalShrinkTicks = 15;
                 int elapsed = 20 - remaining; // total timer is 20
                 float progress = Math.min(1.0f, (float) elapsed / totalShrinkTicks);
                 float eased = progress * progress; // accelerating shrink
-                float currentScale = startScale * (1.0f - eased) + 0.01f * eased;
-                var scaleAttr = dyingMob.getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
+                float currentScale = dm.startScale() * (1.0f - eased) + 0.01f * eased;
+                var scaleAttr = dm.mob().getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
                 if (scaleAttr != null) scaleAttr.setBaseValue(currentScale);
 
                 // Smoke particles during shrink
-                if (elapsed % 3 == 0 && dyingMob.getWorld() instanceof ServerWorld sw) {
+                if (elapsed % 3 == 0 && dm.mob().getWorld() instanceof ServerWorld sw) {
                     sw.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
-                        dyingMob.getX(), dyingMob.getY() + 0.3, dyingMob.getZ(),
+                        dm.mob().getX(), dm.mob().getY() + 0.3, dm.mob().getZ(),
                         3, 0.2, 0.2, 0.2, 0.01);
                 }
             }
@@ -3948,7 +3946,7 @@ public class CombatManager {
         double endY = endBlock.getY();
         double endZ = endBlock.getZ() + 0.5;
 
-        float progress = Math.min(1.0f, (float) moveTickCounter / MOVE_TICKS);
+        float progress = Math.min(1.0f, (float) moveTickCounter / getMoveTicks());
 
         // Smooth lerp with walking animation
         double x = lerpStartX + (endX - lerpStartX) * progress;
@@ -3984,7 +3982,7 @@ public class CombatManager {
         }
 
         // Tile reached — advance to next
-        if (moveTickCounter >= MOVE_TICKS) {
+        if (moveTickCounter >= getMoveTicks()) {
             arena.setPlayerGridPos(next);
             // Sound: footstep
             if (player != null) {
@@ -8013,9 +8011,8 @@ public class CombatManager {
                     mob.getX(), mob.getY() + 1.0, mob.getZ(), 20, 2.0, 1.5, 2.0, 0.03);
             }
             // Pehkui death shrink — mob shrinks to 0 then gets discarded after delay
-            startDeathShrink(mob);
-            dyingMobs.add(mob);
-            dyingMobTimers.add(20); // discard after 20 ticks (shrink anim is 15)
+            float scale = startDeathShrink(mob);
+            dyingMobs.add(new DyingMob(mob, 20, scale));
         }
         // Check if all enemies are dead or allied
         boolean allDead = enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly());
@@ -8358,6 +8355,9 @@ public class CombatManager {
      * goHome = false: continue to next level (with possible trader encounter)
      */
     public void handlePostLevelChoice(ServerPlayerEntity choicePlayer, boolean goHome) {
+        // Reject if combat is mid-fight (not in a post-level state)
+        if (active && phase != CombatPhase.LEVEL_COMPLETE) return;
+
         // Handle trial chamber choice (not in active combat — player ref was nulled by endCombat)
         if (trialChamberPending) {
             trialChamberPending = false;
@@ -9786,6 +9786,7 @@ public class CombatManager {
     }
 
     public void handleTraderDone(ServerPlayerEntity player) {
+        if (spawnedTrader == null) return; // no active trader session
         // Collect remaining emerald items from inventory back into currency
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);

@@ -49,20 +49,22 @@ public class CombatEffects {
         public final EffectType type;
         public int turnsRemaining; // -1 = frozen (hub-applied, waiting for combat)
         public int amplifier;     // 0 = level I, 1 = level II, etc.
+        public int frozenDefaultTurns; // stored duration for when a frozen effect unfreezes
 
         public ActiveEffect(EffectType type, int turns, int amplifier) {
             this.type = type;
             this.turnsRemaining = turns;
             this.amplifier = amplifier;
+            this.frozenDefaultTurns = turns;
         }
 
         public boolean isFrozen() {
             return turnsRemaining == -1;
         }
 
-        public void unfreeze(int turns) {
+        public void unfreeze(int fallbackTurns) {
             if (isFrozen()) {
-                this.turnsRemaining = turns;
+                this.turnsRemaining = frozenDefaultTurns > 0 ? frozenDefaultTurns : fallbackTurns;
             }
         }
     }
@@ -82,10 +84,9 @@ public class CombatEffects {
      * The defaultTurns will be set when combat starts.
      */
     public void addFrozenEffect(EffectType type, int defaultTurns, int amplifier) {
-        effects.put(type, new ActiveEffect(type, -1, amplifier));
-        // Store default turns in amplifier slot temporarily? No, use a separate field.
-        // Actually, just store it as frozen. When combat starts, unfreeze with the duration.
-        effects.get(type).turnsRemaining = -1;
+        ActiveEffect effect = new ActiveEffect(type, -1, amplifier);
+        effect.frozenDefaultTurns = defaultTurns;
+        effects.put(type, effect);
     }
 
     /**

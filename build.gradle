@@ -25,10 +25,6 @@ repositories {
 		url = 'https://maven.wispforest.io/releases/'
 	}
 	maven {
-		name = 'BlameJared'
-		url = 'https://maven.blamejared.com'
-	}
-	maven {
 		name = 'JitPack'
 		url = 'https://jitpack.io'
 	}
@@ -90,9 +86,6 @@ dependencies {
 	modImplementation "io.wispforest:owo-lib:0.12.15.4+1.21"
 	include "io.wispforest:owo-sentinel:0.12.15.4+1.21"
 	annotationProcessor "io.wispforest:owo-lib:0.12.15.4+1.21"
-
-	// Patchouli — in-game guide book
-	modImplementation "vazkii.patchouli:Patchouli:1.21.1-93-FABRIC"
 
 	// Pehkui — entity scaling (bosses, baby mobs)
 	modApi("com.github.Virtuoel:Pehkui:3.8.3") {

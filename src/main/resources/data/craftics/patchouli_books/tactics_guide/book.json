@@ -1,9 +1,0 @@
-{
-  "name": "Craftics Field Manual",
-  "landing_text": "Welcome, Tactician! This manual covers everything you need to survive grid-based combat. Learn about turns, action points, enemy behaviors, and how to grow stronger.",
-  "book_texture": "patchouli:textures/gui/book_brown.png",
-  "model": "patchouli:book_brown",
-  "show_progress": false,
-  "use_resource_pack": true,
-  "version": 1
-}
