@@ -62,8 +62,8 @@ public class RandomEvents {
             desc = "\u00a76\u00a7l\u2726 JACKPOT! \u2726 \u00a7r\u00a76Triple emeralds returned!";
         }
 
-        player.getInventory().insertStack(reward);
         String rewardName = reward.getName().getString();
+        player.getInventory().insertStack(reward);
         return "\u00a7e\u00a7lShrine of Fortune! \u00a7r\u00a77(" + cost + " emeralds offered)\n" + desc + "\n\u00a77Received: \u00a7f" + rewardName;
     }
 
@@ -118,8 +118,8 @@ public class RandomEvents {
             };
         }
 
-        player.getInventory().insertStack(reward);
         String rewardName = reward.getName().getString();
+        player.getInventory().insertStack(reward);
         return "\u00a7e\u00a7lWounded Traveler! \u00a7r\u00a77You give " + foodName + ".\n\u00a7a\"Thank you, brave warrior!\"\n\u00a77Received: \u00a7f" + rewardName;
     }
 
@@ -135,8 +135,8 @@ public class RandomEvents {
             var sherdList = new java.util.ArrayList<>(PotterySherdSpells.POTTERY_SHERDS);
             net.minecraft.item.Item sherd = sherdList.get(rng.nextInt(sherdList.size()));
             ItemStack reward = new ItemStack(sherd, 1);
-            player.getInventory().insertStack(reward);
             String sherdName = reward.getName().getString();
+            player.getInventory().insertStack(reward);
             return "\u00a76\u00a7l\u2726 " + blockName + "! \u2726\n"
                 + "\u00a77You carefully brush away the layers...\n"
                 + "\u00a7a\u00a7lYou uncover an ancient pottery sherd!\n"
@@ -146,8 +146,8 @@ public class RandomEvents {
             ItemStack consolation = isSand
                 ? new ItemStack(Items.CLAY_BALL, 2)
                 : new ItemStack(Items.FLINT, 2);
-            player.getInventory().insertStack(consolation);
             String consolationName = consolation.getName().getString();
+            player.getInventory().insertStack(consolation);
             return "\u00a76\u00a7l\u2726 " + blockName + "! \u2726\n"
                 + "\u00a77You carefully brush away the layers...\n"
                 + "\u00a77Nothing of value — just " + consolationName.toLowerCase() + ".\n"

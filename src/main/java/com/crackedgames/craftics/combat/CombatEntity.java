@@ -2,6 +2,7 @@ package com.crackedgames.craftics.combat;
 
 import com.crackedgames.craftics.core.GridPos;
 import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.nbt.NbtCompound;
 
 public class CombatEntity {
     private final int entityId;
@@ -26,6 +27,7 @@ public class CombatEntity {
     private int poisonTurns = 0; // turns of poison remaining
     private int poisonAmplifier = 0; // 0 = level I (1 dmg/turn), 1 = level II (2 dmg/turn)
     private boolean enraged = false; // for vindicator/warden rage mechanic
+    private boolean drownedHasTrident = false; // drowned-specific: determines if ranged or melee
     private int defensePenalty = 0; // temporary defense reduction (from Scrape sherd)
     private int defensePenaltyTurns = 0;
     private int burningTurns = 0; // fire damage over time
@@ -36,6 +38,8 @@ public class CombatEntity {
     private int confusionAmplifier = 0; // 0 = level I, 1 = level II, etc.
     private int slownessTurns = 0; // turns of slowness remaining
     private int slownessPenalty = 0; // speed reduction while slowed
+    private int bleedStacks = 0; // each stack = +1 bonus damage when attacked
+    private int permanentDefReduction = 0; // permanent defense shred (from Breach)
     private int attackBoost = 0; // permanent attack boost (from pet stats override)
     private int defenseBoost = 0; // permanent defense boost (from pet stats override)
     private int rangeOverride = -1; // if set, overrides base range
@@ -129,6 +133,8 @@ public class CombatEntity {
     public int getSpeedBonus() { return speedBonus; }
     public boolean isEnraged() { return enraged; }
     public void setEnraged(boolean e) { this.enraged = e; }
+    public boolean isDrownedWithTrident() { return drownedHasTrident; }
+    public void setDrownedWithTrident(boolean hasTrident) { this.drownedHasTrident = hasTrident; }
     public int getAttackPenalty() { return attackPenalty; }
     public void setAttackPenalty(int p) { this.attackPenalty = p; }
     public int getPoisonTurns() { return poisonTurns; }
@@ -206,6 +212,16 @@ public class CombatEntity {
     public boolean isAlly() { return ally; }
     public void setAlly(boolean a) { this.ally = a; }
 
+    /** UUID of the player who owns this pet (null if not owned by a party member). */
+    private java.util.UUID ownerUuid = null;
+    public java.util.UUID getOwnerUuid() { return ownerUuid; }
+    public void setOwnerUuid(java.util.UUID uuid) { this.ownerUuid = uuid; }
+
+    /** Original hub-world NBT snapshot for this pet (null for non-hub-tamed allies). */
+    private NbtCompound originalHubNbt = null;
+    public NbtCompound getOriginalHubNbt() { return originalHubNbt; }
+    public void setOriginalHubNbt(NbtCompound nbt) { this.originalHubNbt = nbt; }
+
     private boolean mounted = false;
     public boolean isMounted() { return mounted; }
     public void setMounted(boolean m) { this.mounted = m; }
@@ -235,6 +251,13 @@ public class CombatEntity {
     public void setSlownessTurns(int t) { this.slownessTurns = t; }
     public int getSlownessPenalty() { return slownessPenalty; }
     public void setSlownessPenalty(int p) { this.slownessPenalty = p; }
+    public int getBleedStacks() { return bleedStacks; }
+    public void setBleedStacks(int s) { this.bleedStacks = s; }
+    /** Add bleed stacks (each stack = +1 bonus damage when this entity is attacked). */
+    public void stackBleed(int stacks) { this.bleedStacks = Math.min(MAX_EFFECT_AMPLIFIER, this.bleedStacks + stacks); }
+    public int getPermanentDefReduction() { return permanentDefReduction; }
+    /** Permanently reduce defense (stacks, no expiry). Used by Breach. */
+    public void addPermanentDefReduction(int amount) { this.permanentDefReduction += amount; }
 
     // === Effect stacking helpers ===
     // Duration refreshes to the longer value; intensity stacks additively up to a cap.
@@ -278,7 +301,7 @@ public class CombatEntity {
     }
 
     public int getEffectiveDefense() {
-        return Math.max(0, defense - defensePenalty);
+        return Math.max(0, defense - defensePenalty - permanentDefReduction);
     }
 
     public int takeDamage(int rawDamage) {
@@ -286,6 +309,10 @@ public class CombatEntity {
         int effectiveDef = getEffectiveDefense();
         double reduction = Math.min(0.60, effectiveDef * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
+        // Bleed: each stack adds +1 bonus damage when attacked
+        if (bleedStacks > 0) {
+            actual += bleedStacks;
+        }
         currentHp = Math.max(0, currentHp - actual);
         damagedSinceLastTurn = true;
         if (currentHp == 0) {
@@ -310,6 +337,16 @@ public class CombatEntity {
 
     public static int getDefaultSizeStatic(String entityTypeId) {
         return getDefaultSize(entityTypeId);
+    }
+
+    /** Returns true for mobs that must spawn and live on water tiles. */
+    public static boolean isAquatic(String entityTypeId) {
+        return switch (entityTypeId) {
+            case "minecraft:cod", "minecraft:salmon", "minecraft:tropical_fish",
+                 "minecraft:pufferfish", "minecraft:squid", "minecraft:glow_squid",
+                 "minecraft:axolotl", "minecraft:dolphin" -> true;
+            default -> false;
+        };
     }
 
     private static int getDefaultSize(String entityTypeId) {

@@ -87,7 +87,7 @@ public class PlayerCombatStats {
 
     public static int getWeaponRange(ServerPlayerEntity player) {
         Item weapon = player.getMainHandStack().getItem();
-        if (weapon == Items.BOW && hasArrows(player)) return 3;
+        if (weapon == Items.BOW && hasArrows(player)) return 3 + getBowPowerRange(player);
         if (weapon == Items.CROSSBOW && hasArrows(player)) return RANGE_CROSSBOW_ROOK;
         // Trident: melee at range 1; throw handled separately in CombatManager
         if (weapon == Items.TRIDENT) return TRIDENT_THROW_RANGE;
@@ -308,22 +308,56 @@ public class PlayerCombatStats {
 
     // ─── Weapon enchantment bonuses ─────────────────────────────────────
 
-    /** Get bonus attack damage from weapon enchantments (Sharpness, Smite, Bane of Arthropods). */
+    /** Get bonus attack damage from weapon enchantments.
+     *  Sharpness: +1 flat damage per level (bleed applied separately in WeaponAbility).
+     *  Smite/Bane: no longer flat damage — applied as AoE/debuff effects in WeaponAbility. */
     public static int getWeaponEnchantBonus(ServerPlayerEntity player) {
         ItemStack weapon = player.getMainHandStack();
         int bonus = 0;
         // Sharpness: +1 damage per level
         bonus += getEnchantLevel(weapon, "minecraft:sharpness");
-        // Smite: +2 damage per level (vs undead — applied generically in tactical combat)
-        bonus += getEnchantLevel(weapon, "minecraft:smite") * 2;
-        // Bane of Arthropods: +2 per level
-        bonus += getEnchantLevel(weapon, "minecraft:bane_of_arthropods") * 2;
         return bonus;
+    }
+
+    /** Sharpness level on weapon. */
+    public static int getSharpness(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:sharpness");
+    }
+
+    /** Smite level on weapon. */
+    public static int getSmite(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:smite");
+    }
+
+    /** Bane of Arthropods level on weapon. */
+    public static int getBane(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:bane_of_arthropods");
     }
 
     /** Check if weapon has Fire Aspect. Returns level (0 = none). */
     public static int getFireAspect(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:fire_aspect");
+    }
+
+    /** Returns true if the entity type is undead (for Smite). */
+    public static boolean isUndead(String entityTypeId) {
+        return switch (entityTypeId) {
+            case "minecraft:zombie", "minecraft:husk", "minecraft:drowned",
+                 "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
+                 "minecraft:phantom", "minecraft:zombified_piglin",
+                 "minecraft:zombie_villager", "minecraft:skeleton_horse",
+                 "minecraft:zombie_horse", "minecraft:wither" -> true;
+            default -> false;
+        };
+    }
+
+    /** Returns true if the entity type is an arthropod (for Bane of Arthropods). */
+    public static boolean isArthropod(String entityTypeId) {
+        return switch (entityTypeId) {
+            case "minecraft:spider", "minecraft:cave_spider",
+                 "minecraft:silverfish", "minecraft:endermite", "minecraft:bee" -> true;
+            default -> false;
+        };
     }
 
     /** Check if weapon has Knockback. Returns level (0 = none). */
@@ -374,14 +408,38 @@ public class PlayerCombatStats {
 
     // ─── Bow enchantment bonuses ────────────────────────────────────────
 
-    /** Get Power level on bow (bonus damage). */
+    /** Get Power level on bow (bonus damage). Scaled: 1/3/5/8/11 per level. */
     public static int getBowPower(ServerPlayerEntity player) {
-        return getEnchantLevel(player.getMainHandStack(), "minecraft:power");
+        int level = getEnchantLevel(player.getMainHandStack(), "minecraft:power");
+        return switch (level) {
+            case 1 -> 1;
+            case 2 -> 3;
+            case 3 -> 5;
+            case 4 -> 8;
+            case 5 -> 11;
+            default -> level > 5 ? 11 + (level - 5) * 3 : 0;
+        };
     }
 
-    /** Check for Flame enchantment on bow. */
+    /** Get Power range bonus on bow. Scaled: 1/1/2/2/3 per level. */
+    public static int getBowPowerRange(ServerPlayerEntity player) {
+        int level = getEnchantLevel(player.getMainHandStack(), "minecraft:power");
+        return switch (level) {
+            case 1, 2 -> 1;
+            case 3, 4 -> 2;
+            case 5 -> 3;
+            default -> level > 5 ? 3 : 0;
+        };
+    }
+
+    /** Check for Flame enchantment on bow. Returns level (0 = none). */
+    public static int getBowFlame(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:flame");
+    }
+
+    /** Backwards-compatible boolean check. */
     public static boolean hasBowFlame(ServerPlayerEntity player) {
-        return getEnchantLevel(player.getMainHandStack(), "minecraft:flame") > 0;
+        return getBowFlame(player) > 0;
     }
 
     /** Check for Infinity on bow (don't consume arrows). */
@@ -443,6 +501,35 @@ public class PlayerCombatStats {
     /** Loyalty: trident returns after throwing instead of landing on the ground. */
     public static int getLoyalty(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:loyalty");
+    }
+
+    /** Impaling: bonus trident damage + bleed. */
+    public static int getImpaling(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "minecraft:impaling");
+    }
+
+    /** Get Impaling bonus damage (scaled: 1/2/5/8/10). */
+    public static int getImpalingDamage(ServerPlayerEntity player) {
+        int level = getImpaling(player);
+        return switch (level) {
+            case 1 -> 1;
+            case 2 -> 2;
+            case 3 -> 5;
+            case 4 -> 8;
+            case 5 -> 10;
+            default -> level > 5 ? 10 + (level - 5) * 2 : 0;
+        };
+    }
+
+    /** Get Impaling bleed stacks (scaled: 1/1/2/2/3). */
+    public static int getImpalingBleed(ServerPlayerEntity player) {
+        int level = getImpaling(player);
+        return switch (level) {
+            case 1, 2 -> 1;
+            case 3, 4 -> 2;
+            case 5 -> 3;
+            default -> level > 5 ? 3 : 0;
+        };
     }
 
     // ─── Tool enchantments ──────────────────────────────────────────────

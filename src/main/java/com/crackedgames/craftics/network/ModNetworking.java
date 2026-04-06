@@ -23,6 +23,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(StatChoicePayload.ID, StatChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(AffinityChoicePayload.ID, AffinityChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(EventChoicePayload.ID, EventChoicePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(RespecPayload.ID, RespecPayload.CODEC);
 
         // Register S2C payload types
         PayloadTypeRegistry.playS2C().register(EnterCombatPayload.ID, EnterCombatPayload.CODEC);
@@ -37,6 +38,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(TeammateHoverPayload.ID, TeammateHoverPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(EventRoomPayload.ID, EventRoomPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AchievementUnlockPayload.ID, AchievementUnlockPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(GuideBookSyncPayload.ID, GuideBookSyncPayload.CODEC);
 
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);
@@ -114,6 +116,11 @@ public class ModNetworking {
             float cameraYaw = ArenaBuilder.consumePendingCameraYaw();
 
             player.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
+
+            // Collect following tamed pets from the hub before entering combat
+            var hubPetSnapshots = com.crackedgames.craftics.combat.HubPetCollector
+                .collectFollowingPets(world, player, data);
+            CombatManager.get(player).setHubPetSnapshots(hubPetSnapshots);
 
             ServerPlayNetworking.send(player, new EnterCombatPayload(
                 origin.getX(), origin.getY(), origin.getZ(),
@@ -283,6 +290,83 @@ public class ModNetworking {
         ServerPlayNetworking.registerGlobalReceiver(EventChoicePayload.ID, (payload, context) -> {
             CombatManager.getActiveCombat(context.player().getUuid())
                 .handleEventChoice(context.player(), payload.choiceIndex());
+        });
+
+        // Handle respec — refund and reallocate stat points (costs XP levels)
+        ServerPlayNetworking.registerGlobalReceiver(RespecPayload.ID, (payload, context) -> {
+            ServerPlayerEntity player = context.player();
+            ServerWorld overworld = (ServerWorld) player.getEntityWorld();
+            com.crackedgames.craftics.combat.PlayerProgression progression =
+                com.crackedgames.craftics.combat.PlayerProgression.get(overworld);
+            com.crackedgames.craftics.combat.PlayerProgression.PlayerStats ps =
+                progression.getStats(player);
+            com.crackedgames.craftics.combat.PlayerProgression.Stat[] stats =
+                com.crackedgames.craftics.combat.PlayerProgression.Stat.values();
+
+            // Parse deltas
+            String[] parts = payload.statDeltas().split(":");
+            if (parts.length != stats.length) return;
+
+            int[] deltas = new int[stats.length];
+            int totalRefunded = 0;
+            int totalAllocated = 0;
+            for (int i = 0; i < stats.length; i++) {
+                try {
+                    deltas[i] = Integer.parseInt(parts[i]);
+                } catch (NumberFormatException e) { return; }
+                if (deltas[i] < 0) {
+                    totalRefunded += -deltas[i];
+                    // Ensure player actually has enough points in this stat to refund
+                    if (ps.getPoints(stats[i]) + deltas[i] < 0) return;
+                } else if (deltas[i] > 0) {
+                    totalAllocated += deltas[i];
+                }
+            }
+
+            // Validate
+            if (totalRefunded == 0 && totalAllocated == 0) return;
+
+            // Allocations beyond refunded points come from unspent pool
+            int unspentNeeded = totalAllocated - totalRefunded;
+            if (unspentNeeded > 0 && ps.unspentPoints < unspentNeeded) return;
+
+            if (player.experienceLevel < totalRefunded) {
+                player.sendMessage(net.minecraft.text.Text.literal(
+                    "\u00a7cNot enough XP levels! Need " + totalRefunded + ", have " + player.experienceLevel), false);
+                return;
+            }
+
+            // Apply: deduct XP levels, apply deltas, adjust unspent points
+            if (totalRefunded > 0) {
+                player.addExperienceLevels(-totalRefunded);
+            }
+            for (int i = 0; i < stats.length; i++) {
+                if (deltas[i] != 0) {
+                    ps.setPoints(stats[i], ps.getPoints(stats[i]) + deltas[i]);
+                }
+            }
+            // unspentNeeded > 0 means spending from pool, < 0 means returning to pool
+            ps.unspentPoints -= unspentNeeded;
+            progression.saveStats(player);
+
+            // Re-sync stats to client
+            StringBuilder statData = new StringBuilder();
+            for (com.crackedgames.craftics.combat.PlayerProgression.Stat s : stats) {
+                if (statData.length() > 0) statData.append(":");
+                statData.append(ps.getPoints(s));
+            }
+            StringBuilder affData = new StringBuilder();
+            for (com.crackedgames.craftics.combat.PlayerProgression.Affinity a : com.crackedgames.craftics.combat.PlayerProgression.Affinity.values()) {
+                if (affData.length() > 0) affData.append(":");
+                affData.append(ps.getAffinityPoints(a));
+            }
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            ServerPlayNetworking.send(player, new PlayerStatsSyncPayload(
+                ps.level, ps.unspentPoints, statData.toString(), data.getPlayerData(player.getUuid()).emeralds, affData.toString()
+            ));
+
+            player.sendMessage(net.minecraft.text.Text.literal(
+                "\u00a7aStats respecced! \u00a77(-" + totalRefunded + " XP level" + (totalRefunded != 1 ? "s" : "") + ")"), false);
         });
 
         // Handle hover updates — relay to party members

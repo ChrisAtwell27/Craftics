@@ -26,7 +26,7 @@ public class PlayerProgression extends PersistentState {
         RANGED_POWER("Ranged Power", "§d\uD83C\uDFF9", "+1 ranged damage", 0),
         VITALITY("Vitality", "§a❤", "+2 max HP", 0),
         DEFENSE("Defense", "§9\uD83D\uDEE1", "+1 damage reduction", 0),
-        LUCK("Luck", "§6✦", "+1 loot & crit chance", 0),
+        LUCK("Luck", "§6✦", "+2% all combat procs & loot", 0),
         RESOURCEFUL("Resourceful", "§2\uD83D\uDCB0", "+1 emerald/level & trader discount", 0);
 
         public final String displayName;

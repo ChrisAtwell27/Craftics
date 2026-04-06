@@ -9,6 +9,8 @@ public sealed interface EnemyAction {
     record Move(List<GridPos> path) implements EnemyAction {}
     record Attack(int damage) implements EnemyAction {}
     record MoveAndAttack(List<GridPos> path, int damage) implements EnemyAction {}
+    /** Move, attack, then reposition using remaining movement in the same turn. */
+    record MoveAttackMove(List<GridPos> approachPath, int damage, List<GridPos> retreatPath) implements EnemyAction {}
     record Flee(List<GridPos> path) implements EnemyAction {}
     record StartFuse() implements EnemyAction {}
     record Detonate() implements EnemyAction {}

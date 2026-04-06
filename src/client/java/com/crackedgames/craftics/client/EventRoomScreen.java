@@ -140,7 +140,7 @@ public class EventRoomScreen extends Screen {
     }
 
     // ── Enchanter ──
-    // Data format: "slotId:itemName:weapon|slotId:itemName:armor|..."
+    // Data format: "slotId:itemName:weapon:enchant|slotId:itemName:armor:trim|..."
     private void initEnchanter() {
         int cx = this.width / 2;
         int startY = this.height / 2 + 10;
@@ -157,10 +157,16 @@ public class EventRoomScreen extends Screen {
         int count = Math.min(entries.length, 6);
         for (int i = 0; i < count; i++) {
             String[] parts = entries[i].split(":");
+            if (parts.length < 3) continue;
             int slotId = Integer.parseInt(parts[0]);
             String itemName = parts[1];
             boolean isArmor = "armor".equals(parts[2]);
-            String hint = isArmor ? "§b+Random Trim" : "§d+Random Enchantment";
+            String enhancementType = parts.length > 3
+                ? parts[3]
+                : (isArmor ? "trim" : "enchant");
+            String hint = "trim".equals(enhancementType)
+                ? "§b+Trim"
+                : "§d+Enchantment";
             ButtonWidget btn = ButtonWidget.builder(
                 Text.literal("§f✦ Enhance " + itemName + "  " + hint),
                 b -> sendChoice(slotId)

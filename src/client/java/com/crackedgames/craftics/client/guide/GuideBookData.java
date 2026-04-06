@@ -8,7 +8,8 @@ import java.util.Map;
 /**
  * All guide book content. Categories contain entries, entries contain pages.
  * Tracks which entries are unlocked (for bestiary discovery).
- * Persists unlock state to a local file.
+ * Unlock state is server-authoritative: synced via GuideBookSyncPayload on join
+ * and whenever the server unlocks a new entry.
  */
 public class GuideBookData {
 
@@ -18,8 +19,8 @@ public class GuideBookData {
 
     private static final List<Category> CATEGORIES = new ArrayList<>();
     private static final java.util.Set<String> unlockedEntries = new java.util.HashSet<>();
-    private static final java.nio.file.Path SAVE_FILE = java.nio.file.Path.of("craftics_bestiary.txt");
-    private static boolean loaded = false;
+    /** Default entries that are always unlocked (everything except Bestiary and Armor Trims). */
+    private static final java.util.Set<String> defaultUnlocks = new java.util.HashSet<>();
 
     static {
         buildContent();
@@ -27,9 +28,11 @@ public class GuideBookData {
         for (int i = 0; i < CATEGORIES.size(); i++) {
             String catName = CATEGORIES.get(i).name();
             if (catName.equals("Enemy Bestiary") || catName.equals("Armor Trims")) continue;
-            for (Entry e : CATEGORIES.get(i).entries()) unlockedEntries.add(e.name());
+            for (Entry e : CATEGORIES.get(i).entries()) {
+                defaultUnlocks.add(e.name());
+                unlockedEntries.add(e.name());
+            }
         }
-        loadUnlocks();
     }
 
     public static List<Category> getCategories() { return CATEGORIES; }
@@ -38,46 +41,32 @@ public class GuideBookData {
         return unlockedEntries.contains(entryName);
     }
 
-    public static void unlock(String entryName) {
-        if (unlockedEntries.add(entryName)) {
-            saveUnlocks();
+    /**
+     * Apply a full sync from the server. Replaces all non-default unlock state
+     * with the server-provided set. Called when GuideBookSyncPayload is received.
+     * @param pipeDelimited pipe-separated entry names from server (bestiary + trims only)
+     */
+    public static void applySyncFromServer(String pipeDelimited) {
+        // Reset to defaults only
+        unlockedEntries.clear();
+        unlockedEntries.addAll(defaultUnlocks);
+        // Add server-provided entries
+        if (pipeDelimited != null && !pipeDelimited.isEmpty()) {
+            for (String entry : pipeDelimited.split("\\|")) {
+                if (!entry.isEmpty()) unlockedEntries.add(entry);
+            }
         }
     }
 
-    private static void saveUnlocks() {
-        try {
-            // Only save bestiary + trim entries (non-default unlocks)
-            java.util.Set<String> defaultUnlocks = new java.util.HashSet<>();
-            for (int i = 0; i < CATEGORIES.size(); i++) {
-                String catName = CATEGORIES.get(i).name();
-                if (catName.equals("Enemy Bestiary") || catName.equals("Armor Trims")) continue;
-                for (Entry e : CATEGORIES.get(i).entries()) defaultUnlocks.add(e.name());
-            }
-            List<String> toSave = new ArrayList<>();
-            for (String name : unlockedEntries) {
-                if (!defaultUnlocks.contains(name)) toSave.add(name);
-            }
-            java.nio.file.Files.write(SAVE_FILE, toSave);
-        } catch (Exception ignored) {}
+    /**
+     * Local-only unlock for immediate UI feedback during combat.
+     * The server is authoritative — this just prevents a visual delay.
+     */
+    public static void unlockLocal(String entryName) {
+        unlockedEntries.add(entryName);
     }
 
-    private static void loadUnlocks() {
-        if (loaded) return;
-        loaded = true;
-        try {
-            if (java.nio.file.Files.exists(SAVE_FILE)) {
-                List<String> lines = java.nio.file.Files.readAllLines(SAVE_FILE);
-                unlockedEntries.addAll(lines);
-            }
-        } catch (Exception ignored) {}
-    }
-
-    /** Unlock the Armor Trims guide entry (called when player receives a trim template). */
-    public static void unlockTrims() {
-        unlock("How Trims Work");
-    }
-
-    /** Unlock a bestiary entry by mob type ID (e.g. "minecraft:zombie", "minecraft:ender_dragon") */
+    /** Unlock a bestiary entry locally by mob type ID (for immediate UI feedback during combat). */
     public static void unlockMob(String entityTypeId) {
         String raw = entityTypeId;
         int colon = raw.indexOf(':');
@@ -91,7 +80,7 @@ public class GuideBookData {
                 sb.append(part.substring(0, 1).toUpperCase()).append(part.substring(1));
             }
         }
-        unlock(sb.toString());
+        unlockLocal(sb.toString());
     }
 
     /** Shorthand for creating a bestiary mob entry. Uses mob name as both entry name and page title. */
@@ -202,7 +191,7 @@ public class GuideBookData {
         // Hostile - Overworld
         enemies.add(mob("Zombie", "Speed: 2 | Range: 1\n\nBasic melee grunt. Baby zombies are faster. Armed variants hit harder.\n\nWeak to: Blunt, Cleaving"));
         enemies.add(mob("Husk", "Speed: 2 | Range: 1\n\nDesert zombie variant. Tougher in dry heat.\n\nWeak to: Blunt, Water"));
-        enemies.add(mob("Drowned", "Speed: 2 | Range: 1-3\n\nAquatic zombie. Some carry tridents for ranged attacks.\n\nWeak to: Blunt, Cleaving\nResist: Water"));
+        enemies.add(mob("Drowned", "Speed: 2 | Range: 1-3\n\nAquatic zombie. 50% spawn with tridents; they throw diagonally at range ≤3. Non-trident drowns are pure melee.\n\nWeak to: Blunt, Cleaving\nResist: Water"));
         enemies.add(mob("Skeleton", "Speed: 2 | Range: 3\n\nRanged archer. Keeps distance and retreats if you close in.\n\nWeak to: Blunt\nResist: Ranged"));
         enemies.add(mob("Stray", "Speed: 2 | Range: 3\n\nFrozen skeleton variant. Slowness arrows!\n\nWeak to: Blunt\nResist: Ranged, Water"));
         enemies.add(mob("Creeper", "Speed: 2 | Special: Explode\n\nSneaks close then detonates! Massive AoE damage to everything nearby.\n\nWeak to: Ranged, Cleaving\nResist: Slashing"));
@@ -302,7 +291,7 @@ public class GuideBookData {
             new Page("Defensive & Utility",
                 "Vitality - +2 max HP/point.\n\n" +
                 "Defense - -1 incoming damage/point.\n\n" +
-                "Luck - Better loot & crit chance.\n\n" +
+                "Luck - +2%/pt to ALL combat procs, crits & loot.\n\n" +
                 "Resourceful - +1 emerald/level & trader discounts."),
             new Page("Build Tips",
                 "Glass Cannon: Max Power + AP for burst.\n\n" +
@@ -337,20 +326,37 @@ public class GuideBookData {
                 "No AP cost - purely strategic! End turn early to tank hits.")
         )));
         equipment.add(new Entry("Enchantments", "minecraft:enchanted_book", List.of(
-            new Page("Weapon Enchantments",
-                "Enchantments are ACTIVE in combat!\n\n" +
-                "Sharpness: +1 ATK per level\n" +
-                "Smite/Bane: +2 ATK per level\n" +
-                "Fire Aspect: Ignites enemies\n" +
-                "Knockback: Extended push\n\n" +
-                "Enchant your gear at an enchanting table before combat!"),
-            new Page("Armor & Bow Enchantments",
-                "Protection (all types): +1 DEF per 2 levels\n" +
-                "Thorns: 15%/lvl chance to reflect damage\n\n" +
-                "Power: +1 ranged ATK/lvl\n" +
-                "Flame: Ignite with arrows\n" +
-                "Infinity: Free arrow ammo\n\n" +
-                "Mace: Density (+AoE), Breach (armor pen), Wind Burst (+KB range)")
+            new Page("Sword Enchantments",
+                "Sharpness: +1 ATK/lvl + applies Bleed stacks. Each stack = +1 bonus damage when enemy is attacked.\n\n" +
+                "Smite: AoE radiant burst vs undead. All undead in radius take bonus damage.\n\n" +
+                "Bane of Arthropods: Injects venom into arthropods — Poison + Slowness. Spreads on death.\n\n" +
+                "Fire Aspect: Cone of fire in swing direction. Burns all enemies in the cone."),
+            new Page("Sword Enchantments (2)",
+                "Knockback: Directional shockwave. Pushes target + enemies behind them. Wall collision = bonus damage.\n\n" +
+                "Sweeping Edge: 360° spin hitting ALL adjacent enemies. Lv1: 60%, Lv2: 75%, Lv3: 90% damage + knockback.\n\n" +
+                "Looting: Extra loot drops on kill (+50%/+100%/+150%)."),
+            new Page("Bow & Crossbow Enchantments",
+                "Power: +damage and +range per level.\n\n" +
+                "Flame: Burns target and all adjacent enemies.\n\n" +
+                "Infinity: Never consume arrows (only need 1).\n\n" +
+                "Punch: Radial knockback burst on impact. Collision damage.\n\n" +
+                "Quick Charge: Reduces crossbow AP cost.\n" +
+                "Multishot: 3 bolts in a fan (45° angles).\n" +
+                "Piercing: Bolts pierce through enemies + inflict Bleed."),
+            new Page("Mace Enchantments",
+                "Density: Gravity well — pulls nearby enemies to impact point. Crushing bonus damage.\n\n" +
+                "Breach: Permanently reduces target defense per hit. Stacks all combat.\n\n" +
+                "Wind Burst: Shockwave knockback on all adjacent + buffs next Mace hit damage."),
+            new Page("Trident Enchantments",
+                "Impaling: +damage per level + inflicts Bleed stacks.\n\n" +
+                "Channeling: Chain lightning on throw hit. Prioritizes Soaked enemies (2x damage). Lv1=1, Lv2=3, Lv3=5 chains.\n\n" +
+                "Loyalty: Trident ricochets to nearby enemies before returning. +1 ricochet per level (50% damage).\n\n" +
+                "Riptide: Dash through enemies instead of throwing."),
+            new Page("Armor Enchantments",
+                "Protection: +1 DEF per 2 levels.\n\n" +
+                "Fire Protection: Reduces fire damage (25%/50%/75%/100%).\n\n" +
+                "Thorns: Guaranteed damage reflection (15%/25%/35% of damage taken).\n\n" +
+                "Feather Falling: Knockback immunity. Attackers recoil off you.")
         )));
         equipment.add(new Entry("Tipped Arrows", "minecraft:tipped_arrow", List.of(
             new Page("Arrow Effects",

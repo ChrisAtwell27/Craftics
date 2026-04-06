@@ -44,7 +44,7 @@ public class AxolotlAI implements EnemyAI {
             // Move toward target on water only
             GridPos moveTarget = findWaterAdjacentTo(arena, myPos, targetPos, self.getMoveSpeed());
             if (moveTarget != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, moveTarget, self.getMoveSpeed(), self);
+                List<GridPos> path = Pathfinding.findPath(arena, myPos, moveTarget, self.getMoveSpeed(), self, true);
                 if (!path.isEmpty() && allWater(arena, path)) {
                     GridPos endPos = path.get(path.size() - 1);
                     if (endPos.manhattanDistance(targetPos) <= 1) {
@@ -116,7 +116,7 @@ public class AxolotlAI implements EnemyAI {
                 if (!arena.isInBounds(target) || arena.isOccupied(target)) continue;
                 var tile = arena.getTile(target);
                 if (tile == null || !tile.isWater()) continue;
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, target, d, self);
+                List<GridPos> path = Pathfinding.findPath(arena, myPos, target, d, self, true);
                 if (!path.isEmpty() && allWater(arena, path)) {
                     return new EnemyAction.Move(path);
                 }

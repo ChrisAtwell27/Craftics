@@ -56,7 +56,7 @@ public class LevelUpScreen extends Screen {
         PlayerProgression.Stat[] stats = PlayerProgression.Stat.values();
         int centerX = this.width / 2;
         int totalHeight = stats.length * (CARD_HEIGHT + CARD_GAP);
-        int startY = (this.height / 2) - (totalHeight / 2) + 20;
+        int startY = (this.height / 2) - (totalHeight / 2);
 
         for (int i = 0; i < stats.length; i++) {
             PlayerProgression.Stat stat = stats[i];
@@ -94,7 +94,7 @@ public class LevelUpScreen extends Screen {
         PlayerProgression.Affinity[] affinities = PlayerProgression.Affinity.values();
         int centerX = this.width / 2;
         int totalHeight = affinities.length * (CARD_HEIGHT + CARD_GAP);
-        int startY = (this.height / 2) - (totalHeight / 2) + 20;
+        int startY = (this.height / 2) - (totalHeight / 2);
 
         for (int i = 0; i < affinities.length; i++) {
             PlayerProgression.Affinity affinity = affinities[i];
@@ -116,11 +116,18 @@ public class LevelUpScreen extends Screen {
     }
 
     @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        context.fill(0, 0, this.width, this.height, 0xE0101010);
+    }
+
+    @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        super.render(context, mouseX, mouseY, delta);
+
         PlayerProgression.Stat[] stats = PlayerProgression.Stat.values();
         int centerX = this.width / 2;
         int totalHeight = stats.length * (CARD_HEIGHT + CARD_GAP);
-        int startY = (this.height / 2) - (totalHeight / 2) + 20;
+        int startY = (this.height / 2) - (totalHeight / 2);
 
         // Header area
         int headerY = startY - 45;
@@ -145,40 +152,41 @@ public class LevelUpScreen extends Screen {
         }
 
         // Stat value labels (drawn to the right of each button)
-        for (int i = 0; i < stats.length; i++) {
-            PlayerProgression.Stat stat = stats[i];
-            int currentPoints = statValues[i];
-            int effective = stat.baseValue + currentPoints;
-            int y = startY + i * (CARD_HEIGHT + CARD_GAP);
+        if (phase == Phase.STAT_CHOICE) {
+            for (int i = 0; i < stats.length; i++) {
+                PlayerProgression.Stat stat = stats[i];
+                int currentPoints = statValues[i];
+                int effective = stat.baseValue + currentPoints;
+                int y = startY + i * (CARD_HEIGHT + CARD_GAP);
 
-            // Value display to the right
-            int labelX = centerX + CARD_WIDTH / 2 + 8;
-            String valueStr = "§f" + effective;
-            if (currentPoints > 0) {
-                valueStr += " §7(+" + currentPoints + ")";
-            }
+                // Value display to the right
+                int labelX = centerX + CARD_WIDTH / 2 + 8;
+                int labelY = y + (CARD_HEIGHT - 8) / 2;
+                String valueStr = "\u00a7f" + effective;
+                if (currentPoints > 0) {
+                    valueStr += " \u00a77(+" + currentPoints + ")";
+                }
+                context.drawTextWithShadow(this.textRenderer, valueStr, labelX, labelY, 0xFFFFFF);
 
-            // Draw stat bar (visual indicator of points)
-            int barX = centerX - CARD_WIDTH / 2 - 6;
-            int barWidth = 4;
-            int maxDisplay = 10;
-            int barHeight = Math.min(currentPoints, maxDisplay) * 2;
-            if (barHeight > 0) {
-                int barColor = getStatColor(stat);
-                context.fill(barX, y + CARD_HEIGHT - barHeight, barX + barWidth, y + CARD_HEIGHT, barColor);
-            }
+                // Draw stat bar (visual indicator of points)
+                int barX = centerX - CARD_WIDTH / 2 - 6;
+                int barWidth = 4;
+                int maxDisplay = 10;
+                int barHeight = Math.min(currentPoints, maxDisplay) * 2;
+                if (barHeight > 0) {
+                    int barColor = getStatColor(stat);
+                    context.fill(barX, y + CARD_HEIGHT - barHeight, barX + barWidth, y + CARD_HEIGHT, barColor);
+                }
 
-            // Description tooltip on hover
-            if (mouseX >= centerX - CARD_WIDTH / 2 && mouseX <= centerX + CARD_WIDTH / 2
-                && mouseY >= y && mouseY <= y + CARD_HEIGHT) {
-                // Draw description below the card
-                context.drawCenteredTextWithShadow(this.textRenderer,
-                    "§7" + stat.description,
-                    centerX, startY + stats.length * (CARD_HEIGHT + CARD_GAP) + 8, 0x888888);
+                // Description tooltip on hover
+                if (mouseX >= centerX - CARD_WIDTH / 2 && mouseX <= centerX + CARD_WIDTH / 2
+                    && mouseY >= y && mouseY <= y + CARD_HEIGHT) {
+                    context.drawCenteredTextWithShadow(this.textRenderer,
+                        "\u00a77" + stat.description,
+                        centerX, startY + stats.length * (CARD_HEIGHT + CARD_GAP) + 8, 0x888888);
+                }
             }
         }
-
-        super.render(context, mouseX, mouseY, delta);
     }
 
     private int getStatColor(PlayerProgression.Stat stat) {
