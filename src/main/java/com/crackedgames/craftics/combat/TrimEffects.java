@@ -14,15 +14,10 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Armor trim combat effects. Each trim pattern grants a stackable per-piece bonus
- * and a powerful full-set bonus when all 4 armor pieces share the same trim.
- *
- * Trim templates drop from dimension-appropriate bosses.
- */
+// Per-piece stackable trim bonuses + full-set bonus when all 4 pieces match
+// Trim templates drop from dimension-appropriate bosses
 public class TrimEffects {
 
-    /** Per-piece bonus types that stack (1 per trimmed armor piece, max 4). */
     public enum Bonus {
         RANGED_POWER, MELEE_POWER, SPEED, AP, DEFENSE, LUCK,
         ATTACK_RANGE, MAX_HP, ARMOR_PEN, REGEN, ALLY_DAMAGE,
@@ -31,7 +26,6 @@ public class TrimEffects {
         SWORD_POWER, CLEAVING_POWER, BLUNT_POWER, WATER_POWER, SPECIAL_POWER
     }
 
-    /** Full set bonus names. */
     public enum SetBonus {
         NONE,
         OVERWATCH,      // Sentry: counter-attack ranged
@@ -54,7 +48,6 @@ public class TrimEffects {
         THUNDERSTRIKE   // Bolt: crit stuns
     }
 
-    /** Result of scanning a player's equipped armor for trim effects. */
     public record TrimScan(
         Map<Bonus, Integer> bonuses,  // accumulated per-piece bonuses
         SetBonus setBonus,            // active full-set bonus (NONE if no full match)
@@ -66,7 +59,6 @@ public class TrimEffects {
         public boolean hasSet() { return setBonus != SetBonus.NONE; }
     }
 
-    /** Scan a player's equipped armor and compute all trim bonuses. */
     public static TrimScan scan(ServerPlayerEntity player) {
         Map<Bonus, Integer> bonuses = new HashMap<>();
         Map<String, Integer> patternCounts = new HashMap<>();
@@ -89,13 +81,11 @@ public class TrimEffects {
             String patternId = pattern.getKey().map(k -> k.getValue().getPath()).orElse("unknown");
             patternCounts.merge(patternId, 1, Integer::sum);
 
-            // Apply per-piece bonus based on pattern
             Bonus bonus = getPerPieceBonus(patternId);
             if (bonus != null) {
                 bonuses.merge(bonus, 1, Integer::sum);
             }
 
-            // Apply per-piece bonus based on material
             RegistryEntry<ArmorTrimMaterial> material = trim.getMaterial();
             String materialId = material.getKey().map(k -> k.getValue().getPath()).orElse("unknown");
             materialCounts.merge(materialId, 1, Integer::sum);
@@ -105,7 +95,6 @@ public class TrimEffects {
             }
         }
 
-        // Check for full set (4 pieces with same trim pattern)
         SetBonus setBonus = SetBonus.NONE;
         String setName = "";
         for (var entry : patternCounts.entrySet()) {
@@ -119,7 +108,6 @@ public class TrimEffects {
         return new TrimScan(bonuses, setBonus, setName, trimCount, materialCounts);
     }
 
-    /** Map trim pattern ID to per-piece bonus type. */
     private static Bonus getPerPieceBonus(String patternId) {
         return switch (patternId) {
             case "sentry"    -> Bonus.RANGED_POWER;
@@ -144,21 +132,7 @@ public class TrimEffects {
         };
     }
 
-    /**
-     * Map trim material ID to per-piece bonus type.
-     * Materials determine the color of the trim and grant a secondary stat bonus.
-     *
-     * Iron       → +1 Defense
-     * Copper     → +1 Speed
-     * Gold       → +1 Luck
-     * Lapis      → +1 Magic Power
-     * Emerald    → +1 AP
-     * Diamond    → +1 Melee Power
-     * Netherite  → +1 Armor Pen
-     * Redstone   → +1 Ranged Power
-     * Amethyst   → +1 Regen
-     * Quartz     → +1 Max HP
-     */
+    // Material color = secondary stat bonus
     private static Bonus getMaterialBonus(String materialId) {
         return switch (materialId) {
             case "iron"      -> Bonus.DEFENSE;
@@ -175,7 +149,6 @@ public class TrimEffects {
         };
     }
 
-    /** Get description for a trim material's per-piece bonus. */
     public static String getMaterialDescription(String materialId) {
         return switch (materialId) {
             case "iron"      -> "+1 Defense per piece";
@@ -193,7 +166,6 @@ public class TrimEffects {
         };
     }
 
-    /** Map trim pattern ID to full-set bonus. */
     private static SetBonus getSetBonus(String patternId) {
         return switch (patternId) {
             case "sentry"    -> SetBonus.OVERWATCH;
@@ -218,7 +190,6 @@ public class TrimEffects {
         };
     }
 
-    /** Display name for the full-set bonus. */
     private static String getSetBonusName(String patternId) {
         return switch (patternId) {
             case "sentry"    -> "Overwatch";
@@ -243,7 +214,6 @@ public class TrimEffects {
         };
     }
 
-    /** Get the description for a per-piece bonus. */
     public static String getPerPieceDescription(String patternId) {
         return switch (patternId) {
             case "sentry"    -> "+1 Ranged Power per piece";
@@ -268,7 +238,6 @@ public class TrimEffects {
         };
     }
 
-    /** Get the description for a full-set bonus. */
     public static String getSetBonusDescription(SetBonus bonus) {
         return switch (bonus) {
             case OVERWATCH      -> "Counter-attack ranged enemies that hit you";
@@ -293,18 +262,7 @@ public class TrimEffects {
         };
     }
 
-    // ==================== BOSS DROP HELPERS ====================
-
-    /**
-     * Get trim template items that can drop from a boss in the given dimension.
-     * Returns the Item for the smithing template.
-     *
-     * Overworld bosses:  Sentry, Dune, Coast, Wild, Wayfinder, Shaper, Raiser, Host
-     * Nether bosses:     Ward, Snout, Rib, Eye, Snout
-     * End bosses:        Spire, Vex, Silence
-     * Trial chambers:    Flow, Bolt
-     * Ocean/Tide:        Tide
-     */
+    // Which trims drop from bosses in each dimension
     public static net.minecraft.item.Item[] getBossDropTrims(String dimension) {
         return switch (dimension) {
             case "overworld" -> new net.minecraft.item.Item[]{

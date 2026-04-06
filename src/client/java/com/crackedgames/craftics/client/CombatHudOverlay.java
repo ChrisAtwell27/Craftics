@@ -11,22 +11,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Renders the combat HUD overlay with panel-based grouping:
- * 1. Top-left:   Player status panel (HP bar + effect icons)
- * 2. Top-center: Turn banner pill (turn indicator + streak badge)
- * 3. Top-right:  Enemy roster panel (compact list or inspect)
- * 4. Bot-center: Mode pill
- * 5. Bot-right:  Resource bar (AP + SPD horizontal)
- * 6. Bot-left:   Combat log (delegated to CombatLog)
- */
 public class CombatHudOverlay implements HudRenderCallback {
 
-    // Panel colors
     private static final int PANEL_BG = 0xBB111122;
     private static final int PANEL_BORDER = 0xFF333344;
 
-    // Turn banner fade tracking
     private static int turnBannerAge = 0;
     private static int lastTurnPhase = -1;
 
@@ -48,7 +37,6 @@ public class CombatHudOverlay implements HudRenderCallback {
         int screenW = (int)(client.getWindow().getScaledWidth() / uiScale);
         int screenH = (int)(client.getWindow().getScaledHeight() / uiScale);
 
-        // Track turn phase changes for banner fade
         int currentPhase = CombatState.isPlayerTurn() ? 1 : CombatState.isEnemyTurn() ? 2 : 0;
         if (currentPhase != lastTurnPhase) {
             lastTurnPhase = currentPhase;
@@ -63,7 +51,6 @@ public class CombatHudOverlay implements HudRenderCallback {
         renderModePill(ctx, client, screenW, screenH);
         renderResourceBar(ctx, client, screenW, screenH);
 
-        // Emerald counter (opt-in via config)
         boolean showEmeralds = false;
         try { showEmeralds = com.crackedgames.craftics.CrafticsMod.CONFIG.showEmeraldsInCombat(); } catch (Exception ignored) {}
         if (showEmeralds) {
@@ -80,8 +67,6 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
     }
 
-    // ─── Panel Background Helper ─────────────────────────────────────────
-
     private static void drawPanel(DrawContext ctx, int x, int y, int w, int h) {
         // Border
         ctx.fill(x - 1, y - 1, x + w + 1, y + h + 1, PANEL_BORDER);
@@ -93,18 +78,14 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.fill(x, y, x + w, y + h, color);
     }
 
-    // ─── 1. Player Status Panel (Top-Left) ───────────────────────────────
-
     private void renderPlayerStatusPanel(DrawContext ctx, MinecraftClient client, int screenW) {
         java.util.List<CombatState.PartyMemberHp> partyList = CombatState.getPartyHpList();
 
         if (!partyList.isEmpty()) {
-            // Party mode: show HP list for all members (self at top)
             renderPartyHpList(ctx, client, partyList);
             return;
         }
 
-        // Solo mode: single HP bar
         int hp = CombatState.getPlayerHp();
         int maxHp = CombatState.getPlayerMaxHp();
         float hpPct = maxHp > 0 ? (float) hp / maxHp : 0;
@@ -123,19 +104,16 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         drawPanel(ctx, panelX, panelY, panelW, panelH);
 
-        // HP bar
         int barX = panelX + panelPad;
         int barY = panelY + panelPad;
         ctx.fill(barX, barY, barX + barW, barY + barH, 0xFF222222);
         int hpColor = hpPct > 0.5f ? 0xFF55FF55 : hpPct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
         ctx.fill(barX, barY, barX + (int)(barW * hpPct), barY + barH, hpColor);
-        // Numeric overlay centered on bar
         String hpText = hp + "/" + maxHp;
         int textW = client.textRenderer.getWidth(hpText);
         ctx.drawTextWithShadow(client.textRenderer,
             Text.literal(hpText), barX + (barW - textW) / 2, barY + 1, 0xFFFFFFFF);
 
-        // Effect icons row
         if (!icons.isEmpty()) {
             int iconY = barY + barH + 4;
             int iconX = barX;
@@ -143,10 +121,8 @@ public class CombatHudOverlay implements HudRenderCallback {
                 int iconW = 12;
                 int bgColor = icon.isDebuff ? 0xCC882222 : 0xCC226622;
                 ctx.fill(iconX, iconY, iconX + iconW, iconY + iconW, bgColor);
-                // Abbreviation
                 ctx.drawTextWithShadow(client.textRenderer,
                     Text.literal(icon.abbrev), iconX + 1, iconY + 2, icon.isDebuff ? 0xFFFF8888 : 0xFF88FF88);
-                // Turn count in bottom-right corner
                 if (icon.turns > 0) {
                     String turns = String.valueOf(icon.turns);
                     int tw = client.textRenderer.getWidth(turns);
@@ -158,7 +134,6 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
     }
 
-    /** Renders the party HP list — one row per member, self always first. */
     private void renderPartyHpList(DrawContext ctx, MinecraftClient client,
                                     java.util.List<CombatState.PartyMemberHp> members) {
         int panelPad = 6;
@@ -195,7 +170,6 @@ public class CombatHudOverlay implements HudRenderCallback {
                 prefix = "";
             }
 
-            // Truncate long names
             String displayName = prefix + member.name();
             if (client.textRenderer.getWidth(displayName) > nameW) {
                 while (client.textRenderer.getWidth(displayName + "..") > nameW && displayName.length() > prefix.length() + 1) {
@@ -204,18 +178,15 @@ public class CombatHudOverlay implements HudRenderCallback {
                 displayName += "..";
             }
 
-            // Name
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal(displayName), panelX + panelPad, y, nameColor);
 
-            // HP bar
             int barX = panelX + panelPad + nameW + 4;
             ctx.fill(barX, y, barX + barW, y + barH, 0xFF222222);
             if (!member.dead()) {
                 ctx.fill(barX, y, barX + (int)(barW * hpPct), y + barH, hpBarColor);
             }
 
-            // HP text
             String hpText = member.dead() ? "DEAD" : member.hp() + "/" + member.maxHp();
             int tw = client.textRenderer.getWidth(hpText);
             ctx.drawTextWithShadow(client.textRenderer,
@@ -225,8 +196,6 @@ public class CombatHudOverlay implements HudRenderCallback {
             first = false;
         }
     }
-
-    // ─── Ally Roster (Below Player Status, Top-Left) ───────────────────
 
     private void renderAllyRoster(DrawContext ctx, MinecraftClient client, int screenW) {
         Map<Integer, int[]> allies = CombatState.getAllyHpMap();
@@ -247,11 +216,9 @@ public class CombatHudOverlay implements HudRenderCallback {
         int panelX = 8;
         int panelY = 50; // below player status panel
 
-        // Green-tinted panel background
         ctx.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, 0xFF224422);
         ctx.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xBB112211);
 
-        // Header
         ctx.drawTextWithShadow(client.textRenderer,
             Text.literal("\u00a7aAllies (" + allies.size() + ")"),
             panelX + panelPad, panelY + 3, 0xFF55FF55);
@@ -292,8 +259,6 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
     }
 
-    // ─── 2. Turn Banner (Top-Center) ─────────────────────────────────────
-
     private void renderTurnBanner(DrawContext ctx, MinecraftClient client, int screenW) {
         boolean fadeBanner = true;
         try { fadeBanner = com.crackedgames.craftics.CrafticsMod.CONFIG.fadeTurnBanner(); } catch (Exception ignored) {}
@@ -315,7 +280,7 @@ public class CombatHudOverlay implements HudRenderCallback {
             pillColor = 0xBB222222;
         }
 
-        // Fade logic: after 30 ticks, fade "YOUR/ENEMY TURN" to just "Turn N"
+        // After 30 ticks, collapse "YOUR TURN" to just "Turn N"
         boolean showFullBanner = !fadeBanner || turnBannerAge <= 30;
         int turnNum = CombatState.getTurnNumber();
 
@@ -325,7 +290,6 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
         banner.append("Turn ").append(turnNum);
 
-        // Kill streak badge
         int streak = CombatState.getKillStreak();
         String streakBadge = "";
         if (streak >= 2) {
@@ -341,10 +305,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         int pillX = screenW / 2 - pillW / 2;
         int pillY = 4;
 
-        // Fade alpha for banner text
         int alpha = 255;
         if (fadeBanner && turnBannerAge > 30 && turnBannerAge <= 45) {
-            // Fade from full to compact over 15 ticks
             alpha = 255;
         }
 
@@ -356,11 +318,9 @@ public class CombatHudOverlay implements HudRenderCallback {
         if (showFullBanner) {
             ctx.drawTextWithShadow(client.textRenderer, Text.literal(fullText), textX, textY, turnColor);
         } else {
-            // Compact: just "Turn N" in white
             ctx.drawTextWithShadow(client.textRenderer, Text.literal(fullText), textX, textY, 0xFFCCCCCC);
         }
 
-        // Kill streak badge
         if (!streakBadge.isEmpty()) {
             int streakColor = streak >= 5 ? 0xFFFF55FF : streak >= 3 ? 0xFFFFAA00 : 0xFFFFFF55;
             int badgeBg = streak >= 5 ? 0xCC442244 : streak >= 3 ? 0xCC443311 : 0xCC444411;
@@ -371,8 +331,6 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
     }
 
-    // ─── 3. Enemy Roster Panel (Top-Right) ───────────────────────────────
-
     private void renderEnemyRoster(DrawContext ctx, MinecraftClient client, int screenW) {
         Map<Integer, int[]> enemies = CombatState.getEnemyHpMap();
         Map<Integer, String> types = CombatState.getEnemyTypeMap();
@@ -380,7 +338,6 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         int hoveredId = CombatState.getHoveredEnemyId();
 
-        // If hovering an enemy, show inspect panel
         if (hoveredId != -1 && enemies.containsKey(hoveredId)) {
             renderInspectPanel(ctx, client, screenW, hoveredId, enemies.get(hoveredId),
                 types.getOrDefault(hoveredId, "minecraft:zombie"));
@@ -400,7 +357,6 @@ public class CombatHudOverlay implements HudRenderCallback {
         int showCount = (compact && enemyCount > 4) ? 3 : enemyCount;
         boolean collapsed = compact && enemyCount > 4;
 
-        // Panel dimensions
         int panelContentW = headSize + padding + barW + 40;
         int headerH = 14;
         int panelContentH = headerH + showCount * entryH + (collapsed ? 14 : 0);
@@ -412,7 +368,6 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         drawPanel(ctx, panelX, panelY, panelW, panelH);
 
-        // Header
         ctx.drawTextWithShadow(client.textRenderer,
             Text.literal("\u00a77Enemies (" + enemyCount + ")"),
             panelX + panelPad, panelY + 3, 0xFFAAAAAA);
@@ -459,7 +414,6 @@ public class CombatHudOverlay implements HudRenderCallback {
             drawn++;
         }
 
-        // Collapsed "+N more" row with mini mob heads
         if (collapsed) {
             int remaining = enemyCount - showCount;
             int miniX = startX;

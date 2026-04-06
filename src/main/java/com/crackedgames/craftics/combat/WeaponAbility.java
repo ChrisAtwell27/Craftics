@@ -55,7 +55,6 @@ public class WeaponAbility {
                                              int baseDamage,
                                              PlayerProgression.PlayerStats playerStats,
                                              int luckPoints) {
-        // No ability for fists, feathers, food, potions, or other non-weapon items
         if (!hasAbility(weapon)) {
             return new AttackResult(baseDamage, "");
         }
@@ -65,7 +64,6 @@ public class WeaponAbility {
         List<CombatEntity> extraTargets = new ArrayList<>();
         int totalExtra = 0;
 
-        // === SWORDS ===
         if (isSword(weapon)) {
             // Sharpness: apply bleed stacks (each stack = +1 damage when attacked)
             int sharpness = PlayerCombatStats.getSharpness(player);

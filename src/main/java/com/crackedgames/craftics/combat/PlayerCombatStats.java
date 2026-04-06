@@ -15,57 +15,46 @@ public class PlayerCombatStats {
 
     public static int getAttackPower(ServerPlayerEntity player) {
         Item weapon = player.getMainHandStack().getItem();
-        // Swords
         if (weapon == Items.WOODEN_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgWoodenSword();
         if (weapon == Items.STONE_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgStoneSword();
         if (weapon == Items.IRON_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgIronSword();
         if (weapon == Items.GOLDEN_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgGoldenSword();
         if (weapon == Items.DIAMOND_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgDiamondSword();
         if (weapon == Items.NETHERITE_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgNetheriteSword();
-        // Axes
         if (weapon == Items.WOODEN_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgWoodenAxe();
         if (weapon == Items.STONE_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgStoneAxe();
         if (weapon == Items.IRON_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgIronAxe();
         if (weapon == Items.GOLDEN_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgGoldenAxe();
         if (weapon == Items.DIAMOND_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgDiamondAxe();
         if (weapon == Items.NETHERITE_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgNetheriteAxe();
-        // Heavy / special
         if (weapon == Items.MACE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgMace();
         if (weapon == Items.TRIDENT) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgTrident();
-        // Ranged
         if (weapon == Items.BOW) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBow();
         if (weapon == Items.CROSSBOW) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCrossbow();
-        // Blunt rods
         if (weapon == Items.STICK) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgStick();
         if (weapon == Items.BAMBOO) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBamboo();
         if (weapon == Items.BLAZE_ROD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBlazeRod();
         if (weapon == Items.BREEZE_ROD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBreezeRod();
-        // Coral weapons
         if (weapon == Items.TUBE_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralTube();
         if (weapon == Items.BRAIN_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralBrain();
         if (weapon == Items.BUBBLE_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralBubble();
         if (weapon == Items.FIRE_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralFire();
         if (weapon == Items.HORN_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralHorn();
-        // Dead corals
         if (weapon == Items.DEAD_TUBE_CORAL || weapon == Items.DEAD_BRAIN_CORAL
             || weapon == Items.DEAD_BUBBLE_CORAL || weapon == Items.DEAD_FIRE_CORAL
             || weapon == Items.DEAD_HORN_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralDead();
-        // Coral fans
         if (weapon == Items.TUBE_CORAL_FAN || weapon == Items.BRAIN_CORAL_FAN
             || weapon == Items.BUBBLE_CORAL_FAN || weapon == Items.FIRE_CORAL_FAN
             || weapon == Items.HORN_CORAL_FAN) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralFan();
-        // Dead coral fans (same as dead corals)
         if (weapon == Items.DEAD_TUBE_CORAL_FAN || weapon == Items.DEAD_BRAIN_CORAL_FAN
             || weapon == Items.DEAD_BUBBLE_CORAL_FAN || weapon == Items.DEAD_FIRE_CORAL_FAN
             || weapon == Items.DEAD_HORN_CORAL_FAN) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralDead();
-        // Hoes — low base damage, Special type (effects/utility)
         if (weapon == Items.WOODEN_HOE) return 1;
         if (weapon == Items.STONE_HOE) return 1;
         if (weapon == Items.IRON_HOE) return 2;
         if (weapon == Items.GOLDEN_HOE) return 2;
         if (weapon == Items.DIAMOND_HOE) return 3;
         if (weapon == Items.NETHERITE_HOE) return 3;
-        // Shovels — moderate damage, Pet type (boosted by Pet affinity)
         if (weapon == Items.WOODEN_SHOVEL) return 2;
         if (weapon == Items.STONE_SHOVEL) return 3;
         if (weapon == Items.IRON_SHOVEL) return 4;
@@ -76,7 +65,7 @@ public class PlayerCombatStats {
     }
 
     public static int getDefense(ServerPlayerEntity player) {
-        return player.getArmor(); // vanilla armor value (int)
+        return player.getArmor();
     }
 
     /** Crossbow uses special rook pattern — return -1 to signal unlimited cardinal range. */
@@ -89,9 +78,8 @@ public class PlayerCombatStats {
         Item weapon = player.getMainHandStack().getItem();
         if (weapon == Items.BOW && hasArrows(player)) return 3 + getBowPowerRange(player);
         if (weapon == Items.CROSSBOW && hasArrows(player)) return RANGE_CROSSBOW_ROOK;
-        // Trident: melee at range 1; throw handled separately in CombatManager
         if (weapon == Items.TRIDENT) return TRIDENT_THROW_RANGE;
-        return 1; // melee
+        return 1;
     }
 
     /** Check if a target is on a valid straight/diagonal line from the player. */
@@ -181,7 +169,6 @@ public class PlayerCombatStats {
         return "mixed";
     }
 
-    /** Get set bonus description for display. */
     public static String getSetBonusDescription(String armorSet) {
         return switch (armorSet) {
             case "leather" -> "\u00a7eBrawler: +2 Speed, +1 AP, +2 Fist dmg, 2x kill streak multiplier";
@@ -195,7 +182,6 @@ public class PlayerCombatStats {
         };
     }
 
-    /** Speed bonus from armor set. */
     public static int getSetSpeedBonus(ServerPlayerEntity player) {
         String set = getArmorSet(player);
         return switch (set) {
@@ -205,7 +191,6 @@ public class PlayerCombatStats {
         };
     }
 
-    /** AP bonus from armor set. */
     public static int getSetApBonus(ServerPlayerEntity player) {
         String set = getArmorSet(player);
         return switch (set) {
@@ -214,7 +199,6 @@ public class PlayerCombatStats {
         };
     }
 
-    /** Defense bonus from armor set (on top of vanilla armor value). */
     public static int getSetDefenseBonus(ServerPlayerEntity player) {
         String set = getArmorSet(player);
         return switch (set) {
@@ -225,7 +209,6 @@ public class PlayerCombatStats {
         };
     }
 
-    /** Attack bonus from armor set. */
     public static int getSetAttackBonus(ServerPlayerEntity player) {
         String set = getArmorSet(player);
         return switch (set) {
@@ -235,27 +218,22 @@ public class PlayerCombatStats {
         };
     }
 
-    /** AP cost reduction from chainmail set (reduces attack AP cost). */
     public static int getSetApCostReduction(ServerPlayerEntity player) {
         return "chainmail".equals(getArmorSet(player)) ? 1 : 0;
     }
 
-    /** Check if player has turtle set (water walking + regen). */
     public static boolean hasTurtleSet(ServerPlayerEntity player) {
         return "turtle".equals(getArmorSet(player));
     }
 
-    /** Check if player has netherite set (fire immunity). */
     public static boolean hasNetheriteSet(ServerPlayerEntity player) {
         return "netherite".equals(getArmorSet(player));
     }
 
-    /** Check if player has gold set (luck bonus). */
     public static boolean hasGoldSet(ServerPlayerEntity player) {
         return "gold".equals(getArmorSet(player));
     }
 
-    /** Get tipped arrow effect from inventory. Returns effect name or null. */
     public static String findAndConsumeTippedArrow(ServerPlayerEntity player) {
         for (int i = 0; i < player.getInventory().size(); i++) {
             var stack = player.getInventory().getStack(i);
@@ -275,10 +253,10 @@ public class PlayerCombatStats {
                             stack.decrement(1);
                             return result;
                         }
-                        // Unrecognized effect — don't consume, skip to next effect
+                        // unrecognized effect, skip
                     }
                 }
-                // Regular tipped arrow with no recognized effect — consume as normal arrow
+                // no recognized effect, consume as normal arrow
                 stack.decrement(1);
                 return null;
             }
@@ -286,7 +264,6 @@ public class PlayerCombatStats {
         return null;
     }
 
-    /** Check for tipped arrows before regular arrows. */
     public static boolean hasTippedArrows(ServerPlayerEntity player) {
         for (int i = 0; i < player.getInventory().size(); i++) {
             if (player.getInventory().getStack(i).getItem() == Items.TIPPED_ARROW) return true;
@@ -294,12 +271,7 @@ public class PlayerCombatStats {
         return false;
     }
 
-    // ─── Enchantment support ────────────────────────────────────────────
-
-    /**
-     * Get the level of an enchantment on a stack by checking its enchantment data component.
-     * Uses string matching on registry ID for maximum compatibility with 1.21.1.
-     */
+    /** Uses string matching on registry ID for 1.21.1 compatibility. */
     public static int getEnchantLevel(ItemStack stack, String enchantId) {
         ItemEnchantmentsComponent enchants = stack.getOrDefault(
             DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT);
@@ -312,40 +284,30 @@ public class PlayerCombatStats {
         return 0;
     }
 
-    // ─── Weapon enchantment bonuses ─────────────────────────────────────
-
-    /** Get bonus attack damage from weapon enchantments.
-     *  Sharpness: +1 flat damage per level (bleed applied separately in WeaponAbility).
-     *  Smite/Bane: no longer flat damage — applied as AoE/debuff effects in WeaponAbility. */
+    // Sharpness gives flat +1/level here; Smite/Bane are AoE/debuff in WeaponAbility
     public static int getWeaponEnchantBonus(ServerPlayerEntity player) {
         ItemStack weapon = player.getMainHandStack();
         int bonus = 0;
-        // Sharpness: +1 damage per level
         bonus += getEnchantLevel(weapon, "minecraft:sharpness");
         return bonus;
     }
 
-    /** Sharpness level on weapon. */
     public static int getSharpness(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:sharpness");
     }
 
-    /** Smite level on weapon. */
     public static int getSmite(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:smite");
     }
 
-    /** Bane of Arthropods level on weapon. */
     public static int getBane(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:bane_of_arthropods");
     }
 
-    /** Check if weapon has Fire Aspect. Returns level (0 = none). */
     public static int getFireAspect(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:fire_aspect");
     }
 
-    /** Returns true if the entity type is undead (for Smite). */
     public static boolean isUndead(String entityTypeId) {
         return switch (entityTypeId) {
             case "minecraft:zombie", "minecraft:husk", "minecraft:drowned",
@@ -357,7 +319,6 @@ public class PlayerCombatStats {
         };
     }
 
-    /** Returns true if the entity type is an arthropod (for Bane of Arthropods). */
     public static boolean isArthropod(String entityTypeId) {
         return switch (entityTypeId) {
             case "minecraft:spider", "minecraft:cave_spider",
@@ -366,24 +327,19 @@ public class PlayerCombatStats {
         };
     }
 
-    /** Check if weapon has Knockback. Returns level (0 = none). */
     public static int getKnockback(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:knockback");
     }
 
-    /** Check if weapon has Looting. Returns level (0 = none). */
     public static int getLooting(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:looting");
     }
 
-    /** Check if weapon has Sweeping Edge. Returns level (0 = none). */
     public static int getSweepingEdge(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:sweeping_edge");
     }
 
-    // ─── Armor enchantment bonuses ──────────────────────────────────────
-
-    /** Get total Protection enchantment level across all armor pieces, converted to defense. */
+    /** Each 2 protection levels = +1 defense. Stacks across all armor pieces. */
     public static int getTotalProtection(ServerPlayerEntity player) {
         int total = 0;
         for (EquipmentSlot slot : new EquipmentSlot[]{
@@ -393,11 +349,9 @@ public class PlayerCombatStats {
             total += getEnchantLevel(piece, "minecraft:blast_protection");
             total += getEnchantLevel(piece, "minecraft:projectile_protection");
         }
-        // Each protection level = roughly +0.5 defense. Every 2 levels = +1 defense.
         return total / 2;
     }
 
-    /** Check if any armor has Thorns. Returns highest level across all pieces. */
     public static int getThorns(ServerPlayerEntity player) {
         int max = 0;
         for (EquipmentSlot slot : new EquipmentSlot[]{
@@ -407,14 +361,11 @@ public class PlayerCombatStats {
         return max;
     }
 
-    /** Check if boots have Feather Falling. */
     public static boolean hasFeatherFalling(ServerPlayerEntity player) {
         return getEnchantLevel(player.getEquippedStack(EquipmentSlot.FEET), "minecraft:feather_falling") > 0;
     }
 
-    // ─── Bow enchantment bonuses ────────────────────────────────────────
-
-    /** Get Power level on bow (bonus damage). Scaled: 1/3/5/8/11 per level. */
+    /** Scaled: 1/3/5/8/11 per level */
     public static int getBowPower(ServerPlayerEntity player) {
         int level = getEnchantLevel(player.getMainHandStack(), "minecraft:power");
         return switch (level) {
@@ -427,7 +378,7 @@ public class PlayerCombatStats {
         };
     }
 
-    /** Get Power range bonus on bow. Scaled: 1/1/2/2/3 per level. */
+    /** Scaled: 1/1/2/2/3 per level */
     public static int getBowPowerRange(ServerPlayerEntity player) {
         int level = getEnchantLevel(player.getMainHandStack(), "minecraft:power");
         return switch (level) {
@@ -438,83 +389,63 @@ public class PlayerCombatStats {
         };
     }
 
-    /** Check for Flame enchantment on bow. Returns level (0 = none). */
     public static int getBowFlame(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:flame");
     }
 
-    /** Backwards-compatible boolean check. */
     public static boolean hasBowFlame(ServerPlayerEntity player) {
         return getBowFlame(player) > 0;
     }
 
-    /** Check for Infinity on bow (don't consume arrows). */
     public static boolean hasInfinity(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:infinity") > 0;
     }
 
-    /** Get Punch level (knockback on arrows). */
     public static int getBowPunch(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:punch");
     }
 
-    // ─── Crossbow enchantments ────────────────────────────────────────────
-
-    /** Quick Charge: reduces crossbow AP cost by 1 per level. */
     public static int getQuickCharge(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:quick_charge");
     }
 
-    /** Multishot: fires 2 extra diagonal bolts. */
     public static boolean hasMultishot(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:multishot") > 0;
     }
 
-    /** Piercing: bolt hits additional targets in line. Returns level (0 = none). */
     public static int getPiercing(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:piercing");
     }
 
-    // ─── Mace enchantments ──────────────────────────────────────────────
-
-    /** Density: bonus damage per level to mace AoE shockwave. */
     public static int getDensity(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:density");
     }
 
-    /** Breach: armor penetration. Each level ignores 2 defense points on the target. */
     public static int getBreach(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:breach");
     }
 
-    /** Wind Burst: increased knockback range (+1 tile per level). */
     public static int getWindBurst(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:wind_burst");
     }
 
-    // ─── Trident enchantments ──────────────────────────────────────────
-
-    /** Riptide: dash through enemies instead of throwing. Level determines damage/knockback. */
     public static int getRiptide(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:riptide");
     }
 
-    /** Channeling: lightning strike on thrown hit. Level determines chain count. */
     public static int getChanneling(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:channeling");
     }
 
-    /** Loyalty: trident returns after throwing instead of landing on the ground. */
     public static int getLoyalty(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:loyalty");
     }
 
-    /** Impaling: bonus trident damage + bleed. */
     public static int getImpaling(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:impaling");
     }
 
-    /** Get Impaling bonus damage (scaled: 1/2/5/8/10). */
+    /** Scaled: 1/2/5/8/10 */
     public static int getImpalingDamage(ServerPlayerEntity player) {
         int level = getImpaling(player);
         return switch (level) {
@@ -527,7 +458,7 @@ public class PlayerCombatStats {
         };
     }
 
-    /** Get Impaling bleed stacks (scaled: 1/1/2/2/3). */
+    /** Scaled: 1/1/2/2/3 */
     public static int getImpalingBleed(ServerPlayerEntity player) {
         int level = getImpaling(player);
         return switch (level) {
@@ -538,14 +469,10 @@ public class PlayerCombatStats {
         };
     }
 
-    // ─── Tool enchantments ──────────────────────────────────────────────
-
-    /** Check Unbreaking level on held item. Higher = less durability consumption. */
     public static int getUnbreaking(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:unbreaking");
     }
 
-    /** Check Efficiency level on held item (faster pickaxe obstacle breaking). */
     public static int getEfficiency(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:efficiency");
     }

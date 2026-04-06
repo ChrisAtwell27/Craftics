@@ -4,9 +4,6 @@ import com.crackedgames.craftics.combat.LootPool;
 import net.minecraft.block.Block;
 import net.minecraft.item.Item;
 
-/**
- * Defines all properties of a biome for level generation.
- */
 public class BiomeTemplate {
     public final String biomeId;
     public final String displayName;
@@ -20,10 +17,10 @@ public class BiomeTemplate {
     public final float obstacleDensityGrowth;
     public final MobPoolEntry[] passiveMobs;
     public final MobPoolEntry[] hostileMobs;
-    public final MobPoolEntry boss; // null if no boss
+    public final MobPoolEntry boss;
     public final Item[] lootItems;
     public final int[] lootWeights;
-    /** Specific enchantment IDs (e.g. "minecraft:swift_sneak") this biome's books can roll. Empty = all enchantments. */
+    // Empty = all enchantments allowed in book drops
     public final String[] enchantmentLootIds;
     public final int[] enchantmentLootWeights;
     public final boolean nightLevel;
@@ -70,7 +67,7 @@ public class BiomeTemplate {
     }
 
     public int getBiomeLevelIndex(int globalLevel) {
-        return globalLevel - startLevel; // 0-4 within this biome
+        return globalLevel - startLevel;
     }
 
     public boolean isBossLevel(int globalLevel) {

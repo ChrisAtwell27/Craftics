@@ -369,6 +369,7 @@ public class TrialChamberEvent {
         private final int width, height;
         private final EnemySpawn[] spawns;
         private final Block floorBlock;
+        private final int levelNumber;
 
         TrialChamberLevelDef(int width, int height, EnemySpawn[] spawns, Random rng) {
             this.width = width;
@@ -376,13 +377,14 @@ public class TrialChamberEvent {
             this.spawns = spawns;
             // Trial chamber themed floors
             this.floorBlock = rng.nextBoolean() ? Blocks.TUFF_BRICKS : Blocks.POLISHED_TUFF;
+            this.levelNumber = 9000 + rng.nextInt(900);
         }
 
         TrialChamberLevelDef(int width, int height, List<EnemySpawn> spawnList, Random rng) {
             this(width, height, spawnList.toArray(new EnemySpawn[0]), rng);
         }
 
-        @Override public int getLevelNumber() { return 9000 + new Random().nextInt(900); } // unique high number avoids arena collisions
+        @Override public int getLevelNumber() { return levelNumber; }
         @Override public String getName() { return "Trial Chamber"; }
         @Override public int getWidth() { return width; }
         @Override public int getHeight() { return height; }

@@ -10,10 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-/**
- * Procedurally generates level definitions from biome templates.
- * Uses seeded random for reproducible layouts per level number.
- */
 public class LevelGenerator {
 
     public static LevelDefinition generate(int levelNumber) {
@@ -22,30 +18,32 @@ public class LevelGenerator {
 
     public static LevelDefinition generate(int levelNumber, int branchChoice) {
         BiomeTemplate biome = BiomeRegistry.getForLevel(levelNumber);
-        int biomeIndex = biome.getBiomeLevelIndex(levelNumber); // 0-4 within biome
+        if (biome == null) {
+            throw new IllegalStateException("No biome registered for level " + levelNumber
+                + " — is the BiomeRegistry empty?");
+        }
+        int biomeIndex = biome.getBiomeLevelIndex(levelNumber); // 0-based within biome
         boolean isBoss = biome.isBossLevel(levelNumber);
-        // Use current time as part of seed so each visit generates different mobs/positions
+        // Seed with nanoTime so each visit gets different mobs/positions
         Random rand = new Random(System.nanoTime() ^ (levelNumber * 31L + biome.biomeId.hashCode()));
 
-        // Grid size scales within biome — +4 extra to allow edge carving
+        // +4 extra for ArenaBuilder's edge carving
         int width = biome.baseWidth + biomeIndex * biome.widthGrowth + 4;
         int height = biome.baseHeight + biomeIndex * biome.heightGrowth + 4;
 
-        // Build display name
-        String[] numerals = {"I", "II", "III", "IV", "V"};
-        String name = biome.displayName + " " + numerals[biomeIndex];
-        if (isBoss) name = biome.displayName + " - BOSS";
+        String name;
+        if (isBoss) {
+            name = biome.displayName + " - BOSS";
+        } else if (biomeIndex < 5) {
+            String[] numerals = {"I", "II", "III", "IV", "V"};
+            name = biome.displayName + " " + numerals[biomeIndex];
+        } else {
+            name = biome.displayName + " " + (biomeIndex + 1);
+        }
 
-        // Player start: bottom center
         GridPos playerStart = new GridPos(width / 2, 0);
-
-        // Build tile grid
         GridTile[][] tiles = generateTiles(biome, width, height, biomeIndex, rand);
-
-        // Generate enemy spawns (pass tiles so spawns avoid carved terrain)
         LevelDefinition.EnemySpawn[] enemies = generateEnemies(biome, tiles, width, height, biomeIndex, levelNumber, isBoss, branchChoice, rand);
-
-        // Roll loot
         int lootMinTypes = 1 + biomeIndex / 2;
         int lootMaxTypes = 2 + biomeIndex / 2;
         int lootMinTotal = 2 + biomeIndex;
@@ -74,13 +72,9 @@ public class LevelGenerator {
             }
         }
 
-        // No carving here — the ArenaBuilder environment will bleed into the edges
-        // and sync tiles to match, creating organic shapes from the actual surroundings
-
         return tiles;
     }
 
-    /** Check if a tile is near player start or boss spawn and should be protected. */
     private static boolean isProtected(int x, int z, int w, int h) {
         if (z <= 1 && Math.abs(x - w / 2) <= 2) return true;
         if (z >= h - 2 && Math.abs(x - w / 2) <= 2) return true;
@@ -94,15 +88,11 @@ public class LevelGenerator {
                                                                    boolean isBoss, int branchChoice, Random rand) {
         List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
 
-        // Enemy count: starts low, ramps gradually
-        // Plains I = 1, Plains II = 1, Plains III = 2, Plains IV = 2, Plains Boss = 2 adds
-        // Later biomes add more but cap at 6
-        // Use the player's BiomePath position (not registry index) so difficulty matches actual progression
+        // Use BiomePath position for difficulty scaling (not registry index)
         java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
                 .getFullPath(Math.max(0, branchChoice));
         int biomeOrdinal = fullPath.indexOf(biome.biomeId);
         if (biomeOrdinal < 0) {
-            // Fallback for biomes not in the path (shouldn't happen normally)
             biomeOrdinal = BiomeRegistry.getAllBiomes().indexOf(biome);
         }
         if (biomeOrdinal < 0) biomeOrdinal = 0;
@@ -110,26 +100,22 @@ public class LevelGenerator {
         count = Math.min(count, com.crackedgames.craftics.CrafticsMod.CONFIG.maxEnemiesPerLevel());
         if (isBoss) count = Math.min(Math.max(1, count - 1), com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAdds());
 
-        // Passive vs hostile ratio — early levels have some passive mobs
         float hostileRatio;
-        if (biomeOrdinal == 0 && biomeIndex == 0) hostileRatio = 0.0f; // Plains level 1: always passive animals
+        if (biomeOrdinal == 0 && biomeIndex == 0) hostileRatio = 0.0f; // Plains I is always passive
         else if (biomeOrdinal == 0 && biomeIndex <= 1) hostileRatio = 0.4f;
         else if (biomeIndex <= 0) hostileRatio = 0.6f;
         else if (biomeIndex <= 1) hostileRatio = 0.75f;
         else hostileRatio = 1.0f;
         if (biomeOrdinal >= 9) hostileRatio = 1.0f;
 
-        // Global difficulty scaling — configurable via craftics-config
         int hpBonus = biomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
         if (com.crackedgames.craftics.CrafticsMod.CONFIG.scaleHpPerLevel()) {
             hpBonus += biomeIndex * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerLevel();
         }
         int atkBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());
-        // Per-level attack scaling within a biome (so later levels in the same biome hit harder)
         atkBonus += (biomeIndex + 1) / 2;
         int defBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.defPerBiome());
 
-        // Collect valid spawn positions — only walkable tiles, 2+ tiles from player start
         GridPos playerStart = new GridPos(w / 2, 0);
         List<GridPos> validPositions = new ArrayList<>();
         for (int x = 0; x < w; x++) {
@@ -140,10 +126,9 @@ public class LevelGenerator {
             }
         }
 
-        // Add boss FIRST on boss levels — random position from valid tiles
         if (isBoss && biome.boss != null && !validPositions.isEmpty()) {
             GridPos bossPos = validPositions.remove(rand.nextInt(validPositions.size()));
-            // Reserve tiles around ALL boss-occupied squares (bosses are 2x2)
+            // Bosses are 2x2 — reserve tiles around their footprint
             int bossSize = 2;
             validPositions.removeIf(p -> {
                 for (int dx = 0; dx < bossSize; dx++) {
@@ -165,7 +150,6 @@ public class LevelGenerator {
             ));
         }
 
-        // Spawn regular enemies
         for (int i = 0; i < count && !validPositions.isEmpty(); i++) {
             boolean hostile = rand.nextFloat() < hostileRatio;
             MobPoolEntry[] pool = hostile ? biome.hostileMobs : biome.passiveMobs;
@@ -175,7 +159,7 @@ public class LevelGenerator {
             MobPoolEntry mob = weightedRandom(pool, rand);
             GridPos pos = validPositions.remove(rand.nextInt(validPositions.size()));
 
-            // Passive mobs keep their base stats — only hostile enemies scale with progression
+            // Passives keep base stats; only hostiles scale with progression
             boolean isPassive = !hostile || isPassiveType(mob.entityTypeId());
             spawns.add(new LevelDefinition.EnemySpawn(
                 mob.entityTypeId(), pos,
@@ -186,24 +170,22 @@ public class LevelGenerator {
             ));
         }
 
-        // Dragon's Nest: place one End Crystal at the grid center
-        // It functions as an enemy — can't move, explodes the turn after it's damaged
+        // End Crystal: immobile, explodes the turn after taking damage
         if ("dragons_nest".equals(biome.biomeId)) {
             GridPos center = new GridPos(w / 2, h / 2);
             validPositions.removeIf(p -> p.equals(center));
             spawns.add(new LevelDefinition.EnemySpawn(
                 "minecraft:end_crystal", center,
-                8 + hpBonus,   // HP scales with biome progression
-                12 + atkBonus, // explosion damage scales with progression
-                0,             // no defense
-                0              // range unused (explosion is fixed-radius)
+                8 + hpBonus,
+                12 + atkBonus,
+                0,
+                0
             ));
         }
 
-        // Bee swarm rule: if any bee spawned, replace all other passives with bees (configurable)
+        // Bee swarm: if a bee rolled, replace all passives with bees
         boolean hasBee = spawns.stream().anyMatch(s -> "minecraft:bee".equals(s.entityTypeId()));
         if (hasBee && com.crackedgames.craftics.CrafticsMod.CONFIG.beeSwarmReplacesPassives()) {
-            // Find the bee entry in passive pool for stats reference
             MobPoolEntry beeEntry = null;
             for (MobPoolEntry m : biome.passiveMobs) {
                 if ("minecraft:bee".equals(m.entityTypeId())) { beeEntry = m; break; }
@@ -212,7 +194,6 @@ public class LevelGenerator {
                 final MobPoolEntry bee = beeEntry;
                 for (int i = 0; i < spawns.size(); i++) {
                     LevelDefinition.EnemySpawn s = spawns.get(i);
-                    // Replace non-bee passives (check if it's a passive mob type)
                     if (!s.entityTypeId().equals("minecraft:bee") && isPassiveType(s.entityTypeId())) {
                         spawns.set(i, new LevelDefinition.EnemySpawn(
                             "minecraft:bee", s.position(),
@@ -250,6 +231,6 @@ public class LevelGenerator {
             cumulative += e.weight();
             if (r < cumulative) return e;
         }
-        return pool[0]; // fallback
+        return pool[0];
     }
 }

@@ -10,15 +10,10 @@ import com.crackedgames.craftics.achievement.Achievement;
 
 import java.util.*;
 
-/**
- * Per-player progression data, stored by UUID for multiplayer compatibility.
- * Each player has a level, stat points, and allocated stats.
- */
+// Per-player progression: level, stat points, affinities, achievements
+// Stored by UUID for multiplayer
 public class PlayerProgression extends PersistentState {
 
-    /**
-     * Stats that can be upgraded on level-up.
-     */
     public enum Stat {
         SPEED("Speed", "§b⚡", "+1 movement per turn", 3),
         AP("Action Points", "§e⚡", "+1 action per turn", 3),
@@ -42,10 +37,6 @@ public class PlayerProgression extends PersistentState {
         }
     }
 
-    /**
-     * Per-player stat data.
-     */
-    /** Damage affinity types that players can upgrade on level-up. */
     public enum Affinity {
         SLASHING("Slashing", "\u00a7c\u2694", "+1 dmg, +5% sweep chance"),
         CLEAVING("Cleaving", "\u00a76\u2716", "+1 dmg, +3% armor ignore"),
@@ -71,12 +62,10 @@ public class PlayerProgression extends PersistentState {
         public int level = 1;
         public int unspentPoints = 0;
         private final EnumMap<Stat, Integer> statPoints = new EnumMap<>(Stat.class);
-        // Boss kill counts per biome ID — used for diminishing level-up returns
+        // Diminishing level-up returns per biome
         private final Map<String, Integer> bossKills = new HashMap<>();
-        // Permanent damage affinity bonuses from level-ups
         private final EnumMap<Affinity, Integer> affinityPoints = new EnumMap<>(Affinity.class);
-        public boolean pendingAffinityChoice = false; // set after stat choice, cleared after affinity choice
-        // Unlocked achievements (stored by enum name)
+        public boolean pendingAffinityChoice = false;
         private final Set<String> achievements = new HashSet<>();
 
         public PlayerStats() {
@@ -101,7 +90,7 @@ public class PlayerProgression extends PersistentState {
             return achievements.contains(achievement.name());
         }
 
-        /** Grant an achievement. Returns true if newly unlocked (false if already had it). */
+        /** Returns true if newly unlocked */
         public boolean grantAchievement(Achievement achievement) {
             return achievements.add(achievement.name());
         }
@@ -114,15 +103,11 @@ public class PlayerProgression extends PersistentState {
             return achievements.size();
         }
 
-        /** Record a boss kill for a biome and return true if this kill earns a level-up. */
+        // Level up at exponentially increasing thresholds: 1, 3, 7, 15, ...
+        // Prevents farming a single boss for infinite levels
         public boolean recordBossKillAndCheckLevelUp(String biomeId) {
             int kills = bossKills.getOrDefault(biomeId, 0) + 1;
             bossKills.put(biomeId, kills);
-
-            // Threshold: 1st kill = level up. Then need 2 more (total 3), then 4 more (total 7), etc.
-            // Kills needed for level N from this boss: 2^(N-1) where N starts at 1
-            // Total kills for level N: 2^0 + 2^1 + ... + 2^(N-1) = 2^N - 1
-            // So we level up when kills equals a value of form 2^N - 1: 1, 3, 7, 15, ...
             int threshold = 1;
             int totalNeeded = 0;
             while (totalNeeded + threshold <= kills) {
@@ -137,7 +122,6 @@ public class PlayerProgression extends PersistentState {
             return bossKills.getOrDefault(biomeId, 0);
         }
 
-        /** Get kills needed for next level-up from this boss. */
         public int getKillsUntilNextLevel(String biomeId) {
             int kills = bossKills.getOrDefault(biomeId, 0);
             int threshold = 1;
@@ -164,7 +148,7 @@ public class PlayerProgression extends PersistentState {
             return true;
         }
 
-        /** Admin: directly set the allocated points for a stat. */
+        /** Admin override */
         public void setPoints(Stat stat, int value) {
             statPoints.put(stat, Math.max(0, value));
         }
@@ -174,14 +158,13 @@ public class PlayerProgression extends PersistentState {
             unspentPoints++;
         }
 
-        // Serialize: "level:unspent:s0:s1:...:s7|bossKills|affinities|achievements"
+        // Format: "level:unspent:s0:s1:...:s7|bossKills|affinities|achievements"
         public String serialize() {
             StringBuilder sb = new StringBuilder();
             sb.append(level).append(':').append(unspentPoints);
             for (Stat s : Stat.values()) {
                 sb.append(':').append(getPoints(s));
             }
-            // Section 2: boss kill data
             sb.append('|');
             {
                 boolean first = true;
@@ -191,7 +174,6 @@ public class PlayerProgression extends PersistentState {
                     first = false;
                 }
             }
-            // Section 3: affinity points
             sb.append('|');
             {
                 boolean first = true;
@@ -204,7 +186,6 @@ public class PlayerProgression extends PersistentState {
                     }
                 }
             }
-            // Section 4: achievements
             sb.append('|');
             sb.append(String.join(",", achievements));
             return sb.toString();
@@ -212,7 +193,6 @@ public class PlayerProgression extends PersistentState {
 
         public static PlayerStats deserialize(String data) {
             PlayerStats ps = new PlayerStats();
-            // Split into sections: stats | bossKills | affinities | achievements
             String[] sections = data.split("\\|", -1);
             String statPart = sections[0];
             String bossPart = sections.length > 1 ? sections[1] : "";
@@ -228,7 +208,6 @@ public class PlayerProgression extends PersistentState {
                     ps.statPoints.put(stats[i], Integer.parseInt(parts[i + 2]));
                 }
             }
-            // Parse boss kills
             if (!bossPart.isEmpty()) {
                 for (String entry : bossPart.split(",")) {
                     String[] kv = entry.split("=", 2);
@@ -238,13 +217,12 @@ public class PlayerProgression extends PersistentState {
                     }
                 }
             }
-            // Parse affinity points
             if (!affinityPart.isEmpty()) {
                 for (String entry : affinityPart.split(",")) {
                     String[] kv = entry.split("=", 2);
                     if (kv.length == 2) {
                         try {
-                            // Migration: SWORD was renamed to SLASHING
+                            // Migration: SWORD -> SLASHING rename
                             String affinityName = "SWORD".equals(kv[0]) ? "SLASHING" : kv[0];
                             Affinity a = Affinity.valueOf(affinityName);
                             ps.affinityPoints.put(a, Integer.parseInt(kv[1]));
@@ -252,7 +230,6 @@ public class PlayerProgression extends PersistentState {
                     }
                 }
             }
-            // Parse achievements
             if (!achievementPart.isEmpty()) {
                 for (String name : achievementPart.split(",")) {
                     String trimmed = name.trim();
@@ -265,10 +242,8 @@ public class PlayerProgression extends PersistentState {
         }
     }
 
-    // UUID string -> serialized stats string
     private final Map<String, String> playerData = new HashMap<>();
 
-    // Runtime cache (not serialized directly, built from playerData)
     private final transient Map<UUID, PlayerStats> cache = new HashMap<>();
 
     public static PlayerProgression fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
@@ -295,9 +270,6 @@ public class PlayerProgression extends PersistentState {
 
     public PlayerProgression() {}
 
-    /**
-     * Get stats for a player, creating defaults if first time.
-     */
     public PlayerStats getStats(UUID playerId) {
         PlayerStats cached = cache.get(playerId);
         if (cached != null) return cached;
@@ -320,9 +292,6 @@ public class PlayerProgression extends PersistentState {
         return getStats(player.getUuid());
     }
 
-    /**
-     * Save a player's stats back to persistent storage.
-     */
     public void saveStats(UUID playerId) {
         PlayerStats stats = cache.get(playerId);
         if (stats != null) {
@@ -335,18 +304,12 @@ public class PlayerProgression extends PersistentState {
         saveStats(player.getUuid());
     }
 
-    /**
-     * Grant a level-up to a player (called after biome boss victory).
-     */
     public void grantLevelUp(ServerPlayerEntity player) {
         PlayerStats stats = getStats(player);
         stats.grantLevelUp();
         saveStats(player);
     }
 
-    /**
-     * Allocate a stat point for a player. Returns true if successful.
-     */
     public boolean allocateStat(ServerPlayerEntity player, Stat stat) {
         PlayerStats stats = getStats(player);
         boolean success = stats.allocatePoint(stat);
@@ -357,7 +320,7 @@ public class PlayerProgression extends PersistentState {
     }
 
     public static PlayerProgression get(ServerWorld world) {
-        // Always use the overworld's state manager so data persists across dimensions
+        // Always overworld so data persists across dimensions
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE, "craftics_progression");
     }
 }

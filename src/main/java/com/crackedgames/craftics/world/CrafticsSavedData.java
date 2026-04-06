@@ -14,32 +14,20 @@ import net.minecraft.nbt.NbtList;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Per-player persistent game state + shared world state.
- * Player-specific data (emeralds, biome progress, etc.) is stored per-UUID.
- * World-level data (hub built, hub version) is shared.
- */
+/** Per-player persistent game state (emeralds, biome progress, etc.) + shared world state (hub) */
 public class CrafticsSavedData extends PersistentState {
-    // Shared world state
     public boolean hubBuilt = false;
     public int hubVersion = 0;
 
-    /** Monotonically increasing counter for allocating per-player world slots. */
     private int nextWorldSlot = 0;
 
-    /** World slot spacing — each player gets this many blocks of X-axis space. */
     private static final int WORLD_SLOT_SPACING = 10000;
-    /** X-offset where personal worlds begin (slots start here). */
     private static final int WORLD_SLOT_BASE_X = 10000;
 
-    // Per-player state
     private final Map<UUID, PlayerData> players = new HashMap<>();
-
-    // Party system
     private final Map<UUID, Party> parties = new HashMap<>();
-    private final Map<UUID, UUID> playerToParty = new HashMap<>(); // playerUuid -> partyId
+    private final Map<UUID, UUID> playerToParty = new HashMap<>();
 
-    /** Per-player game data. */
     public static class PlayerData {
         public int highestBiomeUnlocked = 1;
         public int emeralds = 0;
@@ -48,34 +36,26 @@ public class CrafticsSavedData extends PersistentState {
         public int branchChoice = -1;
         public String discoveredBiomes = "";
         public int ngPlusLevel = 0;
-        /** True while the player is mid-battle — used to restart the fight on rejoin. */
         public boolean inCombat = false;
-        /** Tracks whether the starter tactics manual has already been granted. */
         public boolean starterGuideGranted = false;
-        /** Per-player world slot index (-1 = no personal world created yet). */
         public int worldSlot = -1;
-        /** Whether this player's personal hub has been built. */
         public boolean personalHubBuilt = false;
-        /** Version of the player's personal hub (for rebuild detection). */
         public int personalHubVersion = 0;
-        /** Pity timer: number of levels completed without an event (resets when event occurs). */
+        /** Pity timer — resets when an event occurs */
         public int levelsSinceLastEvent = 0;
-        /** Pets tamed during a biome run and waiting at the hub to rejoin next fight. */
+        /** Pets waiting at the hub to rejoin next fight */
         private final java.util.List<net.minecraft.nbt.NbtCompound> hubPets = new java.util.ArrayList<>();
-        /** Server-authoritative set of unlocked guide book entries (bestiary mobs, trims). */
+        /** Server-authoritative unlocked guide entries (bestiary mobs, trims) */
         private final java.util.Set<String> unlockedGuideEntries = new java.util.LinkedHashSet<>();
 
-        /** Unlock a guide entry. Returns true if it was newly unlocked. */
         public boolean unlockGuideEntry(String entryName) {
             return unlockedGuideEntries.add(entryName);
         }
 
-        /** Get all unlocked guide entries (read-only view). */
         public java.util.Set<String> getUnlockedGuideEntries() {
             return java.util.Collections.unmodifiableSet(unlockedGuideEntries);
         }
 
-        /** Save one pet's data so it persists through a hub visit. */
         public void pushHubPet(String type, int hp, int maxHp, int atk, int def, int speed, int range) {
             net.minecraft.nbt.NbtCompound n = new net.minecraft.nbt.NbtCompound();
             n.putString("type", type); n.putInt("hp", hp); n.putInt("maxHp", maxHp);
@@ -84,7 +64,6 @@ public class CrafticsSavedData extends PersistentState {
             hubPets.add(n);
         }
 
-        /** Drain all persisted hub pets (clears the list) and return them. */
         public java.util.List<net.minecraft.nbt.NbtCompound> drainHubPets() {
             var pets = new java.util.ArrayList<>(hubPets);
             hubPets.clear();
@@ -207,20 +186,14 @@ public class CrafticsSavedData extends PersistentState {
 
     public CrafticsSavedData() {}
 
-    /** Get or create per-player data. Always call markDirty() after modifying. */
+    /** Always call markDirty() after modifying */
     public PlayerData getPlayerData(UUID playerId) {
         return players.computeIfAbsent(playerId, id -> new PlayerData());
     }
 
-    /** Get per-player data by entity. */
     public PlayerData getPlayerData(ServerPlayerEntity player) {
         return getPlayerData(player.getUuid());
     }
-
-    // All player-specific data is accessed via getPlayerData(uuid).
-    // The legacy shared-field system has been removed to prevent multiplayer data corruption.
-
-    // === Serialization ===
 
     public static CrafticsSavedData fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
         CrafticsSavedData data = new CrafticsSavedData();
@@ -228,7 +201,6 @@ public class CrafticsSavedData extends PersistentState {
         data.hubVersion = nbt.getInt("hubVersion");
         data.nextWorldSlot = nbt.contains("nextWorldSlot") ? nbt.getInt("nextWorldSlot") : 0;
 
-        // Load per-player data
         if (nbt.contains("players")) {
             NbtCompound playersNbt = nbt.getCompound("players");
             for (String key : playersNbt.getKeys()) {
@@ -239,7 +211,7 @@ public class CrafticsSavedData extends PersistentState {
             }
         }
 
-        // Legacy migration: if old single-player fields exist, import them
+        // Legacy migration from single-player save format
         if (nbt.contains("highestBiomeUnlocked") && !nbt.contains("players")) {
             PlayerData legacy = new PlayerData();
             legacy.highestBiomeUnlocked = nbt.getInt("highestBiomeUnlocked");
@@ -249,11 +221,10 @@ public class CrafticsSavedData extends PersistentState {
             legacy.branchChoice = nbt.contains("branchChoice") ? nbt.getInt("branchChoice") : -1;
             legacy.discoveredBiomes = nbt.contains("discoveredBiomes") ? nbt.getString("discoveredBiomes") : "";
             legacy.ngPlusLevel = nbt.contains("ngPlusLevel") ? nbt.getInt("ngPlusLevel") : 0;
-            // Store under a placeholder UUID — will be claimed by first player to join
+            // Placeholder UUID — claimed by first player to join
             data.players.put(new UUID(0, 0), legacy);
         }
 
-        // Load parties
         if (nbt.contains("parties")) {
             NbtCompound partiesNbt = nbt.getCompound("parties");
             for (String key : partiesNbt.getKeys()) {
@@ -283,7 +254,6 @@ public class CrafticsSavedData extends PersistentState {
         }
         nbt.put("players", playersNbt);
 
-        // Serialize parties
         NbtCompound partiesNbt = new NbtCompound();
         for (var entry : parties.entrySet()) {
             partiesNbt.put(entry.getKey().toString(), entry.getValue().toNbt());
@@ -300,13 +270,10 @@ public class CrafticsSavedData extends PersistentState {
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE, "craftics_data");
     }
 
-    // === Party System ===
-
     public Party getParty(UUID partyId) {
         return parties.get(partyId);
     }
 
-    /** Get the party a player belongs to, or null if solo. */
     public Party getPlayerParty(UUID playerUuid) {
         UUID partyId = playerToParty.get(playerUuid);
         return partyId != null ? parties.get(partyId) : null;

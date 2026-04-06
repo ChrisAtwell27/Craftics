@@ -19,14 +19,11 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Loads WorldEdit .schem (Sponge Schematic v2/v3) files and places them in the world.
- */
+/** Loads WorldEdit .schem files (Sponge Schematic v2/v3) and places them in the world */
 public class SchemLoader {
 
     public record SchemData(int width, int height, int length, BlockState[] palette, byte[] blockData) {
 
-        /** Place this schematic into the world at the given position. */
         public void place(ServerWorld world, int placeX, int placeY, int placeZ) {
             int total = width * height * length;
             int[] paletteIds = new int[total];
@@ -34,7 +31,6 @@ public class SchemLoader {
             for (int y = 0; y < height; y++) {
                 for (int z = 0; z < length; z++) {
                     for (int x = 0; x < width; x++) {
-                        // Decode varint from blockData
                         int paletteId = 0;
                         int shift = 0;
                         int b;
@@ -51,8 +47,7 @@ public class SchemLoader {
                 }
             }
 
-            // Pass 1: place non-gravity blocks first (including air from schematic).
-            // This preserves intentional voids and makes supports exist before sand/gravel/concrete powder.
+            // Pass 1: non-gravity blocks first (supports must exist before sand/gravel)
             for (int y = 0; y < height; y++) {
                 for (int z = 0; z < length; z++) {
                     for (int x = 0; x < width; x++) {
@@ -71,7 +66,7 @@ public class SchemLoader {
                 }
             }
 
-            // Pass 2: place gravity blocks after supports are in place.
+            // Pass 2: gravity blocks (sand, gravel, etc.)
             for (int y = 0; y < height; y++) {
                 for (int z = 0; z < length; z++) {
                     for (int x = 0; x < width; x++) {
@@ -92,10 +87,6 @@ public class SchemLoader {
         }
     }
 
-    /**
-     * Load a .schem from an InputStream (for loading from mod resources/JAR).
-     * Returns null if the stream can't be parsed.
-     */
     public static SchemData load(InputStream in, String sourceName) {
         try {
             return parseSchem(in, sourceName);
@@ -105,10 +96,6 @@ public class SchemLoader {
         }
     }
 
-    /**
-     * Try to load a .schem file from the given filesystem path.
-     * Returns null if the file doesn't exist or can't be parsed.
-     */
     public static SchemData load(Path schemPath) {
         if (!Files.exists(schemPath)) return null;
         try (InputStream in = Files.newInputStream(schemPath)) {
@@ -119,11 +106,10 @@ public class SchemLoader {
         }
     }
 
-    /** Shared parsing logic for both filesystem and resource-based loading. */
     private static SchemData parseSchem(InputStream in, String sourceName) throws Exception {
         NbtCompound root = NbtIo.readCompressed(in, NbtSizeTracker.ofUnlimitedBytes());
 
-        // Sponge v3 wraps in a "Schematic" compound; v2 is flat
+        // v3 wraps in "Schematic" compound; v2 is flat
         NbtCompound schem;
         if (root.contains("Schematic")) {
             schem = root.getCompound("Schematic");
@@ -141,22 +127,21 @@ public class SchemLoader {
             return null;
         }
 
-        // Parse palette and block data — differs between v2 and v3
+        // Palette + block data location differs per version
         NbtCompound paletteNbt;
         byte[] blockDataBytes;
 
         if (schem.contains("Blocks")) {
-            // Sponge v3: palette and data are inside a "Blocks" compound
+            // v3
             NbtCompound blocks = schem.getCompound("Blocks");
             paletteNbt = blocks.getCompound("Palette");
             blockDataBytes = blocks.getByteArray("Data");
         } else {
-            // Sponge v2: palette and data are at the root level
+            // v2
             paletteNbt = schem.getCompound("Palette");
             blockDataBytes = schem.getByteArray("BlockData");
         }
 
-        // Build palette: map block state strings to integer IDs
         int maxId = 0;
         Map<String, Integer> paletteMap = new HashMap<>();
         for (String key : paletteNbt.getKeys()) {
@@ -178,17 +163,12 @@ public class SchemLoader {
         return new SchemData(schemWidth, schemHeight, schemLength, palette, blockDataBytes);
     }
 
-    /**
-     * Parse a block state string like "minecraft:stone_bricks" or
-     * "minecraft:oak_stairs[facing=north,half=bottom]" into a BlockState.
-     */
+    // Parses "minecraft:oak_stairs[facing=north,half=bottom]" into a BlockState
     private static BlockState parseBlockState(String blockStr) {
         try {
-            // Strip block properties for simple lookup
             String plainId = blockStr.contains("[") ? blockStr.substring(0, blockStr.indexOf('[')) : blockStr;
             Block block = Registries.BLOCK.get(Identifier.of(plainId));
             if (block != Blocks.AIR || "minecraft:air".equals(plainId)) {
-                // For blocks with properties, try to parse them
                 if (blockStr.contains("[")) {
                     return parseWithProperties(block, blockStr);
                 }
@@ -200,10 +180,6 @@ public class SchemLoader {
         return Blocks.AIR.getDefaultState();
     }
 
-    /**
-     * Parse block state properties like [facing=north,half=bottom].
-     * Falls back to default state if parsing fails.
-     */
     private static BlockState parseWithProperties(Block block, String blockStr) {
         try {
             BlockState state = block.getDefaultState();
@@ -216,7 +192,6 @@ public class SchemLoader {
                 String key = kv[0].trim();
                 String val = kv[1].trim();
 
-                // Find the property on this block and apply it
                 for (net.minecraft.state.property.Property<?> property : state.getProperties()) {
                     if (property.getName().equals(key)) {
                         state = applyProperty(state, property, val);
@@ -230,7 +205,6 @@ public class SchemLoader {
         }
     }
 
-    /** Type-safe property application helper. */
     @SuppressWarnings("unchecked")
     private static <T extends Comparable<T>> BlockState applyProperty(
             BlockState state, net.minecraft.state.property.Property<T> property, String value) {
