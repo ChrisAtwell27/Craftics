@@ -23,7 +23,7 @@ public class CodAI implements EnemyAI {
         if (self.wasDamagedSinceLastTurn()) {
             GridPos fleeTarget = findWaterFleeTarget(arena, myPos, playerPos);
             if (fleeTarget != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, 2, self);
+                List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, 2, self, true);
                 if (!path.isEmpty() && allWater(arena, path)) {
                     return new EnemyAction.Flee(path);
                 }
@@ -53,7 +53,7 @@ public class CodAI implements EnemyAI {
                 var tile = arena.getTile(target);
                 if (tile == null || !tile.isWater()) continue;
 
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, target, d, self);
+                List<GridPos> path = Pathfinding.findPath(arena, myPos, target, d, self, true);
                 if (!path.isEmpty() && allWater(arena, path)) {
                     return new EnemyAction.Move(path);
                 }

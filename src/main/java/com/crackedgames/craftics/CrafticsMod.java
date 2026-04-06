@@ -92,6 +92,7 @@ public class CrafticsMod implements ModInitializer {
         // Clear static combat state between world loads (prevents leaking across saves in singleplayer)
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             CombatManager.clearAll();
+            com.crackedgames.craftics.level.BiomeRegistry.clear();
         });
 
         // When the overworld loads, check if we need to build the hub
@@ -160,53 +161,36 @@ public class CrafticsMod implements ModInitializer {
                         affData.toString()
                     ));
 
+                // Sync guide book unlocks to client
+                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+                    new com.crackedgames.craftics.network.GuideBookSyncPayload(
+                        String.join("|", pd.getUnlockedGuideEntries())
+                    ));
+
                 // Grant the Craftics advancement root so the tab is visible,
                 // plus re-grant any already-unlocked achievements (persisted in PlayerProgression)
                 com.crackedgames.craftics.achievement.AchievementManager.syncVanillaAdvancements(player);
 
                 // If the player disconnected mid-battle, restart the fight after they load in
                 updateWorldIcon(server, pd);
-                if (pd.inCombat && pd.isInBiomeRun()) {
-                    final ServerPlayerEntity rejoinPlayer = player;
-                    final ServerWorld rejoinWorld = overworld;
-                    final CrafticsSavedData.PlayerData rejoinPd = pd;
-                    // Schedule 2-tick delay so client finishes loading before we send combat packets
-                    server.execute(() -> server.execute(() -> {
-                        try {
-                            com.crackedgames.craftics.level.BiomeTemplate biome = null;
-                            for (var b : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {
-                                if (b.biomeId.equals(rejoinPd.activeBiomeId)) { biome = b; break; }
-                            }
-                            if (biome == null) { rejoinPd.inCombat = false; data.markDirty(); return; }
-
-                            int levelIndex = rejoinPd.activeBiomeLevelIndex;
-                            int globalLevel = biome.startLevel + levelIndex;
-                            com.crackedgames.craftics.level.LevelDefinition levelDef =
-                                com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, rejoinPd.branchChoice);
-                            if (levelDef == null) { rejoinPd.inCombat = false; data.markDirty(); return; }
-
-                            java.util.UUID rejoinWorldOwner = data.getEffectiveWorldOwner(rejoinPlayer.getUuid());
-                            com.crackedgames.craftics.core.GridArena arena =
-                                com.crackedgames.craftics.level.ArenaBuilder.build(rejoinWorld, levelDef, rejoinWorldOwner);
-                            net.minecraft.util.math.BlockPos startPos = arena.getPlayerStartBlockPos();
-                            net.minecraft.util.math.BlockPos origin = arena.getOrigin();
-                            float cameraYaw = com.crackedgames.craftics.level.ArenaBuilder.consumePendingCameraYaw();
-
-                            rejoinPlayer.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
-                            net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(rejoinPlayer,
-                                new com.crackedgames.craftics.network.EnterCombatPayload(
-                                    origin.getX(), origin.getY(), origin.getZ(),
-                                    arena.getWidth(), arena.getHeight(), cameraYaw
-                                ));
-                            CombatManager.get(rejoinPlayer).startCombat(rejoinPlayer, arena, levelDef);
-                            LOGGER.info("Restarted combat for {} (biome {}, level {})",
-                                rejoinPlayer.getName().getString(), rejoinPd.activeBiomeId, levelIndex + 1);
-                        } catch (Exception ex) {
-                            LOGGER.error("Failed to restart combat for {} on rejoin: {}", rejoinPlayer.getName().getString(), ex.getMessage());
-                            rejoinPd.inCombat = false;
-                            data.markDirty();
-                        }
-                    }));
+                // Safety: if inCombat is set but biomes haven't loaded yet, clear the flag
+                // to prevent the player from being stuck in a broken combat loop
+                if (pd.inCombat && com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes().isEmpty()) {
+                    LOGGER.warn("Clearing stale inCombat flag for {} (biome registry empty)", player.getName().getString());
+                    pd.inCombat = false;
+                    pd.endBiomeRun();
+                    data.markDirty();
+                }
+                // If the player was in combat when they disconnected, don't try to
+                // restart the fight — just end the run cleanly and send them home.
+                // Trying to rebuild arenas on rejoin is fragile and causes corruption.
+                if (pd.inCombat) {
+                    LOGGER.info("Player {} had stale inCombat flag — clearing and ending biome run",
+                        player.getName().getString());
+                    pd.inCombat = false;
+                    pd.endBiomeRun();
+                    data.markDirty();
+                    CombatManager.remove(player.getUuid());
                 }
             }
         });
@@ -296,6 +280,7 @@ public class CrafticsMod implements ModInitializer {
 
         // Load biome definitions from JSON datapacks on server start
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            com.crackedgames.craftics.level.BiomeRegistry.clear();
             com.crackedgames.craftics.level.BiomeRegistry.loadFromDatapacks(
                 server.getResourceManager()
             );
@@ -336,6 +321,28 @@ public class CrafticsMod implements ModInitializer {
                 data.markDirty();
                 updateWorldIcon(src.getServer(), pd);
                 src.sendFeedback(() -> Text.literal("§aUnlocked all " + totalBiomes + " biomes."), true);
+                return 1;
+            }));
+
+            // /craftics reset_combat — force-clear corrupted combat state (inCombat, biome run)
+            root.then(CommandManager.literal("reset_combat").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(cmdPlayer.getUuid());
+                pd.inCombat = false;
+                pd.endBiomeRun();
+                data.markDirty();
+                CombatManager cm = CombatManager.get(cmdPlayer);
+                if (cm.isActive()) cm.endCombat();
+                CombatManager.remove(cmdPlayer.getUuid());
+                // Tell the client to exit combat mode (camera, UI, controls)
+                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(cmdPlayer,
+                    new com.crackedgames.craftics.network.ExitCombatPayload(false));
+                cmdPlayer.requestTeleport(0, 65, 0);
+                cmdPlayer.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+                cmdPlayer.clearStatusEffects();
+                src.sendFeedback(() -> Text.literal("§aCombat state reset. Teleported to hub."), true);
                 return 1;
             }));
 

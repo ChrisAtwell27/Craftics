@@ -139,6 +139,10 @@ public class ArenaBuilder {
         structureGridH = -1;
         structureHeight = -1;
 
+        CrafticsMod.LOGGER.info("ArenaBuilder: resolved biomeId='{}' isBoss={} envStyle={} levelDef={} (instanceof GLD: {})",
+            biomeId, isBoss, envStyle, levelDef.getClass().getSimpleName(),
+            levelDef instanceof GeneratedLevelDefinition);
+
         // Try to load a structure preset
         boolean structureLoaded = tryLoadStructure(world, ox, oy, oz, w, h, tiles, biomeId, isBoss, rng);
 
@@ -149,7 +153,7 @@ public class ArenaBuilder {
 
         // Use structure-detected origin/spawn/size if available, otherwise defaults
         BlockPos finalOrigin = structureOrigin != null ? structureOrigin : origin;
-        GridPos finalPlayerStart = structurePlayerStart != null ? structurePlayerStart : levelDef.getPlayerStart();
+        GridPos requestedPlayerStart = structurePlayerStart != null ? structurePlayerStart : levelDef.getPlayerStart();
         int finalW = structureGridW > 0 ? structureGridW : w;
         int finalH = structureGridH > 0 ? structureGridH : h;
 
@@ -260,6 +264,9 @@ public class ArenaBuilder {
                 }
             }
         }
+
+        // Sanitise player start AFTER the VOID/OBSTACLE scan so it never lands on air
+        GridPos finalPlayerStart = findNearestWalkableTile(finalTiles, requestedPlayerStart);
 
         CrafticsMod.LOGGER.info("Arena built. origin={}, size={}x{}, playerStart={}", finalOrigin, finalW, finalH, finalPlayerStart);
         return new GridArena(finalW, finalH, finalTiles, finalOrigin, level, finalPlayerStart);
@@ -525,12 +532,16 @@ public class ArenaBuilder {
         if (!preserveSchematicGround) {
             // Replace outside perimeter with biome-themed concrete outline.
             for (int x = borderMinX; x <= borderMaxX; x++) {
-                set(world, x, arenaFloorY, borderMinZ, borderConcrete);
-                set(world, x, arenaFloorY, borderMaxZ, borderConcrete);
+                BlockPos north = new BlockPos(x, arenaFloorY, borderMinZ);
+                BlockPos south = new BlockPos(x, arenaFloorY, borderMaxZ);
+                if (!isAirLike(world.getBlockState(north))) set(world, x, arenaFloorY, borderMinZ, borderConcrete);
+                if (!isAirLike(world.getBlockState(south))) set(world, x, arenaFloorY, borderMaxZ, borderConcrete);
             }
             for (int z = borderMinZ; z <= borderMaxZ; z++) {
-                set(world, borderMinX, arenaFloorY, z, borderConcrete);
-                set(world, borderMaxX, arenaFloorY, z, borderConcrete);
+                BlockPos west = new BlockPos(borderMinX, arenaFloorY, z);
+                BlockPos east = new BlockPos(borderMaxX, arenaFloorY, z);
+                if (!isAirLike(world.getBlockState(west))) set(world, borderMinX, arenaFloorY, z, borderConcrete);
+                if (!isAirLike(world.getBlockState(east))) set(world, borderMaxX, arenaFloorY, z, borderConcrete);
             }
 
             // Overlay game tiles onto the inner grid.
@@ -606,6 +617,9 @@ public class ArenaBuilder {
                     if (!world.getBlockState(floorPos).getFluidState().isEmpty()) {
                         continue;
                     }
+                    if (isAirLike(world.getBlockState(floorPos))) {
+                        continue;
+                    }
                     set(world, x, arenaFloorY - 1, z, Blocks.STONE);
                 }
             }
@@ -619,16 +633,25 @@ public class ArenaBuilder {
                                             int w, int h, GridTile[][] tiles) {
         for (int x = 0; x < w; x++) {
             for (int z = 0; z < h; z++) {
-                set(world, ox + x, oy - 1, oz + z, Blocks.STONE);
-                if (!tiles[x][z].isWalkable() && !tiles[x][z].isWater()) {
+                GridTile tile = tiles[x][z];
+                Block tileBlock = tile.getBlockType();
+                boolean airLikeTile = tileBlock == Blocks.AIR || tileBlock == Blocks.CAVE_AIR || tileBlock == Blocks.VOID_AIR;
+                if (!airLikeTile) {
+                    set(world, ox + x, oy - 1, oz + z, Blocks.STONE);
+                }
+                if (airLikeTile) {
+                    world.setBlockState(new BlockPos(ox + x, oy, oz + z), Blocks.AIR.getDefaultState(), SET_FLAGS);
+                    world.setBlockState(new BlockPos(ox + x, oy + 1, oz + z), Blocks.AIR.getDefaultState(), SET_FLAGS);
+                } else if (!tile.isWalkable() && !tile.isWater()) {
                     // Obstacles: floor block at oy, obstacle block at oy+1
                     world.setBlockState(new BlockPos(ox + x, oy, oz + z),
                         Blocks.STONE.getDefaultState(), SET_FLAGS);
-                    set(world, ox + x, oy + 1, oz + z, tiles[x][z].getBlockType());
+                    set(world, ox + x, oy + 1, oz + z, tile.getBlockType());
                 } else {
                     // Walkable tiles: tile block at oy, clear oy+1
                     world.setBlockState(new BlockPos(ox + x, oy, oz + z),
-                        tiles[x][z].getBlockType().getDefaultState(), SET_FLAGS);
+                        tile.getBlockType().getDefaultState(), SET_FLAGS);
+                    world.setBlockState(new BlockPos(ox + x, oy + 1, oz + z), Blocks.AIR.getDefaultState(), SET_FLAGS);
                 }
             }
         }
@@ -660,6 +683,12 @@ public class ArenaBuilder {
         // Bedrock + stone base (only under the arena, not the full padded area)
         for (int x = -1; x < w + 1; x++) {
             for (int z = -1; z < h + 1; z++) {
+                if (x >= 0 && x < w && z >= 0 && z < h) {
+                    Block tileBlock = tiles[x][z].getBlockType();
+                    if (tileBlock == Blocks.AIR || tileBlock == Blocks.CAVE_AIR || tileBlock == Blocks.VOID_AIR) {
+                        continue;
+                    }
+                }
                 set(world, ox + x, oy - 2, oz + z, Blocks.BEDROCK);
                 set(world, ox + x, oy - 1, oz + z, Blocks.STONE);
             }
@@ -737,20 +766,10 @@ public class ArenaBuilder {
                 }
             }
 
-            // Also allow plain numbered/boss files directly in this folder.
-            if (isBoss) {
-                java.nio.file.Path bossRoot = searchDir.resolve("boss.schem");
-                if (java.nio.file.Files.exists(bossRoot) && !results.contains(bossRoot)) {
-                    results.add(bossRoot);
-                }
-            } else {
-                for (int i = 1; i <= 10; i++) {
-                    java.nio.file.Path rootNumbered = searchDir.resolve(i + ".schem");
-                    if (java.nio.file.Files.exists(rootNumbered) && !results.contains(rootNumbered)) {
-                        results.add(rootNumbered);
-                    }
-                }
-            }
+            // NOTE: plain numbered files (1.schem, 2.schem) in the root of a search
+            // directory are NOT loaded — they have no biome association and would pollute
+            // every biome's candidate pool. Only biome-prefixed files (desert_1.schem) or
+            // files inside a biome subdirectory (desert/1.schem) are used.
 
             if (biomeDir == null) return;
 
@@ -807,8 +826,7 @@ public class ArenaBuilder {
 
         // Place the schematic
         schem.place(world, placeX, placeY, placeZ);
-        buildBarrierContainmentShell(world, placeX, placeY, placeZ,
-            schem.width(), schem.height(), schem.length());
+        taperSchemEdges(world, placeX, placeY, placeZ, schem.width(), schem.height(), schem.length());
 
         // Use shared marker processing
         return processPlacedStructure(world, placeX, placeY, placeZ,
@@ -854,8 +872,7 @@ public class ArenaBuilder {
 
             // Place the schematic
             schem.place(world, placeX, placeY, placeZ);
-            buildBarrierContainmentShell(world, placeX, placeY, placeZ,
-                schem.width(), schem.height(), schem.length());
+            taperSchemEdges(world, placeX, placeY, placeZ, schem.width(), schem.height(), schem.length());
 
             // Use shared marker processing
             return processPlacedStructure(world, placeX, placeY, placeZ,
@@ -864,6 +881,52 @@ public class ArenaBuilder {
         } catch (Exception e) {
             CrafticsMod.LOGGER.error("Failed to load bundled arena: {}", resourceId, e);
             return false;
+        }
+    }
+
+    /**
+     * Smooths schematic edges so terrain doesn't look sliced.
+     * Clears blocks in a fade zone near the boundary so the terrain tapers off
+     * naturally, and fills solid ground beneath remaining blocks so nothing floats.
+     */
+    private static void taperSchemEdges(ServerWorld world, int px, int py, int pz,
+                                         int sizeX, int sizeY, int sizeZ) {
+        int fade = 4; // blocks from each edge to taper
+
+        for (int x = 0; x < sizeX; x++) {
+            for (int z = 0; z < sizeZ; z++) {
+                // Distance from nearest edge
+                int distX = Math.min(x, sizeX - 1 - x);
+                int distZ = Math.min(z, sizeZ - 1 - z);
+                int dist = Math.min(distX, distZ);
+
+                if (dist < fade) {
+                    // In the fade zone: clear blocks above floor proportional to distance.
+                    // dist=0 (edge): clear everything above py+0
+                    // dist=1: clear above py+2
+                    // dist=2: clear above py+4, etc.
+                    int maxKeepY = py + dist * 2;
+                    for (int y = maxKeepY + 1; y < py + sizeY; y++) {
+                        BlockPos bp = new BlockPos(px + x, y, pz + z);
+                        if (!world.getBlockState(bp).isAir()) {
+                            world.setBlockState(bp, Blocks.AIR.getDefaultState(), SET_FLAGS);
+                        }
+                    }
+                }
+
+                // Fill solid ground beneath any remaining non-air column so nothing floats.
+                // Find the lowest non-air block and fill stone beneath it down to py-1.
+                boolean foundSolid = false;
+                for (int y = py + sizeY - 1; y >= py; y--) {
+                    if (!world.getBlockState(new BlockPos(px + x, y, pz + z)).isAir()) {
+                        foundSolid = true;
+                    }
+                    if (foundSolid && y < py && world.getBlockState(new BlockPos(px + x, y, pz + z)).isAir()) {
+                        world.setBlockState(new BlockPos(px + x, y, pz + z),
+                            Blocks.STONE.getDefaultState(), SET_FLAGS);
+                    }
+                }
+            }
         }
     }
 
@@ -1048,6 +1111,40 @@ public class ArenaBuilder {
         if (world.getBlockState(pos).isAir()) {
             world.setBlockState(pos, block.getDefaultState(), SET_FLAGS);
         }
+    }
+
+    private static boolean isAirLike(BlockState state) {
+        Block block = state.getBlock();
+        return state.isAir() || block == Blocks.AIR || block == Blocks.CAVE_AIR || block == Blocks.VOID_AIR;
+    }
+
+    private static GridPos findNearestWalkableTile(GridTile[][] tiles, GridPos requested) {
+        int w = tiles.length;
+        int h = w > 0 ? tiles[0].length : 0;
+        if (w <= 0 || h <= 0) return new GridPos(0, 0);
+
+        int rx = Math.max(0, Math.min(w - 1, requested.x()));
+        int rz = Math.max(0, Math.min(h - 1, requested.z()));
+        GridTile requestedTile = tiles[rx][rz];
+        if (requestedTile != null && requestedTile.isWalkable()) {
+            return new GridPos(rx, rz);
+        }
+
+        GridPos best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (int x = 0; x < w; x++) {
+            for (int z = 0; z < h; z++) {
+                GridTile tile = tiles[x][z];
+                if (tile == null || !tile.isWalkable()) continue;
+                int dist = Math.abs(x - rx) + Math.abs(z - rz);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = new GridPos(x, z);
+                }
+            }
+        }
+
+        return best != null ? best : new GridPos(rx, rz);
     }
 
     private static Block getMostCommonTouchingBlock(ServerWorld world, BlockPos pos, Block fallback) {

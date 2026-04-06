@@ -58,8 +58,22 @@ public class CrafticsSavedData extends PersistentState {
         public boolean personalHubBuilt = false;
         /** Version of the player's personal hub (for rebuild detection). */
         public int personalHubVersion = 0;
+        /** Pity timer: number of levels completed without an event (resets when event occurs). */
+        public int levelsSinceLastEvent = 0;
         /** Pets tamed during a biome run and waiting at the hub to rejoin next fight. */
         private final java.util.List<net.minecraft.nbt.NbtCompound> hubPets = new java.util.ArrayList<>();
+        /** Server-authoritative set of unlocked guide book entries (bestiary mobs, trims). */
+        private final java.util.Set<String> unlockedGuideEntries = new java.util.LinkedHashSet<>();
+
+        /** Unlock a guide entry. Returns true if it was newly unlocked. */
+        public boolean unlockGuideEntry(String entryName) {
+            return unlockedGuideEntries.add(entryName);
+        }
+
+        /** Get all unlocked guide entries (read-only view). */
+        public java.util.Set<String> getUnlockedGuideEntries() {
+            return java.util.Collections.unmodifiableSet(unlockedGuideEntries);
+        }
 
         /** Save one pet's data so it persists through a hub visit. */
         public void pushHubPet(String type, int hp, int maxHp, int atk, int def, int speed, int range) {
@@ -153,6 +167,7 @@ public class CrafticsSavedData extends PersistentState {
             NbtList petList = new NbtList();
             hubPets.forEach(petList::add);
             nbt.put("hubPets", petList);
+            nbt.putString("unlockedGuideEntries", String.join("|", unlockedGuideEntries));
             return nbt;
         }
 
@@ -173,6 +188,14 @@ public class CrafticsSavedData extends PersistentState {
             if (nbt.contains("hubPets")) {
                 NbtList pl = nbt.getList("hubPets", net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
                 for (int i = 0; i < pl.size(); i++) pd.hubPets.add(pl.getCompound(i));
+            }
+            if (nbt.contains("unlockedGuideEntries")) {
+                String raw = nbt.getString("unlockedGuideEntries");
+                if (!raw.isEmpty()) {
+                    for (String entry : raw.split("\\|")) {
+                        if (!entry.isEmpty()) pd.unlockedGuideEntries.add(entry);
+                    }
+                }
             }
             return pd;
         }

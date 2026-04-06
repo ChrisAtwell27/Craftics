@@ -47,40 +47,160 @@ public class WeaponAbility {
      * Apply weapon-specific effects after the primary attack.
      * Returns extra messages and any additional targets hit.
      */
+    /** Luck bonus per point added to all probability-based weapon effects. */
+    private static final double LUCK_BONUS_PER_POINT = 0.02;
+
     public static AttackResult applyAbility(ServerPlayerEntity player, Item weapon,
                                              CombatEntity target, GridArena arena,
                                              int baseDamage,
-                                             PlayerProgression.PlayerStats playerStats) {
+                                             PlayerProgression.PlayerStats playerStats,
+                                             int luckPoints) {
         // No ability for fists, feathers, food, potions, or other non-weapon items
         if (!hasAbility(weapon)) {
             return new AttackResult(baseDamage, "");
         }
 
+        double luckBonus = luckPoints * LUCK_BONUS_PER_POINT;
         List<String> messages = new ArrayList<>();
         List<CombatEntity> extraTargets = new ArrayList<>();
         int totalExtra = 0;
 
-        // === SWORDS: Chance-based Sweep ===
-        // Base 10% chance + 5% per Slashing affinity point
-        // Sweeping Edge enchantment increases max sweep targets beyond 1
+        // === SWORDS ===
         if (isSword(weapon)) {
-            int slashingPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.SLASHING) : 0;
-            double sweepChance = 0.10 + (slashingPts * 0.05);
-            int sweepingEdge = PlayerCombatStats.getSweepingEdge(player);
-            int maxSweepTargets = 1 + sweepingEdge; // base 1, +1 per enchant level
+            // Sharpness: apply bleed stacks (each stack = +1 damage when attacked)
+            int sharpness = PlayerCombatStats.getSharpness(player);
+            if (sharpness > 0) {
+                target.stackBleed(sharpness);
+                messages.add("§c✦ Bleed! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
+            }
 
-            if (Math.random() < sweepChance) {
-                List<CombatEntity> sweepTargets = findAdjacentEnemies(arena, target, maxSweepTargets);
+            // Smite: AoE radiant burst vs undead
+            int smite = PlayerCombatStats.getSmite(player);
+            if (smite > 0 && PlayerCombatStats.isUndead(target.getEntityTypeId())) {
+                int smiteDmg = smite * 2;
+                int smiteRadius = smite <= 2 ? 2 : (smite <= 4 ? 3 : 4);
+                GridPos tPos = target.getGridPos();
+                // Burst damage to all undead in radius
+                for (CombatEntity enemy : arena.getOccupants().values()) {
+                    if (enemy == target || !enemy.isAlive() || enemy.isAlly()) continue;
+                    if (!PlayerCombatStats.isUndead(enemy.getEntityTypeId())) continue;
+                    if (tPos.manhattanDistance(enemy.getGridPos()) <= smiteRadius) {
+                        int burstDmg = enemy.takeDamage(smiteDmg);
+                        extraTargets.add(enemy);
+                        totalExtra += burstDmg;
+                        messages.add("§e✦ Holy Radiance! " + enemy.getDisplayName() + " takes " + burstDmg + " radiant damage!");
+                    }
+                }
+            }
+
+            // Bane of Arthropods: poison + slowness vs arthropods
+            int bane = PlayerCombatStats.getBane(player);
+            if (bane > 0 && PlayerCombatStats.isArthropod(target.getEntityTypeId())) {
+                target.stackPoison(3, bane);
+                int slowPenalty = bane <= 2 ? 1 : (bane <= 4 ? 2 : 3);
+                target.stackSlowness(3, slowPenalty);
+                messages.add("§2✦ Venom! " + target.getDisplayName() + " is poisoned (" + bane + "/turn) and slowed (-" + slowPenalty + " speed).");
+            }
+
+            // Knockback: directional shockwave — push target + enemies behind in a line
+            int knockback = PlayerCombatStats.getKnockback(player);
+            if (knockback > 0) {
+                int pushDist = knockback + 1; // Lv1 = 2, Lv2 = 3
+                int collisionDmg = knockback * 2; // Lv1 = 2, Lv2 = 4
+                GridPos pPos = arena.getPlayerGridPos();
+                int dx = Integer.signum(target.getGridPos().x() - pPos.x());
+                int dz = Integer.signum(target.getGridPos().z() - pPos.z());
+                // Find all enemies in the shockwave line behind target
+                List<CombatEntity> lineTargets = new ArrayList<>();
+                lineTargets.add(target);
+                GridPos scan = target.getGridPos();
+                for (int i = 0; i < pushDist + 2; i++) {
+                    scan = new GridPos(scan.x() + dx, scan.z() + dz);
+                    if (!arena.isInBounds(scan)) break;
+                    CombatEntity lineHit = arena.getOccupant(scan);
+                    if (lineHit != null && lineHit.isAlive() && !lineHit.isAlly()) {
+                        lineTargets.add(lineHit);
+                    }
+                }
+                // Push each entity in reverse order (furthest first to avoid collisions)
+                for (int i = lineTargets.size() - 1; i >= 0; i--) {
+                    CombatEntity pushTarget = lineTargets.get(i);
+                    GridPos kbPos = pushTarget.getGridPos();
+                    boolean hitWall = false;
+                    for (int step = 0; step < pushDist; step++) {
+                        GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
+                        if (!arena.isInBounds(next) || arena.isOccupied(next)) {
+                            hitWall = true;
+                            break;
+                        }
+                        var tile = arena.getTile(next);
+                        if (tile == null || !tile.isWalkable()) { hitWall = true; break; }
+                        kbPos = next;
+                    }
+                    if (!kbPos.equals(pushTarget.getGridPos())) {
+                        arena.moveEntity(pushTarget, kbPos);
+                        if (pushTarget.getMobEntity() != null) {
+                            var bp = arena.gridToBlockPos(kbPos);
+                            pushTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                        }
+                    }
+                    // Collision damage if hit wall/obstacle
+                    if (hitWall) {
+                        int cDmg = pushTarget.takeDamage(collisionDmg);
+                        totalExtra += cDmg;
+                        if (pushTarget != target) extraTargets.add(pushTarget);
+                        messages.add("§6💨 " + pushTarget.getDisplayName() + " slammed into obstacle for " + cDmg + " collision damage!");
+                    } else if (pushTarget != target) {
+                        extraTargets.add(pushTarget);
+                        messages.add("§6💨 " + pushTarget.getDisplayName() + " pushed back " + pushDist + " tiles!");
+                    }
+                }
+                if (!lineTargets.isEmpty()) {
+                    messages.add("§6💨 Shockwave! Knocked back " + lineTargets.size() + " enemies!");
+                }
+            }
+
+            // Sweeping Edge: 360 spin hitting ALL adjacent enemies
+            int sweepingEdge = PlayerCombatStats.getSweepingEdge(player);
+            if (sweepingEdge > 0) {
+                double sweepDmgPct = sweepingEdge == 1 ? 0.60 : (sweepingEdge == 2 ? 0.75 : 0.90);
+                int sweepKb = sweepingEdge >= 3 ? 1 : 0;
+                List<CombatEntity> sweepTargets = findAdjacentEnemies(arena, target, 99); // all adjacent
                 for (CombatEntity sweepTarget : sweepTargets) {
-                    int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);
+                    int sweepDmg = sweepTarget.takeDamage((int)(baseDamage * sweepDmgPct));
                     extraTargets.add(sweepTarget);
                     totalExtra += sweepDmg;
-                    messages.add("§e⚔ Sweep! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " splash damage!");
+                    messages.add("§e⚔ Whirlwind! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " damage!");
+                    // Lv3: knockback 1 tile
+                    if (sweepKb > 0) {
+                        GridPos pPos2 = target.getGridPos();
+                        int sdx = Integer.signum(sweepTarget.getGridPos().x() - pPos2.x());
+                        int sdz = Integer.signum(sweepTarget.getGridPos().z() - pPos2.z());
+                        GridPos sweepKbPos = new GridPos(sweepTarget.getGridPos().x() + sdx, sweepTarget.getGridPos().z() + sdz);
+                        if (arena.isInBounds(sweepKbPos) && !arena.isOccupied(sweepKbPos)) {
+                            var tile = arena.getTile(sweepKbPos);
+                            if (tile != null && tile.isWalkable()) {
+                                arena.moveEntity(sweepTarget, sweepKbPos);
+                                if (sweepTarget.getMobEntity() != null) {
+                                    var bp = arena.gridToBlockPos(sweepKbPos);
+                                    sweepTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                                }
+                            }
+                        }
+                    }
                 }
-                if (sweepTargets.isEmpty()) {
-                    // Sweep triggered but no adjacent enemies
-                } else if (sweepingEdge > 0) {
-                    messages.add("§7  Sweeping Edge " + sweepingEdge + ": up to " + maxSweepTargets + " targets");
+            } else {
+                // Base sword sweep (affinity-scaled, unchanged)
+                int slashingPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.SLASHING) : 0;
+                double sweepChance = 0.10 + (slashingPts * 0.05) + luckBonus;
+                if (Math.random() < sweepChance) {
+                    List<CombatEntity> sweepTargets = findAdjacentEnemies(arena, target, 1);
+                    for (CombatEntity sweepTarget : sweepTargets) {
+                        int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);
+                        extraTargets.add(sweepTarget);
+                        totalExtra += sweepDmg;
+                        messages.add("§e⚔ Sweep! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " splash damage!");
+                    }
                 }
             }
 
@@ -98,11 +218,11 @@ public class WeaponAbility {
         }
 
         // === AXES: Chance-based Armor Ignore ===
-        // Base 5% chance + 3% per Cleaving affinity point
+        // Base 5% chance + 3% per Cleaving affinity point + 2% per Luck point
         // When triggered, this attack ignores all target defense
         if (isAxe(weapon)) {
             int cleavingPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.CLEAVING) : 0;
-            double armorIgnoreChance = 0.05 + (cleavingPts * 0.03);
+            double armorIgnoreChance = 0.05 + (cleavingPts * 0.03) + luckBonus;
 
             if (Math.random() < armorIgnoreChance) {
                 // Deal bonus damage equal to the target's defense (simulates ignoring armor)
@@ -118,10 +238,10 @@ public class WeaponAbility {
         }
 
         // === BLUNT: Chance-based Stun ===
-        // Base 5% chance + 3% per Blunt affinity point
+        // Base 5% chance + 3% per Blunt affinity point + 2% per Luck point
         if (weapon == Items.MACE || weapon == Items.STICK || weapon == Items.BAMBOO) {
             int bluntPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.BLUNT) : 0;
-            double stunChance = 0.05 + (bluntPts * 0.03);
+            double stunChance = 0.05 + (bluntPts * 0.03) + luckBonus;
 
             if (Math.random() < stunChance) {
                 target.setStunned(true);
@@ -130,11 +250,11 @@ public class WeaponAbility {
         }
 
         // === WATER: Chance-based Knockback + Wet ===
-        // Base 5% chance + 3% per Water affinity point
+        // Base 5% chance + 3% per Water affinity point + 2% per Luck point
         // Applies to Trident and Coral weapons
         if (weapon == Items.TRIDENT || DamageType.isCoral(weapon)) {
             int waterPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.WATER) : 0;
-            double waterChance = 0.05 + (waterPts * 0.03);
+            double waterChance = 0.05 + (waterPts * 0.03) + luckBonus;
 
             if (Math.random() < waterChance) {
                 // Apply Soaked (Wet) debuff
@@ -181,60 +301,137 @@ public class WeaponAbility {
             }
         }
 
-        // === MACE: AoE + Knockback ===
-        // Density: +1 bonus AoE damage per level
-        // Breach: ignore 2 defense per level on primary target
-        // Wind Burst: +1 knockback range per level
+        // === MACE: Density (gravity pull) + Breach (permanent def shred) + Wind Burst (knockback + chain bonus) ===
         if (weapon == Items.MACE) {
             int densityLevel = PlayerCombatStats.getDensity(player);
             int breachLevel = PlayerCombatStats.getBreach(player);
             int windBurstLevel = PlayerCombatStats.getWindBurst(player);
 
-            // Breach: deal bonus damage to primary target (armor penetration)
+            // Breach: permanently reduce target defense
             if (breachLevel > 0) {
-                int breachDmg = target.takeDamage(breachLevel * 2);
-                messages.add("§4Breach! Pierces armor for +" + breachDmg + " damage.");
+                target.addPermanentDefReduction(breachLevel);
+                int remaining = target.getEffectiveDefense();
+                messages.add("§4Breach! Shattered " + breachLevel + " DEF. " + target.getDisplayName() + " has " + remaining + " DEF remaining.");
             }
 
-            // AoE: hit all enemies in 3x3 around target
-            // Density: bonus damage per level to shockwave hits
-            int aoeBonusDmg = densityLevel;
+            // Density: gravity well — pull nearby enemies toward impact point
+            if (densityLevel > 0) {
+                int pullRadius = densityLevel <= 1 ? 2 : 3;
+                int pullDist = densityLevel <= 2 ? 1 : 2;
+                int crushBonus = densityLevel;
+                GridPos impactPos = target.getGridPos();
+                for (int dx = -pullRadius; dx <= pullRadius; dx++) {
+                    for (int dz = -pullRadius; dz <= pullRadius; dz++) {
+                        if (dx == 0 && dz == 0) continue;
+                        GridPos scanPos = new GridPos(impactPos.x() + dx, impactPos.z() + dz);
+                        CombatEntity pullTarget = arena.getOccupant(scanPos);
+                        if (pullTarget == null || !pullTarget.isAlive() || pullTarget == target || pullTarget.isAlly()) continue;
+                        // Pull toward impact point
+                        int pdx = Integer.signum(impactPos.x() - pullTarget.getGridPos().x());
+                        int pdz = Integer.signum(impactPos.z() - pullTarget.getGridPos().z());
+                        GridPos pullPos = pullTarget.getGridPos();
+                        for (int step = 0; step < pullDist; step++) {
+                            GridPos next = new GridPos(pullPos.x() + pdx, pullPos.z() + pdz);
+                            if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
+                            var tile = arena.getTile(next);
+                            if (tile == null || !tile.isWalkable()) break;
+                            pullPos = next;
+                        }
+                        if (!pullPos.equals(pullTarget.getGridPos())) {
+                            arena.moveEntity(pullTarget, pullPos);
+                            if (pullTarget.getMobEntity() != null) {
+                                var bp = arena.gridToBlockPos(pullPos);
+                                pullTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                            }
+                            messages.add("§8✦ Gravity pulls " + pullTarget.getDisplayName() + " toward impact!");
+                        }
+                        // Crush bonus to enemies already adjacent to impact
+                        if (impactPos.manhattanDistance(pullTarget.getGridPos()) <= 1) {
+                            int crushDmg = pullTarget.takeDamage(crushBonus);
+                            totalExtra += crushDmg;
+                            extraTargets.add(pullTarget);
+                            messages.add("§6💥 Crush! " + pullTarget.getDisplayName() + " takes " + crushDmg + " from compression!");
+                        }
+                    }
+                }
+            }
+
+            // Base mace AoE shockwave (always active)
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
                     if (dx == 0 && dz == 0) continue;
                     GridPos aoePos = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
                     CombatEntity aoeTarget = arena.getOccupant(aoePos);
-                    if (aoeTarget != null && aoeTarget.isAlive() && aoeTarget != target) {
-                        int aoeDmg = aoeTarget.takeDamage(baseDamage / 2 + aoeBonusDmg);
+                    if (aoeTarget != null && aoeTarget.isAlive() && aoeTarget != target && !aoeTarget.isAlly()) {
+                        int aoeDmg = aoeTarget.takeDamage(baseDamage / 2);
                         extraTargets.add(aoeTarget);
                         totalExtra += aoeDmg;
-                        String densityTag = densityLevel > 0 ? " §8[Density +" + aoeBonusDmg + "]" : "";
-                        messages.add("§6💥 Shockwave hits " + aoeTarget.getDisplayName() + " for " + aoeDmg + "!" + densityTag);
+                        messages.add("§6💥 Shockwave hits " + aoeTarget.getDisplayName() + " for " + aoeDmg + "!");
                     }
                 }
             }
 
-            // Knockback main target — Wind Burst extends range
-            int kbRange = 1 + windBurstLevel;
-            GridPos pPos = arena.getPlayerGridPos();
-            int dx = Integer.signum(target.getGridPos().x() - pPos.x());
-            int dz = Integer.signum(target.getGridPos().z() - pPos.z());
-            GridPos kbPos = target.getGridPos();
-            for (int i = 0; i < kbRange; i++) {
-                GridPos nextKb = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
-                if (!arena.isInBounds(nextKb) || arena.isOccupied(nextKb)) break;
-                var tile = arena.getTile(nextKb);
-                if (tile == null || !tile.isWalkable()) break;
-                kbPos = nextKb;
-            }
-            if (!kbPos.equals(target.getGridPos())) {
-                arena.moveEntity(target, kbPos);
-                if (target.getMobEntity() != null) {
-                    var bp = arena.gridToBlockPos(kbPos);
-                    target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+            // Wind Burst: knockback ALL adjacent + accumulate bonus for next mace hit
+            if (windBurstLevel > 0) {
+                int wbKb = windBurstLevel;
+                int wbNextBonus = windBurstLevel == 1 ? 2 : (windBurstLevel == 2 ? 3 : 4);
+                GridPos pPos = arena.getPlayerGridPos();
+                // Knockback all adjacent enemies (including target)
+                List<CombatEntity> kbTargets = new ArrayList<>();
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        GridPos checkPos = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
+                        CombatEntity kbTarget = arena.getOccupant(checkPos);
+                        if (kbTarget != null && kbTarget.isAlive() && !kbTarget.isAlly()) {
+                            kbTargets.add(kbTarget);
+                        }
+                    }
                 }
-                String windTag = windBurstLevel > 0 ? " §b[Wind Burst +" + windBurstLevel + "]" : "";
-                messages.add("§6💨 Knocked back " + target.getDisplayName() + " " + kbRange + " tiles!" + windTag);
+                for (CombatEntity kbTarget : kbTargets) {
+                    int kdx = Integer.signum(kbTarget.getGridPos().x() - pPos.x());
+                    int kdz = Integer.signum(kbTarget.getGridPos().z() - pPos.z());
+                    if (kdx == 0 && kdz == 0) kdx = 1;
+                    GridPos kbPos = kbTarget.getGridPos();
+                    for (int step = 0; step < wbKb; step++) {
+                        GridPos next = new GridPos(kbPos.x() + kdx, kbPos.z() + kdz);
+                        if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
+                        var tile = arena.getTile(next);
+                        if (tile == null || !tile.isWalkable()) break;
+                        kbPos = next;
+                    }
+                    if (!kbPos.equals(kbTarget.getGridPos())) {
+                        arena.moveEntity(kbTarget, kbPos);
+                        if (kbTarget.getMobEntity() != null) {
+                            var bp = arena.gridToBlockPos(kbPos);
+                            kbTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                        }
+                    }
+                }
+                messages.add("§b💨 Wind Burst! Shockwave knocks back enemies " + wbKb + " tiles. Next mace hit +" + wbNextBonus + " damage!");
+                // Store bonus — CombatManager will consume it on next mace attack
+                // We can't directly access CombatManager from here, so we signal via a return message tag
+                // Actually, we'll handle this by reading a special message in CombatManager
+                // Simpler: store on the arena (shared state). But cleanest: return it in AttackResult.
+                // For now, use a convention: Wind Burst bonus message contains "[WB_BONUS:N]"
+                messages.add("[WB_BONUS:" + wbNextBonus + "]");
+            } else {
+                // Default mace knockback (no Wind Burst)
+                GridPos pPos = arena.getPlayerGridPos();
+                int dx = Integer.signum(target.getGridPos().x() - pPos.x());
+                int dz = Integer.signum(target.getGridPos().z() - pPos.z());
+                GridPos kbPos = target.getGridPos();
+                GridPos nextKb = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
+                if (arena.isInBounds(nextKb) && !arena.isOccupied(nextKb)) {
+                    var tile = arena.getTile(nextKb);
+                    if (tile != null && tile.isWalkable()) {
+                        arena.moveEntity(target, nextKb);
+                        if (target.getMobEntity() != null) {
+                            var bp = arena.gridToBlockPos(nextKb);
+                            target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                        }
+                        messages.add("§6💨 Knocked back " + target.getDisplayName() + " 1 tile!");
+                    }
+                }
             }
         }
 
@@ -249,7 +446,7 @@ public class WeaponAbility {
 
             // Blunt stun check for blaze rod too
             int bluntPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.BLUNT) : 0;
-            double stunChance = 0.05 + (bluntPts * 0.03);
+            double stunChance = 0.05 + (bluntPts * 0.03) + luckBonus;
             if (Math.random() < stunChance) {
                 target.setStunned(true);
                 messages.add("§8✦ STUNNED! " + target.getDisplayName() + " can't move next turn!");
@@ -276,7 +473,7 @@ public class WeaponAbility {
 
             // Blunt stun check for breeze rod too
             int bluntPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.BLUNT) : 0;
-            double stunChance = 0.05 + (bluntPts * 0.03);
+            double stunChance = 0.05 + (bluntPts * 0.03) + luckBonus;
             if (Math.random() < stunChance) {
                 target.setStunned(true);
                 messages.add("§8✦ STUNNED! " + target.getDisplayName() + " can't move next turn!");
@@ -292,7 +489,7 @@ public class WeaponAbility {
             }
             // Brain Coral: Confusion (chance to skip action)
             if (weapon == Items.BRAIN_CORAL) {
-                if (Math.random() < 0.4) {
+                if (Math.random() < 0.4 + luckBonus) {
                     target.stackConfusion(1, 1);
                     messages.add("\u00a7d\u2716 Confused! " + target.getDisplayName() + " is disoriented!");
                 }
@@ -358,10 +555,19 @@ public class WeaponAbility {
             }
         }
 
-        // === CROSSBOW: Pierce through ===
-        // Bolt continues through the first target; Piercing enchantment increases max pierce targets
+        // === CROSSBOW: Pierce through + Bleed ===
         if (weapon == Items.CROSSBOW) {
             int piercingLevel = PlayerCombatStats.getPiercing(player);
+
+            // Piercing: bonus damage on primary target + bleed
+            if (piercingLevel > 0) {
+                int pierceBonusDmg = target.takeDamage(piercingLevel);
+                totalExtra += pierceBonusDmg;
+                int bleedStacks = piercingLevel <= 2 ? 1 : (piercingLevel <= 3 ? 2 : 3);
+                target.stackBleed(bleedStacks);
+                messages.add("§b⚔ Piercing bolt! +" + pierceBonusDmg + " damage, " + bleedStacks + " bleed on " + target.getDisplayName() + ".");
+            }
+
             int maxPierceTargets = 1 + piercingLevel; // base 1, +1 per Piercing level
             int pierceCount = 0;
             GridPos pPos = arena.getPlayerGridPos();
@@ -375,6 +581,11 @@ public class WeaponAbility {
                     int pierceDmg = pierced.takeDamage(baseDamage / 2);
                     extraTargets.add(pierced);
                     totalExtra += pierceDmg;
+                    // Pierced targets also get bleed
+                    if (piercingLevel > 0) {
+                        int bleedStacks = piercingLevel <= 2 ? 1 : (piercingLevel <= 3 ? 2 : 3);
+                        pierced.stackBleed(bleedStacks);
+                    }
                     messages.add("§b⚔ Bolt pierces through to " + pierced.getDisplayName() + " for " + pierceDmg + "!");
                     pierceCount++;
                 }
@@ -419,7 +630,7 @@ public class WeaponAbility {
     public static AttackResult applyAbility(ServerPlayerEntity player, Item weapon,
                                              CombatEntity target, GridArena arena,
                                              int baseDamage) {
-        return applyAbility(player, weapon, target, arena, baseDamage, null);
+        return applyAbility(player, weapon, target, arena, baseDamage, null, 0);
     }
 
     /** Find up to maxTargets adjacent enemies around a target (for sweep). */

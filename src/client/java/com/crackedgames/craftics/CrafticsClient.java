@@ -29,6 +29,7 @@ public class CrafticsClient implements ClientModInitializer {
 
     private static KeyBinding combatToggleKey;
     private static KeyBinding guideBookKey;
+    private static KeyBinding respecKey;
     private static boolean traderScreenOpened = false;
     private static boolean previousBobView = true;
     private static double previousChatScale = 1.0;
@@ -270,6 +271,12 @@ public class CrafticsClient implements ClientModInitializer {
             "key.categories.misc"
         ));
 
+        respecKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.respec",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_H,
+            "key.categories.misc"
+        ));
+
         // --- Player combat animations (PlayerAnimator) ---
         CombatAnimations.register();
 
@@ -277,6 +284,13 @@ public class CrafticsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.AchievementUnlockPayload.ID, (payload, context) -> {
                 AchievementToast.enqueue(payload.displayName(), payload.description(), payload.categoryColor());
+            }
+        );
+
+        // Guide book sync (server-authoritative unlock state)
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.GuideBookSyncPayload.ID, (payload, context) -> {
+                com.crackedgames.craftics.client.guide.GuideBookData.applySyncFromServer(payload.unlockedEntries());
             }
         );
 
@@ -290,6 +304,8 @@ public class CrafticsClient implements ClientModInitializer {
         // --- Client tick ---
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Guide book unlocks are now synced from the server via GuideBookSyncPayload
+
             // Tick achievement toast animations
             AchievementToast.tick();
 
@@ -313,6 +329,13 @@ public class CrafticsClient implements ClientModInitializer {
             while (guideBookKey.wasPressed()) {
                 if (client.currentScreen == null) {
                     client.setScreen(new com.crackedgames.craftics.client.guide.GuideBookScreen());
+                }
+            }
+
+            // H key: open respec screen
+            while (respecKey.wasPressed()) {
+                if (client.currentScreen == null && !CombatState.isInCombat()) {
+                    client.setScreen(new com.crackedgames.craftics.client.RespecScreen());
                 }
             }
 

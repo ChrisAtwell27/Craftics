@@ -330,7 +330,7 @@ The mod includes 20+ unique AI strategies registered for 40+ mob types. Unregist
 | **GoatAI** | Goat, Wolf | Passive until hit, then 50% ram (knockback) or flee |
 | **ZombieAI** | Zombie | Beeline melee, speed 1 |
 | **HuskAI** | Husk | Zombie variant with +1 bonus damage (hunger) |
-| **DrownedAI** | Drowned | Trident throw (range 3) or melee rush |
+| **DrownedAI** | Drowned | 50% spawn trident; diagonal throw range ≤3 or melee rush |
 | **SkeletonAI** | Skeleton | Ranged (range 3), seeks cardinal line-of-sight |
 | **StrayAI** | Stray | Ranged + kiting (prefers max distance) |
 | **PillagerAI** | Pillager | Crossbow (range 4), retreats from melee |

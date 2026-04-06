@@ -55,7 +55,9 @@ public class WolfAI implements EnemyAI {
         int speed = self.getMoveSpeed();
 
         if (dist <= 1) {
-            return new EnemyAction.Attack(self.getAttackPower());
+            // Already adjacent: bite, then reposition if possible.
+            EnemyAction combo = buildHitAndRun(self, arena, playerPos, List.of());
+            return combo != null ? combo : new EnemyAction.Attack(self.getAttackPower());
         }
 
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, speed);
@@ -64,7 +66,8 @@ public class WolfAI implements EnemyAI {
             if (!path.isEmpty()) {
                 GridPos endPos = path.get(path.size() - 1);
                 if (endPos.manhattanDistance(playerPos) <= 1) {
-                    return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
+                    EnemyAction combo = buildHitAndRun(self, arena, playerPos, path);
+                    return combo != null ? combo : new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                 }
                 return new EnemyAction.Move(path);
             }
@@ -80,6 +83,8 @@ public class WolfAI implements EnemyAI {
 
         // Adjacent to prey — attack it
         if (dist <= 1) {
+            EnemyAction combo = buildHitAndRun(self, arena, preyPos, List.of());
+            if (combo != null) return combo;
             return new EnemyAction.AttackMob(prey.getEntityId(), self.getAttackPower());
         }
 
@@ -90,12 +95,45 @@ public class WolfAI implements EnemyAI {
             if (!path.isEmpty()) {
                 GridPos endPos = path.get(path.size() - 1);
                 if (endPos.manhattanDistance(preyPos) <= 1) {
+                    EnemyAction combo = buildHitAndRun(self, arena, preyPos, path);
+                    if (combo != null) return combo;
                     return new EnemyAction.MoveAndAttackMob(path, prey.getEntityId(), self.getAttackPower());
                 }
                 return new EnemyAction.Move(path);
             }
         }
         return new EnemyAction.Idle();
+    }
+
+    /**
+     * Build a wolf hit-and-run action: move in, attack, then reposition with remaining movement.
+     * Returns null when no retreat is possible.
+     */
+    private EnemyAction buildHitAndRun(CombatEntity self, GridArena arena, GridPos focusTarget,
+                                       List<GridPos> approachPath) {
+        int speed = self.getMoveSpeed();
+        int approachSteps = approachPath != null ? approachPath.size() : 0;
+        int remaining = Math.max(0, speed - approachSteps);
+        if (remaining <= 0) return null;
+
+        GridPos attackPos = approachSteps > 0 ? approachPath.get(approachSteps - 1) : self.getGridPos();
+        java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, attackPos, remaining, 1, self);
+        if (reachable.isEmpty()) return null;
+
+        GridPos retreatTarget = null;
+        int bestDist = attackPos.manhattanDistance(focusTarget);
+        for (GridPos pos : reachable) {
+            int d = pos.manhattanDistance(focusTarget);
+            if (d > bestDist) {
+                bestDist = d;
+                retreatTarget = pos;
+            }
+        }
+        if (retreatTarget == null) return null;
+
+        List<GridPos> retreatPath = Pathfinding.findPath(arena, attackPos, retreatTarget, remaining, self);
+        if (retreatPath.isEmpty()) return null;
+        return new EnemyAction.MoveAttackMove(approachPath, self.getAttackPower(), retreatPath);
     }
 
     private CombatEntity findNearestPrey(CombatEntity self, GridArena arena) {

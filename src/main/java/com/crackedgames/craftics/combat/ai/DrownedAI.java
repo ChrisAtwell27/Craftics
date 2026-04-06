@@ -9,12 +9,12 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Drowned AI: Aquatic fighter with 70% trident variant.
- * - 70% of drowned spawn with tridents (determined by entity instance)
- * - TRIDENT THROW: ranged attack at range 3 with cardinal LOS
+ * Drowned AI: Aquatic fighter with 50% trident variant.
+ * - 50% of drowned spawn with tridents (determined by entity instance)
+ * - TRIDENT THROW: only fires DIAGONALLY at range ≤3 for tactical variety
  * - WATER SPEED: double speed on water tiles
- * - Non-trident drowned are pure melee rushers
- * - Falls back to melee if no trident or no LOS
+ * - Non-trident drowned are pure melee rushers (Husk-like stats)
+ * - Falls back to melee if no trident or no diagonal LOS
  */
 public class DrownedAI implements EnemyAI {
     private static final Random RNG = new Random();
@@ -24,9 +24,11 @@ public class DrownedAI implements EnemyAI {
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
-        // Determine trident on first call (70% chance per drowned instance)
+        // Determine trident on first call (50% chance per drowned instance)
         if (hasTrident == null) {
-            hasTrident = RNG.nextDouble() < 0.7;
+            hasTrident = RNG.nextDouble() < 0.5;
+            // Store this flag on the combat entity so CombatManager can check it
+            self.setDrownedWithTrident(hasTrident);
         }
 
         GridPos myPos = self.getGridPos();
@@ -44,12 +46,12 @@ public class DrownedAI implements EnemyAI {
             return new EnemyAction.Attack(self.getAttackPower());
         }
 
-        // Trident throw if this drowned has one and has cardinal LOS at range 3
-        if (hasTrident && AIUtils.hasCardinalLOS(arena, myPos, playerPos, 3)) {
+        // Trident throw only if diagonal to player and in range 3
+        if (hasTrident && isDiagonal(myPos, playerPos) && dist <= 3) {
             return new EnemyAction.RangedAttack(self.getAttackPower() + 1, "trident");
         }
 
-        // Try to move to get cardinal LOS for a trident throw
+        // Try to move to get diagonal LOS for a trident throw
         if (hasTrident) {
             for (int dx = -effectiveSpeed; dx <= effectiveSpeed; dx++) {
                 for (int dz = -effectiveSpeed; dz <= effectiveSpeed; dz++) {
@@ -59,7 +61,8 @@ public class DrownedAI implements EnemyAI {
                     if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
                     var tile = arena.getTile(candidate);
                     if (tile == null || !tile.isWalkable()) continue;
-                    if (AIUtils.hasCardinalLOS(arena, candidate, playerPos, 3)) {
+                    // Check if this candidate position would be diagonal to player
+                    if (isDiagonal(candidate, playerPos) && candidate.manhattanDistance(playerPos) <= 3) {
                         List<GridPos> path = Pathfinding.findPath(arena, myPos, candidate, effectiveSpeed, self);
                         if (!path.isEmpty()) {
                             return new EnemyAction.MoveAndAttack(path, self.getAttackPower() + 1);
@@ -69,7 +72,7 @@ public class DrownedAI implements EnemyAI {
             }
         }
 
-        // No trident shot available — rush melee
+        // No diagonal trident shot available — rush melee
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, effectiveSpeed);
         if (target == null) target = playerPos;
 
@@ -81,5 +84,15 @@ public class DrownedAI implements EnemyAI {
             return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
         }
         return new EnemyAction.Move(path);
+    }
+
+    /**
+     * Checks if two positions are diagonal from each other.
+     * Diagonal = both dx and dz are non-zero and equal in magnitude.
+     */
+    private boolean isDiagonal(GridPos from, GridPos to) {
+        int dx = Math.abs(to.x() - from.x());
+        int dz = Math.abs(to.z() - from.z());
+        return dx > 0 && dz > 0 && dx == dz;
     }
 }
