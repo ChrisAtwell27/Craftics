@@ -16,35 +16,34 @@ public class CombatEntity {
     private boolean alive;
     private MobEntity mobEntity;
 
-    // AI state
     private boolean damagedSinceLastTurn = false;
     private int fuseTimer = 0;
-    private boolean selfExploded = false; // creeper exploded on its own (no drops)
+    private boolean selfExploded = false; // creeper self-detonation = no drops
     private int size;
     private final int moveSpeed;
     private int speedBonus = 0;
     private int attackPenalty = 0;
-    private int poisonTurns = 0; // turns of poison remaining
-    private int poisonAmplifier = 0; // 0 = level I (1 dmg/turn), 1 = level II (2 dmg/turn)
-    private boolean enraged = false; // for vindicator/warden rage mechanic
-    private boolean drownedHasTrident = false; // drowned-specific: determines if ranged or melee
-    private int defensePenalty = 0; // temporary defense reduction (from Scrape sherd)
+    private int poisonTurns = 0;
+    private int poisonAmplifier = 0; // 0 = level I, 1 = level II, etc
+    private boolean enraged = false;
+    private boolean drownedHasTrident = false;
+    private int defensePenalty = 0;
     private int defensePenaltyTurns = 0;
-    private int burningTurns = 0; // fire damage over time
-    private int burningDamage = 0; // damage per turn while burning
-    private int soakedTurns = 0; // turns of soaked remaining
-    private int soakedAmplifier = 0; // 0 = level I, 1 = level II, etc.
-    private int confusionTurns = 0; // turns of confusion remaining
-    private int confusionAmplifier = 0; // 0 = level I, 1 = level II, etc.
-    private int slownessTurns = 0; // turns of slowness remaining
-    private int slownessPenalty = 0; // speed reduction while slowed
-    private int bleedStacks = 0; // each stack = +1 bonus damage when attacked
-    private int permanentDefReduction = 0; // permanent defense shred (from Breach)
-    private int attackBoost = 0; // permanent attack boost (from pet stats override)
-    private int defenseBoost = 0; // permanent defense boost (from pet stats override)
-    private int rangeOverride = -1; // if set, overrides base range
-    private boolean backgroundBoss = false; // true = occupies tiles for targeting but doesn't block movement
-    private int visualProjectileEntityId = -1; // MC entity ID of the visual fireball/skull entity
+    private int burningTurns = 0;
+    private int burningDamage = 0;
+    private int soakedTurns = 0;
+    private int soakedAmplifier = 0;
+    private int confusionTurns = 0;
+    private int confusionAmplifier = 0;
+    private int slownessTurns = 0;
+    private int slownessPenalty = 0;
+    private int bleedStacks = 0; // +1 bonus damage per stack when attacked
+    private int permanentDefReduction = 0; // from Breach, never expires
+    private int attackBoost = 0;
+    private int defenseBoost = 0;
+    private int rangeOverride = -1;
+    private boolean backgroundBoss = false; // targetable but doesn't block movement
+    private int visualProjectileEntityId = -1;
     private boolean deathProcessed = false; // guards against double death handling
 
     public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
@@ -125,9 +124,7 @@ public class CombatEntity {
     }
     public int getMoveSpeed() {
         int base = moveSpeed + speedBonus;
-        // Soaked reduces movement by 1
         if (soakedTurns > 0) base -= 1;
-        // Slowness reduces movement
         if (slownessTurns > 0) base -= slownessPenalty;
         float mult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyMoveSpeedMultiplier();
         return Math.max(1, (int)(base * mult));
@@ -179,22 +176,20 @@ public class CombatEntity {
     public void setBossDisplayName(String name) { this.bossDisplayName = name; }
 
     private String aiOverrideKey = null;
-    /** When set, AIRegistry uses this key instead of entityTypeId for AI lookup. */
     public String getAiOverrideKey() { return aiOverrideKey; }
     public void setAiOverrideKey(String key) { this.aiOverrideKey = key; }
-    /** Returns the key to use for AIRegistry lookup — aiOverrideKey if set, otherwise entityTypeId. */
+    /** AIRegistry uses this instead of entityTypeId when aiOverrideKey is set. */
     public String getAiKey() { return aiOverrideKey != null ? aiOverrideKey : entityTypeId; }
 
-    private int maxHpReduction = 0; // wither effect — permanent max HP reduction
+    private int maxHpReduction = 0; // wither effect, permanent
     public int getMaxHpReduction() { return maxHpReduction; }
     public void addMaxHpReduction(int amount) { this.maxHpReduction += amount; }
     public int getEffectiveMaxHp() { return Math.max(1, maxHp - maxHpReduction); }
 
-    // Projectile state — for boss-spawned projectile entities (fireballs, wither skulls)
     private boolean projectile = false;
     private int projectileDirX = 0;
     private int projectileDirZ = 0;
-    private String projectileType = null; // "ghast_fireball" or "wither_skull"
+    private String projectileType = null;
     private int projectileOwnerId = -1;
     private boolean projectileRedirected = false;
 
@@ -215,12 +210,12 @@ public class CombatEntity {
     public boolean isAlly() { return ally; }
     public void setAlly(boolean a) { this.ally = a; }
 
-    /** UUID of the player who owns this pet (null if not owned by a party member). */
+    /** Null if not owned by a party member. */
     private java.util.UUID ownerUuid = null;
     public java.util.UUID getOwnerUuid() { return ownerUuid; }
     public void setOwnerUuid(java.util.UUID uuid) { this.ownerUuid = uuid; }
 
-    /** Original hub-world NBT snapshot for this pet (null for non-hub-tamed allies). */
+    /** Null for non-hub-tamed allies. */
     private NbtCompound originalHubNbt = null;
     public NbtCompound getOriginalHubNbt() { return originalHubNbt; }
     public void setOriginalHubNbt(NbtCompound nbt) { this.originalHubNbt = nbt; }
@@ -229,8 +224,7 @@ public class CombatEntity {
     public boolean isMounted() { return mounted; }
     public void setMounted(boolean m) { this.mounted = m; }
 
-    // Ally aggro tracking: if a pet damages this entity, store that pet ID for target selection.
-    private int aggroAllyEntityId = -1;
+    private int aggroAllyEntityId = -1; // pet that hit us, for aggro target selection
     public int getAggroAllyEntityId() { return aggroAllyEntityId; }
     public void setAggroAllyEntityId(int id) { this.aggroAllyEntityId = id; }
 
@@ -256,48 +250,38 @@ public class CombatEntity {
     public void setSlownessPenalty(int p) { this.slownessPenalty = p; }
     public int getBleedStacks() { return bleedStacks; }
     public void setBleedStacks(int s) { this.bleedStacks = s; }
-    /** Add bleed stacks (each stack = +1 bonus damage when this entity is attacked). */
     public void stackBleed(int stacks) { this.bleedStacks = Math.min(MAX_EFFECT_AMPLIFIER, this.bleedStacks + stacks); }
     public int getPermanentDefReduction() { return permanentDefReduction; }
-    /** Permanently reduce defense (stacks, no expiry). Used by Breach. */
     public void addPermanentDefReduction(int amount) { this.permanentDefReduction += amount; }
 
-    // === Effect stacking helpers ===
-    // Duration refreshes to the longer value; intensity stacks additively up to a cap.
+    // Duration refreshes to longer value, intensity stacks up to cap
+    private static final int MAX_EFFECT_AMPLIFIER = 10;
 
-    private static final int MAX_EFFECT_AMPLIFIER = 10; // cap at level X
-
-    /** Stack poison: refresh duration, add amplifier. */
     public void stackPoison(int turns, int ampIncrease) {
         poisonTurns = Math.max(poisonTurns, turns);
         poisonAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, poisonAmplifier + ampIncrease);
     }
 
-    /** Stack burning: refresh duration, add damage per turn. */
     public void stackBurning(int turns, int dmgIncrease) {
         burningTurns = Math.max(burningTurns, turns);
         burningDamage = Math.min(MAX_EFFECT_AMPLIFIER + 1, burningDamage + dmgIncrease);
     }
 
-    /** Stack soaked: refresh duration, add amplifier. */
     public void stackSoaked(int turns, int ampIncrease) {
         soakedTurns = Math.max(soakedTurns, turns);
         soakedAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, soakedAmplifier + ampIncrease);
     }
 
-    /** Stack slowness: refresh duration, add penalty. */
     public void stackSlowness(int turns, int penaltyIncrease) {
         slownessTurns = Math.max(slownessTurns, turns);
         slownessPenalty = Math.min(MAX_EFFECT_AMPLIFIER, slownessPenalty + penaltyIncrease);
     }
 
-    /** Stack confusion: refresh duration, add amplifier. */
     public void stackConfusion(int turns, int ampIncrease) {
         confusionTurns = Math.max(confusionTurns, turns);
         confusionAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, confusionAmplifier + ampIncrease);
     }
 
-    /** Stack defense penalty: refresh duration, add penalty. */
     public void stackDefensePenalty(int turns, int penaltyIncrease) {
         defensePenaltyTurns = Math.max(defensePenaltyTurns, turns);
         defensePenalty = Math.min(MAX_EFFECT_AMPLIFIER, defensePenalty + penaltyIncrease);
@@ -308,11 +292,10 @@ public class CombatEntity {
     }
 
     public int takeDamage(int rawDamage) {
-        // Percentage-based defense: each point = 5% reduction, capped at 60%
+        // Each DEF point = 5% reduction, capped at 60%
         int effectiveDef = getEffectiveDefense();
         double reduction = Math.min(0.60, effectiveDef * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
-        // Bleed: each stack adds +1 bonus damage when attacked
         if (bleedStacks > 0) {
             actual += bleedStacks;
         }
@@ -363,47 +346,29 @@ public class CombatEntity {
 
     private static int getDefaultMoveSpeed(String entityTypeId) {
         return switch (entityTypeId) {
-
-            // Basic movement
             case "minecraft:zombie" -> 1;
-
-            // Fast Passive
-            case "minecraft:parrot" -> 3;       // agile swimmer
-            
-            // Fast predators
-            case "minecraft:spider" -> 3;         // pounce + web
-            case "minecraft:ocelot" -> 4;          // hit-and-run specialist
-            case "minecraft:wolf" -> 3;            // pack hunter
-
-            // Rush melee
-            case "minecraft:vindicator" -> 3;      // axe berserker
-            case "minecraft:hoglin" -> 3;           // charging beast
-            case "minecraft:wither_skeleton" -> 3;  // relentless pursuer
-            case "minecraft:ravager" -> 3;          // mounted melee, charges + stomps
-
-            // Ranged (move + shoot)
+            case "minecraft:parrot" -> 3;
+            case "minecraft:spider" -> 3;
+            case "minecraft:ocelot" -> 4;
+            case "minecraft:wolf" -> 3;
+            case "minecraft:vindicator" -> 3;
+            case "minecraft:hoglin" -> 3;
+            case "minecraft:wither_skeleton" -> 3;
+            case "minecraft:ravager" -> 3;
             case "minecraft:skeleton", "minecraft:stray" -> 2;
             case "minecraft:pillager", "minecraft:piglin" -> 2;
-            case "minecraft:blaze" -> 2;            // hover + fireball
-            case "minecraft:drowned" -> 2;          // trident + melee
-
-            // Special movement
-            case "minecraft:phantom" -> 4;          // swoop range
-            case "minecraft:enderman" -> 5;         // teleport range
-            case "minecraft:camel" -> 4;            // mounted cavalry
-            case "minecraft:magma_cube" -> 3;       // bouncy
-            case "minecraft:creeper" -> 2;          // sneaks up, then booms
-
-            // Long range / stationary
-            case "minecraft:ghast" -> 1;            // slow but range 5-6
-            case "minecraft:witch" -> 2;            // potion lobber
-            case "minecraft:shulker" -> 1;          // turret
-
-            // Bosses
-            case "minecraft:ender_dragon" -> 4;     // devastating swoop
-            case "minecraft:warden" -> 3;           // slow but terrifying
-
-            // Default — everything should move at least 2
+            case "minecraft:blaze" -> 2;
+            case "minecraft:drowned" -> 2;
+            case "minecraft:phantom" -> 4;
+            case "minecraft:enderman" -> 5;
+            case "minecraft:camel" -> 4;
+            case "minecraft:magma_cube" -> 3;
+            case "minecraft:creeper" -> 2;
+            case "minecraft:ghast" -> 1;
+            case "minecraft:witch" -> 2;
+            case "minecraft:shulker" -> 1;
+            case "minecraft:ender_dragon" -> 4;
+            case "minecraft:warden" -> 3;
             default -> 2;
         };
     }

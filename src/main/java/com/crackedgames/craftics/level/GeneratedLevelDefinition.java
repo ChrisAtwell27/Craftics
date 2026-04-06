@@ -7,10 +7,6 @@ import net.minecraft.item.ItemStack;
 
 import java.util.List;
 
-/**
- * A procedurally generated level definition created by LevelGenerator.
- * Holds precomputed values instead of hardcoding them.
- */
 public class GeneratedLevelDefinition extends LevelDefinition {
     private final int levelNumber;
     private final String name;

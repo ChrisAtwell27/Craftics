@@ -53,7 +53,11 @@ public class WorldDataComponent implements Component {
     }
 
     public boolean isBiomeDiscovered(String biomeId) {
-        return discoveredBiomes.contains(biomeId);
+        if (discoveredBiomes.isEmpty()) return false;
+        for (String discovered : discoveredBiomes.split(",")) {
+            if (discovered.equals(biomeId)) return true;
+        }
+        return false;
     }
 
     public void discoverBiome(String biomeId) {

@@ -12,11 +12,7 @@ public abstract class LevelDefinition {
     public abstract GridPos getPlayerStart();
     public abstract Block getFloorBlock();
 
-    /**
-     * Build the tile grid for this level.
-     * Default implementation fills with normal tiles using the floor block.
-     * Override to add obstacles, hazards, etc.
-     */
+    /** Override to add obstacles, hazards, etc */
     public GridTile[][] buildTiles() {
         int w = getWidth();
         int h = getHeight();
@@ -32,32 +28,15 @@ public abstract class LevelDefinition {
         return tiles;
     }
 
-    /**
-     * Enemy spawn definitions for this level.
-     * Returns array of (EntityType ID string, GridPos) pairs.
-     * Actual spawning happens in Phase 5.
-     */
     public abstract EnemySpawn[] getEnemySpawns();
 
-    /**
-     * Environment loot pool — randomly rolled on level completion.
-     * Override per level to give theme-appropriate materials.
-     * @param rolls Number of items to roll from the pool
-     */
     public java.util.List<net.minecraft.item.ItemStack> rollCompletionLoot() {
         return java.util.List.of();
     }
 
-    /**
-     * Whether this level should be nighttime (caves, underground).
-     * Surface levels return false (perma day), underground returns true (perma night).
-     */
     public boolean isNightLevel() { return false; }
 
-    /**
-     * Optional arena biome override used for structure/schematic selection.
-     * Return null to use the normal generated-biome detection path.
-     */
+    /** Override to force a biome for schematic selection. Null = auto-detect */
     public String getArenaBiomeId() { return null; }
 
     public record EnemySpawn(String entityTypeId, GridPos position,

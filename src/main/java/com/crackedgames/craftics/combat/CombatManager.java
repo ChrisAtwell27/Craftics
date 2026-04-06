@@ -47,44 +47,38 @@ import java.util.List;
 import java.util.Set;
 
 public class CombatManager {
-    // Per-player combat instances
     private static final java.util.Map<java.util.UUID, CombatManager> INSTANCES = new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** Get the combat manager for a specific player. Creates one if it doesn't exist. */
     public static CombatManager get(java.util.UUID playerId) {
         return INSTANCES.computeIfAbsent(playerId, id -> new CombatManager());
     }
 
-    /** Get the combat manager for a player entity. */
     public static CombatManager get(ServerPlayerEntity player) {
         return get(player.getUuid());
     }
 
-    /** Remove a player's combat manager (on disconnect cleanup). */
     public static void remove(java.util.UUID playerId) {
         CombatManager cm = INSTANCES.remove(playerId);
         if (cm != null && cm.active) cm.endCombat();
     }
 
-    /** Clear all static state between world loads (prevents leaking across saves in singleplayer). */
+    // Clear between world loads so singleplayer doesn't leak state across saves
     public static void clearAll() {
         INSTANCES.clear();
         PARTY_COMBAT_LEADER.clear();
     }
 
-    /** Tick all active combat instances. */
     public static void tickAll() {
         for (CombatManager cm : new java.util.ArrayList<>(INSTANCES.values())) {
             cm.tick();
         }
     }
 
-    /** Check if any player is in active combat (for world-level checks). */
     public static boolean isAnyActive() {
         return INSTANCES.values().stream().anyMatch(cm -> cm.active);
     }
 
-    /** @deprecated Use get(player) instead. Kept for migration — returns first active or a dummy. */
+    /** @deprecated use get(player) instead */
     @Deprecated
     public static CombatManager getInstance() {
         return INSTANCES.values().stream().filter(cm -> cm.active).findFirst()
@@ -193,22 +187,18 @@ public class CombatManager {
         return bestPos;
     }
 
-    /** Find a safe (walkable) block position in the arena for respawn/teleport.
-     *  Prefers the player's current grid pos, falls back to playerStart, then any walkable tile. */
+    // Finds a safe block pos for respawn: tries current pos, then start, then any walkable tile
     private static BlockPos getSafeArenaBlockPos(GridArena arena) {
-        // Try current player grid pos first
         GridPos current = arena.getPlayerGridPos();
         GridTile currentTile = arena.getTile(current);
         if (currentTile != null && currentTile.isWalkable()) {
             return arena.gridToBlockPos(current);
         }
-        // Try stored player start
         GridPos start = arena.getPlayerStart();
         GridTile startTile = arena.getTile(start);
         if (startTile != null && startTile.isWalkable()) {
             return arena.gridToBlockPos(start);
         }
-        // Brute-force search any walkable tile
         for (int x = 0; x < arena.getWidth(); x++) {
             for (int z = 0; z < arena.getHeight(); z++) {
                 GridTile tile = arena.getTile(x, z);
@@ -217,7 +207,6 @@ public class CombatManager {
                 }
             }
         }
-        // Last resort — use stored playerStart even if unsafe
         return arena.getPlayerStartBlockPos();
     }
 
@@ -237,35 +226,25 @@ public class CombatManager {
     private int apRemaining;
     private int movePointsRemaining;
     private int turnNumber;
-    private int peacefulTurnCount = 0; // consecutive turns with no hostile enemies
-    private boolean endTurnHintSent = false; // avoid spamming the "press R" hint
+    private int peacefulTurnCount = 0;
+    private boolean endTurnHintSent = false;
     private ServerPlayerEntity player;
 
-    // === Per-player turn rotation for party combat ===
-    /** Ordered list of party member UUIDs who take turns this round. */
+    // Party turn rotation
     private final List<java.util.UUID> turnQueue = new ArrayList<>();
-    /** Index into turnQueue for whose sub-turn it currently is. */
     private int currentTurnIndex = 0;
     private final CombatEffects combatEffects = new CombatEffects();
     private CombatAchievementTracker achievementTracker = new CombatAchievementTracker();
 
-    /** Shared event manager for this biome run (shared across party members). */
     private EventManager eventManager;
-
-    /** The UUID of the world owner for this combat (determines arena/event positions). */
     private java.util.UUID worldOwnerUuid;
-
-    /** The UUID of the player who owns the biome run data (leader who started the level). */
     private java.util.UUID leaderUuid;
 
-    /** Persisted pet data across level transitions within a biome run. Uses HubPetCollector.PetData. */
+    // Pets persist across level transitions within a biome run
     private final List<HubPetCollector.PetData> savedPets = new ArrayList<>();
-
-    /** Hub pet snapshots collected before combat starts (set by ModNetworking). */
     private List<HubPetCollector.TamedPetSnapshot> hubPetSnapshots = new ArrayList<>();
     public void setHubPetSnapshots(List<HubPetCollector.TamedPetSnapshot> snapshots) { this.hubPetSnapshots = snapshots; }
 
-    /** Target an ally pet is about to attack (used to face the right direction during animation). */
     private CombatEntity pendingAllyAttackTarget = null;
     /** Pet bonus message fragment ("§a+N Pet") stored until the post-animation damage message. */
     private String pendingAllyPetMsg = "";
@@ -290,7 +269,6 @@ public class CombatManager {
     /** Tracks party members who have died during this combat level (spectating). */
     private final java.util.Set<java.util.UUID> deadPartyMembers = new java.util.HashSet<>();
 
-    /** Add a party member to this combat (includes leader — call for every participant). */
     public void addPartyMember(ServerPlayerEntity member) {
         if (partyPlayers.stream().noneMatch(p -> p.getUuid().equals(member.getUuid()))) {
             partyPlayers.add(member);
@@ -300,7 +278,6 @@ public class CombatManager {
         }
     }
 
-    /** Remove a party member (disconnect/leave). Also cleans up turn queue. */
     public void removePartyMember(java.util.UUID memberUuid) {
         partyPlayers.removeIf(p -> p.getUuid().equals(memberUuid));
         PARTY_COMBAT_LEADER.remove(memberUuid);
@@ -310,17 +287,11 @@ public class CombatManager {
         }
     }
 
-    /**
-     * Gracefully remove a single player from party combat (e.g. /home while in party).
-     * Cleans up their state without ending combat for everyone else.
-     * If the leaving player is the active fighter, transfers control.
-     * If they're the last one, ends combat entirely.
-     */
+    // Pulls one player out of party combat, transferring leader role if needed
     public void leavePartyCombat(ServerPlayerEntity leaver) {
         if (!active) return;
         java.util.UUID leaverUuid = leaver.getUuid();
 
-        // Remove only the named Move feather from leaver's inventory
         for (int i = 0; i < leaver.getInventory().size(); i++) {
             ItemStack s = leaver.getInventory().getStack(i);
             if (s.getItem() == Items.FEATHER && s.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME)) {
@@ -330,19 +301,14 @@ public class CombatManager {
         leaver.clearStatusEffects();
         leaver.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
 
-        // Send exit combat to just this player
         if (leaver.networkHandler != null) {
             ServerPlayNetworking.send(leaver, new com.crackedgames.craftics.network.ExitCombatPayload(false));
         }
 
-        // Remove from tracking
         deadPartyMembers.remove(leaverUuid);
         removePartyMember(leaverUuid);
-
-        // Notify remaining players
         sendMessage("§e" + leaver.getName().getString() + " left the battle.");
 
-        // If leaver was the active fighter, transfer control
         if (player != null && player.getUuid().equals(leaverUuid)) {
             ServerPlayerEntity nextAlive = null;
             for (ServerPlayerEntity member : partyPlayers) {
@@ -366,19 +332,17 @@ public class CombatManager {
                 sendSync();
                 refreshHighlights();
             } else {
-                // Nobody left — end combat
                 endCombat();
                 return;
             }
         }
 
-        // If only one player remains, combat continues normally for them
         if (partyPlayers.size() == 0) {
             endCombat();
         }
     }
 
-    /** Get the CombatManager that handles this player's active combat (follows party leader). */
+    // Resolves through party leader mapping so non-leaders find the right CombatManager
     public static CombatManager getActiveCombat(java.util.UUID playerUuid) {
         java.util.UUID leaderUuid = PARTY_COMBAT_LEADER.get(playerUuid);
         if (leaderUuid != null) {
@@ -388,18 +352,15 @@ public class CombatManager {
         return get(playerUuid);
     }
 
-    /** Check if a UUID is a party participant in this combat. */
     public boolean isPartyMember(java.util.UUID uuid) {
         return partyPlayers.stream().anyMatch(p -> p.getUuid().equals(uuid));
     }
 
-    /** Get all participating players (leader + party members), or just the leader if solo. */
     private List<ServerPlayerEntity> getAllParticipants() {
         if (!partyPlayers.isEmpty()) return partyPlayers;
         return player != null ? List.of(player) : List.of();
     }
 
-    /** Send a payload to all party participants (or just the player if solo). */
     private void sendToAllParty(net.minecraft.network.packet.CustomPayload payload) {
         for (ServerPlayerEntity p : getAllParticipants()) {
             if (p != null && p.networkHandler != null) {
@@ -408,7 +369,6 @@ public class CombatManager {
         }
     }
 
-    /** Send a chat message (not action bar) to all party participants. */
     private void sendMessageToAllChat(String msg) {
         for (ServerPlayerEntity p : getAllParticipants()) {
             if (p != null) {
@@ -417,7 +377,6 @@ public class CombatManager {
         }
     }
 
-    /** Clean up party tracking on combat end. */
     private void cleanupPartyTracking() {
         for (ServerPlayerEntity member : partyPlayers) {
             PARTY_COMBAT_LEADER.remove(member.getUuid());
@@ -426,7 +385,7 @@ public class CombatManager {
         deadPartyMembers.clear();
     }
 
-    /** Get online party members via EventManager (survives endCombat). Falls back to single player. */
+    // Uses EventManager instead of partyPlayers because partyPlayers gets cleared by endCombat
     private List<ServerPlayerEntity> getOnlinePartyMembers(ServerPlayerEntity referencePlayer) {
         if (eventManager != null) {
             return eventManager.getOnlineParticipants((ServerWorld) referencePlayer.getEntityWorld());
@@ -434,10 +393,6 @@ public class CombatManager {
         return List.of(referencePlayer);
     }
 
-    /**
-     * Transition all party members to a new arena and start combat.
-     * Uses EventManager to find participants (survives endCombat clearing partyPlayers).
-     */
     private void transitionPartyToArena(ServerPlayerEntity leader, GridArena newArena, LevelDefinition newLevelDef) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(leader);
         List<ServerPlayerEntity> orderedMembers = new ArrayList<>();
@@ -453,7 +408,7 @@ public class CombatManager {
 
         EnterCombatPayload enterPayload = makeEnterPayload(newArena);
 
-        // Revive any dead party members with 2 hearts for the next level
+        // Revive dead party members with 2 hearts for new level
         for (ServerPlayerEntity member : members) {
             if (deadPartyMembers.remove(member.getUuid())) {
                 member.setHealth(4); // 2 hearts
@@ -463,7 +418,6 @@ public class CombatManager {
             }
         }
 
-        // Spread party members across adjacent tiles so they don't stack
         int spawnOffset = -(orderedMembers.size() - 1) / 2;
         java.util.Set<GridPos> reservedSpawns = new java.util.HashSet<>();
         for (int i = 0; i < orderedMembers.size(); i++) {
@@ -483,27 +437,24 @@ public class CombatManager {
             }
         }
 
-        // Register party members BEFORE startCombat so that sendSync/highlights
-        // inside startCombat reach all participants, not just the leader
+        // Must happen before startCombat so sendSync/highlights reach all participants
         for (ServerPlayerEntity member : orderedMembers) {
             addPartyMember(member);
         }
 
         startCombat(leader, newArena, newLevelDef);
 
-        // Re-register PARTY_COMBAT_LEADER mappings now that this.player is set.
-        // addPartyMember above ran while player was null (cleared by prior endCombat),
-        // so the leader routing for non-leader members wasn't established.
+        // addPartyMember above ran while this.player was still null (cleared by prior endCombat),
+        // so leader routing wasn't established -- fix it now
         for (ServerPlayerEntity member : orderedMembers) {
             if (!member.getUuid().equals(leader.getUuid())) {
                 PARTY_COMBAT_LEADER.put(member.getUuid(), leader.getUuid());
             }
         }
 
-        // Respawn tamed pets from previous level
         spawnSavedPets();
 
-        // startCombat only sends chunks/feather/title to the leader — replicate for party members
+        // startCombat only handles the leader -- replicate chunks/feather/title for party members
         if (members.size() > 1) {
             ServerWorld world = (ServerWorld) leader.getEntityWorld();
             BlockPos origin = newArena.getOrigin();
@@ -515,7 +466,6 @@ public class CombatManager {
 
             for (ServerPlayerEntity member : members) {
                 if (member.getUuid().equals(leader.getUuid())) continue;
-                // Resend arena chunks so member can see the arena
                 for (int cx = minCX; cx <= maxCX; cx++) {
                     for (int cz = minCZ; cz <= maxCZ; cz++) {
                         var chunk = world.getChunk(cx, cz);
@@ -524,7 +474,6 @@ public class CombatManager {
                         }
                     }
                 }
-                // Give Move feather
                 ItemStack displaced = member.getInventory().getStack(8);
                 if (!displaced.isEmpty()) {
                     int emptySlot = member.getInventory().getEmptySlot();
@@ -536,7 +485,6 @@ public class CombatManager {
                 moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("\u00a7aMove"));
                 member.getInventory().setStack(8, moveItem);
                 member.getInventory().selectedSlot = 8;
-                // Show level title
                 member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 40, 15));
                 member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
                     Text.literal("\u00a7e" + newLevelDef.getName())));
@@ -544,7 +492,6 @@ public class CombatManager {
         }
     }
 
-    /** Build an arena using this combat's world owner for positioning. */
     private GridArena buildArena(ServerWorld world, LevelDefinition def) {
         if (worldOwnerUuid != null) {
             return com.crackedgames.craftics.level.ArenaBuilder.build(world, def, worldOwnerUuid);
@@ -552,7 +499,6 @@ public class CombatManager {
         return com.crackedgames.craftics.level.ArenaBuilder.build(world, def);
     }
 
-    /** Resolve the dynamic hub position for a player (personal world or central lobby). */
     private static void teleportToHub(ServerPlayerEntity p) {
         ServerWorld world = (ServerWorld) p.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
@@ -560,59 +506,40 @@ public class CombatManager {
         p.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
     }
 
-    /**
-     * Best-effort reapplication of vanilla tame state for hub pets.
-     * Uses reflection so this stays resilient across mapping/name changes.
-     */
+    // Best-effort tame state via reflection -- resilient across mapping/name changes
     private static void applyHubTamingState(net.minecraft.entity.Entity entity, java.util.UUID ownerUuid) {
         try {
-            // Most tameables/rideables expose setOwnerUuid(UUID)
             java.lang.reflect.Method setOwnerUuid = entity.getClass().getMethod("setOwnerUuid", java.util.UUID.class);
             setOwnerUuid.invoke(entity, ownerUuid);
-        } catch (ReflectiveOperationException ignored) {
-            // Not owner-based or method name differs in this class.
-        }
+        } catch (ReflectiveOperationException ignored) {}
 
         try {
-            // Wolves/cats/parrots style API in some mappings
             java.lang.reflect.Method setTamed = entity.getClass().getMethod("setTamed", boolean.class);
             setTamed.invoke(entity, true);
-        } catch (ReflectiveOperationException ignored) {
-            // Fall through to horse-style API.
-        }
+        } catch (ReflectiveOperationException ignored) {}
 
         try {
-            // Horses and some other entities use setTame(boolean)
+            // Horses use setTame instead of setTamed
             java.lang.reflect.Method setTame = entity.getClass().getMethod("setTame", boolean.class);
             setTame.invoke(entity, true);
-        } catch (ReflectiveOperationException ignored) {
-            // Not a setTame-style class.
-        }
+        } catch (ReflectiveOperationException ignored) {}
 
         try {
-            // Keep pets active in hub rather than immediately sitting.
             java.lang.reflect.Method setSitting = entity.getClass().getMethod("setSitting", boolean.class);
             setSitting.invoke(entity, false);
-        } catch (ReflectiveOperationException ignored) {
-            // Not a sitting-capable pet.
-        }
+        } catch (ReflectiveOperationException ignored) {}
 
         try {
-            // Alternate sitting API used by some tameables.
             java.lang.reflect.Method setOrderedToSit = entity.getClass().getMethod("setOrderedToSit", boolean.class);
             setOrderedToSit.invoke(entity, false);
-        } catch (ReflectiveOperationException ignored) {
-            // Not supported by this entity.
-        }
+        } catch (ReflectiveOperationException ignored) {}
     }
 
-    /** Teleport all party members home and send ExitCombat. */
     private void sendPartyHome(ServerPlayerEntity referencePlayer) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(referencePlayer);
         for (ServerPlayerEntity member : members) {
             teleportToHub(member);
         }
-        // Send exit to all via the reference (partyPlayers may already be cleared)
         for (ServerPlayerEntity member : members) {
             if (member.networkHandler != null) {
                 ServerPlayNetworking.send(member, new ExitCombatPayload(true));
@@ -620,103 +547,84 @@ public class CombatManager {
         }
     }
 
-    // Mounted pet state
     private boolean playerMounted = false;
     private MobEntity mountMob = null;
     private static final int MOUNT_SPEED_BONUS = 3;
 
     private static final String TILE_EFFECT_REVENANT_HEAD = "revenant_head";
 
-    // Tile effects placed by items (lava, campfire, honey, banner, scaffold)
     private final java.util.Map<GridPos, String> tileEffects = new java.util.HashMap<>();
-    // Light zones (torch/lantern placements that negate darkness in their radius)
     private final java.util.Map<GridPos, Integer> litZones = new java.util.HashMap<>();
-    // Turn counter for hex trap expiry (5 turns max)
     private int hexTrapTurnsRemaining = 0;
 
-    // Chunk positions force-loaded for this combat arena
     private final java.util.List<net.minecraft.util.math.ChunkPos> forcedChunks = new java.util.ArrayList<>();
 
-    // Pending attack — delays damage/effects to sync with client animation impact
+    // Delays damage/effects to sync with client animation impact
     private Runnable pendingAttackAction = null;
     private int pendingAttackDelay = 0;
 
-    // Spell animation cooldown — blocks player input while spell particles are staged
     private int spellAnimCooldown = 0;
 
-    // Boss warning system — telegraphed abilities that resolve next turn
     private record PendingBossWarning(CombatEntity boss, EnemyAction.BossAbility ability) {}
     private final List<PendingBossWarning> pendingBossWarnings = new ArrayList<>();
 
-    // Pending TNT explosions — placed this turn, detonate at the start of next round
+    // Placed this turn, detonate start of next round
     private record PendingTnt(GridPos tile, BlockPos blockPos) {}
     private final List<PendingTnt> pendingTnts = new ArrayList<>();
 
-    // Pottery Sherd spell state — Prize sherd sets this, consumed on next attack
     private boolean tripleDamageNextAttack = false;
-    private int windBurstDamageBonus = 0; // accumulated Wind Burst bonus for next mace hit
+    private int windBurstDamageBonus = 0;
 
-    // Active armor trim bonuses for current combat
     private TrimEffects.TrimScan activeTrimScan = null;
     public TrimEffects.TrimScan getTrimScan() { return activeTrimScan; }
 
-    // Track last dropped trim to avoid back-to-back duplicates
     private static net.minecraft.item.Item lastDroppedTrim = null;
 
-    // Test range mode — infinite AP/movement, no rewards or penalties
     private boolean testRange = false;
     public boolean isTestRange() { return testRange; }
 
-    // Dropped trident tracking — when thrown without Loyalty, the trident lands on the arena
     private GridPos droppedTridentPos = null;
     private ItemStack droppedTridentStack = null;
-    private net.minecraft.entity.ItemEntity droppedTridentEntity = null; // visual item entity on the ground
+    private net.minecraft.entity.ItemEntity droppedTridentEntity = null;
     public GridPos getDroppedTridentPos() { return droppedTridentPos; }
 
-    // Shield brace state — active during enemy turn when player ended turn with shield equipped
     private boolean shieldBraced = false;
     private static final int SHIELD_PASSIVE_DEFENSE = 2;
-    private static final int SHIELD_BRACE_DEFENSE = 3; // extra on top of passive when braced
+    private static final int SHIELD_BRACE_DEFENSE = 3;
 
     private int getPlayerHp() {
         if (player == null) return 0;
         int hp = (int) player.getHealth();
-        // We clamp real HP to 1 to prevent vanilla death. Report 0 when at clamp threshold.
+        // HP clamped to 1 to prevent vanilla death -- report 0 at clamp threshold
         return hp <= 1 ? 0 : hp;
     }
 
     private int damagePlayer(int rawDamage) {
         int defense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus() + PlayerCombatStats.getSetDefenseBonus(player) + PlayerCombatStats.getTotalProtection(player);
-        // Shield: passive +2 when in offhand, +3 extra when braced (end turn with shield)
         if (PlayerCombatStats.hasShield(player)) {
             defense += SHIELD_PASSIVE_DEFENSE;
             if (shieldBraced) defense += SHIELD_BRACE_DEFENSE;
         }
-        // Banner tile effect
         defense += getBannerDefenseBonus(arena.getPlayerGridPos());
-        // Percentage-based defense: each point = 5% reduction, capped at 60%
+        // Each defense point = 5% reduction, capped at 60%
         double reduction = Math.min(0.60, defense * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
         player.setHealth(Math.max(1, player.getHealth() - actual));
         onPlayerDamaged();
         achievementTracker.recordPlayerTookDamage();
-        // Totem check is handled in handlePlayerDeathOrGameOver()
         return actual;
     }
 
-    /** Get melee bonus from progression. */
     private int getProgMeleeBonus() {
         if (player == null) return 0;
         return PlayerProgression.get((ServerWorld) (ServerWorld) player.getEntityWorld()).getStats(player).getPoints(PlayerProgression.Stat.MELEE_POWER);
     }
 
-    /** Get ranged bonus from progression. */
     private int getProgRangedBonus() {
         if (player == null) return 0;
         return PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player).getPoints(PlayerProgression.Stat.RANGED_POWER);
     }
 
-    /** Get defense bonus from progression. */
     private int getProgDefenseBonus() {
         if (player == null) return 0;
         return PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player).getPoints(PlayerProgression.Stat.DEFENSE);
@@ -740,16 +648,14 @@ public class CombatManager {
         return target.takeDamage(adjustedDamage);
     }
 
-    private float playerMoveYaw; // tracked for smooth facing during movement
+    private float playerMoveYaw;
 
-    // Animation state
     private List<GridPos> movePath;
     private int movePathIndex;
     private int moveTickCounter;
     private double lerpStartX, lerpStartY, lerpStartZ;
     private boolean lerpInitialized;
 
-    // Enemy turn state
     private enum EnemyTurnState { DECIDING, MOVING, ANIMATING, ATTACKING, DONE }
     private int enemyTurnIndex;
     private int enemyTurnDelay;
@@ -757,19 +663,16 @@ public class CombatManager {
     private EnemyAction pendingAction;
     private CombatEntity currentEnemy;
 
-    // Enemy movement animation
     private List<GridPos> enemyMovePath;
     private int enemyMovePathIndex;
     private int enemyMoveTickCounter;
     private double enemyLerpStartX, enemyLerpStartY, enemyLerpStartZ;
     private boolean enemyLerpInitialized;
 
-    // Enemy attack animation (lunge toward target + arm swing)
     private static final int ATTACK_ANIM_LUNGE_TICKS = 5;
     private static final int ATTACK_ANIM_RETURN_TICKS = 4;
     private static final int ATTACK_ANIM_TOTAL_TICKS = ATTACK_ANIM_LUNGE_TICKS + ATTACK_ANIM_RETURN_TICKS;
     private static final double ATTACK_LUNGE_DISTANCE = 0.55;
-    // Ranged attack animation (lean back to aim, then snap forward on release)
     private static final int RANGED_ANIM_DRAW_TICKS = 6;
     private static final int RANGED_ANIM_RELEASE_TICKS = 3;
     private static final int RANGED_ANIM_TOTAL_TICKS = RANGED_ANIM_DRAW_TICKS + RANGED_ANIM_RELEASE_TICKS;
@@ -777,10 +680,10 @@ public class CombatManager {
     private int attackAnimTick;
     private double attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ;
     private double attackAnimLungeX, attackAnimLungeZ; // direction unit vector
-    private boolean attackAnimSwung; // whether arm swing has been triggered
+    private boolean attackAnimSwung;
 
     private net.minecraft.item.Item lastHeldItem = null;
-    private int tickCounter; // global tick counter for ambient effects
+    private int tickCounter;
 
     public boolean isActive() { return active; }
     public CombatPhase getPhase() { return phase; }
@@ -794,7 +697,6 @@ public class CombatManager {
     public void setApRemaining(int ap) { this.apRemaining = ap; }
     public void setMovePointsRemaining(int mp) { this.movePointsRemaining = mp; }
 
-    /** Admin: kill all enemies and trigger victory. */
     public void adminKillAllEnemies() {
         if (!active || enemies == null) return;
         for (CombatEntity e : enemies) {
@@ -834,7 +736,6 @@ public class CombatManager {
         GridPos playerStart = new GridPos(1, 1);
         GridArena testArena = new GridArena(size, size, tiles, origin, 999, playerStart);
 
-        // Force-load chunks
         forcedChunks.clear();
         int minCX = (origin.getX() - 2) >> 4;
         int maxCX = (origin.getX() + size + 2) >> 4;
@@ -846,7 +747,6 @@ public class CombatManager {
                 forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
             }
 
-        // Build the physical arena floor + clear air above
         int SET_FLAGS = net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE;
         for (int x = 0; x < size; x++) {
             for (int z = 0; z < size; z++) {
@@ -858,7 +758,6 @@ public class CombatManager {
             }
         }
 
-        // Clear leftover entities
         net.minecraft.util.math.Box arenaBox = new net.minecraft.util.math.Box(
             origin.getX() - 2, origin.getY() - 1, origin.getZ() - 2,
             origin.getX() + size + 2, origin.getY() + 5, origin.getZ() + size + 2
@@ -867,7 +766,6 @@ public class CombatManager {
             entity.discard();
         }
 
-        // Spawn Training Dummy (zombie) at center
         GridPos dummyPos = new GridPos(4, 4);
         BlockPos dummyBlockPos = testArena.gridToBlockPos(dummyPos);
         var zombie = EntityType.ZOMBIE.create(world, null, dummyBlockPos, SpawnReason.COMMAND, false, false);
@@ -883,7 +781,6 @@ public class CombatManager {
             zombie.setCustomName(Text.literal("§6Training Dummy"));
             zombie.setCustomNameVisible(true);
             zombie.addCommandTag("craftics_arena");
-            // Clear equipment so it looks neutral
             for (net.minecraft.entity.EquipmentSlot slot : net.minecraft.entity.EquipmentSlot.values()) {
                 zombie.equipStack(slot, ItemStack.EMPTY);
             }
@@ -900,7 +797,6 @@ public class CombatManager {
             testArena.placeEntity(dummyEntity);
         }
 
-        // Initialize combat state
         this.player = player;
         this.arena = testArena;
         this.levelDef = null;
@@ -920,30 +816,25 @@ public class CombatManager {
         world.getGameRules().get(net.minecraft.world.GameRules.NATURAL_REGENERATION).set(false, world.getServer());
         world.setTimeOfDay(6000);
 
-        // Teleport player
         BlockPos startPos = testArena.getPlayerStartBlockPos();
         player.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
 
-        // Send client combat enter payload
         ServerPlayNetworking.send(player, new EnterCombatPayload(
             origin.getX(), origin.getY(), origin.getZ(), size, size, -1f
         ));
 
-        // Give Move feather — move existing slot 8 item elsewhere first
         ItemStack displaced = player.getInventory().getStack(8);
         if (!displaced.isEmpty()) {
             int emptySlot = player.getInventory().getEmptySlot();
             if (emptySlot != -1) {
                 player.getInventory().setStack(emptySlot, displaced);
             }
-            // If inventory is full, the item stays — feather overwrites it
         }
         ItemStack moveItem = new ItemStack(Items.FEATHER);
         moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§aMove"));
         player.getInventory().setStack(8, moveItem);
         player.getInventory().selectedSlot = 8;
 
-        // Scan trims for combat
         this.activeTrimScan = TrimEffects.scan(player);
 
         sendMessage("§e§l--- Test Range ---");
@@ -962,15 +853,12 @@ public class CombatManager {
         this.enemies = new ArrayList<>();
         this.phase = CombatPhase.PLAYER_TURN;
         this.achievementTracker = new CombatAchievementTracker();
-        // Read base stats from player progression
         PlayerProgression prog = PlayerProgression.get((ServerWorld) player.getEntityWorld());
         PlayerProgression.PlayerStats pStats = prog.getStats(player);
         this.apRemaining = pStats.getEffective(PlayerProgression.Stat.AP);
         this.movePointsRemaining = pStats.getEffective(PlayerProgression.Stat.SPEED);
-        // Armor set bonuses
         this.apRemaining += PlayerCombatStats.getSetApBonus(player);
         this.movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
-        // Armor trim bonuses
         this.activeTrimScan = TrimEffects.scan(player);
         this.apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
         this.movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
@@ -982,13 +870,11 @@ public class CombatManager {
         tileEffects.clear();
         litZones.clear();
 
-        // Adventure mode during combat (no block breaking)
         player.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
 
-        // Apply Vitality stat + Host trim: max HP bonus via Health Boost
-        // Preserve HP ratio so continuing between battles doesn't full-heal
+        // Vitality + Host trim HP bonus -- preserve HP ratio so level transitions don't full-heal
         int vitalityPoints = pStats.getPoints(PlayerProgression.Stat.VITALITY);
-        int trimHpBonus = activeTrimScan.get(TrimEffects.Bonus.MAX_HP); // +2 per piece
+        int trimHpBonus = activeTrimScan.get(TrimEffects.Bonus.MAX_HP);
         int totalHpBonusLevels = vitalityPoints + trimHpBonus;
         if (totalHpBonusLevels > 0) {
             float hpRatio = player.getMaxHealth() > 0 ? player.getHealth() / player.getMaxHealth() : 1.0f;
@@ -997,17 +883,14 @@ public class CombatManager {
             player.setHealth(Math.max(1, hpRatio * player.getMaxHealth()));
         }
 
-        // Unfreeze any hub-applied potion effects now that combat started
-        combatEffects.unfreezeAll(5); // default 5 turns for hub potions
+        combatEffects.unfreezeAll(5);
 
         ServerWorld world = (ServerWorld) player.getEntityWorld();
 
-        // Disable natural health regeneration during combat
         world.getGameRules().get(net.minecraft.world.GameRules.NATURAL_REGENERATION).set(false, world.getServer());
 
-        // Force-load arena chunks + surrounding chunks to prevent visual artifacts.
-        // Extra margin (48 blocks / 3 chunks) ensures the void around the arena renders
-        // as clean air rather than showing chunk-loading glitches at the edges.
+        // 48-block margin ensures the void around the arena renders as clean air
+        // instead of chunk-loading glitches at the edges
         BlockPos origin = arena.getOrigin();
         forcedChunks.clear();
         int chunkMargin = 48;
@@ -1022,10 +905,8 @@ public class CombatManager {
             }
         }
 
-        // Resend all arena chunks to the player so they see the full schematic.
-        // This is critical for level 2+ where the arena is built before the player
-        // teleports — the ArenaBuilder's resend may not reach a player still at the
-        // old position, causing only game-tile overlays (water/gravel) to appear.
+        // Resend chunks to player -- on level 2+ the arena was built before teleport,
+        // so ArenaBuilder's resend may not reach a player still at the old position
         for (int cx = minCX; cx <= maxCX; cx++) {
             for (int cz = minCZ; cz <= maxCZ; cz++) {
                 var chunk = world.getChunk(cx, cz);
@@ -1035,7 +916,6 @@ public class CombatManager {
             }
         }
 
-        // Clear any leftover entities from previous arena attempts
         net.minecraft.util.math.Box arenaBox = new net.minecraft.util.math.Box(
             origin.getX() - 2, origin.getY() - 1, origin.getZ() - 2,
             origin.getX() + arena.getWidth() + 2, origin.getY() + 5, origin.getZ() + arena.getHeight() + 2
@@ -1043,16 +923,13 @@ public class CombatManager {
         for (var entity : world.getEntitiesByClass(net.minecraft.entity.mob.MobEntity.class, arenaBox, e -> true)) {
             entity.discard();
         }
-        // Also clear leftover end crystals (not a MobEntity)
         for (var crystal : world.getEntitiesByClass(net.minecraft.entity.decoration.EndCrystalEntity.class, arenaBox, e -> true)) {
             crystal.discard();
         }
 
-        // NG+ scaling
         CrafticsSavedData ngData = CrafticsSavedData.get(world);
         float ngMult = ngData.getPlayerData(player.getUuid()).getNgPlusMultiplier();
 
-        // Determine if this is a boss level and which entity type is the boss
         String bossEntityTypeId = null;
         String bossBiomeId = null;
         if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
@@ -1063,7 +940,7 @@ public class CombatManager {
             }
         }
 
-        // Set night BEFORE spawning undead to prevent sun damage on first tick
+        // Must set night before spawning undead or they burn on first tick
         boolean willHaveUndead = false;
         for (LevelDefinition.EnemySpawn s : levelDef.getEnemySpawns()) {
             if (isUndeadMob(s.entityTypeId())) { willHaveUndead = true; break; }
@@ -1072,15 +949,11 @@ public class CombatManager {
             world.setTimeOfDay(18000);
         }
 
-        // Spawn enemies — remap definition coordinates to the live arena size and
-        // resolve to the nearest valid tile if environment bleed or custom arena
-        // geometry made the exact spot unusable.
-        // Check if this is a ghast boss fight — if so, skip regular ghast spawns
+        // Remap spawn coords to live arena size, resolve to nearest valid tile
         boolean isGhastBossFight = "minecraft:ghast".equals(bossEntityTypeId);
 
         boolean bossSpawned = false;
         for (LevelDefinition.EnemySpawn spawn : levelDef.getEnemySpawns()) {
-            // In ghast boss fights, skip all regular ghasts (only the boss ghast spawns)
             boolean isBossSpawn = !bossSpawned && bossEntityTypeId != null
                 && spawn.entityTypeId().equals(bossEntityTypeId);
             if (isGhastBossFight && "minecraft:ghast".equals(spawn.entityTypeId()) && !isBossSpawn) {
@@ -1107,11 +980,16 @@ public class CombatManager {
                     requestedPos, resolvedPos, arena.getWidth(), arena.getHeight());
             }
 
-            EntityType<?> type = Registries.ENTITY_TYPE.get(Identifier.of(spawn.entityTypeId()));
+            Identifier entityId = Identifier.of(spawn.entityTypeId());
+            if (!Registries.ENTITY_TYPE.containsId(entityId)) {
+                CrafticsMod.LOGGER.warn("Unknown entity type '{}', skipping spawn at {}", entityId, resolvedPos);
+                continue;
+            }
+            EntityType<?> type = Registries.ENTITY_TYPE.get(entityId);
             BlockPos spawnPos = arena.gridToBlockPos(resolvedPos);
 
-            // Use create() + spawnEntity() instead of type.spawn() to bypass Minecraft's
-            // placement validation that can reject entities when others are nearby
+            // create() + spawnEntity() bypasses Minecraft's placement validation
+            // that rejects entities when others are nearby
             var rawEntity = type.create(world, null, spawnPos, SpawnReason.MOB_SUMMONED, false, false);
             if (rawEntity == null) {
                 CrafticsMod.LOGGER.warn("Failed to create entity {} at {}", spawn.entityTypeId(), resolvedPos);
@@ -3501,12 +3379,10 @@ public class CombatManager {
             tripleDamageNextAttack = true;
             if (parts.length > 1) sendMessage(parts[1]);
         }
-        // Plain message
         else {
             sendMessage(result);
         }
 
-        // Check deaths from spell damage
         List<CombatEntity> deadEnemies = enemies.stream()
             .filter(e -> !e.isAlive() && e.getMobEntity() != null && e.getMobEntity().isAlive())
             .toList();
@@ -3519,7 +3395,6 @@ public class CombatManager {
             killEnemy(dead);
         }
 
-        // Check win
         if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
             handleVictory();
             return;
@@ -3530,12 +3405,11 @@ public class CombatManager {
     }
 
     private void handleEndTurn() {
-        // Kill streak: reset if no kills this turn
         if (!killedThisTurn && killStreak > 0) {
             killStreak = 0;
             sendSync();
         }
-        killedThisTurn = false; // reset for next turn
+        killedThisTurn = false;
 
         // Auto-brace shield if equipped in offhand
         if (PlayerCombatStats.hasShield(player)) {
@@ -3543,33 +3417,24 @@ public class CombatManager {
             sendMessage("§9§lShield braced! §r§7(+" + (SHIELD_PASSIVE_DEFENSE + SHIELD_BRACE_DEFENSE) + " defense this enemy turn)");
         }
 
-        // Party turn rotation: advance to next alive player before enemy turn
-        // Lazy init: on the initial level start, party members are registered AFTER startCombat,
-        // so the queue built inside startCombat was empty. Build it now on first use.
+        // Lazy init: party members register AFTER startCombat, so the queue may be empty on first use
         if (partyPlayers.size() > 1 && turnQueue.size() <= 1) {
             rebuildTurnQueue();
         }
         if (turnQueue.size() > 1) {
             currentTurnIndex++;
             if (currentTurnIndex < turnQueue.size()) {
-                // Next player's sub-turn — switch active player
                 switchToTurnPlayer();
-                return; // Don't start enemy turn yet
+                return;
             }
-            // All players have acted — fall through to enemy turn
+            // All players acted — fall through to enemy turn
             currentTurnIndex = 0;
         }
 
-        // Tick boss warning telegraphs
         tickBossWarnings();
-
         startEnemyTurn();
     }
 
-    /**
-     * Build the turn queue from alive, online party members. Called at the start of each
-     * player turn round. Skips dead/disconnected members.
-     */
     private void rebuildTurnQueue() {
         turnQueue.clear();
         for (ServerPlayerEntity member : partyPlayers) {
@@ -3578,14 +3443,9 @@ public class CombatManager {
                 turnQueue.add(member.getUuid());
             }
         }
-        // Solo play — queue stays empty, no rotation needed
         currentTurnIndex = 0;
     }
 
-    /**
-     * Switch the active player to whoever is at currentTurnIndex in the turn queue.
-     * Recalculates AP/Move from that player's stats and notifies all clients.
-     */
     private void switchToTurnPlayer() {
         if (turnQueue.isEmpty()) return;
         java.util.UUID nextUuid = turnQueue.get(currentTurnIndex);
@@ -3594,7 +3454,6 @@ public class CombatManager {
             if (member.getUuid().equals(nextUuid)) { nextPlayer = member; break; }
         }
         if (nextPlayer == null || nextPlayer.isRemoved() || nextPlayer.isDisconnected()) {
-            // Skip disconnected/dead player, try next
             turnQueue.remove(currentTurnIndex);
             if (currentTurnIndex >= turnQueue.size()) {
                 currentTurnIndex = 0;
@@ -3602,13 +3461,12 @@ public class CombatManager {
                 startEnemyTurn();
                 return;
             }
-            switchToTurnPlayer(); // recurse to next
+            switchToTurnPlayer();
             return;
         }
 
         this.player = nextPlayer;
 
-        // Sync the arena's tracked player grid position to this player's actual position
         if (arena != null) {
             net.minecraft.util.math.BlockPos origin = arena.getOrigin();
             net.minecraft.util.math.BlockPos pBlock = player.getBlockPos();
@@ -3618,7 +3476,6 @@ public class CombatManager {
             ));
         }
 
-        // Recalculate AP and Move from this player's stats
         if (testRange) {
             apRemaining = 999;
             movePointsRemaining = 999;
@@ -3638,7 +3495,6 @@ public class CombatManager {
 
         this.activeTrimScan = TrimEffects.scan(player);
 
-        // Sound + announce
         player.getWorld().playSound(null, player.getBlockPos(),
             net.minecraft.sound.SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(),
             net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.2f);
@@ -3648,7 +3504,6 @@ public class CombatManager {
     }
 
     private void startEnemyTurn() {
-        // Sound: enemy turn start
         if (player != null) {
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(),
@@ -3667,7 +3522,6 @@ public class CombatManager {
     public void tick() {
         if (!active) return;
 
-        // Safety: if player disconnected or is removed, end combat immediately
         if (player == null || player.isRemoved() || player.isDisconnected()) {
             endCombat();
             return;
@@ -3675,22 +3529,19 @@ public class CombatManager {
 
         tickCounter++;
 
-        // Fall death: if player drops more than 2 blocks below arena floor, instant death.
-        // This bypasses totem — falling off the arena is environmental, not combat.
-        // Teleport back first to prevent vanilla lava/void damage loops.
+        // Fall death bypasses totem — environmental, not combat damage
+        // Teleport back first to stop vanilla lava/void damage loops
         if (arena != null) {
             int arenaFloorY = arena.getOrigin().getY();
             if (player.getY() < arenaFloorY - 2) {
-                // Immediately teleport back to a walkable tile to stop vanilla damage
                 BlockPos safePos = getSafeArenaBlockPos(arena);
                 if (safePos != null) {
                     player.requestTeleport(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
                 }
-                player.setFireTicks(0); // extinguish
+                player.setFireTicks(0);
                 player.setFrozenTicks(0);
                 player.setHealth(1);
                 sendMessage("§c§l☠ You fell to your death!");
-                // Skip totem — go straight to death/game over
                 if (partyPlayers.size() <= 1) {
                     startPlayerDeathAnimation();
                 } else {
@@ -3722,7 +3573,7 @@ public class CombatManager {
                 return;
             }
         }
-        // Void safety: if player falls below Y=0, teleport them back
+        // Void safety
         if (player.getY() < 0) {
             BlockPos safePos = arena != null ? getSafeArenaBlockPos(arena) : null;
             if (safePos != null) {
@@ -3736,10 +3587,9 @@ public class CombatManager {
             player.fallDistance = 0;
         }
 
-        // Boss ambient particles (runs every tick, per-boss throttling inside)
         tickBossAmbientParticles();
 
-        // Tick pending attack delay (damage synced to animation impact)
+        // Damage synced to animation impact frame
         if (pendingAttackDelay > 0) {
             pendingAttackDelay--;
             if (pendingAttackDelay == 0 && pendingAttackAction != null) {
@@ -3748,10 +3598,8 @@ public class CombatManager {
             }
         }
 
-        // Tick spell animation cooldown
         if (spellAnimCooldown > 0) spellAnimCooldown--;
 
-        // Tick delayed spell visual effects (particles/sounds staged across ticks)
         if (!PotterySherdSpells.PENDING_EFFECTS.isEmpty()) {
             var iter = PotterySherdSpells.PENDING_EFFECTS.iterator();
             while (iter.hasNext()) {
@@ -3763,21 +3611,19 @@ public class CombatManager {
             }
         }
 
-        // Detect externally killed/removed mobs and suppress any residual fire
+        // Re-spawn mobs killed by vanilla mechanics and suppress stray fire
         if (enemies != null) {
             for (CombatEntity e : enemies) {
                 if (!e.isAlive()) continue;
                 MobEntity mob = e.getMobEntity();
                 if (mob == null) continue;
 
-                // If the MobEntity was removed by vanilla mechanics, try to re-spawn it
-                // instead of killing the CombatEntity (the combat stats are still valid)
+                // CombatEntity stats are still valid — just need a new visual mob
                 if (!mob.isAlive() || mob.isRemoved()) {
                     CrafticsMod.LOGGER.warn("Enemy '{}' (id={}) removed externally -- reason={}, health={}, pos=({},{},{})",
                         e.getDisplayName(), e.getEntityId(),
                         mob.getRemovalReason(), mob.getHealth(),
                         mob.getX(), mob.getY(), mob.getZ());
-                    // Try to re-create the visual mob entity
                     BlockPos respawnPos = arena.gridToBlockPos(e.getGridPos());
                     ServerWorld tickWorld = (ServerWorld) player.getEntityWorld();
                     EntityType<?> reType = Registries.ENTITY_TYPE.get(Identifier.of(e.getEntityTypeId()));
@@ -3798,7 +3644,6 @@ public class CombatManager {
                         e.setMobEntity(replacementMob);
                         CrafticsMod.LOGGER.info("Re-spawned '{}' successfully", e.getDisplayName());
                     } else {
-                        // Complete failure — remove from combat
                         CrafticsMod.LOGGER.error("Failed to re-spawn '{}' — removing from combat", e.getDisplayName());
                         e.takeDamage(9999);
                         arena.removeEntity(e);
@@ -3813,24 +3658,20 @@ public class CombatManager {
                     continue;
                 }
 
-                // Safety net: clear fire ticks if a mob somehow catches fire
                 if (mob.isOnFire()) {
                     mob.setFireTicks(0);
                 }
 
-                // Creeper fuse visual: pulse glow + smoke particles (NO ignite — that causes real explosion)
+                // Creeper fuse visual — NO ignite, that causes a real explosion
                 if (e.getFuseTimer() > 0 && e.getEntityTypeId().equals("minecraft:creeper")) {
-                    // Pulse: toggle glowing every 4 ticks for visual warning
                     mob.setGlowing(e.getFuseTimer() % 8 < 4);
-                    // Pulse smoke particles every few ticks
                     ServerWorld creeperWorld = (ServerWorld) player.getEntityWorld();
                     creeperWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
                         mob.getX(), mob.getY() + 1.0, mob.getZ(),
                         2, 0.2, 0.3, 0.2, 0.01);
                 }
 
-                // Snap idle mobs to their grid position to prevent entity drift
-                // Skip the mob currently being animated and background bosses (positioned off-grid)
+                // Snap idle mobs to grid — skip currently animating + background bosses
                 if (!e.isBackgroundBoss()
                         && (e != currentEnemy || enemyTurnState == EnemyTurnState.DONE
                         || enemyTurnState == EnemyTurnState.DECIDING)) {
@@ -3843,7 +3684,6 @@ public class CombatManager {
                     if (driftX > 0.1 || driftZ > 0.1) {
                         mob.requestTeleport(targetX, gridBlock.getY(), targetZ);
                     }
-                    // Keep visual projectile entity synced with tracking mob
                     if (e.isProjectile() && e.getVisualProjectileEntityId() != -1) {
                         syncVisualProjectile(e, targetX, gridBlock.getY() + 0.5, targetZ);
                     }
@@ -3851,7 +3691,6 @@ public class CombatManager {
             }
         }
 
-        // Refresh highlights when player changes hotbar slot
         if (phase == CombatPhase.PLAYER_TURN && player != null) {
             var currentItem = player.getMainHandStack().getItem();
             if (currentItem != lastHeldItem) {
@@ -3860,7 +3699,6 @@ public class CombatManager {
             }
         }
 
-        // Tick dying mobs (gradual shrink animation + particles then discard)
         for (int i = dyingMobs.size() - 1; i >= 0; i--) {
             DyingMob dm = dyingMobs.get(i);
             int remaining = dm.timer() - 1;
@@ -3869,16 +3707,14 @@ public class CombatManager {
                 dyingMobs.remove(i);
             } else {
                 dyingMobs.set(i, dm.withTimer(remaining));
-                // Gradual shrink: interpolate from original scale to near-zero over 15 ticks
                 int totalShrinkTicks = 15;
-                int elapsed = 20 - remaining; // total timer is 20
+                int elapsed = 20 - remaining;
                 float progress = Math.min(1.0f, (float) elapsed / totalShrinkTicks);
-                float eased = progress * progress; // accelerating shrink
+                float eased = progress * progress;
                 float currentScale = dm.startScale() * (1.0f - eased) + 0.01f * eased;
                 var scaleAttr = dm.mob().getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
                 if (scaleAttr != null) scaleAttr.setBaseValue(currentScale);
 
-                // Smoke particles during shrink
                 if (elapsed % 3 == 0 && dm.mob().getWorld() instanceof ServerWorld sw) {
                     sw.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
                         dm.mob().getX(), dm.mob().getY() + 0.3, dm.mob().getZ(),
@@ -3898,22 +3734,19 @@ public class CombatManager {
 
     private void tickAnimation() {
         if (movePathIndex >= movePath.size()) {
-            // Movement complete
             int tilesMoved = movePath.size();
             GridPos finalPos = arena.getPlayerGridPos();
             movePath = null;
             lerpInitialized = false;
 
-            // Notify bosses of player movement (Warden vibration sense)
             notifyBossesPlayerMoved(finalPos, tilesMoved);
 
-            // Web overlay slowness (Broodmother)
             if (arena.hasWebOverlay(finalPos)) {
                 combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
                 sendMessage("§7  Cobwebs slow your movement! (-1 speed next turn)");
             }
 
-            // Prevent vanilla cobweb physics from causing desync
+            // Prevent vanilla cobweb physics desync
             player.setVelocity(0, 0, 0);
             player.velocityModified = true;
 
@@ -3923,7 +3756,6 @@ public class CombatManager {
             return;
         }
 
-        // Initialize lerp for this tile transition
         if (!lerpInitialized) {
             lerpInitialized = true;
             moveTickCounter = 0;
@@ -3931,7 +3763,6 @@ public class CombatManager {
             lerpStartY = player.getY();
             lerpStartZ = player.getZ();
 
-            // Face the direction of movement
             GridPos next = movePath.get(movePathIndex);
             GridPos prev = movePathIndex == 0 ? arena.getPlayerGridPos() : movePath.get(movePathIndex - 1);
             int dx = next.x() - prev.x();
@@ -3948,7 +3779,6 @@ public class CombatManager {
 
         float progress = Math.min(1.0f, (float) moveTickCounter / getMoveTicks());
 
-        // Smooth lerp with walking animation
         double x = lerpStartX + (endX - lerpStartX) * progress;
         double y = lerpStartY + (endY - lerpStartY) * progress;
         double z = lerpStartZ + (endZ - lerpStartZ) * progress;
@@ -3956,14 +3786,13 @@ public class CombatManager {
         player.setHeadYaw(playerMoveYaw);
         player.setOnGround(true);
 
-        // Smooth movement: set position directly and use velocity for client interpolation
-        // Save prev position so client-side limb animator sees movement delta
+        // prevXYZ needed so client limb animator sees the movement delta
         player.prevX = player.getX();
         player.prevY = player.getY();
         player.prevZ = player.getZ();
         player.setPosition(x, y, z);
 
-        // Send velocity so client sees smooth movement + drives vanilla limb animation
+        // Velocity drives vanilla limb animation on client
         double dx = endX - lerpStartX;
         double dz = endZ - lerpStartZ;
         double len = Math.sqrt(dx * dx + dz * dz);
@@ -3973,31 +3802,25 @@ public class CombatManager {
             player.velocityDirty = true;
         }
 
-        // Force position sync to client every tick during animation
         player.networkHandler.requestTeleport(x, y, z, playerMoveYaw, 0f);
 
-        // Keep mount mob under the player during movement
         if (playerMounted && mountMob != null) {
             mountMob.requestTeleport(x, y, z);
         }
 
-        // Tile reached — advance to next
         if (moveTickCounter >= getMoveTicks()) {
             arena.setPlayerGridPos(next);
-            // Sound: footstep
             if (player != null) {
                 player.getWorld().playSound(null, player.getBlockPos(),
                     net.minecraft.sound.SoundEvents.BLOCK_STONE_STEP,
                     net.minecraft.sound.SoundCategory.PLAYERS, 0.3f, 1.0f);
             }
 
-            // Check for dropped trident — pick it up
             if (droppedTridentPos != null && next.equals(droppedTridentPos)) {
                 returnDroppedTrident();
                 sendMessage("§3You retrieve your trident!");
             }
 
-            // Check for cake tile — heal player on step
             if (tileEffects.containsKey(next) && tileEffects.get(next).startsWith("cake")) {
                 String cakeData = tileEffects.get(next);
                 int uses = 3;
@@ -4035,16 +3858,15 @@ public class CombatManager {
     }
 
     private void tickEnemyDeciding() {
-        // Skip dead enemies
         while (enemyTurnIndex < enemies.size() && !enemies.get(enemyTurnIndex).isAlive()) {
             enemyTurnIndex++;
         }
 
         if (enemyTurnIndex >= enemies.size()) {
-            // All enemies done — new player turn
+            // All enemies done — start new player turn
             for (CombatEntity e : enemies) e.setDamagedSinceLastTurn(false);
 
-            // Tick enemy poison DoT
+            // --- Enemy DoT ticks ---
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getPoisonTurns() <= 0) continue;
                 boolean wasAlive = e.isAlive();
@@ -4061,13 +3883,11 @@ public class CombatManager {
                 checkAndHandleDeath(e);
             }
 
-            // Check if poison killed the last enemy
             if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
                 handleVictory();
                 return;
             }
 
-            // Tick enemy burning DoT
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getBurningTurns() <= 0) continue;
                 boolean wasAlive = e.isAlive();
@@ -4087,13 +3907,11 @@ public class CombatManager {
                 checkAndHandleDeath(e);
             }
 
-            // Check if burning killed the last enemy
             if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
                 handleVictory();
                 return;
             }
 
-            // Tick enemy defense penalty duration
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getDefensePenaltyTurns() <= 0) continue;
                 e.setDefensePenaltyTurns(e.getDefensePenaltyTurns() - 1);
@@ -4102,7 +3920,6 @@ public class CombatManager {
                 }
             }
 
-            // Tick enemy soaked duration
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getSoakedTurns() <= 0) continue;
                 e.setSoakedTurns(e.getSoakedTurns() - 1);
@@ -4112,7 +3929,6 @@ public class CombatManager {
                 }
             }
 
-            // Tick enemy slowness duration
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getSlownessTurns() <= 0) continue;
                 e.setSlownessTurns(e.getSlownessTurns() - 1);
@@ -4122,7 +3938,6 @@ public class CombatManager {
                 }
             }
 
-            // Tick hex trap duration
             if (hexTrapTurnsRemaining > 0) {
                 hexTrapTurnsRemaining--;
                 if (hexTrapTurnsRemaining <= 0) {
@@ -4130,7 +3945,6 @@ public class CombatManager {
                 }
             }
 
-            // Tick web overlay durations
             List<GridPos> expiredWebs = arena.tickWebOverlays();
             if (!expiredWebs.isEmpty()) {
                 ServerWorld world = (ServerWorld) player.getEntityWorld();
@@ -4141,10 +3955,9 @@ public class CombatManager {
                 }
             }
 
-            // Tick combat effects (decrement turn counters, remove expired)
             String expired = combatEffects.tickTurn();
             if (expired != null) {
-                // Remove vanilla status effects that correspond to expired combat effects
+                // Strip vanilla status effects that mapped to expired combat effects
                 for (CombatEffects.EffectType expType : combatEffects.getLastExpired()) {
                     var mcEffect = mapCombatToVanillaEffect(expType);
                     if (mcEffect != null && player != null) {
@@ -4153,7 +3966,6 @@ public class CombatManager {
                 }
             }
 
-            // Apply per-turn effects (regen, poison, wither, burning)
             int hpChange = combatEffects.applyPerTurnEffects();
             if (hpChange != 0 && player != null) {
                 float newHp = Math.max(1, Math.min(player.getMaxHealth(), player.getHealth() + hpChange));
@@ -4170,7 +3982,6 @@ public class CombatManager {
                 if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
             }
 
-            // Environmental hazards — check tile under player
             GridPos playerPos = arena.getPlayerGridPos();
             GridTile playerTile = arena.getTile(playerPos);
             if (playerTile != null) {
@@ -4185,11 +3996,9 @@ public class CombatManager {
                 }
             }
 
-            // Process tile effects for enemies
             for (var entry : tileEffects.entrySet()) {
                 GridPos tPos = entry.getKey();
                 String effect = entry.getValue();
-                // Lava: damage enemies standing on it
                 if ("lava".equals(effect)) {
                     CombatEntity occupant = arena.getOccupant(tPos);
                     if (occupant != null && occupant.isAlive() && !occupant.isAlly()) {
@@ -4198,7 +4007,6 @@ public class CombatManager {
                         sendMessage("§6" + occupant.getDisplayName() + " burns in lava for 3 damage!");
                     }
                 }
-                // Campfire: heal player if adjacent
                 if ("campfire".equals(effect)) {
                     GridPos pPos = arena.getPlayerGridPos();
                     int d = Math.abs(pPos.x() - tPos.x()) + Math.abs(pPos.z() - tPos.z());
@@ -4207,12 +4015,10 @@ public class CombatManager {
                         sendMessage("§6Campfire heals 1 HP.");
                     }
                 }
-                // Poison cloud: damage enemies standing on it + ongoing particles
                 if ("poison_cloud".equals(effect)) {
-                    // Spawn lingering cloud particles each turn
                     ProjectileSpawner.spawnLingeringCloud(
                         (ServerWorld) player.getEntityWorld(), arena.gridToBlockPos(tPos));
-                    // Damage ALL enemies in 3x3 area around cloud center
+                    // 3x3 AoE around cloud center
                     java.util.Set<CombatEntity> cloudHits = new java.util.HashSet<>();
                     for (int dx = -1; dx <= 1; dx++) {
                         for (int dz = -1; dz <= 1; dz++) {
@@ -4226,14 +4032,12 @@ public class CombatManager {
                         sendMessage("§5" + hit.getDisplayName() + " chokes in poison cloud for " + dealt + " damage!");
                         checkAndHandleDeath(hit);
                     }
-                    // Also damage player if standing in the cloud
                     if (arena.getPlayerGridPos().manhattanDistance(tPos) <= 1) {
                         player.setHealth(Math.max(1, player.getHealth() - 1));
                         sendMessage("§5You breathe in the poison cloud! -1 HP");
                         if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                     }
                 }
-                // Cactus: damage enemies standing on or adjacent to it
                 if ("cactus".equals(effect)) {
                     for (CombatEntity e : enemies) {
                         if (!e.isAlive() || e.isAlly()) continue;
@@ -4245,7 +4049,7 @@ public class CombatManager {
                     }
                 }
             }
-            // Lightning rod: strikes this turn then removes itself
+            // Lightning rod — single-use, strikes then self-removes
             tileEffects.entrySet().removeIf(entry -> {
                 if ("lightning".equals(entry.getValue())) {
                     GridPos tPos = entry.getKey();
@@ -4255,15 +4059,14 @@ public class CombatManager {
                         int d = Math.abs(e.getGridPos().x() - tPos.x()) + Math.abs(e.getGridPos().z() - tPos.z());
                         if (d <= 1) {
                             int lightningDmg = 4;
-                            // Soaked doubles lightning damage
-                            if (e.getSoakedTurns() > 0) lightningDmg *= 2;
+                            if (e.getSoakedTurns() > 0) lightningDmg *= 2; // soaked = double lightning
                             applySpecialUtilityDamage(e, lightningDmg);
                             hit++;
                         }
                     }
                     if (hit > 0) sendMessage("§e⚡ Lightning strikes! " + hit + " enemies hit!");
                     else sendMessage("§eLightning rod fizzles — no enemies nearby.");
-                    return true; // remove after striking
+                    return true;
                 }
                 return false;
             });
@@ -4271,18 +4074,15 @@ public class CombatManager {
             turnNumber++;
             achievementTracker.recordTurnCompleted();
 
-            // Reset ghast scream face at start of player's turn
             for (CombatEntity e : enemies) {
                 if (e.isAlive() && e.isBackgroundBoss()) {
                     triggerGhastScream(e, false);
                 }
             }
 
-            // Track living allies for Zookeeper achievement
             long allyCount = enemies.stream().filter(e -> e.isAlive() && e.isAlly()).count();
             achievementTracker.recordLivingAllies((int) allyCount);
 
-            // Check if only passives/neutrals remain (no hostile enemies)
             boolean hasHostile = enemies.stream().anyMatch(e -> e.isAlive() && !e.isAlly());
             if (!hasHostile) {
                 peacefulTurnCount++;
@@ -4298,26 +4098,20 @@ public class CombatManager {
                 peacefulTurnCount = 0;
             }
 
-            endTurnHintSent = false; // reset per turn
+            endTurnHintSent = false;
 
-            // Tick temporary terrain tiles (boss fire pools, obstacles, etc.)
             tickTemporaryTerrain();
-            // Detonate any TNT placed last round
             detonatePendingTnts();
-            // Clear shield brace from previous turn
             shieldBraced = false;
 
-            // Rebuild party turn queue for this round (skips dead/offline members)
             if (partyPlayers.size() > 1) {
                 rebuildTurnQueue();
                 if (!turnQueue.isEmpty()) {
-                    // Set active player to first in queue
                     currentTurnIndex = 0;
                     java.util.UUID firstUuid = turnQueue.get(0);
                     for (ServerPlayerEntity member : partyPlayers) {
                         if (member.getUuid().equals(firstUuid)) { this.player = member; break; }
                     }
-                    // Sync arena grid position to this player's actual position
                     if (arena != null) {
                         net.minecraft.util.math.BlockPos qOrigin = arena.getOrigin();
                         net.minecraft.util.math.BlockPos qBlock = player.getBlockPos();
@@ -4331,11 +4125,10 @@ public class CombatManager {
             }
 
             if (testRange) {
-                // Infinite AP and movement in test range
                 apRemaining = 999;
                 movePointsRemaining = 999;
             } else {
-                // Read base stats from progression (uses current `player` which may have been set by turn queue)
+                // `player` may have been switched by the turn queue above
                 PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
                 PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
                 apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP);
@@ -4345,17 +4138,14 @@ public class CombatManager {
                     + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
                     + (playerMounted ? MOUNT_SPEED_BONUS : 0);
                 movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
-                // Soaked reduces player movement by 1
                 if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
                     movePointsRemaining = Math.max(1, movePointsRemaining - 1);
                 }
             }
             phase = CombatPhase.PLAYER_TURN;
-            // Sound: player turn start
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(),
                 net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.2f);
-            // Announce whose turn it is in party combat
             if (turnQueue.size() > 1) {
                 sendMessage("§e" + player.getName().getString() + "'s turn! §aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
             } else {
@@ -4373,7 +4163,6 @@ public class CombatManager {
         currentEnemy = enemies.get(enemyTurnIndex);
         currentEnemyPetAggroTarget = null;
 
-        // Stunned entities skip their turn
         if (currentEnemy.isStunned()) {
             sendMessage("§7" + currentEnemy.getDisplayName() + " is stunned!");
             currentEnemy.setStunned(false);
@@ -4382,9 +4171,7 @@ public class CombatManager {
             return;
         }
 
-        // Confused entities attack a random teammate instead
         if (currentEnemy.getConfusionTurns() > 0 && !currentEnemy.isAlly()) {
-            // Find a random alive non-ally teammate to attack
             java.util.List<CombatEntity> teammates = new java.util.ArrayList<>();
             for (CombatEntity e : enemies) {
                 if (e != currentEnemy && e.isAlive() && !e.isAlly()) teammates.add(e);
@@ -4392,7 +4179,6 @@ public class CombatManager {
             if (!teammates.isEmpty()) {
                 CombatEntity victim = teammates.get((int)(Math.random() * teammates.size()));
                 sendMessage("§d" + currentEnemy.getDisplayName() + " is confused and attacks " + victim.getDisplayName() + "!");
-                // Pathfind toward the victim and attack
                 java.util.List<GridPos> path = Pathfinding.findPath(arena, currentEnemy.getGridPos(),
                     victim.getGridPos(), currentEnemy.getMoveSpeed(), false);
                 pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.MoveAndAttackMob(
@@ -4401,28 +4187,23 @@ public class CombatManager {
                 if (path != null && !path.isEmpty()) {
                     startEnemyMove(path);
                 } else {
-                    // Adjacent already — attack directly
                     startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
                 }
                 return;
             }
-            // No teammates to hit — confusion wasted, tick it down
             currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
             sendMessage("§d" + currentEnemy.getDisplayName() + " is confused but has no allies to hit!");
         }
 
-        // === ALLY PET AI ===
-        // Allies attack enemies instead of the player, and retreat at low HP
         if (currentEnemy.isAlly()) {
             handleAllyTurn(currentEnemy);
             return;
         }
 
-        // Update player held item context for AI that needs it (e.g., cat)
+        // Some AIs react to player's held item (e.g. cat)
         arena.setPlayerHeldItemId(net.minecraft.registry.Registries.ITEM
             .getId(player.getMainHandStack().getItem()).toString());
 
-        // Resolve any pending boss warnings from last turn before the boss acts again
         if (currentEnemy.isBoss()) {
             resolvePendingBossWarnings(currentEnemy);
         }
@@ -4447,7 +4228,6 @@ public class CombatManager {
                 startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
             case EnemyAction.Teleport tp -> {
-                // Instant move — no lerp animation
                 sendMessage("§5" + currentEnemy.getDisplayName() + " teleports!");
                 MobEntity mob = currentEnemy.getMobEntity();
                 if (mob != null) {
@@ -4460,7 +4240,6 @@ public class CombatManager {
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
             case EnemyAction.TeleportAndAttack tpa -> {
-                // Teleport then attack
                 sendMessage("§5" + currentEnemy.getDisplayName() + " teleports behind you!");
                 MobEntity mob = currentEnemy.getMobEntity();
                 if (mob != null) {
@@ -4469,12 +4248,10 @@ public class CombatManager {
                     mob.requestTeleport(wx, arena.getOrigin().getY() + 1.0, wz);
                 }
                 arena.moveEntity(currentEnemy, tpa.target());
-                // Proceed to attack phase
                 pendingAction = new EnemyAction.Attack(tpa.damage());
                 startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
             case EnemyAction.Pounce pounce -> {
-                // Instant jump to landing position, then attack
                 sendMessage("§6" + currentEnemy.getDisplayName() + " pounces!");
                 MobEntity mob = currentEnemy.getMobEntity();
                 if (mob != null) {
@@ -4487,9 +4264,7 @@ public class CombatManager {
                 startAttackAnimation(2);
             }
             case EnemyAction.Explode explode -> {
-                // AoE explosion — damage player AND other mobs within radius
                 sendMessage("§c§l" + currentEnemy.getDisplayName() + " EXPLODES!");
-                // Explosion particles!
                 ServerWorld explodeWorld = (ServerWorld) player.getEntityWorld();
                 BlockPos explodeBlock = arena.gridToBlockPos(currentEnemy.getGridPos());
                 explodeWorld.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION,
@@ -4509,7 +4284,6 @@ public class CombatManager {
                     sendMessage("§c  Explosion hits you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 }
-                // Damage other mobs caught in the blast (explosions always hit nearby mobs)
                 List<CombatEntity> blastTargets = new ArrayList<>();
                 for (CombatEntity other : enemies) {
                     if (other == currentEnemy || !other.isAlive()) continue;
@@ -4522,7 +4296,7 @@ public class CombatManager {
                     sendMessage("§6  Blast hits " + target.getDisplayName() + " for " + dealt + "!");
                     checkAndHandleDeath(target);
                 }
-                // Creeper dies from explosion — mark as self-exploded (no drops)
+                // Self-exploded = no drops
                 currentEnemy.setSelfExploded(true);
                 currentEnemy.takeDamage(9999);
                 killEnemy(currentEnemy);
@@ -4531,7 +4305,6 @@ public class CombatManager {
                 enemyTurnDelay = 8;
             }
             case EnemyAction.RangedAttack ra -> {
-                // Ranged attack — play aim animation first, then resolve in ATTACKING phase
                 startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
             case EnemyAction.Swoop swoop -> {
@@ -7007,7 +6780,6 @@ public class CombatManager {
             mob.setYaw(yaw);
             mob.setHeadYaw(yaw);
 
-            // Compute direction unit vector toward player
             double dist = Math.sqrt(dx * dx + dz * dz);
             if (dist > 0.01) {
                 attackAnimLungeX = dx / dist;

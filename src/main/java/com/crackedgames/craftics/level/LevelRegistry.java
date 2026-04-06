@@ -1,9 +1,5 @@
 package com.crackedgames.craftics.level;
 
-/**
- * Level registry that delegates to the procedural LevelGenerator.
- * Replaces the old hardcoded Level1Definition/Level2Definition system.
- */
 public class LevelRegistry {
 
     public static LevelDefinition get(int levelNumber) {

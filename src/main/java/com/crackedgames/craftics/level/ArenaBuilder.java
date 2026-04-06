@@ -25,69 +25,47 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * Builds combat arenas from .schem or .nbt structure files with marker block detection.
+ * Builds combat arenas from .schem or .nbt structures with marker block detection.
  *
- * Required corner markers on the same Y level:
- * - DIAMOND_BLOCK: camera corner
- * - EMERALD_BLOCK: opposite corner
+ * Marker blocks (must be on the same Y level):
+ *   DIAMOND_BLOCK  = camera corner (outside the playable grid)
+ *   EMERALD_BLOCK  = opposite corner
+ *   Playable area is the rectangle one block inside those markers.
+ *   Border ring gets replaced with biome-themed concrete at runtime.
  *
- * The playable arena is the rectangle one block inside those markers.
- * The outer border is replaced at runtime with biome-themed concrete.
- *
- * Optional spawn markers inside the playable area:
- * - GOLD_BLOCK, IRON_BLOCK, COPPER_BLOCK, COAL_BLOCK for P1..P4
- * If GOLD_BLOCK is absent, P1 spawn is auto-calculated from arena geometry.
+ * Optional spawn markers (inside the playable area):
+ *   GOLD_BLOCK / IRON_BLOCK / COPPER_BLOCK / COAL_BLOCK = P1..P4
+ *   If GOLD_BLOCK is missing, P1 spawn is auto-derived from arena geometry.
  */
 public class ArenaBuilder {
 
-    // FORCE_STATE only — skip NOTIFY_LISTENERS to avoid sending individual block updates
-    // during arena construction. The client receives the full chunk data after building.
+    // FORCE_STATE skips per-block client updates — client gets full chunk data after build
     static final int SET_FLAGS = Block.FORCE_STATE;
 
-    /** Camera yaw set by diamond block marker in the last loaded structure. -1 = use default. */
     private static float pendingCameraYaw = -1;
-
-    /** Arena origin override from structure markers (null = use default). */
     private static BlockPos structureOrigin = null;
-    /** Player start override from structure markers (null = use default). */
     private static GridPos structurePlayerStart = null;
-    /** Grid dimensions from structure markers (-1 = use level definition). */
     private static int structureGridW = -1, structureGridH = -1;
-    /** Height from the placed structure for relight bounds (-1 = unknown). */
     private static int structureHeight = -1;
 
-    /** Get and clear the pending camera yaw from the last structure load. */
+    /** Get and clear the pending camera yaw from the last structure load */
     public static float consumePendingCameraYaw() {
         float yaw = pendingCameraYaw;
         pendingCameraYaw = -1;
         return yaw;
     }
 
-    /**
-     * Marker blocks placed by map builders in .schem/.nbt structures.
-     *
-     * Required outside corners on the same Y level:
-     * - DIAMOND_BLOCK (camera corner)
-     * - EMERALD_BLOCK (opposite corner)
-     *
-     * Optional spawn markers inside the playable rectangle:
-     * - GOLD_BLOCK, IRON_BLOCK, COPPER_BLOCK, COAL_BLOCK
-     */
-
-    /** Build arena at legacy shared position (no world isolation). */
     public static GridArena build(ServerWorld world, LevelDefinition levelDef) {
         int level = levelDef.getLevelNumber();
         BlockPos origin = GridArena.arenaOriginForLevel(level);
         return buildAt(world, levelDef, origin);
     }
 
-    /** Build arena within a player's world slot. */
     public static GridArena build(ServerWorld world, LevelDefinition levelDef, java.util.UUID worldOwner) {
         com.crackedgames.craftics.world.CrafticsSavedData data =
             com.crackedgames.craftics.world.CrafticsSavedData.get(world);
         BlockPos origin = data.getArenaOrigin(worldOwner, levelDef.getLevelNumber());
         if (origin == null) {
-            // Fallback to legacy positioning if no world slot
             origin = GridArena.arenaOriginForLevel(levelDef.getLevelNumber());
         }
         return buildAt(world, levelDef, origin);
@@ -105,7 +83,7 @@ public class ArenaBuilder {
         int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
         Random rng = new Random(level * 31L + ox);
 
-        // Resolve biome info
+        // Resolve biome for schematic lookup + environment theming
         String biomeId = "plains";
         boolean isBoss = false;
         EnvironmentStyle envStyle = EnvironmentStyle.PLAINS;
@@ -124,15 +102,14 @@ public class ArenaBuilder {
             isBoss = false;
         }
 
-        // Random event arenas use custom LevelDefinition types.
-        // Route trial chambers to their own schematic folder instead of plains.
+        // Trial chamber events need their own schematic folder
         String levelName = levelDef.getName();
         if (levelName != null && levelName.toLowerCase(java.util.Locale.ROOT).contains("trial chamber")) {
             biomeId = "trial_chamber";
             isBoss = false;
         }
 
-        // Reset structure overrides
+        // Reset per-build state
         structureOrigin = null;
         structurePlayerStart = null;
         structureGridW = -1;
@@ -143,21 +120,20 @@ public class ArenaBuilder {
             biomeId, isBoss, envStyle, levelDef.getClass().getSimpleName(),
             levelDef instanceof GeneratedLevelDefinition);
 
-        // Try to load a structure preset
+        // Try structure preset, fall back to procedural
         boolean structureLoaded = tryLoadStructure(world, ox, oy, oz, w, h, tiles, biomeId, isBoss, rng);
 
         if (!structureLoaded) {
-            // Fallback: procedural arena (flat floor, no surrounding terrain)
             buildProceduralFallback(world, ox, oy, oz, w, h, tiles, rng);
         }
 
-        // Use structure-detected origin/spawn/size if available, otherwise defaults
+        // Prefer structure-detected origin/spawn/size over level definition defaults
         BlockPos finalOrigin = structureOrigin != null ? structureOrigin : origin;
         GridPos requestedPlayerStart = structurePlayerStart != null ? structurePlayerStart : levelDef.getPlayerStart();
         int finalW = structureGridW > 0 ? structureGridW : w;
         int finalH = structureGridH > 0 ? structureGridH : h;
 
-        // Rebuild tiles if the structure grid is a different size than the level definition
+        // Resize tile array if structure grid differs from level definition
         GridTile[][] finalTiles = tiles;
         if (finalW != w || finalH != h) {
             finalTiles = new GridTile[finalW][finalH];
@@ -174,14 +150,14 @@ public class ArenaBuilder {
 
         int floorX = finalOrigin.getX(), floorY = finalOrigin.getY(), floorZ = finalOrigin.getZ();
 
-        // Visible biome-themed lighting around the arena border
+        // Biome-themed light posts around the border
         placeLighting(world, floorX, floorY, floorZ, finalW, finalH, envStyle);
 
-        // FORCE_STATE placement can leave stale light. Explicitly re-check block light in arena bounds.
+        // FORCE_STATE can leave stale light — recheck arena bounds
         int relightTop = floorY + Math.max(12, structureHeight > 0 ? structureHeight + 3 : 12);
         relightArena(world, floorX, floorY - 3, floorZ, finalW, finalH, relightTop);
 
-        // Force-load arena chunks so the client receives blocks before player teleport
+        // Force-load chunks so client has blocks before teleport
         int minCX = (finalOrigin.getX() - 2) >> 4;
         int maxCX = (finalOrigin.getX() + finalW + 2) >> 4;
         int minCZ = (finalOrigin.getZ() - 2) >> 4;
@@ -192,10 +168,10 @@ public class ArenaBuilder {
             }
         }
 
-        // Paint the correct Minecraft biome on arena chunks so fog, grass color, and sky match the theme
+        // Paint MC biome on arena chunks so fog/grass/sky match the theme
         setBiomeForArena(world, finalOrigin, finalW, finalH, biomeId);
 
-        // Mark arena chunks as needing resend so client receives all blocks at once
+        // Resend chunks so client gets all blocks at once
         for (int cx = minCX; cx <= maxCX; cx++) {
             for (int cz = minCZ; cz <= maxCZ; cz++) {
                 var chunk = world.getChunk(cx, cz);
@@ -208,9 +184,7 @@ public class ArenaBuilder {
             }
         }
 
-        // Scan world blocks to auto-detect obstacles and voids from schematic terrain.
-        // Any solid block at floorY+1 marks the tile as OBSTACLE (blocks movement).
-        // Any air/void at floorY with a drop >2 blocks marks the tile as VOID (instant death on enter).
+        // Auto-detect obstacles/voids from placed schematic terrain
         for (int x = 0; x < finalW; x++) {
             for (int z = 0; z < finalH; z++) {
                 GridTile tile = finalTiles[x][z];
@@ -228,21 +202,19 @@ public class ArenaBuilder {
                     && !(headState.getBlock() instanceof net.minecraft.block.CarpetBlock)
                     && headState.isSolidBlock(world, headPos);
 
-                // Solid block above floor = obstacle (skip if tile is already non-walkable)
+                // Solid block above floor = obstacle; block at head level too = permanent (can't mine)
                 if (tile.isWalkable() && hasObstacleBlock) {
-                    // If there's also a block at head level (floorY+2), obstacle is permanent (can't be mined)
                     finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.OBSTACLE,
                         aboveState.getBlock(), hasHeadBlock);
                 }
 
-                // No obstacle block at floorY+1 but solid block at head level (floorY+2) = suffocation risk
-                // Mark as permanent obstacle so the player can't walk under it
+                // Head-level block with no chest-level block = suffocation, mark permanent
                 if (finalTiles[x][z].isWalkable() && !hasObstacleBlock && hasHeadBlock) {
                     finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.OBSTACLE,
                         headState.getBlock(), true);
                 }
 
-                // Water block at floor level = mark as WATER tile (for fishing, boat movement, etc.)
+                // Water at floor level = WATER tile
                 net.minecraft.block.BlockState floorState = world.getBlockState(floorPos);
                 if (tile.isWalkable() && !floorState.getFluidState().isEmpty()
                     && floorState.getBlock() == Blocks.WATER) {
@@ -250,8 +222,7 @@ public class ArenaBuilder {
                         Blocks.WATER);
                 }
 
-                // No floor block = void. If the floor level is air, void_air, or lava,
-                // there's nothing to stand on — mark as VOID regardless of drop depth.
+                // No floor = void (air, void_air, or lava at floor level)
                 if (finalTiles[x][z].isWalkable()) {
                     Block floorBlock = floorState.getBlock();
                     boolean noFloor = floorState.isAir()
@@ -265,24 +236,18 @@ public class ArenaBuilder {
             }
         }
 
-        // Sanitise player start AFTER the VOID/OBSTACLE scan so it never lands on air
+        // Snap player start to nearest walkable tile after obstacle scan
         GridPos finalPlayerStart = findNearestWalkableTile(finalTiles, requestedPlayerStart);
 
         CrafticsMod.LOGGER.info("Arena built. origin={}, size={}x{}, playerStart={}", finalOrigin, finalW, finalH, finalPlayerStart);
         return new GridArena(finalW, finalH, finalTiles, finalOrigin, level, finalPlayerStart);
     }
 
-    // ==================== STRUCTURE LOADING ====================
-
-    /**
-     * Try to load and place a .nbt structure file for this arena.
-     * Searches for biome-specific presets, picks one at random.
-     * Returns true if a structure was successfully loaded.
-     */
+    // Tries .schem on disk first, then bundled .schem in JAR, then .nbt via StructureTemplateManager
     private static boolean tryLoadStructure(ServerWorld world, int ox, int oy, int oz,
                                               int w, int h, GridTile[][] tiles,
                                               String biomeId, boolean isBoss, Random rng) {
-        // === 1. Search for .schem files on disk (filesystem overrides) ===
+        // 1. Disk .schem files (filesystem overrides take priority)
         List<java.nio.file.Path> diskSchemCandidates = new ArrayList<>();
         try {
             var server = world.getServer();
@@ -308,7 +273,7 @@ public class ArenaBuilder {
             CrafticsMod.LOGGER.debug("Error while searching for .schem arenas: {}", e.getMessage());
         }
 
-        // Disk overrides take priority — use them if found
+        // Disk overrides win
         if (!diskSchemCandidates.isEmpty()) {
             CrafticsMod.LOGGER.info("Found {} disk .schem candidate(s) for biome '{}': {}",
                 diskSchemCandidates.size(), biomeId, diskSchemCandidates);
@@ -316,8 +281,7 @@ public class ArenaBuilder {
             return loadAndPlaceSchem(world, chosenSchem, ox, oy, oz, w, h, tiles, biomeId, isBoss);
         }
 
-        // === 2. Search for bundled .schem files in mod resources (JAR) ===
-        // Path: data/craftics/arenas/<biome>/<name>.schem
+        // 2. Bundled .schem in JAR: data/craftics/arenas/<biome>/<name>.schem
         List<Identifier> bundledCandidates = new ArrayList<>();
         net.minecraft.resource.ResourceManager resourceManager = world.getServer().getResourceManager();
 
@@ -344,7 +308,7 @@ public class ArenaBuilder {
             return loadAndPlaceBundledSchem(world, resourceManager, chosen, ox, oy, oz, w, h, tiles, biomeId, isBoss);
         }
 
-        // === 3. Try .nbt structure files via StructureTemplateManager ===
+        // 3. .nbt structures via StructureTemplateManager
         var manager = world.getStructureTemplateManager();
         List<Identifier> nbtCandidates = new ArrayList<>();
         String prefix = isBoss ? "boss_" : "";
@@ -377,10 +341,7 @@ public class ArenaBuilder {
             return false;
         }
 
-        // Fall through to existing .nbt loading below
         List<Identifier> candidates = nbtCandidates;
-
-        // Pick a random preset
         Identifier chosen = candidates.get(rng.nextInt(candidates.size()));
         StructureTemplate template = manager.getTemplate(chosen).orElse(null);
         if (template == null) return false;
@@ -388,12 +349,7 @@ public class ArenaBuilder {
         CrafticsMod.LOGGER.info("Loading arena structure: {} ({}x{}x{})",
             chosen, template.getSize().getX(), template.getSize().getY(), template.getSize().getZ());
 
-        // Scan the template for marker blocks BEFORE placing
-        // We need to find gold block (player start) and emerald block (arena end)
-        // to know where the grid sits within the structure
         var size = template.getSize();
-
-        // Clear the area first
         int clearPad = 3;
         for (int x = -clearPad; x < size.getX() + clearPad; x++) {
             for (int z = -clearPad; z < size.getZ() + clearPad; z++) {
@@ -406,8 +362,7 @@ public class ArenaBuilder {
             }
         }
 
-        // Place the structure centered on the arena
-        // The structure's (0,0,0) corner is placed so the structure is centered over the arena
+        // Center structure over the arena
         int placeX = ox + w / 2 - size.getX() / 2;
         int placeY = oy;
         int placeZ = oz + h / 2 - size.getZ() / 2;
@@ -417,15 +372,11 @@ public class ArenaBuilder {
         template.place(world, placePos, placePos, placementData,
             net.minecraft.util.math.random.Random.create(rng.nextLong()), SET_FLAGS);
 
-        // Use shared marker processing
         return processPlacedStructure(world, placeX, placeY, placeZ,
             size.getX(), size.getY(), size.getZ(), ox, oy, oz, w, h, tiles, chosen.toString(), biomeId, isBoss);
     }
 
-    /**
-     * Shared marker processing for both .nbt and .schem structures.
-     * Uses diamond+emerald outside corners to derive the inner playable grid.
-     */
+    // Shared marker processing — diamond+emerald corners define the inner playable grid
         private static boolean processPlacedStructure(ServerWorld world,
             int placeX, int placeY, int placeZ, int sizeX, int sizeY, int sizeZ,
             int ox, int oy, int oz, int w, int h, GridTile[][] tiles, String sourceName,
@@ -434,7 +385,7 @@ public class ArenaBuilder {
 
         BlockPos diamondPos = null;
         BlockPos emeraldPos = null;
-        // Collect ALL candidate spawn markers; we'll filter to grid bounds after finding corners
+        // Collect spawn marker candidates, filter to grid bounds later
         List<BlockPos> goldCandidates = new ArrayList<>();
         List<BlockPos> ironCandidates = new ArrayList<>();
         List<BlockPos> copperCandidates = new ArrayList<>();
@@ -497,7 +448,7 @@ public class ArenaBuilder {
             return true;
         }
 
-        // Filter spawn markers: must be at arena floor Y and within the grid boundary
+        // Only accept spawn markers at arena floor Y within grid bounds
         @SuppressWarnings("unchecked")
         List<BlockPos>[] candidateLists = new List[]{goldCandidates, ironCandidates, copperCandidates, coalCandidates};
         BlockPos[] playerSpawns = new BlockPos[4];
@@ -523,14 +474,14 @@ public class ArenaBuilder {
         Block floorBlock = tiles[0][0].getBlockType();
         Block borderConcrete = getBorderConcreteForBiome(biomeId, tiles);
 
-        // Replace corner markers with the most common touching block so they blend into the map.
+        // Replace corner markers with surrounding block so they blend in
         Block diamondReplacement = getMostCommonTouchingBlock(world, diamondPos, borderConcrete);
         Block emeraldReplacement = getMostCommonTouchingBlock(world, emeraldPos, borderConcrete);
         world.setBlockState(diamondPos, diamondReplacement.getDefaultState(), SET_FLAGS);
         world.setBlockState(emeraldPos, emeraldReplacement.getDefaultState(), SET_FLAGS);
 
         if (!preserveSchematicGround) {
-            // Replace outside perimeter with biome-themed concrete outline.
+            // Border ring in biome-themed concrete
             for (int x = borderMinX; x <= borderMaxX; x++) {
                 BlockPos north = new BlockPos(x, arenaFloorY, borderMinZ);
                 BlockPos south = new BlockPos(x, arenaFloorY, borderMaxZ);
@@ -544,8 +495,7 @@ public class ArenaBuilder {
                 if (!isAirLike(world.getBlockState(east))) set(world, borderMaxX, arenaFloorY, z, borderConcrete);
             }
 
-            // Overlay game tiles onto the inner grid.
-            // If the schematic already has a liquid at this position, keep it as-is.
+            // Overlay tiles onto inner grid (skip existing liquids)
             for (int x = 0; x < gridW; x++) {
                 for (int z = 0; z < gridH; z++) {
                     int worldX = gridMinX + x;
@@ -560,7 +510,7 @@ public class ArenaBuilder {
                         continue;
                     }
 
-                    // Keep intentional schematic voids/openings at floor level.
+                    // Keep intentional schematic voids at floor level
                     if (world.getBlockState(floorPos).isAir()) {
                         continue;
                     }
@@ -596,7 +546,7 @@ public class ArenaBuilder {
             }
         }
 
-        // Auto-spawn P1 if no gold marker: centered and one tile in from the diamond-facing side.
+        // Auto P1 spawn if no gold marker — center, one tile in from camera side
         if (structurePlayerStart == null) {
             int spawnX = Math.max(0, Math.min(gridW - 1, gridW / 2));
             int spawnZ = diamondPos.getZ() < centerZ ? 1 : gridH - 2;
@@ -628,7 +578,7 @@ public class ArenaBuilder {
         return true;
     }
 
-    /** Overlay arena game tiles at the standard origin position (used when markers are missing). */
+    // Fallback tile overlay when marker blocks are missing
     private static void overlayArenaTiles(ServerWorld world, int ox, int oy, int oz,
                                             int w, int h, GridTile[][] tiles) {
         for (int x = 0; x < w; x++) {
@@ -643,12 +593,11 @@ public class ArenaBuilder {
                     world.setBlockState(new BlockPos(ox + x, oy, oz + z), Blocks.AIR.getDefaultState(), SET_FLAGS);
                     world.setBlockState(new BlockPos(ox + x, oy + 1, oz + z), Blocks.AIR.getDefaultState(), SET_FLAGS);
                 } else if (!tile.isWalkable() && !tile.isWater()) {
-                    // Obstacles: floor block at oy, obstacle block at oy+1
+                    // Obstacle: solid at oy, block at oy+1
                     world.setBlockState(new BlockPos(ox + x, oy, oz + z),
                         Blocks.STONE.getDefaultState(), SET_FLAGS);
                     set(world, ox + x, oy + 1, oz + z, tile.getBlockType());
                 } else {
-                    // Walkable tiles: tile block at oy, clear oy+1
                     world.setBlockState(new BlockPos(ox + x, oy, oz + z),
                         tile.getBlockType().getDefaultState(), SET_FLAGS);
                     world.setBlockState(new BlockPos(ox + x, oy + 1, oz + z), Blocks.AIR.getDefaultState(), SET_FLAGS);
@@ -657,15 +606,12 @@ public class ArenaBuilder {
         }
     }
 
-    // ==================== PROCEDURAL FALLBACK ====================
-
-    /** Simple procedural arena when no .nbt structure is available. */
+    // Procedural flat arena when no structure file is found
     private static void buildProceduralFallback(ServerWorld world, int ox, int oy, int oz,
                                                   int w, int h, GridTile[][] tiles, Random rng) {
-        int pad = 2; // minimal padding — schem files handle their own surroundings
+        int pad = 2;
 
-        // In a void world, skip clearing (blocks are already air).
-        // Only clear if blocks exist (e.g. previous arena at same location).
+        // Only clear if blocks exist (e.g. previous arena at same location)
         boolean needsClear = !world.getBlockState(new BlockPos(ox, oy, oz)).isAir();
         if (needsClear) {
             for (int x = -pad; x < w + pad; x++) {
@@ -680,7 +626,7 @@ public class ArenaBuilder {
             }
         }
 
-        // Bedrock + stone base (only under the arena, not the full padded area)
+        // Bedrock + stone base under the arena
         for (int x = -1; x < w + 1; x++) {
             for (int z = -1; z < h + 1; z++) {
                 if (x >= 0 && x < w && z >= 0 && z < h) {
@@ -694,7 +640,7 @@ public class ArenaBuilder {
             }
         }
 
-        // Simple grass ground around arena (just the border ring)
+        // Grass border ring
         for (int x = -pad; x < w + pad; x++) {
             for (int z = -pad; z < h + pad; z++) {
                 if (x >= 0 && x < w && z >= 0 && z < h) continue;
@@ -702,22 +648,19 @@ public class ArenaBuilder {
             }
         }
 
-        // Arena floor + obstacles
         overlayArenaTiles(world, ox, oy, oz, w, h, tiles);
     }
 
-    // ==================== .SCHEM SUPPORT ====================
-
     /**
-     * Search a directory tree for .schem files matching the biome pattern.
-     * Boss levels use boss.schem. Normal levels use numbered files: 1.schem, 2.schem, ...
+     * Search a directory for .schem files matching the biome.
+     * Boss levels use boss.schem or <biome>_boss.schem.
+     * Normal levels use numbered files: 1.schem, <biome>_1.schem, etc.
      */
     private static void searchSchemFiles(java.nio.file.Path searchDir, String biomeId,
                                           boolean isBoss, List<java.nio.file.Path> results) {
         if (!java.nio.file.Files.isDirectory(searchDir)) return;
         try {
-            // Support flat WorldEdit-style naming directly in the folder:
-            //   <biome>.schem, <biome>_2.schem, <biome>_boss.schem, trial_chamber.schem, etc.
+            // WorldEdit-style flat naming: <biome>.schem, <biome>_2.schem, <biome>_boss.schem
             java.util.List<String> aliases = new java.util.ArrayList<>();
             aliases.add(biomeId);
             if (biomeId.endsWith("s") && biomeId.length() > 1) {
@@ -766,10 +709,8 @@ public class ArenaBuilder {
                 }
             }
 
-            // NOTE: plain numbered files (1.schem, 2.schem) in the root of a search
-            // directory are NOT loaded — they have no biome association and would pollute
-            // every biome's candidate pool. Only biome-prefixed files (desert_1.schem) or
-            // files inside a biome subdirectory (desert/1.schem) are used.
+            // Plain numbered files (1.schem) in the root are skipped — no biome association.
+            // Use biome-prefixed (desert_1.schem) or subdirectory (desert/1.schem) instead.
 
             if (biomeDir == null) return;
 
@@ -796,7 +737,7 @@ public class ArenaBuilder {
         }
     }
 
-    /** Load a .schem file and place it as an arena, with marker block detection. */
+    // Load a disk .schem and place it with marker detection
     private static boolean loadAndPlaceSchem(ServerWorld world, java.nio.file.Path schemPath,
                                               int ox, int oy, int oz, int w, int h, GridTile[][] tiles,
                                               String biomeId,
@@ -807,7 +748,6 @@ public class ArenaBuilder {
         CrafticsMod.LOGGER.info("Placing .schem arena: {} ({}x{}x{})",
             schemPath.getFileName(), schem.width(), schem.height(), schem.length());
 
-        // Clear the area
         int clearPad = 3;
         int placeX = ox + w / 2 - schem.width() / 2;
         int placeY = oy;
@@ -824,17 +764,15 @@ public class ArenaBuilder {
             }
         }
 
-        // Place the schematic
         schem.place(world, placeX, placeY, placeZ);
         taperSchemEdges(world, placeX, placeY, placeZ, schem.width(), schem.height(), schem.length());
 
-        // Use shared marker processing
         return processPlacedStructure(world, placeX, placeY, placeZ,
             schem.width(), schem.height(), schem.length(), ox, oy, oz, w, h, tiles,
             schemPath.getFileName().toString(), biomeId, preserveSchematicGround);
     }
 
-    /** Load a bundled .schem from mod resources (JAR) and place it as an arena. */
+    // Load a bundled .schem from mod resources (JAR)
     private static boolean loadAndPlaceBundledSchem(ServerWorld world,
                                                      net.minecraft.resource.ResourceManager resourceManager,
                                                      Identifier resourceId,
@@ -853,7 +791,6 @@ public class ArenaBuilder {
             CrafticsMod.LOGGER.info("Placing bundled .schem arena: {} ({}x{}x{})",
                 resourceId, schem.width(), schem.height(), schem.length());
 
-            // Clear the area
             int clearPad = 3;
             int placeX = ox + w / 2 - schem.width() / 2;
             int placeY = oy;
@@ -870,11 +807,9 @@ public class ArenaBuilder {
                 }
             }
 
-            // Place the schematic
             schem.place(world, placeX, placeY, placeZ);
             taperSchemEdges(world, placeX, placeY, placeZ, schem.width(), schem.height(), schem.length());
 
-            // Use shared marker processing
             return processPlacedStructure(world, placeX, placeY, placeZ,
                 schem.width(), schem.height(), schem.length(), ox, oy, oz, w, h, tiles,
                 resourceId.getPath(), biomeId, isBoss);
@@ -884,27 +819,19 @@ public class ArenaBuilder {
         }
     }
 
-    /**
-     * Smooths schematic edges so terrain doesn't look sliced.
-     * Clears blocks in a fade zone near the boundary so the terrain tapers off
-     * naturally, and fills solid ground beneath remaining blocks so nothing floats.
-     */
+    // Taper schematic edges so terrain doesn't look sliced, fill ground so nothing floats
     private static void taperSchemEdges(ServerWorld world, int px, int py, int pz,
                                          int sizeX, int sizeY, int sizeZ) {
-        int fade = 4; // blocks from each edge to taper
+        int fade = 4;
 
         for (int x = 0; x < sizeX; x++) {
             for (int z = 0; z < sizeZ; z++) {
-                // Distance from nearest edge
                 int distX = Math.min(x, sizeX - 1 - x);
                 int distZ = Math.min(z, sizeZ - 1 - z);
                 int dist = Math.min(distX, distZ);
 
                 if (dist < fade) {
-                    // In the fade zone: clear blocks above floor proportional to distance.
-                    // dist=0 (edge): clear everything above py+0
-                    // dist=1: clear above py+2
-                    // dist=2: clear above py+4, etc.
+                    // Fade zone: keep fewer blocks as you approach the edge
                     int maxKeepY = py + dist * 2;
                     for (int y = maxKeepY + 1; y < py + sizeY; y++) {
                         BlockPos bp = new BlockPos(px + x, y, pz + z);
@@ -914,8 +841,7 @@ public class ArenaBuilder {
                     }
                 }
 
-                // Fill solid ground beneath any remaining non-air column so nothing floats.
-                // Find the lowest non-air block and fill stone beneath it down to py-1.
+                // Fill stone under any remaining non-air column so nothing floats
                 boolean foundSolid = false;
                 for (int y = py + sizeY - 1; y >= py; y--) {
                     if (!world.getBlockState(new BlockPos(px + x, y, pz + z)).isAir()) {
@@ -930,10 +856,7 @@ public class ArenaBuilder {
         }
     }
 
-    /**
-     * Builds a barrier containment cube around the placed schematic footprint.
-     * Includes floor + side walls, but no ceiling.
-     */
+    // Barrier box around schematic — floor + walls, no ceiling
     private static void buildBarrierContainmentShell(ServerWorld world,
                                                       int placeX, int placeY, int placeZ,
                                                       int sizeX, int sizeY, int sizeZ) {
@@ -944,14 +867,14 @@ public class ArenaBuilder {
         int floorY = placeY - 1;
         int topY = placeY + sizeY + 1;
 
-        // Bottom of the cube to catch liquids.
+        // Floor catches liquids
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
                 world.setBlockState(new BlockPos(x, floorY, z), Blocks.BARRIER.getDefaultState(), SET_FLAGS);
             }
         }
 
-        // Side walls only (no top).
+        // Side walls only
         for (int y = floorY; y <= topY; y++) {
             for (int x = minX; x <= maxX; x++) {
                 world.setBlockState(new BlockPos(x, y, minZ), Blocks.BARRIER.getDefaultState(), SET_FLAGS);
@@ -964,36 +887,30 @@ public class ArenaBuilder {
         }
     }
 
-    // ==================== ARENA LIGHTING ====================
-
-    /** Place biome-themed light posts around the arena border. */
+    // Light posts around the arena border, themed per biome
     private static void placeLighting(ServerWorld world, int ox, int oy, int oz,
                                        int w, int h, EnvironmentStyle style) {
         Block postBlock = getPostBlock(style);
         Block lightBlock = getLightBlock(style);
 
-        // Collect border positions for light posts (just outside the playable grid)
         List<int[]> posts = new ArrayList<>();
-
-        // Four corners
         posts.add(new int[]{-1, -1});
         posts.add(new int[]{-1, h});
         posts.add(new int[]{w, -1});
         posts.add(new int[]{w, h});
 
-        // Along north/south edges every 3 tiles
+        // Along edges every 3 tiles
         for (int x = 2; x < w - 1; x += 3) {
             posts.add(new int[]{x, -1});
             posts.add(new int[]{x, h});
         }
 
-        // Along east/west edges every 3 tiles
         for (int z = 2; z < h - 1; z += 3) {
             posts.add(new int[]{-1, z});
             posts.add(new int[]{w, z});
         }
 
-        // Place each light post: solid base, post at oy+1, light at oy+2
+        // Base + post + light
         for (int[] p : posts) {
             int px = ox + p[0], pz = oz + p[1];
             setIf(world, px, oy, pz, Blocks.STONE);   // ensure solid base
@@ -1028,10 +945,7 @@ public class ArenaBuilder {
         };
     }
 
-    /**
-     * Picks border concrete by biome theme.
-     * Grassy biomes use grass-like tones; biomes without grass fall back to the most common arena tile block.
-     */
+    // Border concrete color per biome — falls back to most common tile block
     private static Block getBorderConcreteForBiome(String biomeId, GridTile[][] tiles) {
         return switch (biomeId) {
             case "plains" -> Blocks.LIME_CONCRETE;
@@ -1042,7 +956,6 @@ public class ArenaBuilder {
         };
     }
 
-    /** Returns the most frequent non-fluid block used by the arena tile grid. */
     private static Block getMostCommonTileBlock(GridTile[][] tiles) {
         Map<Block, Integer> counts = new HashMap<>();
 
@@ -1067,7 +980,6 @@ public class ArenaBuilder {
         return best;
     }
 
-    /** Maps a representative terrain block to a visually similar concrete color. */
     private static Block concreteForCommonTileBlock(Block block) {
         if (block == Blocks.SAND || block == Blocks.SANDSTONE || block == Blocks.END_STONE) {
             return Blocks.YELLOW_CONCRETE;
@@ -1099,8 +1011,6 @@ public class ArenaBuilder {
         }
         return Blocks.LIGHT_GRAY_CONCRETE;
     }
-
-    // ==================== UTILITIES ====================
 
     static void set(ServerWorld world, int x, int y, int z, Block block) {
         world.setBlockState(new BlockPos(x, y, z), block.getDefaultState(), SET_FLAGS);
@@ -1204,13 +1114,7 @@ public class ArenaBuilder {
         return oy;
     }
 
-    // ==================== BIOME PAINTING ====================
-
-    /**
-     * Sets the Minecraft biome on all chunks covering the arena area so that
-     * grass color, ambient fog, sky tint, and particle effects match the biome theme.
-     * Called after blocks are placed; players receive fresh chunk data when teleported in.
-     */
+    // Sets the MC biome on arena chunks so grass/fog/sky match the theme
     private static void setBiomeForArena(ServerWorld world, BlockPos origin, int w, int h, String crafticsBiomeId) {
         Identifier mcBiomeId = toMinecraftBiomeId(crafticsBiomeId);
         var biomeRegistry = world.getRegistryManager().get(RegistryKeys.BIOME);
@@ -1244,7 +1148,6 @@ public class ArenaBuilder {
             count, mcBiomeId, origin);
     }
 
-    /** Maps a craftics biome ID to the corresponding Minecraft biome identifier. */
     private static Identifier toMinecraftBiomeId(String crafticsBiomeId) {
         return Identifier.of("minecraft", switch (crafticsBiomeId) {
             case "plains"            -> "plains";

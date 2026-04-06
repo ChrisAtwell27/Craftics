@@ -16,59 +16,48 @@ import java.util.*;
  */
 public class BiomePath {
 
-    // Fixed biome IDs in path order (slots)
     public static final String PLAINS = "plains";
     public static final String RIVER_DELTA = "river";
     public static final String UNDERGROUND_CAVERNS = "cave";
     public static final String DEEP_DARK = "deep_dark";
 
-    // Warm branch biomes
     public static final String DARK_FOREST = "forest";
     public static final String SCORCHING_DESERT = "desert";
     public static final String DENSE_JUNGLE = "jungle";
 
-    // Cool branch biomes
     public static final String STONY_PEAKS = "mountain";
     public static final String SNOWY_TUNDRA = "snowy";
 
     /**
-     * Get the ordered list of biome IDs for a specific world's path.
-     * @param branchChoice 0 = Warm first, Cool second
-     *                     1 = Cool first, Warm second
+     * Ordered biome IDs for a world's path
+     * @param branchChoice 0 = Warm first, Cool second; 1 = Cool first, Warm second
      */
     public static List<String> getPath(int branchChoice) {
         List<String> path = new ArrayList<>();
-        path.add(PLAINS);          // slot 0 - always first
+        path.add(PLAINS);
 
         if (branchChoice == 0) {
-            // Warm branch first
-            path.add(SCORCHING_DESERT);  // slot 1
-            path.add(DENSE_JUNGLE);      // slot 2
-            path.add(DARK_FOREST);       // slot 3
-            path.add(RIVER_DELTA);       // slot 4 - divider
-            // Cool branch second
-            path.add(SNOWY_TUNDRA);      // slot 5
-            path.add(STONY_PEAKS);       // slot 6
+            path.add(SCORCHING_DESERT);
+            path.add(DENSE_JUNGLE);
+            path.add(DARK_FOREST);
+            path.add(RIVER_DELTA);
+            path.add(SNOWY_TUNDRA);
+            path.add(STONY_PEAKS);
         } else {
-            // Cool branch first
-            path.add(SNOWY_TUNDRA);      // slot 1
-            path.add(STONY_PEAKS);       // slot 2
-            path.add(RIVER_DELTA);       // slot 3 - divider
-            // Warm branch second
-            path.add(SCORCHING_DESERT);  // slot 4
-            path.add(DENSE_JUNGLE);      // slot 5
-            path.add(DARK_FOREST);       // slot 6
+            path.add(SNOWY_TUNDRA);
+            path.add(STONY_PEAKS);
+            path.add(RIVER_DELTA);
+            path.add(SCORCHING_DESERT);
+            path.add(DENSE_JUNGLE);
+            path.add(DARK_FOREST);
         }
 
-        path.add(UNDERGROUND_CAVERNS);  // slot 7 - always
-        path.add(DEEP_DARK);            // slot 8 - always last
+        path.add(UNDERGROUND_CAVERNS);
+        path.add(DEEP_DARK);
 
         return path;
     }
 
-    /**
-     * Get display info for a biome node on the map.
-     */
     public static NodeInfo getNodeInfo(String biomeId) {
         return switch (biomeId) {
             case PLAINS -> new NodeInfo("Plains", "§a", "\u2600", 0xAA55FF55); // green sun
@@ -86,17 +75,12 @@ public class BiomePath {
 
     public record NodeInfo(String displayName, String colorCode, String icon, int mapColor) {}
 
-    // ===== NETHER DIMENSION =====
-
     public static final String NETHER_WASTES = "nether_wastes";
     public static final String SOUL_SAND_VALLEY = "soul_sand_valley";
     public static final String CRIMSON_FOREST = "crimson_forest";
     public static final String WARPED_FOREST = "warped_forest";
     public static final String BASALT_DELTAS = "basalt_deltas";
 
-    /**
-     * Get the Nether path. Linear progression (no branching).
-     */
     public static List<String> getNetherPath() {
         return List.of(
             NETHER_WASTES,
@@ -107,9 +91,6 @@ public class BiomePath {
         );
     }
 
-    /**
-     * Get all dimensions in order.
-     */
     public enum Dimension {
         OVERWORLD("Overworld", "§a"),
         NETHER("The Nether", "§c");
@@ -123,9 +104,6 @@ public class BiomePath {
         }
     }
 
-    /**
-     * Get node info for Nether biomes.
-     */
     public static NodeInfo getNetherNodeInfo(String biomeId) {
         return switch (biomeId) {
             case NETHER_WASTES -> new NodeInfo("Nether Wastes", "§c", "\u2668", 0xAAFF5555); // red hot springs
@@ -137,16 +115,11 @@ public class BiomePath {
         };
     }
 
-    // ===== END DIMENSION =====
-
     public static final String OUTER_END_ISLANDS = "outer_end_islands";
     public static final String END_CITY = "end_city";
     public static final String CHORUS_GROVE = "chorus_grove";
     public static final String DRAGONS_NEST = "dragons_nest";
 
-    /**
-     * Get the End path. Linear progression, final dimension.
-     */
     public static List<String> getEndPath() {
         return List.of(
             OUTER_END_ISLANDS,
@@ -156,10 +129,7 @@ public class BiomePath {
         );
     }
 
-    /**
-     * Get the full ordered path across all dimensions (overworld + nether + end).
-     * Used for biome unlock ordering.
-     */
+    /** Full path across all dimensions, used for biome unlock ordering */
     public static List<String> getFullPath(int branchChoice) {
         List<String> full = new ArrayList<>(getPath(branchChoice));
         full.addAll(getNetherPath());
@@ -167,9 +137,6 @@ public class BiomePath {
         return full;
     }
 
-    /**
-     * Get node info for End biomes.
-     */
     public static NodeInfo getEndNodeInfo(String biomeId) {
         return switch (biomeId) {
             case OUTER_END_ISLANDS -> new NodeInfo("Outer End Islands", "§d", "\u2726", 0xAACC88FF); // light purple star

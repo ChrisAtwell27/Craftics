@@ -4,14 +4,10 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.StringJoiner;
 
-/**
- * Turn-based effect tracking for combat. Effects tick down by turns, not real time.
- * Effects can be applied in the hub (frozen until combat starts) or during combat.
- */
+// Effects tick down by turns, not real time. Can be frozen (applied in hub, starts on combat entry)
 public class CombatEffects {
 
     public enum EffectType {
-        // Buffs
         SPEED("Speed", "+2 movement"),
         STRENGTH("Strength", "+3 attack"),
         RESISTANCE("Resistance", "+2 defense"),
@@ -23,7 +19,6 @@ public class CombatEffects {
         SLOW_FALLING("Slow Falling", "no knockback"),
         HASTE("Haste", "+1 AP"),
         WATER_BREATHING("Water Breathing", "+2 water damage"),
-        // Debuffs
         POISON("Poison", "-1 HP/turn"),
         SLOWNESS("Slowness", "-1 movement"),
         WEAKNESS("Weakness", "-2 attack"),
@@ -47,9 +42,9 @@ public class CombatEffects {
 
     public static class ActiveEffect {
         public final EffectType type;
-        public int turnsRemaining; // -1 = frozen (hub-applied, waiting for combat)
-        public int amplifier;     // 0 = level I, 1 = level II, etc.
-        public int frozenDefaultTurns; // stored duration for when a frozen effect unfreezes
+        public int turnsRemaining; // -1 = frozen (waiting for combat start)
+        public int amplifier;     // 0 = level I, 1 = level II, etc
+        public int frozenDefaultTurns;
 
         public ActiveEffect(EffectType type, int turns, int amplifier) {
             this.type = type;
@@ -71,27 +66,18 @@ public class CombatEffects {
 
     private final EnumMap<EffectType, ActiveEffect> effects = new EnumMap<>(EffectType.class);
 
-    /**
-     * Add or refresh an effect. If already active, refreshes duration.
-     */
     public void addEffect(EffectType type, int turns, int amplifier) {
         int maxDur = com.crackedgames.craftics.CrafticsMod.CONFIG.maxCombatEffectDuration();
         effects.put(type, new ActiveEffect(type, Math.min(turns, maxDur), amplifier));
     }
 
-    /**
-     * Add a frozen effect (applied in hub, timer starts on combat entry).
-     * The defaultTurns will be set when combat starts.
-     */
+    // Frozen = applied in hub, timer starts when combat begins
     public void addFrozenEffect(EffectType type, int defaultTurns, int amplifier) {
         ActiveEffect effect = new ActiveEffect(type, -1, amplifier);
         effect.frozenDefaultTurns = defaultTurns;
         effects.put(type, effect);
     }
 
-    /**
-     * Unfreeze all frozen effects (called when combat starts).
-     */
     public void unfreezeAll(int defaultTurns) {
         for (ActiveEffect effect : effects.values()) {
             if (effect.isFrozen()) {
@@ -100,12 +86,7 @@ public class CombatEffects {
         }
     }
 
-    /**
-     * Tick all effects down by 1 turn. Remove expired effects.
-     * Called at the end of each full turn cycle (after enemy turn).
-     * Returns messages about expired effects.
-     */
-    /** List of effect types that expired on the last tickTurn call. */
+    // Ticks down all effects by 1 turn, returns comma-joined names of expired ones
     private final java.util.List<EffectType> lastExpired = new java.util.ArrayList<>();
 
     public java.util.List<EffectType> getLastExpired() { return lastExpired; }
@@ -117,7 +98,7 @@ public class CombatEffects {
         while (iterator.hasNext()) {
             var entry = iterator.next();
             ActiveEffect effect = entry.getValue();
-            if (effect.isFrozen()) continue; // don't tick frozen effects
+            if (effect.isFrozen()) continue;
 
             effect.turnsRemaining--;
             if (effect.turnsRemaining <= 0) {
@@ -129,11 +110,7 @@ public class CombatEffects {
         return expired.length() > 0 ? expired.toString() : null;
     }
 
-    /**
-     * Apply per-turn effects like regeneration and poison.
-     * Called at the START of the player's turn.
-     * Returns HP change (positive = heal, negative = damage).
-     */
+    // Returns net HP change from regen/poison/wither/burning (positive = heal)
     public int applyPerTurnEffects() {
         int hpChange = 0;
 
@@ -160,7 +137,6 @@ public class CombatEffects {
         return hpChange;
     }
 
-    // Stat bonus getters
     public boolean hasEffect(EffectType type) {
         ActiveEffect e = effects.get(type);
         return e != null && !e.isFrozen();
@@ -237,9 +213,6 @@ public class CombatEffects {
         return 1 + effects.get(EffectType.DARKNESS).amplifier;
     }
 
-    /**
-     * Get a display string of active effects for the HUD.
-     */
     public String getDisplayString() {
         if (effects.isEmpty()) return "";
 
