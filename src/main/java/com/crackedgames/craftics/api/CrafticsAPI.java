@@ -152,6 +152,22 @@ public final class CrafticsAPI {
         EnchantmentRegistry.register(enchantmentId, handler);
     }
 
+    // === Runtime ===
+
+    /**
+     * Force a specific event to trigger at the next between-level transition
+     * for the given player. Pass null to clear.
+     *
+     * @param player  The player whose next event to force
+     * @param eventId Event ID (e.g., "mymod:enchanted_forge") or null to clear
+     */
+    public static void forceNextEvent(net.minecraft.server.network.ServerPlayerEntity player, String eventId) {
+        com.crackedgames.craftics.combat.CombatManager cm = com.crackedgames.craftics.combat.CombatManager.get(player);
+        if (cm != null) {
+            cm.setForcedNextEvent(eventId);
+        }
+    }
+
     // === Queries ===
 
     /**

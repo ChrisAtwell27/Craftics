@@ -31,6 +31,7 @@ public class CrafticsMod implements ModInitializer {
     public static final String MOD_ID = "craftics";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
     public static CrafticsConfigWrapper CONFIG;
+    private static final java.util.Map<java.util.UUID, String> addonBonusCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
     public void onInitialize() {
@@ -163,6 +164,19 @@ public class CrafticsMod implements ModInitializer {
                         affData.toString()
                     ));
 
+                // Sync addon equipment scanner bonuses to client
+                {
+                    com.crackedgames.craftics.api.StatModifiers addonMods =
+                        com.crackedgames.craftics.api.registry.EquipmentScannerRegistry.scanAll(player);
+                    StringBuilder addonData = new StringBuilder();
+                    for (var e : addonMods.getAll().entrySet()) {
+                        if (addonData.length() > 0) addonData.append(",");
+                        addonData.append(e.getKey().name()).append(":").append(e.getValue());
+                    }
+                    net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+                        new com.crackedgames.craftics.network.AddonBonusSyncPayload(addonData.toString()));
+                }
+
                 // Sync guide book unlocks to client
                 net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
                     new com.crackedgames.craftics.network.GuideBookSyncPayload(
@@ -201,6 +215,7 @@ public class CrafticsMod implements ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             var playerUuid = handler.getPlayer().getUuid();
             String playerName = handler.getPlayer().getName().getString();
+            addonBonusCache.remove(playerUuid);
 
             // Check if this player is in someone else's party combat (non-leader)
             CombatManager leaderCm = CombatManager.getActiveCombat(playerUuid);
@@ -264,6 +279,28 @@ public class CrafticsMod implements ModInitializer {
         // Tick ALL active combat instances each server tick
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             CombatManager.tickAll();
+
+            // Re-sync addon equipment scanner bonuses every second (20 ticks)
+            // so the inventory UI updates when players equip/unequip addon items
+            if (server.getTicks() % 20 == 0) {
+                for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+                    com.crackedgames.craftics.api.StatModifiers addonMods =
+                        com.crackedgames.craftics.api.registry.EquipmentScannerRegistry.scanAll(p);
+                    StringBuilder sb = new StringBuilder();
+                    for (var e : addonMods.getAll().entrySet()) {
+                        if (sb.length() > 0) sb.append(",");
+                        sb.append(e.getKey().name()).append(":").append(e.getValue());
+                    }
+                    String newData = sb.toString();
+                    // Only send if changed (avoid unnecessary packets)
+                    String lastData = addonBonusCache.getOrDefault(p.getUuid(), "");
+                    if (!newData.equals(lastData)) {
+                        addonBonusCache.put(p.getUuid(), newData);
+                        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p,
+                            new com.crackedgames.craftics.network.AddonBonusSyncPayload(newData));
+                    }
+                }
+            }
         });
 
         // Prevent breaking blocks during combat AND hub structure blocks
@@ -671,7 +708,17 @@ public class CrafticsMod implements ModInitializer {
 
             // /craftics force_event <event> — force the next between-level event
             var forceEventNode = CommandManager.literal("force_event");
-            String[] eventNames = {"ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "none"};
+            // Built-in event names
+            java.util.List<String> eventNames = new java.util.ArrayList<>(java.util.List.of(
+                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "none"
+            ));
+            // Add addon-registered events from EventRegistry
+            for (var entry : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
+                String id = entry.id();
+                if (!eventNames.contains(id)) {
+                    eventNames.add(id);
+                }
+            }
             for (String eventName : eventNames) {
                 forceEventNode.then(CommandManager.literal(eventName).executes(ctx -> {
                     ServerPlayerEntity p = ctx.getSource().getPlayerOrThrow();

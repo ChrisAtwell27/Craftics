@@ -181,6 +181,14 @@ public class DamageTypePanel {
             bonus += trimBonuses.getOrDefault("MELEE_POWER", 0);
         }
 
+        // Addon equipment scanner bonuses (synced from server)
+        if (bonusKey != null) {
+            bonus += CombatState.getAddonBonus(bonusKey);
+        }
+        if (type == DamageType.SLASHING || type == DamageType.CLEAVING || type == DamageType.BLUNT) {
+            bonus += CombatState.getAddonBonus("MELEE_POWER");
+        }
+
         // Affinity points from level-up choices
         int affinityOrdinal = switch (type) {
             case SLASHING -> 0;

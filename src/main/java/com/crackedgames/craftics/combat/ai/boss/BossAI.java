@@ -22,6 +22,8 @@ import java.util.*;
 public abstract class BossAI implements EnemyAI {
     protected int turnCounter = 0;
     protected boolean phaseTwo = false;
+    /** Set to true on the turn the boss transitions to Phase 2. Reset after reading. */
+    private boolean justTransitionedToPhase2 = false;
     protected final Map<String, Integer> cooldowns = new HashMap<>();
     protected BossWarning pendingWarning = null;
 
@@ -44,6 +46,7 @@ public abstract class BossAI implements EnemyAI {
         // Phase transition check
         if (!phaseTwo && self.getCurrentHp() <= self.getMaxHp() / 2) {
             phaseTwo = true;
+            justTransitionedToPhase2 = true;
             onPhaseTransition(self, arena, playerPos);
         }
 
@@ -137,6 +140,15 @@ public abstract class BossAI implements EnemyAI {
 
     protected boolean isPhaseTwo() {
         return phaseTwo;
+    }
+
+    /** Returns true if the boss just transitioned to Phase 2 this turn. Clears the flag after reading. */
+    public boolean consumePhaseTransition() {
+        if (justTransitionedToPhase2) {
+            justTransitionedToPhase2 = false;
+            return true;
+        }
+        return false;
     }
 
     protected int getTurnCounter() {
