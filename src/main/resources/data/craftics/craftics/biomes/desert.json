@@ -40,6 +40,8 @@
     {"item": "minecraft:dead_bush", "weight": 3},
     {"item": "minecraft:cobblestone", "weight": 4},
     {"item": "minecraft:redstone", "weight": 2},
+    {"item": "minecraft:iron_ingot", "weight": 1},
+    {"item": "minecraft:iron_nugget", "weight": 3},
     {"item": "minecraft:emerald", "weight": 1},
     {"item": "minecraft:leather", "weight": 2}
   ]

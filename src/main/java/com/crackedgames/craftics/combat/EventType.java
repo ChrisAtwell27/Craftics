@@ -24,4 +24,32 @@ public enum EventType {
         this.minBiomeOrdinal = minBiomeOrdinal;
         this.isChoiceEvent = isChoiceEvent;
     }
+
+    public static EventType fromId(String id) {
+        return switch (id) {
+            case "craftics:ominous_trial" -> OMINOUS_TRIAL;
+            case "craftics:trial_chamber" -> TRIAL_CHAMBER;
+            case "craftics:ambush" -> AMBUSH;
+            case "craftics:shrine" -> SHRINE;
+            case "craftics:traveler" -> TRAVELER;
+            case "craftics:treasure_vault" -> TREASURE_VAULT;
+            case "craftics:dig_site" -> DIG_SITE;
+            case "craftics:trader" -> TRADER;
+            default -> NONE;
+        };
+    }
+
+    public String toId() {
+        return switch (this) {
+            case OMINOUS_TRIAL -> "craftics:ominous_trial";
+            case TRIAL_CHAMBER -> "craftics:trial_chamber";
+            case AMBUSH -> "craftics:ambush";
+            case SHRINE -> "craftics:shrine";
+            case TRAVELER -> "craftics:traveler";
+            case TREASURE_VAULT -> "craftics:treasure_vault";
+            case DIG_SITE -> "craftics:dig_site";
+            case TRADER -> "craftics:trader";
+            case NONE -> "none";
+        };
+    }
 }

@@ -39,6 +39,7 @@
     {"item": "minecraft:iron_nugget", "weight": 5},
     {"item": "minecraft:emerald", "weight": 2},
     {"item": "minecraft:lapis_lazuli", "weight": 2},
+    {"item": "minecraft:iron_ingot", "weight": 1},
     {"item": "minecraft:leather", "weight": 3},
     {"item": "minecraft:feather", "weight": 7}
   ]

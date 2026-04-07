@@ -124,14 +124,14 @@ public class RandomEvents {
     }
 
     // ── Suspicious Block ──
-    // Player brushes suspicious sand/gravel for a 25% chance at a random pottery sherd
+    // Player brushes suspicious sand/gravel for a 75% chance at a random pottery sherd
     public static String handleSuspiciousBlock(ServerPlayerEntity player) {
         Random rng = new Random();
         boolean isSand = rng.nextBoolean();
         String blockName = isSand ? "Suspicious Sand" : "Suspicious Gravel";
 
-        if (rng.nextInt(4) == 0) {
-            // 25% chance: random pottery sherd
+        if (rng.nextInt(4) != 0) {
+            // 75% chance: random pottery sherd
             var sherdList = new java.util.ArrayList<>(PotterySherdSpells.POTTERY_SHERDS);
             net.minecraft.item.Item sherd = sherdList.get(rng.nextInt(sherdList.size()));
             ItemStack reward = new ItemStack(sherd, 1);

@@ -600,7 +600,16 @@ public class CombatManager {
     }
 
     private int damagePlayer(int rawDamage) {
-        int defense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus() + PlayerCombatStats.getSetDefenseBonus(player) + PlayerCombatStats.getTotalProtection(player);
+        // ETHEREAL set bonus: 20% dodge chance
+        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.ETHEREAL) {
+            if (Math.random() < 0.20) {
+                sendMessage("§b§l✦ Ethereal! §r§7Attack phased through you!");
+                return 0;
+            }
+        }
+
+        int trimDefense = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.DEFENSE) : 0;
+        int defense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus() + PlayerCombatStats.getSetDefenseBonus(player) + PlayerCombatStats.getTotalProtection(player) + trimDefense;
         if (PlayerCombatStats.hasShield(player)) {
             defense += SHIELD_PASSIVE_DEFENSE;
             if (shieldBraced) defense += SHIELD_BRACE_DEFENSE;
@@ -609,9 +618,28 @@ public class CombatManager {
         // Each defense point = 5% reduction, capped at 60%
         double reduction = Math.min(0.60, defense * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
+
+        // FORTRESS set bonus: 50% less damage when player didn't move this turn
+        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTRESS && !movedThisTurn) {
+            actual = Math.max(1, actual / 2);
+        }
+
         player.setHealth(Math.max(1, player.getHealth() - actual));
         onPlayerDamaged();
         achievementTracker.recordPlayerTookDamage();
+
+        // OCEAN_BLESSING set bonus: full heal when dropping below 25% HP (once per combat)
+        if (!oceanBlessingUsed && activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.OCEAN_BLESSING) {
+            if (player.getHealth() <= player.getMaxHealth() * 0.25f && player.getHealth() > 1) {
+                player.setHealth(player.getMaxHealth());
+                oceanBlessingUsed = true;
+                sendMessage("§b§l✦ Ocean's Blessing! §r§3Full heal at critical HP!");
+                player.getWorld().playSound(null, player.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.ITEM_TRIDENT_RETURN,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.5f);
+            }
+        }
+
         return actual;
     }
 
@@ -866,6 +894,8 @@ public class CombatManager {
         this.active = true;
         this.playerMounted = false;
         this.mountMob = null;
+        this.movedThisTurn = false;
+        this.oceanBlessingUsed = false;
         clearAllRevenantSummonMarkers();
         tileEffects.clear();
         litZones.clear();
@@ -1268,9 +1298,11 @@ public class CombatManager {
 
         // Check if player has a boat for water tile access
         boolean hasBoat = playerHasBoat();
+        boolean pathfinderActive = activeTrimScan != null
+            && activeTrimScan.setBonus() == TrimEffects.SetBonus.PATHFINDER;
 
         GridPos playerPos = arena.getPlayerGridPos();
-        List<GridPos> path = Pathfinding.findPath(arena, playerPos, target, movePointsRemaining, hasBoat);
+        List<GridPos> path = Pathfinding.findPath(arena, playerPos, target, movePointsRemaining, hasBoat, pathfinderActive);
         if (path.isEmpty()) {
             // Check if the tile is water and they don't have a boat
             GridTile targetTile = arena.getTile(target);
@@ -1306,6 +1338,7 @@ public class CombatManager {
 
         int cost = path.size();
         movePointsRemaining -= cost;
+        movedThisTurn = true;
 
         // Start animated movement
         clearHighlights();
@@ -1476,6 +1509,11 @@ public class CombatManager {
                 int quickCharge = PlayerCombatStats.getQuickCharge(player);
                 attackCost = Math.max(1, attackCost - quickCharge);
             }
+            // Rogue (Chainmail set) reduces attack AP cost by 1 (min 1)
+            int rogueReduction = PlayerCombatStats.getSetApCostReduction(player);
+            if (rogueReduction > 0) {
+                attackCost = Math.max(1, attackCost - rogueReduction);
+            }
         }
         if (apRemaining < attackCost) {
             sendMessage("§cNeed " + attackCost + " AP to attack! (have " + apRemaining + ")");
@@ -1495,7 +1533,7 @@ public class CombatManager {
 
         // Range check (scaffold tile grants +1 range for ranged) — trident range already validated above
         if (weapon != Items.TRIDENT) {
-            int range = PlayerCombatStats.getWeaponRange(player);
+            int range = getEffectiveWeaponRange();
             if (range > 1) range += getScaffoldRangeBonus(pPos);
 
             if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
@@ -1654,14 +1692,25 @@ public class CombatManager {
         if (isRangedWeapon) {
             baseDamage += PlayerCombatStats.getBowPower(player);
         }
+        // INFERNAL set bonus: fire attacks deal +3 bonus damage
+        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.INFERNAL) {
+            if (PlayerCombatStats.getFireAspect(player) > 0 || (isRangedWeapon && PlayerCombatStats.getBowFlame(player) > 0)) {
+                baseDamage += 3;
+            }
+        }
         int luckPoints = PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player)
             .getPoints(PlayerProgression.Stat.LUCK);
         int trimLuck = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.LUCK) : 0;
-        boolean hasAnyCritSource = luckPoints > 0 || PlayerCombatStats.hasGoldSet(player) || trimLuck > 0;
+        // Eagle Eye set bonus: ranged attacks always have a crit source
+        boolean hasEagleEye = isRangedWeapon && activeTrimScan != null
+            && activeTrimScan.setBonus() == TrimEffects.SetBonus.ALL_SEEING;
+        boolean hasAnyCritSource = luckPoints > 0 || PlayerCombatStats.hasGoldSet(player) || trimLuck > 0 || hasEagleEye;
         boolean luckCrit = false;
         if (hasAnyCritSource) {
+            // Eagle Eye set bonus: +30% crit chance for ranged attacks
+            if (!luckCrit && hasEagleEye) luckCrit = Math.random() < 0.30;
             // Luck stat: 5% per point
-            if (luckPoints > 0) luckCrit = Math.random() < (luckPoints * 0.05);
+            if (!luckCrit && luckPoints > 0) luckCrit = Math.random() < (luckPoints * 0.05);
             // Gold set: flat 15% crit
             if (!luckCrit && PlayerCombatStats.hasGoldSet(player)) luckCrit = Math.random() < 0.15;
             // Trim luck bonus: 3% per piece
@@ -1806,7 +1855,11 @@ public class CombatManager {
                 return;
             }
 
+            // ARMOR_PEN trim bonus: temporarily reduce enemy defense for this hit
+            int trimArmorPen = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.ARMOR_PEN) : 0;
+            if (trimArmorPen > 0) fTarget.setDefensePenalty(fTarget.getDefensePenalty() + trimArmorPen);
             int dealt = fTarget.takeDamage(fBaseDamage);
+            if (trimArmorPen > 0) fTarget.setDefensePenalty(fTarget.getDefensePenalty() - trimArmorPen);
 
             // Boss reaction callback
             notifyBossOfDamage(fTarget, dealt);
@@ -1815,6 +1868,38 @@ public class CombatManager {
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.ENTITY_PLAYER_ATTACK_STRONG,
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.9f + (float)(Math.random() * 0.2));
+
+            // THUNDERSTRIKE set bonus: crits stun the target for 1 turn
+            if (fLuckCrit && fTarget.isAlive() && activeTrimScan != null
+                    && activeTrimScan.setBonus() == TrimEffects.SetBonus.THUNDERSTRIKE) {
+                fTarget.setStunned(true);
+                sendMessage("§e§l⚡ Thunderstrike! §r§eCritical hit stuns " + fTarget.getDisplayName() + "!");
+            }
+
+            // BRUTE_FORCE set bonus: melee attacks splash to adjacent enemies
+            if (!fIsRangedWeapon && activeTrimScan != null
+                    && activeTrimScan.setBonus() == TrimEffects.SetBonus.BRUTE_FORCE) {
+                GridPos splashCenter = fTarget.getGridPos();
+                int splashCount = 0;
+                for (int sdx = -1; sdx <= 1; sdx++) {
+                    for (int sdz = -1; sdz <= 1; sdz++) {
+                        if (sdx == 0 && sdz == 0) continue;
+                        GridPos adj = new GridPos(splashCenter.x() + sdx, splashCenter.z() + sdz);
+                        CombatEntity adjTarget = arena.getOccupant(adj);
+                        if (adjTarget != null && adjTarget.isAlive() && adjTarget != fTarget && !adjTarget.isAlly()) {
+                            int splashDmg = Math.max(1, fBaseDamage / 2);
+                            adjTarget.takeDamage(splashDmg);
+                            splashCount++;
+                            if (!adjTarget.isAlive()) {
+                                checkAndHandleDeath(adjTarget);
+                            }
+                        }
+                    }
+                }
+                if (splashCount > 0) {
+                    sendMessage("§6§l✦ Brute Force! §r§6Splash hits " + splashCount + " adjacent enemies!");
+                }
+            }
 
             // Fire Aspect — cone of fire in swing direction
             if (fFireAspect > 0 && !fIsRangedWeapon) {
@@ -3504,6 +3589,28 @@ public class CombatManager {
     }
 
     private void startEnemyTurn() {
+        // PHANTOM set bonus: enemies don't act for the first 2 turns
+        if (turnNumber <= 2 && activeTrimScan != null
+                && activeTrimScan.setBonus() == TrimEffects.SetBonus.PHANTOM) {
+            sendMessage("§5§l✦ Phantom! §r§7You are invisible — enemies skip their turn.");
+            // Skip directly to new player turn
+            turnNumber++;
+            movedThisTurn = false;
+            if (!testRange) {
+                PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+                PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
+                apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP)
+                    + PlayerCombatStats.getSetApBonus(player);
+                movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
+                    + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
+                    + PlayerCombatStats.getSetSpeedBonus(player);
+            }
+            phase = CombatPhase.PLAYER_TURN;
+            sendSync();
+            refreshHighlights();
+            return;
+        }
+
         if (player != null) {
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.BLOCK_NOTE_BLOCK_BASS.value(),
@@ -3516,6 +3623,19 @@ public class CombatManager {
         enemyTurnState = EnemyTurnState.DECIDING;
         pendingAction = null;
         currentEnemy = null;
+
+        // SANDSTORM set bonus: enemies within 2 tiles of player lose 1 Speed this turn
+        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.SANDSTORM) {
+            GridPos pPos = arena.getPlayerGridPos();
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.isAlly()) continue;
+                if (e.minDistanceTo(pPos) <= 2) {
+                    e.stackSlowness(1, 1);
+                }
+            }
+            sendMessage("§e§l✦ Sandstorm! §r§eNearby enemies are slowed.");
+        }
+
         sendSync();
     }
 
@@ -3740,6 +3860,34 @@ public class CombatManager {
             lerpInitialized = false;
 
             notifyBossesPlayerMoved(finalPos, tilesMoved);
+
+            // TERRAFORMER (Earthshatter) set bonus: moving 3+ tiles deals 2 damage to adjacent enemies
+            if (tilesMoved >= 3 && activeTrimScan != null
+                    && activeTrimScan.setBonus() == TrimEffects.SetBonus.TERRAFORMER) {
+                int shatterCount = 0;
+                for (int sdx = -1; sdx <= 1; sdx++) {
+                    for (int sdz = -1; sdz <= 1; sdz++) {
+                        if (sdx == 0 && sdz == 0) continue;
+                        GridPos adj = new GridPos(finalPos.x() + sdx, finalPos.z() + sdz);
+                        CombatEntity adjTarget = arena.getOccupant(adj);
+                        if (adjTarget != null && adjTarget.isAlive() && !adjTarget.isAlly()) {
+                            adjTarget.takeDamage(2);
+                            shatterCount++;
+                            if (!adjTarget.isAlive()) {
+                                checkAndHandleDeath(adjTarget);
+                            }
+                        }
+                    }
+                }
+                if (shatterCount > 0) {
+                    sendMessage("§6§l⚡ Earthshatter! §r§6" + shatterCount + " enemies hit for 2 damage!");
+                    if (player != null) {
+                        player.getWorld().playSound(null, player.getBlockPos(),
+                            net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+                            net.minecraft.sound.SoundCategory.PLAYERS, 0.6f, 0.7f);
+                    }
+                }
+            }
 
             if (arena.hasWebOverlay(finalPos)) {
                 combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
@@ -3966,6 +4114,14 @@ public class CombatManager {
                 }
             }
 
+            // Trim REGEN bonus: +1 HP per piece every 2 turns
+            int trimRegen = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.REGEN) : 0;
+            if (trimRegen > 0 && turnNumber % 2 == 0 && player != null
+                    && player.getHealth() < player.getMaxHealth()) {
+                player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + trimRegen));
+                sendMessage("§a♥ Trim regen healed " + trimRegen + " HP");
+            }
+
             int hpChange = combatEffects.applyPerTurnEffects();
             if (hpChange != 0 && player != null) {
                 float newHp = Math.max(1, Math.min(player.getMaxHealth(), player.getHealth() + hpChange));
@@ -3993,6 +4149,13 @@ public class CombatManager {
                 } else if (tileBlock == Blocks.SOUL_SAND || tileBlock == Blocks.SOUL_SOIL) {
                     movePointsRemaining = Math.max(1, movePointsRemaining - 1);
                     sendMessage("§7☁ Soul sand slows your movement (-1 Speed)");
+                }
+                // TIDAL set bonus: water tiles heal 1 HP/turn
+                if (playerTile.isWater() && activeTrimScan != null
+                        && activeTrimScan.setBonus() == TrimEffects.SetBonus.TIDAL
+                        && player.getHealth() < player.getMaxHealth()) {
+                    player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 1));
+                    sendMessage("§b§l✦ Tidal! §r§3Water heals you for 1 HP");
                 }
             }
 
@@ -4099,6 +4262,7 @@ public class CombatManager {
             }
 
             endTurnHintSent = false;
+            movedThisTurn = false;
 
             tickTemporaryTerrain();
             detonatePendingTnts();
@@ -4133,11 +4297,13 @@ public class CombatManager {
                 PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
                 apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP);
                 apRemaining += PlayerCombatStats.getSetApBonus(player);
+                if (activeTrimScan != null) apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
                 apRemaining = Math.max(0, apRemaining - combatEffects.getMiningFatiguePenalty());
                 movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
                     + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
                     + (playerMounted ? MOUNT_SPEED_BONUS : 0);
                 movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
+                if (activeTrimScan != null) movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
                 if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
                     movePointsRemaining = Math.max(1, movePointsRemaining - 1);
                 }
@@ -4218,6 +4384,18 @@ public class CombatManager {
             ? currentEnemyPetAggroTarget.getGridPos()
             : arena.getPlayerGridPos();
         pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
+
+        // Trim STEALTH_RANGE bonus: enemies beyond detection range skip their turn
+        int stealthRange = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.STEALTH_RANGE) : 0;
+        if (stealthRange > 0 && !currentEnemy.isBoss()) {
+            int detectionRange = 3 + stealthRange; // base 3 + bonus
+            int distToPlayer = currentEnemy.minDistanceTo(arena.getPlayerGridPos());
+            if (distToPlayer > detectionRange) {
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
+                return;
+            }
+        }
 
         switch (pendingAction) {
             case EnemyAction.Move move -> startEnemyMove(move.path());
@@ -4824,6 +5002,7 @@ public class CombatManager {
                     }
                 }
                 sendMessage("§c  Ranged hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                checkOverwatchCounter(currentEnemy);
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
             case EnemyAction.CeilingDrop drop -> {
@@ -5658,7 +5837,7 @@ public class CombatManager {
     private boolean tryDestroyRevenantSummonMarker(GridPos clickedTile) {
         GridPos playerPos = arena.getPlayerGridPos();
         Item weapon = player.getMainHandStack().getItem();
-        int range = PlayerCombatStats.getWeaponRange(player);
+        int range = getEffectiveWeaponRange();
         if (range > 1) range += getScaffoldRangeBonus(playerPos);
 
         int dist = PlayerCombatStats.isBow(player)
@@ -5672,6 +5851,10 @@ public class CombatManager {
         int attackCost = WeaponAbility.getAttackCost(weapon);
         if (weapon == Items.CROSSBOW) {
             attackCost = Math.max(1, attackCost - PlayerCombatStats.getQuickCharge(player));
+        }
+        int rogueReduction = PlayerCombatStats.getSetApCostReduction(player);
+        if (rogueReduction > 0) {
+            attackCost = Math.max(1, attackCost - rogueReduction);
         }
         if (apRemaining < attackCost) {
             sendMessage("§cNeed " + attackCost + " AP to attack! (have " + apRemaining + ")");
@@ -7142,6 +7325,7 @@ public class CombatManager {
 
                 sendMessage("§c" + currentEnemy.getDisplayName() + " hits you for " + raActual + "!");
                 applyEnemyHitEffect(currentEnemy.getEntityTypeId());
+                checkOverwatchCounter(currentEnemy);
 
                 if (getPlayerHp() <= 0) {
                     sendSync();
@@ -7287,6 +7471,27 @@ public class CombatManager {
 
         enemyTurnState = EnemyTurnState.DONE;
         enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+    }
+
+    /** Get effective weapon range including trim ATTACK_RANGE bonus. */
+    private int getEffectiveWeaponRange() {
+        int range = PlayerCombatStats.getWeaponRange(player);
+        // Crossbow rook pattern is special — don't add flat range to it
+        if (range != PlayerCombatStats.RANGE_CROSSBOW_ROOK && activeTrimScan != null) {
+            range += activeTrimScan.get(TrimEffects.Bonus.ATTACK_RANGE);
+        }
+        return range;
+    }
+
+    /** OVERWATCH set bonus: counter-attack a ranged enemy that hit the player. */
+    private void checkOverwatchCounter(CombatEntity attacker) {
+        if (attacker == null || !attacker.isAlive()) return;
+        if (activeTrimScan == null || activeTrimScan.setBonus() != TrimEffects.SetBonus.OVERWATCH) return;
+        int counterDmg = attacker.takeDamage(PlayerCombatStats.getAttackPower(player));
+        sendMessage("§c§l✦ Overwatch! §r§cCounter-shot for " + counterDmg + " damage!");
+        if (!attacker.isAlive()) {
+            checkAndHandleDeath(attacker);
+        }
     }
 
     /** Banner defense bonus: +2 DEF if pos is within 2 tiles of any banner tile effect. */
@@ -7893,6 +8098,18 @@ public class CombatManager {
             }
         }
 
+        // Rare pottery sherd drop (Luck boosts chance)
+        float sherdChance = CrafticsMod.CONFIG.potterySherdDropChance() + luckBonusItems * 0.01f;
+        if (sherdChance > 0 && Math.random() < sherdChance) {
+            var sherdList = new ArrayList<>(PotterySherdSpells.POTTERY_SHERDS);
+            Item sherdItem = sherdList.get(new java.util.Random().nextInt(sherdList.size()));
+            ItemStack sherdStack = new ItemStack(sherdItem);
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                recipient.getInventory().insertStack(sherdStack.copy());
+            }
+            sendMessage("§d§l✦ RARE DROP: " + sherdStack.getName().getString() + "!");
+        }
+
         // Award emeralds (scales with biome progression)
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
@@ -7921,6 +8138,11 @@ public class CombatManager {
         PlayerProgression victoryProg = PlayerProgression.get(world);
         int resourcefulBonus = victoryProg.getStats(player).getPoints(PlayerProgression.Stat.RESOURCEFUL);
         int emeraldsEarned = com.crackedgames.craftics.CrafticsMod.CONFIG.emeraldBaseReward() + biomeOrdinal / 3 + (isBoss ? 3 : 0) + resourcefulBonus;
+        // FORTUNE_PEAK set bonus: double emerald rewards
+        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTUNE_PEAK) {
+            emeraldsEarned *= 2;
+            sendMessage("§6§l✦ Fortune's Peak! §r§6Emerald rewards doubled!");
+        }
         // Award emeralds to all party members via per-player data
         for (ServerPlayerEntity recipient : rewardRecipients) {
             CrafticsSavedData.PlayerData pd = data.getPlayerData(recipient.getUuid());
@@ -8983,7 +9205,7 @@ public class CombatManager {
             String[] patterns = {"sentry", "dune", "coast", "wild", "ward", "eye", "vex", "tide",
                 "snout", "rib", "spire", "wayfinder", "shaper", "silence", "raiser", "host", "flow", "bolt"};
             String[] materials = {"iron", "copper", "gold", "lapis", "emerald", "diamond", "netherite",
-                "redstone", "amethyst", "quartz"};
+                "redstone", "amethyst", "quartz", "resin"};
             String pattern = patterns[rng.nextInt(patterns.length)];
             String material = materials[rng.nextInt(materials.length)];
 
@@ -10007,7 +10229,9 @@ public class CombatManager {
 
         if (isMoveMode) {
             if (movePointsRemaining > 0) {
-                java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat());
+                boolean pathfinderActive = activeTrimScan != null
+                    && activeTrimScan.setBonus() == TrimEffects.SetBonus.PATHFINDER;
+                java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(), pathfinderActive);
                 for (GridPos gp : reachable) {
                     moveList.add(gp.x());
                     moveList.add(gp.z());
@@ -10015,7 +10239,7 @@ public class CombatManager {
             }
         } else {
             // --- Build attack tiles ---
-            int range = PlayerCombatStats.getWeaponRange(player);
+            int range = getEffectiveWeaponRange();
             GridPos playerPos = arena.getPlayerGridPos();
             java.util.Set<CombatEntity> highlighted = new java.util.HashSet<>();
             for (var entry : arena.getOccupants().entrySet()) {
@@ -10167,7 +10391,7 @@ public class CombatManager {
             boolean canReachAny = false;
             GridPos playerPos = arena.getPlayerGridPos();
             // Check held weapon
-            int heldRange = PlayerCombatStats.getWeaponRange(player);
+            int heldRange = getEffectiveWeaponRange();
             for (CombatEntity enemy : enemies) {
                 if (!enemy.isAlive() || enemy.isAlly()) continue;
                 if (heldRange == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
@@ -10391,6 +10615,10 @@ public class CombatManager {
     private int totalDamageDealt = 0;
     private int totalEnemiesKilled = 0;
 
+    // Trim set bonus state
+    private boolean movedThisTurn = false;           // FORTRESS: track if player moved
+    private boolean oceanBlessingUsed = false;        // OCEAN_BLESSING: once per combat
+
     /** Called when an enemy is killed. */
     private void onEnemyKilled(CombatEntity enemy) {
         killStreak++;
@@ -10404,6 +10632,17 @@ public class CombatManager {
                 com.crackedgames.craftics.world.CrafticsSavedData.get(world);
             data.getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid()).addEmeralds(bonusEmeralds);
             data.markDirty();
+        }
+        // SYMBIOTE set bonus: heal 1 HP per kill
+        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.SYMBIOTE
+                && player != null && player.getHealth() < player.getMaxHealth()) {
+            player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 1));
+            sendMessage("§d§l✦ Symbiote! §r§dHealed 1 HP from kill");
+        }
+        // CURRENT set bonus: killing an enemy refunds 1 AP
+        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.CURRENT) {
+            apRemaining++;
+            sendMessage("§b§l✦ Current! §r§b+1 AP refunded");
         }
     }
 

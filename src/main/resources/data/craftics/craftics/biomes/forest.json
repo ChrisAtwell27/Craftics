@@ -44,6 +44,7 @@
     {"item": "minecraft:brown_mushroom", "weight": 3},
     {"item": "minecraft:iron_ingot", "weight": 4},
     {"item": "minecraft:amethyst_shard", "weight": 2},
+    {"item": "minecraft:resin_clump", "weight": 3},
     {"item": "minecraft:leather", "weight": 4},
     {"item": "minecraft:enchanted_book", "weight": 1}
   ],

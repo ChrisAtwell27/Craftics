@@ -31,7 +31,7 @@
   },
   "loot": [
     {"item": "minecraft:cobblestone", "weight": 8},
-    {"item": "minecraft:iron_ingot", "weight": 7},
+    {"item": "minecraft:iron_ore", "weight": 6},
     {"item": "minecraft:coal", "weight": 6},
     {"item": "minecraft:emerald", "weight": 2},
     {"item": "minecraft:crossbow", "weight": 1},

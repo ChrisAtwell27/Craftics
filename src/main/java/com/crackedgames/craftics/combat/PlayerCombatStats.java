@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.combat;
 
+import com.crackedgames.craftics.api.registry.ArmorSetRegistry;
 import com.crackedgames.craftics.core.GridPos;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.ItemEnchantmentsComponent;
@@ -15,53 +16,7 @@ public class PlayerCombatStats {
 
     public static int getAttackPower(ServerPlayerEntity player) {
         Item weapon = player.getMainHandStack().getItem();
-        if (weapon == Items.WOODEN_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgWoodenSword();
-        if (weapon == Items.STONE_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgStoneSword();
-        if (weapon == Items.IRON_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgIronSword();
-        if (weapon == Items.GOLDEN_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgGoldenSword();
-        if (weapon == Items.DIAMOND_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgDiamondSword();
-        if (weapon == Items.NETHERITE_SWORD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgNetheriteSword();
-        if (weapon == Items.WOODEN_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgWoodenAxe();
-        if (weapon == Items.STONE_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgStoneAxe();
-        if (weapon == Items.IRON_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgIronAxe();
-        if (weapon == Items.GOLDEN_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgGoldenAxe();
-        if (weapon == Items.DIAMOND_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgDiamondAxe();
-        if (weapon == Items.NETHERITE_AXE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgNetheriteAxe();
-        if (weapon == Items.MACE) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgMace();
-        if (weapon == Items.TRIDENT) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgTrident();
-        if (weapon == Items.BOW) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBow();
-        if (weapon == Items.CROSSBOW) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCrossbow();
-        if (weapon == Items.STICK) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgStick();
-        if (weapon == Items.BAMBOO) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBamboo();
-        if (weapon == Items.BLAZE_ROD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBlazeRod();
-        if (weapon == Items.BREEZE_ROD) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgBreezeRod();
-        if (weapon == Items.TUBE_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralTube();
-        if (weapon == Items.BRAIN_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralBrain();
-        if (weapon == Items.BUBBLE_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralBubble();
-        if (weapon == Items.FIRE_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralFire();
-        if (weapon == Items.HORN_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralHorn();
-        if (weapon == Items.DEAD_TUBE_CORAL || weapon == Items.DEAD_BRAIN_CORAL
-            || weapon == Items.DEAD_BUBBLE_CORAL || weapon == Items.DEAD_FIRE_CORAL
-            || weapon == Items.DEAD_HORN_CORAL) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralDead();
-        if (weapon == Items.TUBE_CORAL_FAN || weapon == Items.BRAIN_CORAL_FAN
-            || weapon == Items.BUBBLE_CORAL_FAN || weapon == Items.FIRE_CORAL_FAN
-            || weapon == Items.HORN_CORAL_FAN) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralFan();
-        if (weapon == Items.DEAD_TUBE_CORAL_FAN || weapon == Items.DEAD_BRAIN_CORAL_FAN
-            || weapon == Items.DEAD_BUBBLE_CORAL_FAN || weapon == Items.DEAD_FIRE_CORAL_FAN
-            || weapon == Items.DEAD_HORN_CORAL_FAN) return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgCoralDead();
-        if (weapon == Items.WOODEN_HOE) return 1;
-        if (weapon == Items.STONE_HOE) return 1;
-        if (weapon == Items.IRON_HOE) return 2;
-        if (weapon == Items.GOLDEN_HOE) return 2;
-        if (weapon == Items.DIAMOND_HOE) return 3;
-        if (weapon == Items.NETHERITE_HOE) return 3;
-        if (weapon == Items.WOODEN_SHOVEL) return 2;
-        if (weapon == Items.STONE_SHOVEL) return 3;
-        if (weapon == Items.IRON_SHOVEL) return 4;
-        if (weapon == Items.GOLDEN_SHOVEL) return 3;
-        if (weapon == Items.DIAMOND_SHOVEL) return 5;
-        if (weapon == Items.NETHERITE_SHOVEL) return 6;
-        return com.crackedgames.craftics.CrafticsMod.CONFIG.dmgFist();
+        return com.crackedgames.craftics.api.registry.WeaponRegistry.getAttackPower(weapon);
     }
 
     public static int getDefense(ServerPlayerEntity player) {
@@ -76,10 +31,16 @@ public class PlayerCombatStats {
 
     public static int getWeaponRange(ServerPlayerEntity player) {
         Item weapon = player.getMainHandStack().getItem();
-        if (weapon == Items.BOW && hasArrows(player)) return 3 + getBowPowerRange(player);
-        if (weapon == Items.CROSSBOW && hasArrows(player)) return RANGE_CROSSBOW_ROOK;
-        if (weapon == Items.TRIDENT) return TRIDENT_THROW_RANGE;
-        return 1;
+        int baseRange = com.crackedgames.craftics.api.registry.WeaponRegistry.getRange(weapon);
+        // Bow Power enchant adds bonus range dynamically
+        if (weapon == Items.BOW && hasArrows(player)) {
+            return baseRange + getBowPowerRange(player);
+        }
+        // Crossbow needs arrows to fire
+        if (weapon == Items.CROSSBOW && !hasArrows(player)) {
+            return 1; // melee range fallback
+        }
+        return baseRange;
     }
 
     /** Check if a target is on a valid straight/diagonal line from the player. */
@@ -170,56 +131,27 @@ public class PlayerCombatStats {
     }
 
     public static String getSetBonusDescription(String armorSet) {
-        return switch (armorSet) {
-            case "leather" -> "\u00a7eBrawler: +2 Speed, +1 AP, +2 Fist dmg, 2x kill streak multiplier";
-            case "chainmail" -> "\u00a77Rogue: +1 Speed, attacks cost -1 AP (min 1)";
-            case "iron" -> "\u00a7fGuard: +2 Defense, immune to knockback";
-            case "gold" -> "\u00a76Gambler: +3 Luck crit chance, +1 emerald per kill";
-            case "diamond" -> "\u00a7bKnight: +3 Defense, +1 Attack";
-            case "netherite" -> "\u00a74Juggernaut: +4 Defense, +2 Attack, immune to fire damage";
-            case "turtle" -> "\u00a72Aquatic: Water tiles are walkable, +1 HP regen per turn, +1 Range when on water";
-            default -> "";
-        };
+        return ArmorSetRegistry.getDescription(armorSet);
     }
 
     public static int getSetSpeedBonus(ServerPlayerEntity player) {
-        String set = getArmorSet(player);
-        return switch (set) {
-            case "leather" -> 2;
-            case "chainmail" -> 1;
-            default -> 0;
-        };
+        return ArmorSetRegistry.getSpeedBonus(getArmorSet(player));
     }
 
     public static int getSetApBonus(ServerPlayerEntity player) {
-        String set = getArmorSet(player);
-        return switch (set) {
-            case "leather" -> 1;
-            default -> 0;
-        };
+        return ArmorSetRegistry.getApBonus(getArmorSet(player));
     }
 
     public static int getSetDefenseBonus(ServerPlayerEntity player) {
-        String set = getArmorSet(player);
-        return switch (set) {
-            case "iron" -> 2;
-            case "diamond" -> 3;
-            case "netherite" -> 4;
-            default -> 0;
-        };
+        return ArmorSetRegistry.getDefenseBonus(getArmorSet(player));
     }
 
     public static int getSetAttackBonus(ServerPlayerEntity player) {
-        String set = getArmorSet(player);
-        return switch (set) {
-            case "diamond" -> 1;
-            case "netherite" -> 2;
-            default -> 0;
-        };
+        return ArmorSetRegistry.getAttackBonus(getArmorSet(player));
     }
 
     public static int getSetApCostReduction(ServerPlayerEntity player) {
-        return "chainmail".equals(getArmorSet(player)) ? 1 : 0;
+        return ArmorSetRegistry.getApCostReduction(getArmorSet(player));
     }
 
     public static boolean hasTurtleSet(ServerPlayerEntity player) {

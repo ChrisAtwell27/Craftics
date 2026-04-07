@@ -5,7 +5,9 @@
   "key.craftics.toggle_combat": "Toggle Combat Mode (Debug)",
   "key.craftics.attack_mode": "Toggle Attack/Move Mode",
   "key.craftics.end_turn": "End Turn",
+  "key.craftics.guide_book": "Open Guide Book",
+  "key.craftics.respec": "Respec Stats",
+  "key.categories.craftics": "Craftics",
   "category.craftics": "Craftics",
-  "item.craftics.guide_book": "Tactics Field Manual",
-  "key.craftics.guide_book": "Open Guide Book"
+  "item.craftics.guide_book": "Tactics Field Manual"
 }

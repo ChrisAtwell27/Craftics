@@ -81,52 +81,29 @@ public class EventManager {
 
     /**
      * Roll which event occurs between levels.
-     * Replicates the probability logic from CombatManager's original if/else chain.
+     * Delegates to EventRegistry for probability cascade.
      */
-    public EventType rollEvent(int biomeOrdinal, int levelIndex, int ngPlusLevel, boolean earlyBiome) {
-        Random rng = new Random();
-        float eventRoll = rng.nextFloat();
-
+    public String rollEvent(int biomeOrdinal, int levelIndex, int ngPlusLevel, boolean earlyBiome) {
         // Check for forced event
-        String forced = forcedNextEvent;
-        if (forced != null) {
+        if (forcedNextEvent != null) {
+            String forced = forcedNextEvent;
             forcedNextEvent = null;
-            return switch (forced) {
-                case "ominous_trial" -> EventType.OMINOUS_TRIAL;
-                case "trial" -> EventType.TRIAL_CHAMBER;
-                case "ambush" -> EventType.AMBUSH;
-                case "shrine" -> EventType.SHRINE;
-                case "traveler" -> EventType.TRAVELER;
-                case "vault" -> EventType.TREASURE_VAULT;
-                case "dig_site" -> EventType.DIG_SITE;
-                case "trader" -> EventType.TRADER;
-                default -> EventType.NONE;
-            };
+            return forced;
         }
 
         // Skip conditions
-        boolean skipEvents = levelIndex <= 1;
-        if (skipEvents) return EventType.NONE;
+        if (levelIndex <= 1) return "none";
 
-        // Early biome reduction: only 25% chance of any event
+        java.util.Random rng = new java.util.Random();
+        float eventRoll = rng.nextFloat();
+
+        // Early biome reduction
         if (earlyBiome) {
-            if (eventRoll > 0.25f) return EventType.NONE;
+            if (eventRoll > CrafticsMod.CONFIG.earlyBiomeEventChance()) return "none";
             eventRoll = rng.nextFloat();
         }
 
-        // Probability cascade (same order as original CombatManager)
-        float traderChance = CrafticsMod.CONFIG.traderSpawnChance();
-
-        if (eventRoll < 0.05f && biomeOrdinal >= 10) return EventType.OMINOUS_TRIAL;
-        if (eventRoll < 0.15f) return EventType.TRIAL_CHAMBER;
-        if (eventRoll < 0.25f) return EventType.AMBUSH;
-        if (eventRoll < 0.32f) return EventType.SHRINE;
-        if (eventRoll < 0.38f) return EventType.TRAVELER;
-        if (eventRoll < 0.42f) return EventType.TREASURE_VAULT;
-        if (eventRoll < 0.48f) return EventType.DIG_SITE;
-        if (eventRoll < 0.48f + traderChance) return EventType.TRADER;
-
-        return EventType.NONE;
+        return com.crackedgames.craftics.api.registry.EventRegistry.roll(eventRoll, biomeOrdinal);
     }
 
     // === Vote System ===

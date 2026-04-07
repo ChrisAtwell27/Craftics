@@ -66,6 +66,12 @@ public class GridTile {
 
     /** Check walkability considering boat access for water tiles. */
     public boolean isWalkable(boolean hasBoat) {
+        return isWalkableEx(hasBoat, false);
+    }
+
+    /** Check walkability with optional obstacle ignoring (Pathfinder set bonus). */
+    public boolean isWalkableEx(boolean hasBoat, boolean ignoreObstacles) {
+        if (ignoreObstacles && type == TileType.OBSTACLE) return true;
         if (type.requiresBoat) return hasBoat;
         return type.walkable;
     }

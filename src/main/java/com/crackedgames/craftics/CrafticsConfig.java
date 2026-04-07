@@ -124,18 +124,18 @@ public class CrafticsConfig {
     public int dmgNetheriteSword = 10;
     @RangeConstraint(min = 0, max = 20)
     public int dmgGoldenSword = 9;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgWoodenAxe = 4;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgStoneAxe = 6;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgIronAxe = 8;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgDiamondAxe = 10;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgNetheriteAxe = 12;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgGoldenAxe = 11;
+    @RangeConstraint(min = 0, max = 30)
+    public int dmgWoodenAxe = 5;
+    @RangeConstraint(min = 0, max = 30)
+    public int dmgStoneAxe = 7;
+    @RangeConstraint(min = 0, max = 30)
+    public int dmgIronAxe = 10;
+    @RangeConstraint(min = 0, max = 30)
+    public int dmgDiamondAxe = 14;
+    @RangeConstraint(min = 0, max = 30)
+    public int dmgNetheriteAxe = 18;
+    @RangeConstraint(min = 0, max = 30)
+    public int dmgGoldenAxe = 16;
     @RangeConstraint(min = 0, max = 20)
     public int dmgMace = 15;
     @RangeConstraint(min = 0, max = 20)
@@ -143,7 +143,7 @@ public class CrafticsConfig {
     @RangeConstraint(min = 0, max = 20)
     public int dmgBow = 7;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgCrossbow = 10;
+    public int dmgCrossbow = 14;
     @RangeConstraint(min = 0, max = 20)
     public int dmgStick = 2;
     @RangeConstraint(min = 0, max = 20)
@@ -192,13 +192,16 @@ public class CrafticsConfig {
     public float trimDropChance = 0.35f;
 
     @RangeConstraint(min = 0.0, max = 1.0)
+    public float potterySherdDropChance = 0.02f;
+
+    @RangeConstraint(min = 0.0, max = 1.0)
     public float traderSpawnChance = 0.25f;
 
     // ===== Event Chances (cumulative thresholds — each is the total chance up to that event) =====
 
     /** Chance of any event in early biomes (0-2). Set to 0 to disable events early. */
     @RangeConstraint(min = 0.0, max = 1.0)
-    public float earlyBiomeEventChance = 0.25f;
+    public float earlyBiomeEventChance = 0.75f;
 
     /** Ominous Trial Chamber (late game only, biome 10+). */
     @RangeConstraint(min = 0.0, max = 1.0)
