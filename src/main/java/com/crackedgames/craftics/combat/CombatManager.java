@@ -8477,6 +8477,55 @@ public class CombatManager {
         // Reject if combat is mid-fight (not in a post-level state)
         if (active && phase != CombatPhase.LEVEL_COMPLETE) return;
 
+        // Handle addon event choice (accept/decline from VictoryChoicePayload)
+        if (pendingAddonEventId != null) {
+            String eventId = pendingAddonEventId;
+            List<ServerPlayerEntity> members = pendingAddonEventMembers;
+            EventManager evtMgr = pendingAddonEventManager;
+            pendingAddonEventId = null;
+            pendingAddonEventMembers = null;
+            pendingAddonEventManager = null;
+
+            if (goHome) {
+                // Declined — skip event, continue to pending next level
+                for (ServerPlayerEntity p : getOnlinePartyMembers(choicePlayer)) {
+                    sendMessageTo(p, "§7You decide to move on...");
+                }
+                if (pendingNextLevelDef != null) {
+                    ServerWorld w = (ServerWorld) choicePlayer.getEntityWorld();
+                    spawnSavedPets();
+                    GridArena nextArena = buildArena(w, pendingNextLevelDef);
+                    transitionPartyToArena(choicePlayer, nextArena, pendingNextLevelDef);
+                    pendingNextLevelDef = null;
+                    pendingBiome = null;
+                }
+            } else {
+                // Accepted — execute the addon event handler
+                var addonEvent = com.crackedgames.craftics.api.registry.EventRegistry.getById(eventId);
+                if (addonEvent != null && addonEvent.handler() != null) {
+                    ServerWorld w = (ServerWorld) choicePlayer.getEntityWorld();
+                    try {
+                        addonEvent.handler().execute(
+                            members != null ? members : getOnlinePartyMembers(choicePlayer),
+                            w, evtMgr);
+                    } catch (Exception addonEx) {
+                        CrafticsMod.LOGGER.error("Addon event '{}' handler threw exception", eventId, addonEx);
+                    }
+                    // After handler: if no combat was started, auto-continue
+                    if (!active && !trialChamberPending && !digSitePending) {
+                        if (pendingNextLevelDef != null) {
+                            spawnSavedPets();
+                            GridArena nextArena = buildArena(w, pendingNextLevelDef);
+                            transitionPartyToArena(choicePlayer, nextArena, pendingNextLevelDef);
+                            pendingNextLevelDef = null;
+                            pendingBiome = null;
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
         // Handle trial chamber choice (not in active combat — player ref was nulled by endCombat)
         if (trialChamberPending) {
             trialChamberPending = false;
@@ -8576,6 +8625,8 @@ public class CombatManager {
             for (ServerPlayerEntity m : savedMembers) {
                 sendMessageTo(m, "§aOnward!");
             }
+            // Save eventManager before endCombat nulls it — addon event handlers need it
+            EventManager savedEventManager = this.eventManager;
             endCombat();
 
             try {
@@ -8737,12 +8788,75 @@ public class CombatManager {
                         pendingBiome = biome;
                         offerTrader(savedPlayer, biome, biomeOrdinal);
                     } else {
-                        // No event — start next level immediately
-                        // Increment pity counter since no event occurred
-                        ld.levelsSinceLastEvent++;
-                        data.markDirty();
-                        GridArena nextArena = buildArena(world, nextLevelDef);
-                        transitionPartyToArena(savedPlayer, nextArena, nextLevelDef);
+                        // Check addon-registered events from EventRegistry
+                        String addonEventId = null;
+                        if (forced != null) {
+                            // Forced event that didn't match any built-in — check addon registry
+                            addonEventId = forced;
+                        } else {
+                            // Roll against addon event probabilities
+                            float addonRoll = eventRoll - cTrader; // remaining probability space
+                            if (addonRoll >= 0) {
+                                for (var addonEvent : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
+                                    if (biomeOrdinal >= addonEvent.minBiomeOrdinal()) {
+                                        addonRoll -= addonEvent.probability();
+                                        if (addonRoll < 0) {
+                                            addonEventId = addonEvent.id();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (addonEventId != null) {
+                            var addonEvent = com.crackedgames.craftics.api.registry.EventRegistry.getById(addonEventId);
+                            if (addonEvent != null && addonEvent.handler() != null) {
+                                ld.levelsSinceLastEvent = 0;
+                                data.markDirty();
+                                pendingNextLevelDef = nextLevelDef;
+                                pendingBiome = biome;
+
+                                if (addonEvent.isChoiceEvent()) {
+                                    // Choice event: show accept/decline prompt, execute handler only on accept
+                                    pendingAddonEventId = addonEventId;
+                                    pendingAddonEventMembers = savedMembers;
+                                    pendingAddonEventManager = savedEventManager;
+                                    for (ServerPlayerEntity p : partyMsg) {
+                                        sendMessageTo(p, "§e§l" + addonEvent.displayName() + " discovered!");
+                                    }
+                                    ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
+                                        0, ld.emeralds, false, addonEvent.displayName(), -1
+                                    ));
+                                } else {
+                                    // Non-choice event: execute immediately, then auto-continue
+                                    try {
+                                        addonEvent.handler().execute(savedMembers, world, savedEventManager);
+                                    } catch (Exception addonEx) {
+                                        CrafticsMod.LOGGER.error("Addon event '{}' handler threw exception", addonEventId, addonEx);
+                                    }
+                                    // Auto-continue to next level after simple event
+                                    pendingNextLevelDef = null;
+                                    pendingBiome = null;
+                                    spawnSavedPets();
+                                    GridArena nextArena = buildArena(world, nextLevelDef);
+                                    transitionPartyToArena(savedPlayer, nextArena, nextLevelDef);
+                                }
+                            } else {
+                                // Unknown addon event ID or no handler — skip to next level
+                                ld.levelsSinceLastEvent++;
+                                data.markDirty();
+                                GridArena nextArena = buildArena(world, nextLevelDef);
+                                transitionPartyToArena(savedPlayer, nextArena, nextLevelDef);
+                            }
+                        } else {
+                            // No event — start next level immediately
+                            // Increment pity counter since no event occurred
+                            ld.levelsSinceLastEvent++;
+                            data.markDirty();
+                            GridArena nextArena = buildArena(world, nextLevelDef);
+                            transitionPartyToArena(savedPlayer, nextArena, nextLevelDef);
+                        }
                     }
                 }
             }
@@ -8768,6 +8882,11 @@ public class CombatManager {
     private String forcedNextEvent = null;
     public void setForcedNextEvent(String event) { this.forcedNextEvent = event; }
     public String getForcedNextEvent() { return forcedNextEvent; }
+
+    // ---- Addon event (pending choice) ----
+    private String pendingAddonEventId = null;
+    private List<ServerPlayerEntity> pendingAddonEventMembers = null;
+    private EventManager pendingAddonEventManager = null;
 
     // ---- Trial Chamber event ----
     private boolean trialChamberPending = false;
