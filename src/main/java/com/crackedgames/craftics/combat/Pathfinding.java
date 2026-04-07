@@ -22,7 +22,12 @@ public class Pathfinding {
 
     /** Player pathfinding with boat access for water tiles. */
     public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, boolean hasBoat) {
-        return findPath(arena, from, to, maxSteps, null, hasBoat);
+        return findPath(arena, from, to, maxSteps, null, hasBoat, false);
+    }
+
+    /** Player pathfinding with boat access and optional obstacle ignoring (Pathfinder set bonus). */
+    public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, boolean hasBoat, boolean ignoreObstacles) {
+        return findPath(arena, from, to, maxSteps, null, hasBoat, ignoreObstacles);
     }
 
     /** Enemy pathfinding (no boat access). */
@@ -43,11 +48,19 @@ public class Pathfinding {
      * When hasBoat is true, water tiles are considered walkable.
      */
     public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat) {
+        return findPath(arena, from, to, maxSteps, self, hasBoat, false);
+    }
+
+    /**
+     * A* pathfinding with self-exclusion, optional boat access, and optional obstacle ignoring.
+     * When ignoreObstacles is true (Pathfinder set bonus), OBSTACLE tiles are walkable.
+     */
+    public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles) {
         if (from.equals(to)) return List.of();
         if (!arena.isInBounds(to)) return List.of();
 
         var tile = arena.getTile(to);
-        if (tile == null || !tile.isWalkable(hasBoat)) return List.of();
+        if (tile == null || !tile.isWalkableEx(hasBoat, ignoreObstacles)) return List.of();
         if (isBlockedBy(arena, to, self)) return List.of();
 
         Map<GridPos, GridPos> cameFrom = new HashMap<>();
@@ -79,7 +92,7 @@ public class Pathfinding {
                 if (closed.contains(neighbor)) continue;
 
                 var neighborTile = arena.getTile(neighbor);
-                if (neighborTile == null || !neighborTile.isWalkable(hasBoat)) continue;
+                if (neighborTile == null || !neighborTile.isWalkableEx(hasBoat, ignoreObstacles)) continue;
                 // Block enemy-occupied tiles (excluding self and the destination)
                 if (!neighbor.equals(to) && isBlockedBy(arena, neighbor, self)) continue;
 
@@ -136,10 +149,15 @@ public class Pathfinding {
      */
     private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int entitySize,
                                                 CombatEntity self, boolean hasBoat) {
+        return canPlaceSizedEntity(arena, anchor, entitySize, self, hasBoat, false);
+    }
+
+    private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int entitySize,
+                                                CombatEntity self, boolean hasBoat, boolean ignoreObstacles) {
         for (GridPos tile : GridArena.getOccupiedTiles(anchor, entitySize)) {
             if (!arena.isInBounds(tile)) return false;
             var gridTile = arena.getTile(tile);
-            if (gridTile == null || !gridTile.isWalkable(hasBoat)) return false;
+            if (gridTile == null || !gridTile.isWalkableEx(hasBoat, ignoreObstacles)) return false;
             if (isBlockedBy(arena, tile, self)) return false;
         }
         return true;
@@ -157,6 +175,11 @@ public class Pathfinding {
         return getReachableTiles(arena, from, maxSteps, 1, null, hasBoat);
     }
 
+    /** Overload with hasBoat and ignoreObstacles for Pathfinder set bonus. */
+    public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps, boolean hasBoat, boolean ignoreObstacles) {
+        return getReachableTiles(arena, from, maxSteps, 1, null, hasBoat, ignoreObstacles);
+    }
+
     /**
      * Get all tiles reachable within maxSteps, accounting for entity size.
      * For a 2x2 entity, each candidate position is checked to ensure ALL footprint
@@ -169,6 +192,11 @@ public class Pathfinding {
 
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
                                                    int entitySize, CombatEntity self, boolean hasBoat) {
+        return getReachableTiles(arena, from, maxSteps, entitySize, self, hasBoat, false);
+    }
+
+    public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
+                                                   int entitySize, CombatEntity self, boolean hasBoat, boolean ignoreObstacles) {
         Set<GridPos> reachable = new HashSet<>();
         Map<GridPos, Integer> dist = new HashMap<>();
         Queue<GridPos> queue = new LinkedList<>();
@@ -187,7 +215,7 @@ public class Pathfinding {
                 if (dist.containsKey(neighbor)) continue;
 
                 // For sized entities, check ALL footprint tiles at this anchor position
-                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, hasBoat)) continue;
+                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, hasBoat, ignoreObstacles)) continue;
 
                 dist.put(neighbor, currentDist + 1);
                 reachable.add(neighbor);

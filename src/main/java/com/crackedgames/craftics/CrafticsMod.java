@@ -38,6 +38,8 @@ public class CrafticsMod implements ModInitializer {
 
         // owo-lib config
         CONFIG = CrafticsConfigWrapper.createAndLoad();
+        com.crackedgames.craftics.api.VanillaWeapons.registerAll();
+        com.crackedgames.craftics.api.VanillaContent.registerAll();
 
         // Register custom chunk generator codec
         Registry.register(Registries.CHUNK_GENERATOR, Identifier.of(MOD_ID, "void"), VoidChunkGenerator.CODEC);

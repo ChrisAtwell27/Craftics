@@ -37,11 +37,17 @@
     <div class="sidebar-label">Modding Guide</div>
     <nav class="sidebar-nav">
       <a href="#overview">Overview</a>
+      <a href="#getting-started">Getting Started</a>
+      <a href="#weapons">Weapon Registration</a>
+      <a href="#equipment-scanners">Equipment Scanners</a>
+      <a href="#armor-sets">Armor Sets</a>
+      <a href="#trim-effects">Trim Effects</a>
+      <a href="#events">Events</a>
+      <a href="#enchantments">Enchantments</a>
+      <a href="#biomes">Biomes</a>
+      <a href="#enemy-ai">Enemy AI</a>
+      <a href="#complete-example">Complete Example</a>
       <a href="#arena-maps">Custom Arena Maps</a>
-      <a href="#custom-biomes">Custom Biomes</a>
-      <a href="#datapack-setup">Datapack Setup</a>
-      <a href="#hot-reload">Hot Reload</a>
-      <a href="#java-api">Java API</a>
       <a href="#addon-policy">Addon Policy</a>
     </nav>
   </aside>
@@ -49,23 +55,808 @@
   <!-- Content -->
   <main class="content">
     <h1>Modding Guide</h1>
-    <p class="page-desc">Three tiers of extensibility, from drag-and-drop arena maps to full Java API integration.</p>
+    <p class="page-desc">Full public API reference for addon mod developers &mdash; weapons, equipment, trims, events, enchantments, biomes, and AI.</p>
 
     <!-- ================================================================
          1. OVERVIEW
          ================================================================ -->
     <h2 id="overview">Overview</h2>
     <p>
-      Craftics supports three levels of modding:
+      Craftics exposes a comprehensive Java API through the <code>CrafticsAPI</code> class that lets addon mods extend every major system. All registration methods are static and should be called during your mod's <code>onInitialize()</code>.
     </p>
-    <ol>
-      <li><strong>Custom Arena Maps:</strong> Build <code>.nbt</code>/<code>.schem</code> structures in Minecraft, no code required.</li>
-      <li><strong>Datapack Biome Modding:</strong> JSON files for custom biomes, enemies, and loot.</li>
-      <li><strong>Fabric Mod Integration:</strong> Java API for custom AI and programmatic biomes.</li>
-    </ol>
+    <p>The following registry types are available:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Registry</th>
+            <th>Method</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Weapons</td>
+            <td><code>registerWeapon()</code></td>
+            <td>Add items as Craftics weapons with damage types, abilities, and stats</td>
+          </tr>
+          <tr>
+            <td>Equipment Scanners</td>
+            <td><code>registerEquipmentScanner()</code></td>
+            <td>Read stat bonuses from non-standard inventory slots (trinkets, baubles)</td>
+          </tr>
+          <tr>
+            <td>Armor Sets</td>
+            <td><code>registerArmorSet()</code></td>
+            <td>Define full-set bonuses for custom armor materials</td>
+          </tr>
+          <tr>
+            <td>Trim Patterns</td>
+            <td><code>registerTrimPattern()</code></td>
+            <td>Add per-piece and set bonuses for custom trim patterns</td>
+          </tr>
+          <tr>
+            <td>Trim Materials</td>
+            <td><code>registerTrimMaterial()</code></td>
+            <td>Add stat bonuses for custom trim materials</td>
+          </tr>
+          <tr>
+            <td>Events</td>
+            <td><code>registerEvent()</code></td>
+            <td>Create between-level events (gambling, traders, ambushes, etc.)</td>
+          </tr>
+          <tr>
+            <td>Enchantments</td>
+            <td><code>registerEnchantment()</code></td>
+            <td>Map enchantments to passive combat stat bonuses</td>
+          </tr>
+          <tr>
+            <td>Biomes</td>
+            <td><code>registerBiome()</code></td>
+            <td>Add biomes programmatically (also supports JSON datapacks)</td>
+          </tr>
+          <tr>
+            <td>Enemy AI</td>
+            <td><code>registerAI()</code></td>
+            <td>Define AI strategies for custom mob types</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Craftics also supports <strong>no-code modding</strong> via JSON datapacks for biomes and <code>.nbt</code>/<code>.schem</code> files for arena maps. See the <a href="#biomes">Biomes</a> and <a href="#arena-maps">Arena Maps</a> sections below.
+    </p>
 
     <!-- ================================================================
-         2. CUSTOM ARENA MAPS
+         2. GETTING STARTED
+         ================================================================ -->
+    <h2 id="getting-started">Getting Started</h2>
+    <p>
+      To create a Craftics addon mod you need a standard Fabric mod that declares Craftics as a dependency. All API calls go in your mod initializer.
+    </p>
+
+    <h3>Step 1: Declare the Dependency</h3>
+    <p>
+      In your <code>fabric.mod.json</code>, add Craftics as a dependency so Fabric loads it before your mod:
+    </p>
+    <pre><code>{
+  "schemaVersion": 1,
+  "id": "mymod-craftics-compat",
+  "version": "1.0.0",
+  "name": "MyMod Craftics Compat",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.example.mymod.CrafticsCompat"]
+  },
+  "depends": {
+    "fabricloader": "&gt;=0.16.0",
+    "craftics": "&gt;=1.0.0"
+  }
+}</code></pre>
+
+    <h3>Step 2: Register from onInitialize()</h3>
+    <p>
+      All <code>CrafticsAPI.registerXxx()</code> calls must happen during mod initialization. The API is thread-safe and order-independent.
+    </p>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import net.fabricmc.api.ModInitializer;
+
+public class CrafticsCompat implements ModInitializer {
+    @Override
+    public void onInitialize() {
+        // Register weapons, scanners, armor sets, etc.
+        CrafticsAPI.registerWeapon(myItem, myWeaponEntry);
+        CrafticsAPI.registerEquipmentScanner("mymod", myScanner);
+        CrafticsAPI.registerArmorSet(myArmorSetEntry);
+        // ... more registrations
+    }
+}</code></pre>
+
+    <h3>API Package Structure</h3>
+    <p>All public API types live under these packages:</p>
+    <ul>
+      <li><code>com.crackedgames.craftics.api</code> &mdash; <code>CrafticsAPI</code>, interfaces (<code>WeaponAbilityHandler</code>, <code>EquipmentScanner</code>, <code>EventHandler</code>, <code>EnchantmentEffectHandler</code>), helpers (<code>Abilities</code>, <code>EventTemplates</code>, <code>StatModifiers</code>, <code>EnchantmentContext</code>)</li>
+      <li><code>com.crackedgames.craftics.api.registry</code> &mdash; Data records (<code>WeaponEntry</code>, <code>ArmorSetEntry</code>, <code>TrimPatternEntry</code>, <code>TrimMaterialEntry</code>, <code>EventEntry</code>)</li>
+      <li><code>com.crackedgames.craftics.combat</code> &mdash; Enums referenced by the API (<code>DamageType</code>, <code>TrimEffects.Bonus</code>, <code>TrimEffects.SetBonus</code>)</li>
+    </ul>
+
+    <!-- ================================================================
+         3. WEAPON REGISTRATION
+         ================================================================ -->
+    <h2 id="weapons">Weapon Registration</h2>
+    <p>
+      Register any <code>Item</code> as a usable weapon in Craftics combat with <code>CrafticsAPI.registerWeapon()</code>. Each weapon needs a <code>WeaponEntry</code> that defines its damage type, stats, and optional ability.
+    </p>
+
+    <h3>WeaponEntry Builder</h3>
+    <p>Use the fluent builder API to construct a <code>WeaponEntry</code>:</p>
+    <pre><code>WeaponEntry entry = WeaponEntry.builder(myItem)
+    .damageType(DamageType.SLASHING)   // damage category
+    .attackPower(8)                    // flat attack value
+    .apCost(1)                         // action points per attack
+    .range(1)                          // attack range in tiles
+    .ranged(false)                     // true for projectile weapons
+    .breakChance(0.0)                  // probability of breaking per use (0.0 - 1.0)
+    .ability(myAbilityHandler)         // optional on-hit ability
+    .build();
+
+CrafticsAPI.registerWeapon(myItem, entry);</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Builder Method</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>damageType(DamageType)</code></td><td>enum</td><td>PHYSICAL</td><td>Weapon's damage category</td></tr>
+          <tr><td><code>attackPower(int)</code></td><td>int</td><td>1</td><td>Base attack power</td></tr>
+          <tr><td><code>attackPower(IntSupplier)</code></td><td>supplier</td><td>&mdash;</td><td>Dynamic attack power (called each attack)</td></tr>
+          <tr><td><code>apCost(int)</code></td><td>int</td><td>1</td><td>Action point cost per attack</td></tr>
+          <tr><td><code>range(int)</code></td><td>int</td><td>1</td><td>Attack range in tiles</td></tr>
+          <tr><td><code>ranged(boolean)</code></td><td>bool</td><td>false</td><td>Whether this is a ranged weapon</td></tr>
+          <tr><td><code>breakChance(double)</code></td><td>double</td><td>0.0</td><td>Chance to break on use (0.0&ndash;1.0)</td></tr>
+          <tr><td><code>ability(WeaponAbilityHandler)</code></td><td>handler</td><td>null</td><td>On-hit ability (see below)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>DamageType Enum</h3>
+    <p>Every weapon belongs to one of eight damage types. Armor sets, trims, and player affinity points can grant bonuses to specific types.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Value</th><th>Display Name</th><th>Typical Weapons</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>SLASHING</code></td><td>Slashing</td><td>Swords</td></tr>
+          <tr><td><code>CLEAVING</code></td><td>Cleaving</td><td>Axes</td></tr>
+          <tr><td><code>BLUNT</code></td><td>Blunt</td><td>Maces, shovels</td></tr>
+          <tr><td><code>WATER</code></td><td>Water</td><td>Tridents, corals</td></tr>
+          <tr><td><code>SPECIAL</code></td><td>Special</td><td>Blaze rods, end rods, breeze rods</td></tr>
+          <tr><td><code>PET</code></td><td>Pet</td><td>Pet attacks</td></tr>
+          <tr><td><code>RANGED</code></td><td>Ranged</td><td>Bows, crossbows</td></tr>
+          <tr><td><code>PHYSICAL</code></td><td>Physical</td><td>Default / untyped</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Abilities (Built-in Ability Factories)</h3>
+    <p>
+      The <code>Abilities</code> class provides static factory methods that return <code>WeaponAbilityHandler</code> instances. These are composable &mdash; chain them with <code>.and()</code> to combine multiple effects on one weapon.
+    </p>
+    <pre><code>// Compose two abilities: bleed + sweep
+WeaponAbilityHandler handler = Abilities.bleed()
+    .and(Abilities.sweepAdjacent(0.10, 0.05));</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Factory Method</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>bleed()</code></td><td>Applies bleed stacks equal to the weapon's Sharpness enchant level</td></tr>
+          <tr><td><code>sweepAdjacent(baseChance, bonusPerPoint)</code></td><td>Chance to hit one adjacent enemy for half damage (scales with SLASHING affinity)</td></tr>
+          <tr><td><code>armorIgnore(baseChance, bonusPerPoint)</code></td><td>Chance to deal bonus damage equal to target's defense (scales with CLEAVING affinity)</td></tr>
+          <tr><td><code>stun(baseChance, bonusPerPoint)</code></td><td>Chance to stun target for one turn (scales with BLUNT affinity)</td></tr>
+          <tr><td><code>knockbackDirection(distance)</code></td><td>Pushes target away from player by up to N tiles</td></tr>
+          <tr><td><code>aoe(radius, damageMultiplier)</code></td><td>Hits all enemies within radius (Manhattan distance) of target</td></tr>
+          <tr><td><code>applyEffect(type, turns, amplifier)</code></td><td>Applies a status effect (POISON, BURNING, SOAKED, SLOWNESS, CONFUSION)</td></tr>
+          <tr><td><code>pierce()</code></td><td>Hits the first enemy behind the target in the attack direction</td></tr>
+          <tr><td><code>fireDamage(bonusDmg)</code></td><td>Sets target on fire and deals flat bonus fire damage</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Custom Ability Handler</h3>
+    <p>
+      <code>WeaponAbilityHandler</code> is a <code>@FunctionalInterface</code>. Implement it for fully custom on-hit logic:
+    </p>
+    <pre><code>@FunctionalInterface
+public interface WeaponAbilityHandler {
+    WeaponAbility.AttackResult apply(
+        ServerPlayerEntity player,
+        CombatEntity target,
+        GridArena arena,
+        int baseDamage,
+        PlayerProgression.PlayerStats stats,
+        int luckPoints
+    );
+
+    // Compose with another handler:
+    default WeaponAbilityHandler and(WeaponAbilityHandler next);
+}</code></pre>
+    <p>
+      Return a <code>WeaponAbility.AttackResult(totalDamage, messages, extraTargets)</code> where <code>messages</code> is a list of combat log strings and <code>extraTargets</code> is a list of additional entities hit by the ability.
+    </p>
+
+    <h3>Example: Simply Swords Weapon</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.Abilities;
+import com.crackedgames.craftics.api.registry.WeaponEntry;
+import com.crackedgames.craftics.combat.DamageType;
+import net.sweenus.simplyswords.registry.ItemsRegistry;
+
+// Iron Claymore: cleaving type, armor ignore + knockback
+Item claymore = ItemsRegistry.IRON_CLAYMORE;
+CrafticsAPI.registerWeapon(claymore, WeaponEntry.builder(claymore)
+    .damageType(DamageType.CLEAVING)
+    .attackPower(7)
+    .apCost(2)
+    .range(1)
+    .ability(Abilities.armorIgnore(0.15, 0.03)
+        .and(Abilities.knockbackDirection(2)))
+    .build());</code></pre>
+
+    <!-- ================================================================
+         4. EQUIPMENT SCANNERS
+         ================================================================ -->
+    <h2 id="equipment-scanners">Equipment Scanners</h2>
+    <p>
+      Equipment scanners let addon mods contribute stat bonuses from non-standard inventory slots. This is how trinket/bauble/curio mods integrate with Craftics combat stats. Register one with <code>CrafticsAPI.registerEquipmentScanner()</code>.
+    </p>
+
+    <h3>EquipmentScanner Interface</h3>
+    <pre><code>@FunctionalInterface
+public interface EquipmentScanner {
+    StatModifiers scan(ServerPlayerEntity player);
+}</code></pre>
+    <p>
+      The scanner is called during combat stat calculation. It receives the player and returns a <code>StatModifiers</code> object containing all bonuses from that mod's equipment.
+    </p>
+
+    <h3>StatModifiers Class</h3>
+    <p>Accumulates bonuses using the <code>TrimEffects.Bonus</code> enum as keys:</p>
+    <pre><code>StatModifiers mods = new StatModifiers();
+mods.add(TrimEffects.Bonus.DEFENSE, 2);      // +2 defense
+mods.add(TrimEffects.Bonus.SPEED, 1);        // +1 speed
+mods.add(TrimEffects.Bonus.MAX_HP, 4);       // +4 max HP
+mods.addSetBonus(TrimEffects.SetBonus.FERAL, "Feral Ring Set"); // optional set bonus</code></pre>
+
+    <h4>Available Bonus Types</h4>
+    <p>
+      <code>RANGED_POWER</code>, <code>MELEE_POWER</code>, <code>SPEED</code>, <code>AP</code>, <code>DEFENSE</code>, <code>LUCK</code>,
+      <code>ATTACK_RANGE</code>, <code>MAX_HP</code>, <code>ARMOR_PEN</code>, <code>REGEN</code>, <code>ALLY_DAMAGE</code>, <code>STEALTH_RANGE</code>,
+      <code>SWORD_POWER</code>, <code>CLEAVING_POWER</code>, <code>BLUNT_POWER</code>, <code>WATER_POWER</code>, <code>SPECIAL_POWER</code>
+    </p>
+
+    <h3>Example: Artifacts Mod Trinkets</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.EquipmentScanner;
+import com.crackedgames.craftics.api.StatModifiers;
+import com.crackedgames.craftics.combat.TrimEffects;
+import artifacts.registry.ModItems;
+import net.minecraft.item.ItemStack;
+
+CrafticsAPI.registerEquipmentScanner("artifacts", (player) -&gt; {
+    StatModifiers mods = new StatModifiers();
+
+    // Check trinket slots for known Artifacts items
+    // (Use Artifacts' own trinket API to read equipped items)
+    ItemStack belt = getTrinket(player, "belt");
+    if (!belt.isEmpty()) {
+        if (belt.isOf(ModItems.SPEED_BELT)) {
+            mods.add(TrimEffects.Bonus.SPEED, 1);
+        } else if (belt.isOf(ModItems.IRON_BELT)) {
+            mods.add(TrimEffects.Bonus.DEFENSE, 2);
+        }
+    }
+
+    ItemStack necklace = getTrinket(player, "necklace");
+    if (!necklace.isEmpty() &amp;&amp; necklace.isOf(ModItems.LUCKY_CHARM)) {
+        mods.add(TrimEffects.Bonus.LUCK, 3);
+    }
+
+    return mods;
+});</code></pre>
+
+    <!-- ================================================================
+         5. ARMOR SETS
+         ================================================================ -->
+    <h2 id="armor-sets">Armor Sets</h2>
+    <p>
+      Register custom armor set bonuses that activate when a player wears a full set of matching armor. The armor set ID must match what the game detects for your armor material.
+    </p>
+
+    <h3>ArmorSetEntry Builder</h3>
+    <pre><code>ArmorSetEntry entry = ArmorSetEntry.builder("mymod:mythril")
+    .damageBonus(DamageType.SLASHING, 2)  // +2 slashing damage
+    .damageBonus(DamageType.CLEAVING, 1)  // +1 cleaving damage
+    .speedBonus(1)                        // +1 speed
+    .apBonus(0)                           // +0 action points
+    .defenseBonus(3)                      // +3 defense
+    .attackBonus(1)                       // +1 attack
+    .apCostReduction(0)                   // -0 AP cost
+    .description("Mythril Armor: light and sharp")
+    .build();
+
+CrafticsAPI.registerArmorSet(entry);</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Builder Method</th><th>Type</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>damageBonus(DamageType, int)</code></td><td>per-type</td><td>0</td><td>Bonus damage for a specific damage type</td></tr>
+          <tr><td><code>allDamageBonus(int)</code></td><td>all types</td><td>&mdash;</td><td>Sets the same bonus for every damage type</td></tr>
+          <tr><td><code>speedBonus(int)</code></td><td>int</td><td>0</td><td>Movement speed bonus</td></tr>
+          <tr><td><code>apBonus(int)</code></td><td>int</td><td>0</td><td>Extra action points per turn</td></tr>
+          <tr><td><code>defenseBonus(int)</code></td><td>int</td><td>0</td><td>Defense stat bonus</td></tr>
+          <tr><td><code>attackBonus(int)</code></td><td>int</td><td>0</td><td>Base attack bonus</td></tr>
+          <tr><td><code>apCostReduction(int)</code></td><td>int</td><td>0</td><td>Reduction in AP cost per attack</td></tr>
+          <tr><td><code>description(String)</code></td><td>string</td><td>""</td><td>Tooltip description shown in combat HUD</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ================================================================
+         6. TRIM EFFECTS
+         ================================================================ -->
+    <h2 id="trim-effects">Trim Effects</h2>
+    <p>
+      Craftics gives armor trims gameplay effects. Each trim <strong>pattern</strong> grants a per-piece stat bonus and a full-set bonus (when all 4 armor pieces share the same pattern). Each trim <strong>material</strong> grants its own per-piece stat bonus. Register custom patterns and materials for modded trims.
+    </p>
+
+    <h3>Trim Pattern Registration</h3>
+    <pre><code>CrafticsAPI.registerTrimPattern(new TrimPatternEntry(
+    "mymod:dragon",                          // pattern ID
+    TrimEffects.Bonus.MELEE_POWER,           // per-piece stat
+    "+1 Melee Power per piece",              // per-piece description
+    TrimEffects.SetBonus.FERAL,              // full-set bonus
+    "Dragon's Fury",                         // set bonus display name
+    "First attack each turn costs 0 AP"      // set bonus description
+));</code></pre>
+
+    <h4>TrimPatternEntry Fields</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>patternId</code></td><td>String</td><td>Registry ID of the trim pattern (e.g., <code>"mymod:dragon"</code>)</td></tr>
+          <tr><td><code>perPieceStat</code></td><td>TrimEffects.Bonus</td><td>Stat bonus granted per armor piece with this pattern</td></tr>
+          <tr><td><code>perPieceDescription</code></td><td>String</td><td>Human-readable description of the per-piece bonus</td></tr>
+          <tr><td><code>setBonus</code></td><td>TrimEffects.SetBonus</td><td>Bonus activated when all 4 pieces use this pattern</td></tr>
+          <tr><td><code>setBonusName</code></td><td>String</td><td>Display name for the set bonus</td></tr>
+          <tr><td><code>setBonusDescription</code></td><td>String</td><td>Human-readable description of the set bonus</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Trim Material Registration</h3>
+    <pre><code>CrafticsAPI.registerTrimMaterial(new TrimMaterialEntry(
+    "mymod:orichalcum",            // material ID
+    TrimEffects.Bonus.ARMOR_PEN,   // stat bonus type
+    2,                              // value per armor piece
+    "+2 Armor Penetration per piece"
+));</code></pre>
+
+    <h4>TrimMaterialEntry Fields</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>materialId</code></td><td>String</td><td>Registry ID of the trim material</td></tr>
+          <tr><td><code>stat</code></td><td>TrimEffects.Bonus</td><td>Stat bonus type</td></tr>
+          <tr><td><code>valuePerPiece</code></td><td>int</td><td>Bonus value per armor piece with this material</td></tr>
+          <tr><td><code>description</code></td><td>String</td><td>Human-readable description</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Bonus Enum Values</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>TrimEffects.Bonus</th><th>Effect</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>RANGED_POWER</code></td><td>Bonus ranged attack damage</td></tr>
+          <tr><td><code>MELEE_POWER</code></td><td>Bonus melee attack damage (all melee types)</td></tr>
+          <tr><td><code>SPEED</code></td><td>Movement speed (tiles per turn)</td></tr>
+          <tr><td><code>AP</code></td><td>Extra action points per turn</td></tr>
+          <tr><td><code>DEFENSE</code></td><td>Damage reduction</td></tr>
+          <tr><td><code>LUCK</code></td><td>Affects loot rolls and ability proc chances</td></tr>
+          <tr><td><code>ATTACK_RANGE</code></td><td>Extra attack range in tiles</td></tr>
+          <tr><td><code>MAX_HP</code></td><td>Bonus maximum hit points</td></tr>
+          <tr><td><code>ARMOR_PEN</code></td><td>Ignore portion of enemy defense</td></tr>
+          <tr><td><code>REGEN</code></td><td>HP regeneration per turn</td></tr>
+          <tr><td><code>ALLY_DAMAGE</code></td><td>Bonus damage for pet/ally attacks</td></tr>
+          <tr><td><code>STEALTH_RANGE</code></td><td>Reduced enemy detection range</td></tr>
+          <tr><td><code>SWORD_POWER</code></td><td>Bonus SLASHING damage specifically</td></tr>
+          <tr><td><code>CLEAVING_POWER</code></td><td>Bonus CLEAVING damage specifically</td></tr>
+          <tr><td><code>BLUNT_POWER</code></td><td>Bonus BLUNT damage specifically</td></tr>
+          <tr><td><code>WATER_POWER</code></td><td>Bonus WATER damage specifically</td></tr>
+          <tr><td><code>SPECIAL_POWER</code></td><td>Bonus SPECIAL damage specifically</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>SetBonus Enum Values</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>TrimEffects.SetBonus</th><th>Name</th><th>Effect</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>NONE</code></td><td>&mdash;</td><td>No set bonus</td></tr>
+          <tr><td><code>OVERWATCH</code></td><td>Sentry</td><td>Counter-attack at range</td></tr>
+          <tr><td><code>SANDSTORM</code></td><td>Dune</td><td>Enemy speed reduction aura</td></tr>
+          <tr><td><code>TIDAL</code></td><td>Coast</td><td>Water heals the player</td></tr>
+          <tr><td><code>FERAL</code></td><td>Wild</td><td>First attack each turn is free</td></tr>
+          <tr><td><code>FORTRESS</code></td><td>Ward</td><td>Halve damage when stationary</td></tr>
+          <tr><td><code>ALL_SEEING</code></td><td>Eye</td><td>Ranged critical hit bonus</td></tr>
+          <tr><td><code>ETHEREAL</code></td><td>Vex</td><td>Dodge chance</td></tr>
+          <tr><td><code>OCEAN_BLESSING</code></td><td>Tide</td><td>Emergency heal at low HP</td></tr>
+          <tr><td><code>BRUTE_FORCE</code></td><td>Snout</td><td>Attacks deal splash damage</td></tr>
+          <tr><td><code>INFERNAL</code></td><td>Rib</td><td>Fire attacks deal bonus damage</td></tr>
+          <tr><td><code>FORTUNE_PEAK</code></td><td>Spire</td><td>Double emerald rewards</td></tr>
+          <tr><td><code>PATHFINDER</code></td><td>Wayfinder</td><td>Ignore obstacles when moving</td></tr>
+          <tr><td><code>TERRAFORMER</code></td><td>Shaper</td><td>Movement deals AoE damage</td></tr>
+          <tr><td><code>PHANTOM</code></td><td>Silence</td><td>Start combat invisible</td></tr>
+          <tr><td><code>RALLY</code></td><td>Raiser</td><td>Buff allies at start of turn</td></tr>
+          <tr><td><code>SYMBIOTE</code></td><td>Host</td><td>Heal on kill</td></tr>
+          <tr><td><code>CURRENT</code></td><td>Flow</td><td>Kills refund AP</td></tr>
+          <tr><td><code>THUNDERSTRIKE</code></td><td>Bolt</td><td>Critical hits stun the target</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ================================================================
+         7. EVENTS
+         ================================================================ -->
+    <h2 id="events">Events</h2>
+    <p>
+      Between-level events fire after completing a combat level. Register custom events with <code>CrafticsAPI.registerEvent()</code>. Events are selected randomly based on probability after each level.
+    </p>
+
+    <h3>EventEntry Fields</h3>
+    <pre><code>CrafticsAPI.registerEvent(new EventEntry(
+    "mymod:treasure_chest",    // unique event ID
+    "Treasure Chest",          // display name
+    0.15f,                     // probability (0.0 - 1.0)
+    2,                         // minimum biome ordinal (0-indexed) to appear
+    true,                      // isChoiceEvent: player picks from options
+    myEventHandler             // EventHandler implementation
+));</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>String</td><td>Unique event identifier</td></tr>
+          <tr><td><code>displayName</code></td><td>String</td><td>Name shown in the event popup</td></tr>
+          <tr><td><code>probability</code></td><td>float</td><td>Chance to trigger after each level (0.0&ndash;1.0)</td></tr>
+          <tr><td><code>minBiomeOrdinal</code></td><td>int</td><td>Earliest biome where this event can appear (0 = first biome)</td></tr>
+          <tr><td><code>isChoiceEvent</code></td><td>boolean</td><td>Whether the player gets to choose between options</td></tr>
+          <tr><td><code>handler</code></td><td>EventHandler</td><td>Logic executed when the event fires</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>EventHandler Interface</h3>
+    <pre><code>@FunctionalInterface
+public interface EventHandler {
+    void execute(List&lt;ServerPlayerEntity&gt; participants,
+                 ServerWorld world,
+                 EventManager eventManager);
+}</code></pre>
+    <p>
+      The <code>EventManager</code> provides helper methods for showing UI popups, giving items, applying effects, and managing event state.
+    </p>
+
+    <h3>EventTemplates</h3>
+    <p>
+      The <code>EventTemplates</code> class will provide pre-built patterns for common event types. Planned templates include:
+    </p>
+    <ul>
+      <li><code>EventTemplates.gamble()</code> &mdash; Risk-reward gambling event</li>
+      <li><code>EventTemplates.giveReward()</code> &mdash; Simple item/stat reward</li>
+      <li><code>EventTemplates.ambush()</code> &mdash; Surprise enemy encounter</li>
+      <li><code>EventTemplates.spawnTrader()</code> &mdash; Shop/trade event</li>
+    </ul>
+    <div class="callout callout-muted">
+      <p>EventTemplates are currently under development. For now, implement <code>EventHandler</code> directly.</p>
+    </div>
+
+    <h3>Example: Custom Event</h3>
+    <pre><code>CrafticsAPI.registerEvent(new EventEntry(
+    "mymod:healing_spring",
+    "Healing Spring",
+    0.10f,
+    1,      // available from biome index 1 onwards
+    false,  // not a choice event - just happens
+    (participants, world, eventManager) -&gt; {
+        for (ServerPlayerEntity player : participants) {
+            // Heal each player by 4 HP
+            player.heal(4.0f);
+        }
+    }
+));</code></pre>
+
+    <!-- ================================================================
+         8. ENCHANTMENTS
+         ================================================================ -->
+    <h2 id="enchantments">Enchantments</h2>
+    <p>
+      Register enchantments that grant passive stat bonuses during Craftics combat. The handler receives an <code>EnchantmentContext</code> with the enchantment level, the player, and a <code>StatModifiers</code> accumulator.
+    </p>
+
+    <h3>EnchantmentEffectHandler and EnchantmentContext</h3>
+    <pre><code>@FunctionalInterface
+public interface EnchantmentEffectHandler {
+    void apply(EnchantmentContext ctx);
+}
+
+public class EnchantmentContext {
+    public int getLevel();                  // enchantment level (1, 2, 3...)
+    public ServerPlayerEntity getPlayer();  // the player
+    public StatModifiers getModifiers();    // accumulator to add bonuses to
+}</code></pre>
+
+    <h3>Example: Custom Enchantment</h3>
+    <pre><code>// Holy Blessing: +1 defense and +1 regen per enchantment level
+CrafticsAPI.registerEnchantment("mymod:holy_blessing", (ctx) -&gt; {
+    ctx.getModifiers().add(TrimEffects.Bonus.DEFENSE, ctx.getLevel());
+    ctx.getModifiers().add(TrimEffects.Bonus.REGEN, ctx.getLevel());
+});
+
+// Swiftness: +1 speed at any level
+CrafticsAPI.registerEnchantment("mymod:swiftness", (ctx) -&gt; {
+    ctx.getModifiers().add(TrimEffects.Bonus.SPEED, 1);
+});</code></pre>
+
+    <!-- ================================================================
+         9. BIOMES
+         ================================================================ -->
+    <h2 id="biomes">Biomes</h2>
+    <p>
+      Biomes can be added via JSON datapacks (no code required) or programmatically through <code>CrafticsAPI.registerBiome()</code>.
+    </p>
+
+    <h3>JSON Datapacks (No Code)</h3>
+    <p>
+      Place biome JSON files at <code>data/&lt;namespace&gt;/craftics/biomes/my_biome.json</code>. The full JSON schema:
+    </p>
+    <pre><code>{
+  "id": "my_biome",
+  "name": "My Custom Biome",
+  "order": 20,
+  "levels": 5,
+  "grid": {
+    "base_width": 10,
+    "base_height": 10,
+    "width_growth": 1,
+    "height_growth": 1
+  },
+  "floor_blocks": ["minecraft:stone_bricks", "minecraft:mossy_stone_bricks"],
+  "obstacle_blocks": ["minecraft:cobblestone_wall"],
+  "obstacle_density": 0.1,
+  "obstacle_density_growth": 0.02,
+  "environment": "cave",
+  "night": true,
+  "enemies": {
+    "passive": [
+      {"type": "minecraft:bat", "weight": 3, "hp": 2, "attack": 0, "defense": 0, "range": 1}
+    ],
+    "hostile": [
+      {"type": "minecraft:skeleton", "weight": 8, "hp": 10, "attack": 3, "defense": 0, "range": 3},
+      {"type": "minecraft:spider", "weight": 6, "hp": 8, "attack": 3, "defense": 0, "range": 1}
+    ],
+    "boss": {"type": "minecraft:warden", "hp": 50, "attack": 8, "defense": 4, "range": 2}
+  },
+  "loot": [
+    {"item": "minecraft:diamond", "weight": 5},
+    {"item": "minecraft:iron_ingot", "weight": 15}
+  ]
+}</code></pre>
+
+    <h4>Field Reference</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td>Required. Unique identifier.</td></tr>
+          <tr><td><code>name</code></td><td>string</td><td>Display name in HUD and level select.</td></tr>
+          <tr><td><code>order</code></td><td>int</td><td>Sort position. Lower = earlier in progression.</td></tr>
+          <tr><td><code>levels</code></td><td>int</td><td>Number of levels (typically 5). Last level = boss.</td></tr>
+          <tr><td><code>grid.base_width</code></td><td>int</td><td>Starting grid width.</td></tr>
+          <tr><td><code>grid.base_height</code></td><td>int</td><td>Starting grid height.</td></tr>
+          <tr><td><code>grid.width_growth</code></td><td>int</td><td>Width increase per level.</td></tr>
+          <tr><td><code>grid.height_growth</code></td><td>int</td><td>Height increase per level.</td></tr>
+          <tr><td><code>floor_blocks</code></td><td>string[]</td><td>Floor tile blocks (checkerboard pattern).</td></tr>
+          <tr><td><code>obstacle_blocks</code></td><td>string[]</td><td>Obstacle blocks placed on the grid.</td></tr>
+          <tr><td><code>obstacle_density</code></td><td>float</td><td>Base obstacle probability (0.0&ndash;1.0).</td></tr>
+          <tr><td><code>obstacle_density_growth</code></td><td>float</td><td>Density increase per level.</td></tr>
+          <tr><td><code>environment</code></td><td>string</td><td>Visual style: <code>plains</code>, <code>forest</code>, <code>desert</code>, <code>jungle</code>, <code>river</code>, <code>mountain</code>, <code>snowy</code>, <code>cave</code>, <code>nether_wastes</code>, <code>end</code>, <code>deep_dark</code></td></tr>
+          <tr><td><code>night</code></td><td>bool</td><td>Night mode (prevents undead burning).</td></tr>
+          <tr><td><code>enemies.passive</code></td><td>array</td><td>Passive mob pool (weighted random).</td></tr>
+          <tr><td><code>enemies.hostile</code></td><td>array</td><td>Hostile mob pool (weighted random).</td></tr>
+          <tr><td><code>enemies.boss</code></td><td>object</td><td>Boss for the final level.</td></tr>
+          <tr><td><code>loot</code></td><td>array</td><td>Weighted loot table (1&ndash;3 items rolled per level).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Programmatic Registration</h3>
+    <pre><code>CrafticsAPI.registerBiome(myBiomeTemplate);
+int totalLevels = CrafticsAPI.getTotalLevels();</code></pre>
+    <p>
+      Use the same <code>id</code> as a built-in biome to override its settings. Use <code>/reload</code> to hot-reload biome JSONs without restarting.
+    </p>
+
+    <!-- ================================================================
+         10. ENEMY AI
+         ================================================================ -->
+    <h2 id="enemy-ai">Enemy AI</h2>
+    <p>
+      Register custom AI strategies for mob types that Craftics does not support natively. The AI controls what action an enemy takes each turn.
+    </p>
+
+    <h3>AI Registration</h3>
+    <pre><code>CrafticsAPI.registerAI("mymod:custom_zombie", (self, arena, playerPos) -&gt; {
+    // Your AI logic: decide what to do this turn
+    return new EnemyAction.Attack(self.getAttackPower());
+});</code></pre>
+
+    <h3>Available Action Types</h3>
+    <p>
+      27 action types are available for custom AI. Return any of these from your AI strategy:
+    </p>
+    <p>
+      <code>Move</code>, <code>Attack</code>, <code>MoveAndAttack</code>, <code>Flee</code>, <code>Teleport</code>, <code>TeleportAndAttack</code>, <code>Pounce</code>, <code>Explode</code>, <code>RangedAttack</code>, <code>Swoop</code>, <code>StartFuse</code>, <code>Detonate</code>, <code>Idle</code>, <code>AttackMob</code>, <code>MoveAndAttackMob</code>, <code>AttackWithKnockback</code>, <code>MoveAndAttackWithKnockback</code>, <code>SummonMinions</code>, <code>AreaAttack</code>, <code>CreateTerrain</code>, <code>LineAttack</code>, <code>ModifySelf</code>, <code>ForcedMovement</code>, <code>BossAbility</code>, <code>CeilingAscend</code>, <code>CeilingDrop</code>, <code>CompositeAction</code>
+    </p>
+
+    <h3>Supported Mob Types (Built-in)</h3>
+    <p>The following mobs already have registered AI and can be used in custom biomes without additional code:</p>
+    <ul>
+      <li><strong>Passive:</strong> <code>minecraft:cow</code>, <code>minecraft:pig</code>, <code>minecraft:sheep</code>, <code>minecraft:chicken</code>, <code>minecraft:horse</code>, <code>minecraft:donkey</code>, <code>minecraft:panda</code>, <code>minecraft:parrot</code>, <code>minecraft:rabbit</code>, <code>minecraft:bat</code>, <code>minecraft:cod</code>, <code>minecraft:salmon</code>, <code>minecraft:axolotl</code>, <code>minecraft:cat</code>, <code>minecraft:ocelot</code>, <code>minecraft:fox</code>, <code>minecraft:bee</code>, <code>minecraft:wolf</code>, <code>minecraft:goat</code>, <code>minecraft:polar_bear</code>, <code>minecraft:llama</code></li>
+      <li><strong>Hostile:</strong> <code>minecraft:zombie</code>, <code>minecraft:zombie_villager</code>, <code>minecraft:husk</code>, <code>minecraft:drowned</code>, <code>minecraft:zombified_piglin</code>, <code>minecraft:skeleton</code>, <code>minecraft:stray</code>, <code>minecraft:bogged</code>, <code>minecraft:spider</code>, <code>minecraft:cave_spider</code>, <code>minecraft:creeper</code>, <code>minecraft:vindicator</code>, <code>minecraft:evoker</code>, <code>minecraft:pillager</code>, <code>minecraft:ravager</code>, <code>minecraft:witch</code>, <code>minecraft:enderman</code>, <code>minecraft:endermite</code>, <code>minecraft:phantom</code>, <code>minecraft:silverfish</code>, <code>minecraft:slime</code>, <code>minecraft:hoglin</code>, <code>minecraft:piglin</code>, <code>minecraft:blaze</code>, <code>minecraft:ghast</code>, <code>minecraft:shulker</code>, <code>minecraft:breeze</code>, <code>minecraft:magma_cube</code>, <code>minecraft:wither_skeleton</code></li>
+      <li><strong>Boss:</strong> <code>minecraft:warden</code>, <code>minecraft:ender_dragon</code></li>
+    </ul>
+
+    <!-- ================================================================
+         11. COMPLETE EXAMPLE
+         ================================================================ -->
+    <h2 id="complete-example">Complete Example</h2>
+    <p>
+      A full compat mod skeleton integrating Simply Swords weapons and Artifacts trinkets with Craftics.
+    </p>
+
+    <h3>fabric.mod.json</h3>
+    <pre><code>{
+  "schemaVersion": 1,
+  "id": "craftics-compat",
+  "version": "1.0.0",
+  "name": "Craftics Compat: Simply Swords + Artifacts",
+  "description": "Adds Simply Swords weapons and Artifacts trinkets to Craftics combat.",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.example.crafticscompat.CrafticsCompatMod"]
+  },
+  "depends": {
+    "fabricloader": "&gt;=0.16.0",
+    "craftics": "&gt;=1.0.0"
+  },
+  "suggests": {
+    "simplyswords": "*",
+    "artifacts": "*"
+  }
+}</code></pre>
+
+    <h3>CrafticsCompatMod.java</h3>
+    <pre><code>package com.example.crafticscompat;
+
+import com.crackedgames.craftics.api.*;
+import com.crackedgames.craftics.api.registry.*;
+import com.crackedgames.craftics.combat.DamageType;
+import com.crackedgames.craftics.combat.TrimEffects;
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.item.Item;
+
+public class CrafticsCompatMod implements ModInitializer {
+
+    @Override
+    public void onInitialize() {
+        if (FabricLoader.getInstance().isModLoaded("simplyswords")) {
+            registerSimplySwords();
+        }
+        if (FabricLoader.getInstance().isModLoaded("artifacts")) {
+            registerArtifacts();
+        }
+    }
+
+    private void registerSimplySwords() {
+        // --- Iron Claymore: heavy cleaving weapon ---
+        Item claymore = getSimplySwordsItem("iron_claymore");
+        CrafticsAPI.registerWeapon(claymore, WeaponEntry.builder(claymore)
+            .damageType(DamageType.CLEAVING)
+            .attackPower(7)
+            .apCost(2)
+            .range(1)
+            .ability(Abilities.armorIgnore(0.15, 0.03)
+                .and(Abilities.knockbackDirection(1)))
+            .build());
+
+        // --- Iron Rapier: fast slashing weapon ---
+        Item rapier = getSimplySwordsItem("iron_rapier");
+        CrafticsAPI.registerWeapon(rapier, WeaponEntry.builder(rapier)
+            .damageType(DamageType.SLASHING)
+            .attackPower(4)
+            .apCost(1)
+            .range(1)
+            .ability(Abilities.bleed()
+                .and(Abilities.pierce()))
+            .build());
+
+        // --- Iron Glaive: ranged slashing weapon ---
+        Item glaive = getSimplySwordsItem("iron_glaive");
+        CrafticsAPI.registerWeapon(glaive, WeaponEntry.builder(glaive)
+            .damageType(DamageType.SLASHING)
+            .attackPower(5)
+            .apCost(1)
+            .range(2)
+            .ability(Abilities.sweepAdjacent(0.20, 0.04))
+            .build());
+    }
+
+    private void registerArtifacts() {
+        // --- Equipment scanner for Artifacts trinkets ---
+        CrafticsAPI.registerEquipmentScanner("artifacts", (player) -&gt; {
+            StatModifiers mods = new StatModifiers();
+            // Scan Artifacts trinket slots and map to Craftics stats
+            // (implementation depends on Artifacts trinket API)
+            return mods;
+        });
+
+        // --- Custom enchantment from Artifacts ---
+        CrafticsAPI.registerEnchantment("artifacts:fortification", (ctx) -&gt; {
+            ctx.getModifiers().add(TrimEffects.Bonus.DEFENSE, ctx.getLevel());
+        });
+    }
+
+    private static Item getSimplySwordsItem(String name) {
+        // Use Simply Swords' registry to look up items
+        return net.minecraft.registry.Registries.ITEM
+            .get(net.minecraft.util.Identifier.of("simplyswords", name));
+    }
+}</code></pre>
+
+    <!-- ================================================================
+         12. CUSTOM ARENA MAPS
          ================================================================ -->
     <h2 id="arena-maps">Custom Arena Maps</h2>
 
@@ -94,36 +885,15 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr>
-            <th>Block</th>
-            <th>Purpose</th>
-          </tr>
+          <tr><th>Block</th><th>Purpose</th></tr>
         </thead>
         <tbody>
-          <tr>
-            <td>Diamond Block</td>
-            <td>Camera corner. Place on one corner outside the grid (required).</td>
-          </tr>
-          <tr>
-            <td>Emerald Block</td>
-            <td>Opposite corner. Place on the corner diagonally opposite the Diamond Block (required).</td>
-          </tr>
-          <tr>
-            <td>Gold Block</td>
-            <td>Player 1 spawn (primary)</td>
-          </tr>
-          <tr>
-            <td>Iron Block</td>
-            <td>Player 2 spawn (multiplayer)</td>
-          </tr>
-          <tr>
-            <td>Copper Block</td>
-            <td>Player 3 spawn</td>
-          </tr>
-          <tr>
-            <td>Coal Block</td>
-            <td>Player 4 spawn</td>
-          </tr>
+          <tr><td>Diamond Block</td><td>Camera corner. Place on one corner outside the grid (required).</td></tr>
+          <tr><td>Emerald Block</td><td>Opposite corner. Place on the corner diagonally opposite the Diamond Block (required).</td></tr>
+          <tr><td>Gold Block</td><td>Player 1 spawn (primary)</td></tr>
+          <tr><td>Iron Block</td><td>Player 2 spawn (multiplayer)</td></tr>
+          <tr><td>Copper Block</td><td>Player 3 spawn</td></tr>
+          <tr><td>Coal Block</td><td>Player 4 spawn</td></tr>
         </tbody>
       </table>
     </div>
@@ -164,15 +934,11 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
     1.nbt
     boss_1.nbt</code></pre>
 
-    <h4>Biome IDs</h4>
+    <h4>Biome IDs for Arena Folders</h4>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr>
-            <th>Overworld</th>
-            <th>Nether</th>
-            <th>End</th>
-          </tr>
+          <tr><th>Overworld</th><th>Nether</th><th>End</th></tr>
         </thead>
         <tbody>
           <tr><td>plains</td><td>nether_wastes</td><td>outer_end_islands</td></tr>
@@ -188,11 +954,6 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
       </table>
     </div>
 
-    <h4>Selection Rules</h4>
-    <p>
-      Files are scanned sequentially (1, 2, 3&hellip;) and the scanner stops at the first missing number. One map is picked randomly each fight. Boss maps (<code>boss_1</code>, <code>boss_2</code>&hellip;) are used for boss levels, falling back to regular maps if no boss maps exist.
-    </p>
-
     <h3>Tips</h3>
     <ul>
       <li>Size your grid for the biome's growth range (e.g., Plains starts 8&times;8, grows +1 per level).</li>
@@ -204,311 +965,13 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
     </ul>
 
     <!-- ================================================================
-         3. CUSTOM BIOMES
-         ================================================================ -->
-    <h2 id="custom-biomes">Custom Biomes</h2>
-
-    <h3>JSON Schema</h3>
-    <p>
-      Each custom biome is defined by a single JSON file. Here is the full schema with all supported fields:
-    </p>
-    <pre><code>{
-  "id": "my_biome",
-  "name": "My Custom Biome",
-  "order": 20,
-  "levels": 5,
-  "grid": {
-    "base_width": 10,
-    "base_height": 10,
-    "width_growth": 1,
-    "height_growth": 1
-  },
-  "floor_blocks": ["minecraft:stone_bricks", "minecraft:mossy_stone_bricks"],
-  "obstacle_blocks": ["minecraft:cobblestone_wall"],
-  "obstacle_density": 0.1,
-  "obstacle_density_growth": 0.02,
-  "environment": "cave",
-  "night": true,
-  "enemies": {
-    "passive": [
-      {"type": "minecraft:bat", "weight": 3, "hp": 2, "attack": 0, "defense": 0, "range": 1}
-    ],
-    "hostile": [
-      {"type": "minecraft:skeleton", "weight": 8, "hp": 10, "attack": 3, "defense": 0, "range": 3},
-      {"type": "minecraft:spider", "weight": 6, "hp": 8, "attack": 3, "defense": 0, "range": 1}
-    ],
-    "boss": {"type": "minecraft:warden", "hp": 50, "attack": 8, "defense": 4, "range": 2}
-  },
-  "loot": [
-    {"item": "minecraft:diamond", "weight": 5},
-    {"item": "minecraft:iron_ingot", "weight": 15}
-  ]
-}</code></pre>
-
-    <h3>Field Reference</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Field</th>
-            <th>Type</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>id</code></td>
-            <td>string</td>
-            <td>Required. Unique identifier.</td>
-          </tr>
-          <tr>
-            <td><code>name</code></td>
-            <td>string</td>
-            <td>Display name in HUD and level select.</td>
-          </tr>
-          <tr>
-            <td><code>order</code></td>
-            <td>int</td>
-            <td>Sort position. Lower = earlier.</td>
-          </tr>
-          <tr>
-            <td><code>levels</code></td>
-            <td>int</td>
-            <td>Levels in this biome (typically 5). Last = boss.</td>
-          </tr>
-          <tr>
-            <td><code>grid.base_width</code></td>
-            <td>int</td>
-            <td>Starting grid width.</td>
-          </tr>
-          <tr>
-            <td><code>grid.base_height</code></td>
-            <td>int</td>
-            <td>Starting grid height.</td>
-          </tr>
-          <tr>
-            <td><code>grid.width_growth</code></td>
-            <td>int</td>
-            <td>Width increase per level.</td>
-          </tr>
-          <tr>
-            <td><code>grid.height_growth</code></td>
-            <td>int</td>
-            <td>Height increase per level.</td>
-          </tr>
-          <tr>
-            <td><code>floor_blocks</code></td>
-            <td>string[]</td>
-            <td>Floor tile blocks (checkerboard pattern).</td>
-          </tr>
-          <tr>
-            <td><code>obstacle_blocks</code></td>
-            <td>string[]</td>
-            <td>Obstacle blocks.</td>
-          </tr>
-          <tr>
-            <td><code>obstacle_density</code></td>
-            <td>float</td>
-            <td>Base obstacle probability (0.0&ndash;1.0).</td>
-          </tr>
-          <tr>
-            <td><code>obstacle_density_growth</code></td>
-            <td>float</td>
-            <td>Density increase per level.</td>
-          </tr>
-          <tr>
-            <td><code>environment</code></td>
-            <td>string</td>
-            <td>Visual style (see list below).</td>
-          </tr>
-          <tr>
-            <td><code>night</code></td>
-            <td>bool</td>
-            <td>Night mode (prevents undead burning).</td>
-          </tr>
-          <tr>
-            <td><code>enemies.passive</code></td>
-            <td>array</td>
-            <td>Passive mob pool.</td>
-          </tr>
-          <tr>
-            <td><code>enemies.hostile</code></td>
-            <td>array</td>
-            <td>Hostile mob pool (weighted random selection).</td>
-          </tr>
-          <tr>
-            <td><code>enemies.boss</code></td>
-            <td>object</td>
-            <td>Boss for the final level.</td>
-          </tr>
-          <tr>
-            <td><code>loot</code></td>
-            <td>array</td>
-            <td>Weighted loot table.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h4>Environment Styles</h4>
-    <p>
-      <code>plains</code>, <code>forest</code>, <code>desert</code>, <code>jungle</code>, <code>river</code>, <code>mountain</code>, <code>snowy</code>, <code>cave</code>, <code>nether_wastes</code>, <code>end</code>, <code>deep_dark</code>
-    </p>
-
-    <h3>Creating, Overriding, Combining</h3>
-    <ul>
-      <li>Place your biome JSON at <code>data/craftics/craftics/biomes/my_biome.json</code></li>
-      <li>Use the same <code>id</code> as a built-in biome to override its settings.</li>
-      <li>Multiple JSON files with unique IDs create multiple biome variations.</li>
-      <li>Combine custom biome JSONs with multiple <code>.nbt</code> maps per biome for maximum variety.</li>
-    </ul>
-
-    <h3>Enemy Definitions</h3>
-    <p>
-      Each enemy entry in the <code>passive</code> or <code>hostile</code> arrays follows this format:
-    </p>
-    <pre><code>{"type": "minecraft:zombie", "weight": 8, "hp": 6, "attack": 2, "defense": 0, "range": 1}</code></pre>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Field</th>
-            <th>Type</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>type</code></td>
-            <td>string</td>
-            <td>Minecraft entity ID. Must be a supported mob type.</td>
-          </tr>
-          <tr>
-            <td><code>weight</code></td>
-            <td>int</td>
-            <td>Spawn weight. Higher = more frequent.</td>
-          </tr>
-          <tr>
-            <td><code>hp</code></td>
-            <td>int</td>
-            <td>Hit points for this enemy.</td>
-          </tr>
-          <tr>
-            <td><code>attack</code></td>
-            <td>int</td>
-            <td>Attack power.</td>
-          </tr>
-          <tr>
-            <td><code>defense</code></td>
-            <td>int</td>
-            <td>Defense value.</td>
-          </tr>
-          <tr>
-            <td><code>range</code></td>
-            <td>int</td>
-            <td>Attack range in tiles.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h4>Supported Mob Types</h4>
-    <p>
-      All mobs below have registered AI classes and are supported in custom biomes:
-    </p>
-    <ul>
-      <li><strong>Passive:</strong> <code>minecraft:cow</code>, <code>minecraft:pig</code>, <code>minecraft:sheep</code>, <code>minecraft:chicken</code>, <code>minecraft:horse</code>, <code>minecraft:donkey</code>, <code>minecraft:panda</code>, <code>minecraft:parrot</code>, <code>minecraft:rabbit</code>, <code>minecraft:bat</code>, <code>minecraft:cod</code>, <code>minecraft:salmon</code>, <code>minecraft:axolotl</code>, <code>minecraft:cat</code>, <code>minecraft:ocelot</code>, <code>minecraft:fox</code>, <code>minecraft:bee</code>, <code>minecraft:wolf</code>, <code>minecraft:goat</code>, <code>minecraft:polar_bear</code>, <code>minecraft:llama</code></li>
-      <li><strong>Hostile:</strong> <code>minecraft:zombie</code>, <code>minecraft:zombie_villager</code>, <code>minecraft:husk</code>, <code>minecraft:drowned</code>, <code>minecraft:zombified_piglin</code>, <code>minecraft:skeleton</code>, <code>minecraft:stray</code>, <code>minecraft:bogged</code>, <code>minecraft:spider</code>, <code>minecraft:cave_spider</code>, <code>minecraft:creeper</code>, <code>minecraft:vindicator</code>, <code>minecraft:evoker</code>, <code>minecraft:pillager</code>, <code>minecraft:ravager</code>, <code>minecraft:witch</code>, <code>minecraft:enderman</code>, <code>minecraft:endermite</code>, <code>minecraft:phantom</code>, <code>minecraft:silverfish</code>, <code>minecraft:slime</code>, <code>minecraft:hoglin</code>, <code>minecraft:piglin</code>, <code>minecraft:blaze</code>, <code>minecraft:ghast</code>, <code>minecraft:shulker</code>, <code>minecraft:breeze</code>, <code>minecraft:magma_cube</code>, <code>minecraft:wither_skeleton</code></li>
-      <li><strong>Boss:</strong> <code>minecraft:warden</code>, <code>minecraft:ender_dragon</code></li>
-    </ul>
-
-    <h3>Loot Tables</h3>
-    <p>
-      Each loot entry specifies an item and a weight for random selection:
-    </p>
-    <pre><code>{"item": "minecraft:diamond", "weight": 5}</code></pre>
-    <p>
-      1&ndash;3 items are rolled per level completion. Higher weight means that item is chosen more frequently relative to other entries in the table.
-    </p>
-
-    <!-- ================================================================
-         4. DATAPACK SETUP
-         ================================================================ -->
-    <h2 id="datapack-setup">Datapack Setup</h2>
-    <p>
-      Wrap your custom biomes and arena structures into a standard Minecraft datapack:
-    </p>
-    <pre><code>my_arena_pack/
-  pack.mcmeta
-  data/
-    craftics/
-      craftics/
-        biomes/
-          my_custom_biome.json
-      structures/
-        arenas/
-          my_custom_biome/
-            1.nbt
-            2.nbt
-            boss_1.nbt</code></pre>
-
-    <h4>pack.mcmeta</h4>
-    <pre><code>{
-  "pack": {
-    "pack_format": 48,
-    "description": "Custom Craftics arenas"
-  }
-}</code></pre>
-    <p>
-      Place the finished datapack folder in your world&rsquo;s <code>datapacks/</code> directory.
-    </p>
-
-    <!-- ================================================================
-         5. HOT RELOAD
-         ================================================================ -->
-    <h2 id="hot-reload">Hot Reload</h2>
-    <ul>
-      <li><strong>Biome JSONs:</strong> Run <code>/reload</code> to reload without restarting the server.</li>
-      <li><strong>Structure files:</strong> Loaded on-demand when combat starts, so new files are picked up immediately.</li>
-      <li><strong>No server restart needed</strong> for any modding content.</li>
-    </ul>
-
-    <!-- ================================================================
-         6. JAVA API
-         ================================================================ -->
-    <h2 id="java-api">Java API</h2>
-    <p>
-      For full programmatic control, Craftics exposes a Fabric mod API. Register custom AI behaviors, biomes, and more from Java code.
-    </p>
-
-    <h3>Custom AI Registration</h3>
-    <pre><code>import com.crackedgames.craftics.combat.ai.AIRegistry;
-
-AIRegistry.register("mymod:custom_mob", (self, arena, playerPos) -&gt; {
-    // Your AI logic here
-    return new EnemyAction.Attack(self.getAttackPower());
-});</code></pre>
-
-    <h3>Biome &amp; Level API</h3>
-    <pre><code>CrafticsAPI.registerBiome(myBiomeTemplate);
-int total = CrafticsAPI.getTotalLevels();</code></pre>
-
-    <h4>Action Types</h4>
-    <p>
-      27 action types are available for custom AI:
-    </p>
-    <p>
-      <code>Move</code>, <code>Attack</code>, <code>MoveAndAttack</code>, <code>Flee</code>, <code>Teleport</code>, <code>TeleportAndAttack</code>, <code>Pounce</code>, <code>Explode</code>, <code>RangedAttack</code>, <code>Swoop</code>, <code>StartFuse</code>, <code>Detonate</code>, <code>Idle</code>, <code>AttackMob</code>, <code>MoveAndAttackMob</code>, <code>AttackWithKnockback</code>, <code>MoveAndAttackWithKnockback</code>, <code>SummonMinions</code>, <code>AreaAttack</code>, <code>CreateTerrain</code>, <code>LineAttack</code>, <code>ModifySelf</code>, <code>ForcedMovement</code>, <code>BossAbility</code>, <code>CeilingAscend</code>, <code>CeilingDrop</code>, <code>CompositeAction</code>
-    </p>
-
-    <!-- ================================================================
-         7. ADDON POLICY
+         13. ADDON POLICY
          ================================================================ -->
     <h2 id="addon-policy">Addon Policy</h2>
 
     <h3>Allowed</h3>
     <ul>
-      <li>Addons via API (biomes, enemies, AI, items)</li>
+      <li>Addons via API (weapons, equipment, armor sets, trims, events, enchantments, biomes, enemies, AI)</li>
       <li>Datapacks (arenas, loot, biome configs)</li>
       <li>Resource packs retexturing Craftics content</li>
       <li>Modpacks on CurseForge/Modrinth with credit</li>

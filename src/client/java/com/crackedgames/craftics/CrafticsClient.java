@@ -27,9 +27,12 @@ import org.lwjgl.glfw.GLFW;
 
 public class CrafticsClient implements ClientModInitializer {
 
+    private static final String KEYBIND_CATEGORY = "key.categories.craftics";
+
     private static KeyBinding combatToggleKey;
     private static KeyBinding guideBookKey;
     private static KeyBinding respecKey;
+    private static KeyBinding endTurnKey;
     private static boolean traderScreenOpened = false;
     private static boolean previousBobView = true;
     private static double previousChatScale = 1.0;
@@ -235,19 +238,25 @@ public class CrafticsClient implements ClientModInitializer {
         combatToggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.craftics.toggle_combat",
             InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_F6,
-            "key.categories.misc"
+            KEYBIND_CATEGORY
         ));
 
         guideBookKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.craftics.guide_book",
             InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_G,
-            "key.categories.misc"
+            KEYBIND_CATEGORY
         ));
 
         respecKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.craftics.respec",
             InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_H,
-            "key.categories.misc"
+            KEYBIND_CATEGORY
+        ));
+
+        endTurnKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.end_turn",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_R,
+            KEYBIND_CATEGORY
         ));
 
         CombatAnimations.register();
@@ -297,6 +306,12 @@ public class CrafticsClient implements ClientModInitializer {
             while (respecKey.wasPressed()) {
                 if (client.currentScreen == null && !CombatState.isInCombat()) {
                     client.setScreen(new com.crackedgames.craftics.client.RespecScreen());
+                }
+            }
+
+            while (endTurnKey.wasPressed()) {
+                if (CombatState.isInCombat() && client.currentScreen == null) {
+                    CombatInputHandler.sendEndTurn();
                 }
             }
 

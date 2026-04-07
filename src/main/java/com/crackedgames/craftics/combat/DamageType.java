@@ -23,32 +23,7 @@ public enum DamageType {
     }
 
     public static DamageType fromWeapon(Item weapon) {
-        if (weapon == Items.WOODEN_SWORD || weapon == Items.STONE_SWORD
-            || weapon == Items.IRON_SWORD || weapon == Items.GOLDEN_SWORD
-            || weapon == Items.DIAMOND_SWORD || weapon == Items.NETHERITE_SWORD) {
-            return SLASHING;
-        }
-        if (weapon == Items.WOODEN_AXE || weapon == Items.STONE_AXE
-            || weapon == Items.IRON_AXE || weapon == Items.GOLDEN_AXE
-            || weapon == Items.DIAMOND_AXE || weapon == Items.NETHERITE_AXE) {
-            return CLEAVING;
-        }
-        if (weapon == Items.MACE || weapon == Items.STICK || weapon == Items.BAMBOO
-            || weapon == Items.BLAZE_ROD || weapon == Items.BREEZE_ROD) return BLUNT;
-        if (weapon == Items.TRIDENT) return WATER;
-        if (isCoral(weapon)) return WATER;
-        if (weapon == Items.BOW || weapon == Items.CROSSBOW) return RANGED;
-        if (weapon == Items.WOODEN_HOE || weapon == Items.STONE_HOE
-            || weapon == Items.IRON_HOE || weapon == Items.GOLDEN_HOE
-            || weapon == Items.DIAMOND_HOE || weapon == Items.NETHERITE_HOE) {
-            return SPECIAL;
-        }
-        if (weapon == Items.WOODEN_SHOVEL || weapon == Items.STONE_SHOVEL
-            || weapon == Items.IRON_SHOVEL || weapon == Items.GOLDEN_SHOVEL
-            || weapon == Items.DIAMOND_SHOVEL || weapon == Items.NETHERITE_SHOVEL) {
-            return PET;
-        }
-        return PHYSICAL;
+        return com.crackedgames.craftics.api.registry.WeaponRegistry.getDamageType(weapon);
     }
 
     public static boolean isCoral(Item weapon) {
@@ -68,16 +43,7 @@ public enum DamageType {
 
     // Each armor set specializes in a damage type (netherite = +1 all)
     public static int getArmorSetBonus(String armorSet, DamageType type) {
-        return switch (armorSet) {
-            case "leather"   -> type == PHYSICAL ? 2 : 0;
-            case "chainmail" -> type == SLASHING ? 2 : 0;
-            case "iron"      -> type == CLEAVING ? 2 : 0;
-            case "gold"      -> type == SPECIAL ? 2 : 0;
-            case "diamond"   -> type == BLUNT ? 2 : 0;
-            case "netherite" -> 1;
-            case "turtle"    -> type == WATER ? 3 : 0;
-            default -> 0;
-        };
+        return com.crackedgames.craftics.api.registry.ArmorSetRegistry.getDamageTypeBonus(armorSet, type);
     }
 
     public static int getTrimBonus(TrimEffects.TrimScan scan, DamageType type) {

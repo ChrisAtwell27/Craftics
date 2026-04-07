@@ -13,7 +13,6 @@ import java.util.Set;
 public class CombatInputHandler {
 
     private static boolean lastLeftClick = false;
-    private static boolean lastRKey = false;
     private static long lastHoverBroadcastTime = 0;
     private static GridPos lastBroadcastedHover = null;
 
@@ -113,13 +112,6 @@ public class CombatInputHandler {
         boolean leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
         boolean clicked = leftDown && !lastLeftClick;
         lastLeftClick = leftDown;
-
-        // Detect R key (end turn)
-        boolean rDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_R) == GLFW.GLFW_PRESS;
-        if (rDown && !lastRKey) {
-            sendEndTurn();
-        }
-        lastRKey = rDown;
 
         // Update hover tile locally (no server round-trip)
         GridPos hoverPos = TileRaycast.getGridPosUnderCursor();
