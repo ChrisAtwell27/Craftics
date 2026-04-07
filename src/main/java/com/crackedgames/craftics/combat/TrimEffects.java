@@ -57,10 +57,14 @@ public class TrimEffects {
         SetBonus setBonus,            // active full-set bonus (NONE if no full match)
         String setName,               // display name of active set bonus
         int trimCount,                // how many armor pieces have trims
-        Map<String, Integer> materialCounts // material id -> count for display
+        Map<String, Integer> materialCounts, // material id -> count for display
+        java.util.List<com.crackedgames.craftics.api.NamedCombatEffect> combatEffects // addon combat effects
     ) {
         public int get(Bonus b) { return bonuses.getOrDefault(b, 0); }
         public boolean hasSet() { return setBonus != SetBonus.NONE; }
+        public java.util.List<com.crackedgames.craftics.api.NamedCombatEffect> getCombatEffects() {
+            return combatEffects != null ? combatEffects : java.util.List.of();
+        }
     }
 
     public static TrimScan scan(ServerPlayerEntity player) {
@@ -121,7 +125,10 @@ public class TrimEffects {
             setName = addonMods.getSetBonusName();
         }
 
-        return new TrimScan(bonuses, setBonus, setName, trimCount, materialCounts);
+        // Collect combat effect handlers from addon scanners
+        var combatEffects = new java.util.ArrayList<>(addonMods.getCombatEffects());
+
+        return new TrimScan(bonuses, setBonus, setName, trimCount, materialCounts, combatEffects);
     }
 
     public static String getMaterialDescription(String materialId) {

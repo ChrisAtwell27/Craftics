@@ -329,6 +329,12 @@ public class CombatManager {
                 this.movePointsRemaining = pStats.getEffective(PlayerProgression.Stat.SPEED)
                     + PlayerCombatStats.getSetSpeedBonus(player);
                 this.activeTrimScan = TrimEffects.scan(player);
+                this.activeCombatEffects = activeTrimScan.getCombatEffects();
+                if (effectContext != null) {
+                    effectContext.update(player, arena, combatEffects, activeTrimScan);
+                } else {
+                    effectContext = new com.crackedgames.craftics.api.CombatEffectContext(player, arena, combatEffects, activeTrimScan);
+                }
                 sendSync();
                 refreshHighlights();
             } else {
@@ -578,6 +584,11 @@ public class CombatManager {
     private TrimEffects.TrimScan activeTrimScan = null;
     public TrimEffects.TrimScan getTrimScan() { return activeTrimScan; }
 
+    // Addon combat effect lifecycle hooks
+    private java.util.List<com.crackedgames.craftics.api.NamedCombatEffect> activeCombatEffects = new java.util.ArrayList<>();
+    private com.crackedgames.craftics.api.CombatEffectContext effectContext = null;
+    private GridPos moveOriginPos = null;
+
     private static net.minecraft.item.Item lastDroppedTrim = null;
 
     private boolean testRange = false;
@@ -604,6 +615,7 @@ public class CombatManager {
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.ETHEREAL) {
             if (Math.random() < 0.20) {
                 sendMessage("§b§l✦ Ethereal! §r§7Attack phased through you!");
+                fireEffectHook(h -> h.onDodge(effectContext, null));
                 return 0;
             }
         }
@@ -624,6 +636,10 @@ public class CombatManager {
             actual = Math.max(1, actual / 2);
         }
 
+        // Addon combat effects: modify incoming damage
+        actual = fireEffectHookChained(actual, (h, dmg) -> h.onTakeDamage(effectContext, null, dmg));
+        if (actual <= 0) return 0;
+
         player.setHealth(Math.max(1, player.getHealth() - actual));
         onPlayerDamaged();
         achievementTracker.recordPlayerTookDamage();
@@ -638,6 +654,12 @@ public class CombatManager {
                     net.minecraft.sound.SoundEvents.ITEM_TRIDENT_RETURN,
                     net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.5f);
             }
+        }
+
+        // Addon combat effects: lethal damage prevention
+        if (player.getHealth() <= 1) {
+            int lethalResult = fireEffectHookChained(actual, (h, dmg) -> h.onLethalDamage(effectContext, null, dmg));
+            if (lethalResult == 0) return 0;
         }
 
         return actual;
@@ -864,6 +886,9 @@ public class CombatManager {
         player.getInventory().selectedSlot = 8;
 
         this.activeTrimScan = TrimEffects.scan(player);
+        this.activeCombatEffects = activeTrimScan.getCombatEffects();
+        this.effectContext = new com.crackedgames.craftics.api.CombatEffectContext(player, arena, combatEffects, activeTrimScan);
+        fireEffectHook(h -> h.onCombatStart(effectContext));
 
         sendMessage("§e§l--- Test Range ---");
         sendMessage("§aInfinite AP & Movement | Training Dummy: 9999 HP");
@@ -888,6 +913,9 @@ public class CombatManager {
         this.apRemaining += PlayerCombatStats.getSetApBonus(player);
         this.movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
         this.activeTrimScan = TrimEffects.scan(player);
+        this.activeCombatEffects = activeTrimScan.getCombatEffects();
+        this.effectContext = new com.crackedgames.craftics.api.CombatEffectContext(player, arena, combatEffects, activeTrimScan);
+        fireEffectHook(h -> h.onCombatStart(effectContext));
         this.apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
         this.movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
         this.turnNumber = 1;
@@ -1171,6 +1199,7 @@ public class CombatManager {
                 ce.setMobEntity(mob);
                 enemies.add(ce);
                 arena.placeEntity(ce);
+                fireEffectHook(h -> h.onEnemySpawn(effectContext, ce));
                 if (isBoss) {
                     initBossSetup(ce);
                 }
@@ -1188,6 +1217,7 @@ public class CombatManager {
                 // mobEntity is null; the EndCrystalEntity in the world serves as visual only
                 enemies.add(ce);
                 arena.placeEntity(ce);
+                fireEffectHook(h -> h.onEnemySpawn(effectContext, ce));
                 rawEntity.addCommandTag("craftics_arena");
             }
         }
@@ -1339,6 +1369,7 @@ public class CombatManager {
         int cost = path.size();
         movePointsRemaining -= cost;
         movedThisTurn = true;
+        this.moveOriginPos = playerPos;
 
         // Start animated movement
         clearHighlights();
@@ -2613,6 +2644,7 @@ public class CombatManager {
                 ce.setMobEntity(mob);
                 enemies.add(ce);
                 arena.placeEntity(ce);
+                fireEffectHook(h -> h.onEnemySpawn(effectContext, ce));
                 spawned++;
                 // Spawn particles (slimey poof)
                 world.spawnParticles(
@@ -3579,16 +3611,20 @@ public class CombatManager {
         }
 
         this.activeTrimScan = TrimEffects.scan(player);
+        this.activeCombatEffects = activeTrimScan.getCombatEffects();
+        if (effectContext != null) effectContext.update(player, arena, combatEffects, activeTrimScan);
 
         player.getWorld().playSound(null, player.getBlockPos(),
             net.minecraft.sound.SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(),
             net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.2f);
         sendMessage("§e" + player.getName().getString() + "'s turn! §aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
+        fireEffectHook(h -> h.onTurnStart(effectContext));
         sendSync();
         refreshHighlights();
     }
 
     private void startEnemyTurn() {
+        fireEffectHook(h -> h.onTurnEnd(effectContext));
         // PHANTOM set bonus: enemies don't act for the first 2 turns
         if (turnNumber <= 2 && activeTrimScan != null
                 && activeTrimScan.setBonus() == TrimEffects.SetBonus.PHANTOM) {
@@ -3861,6 +3897,14 @@ public class CombatManager {
 
             notifyBossesPlayerMoved(finalPos, tilesMoved);
 
+            // Addon combat effects: player moved
+            {
+                final GridPos fromPos = moveOriginPos != null ? moveOriginPos : finalPos;
+                final int dist = tilesMoved;
+                fireEffectHook(h -> h.onMove(effectContext, fromPos, finalPos, dist));
+                moveOriginPos = null;
+            }
+
             // TERRAFORMER (Earthshatter) set bonus: moving 3+ tiles deals 2 damage to adjacent enemies
             if (tilesMoved >= 3 && activeTrimScan != null
                     && activeTrimScan.setBonus() == TrimEffects.SetBonus.TERRAFORMER) {
@@ -4113,6 +4157,11 @@ public class CombatManager {
                     }
                 }
             }
+            // Addon combat effects: notify when effects expire
+            for (CombatEffects.EffectType expiredType : combatEffects.getLastExpired()) {
+                final CombatEffects.EffectType expType = expiredType;
+                fireEffectHook(h -> h.onEffectExpired(effectContext, expType));
+            }
 
             // Trim REGEN bonus: +1 HP per piece every 2 turns
             int trimRegen = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.REGEN) : 0;
@@ -4285,6 +4334,8 @@ public class CombatManager {
                         ));
                     }
                     this.activeTrimScan = TrimEffects.scan(player);
+                    this.activeCombatEffects = activeTrimScan.getCombatEffects();
+                    if (effectContext != null) effectContext.update(player, arena, combatEffects, activeTrimScan);
                 }
             }
 
@@ -4317,6 +4368,7 @@ public class CombatManager {
             } else {
                 sendMessage("§aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
             }
+            fireEffectHook(h -> h.onTurnStart(effectContext));
             sendSync();
             refreshHighlights();
             sendToAllParty(new CombatEventPayload(
@@ -7712,6 +7764,8 @@ public class CombatManager {
         this.movePointsRemaining = pStats.getEffective(PlayerProgression.Stat.SPEED)
             + PlayerCombatStats.getSetSpeedBonus(player);
         this.activeTrimScan = TrimEffects.scan(player);
+        this.activeCombatEffects = activeTrimScan.getCombatEffects();
+        if (effectContext != null) effectContext.update(player, arena, combatEffects, activeTrimScan);
 
         sendSync();
         refreshHighlights();
@@ -8019,6 +8073,7 @@ public class CombatManager {
         }
         phase = CombatPhase.LEVEL_COMPLETE;
         sendMessage("§a§l*** VICTORY! ***");
+        fireEffectHook(h -> h.onCombatEnd(effectContext));
 
         // Revive fallen party members with 2 hearts (4 HP)
         if (!deadPartyMembers.isEmpty()) {
@@ -8080,8 +8135,10 @@ public class CombatManager {
             final com.crackedgames.craftics.level.BiomeTemplate finalLootBiome = lootBiome;
             // Each player rolls their own completion loot (Luck boosts item counts)
             for (ServerPlayerEntity recipient : rewardRecipients) {
+                java.util.List<ItemStack> lootItems = new java.util.ArrayList<>(levelDef.rollCompletionLoot());
+                fireEffectHook(h -> h.onLootRoll(effectContext, lootItems));
                 List<ItemStack> loot = new ArrayList<>();
-                for (ItemStack stack : levelDef.rollCompletionLoot()) {
+                for (ItemStack stack : lootItems) {
                     loot.add(stack.isOf(Items.ENCHANTED_BOOK) ? randomEnchantedBook(lootWorld, stack.getCount(), finalLootBiome) : stack);
                 }
                 for (ItemStack item : loot) {
@@ -8143,6 +8200,8 @@ public class CombatManager {
             emeraldsEarned *= 2;
             sendMessage("§6§l✦ Fortune's Peak! §r§6Emerald rewards doubled!");
         }
+        // Addon combat effects: modify emerald gain
+        emeraldsEarned = fireEffectHookChained(emeraldsEarned, (h, amt) -> h.onEmeraldGain(effectContext, amt));
         // Award emeralds to all party members via per-player data
         for (ServerPlayerEntity recipient : rewardRecipients) {
             CrafticsSavedData.PlayerData pd = data.getPlayerData(recipient.getUuid());
@@ -10644,6 +10703,8 @@ public class CombatManager {
             apRemaining++;
             sendMessage("§b§l✦ Current! §r§b+1 AP refunded");
         }
+        // Addon combat effects: killing blow
+        fireEffectHook(h -> h.onDealKillingBlow(effectContext, enemy));
     }
 
     /** Called when player takes damage. Kill streaks no longer reset on damage — only on turns with no kills. */
@@ -10666,5 +10727,31 @@ public class CombatManager {
             return Math.max(1, baseDamage / 4); // +25% flanking bonus
         }
         return 0;
+    }
+
+    // === Addon combat effect lifecycle dispatch ===
+
+    private void fireEffectHook(java.util.function.Consumer<com.crackedgames.craftics.api.CombatEffectHandler> hook) {
+        if (activeCombatEffects == null || effectContext == null) return;
+        for (var effect : activeCombatEffects) {
+            hook.accept(effect.handler());
+        }
+    }
+
+    private int fireEffectHookChained(int initialValue,
+            java.util.function.BiFunction<com.crackedgames.craftics.api.CombatEffectHandler, Integer, com.crackedgames.craftics.api.CombatResult> hook) {
+        if (activeCombatEffects == null || effectContext == null) return initialValue;
+        int value = initialValue;
+        for (var effect : activeCombatEffects) {
+            com.crackedgames.craftics.api.CombatResult result = hook.apply(effect.handler(), value);
+            value = result.modifiedValue();
+            for (String msg : result.messages()) {
+                sendMessage(msg);
+            }
+            if (result.cancelled()) {
+                return 0;
+            }
+        }
+        return value;
     }
 }
