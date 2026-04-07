@@ -194,6 +194,12 @@ public class CrafticsClient implements ClientModInitializer {
         );
 
         ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.AddonBonusSyncPayload.ID, (payload, context) -> {
+                CombatState.updateAddonBonuses(payload.bonusData());
+            }
+        );
+
+        ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.LevelUpPayload.ID, (payload, context) -> {
                 context.client().setScreen(new com.crackedgames.craftics.client.LevelUpScreen(
                     payload.playerLevel(), payload.unspentPoints(), payload.statData()

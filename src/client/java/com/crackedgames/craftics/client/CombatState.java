@@ -421,6 +421,26 @@ public class CombatState {
         return ordinal >= 0 && ordinal < affinityPoints.length ? affinityPoints[ordinal] : 0;
     }
 
+    // === Addon equipment scanner bonuses (from AddonBonusSyncPayload) ===
+
+    private static final java.util.Map<String, Integer> addonBonuses = new java.util.HashMap<>();
+
+    public static void updateAddonBonuses(String bonusData) {
+        addonBonuses.clear();
+        if (bonusData == null || bonusData.isEmpty()) return;
+        for (String entry : bonusData.split(",")) {
+            String[] kv = entry.split(":");
+            if (kv.length == 2) {
+                try { addonBonuses.put(kv[0], Integer.parseInt(kv[1])); }
+                catch (NumberFormatException ignored) {}
+            }
+        }
+    }
+
+    public static int getAddonBonus(String bonusKey) {
+        return addonBonuses.getOrDefault(bonusKey, 0);
+    }
+
     // === Client-side tile set cache (from TileSetPayload) ===
 
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedMoveTiles = new java.util.HashSet<>();

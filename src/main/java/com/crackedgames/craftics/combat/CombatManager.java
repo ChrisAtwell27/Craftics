@@ -622,14 +622,26 @@ public class CombatManager {
 
         int trimDefense = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.DEFENSE) : 0;
         int defense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus() + PlayerCombatStats.getSetDefenseBonus(player) + PlayerCombatStats.getTotalProtection(player) + trimDefense;
+        int shieldDefense = 0;
         if (PlayerCombatStats.hasShield(player)) {
-            defense += SHIELD_PASSIVE_DEFENSE;
-            if (shieldBraced) defense += SHIELD_BRACE_DEFENSE;
+            shieldDefense = SHIELD_PASSIVE_DEFENSE + (shieldBraced ? SHIELD_BRACE_DEFENSE : 0);
+            defense += shieldDefense;
         }
         defense += getBannerDefenseBonus(arena.getPlayerGridPos());
         // Each defense point = 5% reduction, capped at 60%
         double reduction = Math.min(0.60, defense * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
+
+        // Addon combat effects: shield block notification
+        if (shieldDefense > 0) {
+            // The blocked amount is the damage mitigated by the shield portion of defense
+            int damageWithoutShield = Math.max(1, (int)(rawDamage * (1.0 - Math.min(0.60, (defense - shieldDefense) * 0.05))));
+            int blockedAmount = damageWithoutShield - actual;
+            if (blockedAmount > 0) {
+                final int blocked = blockedAmount;
+                fireEffectHook(h -> h.onBlocked(effectContext, null, blocked));
+            }
+        }
 
         // FORTRESS set bonus: 50% less damage when player didn't move this turn
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTRESS && !movedThisTurn) {
@@ -915,6 +927,7 @@ public class CombatManager {
         this.activeTrimScan = TrimEffects.scan(player);
         this.activeCombatEffects = activeTrimScan.getCombatEffects();
         this.effectContext = new com.crackedgames.craftics.api.CombatEffectContext(player, arena, combatEffects, activeTrimScan);
+        syncAddonBonuses();
         fireEffectHook(h -> h.onCombatStart(effectContext));
         this.apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
         this.movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
@@ -1889,8 +1902,17 @@ public class CombatManager {
             // ARMOR_PEN trim bonus: temporarily reduce enemy defense for this hit
             int trimArmorPen = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.ARMOR_PEN) : 0;
             if (trimArmorPen > 0) fTarget.setDefensePenalty(fTarget.getDefensePenalty() + trimArmorPen);
-            int dealt = fTarget.takeDamage(fBaseDamage);
+            // Addon combat effects: modify outgoing damage before it is applied
+            int hookedBaseDmg = fireEffectHookChained(fBaseDamage,
+                (h, dmg) -> h.onDealDamage(effectContext, fTarget, dmg));
+            int dealt = fTarget.takeDamage(hookedBaseDmg);
             if (trimArmorPen > 0) fTarget.setDefensePenalty(fTarget.getDefensePenalty() - trimArmorPen);
+
+            // Addon combat effects: critical hit notification
+            if (fLuckCrit) {
+                final int critDealt = dealt;
+                fireEffectHook(h -> h.onCrit(effectContext, fTarget, critDealt));
+            }
 
             // Boss reaction callback
             notifyBossOfDamage(fTarget, dealt);
@@ -1996,7 +2018,7 @@ public class CombatManager {
                     case "weakness" -> { fTarget.setStunned(true); sendMessage("\u00a77Weakness arrow! Enemy stunned."); }
                     case "harming" -> { fTarget.takeDamage(4); sendMessage("\u00a74Harming arrow! +4 bonus damage."); }
                     case "healing" -> { player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 4)); sendMessage("\u00a7dHealing arrow! Restored 4 HP."); }
-                    case "fire_resistance" -> { combatEffects.addEffect(CombatEffects.EffectType.FIRE_RESISTANCE, 3, 0); sendMessage("\u00a76Fire resistance arrow! 3 turns."); }
+                    case "fire_resistance" -> { addEffectHooked(CombatEffects.EffectType.FIRE_RESISTANCE, 3, 0); sendMessage("\u00a76Fire resistance arrow! 3 turns."); }
                 }
             }
 
@@ -2125,6 +2147,11 @@ public class CombatManager {
             // Reset crit streak on non-crit
             boolean wasCrit = abilityResult.messages().stream().anyMatch(m -> m.contains("CRITICAL HIT"));
             if (!wasCrit) achievementTracker.resetCritStreak();
+            // Addon combat effects: fire onCrit for weapon-ability crits not already caught by luckCrit
+            if (wasCrit && !fLuckCrit) {
+                final int abilityCritDmg = abilityResult.totalDamage();
+                fireEffectHook(h -> h.onCrit(effectContext, fTarget, abilityCritDmg));
+            }
 
             // === TRIDENT CHANNELING: Lightning strike on throw hit ===
             if (fIsTridentThrow && fTridentChanneling > 0 && fTarget.isAlive()) {
@@ -3934,7 +3961,7 @@ public class CombatManager {
             }
 
             if (arena.hasWebOverlay(finalPos)) {
-                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
                 sendMessage("§7  Cobwebs slow your movement! (-1 speed next turn)");
             }
 
@@ -4436,6 +4463,12 @@ public class CombatManager {
             ? currentEnemyPetAggroTarget.getGridPos()
             : arena.getPlayerGridPos();
         pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
+
+        // Addon combat effects: boss phase change notification
+        if (ai instanceof BossAI bai && bai.consumePhaseTransition()) {
+            final CombatEntity fBoss = currentEnemy;
+            fireEffectHook(h -> h.onBossPhaseChange(effectContext, fBoss, 2));
+        }
 
         // Trim STEALTH_RANGE bonus: enemies beyond detection range skip their turn
         int stealthRange = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.STEALTH_RANGE) : 0;
@@ -5033,7 +5066,7 @@ public class CombatManager {
                             player.getX(), player.getY() + 0.8, player.getZ(), 8, 0.3, 0.4, 0.3, 0.02);
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER,
                             player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
-                        combatEffects.addEffect(CombatEffects.EffectType.POISON, 3, 1);
+                        addEffectHooked(CombatEffects.EffectType.POISON, 3, 1);
                         sendMessage("§2  Poisoned! (-2 HP/turn for 3 turns)");
                     }
                     case "hex_bolt" -> {
@@ -5408,7 +5441,7 @@ public class CombatManager {
                 int actual = damagePlayer(damage);
                 sendMessage("§c  Explosion hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 if (!combatEffects.hasFireResistance()) {
-                    combatEffects.addEffect(CombatEffects.EffectType.BURNING, 2, 0);
+                    addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
                     sendMessage("§6  You're burning! (-1 HP/turn for 2 turns)");
                 }
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
@@ -5437,7 +5470,7 @@ public class CombatManager {
             if (effectCenter.equals(playerGridPos)) {
                 int actual = damagePlayer(damage);
                 sendMessage("§8  Wither Skull hits for " + actual + " damage!");
-                combatEffects.addEffect(CombatEffects.EffectType.WITHER, 3, 0);
+                addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
                 sendMessage("§8  Wither applied! (-2 HP/turn for 3 turns)");
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
@@ -5500,25 +5533,25 @@ public class CombatManager {
     private void applyBossAreaEffect(String effectName) {
         switch (effectName) {
             case "slowness", "blizzard", "frost", "frost_harpoon", "whiteout_ring" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 2, 0);
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 2, 0);
                 sendMessage("§b  Slowness applied! (-1 movement for 2 turns)");
             }
             case "weakness", "cursed_fog", "wail", "hex_snare" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.WEAKNESS, 2, 0);
+                addEffectHooked(CombatEffects.EffectType.WEAKNESS, 2, 0);
                 sendMessage("§7  Weakness applied! (-2 attack for 2 turns)");
             }
             case "burning", "fire", "magma", "raining_fireball" -> {
                 if (!combatEffects.hasFireResistance()) {
-                    combatEffects.addEffect(CombatEffects.EffectType.BURNING, 2, 0);
+                    addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
                     sendMessage("§6  You're burning! (-1 HP/turn for 2 turns)");
                 }
             }
             case "poison", "venom", "web_poison" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.POISON, 3, 0);
+                addEffectHooked(CombatEffects.EffectType.POISON, 3, 0);
                 sendMessage("§2  Poison applied! (-1 HP/turn for 3 turns)");
             }
             case "wither", "wither_slash" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.WITHER, 3, 0);
+                addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
                 sendMessage("§8  Wither applied! (-2 HP/turn for 3 turns)");
             }
             case "darkness", "lights_out" -> {
@@ -5530,16 +5563,16 @@ public class CombatManager {
                 }
             }
             case "web_spray" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
                 // Stun: use MINING_FATIGUE with high amplifier to zero out AP next turn
-                combatEffects.addEffect(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
+                addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
                 sendMessage("§7  Webbed! Stunned + slowed!");
             }
             case "web_spray_poison" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
-                combatEffects.addEffect(CombatEffects.EffectType.POISON, 2, 0);
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
                 // Stun: use MINING_FATIGUE with high amplifier to zero out AP next turn
-                combatEffects.addEffect(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
+                addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
                 sendMessage("§7  Webbed! Stunned + slowed + poisoned!");
             }
             default -> {} // No special effect
@@ -7325,7 +7358,16 @@ public class CombatManager {
                 allyTarget.setAggroAllyEntityId(currentEnemy.getEntityId());
                 sendMessage("§a" + currentEnemy.getDisplayName() + " attacks "
                     + allyTarget.getDisplayName() + " for " + dealt + " damage!" + petMsg);
-                if (!allyTarget.isAlive()) killEnemy(allyTarget);
+                // Addon combat effects: ally attack notification
+                final CombatEntity fAlly = currentEnemy;
+                final CombatEntity fAllyTarget = allyTarget;
+                final int fAllyDealt = dealt;
+                fireEffectHook(h -> h.onAllyAttack(effectContext, fAlly, fAllyTarget, fAllyDealt));
+                if (!allyTarget.isAlive()) {
+                    // Addon combat effects: ally kill notification
+                    fireEffectHook(h -> h.onAllyKill(effectContext, fAlly, fAllyTarget));
+                    killEnemy(allyTarget);
+                }
             }
             sendSync();
             enemyTurnState = EnemyTurnState.DONE;
@@ -7364,9 +7406,15 @@ public class CombatManager {
             CombatEntity petTarget = (currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
                 ? currentEnemyPetAggroTarget : null;
             if (petTarget != null) {
-                int raActual = petTarget.takeDamage(raDamage);
+                // Addon combat effects: modify ally incoming damage
+                int raHookedDmg = fireEffectHookChained(raDamage,
+                    (h, d) -> h.onAllyTakeDamage(effectContext, petTarget, currentEnemy, d));
+                int raActual = petTarget.takeDamage(raHookedDmg);
                 sendMessage("§c" + currentEnemy.getDisplayName() + " hits "
                     + petTarget.getDisplayName() + " for " + raActual + "!");
+                if (!petTarget.isAlive()) {
+                    fireEffectHook(h -> h.onAllyDeath(effectContext, petTarget));
+                }
                 checkAndHandleDeath(petTarget);
             } else {
                 int raActual = damagePlayer(raDamage);
@@ -7402,9 +7450,16 @@ public class CombatManager {
             if (distToTarget <= 1) {
                 int damage = (int)(mam.damage() * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
                 if (petTarget != null) {
-                    int actual = petTarget.takeDamage(damage);
+                    // Addon combat effects: modify ally incoming damage
+                    final CombatEntity mamPet = petTarget;
+                    int mamHookedDmg = fireEffectHookChained(damage,
+                        (h, d) -> h.onAllyTakeDamage(effectContext, mamPet, currentEnemy, d));
+                    int actual = petTarget.takeDamage(mamHookedDmg);
                     sendMessage("§c" + currentEnemy.getDisplayName() + " hits "
                         + petTarget.getDisplayName() + " for " + actual + "!");
+                    if (!petTarget.isAlive()) {
+                        fireEffectHook(h -> h.onAllyDeath(effectContext, mamPet));
+                    }
                     checkAndHandleDeath(petTarget);
                 } else {
                     int actual = damagePlayer(damage);
@@ -7463,9 +7518,16 @@ public class CombatManager {
 
         damage = (int)(damage * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
         if (petTarget != null) {
-            int actual = petTarget.takeDamage(damage);
+            // Addon combat effects: modify ally incoming damage
+            final CombatEntity melPet = petTarget;
+            int melHookedDmg = fireEffectHookChained(damage,
+                (h, d) -> h.onAllyTakeDamage(effectContext, melPet, currentEnemy, d));
+            int actual = petTarget.takeDamage(melHookedDmg);
             sendMessage("§c" + currentEnemy.getDisplayName() + " hits "
                 + petTarget.getDisplayName() + " for " + actual + "!");
+            if (!petTarget.isAlive()) {
+                fireEffectHook(h -> h.onAllyDeath(effectContext, melPet));
+            }
             checkAndHandleDeath(petTarget);
         } else {
             int actual = damagePlayer(damage);
@@ -7566,6 +7628,10 @@ public class CombatManager {
      * Knock the player back N tiles away from the attacker position.
      */
     private void applyPlayerKnockback(GridPos attackerPos, int tiles) {
+        // Addon combat effects: modify knockback distance
+        tiles = fireEffectHookChained(tiles, (h, d) -> h.onKnockback(effectContext, null, d));
+        if (tiles <= 0) return;
+
         GridPos playerGridPos = arena.getPlayerGridPos();
         int dx = Integer.signum(playerGridPos.x() - attackerPos.x());
         int dz = Integer.signum(playerGridPos.z() - attackerPos.z());
@@ -7594,48 +7660,48 @@ public class CombatManager {
     private void applyEnemyHitEffect(String entityTypeId) {
         switch (entityTypeId) {
             case "minecraft:wither_skeleton" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.WITHER, 3, 0);
+                addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
                 sendMessage("§8  Wither effect applied! (-2 HP/turn for 3 turns)");
             }
             case "minecraft:blaze" -> {
                 if (!combatEffects.hasFireResistance()) {
-                    combatEffects.addEffect(CombatEffects.EffectType.BURNING, 2, 0);
+                    addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
                     sendMessage("§6  You're burning! (-1 HP/turn for 2 turns)");
                 }
             }
             case "minecraft:husk" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.WEAKNESS, 2, 0);
+                addEffectHooked(CombatEffects.EffectType.WEAKNESS, 2, 0);
                 sendMessage("§7  Weakness applied! (-2 attack for 2 turns)");
             }
             case "minecraft:stray" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 2, 0);
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 2, 0);
                 sendMessage("§b  Slowness applied! (-1 movement for 2 turns)");
             }
             case "minecraft:witch" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.POISON, 3, 0);
+                addEffectHooked(CombatEffects.EffectType.POISON, 3, 0);
                 sendMessage("§2  Poison applied! (-1 HP/turn for 3 turns)");
             }
             case "minecraft:shulker" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 2, 0);
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 2, 0);
                 sendMessage("§d  Levitation slows you! (-1 movement for 2 turns)");
             }
             case "minecraft:ghast" -> {
                 // Ghast fireball splash: also damages nearby enemies? No — just applies burning
                 if (!combatEffects.hasFireResistance()) {
-                    combatEffects.addEffect(CombatEffects.EffectType.BURNING, 2, 0);
+                    addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
                     sendMessage("§6  Fireball burns you! (-1 HP/turn for 2 turns)");
                 }
             }
             case "minecraft:breeze" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
                 sendMessage("§b  Wind blast pushes you off balance! (-1 movement next turn)");
             }
             case "minecraft:ender_dragon" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.WEAKNESS, 2, 0);
+                addEffectHooked(CombatEffects.EffectType.WEAKNESS, 2, 0);
                 sendMessage("§5  Dragon breath weakens you! (-2 attack for 2 turns)");
             }
             case "minecraft:bee" -> {
-                combatEffects.addEffect(CombatEffects.EffectType.POISON, 2, 0);
+                addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
                 sendMessage("§2  Bee sting! Poison applied! (-1 HP/turn for 2 turns)");
             }
             case "minecraft:llama" -> {
@@ -10730,6 +10796,35 @@ public class CombatManager {
     }
 
     // === Addon combat effect lifecycle dispatch ===
+
+    /**
+     * Wrapper around combatEffects.addEffect that fires the onEffectApplied hook,
+     * allowing addons to modify the effect duration before it is applied.
+     */
+    private void addEffectHooked(CombatEffects.EffectType effectType, int turns, int amplifier) {
+        int hookedTurns = fireEffectHookChained(turns,
+            (h, t) -> h.onEffectApplied(effectContext, effectType, t));
+        if (hookedTurns > 0) {
+            combatEffects.addEffect(effectType, hookedTurns, amplifier);
+        }
+    }
+
+    /** Sync addon equipment scanner bonuses to the client for UI display. */
+    private void syncAddonBonuses() {
+        if (player == null || activeTrimScan == null) return;
+        // Serialize addon bonuses from TrimScan's merged bonus map
+        // We need to identify which bonuses came from addon scanners vs vanilla trims.
+        // Simplest approach: re-run the scanner and serialize its raw output.
+        com.crackedgames.craftics.api.StatModifiers addonMods =
+            com.crackedgames.craftics.api.registry.EquipmentScannerRegistry.scanAll(player);
+        StringBuilder sb = new StringBuilder();
+        for (var entry : addonMods.getAll().entrySet()) {
+            if (sb.length() > 0) sb.append(",");
+            sb.append(entry.getKey().name()).append(":").append(entry.getValue());
+        }
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+            new com.crackedgames.craftics.network.AddonBonusSyncPayload(sb.toString()));
+    }
 
     private void fireEffectHook(java.util.function.Consumer<com.crackedgames.craftics.api.CombatEffectHandler> hook) {
         if (activeCombatEffects == null || effectContext == null) return;
