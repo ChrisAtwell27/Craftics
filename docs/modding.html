@@ -40,6 +40,7 @@
       <a href="#getting-started">Getting Started</a>
       <a href="#weapons">Weapon Registration</a>
       <a href="#equipment-scanners">Equipment Scanners</a>
+      <a href="#combat-effects">Combat Effects</a>
       <a href="#armor-sets">Armor Sets</a>
       <a href="#trim-effects">Trim Effects</a>
       <a href="#events">Events</a>
@@ -83,7 +84,7 @@
           <tr>
             <td>Equipment Scanners</td>
             <td><code>registerEquipmentScanner()</code></td>
-            <td>Read stat bonuses from non-standard inventory slots (trinkets, baubles)</td>
+            <td>Read stat bonuses from non-standard inventory slots (custom equipment slots)</td>
           </tr>
           <tr>
             <td>Armor Sets</td>
@@ -294,16 +295,16 @@ public interface WeaponAbilityHandler {
       Return a <code>WeaponAbility.AttackResult(totalDamage, messages, extraTargets)</code> where <code>messages</code> is a list of combat log strings and <code>extraTargets</code> is a list of additional entities hit by the ability.
     </p>
 
-    <h3>Example: Simply Swords Weapon</h3>
+    <h3>Example: Custom Weapon</h3>
     <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
 import com.crackedgames.craftics.api.Abilities;
 import com.crackedgames.craftics.api.registry.WeaponEntry;
 import com.crackedgames.craftics.combat.DamageType;
-import net.sweenus.simplyswords.registry.ItemsRegistry;
 
-// Iron Claymore: cleaving type, armor ignore + knockback
-Item claymore = ItemsRegistry.IRON_CLAYMORE;
-CrafticsAPI.registerWeapon(claymore, WeaponEntry.builder(claymore)
+// Heavy Claymore: cleaving type, armor ignore + knockback
+Item myItem = net.minecraft.registry.Registries.ITEM
+    .get(net.minecraft.util.Identifier.of("mymod", "heavy_claymore"));
+CrafticsAPI.registerWeapon(myItem, WeaponEntry.builder(myItem)
     .damageType(DamageType.CLEAVING)
     .attackPower(7)
     .apCost(2)
@@ -317,7 +318,7 @@ CrafticsAPI.registerWeapon(claymore, WeaponEntry.builder(claymore)
          ================================================================ -->
     <h2 id="equipment-scanners">Equipment Scanners</h2>
     <p>
-      Equipment scanners let addon mods contribute stat bonuses from non-standard inventory slots. This is how trinket/bauble/curio mods integrate with Craftics combat stats. Register one with <code>CrafticsAPI.registerEquipmentScanner()</code>.
+      Equipment scanners let addon mods contribute stat bonuses from non-standard inventory slots. This is how addon mods with custom equipment slots integrate with Craftics combat stats. Register one with <code>CrafticsAPI.registerEquipmentScanner()</code>.
     </p>
 
     <h3>EquipmentScanner Interface</h3>
@@ -344,30 +345,31 @@ mods.addSetBonus(TrimEffects.SetBonus.FERAL, "Feral Ring Set"); // optional set 
       <code>SWORD_POWER</code>, <code>CLEAVING_POWER</code>, <code>BLUNT_POWER</code>, <code>WATER_POWER</code>, <code>SPECIAL_POWER</code>
     </p>
 
-    <h3>Example: Artifacts Mod Trinkets</h3>
+    <h3>Example: Equipment Scanner</h3>
     <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
 import com.crackedgames.craftics.api.EquipmentScanner;
 import com.crackedgames.craftics.api.StatModifiers;
 import com.crackedgames.craftics.combat.TrimEffects;
-import artifacts.registry.ModItems;
 import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
 
-CrafticsAPI.registerEquipmentScanner("artifacts", (player) -&gt; {
+CrafticsAPI.registerEquipmentScanner("mymod", (player) -&gt; {
     StatModifiers mods = new StatModifiers();
 
-    // Check trinket slots for known Artifacts items
-    // (Use Artifacts' own trinket API to read equipped items)
-    ItemStack belt = getTrinket(player, "belt");
+    // Read items from your addon's custom equipment slots
+    // and map them to Craftics stat bonuses
+    ItemStack belt = getCustomSlot(player, "belt");
     if (!belt.isEmpty()) {
-        if (belt.isOf(ModItems.SPEED_BELT)) {
+        if (belt.isOf(Registries.ITEM.get(Identifier.of("mymod", "swift_belt")))) {
             mods.add(TrimEffects.Bonus.SPEED, 1);
-        } else if (belt.isOf(ModItems.IRON_BELT)) {
+        } else if (belt.isOf(Registries.ITEM.get(Identifier.of("mymod", "iron_belt")))) {
             mods.add(TrimEffects.Bonus.DEFENSE, 2);
         }
     }
 
-    ItemStack necklace = getTrinket(player, "necklace");
-    if (!necklace.isEmpty() &amp;&amp; necklace.isOf(ModItems.LUCKY_CHARM)) {
+    ItemStack amulet = getCustomSlot(player, "amulet");
+    if (!amulet.isEmpty() &amp;&amp; amulet.isOf(Registries.ITEM.get(Identifier.of("mymod", "lucky_charm")))) {
         mods.add(TrimEffects.Bonus.LUCK, 3);
     }
 
@@ -375,7 +377,195 @@ CrafticsAPI.registerEquipmentScanner("artifacts", (player) -&gt; {
 });</code></pre>
 
     <!-- ================================================================
-         5. ARMOR SETS
+         5. COMBAT EFFECTS
+         ================================================================ -->
+    <h2 id="combat-effects">Combat Effects</h2>
+
+    <h3>Overview</h3>
+    <p>
+      Combat effects are custom lifecycle callbacks that fire during combat. Unlike flat stat bonuses, they can react to events &mdash; taking damage, killing enemies, moving &mdash; and modify combat behavior dynamically. They are registered by calling <code>StatModifiers.addCombatEffect()</code> inside an <code>EquipmentScanner</code>.
+    </p>
+
+    <h3>CombatEffectHandler Interface</h3>
+    <p>
+      <code>CombatEffectHandler</code> is an interface with 24 default no-op methods. Override only the callbacks your effect needs. The 15 currently wired callbacks are:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Callback</th>
+            <th>Returns</th>
+            <th>When it fires</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>onCombatStart(ctx)</code></td>
+            <td>void</td>
+            <td>Combat begins</td>
+          </tr>
+          <tr>
+            <td><code>onTurnStart(ctx)</code></td>
+            <td>void</td>
+            <td>Player's turn starts</td>
+          </tr>
+          <tr>
+            <td><code>onTurnEnd(ctx)</code></td>
+            <td>void</td>
+            <td>Player's turn ends</td>
+          </tr>
+          <tr>
+            <td><code>onCombatEnd(ctx)</code></td>
+            <td>void</td>
+            <td>Combat finishes</td>
+          </tr>
+          <tr>
+            <td><code>onDealKillingBlow(ctx, killed)</code></td>
+            <td>void</td>
+            <td>Player kills an enemy</td>
+          </tr>
+          <tr>
+            <td><code>onTakeDamage(ctx, attacker, damage)</code></td>
+            <td>CombatResult</td>
+            <td>Player takes damage</td>
+          </tr>
+          <tr>
+            <td><code>onLethalDamage(ctx, attacker, damage)</code></td>
+            <td>CombatResult</td>
+            <td>Damage would kill player</td>
+          </tr>
+          <tr>
+            <td><code>onDodge(ctx, attacker)</code></td>
+            <td>void</td>
+            <td>Player dodges an attack</td>
+          </tr>
+          <tr>
+            <td><code>onMove(ctx, from, to, distance)</code></td>
+            <td>void</td>
+            <td>Player moves on grid</td>
+          </tr>
+          <tr>
+            <td><code>onEmeraldGain(ctx, amount)</code></td>
+            <td>CombatResult</td>
+            <td>Emeralds awarded</td>
+          </tr>
+          <tr>
+            <td><code>onLootRoll(ctx, loot)</code></td>
+            <td>void</td>
+            <td>Loot generated (mutable list)</td>
+          </tr>
+          <tr>
+            <td><code>onEnemySpawn(ctx, enemy)</code></td>
+            <td>void</td>
+            <td>Enemy enters arena</td>
+          </tr>
+          <tr>
+            <td><code>onEffectExpired(ctx, effect)</code></td>
+            <td>void</td>
+            <td>Status effect wears off</td>
+          </tr>
+          <tr>
+            <td><code>onCrit(ctx, target, damage)</code> <em>(planned)</em></td>
+            <td>void</td>
+            <td>Critical hit (future)</td>
+          </tr>
+          <tr>
+            <td><code>onMiss(ctx, target)</code> <em>(planned)</em></td>
+            <td>void</td>
+            <td>Attack misses (future)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>CombatResult</h3>
+    <p>
+      Callbacks that return <code>CombatResult</code> can intercept and modify the value in question. Three factory methods are available:
+    </p>
+    <pre><code>CombatResult.unchanged(damage)              // pass through unchanged
+CombatResult.modify(newValue, "message")    // change the value, display a message
+CombatResult.cancel("message")             // cancel the action entirely (e.g., prevent death)</code></pre>
+
+    <h3>CombatEffectContext</h3>
+    <p>
+      All callbacks receive a <code>CombatEffectContext</code> as their first argument. It exposes the following getters:
+    </p>
+    <pre><code>ctx.getPlayer()         // ServerPlayerEntity &mdash; the combatant
+ctx.getArena()          // CombatArena &mdash; the active arena
+ctx.getPlayerEffects()  // List of active status effects on the player
+ctx.getTrimScan()       // TrimScan &mdash; the player's trim data
+ctx.getAllEnemies()      // List&lt;CombatEntity&gt; &mdash; all current enemies
+ctx.getAllAllies()       // List&lt;CombatEntity&gt; &mdash; all current allies</code></pre>
+
+    <h3>Statefulness</h3>
+    <p>
+      Handlers are per-combat instances &mdash; a fresh instance is created at combat start each time the scanner runs. This means you can safely use instance fields to track state within a single fight:
+    </p>
+    <pre><code>mods.addCombatEffect("One-Shot Shield", new CombatEffectHandler() {
+    private boolean used = false; // resets each combat
+
+    @Override
+    public CombatResult onLethalDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
+        if (!used) {
+            used = true;
+            // ...
+        }
+        return CombatResult.unchanged(damage);
+    }
+});</code></pre>
+
+    <h3>Registration</h3>
+    <p>
+      Call <code>mods.addCombatEffect(name, handler)</code> inside your <code>EquipmentScanner</code>. Multiple effects per item are allowed &mdash; each registered independently with its own name and instance.
+    </p>
+    <pre><code>CrafticsAPI.registerEquipmentScanner("mymod", (player) -&gt; {
+    StatModifiers mods = new StatModifiers();
+
+    ItemStack ring = getCustomSlot(player, "ring");
+    if (ring.isOf(MY_THORNS_RING)) {
+        mods.addCombatEffect("Thorns Ring", new ThornsCombatEffect());
+    }
+
+    return mods;
+});</code></pre>
+
+    <h3>Examples</h3>
+
+    <h4>Thorns Effect (reflect damage)</h4>
+    <pre><code>mods.addCombatEffect("Thorns Ring", new CombatEffectHandler() {
+    @Override
+    public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
+        if (attacker != null) attacker.takeDamage(Math.max(1, damage / 4));
+        return CombatResult.modify(damage, "&sect;6Thorns Ring reflects damage!");
+    }
+});</code></pre>
+
+    <h4>Death Prevention (once per combat)</h4>
+    <pre><code>mods.addCombatEffect("Lucky Charm", new CombatEffectHandler() {
+    private boolean used = false;
+
+    @Override
+    public CombatResult onLethalDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
+        if (!used) {
+            used = true;
+            ctx.getPlayer().heal(10);
+            return CombatResult.cancel("&sect;d&#x2766; Lucky Charm saves you from death!");
+        }
+        return CombatResult.unchanged(damage);
+    }
+});</code></pre>
+
+    <h4>Bonus Emeralds</h4>
+    <pre><code>mods.addCombatEffect("Fortune Amulet", new CombatEffectHandler() {
+    @Override
+    public CombatResult onEmeraldGain(CombatEffectContext ctx, int amount) {
+        return CombatResult.modify(amount + 2, "&sect;6Fortune Amulet: +2 bonus emeralds!");
+    }
+});</code></pre>
+
+    <!-- ================================================================
+         6. ARMOR SETS
          ================================================================ -->
     <h2 id="armor-sets">Armor Sets</h2>
     <p>
@@ -752,56 +942,52 @@ int totalLevels = CrafticsAPI.getTotalLevels();</code></pre>
          ================================================================ -->
     <h2 id="complete-example">Complete Example</h2>
     <p>
-      A full compat mod skeleton integrating Simply Swords weapons and Artifacts trinkets with Craftics.
+      A full addon mod skeleton registering custom weapons, an equipment scanner, an armor set, and an event with Craftics.
     </p>
 
     <h3>fabric.mod.json</h3>
     <pre><code>{
   "schemaVersion": 1,
-  "id": "craftics-compat",
+  "id": "mymod-craftics-addon",
   "version": "1.0.0",
-  "name": "Craftics Compat: Simply Swords + Artifacts",
-  "description": "Adds Simply Swords weapons and Artifacts trinkets to Craftics combat.",
+  "name": "MyMod Craftics Addon",
+  "description": "Adds MyMod weapons, equipment, armor sets, and events to Craftics combat.",
   "environment": "*",
   "entrypoints": {
-    "main": ["com.example.crafticscompat.CrafticsCompatMod"]
+    "main": ["com.example.mymod.CrafticsAddon"]
   },
   "depends": {
     "fabricloader": "&gt;=0.16.0",
-    "craftics": "&gt;=1.0.0"
-  },
-  "suggests": {
-    "simplyswords": "*",
-    "artifacts": "*"
+    "craftics": "&gt;=1.0.0",
+    "mymod": "&gt;=1.0.0"
   }
 }</code></pre>
 
-    <h3>CrafticsCompatMod.java</h3>
-    <pre><code>package com.example.crafticscompat;
+    <h3>CrafticsAddon.java</h3>
+    <pre><code>package com.example.mymod;
 
 import com.crackedgames.craftics.api.*;
 import com.crackedgames.craftics.api.registry.*;
 import com.crackedgames.craftics.combat.DamageType;
 import com.crackedgames.craftics.combat.TrimEffects;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.item.Item;
+import net.minecraft.registry.Registries;
+import net.minecraft.util.Identifier;
 
-public class CrafticsCompatMod implements ModInitializer {
+public class CrafticsAddon implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        if (FabricLoader.getInstance().isModLoaded("simplyswords")) {
-            registerSimplySwords();
-        }
-        if (FabricLoader.getInstance().isModLoaded("artifacts")) {
-            registerArtifacts();
-        }
+        registerWeapons();
+        registerEquipmentScanner();
+        registerArmorSet();
+        registerEvent();
     }
 
-    private void registerSimplySwords() {
-        // --- Iron Claymore: heavy cleaving weapon ---
-        Item claymore = getSimplySwordsItem("iron_claymore");
+    private void registerWeapons() {
+        // --- Heavy Claymore: cleaving weapon with armor ignore + knockback ---
+        Item claymore = getItem("mymod", "heavy_claymore");
         CrafticsAPI.registerWeapon(claymore, WeaponEntry.builder(claymore)
             .damageType(DamageType.CLEAVING)
             .attackPower(7)
@@ -811,8 +997,8 @@ public class CrafticsCompatMod implements ModInitializer {
                 .and(Abilities.knockbackDirection(1)))
             .build());
 
-        // --- Iron Rapier: fast slashing weapon ---
-        Item rapier = getSimplySwordsItem("iron_rapier");
+        // --- Swift Rapier: fast slashing weapon with bleed + pierce ---
+        Item rapier = getItem("mymod", "swift_rapier");
         CrafticsAPI.registerWeapon(rapier, WeaponEntry.builder(rapier)
             .damageType(DamageType.SLASHING)
             .attackPower(4)
@@ -822,8 +1008,8 @@ public class CrafticsCompatMod implements ModInitializer {
                 .and(Abilities.pierce()))
             .build());
 
-        // --- Iron Glaive: ranged slashing weapon ---
-        Item glaive = getSimplySwordsItem("iron_glaive");
+        // --- Longreach Glaive: slashing weapon with extended range + sweep ---
+        Item glaive = getItem("mymod", "longreach_glaive");
         CrafticsAPI.registerWeapon(glaive, WeaponEntry.builder(glaive)
             .damageType(DamageType.SLASHING)
             .attackPower(5)
@@ -833,25 +1019,59 @@ public class CrafticsCompatMod implements ModInitializer {
             .build());
     }
 
-    private void registerArtifacts() {
-        // --- Equipment scanner for Artifacts trinkets ---
-        CrafticsAPI.registerEquipmentScanner("artifacts", (player) -&gt; {
+    private void registerEquipmentScanner() {
+        // Scan mymod's custom equipment slots and contribute stats to Craftics
+        CrafticsAPI.registerEquipmentScanner("mymod", (player) -&gt; {
             StatModifiers mods = new StatModifiers();
-            // Scan Artifacts trinket slots and map to Craftics stats
-            // (implementation depends on Artifacts trinket API)
-            return mods;
-        });
+            // Read items from your addon's custom equipment slots
+            // and map them to Craftics stat bonuses
+            Item swiftBelt = getItem("mymod", "swift_belt");
+            Item ironBelt  = getItem("mymod", "iron_belt");
+            Item luckCharm = getItem("mymod", "lucky_charm");
 
-        // --- Custom enchantment from Artifacts ---
-        CrafticsAPI.registerEnchantment("artifacts:fortification", (ctx) -&gt; {
-            ctx.getModifiers().add(TrimEffects.Bonus.DEFENSE, ctx.getLevel());
+            ItemStack belt = getCustomSlot(player, "belt");
+            if (!belt.isEmpty()) {
+                if (belt.isOf(swiftBelt))  mods.add(TrimEffects.Bonus.SPEED, 1);
+                else if (belt.isOf(ironBelt)) mods.add(TrimEffects.Bonus.DEFENSE, 2);
+            }
+
+            ItemStack amulet = getCustomSlot(player, "amulet");
+            if (!amulet.isEmpty() &amp;&amp; amulet.isOf(luckCharm)) {
+                mods.add(TrimEffects.Bonus.LUCK, 3);
+            }
+            return mods;
         });
     }
 
-    private static Item getSimplySwordsItem(String name) {
-        // Use Simply Swords' registry to look up items
-        return net.minecraft.registry.Registries.ITEM
-            .get(net.minecraft.util.Identifier.of("simplyswords", name));
+    private void registerArmorSet() {
+        // Full-set bonus for mymod:mythril armor
+        CrafticsAPI.registerArmorSet(ArmorSetEntry.builder("mymod:mythril")
+            .damageBonus(DamageType.SLASHING, 2)
+            .damageBonus(DamageType.CLEAVING, 1)
+            .speedBonus(1)
+            .defenseBonus(2)
+            .description("Mythril Armor: light and sharp")
+            .build());
+    }
+
+    private void registerEvent() {
+        // A healing spring event available from biome index 1 onwards
+        CrafticsAPI.registerEvent(new EventEntry(
+            "mymod:healing_spring",
+            "Healing Spring",
+            0.12f,
+            1,
+            false,
+            (participants, world, eventManager) -&gt; {
+                for (ServerPlayerEntity player : participants) {
+                    player.heal(5.0f);
+                }
+            }
+        ));
+    }
+
+    private static Item getItem(String namespace, String path) {
+        return Registries.ITEM.get(Identifier.of(namespace, path));
     }
 }</code></pre>
 
