@@ -21,8 +21,10 @@ public class CrafticsSavedData extends PersistentState {
 
     private int nextWorldSlot = 0;
 
-    private static final int WORLD_SLOT_SPACING = 10000;
-    private static final int WORLD_SLOT_BASE_X = 10000;
+    /** Z distance between player lanes (rows). Arenas are narrow in Z, so 1000 is plenty. */
+    private static final int LANE_SPACING_Z = 1000;
+    /** X offset where the hub sits for every player. */
+    private static final int HUB_X = 10000;
 
     private final Map<UUID, PlayerData> players = new HashMap<>();
     private final Map<UUID, Party> parties = new HashMap<>();
@@ -47,6 +49,32 @@ public class CrafticsSavedData extends PersistentState {
         private final java.util.List<net.minecraft.nbt.NbtCompound> hubPets = new java.util.ArrayList<>();
         /** Server-authoritative unlocked guide entries (bestiary mobs, trims) */
         private final java.util.Set<String> unlockedGuideEntries = new java.util.LinkedHashSet<>();
+        /** Whether arenas have been pre-generated for this world slot. */
+        public boolean arenasPreGenerated = false;
+        /** Pre-built arena metadata: level -> "originX,originY,originZ,width,height,playerX,playerZ" */
+        private final Map<Integer, String> preBuiltArenas = new HashMap<>();
+
+        public void storeArenaMetadata(int level, net.minecraft.util.math.BlockPos origin,
+                                        int width, int height,
+                                        com.crackedgames.craftics.core.GridPos playerStart) {
+            preBuiltArenas.put(level, origin.getX() + "," + origin.getY() + "," + origin.getZ()
+                + "," + width + "," + height + "," + playerStart.x() + "," + playerStart.z());
+        }
+
+        /** Returns int[]{originX, originY, originZ, width, height, playerX, playerZ} or null. */
+        public int[] getArenaMetadata(int level) {
+            String raw = preBuiltArenas.get(level);
+            if (raw == null) return null;
+            String[] parts = raw.split(",");
+            if (parts.length != 7) return null;
+            try {
+                int[] result = new int[7];
+                for (int i = 0; i < 7; i++) result[i] = Integer.parseInt(parts[i]);
+                return result;
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
 
         public boolean unlockGuideEntry(String entryName) {
             return unlockedGuideEntries.add(entryName);
@@ -151,6 +179,12 @@ public class CrafticsSavedData extends PersistentState {
             hubPets.forEach(petList::add);
             nbt.put("hubPets", petList);
             nbt.putString("unlockedGuideEntries", String.join("|", unlockedGuideEntries));
+            nbt.putBoolean("arenasPreGenerated", arenasPreGenerated);
+            NbtCompound arenasMeta = new NbtCompound();
+            for (var entry : preBuiltArenas.entrySet()) {
+                arenasMeta.putString(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            nbt.put("preBuiltArenas", arenasMeta);
             return nbt;
         }
 
@@ -178,6 +212,15 @@ public class CrafticsSavedData extends PersistentState {
                     for (String entry : raw.split("\\|")) {
                         if (!entry.isEmpty()) pd.unlockedGuideEntries.add(entry);
                     }
+                }
+            }
+            pd.arenasPreGenerated = nbt.contains("arenasPreGenerated") && nbt.getBoolean("arenasPreGenerated");
+            if (nbt.contains("preBuiltArenas")) {
+                NbtCompound arenasMeta = nbt.getCompound("preBuiltArenas");
+                for (String key : arenasMeta.getKeys()) {
+                    try {
+                        pd.preBuiltArenas.put(Integer.parseInt(key), arenasMeta.getString(key));
+                    } catch (NumberFormatException ignored) {}
                 }
             }
             return pd;
@@ -377,8 +420,7 @@ public class CrafticsSavedData extends PersistentState {
     public net.minecraft.util.math.BlockPos getWorldOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        return new net.minecraft.util.math.BlockPos(
-            WORLD_SLOT_BASE_X + pd.worldSlot * WORLD_SLOT_SPACING, 65, 0);
+        return new net.minecraft.util.math.BlockPos(HUB_X, 65, pd.worldSlot * LANE_SPACING_Z);
     }
 
     /** Alias for getWorldOrigin — returns the center of the player's personal hub. */
@@ -393,24 +435,24 @@ public class CrafticsSavedData extends PersistentState {
     public net.minecraft.util.math.BlockPos getArenaOrigin(UUID playerId, int level) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        int baseX = WORLD_SLOT_BASE_X + pd.worldSlot * WORLD_SLOT_SPACING;
-        return new net.minecraft.util.math.BlockPos(baseX + ARENA_OFFSET + level * 100, 100, 0);
+        int laneZ = pd.worldSlot * LANE_SPACING_Z;
+        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + level * 300, 100, laneZ);
     }
 
     /** Get the trader area origin within a player's world. */
     public net.minecraft.util.math.BlockPos getTraderOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        int baseX = WORLD_SLOT_BASE_X + pd.worldSlot * WORLD_SLOT_SPACING;
-        return new net.minecraft.util.math.BlockPos(baseX + ARENA_OFFSET + 500, 100, 500);
+        int laneZ = pd.worldSlot * LANE_SPACING_Z;
+        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 500);
     }
 
     /** Get the dig site origin within a player's world. */
     public net.minecraft.util.math.BlockPos getDigSiteOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        int baseX = WORLD_SLOT_BASE_X + pd.worldSlot * WORLD_SLOT_SPACING;
-        return new net.minecraft.util.math.BlockPos(baseX + ARENA_OFFSET + 500, 100, 600);
+        int laneZ = pd.worldSlot * LANE_SPACING_Z;
+        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 600);
     }
 
     /**

@@ -4,6 +4,7 @@ import com.crackedgames.craftics.block.ModBlocks;
 import com.crackedgames.craftics.block.ModScreenHandlers;
 import com.crackedgames.craftics.combat.CombatManager;
 import com.crackedgames.craftics.network.ModNetworking;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import com.crackedgames.craftics.component.CrafticsComponents;
 import com.crackedgames.craftics.world.CrafticsSavedData;
 import com.crackedgames.craftics.world.HubRoomBuilder;
@@ -777,17 +778,40 @@ public class CrafticsMod implements ModInitializer {
                     return 0;
                 }
 
-                int slot = data.allocateWorldSlot(player.getUuid());
-                net.minecraft.util.math.BlockPos hubCenter = data.getHubOrigin(player.getUuid());
-                HubRoomBuilder.build(overworld, hubCenter);
-                CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
-                pd.personalHubBuilt = true;
-                pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
-                data.markDirty();
+                // Show loading screen immediately
+                ServerPlayNetworking.send(player,
+                    new com.crackedgames.craftics.network.LoadingScreenPayload(
+                        true, "Creating World...", "Building arenas..."));
 
-                player.requestTeleport(hubCenter.getX() + 0.5, hubCenter.getY(), hubCenter.getZ() + 0.5);
-                ctx.getSource().sendFeedback(() -> Text.literal(
-                    "\u00a7a\u00a7l\u2726 Personal world created! \u00a7r\u00a7aUse \u00a7e/home\u00a7a to return anytime."), true);
+                final java.util.UUID playerUuid = player.getUuid();
+                final ServerWorld finalOverworld = overworld;
+
+                // Run all generation on the server thread — player stays behind loading screen
+                overworld.getServer().execute(() -> {
+                    CrafticsSavedData d = CrafticsSavedData.get(finalOverworld);
+                    d.allocateWorldSlot(playerUuid);
+                    net.minecraft.util.math.BlockPos hubCenter = d.getHubOrigin(playerUuid);
+                    HubRoomBuilder.build(finalOverworld, hubCenter);
+                    CrafticsSavedData.PlayerData pd = d.getPlayerData(playerUuid);
+                    pd.personalHubBuilt = true;
+                    pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
+                    d.markDirty();
+
+                    // Pre-generate all arenas
+                    com.crackedgames.craftics.level.ArenaPreGenerator.generateAll(finalOverworld, playerUuid);
+
+                    // Everything is ready — teleport and dismiss loading screen
+                    var p = finalOverworld.getServer().getPlayerManager().getPlayer(playerUuid);
+                    if (p != null) {
+                        p.requestTeleport(hubCenter.getX() + 0.5, hubCenter.getY(), hubCenter.getZ() + 0.5);
+                        p.sendMessage(Text.literal(
+                            "\u00a7a\u00a7l\u2726 Personal world created! \u00a7r\u00a7aUse \u00a7e/home\u00a7a to return anytime."), false);
+                        ServerPlayNetworking.send(p,
+                            new com.crackedgames.craftics.network.LoadingScreenPayload(
+                                false, "", ""));
+                    }
+                });
+
                 return 1;
             });
             dispatcher.register(CommandManager.literal("new").executes(shortcutNewCmd));

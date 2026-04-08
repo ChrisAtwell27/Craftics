@@ -40,9 +40,10 @@ public class VictoryChoiceScreen extends Screen {
         int btnH = 20;
 
         if (isEventPrompt) {
-            // --- Event prompt (Trial Chamber, Treasure Vault, Ominous Trial) ---
+            // --- Event prompt (Trial Chamber, Treasure Vault, Ominous Trial, addon events) ---
             boolean isTreasure = biomeName.contains("Treasure");
             boolean isOminous = biomeName.contains("Ominous");
+            boolean isTrial = biomeName.contains("Trial");
 
             String acceptLabel;
             String declineLabel;
@@ -53,8 +54,11 @@ public class VictoryChoiceScreen extends Screen {
             } else if (isOminous) {
                 acceptLabel = "\u00a7c\u2694 Accept the Ominous Trial (Legendary loot!)";
                 declineLabel = "\u00a77\u2717 Not worth the risk...";
-            } else {
+            } else if (isTrial) {
                 acceptLabel = "\u00a76\u2694 Enter the Trial Chamber (Rare loot!)";
+                declineLabel = "\u00a77\u2717 Pass and continue";
+            } else {
+                acceptLabel = "\u00a76\u2694 Explore " + biomeName;
                 declineLabel = "\u00a77\u2717 Pass and continue";
             }
 
@@ -126,6 +130,7 @@ public class VictoryChoiceScreen extends Screen {
     private void renderEventPrompt(DrawContext context, int cx, int cy) {
         boolean isTreasure = biomeName.contains("Treasure");
         boolean isOminous = biomeName.contains("Ominous");
+        boolean isTrial = biomeName.contains("Trial");
 
         if (isTreasure) {
             // Treasure Vault prompt
@@ -136,7 +141,7 @@ public class VictoryChoiceScreen extends Screen {
                 Text.literal("\u00a7eA hidden vault filled with riches!"),
                 cx, cy - 38, 0xFFFF55);
             context.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("\u00a77No enemies inside — just free loot."),
+                Text.literal("\u00a77No enemies inside \u2014 just free loot."),
                 cx, cy - 22, 0xAAAAAA);
         } else if (isOminous) {
             // Ominous Trial prompt
@@ -152,7 +157,7 @@ public class VictoryChoiceScreen extends Screen {
             context.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("\u00a7dRewards: Legendary-tier loot"),
                 cx, cy - 6, 0xFF55FF);
-        } else {
+        } else if (isTrial) {
             // Standard Trial Chamber prompt
             context.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("\u00a76\u00a7l\u2694 TRIAL CHAMBER DISCOVERED \u2694"),
@@ -166,6 +171,17 @@ public class VictoryChoiceScreen extends Screen {
             context.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("\u00a7cEnemies are tougher than normal."),
                 cx, cy - 6, 0xFF5555);
+        } else {
+            // Generic addon event prompt — use the event's display name
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("\u00a76\u00a7l\u2726 " + biomeName.toUpperCase() + " \u2726"),
+                cx, cy - 55, 0xFFAA00);
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("\u00a7eA rare discovery!"),
+                cx, cy - 38, 0xFFFF55);
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("\u00a77Will you explore it?"),
+                cx, cy - 22, 0xAAAAAA);
         }
     }
 

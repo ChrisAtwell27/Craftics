@@ -71,7 +71,92 @@ public class ArenaBuilder {
         return buildAt(world, levelDef, origin);
     }
 
-    private static GridArena buildAt(ServerWorld world, LevelDefinition levelDef, BlockPos origin) {
+    /**
+     * Create a GridArena from an already-placed (pre-generated) arena.
+     * Scans existing world blocks for obstacles/water/voids — no blocks are placed.
+     * Chunks are force-loaded and resent to the client.
+     */
+    public static GridArena scanExisting(ServerWorld world, BlockPos gridOrigin,
+                                          int gridW, int gridH, GridPos playerStart, int level) {
+        int floorX = gridOrigin.getX(), floorY = gridOrigin.getY(), floorZ = gridOrigin.getZ();
+
+        // Force-load chunks so client has blocks before teleport
+        int minCX = (floorX - 2) >> 4;
+        int maxCX = (floorX + gridW + 2) >> 4;
+        int minCZ = (floorZ - 2) >> 4;
+        int maxCZ = (floorZ + gridH + 2) >> 4;
+        for (int cx = minCX; cx <= maxCX; cx++) {
+            for (int cz = minCZ; cz <= maxCZ; cz++) {
+                world.setChunkForced(cx, cz, true);
+            }
+        }
+
+        // Resend chunks so client sees current state
+        for (int cx = minCX; cx <= maxCX; cx++) {
+            for (int cz = minCZ; cz <= maxCZ; cz++) {
+                var chunk = world.getChunk(cx, cz);
+                if (chunk != null) {
+                    for (var p : world.getPlayers()) {
+                        ((net.minecraft.server.network.ServerPlayerEntity) p)
+                            .networkHandler.chunkDataSender.add(chunk);
+                    }
+                }
+            }
+        }
+
+        // Scan existing blocks to build tile grid
+        GridTile[][] tiles = new GridTile[gridW][gridH];
+        for (int x = 0; x < gridW; x++) {
+            for (int z = 0; z < gridH; z++) {
+                BlockPos floorPos = new BlockPos(floorX + x, floorY, floorZ + z);
+                BlockPos abovePos = new BlockPos(floorX + x, floorY + 1, floorZ + z);
+                BlockPos headPos = new BlockPos(floorX + x, floorY + 2, floorZ + z);
+                net.minecraft.block.BlockState floorState = world.getBlockState(floorPos);
+                net.minecraft.block.BlockState aboveState = world.getBlockState(abovePos);
+                net.minecraft.block.BlockState headState = world.getBlockState(headPos);
+
+                Block floorBlock = floorState.getBlock();
+
+                // Water at floor level
+                if (!floorState.getFluidState().isEmpty() && floorBlock == Blocks.WATER) {
+                    tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.WATER, Blocks.WATER);
+                    continue;
+                }
+
+                // Void (air, void_air, lava at floor level)
+                if (floorState.isAir() || floorBlock == Blocks.VOID_AIR || floorBlock == Blocks.LAVA) {
+                    tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.VOID, Blocks.AIR);
+                    continue;
+                }
+
+                boolean hasObstacleBlock = !aboveState.isAir()
+                    && !(aboveState.getBlock() instanceof net.minecraft.block.CarpetBlock)
+                    && aboveState.isSolidBlock(world, abovePos);
+                boolean hasHeadBlock = !headState.isAir()
+                    && !(headState.getBlock() instanceof net.minecraft.block.CarpetBlock)
+                    && headState.isSolidBlock(world, headPos);
+
+                if (hasObstacleBlock) {
+                    tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.OBSTACLE,
+                        aboveState.getBlock(), hasHeadBlock);
+                } else if (hasHeadBlock) {
+                    tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.OBSTACLE,
+                        headState.getBlock(), true);
+                } else {
+                    tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, floorBlock);
+                }
+            }
+        }
+
+        // Snap player start to nearest walkable tile
+        GridPos finalPlayerStart = findNearestWalkableTile(tiles, playerStart);
+
+        CrafticsMod.LOGGER.info("Scanned pre-built arena. origin={}, size={}x{}, playerStart={}",
+            gridOrigin, gridW, gridH, finalPlayerStart);
+        return new GridArena(gridW, gridH, tiles, gridOrigin, level, finalPlayerStart);
+    }
+
+    static GridArena buildAt(ServerWorld world, LevelDefinition levelDef, BlockPos origin) {
         int level = levelDef.getLevelNumber();
         int w = levelDef.getWidth();
         int h = levelDef.getHeight();
@@ -86,12 +171,14 @@ public class ArenaBuilder {
         // Resolve biome for schematic lookup + environment theming
         String biomeId = "plains";
         boolean isBoss = false;
+        int biomeLevelIndex = 0;
         EnvironmentStyle envStyle = EnvironmentStyle.PLAINS;
         if (levelDef instanceof GeneratedLevelDefinition gld) {
             BiomeTemplate bt = gld.getBiomeTemplate();
             if (bt != null) {
                 biomeId = bt.biomeId;
                 isBoss = bt.isBossLevel(gld.getLevelNumber());
+                biomeLevelIndex = bt.getBiomeLevelIndex(gld.getLevelNumber());
                 if (bt.environmentStyle != null) envStyle = bt.environmentStyle;
             }
         }
@@ -121,7 +208,7 @@ public class ArenaBuilder {
             levelDef instanceof GeneratedLevelDefinition);
 
         // Try structure preset, fall back to procedural
-        boolean structureLoaded = tryLoadStructure(world, ox, oy, oz, w, h, tiles, biomeId, isBoss, rng);
+        boolean structureLoaded = tryLoadStructure(world, ox, oy, oz, w, h, tiles, biomeId, isBoss, biomeLevelIndex, rng);
 
         if (!structureLoaded) {
             buildProceduralFallback(world, ox, oy, oz, w, h, tiles, rng);
@@ -149,6 +236,20 @@ public class ArenaBuilder {
         }
 
         int floorX = finalOrigin.getX(), floorY = finalOrigin.getY(), floorZ = finalOrigin.getZ();
+
+        // Clear stray blocks above the arena (Y+2 and higher).
+        // Y+1 (chest-level obstacles, decorations) is intentionally preserved.
+        int clearCeiling = floorY + Math.max(15, structureHeight > 0 ? structureHeight + 3 : 15);
+        for (int x = 0; x < finalW; x++) {
+            for (int z = 0; z < finalH; z++) {
+                for (int y = floorY + 2; y <= clearCeiling; y++) {
+                    BlockPos bp = new BlockPos(floorX + x, y, floorZ + z);
+                    if (!world.getBlockState(bp).isAir()) {
+                        world.setBlockState(bp, Blocks.AIR.getDefaultState(), SET_FLAGS);
+                    }
+                }
+            }
+        }
 
         // Biome-themed light posts around the border
         placeLighting(world, floorX, floorY, floorZ, finalW, finalH, envStyle);
@@ -246,7 +347,8 @@ public class ArenaBuilder {
     // Tries .schem on disk first, then bundled .schem in JAR, then .nbt via StructureTemplateManager
     private static boolean tryLoadStructure(ServerWorld world, int ox, int oy, int oz,
                                               int w, int h, GridTile[][] tiles,
-                                              String biomeId, boolean isBoss, Random rng) {
+                                              String biomeId, boolean isBoss,
+                                              int biomeLevelIndex, Random rng) {
         // 1. Disk .schem files (filesystem overrides take priority)
         List<java.nio.file.Path> diskSchemCandidates = new ArrayList<>();
         try {
@@ -273,11 +375,11 @@ public class ArenaBuilder {
             CrafticsMod.LOGGER.debug("Error while searching for .schem arenas: {}", e.getMessage());
         }
 
-        // Disk overrides win
+        // Disk overrides win — distribute by biome level index to avoid repeats
         if (!diskSchemCandidates.isEmpty()) {
             CrafticsMod.LOGGER.info("Found {} disk .schem candidate(s) for biome '{}': {}",
                 diskSchemCandidates.size(), biomeId, diskSchemCandidates);
-            java.nio.file.Path chosenSchem = diskSchemCandidates.get(rng.nextInt(diskSchemCandidates.size()));
+            java.nio.file.Path chosenSchem = diskSchemCandidates.get(biomeLevelIndex % diskSchemCandidates.size());
             return loadAndPlaceSchem(world, chosenSchem, ox, oy, oz, w, h, tiles, biomeId, isBoss);
         }
 
@@ -303,8 +405,10 @@ public class ArenaBuilder {
         }
 
         if (!bundledCandidates.isEmpty()) {
-            Identifier chosen = bundledCandidates.get(rng.nextInt(bundledCandidates.size()));
-            CrafticsMod.LOGGER.info("Loading bundled arena: {} ({} candidates)", chosen, bundledCandidates.size());
+            // Distribute by biome level index so each level in a biome uses a different variant
+            Identifier chosen = bundledCandidates.get(biomeLevelIndex % bundledCandidates.size());
+            CrafticsMod.LOGGER.info("Loading bundled arena: {} ({} candidates, biomeLevelIndex={})",
+                chosen, bundledCandidates.size(), biomeLevelIndex);
             return loadAndPlaceBundledSchem(world, resourceManager, chosen, ox, oy, oz, w, h, tiles, biomeId, isBoss);
         }
 
@@ -342,7 +446,7 @@ public class ArenaBuilder {
         }
 
         List<Identifier> candidates = nbtCandidates;
-        Identifier chosen = candidates.get(rng.nextInt(candidates.size()));
+        Identifier chosen = candidates.get(biomeLevelIndex % candidates.size());
         StructureTemplate template = manager.getTemplate(chosen).orElse(null);
         if (template == null) return false;
 
@@ -910,13 +1014,30 @@ public class ArenaBuilder {
             posts.add(new int[]{w, z});
         }
 
-        // Base + post + light
+        // Base + post + light — only place next to solid arena terrain
         for (int[] p : posts) {
             int px = ox + p[0], pz = oz + p[1];
+            // Check the nearest arena tile(s) adjacent to this post.
+            // If all neighbouring arena tiles are air/void, skip — it's a cliff edge.
+            if (!hasAdjacentSolidTile(world, px, oy, pz, ox, oz, w, h)) continue;
             setIf(world, px, oy, pz, Blocks.STONE);   // ensure solid base
             set(world, px, oy + 1, pz, postBlock);
             set(world, px, oy + 2, pz, lightBlock);
         }
+    }
+
+    /** Check if a border position has at least one adjacent solid arena tile at floor level. */
+    private static boolean hasAdjacentSolidTile(ServerWorld world, int px, int oy, int pz,
+                                                  int ox, int oz, int w, int h) {
+        int[][] neighbors = {{px - 1, pz}, {px + 1, pz}, {px, pz - 1}, {px, pz + 1}};
+        for (int[] n : neighbors) {
+            int nx = n[0], nz = n[1];
+            // Only check tiles inside the arena grid
+            if (nx < ox || nx >= ox + w || nz < oz || nz >= oz + h) continue;
+            BlockState state = world.getBlockState(new BlockPos(nx, oy, nz));
+            if (!isAirLike(state) && state.getFluidState().isEmpty()) return true;
+        }
+        return false;
     }
 
     private static Block getPostBlock(EnvironmentStyle style) {
