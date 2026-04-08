@@ -80,18 +80,11 @@ public class ArenaBuilder {
                                           int gridW, int gridH, GridPos playerStart, int level) {
         int floorX = gridOrigin.getX(), floorY = gridOrigin.getY(), floorZ = gridOrigin.getZ();
 
-        // Force-load chunks so client has blocks before teleport
+        // Load and resend chunks to client (not force-loaded — CombatManager handles that)
         int minCX = (floorX - 2) >> 4;
         int maxCX = (floorX + gridW + 2) >> 4;
         int minCZ = (floorZ - 2) >> 4;
         int maxCZ = (floorZ + gridH + 2) >> 4;
-        for (int cx = minCX; cx <= maxCX; cx++) {
-            for (int cz = minCZ; cz <= maxCZ; cz++) {
-                world.setChunkForced(cx, cz, true);
-            }
-        }
-
-        // Resend chunks so client sees current state
         for (int cx = minCX; cx <= maxCX; cx++) {
             for (int cz = minCZ; cz <= maxCZ; cz++) {
                 var chunk = world.getChunk(cx, cz);
@@ -117,15 +110,38 @@ public class ArenaBuilder {
 
                 Block floorBlock = floorState.getBlock();
 
-                // Water at floor level
+                // Water at floor level — check depth
                 if (!floorState.getFluidState().isEmpty() && floorBlock == Blocks.WATER) {
-                    tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.WATER, Blocks.WATER);
+                    BlockPos belowWater = new BlockPos(floorX + x, floorY - 1, floorZ + z);
+                    boolean isDeep = !world.getBlockState(belowWater).getFluidState().isEmpty();
+                    tiles[x][z] = new GridTile(isDeep
+                        ? com.crackedgames.craftics.core.TileType.DEEP_WATER
+                        : com.crackedgames.craftics.core.TileType.WATER, Blocks.WATER);
                     continue;
                 }
 
-                // Void (air, void_air, lava at floor level)
-                if (floorState.isAir() || floorBlock == Blocks.VOID_AIR || floorBlock == Blocks.LAVA) {
-                    tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.VOID, Blocks.AIR);
+                // Lava at floor level = LAVA tile
+                if (floorBlock == Blocks.LAVA || floorBlock == Blocks.MAGMA_BLOCK) {
+                    tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.LAVA, Blocks.LAVA);
+                    continue;
+                }
+
+                // Powder snow at floor level
+                if (floorBlock == Blocks.POWDER_SNOW) {
+                    tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.POWDER_SNOW, Blocks.POWDER_SNOW);
+                    continue;
+                }
+
+                // Air at floor level — check depth to distinguish shallow pit from void
+                if (floorState.isAir() || floorBlock == Blocks.VOID_AIR) {
+                    BlockPos belowPos = new BlockPos(floorX + x, floorY - 1, floorZ + z);
+                    net.minecraft.block.BlockState belowState = world.getBlockState(belowPos);
+                    if (!belowState.isAir() && belowState.getFluidState().isEmpty()) {
+                        // Solid block 1 below = shallow pit (LOW_GROUND)
+                        tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.LOW_GROUND, belowState.getBlock());
+                    } else {
+                        tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.VOID, Blocks.AIR);
+                    }
                     continue;
                 }
 
@@ -156,7 +172,7 @@ public class ArenaBuilder {
         return new GridArena(gridW, gridH, tiles, gridOrigin, level, finalPlayerStart);
     }
 
-    static GridArena buildAt(ServerWorld world, LevelDefinition levelDef, BlockPos origin) {
+    public static GridArena buildAt(ServerWorld world, LevelDefinition levelDef, BlockPos origin) {
         int level = levelDef.getLevelNumber();
         int w = levelDef.getWidth();
         int h = levelDef.getHeight();
@@ -251,6 +267,9 @@ public class ArenaBuilder {
             }
         }
 
+        // Biome-themed random obstacles on the arena floor
+        placeBiomeObstacles(world, floorX, floorY, floorZ, finalW, finalH, envStyle, rng);
+
         // Biome-themed light posts around the border
         placeLighting(world, floorX, floorY, floorZ, finalW, finalH, envStyle);
 
@@ -258,16 +277,11 @@ public class ArenaBuilder {
         int relightTop = floorY + Math.max(12, structureHeight > 0 ? structureHeight + 3 : 12);
         relightArena(world, floorX, floorY - 3, floorZ, finalW, finalH, relightTop);
 
-        // Force-load chunks so client has blocks before teleport
+        // Chunk bounds for biome painting and client resend (not force-loaded — CombatManager handles that)
         int minCX = (finalOrigin.getX() - 2) >> 4;
         int maxCX = (finalOrigin.getX() + finalW + 2) >> 4;
         int minCZ = (finalOrigin.getZ() - 2) >> 4;
         int maxCZ = (finalOrigin.getZ() + finalH + 2) >> 4;
-        for (int cx = minCX; cx <= maxCX; cx++) {
-            for (int cz = minCZ; cz <= maxCZ; cz++) {
-                world.setChunkForced(cx, cz, true);
-            }
-        }
 
         // Paint MC biome on arena chunks so fog/grass/sky match the theme
         setBiomeForArena(world, finalOrigin, finalW, finalH, biomeId);
@@ -285,7 +299,8 @@ public class ArenaBuilder {
             }
         }
 
-        // Auto-detect obstacles/voids from placed schematic terrain
+        // Auto-detect obstacles/voids/cobwebs from placed schematic terrain
+        List<GridPos> cobwebPositions = new ArrayList<>();
         for (int x = 0; x < finalW; x++) {
             for (int z = 0; z < finalH; z++) {
                 GridTile tile = finalTiles[x][z];
@@ -295,6 +310,13 @@ public class ArenaBuilder {
                 BlockPos headPos = new BlockPos(floorX + x, floorY + 2, floorZ + z);
                 net.minecraft.block.BlockState aboveState = world.getBlockState(abovePos);
                 net.minecraft.block.BlockState headState = world.getBlockState(headPos);
+
+                // Cobwebs at Y+1: walkable but trap — register as web overlay
+                if (tile.isWalkable() && aboveState.isOf(Blocks.COBWEB)) {
+                    cobwebPositions.add(new GridPos(x, z));
+                    // Skip normal obstacle detection for this tile — cobwebs aren't solid
+                    continue;
+                }
 
                 boolean hasObstacleBlock = !aboveState.isAir()
                     && !(aboveState.getBlock() instanceof net.minecraft.block.CarpetBlock)
@@ -315,23 +337,43 @@ public class ArenaBuilder {
                         headState.getBlock(), true);
                 }
 
-                // Water at floor level = WATER tile
+                // Water at floor level — check depth
                 net.minecraft.block.BlockState floorState = world.getBlockState(floorPos);
                 if (tile.isWalkable() && !floorState.getFluidState().isEmpty()
                     && floorState.getBlock() == Blocks.WATER) {
-                    finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.WATER,
-                        Blocks.WATER);
+                    BlockPos belowWater = new BlockPos(floorX + x, floorY - 1, floorZ + z);
+                    boolean isDeep = !world.getBlockState(belowWater).getFluidState().isEmpty();
+                    finalTiles[x][z] = new GridTile(isDeep
+                        ? com.crackedgames.craftics.core.TileType.DEEP_WATER
+                        : com.crackedgames.craftics.core.TileType.WATER, Blocks.WATER);
                 }
 
-                // No floor = void (air, void_air, or lava at floor level)
+                // Powder snow at floor level
+                if (finalTiles[x][z].isWalkable() && floorState.getBlock() == Blocks.POWDER_SNOW) {
+                    finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.POWDER_SNOW,
+                        Blocks.POWDER_SNOW);
+                }
+
+                // Lava or magma at floor level = LAVA tile
+                if (finalTiles[x][z].isWalkable()
+                    && (floorState.getBlock() == Blocks.LAVA || floorState.getBlock() == Blocks.MAGMA_BLOCK)) {
+                    finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.LAVA,
+                        Blocks.LAVA);
+                }
+
+                // Air at floor level — check depth for shallow pit vs void
                 if (finalTiles[x][z].isWalkable()) {
                     Block floorBlock = floorState.getBlock();
-                    boolean noFloor = floorState.isAir()
-                        || floorBlock == Blocks.VOID_AIR
-                        || floorBlock == Blocks.LAVA;
-                    if (noFloor) {
-                        finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.VOID,
-                            Blocks.AIR);
+                    if (floorState.isAir() || floorBlock == Blocks.VOID_AIR) {
+                        BlockPos belowPos = new BlockPos(floorX + x, floorY - 1, floorZ + z);
+                        net.minecraft.block.BlockState belowState = world.getBlockState(belowPos);
+                        if (!belowState.isAir() && belowState.getFluidState().isEmpty()) {
+                            finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.LOW_GROUND,
+                                belowState.getBlock());
+                        } else {
+                            finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.VOID,
+                                Blocks.AIR);
+                        }
                     }
                 }
             }
@@ -341,7 +383,14 @@ public class ArenaBuilder {
         GridPos finalPlayerStart = findNearestWalkableTile(finalTiles, requestedPlayerStart);
 
         CrafticsMod.LOGGER.info("Arena built. origin={}, size={}x{}, playerStart={}", finalOrigin, finalW, finalH, finalPlayerStart);
-        return new GridArena(finalW, finalH, finalTiles, finalOrigin, level, finalPlayerStart);
+        GridArena arena = new GridArena(finalW, finalH, finalTiles, finalOrigin, level, finalPlayerStart);
+
+        // Register static cobwebs as web overlays (99 turns = effectively permanent until walked through)
+        for (GridPos webPos : cobwebPositions) {
+            arena.setWebOverlay(webPos, 99);
+        }
+
+        return arena;
     }
 
     // Tries .schem on disk first, then bundled .schem in JAR, then .nbt via StructureTemplateManager
@@ -1065,6 +1114,276 @@ public class ArenaBuilder {
             case END -> Blocks.END_ROD;
         };
     }
+
+    /**
+     * Place biome-themed random obstacles on the arena floor.
+     * Only placed on solid, non-liquid, non-air tiles with clearance above.
+     * Avoids a 2-tile margin from each edge so obstacles don't crowd the border.
+     */
+    private static void placeBiomeObstacles(ServerWorld world, int ox, int oy, int oz,
+                                              int w, int h, EnvironmentStyle style, Random rng) {
+        switch (style) {
+            case FOREST -> placeFallenLogs(world, ox, oy, oz, w, h, rng);
+            case JUNGLE -> placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.COBWEB, 0, 5, rng);
+            case MOUNTAIN -> placePitObstacles(world, ox, oy, oz, w, h, 3, 6, rng);
+            case DESERT -> placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.CACTUS, 1, 3, rng);
+            case SNOWY -> placePowderSnowPatch(world, ox, oy, oz, w, h, rng);
+            case CAVE, DEEP_DARK -> placePitObstacles(world, ox, oy, oz, w, h, 0, 7, rng);
+            default -> {} // no random obstacles for other biomes
+        }
+    }
+
+    /** Place 1-2 fallen sideways dark oak logs (2-4 blocks long) on the arena floor. */
+    private static void placeFallenLogs(ServerWorld world, int ox, int oy, int oz,
+                                          int w, int h, Random rng) {
+        int count = 1 + rng.nextInt(2); // 1-2 logs
+
+        // Horizontal log states: axis=x runs east-west, axis=z runs north-south
+        BlockState logX = Blocks.DARK_OAK_LOG.getDefaultState()
+            .with(net.minecraft.state.property.Properties.AXIS, net.minecraft.util.math.Direction.Axis.X);
+        BlockState logZ = Blocks.DARK_OAK_LOG.getDefaultState()
+            .with(net.minecraft.state.property.Properties.AXIS, net.minecraft.util.math.Direction.Axis.Z);
+
+        java.util.Set<Long> used = new java.util.HashSet<>();
+
+        for (int i = 0; i < count; i++) {
+            int length = 2 + rng.nextInt(3); // 2-4
+            boolean alongX = rng.nextBoolean();
+            BlockState logState = alongX ? logX : logZ;
+
+            // Try up to 20 times to find a valid placement
+            for (int attempt = 0; attempt < 20; attempt++) {
+                int sx = 2 + rng.nextInt(w - 4);
+                int sz = 2 + rng.nextInt(h - 4);
+
+                // Check that the full log run fits and every tile is solid ground with clearance
+                boolean valid = true;
+                List<int[]> positions = new ArrayList<>();
+                for (int seg = 0; seg < length; seg++) {
+                    int tx = alongX ? sx + seg : sx;
+                    int tz = alongX ? sz : sz + seg;
+                    if (tx < 2 || tx >= w - 2 || tz < 2 || tz >= h - 2) { valid = false; break; }
+                    if (used.contains(packPos(tx, tz))) { valid = false; break; }
+
+                    BlockPos floorPos = new BlockPos(ox + tx, oy, oz + tz);
+                    BlockPos abovePos = new BlockPos(ox + tx, oy + 1, oz + tz);
+                    BlockState floorState = world.getBlockState(floorPos);
+                    if (isAirLike(floorState) || !floorState.getFluidState().isEmpty()) { valid = false; break; }
+                    if (!world.getBlockState(abovePos).isAir()) { valid = false; break; }
+                    positions.add(new int[]{tx, tz});
+                }
+                if (!valid || positions.size() != length) continue;
+
+                // Place the log
+                for (int[] p : positions) {
+                    world.setBlockState(new BlockPos(ox + p[0], oy + 1, oz + p[1]), logState, SET_FLAGS);
+                    used.add(packPos(p[0], p[1]));
+                }
+                break;
+            }
+        }
+    }
+
+    /** Place simple block obstacles (logs, cobwebs, etc.) at Y+1 on valid solid tiles. */
+    /** Place hazard blocks at floor level (Y=oy), replacing the existing floor block. */
+    private static void placeFloorHazards(ServerWorld world, int ox, int oy, int oz,
+                                            int w, int h, Block block, int min, int max, Random rng) {
+        int count = min + rng.nextInt(max - min + 1);
+        if (count <= 0) return;
+
+        List<int[]> candidates = new ArrayList<>();
+        for (int x = 2; x < w - 2; x++) {
+            for (int z = 2; z < h - 2; z++) {
+                candidates.add(new int[]{x, z});
+            }
+        }
+        java.util.Collections.shuffle(candidates, rng);
+
+        int placed = 0;
+        for (int[] c : candidates) {
+            if (placed >= count) break;
+            BlockPos floorPos = new BlockPos(ox + c[0], oy, oz + c[1]);
+            BlockState floorState = world.getBlockState(floorPos);
+
+            // Must be solid ground — no air, no liquid, no existing hazard
+            if (isAirLike(floorState) || !floorState.getFluidState().isEmpty()) continue;
+            if (floorState.getBlock() == Blocks.POWDER_SNOW || floorState.getBlock() == Blocks.LAVA) continue;
+
+            world.setBlockState(floorPos, block.getDefaultState(), SET_FLAGS);
+            placed++;
+        }
+    }
+
+    private static void placeSimpleObstacles(ServerWorld world, int ox, int oy, int oz,
+                                               int w, int h, Block block, int min, int max, Random rng) {
+        int count = min + rng.nextInt(max - min + 1);
+        if (count <= 0) return;
+
+        List<int[]> candidates = new ArrayList<>();
+        for (int x = 2; x < w - 2; x++) {
+            for (int z = 2; z < h - 2; z++) {
+                candidates.add(new int[]{x, z});
+            }
+        }
+        java.util.Collections.shuffle(candidates, rng);
+
+        int placed = 0;
+        for (int[] c : candidates) {
+            if (placed >= count) break;
+            BlockPos floorPos = new BlockPos(ox + c[0], oy, oz + c[1]);
+            BlockPos abovePos = new BlockPos(ox + c[0], oy + 1, oz + c[1]);
+            BlockState floorState = world.getBlockState(floorPos);
+
+            // Must be solid ground — no air, no liquid
+            if (isAirLike(floorState) || !floorState.getFluidState().isEmpty()) continue;
+            // Must have clearance above
+            if (!world.getBlockState(abovePos).isAir()) continue;
+
+            world.setBlockState(abovePos, block.getDefaultState(), SET_FLAGS);
+            placed++;
+        }
+    }
+
+    /**
+     * Place connected pit obstacles for mountain biomes.
+     * Each pit: floor replaced with air, Y-1 replaced with air, Y-2 = black concrete.
+     * Pits grow outward from a seed tile so they form a natural-looking cluster.
+     */
+    private static void placePitObstacles(ServerWorld world, int ox, int oy, int oz,
+                                            int w, int h, int min, int max, Random rng) {
+        int pitCount = min + rng.nextInt(max - min + 1);
+
+        // Pick a valid seed tile (solid ground, away from edges)
+        List<int[]> seedCandidates = new ArrayList<>();
+        for (int x = 3; x < w - 3; x++) {
+            for (int z = 3; z < h - 3; z++) {
+                seedCandidates.add(new int[]{x, z});
+            }
+        }
+        if (seedCandidates.isEmpty()) return;
+        java.util.Collections.shuffle(seedCandidates, rng);
+
+        // Find a valid seed on solid ground
+        int[] seed = null;
+        for (int[] c : seedCandidates) {
+            BlockPos fp = new BlockPos(ox + c[0], oy, oz + c[1]);
+            BlockState fs = world.getBlockState(fp);
+            if (!isAirLike(fs) && fs.getFluidState().isEmpty()) {
+                seed = c;
+                break;
+            }
+        }
+        if (seed == null) return;
+
+        // Grow the pit cluster outward from the seed using BFS
+        java.util.Set<Long> pitTiles = new java.util.LinkedHashSet<>();
+        java.util.Queue<int[]> frontier = new java.util.LinkedList<>();
+        pitTiles.add(packPos(seed[0], seed[1]));
+        frontier.add(seed);
+
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+        while (pitTiles.size() < pitCount && !frontier.isEmpty()) {
+            int[] current = frontier.poll();
+            // Shuffle directions for organic growth
+            List<int[]> shuffledDirs = new ArrayList<>(java.util.Arrays.asList(dirs));
+            java.util.Collections.shuffle(shuffledDirs, rng);
+
+            for (int[] d : shuffledDirs) {
+                if (pitTiles.size() >= pitCount) break;
+                int nx = current[0] + d[0], nz = current[1] + d[1];
+                if (nx < 3 || nx >= w - 3 || nz < 3 || nz >= h - 3) continue;
+                if (pitTiles.contains(packPos(nx, nz))) continue;
+
+                BlockPos fp = new BlockPos(ox + nx, oy, oz + nz);
+                BlockState fs = world.getBlockState(fp);
+                if (isAirLike(fs) || !fs.getFluidState().isEmpty()) continue;
+
+                pitTiles.add(packPos(nx, nz));
+                frontier.add(new int[]{nx, nz});
+            }
+        }
+
+        // Carve each pit tile: floor=air, Y-1=air, Y-2=black concrete
+        for (long packed : pitTiles) {
+            int px = unpackX(packed), pz = unpackZ(packed);
+            world.setBlockState(new BlockPos(ox + px, oy, oz + pz),
+                Blocks.AIR.getDefaultState(), SET_FLAGS);
+            world.setBlockState(new BlockPos(ox + px, oy - 1, oz + pz),
+                Blocks.AIR.getDefaultState(), SET_FLAGS);
+            world.setBlockState(new BlockPos(ox + px, oy - 2, oz + pz),
+                Blocks.BLACK_CONCRETE.getDefaultState(), SET_FLAGS);
+        }
+    }
+
+    /**
+     * Place a connected cluster of powder snow tiles for snowy biomes.
+     * Same BFS growth as pit obstacles but replaces floor blocks with powder snow.
+     */
+    private static void placePowderSnowPatch(ServerWorld world, int ox, int oy, int oz,
+                                               int w, int h, Random rng) {
+        int count = 2 + rng.nextInt(11); // 2-12
+
+        // Use a 1-block margin so the patch can fill more of the arena
+        List<int[]> seedCandidates = new ArrayList<>();
+        for (int x = 1; x < w - 1; x++) {
+            for (int z = 2; z < h - 1; z++) { // z=2 to avoid player spawn row
+                seedCandidates.add(new int[]{x, z});
+            }
+        }
+        if (seedCandidates.isEmpty()) return;
+        java.util.Collections.shuffle(seedCandidates, rng);
+
+        int[] seed = null;
+        for (int[] c : seedCandidates) {
+            BlockPos fp = new BlockPos(ox + c[0], oy, oz + c[1]);
+            BlockState fs = world.getBlockState(fp);
+            if (!isAirLike(fs) && fs.getFluidState().isEmpty()
+                && fs.getBlock() != Blocks.POWDER_SNOW && fs.getBlock() != Blocks.LAVA) {
+                seed = c;
+                break;
+            }
+        }
+        if (seed == null) return;
+
+        java.util.Set<Long> snowTiles = new java.util.LinkedHashSet<>();
+        java.util.Queue<int[]> frontier = new java.util.LinkedList<>();
+        snowTiles.add(packPos(seed[0], seed[1]));
+        frontier.add(seed);
+
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+        while (snowTiles.size() < count && !frontier.isEmpty()) {
+            int[] current = frontier.poll();
+            List<int[]> shuffledDirs = new ArrayList<>(java.util.Arrays.asList(dirs));
+            java.util.Collections.shuffle(shuffledDirs, rng);
+
+            for (int[] d : shuffledDirs) {
+                if (snowTiles.size() >= count) break;
+                int nx = current[0] + d[0], nz = current[1] + d[1];
+                if (nx < 1 || nx >= w - 1 || nz < 2 || nz >= h - 1) continue;
+                if (snowTiles.contains(packPos(nx, nz))) continue;
+
+                BlockPos fp = new BlockPos(ox + nx, oy, oz + nz);
+                BlockState fs = world.getBlockState(fp);
+                if (isAirLike(fs) || !fs.getFluidState().isEmpty()) continue;
+                if (fs.getBlock() == Blocks.POWDER_SNOW || fs.getBlock() == Blocks.LAVA) continue;
+
+                snowTiles.add(packPos(nx, nz));
+                frontier.add(new int[]{nx, nz});
+            }
+        }
+
+        for (long packed : snowTiles) {
+            int px = unpackX(packed), pz = unpackZ(packed);
+            world.setBlockState(new BlockPos(ox + px, oy, oz + pz),
+                Blocks.POWDER_SNOW.getDefaultState(), SET_FLAGS);
+        }
+    }
+
+    private static long packPos(int x, int z) { return ((long) x << 32) | (z & 0xFFFFFFFFL); }
+    private static int unpackX(long packed) { return (int) (packed >> 32); }
+    private static int unpackZ(long packed) { return (int) packed; }
 
     // Border concrete color per biome — falls back to most common tile block
     private static Block getBorderConcreteForBiome(String biomeId, GridTile[][] tiles) {

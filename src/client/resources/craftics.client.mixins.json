@@ -13,7 +13,8 @@
     "MovementDisableMixin",
     "InventoryStatsMixin",
     "OverlayMessageMixin",
-    "ScrollZoomMixin"
+    "ScrollZoomMixin",
+    "TitleScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

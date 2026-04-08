@@ -174,6 +174,19 @@ public class GridArena {
         return pos.toBlockPos(origin, 1);
     }
 
+    /** Get entity Y position for a tile — lowered by 1 for water and low ground tiles. */
+    public double getEntityY(GridPos pos) {
+        GridTile tile = getTile(pos);
+        double baseY = origin.getY() + 1;
+        if (tile != null) {
+            TileType t = tile.getType();
+            if (t == TileType.WATER || t == TileType.DEEP_WATER || t == TileType.LOW_GROUND || t == TileType.POWDER_SNOW) {
+                return baseY - 1;
+            }
+        }
+        return baseY;
+    }
+
     /** Get arena origin for singleplayer (Z=0 lane). Legacy — use world-slot variant. */
     public static BlockPos arenaOriginForLevel(int level) {
         return new BlockPos(level * 1000, 100, 0);
