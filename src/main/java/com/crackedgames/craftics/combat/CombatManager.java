@@ -517,17 +517,22 @@ public class CombatManager {
                         }
                     }
                 }
-                ItemStack displaced = member.getInventory().getStack(8);
-                if (!displaced.isEmpty()) {
-                    int emptySlot = member.getInventory().getEmptySlot();
-                    if (emptySlot != -1) {
-                        member.getInventory().setStack(emptySlot, displaced);
+                // Give move feather if not already in inventory (party member)
+                boolean pmHasFeather = false;
+                for (int fi = 0; fi < member.getInventory().size(); fi++) {
+                    ItemStack fs = member.getInventory().getStack(fi);
+                    if (fs.getItem() == Items.FEATHER && fs.contains(DataComponentTypes.CUSTOM_NAME)) {
+                        pmHasFeather = true;
+                        break;
                     }
                 }
-                ItemStack moveItem = new ItemStack(Items.FEATHER);
-                moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("\u00a7aMove"));
-                member.getInventory().setStack(8, moveItem);
-                member.getInventory().selectedSlot = 8;
+                if (!pmHasFeather) {
+                    ItemStack moveItem = new ItemStack(Items.FEATHER);
+                    moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("\u00a7aMove"));
+                    int pmSlot = member.getInventory().getEmptySlot();
+                    if (pmSlot == -1) pmSlot = 8;
+                    member.getInventory().setStack(pmSlot, moveItem);
+                }
                 member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 40, 15));
                 member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
                     Text.literal("\u00a7e" + newLevelDef.getName())));
@@ -943,17 +948,22 @@ public class CombatManager {
             origin.getX(), origin.getY(), origin.getZ(), size, size, -1f
         ));
 
-        ItemStack displaced = player.getInventory().getStack(8);
-        if (!displaced.isEmpty()) {
-            int emptySlot = player.getInventory().getEmptySlot();
-            if (emptySlot != -1) {
-                player.getInventory().setStack(emptySlot, displaced);
+        // Give move feather if not already in inventory (test range)
+        boolean trHasFeather = false;
+        for (int i = 0; i < player.getInventory().size(); i++) {
+            ItemStack stack = player.getInventory().getStack(i);
+            if (stack.getItem() == Items.FEATHER && stack.contains(DataComponentTypes.CUSTOM_NAME)) {
+                trHasFeather = true;
+                break;
             }
         }
-        ItemStack moveItem = new ItemStack(Items.FEATHER);
-        moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§aMove"));
-        player.getInventory().setStack(8, moveItem);
-        player.getInventory().selectedSlot = 8;
+        if (!trHasFeather) {
+            ItemStack moveItem = new ItemStack(Items.FEATHER);
+            moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§aMove"));
+            int trSlot = player.getInventory().getEmptySlot();
+            if (trSlot == -1) trSlot = 8;
+            player.getInventory().setStack(trSlot, moveItem);
+        }
 
         this.activeTrimScan = TrimEffects.scan(player);
         this.activeCombatEffects = activeTrimScan.getCombatEffects();
@@ -1332,18 +1342,26 @@ public class CombatManager {
         boolean hasUndead = enemies.stream().anyMatch(e -> isUndeadMob(e.getEntityTypeId()));
         world.setTimeOfDay((levelDef.isNightLevel() || hasUndead) ? 18000 : 6000);
 
-        // Give the player a named "Move" feather in slot 8 — move existing item elsewhere first
-        ItemStack displaced2 = player.getInventory().getStack(8);
-        if (!displaced2.isEmpty()) {
-            int emptySlot2 = player.getInventory().getEmptySlot();
-            if (emptySlot2 != -1) {
-                player.getInventory().setStack(emptySlot2, displaced2);
+        // Give the player a named "Move" feather if they don't already have one
+        boolean hasFeather = false;
+        int featherSlot = -1;
+        for (int i = 0; i < player.getInventory().size(); i++) {
+            ItemStack stack = player.getInventory().getStack(i);
+            if (stack.getItem() == Items.FEATHER && stack.contains(DataComponentTypes.CUSTOM_NAME)) {
+                hasFeather = true;
+                featherSlot = i;
+                break;
             }
         }
-        ItemStack moveItem = new ItemStack(Items.FEATHER);
-        moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§aMove"));
-        player.getInventory().setStack(8, moveItem);
-        player.getInventory().selectedSlot = 8; // start in move mode
+        if (!hasFeather) {
+            ItemStack moveItem = new ItemStack(Items.FEATHER);
+            moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§aMove"));
+            int targetSlot = player.getInventory().getEmptySlot();
+            if (targetSlot == -1) targetSlot = 8; // fallback to slot 8 if full
+            player.getInventory().setStack(targetSlot, moveItem);
+            featherSlot = targetSlot;
+        }
+        player.getInventory().selectedSlot = Math.min(featherSlot, 8); // select feather at start
         lastHeldItem = Items.FEATHER; // Reset weapon tracking so next slot change triggers refresh
 
         // Sound: combat start

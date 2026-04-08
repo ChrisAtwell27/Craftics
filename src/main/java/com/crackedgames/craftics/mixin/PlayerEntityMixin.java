@@ -13,6 +13,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(PlayerEntity.class)
 public class PlayerEntityMixin {
 
+    @Inject(method = "dropItem(Lnet/minecraft/item/ItemStack;ZZ)Lnet/minecraft/entity/ItemEntity;",
+            at = @At("HEAD"), cancellable = true)
+    private void craftics$blockItemDropDuringCombat(net.minecraft.item.ItemStack stack, boolean throwRandomly,
+                                                     boolean retainOwnership, CallbackInfo ci) {
+        PlayerEntity player = (PlayerEntity) (Object) this;
+        if (player instanceof ServerPlayerEntity serverPlayer) {
+            var cm = com.crackedgames.craftics.combat.CombatManager.get(serverPlayer);
+            if (cm.isActive()) {
+                ci.cancel();
+            }
+        }
+    }
+
     @Inject(method = "dropInventory", at = @At("HEAD"), cancellable = true)
     private void craftics$protectInventoryWithRecoveryCompass(CallbackInfo ci) {
         PlayerEntity player = (PlayerEntity) (Object) this;
