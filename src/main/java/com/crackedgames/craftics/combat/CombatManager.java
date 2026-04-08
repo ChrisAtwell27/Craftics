@@ -425,6 +425,17 @@ public class CombatManager {
         return List.of(referencePlayer);
     }
 
+    /** Start a dev/test arena — handles teleport, client payload, and combat start in one call. */
+    public void startDevArena(ServerPlayerEntity player, GridArena arena, LevelDefinition levelDef) {
+        GridPos startGrid = arena.getPlayerStart();
+        arena.setPlayerGridPos(startGrid);
+        BlockPos spawnPos = arena.gridToBlockPos(startGrid);
+        player.requestTeleport(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
+        ServerPlayNetworking.send(player, makeEnterPayload(arena));
+        addPartyMember(player);
+        startCombat(player, arena, levelDef);
+    }
+
     private void transitionPartyToArena(ServerPlayerEntity leader, GridArena newArena, LevelDefinition newLevelDef) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(leader);
         List<ServerPlayerEntity> orderedMembers = new ArrayList<>();
@@ -980,6 +991,17 @@ public class CombatManager {
         this.movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
         this.turnNumber = 1;
         this.active = true;
+
+        // Hidden fire resistance — blocks vanilla lava/fire damage; our tile system handles it
+        player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+            net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE,
+            Integer.MAX_VALUE, 0, true, false, false)); // ambient, no particles, no icon
+
+        // Disable vanilla freeze damage — our turn-based system handles powder snow damage
+        // The frosty vignette + shivering still works (driven by TicksFrozen, not this gamerule)
+        ((ServerWorld) player.getWorld()).getGameRules()
+            .get(net.minecraft.world.GameRules.FREEZE_DAMAGE).set(false, player.getServer());
+
         this.playerMounted = false;
         this.mountMob = null;
         this.movedThisTurn = false;
@@ -1425,29 +1447,40 @@ public class CombatManager {
             return;
         }
 
-        // Check if any tile in the path is water — consume a boat on first water entry
-        boolean wasOnWater = isPlayerOnWater();
+        // Check if path crosses water — boat prevents Soaked effect
         boolean pathHasWater = false;
         for (GridPos p : path) {
             GridTile tile = arena.getTile(p);
-            if (tile != null && tile.isWater()) {
+            if (tile != null && tile.getType() == com.crackedgames.craftics.core.TileType.WATER) {
                 pathHasWater = true;
                 break;
             }
         }
 
-        if (pathHasWater && !wasOnWater) {
-            // Entering water — consume a boat
-            if (!consumeBoat()) {
-                sendMessage("§bYou need a boat to cross water!");
-                return;
+        // If entering water: already in a boat = stay protected, otherwise try to consume one
+        if (activeBoat != null) {
+            moveBoatProtected = true;
+        } else {
+            moveBoatProtected = false;
+            if (pathHasWater) {
+                moveBoatProtected = consumeBoat();
+            }
+        }
+
+        // Cobweb trap: if any tile on the path has a web overlay, truncate path there
+        boolean hitCobweb = false;
+        for (int pi = 0; pi < path.size(); pi++) {
+            if (arena.hasWebOverlay(path.get(pi))) {
+                path = new ArrayList<>(path.subList(0, pi + 1)); // stop ON the cobweb tile
+                hitCobweb = true;
+                break;
             }
         }
 
         // Check if leaving water to land
         GridTile endTile = arena.getTile(path.get(path.size() - 1));
 
-        int cost = path.size();
+        int cost = hitCobweb ? movePointsRemaining : path.size(); // cobweb drains all remaining movement
         movePointsRemaining -= cost;
         movedThisTurn = true;
         this.moveOriginPos = playerPos;
@@ -2143,26 +2176,8 @@ public class CombatManager {
                     int pdz = Integer.signum(pTarget.getGridPos().z() - impactPos.z());
                     if (pdx == 0 && pdz == 0) { pdx = Integer.signum(impactPos.x() - fPPos.x()); pdz = Integer.signum(impactPos.z() - fPPos.z()); }
                     if (pdx == 0 && pdz == 0) pdx = 1;
-                    GridPos kbPos = pTarget.getGridPos();
-                    boolean hitWall = false;
-                    for (int step = 0; step < punchKb; step++) {
-                        GridPos next = new GridPos(kbPos.x() + pdx, kbPos.z() + pdz);
-                        if (!arena.isInBounds(next) || arena.isOccupied(next)) { hitWall = true; break; }
-                        var tile = arena.getTile(next);
-                        if (tile == null || !tile.isWalkable()) { hitWall = true; break; }
-                        kbPos = next;
-                    }
-                    if (!kbPos.equals(pTarget.getGridPos())) {
-                        arena.moveEntity(pTarget, kbPos);
-                        if (pTarget.getMobEntity() != null) {
-                            var bp = arena.gridToBlockPos(kbPos);
-                            pTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
-                        }
-                    }
-                    if (hitWall) {
-                        int cDmg = pTarget.takeDamage(punchCollisionDmg);
-                        sendMessage("§6💨 Punch! " + pTarget.getDisplayName() + " slammed for " + cDmg + " collision damage!");
-                    }
+                    GridPos kbBefore = pTarget.getGridPos();
+                    knockEnemyBack(pTarget, pdx, pdz, punchKb);
                 }
                 if (punchTargets.size() > 1) {
                     sendMessage("§6💨 Impact burst! Knocked back " + punchTargets.size() + " enemies!");
@@ -2418,23 +2433,11 @@ public class CombatManager {
                 // Knockback: push enemy perpendicular or forward from dash direction
                 int kbDx = Integer.signum(enemy.getGridPos().x() - pPos.x());
                 int kbDz = Integer.signum(enemy.getGridPos().z() - pPos.z());
-                // Push in dash direction
                 if (kbDx == 0 && kbDz == 0) { kbDx = ddx; kbDz = ddz; }
-                GridPos kbPos = enemy.getGridPos();
-                for (int k = 0; k < knockbackStrength; k++) {
-                    GridPos nextKb = new GridPos(kbPos.x() + kbDx, kbPos.z() + kbDz);
-                    if (!arena.isInBounds(nextKb) || arena.isOccupied(nextKb)) break;
-                    var kbTile = arena.getTile(nextKb);
-                    if (kbTile == null || !kbTile.isWalkable()) break;
-                    kbPos = nextKb;
-                }
-                if (!kbPos.equals(enemy.getGridPos())) {
-                    arena.moveEntity(enemy, kbPos);
-                    if (enemy.getMobEntity() != null) {
-                        var bp = arena.gridToBlockPos(kbPos);
-                        enemy.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
-                    }
-                    sendMessage("§b💨 " + enemy.getDisplayName() + " knocked back " + knockbackStrength + " tiles!");
+                GridPos kbBefore = enemy.getGridPos();
+                GridPos kbAfter = knockEnemyBack(enemy, kbDx, kbDz, knockbackStrength);
+                if (!kbAfter.equals(kbBefore)) {
+                    sendMessage("§b💨 " + enemy.getDisplayName() + " knocked back " + kbBefore.manhattanDistance(kbAfter) + " tiles!");
                 }
 
                 // Particles on hit
@@ -3203,7 +3206,7 @@ public class CombatManager {
         BlockPos endBlock = arena.gridToBlockPos(next);
         double moveOffset = (currentEnemy != null && currentEnemy.getSize() > 1) ? currentEnemy.getSize() / 2.0 : 0.5;
         double endX = endBlock.getX() + moveOffset;
-        double endY = endBlock.getY();
+        double endY = arena.getEntityY(next);
         double endZ = endBlock.getZ() + moveOffset;
 
         int emTicks = getMoveTicks();
@@ -3714,6 +3717,28 @@ public class CombatManager {
             net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.2f);
         sendMessage("§e" + player.getName().getString() + "'s turn! §aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
         fireEffectHook(h -> h.onTurnStart(effectContext));
+
+        // Hazard tile damage at turn start
+        GridTile turnTile = arena.getTile(arena.getPlayerGridPos());
+        if (turnTile != null) {
+            if (turnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                int lavaDmg = damagePlayer(10);
+                sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
+                if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
+            }
+
+            if (turnTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
+                    && !hasLeatherBoots()) {
+                powderSnowTurns++;
+                int freezeDmg = (int) Math.pow(2, powderSnowTurns - 1); // 1, 2, 4, 8, 16...
+                int actual = damagePlayer(freezeDmg);
+                sendMessage("§b  Freezing! " + actual + " damage! (Turn " + powderSnowTurns + " in snow)");
+                if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
+            } else if (turnTile.getType() != com.crackedgames.craftics.core.TileType.POWDER_SNOW) {
+                powderSnowTurns = 0; // reset when not on powder snow
+            }
+        }
+
         sendSync();
         refreshHighlights();
     }
@@ -3780,6 +3805,15 @@ public class CombatManager {
 
         tickCounter++;
 
+        // Keep player mounted in boat — vanilla dismounts on interact/damage/position changes
+        if (activeBoat != null && player != null && !player.hasVehicle()) {
+            if (activeBoat.isRemoved()) {
+                activeBoat = null;
+            } else {
+                player.startRiding(activeBoat, true);
+            }
+        }
+
         // Fall death bypasses totem — environmental, not combat damage
         // Teleport back first to stop vanilla lava/void damage loops
         if (arena != null) {
@@ -3837,6 +3871,9 @@ public class CombatManager {
             player.setFireTicks(0);
             player.fallDistance = 0;
         }
+
+        // Suppress vanilla fire visuals — our tile system handles lava damage
+        if (player.isOnFire()) player.setFireTicks(0);
 
         tickBossAmbientParticles();
 
@@ -4029,8 +4066,67 @@ public class CombatManager {
             }
 
             if (arena.hasWebOverlay(finalPos)) {
-                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
-                sendMessage("§7  Cobwebs slow your movement! (-1 speed next turn)");
+                arena.clearWebOverlay(finalPos);
+                // Break the cobweb block in the world
+                BlockPos webBlockPos = new BlockPos(
+                    arena.getOrigin().getX() + finalPos.x(),
+                    arena.getOrigin().getY() + 1,
+                    arena.getOrigin().getZ() + finalPos.z());
+                if (player.getWorld() instanceof ServerWorld sw) {
+                    sw.setBlockState(webBlockPos, Blocks.AIR.getDefaultState(),
+                        net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                    sw.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_COBWEB,
+                        webBlockPos.getX() + 0.5, webBlockPos.getY() + 0.5, webBlockPos.getZ() + 0.5,
+                        8, 0.3, 0.3, 0.3, 0.01);
+                }
+                sendMessage("§7  Caught in cobwebs! Movement stopped.");
+            }
+
+            // Water tile handling: boat visual + Soaked effect
+            GridTile landingTile = arena.getTile(finalPos);
+            boolean onWaterNow = landingTile != null
+                && landingTile.getType() == com.crackedgames.craftics.core.TileType.WATER;
+            if (onWaterNow) {
+                if (moveBoatProtected) {
+                    // Spawn a visual boat if we don't have one
+                    if (activeBoat == null && player.getWorld() instanceof ServerWorld sw) {
+                        BlockPos boatBlock = arena.gridToBlockPos(finalPos);
+                        double boatY = boatBlock.getY(); // surface level, not lowered
+                        activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
+                            net.minecraft.entity.EntityType.BOAT, sw);
+                        activeBoat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
+                        activeBoat.setYaw(player.getYaw() - 90f);
+                        activeBoat.setInvulnerable(true);
+                        activeBoat.setNoGravity(true);
+                        sw.spawnEntity(activeBoat);
+                        // Teleport player to boat position THEN mount
+                        player.requestTeleport(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
+                        player.startRiding(activeBoat, true);
+                    } else if (activeBoat != null) {
+                        // Move existing boat with the player
+                        BlockPos boatBlock = arena.gridToBlockPos(finalPos);
+                        double boatY = boatBlock.getY();
+                        activeBoat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
+                        activeBoat.setYaw(player.getYaw() - 90f);
+                    }
+                } else {
+                    addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
+                    sendMessage("§b  Wading through water! Soaked for 2 turns.");
+                }
+            } else {
+                // Left water — remove boat (despawnActiveBoat snaps position)
+                despawnActiveBoat();
+            }
+
+            // Lava damage on move — 10 damage when stepping onto lava
+            if (landingTile != null && landingTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                int lavaDmg = damagePlayer(10);
+                sendMessage("§6  Stepped in lava for " + lavaDmg + " damage!");
+                if (getPlayerHp() <= 0) {
+                    sendSync();
+                    handlePlayerDeathOrGameOver();
+                    return;
+                }
             }
 
             // Prevent vanilla cobweb physics desync
@@ -4061,7 +4157,11 @@ public class CombatManager {
         GridPos next = movePath.get(movePathIndex);
         BlockPos endBlock = arena.gridToBlockPos(next);
         double endX = endBlock.getX() + 0.5;
-        double endY = endBlock.getY();
+        // Boat on water = surface Y; leather boots on powder snow = surface Y; otherwise use tile Y
+        GridTile nextTile = arena.getTile(next);
+        boolean stayOnSurface = (activeBoat != null || moveBoatProtected)
+            || (nextTile != null && nextTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW && hasLeatherBoots());
+        double endY = stayOnSurface ? endBlock.getY() : arena.getEntityY(next);
         double endZ = endBlock.getZ() + 0.5;
 
         float progress = Math.min(1.0f, (float) moveTickCounter / getMoveTicks());
@@ -4090,6 +4190,12 @@ public class CombatManager {
         }
 
         player.networkHandler.requestTeleport(x, y, z, playerMoveYaw, 0f);
+
+        // Keep boat in sync with player during movement — boats face 90° offset from entity yaw
+        if (activeBoat != null) {
+            activeBoat.setPosition(x, y, z);
+            activeBoat.setYaw(playerMoveYaw - 90f);
+        }
 
         if (playerMounted && mountMob != null) {
             mountMob.requestTeleport(x, y, z);
@@ -4464,6 +4570,27 @@ public class CombatManager {
                 sendMessage("§aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
             }
             fireEffectHook(h -> h.onTurnStart(effectContext));
+
+            // Hazard tile damage at turn start (must match startPlayerTurn logic)
+            GridTile qTurnTile = arena.getTile(arena.getPlayerGridPos());
+            if (qTurnTile != null) {
+                if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                    int lavaDmg = damagePlayer(10);
+                    sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
+                    if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
+                }
+                if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
+                        && !hasLeatherBoots()) {
+                    powderSnowTurns++;
+                    int freezeDmg = (int) Math.pow(2, powderSnowTurns - 1);
+                    int actual = damagePlayer(freezeDmg);
+                    sendMessage("§b  Freezing! " + actual + " damage! (Turn " + powderSnowTurns + " in snow)");
+                    if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
+                } else if (qTurnTile.getType() != com.crackedgames.craftics.core.TileType.POWDER_SNOW) {
+                    powderSnowTurns = 0;
+                }
+            }
+
             sendSync();
             refreshHighlights();
             sendToAllParty(new CombatEventPayload(
@@ -4610,9 +4737,12 @@ public class CombatManager {
                 GridPos selfPos = currentEnemy.getGridPos();
                 GridPos playerGridPos = arena.getPlayerGridPos();
                 int dist = selfPos.manhattanDistance(playerGridPos);
+                int kbTiles = currentEnemy.isEnraged() ? 3 : 2;
                 if (dist <= explode.radius()) {
-                    int actual = damagePlayer(explode.damage());
+                    int actual = damagePlayer(explode.damage(), currentEnemy);
                     sendMessage("§c  Explosion hits you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                    if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
+                    applyPlayerKnockback(selfPos, kbTiles, currentEnemy);
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 }
                 List<CombatEntity> blastTargets = new ArrayList<>();
@@ -4625,6 +4755,12 @@ public class CombatManager {
                 for (CombatEntity target : blastTargets) {
                     int dealt = target.takeDamage(explode.damage());
                     sendMessage("§6  Blast hits " + target.getDisplayName() + " for " + dealt + "!");
+                    if (target.isAlive()) {
+                        int edx = Integer.signum(target.getGridPos().x() - selfPos.x());
+                        int edz = Integer.signum(target.getGridPos().z() - selfPos.z());
+                        if (edx == 0 && edz == 0) edx = 1;
+                        knockEnemyBack(target, edx, edz, kbTiles);
+                    }
                     checkAndHandleDeath(target);
                 }
                 // Self-exploded = no drops
@@ -6227,23 +6363,7 @@ public class CombatManager {
             // Move an enemy entity
             CombatEntity target = findEnemyById(fm.targetEntityId());
             if (target != null && target.isAlive()) {
-                GridPos startPos = target.getGridPos();
-                GridPos landingPos = startPos;
-                for (int i = 1; i <= fm.tiles(); i++) {
-                    GridPos candidate = new GridPos(startPos.x() + fm.dx() * i, startPos.z() + fm.dz() * i);
-                    if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) break;
-                    GridTile tile = arena.getTile(candidate);
-                    if (tile == null || !tile.isWalkable()) break;
-                    landingPos = candidate;
-                }
-                if (!landingPos.equals(startPos)) {
-                    MobEntity mob = target.getMobEntity();
-                    if (mob != null) {
-                        BlockPos bp = arena.gridToBlockPos(landingPos);
-                        mob.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
-                    }
-                    arena.moveEntity(target, landingPos);
-                }
+                knockEnemyBack(target, fm.dx(), fm.dz(), fm.tiles());
             }
         }
     }
@@ -6852,6 +6972,25 @@ public class CombatManager {
     }
 
     private void startEnemyMove(List<GridPos> path) {
+        // Cobweb trap: truncate path if enemy walks through a web
+        for (int i = 0; i < path.size(); i++) {
+            if (arena.hasWebOverlay(path.get(i))) {
+                path = new ArrayList<>(path.subList(0, i + 1));
+                // Break the cobweb
+                GridPos webPos = path.get(path.size() - 1);
+                arena.clearWebOverlay(webPos);
+                BlockPos webBlockPos = new BlockPos(
+                    arena.getOrigin().getX() + webPos.x(),
+                    arena.getOrigin().getY() + 1,
+                    arena.getOrigin().getZ() + webPos.z());
+                if (player.getWorld() instanceof ServerWorld sw) {
+                    sw.setBlockState(webBlockPos, Blocks.AIR.getDefaultState(),
+                        net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                }
+                sendMessage("§7" + currentEnemy.getDisplayName() + " is caught in cobwebs!");
+                break;
+            }
+        }
         enemyMovePath = path;
         enemyMovePathIndex = 0;
         enemyMoveTickCounter = 0;
@@ -6920,7 +7059,7 @@ public class CombatManager {
         BlockPos endBlock = arena.gridToBlockPos(next);
         double moveOffset = (currentEnemy != null && currentEnemy.getSize() > 1) ? currentEnemy.getSize() / 2.0 : 0.5;
         double endX = endBlock.getX() + moveOffset;
-        double endY = endBlock.getY();
+        double endY = arena.getEntityY(next);
         double endZ = endBlock.getZ() + moveOffset;
 
         int emTicks2 = getMoveTicks();
@@ -6975,6 +7114,29 @@ public class CombatManager {
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
                 return;
+            }
+
+            // Water tile: soak non-immune enemies
+            GridTile enemyLandingTile = arena.getTile(next);
+            if (enemyLandingTile != null
+                    && enemyLandingTile.getType() == com.crackedgames.craftics.core.TileType.WATER
+                    && !isWaterImmune(currentEnemy.getEntityTypeId())) {
+                currentEnemy.stackSoaked(2, 1);
+                sendMessage("§b" + currentEnemy.getDisplayName() + " is soaked from wading through water!");
+            }
+
+            // Lava tile: 10 damage when enemy steps on it
+            if (enemyLandingTile != null
+                    && enemyLandingTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                int eLavaDmg = currentEnemy.takeDamage(10);
+                sendMessage("§6" + currentEnemy.getDisplayName() + " steps in lava for " + eLavaDmg + " damage!");
+                if (!currentEnemy.isAlive()) {
+                    killEnemy(currentEnemy);
+                    enemyLerpInitialized = false;
+                    enemyTurnState = EnemyTurnState.DONE;
+                    enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                    return;
+                }
             }
 
             // Check for cake — enemy heals 2 HP, one use consumed
@@ -7710,19 +7872,201 @@ public class CombatManager {
         if (dx == 0 && dz == 0) dx = 1; // default direction
 
         GridPos landingPos = playerGridPos;
+        boolean hitHazard = false;
+        boolean hitCactus = false;
         for (int i = 1; i <= tiles; i++) {
             GridPos candidate = new GridPos(playerGridPos.x() + dx * i, playerGridPos.z() + dz * i);
             if (!arena.isInBounds(candidate) || arena.isEnemyOccupied(candidate)) break;
             var tile = arena.getTile(candidate);
-            if (tile == null || !tile.isWalkable()) break;
+            if (tile == null) break;
+
+            // Solid obstacles block knockback — check for cactus
+            if (tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) {
+                if (tile.getBlockType() == Blocks.CACTUS) hitCactus = true;
+                break;
+            }
+
+            // Hazard tiles: land ON them, then take consequences
+            if (tile.getType() == com.crackedgames.craftics.core.TileType.VOID
+                || tile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER
+                || tile.getType() == com.crackedgames.craftics.core.TileType.WATER
+                || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                landingPos = candidate;
+                hitHazard = true;
+                break;
+            }
+
             landingPos = candidate;
+        }
+
+        // Cactus collision damage — fires even if player didn't move (adjacent slam)
+        if (hitCactus) {
+            int cactusDmg = damagePlayer(2, source);
+            sendMessage("§2  Slammed into a cactus for " + cactusDmg + " damage!");
+            if (getPlayerHp() <= 0) {
+                sendSync();
+                handlePlayerDeathOrGameOver();
+                return;
+            }
         }
 
         if (!landingPos.equals(playerGridPos)) {
             arena.setPlayerGridPos(landingPos);
             BlockPos bp = arena.gridToBlockPos(landingPos);
-            player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+            double kbY = (activeBoat != null) ? bp.getY() : arena.getEntityY(landingPos);
+            player.requestTeleport(bp.getX() + 0.5, kbY, bp.getZ() + 0.5);
             sendMessage("§e  Knocked back " + playerGridPos.manhattanDistance(landingPos) + " tiles!");
+
+            if (hitHazard) {
+                var hazardTile = arena.getTile(landingPos);
+                if (hazardTile != null) {
+                    switch (hazardTile.getType()) {
+                        case VOID -> {
+                            damagePlayer((int) player.getHealth() + 10, source);
+                            sendMessage("§4  Fell into the void!");
+                        }
+                        case DEEP_WATER -> {
+                            if (playerHasBoat()) {
+                                consumeBoat();
+                                addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
+                                sendMessage("§b  Your boat saves you from drowning! Soaked for 2 turns.");
+                            } else {
+                                damagePlayer((int) player.getHealth() + 10, source);
+                                sendMessage("§1  Drowned in deep water!");
+                            }
+                        }
+                        case LAVA -> {
+                            int lavaDmg = damagePlayer(10, source);
+                            sendMessage("§6  Knocked into lava for " + lavaDmg + " damage!");
+                        }
+                        case WATER -> {
+                            addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
+                            sendMessage("§b  Splashed into water! Soaked for 2 turns.");
+                        }
+                        default -> {}
+                    }
+                    if (getPlayerHp() <= 0) {
+                        sendSync();
+                        handlePlayerDeathOrGameOver();
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Knock an enemy back, allowing them to land on hazard tiles (void/lava/water).
+     * Returns the final landing position.
+     */
+    private GridPos knockEnemyBack(CombatEntity enemy, int dx, int dz, int tiles) {
+        GridPos startPos = enemy.getGridPos();
+        GridPos landingPos = startPos;
+        boolean hitHazard = false;
+        boolean hitCactus = false;
+
+        for (int i = 1; i <= tiles; i++) {
+            GridPos candidate = new GridPos(startPos.x() + dx * i, startPos.z() + dz * i);
+            if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) break;
+            var tile = arena.getTile(candidate);
+            if (tile == null) break;
+
+            if (tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) {
+                if (tile.getBlockType() == Blocks.CACTUS) hitCactus = true;
+                break;
+            }
+
+            if (tile.getType() == com.crackedgames.craftics.core.TileType.VOID
+                || tile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER
+                || tile.getType() == com.crackedgames.craftics.core.TileType.WATER
+                || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                landingPos = candidate;
+                hitHazard = true;
+                break;
+            }
+
+            landingPos = candidate;
+        }
+
+        // Cactus collision damage — fires even if enemy didn't move (adjacent slam)
+        if (hitCactus) {
+            int cactusDmg = enemy.takeDamage(2);
+            sendMessage("§2" + enemy.getDisplayName() + " slammed into a cactus for " + cactusDmg + " damage!");
+            if (!enemy.isAlive()) {
+                killEnemy(enemy);
+                return startPos;
+            }
+        }
+
+        if (!landingPos.equals(startPos)) {
+            arena.moveEntity(enemy, landingPos);
+            if (enemy.getMobEntity() != null) {
+                var bp = arena.gridToBlockPos(landingPos);
+                enemy.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(landingPos), bp.getZ() + 0.5);
+            }
+
+            if (hitHazard) {
+                var hazardTile = arena.getTile(landingPos);
+                if (hazardTile != null) {
+                    switch (hazardTile.getType()) {
+                        case VOID, DEEP_WATER -> {
+                            enemy.takeDamage(enemy.getCurrentHp() + 100);
+                            sendMessage(hazardTile.getType() == com.crackedgames.craftics.core.TileType.VOID
+                                ? "§4" + enemy.getDisplayName() + " fell into the void!"
+                                : "§1" + enemy.getDisplayName() + " drowned in deep water!");
+                            killEnemy(enemy);
+                        }
+                        case LAVA -> {
+                            int lavaDmg = enemy.takeDamage(10);
+                            sendMessage("§6" + enemy.getDisplayName() + " knocked into lava for " + lavaDmg + " damage!");
+                            if (!enemy.isAlive()) {
+                                killEnemy(enemy);
+                            }
+                        }
+                        case WATER -> {
+                            enemy.stackSoaked(2, 1);
+                            sendMessage("§b" + enemy.getDisplayName() + " splashes into water! Soaked!");
+                        }
+                        default -> {}
+                    }
+                }
+            }
+        }
+        return landingPos;
+    }
+
+    private boolean hasLeatherBoots() {
+        if (player == null) return false;
+        var boots = player.getEquippedStack(net.minecraft.entity.EquipmentSlot.FEET);
+        return boots.getItem() == Items.LEATHER_BOOTS;
+    }
+
+    private static boolean isWaterImmune(String entityTypeId) {
+        return switch (entityTypeId) {
+            case "minecraft:drowned", "minecraft:guardian", "minecraft:elder_guardian",
+                 "minecraft:squid", "minecraft:glow_squid", "minecraft:axolotl",
+                 "minecraft:turtle", "minecraft:dolphin", "minecraft:cod",
+                 "minecraft:salmon", "minecraft:tropical_fish", "minecraft:pufferfish",
+                 "minecraft:tadpole", "minecraft:frog" -> true;
+            default -> false;
+        };
+    }
+
+    private void despawnActiveBoat() {
+        if (activeBoat != null) {
+            if (player != null) {
+                player.stopRiding();
+            }
+            activeBoat.discard();
+            activeBoat = null;
+            // Snap player to correct grid position — vanilla dismount offsets X/Z
+            if (player != null && arena != null) {
+                BlockPos correct = arena.gridToBlockPos(arena.getPlayerGridPos());
+                double correctY = arena.getEntityY(arena.getPlayerGridPos());
+                player.setPosition(correct.getX() + 0.5, correctY, correct.getZ() + 0.5);
+                player.networkHandler.requestTeleport(
+                    correct.getX() + 0.5, correctY, correct.getZ() + 0.5,
+                    player.getYaw(), player.getPitch());
+            }
         }
     }
 
@@ -7744,6 +8088,10 @@ public class CombatManager {
             case "minecraft:husk" -> {
                 addEffectHooked(CombatEffects.EffectType.WEAKNESS, 2, 0);
                 sendMessage("§7  Weakness applied! (-2 attack for 2 turns)");
+                applyPlayerKnockback(currentEnemy.getGridPos(), 1, currentEnemy);
+            }
+            case "minecraft:vindicator" -> {
+                applyPlayerKnockback(currentEnemy.getGridPos(), 2, currentEnemy);
             }
             case "minecraft:stray" -> {
                 addEffectHooked(CombatEffects.EffectType.SLOWNESS, 2, 0);
@@ -10181,6 +10529,15 @@ public class CombatManager {
 
     public void endCombat() {
         if (!active) return;
+        despawnActiveBoat();
+
+        // Remove hidden fire resistance and restore freeze damage
+        if (player != null) {
+            player.removeStatusEffect(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE);
+            player.setFrozenTicks(0);
+            ((ServerWorld) player.getWorld()).getGameRules()
+                .get(net.minecraft.world.GameRules.FREEZE_DAMAGE).set(true, player.getServer());
+        }
 
         // === CRITICAL: clear persistent flags FIRST ===
         // These must happen before any world operations that could throw during
@@ -10933,6 +11290,9 @@ public class CombatManager {
 
     // Trim set bonus state
     private boolean movedThisTurn = false;           // FORTRESS: track if player moved
+    private boolean moveBoatProtected = false;       // Water crossing with boat = no Soaked
+    private int powderSnowTurns = 0;                 // Escalating freeze damage counter
+    private net.minecraft.entity.vehicle.BoatEntity activeBoat = null; // Visual boat while in water
     private boolean oceanBlessingUsed = false;        // OCEAN_BLESSING: once per combat
 
     /** Called when an enemy is killed. */

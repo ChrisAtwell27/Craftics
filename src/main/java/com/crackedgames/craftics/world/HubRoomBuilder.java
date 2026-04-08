@@ -53,7 +53,7 @@ public class HubRoomBuilder {
     }
 
     /** Lobby version — bump to trigger rebuild of the central lobby. */
-    public static final int LOBBY_VERSION = 1;
+    public static final int LOBBY_VERSION = 2;
 
     /** Build the central lobby — a floating island waiting room with barrier walls. */
     public static void buildLobby(ServerWorld world) {
@@ -115,9 +115,34 @@ public class HubRoomBuilder {
             }
         }
 
-        // Center pedestal with sign/info
+        // Center pedestal
         world.setBlockState(new BlockPos(0, floorY, 0), basalt);
-        world.setBlockState(new BlockPos(0, spawnY, 0), Blocks.SOUL_LANTERN.getDefaultState());
+
+        // Info signs around the pedestal
+        placeSign(world, new BlockPos(0, spawnY, 1), Direction.SOUTH, new String[]{
+            "§6§lWelcome to",
+            "§6§lCraftics!",
+            "",
+            "§7Read the signs"
+        });
+        placeSign(world, new BlockPos(1, spawnY, 0), Direction.EAST, new String[]{
+            "§a§l/new",
+            "§7Create your",
+            "§7personal island",
+            "§7and arenas"
+        });
+        placeSign(world, new BlockPos(-1, spawnY, 0), Direction.WEST, new String[]{
+            "§e§l/home",
+            "§7Return to your",
+            "§7island at",
+            "§7any time"
+        });
+        placeSign(world, new BlockPos(0, spawnY, -1), Direction.NORTH, new String[]{
+            "§b§lGuide Book",
+            "§7Press the guide",
+            "§7hotkey to open",
+            "§7help and info"
+        });
 
         // Small ring of lanterns around center
         for (int[] pos : new int[][]{{3,0},{-3,0},{0,3},{0,-3},{2,2},{-2,2},{2,-2},{-2,-2}}) {
@@ -903,5 +928,31 @@ public class HubRoomBuilder {
         if (halfWidth < 0) return false;
         int center = (MAIN_MIN_Z + MAIN_MAX_Z) / 2;
         return z >= center - halfWidth && z <= center + halfWidth;
+    }
+
+    /** Place a standing sign facing a direction with up to 4 lines of text. */
+    private static void placeSign(ServerWorld world, BlockPos pos, Direction facing, String[] lines) {
+        // Place oak sign block with correct rotation
+        int rotation = switch (facing) {
+            case SOUTH -> 8;
+            case WEST -> 12;
+            case NORTH -> 0;
+            case EAST -> 4;
+            default -> 8;
+        };
+        BlockState signState = Blocks.OAK_SIGN.getDefaultState()
+            .with(net.minecraft.block.SignBlock.ROTATION, rotation);
+        world.setBlockState(pos, signState);
+
+        // Set sign text
+        var blockEntity = world.getBlockEntity(pos);
+        if (blockEntity instanceof net.minecraft.block.entity.SignBlockEntity sign) {
+            for (int i = 0; i < Math.min(lines.length, 4); i++) {
+                sign.setText(sign.getText(true).withMessage(i,
+                    net.minecraft.text.Text.literal(lines[i])), true);
+            }
+            sign.setWaxed(true); // prevent player editing
+            sign.markDirty();
+        }
     }
 }

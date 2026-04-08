@@ -60,6 +60,10 @@ public class GridTile {
         return blockType;
     }
 
+    public void setBlockType(Block block) {
+        this.blockType = block;
+    }
+
     public boolean isWalkable() {
         return type.walkable;
     }
@@ -77,7 +81,7 @@ public class GridTile {
     }
 
     public boolean isWater() {
-        return type == TileType.WATER;
+        return type == TileType.WATER || type == TileType.DEEP_WATER;
     }
 
     public boolean isPermanent() {
@@ -121,7 +125,9 @@ public class GridTile {
             case FIRE -> Blocks.MAGMA_BLOCK;
             case VOID -> Blocks.AIR;
             case EXIT -> Blocks.LADDER;
-            case WATER -> Blocks.WATER;
+            case WATER, DEEP_WATER -> Blocks.WATER;
+            case LOW_GROUND -> Blocks.STONE;
+            case POWDER_SNOW -> Blocks.POWDER_SNOW;
         };
     }
 }

@@ -845,15 +845,65 @@ public class CrafticsMod implements ModInitializer {
                         new com.crackedgames.craftics.network.ExitCombatPayload(false));
                 }
 
-                net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(player.getUuid());
-                player.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
-                player.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
-                ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported home."), false);
+                // Show loading screen, load chunks, then teleport
+                ServerPlayNetworking.send(player,
+                    new com.crackedgames.craftics.network.LoadingScreenPayload(
+                        true, "Returning Home...", ""));
+
+                final ServerPlayerEntity homePlayer = player;
+                final ServerWorld homeWorld = overworld;
+                overworld.getServer().execute(() -> {
+                    net.minecraft.util.math.BlockPos hub = CrafticsSavedData.get(homeWorld)
+                        .getHubTeleportPos(homePlayer.getUuid());
+
+                    // Force-load hub chunks before teleporting
+                    int minCX = (hub.getX() - 48) >> 4;
+                    int maxCX = (hub.getX() + 48) >> 4;
+                    int minCZ = (hub.getZ() - 48) >> 4;
+                    int maxCZ = (hub.getZ() + 48) >> 4;
+                    for (int cx = minCX; cx <= maxCX; cx++) {
+                        for (int cz = minCZ; cz <= maxCZ; cz++) {
+                            homeWorld.getChunk(cx, cz);
+                        }
+                    }
+
+                    homePlayer.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+                    homePlayer.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+                    homePlayer.sendMessage(Text.literal("\u00a7aTeleported home."), false);
+                    ServerPlayNetworking.send(homePlayer,
+                        new com.crackedgames.craftics.network.LoadingScreenPayload(
+                            false, "", ""));
+                });
                 return 1;
             });
             dispatcher.register(CommandManager.literal("home").executes(shortcutHomeCmd));
             dispatcher.register(CommandManager.literal("craftics").then(
                 CommandManager.literal("home").executes(shortcutHomeCmd)));
+
+            // /craftics dev_arena — test arena with every obstacle type
+            dispatcher.register(CommandManager.literal("craftics").then(
+                CommandManager.literal("dev_arena").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                    ServerWorld world = player.getServerWorld();
+
+                    CombatManager cm = CombatManager.get(player);
+                    if (cm.isActive()) cm.endCombat();
+
+                    var levelDef = new com.crackedgames.craftics.level.DevArenaDefinition();
+                    CrafticsSavedData data = CrafticsSavedData.get(world);
+                    java.util.UUID uid = player.getUuid();
+                    net.minecraft.util.math.BlockPos devOrigin = data.hasPersonalWorld(uid)
+                        ? data.getArenaOrigin(uid, levelDef.getLevelNumber())
+                        : new net.minecraft.util.math.BlockPos(0, 100, -500);
+                    var arena = com.crackedgames.craftics.level.ArenaBuilder.buildAt(world, levelDef, devOrigin);
+                    levelDef.placeHazards(world, arena);
+                    cm.startDevArena(player, arena, levelDef);
+
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        "\u00a7a\u00a7lDev Arena loaded! \u00a7r\u00a77Every obstacle type + 4 Husks."), false);
+                    return 1;
+                })
+            ));
 
             // /lobby — shortcut to central lobby
             dispatcher.register(CommandManager.literal("lobby").executes(ctx -> {
