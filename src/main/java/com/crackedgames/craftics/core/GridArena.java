@@ -185,10 +185,8 @@ public class GridArena {
         return new BlockPos(level * 1000, 100, lane * 1000);
     }
 
-    /** Get arena origin within a player's world slot. 100-block spacing per level. */
-    /** Get arena origin within a player's world slot. 1000-block offset from hub, 100-block spacing per level. */
+    /** Get arena origin within a player's world slot. Column=X (levels), Row=Z (players). */
     public static BlockPos arenaOriginForLevel(int level, int worldSlot) {
-        int baseX = 10000 + worldSlot * 10000;
-        return new BlockPos(baseX + 1000 + level * 100, 100, 0);
+        return new BlockPos(10000 + 1000 + level * 300, 100, worldSlot * 1000);
     }
 }

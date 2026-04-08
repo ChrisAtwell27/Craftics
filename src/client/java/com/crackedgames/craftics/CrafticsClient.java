@@ -167,10 +167,12 @@ public class CrafticsClient implements ClientModInitializer {
             context.client().options.getBobView().setValue(previousBobView);
             context.client().options.getChatScale().setValue(previousChatScale);
             context.client().options.getChatWidth().setValue(previousChatWidth);
-            context.client().options.setPerspective(Perspective.FIRST_PERSON);
-            context.client().mouse.lockCursor();
+            if (!payload.eventRoomFollows()) {
+                context.client().options.setPerspective(Perspective.FIRST_PERSON);
+                context.client().mouse.lockCursor();
+            }
             TransitionOverlay.startFadeOut();
-            CrafticsMod.LOGGER.info("Exited combat mode (won: {})", payload.won());
+            CrafticsMod.LOGGER.info("Exited combat mode (won: {}, eventRoom: {})", payload.won(), payload.eventRoomFollows());
         });
 
         // Stay in isometric view for the choice screen
@@ -218,9 +220,24 @@ public class CrafticsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.EventRoomPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
+                    // Restore first-person + cursor lock now that the event screen is ready
+                    context.client().options.setPerspective(Perspective.FIRST_PERSON);
+                    context.client().mouse.lockCursor();
                     context.client().setScreen(new com.crackedgames.craftics.client.EventRoomScreen(
                         payload.eventType(), payload.eventData()
                     ));
+                });
+            }
+        );
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.LoadingScreenPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    if (payload.show()) {
+                        TransitionOverlay.startTransition(payload.title(), payload.subtitle(), () -> {});
+                    } else {
+                        TransitionOverlay.startFadeOut();
+                    }
                 });
             }
         );

@@ -165,6 +165,32 @@ public class CombatManager {
         return bestPos;
     }
 
+    /**
+     * Find the nearest valid spawn tile that is also reachable by the player.
+     * Prevents enemies from spawning on islands the player can't reach.
+     */
+    private static GridPos findNearestReachableSpawn(GridArena arena, GridPos desiredPos,
+                                                      int entitySize, java.util.Set<GridPos> reachable) {
+        GridPos bestPos = null;
+        int bestDistance = Integer.MAX_VALUE;
+
+        for (int x = 0; x <= arena.getWidth() - entitySize; x++) {
+            for (int z = 0; z <= arena.getHeight() - entitySize; z++) {
+                GridPos candidate = new GridPos(x, z);
+                if (!canPlaceSpawnAt(arena, candidate, entitySize)) continue;
+                if (!reachable.contains(candidate)) continue;
+
+                int distance = candidate.manhattanDistance(desiredPos);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestPos = candidate;
+                }
+            }
+        }
+
+        return bestPos;
+    }
+
     private static GridPos findNearestWalkableUnreserved(GridArena arena, GridPos desiredPos, java.util.Set<GridPos> reserved) {
         GridPos bestPos = null;
         int bestDistance = Integer.MAX_VALUE;
@@ -499,7 +525,24 @@ public class CombatManager {
     }
 
     private GridArena buildArena(ServerWorld world, LevelDefinition def) {
+        // Try pre-built arena first (instant — no block placement needed)
         if (worldOwnerUuid != null) {
+            com.crackedgames.craftics.world.CrafticsSavedData data =
+                com.crackedgames.craftics.world.CrafticsSavedData.get(world);
+            com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd =
+                data.getPlayerData(worldOwnerUuid);
+            if (pd.arenasPreGenerated) {
+                int[] meta = pd.getArenaMetadata(def.getLevelNumber());
+                if (meta != null) {
+                    net.minecraft.util.math.BlockPos origin = new net.minecraft.util.math.BlockPos(
+                        meta[0], meta[1], meta[2]);
+                    int gridW = meta[3], gridH = meta[4];
+                    com.crackedgames.craftics.core.GridPos playerStart =
+                        new com.crackedgames.craftics.core.GridPos(meta[5], meta[6]);
+                    return com.crackedgames.craftics.level.ArenaBuilder.scanExisting(
+                        world, origin, gridW, gridH, playerStart, def.getLevelNumber());
+                }
+            }
             return com.crackedgames.craftics.level.ArenaBuilder.build(world, def, worldOwnerUuid);
         }
         return com.crackedgames.craftics.level.ArenaBuilder.build(world, def);
@@ -611,11 +654,15 @@ public class CombatManager {
     }
 
     private int damagePlayer(int rawDamage) {
+        return damagePlayer(rawDamage, null);
+    }
+
+    private int damagePlayer(int rawDamage, CombatEntity attacker) {
         // ETHEREAL set bonus: 20% dodge chance
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.ETHEREAL) {
             if (Math.random() < 0.20) {
                 sendMessage("§b§l✦ Ethereal! §r§7Attack phased through you!");
-                fireEffectHook(h -> h.onDodge(effectContext, null));
+                fireEffectHook(h -> h.onDodge(effectContext, attacker));
                 return 0;
             }
         }
@@ -639,7 +686,7 @@ public class CombatManager {
             int blockedAmount = damageWithoutShield - actual;
             if (blockedAmount > 0) {
                 final int blocked = blockedAmount;
-                fireEffectHook(h -> h.onBlocked(effectContext, null, blocked));
+                fireEffectHook(h -> h.onBlocked(effectContext, attacker, blocked));
             }
         }
 
@@ -649,7 +696,7 @@ public class CombatManager {
         }
 
         // Addon combat effects: modify incoming damage
-        actual = fireEffectHookChained(actual, (h, dmg) -> h.onTakeDamage(effectContext, null, dmg));
+        actual = fireEffectHookChained(actual, (h, dmg) -> h.onTakeDamage(effectContext, attacker, dmg));
         if (actual <= 0) return 0;
 
         player.setHealth(Math.max(1, player.getHealth() - actual));
@@ -670,7 +717,7 @@ public class CombatManager {
 
         // Addon combat effects: lethal damage prevention
         if (player.getHealth() <= 1) {
-            int lethalResult = fireEffectHookChained(actual, (h, dmg) -> h.onLethalDamage(effectContext, null, dmg));
+            int lethalResult = fireEffectHookChained(actual, (h, dmg) -> h.onLethalDamage(effectContext, attacker, dmg));
             if (lethalResult == 0) return 0;
         }
 
@@ -1023,6 +1070,14 @@ public class CombatManager {
         // Remap spawn coords to live arena size, resolve to nearest valid tile
         boolean isGhastBossFight = "minecraft:ghast".equals(bossEntityTypeId);
 
+        // Pre-compute tiles reachable by the player from their start position.
+        // If the player has a boat (or turtle helmet), water tiles are walkable.
+        boolean hasBoat = playerHasBoat();
+        int maxReach = arena.getWidth() * arena.getHeight();
+        java.util.Set<GridPos> playerReachable = Pathfinding.getReachableTiles(
+            arena, arena.getPlayerStart(), maxReach, hasBoat);
+        playerReachable.add(arena.getPlayerStart());
+
         boolean bossSpawned = false;
         for (LevelDefinition.EnemySpawn spawn : levelDef.getEnemySpawns()) {
             boolean isBossSpawn = !bossSpawned && bossEntityTypeId != null
@@ -1038,6 +1093,19 @@ public class CombatManager {
             GridPos resolvedPos = aquatic
                 ? findNearestValidSpawn(arena, adaptedPos, size, true)
                 : findNearestValidSpawn(arena, adaptedPos, size);
+
+            // If the resolved position is unreachable by the player, relocate to the
+            // nearest reachable tile so the player can never be soft-locked.
+            if (resolvedPos != null && !aquatic && !playerReachable.contains(resolvedPos)) {
+                CrafticsMod.LOGGER.info("Enemy spawn {} is unreachable from player start, relocating", resolvedPos);
+                GridPos relocated = findNearestReachableSpawn(arena, resolvedPos, size, playerReachable);
+                if (relocated != null) {
+                    resolvedPos = relocated;
+                } else {
+                    CrafticsMod.LOGGER.warn("No reachable tile for enemy at {} — skipping", resolvedPos);
+                    resolvedPos = null;
+                }
+            }
 
             if (resolvedPos == null) {
                 CrafticsMod.LOGGER.warn(
@@ -7417,7 +7485,7 @@ public class CombatManager {
                 }
                 checkAndHandleDeath(petTarget);
             } else {
-                int raActual = damagePlayer(raDamage);
+                int raActual = damagePlayer(raDamage, currentEnemy);
 
                 player.getWorld().playSound(null, player.getBlockPos(),
                     net.minecraft.sound.SoundEvents.ENTITY_ARROW_HIT_PLAYER,
@@ -7462,7 +7530,7 @@ public class CombatManager {
                     }
                     checkAndHandleDeath(petTarget);
                 } else {
-                    int actual = damagePlayer(damage);
+                    int actual = damagePlayer(damage, currentEnemy);
                     player.getWorld().playSound(null, player.getBlockPos(),
                         net.minecraft.sound.SoundEvents.ENTITY_PLAYER_HURT,
                         net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
@@ -7530,7 +7598,7 @@ public class CombatManager {
             }
             checkAndHandleDeath(petTarget);
         } else {
-            int actual = damagePlayer(damage);
+            int actual = damagePlayer(damage, currentEnemy);
 
             // Combat sound: player hit
             player.getWorld().playSound(null, player.getBlockPos(),
@@ -7542,7 +7610,7 @@ public class CombatManager {
 
             // Apply knockback to player
             if (knockbackTiles > 0) {
-                applyPlayerKnockback(currentEnemy.getGridPos(), knockbackTiles);
+                applyPlayerKnockback(currentEnemy.getGridPos(), knockbackTiles, currentEnemy);
             }
 
             // Thorns: reflect damage back to attacker (Luck boosts proc chance)
@@ -7624,12 +7692,16 @@ public class CombatManager {
         return "scaffold".equals(effect) ? 1 : 0;
     }
 
+    private void applyPlayerKnockback(GridPos attackerPos, int tiles) {
+        applyPlayerKnockback(attackerPos, tiles, null);
+    }
+
     /**
      * Knock the player back N tiles away from the attacker position.
      */
-    private void applyPlayerKnockback(GridPos attackerPos, int tiles) {
+    private void applyPlayerKnockback(GridPos attackerPos, int tiles, CombatEntity source) {
         // Addon combat effects: modify knockback distance
-        tiles = fireEffectHookChained(tiles, (h, d) -> h.onKnockback(effectContext, null, d));
+        tiles = fireEffectHookChained(tiles, (h, d) -> h.onKnockback(effectContext, source, d));
         if (tiles <= 0) return;
 
         GridPos playerGridPos = arena.getPlayerGridPos();
@@ -9276,7 +9348,7 @@ public class CombatManager {
     private void offerShrine(ServerPlayerEntity savedPlayer, int biomeOrdinal) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
         for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false, true));
         }
 
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
@@ -9302,7 +9374,7 @@ public class CombatManager {
     private void offerTraveler(ServerPlayerEntity savedPlayer, int biomeOrdinal) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
         for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false, true));
         }
 
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
@@ -9356,7 +9428,7 @@ public class CombatManager {
     private void offerEnchanter(ServerPlayerEntity savedPlayer) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
         for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false, true));
         }
 
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
@@ -9512,7 +9584,7 @@ public class CombatManager {
     private void offerVault(ServerPlayerEntity savedPlayer, int biomeOrdinal) {
         List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
         for (ServerPlayerEntity p : members) {
-            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false, true));
         }
 
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();

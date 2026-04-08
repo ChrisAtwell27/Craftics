@@ -10,16 +10,23 @@ import net.minecraft.util.Identifier;
 /**
  * S2C: Exit combat mode.
  * won: true if player won, false if defeated.
+ * eventRoomFollows: true if an event room screen is about to appear (skip first-person switch).
  */
-public record ExitCombatPayload(boolean won) implements CustomPayload {
+public record ExitCombatPayload(boolean won, boolean eventRoomFollows) implements CustomPayload {
+
+    public ExitCombatPayload(boolean won) {
+        this(won, false);
+    }
 
     public static final CustomPayload.Id<ExitCombatPayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "exit_combat"));
 
     public static final PacketCodec<RegistryByteBuf, ExitCombatPayload> CODEC =
-        PacketCodecs.BOOL
-            .xmap(ExitCombatPayload::new, ExitCombatPayload::won)
-            .cast();
+        PacketCodec.tuple(
+            PacketCodecs.BOOL, ExitCombatPayload::won,
+            PacketCodecs.BOOL, ExitCombatPayload::eventRoomFollows,
+            ExitCombatPayload::new
+        );
 
     @Override
     public Id<? extends CustomPayload> getId() { return ID; }
