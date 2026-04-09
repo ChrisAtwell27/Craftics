@@ -112,62 +112,62 @@ public class CrafticsConfig {
 
     @RangeConstraint(min = 0, max = 20)
     public int dmgFist = 1;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgWoodenSword = 3;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgStoneSword = 4;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgIronSword = 6;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgDiamondSword = 8;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgNetheriteSword = 10;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgGoldenSword = 9;
     @RangeConstraint(min = 0, max = 30)
-    public int dmgWoodenAxe = 5;
+    public int dmgWoodenSword = 5;
     @RangeConstraint(min = 0, max = 30)
-    public int dmgStoneAxe = 7;
+    public int dmgStoneSword = 6;
     @RangeConstraint(min = 0, max = 30)
-    public int dmgIronAxe = 10;
+    public int dmgIronSword = 9;
     @RangeConstraint(min = 0, max = 30)
-    public int dmgDiamondAxe = 14;
+    public int dmgDiamondSword = 12;
     @RangeConstraint(min = 0, max = 30)
-    public int dmgNetheriteAxe = 18;
+    public int dmgNetheriteSword = 15;
     @RangeConstraint(min = 0, max = 30)
-    public int dmgGoldenAxe = 16;
+    public int dmgGoldenSword = 14;
+    @RangeConstraint(min = 0, max = 45)
+    public int dmgWoodenAxe = 8;
+    @RangeConstraint(min = 0, max = 45)
+    public int dmgStoneAxe = 11;
+    @RangeConstraint(min = 0, max = 45)
+    public int dmgIronAxe = 15;
+    @RangeConstraint(min = 0, max = 45)
+    public int dmgDiamondAxe = 21;
+    @RangeConstraint(min = 0, max = 45)
+    public int dmgNetheriteAxe = 27;
+    @RangeConstraint(min = 0, max = 45)
+    public int dmgGoldenAxe = 24;
     @RangeConstraint(min = 0, max = 20)
     public int dmgMace = 15;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgTrident = 8;
-    @RangeConstraint(min = 0, max = 20)
-    public int dmgBow = 7;
+    @RangeConstraint(min = 0, max = 30)
+    public int dmgTrident = 10;
+    @RangeConstraint(min = 0, max = 30)
+    public int dmgBow = 11;
     @RangeConstraint(min = 0, max = 20)
     public int dmgCrossbow = 14;
     @RangeConstraint(min = 0, max = 20)
     public int dmgStick = 2;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgBamboo = 4;
+    public int dmgBamboo = 6;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgBlazeRod = 8;
+    public int dmgBlazeRod = 12;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgBreezeRod = 8;
+    public int dmgBreezeRod = 12;
 
     // Coral weapons (Water-type melee)
     @RangeConstraint(min = 0, max = 20)
-    public int dmgCoralTube = 3;
+    public int dmgCoralTube = 5;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgCoralBrain = 5;
+    public int dmgCoralBrain = 8;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgCoralBubble = 3;
+    public int dmgCoralBubble = 5;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgCoralFire = 7;
+    public int dmgCoralFire = 11;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgCoralHorn = 6;
+    public int dmgCoralHorn = 9;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgCoralDead = 2;
+    public int dmgCoralDead = 3;
     @RangeConstraint(min = 0, max = 20)
-    public int dmgCoralFan = 1;
+    public int dmgCoralFan = 2;
 
     // ===== Arena & Progression =====
 

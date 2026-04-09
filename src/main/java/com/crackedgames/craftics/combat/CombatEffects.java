@@ -24,7 +24,7 @@ public class CombatEffects {
         WEAKNESS("Weakness", "-2 attack"),
         WITHER("Wither", "-2 HP/turn"),
         BURNING("Burning", "-1 HP/turn"),
-        BLEEDING("Bleeding", "-1 HP/turn per stack"),
+        BLEEDING("Bleeding", "Stacking HP loss/turn (1, 3, 6, 10...)"),
         BLINDNESS("Blindness", "-2 range"),
         MINING_FATIGUE("Mining Fatigue", "-1 AP"),
         LEVITATION("Levitation", "-1 movement"),
@@ -137,7 +137,9 @@ public class CombatEffects {
 
         ActiveEffect bleeding = effects.get(EffectType.BLEEDING);
         if (bleeding != null && !bleeding.isFrozen()) {
-            hpChange -= 1 * (bleeding.amplifier + 1);
+            // Bleed damage scales triangularly with stacks (1, 3, 6, 10, ...).
+            int stacks = bleeding.amplifier + 1;
+            hpChange -= stacks * (stacks + 1) / 2;
         }
 
         return hpChange;

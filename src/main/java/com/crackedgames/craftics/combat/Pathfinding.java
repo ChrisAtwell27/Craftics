@@ -2,6 +2,7 @@ package com.crackedgames.craftics.combat;
 
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
+import com.crackedgames.craftics.core.TileType;
 
 import java.util.*;
 
@@ -38,8 +39,17 @@ public class Pathfinding {
     /** Size-aware enemy pathfinding. For entities > 1x1, checks full footprint at each position. */
     public static List<GridPos> findPathSized(GridArena arena, GridPos from, GridPos to,
                                                int maxSteps, CombatEntity self, int entitySize) {
-        if (entitySize <= 1) return findPath(arena, from, to, maxSteps, self, false);
-        return findPathSizedInternal(arena, from, to, maxSteps, self, entitySize);
+        return findPathSized(arena, from, to, maxSteps, self, entitySize, false);
+    }
+
+    /**
+     * Size-aware pathfinding with optional obstacle bypass.
+     * When {@code ignoreObstacles} is true, OBSTACLE tiles are walkable (used by spiders that jump over them).
+     */
+    public static List<GridPos> findPathSized(GridArena arena, GridPos from, GridPos to,
+                                               int maxSteps, CombatEntity self, int entitySize, boolean ignoreObstacles) {
+        if (entitySize <= 1) return findPath(arena, from, to, maxSteps, self, false, ignoreObstacles);
+        return findPathSizedInternal(arena, from, to, maxSteps, self, entitySize, ignoreObstacles);
     }
 
     /**
@@ -101,8 +111,9 @@ public class Pathfinding {
 
                 var neighborTile = arena.getTile(neighbor);
                 if (neighborTile == null || !neighborTile.isWalkableEx(hasBoat, ignoreObstacles, aquatic)) continue;
-                // Block enemy-occupied tiles (excluding self and the destination)
-                if (!neighbor.equals(to) && isBlockedBy(arena, neighbor, self)) continue;
+                // Block enemy-occupied tiles (excluding self and the destination).
+                // Allies are passable for intermediate tiles — you can move through them but not stop on them.
+                if (!neighbor.equals(to) && isBlockedBy(arena, neighbor, self, false)) continue;
 
                 int moveCost = neighborTile.getMoveCost();
                 int tentativeG = currentG + moveCost;
@@ -141,16 +152,33 @@ public class Pathfinding {
 
     /**
      * Check if a tile is blocked by an entity or the player (excluding 'self' if non-null).
+     * Defaults to treating the tile as a final destination — any occupant blocks.
      */
     private static boolean isBlockedBy(GridArena arena, GridPos pos, CombatEntity self) {
-        // Block on the player's tile — enemies and allies cannot move onto the player
-        if (pos.equals(arena.getPlayerGridPos())) return true;
+        return isBlockedBy(arena, pos, self, true);
+    }
+
+    /**
+     * Check if a tile is blocked. When {@code isFinalDestination} is false, allies (and the player,
+     * for ally-controlled selves) are passable — units can move through them but cannot stop on them.
+     */
+    private static boolean isBlockedBy(GridArena arena, GridPos pos, CombatEntity self, boolean isFinalDestination) {
+        // Player tile: allies passing through (not stopping) may step onto it; everyone else blocks
+        if (pos.equals(arena.getPlayerGridPos())) {
+            if (!isFinalDestination && self != null && self.isAlly()) return false;
+            return true;
+        }
         CombatEntity occupant = arena.getOccupant(pos);
         if (occupant == null) return false;
         // Don't block on our own tile
         if (self != null && occupant == self) return false;
         // Boss entities can walk through passable entities (e.g., egg sacs)
         if (self != null && self.isBoss() && occupant.isPassableForBoss()) return false;
+        // Allies are passable for the player and other allies during traversal,
+        // but still block as a final destination (you can't stop on them).
+        if (!isFinalDestination && occupant.isAlly() && (self == null || self.isAlly())) {
+            return false;
+        }
         return true;
     }
 
@@ -160,16 +188,25 @@ public class Pathfinding {
      */
     private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int entitySize,
                                                 CombatEntity self, boolean hasBoat) {
-        return canPlaceSizedEntity(arena, anchor, entitySize, self, hasBoat, false);
+        return canPlaceSizedEntity(arena, anchor, entitySize, self, hasBoat, false, true);
     }
 
     private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int entitySize,
                                                 CombatEntity self, boolean hasBoat, boolean ignoreObstacles) {
+        return canPlaceSizedEntity(arena, anchor, entitySize, self, hasBoat, ignoreObstacles, true);
+    }
+
+    /**
+     * @param isFinalDestination when false, allies do not block (passable for traversal).
+     */
+    private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int entitySize,
+                                                CombatEntity self, boolean hasBoat, boolean ignoreObstacles,
+                                                boolean isFinalDestination) {
         for (GridPos tile : GridArena.getOccupiedTiles(anchor, entitySize)) {
             if (!arena.isInBounds(tile)) return false;
             var gridTile = arena.getTile(tile);
             if (gridTile == null || !gridTile.isWalkableEx(hasBoat, ignoreObstacles)) return false;
-            if (isBlockedBy(arena, tile, self)) return false;
+            if (isBlockedBy(arena, tile, self, isFinalDestination)) return false;
         }
         return true;
     }
@@ -225,8 +262,8 @@ public class Pathfinding {
                 GridPos neighbor = new GridPos(current.x() + dir.x(), current.z() + dir.z());
                 if (dist.containsKey(neighbor)) continue;
 
-                // For sized entities, check ALL footprint tiles at this anchor position
-                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, hasBoat, ignoreObstacles)) continue;
+                // Traversal check: allies are passable so paths can route through them.
+                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, hasBoat, ignoreObstacles, false)) continue;
 
                 // Hazard cost: use highest move cost across the footprint
                 int moveCost = 1;
@@ -238,8 +275,11 @@ public class Pathfinding {
                 if (newDist > maxSteps) continue;
                 if (dist.containsKey(neighbor) && dist.get(neighbor) <= newDist) continue;
                 dist.put(neighbor, newDist);
-                reachable.add(neighbor);
                 queue.add(neighbor);
+                // Stop check: ally tiles are not valid landing spots, so they aren't highlighted.
+                if (canPlaceSizedEntity(arena, neighbor, entitySize, self, hasBoat, ignoreObstacles, true)) {
+                    reachable.add(neighbor);
+                }
             }
         }
 
@@ -324,9 +364,10 @@ public class Pathfinding {
      * Checks all footprint tiles at each candidate position.
      */
     private static List<GridPos> findPathSizedInternal(GridArena arena, GridPos from, GridPos to,
-                                                         int maxSteps, CombatEntity self, int entitySize) {
+                                                         int maxSteps, CombatEntity self, int entitySize,
+                                                         boolean ignoreObstacles) {
         if (from.equals(to)) return List.of();
-        if (!canPlaceSizedEntity(arena, to, entitySize, self, false)) return List.of();
+        if (!canPlaceSizedEntity(arena, to, entitySize, self, false, ignoreObstacles)) return List.of();
 
         Map<GridPos, GridPos> cameFrom = new HashMap<>();
         Map<GridPos, Integer> gScore = new HashMap<>();
@@ -356,8 +397,7 @@ public class Pathfinding {
                 if (closed.contains(neighbor)) continue;
 
                 // Check all footprint tiles at this anchor (except allow destination)
-                if (!neighbor.equals(to) && !canPlaceSizedEntity(arena, neighbor, entitySize, self, false)) continue;
-                if (neighbor.equals(to) && !canPlaceSizedEntity(arena, neighbor, entitySize, self, false)) continue;
+                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, false, ignoreObstacles)) continue;
 
                 // Use highest move cost across the footprint
                 int moveCost = 1;
@@ -375,6 +415,41 @@ public class Pathfinding {
         }
 
         return List.of();
+    }
+
+    /**
+     * Checks line-of-sight between two grid positions using a Bresenham-style trace.
+     * Returns false if any OBSTACLE tile lies between {@code from} and {@code to}
+     * (the endpoints themselves are not checked). Used for ranged attacks — projectiles
+     * cannot fly over obstacles.
+     */
+    public static boolean hasLineOfSight(GridArena arena, GridPos from, GridPos to) {
+        if (from.equals(to)) return true;
+        int x0 = from.x();
+        int z0 = from.z();
+        int x1 = to.x();
+        int z1 = to.z();
+
+        int dx = Math.abs(x1 - x0);
+        int dz = Math.abs(z1 - z0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sz = z0 < z1 ? 1 : -1;
+        int err = dx - dz;
+
+        int x = x0;
+        int z = z0;
+        while (true) {
+            int e2 = 2 * err;
+            if (e2 > -dz) { err -= dz; x += sx; }
+            if (e2 < dx) { err += dx; z += sz; }
+            // Reached the target — no obstacle was in the way
+            if (x == x1 && z == z1) return true;
+            // Inspect the intermediate tile
+            GridPos step = new GridPos(x, z);
+            if (!arena.isInBounds(step)) return false;
+            var tile = arena.getTile(step);
+            if (tile != null && tile.getType() == TileType.OBSTACLE) return false;
+        }
     }
 
     private static List<GridPos> reconstructSizedPath(Map<GridPos, GridPos> cameFrom, GridPos end,

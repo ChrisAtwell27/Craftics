@@ -1241,14 +1241,14 @@ public class ItemUseHandler {
             + "|§eLightning rod placed! It will strike all nearby enemies next turn.";
     }
 
-    // --- Cactus: place 1HP wall that deals 1 damage to attackers (1 AP) ---
+    // --- Cactus: place an obstacle wall that deals 1 damage to adjacent enemies (1 AP) ---
     private static String useCactus(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "cactus:" + targetTile.x() + ":" + targetTile.z()
-            + "|§2Cactus placed! Enemies that touch it take 1 damage.";
+            + "|§2Cactus placed! It blocks movement and pricks adjacent enemies for 1 damage.";
     }
 
     // --- Hay Bale: throw to ally pet, heals 50% max HP (1 AP) ---

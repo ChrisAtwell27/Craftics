@@ -4,7 +4,8 @@
 	"package": "com.crackedgames.craftics.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
-		"PlayerEntityMixin"
+		"PlayerEntityMixin",
+		"SlimeEntityAccessor"
 	],
 	"client": [],
 	"injectors": {

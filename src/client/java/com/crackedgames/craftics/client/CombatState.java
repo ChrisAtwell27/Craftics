@@ -9,6 +9,8 @@ public class CombatState {
     private static float combatCameraDistance = 15.0f; // Distance from focus point
     private static final float MIN_CAMERA_DISTANCE = 8.0f;
     private static final float MAX_CAMERA_DISTANCE = 22.0f;
+    private static final float MIN_CAMERA_PITCH = 25.0f;
+    private static final float MAX_CAMERA_PITCH = 85.0f;
 
     // Camera pan offset (added to arena center)
     private static double cameraPanX = 0;
@@ -104,6 +106,17 @@ public class CombatState {
 
     public static void setCombatYaw(float yaw) {
         combatYaw = yaw;
+    }
+
+    public static void setCombatPitch(float pitch) {
+        combatPitch = Math.max(MIN_CAMERA_PITCH, Math.min(MAX_CAMERA_PITCH, pitch));
+    }
+
+    /** Adjust camera orbit by the given yaw/pitch deltas (degrees). Used by right-click drag. */
+    public static void adjustCameraAngles(float dYaw, float dPitch) {
+        combatYaw = (combatYaw + dYaw) % 360.0f;
+        if (combatYaw < 0) combatYaw += 360.0f;
+        setCombatPitch(combatPitch + dPitch);
     }
 
     public static float getCombatCameraDistance() {

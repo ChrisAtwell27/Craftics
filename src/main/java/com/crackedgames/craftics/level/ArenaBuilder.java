@@ -145,9 +145,13 @@ public class ArenaBuilder {
                     continue;
                 }
 
-                boolean hasObstacleBlock = !aboveState.isAir()
+                // Cactus has a non-full collision shape so isSolidBlock returns false for it,
+                // but we still want it to act as a hard movement obstacle.
+                boolean cactusObstacle = aboveState.isOf(Blocks.CACTUS);
+                boolean hasObstacleBlock = cactusObstacle
+                    || (!aboveState.isAir()
                     && !(aboveState.getBlock() instanceof net.minecraft.block.CarpetBlock)
-                    && aboveState.isSolidBlock(world, abovePos);
+                    && aboveState.isSolidBlock(world, abovePos));
                 boolean hasHeadBlock = !headState.isAir()
                     && !(headState.getBlock() instanceof net.minecraft.block.CarpetBlock)
                     && headState.isSolidBlock(world, headPos);
@@ -318,9 +322,13 @@ public class ArenaBuilder {
                     continue;
                 }
 
-                boolean hasObstacleBlock = !aboveState.isAir()
+                // Cactus has a non-full collision shape so isSolidBlock returns false for it,
+                // but we still want it to act as a hard movement obstacle.
+                boolean cactusObstacle = aboveState.isOf(Blocks.CACTUS);
+                boolean hasObstacleBlock = cactusObstacle
+                    || (!aboveState.isAir()
                     && !(aboveState.getBlock() instanceof net.minecraft.block.CarpetBlock)
-                    && aboveState.isSolidBlock(world, abovePos);
+                    && aboveState.isSolidBlock(world, abovePos));
                 boolean hasHeadBlock = !headState.isAir()
                     && !(headState.getBlock() instanceof net.minecraft.block.CarpetBlock)
                     && headState.isSolidBlock(world, headPos);
