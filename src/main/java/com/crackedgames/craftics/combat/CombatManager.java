@@ -1348,7 +1348,7 @@ public class CombatManager {
                 }
                 // Per-entity AI instances for mobs that need turn-to-turn state
                 if ("minecraft:blaze".equals(spawn.entityTypeId())) {
-                    ce.setAiInstance(new BlazeAI());
+                    ce.setAiInstance(new com.crackedgames.craftics.combat.ai.BlazeAI());
                 }
                 // Boss setup: flag as boss and assign biome-specific AI
                 if (isBoss && bossBiomeId != null) {
