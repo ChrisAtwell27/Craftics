@@ -693,6 +693,11 @@ public class CombatManager {
         if (hasShield && Math.random() < SHIELD_BLOCK_CHANCE) {
             sendMessage("§9§l🛡 Shield blocked! §r§7Attack deflected!");
             fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
+            // Successful block consumes shield durability
+            ItemStack shieldStack = player.getEquippedStack(net.minecraft.entity.EquipmentSlot.OFFHAND);
+            if (!shieldStack.isEmpty()) {
+                shieldStack.damage(1, player, net.minecraft.entity.EquipmentSlot.OFFHAND);
+            }
             return 0;
         }
         defense += getBannerDefenseBonus(arena.getPlayerGridPos());
@@ -765,6 +770,20 @@ public class CombatManager {
             return 0;
         }
         return target.takeDamage(adjustedDamage);
+    }
+
+    /**
+     * Apply a status-effect damage tick (poison, burn, bleed, wither) to an enemy.
+     * All status DOTs are classified as Special damage — they bypass DEF/bleed bonuses
+     * but still respect SPECIAL resistance/immunity. Returns the damage actually dealt.
+     */
+    private int applyStatusDot(CombatEntity target, int rawDamage) {
+        if (rawDamage <= 0) return 0;
+        int adjusted = MobResistances.applyResistance(
+            target.getEntityTypeId(), DamageType.SPECIAL, rawDamage);
+        if (adjusted <= 0) return 0;
+        target.applyDirectDamage(adjusted);
+        return adjusted;
     }
 
     private float playerMoveYaw;
@@ -1244,6 +1263,11 @@ public class CombatManager {
                     mob.setYaw(ghastYaw);
                     mob.setHeadYaw(ghastYaw);
                 }
+                // Slimes/magma cubes spawn with random vanilla sizes; force the parent
+                // to vanilla size 2 so the visual matches the 2x2 grid footprint.
+                if (mob instanceof net.minecraft.entity.mob.SlimeEntity) {
+                    ((com.crackedgames.craftics.mixin.SlimeEntityAccessor) mob).craftics$setSize(2, true);
+                }
 
                 boolean isBoss = !bossSpawned && bossEntityTypeId != null
                     && spawn.entityTypeId().equals(bossEntityTypeId);
@@ -1262,8 +1286,9 @@ public class CombatManager {
                 int equipDefBonus = 0;
                 int equipSpeedBonus = 0;
 
-                // Roll a chance to enchant the mob's gear (scales with biome ordinal)
+                // Give humanoid mobs random gear, then roll enchant chances on it
                 if (!isBoss) {
+                    randomizeMobGear(mob, finalBiomeOrdinal);
                     enchantMobGear(mob, finalBiomeOrdinal, world);
                 }
 
@@ -1320,6 +1345,10 @@ public class CombatManager {
                 // Apply baby speed bonus
                 if (equipSpeedBonus > 0) {
                     ce.setSpeedBonus(equipSpeedBonus);
+                }
+                // Per-entity AI instances for mobs that need turn-to-turn state
+                if ("minecraft:blaze".equals(spawn.entityTypeId())) {
+                    ce.setAiInstance(new BlazeAI());
                 }
                 // Boss setup: flag as boss and assign biome-specific AI
                 if (isBoss && bossBiomeId != null) {
@@ -1768,6 +1797,14 @@ public class CombatManager {
                     return;
                 }
             }
+
+            // Ranged attacks need a clear line of sight — projectiles can't fly over obstacles.
+            if (range > 1 && !target.isBackgroundBoss()) {
+                if (!Pathfinding.hasLineOfSight(arena, pPos, tPos)) {
+                    sendMessage("§cLine of sight blocked by an obstacle!");
+                    return;
+                }
+            }
         }
 
         // === IMMEDIATE: Face target, deduct AP, consume ammo, trigger client animation ===
@@ -1970,6 +2007,10 @@ public class CombatManager {
         final int fTridentLoyaltyLevel = tridentLoyaltyLevel;
         final int fImpalingDmg = weapon == Items.TRIDENT ? PlayerCombatStats.getImpalingDamage(player) : 0;
         final int fImpalingBleed = weapon == Items.TRIDENT ? PlayerCombatStats.getImpalingBleed(player) : 0;
+        // Sharpness on the player's weapon also inflicts bleed (1 stack per level).
+        // Bow/crossbow Power is the ranged equivalent and does not bleed.
+        final int fSharpnessBleed = (weapon != Items.BOW && weapon != Items.CROSSBOW)
+            ? PlayerCombatStats.getSharpness(player) : 0;
         final boolean fLuckCrit = luckCrit;
         final String fTippedEffect = tippedEffect;
         final int fFireAspect = fireAspect;
@@ -2291,6 +2332,13 @@ public class CombatManager {
                 int impDmg = fTarget.takeDamage(fImpalingDmg);
                 fTarget.stackBleed(fImpalingBleed);
                 sendMessage("§b✦ Impaling! +" + impDmg + " damage, " + fImpalingBleed + " bleed on " + fTarget.getDisplayName() + ".");
+            }
+
+            // === SHARPNESS: melee weapon sharpness applies bleed stacks (1 per level) ===
+            if (fSharpnessBleed > 0 && fTarget.isAlive()) {
+                fTarget.stackBleed(fSharpnessBleed);
+                sendMessage("§4✦ Sharpness " + fSharpnessBleed + "! " + fTarget.getDisplayName()
+                    + " is bleeding (" + fTarget.getBleedStacks() + " stacks).");
             }
 
             // === TRIDENT LOYALTY: Ricochet to nearby enemies, then return ===
@@ -2676,6 +2724,10 @@ public class CombatManager {
             if (!entity.isBoss()) {
                 notifyBossOfMinionDeath(entity);
             }
+            // Roll a chance to drop the mob's equipped gear (rare; enchanted gear is even rarer to drop)
+            if (!entity.isAlly() && entity.getMobEntity() != null) {
+                rollMobEquipmentDrops(entity);
+            }
             sendMessage("§a" + entity.getDisplayName() + " defeated!");
             GridPos deathPos = entity.getGridPos();
             int deathSize = entity.getSize();
@@ -2720,7 +2772,7 @@ public class CombatManager {
 
             // Slime/Magma Cube split: 2x2 splits into 2 mini 1x1 versions
             // (Bosses split via notifyBossOfDamage at 50% HP, not on death.)
-            if (deathSize >= 2 && isSplittableMob(deathType) && !entity.isBoss()) {
+            if (deathSize >= 2 && isSplittableMob(deathType) && !entity.isBoss() && !entity.hasSplit()) {
                 trySplitOnDeath(deathType, deathPos, deathSize, deathMaxHp, deathAtk, deathDef);
             }
         }
@@ -2777,6 +2829,10 @@ public class CombatManager {
                 mob.noClip = true;
                 mob.setPersistent();
                 mob.addCommandTag("craftics_arena");
+                // Force vanilla size 1 so the visual matches the 1x1 grid footprint
+                if (mob instanceof net.minecraft.entity.mob.SlimeEntity) {
+                    ((com.crackedgames.craftics.mixin.SlimeEntityAccessor) mob).craftics$setSize(1, true);
+                }
             }
             world.spawnEntity(rawEntity);
             if (rawEntity instanceof MobEntity mob) {
@@ -2786,6 +2842,11 @@ public class CombatManager {
                     miniHp, miniAtk, parentDef, 1, 1
                 );
                 ce.setMobEntity(mob);
+                ce.markSplit(); // guard against re-splitting
+                // Re-position the mob to the tile center now that the new size is applied
+                mob.refreshPositionAndAngles(
+                    spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5,
+                    mob.getYaw(), mob.getPitch());
                 enemies.add(ce);
                 arena.placeEntity(ce);
                 fireEffectHook(h -> h.onEnemySpawn(effectContext, ce));
@@ -2866,6 +2927,75 @@ public class CombatManager {
         };
     }
 
+    // Pools used by randomizeMobGear — populated lazily so we don't allocate per spawn
+    private static final Item[] WEAPON_POOL = {
+        Items.WOODEN_SWORD, Items.STONE_SWORD, Items.GOLDEN_SWORD, Items.IRON_SWORD,
+        Items.WOODEN_AXE, Items.STONE_AXE, Items.GOLDEN_AXE, Items.IRON_AXE,
+        Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.IRON_PICKAXE,
+        Items.WOODEN_SHOVEL, Items.STONE_SHOVEL, Items.IRON_SHOVEL,
+        Items.WOODEN_HOE, Items.STONE_HOE, Items.IRON_HOE,
+        Items.BOW
+    };
+    private static final Item[] WEAPON_POOL_LATE = {
+        Items.IRON_SWORD, Items.IRON_AXE, Items.DIAMOND_SWORD, Items.DIAMOND_AXE,
+        Items.NETHERITE_SWORD, Items.NETHERITE_AXE, Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE,
+        Items.MACE, Items.TRIDENT, Items.CROSSBOW, Items.BOW
+    };
+    private static final Item[] HELMET_POOL = {
+        Items.LEATHER_HELMET, Items.CHAINMAIL_HELMET, Items.IRON_HELMET, Items.GOLDEN_HELMET, Items.DIAMOND_HELMET
+    };
+    private static final Item[] CHEST_POOL = {
+        Items.LEATHER_CHESTPLATE, Items.CHAINMAIL_CHESTPLATE, Items.IRON_CHESTPLATE, Items.GOLDEN_CHESTPLATE, Items.DIAMOND_CHESTPLATE
+    };
+    private static final Item[] LEGS_POOL = {
+        Items.LEATHER_LEGGINGS, Items.CHAINMAIL_LEGGINGS, Items.IRON_LEGGINGS, Items.GOLDEN_LEGGINGS, Items.DIAMOND_LEGGINGS
+    };
+    private static final Item[] BOOTS_POOL = {
+        Items.LEATHER_BOOTS, Items.CHAINMAIL_BOOTS, Items.IRON_BOOTS, Items.GOLDEN_BOOTS, Items.DIAMOND_BOOTS
+    };
+
+    /**
+     * Roll random gear onto a humanoid mob that supports armor/weapon slots.
+     * Tier scales with the biome ordinal: early biomes lean wood/stone/leather,
+     * later biomes can roll iron/gold/diamond. Only fills empty slots so vanilla
+     * gear is preserved when present.
+     */
+    private static void randomizeMobGear(MobEntity mob, int biomeOrdinal) {
+        String typeId = Registries.ENTITY_TYPE.getId(mob.getType()).toString();
+        if (!isHumanoidMob(typeId)) return;
+        // Don't overwrite gear that vanilla already gave the mob
+        ItemStack existingHand = mob.getMainHandStack();
+
+        // Tier index 0..4 — biased toward biome ordinal
+        int tierMax = Math.min(4, biomeOrdinal / 2);
+        java.util.function.Supplier<Integer> rollTier = () -> {
+            int t = (int) Math.floor(Math.random() * (tierMax + 1));
+            return Math.max(0, Math.min(tierMax, t));
+        };
+
+        // Weapon: 60% chance if slot is empty
+        if (existingHand.isEmpty() && Math.random() < 0.60) {
+            Item[] pool = biomeOrdinal >= 5 ? WEAPON_POOL_LATE : WEAPON_POOL;
+            Item picked = pool[(int) (Math.random() * pool.length)];
+            mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, new ItemStack(picked));
+        }
+
+        // Armor: each slot rolls independently. Chance climbs with biome ordinal.
+        double armorChance = Math.min(0.85, 0.25 + biomeOrdinal * 0.05);
+        equipRandomArmorSlot(mob, net.minecraft.entity.EquipmentSlot.HEAD, HELMET_POOL, rollTier, armorChance);
+        equipRandomArmorSlot(mob, net.minecraft.entity.EquipmentSlot.CHEST, CHEST_POOL, rollTier, armorChance);
+        equipRandomArmorSlot(mob, net.minecraft.entity.EquipmentSlot.LEGS, LEGS_POOL, rollTier, armorChance);
+        equipRandomArmorSlot(mob, net.minecraft.entity.EquipmentSlot.FEET, BOOTS_POOL, rollTier, armorChance);
+    }
+
+    private static void equipRandomArmorSlot(MobEntity mob, net.minecraft.entity.EquipmentSlot slot,
+                                              Item[] pool, java.util.function.Supplier<Integer> rollTier, double chance) {
+        if (!mob.getEquippedStack(slot).isEmpty()) return;
+        if (Math.random() >= chance) return;
+        int tier = Math.min(pool.length - 1, rollTier.get());
+        mob.equipStack(slot, new ItemStack(pool[tier]));
+    }
+
     /**
      * Roll a chance to enchant a mob's weapon and armor based on biome ordinal.
      * Later biomes get higher enchant chance and stronger enchants.
@@ -2898,6 +3028,53 @@ public class CombatManager {
             String chosen = armorEnchants[(int) (Math.random() * armorEnchants.length)];
             int level = 1 + (int) (Math.random() * maxLevel);
             applyMobEnchant(piece, chosen, level, world);
+        }
+    }
+
+    /**
+     * On enemy death, roll a small chance to drop each equipped item to all party players.
+     * Enchanted gear has a (slightly) higher base chance because it's more interesting,
+     * but is still rare so the player can't farm easy enchanted equipment.
+     */
+    private void rollMobEquipmentDrops(CombatEntity enemy) {
+        MobEntity mob = enemy.getMobEntity();
+        if (mob == null) return;
+
+        net.minecraft.entity.EquipmentSlot[] slots = {
+            net.minecraft.entity.EquipmentSlot.MAINHAND,
+            net.minecraft.entity.EquipmentSlot.HEAD,
+            net.minecraft.entity.EquipmentSlot.CHEST,
+            net.minecraft.entity.EquipmentSlot.LEGS,
+            net.minecraft.entity.EquipmentSlot.FEET
+        };
+
+        List<ServerPlayerEntity> recipients = getAllParticipants();
+        if (recipients.isEmpty()) return;
+
+        for (net.minecraft.entity.EquipmentSlot slot : slots) {
+            ItemStack equipped = mob.getEquippedStack(slot);
+            if (equipped.isEmpty()) continue;
+
+            // Base 6% drop chance, +6% if the item carries enchantments (so enchanted gear
+            // is the more exciting drop without being trivially farmable).
+            boolean hasEnchant = !equipped.getOrDefault(
+                DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT).isEmpty();
+            double dropChance = hasEnchant ? 0.12 : 0.06;
+            // Bosses always drop a piece of their gear (it's signature loot)
+            if (enemy.isBoss()) dropChance = 1.0;
+
+            if (Math.random() >= dropChance) continue;
+
+            ItemStack dropCopy = equipped.copy();
+            dropCopy.setCount(1);
+            // Clear the slot so the death animation doesn't double-render the item floating
+            mob.equipStack(slot, ItemStack.EMPTY);
+
+            for (ServerPlayerEntity recipient : recipients) {
+                recipient.getInventory().insertStack(dropCopy.copy());
+            }
+            String label = hasEnchant ? "§b§l✦ ENCHANTED LOOT: " : "§e+ Loot: ";
+            sendMessage(label + dropCopy.getName().getString());
         }
     }
 
@@ -3527,13 +3704,26 @@ public class CombatManager {
             } else {
                 GridPos effectPos = new GridPos(tx, tz);
                 tileEffects.put(effectPos, effectType);
-                
+
                 // Register light zones for torches and lanterns (negate darkness)
                 if ("torch".equals(effectType) || "lantern".equals(effectType) || "campfire".equals(effectType)) {
                     int lightRadius = "torch".equals(effectType) ? 2 : 3; // Torches: 2 tiles, Lanterns/Campfire: 3 tiles
                     registerLightZone(effectPos, lightRadius);
                 }
-                
+
+                // Player-placed cactus: place an actual cactus block and mark the tile as an obstacle
+                if ("cactus".equals(effectType)) {
+                    GridTile cactusTile = arena.getTile(effectPos);
+                    if (cactusTile != null) {
+                        cactusTile.setType(TileType.OBSTACLE);
+                        cactusTile.setBlockType(Blocks.CACTUS);
+                    }
+                    BlockPos cactusBp = arena.gridToBlockPos(effectPos);
+                    ServerWorld cactusWorld = (ServerWorld) player.getEntityWorld();
+                    cactusWorld.setBlockState(cactusBp, Blocks.CACTUS.getDefaultState(),
+                        net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                }
+
                 // Update the GridTile type so fishing/boat checks work
                 GridTile effectTile = arena.getTile(effectPos);
                 if (effectTile != null) {
@@ -4349,11 +4539,11 @@ public class CombatManager {
             // All enemies done — start new player turn
             for (CombatEntity e : enemies) e.setDamagedSinceLastTurn(false);
 
-            // --- Enemy DoT ticks ---
+            // --- Enemy DoT ticks (all status damage is Special type) ---
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getPoisonTurns() <= 0) continue;
                 boolean wasAlive = e.isAlive();
-                int poisonDmg = e.takeDamage(1 + e.getPoisonAmplifier());
+                int poisonDmg = applyStatusDot(e, 1 + e.getPoisonAmplifier());
                 e.setPoisonTurns(e.getPoisonTurns() - 1);
                 sendMessage("§2" + e.getDisplayName() + " took " + poisonDmg + " poison damage.");
                 if (e.getMobEntity() != null) {
@@ -4374,7 +4564,7 @@ public class CombatManager {
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getBurningTurns() <= 0) continue;
                 boolean wasAlive = e.isAlive();
-                int burnDmg = e.takeDamage(e.getBurningDamage());
+                int burnDmg = applyStatusDot(e, e.getBurningDamage());
                 e.setBurningTurns(e.getBurningTurns() - 1);
                 sendMessage("§6" + e.getDisplayName() + " burned for " + burnDmg + ".");
                 if (e.getMobEntity() != null) {
@@ -4390,11 +4580,11 @@ public class CombatManager {
                 checkAndHandleDeath(e);
             }
 
-            // --- Bleed DOT: each stack ticks 1 damage per turn, then 1 stack drops off ---
+            // --- Bleed DOT: damage scales quadratically with stack count, then 1 stack drops off ---
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getBleedStacks() <= 0) continue;
-                int bleedDmg = e.takeDamage(e.getBleedStacks());
-                sendMessage("§4" + e.getDisplayName() + " bleeds for " + bleedDmg + ".");
+                int bleedDmg = applyStatusDot(e, CombatEntity.computeBleedTickDamage(e.getBleedStacks()));
+                sendMessage("§4" + e.getDisplayName() + " bleeds for " + bleedDmg + " (" + e.getBleedStacks() + " stacks).");
                 if (e.getMobEntity() != null) {
                     ((ServerWorld) player.getEntityWorld()).spawnParticles(
                         net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
@@ -7313,6 +7503,7 @@ public class CombatManager {
                 }
             }
 
+
             // Check for cake — enemy heals 2 HP, one use consumed
             if (tileEffects.containsKey(next) && tileEffects.get(next).startsWith("cake")) {
                 // cake format: "cake" or "cake:usesRemaining"
@@ -7806,6 +7997,17 @@ public class CombatManager {
         }
 
         if (resolvedRanged != null) {
+            // Ranged projectiles cannot fly over obstacles — check line of sight first
+            CombatEntity rangedTarget = (currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
+                ? currentEnemyPetAggroTarget : null;
+            GridPos rangedTargetPos = rangedTarget != null ? rangedTarget.getGridPos() : arena.getPlayerGridPos();
+            if (!Pathfinding.hasLineOfSight(arena, currentEnemy.getGridPos(), rangedTargetPos)) {
+                sendMessage("§7" + currentEnemy.getDisplayName() + "'s ranged attack is blocked by an obstacle.");
+                sendSync();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                return;
+            }
             // Enemy bow enchantment effects: Power adds damage, Flame ignites, Punch knocks back
             int rangedBaseDmg = resolvedRanged.damage();
             boolean rangedFlame = false;
@@ -8811,6 +9013,10 @@ public class CombatManager {
 
     private void killEnemy(CombatEntity enemy) {
         enemy.takeDamage(9999);
+        // Roll equipment drops on direct kills too (DOTs are handled by checkAndHandleDeath)
+        if (!enemy.isAlly() && !enemy.isDeathProcessed() && enemy.getMobEntity() != null) {
+            rollMobEquipmentDrops(enemy);
+        }
         // Background bosses occupy many manually-registered tiles — clear them all
         if (enemy.isBackgroundBoss()) {
             arena.getOccupants().values().removeIf(e -> e == enemy);

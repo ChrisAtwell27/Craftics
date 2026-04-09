@@ -63,11 +63,12 @@ public class SpiderAI implements EnemyAI {
             }
         }
 
-        // Can walk to player this turn? Move + attack (size-aware)
+        // Can walk to player this turn? Move + attack (size-aware).
+        // Spiders jump over obstacles — pathfinding ignores OBSTACLE tiles.
         GridPos adjTarget = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), size);
         if (adjTarget != null) {
             List<GridPos> path = Pathfinding.findPathSized(arena, myPos, adjTarget,
-                self.getMoveSpeed(), self, size);
+                self.getMoveSpeed(), self, size, true);
             if (!path.isEmpty()) {
                 GridPos endPos = path.get(path.size() - 1);
                 if (CombatEntity.minDistanceFromSizedEntity(endPos, size, playerPos) <= 1) {

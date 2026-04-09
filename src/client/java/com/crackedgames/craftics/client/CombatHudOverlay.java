@@ -595,10 +595,14 @@ public class CombatHudOverlay implements HudRenderCallback {
         int apDisplay = Math.min(maxAp, baseSlots + Math.max(0, baseSlots - maxSpeed));
         int spdDisplay = Math.min(maxSpeed, baseSlots + Math.max(0, baseSlots - maxAp));
 
+        // Labels include current/max numeric values alongside the pip visuals
+        String apLabel = "AP " + ap + "/" + maxAp;
+        String spdLabel = "SPD " + speed + "/" + maxSpeed;
+
         // Calculate widths
-        int apLabelW = client.textRenderer.getWidth("AP") + 4;
+        int apLabelW = client.textRenderer.getWidth(apLabel) + 4;
         int apPipsW = apDisplay * (pipSize + pipGap) - pipGap;
-        int spdLabelW = client.textRenderer.getWidth("SPD") + 4;
+        int spdLabelW = client.textRenderer.getWidth(spdLabel) + 4;
         int spdPipsW = spdDisplay * (pipSize + pipGap) - pipGap;
         int totalW = apLabelW + apPipsW + sectionGap + spdLabelW + spdPipsW;
 
@@ -607,7 +611,7 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         // AP label
         int apLabelColor = maxAp >= 6 ? 0xFFFFEE88 : maxAp >= 4 ? 0xFFFFCC00 : 0xFFFFAA00;
-        ctx.drawTextWithShadow(client.textRenderer, Text.literal("AP"), startX, rowY, apLabelColor);
+        ctx.drawTextWithShadow(client.textRenderer, Text.literal(apLabel), startX, rowY, apLabelColor);
         int x = startX + apLabelW;
 
         // AP pips (up to apDisplay slots)
@@ -639,7 +643,7 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         // SPD label
         int spdLabelColor = maxSpeed >= 7 ? 0xFFAAEEFF : maxSpeed >= 5 ? 0xFF66CCFF : 0xFF55AAFF;
-        ctx.drawTextWithShadow(client.textRenderer, Text.literal("SPD"), x, rowY, spdLabelColor);
+        ctx.drawTextWithShadow(client.textRenderer, Text.literal(spdLabel), x, rowY, spdLabelColor);
         x += spdLabelW;
 
         // SPD pips (up to spdDisplay slots)

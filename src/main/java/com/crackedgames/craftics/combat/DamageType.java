@@ -96,7 +96,7 @@ public enum DamageType {
         if (playerStats != null) {
             PlayerProgression.Affinity affinity = mapToAffinity(type);
             if (affinity != null) {
-                bonus += playerStats.getAffinityPoints(affinity);
+                bonus += playerStats.getAffinityPoints(affinity) * 3;
             }
         }
         return bonus;

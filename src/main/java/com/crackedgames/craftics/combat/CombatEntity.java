@@ -258,6 +258,15 @@ public class CombatEntity {
     public int getBleedStacks() { return bleedStacks; }
     public void setBleedStacks(int s) { this.bleedStacks = s; }
     public void stackBleed(int stacks) { this.bleedStacks = Math.min(MAX_EFFECT_AMPLIFIER, this.bleedStacks + stacks); }
+
+    /**
+     * Damage dealt by a single bleed tick. Scales quadratically with stack count
+     * (triangular: 1 stack = 1, 2 = 3, 3 = 6, 4 = 10...) so stacking bleed is meaningful.
+     */
+    public static int computeBleedTickDamage(int stacks) {
+        if (stacks <= 0) return 0;
+        return stacks * (stacks + 1) / 2;
+    }
     public int getPermanentDefReduction() { return permanentDefReduction; }
     public void addPermanentDefReduction(int amount) { this.permanentDefReduction += amount; }
 
@@ -303,15 +312,23 @@ public class CombatEntity {
         int effectiveDef = getEffectiveDefense();
         double reduction = Math.min(0.60, effectiveDef * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
-        if (bleedStacks > 0) {
-            actual += bleedStacks;
-        }
-        currentHp = Math.max(0, currentHp - actual);
+        // Note: bleed is its own DOT and is classified as Special damage,
+        // so it does NOT add bonus damage to direct hits anymore.
+        applyDirectDamage(actual);
+        return actual;
+    }
+
+    /**
+     * Apply unmitigated damage directly to current HP, bypassing defense and bleed.
+     * Used by DOT effects (bleed/burn ticks) where the source already computed final damage.
+     */
+    public void applyDirectDamage(int amount) {
+        if (amount <= 0) return;
+        currentHp = Math.max(0, currentHp - amount);
         damagedSinceLastTurn = true;
         if (currentHp == 0) {
             alive = false;
         }
-        return actual;
     }
 
     public String getDisplayName() {

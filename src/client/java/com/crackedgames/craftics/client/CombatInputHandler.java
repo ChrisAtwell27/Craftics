@@ -20,6 +20,12 @@ public class CombatInputHandler {
     private static boolean middleMouseDown = false;
     private static double panStartX = 0, panStartY = 0;
 
+    // Right mouse camera-orbit state
+    private static boolean rightMouseDown = false;
+    private static double orbitStartX = 0, orbitStartY = 0;
+    private static final float ORBIT_YAW_SENSITIVITY = 0.35f;
+    private static final float ORBIT_PITCH_SENSITIVITY = 0.25f;
+
     public enum ActionMode { MOVE, MELEE_ATTACK, RANGED_ATTACK, USE_ITEM }
 
     // Food items for client-side detection (must match ItemUseHandler.FOOD_HEAL on server)
@@ -106,6 +112,24 @@ public class CombatInputHandler {
         // (holding Shift + middle click resets)
         if (middleDown && GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS) {
             CombatState.resetPan();
+        }
+
+        // --- Right mouse drag: orbit the camera (yaw + pitch) ---
+        boolean rightDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
+        if (rightDown) {
+            if (rightMouseDown) {
+                double dx = mouseX - orbitStartX;
+                double dy = mouseY - orbitStartY;
+                CombatState.adjustCameraAngles(
+                    (float) (dx * ORBIT_YAW_SENSITIVITY),
+                    (float) (dy * ORBIT_PITCH_SENSITIVITY)
+                );
+            }
+            orbitStartX = mouseX;
+            orbitStartY = mouseY;
+            rightMouseDown = true;
+        } else {
+            rightMouseDown = false;
         }
 
         // Detect left click (rising edge) — only when NOT panning
