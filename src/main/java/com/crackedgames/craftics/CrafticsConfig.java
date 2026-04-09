@@ -23,22 +23,22 @@ public class CrafticsConfig {
 
     /** Global multiplier for all enemy damage dealt to the player. 1.0 = normal. */
     @RangeConstraint(min = 0.1, max = 5.0)
-    public float enemyDamageMultiplier = 1.2f;
+    public float enemyDamageMultiplier = 1.35f;
 
     /** Global multiplier for all enemy HP (regular mobs). 1.0 = normal. */
     @RangeConstraint(min = 0.1, max = 5.0)
-    public float enemyHpMultiplier = 1.15f;
+    public float enemyHpMultiplier = 1.45f;
 
     /** HP bonus added per biome in the progression path. Higher = steeper health curve. */
     @RangeConstraint(min = 0, max = 20)
-    public int hpPerBiome = 5;
+    public int hpPerBiome = 8;
 
     /** Whether enemies gain +hpPerLevel HP for each level within a biome. */
     public boolean scaleHpPerLevel = true;
 
     /** HP bonus per level within a biome (if scaleHpPerLevel is true). */
     @RangeConstraint(min = 0, max = 5)
-    public int hpPerLevel = 1;
+    public int hpPerLevel = 2;
 
     /** Attack bonus divisor per biome. Lower = faster attack scaling. atkBonus = biomeOrdinal / atkPerBiome. */
     @RangeConstraint(min = 1, max = 10)
@@ -50,9 +50,9 @@ public class CrafticsConfig {
 
     // ===== Boss Scaling =====
 
-    /** HP multiplier applied only to bosses (stacks with enemyHpMultiplier). */
+    /** HP multiplier applied only to bosses (does not stack with enemyHpMultiplier). */
     @RangeConstraint(min = 0.5, max = 5.0)
-    public float bossHpMultiplier = 2.5f;
+    public float bossHpMultiplier = 3.0f;
 
     public boolean friendlyFireEnabled = true;
 
@@ -64,8 +64,8 @@ public class CrafticsConfig {
 
     // ===== Enemy Counts =====
 
-    @RangeConstraint(min = 1, max = 10)
-    public int maxEnemiesPerLevel = 6;
+    @RangeConstraint(min = 1, max = 15)
+    public int maxEnemiesPerLevel = 10;
 
     @RangeConstraint(min = 1, max = 6)
     public int maxBossAdds = 4;

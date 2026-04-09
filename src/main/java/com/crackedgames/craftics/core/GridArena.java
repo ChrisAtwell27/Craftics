@@ -69,6 +69,7 @@ public class GridArena {
     }
 
     public boolean isEnemyOccupied(GridPos pos) {
+        if (pos.equals(playerGridPos)) return true;
         var occupant = occupants.get(pos);
         return occupant != null && !occupant.isBackgroundBoss();
     }

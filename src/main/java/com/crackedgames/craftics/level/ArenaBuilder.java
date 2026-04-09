@@ -182,7 +182,7 @@ public class ArenaBuilder {
             level, levelDef.getName(), origin, w, h);
 
         int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
-        Random rng = new Random(level * 31L + ox);
+        Random rng = new Random(System.nanoTime() ^ (level * 31L + ox + oz * 17L));
 
         // Resolve biome for schematic lookup + environment theming
         String biomeId = "plains";
@@ -1476,7 +1476,7 @@ public class ArenaBuilder {
         int rx = Math.max(0, Math.min(w - 1, requested.x()));
         int rz = Math.max(0, Math.min(h - 1, requested.z()));
         GridTile requestedTile = tiles[rx][rz];
-        if (requestedTile != null && requestedTile.isWalkable()) {
+        if (requestedTile != null && requestedTile.isSafeForSpawn()) {
             return new GridPos(rx, rz);
         }
 
@@ -1485,7 +1485,7 @@ public class ArenaBuilder {
         for (int x = 0; x < w; x++) {
             for (int z = 0; z < h; z++) {
                 GridTile tile = tiles[x][z];
-                if (tile == null || !tile.isWalkable()) continue;
+                if (tile == null || !tile.isSafeForSpawn()) continue;
                 int dist = Math.abs(x - rx) + Math.abs(z - rz);
                 if (dist < bestDist) {
                     bestDist = dist;

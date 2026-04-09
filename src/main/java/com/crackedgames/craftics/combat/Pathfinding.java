@@ -56,11 +56,19 @@ public class Pathfinding {
      * When ignoreObstacles is true (Pathfinder set bonus), OBSTACLE tiles are walkable.
      */
     public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles) {
+        return findPath(arena, from, to, maxSteps, self, hasBoat, ignoreObstacles, false);
+    }
+
+    /**
+     * A* pathfinding with full options including aquatic mode.
+     * When aquatic is true, WATER and DEEP_WATER tiles are walkable.
+     */
+    public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean aquatic) {
         if (from.equals(to)) return List.of();
         if (!arena.isInBounds(to)) return List.of();
 
         var tile = arena.getTile(to);
-        if (tile == null || !tile.isWalkableEx(hasBoat, ignoreObstacles)) return List.of();
+        if (tile == null || !tile.isWalkableEx(hasBoat, ignoreObstacles, aquatic)) return List.of();
         if (isBlockedBy(arena, to, self)) return List.of();
 
         Map<GridPos, GridPos> cameFrom = new HashMap<>();
@@ -92,11 +100,12 @@ public class Pathfinding {
                 if (closed.contains(neighbor)) continue;
 
                 var neighborTile = arena.getTile(neighbor);
-                if (neighborTile == null || !neighborTile.isWalkableEx(hasBoat, ignoreObstacles)) continue;
+                if (neighborTile == null || !neighborTile.isWalkableEx(hasBoat, ignoreObstacles, aquatic)) continue;
                 // Block enemy-occupied tiles (excluding self and the destination)
                 if (!neighbor.equals(to) && isBlockedBy(arena, neighbor, self)) continue;
 
-                int tentativeG = currentG + 1;
+                int moveCost = neighborTile.getMoveCost();
+                int tentativeG = currentG + moveCost;
                 if (tentativeG < gScore.getOrDefault(neighbor, Integer.MAX_VALUE)) {
                     cameFrom.put(neighbor, current);
                     gScore.put(neighbor, tentativeG);
@@ -131,9 +140,11 @@ public class Pathfinding {
     }
 
     /**
-     * Check if a tile is blocked by an enemy (excluding 'self' if non-null).
+     * Check if a tile is blocked by an entity or the player (excluding 'self' if non-null).
      */
     private static boolean isBlockedBy(GridArena arena, GridPos pos, CombatEntity self) {
+        // Block on the player's tile — enemies and allies cannot move onto the player
+        if (pos.equals(arena.getPlayerGridPos())) return true;
         CombatEntity occupant = arena.getOccupant(pos);
         if (occupant == null) return false;
         // Don't block on our own tile
@@ -217,7 +228,16 @@ public class Pathfinding {
                 // For sized entities, check ALL footprint tiles at this anchor position
                 if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, hasBoat, ignoreObstacles)) continue;
 
-                dist.put(neighbor, currentDist + 1);
+                // Hazard cost: use highest move cost across the footprint
+                int moveCost = 1;
+                for (GridPos ft : GridArena.getOccupiedTiles(neighbor, entitySize)) {
+                    var ft_tile = arena.getTile(ft);
+                    if (ft_tile != null) moveCost = Math.max(moveCost, ft_tile.getMoveCost());
+                }
+                int newDist = currentDist + moveCost;
+                if (newDist > maxSteps) continue;
+                if (dist.containsKey(neighbor) && dist.get(neighbor) <= newDist) continue;
+                dist.put(neighbor, newDist);
                 reachable.add(neighbor);
                 queue.add(neighbor);
             }
@@ -255,7 +275,10 @@ public class Pathfinding {
                 if (tile == null || !tile.isWalkable()) continue;
                 if (isBlockedBy(arena, neighbor, self)) continue;
 
-                dist.put(neighbor, currentDist + 1);
+                int stepCost = tile.getMoveCost();
+                int newDist = currentDist + stepCost;
+                if (newDist > maxSteps) continue;
+                dist.put(neighbor, newDist);
                 reachable.add(neighbor);
                 queue.add(neighbor);
             }
@@ -336,7 +359,13 @@ public class Pathfinding {
                 if (!neighbor.equals(to) && !canPlaceSizedEntity(arena, neighbor, entitySize, self, false)) continue;
                 if (neighbor.equals(to) && !canPlaceSizedEntity(arena, neighbor, entitySize, self, false)) continue;
 
-                int tentativeG = currentG + 1;
+                // Use highest move cost across the footprint
+                int moveCost = 1;
+                for (GridPos ft : GridArena.getOccupiedTiles(neighbor, entitySize)) {
+                    var ft_tile = arena.getTile(ft);
+                    if (ft_tile != null) moveCost = Math.max(moveCost, ft_tile.getMoveCost());
+                }
+                int tentativeG = currentG + moveCost;
                 if (tentativeG < gScore.getOrDefault(neighbor, Integer.MAX_VALUE)) {
                     cameFrom.put(neighbor, current);
                     gScore.put(neighbor, tentativeG);

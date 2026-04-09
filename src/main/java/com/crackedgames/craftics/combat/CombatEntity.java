@@ -72,7 +72,7 @@ public class CombatEntity {
     public void setGridPos(GridPos pos) { this.gridPos = pos; }
     public int getMaxHp() { return maxHp; }
     public int getCurrentHp() { return currentHp; }
-    public void heal(int amount) { currentHp = Math.min(maxHp, currentHp + amount); }
+    public void heal(int amount) { currentHp = Math.min(getEffectiveMaxHp(), currentHp + amount); }
     public int getAttackPower() { return Math.max(0, attackPower + attackBoost - attackPenalty); }
     public int getDefense() { return defense + defenseBoost; }
     public int getRange() { return rangeOverride >= 0 ? rangeOverride : range; }

@@ -267,7 +267,7 @@ public class ItemUseHandler {
         } else if (item == Items.COBWEB) {
             return useCobweb(player, arena, targetTile, held);
         } else if (item == Items.SHIELD) {
-            return "§9Shield is passive! Equip in offhand for +2 DEF. End turn to brace for +5 DEF total.";
+            return "§9Shield is passive! Equip in offhand for +1 DEF and 25% chance to block attacks.";
         } else if (item == Items.FLINT_AND_STEEL) {
             return useFlintAndSteel(player, arena, targetTile, held);
         } else if (item == Items.TOTEM_OF_UNDYING) {
@@ -823,13 +823,6 @@ public class ItemUseHandler {
         stack.decrement(1);
         enemy.setStunned(true);
         return "§7Webbed " + enemy.getDisplayName() + "! They skip their next turn.";
-    }
-
-    // --- Shield: blocks next incoming attack (gives resistance for 1 turn) ---
-    private static String useShield(ServerPlayerEntity player) {
-        CombatEffects effects = CombatManager.get(player).getCombatEffects();
-        effects.addEffect(CombatEffects.EffectType.RESISTANCE, 1, 2);
-        return "§9Shield raised! Damage reduced next enemy turn.";
     }
 
     // --- Flint and Steel: sets target enemy on fire, damage over time ---

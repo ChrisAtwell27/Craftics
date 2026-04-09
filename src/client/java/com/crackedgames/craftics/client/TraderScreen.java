@@ -91,6 +91,9 @@ public class TraderScreen extends Screen {
         // Emerald count
         context.drawCenteredTextWithShadow(this.textRenderer,
             "§aEmeralds: " + playerEmeralds, centerX, startY + 18, 0x55FF55);
+
+        // Damage affinity panel (left side)
+        com.crackedgames.craftics.client.DamageTypePanel.render(context, this.width, this.height);
     }
 
     @Override

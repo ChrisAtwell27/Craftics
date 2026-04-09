@@ -589,11 +589,17 @@ public class CombatHudOverlay implements HudRenderCallback {
         int pipGap = 4; // between pips
         int sectionGap = 12; // between AP and SPD sections
 
+        // Each section shows 3 squares, but extras overflow into the other section's space.
+        // Total shared slots = 6. AP draws left-to-right, SPD draws right-to-left.
+        int baseSlots = 3;
+        int apDisplay = Math.min(maxAp, baseSlots + Math.max(0, baseSlots - maxSpeed));
+        int spdDisplay = Math.min(maxSpeed, baseSlots + Math.max(0, baseSlots - maxAp));
+
         // Calculate widths
         int apLabelW = client.textRenderer.getWidth("AP") + 4;
-        int apPipsW = maxAp * (pipSize + pipGap) - pipGap;
+        int apPipsW = apDisplay * (pipSize + pipGap) - pipGap;
         int spdLabelW = client.textRenderer.getWidth("SPD") + 4;
-        int spdPipsW = maxSpeed * (pipSize + pipGap) - pipGap;
+        int spdPipsW = spdDisplay * (pipSize + pipGap) - pipGap;
         int totalW = apLabelW + apPipsW + sectionGap + spdLabelW + spdPipsW;
 
         int rowY = screenH - 52;
@@ -604,8 +610,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.drawTextWithShadow(client.textRenderer, Text.literal("AP"), startX, rowY, apLabelColor);
         int x = startX + apLabelW;
 
-        // AP pips
-        for (int i = 0; i < maxAp; i++) {
+        // AP pips (up to apDisplay slots)
+        for (int i = 0; i < apDisplay; i++) {
             if (i >= ap) {
                 ctx.fill(x, rowY, x + pipSize, rowY + pipSize, 0xFF444444);
                 ctx.fill(x + 1, rowY + 1, x + pipSize - 1, rowY + pipSize - 1, 0xFF333333);
@@ -623,6 +629,12 @@ public class CombatHudOverlay implements HudRenderCallback {
             x += pipSize + pipGap;
         }
 
+        // Show "+N" if AP exceeds displayed slots
+        if (maxAp > apDisplay) {
+            ctx.drawTextWithShadow(client.textRenderer, Text.literal("+" + (maxAp - apDisplay)),
+                x - pipGap + 2, rowY, 0xFFFFAA00);
+        }
+
         x += sectionGap - pipGap; // gap between sections
 
         // SPD label
@@ -630,8 +642,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.drawTextWithShadow(client.textRenderer, Text.literal("SPD"), x, rowY, spdLabelColor);
         x += spdLabelW;
 
-        // SPD pips
-        for (int i = 0; i < maxSpeed; i++) {
+        // SPD pips (up to spdDisplay slots)
+        for (int i = 0; i < spdDisplay; i++) {
             if (i >= speed) {
                 ctx.fill(x, rowY, x + pipSize, rowY + pipSize, 0xFF444444);
                 ctx.fill(x + 1, rowY + 1, x + pipSize - 1, rowY + pipSize - 1, 0xFF333333);
@@ -648,6 +660,12 @@ public class CombatHudOverlay implements HudRenderCallback {
                     (inner & 0x00FFFFFF) | 0x66000000);
             }
             x += pipSize + pipGap;
+        }
+
+        // Show "+N" if SPD exceeds displayed slots
+        if (maxSpeed > spdDisplay) {
+            ctx.drawTextWithShadow(client.textRenderer, Text.literal("+" + (maxSpeed - spdDisplay)),
+                x - pipGap + 2, rowY, 0xFF55AAFF);
         }
     }
 

@@ -195,9 +195,9 @@ public class GuideBookData {
         enemies.add(mob("Skeleton", "Speed: 2 | Range: 3\n\nRanged archer. Keeps distance and retreats if you close in.\n\nWeak to: Blunt\nResist: Ranged"));
         enemies.add(mob("Stray", "Speed: 2 | Range: 3\n\nFrozen skeleton variant. Slowness arrows!\n\nWeak to: Blunt\nResist: Ranged, Water"));
         enemies.add(mob("Creeper", "Speed: 2 | Special: Explode\n\nSneaks close then detonates! Massive AoE damage to everything nearby.\n\nWeak to: Ranged, Cleaving\nResist: Slashing"));
-        enemies.add(mob("Spider", "Speed: 3 | Size: 2x2\n\nFast 2x2 predator that pounces! Takes up 4 tiles.\n\nWeak to: Cleaving, Special\nResist: Blunt"));
+        enemies.add(mob("Spider", "Speed: 3 | Size: 2x2\n\nAmbush predator that pounces from distance or drops from the ceiling. Chooses between attacking and shooting cobwebs to slow you or block escape routes.\n\nWeak to: Cleaving, Special\nResist: Blunt"));
         enemies.add(mob("Pillager", "Speed: 2 | Range: 3\n\nCrossbow-wielding raider. Fires from distance.\n\nWeak to: Slashing, Cleaving\nResist: Ranged"));
-        enemies.add(mob("Vindicator", "Speed: 3 | Range: 1\n\nAxe-wielding berserker. Charges in aggressively!\n\nWeak to: Ranged\nResist: Cleaving"));
+        enemies.add(mob("Vindicator", "Speed: 3 | Range: 1\n\nRook-movement axe berserker. Dashes in straight lines like a chess rook! Charge damage scales with distance traveled. When enraged (+50% ATK), attacks also knock you back.\n\nWeak to: Ranged\nResist: Cleaving"));
         enemies.add(mob("Evoker", "Speed: 2 | Range: 4\n\nSummons vex fangs from distance. High priority target!"));
         enemies.add(mob("Phantom", "Speed: 4 | Special: Swoop\n\nFlying enemy that swoops from distance, hits, and retreats.\n\nWeak to: Ranged\nResist: Slashing"));
         // Hostile - Nether
@@ -209,7 +209,7 @@ public class GuideBookData {
         enemies.add(mob("Piglin", "Speed: 2 | Range: 3\n\nCrossbow or gold sword. Trades if you have gold!\n\nWeak to: Special, Water\nResist: Ranged"));
         enemies.add(mob("Zombified Piglin", "Speed: 2 | Range: 1\n\nNeutral until hit, then swarms!"));
         // Hostile - End
-        enemies.add(mob("Enderman", "Speed: 5 | Special: Teleport\n\nTeleports anywhere! Very hard to run from.\n\nWeak to: Water, Special\nResist: Ranged"));
+        enemies.add(mob("Enderman", "Speed: 5 | Special: Teleport\n\nAggressive phase-shifting teleporter. Hunts in assault cycles of 2-3 rapid teleport-strikes before blinking away. Dodges sideways when hit instead of fleeing. Below 50% HP enters Frenzy: never retreats, +50% damage, relentless teleport-strikes every turn.\n\nWeak to: Water, Special\nResist: Ranged"));
         enemies.add(mob("Shulker", "Speed: 1 | Range: 4\n\nStationary turret. Levitation projectiles!\n\nWeak to: Blunt\nResist: Ranged, Slashing"));
         enemies.add(mob("Witch", "Speed: 2 | Range: 4\n\nThrows harmful potions from long range.\n\nWeak to: Slashing, Cleaving\nResist: Special\nImmune: Water"));
         // Bosses
@@ -220,12 +220,11 @@ public class GuideBookData {
             "Abilities:\n- Plant Mine: Invisible mine, 6 dmg on contact\n- Sand Burial: 2x2 quicksand stun\n- Sandstorm: 3x3 AoE + accuracy debuff\n- Curse of the Sands: Tiles you leave become quicksand\n\n" +
             "Phase 2 — Tomb Wrath: 2 mines/turn, 3x3 burial, summons 2 Husks."));
         enemies.add(mob("Frostbound Huntsman", "BOSS | Stray | 25HP / 5ATK / 2DEF / Range 4 / Speed 2\nSnowy Tundra boss.\n\n" +
-            "Abilities:\n- Blizzard: 3x3 AoE + frozen tiles (1-turn stun)\n- Frost Arrow: Range 4, ATK + Slowness\n- Ice Wall: Creates obstacle line\n\n" +
-            "- Harpoon Pull: telegraphed pull 2 tiles toward the boss\n- Whiteout Ring: ring burst with one safe gap\n\n" +
-            "Phase 2 — Permafrost: Speed 3, random frozen tiles every 2 turns."));
-        enemies.add(mob("The Rockbreaker", "BOSS | Vindicator | 30HP / 6ATK / 3DEF / Speed 2\nStony Peaks boss.\n\n" +
-            "Abilities:\n- Seismic Slam: Cross pattern, 5 dmg\n- Boulder Toss: Range 4, creates obstacle\n- Fortify: +5 DEF for 2 turns\n- Avalanche: Full-row attack\n\n" +
-            "Phase 2: Permanent +3 DEF, 2 boulders, 2 rows avalanche."));
+            "Abilities:\n- Harpoon Pull: Telegraphed pull, 4 dmg, drags you 2 tiles toward the boss\n- Whiteout Ring: Ring burst around you with one safe gap, 4 dmg per tile\n- Blizzard: 3x3 AoE, 5 dmg + Slowness. P2: center stuns!\n- Ice Wall: 3 obstacle tiles blocking movement\n- Glacial Trap: 2x2 freeze zone, 2 dmg + stun\n- Frost Arrow: Range 4, ATK + Slowness\n\n" +
+            "Phase 2 — Permafrost: Speed 3, frozen tiles spawn every 2 turns, all cooldowns reduced."));
+        enemies.add(mob("The Rockbreaker", "BOSS | Vindicator | 30HP / 6ATK / 3DEF / Speed 2\nStony Peaks boss. Aggressive melee brawler — every attack knocks you around the arena.\n\n" +
+            "Abilities:\n- Ground Pound: Instant melee AoE + knockback 2 (no telegraph!)\n- Charge: Dashes toward you, 7 dmg + knockback 3\n- Seismic Slam: Cross pattern, 6 dmg + knockback 2\n- Boulder Toss: Range 4, 5 dmg + knockback + creates obstacle\n- Avalanche: Full-row attack, 4 dmg + pushes you downward\n\n" +
+            "Phase 2 — Unstoppable: +1 Speed, all knockback distances increased, shorter cooldowns."));
         enemies.add(mob("The Hexweaver", "BOSS | Evoker | 28HP / 5ATK / 2DEF / Range 4 / Speed 2\nDark Forest boss.\n\n" +
             "Abilities:\n- Hex Snare: telegraphed curse + 2-tile pull\n- Runic Prison: cardinal runes erupt + brief cage\n- Vex Swarm: Summons 2 Vexes every 3 turns\n- Cursed Fog: 3x3 debuff zone\n- Hex Bolt: Ranged ATK + Slowness\n\n" +
             "Phase 2 — Arcane Fury: Teleports away, full cross fangs, 3 Vexes."));
@@ -238,9 +237,10 @@ public class GuideBookData {
         enemies.add(mob("The Tidecaller", "BOSS | Drowned | 30HP / 5ATK / 2DEF / Range 3 / Speed 2\nRiver Delta boss.\n\n" +
             "Abilities:\n- Tidal Wave: 2-tile-wide flood column\n- Trident Storm: 3 tridents in spread\n- Riptide Charge: Water charge, knockback 2\n- Call of the Deep: Summon Drowned on water\n\n" +
             "Phase 2 — Deluge: Half arena floods permanently, +2 ATK on water."));
-        enemies.add(mob("The Molten King", "BOSS | Magma Cube | 35HP / 7ATK / 2DEF / Speed 2\nNether Wastes boss.\n\n" +
-            "Abilities:\n- Eruption: Ring of fire AoE around self\n- Lava Trail: Leaves fire on tiles moved\n- Absorb: Merges with nearby cube to heal\n\n" +
-            "Phase 2 — Meltdown: Permanent fire tiles, constant eruptions."));
+        enemies.add(mob("The Molten King", "BOSS | Magma Cube | 35HP / 8ATK / 2DEF / Speed 2 | Size 2x2\nNether Wastes boss.\n\n" +
+            "SPLIT MECHANIC: At 50% HP, the boss dies and splits into 2 smaller copies that keep ALL boss abilities. Those split again at 50% HP into 4 total tiny bosses.\n\n" +
+            "Abilities:\n- Magma Eruption: Teleport-leap + 3x3 blast (8 dmg) + fire ring\n- Lava Cage: Ring player with fire, blocking escape\n- Absorb: Merges with nearby cube to heal\n- Melee: Knockback 1 tile on hit\n\n" +
+            "Phase 2 — Meltdown: Arena shrinks via lava rings, faster cooldowns."));
         enemies.add(mob("The Bastion Brute", "BOSS | Skeleton (Piglin wargear) | 45HP / 8ATK / 3DEF / Speed 3\nCrimson Forest boss.\n\n" +
             "Abilities:\n- Gore Charge: 4-tile charge, ATK+3, knockback 3\n- Fungal Growth: 3x3 heal zone\n- Rampage: AoE all adjacent tiles\n- Summon Pack: 2 Piglins (once)\n\n" +
             "Phase 2 — Blood Frenzy: +4 ATK, fire trail, 2-tile rampage, speed 4."));
@@ -308,7 +308,7 @@ public class GuideBookData {
         equipment.add(new Entry("Armor Sets", "minecraft:diamond_chestplate", List.of(
             new Page("Set Bonuses",
                 "Wear a full matching armor set for combat bonuses!\n\n" +
-                "Leather (Brawler): +2 Speed, +1 AP, +2 Physical dmg, 2x kill streak multiplier\n" +
+                "Leather (Brawler): +2 Physical dmg, kill streak damage bonus\n" +
                 "Chainmail (Rogue): +1 Speed, -1 AP cost, +2 Slashing dmg\n" +
                 "Iron (Guard): +2 DEF, KB immune, +2 Cleaving dmg\n" +
                 "Gold (Gambler): +15% crit, +1 emerald/kill, +2 Special dmg"),
@@ -321,9 +321,9 @@ public class GuideBookData {
         equipment.add(new Entry("Shield", "minecraft:shield", List.of(
             new Page("Shield Mechanics",
                 "Equip a shield in your OFFHAND slot.\n\n" +
-                "Passive: +2 Defense at all times.\n\n" +
-                "Brace: When you End Turn (R), shield auto-braces for +5 total DEF during the enemy phase.\n\n" +
-                "No AP cost - purely strategic! End turn early to tank hits.")
+                "Passive: +1 Defense at all times.\n\n" +
+                "Block: 25% chance to completely block an incoming attack, negating all damage.\n\n" +
+                "No AP cost - purely passive! Equip and fight normally.")
         )));
         equipment.add(new Entry("Enchantments", "minecraft:enchanted_book", List.of(
             new Page("Sword Enchantments",

@@ -28,8 +28,7 @@ public final class VanillaContent {
         // Values from PlayerCombatStats.getSetBonusDescription() and DamageType.getArmorSetBonus()
         ArmorSetRegistry.register(ArmorSetEntry.builder("leather")
             .damageBonus(DamageType.PHYSICAL, 2)
-            .speedBonus(2).apBonus(1)
-            .description("§eBrawler: +2 Speed, +1 AP, +2 Fist dmg, 2x kill streak multiplier")
+            .description("§eBrawler: +2 Physical dmg, kill streak damage bonus")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("chainmail")
             .damageBonus(DamageType.SLASHING, 2)
