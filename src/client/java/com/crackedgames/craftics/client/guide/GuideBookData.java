@@ -237,8 +237,8 @@ public class GuideBookData {
         enemies.add(mob("The Tidecaller", "BOSS | Drowned | 30HP / 5ATK / 2DEF / Range 3 / Speed 2\nRiver Delta boss.\n\n" +
             "Abilities:\n- Tidal Wave: 2-tile-wide flood column\n- Trident Storm: 3 tridents in spread\n- Riptide Charge: Water charge, knockback 2\n- Call of the Deep: Summon Drowned on water\n\n" +
             "Phase 2 — Deluge: Half arena floods permanently, +2 ATK on water."));
-        enemies.add(mob("The Molten King", "BOSS | Magma Cube | 35HP / 8ATK / 2DEF / Speed 2 | Size 2x2\nNether Wastes boss.\n\n" +
-            "SPLIT MECHANIC: At 50% HP, the boss dies and splits into 2 smaller copies that keep ALL boss abilities. Those split again at 50% HP into 4 total tiny bosses.\n\n" +
+        enemies.add(mob("The Molten King", "BOSS | Magma Cube | 35HP / 8ATK / 2DEF / Speed 2 | Size 3x3\nNether Wastes boss.\n\n" +
+            "SPLIT MECHANIC: At 50% HP, the boss splits into 2 smaller copies that keep ALL boss abilities. Those copies split again at 50% HP into a total of 4 tiny bosses.\n\n" +
             "Abilities:\n- Magma Eruption: Teleport-leap + 3x3 blast (8 dmg) + fire ring\n- Lava Cage: Ring player with fire, blocking escape\n- Absorb: Merges with nearby cube to heal\n- Melee: Knockback 1 tile on hit\n\n" +
             "Phase 2 — Meltdown: Arena shrinks via lava rings, faster cooldowns."));
         enemies.add(mob("The Bastion Brute", "BOSS | Skeleton (Piglin wargear) | 45HP / 8ATK / 3DEF / Speed 3\nCrimson Forest boss.\n\n" +

@@ -1081,13 +1081,21 @@ public class CombatManager {
 
         String bossEntityTypeId = null;
         String bossBiomeId = null;
+        int spawnBiomeOrdinal = 0;
         if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
             BiomeTemplate biome = gld.getBiomeTemplate();
             if (biome.isBossLevel(gld.getLevelNumber()) && biome.boss != null) {
                 bossEntityTypeId = biome.boss.entityTypeId();
                 bossBiomeId = biome.biomeId;
             }
+            // Determine biome ordinal from BiomePath for enchant chance scaling
+            CrafticsSavedData.PlayerData pdSpawn = ngData.getPlayerData(player.getUuid());
+            java.util.List<String> spawnPath = com.crackedgames.craftics.level.BiomePath
+                .getFullPath(Math.max(0, pdSpawn.branchChoice));
+            int idx = spawnPath.indexOf(biome.biomeId);
+            if (idx >= 0) spawnBiomeOrdinal = idx;
         }
+        final int finalBiomeOrdinal = spawnBiomeOrdinal;
 
         // Must set night before spawning undead or they burn on first tick
         boolean willHaveUndead = false;
@@ -1253,6 +1261,12 @@ public class CombatManager {
                 int equipAtkBonus = 0;
                 int equipDefBonus = 0;
                 int equipSpeedBonus = 0;
+
+                // Roll a chance to enchant the mob's gear (scales with biome ordinal)
+                if (!isBoss) {
+                    enchantMobGear(mob, finalBiomeOrdinal, world);
+                }
+
                 // Weapon check
                 ItemStack mainHand = mob.getMainHandStack();
                 if (!mainHand.isEmpty()) {
@@ -1261,13 +1275,19 @@ public class CombatManager {
                     else if (weapon == Items.DIAMOND_SWORD || weapon == Items.DIAMOND_AXE) equipAtkBonus += 3;
                     else if (weapon == Items.NETHERITE_SWORD || weapon == Items.NETHERITE_AXE) equipAtkBonus += 4;
                     else if (weapon == Items.GOLDEN_SWORD || weapon == Items.BOW || weapon == Items.CROSSBOW) equipAtkBonus += 1;
+                    // Sharpness adds raw attack bonus (1 per level)
+                    equipAtkBonus += PlayerCombatStats.getEnchantLevel(mainHand, "minecraft:sharpness");
                 }
                 // Armor check (sum of all armor slots)
                 for (net.minecraft.entity.EquipmentSlot slot : new net.minecraft.entity.EquipmentSlot[]{
                     net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
                     net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
                     ItemStack armor = mob.getEquippedStack(slot);
-                    if (!armor.isEmpty()) equipDefBonus += 1;
+                    if (!armor.isEmpty()) {
+                        equipDefBonus += 1;
+                        // Protection enchants add bonus DEF (1 per 2 levels, rounded down)
+                        equipDefBonus += PlayerCombatStats.getEnchantLevel(armor, "minecraft:protection") / 2;
+                    }
                 }
                 // Baby variant = faster + visually smaller
                 if (mob.isBaby()) {
@@ -1306,6 +1326,11 @@ public class CombatManager {
                     ce.setBoss(true);
                     ce.setAiOverrideKey("boss:" + bossBiomeId);
                     ce.setBossDisplayName(getBossName(bossBiomeId));
+                    // Molten King needs a fresh per-entity AI instance so state doesn't leak
+                    // between the original boss and split copies.
+                    if ("nether_wastes".equals(bossBiomeId)) {
+                        ce.setAiInstance(new MoltenKingAI(0));
+                    }
                     CrafticsMod.LOGGER.info("[BOSS DEBUG] Spawned boss entity='{}' aiOverrideKey='boss:{}' entityId={}",
                         spawn.entityTypeId(), bossBiomeId, ce.getEntityId());
                 }
@@ -2694,7 +2719,8 @@ public class CombatManager {
             ));
 
             // Slime/Magma Cube split: 2x2 splits into 2 mini 1x1 versions
-            if (deathSize >= 2 && isSplittableMob(deathType)) {
+            // (Bosses split via notifyBossOfDamage at 50% HP, not on death.)
+            if (deathSize >= 2 && isSplittableMob(deathType) && !entity.isBoss()) {
                 trySplitOnDeath(deathType, deathPos, deathSize, deathMaxHp, deathAtk, deathDef);
             }
         }
@@ -2841,6 +2867,55 @@ public class CombatManager {
     }
 
     /**
+     * Roll a chance to enchant a mob's weapon and armor based on biome ordinal.
+     * Later biomes get higher enchant chance and stronger enchants.
+     */
+    private static void enchantMobGear(MobEntity mob, int biomeOrdinal, ServerWorld world) {
+        double enchantChance = Math.min(0.60, 0.05 + biomeOrdinal * 0.05);
+        int maxLevel = Math.min(4, 1 + biomeOrdinal / 3);
+
+        ItemStack weapon = mob.getMainHandStack();
+        if (!weapon.isEmpty() && Math.random() < enchantChance) {
+            String[] weaponEnchants;
+            Item w = weapon.getItem();
+            if (w == Items.BOW || w == Items.CROSSBOW) {
+                weaponEnchants = new String[]{"power", "punch", "flame"};
+            } else {
+                weaponEnchants = new String[]{"sharpness", "fire_aspect", "knockback", "smite", "bane_of_arthropods"};
+            }
+            String chosen = weaponEnchants[(int) (Math.random() * weaponEnchants.length)];
+            int level = 1 + (int) (Math.random() * maxLevel);
+            applyMobEnchant(weapon, chosen, level, world);
+        }
+
+        double armorEnchantChance = enchantChance * 0.7;
+        for (net.minecraft.entity.EquipmentSlot slot : new net.minecraft.entity.EquipmentSlot[]{
+                net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+                net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
+            ItemStack piece = mob.getEquippedStack(slot);
+            if (piece.isEmpty() || Math.random() >= armorEnchantChance) continue;
+            String[] armorEnchants = {"protection", "thorns", "blast_protection", "projectile_protection"};
+            String chosen = armorEnchants[(int) (Math.random() * armorEnchants.length)];
+            int level = 1 + (int) (Math.random() * maxLevel);
+            applyMobEnchant(piece, chosen, level, world);
+        }
+    }
+
+    /** Apply a single enchantment by registry path to an itemstack. */
+    private static void applyMobEnchant(ItemStack stack, String enchantPath, int level, ServerWorld world) {
+        var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        var enchantEntry = enchantRegistry.streamEntries()
+            .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(enchantPath))
+            .findFirst().orElse(null);
+        if (enchantEntry == null) return;
+        ItemEnchantmentsComponent.Builder builder = new ItemEnchantmentsComponent.Builder(
+            stack.getOrDefault(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT));
+        builder.add(enchantEntry, level);
+        stack.set(DataComponentTypes.ENCHANTMENTS, builder.build());
+        stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+    }
+
+    /**
      * Equip a boss mob with unique visuals based on biome.
      * Gives each boss custom equipment, name plate, and scale.
      */
@@ -2951,8 +3026,8 @@ public class CombatManager {
             case "nether_wastes" -> { // The Molten King — Magma Cube
                 mob.setCustomName(Text.literal("§c§lThe Molten King"));
                 mob.setCustomNameVisible(true);
-                // No equipment — magma cube; big scale
-                scaleBoss(mob, 2.2);
+                // No equipment — magma cube; sized to cover a 3x3 grid footprint
+                scaleBoss(mob, 1.5);
             }
             case "soul_sand_valley" -> { // The Wailing Revenant — Ghast
                 mob.setCustomName(Text.literal("§9§lThe Wailing Revenant"));
@@ -4315,6 +4390,21 @@ public class CombatManager {
                 checkAndHandleDeath(e);
             }
 
+            // --- Bleed DOT: each stack ticks 1 damage per turn, then 1 stack drops off ---
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.getBleedStacks() <= 0) continue;
+                int bleedDmg = e.takeDamage(e.getBleedStacks());
+                sendMessage("§4" + e.getDisplayName() + " bleeds for " + bleedDmg + ".");
+                if (e.getMobEntity() != null) {
+                    ((ServerWorld) player.getEntityWorld()).spawnParticles(
+                        net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                        e.getMobEntity().getX(), e.getMobEntity().getY() + 1.0, e.getMobEntity().getZ(),
+                        6, 0.3, 0.5, 0.3, 0.02);
+                }
+                e.setBleedStacks(Math.max(0, e.getBleedStacks() - 1));
+                checkAndHandleDeath(e);
+            }
+
             if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
                 handleVictory();
                 return;
@@ -4662,7 +4752,7 @@ public class CombatManager {
             resolvePendingBossWarnings(currentEnemy);
         }
 
-        EnemyAI ai = AIRegistry.get(currentEnemy.getAiKey());
+        EnemyAI ai = resolveAi(currentEnemy);
         if (currentEnemy.isBoss()) {
             CrafticsMod.LOGGER.info("[BOSS DEBUG] Boss '{}' aiKey='{}' resolved AI class={}",
                 currentEnemy.getDisplayName(), currentEnemy.getAiKey(), ai.getClass().getSimpleName());
@@ -4887,7 +4977,7 @@ public class CombatManager {
                 sendMessage("§7" + currentEnemy.getDisplayName() + " waits...");
                 // If boss has a pending warning, render its telegraph for the player's turn.
                 if (currentEnemy.isBoss()) {
-                    EnemyAI bossAi = AIRegistry.get(currentEnemy.getAiKey());
+                    EnemyAI bossAi = resolveAi(currentEnemy);
                     if (bossAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI ba
                             && ba.getPendingWarning() != null) {
                         renderBossWarning(ba.getPendingWarning());
@@ -4987,7 +5077,7 @@ public class CombatManager {
                     // Render warning particles on the telegraphed tiles
                     spawnBossAbilityTelegraphParticles(ba);
                     // Clear BossAI's internal warning to prevent double-fire
-                    EnemyAI bossAi = AIRegistry.get(currentEnemy.getAiKey());
+                    EnemyAI bossAi = resolveAi(currentEnemy);
                     if (bossAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bai) {
                         bai.clearPendingWarning();
                     }
@@ -5337,7 +5427,7 @@ public class CombatManager {
     private void spawnBossMinions(EnemyAction.SummonMinions sm) {
         // Special handling: Broodmother egg sac placement (not a real mob spawn)
         if ("craftics:egg_sac".equals(sm.entityTypeId())) {
-            EnemyAI bossAi = AIRegistry.get(currentEnemy.getAiKey());
+            EnemyAI bossAi = resolveAi(currentEnemy);
             if (bossAi instanceof BroodmotherAI broodmother) {
                 ServerWorld world = (ServerWorld) player.getEntityWorld();
                 for (GridPos pos : sm.positions()) {
@@ -5397,6 +5487,9 @@ public class CombatManager {
                 if (pendingMoltenSplitKey != null) {
                     ce.setAiOverrideKey(pendingMoltenSplitKey);
                     ce.setBoss(true);
+                    // Each split copy needs its own MoltenKingAI with independent state
+                    int splitGen = "boss:nether_wastes_g2".equals(pendingMoltenSplitKey) ? 2 : 1;
+                    ce.setAiInstance(new MoltenKingAI(splitGen));
                 }
                 enemies.add(ce);
                 arena.placeEntity(ce);
@@ -5409,7 +5502,7 @@ public class CombatManager {
                 }
                 // Register with boss AI for tracking
                 if (currentEnemy != null && currentEnemy.isBoss()) {
-                    EnemyAI bAi = AIRegistry.get(currentEnemy.getAiKey());
+                    EnemyAI bAi = resolveAi(currentEnemy);
                     if (bAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bossAi) {
                         bossAi.registerSpawnedMinion(ce.getEntityId());
                     }
@@ -5565,7 +5658,7 @@ public class CombatManager {
 
                 // Register with boss AI for tracking
                 if (currentEnemy != null && currentEnemy.isBoss()) {
-                    EnemyAI bAi = AIRegistry.get(currentEnemy.getAiKey());
+                    EnemyAI bAi = resolveAi(currentEnemy);
                     if (bAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bossAi) {
                         bossAi.registerSpawnedProjectile(ce.getEntityId());
                     }
@@ -6740,24 +6833,29 @@ public class CombatManager {
      */
     private void notifyBossOfDamage(CombatEntity target, int damageDealt) {
         if (!target.isBoss()) return;
-        EnemyAI ai = AIRegistry.get(target.getAiKey());
+        EnemyAI ai = resolveAi(target);
 
         // ShulkerArchitect: notify it was damaged (primes Fortify Shell)
         if (ai instanceof ShulkerArchitectAI sa) {
             sa.notifyDamaged();
         }
 
-        // MoltenKing: split into 2 copies when phase 2 triggers (50% HP)
-        if (ai instanceof MoltenKingAI mk && mk.consumePhaseTransition() && mk.canSplit()) {
+        // MoltenKing: split into 2 copies when HP drops to 50% (once per entity)
+        if (ai instanceof MoltenKingAI mk && mk.canSplit()
+                && !target.hasSplit() && target.isAlive()
+                && target.getCurrentHp() <= target.getMaxHp() / 2) {
+            target.markSplit();
             String nextGenKey = mk.getNextGenAiKey();
             if (nextGenKey != null) {
                 int gen = mk.getGeneration();
                 int splitHp = gen == 0 ? 20 : 12;
                 int splitAtk = gen == 0 ? 7 : 6;
                 int splitDef = gen == 0 ? 1 : 0;
+                // Search wider area for gen 0 since it occupies a 3x3 footprint
+                int searchRadius = gen == 0 ? 3 : 2;
                 List<GridPos> splitPositions = new ArrayList<>();
-                for (int dx = -2; dx <= 2; dx++) {
-                    for (int dz = -2; dz <= 2; dz++) {
+                for (int dx = -searchRadius; dx <= searchRadius; dx++) {
+                    for (int dz = -searchRadius; dz <= searchRadius; dz++) {
                         GridPos sp = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
                         if (arena.isInBounds(sp) && !arena.isOccupied(sp)
                                 && arena.getTile(sp) != null && arena.getTile(sp).isWalkable()) {
@@ -6790,7 +6888,7 @@ public class CombatManager {
     private void notifyBossesPlayerMoved(GridPos destination, int tilesMoved) {
         for (CombatEntity e : enemies) {
             if (!e.isAlive() || !e.isBoss()) continue;
-            EnemyAI ai = AIRegistry.get(e.getAiKey());
+            EnemyAI ai = resolveAi(e);
             if (ai instanceof WardenAI warden) {
                 warden.onPlayerMove(destination, tilesMoved);
             }
@@ -6804,7 +6902,7 @@ public class CombatManager {
     private void tickBossWarnings() {
         for (CombatEntity e : enemies) {
             if (!e.isAlive() || !e.isBoss()) continue;
-            EnemyAI ai = AIRegistry.get(e.getAiKey());
+            EnemyAI ai = resolveAi(e);
             if (ai instanceof BossAI boss) {
                 boss.tickWarning();
             }
@@ -6818,7 +6916,7 @@ public class CombatManager {
     private void notifyBossOfMinionDeath(CombatEntity deadEntity) {
         for (CombatEntity e : enemies) {
             if (!e.isAlive() || !e.isBoss()) continue;
-            EnemyAI ai = AIRegistry.get(e.getAiKey());
+            EnemyAI ai = resolveAi(e);
 
             // Dragon: crystal destroyed
             if (ai instanceof DragonAI dragon) {
@@ -6864,7 +6962,7 @@ public class CombatManager {
      * Initializes boss-specific fight setup.
      */
     private void initBossSetup(CombatEntity bossEntity) {
-        EnemyAI ai = AIRegistry.get(bossEntity.getAiKey());
+        EnemyAI ai = resolveAi(bossEntity);
 
         if (ai instanceof BroodmotherAI broodmother) {
             List<GridPos> sacPositions = broodmother.initEggSacs(arena);
@@ -7708,7 +7806,22 @@ public class CombatManager {
         }
 
         if (resolvedRanged != null) {
-            int raDamage = (int)(resolvedRanged.damage() * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
+            // Enemy bow enchantment effects: Power adds damage, Flame ignites, Punch knocks back
+            int rangedBaseDmg = resolvedRanged.damage();
+            boolean rangedFlame = false;
+            int rangedFlameLevel = 0;
+            int rangedPunchLevel = 0;
+            if (currentEnemy != null && currentEnemy.getMobEntity() != null) {
+                ItemStack ew = currentEnemy.getMobEntity().getMainHandStack();
+                if (!ew.isEmpty()) {
+                    int powerLvl = PlayerCombatStats.getEnchantLevel(ew, "minecraft:power");
+                    if (powerLvl > 0) rangedBaseDmg += powerLvl;
+                    rangedFlameLevel = PlayerCombatStats.getEnchantLevel(ew, "minecraft:flame");
+                    if (rangedFlameLevel > 0) rangedFlame = true;
+                    rangedPunchLevel = PlayerCombatStats.getEnchantLevel(ew, "minecraft:punch");
+                }
+            }
+            int raDamage = (int)(rangedBaseDmg * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
             CombatEntity petTarget = (currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
                 ? currentEnemyPetAggroTarget : null;
             if (petTarget != null) {
@@ -7731,6 +7844,17 @@ public class CombatManager {
 
                 sendMessage("§c" + currentEnemy.getDisplayName() + " hits you for " + raActual + "!");
                 applyEnemyHitEffect(currentEnemy.getEntityTypeId());
+                // Flame enchant on enemy bow ignites the player
+                if (rangedFlame && !combatEffects.hasFireResistance()) {
+                    addEffectHooked(CombatEffects.EffectType.BURNING, 2 + rangedFlameLevel, 0);
+                    sendMessage("§6  Flaming arrow ignites you! (Burning for "
+                        + (2 + rangedFlameLevel) + " turns)");
+                }
+                // Punch enchant: knock the player back
+                if (rangedPunchLevel > 0) {
+                    applyPlayerKnockback(currentEnemy.getGridPos(), rangedPunchLevel + 1, currentEnemy);
+                    sendMessage("§e  Punch arrow knocks you back!");
+                }
                 checkOverwatchCounter(currentEnemy);
 
                 if (getPlayerHp() <= 0) {
@@ -7822,6 +7946,30 @@ public class CombatManager {
             knockbackTiles = maakb.knockbackTiles();
         }
 
+        // Enemy weapon enchantment effects: read mob's mainhand and apply on-hit effects
+        int enemySharp = 0;
+        int enemyFireAspect = 0;
+        int enemySmite = 0;
+        int enemyBane = 0;
+        if (currentEnemy != null && currentEnemy.getMobEntity() != null) {
+            ItemStack enemyWeapon = currentEnemy.getMobEntity().getMainHandStack();
+            if (!enemyWeapon.isEmpty()) {
+                enemySharp = PlayerCombatStats.getEnchantLevel(enemyWeapon, "minecraft:sharpness");
+                if (enemySharp > 0) damage += enemySharp;
+                int enemyKb = PlayerCombatStats.getEnchantLevel(enemyWeapon, "minecraft:knockback");
+                if (enemyKb > 0) knockbackTiles += enemyKb;
+                enemyFireAspect = PlayerCombatStats.getEnchantLevel(enemyWeapon, "minecraft:fire_aspect");
+                enemySmite = PlayerCombatStats.getEnchantLevel(enemyWeapon, "minecraft:smite");
+                enemyBane = PlayerCombatStats.getEnchantLevel(enemyWeapon, "minecraft:bane_of_arthropods");
+            }
+        }
+        // Smite/Bane bonus damage applies if the player counts as undead/arthropod (rare, but supported)
+        // For PvE these mostly add flat damage instead since the player isn't undead/arthropod
+        boolean enemyHasFireAspect = enemyFireAspect > 0;
+        boolean enemyHasSharpness = enemySharp > 0;
+        boolean enemyHasSmite = enemySmite > 0;
+        boolean enemyHasBane = enemyBane > 0;
+
         damage = (int)(damage * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
         if (petTarget != null) {
             // Addon combat effects: modify ally incoming damage
@@ -7846,9 +7994,93 @@ public class CombatManager {
             sendMessage("§c" + currentEnemy.getDisplayName() + " hits you for " + actual + "!");
             applyEnemyHitEffect(currentEnemy.getEntityTypeId());
 
+            // Enemy weapon Sharpness: applies bleed stacks to the player (1 stack per level, 3 turn duration)
+            if (enemyHasSharpness) {
+                int bleedDuration = 3;
+                addEffectHooked(CombatEffects.EffectType.BLEEDING, bleedDuration, enemySharp - 1);
+                sendMessage("§4  Sharpened weapon causes Bleeding " + enemySharp + "! (-" + enemySharp + " HP/turn for " + bleedDuration + " turns)");
+            }
+
+            // Enemy weapon Fire Aspect: ignite the player AND nearby tiles in a cone
+            if (enemyHasFireAspect && !combatEffects.hasFireResistance()) {
+                int burnTurns = 2 + enemyFireAspect;
+                addEffectHooked(CombatEffects.EffectType.BURNING, burnTurns, enemyFireAspect - 1);
+                // Cone of flame: convert tiles in front of the player to fire (in the direction the enemy attacked from)
+                GridPos pPosFa = arena.getPlayerGridPos();
+                GridPos ePosFa = currentEnemy.getGridPos();
+                int faDx = Integer.signum(pPosFa.x() - ePosFa.x());
+                int faDz = Integer.signum(pPosFa.z() - ePosFa.z());
+                if (faDx == 0 && faDz == 0) faDx = 1;
+                int coneDepth = enemyFireAspect + 1; // Lv1 = 2 deep, Lv2 = 3 deep
+                java.util.List<GridPos> coneTiles = new ArrayList<>();
+                for (int depth = 1; depth <= coneDepth; depth++) {
+                    int halfWidth = depth - 1;
+                    for (int w = -halfWidth; w <= halfWidth; w++) {
+                        int cx, cz;
+                        if (faDz == 0) {
+                            cx = pPosFa.x() + faDx * depth;
+                            cz = pPosFa.z() + w;
+                        } else if (faDx == 0) {
+                            cx = pPosFa.x() + w;
+                            cz = pPosFa.z() + faDz * depth;
+                        } else {
+                            cx = pPosFa.x() + faDx * depth;
+                            cz = pPosFa.z() + faDz * depth + w;
+                        }
+                        GridPos cp = new GridPos(cx, cz);
+                        if (arena.isInBounds(cp)) coneTiles.add(cp);
+                    }
+                }
+                if (!coneTiles.isEmpty()) {
+                    resolveCreateTerrain(new EnemyAction.CreateTerrain(coneTiles, TileType.FIRE, 2));
+                }
+                sendMessage("§6  Flaming weapon ignites you! Burning " + (enemyFireAspect) + " for " + burnTurns + " turns! Cone of flame erupts!");
+            }
+
+            // Enemy weapon Bane of Arthropods: poison + slow (applies regardless of player type)
+            if (enemyHasBane) {
+                addEffectHooked(CombatEffects.EffectType.POISON, 3, Math.max(0, enemyBane - 1));
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 2, 0);
+                sendMessage("§2  Venomous strike! Poisoned and slowed!");
+            }
+
+            // Enemy weapon Smite: bonus damage spike (vs the player it's a flat extra hit)
+            if (enemyHasSmite) {
+                int smiteDmg = enemySmite * 2;
+                int smiteActual = damagePlayer(smiteDmg, currentEnemy);
+                sendMessage("§e  Holy radiance! Smite deals " + smiteActual + " bonus damage!");
+                if (getPlayerHp() <= 0) {
+                    sendSync();
+                    handlePlayerDeathOrGameOver();
+                    return;
+                }
+            }
+
             // Apply knockback to player
             if (knockbackTiles > 0) {
                 applyPlayerKnockback(currentEnemy.getGridPos(), knockbackTiles, currentEnemy);
+            }
+
+            // Enemy armor Thorns: reflect damage from any armor piece with Thorns
+            if (currentEnemy.getMobEntity() != null) {
+                int totalEnemyThorns = 0;
+                for (net.minecraft.entity.EquipmentSlot slot : new net.minecraft.entity.EquipmentSlot[]{
+                        net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+                        net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
+                    ItemStack piece = currentEnemy.getMobEntity().getEquippedStack(slot);
+                    if (!piece.isEmpty()) {
+                        totalEnemyThorns += PlayerCombatStats.getEnchantLevel(piece, "minecraft:thorns");
+                    }
+                }
+                if (totalEnemyThorns > 0 && Math.random() < 0.3) {
+                    int thornsRetaliate = damagePlayer(totalEnemyThorns, currentEnemy);
+                    sendMessage("§2  Enemy thorns reflects " + thornsRetaliate + " damage!");
+                    if (getPlayerHp() <= 0) {
+                        sendSync();
+                        handlePlayerDeathOrGameOver();
+                        return;
+                    }
+                }
             }
 
             // Thorns: reflect damage back to attacker (Luck boosts proc chance)
@@ -8219,7 +8451,7 @@ public class CombatManager {
     private void tickEnemyDone() {
         // Broodmother: consume pending web rain (Hunting Dive phase 2)
         if (currentEnemy != null && currentEnemy.isBoss()) {
-            EnemyAI bossAi = AIRegistry.get(currentEnemy.getAiKey());
+            EnemyAI bossAi = resolveAi(currentEnemy);
             if (bossAi instanceof BroodmotherAI bm) {
                 List<GridPos> webRain = bm.consumeWebRain();
                 if (webRain != null && !webRain.isEmpty()) {
@@ -11121,7 +11353,7 @@ public class CombatManager {
         // Also include warnings from boss AIs that just set pendingWarning this turn
         for (CombatEntity enemy : enemies) {
             if (!enemy.isBoss() || !enemy.isAlive()) continue;
-            var ai = AIRegistry.get(enemy.getAiKey());
+            var ai = resolveAi(enemy);
             if (ai instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bai && bai.getPendingWarning() != null) {
                 for (GridPos wt : bai.getPendingWarning().getAffectedTiles()) {
                     warningList.add(wt.x());
@@ -11229,7 +11461,7 @@ public class CombatManager {
             case HASTE -> net.minecraft.entity.effect.StatusEffects.HASTE;
             case SLOW_FALLING -> net.minecraft.entity.effect.StatusEffects.SLOW_FALLING;
             case WATER_BREATHING -> net.minecraft.entity.effect.StatusEffects.WATER_BREATHING;
-            case BURNING, SOAKED, CONFUSION -> null; // no vanilla equivalent
+            case BURNING, SOAKED, CONFUSION, BLEEDING -> null; // no vanilla equivalent
         };
     }
 
@@ -11383,6 +11615,12 @@ public class CombatManager {
     private net.minecraft.entity.vehicle.BoatEntity activeBoat = null; // Visual boat while in water
     private boolean oceanBlessingUsed = false;        // OCEAN_BLESSING: once per combat
     private String pendingMoltenSplitKey = null;     // Molten King: AI key for next split generation
+
+    /** Resolve the AI for an entity, preferring per-entity instance if present (for split copies with own state). */
+    private static EnemyAI resolveAi(CombatEntity entity) {
+        EnemyAI inst = entity.getAiInstance();
+        return inst != null ? inst : AIRegistry.get(entity.getAiKey());
+    }
 
     /** Called when an enemy is killed. */
     private void onEnemyKilled(CombatEntity enemy) {
