@@ -14,7 +14,10 @@
   /* Restore accent colors for links and special elements */
   a, a:visited { color: var(--accent) !important; }
   a:hover { color: #7bb8e8 !important; }
+  .sidebar-nav a { color: var(--accent) !important; }
+  .sidebar-nav a.active { color: #fff !important; border-left-color: var(--amber) !important; background: var(--amber-dim) !important; }
   .nav-logo { color: var(--accent) !important; }
+  .nav-links a { color: #fff !important; }
   .nav-links a.active { color: #fff !important; background: var(--amber) !important; }
   .build-card-header .build-class { color: var(--amber) !important; background: var(--amber-dim) !important; }
   .card h3 { color: var(--amber) !important; }
