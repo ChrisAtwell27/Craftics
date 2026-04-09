@@ -27,7 +27,7 @@
   .progression-map .boss { color: var(--amber) !important; }
   .marker-diagram .em { color: var(--emerald) !important; }
   .marker-diagram .go { color: var(--amber) !important; }
-  .marker-diagram .ir { color: #a1a1aa !important; }
+  .marker-diagram .ir { color: #fff !important; }
   .build-value strong { color: var(--amber) !important; }
   .build-value .green { color: var(--emerald) !important; }
   .footer .sep { color: var(--border) !important; }
@@ -35,7 +35,7 @@
   --surface: rgba(30, 30, 34, 0.92);
   --surface-alt: rgba(26, 26, 30, 0.92);
   --border: #4a4a52;
-  --text: #e8e8ec;
+  --text: #fff;
   --muted: #fff;
   --accent: #5b9bd5;
   --accent-dim: rgba(91, 155, 213, 0.12);
@@ -301,7 +301,7 @@ a:hover { color: #7bb8e8; }
 }
 
 
-.content strong { color: #e4e4e8; }
+.content strong { color: #fff; }
 
 /* ================================================================
    TABLES
@@ -352,7 +352,7 @@ body th,
 body .marker-diagram,
 body .dimension-card p,
 body .sidebar-nav a.sub {
-  color: #333 !important;
+  color: #fff !important;
 }
 
 td {
@@ -376,7 +376,7 @@ code {
   background: var(--code-bg);
   padding: 2px 7px;
   border-radius: 4px;
-  color: #c8c8cc;
+  color: #fff;
 }
 
 
@@ -388,7 +388,7 @@ pre {
   overflow-x: auto;
   margin: 16px 0 24px;
   line-height: 1.6;
-  color: #c8c8cc;
+  color: #fff;
 }
 
 pre code {
@@ -793,7 +793,7 @@ pre code {
 
 .marker-diagram .em { color: var(--emerald); font-weight: 600; }
 .marker-diagram .go { color: var(--amber); font-weight: 600; }
-.marker-diagram .ir { color: #a1a1aa; font-weight: 600; }
+.marker-diagram .ir { color: #fff; font-weight: 600; }
 
 /* ================================================================
    BUILD CARDS  (Terraria-style class guide)
