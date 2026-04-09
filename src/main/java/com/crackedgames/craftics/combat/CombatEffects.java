@@ -24,6 +24,7 @@ public class CombatEffects {
         WEAKNESS("Weakness", "-2 attack"),
         WITHER("Wither", "-2 HP/turn"),
         BURNING("Burning", "-1 HP/turn"),
+        BLEEDING("Bleeding", "-1 HP/turn per stack"),
         BLINDNESS("Blindness", "-2 range"),
         MINING_FATIGUE("Mining Fatigue", "-1 AP"),
         LEVITATION("Levitation", "-1 movement"),
@@ -132,6 +133,11 @@ public class CombatEffects {
         ActiveEffect burning = effects.get(EffectType.BURNING);
         if (burning != null && !burning.isFrozen() && !hasFireResistance()) {
             hpChange -= 1 * (burning.amplifier + 1);
+        }
+
+        ActiveEffect bleeding = effects.get(EffectType.BLEEDING);
+        if (bleeding != null && !bleeding.isFrozen()) {
+            hpChange -= 1 * (bleeding.amplifier + 1);
         }
 
         return hpChange;

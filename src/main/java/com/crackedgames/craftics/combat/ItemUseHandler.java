@@ -484,6 +484,7 @@ public class ItemUseHandler {
             case LUCK, HASTE, SLOW_FALLING -> 4;
             case BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS -> 3;
             case SOAKED, CONFUSION -> 3;
+            case BLEEDING -> 3;
         };
         // Extended potions (long vanilla duration > 4 min) double the combat turn count
         if (vanillaDurationTicks > 4800) {

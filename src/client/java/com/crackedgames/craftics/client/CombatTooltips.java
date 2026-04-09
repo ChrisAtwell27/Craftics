@@ -602,7 +602,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Leather
         if (item == Items.LEATHER_HELMET || item == Items.LEATHER_CHESTPLATE
             || item == Items.LEATHER_LEGGINGS || item == Items.LEATHER_BOOTS)
-            return "\u00a7eSet Bonus (full set): Brawler\n\u00a77+2 Speed, +1 AP, +2 Fist dmg\n\u00a7c2x kill streak damage multiplier\n\u00a77Type Affinity: \u00a77+2 Physical Power";
+            return "\u00a7eSet Bonus (full set): Brawler\n\u00a77+2 Physical dmg\n\u00a7cKill streak: +30% dmg per kill (max 3 stacks)\n\u00a77Type Affinity: \u00a77+2 Physical Power";
         // Chainmail
         if (item == Items.CHAINMAIL_HELMET || item == Items.CHAINMAIL_CHESTPLATE
             || item == Items.CHAINMAIL_LEGGINGS || item == Items.CHAINMAIL_BOOTS)

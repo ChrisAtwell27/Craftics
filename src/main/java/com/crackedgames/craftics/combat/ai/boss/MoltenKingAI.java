@@ -16,7 +16,7 @@ import java.util.List;
  * all boss abilities. Those copies split again at 50% HP into 4 total tiny bosses.
  * Generation 2 bosses do not split further.
  *
- * Gen 0: 35HP / 8ATK / 2DEF / Size 2×2  →  splits into 2 × Gen 1
+ * Gen 0: 35HP / 8ATK / 2DEF / Size 3×3  →  splits into 2 × Gen 1
  * Gen 1: 20HP / 7ATK / 1DEF / Size 1×1  →  splits into 2 × Gen 2
  * Gen 2: 12HP / 6ATK / 0DEF / Size 1×1  →  no further splitting
  *
@@ -39,7 +39,7 @@ public class MoltenKingAI extends BossAI {
     public MoltenKingAI() { this(0); }
     public MoltenKingAI(int generation) { this.generation = generation; }
 
-    @Override public int getGridSize() { return generation == 0 ? 2 : 1; }
+    @Override public int getGridSize() { return generation == 0 ? 3 : 1; }
 
     /** Returns the AI key for spawned split copies. */
     public String getNextGenAiKey() {

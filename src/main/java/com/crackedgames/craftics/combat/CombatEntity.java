@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.combat;
 
+import com.crackedgames.craftics.combat.ai.EnemyAI;
 import com.crackedgames.craftics.core.GridPos;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.nbt.NbtCompound;
@@ -45,6 +46,8 @@ public class CombatEntity {
     private boolean backgroundBoss = false; // targetable but doesn't block movement
     private int visualProjectileEntityId = -1;
     private boolean deathProcessed = false; // guards against double death handling
+    private boolean hasSplit = false; // guards against double-splitting (Molten King)
+    private EnemyAI aiInstance = null; // per-entity AI override (for split copies with own state)
 
     public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
                         int maxHp, int attackPower, int defense, int range) {
@@ -89,6 +92,10 @@ public class CombatEntity {
     public void setVisualProjectileEntityId(int id) { this.visualProjectileEntityId = id; }
     public boolean isDeathProcessed() { return deathProcessed; }
     public void markDeathProcessed() { this.deathProcessed = true; }
+    public boolean hasSplit() { return hasSplit; }
+    public void markSplit() { this.hasSplit = true; }
+    public EnemyAI getAiInstance() { return aiInstance; }
+    public void setAiInstance(EnemyAI ai) { this.aiInstance = ai; }
 
     /** Minimum manhattan distance from a point to any tile this entity occupies. */
     public int minDistanceTo(GridPos from) {
