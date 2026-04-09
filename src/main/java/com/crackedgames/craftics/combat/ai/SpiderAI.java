@@ -4,18 +4,20 @@ import com.crackedgames.craftics.combat.CombatEntity;
 import com.crackedgames.craftics.combat.Pathfinding;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
+import com.crackedgames.craftics.core.TileType;
 
-import java.util.Collections;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
- * Spider AI: 2x2 ambush predator with ceiling drop mechanic.
- * - Speed 2 (slower ground movement)
- * - If too far to pounce, shoots a web upward and ascends to the ceiling
- * - Waits 1 turn on the ceiling (off-grid, invisible)
- * - Drops within 2 tiles of the player on the next turn, attacking on landing
- * - If close enough, pounces or melees normally
+ * Spider AI: 2x2 ambush predator with ceiling drop and web control.
+ *
+ * Each turn when in range, the spider chooses between:
+ * - ATTACK: pounce/melee for direct damage
+ * - WEB SHOT: shoot a cobweb near the player (blocks a tile for 2 turns OR applies slow+stun)
+ *
+ * When too far to reach, ascends to the ceiling and drops near the player next turn.
  */
 public class SpiderAI implements EnemyAI {
     @Override
@@ -26,28 +28,42 @@ public class SpiderAI implements EnemyAI {
             if (dropTarget != null) {
                 return new EnemyAction.CeilingDrop(dropTarget, self.getAttackPower());
             }
-            // No valid drop target — stay on ceiling another turn
             return new EnemyAction.Idle();
         }
 
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
+        int size = self.getSize();
 
-        // Adjacent — bite attack
+        // Adjacent — always bite
         if (dist == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
 
-        // Pounce range (up to 3 tiles) — leap to adjacent tile
+        // In combat range (2-3 tiles): choose between attack or web
         if (dist <= 3) {
+            boolean shootWeb = Math.random() < 0.45;
+
+            if (shootWeb) {
+                // WEB SHOT: shoot a cobweb at a tile adjacent to the player
+                EnemyAction webAction = tryWebShot(arena, myPos, playerPos);
+                if (webAction != null) return webAction;
+            }
+
+            // ATTACK: pounce to adjacent tile
             GridPos pounceTarget = findPounceTarget(arena, myPos, playerPos);
             if (pounceTarget != null) {
                 return new EnemyAction.Pounce(pounceTarget, self.getAttackPower());
             }
+
+            // Pounce failed — try web as fallback
+            if (!shootWeb) {
+                EnemyAction webAction = tryWebShot(arena, myPos, playerPos);
+                if (webAction != null) return webAction;
+            }
         }
 
-        // Can walk to player this turn? Move + attack (size-aware pathfinding)
-        int size = self.getSize();
+        // Can walk to player this turn? Move + attack (size-aware)
         GridPos adjTarget = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), size);
         if (adjTarget != null) {
             List<GridPos> path = Pathfinding.findPathSized(arena, myPos, adjTarget,
@@ -57,7 +73,6 @@ public class SpiderAI implements EnemyAI {
                 if (CombatEntity.minDistanceFromSizedEntity(endPos, size, playerPos) <= 1) {
                     return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                 }
-                // Can get closer but not adjacent — still try walking
                 if (dist <= self.getMoveSpeed() + 3) {
                     return new EnemyAction.Move(path);
                 }
@@ -66,6 +81,53 @@ public class SpiderAI implements EnemyAI {
 
         // Too far to reach — ascend to ceiling
         return new EnemyAction.CeilingAscend();
+    }
+
+    /**
+     * Shoot a cobweb at a tile near the player. Two variants chosen randomly:
+     * - Direct web spray: ranged attack that slows + stuns the player
+     * - Web trap: places an obstacle tile adjacent to the player, cutting off escape
+     */
+    private EnemyAction tryWebShot(GridArena arena, GridPos myPos, GridPos playerPos) {
+        if (Math.random() < 0.5) {
+            // Direct web spray at the player — applies slow + stun
+            return new EnemyAction.RangedAttack(1, "web_spray");
+        } else {
+            // Web trap: place an obstacle on a tile adjacent to the player
+            GridPos webTile = findWebTrapTile(arena, myPos, playerPos);
+            if (webTile != null) {
+                return new EnemyAction.CreateTerrain(List.of(webTile), TileType.OBSTACLE, 2);
+            }
+            // Fallback to direct spray
+            return new EnemyAction.RangedAttack(1, "web_spray");
+        }
+    }
+
+    /**
+     * Find a good tile to place a web trap. Prefers tiles that cut off the player's
+     * retreat (behind them relative to the spider), then any adjacent empty tile.
+     */
+    private GridPos findWebTrapTile(GridArena arena, GridPos spiderPos, GridPos playerPos) {
+        int dx = Integer.signum(playerPos.x() - spiderPos.x());
+        int dz = Integer.signum(playerPos.z() - spiderPos.z());
+
+        // Prioritize: behind the player (away from spider), then sides
+        GridPos[] candidates = {
+            new GridPos(playerPos.x() - dx, playerPos.z() - dz), // behind player
+            new GridPos(playerPos.x() + dz, playerPos.z() - dx), // left flank
+            new GridPos(playerPos.x() - dz, playerPos.z() + dx), // right flank
+            new GridPos(playerPos.x() + dx, playerPos.z() + dz), // in front of player
+        };
+
+        for (GridPos c : candidates) {
+            if (arena.isInBounds(c) && !arena.isOccupied(c)) {
+                var tile = arena.getTile(c);
+                if (tile != null && tile.isWalkable() && tile.getType() == TileType.NORMAL) {
+                    return c;
+                }
+            }
+        }
+        return null;
     }
 
     private GridPos findPounceTarget(GridArena arena, GridPos from, GridPos playerPos) {
@@ -99,7 +161,6 @@ public class SpiderAI implements EnemyAI {
             }
         }
         if (candidates.isEmpty()) return null;
-        // Prefer tiles adjacent to the player for immediate attack
         for (GridPos c : candidates) {
             if (CombatEntity.minDistanceFromSizedEntity(c, size, playerPos) <= 1) return c;
         }

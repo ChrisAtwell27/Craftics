@@ -84,6 +84,14 @@ public class TileOverlayRenderer {
             }
         }
 
+        // Draw hovered enemy's movement range (purple)
+        for (GridPos tile : CombatState.getHoveredEnemyMoveTiles()) {
+            float r = colorblind ? 0.9f : 0.7f;
+            float g = colorblind ? 0.5f : 0.3f;
+            float b = colorblind ? 0.9f : 0.9f;
+            drawTileQuad(tessellator, matrix, originX + tile.x(), renderY, originZ + tile.z(), r, g, b, 0.3f);
+        }
+
         // Draw teammate hovers (dim with fade)
         long now = System.currentTimeMillis();
         for (Map.Entry<UUID, GridPos> entry : CombatState.getTeammateHovers().entrySet()) {

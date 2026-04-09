@@ -117,7 +117,9 @@ public class AIRegistry {
         register("boss:jungle", new BroodmotherAI());
         register("boss:cave", new HollowKingAI());
         register("boss:deep_dark", new WardenAI());
-        register("boss:nether_wastes", new MoltenKingAI());
+        register("boss:nether_wastes", new MoltenKingAI(0));
+        register("boss:nether_wastes_g1", new MoltenKingAI(1));
+        register("boss:nether_wastes_g2", new MoltenKingAI(2));
         register("boss:soul_sand_valley", new WailingRevenantAI());
         register("boss:crimson_forest", new BastionBruteAI());
         register("boss:warped_forest", new VoidWalkerAI());

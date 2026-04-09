@@ -58,6 +58,14 @@ public class TraderSystem {
             case CURIOSITY_DEALER -> buildCuriosityTrades(pool, tier);
         }
 
+        // Scale prices by tier — later biomes cost significantly more
+        double tierMult = 1.0 + (tier - 1) * 0.35; // tier 1=1.0x, tier 5=2.4x, tier 9=3.8x
+        for (int i = 0; i < pool.size(); i++) {
+            Trade t = pool.get(i);
+            int scaled = Math.max(1, (int) Math.ceil(t.emeraldCost() * tierMult));
+            pool.set(i, new Trade(t.item(), scaled, t.description()));
+        }
+
         // Shuffle and pick 3-5 trades
         Collections.shuffle(pool, random);
         int count = Math.min(pool.size(), 3 + random.nextInt(3));
@@ -160,24 +168,22 @@ public class TraderSystem {
 
     // ---- ALCHEMIST ----
     private static void buildAlchemistTrades(List<Trade> pool, int tier) {
-        // Potions are represented as items - in practice we'd need NBT for potion types
-        // For now, use glass bottles and specific items
         pool.add(trade(Items.GLASS_BOTTLE, 3, 1, "Glass Bottles (x3)"));
         if (tier >= 1) {
-            pool.add(trade(Items.POTION, 1, 3, "Potion of Healing"));
-            pool.add(trade(Items.POTION, 1, 3, "Potion of Speed"));
+            pool.add(potionTrade(Items.POTION, net.minecraft.potion.Potions.HEALING, 1, 3, "Potion of Healing"));
+            pool.add(potionTrade(Items.POTION, net.minecraft.potion.Potions.SWIFTNESS, 1, 3, "Potion of Swiftness"));
         }
         if (tier >= 3) {
-            pool.add(trade(Items.POTION, 1, 4, "Potion of Strength"));
-            pool.add(trade(Items.SPLASH_POTION, 1, 5, "Splash Potion of Harming"));
+            pool.add(potionTrade(Items.POTION, net.minecraft.potion.Potions.STRENGTH, 1, 4, "Potion of Strength"));
+            pool.add(potionTrade(Items.SPLASH_POTION, net.minecraft.potion.Potions.HARMING, 1, 5, "Splash Potion of Harming"));
         }
         if (tier >= 5) {
-            pool.add(trade(Items.POTION, 1, 5, "Potion of Regeneration"));
-            pool.add(trade(Items.POTION, 1, 5, "Potion of Fire Resistance"));
+            pool.add(potionTrade(Items.POTION, net.minecraft.potion.Potions.REGENERATION, 1, 5, "Potion of Regeneration"));
+            pool.add(potionTrade(Items.POTION, net.minecraft.potion.Potions.FIRE_RESISTANCE, 1, 5, "Potion of Fire Resistance"));
         }
         if (tier >= 7) {
-            pool.add(trade(Items.POTION, 1, 7, "Potion of Invisibility"));
-            pool.add(trade(Items.SPLASH_POTION, 1, 8, "Splash Potion of Weakness"));
+            pool.add(potionTrade(Items.POTION, net.minecraft.potion.Potions.INVISIBILITY, 1, 7, "Potion of Invisibility"));
+            pool.add(potionTrade(Items.SPLASH_POTION, net.minecraft.potion.Potions.WEAKNESS, 1, 8, "Splash Potion of Weakness"));
         }
         // Brewing ingredients
         pool.add(trade(Items.NETHER_WART, 3, 2, "Nether Wart (x3)"));
@@ -298,5 +304,13 @@ public class TraderSystem {
 
     private static Trade trade(Item item, int count, int cost, String desc) {
         return new Trade(new ItemStack(item, count), cost, desc);
+    }
+
+    private static Trade potionTrade(Item potionItem, net.minecraft.registry.entry.RegistryEntry<net.minecraft.potion.Potion> potionType,
+                                     int count, int cost, String desc) {
+        ItemStack stack = new ItemStack(potionItem, count);
+        stack.set(net.minecraft.component.DataComponentTypes.POTION_CONTENTS,
+            new net.minecraft.component.type.PotionContentsComponent(potionType));
+        return new Trade(stack, cost, desc);
     }
 }

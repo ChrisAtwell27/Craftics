@@ -7,6 +7,7 @@ public class GridTile {
     private TileType type;
     private TileType restoreType;
     private Block blockType;
+    private Block restoreBlockType; // original block before temporary terrain override
     private int turnsRemaining; // for temporary tiles like fire
     private boolean permanent; // permanent obstacles cannot be broken by pickaxes
 
@@ -50,6 +51,7 @@ public class GridTile {
         }
         if (turnsRemaining <= 0) {
             restoreType = type;
+            restoreBlockType = blockType;
         }
         type = tempType;
         blockType = defaultBlockFor(tempType);
@@ -75,9 +77,29 @@ public class GridTile {
 
     /** Check walkability with optional obstacle ignoring (Pathfinder set bonus). */
     public boolean isWalkableEx(boolean hasBoat, boolean ignoreObstacles) {
+        return isWalkableEx(hasBoat, ignoreObstacles, false);
+    }
+
+    /** Check walkability with aquatic flag — aquatic entities can traverse DEEP_WATER. */
+    public boolean isWalkableEx(boolean hasBoat, boolean ignoreObstacles, boolean aquatic) {
         if (ignoreObstacles && type == TileType.OBSTACLE) return true;
+        if (aquatic && (type == TileType.WATER || type == TileType.DEEP_WATER)) return true;
         if (type.requiresBoat) return hasBoat;
         return type.walkable;
+    }
+
+    /** Walkable and not hazardous — safe for spawning entities. */
+    public boolean isSafeForSpawn() {
+        return type.walkable && type.damageOnStep <= 0;
+    }
+
+    /**
+     * Movement cost for pathfinding. Normal tiles cost 1.
+     * Hazardous tiles (LAVA, FIRE) cost much more so AI avoids them.
+     */
+    public int getMoveCost() {
+        if (type.damageOnStep > 0) return 50;
+        return 1;
     }
 
     public boolean isWater() {
@@ -110,8 +132,10 @@ public class GridTile {
             if (turnsRemaining == 0) {
                 TileType fallback = restoreType != null ? restoreType : TileType.NORMAL;
                 type = fallback;
-                blockType = defaultBlockFor(fallback);
+                // Restore the original biome-specific block, not the generic default
+                blockType = restoreBlockType != null ? restoreBlockType : defaultBlockFor(fallback);
                 restoreType = fallback;
+                restoreBlockType = null;
                 turnsRemaining = -1;
             }
         }

@@ -135,9 +135,10 @@ public class CombatManager {
             GridTile tile = arena.getTile(tilePos);
             if (tile == null) return false;
             if (aquatic) {
-                if (!tile.isWater()) return false;
+                // Only spawn aquatic mobs on shallow water — deep water is a hazard
+                if (tile.getType() != com.crackedgames.craftics.core.TileType.WATER) return false;
             } else {
-                if (!tile.isWalkable()) return false;
+                if (!tile.isSafeForSpawn()) return false;
             }
             if (arena.isOccupied(tilePos)) return false;
         }
@@ -658,9 +659,8 @@ public class CombatManager {
     private net.minecraft.entity.ItemEntity droppedTridentEntity = null;
     public GridPos getDroppedTridentPos() { return droppedTridentPos; }
 
-    private boolean shieldBraced = false;
-    private static final int SHIELD_PASSIVE_DEFENSE = 2;
-    private static final int SHIELD_BRACE_DEFENSE = 3;
+    private static final int SHIELD_PASSIVE_DEFENSE = 1;
+    private static final double SHIELD_BLOCK_CHANCE = 0.25;
 
     private int getPlayerHp() {
         if (player == null) return 0;
@@ -685,26 +685,20 @@ public class CombatManager {
 
         int trimDefense = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.DEFENSE) : 0;
         int defense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus() + PlayerCombatStats.getSetDefenseBonus(player) + PlayerCombatStats.getTotalProtection(player) + trimDefense;
-        int shieldDefense = 0;
-        if (PlayerCombatStats.hasShield(player)) {
-            shieldDefense = SHIELD_PASSIVE_DEFENSE + (shieldBraced ? SHIELD_BRACE_DEFENSE : 0);
-            defense += shieldDefense;
+        boolean hasShield = PlayerCombatStats.hasShield(player);
+        if (hasShield) {
+            defense += SHIELD_PASSIVE_DEFENSE;
+        }
+        // Shield passive: 25% chance to fully block the attack
+        if (hasShield && Math.random() < SHIELD_BLOCK_CHANCE) {
+            sendMessage("§9§l🛡 Shield blocked! §r§7Attack deflected!");
+            fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
+            return 0;
         }
         defense += getBannerDefenseBonus(arena.getPlayerGridPos());
         // Each defense point = 5% reduction, capped at 60%
         double reduction = Math.min(0.60, defense * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
-
-        // Addon combat effects: shield block notification
-        if (shieldDefense > 0) {
-            // The blocked amount is the damage mitigated by the shield portion of defense
-            int damageWithoutShield = Math.max(1, (int)(rawDamage * (1.0 - Math.min(0.60, (defense - shieldDefense) * 0.05))));
-            int blockedAmount = damageWithoutShield - actual;
-            if (blockedAmount > 0) {
-                final int blocked = blockedAmount;
-                fireEffectHook(h -> h.onBlocked(effectContext, attacker, blocked));
-            }
-        }
 
         // FORTRESS set bonus: 50% less damage when player didn't move this turn
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTRESS && !movedThisTurn) {
@@ -1012,6 +1006,11 @@ public class CombatManager {
         ((ServerWorld) player.getWorld()).getGameRules()
             .get(net.minecraft.world.GameRules.FREEZE_DAMAGE).set(false, player.getServer());
 
+        // Disable random ticks — prevents snow/ice melting near light sources and other
+        // unintended environmental changes during turn-based combat
+        ((ServerWorld) player.getWorld()).getGameRules()
+            .get(net.minecraft.world.GameRules.RANDOM_TICK_SPEED).set(0, player.getServer());
+
         this.playerMounted = false;
         this.mountMob = null;
         this.movedThisTurn = false;
@@ -1280,7 +1279,8 @@ public class CombatManager {
                 // Scale HP by 1.25x per extra player in the party
                 int partySize = getAllParticipants().size();
                 double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * 0.25 : 1.0;
-                int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier() * partyHpMult));
+                double hpMult = isBoss ? 1.0 : com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
+                int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult * hpMult * partyHpMult));
                 int scaledAtk = Math.max(1, (int)((spawn.attack() + equipAtkBonus) * ngMult));
                 int finalDef = spawn.defense() + equipDefBonus;
 
@@ -1361,7 +1361,9 @@ public class CombatManager {
             player.getInventory().setStack(targetSlot, moveItem);
             featherSlot = targetSlot;
         }
-        player.getInventory().selectedSlot = Math.min(featherSlot, 8); // select feather at start
+        if (featherSlot >= 0 && featherSlot <= 8) {
+            player.getInventory().selectedSlot = featherSlot; // select feather if in hotbar
+        }
         lastHeldItem = Items.FEATHER; // Reset weapon tracking so next slot change triggers refresh
 
         // Sound: combat start
@@ -1893,9 +1895,9 @@ public class CombatManager {
             if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FERAL) {
                 streakMult *= Math.pow(1.3, killStreak);
             }
-            // Leather (Brawler) armor set: 2x per streak level
+            // Leather (Brawler) armor set: +30% per streak level (linear, capped at 3 stacks)
             if ("leather".equals(PlayerCombatStats.getArmorSet(player))) {
-                streakMult *= Math.pow(2.0, killStreak);
+                streakMult *= 1.0 + Math.min(killStreak, 3) * 0.3;
             }
             if (streakMult > 1.0) {
                 baseDamage = (int)(baseDamage * streakMult);
@@ -3346,11 +3348,11 @@ public class CombatManager {
                     if (petPts > 0) {
                         double petBoostPct = petPts * 0.03;
                         int hpBoost = Math.max(1, (int)(e.getMaxHp() * petBoostPct));
-                        int atkBoost = Math.max(0, (int)(e.getAttackPower() * petBoostPct));
+                        int atkBoost = Math.max(1, (int) Math.ceil(e.getAttackPower() * petBoostPct));
                         // Increase effective max HP via negative reduction, then heal
                         e.addMaxHpReduction(-hpBoost);
                         e.heal(hpBoost);
-                        if (atkBoost > 0) e.setAttackBoost(e.getAttackBoost() + atkBoost);
+                        e.setAttackBoost(e.getAttackBoost() + atkBoost);
                         sendMessage("\u00a7a\uD83D\uDC3E Pet Affinity: +" + hpBoost + " HP, +" + atkBoost + " ATK!");
                     }
                     sendMessage("§a§l" + e.getDisplayName() + " has been tamed! They fight for you now!");
@@ -3644,11 +3646,6 @@ public class CombatManager {
         }
         killedThisTurn = false;
 
-        // Auto-brace shield if equipped in offhand
-        if (PlayerCombatStats.hasShield(player)) {
-            shieldBraced = true;
-            sendMessage("§9§lShield braced! §r§7(+" + (SHIELD_PASSIVE_DEFENSE + SHIELD_BRACE_DEFENSE) + " defense this enemy turn)");
-        }
 
         // Lazy init: party members register AFTER startCombat, so the queue may be empty on first use
         if (partyPlayers.size() > 1 && turnQueue.size() <= 1) {
@@ -4534,7 +4531,6 @@ public class CombatManager {
 
             tickTemporaryTerrain();
             detonatePendingTnts();
-            shieldBraced = false;
 
             if (partyPlayers.size() > 1) {
                 rebuildTurnQueue();
@@ -5397,6 +5393,11 @@ public class CombatManager {
                     sm.hp(), sm.atk(), sm.def(), 1
                 );
                 ce.setMobEntity(mob);
+                // Molten King split: override AI so copies use the correct generation
+                if (pendingMoltenSplitKey != null) {
+                    ce.setAiOverrideKey(pendingMoltenSplitKey);
+                    ce.setBoss(true);
+                }
                 enemies.add(ce);
                 arena.placeEntity(ce);
                 spawned++;
@@ -5463,8 +5464,13 @@ public class CombatManager {
             }
         }
         if (spawned > 0) {
-            sendMessage("§5  " + spawned + " " + sm.entityTypeId().substring(sm.entityTypeId().indexOf(':') + 1)
-                + "(s) appeared!");
+            if (pendingMoltenSplitKey != null) {
+                sendMessage("§6§l  The Molten King splits into " + spawned + " fragments!");
+                pendingMoltenSplitKey = null;
+            } else {
+                sendMessage("§5  " + spawned + " " + sm.entityTypeId().substring(sm.entityTypeId().indexOf(':') + 1)
+                    + "(s) appeared!");
+            }
         }
     }
 
@@ -5673,8 +5679,14 @@ public class CombatManager {
             for (CombatEntity e : new ArrayList<>(enemies)) {
                 if (e == projectile || !e.isAlive()) continue;
                 if (e.minDistanceTo(effectCenter) <= aoeRadius) {
-                    int dealt = e.takeDamage(damage);
-                    sendMessage("§6  Explosion hits " + e.getDisplayName() + " for " + dealt + "!");
+                    // Redirected fireballs deal 1/20 of the boss's max HP as damage
+                    int fireDmg = (redirected && e.isBoss()) ? Math.max(1, e.getMaxHp() / 20) : damage;
+                    int dealt = e.takeDamage(fireDmg);
+                    if (redirected && e.isBoss()) {
+                        sendMessage("§6§l  Reflected fireball slams into " + e.getDisplayName() + " for " + dealt + "!");
+                    } else {
+                        sendMessage("§6  Explosion hits " + e.getDisplayName() + " for " + dealt + "!");
+                    }
                     checkAndHandleDeath(e);
                 }
             }
@@ -5758,6 +5770,15 @@ public class CombatManager {
                 addEffectHooked(CombatEffects.EffectType.SLOWNESS, 2, 0);
                 sendMessage("§b  Slowness applied! (-1 movement for 2 turns)");
             }
+            case "blizzard_stun" -> {
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 2, 0);
+                addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
+                sendMessage("§b  Frozen solid! Stunned + slowed!");
+            }
+            case "ground_pound" -> {
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                sendMessage("§7  The shockwave staggers you! (-1 movement for 1 turn)");
+            }
             case "weakness", "cursed_fog", "wail", "hex_snare" -> {
                 addEffectHooked(CombatEffects.EffectType.WEAKNESS, 2, 0);
                 sendMessage("§7  Weakness applied! (-2 attack for 2 turns)");
@@ -5826,6 +5847,11 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy + 0.5, cz, 10, spread, 0.6, spread, 0.01);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, cx, cy, cz, 6, spread, 0.3, spread, 0.0);
             }
+            case "blizzard_stun" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE, cx, cy + 0.5, cz, 30, 0.3, 0.8, 0.3, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, cx, cy + 0.3, cz, 12, 0.2, 0.4, 0.2, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 8, 0.3, 0.2, 0.3, 0.0);
+            }
             case "glacial_trap" -> {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE, cx, cy, cz, 12, spread, 0.3, spread, 0.0);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT, cx, cy + 0.2, cz, 8, spread, 0.2, spread, 0.0);
@@ -5873,6 +5899,11 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH, cx, cy + 1.5, cz, 30, spread + 1, 1.5, spread + 1, 0.03);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy + 0.8, cz, 15, spread, 1.0, spread, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy, cz, 10, spread, 0.5, spread, 0.01);
+            }
+            case "ground_pound" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION, cx, cy + 0.3, cz, 3, spread, 0.3, spread, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy, cz, 20, spread + 1, 0.2, spread + 1, 0.0);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.5, cz, 15, spread + 1, 0.6, spread + 1, 0.03);
             }
             // === Sandstorm Pharaoh ===
             case "sandstorm" -> {
@@ -6716,11 +6747,38 @@ public class CombatManager {
             sa.notifyDamaged();
         }
 
-        // MoltenKing: reactive split on heavy hit
-        if (ai instanceof MoltenKingAI mk && damageDealt >= 8) {
-            EnemyAction reaction = mk.reactToHeavyDamage(target, arena);
-            if (reaction != null) {
-                dispatchBossSubAction(reaction);
+        // MoltenKing: split into 2 copies when phase 2 triggers (50% HP)
+        if (ai instanceof MoltenKingAI mk && mk.consumePhaseTransition() && mk.canSplit()) {
+            String nextGenKey = mk.getNextGenAiKey();
+            if (nextGenKey != null) {
+                int gen = mk.getGeneration();
+                int splitHp = gen == 0 ? 20 : 12;
+                int splitAtk = gen == 0 ? 7 : 6;
+                int splitDef = gen == 0 ? 1 : 0;
+                List<GridPos> splitPositions = new ArrayList<>();
+                for (int dx = -2; dx <= 2; dx++) {
+                    for (int dz = -2; dz <= 2; dz++) {
+                        GridPos sp = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
+                        if (arena.isInBounds(sp) && !arena.isOccupied(sp)
+                                && arena.getTile(sp) != null && arena.getTile(sp).isWalkable()) {
+                            splitPositions.add(sp);
+                        }
+                    }
+                }
+                java.util.Collections.shuffle(splitPositions);
+                splitPositions = splitPositions.subList(0, Math.min(2, splitPositions.size()));
+                if (!splitPositions.isEmpty()) {
+                    EnemyAction split = new EnemyAction.SummonMinions(
+                        "minecraft:magma_cube", splitPositions.size(), splitPositions,
+                        splitHp, splitAtk, splitDef);
+                    dispatchBossSubAction(split);
+                    // Mark the spawned copies with the next-gen boss AI key
+                    // (handled below in spawnBossMinions via pendingMoltenSplitKey)
+                    pendingMoltenSplitKey = nextGenKey;
+                }
+                // Kill the original after splitting
+                target.takeDamage(target.getCurrentHp() + 100);
+                checkAndHandleDeath(target);
             }
         }
     }
@@ -7805,8 +7863,8 @@ public class CombatManager {
             }
 
             // Physical affinity: counterattack chance when attacked (Luck boosts proc chance)
-            if (DamageType.fromWeapon(player.getMainHandStack().getItem()) == DamageType.PHYSICAL
-                    && currentEnemy.isAlive()) {
+            // Triggers based on having PHYSICAL affinity points, regardless of weapon held
+            if (currentEnemy.isAlive()) {
                 PlayerProgression.PlayerStats pStats = PlayerProgression.get(
                     (ServerWorld) player.getEntityWorld()).getStats(player);
                 int physPts = pStats.getAffinityPoints(PlayerProgression.Affinity.PHYSICAL);
@@ -8026,12 +8084,21 @@ public class CombatManager {
                 var hazardTile = arena.getTile(landingPos);
                 if (hazardTile != null) {
                     switch (hazardTile.getType()) {
-                        case VOID, DEEP_WATER -> {
+                        case VOID -> {
                             enemy.takeDamage(enemy.getCurrentHp() + 100);
-                            sendMessage(hazardTile.getType() == com.crackedgames.craftics.core.TileType.VOID
-                                ? "§4" + enemy.getDisplayName() + " fell into the void!"
-                                : "§1" + enemy.getDisplayName() + " drowned in deep water!");
+                            sendMessage("§4" + enemy.getDisplayName() + " fell into the void!");
                             killEnemy(enemy);
+                        }
+                        case DEEP_WATER -> {
+                            if (isWaterImmune(enemy.getEntityTypeId())) {
+                                // Aquatic mobs survive deep water — just soak them
+                                enemy.stackSoaked(2, 1);
+                                sendMessage("§b" + enemy.getDisplayName() + " splashes into deep water!");
+                            } else {
+                                enemy.takeDamage(enemy.getCurrentHp() + 100);
+                                sendMessage("§1" + enemy.getDisplayName() + " drowned in deep water!");
+                                killEnemy(enemy);
+                            }
                         }
                         case LAVA -> {
                             int lavaDmg = enemy.takeDamage(10);
@@ -8853,6 +8920,7 @@ public class CombatManager {
                 progression.saveStats(member);
                 if (earned) {
                     stats.grantLevelUp();
+                    stats.pendingAffinityChoice = stats.isAffinityLevel();
                     progression.saveStats(member);
                     AchievementManager.checkProgression(member);
                 } else {
@@ -10549,12 +10617,14 @@ public class CombatManager {
         if (!active) return;
         despawnActiveBoat();
 
-        // Remove hidden fire resistance and restore freeze damage
+        // Remove hidden fire resistance, restore freeze damage, and re-enable random ticks
         if (player != null) {
             player.removeStatusEffect(net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE);
             player.setFrozenTicks(0);
             ((ServerWorld) player.getWorld()).getGameRules()
                 .get(net.minecraft.world.GameRules.FREEZE_DAMAGE).set(true, player.getServer());
+            ((ServerWorld) player.getWorld()).getGameRules()
+                .get(net.minecraft.world.GameRules.RANDOM_TICK_SPEED).set(3, player.getServer());
         }
 
         // === CRITICAL: clear persistent flags FIRST ===
@@ -11312,6 +11382,7 @@ public class CombatManager {
     private int powderSnowTurns = 0;                 // Escalating freeze damage counter
     private net.minecraft.entity.vehicle.BoatEntity activeBoat = null; // Visual boat while in water
     private boolean oceanBlessingUsed = false;        // OCEAN_BLESSING: once per combat
+    private String pendingMoltenSplitKey = null;     // Molten King: AI key for next split generation
 
     /** Called when an enemy is killed. */
     private void onEnemyKilled(CombatEntity enemy) {

@@ -86,6 +86,22 @@ public class PlayerProgression extends PersistentState {
             pendingAffinityChoice = false;
         }
 
+        /** Total affinity points allocated across all types. */
+        public int getTotalAffinityPoints() {
+            int total = 0;
+            for (Affinity a : Affinity.values()) {
+                total += getAffinityPoints(a);
+            }
+            return total;
+        }
+
+        /** Player is owed an affinity pick if they have fewer affinity points than expected for their level. */
+        public boolean canAllocateAffinity() {
+            // Affinities are awarded on odd levels (3, 5, 7...) — count how many they should have
+            int expectedAffinities = (level - 1) / 2; // level 3→1, level 5→2, level 7→3
+            return getTotalAffinityPoints() < expectedAffinities;
+        }
+
         public boolean hasAchievement(Achievement achievement) {
             return achievements.contains(achievement.name());
         }
@@ -155,7 +171,21 @@ public class PlayerProgression extends PersistentState {
 
         public void grantLevelUp() {
             level++;
-            unspentPoints++;
+            // Alternate: even levels grant a stat point, odd levels grant an affinity choice
+            if (level % 2 == 0) {
+                unspentPoints++;
+            }
+            // Odd levels: affinity is handled by pendingAffinityChoice flag in CombatManager
+        }
+
+        /** Returns true if this level awards a stat point (even levels). */
+        public boolean isStatLevel() {
+            return level % 2 == 0;
+        }
+
+        /** Returns true if this level awards an affinity point (odd levels > 1). */
+        public boolean isAffinityLevel() {
+            return level % 2 == 1 && level > 1;
         }
 
         // Format: "level:unspent:s0:s1:...:s7|bossKills|affinities|achievements"

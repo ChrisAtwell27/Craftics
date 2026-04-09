@@ -1,7 +1,6 @@
 package com.crackedgames.craftics.combat.ai;
 
 import com.crackedgames.craftics.combat.CombatEntity;
-import com.crackedgames.craftics.combat.Pathfinding;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 
@@ -15,13 +14,16 @@ import java.util.List;
  * Each turn has two parts:
  * 1. DASH: Charges in a straight line at infinite speed until hitting a wall/obstacle/edge.
  *    If the player is in the dash path, the vindicator stops adjacent and attacks.
- * 2. ADJUST: After the dash, makes a small adjustment move (speed 2) to try to line up
- *    another dash toward the player for next turn.
+ *    Charge damage scales with distance traveled (+1 per tile beyond 2).
+ * 2. ADJUST: After the dash, makes a small adjustment move (speed 2, or 3 when enraged)
+ *    to try to line up another dash toward the player for next turn.
  *
- * Rage: Becomes permanently enraged when damaged (+50% attack).
+ * Rage: Becomes permanently enraged when damaged (+50% attack, wider adjustment range).
  * Also used by Piglin Brutes (registered to same AI in AIRegistry).
  */
 public class VindicatorAI implements EnemyAI {
+    private static final int[][] DIRECTIONS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
@@ -31,20 +33,23 @@ public class VindicatorAI implements EnemyAI {
             self.setEnraged(true);
         }
 
-        int damage = self.isEnraged()
-            ? (int)(self.getAttackPower() * 1.5)
-            : self.getAttackPower();
+        boolean enraged = self.isEnraged();
+        int baseDamage = enraged ? (int)(self.getAttackPower() * 1.5) : self.getAttackPower();
+        int adjustRange = enraged ? 3 : 2;
 
-        // Adjacent — just attack
+        // Adjacent — just attack (enraged gets knockback)
         if (self.minDistanceTo(playerPos) == 1) {
-            return new EnemyAction.Attack(damage);
+            if (enraged) {
+                return new EnemyAction.AttackWithKnockback(baseDamage, 1);
+            }
+            return new EnemyAction.Attack(baseDamage);
         }
 
-        // Try all 4 cardinal directions for a dash
-        int[][] directions = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        // Try all 4 cardinal directions for a dash that hits the player
+        EnemyAction bestDashAttack = null;
+        int bestDashDist = Integer.MAX_VALUE;
 
-        // First priority: find a dash that hits the player
-        for (int[] dir : directions) {
+        for (int[] dir : DIRECTIONS) {
             List<GridPos> dashPath = buildDashPath(arena, myPos, dir[0], dir[1]);
             if (dashPath.isEmpty()) continue;
 
@@ -60,70 +65,115 @@ public class VindicatorAI implements EnemyAI {
             if (playerIndex >= 0) {
                 // Player is in the path — dash up to adjacent tile and attack
                 List<GridPos> pathToPlayer = dashPath.subList(0, playerIndex);
-                if (pathToPlayer.isEmpty()) {
-                    // Player is directly adjacent in this direction
-                    return new EnemyAction.Attack(damage);
+                int dashDist = pathToPlayer.size();
+                // Charge bonus: +1 damage per tile traveled beyond 2
+                int chargeDamage = baseDamage + Math.max(0, dashDist - 2);
+
+                // Prefer shorter dashes (more reliable positioning)
+                if (dashDist < bestDashDist) {
+                    bestDashDist = dashDist;
+                    if (pathToPlayer.isEmpty()) {
+                        bestDashAttack = enraged
+                            ? new EnemyAction.AttackWithKnockback(chargeDamage, 1)
+                            : new EnemyAction.Attack(chargeDamage);
+                    } else {
+                        bestDashAttack = enraged
+                            ? new EnemyAction.MoveAndAttackWithKnockback(new ArrayList<>(pathToPlayer), chargeDamage, 1)
+                            : new EnemyAction.MoveAndAttack(new ArrayList<>(pathToPlayer), chargeDamage);
+                    }
                 }
-                return new EnemyAction.MoveAndAttack(new ArrayList<>(pathToPlayer), damage);
             }
         }
 
+        if (bestDashAttack != null) {
+            return bestDashAttack;
+        }
+
         // No dash hits the player — pick the best dash + adjustment combo
-        // Best = whichever dash end position allows the shortest adjustment to line up with the player
+        // Score each option by how close it gets to being lined up with the player
         GridPos bestDashEnd = null;
         List<GridPos> bestDashPath = null;
-        int bestAdjustDist = Integer.MAX_VALUE;
+        int bestScore = Integer.MAX_VALUE;
 
-        for (int[] dir : directions) {
+        for (int[] dir : DIRECTIONS) {
             List<GridPos> dashPath = buildDashPath(arena, myPos, dir[0], dir[1]);
             if (dashPath.isEmpty()) continue;
 
             GridPos dashEnd = dashPath.get(dashPath.size() - 1);
 
-            // After dashing to dashEnd, how far is an adjustment move to line up with the player?
-            // "Lined up" = same row or same column as the player
-            int adjustToRow = Math.abs(dashEnd.z() - playerPos.z()); // adjust X to match
-            int adjustToCol = Math.abs(dashEnd.x() - playerPos.x()); // adjust Z to match
-            int minAdjust = Math.min(adjustToRow, adjustToCol);
+            // Check both axes — which is closer to aligning with the player?
+            int rowDiff = Math.abs(dashEnd.z() - playerPos.z());
+            int colDiff = Math.abs(dashEnd.x() - playerPos.x());
+            int minAlign = Math.min(rowDiff, colDiff);
 
-            if (minAdjust < bestAdjustDist) {
-                bestAdjustDist = minAdjust;
+            // Penalize options that are far from the player overall
+            int totalDist = dashEnd.manhattanDistance(playerPos);
+            int score = minAlign * 10 + totalDist;
+
+            if (score < bestScore) {
+                bestScore = score;
                 bestDashEnd = dashEnd;
                 bestDashPath = dashPath;
             }
         }
 
         if (bestDashPath != null && bestDashEnd != null) {
-            // Do the dash, then try a short adjustment move
-            if (bestAdjustDist <= 2 && bestAdjustDist > 0) {
-                // Calculate adjustment target — move to get on same row or column as player
-                GridPos adjustTarget = null;
-                if (Math.abs(bestDashEnd.z() - playerPos.z()) <= 2) {
-                    // Adjust X to match player's column
-                    adjustTarget = new GridPos(playerPos.x(), bestDashEnd.z());
-                } else if (Math.abs(bestDashEnd.x() - playerPos.x()) <= 2) {
-                    // Adjust Z to match player's row
-                    adjustTarget = new GridPos(bestDashEnd.x(), playerPos.z());
-                }
+            // Try adjustment move to get lined up
+            GridPos adjustTarget = findBestAdjustTarget(arena, bestDashEnd, playerPos, adjustRange);
 
-                if (adjustTarget != null && arena.isInBounds(adjustTarget)
-                        && !arena.isEnemyOccupied(adjustTarget)) {
-                    // Build the adjustment path (short walk, speed 2)
-                    List<GridPos> adjustPath = buildStraightPath(arena, bestDashEnd, adjustTarget);
-                    if (!adjustPath.isEmpty()) {
-                        // Combine dash + adjustment into one turn
-                        List<GridPos> fullPath = new ArrayList<>(bestDashPath);
-                        fullPath.addAll(adjustPath);
-                        return new EnemyAction.Move(fullPath);
+            if (adjustTarget != null) {
+                List<GridPos> adjustPath = buildStraightPath(arena, bestDashEnd, adjustTarget, adjustRange);
+                if (!adjustPath.isEmpty()) {
+                    // Combine dash + adjustment
+                    List<GridPos> fullPath = new ArrayList<>(bestDashPath);
+                    fullPath.addAll(adjustPath);
+
+                    // Check if after adjusting we're adjacent — attack too
+                    GridPos finalPos = fullPath.get(fullPath.size() - 1);
+                    if (finalPos.manhattanDistance(playerPos) == 1) {
+                        return enraged
+                            ? new EnemyAction.MoveAndAttackWithKnockback(fullPath, baseDamage, 1)
+                            : new EnemyAction.MoveAndAttack(fullPath, baseDamage);
                     }
+                    return new EnemyAction.Move(fullPath);
                 }
             }
-            // Just dash without adjustment
+
+            // Just dash without adjustment — still better than nothing
             return new EnemyAction.Move(bestDashPath);
         }
 
-        // Fallback — can't dash anywhere useful
+        // Fallback — use pathfinding to close distance aggressively
         return AIUtils.seekOrWander(self, arena, playerPos);
+    }
+
+    /**
+     * Find the best adjustment target to line up with the player.
+     * Prefers getting on the same row or column as the player, within adjustRange.
+     */
+    private GridPos findBestAdjustTarget(GridArena arena, GridPos from, GridPos playerPos, int maxSteps) {
+        // Try to get on the same row (z) as the player
+        GridPos rowAlign = new GridPos(from.x(), playerPos.z());
+        int rowDist = Math.abs(from.z() - playerPos.z());
+        // Try to get on the same column (x) as the player
+        GridPos colAlign = new GridPos(playerPos.x(), from.z());
+        int colDist = Math.abs(from.x() - playerPos.x());
+
+        // Pick whichever alignment is reachable and closer
+        GridPos best = null;
+        int bestDist = Integer.MAX_VALUE;
+
+        if (rowDist <= maxSteps && rowDist > 0 && arena.isInBounds(rowAlign)
+                && !arena.isEnemyOccupied(rowAlign)) {
+            best = rowAlign;
+            bestDist = rowDist;
+        }
+        if (colDist <= maxSteps && colDist > 0 && colDist < bestDist
+                && arena.isInBounds(colAlign) && !arena.isEnemyOccupied(colAlign)) {
+            best = colAlign;
+        }
+
+        return best;
     }
 
     /**
@@ -139,7 +189,6 @@ public class VindicatorAI implements EnemyAI {
             var tile = arena.getTile(next);
             if (tile == null || !tile.isWalkable()) break;
             if (arena.isEnemyOccupied(next)) break;
-            // Don't stop on player tile — we pass through (or stop adjacent for attack)
             path.add(next);
             current = next;
         }
@@ -148,18 +197,18 @@ public class VindicatorAI implements EnemyAI {
 
     /**
      * Build a short straight-line path between two points (for adjustment moves).
-     * Only works for cardinal movement within 2 tiles.
+     * Only works for cardinal movement within maxSteps tiles.
      */
-    private List<GridPos> buildStraightPath(GridArena arena, GridPos from, GridPos to) {
+    private List<GridPos> buildStraightPath(GridArena arena, GridPos from, GridPos to, int maxSteps) {
         List<GridPos> path = new ArrayList<>();
         int dx = Integer.signum(to.x() - from.x());
         int dz = Integer.signum(to.z() - from.z());
         // Only one axis should be non-zero for cardinal movement
-        if (dx != 0 && dz != 0) return path; // diagonal, not valid
+        if (dx != 0 && dz != 0) return path;
 
         GridPos current = from;
         int steps = Math.max(Math.abs(to.x() - from.x()), Math.abs(to.z() - from.z()));
-        for (int i = 0; i < Math.min(steps, 2); i++) { // max 2 adjustment tiles
+        for (int i = 0; i < Math.min(steps, maxSteps); i++) {
             GridPos next = new GridPos(current.x() + dx, current.z() + dz);
             if (!arena.isInBounds(next)) break;
             var tile = arena.getTile(next);

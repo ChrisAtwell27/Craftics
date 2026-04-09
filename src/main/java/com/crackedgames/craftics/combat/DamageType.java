@@ -59,7 +59,7 @@ public enum DamageType {
             default       -> 0;
         };
         // Generic melee power stacks on top of type-specific
-        if (type == SLASHING || type == CLEAVING || type == BLUNT) {
+        if (type == SLASHING || type == CLEAVING || type == BLUNT || type == PHYSICAL) {
             bonus += scan.get(TrimEffects.Bonus.MELEE_POWER);
         }
         return bonus;

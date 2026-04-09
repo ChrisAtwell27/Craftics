@@ -237,6 +237,54 @@ public class CombatState {
     public static int getHoveredEnemyId() { return hoveredEnemyId; }
     public static void setHoveredEnemyId(int id) { hoveredEnemyId = id; }
 
+    /**
+     * Compute movement tiles for the currently hovered enemy.
+     * Uses manhattan distance with the enemy's speed stat (parsed from type metadata).
+     */
+    public static java.util.Set<com.crackedgames.craftics.core.GridPos> getHoveredEnemyMoveTiles() {
+        java.util.Set<com.crackedgames.craftics.core.GridPos> result = new java.util.HashSet<>();
+        if (hoveredEnemyId == -1) return result;
+
+        // Find the enemy's grid position (reverse lookup from enemyGridMap)
+        com.crackedgames.craftics.core.GridPos enemyPos = null;
+        for (var entry : enemyGridMap.entrySet()) {
+            if (entry.getValue() == hoveredEnemyId) {
+                enemyPos = entry.getKey();
+                break;
+            }
+        }
+        if (enemyPos == null) return result;
+
+        // Parse speed from enemy type metadata
+        String typeData = enemyTypeMap.getOrDefault(hoveredEnemyId, "");
+        // Also check the HP-synced type map
+        if (typeData.isEmpty()) {
+            typeData = getEnemyTypeMap2().getOrDefault(hoveredEnemyId, "");
+        }
+        int speed = 1;
+        for (String part : typeData.split(";")) {
+            if (part.startsWith("spd=")) {
+                try { speed = Integer.parseInt(part.substring(4)); } catch (NumberFormatException ignored) {}
+                break;
+            }
+        }
+
+        // Compute reachable tiles using manhattan distance
+        for (int dx = -speed; dx <= speed; dx++) {
+            for (int dz = -speed; dz <= speed; dz++) {
+                if (Math.abs(dx) + Math.abs(dz) > speed || (dx == 0 && dz == 0)) continue;
+                com.crackedgames.craftics.core.GridPos tile = new com.crackedgames.craftics.core.GridPos(
+                    enemyPos.x() + dx, enemyPos.z() + dz);
+                if (tile.x() >= 0 && tile.z() >= 0 && tile.x() < arenaWidth && tile.z() < arenaHeight) {
+                    result.add(tile);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static java.util.Map<Integer, String> getEnemyTypeMap2() { return enemyTypeMap; }
+
     // Combat stats tracking
     private static int totalDamageDealt = 0;
     private static int totalDamageTaken = 0;

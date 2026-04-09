@@ -7,37 +7,59 @@ import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * Nether Wastes Boss — "The Molten King" (Magma Cube)
- * Entity: Magma Cube | 35HP / 7ATK / 2DEF / Speed 2 | Size 2×2
  *
- * Abilities:
- * - Magma Eruption: Telegraphs a leap, then relocates and erupts in a 3×3 blast.
- * - Lava Cage: Rings the player with magma, forcing lane commitment.
- * - Split: Reactive — splits when taking 8+ damage in one hit
- * - Lava Trail: Passive — movement leaves fire tiles (2 turns, permanent P2)
- * - Absorb: Merges with adjacent small/medium cube, heals for its HP
+ * Split mechanic: at 50% HP the boss dies and splits into 2 copies that retain
+ * all boss abilities. Those copies split again at 50% HP into 4 total tiny bosses.
+ * Generation 2 bosses do not split further.
  *
- * Phase 2 — "Meltdown": Permanent fire tiles, permanent eruption rings,
- * death explosion if not split, absorb range 2.
+ * Gen 0: 35HP / 8ATK / 2DEF / Size 2×2  →  splits into 2 × Gen 1
+ * Gen 1: 20HP / 7ATK / 1DEF / Size 1×1  →  splits into 2 × Gen 2
+ * Gen 2: 12HP / 6ATK / 0DEF / Size 1×1  →  no further splitting
+ *
+ * Abilities (all generations):
+ * - Magma Eruption: Teleport-leap + 3×3 blast (8 dmg) + fire ring
+ * - Lava Cage: Ring player with fire tiles
+ * - Absorb: Merge with a nearby minion to heal
+ * - Lava Creep (Phase 2): Arena shrinks via fire rings
+ *
+ * Phase 2 — "Meltdown": Permanent fire tiles, arena shrink, faster cooldowns.
  */
 public class MoltenKingAI extends BossAI {
-    @Override public int getGridSize() { return 2; }
+    private final int generation; // 0 = original, 1 = first split, 2 = final split
     private static final String CD_CREEP = "lava_creep";
     private static final String CD_ERUPTION = "magma_eruption";
     private static final String CD_CAGE = "lava_cage";
     private static final String CD_ABSORB = "absorb";
-    private boolean hasSplit = false;
     private int creepStage = 0;
+
+    public MoltenKingAI() { this(0); }
+    public MoltenKingAI(int generation) { this.generation = generation; }
+
+    @Override public int getGridSize() { return generation == 0 ? 2 : 1; }
+
+    /** Returns the AI key for spawned split copies. */
+    public String getNextGenAiKey() {
+        return switch (generation) {
+            case 0 -> "boss:nether_wastes_g1";
+            case 1 -> "boss:nether_wastes_g2";
+            default -> null; // gen 2 doesn't split
+        };
+    }
+
+    /** Whether this generation can still split. */
+    public boolean canSplit() { return generation < 2; }
+
+    /** Get the generation number. */
+    public int getGeneration() { return generation; }
 
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
         creepStage = 0;
-        // Lava trail tiles become permanent in Phase 2 — handled by CombatManager
     }
 
     @Override
@@ -45,7 +67,10 @@ public class MoltenKingAI extends BossAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Phase 2 mechanic: arena shrink every other round as a circular lava ring.
+        int eruptionDmg = switch (generation) { case 0 -> 8; case 1 -> 7; default -> 6; };
+        int cageDuration = isPhaseTwo() ? 0 : 2;
+
+        // Phase 2 mechanic: arena shrink every other round as a circular lava ring
         if (isPhaseTwo() && getTurnCounter() % 2 == 0 && !isOnCooldown(CD_CREEP)) {
             List<GridPos> creepRing = getCreepRingTiles(arena);
             if (!creepRing.isEmpty()) {
@@ -54,16 +79,15 @@ public class MoltenKingAI extends BossAI {
             }
         }
 
-        // Lava Cage — deny escape routes around the player.
+        // Lava Cage — deny escape routes around the player
         if (!isOnCooldown(CD_CAGE) && dist >= 2) {
             List<GridPos> cageTiles = getLavaCageTiles(arena, playerPos);
             if (!cageTiles.isEmpty()) {
                 setCooldown(CD_CAGE, isPhaseTwo() ? 2 : 3);
-                int duration = isPhaseTwo() ? 0 : 2;
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                     cageTiles, 1,
-                    new EnemyAction.CreateTerrain(cageTiles, TileType.FIRE, duration),
+                    new EnemyAction.CreateTerrain(cageTiles, TileType.FIRE, cageDuration),
                     0xFFFF5500
                 );
                 return new EnemyAction.Idle();
@@ -78,7 +102,6 @@ public class MoltenKingAI extends BossAI {
                     int mDist = myPos.manhattanDistance(e.getGridPos());
                     if (mDist <= absorbeRange) {
                         setCooldown(CD_ABSORB, 2);
-                        // Absorb = heal for minion's HP, kill the minion
                         return new EnemyAction.BossAbility("absorb",
                             new EnemyAction.ModifySelf("hp", e.getCurrentHp(), 0),
                             List.of(e.getGridPos()));
@@ -89,7 +112,7 @@ public class MoltenKingAI extends BossAI {
 
         // Magma Eruption — leap to a valid tile near player and explode
         if (!isOnCooldown(CD_ERUPTION) && dist >= 2) {
-            setCooldown(CD_ERUPTION, 3);
+            setCooldown(CD_ERUPTION, isPhaseTwo() ? 2 : 3);
             GridPos landingPos = findEruptionLanding(arena, playerPos, myPos);
             if (landingPos == null) {
                 landingPos = playerPos;
@@ -107,7 +130,7 @@ public class MoltenKingAI extends BossAI {
             int fireDuration = isPhaseTwo() ? 0 : 2;
             EnemyAction eruption = new EnemyAction.CompositeAction(List.of(
                 new EnemyAction.Teleport(landingPos),
-                new EnemyAction.AreaAttack(landingPos, 1, 5, "magma_eruption"),
+                new EnemyAction.AreaAttack(landingPos, 1, eruptionDmg, "magma_eruption"),
                 new EnemyAction.CreateTerrain(fireRing, TileType.FIRE, fireDuration)
             ));
             pendingWarning = new BossWarning(
@@ -116,10 +139,10 @@ public class MoltenKingAI extends BossAI {
             return new EnemyAction.Idle();
         }
 
-        // Lava Trail — passive on movement (CombatManager converts move tiles to fire)
         // Melee attack if adjacent
         if (dist <= 1) {
-            return new EnemyAction.Attack(self.getAttackPower());
+            int meleeDmg = self.getAttackPower();
+            return new EnemyAction.AttackWithKnockback(meleeDmg, 1);
         }
 
         return meleeOrApproach(self, arena, playerPos, 0);
@@ -209,22 +232,4 @@ public class MoltenKingAI extends BossAI {
         double d = Math.abs(a - b) % (Math.PI * 2.0);
         return d > Math.PI ? (Math.PI * 2.0 - d) : d;
     }
-
-    /**
-     * Called by CombatManager when the boss takes 8+ damage in a single hit.
-     * Returns the split action for spawning medium cubes.
-     */
-    public EnemyAction reactToHeavyDamage(CombatEntity self, GridArena arena) {
-        if (!hasSplit) {
-            hasSplit = true;
-            List<GridPos> splitPositions = findSummonPositionsNear(arena, self.getGridPos(), 2, 2);
-            if (!splitPositions.isEmpty()) {
-                return new EnemyAction.SummonMinions(
-                    "minecraft:magma_cube", splitPositions.size(), splitPositions, 15, 4, 0);
-            }
-        }
-        return null;
-    }
-
-    public boolean hasSplit() { return hasSplit; }
 }

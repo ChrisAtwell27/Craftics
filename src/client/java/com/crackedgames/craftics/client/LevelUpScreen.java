@@ -19,9 +19,9 @@ public class LevelUpScreen extends Screen {
     private int unspentPoints;
     private final int[] statValues;
 
-    // Two-step flow: stat first, then affinity
+    // Alternating flow: even levels = stat choice, odd levels = affinity choice
     private enum Phase { STAT_CHOICE, AFFINITY_CHOICE }
-    private Phase phase = Phase.STAT_CHOICE;
+    private Phase phase;
 
     // Layout constants
     private static final int CARD_WIDTH = 320;
@@ -32,6 +32,8 @@ public class LevelUpScreen extends Screen {
         super(Text.literal("Level Up!"));
         this.playerLevel = playerLevel;
         this.unspentPoints = unspentPoints;
+        // Determine which choice to show based on level parity
+        this.phase = (playerLevel % 2 == 0) ? Phase.STAT_CHOICE : Phase.AFFINITY_CHOICE;
 
         String[] parts = statData.split(":");
         PlayerProgression.Stat[] stats = PlayerProgression.Stat.values();
@@ -76,11 +78,7 @@ public class LevelUpScreen extends Screen {
                         ClientPlayNetworking.send(new StatChoicePayload(statIndex));
                         statValues[statIndex]++;
                         unspentPoints--;
-                        if (unspentPoints <= 0) {
-                            // Move to affinity choice phase
-                            phase = Phase.AFFINITY_CHOICE;
-                        }
-                        init();
+                        this.close();
                     }
                 }
             ).dimensions(centerX - CARD_WIDTH / 2, y, CARD_WIDTH, CARD_HEIGHT).build();

@@ -50,13 +50,17 @@ public class ProjectileAI implements EnemyAI {
                 break;
             }
 
-            // Hit entity
-            if (arena.isOccupied(next)) {
+            // Hit entity (including background bosses for redirected fireballs)
+            CombatEntity occupant = arena.getOccupant(next);
+            boolean blocked = arena.isOccupied(next);
+            boolean hitBackgroundBoss = !blocked && occupant != null
+                    && occupant.isBackgroundBoss() && self.isProjectileRedirected();
+            if (blocked || hitBackgroundBoss) {
                 if (self.isProjectileRedirected()) {
-                    // Redirected fireball impacts on enemy
+                    // Redirected fireball impacts on enemy or background boss
                     impacts = true;
-                    impactPos = next; // AOE centered on enemy
-                    break; // don't move onto the occupied tile
+                    impactPos = next;
+                    break;
                 } else {
                     // Non-redirected: blocked, stop without impact
                     break;

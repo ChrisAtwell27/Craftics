@@ -96,8 +96,11 @@ public class LevelGenerator {
             biomeOrdinal = BiomeRegistry.getAllBiomes().indexOf(biome);
         }
         if (biomeOrdinal < 0) biomeOrdinal = 0;
-        int count = 1 + biomeIndex / 2 + Math.min(biomeOrdinal, 4);
-        count = Math.min(count, com.crackedgames.craftics.CrafticsMod.CONFIG.maxEnemiesPerLevel());
+        // Enemy count scales by biome: plains caps ~6, later biomes scale toward config max (10).
+        // Per-biome cap rises from 6 (ordinal 0) by +1 per biome ordinal.
+        int biomeCap = Math.min(6 + biomeOrdinal, com.crackedgames.craftics.CrafticsMod.CONFIG.maxEnemiesPerLevel());
+        int count = 2 + biomeIndex / 2 + Math.min(biomeOrdinal, 6);
+        count = Math.min(count, biomeCap);
         if (isBoss) count = Math.min(Math.max(1, count - 1), com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAdds());
 
         float hostileRatio;
@@ -120,7 +123,7 @@ public class LevelGenerator {
         List<GridPos> validPositions = new ArrayList<>();
         for (int x = 0; x < w; x++) {
             for (int z = 0; z < h; z++) {
-                if (tiles[x][z].isWalkable() && new GridPos(x, z).manhattanDistance(playerStart) > 2) {
+                if (tiles[x][z].isSafeForSpawn() && new GridPos(x, z).manhattanDistance(playerStart) > 2) {
                     validPositions.add(new GridPos(x, z));
                 }
             }

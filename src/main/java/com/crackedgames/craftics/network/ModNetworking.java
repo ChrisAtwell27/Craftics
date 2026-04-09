@@ -157,19 +157,28 @@ public class ModNetworking {
                         arena.getWidth(), arena.getHeight(), cameraYaw
                     ));
                     leaderCm.addPartyMember(member);
-                    // Give party member the Move feather (same as leader gets in startCombat)
-                    net.minecraft.item.ItemStack displaced = member.getInventory().getStack(8);
-                    if (!displaced.isEmpty()) {
-                        int emptySlot = member.getInventory().getEmptySlot();
-                        if (emptySlot != -1) {
-                            member.getInventory().setStack(emptySlot, displaced);
+                    // Give party member the Move feather if they don't already have one
+                    int memberFeatherSlot = -1;
+                    for (int fi = 0; fi < member.getInventory().size(); fi++) {
+                        net.minecraft.item.ItemStack fs = member.getInventory().getStack(fi);
+                        if (fs.getItem() == net.minecraft.item.Items.FEATHER
+                                && fs.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME)) {
+                            memberFeatherSlot = fi;
+                            break;
                         }
                     }
-                    net.minecraft.item.ItemStack moveItem = new net.minecraft.item.ItemStack(net.minecraft.item.Items.FEATHER);
-                    moveItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
-                        net.minecraft.text.Text.literal("\u00a7aMove"));
-                    member.getInventory().setStack(8, moveItem);
-                    member.getInventory().selectedSlot = 8;
+                    if (memberFeatherSlot == -1) {
+                        net.minecraft.item.ItemStack moveItem = new net.minecraft.item.ItemStack(net.minecraft.item.Items.FEATHER);
+                        moveItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
+                            net.minecraft.text.Text.literal("\u00a7aMove"));
+                        int targetSlot = member.getInventory().getEmptySlot();
+                        if (targetSlot == -1) targetSlot = 8;
+                        member.getInventory().setStack(targetSlot, moveItem);
+                        memberFeatherSlot = targetSlot;
+                    }
+                    if (memberFeatherSlot >= 0 && memberFeatherSlot <= 8) {
+                        member.getInventory().selectedSlot = memberFeatherSlot;
+                    }
                     // Also set EventManager on their CombatManager for between-level coordination
                     CombatManager.get(memberUuid).setEventManager(em);
                     CrafticsMod.LOGGER.info("Party member {} joined combat (biome {}, level {})",
@@ -259,7 +268,7 @@ public class ModNetworking {
                     com.crackedgames.craftics.combat.PlayerProgression.get(overworld);
                 com.crackedgames.craftics.combat.PlayerProgression.PlayerStats ps =
                     progression.getStats(player);
-                if (ps.pendingAffinityChoice) {
+                if (ps.pendingAffinityChoice || ps.canAllocateAffinity()) {
                     ps.allocateAffinity(affinities[ordinal]);
                     progression.saveStats(player);
                     player.sendMessage(net.minecraft.text.Text.literal(
