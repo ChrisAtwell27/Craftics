@@ -551,13 +551,29 @@ public class CombatManager {
             if (pd.arenasPreGenerated) {
                 int[] meta = pd.getArenaMetadata(def.getLevelNumber());
                 if (meta != null) {
-                    net.minecraft.util.math.BlockPos origin = new net.minecraft.util.math.BlockPos(
-                        meta[0], meta[1], meta[2]);
-                    int gridW = meta[3], gridH = meta[4];
-                    com.crackedgames.craftics.core.GridPos playerStart =
-                        new com.crackedgames.craftics.core.GridPos(meta[5], meta[6]);
-                    return com.crackedgames.craftics.level.ArenaBuilder.scanExisting(
-                        world, origin, gridW, gridH, playerStart, def.getLevelNumber());
+                    // Auto-repair: if the stored arena is corrupted (e.g. the
+                    // schematic left a hole in the floor, chunks got wiped by
+                    // a world-edit), rebuild it in place before scanning so
+                    // the player never drops into the void mid-combat.
+                    if (com.crackedgames.craftics.level.ArenaPreGenerator.isCorrupted(
+                            world, worldOwnerUuid, def.getLevelNumber())) {
+                        sendMessage("§e⚠ Detected corrupted arena — rebuilding...");
+                        boolean repaired = com.crackedgames.craftics.level.ArenaPreGenerator
+                            .regenerateLevel(world, worldOwnerUuid, def.getLevelNumber());
+                        if (repaired) {
+                            meta = pd.getArenaMetadata(def.getLevelNumber());
+                            sendMessage("§a✓ Arena rebuilt.");
+                        }
+                    }
+                    if (meta != null) {
+                        net.minecraft.util.math.BlockPos origin = new net.minecraft.util.math.BlockPos(
+                            meta[0], meta[1], meta[2]);
+                        int gridW = meta[3], gridH = meta[4];
+                        com.crackedgames.craftics.core.GridPos playerStart =
+                            new com.crackedgames.craftics.core.GridPos(meta[5], meta[6]);
+                        return com.crackedgames.craftics.level.ArenaBuilder.scanExisting(
+                            world, origin, gridW, gridH, playerStart, def.getLevelNumber());
+                    }
                 }
             }
             return com.crackedgames.craftics.level.ArenaBuilder.build(world, def, worldOwnerUuid);
@@ -634,6 +650,19 @@ public class CombatManager {
     private record PendingBossWarning(CombatEntity boss, EnemyAction.BossAbility ability) {}
     private final List<PendingBossWarning> pendingBossWarnings = new ArrayList<>();
 
+    /** Void Walker rift pair. turnsRemaining < 0 = permanent (Phase 2). usedThisTurn prevents infinite re-tp. */
+    private static final class VoidRift {
+        final GridPos a;
+        final GridPos b;
+        int turnsRemaining;
+        boolean hasGrantedBuff; // buff reward only granted on first traversal of the pair
+        boolean usedThisTurn;   // prevents ping-pong when boss pulls / player re-enters same turn
+        VoidRift(GridPos a, GridPos b, int turnsRemaining) {
+            this.a = a; this.b = b; this.turnsRemaining = turnsRemaining;
+        }
+    }
+    private final List<VoidRift> activeVoidRifts = new ArrayList<>();
+
     // Placed this turn, detonate start of next round
     private record PendingTnt(GridPos tile, BlockPos blockPos) {}
     private final List<PendingTnt> pendingTnts = new ArrayList<>();
@@ -666,7 +695,23 @@ public class CombatManager {
         if (player == null) return 0;
         int hp = (int) player.getHealth();
         // HP clamped to 1 to prevent vanilla death -- report 0 at clamp threshold
-        return hp <= 1 ? 0 : hp;
+        if (hp <= 1) return 0;
+        // Absorption (golden apples, enchanted golden apples) counts as bonus HP
+        // stacked on top of the base pool. Vanilla HEALTH_BOOST already raises
+        // getMaxHealth() via the attribute modifier so it's reflected in getHealth().
+        int absorb = (int) player.getAbsorptionAmount();
+        return hp + absorb;
+    }
+
+    /**
+     * Max HP for combat display — base max health plus any currently-granted
+     * absorption. When absorption ticks out mid-combat the max shrinks back.
+     */
+    private int getPlayerMaxHpForDisplay() {
+        if (player == null) return 0;
+        int maxHp = (int) player.getMaxHealth();
+        int absorb = (int) player.getAbsorptionAmount();
+        return maxHp + absorb;
     }
 
     private int damagePlayer(int rawDamage) {
@@ -714,7 +759,22 @@ public class CombatManager {
         actual = fireEffectHookChained(actual, (h, dmg) -> h.onTakeDamage(effectContext, attacker, dmg));
         if (actual <= 0) return 0;
 
-        player.setHealth(Math.max(1, player.getHealth() - actual));
+        // Absorption hearts (golden apples, enchanted golden apples) are consumed
+        // first, same as vanilla damage handling.
+        int remaining = actual;
+        float absorb = player.getAbsorptionAmount();
+        if (absorb > 0) {
+            if (absorb >= remaining) {
+                player.setAbsorptionAmount(absorb - remaining);
+                remaining = 0;
+            } else {
+                remaining -= (int) absorb;
+                player.setAbsorptionAmount(0f);
+            }
+        }
+        if (remaining > 0) {
+            player.setHealth(Math.max(1, player.getHealth() - remaining));
+        }
         onPlayerDamaged();
         achievementTracker.recordPlayerTookDamage();
 
@@ -1015,6 +1075,10 @@ public class CombatManager {
         this.turnNumber = 1;
         this.active = true;
 
+        // Cache the biome ordinal so late-game tuning (boss waiting-turn skip,
+        // etc.) doesn't have to recompute it on every enemy decision.
+        this.currentBiomeOrdinal = computeCurrentBiomeOrdinal();
+
         // Hidden fire resistance — blocks vanilla lava/fire damage; our tile system handles it
         player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
             net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE,
@@ -1147,6 +1211,13 @@ public class CombatManager {
             GridPos requestedPos = spawn.position();
             GridPos adaptedPos = adaptSpawnToArena(requestedPos, levelDef, arena);
             int size = CombatEntity.getDefaultSizeStatic(spawn.entityTypeId());
+            // Bosses with a larger grid footprint need the spawn search to reserve enough tiles
+            if (isBossSpawn && bossBiomeId != null) {
+                var bossAiForSize = AIRegistry.get("boss:" + bossBiomeId);
+                if (bossAiForSize instanceof BossAI bai) {
+                    size = Math.max(size, bai.getGridSize());
+                }
+            }
             boolean aquatic = CombatEntity.isAquatic(spawn.entityTypeId());
             GridPos resolvedPos = aquatic
                 ? findNearestValidSpawn(arena, adaptedPos, size, true)
@@ -1238,9 +1309,8 @@ public class CombatManager {
                     if (vehicle != null) vehicle.discard();
                 }
 
-                // Position entity at center of occupied area
-                // 1x1 mobs: center of tile (+0.5), 2x2 mobs: corner where 4 tiles meet (+1.0)
-                double offset = size > 1 ? 1.0 : 0.5;
+                // Position entity at center of occupied area (size / 2.0 blocks from the origin corner)
+                double offset = size / 2.0;
                 // Ghasts float 1 block higher so they don't phase into the ground
                 double spawnY = spawnPos.getY() + ("minecraft:ghast".equals(spawn.entityTypeId()) ? 1.0 : 0.0);
                 mob.refreshPositionAndAngles(
@@ -1265,8 +1335,13 @@ public class CombatManager {
                 }
                 // Slimes/magma cubes spawn with random vanilla sizes; force the parent
                 // to vanilla size 2 so the visual matches the 2x2 grid footprint.
+                // The Molten King boss is 4x4 grid → vanilla size 8 (~4 blocks wide).
                 if (mob instanceof net.minecraft.entity.mob.SlimeEntity) {
-                    ((com.crackedgames.craftics.mixin.SlimeEntityAccessor) mob).craftics$setSize(2, true);
+                    boolean isMoltenKing = "nether_wastes".equals(bossBiomeId)
+                        && !bossSpawned && bossEntityTypeId != null
+                        && spawn.entityTypeId().equals(bossEntityTypeId);
+                    int slimeVanillaSize = isMoltenKing ? 8 : 2;
+                    ((com.crackedgames.craftics.mixin.SlimeEntityAccessor) mob).craftics$setSize(slimeVanillaSize, true);
                 }
 
                 boolean isBoss = !bossSpawned && bossEntityTypeId != null
@@ -1355,6 +1430,7 @@ public class CombatManager {
                     ce.setBoss(true);
                     ce.setAiOverrideKey("boss:" + bossBiomeId);
                     ce.setBossDisplayName(getBossName(bossBiomeId));
+                    ce.setHazardImmune(true);
                     // Molten King needs a fresh per-entity AI instance so state doesn't leak
                     // between the original boss and split copies.
                     if ("nether_wastes".equals(bossBiomeId)) {
@@ -1664,6 +1740,13 @@ public class CombatManager {
         if (target == null) {
             sendMessage("§cNo valid target!");
             return;
+        }
+
+        // Void Walker: attacking the real boss instantly destroys every active mirror
+        // image. Attacking a clone is handled inside CombatEntity.takeDamage (vanishes
+        // without consuming HP), so we only need to dispel clones when the real one is hit.
+        if (target.isBoss() && "boss:warped_forest".equals(target.getAiKey())) {
+            dispelVoidWalkerClones(target.getEntityId());
         }
 
         GridPos pPos = arena.getPlayerGridPos();
@@ -2723,6 +2806,33 @@ public class CombatManager {
             // Notify bosses of minion death (crystals, turrets, chains, etc.)
             if (!entity.isBoss()) {
                 notifyBossOfMinionDeath(entity);
+            } else {
+                // Boss died — close any Void Walker rifts so they don't linger post-fight.
+                if ("boss:warped_forest".equals(entity.getAiKey())) {
+                    clearVoidRifts();
+                }
+            }
+            // Mirror image clones use a different death path — no XP, no loot,
+            // and a "shatter" message instead of the usual boss-defeated line.
+            if (entity.isMirrorClone()) {
+                sendMessage("§5  The mirror image shatters!");
+                arena.removeEntity(entity);
+                MobEntity cMob = entity.getMobEntity();
+                if (cMob != null) {
+                    if (player != null && player.getEntityWorld() instanceof ServerWorld sw) {
+                        sw.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                            cMob.getX(), cMob.getY() + 1.0, cMob.getZ(), 25, 0.3, 0.6, 0.3, 0.4);
+                        sw.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+                            cMob.getX(), cMob.getY() + 0.5, cMob.getZ(), 15, 0.3, 0.4, 0.3, 0.3);
+                    }
+                    float scale = startDeathShrink(cMob);
+                    dyingMobs.add(new DyingMob(cMob, 20, scale));
+                }
+                sendToAllParty(new CombatEventPayload(
+                    CombatEventPayload.EVENT_DIED, entity.getEntityId(), 0, 0,
+                    entity.getGridPos().x(), entity.getGridPos().z()
+                ));
+                return;
             }
             // Roll a chance to drop the mob's equipped gear (rare; enchanted gear is even rarer to drop)
             if (!entity.isAlly() && entity.getMobEntity() != null) {
@@ -2927,108 +3037,161 @@ public class CombatManager {
         };
     }
 
-    // Pools used by randomizeMobGear — populated lazily so we don't allocate per spawn
-    private static final Item[] WEAPON_POOL = {
-        Items.WOODEN_SWORD, Items.STONE_SWORD, Items.GOLDEN_SWORD, Items.IRON_SWORD,
-        Items.WOODEN_AXE, Items.STONE_AXE, Items.GOLDEN_AXE, Items.IRON_AXE,
-        Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.IRON_PICKAXE,
-        Items.WOODEN_SHOVEL, Items.STONE_SHOVEL, Items.IRON_SHOVEL,
-        Items.WOODEN_HOE, Items.STONE_HOE, Items.IRON_HOE,
-        Items.BOW
+    // ─── Random gear tiered pools ──────────────────────────────────────────────
+    // Tier index 0..4 maps to: wood/leather, stone/chainmail, iron, gold, diamond/netherite.
+    // Tier is rolled with a weighted distribution so low tiers are common and high tiers rare.
+    private static final int[] GEAR_TIER_WEIGHTS = {50, 25, 15, 7, 3}; // sums to 100
+    private static final double GEAR_SPAWN_CHANCE = 0.10;   // 10% of mobs roll any gear
+    private static final double GEAR_SLOT_CHANCE  = 0.55;   // each slot rolls within the gate
+    private static final double GEAR_ENCHANT_CHANCE = 0.10; // 10% per piece to enchant
+
+    private static final Item[][] WEAPONS_BY_TIER = {
+        { Items.WOODEN_SWORD, Items.WOODEN_AXE, Items.WOODEN_PICKAXE, Items.WOODEN_SHOVEL, Items.WOODEN_HOE },
+        { Items.STONE_SWORD,  Items.STONE_AXE,  Items.STONE_PICKAXE,  Items.STONE_SHOVEL,  Items.STONE_HOE, Items.BOW },
+        { Items.IRON_SWORD,   Items.IRON_AXE,   Items.IRON_PICKAXE,   Items.IRON_SHOVEL,   Items.IRON_HOE,  Items.BOW, Items.CROSSBOW },
+        { Items.GOLDEN_SWORD, Items.GOLDEN_AXE, Items.GOLDEN_PICKAXE, Items.GOLDEN_SHOVEL, Items.GOLDEN_HOE },
+        { Items.DIAMOND_SWORD, Items.DIAMOND_AXE, Items.DIAMOND_PICKAXE, Items.NETHERITE_SWORD, Items.NETHERITE_AXE, Items.MACE, Items.TRIDENT }
     };
-    private static final Item[] WEAPON_POOL_LATE = {
-        Items.IRON_SWORD, Items.IRON_AXE, Items.DIAMOND_SWORD, Items.DIAMOND_AXE,
-        Items.NETHERITE_SWORD, Items.NETHERITE_AXE, Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE,
-        Items.MACE, Items.TRIDENT, Items.CROSSBOW, Items.BOW
+    private static final Item[][] HELMETS_BY_TIER = {
+        { Items.LEATHER_HELMET }, { Items.CHAINMAIL_HELMET }, { Items.IRON_HELMET }, { Items.GOLDEN_HELMET }, { Items.DIAMOND_HELMET }
     };
-    private static final Item[] HELMET_POOL = {
-        Items.LEATHER_HELMET, Items.CHAINMAIL_HELMET, Items.IRON_HELMET, Items.GOLDEN_HELMET, Items.DIAMOND_HELMET
+    private static final Item[][] CHESTS_BY_TIER = {
+        { Items.LEATHER_CHESTPLATE }, { Items.CHAINMAIL_CHESTPLATE }, { Items.IRON_CHESTPLATE }, { Items.GOLDEN_CHESTPLATE }, { Items.DIAMOND_CHESTPLATE }
     };
-    private static final Item[] CHEST_POOL = {
-        Items.LEATHER_CHESTPLATE, Items.CHAINMAIL_CHESTPLATE, Items.IRON_CHESTPLATE, Items.GOLDEN_CHESTPLATE, Items.DIAMOND_CHESTPLATE
+    private static final Item[][] LEGGINGS_BY_TIER = {
+        { Items.LEATHER_LEGGINGS }, { Items.CHAINMAIL_LEGGINGS }, { Items.IRON_LEGGINGS }, { Items.GOLDEN_LEGGINGS }, { Items.DIAMOND_LEGGINGS }
     };
-    private static final Item[] LEGS_POOL = {
-        Items.LEATHER_LEGGINGS, Items.CHAINMAIL_LEGGINGS, Items.IRON_LEGGINGS, Items.GOLDEN_LEGGINGS, Items.DIAMOND_LEGGINGS
-    };
-    private static final Item[] BOOTS_POOL = {
-        Items.LEATHER_BOOTS, Items.CHAINMAIL_BOOTS, Items.IRON_BOOTS, Items.GOLDEN_BOOTS, Items.DIAMOND_BOOTS
+    private static final Item[][] BOOTS_BY_TIER = {
+        { Items.LEATHER_BOOTS }, { Items.CHAINMAIL_BOOTS }, { Items.IRON_BOOTS }, { Items.GOLDEN_BOOTS }, { Items.DIAMOND_BOOTS }
     };
 
+    /** Roll a tier index (0..4) from the weighted distribution. */
+    private static int rollGearTier() {
+        int total = 0;
+        for (int w : GEAR_TIER_WEIGHTS) total += w;
+        int r = (int) (Math.random() * total);
+        int acc = 0;
+        for (int i = 0; i < GEAR_TIER_WEIGHTS.length; i++) {
+            acc += GEAR_TIER_WEIGHTS[i];
+            if (r < acc) return i;
+        }
+        return 0;
+    }
+
     /**
-     * Roll random gear onto a humanoid mob that supports armor/weapon slots.
-     * Tier scales with the biome ordinal: early biomes lean wood/stone/leather,
-     * later biomes can roll iron/gold/diamond. Only fills empty slots so vanilla
-     * gear is preserved when present.
+     * Roll random gear onto a humanoid mob. Only ~10% of mobs get any gear at all.
+     * Among those, the tier is picked from a weighted distribution (low tiers common,
+     * high tiers rare), and each slot independently rolls whether to fill. Existing
+     * vanilla-given gear is preserved.
      */
     private static void randomizeMobGear(MobEntity mob, int biomeOrdinal) {
         String typeId = Registries.ENTITY_TYPE.getId(mob.getType()).toString();
         if (!isHumanoidMob(typeId)) return;
-        // Don't overwrite gear that vanilla already gave the mob
-        ItemStack existingHand = mob.getMainHandStack();
 
-        // Tier index 0..4 — biased toward biome ordinal
-        int tierMax = Math.min(4, biomeOrdinal / 2);
-        java.util.function.Supplier<Integer> rollTier = () -> {
-            int t = (int) Math.floor(Math.random() * (tierMax + 1));
-            return Math.max(0, Math.min(tierMax, t));
-        };
+        // Top-level gate — most mobs get nothing.
+        if (Math.random() >= GEAR_SPAWN_CHANCE) return;
 
-        // Weapon: 60% chance if slot is empty
-        if (existingHand.isEmpty() && Math.random() < 0.60) {
-            Item[] pool = biomeOrdinal >= 5 ? WEAPON_POOL_LATE : WEAPON_POOL;
-            Item picked = pool[(int) (Math.random() * pool.length)];
-            mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, new ItemStack(picked));
+        // Pick a tier once so the mob's gear is internally consistent
+        int tier = rollGearTier();
+
+        // Weapon roll
+        if (mob.getMainHandStack().isEmpty() && Math.random() < GEAR_SLOT_CHANCE) {
+            Item[] pool = WEAPONS_BY_TIER[tier];
+            mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND,
+                new ItemStack(pool[(int) (Math.random() * pool.length)]));
         }
 
-        // Armor: each slot rolls independently. Chance climbs with biome ordinal.
-        double armorChance = Math.min(0.85, 0.25 + biomeOrdinal * 0.05);
-        equipRandomArmorSlot(mob, net.minecraft.entity.EquipmentSlot.HEAD, HELMET_POOL, rollTier, armorChance);
-        equipRandomArmorSlot(mob, net.minecraft.entity.EquipmentSlot.CHEST, CHEST_POOL, rollTier, armorChance);
-        equipRandomArmorSlot(mob, net.minecraft.entity.EquipmentSlot.LEGS, LEGS_POOL, rollTier, armorChance);
-        equipRandomArmorSlot(mob, net.minecraft.entity.EquipmentSlot.FEET, BOOTS_POOL, rollTier, armorChance);
+        // Each armor slot rolls independently
+        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.HEAD,  HELMETS_BY_TIER[tier]);
+        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.CHEST, CHESTS_BY_TIER[tier]);
+        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.LEGS,  LEGGINGS_BY_TIER[tier]);
+        rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.FEET,  BOOTS_BY_TIER[tier]);
     }
 
-    private static void equipRandomArmorSlot(MobEntity mob, net.minecraft.entity.EquipmentSlot slot,
-                                              Item[] pool, java.util.function.Supplier<Integer> rollTier, double chance) {
+    private static void rollArmorSlot(MobEntity mob, net.minecraft.entity.EquipmentSlot slot, Item[] pool) {
         if (!mob.getEquippedStack(slot).isEmpty()) return;
-        if (Math.random() >= chance) return;
-        int tier = Math.min(pool.length - 1, rollTier.get());
-        mob.equipStack(slot, new ItemStack(pool[tier]));
+        if (Math.random() >= GEAR_SLOT_CHANCE) return;
+        mob.equipStack(slot, new ItemStack(pool[(int) (Math.random() * pool.length)]));
     }
 
     /**
-     * Roll a chance to enchant a mob's weapon and armor based on biome ordinal.
-     * Later biomes get higher enchant chance and stronger enchants.
+     * Each equipped item has a flat 10% chance to roll an enchantment (independent
+     * of biome). Enchant level still scales with biome ordinal so late-game enchanted
+     * loot drops are stronger when they do appear.
      */
     private static void enchantMobGear(MobEntity mob, int biomeOrdinal, ServerWorld world) {
-        double enchantChance = Math.min(0.60, 0.05 + biomeOrdinal * 0.05);
         int maxLevel = Math.min(4, 1 + biomeOrdinal / 3);
 
         ItemStack weapon = mob.getMainHandStack();
-        if (!weapon.isEmpty() && Math.random() < enchantChance) {
-            String[] weaponEnchants;
-            Item w = weapon.getItem();
-            if (w == Items.BOW || w == Items.CROSSBOW) {
-                weaponEnchants = new String[]{"power", "punch", "flame"};
-            } else {
-                weaponEnchants = new String[]{"sharpness", "fire_aspect", "knockback", "smite", "bane_of_arthropods"};
+        if (!weapon.isEmpty() && Math.random() < GEAR_ENCHANT_CHANCE) {
+            String[] weaponEnchants = getValidWeaponEnchants(weapon);
+            if (weaponEnchants.length > 0) {
+                String chosen = weaponEnchants[(int) (Math.random() * weaponEnchants.length)];
+                int level = 1 + (int) (Math.random() * maxLevel);
+                applyMobEnchant(weapon, chosen, level, world);
             }
-            String chosen = weaponEnchants[(int) (Math.random() * weaponEnchants.length)];
-            int level = 1 + (int) (Math.random() * maxLevel);
-            applyMobEnchant(weapon, chosen, level, world);
         }
 
-        double armorEnchantChance = enchantChance * 0.7;
         for (net.minecraft.entity.EquipmentSlot slot : new net.minecraft.entity.EquipmentSlot[]{
                 net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
                 net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
             ItemStack piece = mob.getEquippedStack(slot);
-            if (piece.isEmpty() || Math.random() >= armorEnchantChance) continue;
-            String[] armorEnchants = {"protection", "thorns", "blast_protection", "projectile_protection"};
+            if (piece.isEmpty() || Math.random() >= GEAR_ENCHANT_CHANCE) continue;
+            String[] armorEnchants = getValidArmorEnchants(slot);
+            if (armorEnchants.length == 0) continue;
             String chosen = armorEnchants[(int) (Math.random() * armorEnchants.length)];
             int level = 1 + (int) (Math.random() * maxLevel);
             applyMobEnchant(piece, chosen, level, world);
         }
+    }
+
+    /**
+     * Returns the enchantment IDs (registry path) that are valid for a given
+     * weapon. Picks the right pool based on the actual item class so crossbows
+     * stop getting bow enchants and tridents stop getting sharpness, etc.
+     */
+    private static String[] getValidWeaponEnchants(ItemStack stack) {
+        Item item = stack.getItem();
+        if (item instanceof net.minecraft.item.BowItem) {
+            return new String[]{"power", "punch", "flame", "infinity", "unbreaking", "mending"};
+        }
+        if (item instanceof net.minecraft.item.CrossbowItem) {
+            return new String[]{"piercing", "multishot", "quick_charge", "unbreaking", "mending"};
+        }
+        if (item instanceof net.minecraft.item.TridentItem) {
+            return new String[]{"loyalty", "channeling", "impaling", "riptide", "unbreaking", "mending"};
+        }
+        if (item instanceof net.minecraft.item.SwordItem) {
+            return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
+                "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
+        }
+        if (item instanceof net.minecraft.item.AxeItem) {
+            return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
+                "knockback", "unbreaking", "mending"};
+        }
+        if (item instanceof net.minecraft.item.MaceItem) {
+            return new String[]{"smite", "fire_aspect", "knockback", "unbreaking", "mending",
+                "density", "breach", "wind_burst"};
+        }
+        // Hoe / shovel / generic — only the universal enchants apply
+        return new String[]{"unbreaking", "mending"};
+    }
+
+    /** Returns valid enchantment IDs for an armor piece based on its slot. */
+    private static String[] getValidArmorEnchants(net.minecraft.entity.EquipmentSlot slot) {
+        return switch (slot) {
+            case HEAD -> new String[]{"protection", "blast_protection", "fire_protection",
+                "projectile_protection", "thorns", "respiration", "aqua_affinity",
+                "unbreaking", "mending"};
+            case CHEST -> new String[]{"protection", "blast_protection", "fire_protection",
+                "projectile_protection", "thorns", "unbreaking", "mending"};
+            case LEGS -> new String[]{"protection", "blast_protection", "fire_protection",
+                "projectile_protection", "thorns", "swift_sneak", "unbreaking", "mending"};
+            case FEET -> new String[]{"protection", "blast_protection", "fire_protection",
+                "projectile_protection", "thorns", "feather_falling", "depth_strider",
+                "frost_walker", "soul_speed", "unbreaking", "mending"};
+            default -> new String[]{"unbreaking", "mending"};
+        };
     }
 
     /**
@@ -3203,8 +3366,8 @@ public class CombatManager {
             case "nether_wastes" -> { // The Molten King — Magma Cube
                 mob.setCustomName(Text.literal("§c§lThe Molten King"));
                 mob.setCustomNameVisible(true);
-                // No equipment — magma cube; sized to cover a 3x3 grid footprint
-                scaleBoss(mob, 1.5);
+                // No equipment and no scale — vanilla slime size 8 already produces
+                // the ~4-block-wide visual that matches the 4x4 grid footprint.
             }
             case "soul_sand_valley" -> { // The Wailing Revenant — Ghast
                 mob.setCustomName(Text.literal("§9§lThe Wailing Revenant"));
@@ -3490,6 +3653,14 @@ public class CombatManager {
 
         if (enemyMoveTickCounter >= emTicks) {
             arena.moveEntity(currentEnemy, next);
+            // Void Walker rift: teleport the enemy if they landed on a portal, then
+            // end the reaction so the path doesn't continue from the stale route.
+            if (handleEnemyVoidRiftEntry(currentEnemy, next)) {
+                enemyLerpInitialized = false;
+                currentEnemy = null;
+                phase = CombatPhase.PLAYER_TURN;
+                return;
+            }
             enemyLerpInitialized = false;
             enemyMovePathIndex++;
         }
@@ -3666,6 +3837,7 @@ public class CombatManager {
                 GridTile clearTile = arena.getTile(clearPos);
                 if (clearTile != null) {
                     clearTile.setType(TileType.NORMAL);
+                    clearTile.setBlockType(getBiomeFloorBlock());
                 }
                 tileEffects.remove(clearPos);
                 unregisterLightZone(clearPos);
@@ -3676,13 +3848,14 @@ public class CombatManager {
                 sw.setBlockState(bp, net.minecraft.block.Blocks.AIR.getDefaultState());
                 sw.setBlockState(floorBp, clearTile != null
                     ? clearTile.getBlockType().getDefaultState()
-                    : net.minecraft.block.Blocks.GRASS_BLOCK.getDefaultState());
+                    : getBiomeFloorBlock().getDefaultState());
             } else if ("break".equals(effectType)) {
                 // Pickaxe: convert obstacle to walkable NORMAL tile
                 GridPos breakPos = new GridPos(tx, tz);
                 GridTile breakTile = arena.getTile(breakPos);
                 if (breakTile != null) {
                     breakTile.setType(TileType.NORMAL);
+                    breakTile.setBlockType(getBiomeFloorBlock());
                 }
                 // gridToBlockPos returns oy+1 (where the obstacle block sits)
                 BlockPos aboveBp = arena.gridToBlockPos(breakPos);
@@ -3693,7 +3866,7 @@ public class CombatManager {
                 sw.setBlockState(aboveBp, net.minecraft.block.Blocks.AIR.getDefaultState());
                 // Restore floor block at oy
                 sw.setBlockState(floorBp, breakTile != null ? breakTile.getBlockType().getDefaultState()
-                    : net.minecraft.block.Blocks.GRASS_BLOCK.getDefaultState());
+                    : getBiomeFloorBlock().getDefaultState());
                 // Break particles
                 sw.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
                     aboveBp.getX() + 0.5, aboveBp.getY() + 0.5, aboveBp.getZ() + 0.5,
@@ -4005,6 +4178,11 @@ public class CombatManager {
                 int lavaDmg = damagePlayer(10);
                 sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
+            } else if (turnTile.getType() == com.crackedgames.craftics.core.TileType.FIRE
+                    && !combatEffects.hasFireResistance()) {
+                int fireDmg = damagePlayer(4);
+                sendMessage("§6  Standing on magma! " + fireDmg + " damage! (HP: " + getPlayerHp() + ")");
+                if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
             }
 
             if (turnTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
@@ -4096,13 +4274,21 @@ public class CombatManager {
 
         // Fall death bypasses totem — environmental, not combat damage
         // Teleport back first to stop vanilla lava/void damage loops
-        if (arena != null) {
+        // Skip if already dying / game over so we don't loop the message and
+        // restart the death animation every tick while gravity drags the
+        // corpse below the threshold.
+        if (arena != null && phase != CombatPhase.PLAYER_DYING && phase != CombatPhase.GAME_OVER) {
             int arenaFloorY = arena.getOrigin().getY();
             if (player.getY() < arenaFloorY - 2) {
                 BlockPos safePos = getSafeArenaBlockPos(arena);
                 if (safePos != null) {
                     player.requestTeleport(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
                 }
+                // Reset velocity and fall distance so the player doesn't immediately
+                // re-fall through the safe block from accumulated downward velocity.
+                player.setVelocity(0, 0, 0);
+                player.velocityModified = true;
+                player.fallDistance = 0;
                 player.setFireTicks(0);
                 player.setFrozenTicks(0);
                 player.setHealth(1);
@@ -4156,6 +4342,7 @@ public class CombatManager {
         if (player.isOnFire()) player.setFireTicks(0);
 
         tickBossAmbientParticles();
+        tickVoidRiftParticles();
 
         // Damage synced to animation impact frame
         if (pendingAttackDelay > 0) {
@@ -4303,11 +4490,18 @@ public class CombatManager {
     private void tickAnimation() {
         if (movePathIndex >= movePath.size()) {
             int tilesMoved = movePath.size();
-            GridPos finalPos = arena.getPlayerGridPos();
+            GridPos walkedPos = arena.getPlayerGridPos();
             movePath = null;
             lerpInitialized = false;
 
-            notifyBossesPlayerMoved(finalPos, tilesMoved);
+            notifyBossesPlayerMoved(walkedPos, tilesMoved);
+
+            // Void Walker: if the player stepped onto a rift, teleport them and possibly buff.
+            // The teleport updates the grid pos, so re-read before any downstream logic.
+            if (handleVoidRiftEntry(walkedPos)) {
+                walkedPos = arena.getPlayerGridPos();
+            }
+            final GridPos finalPos = walkedPos;
 
             // Addon combat effects: player moved
             {
@@ -4402,6 +4596,20 @@ public class CombatManager {
             if (landingTile != null && landingTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
                 int lavaDmg = damagePlayer(10);
                 sendMessage("§6  Stepped in lava for " + lavaDmg + " damage!");
+                if (getPlayerHp() <= 0) {
+                    sendSync();
+                    handlePlayerDeathOrGameOver();
+                    return;
+                }
+            }
+
+            // Fire / magma-block tile damage on move — 4 damage when stepping on it.
+            // Phase 2 Molten King makes these permanent, so step damage is the main threat.
+            if (landingTile != null
+                    && landingTile.getType() == com.crackedgames.craftics.core.TileType.FIRE
+                    && !combatEffects.hasFireResistance()) {
+                int fireDmg = damagePlayer(4);
+                sendMessage("§6  Scorched by magma for " + fireDmg + " damage!");
                 if (getPlayerHp() <= 0) {
                     sendSync();
                     handlePlayerDeathOrGameOver();
@@ -4688,8 +4896,8 @@ public class CombatManager {
             if (playerTile != null) {
                 net.minecraft.block.Block tileBlock = playerTile.getBlockType();
                 if (tileBlock == Blocks.MAGMA_BLOCK && !combatEffects.hasFireResistance()) {
-                    player.setHealth(Math.max(1, player.getHealth() - 1));
-                    sendMessage("§c🔥 Magma burns you for 1 damage!");
+                    int magmaDmg = damagePlayer(4);
+                    sendMessage("§c🔥 Magma burns you for " + magmaDmg + " damage!");
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 } else if (tileBlock == Blocks.SOUL_SAND || tileBlock == Blocks.SOUL_SOIL) {
                     movePointsRemaining = Math.max(1, movePointsRemaining - 1);
@@ -4938,14 +5146,30 @@ public class CombatManager {
         arena.setPlayerHeldItemId(net.minecraft.registry.Registries.ITEM
             .getId(player.getMainHandStack().getItem()).toString());
 
-        if (currentEnemy.isBoss()) {
+        EnemyAI ai = resolveAi(currentEnemy);
+        // Resolve pending telegraphs for anything running on a BossAI — real bosses
+        // AND mirror-image clones that run VoidWalkerAI with their own state.
+        if (currentEnemy.isBoss() || ai instanceof BossAI) {
             resolvePendingBossWarnings(currentEnemy);
         }
-
-        EnemyAI ai = resolveAi(currentEnemy);
         if (currentEnemy.isBoss()) {
             CrafticsMod.LOGGER.info("[BOSS DEBUG] Boss '{}' aiKey='{}' resolved AI class={}",
                 currentEnemy.getDisplayName(), currentEnemy.getAiKey(), ai.getClass().getSimpleName());
+        }
+        // Populate all alive player grid positions for boss AIs (chain attacks, etc.)
+        if (partyPlayers.size() > 1 && arena != null) {
+            java.util.List<GridPos> allPositions = new java.util.ArrayList<>();
+            net.minecraft.util.math.BlockPos ppOrigin = arena.getOrigin();
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (!deadPartyMembers.contains(member.getUuid())
+                        && member != null && !member.isRemoved() && !member.isDisconnected()) {
+                    net.minecraft.util.math.BlockPos mbp = member.getBlockPos();
+                    allPositions.add(new GridPos(mbp.getX() - ppOrigin.getX(), mbp.getZ() - ppOrigin.getZ()));
+                }
+            }
+            arena.setAllPlayerGridPositions(allPositions);
+        } else {
+            arena.setAllPlayerGridPositions(java.util.List.of(arena.getPlayerGridPos()));
         }
         currentEnemyPetAggroTarget = resolveAggroPetTarget(currentEnemy);
         GridPos aiTargetPos = currentEnemyPetAggroTarget != null
@@ -4988,6 +5212,8 @@ public class CombatManager {
                     mob.requestTeleport(wx, arena.getOrigin().getY() + 1.0, wz);
                 }
                 arena.moveEntity(currentEnemy, tp.target());
+                // Rift chain: if the teleport landed on a portal, slingshot through it.
+                handleEnemyVoidRiftEntry(currentEnemy, tp.target());
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -5000,6 +5226,7 @@ public class CombatManager {
                     mob.requestTeleport(wx, arena.getOrigin().getY() + 1.0, wz);
                 }
                 arena.moveEntity(currentEnemy, tpa.target());
+                handleEnemyVoidRiftEntry(currentEnemy, tpa.target());
                 pendingAction = new EnemyAction.Attack(tpa.damage());
                 startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
@@ -5012,6 +5239,7 @@ public class CombatManager {
                     mob.requestTeleport(wx, arena.getOrigin().getY() + 1.0, wz);
                 }
                 arena.moveEntity(currentEnemy, pounce.landingPos());
+                handleEnemyVoidRiftEntry(currentEnemy, pounce.landingPos());
                 pendingAction = new EnemyAction.Attack(pounce.damage());
                 startAttackAnimation(2);
             }
@@ -5126,6 +5354,43 @@ public class CombatManager {
                     sendSync();
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 }
+                // Chain damage: check non-active party members hit by the swoop path
+                if (partyPlayers.size() > 1) {
+                    net.minecraft.util.math.BlockPos swoopOrigin = arena.getOrigin();
+                    for (ServerPlayerEntity member : partyPlayers) {
+                        if (member == player) continue;
+                        if (deadPartyMembers.contains(member.getUuid())) continue;
+                        if (member.isRemoved() || member.isDisconnected()) continue;
+                        net.minecraft.util.math.BlockPos mbp = member.getBlockPos();
+                        GridPos memberGrid = new GridPos(
+                            mbp.getX() - swoopOrigin.getX(), mbp.getZ() - swoopOrigin.getZ());
+                        boolean memberHit = false;
+                        for (GridPos pos : swoop.path()) {
+                            if (pos.equals(memberGrid)) { memberHit = true; break; }
+                        }
+                        if (memberHit) {
+                            int armorDef = PlayerCombatStats.getDefense(member);
+                            double reduction = Math.min(0.60, armorDef * 0.05);
+                            int actual = Math.max(1, (int)(swoop.damage() * (1.0 - reduction)));
+                            member.setHealth(Math.max(1, member.getHealth() - actual));
+                            sendMessage("§c  Chains through " + member.getName().getString()
+                                + " for " + actual + " damage!");
+                            swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                                member.getX(), member.getY() + 1.0, member.getZ(),
+                                10, 0.3, 0.5, 0.3, 0.03);
+                            swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                                member.getX(), member.getY() + 0.8, member.getZ(),
+                                5, 0.2, 0.3, 0.2, 0.01);
+                            if ((int) member.getHealth() <= 1) {
+                                ServerPlayerEntity savedPlayer = this.player;
+                                this.player = member;
+                                handlePlayerDeathOrGameOver();
+                                this.player = savedPlayer;
+                            }
+                        }
+                    }
+                    sendSync();
+                }
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -5164,6 +5429,24 @@ public class CombatManager {
             }
             case EnemyAction.MoveAndAttackWithKnockback maakb -> startEnemyMove(maakb.path());
             case EnemyAction.Idle idle -> {
+                // Late-game bosses (4th biome / ordinal >= 3) skip their telegraphed
+                // "waiting" turn: instead of stalling, they immediately resolve the
+                // pending warning the subclass just set up.
+                if (currentEnemy.isBoss() && currentBiomeOrdinal >= 3) {
+                    EnemyAI bossAi = resolveAi(currentEnemy);
+                    if (bossAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI ba
+                            && ba.getPendingWarning() != null) {
+                        EnemyAction resolved = ba.getPendingWarning().getResolveAction();
+                        ba.clearPendingWarning();
+                        sendMessage("§c" + currentEnemy.getDisplayName() + " unleashes its attack!");
+                        dispatchBossSubAction(resolved);
+                        sendSync();
+                        enemyTurnState = EnemyTurnState.DONE;
+                        enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                        break;
+                    }
+                }
+
                 sendMessage("§7" + currentEnemy.getDisplayName() + " waits...");
                 // If boss has a pending warning, render its telegraph for the player's turn.
                 if (currentEnemy.isBoss()) {
@@ -5258,23 +5541,41 @@ public class CombatManager {
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
             case EnemyAction.BossAbility ba -> {
-                // Warning telegraph — store and resolve next turn, or resolve immediately if no warning tiles
-                if (ba.warningTiles() != null && !ba.warningTiles().isEmpty()) {
+                // Warning telegraph — store and resolve next turn, or resolve immediately if no warning tiles.
+                // Late-game bosses (ordinal >= 3) normally skip the telegraph and fire immediately,
+                // but Void Walker needs its telegraphs: the player has to see where rifts open,
+                // and the null bursts / beams / roars are unfair without warnings.
+                boolean isVoidWalker = currentEnemy != null
+                    && "boss:warped_forest".equals(currentEnemy.getAiKey());
+                boolean skipTelegraph = currentBiomeOrdinal >= 3 && !isVoidWalker;
+                if (!skipTelegraph && ba.warningTiles() != null && !ba.warningTiles().isEmpty()) {
                     sendMessage("§e" + currentEnemy.getDisplayName() + " prepares " +
                         ba.abilityName().replace('_', ' ') + "!");
                     // Store pending warning for resolution next turn
                     pendingBossWarnings.add(new PendingBossWarning(currentEnemy, ba));
                     // Render warning particles on the telegraphed tiles
                     spawnBossAbilityTelegraphParticles(ba);
+                    // Paint the red tile overlay on each warning tile so the player can
+                    // actually see where the attack will land.
+                    for (GridPos tile : ba.warningTiles()) {
+                        highlightWarningTile(tile);
+                    }
                     // Clear BossAI's internal warning to prevent double-fire
                     EnemyAI bossAi = resolveAi(currentEnemy);
                     if (bossAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bai) {
                         bai.clearPendingWarning();
                     }
                 } else {
-                    // Immediate resolve — no telegraph needed
+                    // Immediate resolve — no telegraph (or ordinal >= 3 override)
                     sendMessage("§c" + currentEnemy.getDisplayName() + " uses " +
                         ba.abilityName().replace('_', ' ') + "!");
+                    // void_rift has an Idle() resolved action (the rift itself is registered
+                    // as persistent state on the CombatManager), so we still need to register
+                    // it here for the skip-telegraph path — otherwise the rift silently vanishes.
+                    if ("void_rift".equals(ba.abilityName())
+                            && ba.warningTiles() != null && ba.warningTiles().size() >= 2) {
+                        registerVoidRift(currentEnemy, ba.warningTiles().get(0), ba.warningTiles().get(1));
+                    }
                     dispatchBossSubAction(ba.resolvedAction());
                 }
                 sendSync();
@@ -5473,9 +5774,277 @@ public class CombatManager {
                 }
                 // Ghast scream on attack resolution
                 triggerGhastScream(boss, true);
+                // Void Walker: register a live rift pair once the telegraph finishes.
+                if ("void_rift".equals(pw.ability().abilityName()) && warnTiles != null && warnTiles.size() >= 2) {
+                    registerVoidRift(boss, warnTiles.get(0), warnTiles.get(1));
+                }
                 dispatchBossSubAction(pw.ability().resolvedAction());
                 iterator.remove();
             }
+        }
+    }
+
+    // === Void Walker rifts ===============================================
+
+    /**
+     * Register a new rift pair after the Void Walker's void_rift telegraph resolves.
+     * In Phase 1 rifts last 4 turns; in Phase 2 they are permanent (Reality Shatter).
+     */
+    private void registerVoidRift(CombatEntity boss, GridPos a, GridPos b) {
+        if (a == null || b == null || a.equals(b)) return;
+        if (!arena.isInBounds(a) || !arena.isInBounds(b)) return;
+
+        boolean permanent = false;
+        EnemyAI ai = resolveAi(boss);
+        if (ai instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bossAi) {
+            // Phase 2 (<=50% HP): rifts are permanent until boss dies.
+            if (boss.getMaxHp() > 0 && boss.getCurrentHp() * 2 <= boss.getMaxHp()) {
+                permanent = true;
+            }
+        }
+        int life = permanent ? -1 : 4;
+        activeVoidRifts.add(new VoidRift(a, b, life));
+
+        sendMessage("§5A void rift pair tears open! §7Step into one to teleport to the other"
+            + (permanent ? " §8(permanent)" : " §8(" + life + " turns)") + ".");
+
+        // Big placement burst on both endpoints so the player immediately sees them.
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        for (GridPos p : new GridPos[]{a, b}) {
+            BlockPos bp = arena.gridToBlockPos(p);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+                bp.getX() + 0.5, bp.getY() + 0.2, bp.getZ() + 0.5, 40, 0.35, 0.1, 0.35, 0.6);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                bp.getX() + 0.5, bp.getY() + 1.2, bp.getZ() + 0.5, 30, 0.3, 0.6, 0.3, 0.4);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+                bp.getX() + 0.5, bp.getY() + 1.6, bp.getZ() + 0.5, 12, 0.15, 0.2, 0.15, 0.05);
+        }
+        if (player != null) {
+            player.getWorld().playSound(null, arena.gridToBlockPos(a),
+                net.minecraft.sound.SoundEvents.BLOCK_PORTAL_TRIGGER,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.6f, 1.4f);
+        }
+    }
+
+    /**
+     * Called every combat tick — emit persistent column particles for each active rift
+     * so the player always sees exactly where they are.
+     */
+    private void tickVoidRiftParticles() {
+        if (activeVoidRifts.isEmpty() || player == null) return;
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        boolean slow = tickCounter % 4 == 0;
+        boolean fast = tickCounter % 2 == 0;
+        for (VoidRift rift : activeVoidRifts) {
+            emitRiftPillar(sw, rift.a, slow, fast);
+            emitRiftPillar(sw, rift.b, slow, fast);
+        }
+    }
+
+    private void emitRiftPillar(ServerWorld sw, GridPos pos, boolean slow, boolean fast) {
+        if (!arena.isInBounds(pos)) return;
+        BlockPos bp = arena.gridToBlockPos(pos);
+        double cx = bp.getX() + 0.5;
+        double cy = bp.getY();
+        double cz = bp.getZ() + 0.5;
+
+        // Swirling portal column — highly visible from any angle.
+        if (fast) {
+            for (int i = 0; i < 3; i++) {
+                double angle = (tickCounter * 0.35) + i * (Math.PI * 2.0 / 3.0);
+                double r = 0.45;
+                double px = cx + Math.cos(angle) * r;
+                double pz = cz + Math.sin(angle) * r;
+                sw.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                    px, cy + 0.1 + (i * 0.4), pz, 1, 0.0, 0.15, 0.0, 0.02);
+            }
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+                cx, cy + 0.05, cz, 2, 0.25, 0.05, 0.25, 0.0);
+        }
+        // Bright top marker so the pair is obvious from across the arena.
+        if (slow) {
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+                cx, cy + 1.8, cz, 1, 0.05, 0.05, 0.05, 0.0);
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT,
+                cx, cy + 0.9, cz, 1, 0.2, 0.3, 0.2, 0.01);
+        }
+    }
+
+    /**
+     * Check whether the given enemy landed on a rift tile. If so, teleport them to the
+     * paired endpoint (including the Void Walker itself — the boss is not immune to its
+     * own portals). Returns true if a teleport happened, in which case the caller should
+     * cancel any remaining movement path so the lerp doesn't continue from the old route.
+     */
+    private boolean handleEnemyVoidRiftEntry(CombatEntity enemy, GridPos destination) {
+        if (activeVoidRifts.isEmpty() || enemy == null || !enemy.isAlive()) return false;
+        VoidRift matched = null;
+        GridPos target = null;
+        for (VoidRift rift : activeVoidRifts) {
+            if (rift.usedThisTurn) continue;
+            if (rift.a.equals(destination)) { matched = rift; target = rift.b; break; }
+            if (rift.b.equals(destination)) { matched = rift; target = rift.a; break; }
+        }
+        if (matched == null || target == null) return false;
+        if (!arena.isInBounds(target) || arena.isOccupied(target)) return false;
+        GridTile gt = arena.getTile(target);
+        if (gt == null || !gt.isWalkable()) return false;
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        // Departure burst
+        BlockPos depBp = arena.gridToBlockPos(destination);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+            depBp.getX() + 0.5, depBp.getY() + 1.0, depBp.getZ() + 0.5, 25, 0.3, 0.8, 0.3, 0.5);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+            depBp.getX() + 0.5, depBp.getY() + 0.5, depBp.getZ() + 0.5, 12, 0.3, 0.4, 0.3, 0.3);
+
+        // Move the entity on the grid and teleport its mob visual counterpart.
+        arena.moveEntity(enemy, target);
+        MobEntity mob = enemy.getMobEntity();
+        if (mob != null) {
+            BlockPos arrBp = arena.gridToBlockPos(target);
+            double offset = enemy.getSize() > 1 ? enemy.getSize() / 2.0 : 0.5;
+            mob.requestTeleport(
+                arrBp.getX() + offset,
+                arrBp.getY(),
+                arrBp.getZ() + offset);
+            // Arrival burst
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+                arrBp.getX() + offset, arrBp.getY() + 1.0, arrBp.getZ() + offset, 25, 0.3, 0.8, 0.3, 0.5);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+                arrBp.getX() + offset, arrBp.getY() + 1.0, arrBp.getZ() + offset, 10, 0.2, 0.3, 0.2, 0.05);
+            world.playSound(null, arrBp,
+                net.minecraft.sound.SoundEvents.ENTITY_ENDERMAN_TELEPORT,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.9f, 1.1f);
+        }
+
+        matched.usedThisTurn = true;
+        sendMessage("§5" + enemy.getDisplayName() + " is dragged through the void rift!");
+        return true;
+    }
+
+    /**
+     * Check whether the player just stepped onto a rift. If so, teleport them
+     * to the paired tile and grant a reward for engaging with the mechanic.
+     * Returns true if a teleport occurred.
+     */
+    private boolean handleVoidRiftEntry(GridPos destination) {
+        if (activeVoidRifts.isEmpty() || player == null) return false;
+        VoidRift matched = null;
+        GridPos target = null;
+        for (VoidRift rift : activeVoidRifts) {
+            if (rift.usedThisTurn) continue;
+            if (rift.a.equals(destination)) { matched = rift; target = rift.b; break; }
+            if (rift.b.equals(destination)) { matched = rift; target = rift.a; break; }
+        }
+        if (matched == null || target == null) return false;
+        if (!arena.isInBounds(target) || arena.isOccupied(target)) {
+            // Paired tile blocked — no teleport, but don't consume the rift.
+            return false;
+        }
+        GridTile gt = arena.getTile(target);
+        if (gt == null || !gt.isWalkable()) return false;
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        // Departure burst at current position
+        BlockPos depBp = arena.gridToBlockPos(destination);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+            depBp.getX() + 0.5, depBp.getY() + 1.0, depBp.getZ() + 0.5, 30, 0.3, 0.8, 0.3, 0.6);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+            depBp.getX() + 0.5, depBp.getY() + 0.5, depBp.getZ() + 0.5, 15, 0.3, 0.4, 0.3, 0.3);
+
+        // Move the player
+        arena.setPlayerGridPos(target);
+        BlockPos arrBp = arena.gridToBlockPos(target);
+        player.requestTeleport(arrBp.getX() + 0.5, arrBp.getY(), arrBp.getZ() + 0.5);
+
+        // Arrival burst
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+            arrBp.getX() + 0.5, arrBp.getY() + 1.0, arrBp.getZ() + 0.5, 30, 0.3, 0.8, 0.3, 0.6);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+            arrBp.getX() + 0.5, arrBp.getY() + 1.0, arrBp.getZ() + 0.5, 12, 0.2, 0.3, 0.2, 0.05);
+        world.playSound(null, arrBp,
+            net.minecraft.sound.SoundEvents.ENTITY_ENDERMAN_TELEPORT,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.9f, 1.1f);
+
+        matched.usedThisTurn = true;
+
+        // Reward the player for using the rift. First traversal grants a buff bundle;
+        // subsequent traversals of the same pair still teleport (tactical repositioning)
+        // but don't re-grant the buff to prevent farming.
+        if (!matched.hasGrantedBuff) {
+            matched.hasGrantedBuff = true;
+            addEffectHooked(CombatEffects.EffectType.STRENGTH, 2, 0);
+            addEffectHooked(CombatEffects.EffectType.SPEED, 2, 0);
+            sendMessage("§d§lVoid-Touched! §r§7You slipped through the boss's own rift — "
+                + "§a+Strength §7and §b+Speed §7for 2 turns.");
+        } else {
+            sendMessage("§5  The rift flickers — you step through.");
+        }
+        return true;
+    }
+
+    /**
+     * Tick rift lifetimes at end of player turn. Permanent rifts (Phase 2) are untouched.
+     */
+    private void tickVoidRifts() {
+        if (activeVoidRifts.isEmpty()) return;
+        var it = activeVoidRifts.iterator();
+        ServerWorld world = player != null ? (ServerWorld) player.getEntityWorld() : null;
+        while (it.hasNext()) {
+            VoidRift rift = it.next();
+            rift.usedThisTurn = false;
+            if (rift.turnsRemaining < 0) continue; // permanent
+            rift.turnsRemaining--;
+            if (rift.turnsRemaining <= 0) {
+                if (world != null) {
+                    for (GridPos p : new GridPos[]{rift.a, rift.b}) {
+                        if (!arena.isInBounds(p)) continue;
+                        BlockPos bp = arena.gridToBlockPos(p);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                            bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 15, 0.3, 0.3, 0.3, 0.02);
+                    }
+                }
+                it.remove();
+            }
+        }
+    }
+
+    private void clearVoidRifts() {
+        activeVoidRifts.clear();
+    }
+
+    /**
+     * Destroy every Void Walker mirror image bound to the given boss. Called when the
+     * player successfully targets the real boss — all illusions shatter at once.
+     */
+    private void dispelVoidWalkerClones(int bossEntityId) {
+        if (player == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        int shattered = 0;
+        for (CombatEntity e : new ArrayList<>(enemies)) {
+            if (!e.isAlive()) continue;
+            if (!e.isMirrorClone() || e.getCloneOfBossId() != bossEntityId) continue;
+            // Particle burst on each clone's position before we kill it.
+            BlockPos bp = arena.gridToBlockPos(e.getGridPos());
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 25, 0.3, 0.6, 0.3, 0.5);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+                bp.getX() + 0.5, bp.getY() + 0.6, bp.getZ() + 0.5, 15, 0.3, 0.4, 0.3, 0.3);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.02);
+            // Mirror clones honour vanishOnHit — any damage amount kills them.
+            e.applyDirectDamage(1);
+            checkAndHandleDeath(e);
+            shattered++;
+        }
+        if (shattered > 0) {
+            sendMessage("§5§l  You struck the real Void Walker! §r§5The mirror images shatter.");
+            world.playSound(null, arena.gridToBlockPos(arena.getPlayerGridPos()),
+                net.minecraft.sound.SoundEvents.BLOCK_GLASS_BREAK,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.9f, 1.3f);
         }
     }
 
@@ -5579,6 +6148,17 @@ public class CombatManager {
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK,
                             player.getX(), player.getY() + 0.8, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
                     }
+                    case "sonic_boom" -> {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.SONIC_BOOM,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 1, 0.0, 0.0, 0.0, 0.0);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 10, 0.4, 0.5, 0.4, 0.02);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                            player.getX(), player.getY() + 0.6, player.getZ(), 6, 0.3, 0.3, 0.3, 0.01);
+                        // Sonic boom ruptures your hearing and sight — you go blind.
+                        addEffectHooked(CombatEffects.EffectType.BLINDNESS, 3, 0);
+                        sendMessage("§8  The sonic boom blinds you! (3 turns)");
+                    }
                     default -> {
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
                             player.getX(), player.getY() + 1.0, player.getZ(), 8, 0.3, 0.5, 0.3, 0.02);
@@ -5647,17 +6227,32 @@ public class CombatManager {
             }
         }
 
+        // Determine the grid size this batch of minions should occupy. Most
+        // summoned minions are 1×1; Molten King splits come in at whatever size
+        // the pending split mechanic requested (currently 2×2 gen-1 copies).
+        int minionGridSize = pendingMoltenSplitKey != null && pendingMoltenSplitSize > 0
+            ? pendingMoltenSplitSize : 1;
+
         for (GridPos pos : spawnPositions) {
             if (spawned >= sm.count()) break;
-            if (!arena.isInBounds(pos) || arena.isOccupied(pos)) continue;
-            GridTile tile = arena.getTile(pos);
-            if (tile == null || !tile.isWalkable()) continue;
+            // Check every tile in the minion's footprint, not just the origin.
+            boolean areaClear = true;
+            for (int dx = 0; dx < minionGridSize && areaClear; dx++) {
+                for (int dz = 0; dz < minionGridSize && areaClear; dz++) {
+                    GridPos t = new GridPos(pos.x() + dx, pos.z() + dz);
+                    if (!arena.isInBounds(t) || arena.isOccupied(t)) { areaClear = false; break; }
+                    GridTile gt = arena.getTile(t);
+                    if (gt == null || !gt.isWalkable()) { areaClear = false; break; }
+                }
+            }
+            if (!areaClear) continue;
 
             BlockPos spawnPos = arena.gridToBlockPos(pos);
+            double centerOffset = minionGridSize / 2.0;
             var rawEntity = type.create(world, null, spawnPos, SpawnReason.MOB_SUMMONED, false, false);
             if (rawEntity == null) continue;
             rawEntity.refreshPositionAndAngles(
-                spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, 0, 0);
+                spawnPos.getX() + centerOffset, spawnPos.getY(), spawnPos.getZ() + centerOffset, 0, 0);
             if (rawEntity instanceof MobEntity mob) {
                 mob.setAiDisabled(true);
                 mob.setInvulnerable(true);
@@ -5665,21 +6260,56 @@ public class CombatManager {
                 mob.noClip = true;
                 mob.setPersistent();
                 mob.addCommandTag("craftics_arena");
+                // For Molten King splits: force vanilla slime size to match the 2×2
+                // grid footprint (vanilla size 4 ≈ 2 blocks wide).
+                if (pendingMoltenSplitKey != null
+                        && mob instanceof net.minecraft.entity.mob.SlimeEntity) {
+                    ((com.crackedgames.craftics.mixin.SlimeEntityAccessor) mob)
+                        .craftics$setSize(4, true);
+                }
             }
             world.spawnEntity(rawEntity);
             if (rawEntity instanceof MobEntity mob) {
                 CombatEntity ce = new CombatEntity(
                     mob.getId(), sm.entityTypeId(), pos,
-                    sm.hp(), sm.atk(), sm.def(), 1
+                    sm.hp(), sm.atk(), sm.def(), 1, minionGridSize
                 );
                 ce.setMobEntity(mob);
+                // Void Walker Mirror Image: any enderman summon from the Void Walker
+                // is a vanish-on-hit illusion that wears the boss's name and stats and
+                // runs its own VoidWalkerAI (flagged as clone) so it can use most of
+                // the boss's attack kit. Rifts and further cloning are gated off.
+                if (currentEnemy != null
+                        && "boss:warped_forest".equals(currentEnemy.getAiKey())
+                        && "minecraft:enderman".equals(sm.entityTypeId())) {
+                    ce.setMirrorClone(true);
+                    ce.setCloneOfBossId(currentEnemy.getEntityId());
+                    ce.setBossDisplayName(currentEnemy.getDisplayName());
+                    ce.setAiOverrideKey("boss:warped_forest");
+                    ce.setAiInstance(
+                        new com.crackedgames.craftics.combat.ai.boss.VoidWalkerAI(true));
+                    mob.setCustomName(Text.literal("§5§l" + currentEnemy.getDisplayName()));
+                    mob.setCustomNameVisible(true);
+                    // Match the real boss's 1.7x scale so clones visually match.
+                    // (The real Void Walker is scaled in the boss-decoration switch above.)
+                    scaleBoss(mob, 1.7);
+                    if (com.crackedgames.craftics.CrafticsMod.CONFIG.bossGlowEffect()) {
+                        mob.setGlowing(true);
+                    }
+                }
                 // Molten King split: override AI so copies use the correct generation
+                // and give each copy its own AI instance with independent state.
                 if (pendingMoltenSplitKey != null) {
                     ce.setAiOverrideKey(pendingMoltenSplitKey);
                     ce.setBoss(true);
-                    // Each split copy needs its own MoltenKingAI with independent state
-                    int splitGen = "boss:nether_wastes_g2".equals(pendingMoltenSplitKey) ? 2 : 1;
-                    ce.setAiInstance(new MoltenKingAI(splitGen));
+                    ce.setHazardImmune(true);
+                    ce.setBossDisplayName(getBossName("nether_wastes"));
+                    ce.setAiInstance(new MoltenKingAI(1));
+                    if (com.crackedgames.craftics.CrafticsMod.CONFIG.bossGlowEffect()) {
+                        mob.setGlowing(true);
+                    }
+                    mob.setCustomName(Text.literal("§c§lThe Molten King"));
+                    mob.setCustomNameVisible(true);
                 }
                 enemies.add(ce);
                 arena.placeEntity(ce);
@@ -5750,6 +6380,7 @@ public class CombatManager {
             if (pendingMoltenSplitKey != null) {
                 sendMessage("§6§l  The Molten King splits into " + spawned + " fragments!");
                 pendingMoltenSplitKey = null;
+                pendingMoltenSplitSize = 0;
             } else {
                 sendMessage("§5  " + spawned + " " + sm.entityTypeId().substring(sm.entityTypeId().indexOf(':') + 1)
                     + "(s) appeared!");
@@ -5961,7 +6592,27 @@ public class CombatManager {
             // Damage all enemies in AOE (always — this is how redirected fireballs damage the boss)
             for (CombatEntity e : new ArrayList<>(enemies)) {
                 if (e == projectile || !e.isAlive()) continue;
-                if (e.minDistanceTo(effectCenter) <= aoeRadius) {
+
+                // Background bosses (Wailing Revenant) occupy many arena tiles via
+                // the occupant map, but their gridPos/size only cover one — so
+                // minDistanceTo misreports distance and reflected fireballs can
+                // miss them entirely. For background bosses, check the occupant
+                // map across the AoE footprint instead.
+                boolean inAoe;
+                if (e.isBackgroundBoss()) {
+                    inAoe = false;
+                    outer:
+                    for (int dx = -aoeRadius; dx <= aoeRadius; dx++) {
+                        for (int dz = -aoeRadius; dz <= aoeRadius; dz++) {
+                            GridPos check = new GridPos(effectCenter.x() + dx, effectCenter.z() + dz);
+                            if (arena.getOccupant(check) == e) { inAoe = true; break outer; }
+                        }
+                    }
+                } else {
+                    inAoe = e.minDistanceTo(effectCenter) <= aoeRadius;
+                }
+
+                if (inAoe) {
                     // Redirected fireballs deal 1/20 of the boss's max HP as damage
                     int fireDmg = (redirected && e.isBoss()) ? Math.max(1, e.getMaxHp() / 20) : damage;
                     int dealt = e.takeDamage(fireDmg);
@@ -6065,6 +6716,23 @@ public class CombatManager {
             case "weakness", "cursed_fog", "wail", "hex_snare" -> {
                 addEffectHooked(CombatEffects.EffectType.WEAKNESS, 2, 0);
                 sendMessage("§7  Weakness applied! (-2 attack for 2 turns)");
+            }
+            case "ender_roar" -> {
+                addEffectHooked(CombatEffects.EffectType.BLINDNESS, 2, 0);
+                sendMessage("§5  The Void Walker's roar blinds you! (-2 range for 2 turns)");
+            }
+            case "darkness_pulse" -> {
+                addEffectHooked(CombatEffects.EffectType.BLINDNESS, 3, 0);
+                sendMessage("§8  The Warden's darkness pulse blinds you! (3 turns)");
+            }
+            case "tremor_stomp" -> {
+                // Tremor pushes dust into your eyes — short blindness
+                addEffectHooked(CombatEffects.EffectType.BLINDNESS, 2, 0);
+                sendMessage("§8  The tremor kicks up blinding dust! (2 turns)");
+            }
+            case "null_burst" -> {
+                addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 0);
+                sendMessage("§5  Null energy disrupts your footing! (-1 AP next turn)");
             }
             case "burning", "fire", "magma", "raining_fireball" -> {
                 if (!combatEffects.hasFireResistance()) {
@@ -6300,6 +6968,30 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL, cx, cy + 0.5, cz, 12, spread, 0.8, spread, 0.3);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 8, spread, 0.4, spread, 0.02);
             }
+            // === Warden ===
+            case "darkness_pulse" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL, cx, cy + 0.8, cz, 25, spread + 0.5, 1.0, spread + 0.5, 0.04);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy + 0.3, cz, 20, spread, 0.6, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy, cz, 15, spread + 0.3, 0.4, spread + 0.3, 0.01);
+            }
+            case "tremor_stomp" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD, cx, cy, cz, 20, spread + 0.5, 0.3, spread + 0.5, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE, cx, cy + 0.2, cz, 12, spread, 0.4, spread, 0.01);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL, cx, cy + 0.5, cz, 8, spread, 0.5, spread, 0.02);
+            }
+            // === Void Walker ===
+            case "null_burst" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL, cx, cy + 0.6, cz, 25, spread, 0.8, spread, 0.25);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL, cx, cy + 1.0, cz, 18, spread + 0.3, 1.0, spread + 0.3, 0.3);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD, cx, cy + 0.3, cz, 10, spread, 0.4, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.FLASH, cx, cy + 0.5, cz, 2, 0.0, 0.0, 0.0, 0.0);
+            }
+            case "ender_roar" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy + 0.8, cz, 20, spread + 0.5, 0.6, spread + 0.5, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL, cx, cy + 0.5, cz, 20, spread + 0.3, 0.8, spread + 0.3, 0.35);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL, cx, cy + 0.9, cz, 6, spread, 0.5, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SONIC_BOOM, cx, cy + 1.0, cz, 1, 0.0, 0.0, 0.0, 0.0);
+            }
             // === Wither Boss ===
             case "wither_explosion" -> {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL, cx, cy + 1.0, cz, 25, spread + 1, 1.5, spread + 1, 0.04);
@@ -6329,10 +7021,10 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE, cx, cy + 0.5, cz, 12, spread, 0.8, spread, 0.02);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT, cx, cy + 0.3, cz, 8, spread, 0.5, spread, 0.01);
             }
-            // === Fungal Growth (Bastion Brute healing) ===
-            case "fungal_growth" -> {
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIMSON_SPORE, cx, cy + 0.5, cz, 20, spread, 0.8, spread, 0.02);
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER, cx, cy + 0.3, cz, 8, spread, 0.4, spread, 0.0);
+            // === Ground Slam (Bastion Brute cross fire) ===
+            case "ground_slam" -> {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.LAVA, cx, cy + 0.5, cz, 15, spread, 0.8, spread, 0.02);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME, cx, cy + 0.3, cz, 10, spread, 0.4, spread, 0.01);
             }
             // === Generic fallback for unknown effects ===
             default -> {
@@ -6354,6 +7046,11 @@ public class CombatManager {
             // Prevent permanent trap patterns from boss lava/magma; always decay.
             duration = 3;
         }
+        // Get biome-appropriate floor block for NORMAL terrain
+        net.minecraft.block.Block biomeFloorBlock = null;
+        if (ct.terrainType() == TileType.NORMAL) {
+            biomeFloorBlock = getBiomeFloorBlock();
+        }
         int changed = 0;
         for (GridPos pos : ct.tiles()) {
             if (!arena.isInBounds(pos)) continue;
@@ -6364,6 +7061,10 @@ public class CombatManager {
                 tile.setTemporaryType(ct.terrainType(), duration);
             } else {
                 tile.setType(ct.terrainType());
+            }
+            // Override the block type for NORMAL tiles to match the arena biome
+            if (biomeFloorBlock != null) {
+                tile.setBlockType(biomeFloorBlock);
             }
             // Update the visual block in the world (floor level, not above)
             BlockPos bp = new BlockPos(
@@ -6420,6 +7121,10 @@ public class CombatManager {
                 } else if (aiKey.contains("tidecaller") || aiKey.contains("Tidecaller")) {
                     lineParticle = net.minecraft.particle.ParticleTypes.SPLASH;
                     trailParticle = net.minecraft.particle.ParticleTypes.BUBBLE;
+                } else if (aiKey.contains("warped_forest")) {
+                    // Void Walker — void beam
+                    lineParticle = net.minecraft.particle.ParticleTypes.PORTAL;
+                    trailParticle = net.minecraft.particle.ParticleTypes.REVERSE_PORTAL;
                 }
             }
         }
@@ -6690,6 +7395,8 @@ public class CombatManager {
                     bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5,
                     5, 0.3, 0.3, 0.3, 0.01);
                 sendMessage("§e  Pushed " + playerGridPos.manhattanDistance(landingPos) + " tiles!");
+                // Void Walker: Void Pull may have dragged the player onto one of the boss's own rifts.
+                handleVoidRiftEntry(landingPos);
             }
         } else {
             // Move an enemy entity
@@ -6826,11 +7533,12 @@ public class CombatManager {
         switch (name) {
             case "ash_storm" -> { primary = net.minecraft.particle.ParticleTypes.ASH; secondary = net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME; }
             case "wither_slash", "wither_applied" -> { primary = net.minecraft.particle.ParticleTypes.SOUL; secondary = net.minecraft.particle.ParticleTypes.SMOKE; }
-            case "fungal_growth" -> { primary = net.minecraft.particle.ParticleTypes.CRIMSON_SPORE; secondary = net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER; }
+            case "ground_slam" -> { primary = net.minecraft.particle.ParticleTypes.LAVA; secondary = net.minecraft.particle.ParticleTypes.FLAME; }
             case "absorb" -> { primary = net.minecraft.particle.ParticleTypes.LAVA; secondary = net.minecraft.particle.ParticleTypes.FLAME; }
             case "fortify_shell", "fortify_shell_reflect" -> { primary = net.minecraft.particle.ParticleTypes.END_ROD; secondary = net.minecraft.particle.ParticleTypes.ENCHANTED_HIT; }
             case "soul_chain" -> { primary = net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME; secondary = net.minecraft.particle.ParticleTypes.SOUL; }
-            case "void_rift" -> { primary = net.minecraft.particle.ParticleTypes.PORTAL; secondary = net.minecraft.particle.ParticleTypes.REVERSE_PORTAL; }
+            case "void_rift", "void_beam", "null_burst", "ender_roar" -> { primary = net.minecraft.particle.ParticleTypes.PORTAL; secondary = net.minecraft.particle.ParticleTypes.REVERSE_PORTAL; }
+            case "darkness_pulse", "tremor_stomp" -> { primary = net.minecraft.particle.ParticleTypes.SCULK_SOUL; secondary = net.minecraft.particle.ParticleTypes.LARGE_SMOKE; }
             case "lights_out" -> { primary = net.minecraft.particle.ParticleTypes.LARGE_SMOKE; secondary = net.minecraft.particle.ParticleTypes.SMOKE; }
             default -> { primary = net.minecraft.particle.ParticleTypes.ENCHANT; secondary = net.minecraft.particle.ParticleTypes.CRIT; }
         }
@@ -7030,43 +7738,64 @@ public class CombatManager {
             sa.notifyDamaged();
         }
 
-        // MoltenKing: split into 2 copies when HP drops to 50% (once per entity)
+        // MoltenKing: at 50% HP, the original boss dies and cleanly splits into 2
+        // smaller copies (size 2) that each act as independent bosses. Gen 1 does
+        // NOT split further — this fires only for Gen 0.
         if (ai instanceof MoltenKingAI mk && mk.canSplit()
                 && !target.hasSplit() && target.isAlive()
                 && target.getCurrentHp() <= target.getMaxHp() / 2) {
             target.markSplit();
             String nextGenKey = mk.getNextGenAiKey();
             if (nextGenKey != null) {
-                int gen = mk.getGeneration();
-                int splitHp = gen == 0 ? 20 : 12;
-                int splitAtk = gen == 0 ? 7 : 6;
-                int splitDef = gen == 0 ? 1 : 0;
-                // Search wider area for gen 0 since it occupies a 3x3 footprint
-                int searchRadius = gen == 0 ? 3 : 2;
-                List<GridPos> splitPositions = new ArrayList<>();
-                for (int dx = -searchRadius; dx <= searchRadius; dx++) {
-                    for (int dz = -searchRadius; dz <= searchRadius; dz++) {
-                        GridPos sp = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
-                        if (arena.isInBounds(sp) && !arena.isOccupied(sp)
-                                && arena.getTile(sp) != null && arena.getTile(sp).isWalkable()) {
-                            splitPositions.add(sp);
-                        }
+                int splitSize = 2; // gen 1 = 2x2 footprint
+                int splitHp = Math.max(5, target.getMaxHp() / 2);
+                int splitAtk = Math.max(1, target.getAttackPower() - 1);
+                int splitDef = Math.max(0, target.getDefense() - 1);
+
+                // The parent occupies a 4x4 area starting at its gridPos. We pick up
+                // to 2 non-overlapping 2x2 sub-quadrants of that area to place the
+                // split copies — this guarantees they fit inside the footprint the
+                // parent just vacated.
+                GridPos origin = target.getGridPos();
+                int parentSize = target.getSize();
+                List<GridPos> quadrantOrigins = new ArrayList<>();
+                for (int dx = 0; dx + splitSize <= parentSize; dx += splitSize) {
+                    for (int dz = 0; dz + splitSize <= parentSize; dz += splitSize) {
+                        quadrantOrigins.add(new GridPos(origin.x() + dx, origin.z() + dz));
                     }
                 }
-                java.util.Collections.shuffle(splitPositions);
-                splitPositions = splitPositions.subList(0, Math.min(2, splitPositions.size()));
+                java.util.Collections.shuffle(quadrantOrigins);
+
+                // Kill the parent FIRST so the sub-quadrants become unoccupied before
+                // the split copies are placed. This also prevents the parent's mob
+                // entity from lingering as a "ghost" alongside the new copies.
+                target.takeDamage(target.getCurrentHp() + 100);
+                checkAndHandleDeath(target);
+
+                // Filter to quadrants whose every tile is now walkable and free.
+                List<GridPos> splitPositions = new ArrayList<>();
+                for (GridPos q : quadrantOrigins) {
+                    if (splitPositions.size() >= 2) break;
+                    boolean ok = true;
+                    for (int dx = 0; dx < splitSize && ok; dx++) {
+                        for (int dz = 0; dz < splitSize && ok; dz++) {
+                            GridPos tile = new GridPos(q.x() + dx, q.z() + dz);
+                            if (!arena.isInBounds(tile) || arena.isOccupied(tile)) { ok = false; break; }
+                            GridTile gt = arena.getTile(tile);
+                            if (gt == null || !gt.isWalkable()) { ok = false; break; }
+                        }
+                    }
+                    if (ok) splitPositions.add(q);
+                }
+
                 if (!splitPositions.isEmpty()) {
+                    pendingMoltenSplitKey = nextGenKey;
+                    pendingMoltenSplitSize = splitSize;
                     EnemyAction split = new EnemyAction.SummonMinions(
                         "minecraft:magma_cube", splitPositions.size(), splitPositions,
                         splitHp, splitAtk, splitDef);
                     dispatchBossSubAction(split);
-                    // Mark the spawned copies with the next-gen boss AI key
-                    // (handled below in spawnBossMinions via pendingMoltenSplitKey)
-                    pendingMoltenSplitKey = nextGenKey;
                 }
-                // Kill the original after splitting
-                target.takeDamage(target.getCurrentHp() + 100);
-                checkAndHandleDeath(target);
             }
         }
     }
@@ -7097,6 +7826,8 @@ public class CombatManager {
                 boss.tickWarning();
             }
         }
+        // Also tick Void Walker rift lifetimes.
+        tickVoidRifts();
     }
 
     /**
@@ -7440,6 +8171,16 @@ public class CombatManager {
 
         if (enemyMoveTickCounter >= emTicks2) {
             arena.moveEntity(currentEnemy, next);
+
+            // Void Walker rift: teleport the enemy if they landed on one of the
+            // portals. Cancel the remaining path so the lerp doesn't snap back.
+            if (handleEnemyVoidRiftEntry(currentEnemy, next)) {
+                enemyLerpInitialized = false;
+                enemyMovePathIndex = enemyMovePath.size();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                return;
+            }
 
             // Check if enemy walked onto a void/death tile
             if (checkEnemyFallDeath(currentEnemy)) {
@@ -8473,37 +9214,87 @@ public class CombatManager {
         GridPos landingPos = startPos;
         boolean hitHazard = false;
         boolean hitCactus = false;
+        boolean hitWall = false;
+        String wallLabel = "wall";
 
         for (int i = 1; i <= tiles; i++) {
             GridPos candidate = new GridPos(startPos.x() + dx * i, startPos.z() + dz * i);
-            if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) break;
-            var tile = arena.getTile(candidate);
-            if (tile == null) break;
 
-            if (tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) {
-                if (tile.getBlockType() == Blocks.CACTUS) hitCactus = true;
+            // Out-of-bounds or another entity in the way — stops the push and slams.
+            if (!arena.isInBounds(candidate)) {
+                hitWall = true;
+                wallLabel = "arena wall";
+                break;
+            }
+            if (arena.isOccupied(candidate)) {
+                hitWall = true;
+                wallLabel = "another enemy";
+                break;
+            }
+            var tile = arena.getTile(candidate);
+            if (tile == null) {
+                hitWall = true;
                 break;
             }
 
+            // Solid obstacle: enemy slams into it and stops — now deals collision damage.
+            if (tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) {
+                if (tile.getBlockType() == Blocks.CACTUS) {
+                    hitCactus = true;
+                } else {
+                    hitWall = true;
+                    wallLabel = "obstacle";
+                }
+                break;
+            }
+
+            // Lethal / wet hazards — land ON the tile and take consequences.
             if (tile.getType() == com.crackedgames.craftics.core.TileType.VOID
                 || tile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER
                 || tile.getType() == com.crackedgames.craftics.core.TileType.WATER
                 || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                if (enemy.isHazardImmune()) {
+                    hitWall = true;
+                    wallLabel = "hazard edge";
+                    break;
+                }
                 landingPos = candidate;
                 hitHazard = true;
+                break;
+            }
+
+            // Other non-walkable tile types (e.g. low ground the enemy can't enter).
+            if (!tile.isWalkable()) {
+                hitWall = true;
+                wallLabel = "terrain";
                 break;
             }
 
             landingPos = candidate;
         }
 
-        // Cactus collision damage — fires even if enemy didn't move (adjacent slam)
+        // Cactus collision damage — cactus has its own fixed-damage effect that fires
+        // even if the enemy didn't move at all (adjacent slam).
         if (hitCactus) {
             int cactusDmg = enemy.takeDamage(2);
             sendMessage("§2" + enemy.getDisplayName() + " slammed into a cactus for " + cactusDmg + " damage!");
             if (!enemy.isAlive()) {
                 killEnemy(enemy);
                 return startPos;
+            }
+        }
+
+        // Generic wall/obstacle slam — scales with the push strength so strong
+        // knockbacks that hit a wall hurt more than weak ones. Mirrors the
+        // collision handling in VanillaWeapons' Knockback shockwave.
+        if (hitWall && !hitHazard) {
+            int slamDamage = Math.max(1, tiles * 2);
+            int dealt = enemy.takeDamage(slamDamage);
+            sendMessage("§6💨 " + enemy.getDisplayName() + " slammed into " + wallLabel
+                + " for " + dealt + " collision damage!");
+            if (!enemy.isAlive()) {
+                killEnemy(enemy);
+                return landingPos;
             }
         }
 
@@ -10114,7 +10905,7 @@ public class CombatManager {
                     floorBlock = Blocks.SMOOTH_SANDSTONE; accentBlock = Blocks.CUT_SANDSTONE;
                     postBlock = Blocks.SANDSTONE_WALL; carpetBlock = Blocks.ORANGE_CARPET; roofBlock = Blocks.ORANGE_WOOL;
                 }
-                case NETHER -> {
+                case NETHER, CRIMSON_FOREST, WARPED_FOREST -> {
                     floorBlock = Blocks.NETHER_BRICKS; accentBlock = Blocks.CRIMSON_PLANKS;
                     postBlock = Blocks.CRIMSON_STEM; carpetBlock = Blocks.RED_CARPET; roofBlock = Blocks.RED_WOOL;
                 }
@@ -10424,12 +11215,24 @@ public class CombatManager {
                 sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " shimmers with new power!");
             }
         } else {
-            // Add a random enchantment (weapon set or armor set depending on item)
-            String[] enchantKeys = isArmor
-                ? new String[]{"protection", "blast_protection", "fire_protection", "projectile_protection",
-                    "thorns", "unbreaking", "mending", "feather_falling", "respiration", "aqua_affinity"}
-                : new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
-                    "knockback", "looting", "sweeping_edge", "unbreaking"};
+            // Add a random enchantment, branching by the actual item so we don't
+            // slap looting on a bow or feather_falling on a chestplate.
+            String[] enchantKeys;
+            if (isArmor) {
+                // Armor inventory index: 0=feet, 1=legs, 2=chest, 3=head
+                int armorIdx = slotId - 100;
+                net.minecraft.entity.EquipmentSlot armorSlot = switch (armorIdx) {
+                    case 0 -> net.minecraft.entity.EquipmentSlot.FEET;
+                    case 1 -> net.minecraft.entity.EquipmentSlot.LEGS;
+                    case 2 -> net.minecraft.entity.EquipmentSlot.CHEST;
+                    case 3 -> net.minecraft.entity.EquipmentSlot.HEAD;
+                    default -> net.minecraft.entity.EquipmentSlot.CHEST;
+                };
+                enchantKeys = getValidArmorEnchants(armorSlot);
+            } else {
+                enchantKeys = getValidWeaponEnchants(stack);
+            }
+            if (enchantKeys.length == 0) enchantKeys = new String[]{"unbreaking"};
             String chosenKey = enchantKeys[rng.nextInt(enchantKeys.length)];
             int level = 1 + rng.nextInt(3); // level 1-3
 
@@ -10862,10 +11665,11 @@ public class CombatManager {
                 for (int y = 0; y <= 6; y++)
                     world.setBlockState(new BlockPos(ox + x, oy + y, oz + z), air, sf);
 
-        // Floor: dirt/grass
+        // Floor: biome-appropriate block
+        net.minecraft.block.Block floorBlock = getBiomeFloorBlock();
         for (int x = 0; x < 9; x++)
             for (int z = 0; z < 9; z++)
-                world.setBlockState(new BlockPos(ox + x, oy, oz + z), Blocks.GRASS_BLOCK.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + x, oy, oz + z), floorBlock.getDefaultState(), sf);
 
         // Path to the traveler
         for (int z = 0; z <= 6; z++)
@@ -11093,6 +11897,9 @@ public class CombatManager {
         } catch (Exception e) {
             CrafticsMod.LOGGER.warn("endCombat: cleanupNoCollisionTeam failed: {}", e.getMessage());
         }
+
+        // Void Walker rifts — combat ended, stop rendering them.
+        clearVoidRifts();
 
         try {
             // Clean up any undetonated TNT blocks
@@ -11430,7 +12237,7 @@ public class CombatManager {
             if (movePointsRemaining > 0) {
                 boolean pathfinderActive = activeTrimScan != null
                     && activeTrimScan.setBonus() == TrimEffects.SetBonus.PATHFINDER;
-                java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(), pathfinderActive);
+                java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(), pathfinderActive, true);
                 for (GridPos gp : reachable) {
                     moveList.add(gp.x());
                     moveList.add(gp.z());
@@ -11700,6 +12507,7 @@ public class CombatManager {
             typeIds.append(";def=").append(e.getDefense());
             typeIds.append(";spd=").append(e.getMoveSpeed());
             typeIds.append(";range=").append(e.getRange());
+            typeIds.append(";mv=").append(MoveStyle.forEntityType(e.getEntityTypeId()).tag());
             // Tag allies so client can display them separately
             if (e.isAlly()) {
                 typeIds.append(";ally");
@@ -11750,7 +12558,7 @@ public class CombatManager {
 
         sendToAllParty(new CombatSyncPayload(
             phase.ordinal(), apRemaining, movePointsRemaining,
-            getPlayerHp(), (int) player.getMaxHealth(), turnNumber,
+            getPlayerHp(), getPlayerMaxHpForDisplay(), turnNumber,
             maxAp, maxSpeed, enemyData, typeIds.toString(),
             combatEffects.getDisplayString(), killStreak,
             partyHpData
@@ -11821,6 +12629,52 @@ public class CombatManager {
     private net.minecraft.entity.vehicle.BoatEntity activeBoat = null; // Visual boat while in water
     private boolean oceanBlessingUsed = false;        // OCEAN_BLESSING: once per combat
     private String pendingMoltenSplitKey = null;     // Molten King: AI key for next split generation
+    private int pendingMoltenSplitSize = 0;           // Molten King: grid size for next split (0 = none)
+    /** Position of the current combat's biome in the full dimension path. Used to gate late-game tuning (e.g. bosses skipping their telegraphed "waiting" turn). */
+    private int currentBiomeOrdinal = 0;
+
+    /**
+     * Compute the current combat's biome ordinal (position in the full dimension path).
+     * Returns 0 for trial chambers, ambushes, or levels without an associated biome.
+     */
+    private int computeCurrentBiomeOrdinal() {
+        if (levelDef == null || player == null) return 0;
+        com.crackedgames.craftics.level.BiomeTemplate biomeTemplate = null;
+        if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
+            biomeTemplate = gld.getBiomeTemplate();
+        }
+        if (biomeTemplate == null) {
+            // Fallback: look up the active biome run id (covers event / trader levels)
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            CrafticsSavedData data = CrafticsSavedData.get(world);
+            CrafticsSavedData.PlayerData pd = data.getPlayerData(
+                leaderUuid != null ? leaderUuid : player.getUuid());
+            if (pd != null && pd.activeBiomeId != null && !pd.activeBiomeId.isEmpty()) {
+                for (var b : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {
+                    if (b.biomeId.equals(pd.activeBiomeId)) { biomeTemplate = b; break; }
+                }
+            }
+        }
+        if (biomeTemplate == null) return 0;
+        CrafticsSavedData.PlayerData pdBranch = CrafticsSavedData
+            .get((ServerWorld) player.getEntityWorld())
+            .getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid());
+        int branch = pdBranch != null ? Math.max(0, pdBranch.branchChoice) : 0;
+        java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath.getFullPath(branch);
+        int idx = fullPath.indexOf(biomeTemplate.biomeId);
+        return Math.max(0, idx);
+    }
+
+    /** Get the biome-appropriate floor block for NORMAL tiles in the current arena. */
+    private net.minecraft.block.Block getBiomeFloorBlock() {
+        if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
+            BiomeTemplate biome = gld.getBiomeTemplate();
+            if (biome != null && biome.environmentStyle != null) {
+                return biome.environmentStyle.getFloorBlock();
+            }
+        }
+        return Blocks.GRASS_BLOCK;
+    }
 
     /** Resolve the AI for an entity, preferring per-entity instance if present (for split copies with own state). */
     private static EnemyAI resolveAi(CombatEntity entity) {

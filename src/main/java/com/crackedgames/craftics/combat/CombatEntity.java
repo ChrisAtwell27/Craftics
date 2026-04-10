@@ -169,6 +169,11 @@ public class CombatEntity {
     public boolean isBoss() { return boss; }
     public void setBoss(boolean b) { this.boss = b; }
 
+    /** If true, knockback stops before hazard tiles (void, deep water, lava) instead of landing on them. */
+    private boolean hazardImmune = false;
+    public boolean isHazardImmune() { return hazardImmune; }
+    public void setHazardImmune(boolean v) { this.hazardImmune = v; }
+
     /** Spider ceiling mechanic — true when the spider is hanging from the ceiling (off-grid). */
     private boolean onCeiling = false;
     public boolean isOnCeiling() { return onCeiling; }
@@ -181,6 +186,20 @@ public class CombatEntity {
 
     private String bossDisplayName = null;
     public void setBossDisplayName(String name) { this.bossDisplayName = name; }
+
+    /**
+     * Void Walker mirror image flag. If true, any incoming damage instantly kills this
+     * entity regardless of the damage amount, and zero HP loss is reported. The clone
+     * looks identical to the parent boss (same name, stats) until it is hit.
+     */
+    private boolean mirrorClone = false;
+    public boolean isMirrorClone() { return mirrorClone; }
+    public void setMirrorClone(boolean v) { this.mirrorClone = v; }
+
+    /** Entity ID of the boss this clone mirrors. -1 when not a clone. */
+    private int cloneOfBossId = -1;
+    public int getCloneOfBossId() { return cloneOfBossId; }
+    public void setCloneOfBossId(int id) { this.cloneOfBossId = id; }
 
     private String aiOverrideKey = null;
     public String getAiOverrideKey() { return aiOverrideKey; }
@@ -308,6 +327,14 @@ public class CombatEntity {
     }
 
     public int takeDamage(int rawDamage) {
+        // Mirror images (Void Walker clones) vanish on any hit. No real HP loss
+        // is reported so the attack still feels like a "wasted swing" on an illusion.
+        if (mirrorClone) {
+            currentHp = 0;
+            alive = false;
+            damagedSinceLastTurn = true;
+            return 0;
+        }
         // Each DEF point = 5% reduction, capped at 60%
         int effectiveDef = getEffectiveDefense();
         double reduction = Math.min(0.60, effectiveDef * 0.05);
@@ -324,6 +351,12 @@ public class CombatEntity {
      */
     public void applyDirectDamage(int amount) {
         if (amount <= 0) return;
+        if (mirrorClone) {
+            currentHp = 0;
+            alive = false;
+            damagedSinceLastTurn = true;
+            return;
+        }
         currentHp = Math.max(0, currentHp - amount);
         damagedSinceLastTurn = true;
         if (currentHp == 0) {

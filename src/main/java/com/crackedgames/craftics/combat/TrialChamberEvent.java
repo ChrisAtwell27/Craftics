@@ -161,31 +161,46 @@ public class TrialChamberEvent {
     /** Generate a small quick ambush encounter — 2-3 fast enemies, tiny arena. */
     public static LevelDefinition generateAmbush(String arenaBiomeId, int biomeOrdinal, int ngPlusLevel) {
         Random rng = new Random();
-        // Gentler scaling — ambushes are unavoidable so shouldn't be punishing
-        float diffMultiplier = 1.0f + (biomeOrdinal * 0.03f) + (ngPlusLevel * 0.08f);
 
-        int enemyCount = 2 + (rng.nextFloat() < 0.3f ? 1 : 0); // 2-3 enemies (was 3-4)
+        // Pull the biome's hostile pool so ambushes match where you are —
+        // zombies in Plains, magma cubes in the Nether, enderman in the End.
+        com.crackedgames.craftics.level.BiomeTemplate biome = null;
+        if (arenaBiomeId != null && !arenaBiomeId.isBlank()) {
+            for (var b : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {
+                if (b.biomeId.equals(arenaBiomeId)) { biome = b; break; }
+            }
+        }
+
+        // Match LevelGenerator's per-biome-ordinal stat bonuses so ambush mobs
+        // don't feel like plains mobs when you're deep in the Nether.
+        int hpBonus = biomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
+        int atkBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());
+        // NG+ bumps both a little on top of the biome scaling
+        float ngMult = 1.0f + (ngPlusLevel * 0.08f);
+
+        int enemyCount = 2 + (rng.nextFloat() < 0.3f ? 1 : 0); // 2-3 enemies
         List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
         List<GridPos> used = new ArrayList<>();
         used.add(new GridPos(2, 2)); // player start
 
-        // Ambush uses weaker mobs — removed vindicator, reduced stats
-        String[][] ambushMobs = {
-            {"minecraft:zombie", "6", "2", "0", "1"},
-            {"minecraft:husk", "7", "3", "0", "1"},
-            {"minecraft:spider", "6", "2", "0", "1"},
-            {"minecraft:wolf", "5", "2", "0", "1"},
-        };
+        // Fallback pool for biomes with no hostile entries (shouldn't happen
+        // in practice but guards against null biomes / trial chamber biomes).
+        com.crackedgames.craftics.level.MobPoolEntry[] hostilePool = (biome != null && biome.hostileMobs != null && biome.hostileMobs.length > 0)
+            ? biome.hostileMobs
+            : new com.crackedgames.craftics.level.MobPoolEntry[] {
+                new com.crackedgames.craftics.level.MobPoolEntry("minecraft:zombie", 1, 6, 2, 0, 1, false),
+                new com.crackedgames.craftics.level.MobPoolEntry("minecraft:spider", 1, 6, 2, 0, 1, false),
+            };
 
         for (int i = 0; i < enemyCount; i++) {
-            String[] mob = ambushMobs[rng.nextInt(ambushMobs.length)];
+            com.crackedgames.craftics.level.MobPoolEntry mob = hostilePool[rng.nextInt(hostilePool.length)];
             GridPos pos = findSpawnPos(8, 8, used, rng);
             if (pos == null) continue;
             used.add(pos);
-            int hp = (int)(Integer.parseInt(mob[1]) * diffMultiplier);
-            int atk = (int)(Integer.parseInt(mob[2]) * diffMultiplier);
-            spawns.add(new LevelDefinition.EnemySpawn(mob[0], pos, hp, atk,
-                Integer.parseInt(mob[3]), Integer.parseInt(mob[4])));
+            int hp = (int)((mob.baseHp() + hpBonus) * ngMult);
+            int atk = (int)((mob.baseAttack() + atkBonus) * ngMult);
+            spawns.add(new LevelDefinition.EnemySpawn(mob.entityTypeId(), pos, hp, atk,
+                mob.baseDefense(), mob.range()));
         }
 
         final String resolvedArenaBiomeId = (arenaBiomeId == null || arenaBiomeId.isBlank())

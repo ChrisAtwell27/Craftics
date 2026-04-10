@@ -577,18 +577,33 @@ public class ArenaBuilder {
 
         if (diamondPos == null || emeraldPos == null) {
             CrafticsMod.LOGGER.warn("Structure {} missing DIAMOND/EMERALD corner markers. Falling back to default overlay.", sourceName);
-            overlayArenaTiles(world, ox, oy, oz, w, h, tiles);
+            int scannedY = scanSchematicFloorY(world, placeX, placeY, placeZ, sizeX, sizeY, sizeZ, ox, oz, w, h);
+            overlayArenaTiles(world, ox, scannedY, oz, w, h, tiles);
             return true;
         }
 
-        if (diamondPos.getY() != emeraldPos.getY()) {
-            CrafticsMod.LOGGER.warn("Structure {} has corner markers on different Y levels: diamond={}, emerald={}. Falling back to default overlay.",
-                sourceName, diamondPos.getY(), emeraldPos.getY());
-            overlayArenaTiles(world, ox, oy, oz, w, h, tiles);
+        // Tolerate small Y mismatches between the two corner markers — e.g. one
+        // accidentally placed on a recessed step or sunken corner. Use the
+        // HIGHER of the two as the arena floor: the floor is whatever the
+        // player actually stands on, and any stray marker that slipped a
+        // block down into the foundation should not drag the playfield below
+        // the intended surface.
+        int diamondY = diamondPos.getY();
+        int emeraldY = emeraldPos.getY();
+        int yDiff = Math.abs(diamondY - emeraldY);
+        if (yDiff > 3) {
+            CrafticsMod.LOGGER.warn("Structure {} has corner markers more than 3 blocks apart on Y: diamond={}, emerald={}. Falling back to default overlay.",
+                sourceName, diamondY, emeraldY);
+            int scannedY = scanSchematicFloorY(world, placeX, placeY, placeZ, sizeX, sizeY, sizeZ, ox, oz, w, h);
+            overlayArenaTiles(world, ox, scannedY, oz, w, h, tiles);
             return true;
         }
+        if (yDiff > 0) {
+            CrafticsMod.LOGGER.info("Structure {} has corner markers {} block(s) apart on Y (diamond={}, emerald={}); using higher Y as arena floor.",
+                sourceName, yDiff, diamondY, emeraldY);
+        }
 
-        int arenaFloorY = diamondPos.getY();
+        int arenaFloorY = Math.max(diamondY, emeraldY);
 
         int borderMinX = Math.min(diamondPos.getX(), emeraldPos.getX());
         int borderMinZ = Math.min(diamondPos.getZ(), emeraldPos.getZ());
@@ -671,9 +686,24 @@ public class ArenaBuilder {
                         continue;
                     }
 
-                    // Keep intentional schematic voids at floor level
+                    // Air at floor Y: only preserve it when the block below is
+                    // safe (air or a walkable solid). If the schematic has a
+                    // hazard (lava / liquid) directly under an air gap in the
+                    // playable area, treat it as an accidental hole and paint
+                    // the floor block there — otherwise the post-scan would
+                    // classify this tile as VOID and the player would fall
+                    // through into whatever horrors live beneath the arena.
                     if (world.getBlockState(floorPos).isAir()) {
-                        continue;
+                        BlockPos belowPos = new BlockPos(worldX, arenaFloorY - 1, worldZ);
+                        BlockState belowState = world.getBlockState(belowPos);
+                        boolean belowIsHazard = !belowState.getFluidState().isEmpty()
+                            || belowState.isOf(Blocks.LAVA)
+                            || belowState.isOf(Blocks.MAGMA_BLOCK);
+                        if (!belowIsHazard) {
+                            continue; // genuine cliff/pit — leave it alone
+                        }
+                        // Patch the hole so the tile scan doesn't see it as VOID
+                        set(world, worldX, arenaFloorY - 1, worldZ, Blocks.STONE);
                     }
 
                     world.setBlockState(floorPos,
@@ -737,6 +767,53 @@ public class ArenaBuilder {
         }
 
         return true;
+    }
+
+    /**
+     * When corner markers are missing or invalid, scan the placed schematic to
+     * find the Y level that looks like a floor — the first layer above
+     * {@code placeY} where most columns in the arena footprint have a solid
+     * block with open space above it. Falls back to {@code oy} if nothing
+     * suitable is found so the caller's default behavior is unchanged.
+     */
+    private static int scanSchematicFloorY(ServerWorld world,
+                                            int placeX, int placeY, int placeZ,
+                                            int sizeX, int sizeY, int sizeZ,
+                                            int ox, int oz, int w, int h) {
+        int overlapMinX = Math.max(placeX, ox);
+        int overlapMaxX = Math.min(placeX + sizeX - 1, ox + w - 1);
+        int overlapMinZ = Math.max(placeZ, oz);
+        int overlapMaxZ = Math.min(placeZ + sizeZ - 1, oz + h - 1);
+        if (overlapMaxX < overlapMinX || overlapMaxZ < overlapMinZ) return placeY;
+
+        int columnCount = (overlapMaxX - overlapMinX + 1) * (overlapMaxZ - overlapMinZ + 1);
+        if (columnCount <= 0) return placeY;
+
+        int bestY = placeY;
+        int bestScore = -1;
+        int maxY = placeY + sizeY - 2;
+        for (int y = placeY; y <= maxY; y++) {
+            int score = 0;
+            for (int x = overlapMinX; x <= overlapMaxX; x++) {
+                for (int z = overlapMinZ; z <= overlapMaxZ; z++) {
+                    BlockState floor = world.getBlockState(new BlockPos(x, y, z));
+                    BlockState above = world.getBlockState(new BlockPos(x, y + 1, z));
+                    // "Floor-ish" = solid block with air / non-solid above
+                    if (!floor.isAir() && floor.isSolidBlock(world, new BlockPos(x, y, z))
+                            && (above.isAir() || !above.isSolidBlock(world, new BlockPos(x, y + 1, z)))) {
+                        score++;
+                    }
+                }
+            }
+            // Require at least half the columns to agree before accepting this Y,
+            // and prefer the LOWEST qualifying layer (gameplay floor, not a roof).
+            if (score * 2 >= columnCount && score > bestScore) {
+                bestScore = score;
+                bestY = y + 1; // tiles paint at the level above the solid block
+                break;
+            }
+        }
+        return bestY;
     }
 
     // Fallback tile overlay when marker blocks are missing
@@ -1109,6 +1186,8 @@ public class ArenaBuilder {
             case CAVE -> Blocks.COBBLESTONE_WALL;
             case DEEP_DARK -> Blocks.DEEPSLATE_BRICK_WALL;
             case NETHER -> Blocks.NETHER_BRICK_FENCE;
+            case CRIMSON_FOREST -> Blocks.CRIMSON_FENCE;
+            case WARPED_FOREST -> Blocks.WARPED_FENCE;
             case END -> Blocks.PURPUR_PILLAR;
         };
     }
@@ -1117,6 +1196,8 @@ public class ArenaBuilder {
         return switch (style) {
             case PLAINS, FOREST, MOUNTAIN, DESERT, CAVE -> Blocks.LANTERN;
             case SNOWY, DEEP_DARK, NETHER -> Blocks.SOUL_LANTERN;
+            case CRIMSON_FOREST -> Blocks.SHROOMLIGHT;
+            case WARPED_FOREST -> Blocks.SOUL_LANTERN;
             case RIVER -> Blocks.SEA_LANTERN;
             case JUNGLE -> Blocks.SHROOMLIGHT;
             case END -> Blocks.END_ROD;
@@ -1137,6 +1218,9 @@ public class ArenaBuilder {
             case DESERT -> placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.CACTUS, 1, 3, rng);
             case SNOWY -> placePowderSnowPatch(world, ox, oy, oz, w, h, rng);
             case CAVE, DEEP_DARK -> placePitObstacles(world, ox, oy, oz, w, h, 0, 7, rng);
+            case NETHER -> placeFloorHazards(world, ox, oy, oz, w, h, Blocks.LAVA, 2, 5, rng);
+            case CRIMSON_FOREST -> placeFallenNetherLogs(world, ox, oy, oz, w, h, Blocks.CRIMSON_STEM, rng);
+            case WARPED_FOREST -> placeFallenNetherLogs(world, ox, oy, oz, w, h, Blocks.WARPED_STEM, rng);
             default -> {} // no random obstacles for other biomes
         }
     }
@@ -1183,6 +1267,53 @@ public class ArenaBuilder {
                 if (!valid || positions.size() != length) continue;
 
                 // Place the log
+                for (int[] p : positions) {
+                    world.setBlockState(new BlockPos(ox + p[0], oy + 1, oz + p[1]), logState, SET_FLAGS);
+                    used.add(packPos(p[0], p[1]));
+                }
+                break;
+            }
+        }
+    }
+
+    /** Place 1-2 fallen sideways nether stems (2-4 blocks long) on the arena floor. */
+    private static void placeFallenNetherLogs(ServerWorld world, int ox, int oy, int oz,
+                                                int w, int h, Block logBlock, Random rng) {
+        int count = 1 + rng.nextInt(2); // 1-2 logs
+
+        BlockState logX = logBlock.getDefaultState()
+            .with(net.minecraft.state.property.Properties.AXIS, net.minecraft.util.math.Direction.Axis.X);
+        BlockState logZ = logBlock.getDefaultState()
+            .with(net.minecraft.state.property.Properties.AXIS, net.minecraft.util.math.Direction.Axis.Z);
+
+        java.util.Set<Long> used = new java.util.HashSet<>();
+
+        for (int i = 0; i < count; i++) {
+            int length = 2 + rng.nextInt(3); // 2-4
+            boolean alongX = rng.nextBoolean();
+            BlockState logState = alongX ? logX : logZ;
+
+            for (int attempt = 0; attempt < 20; attempt++) {
+                int sx = 2 + rng.nextInt(w - 4);
+                int sz = 2 + rng.nextInt(h - 4);
+
+                boolean valid = true;
+                List<int[]> positions = new ArrayList<>();
+                for (int seg = 0; seg < length; seg++) {
+                    int tx = alongX ? sx + seg : sx;
+                    int tz = alongX ? sz : sz + seg;
+                    if (tx < 2 || tx >= w - 2 || tz < 2 || tz >= h - 2) { valid = false; break; }
+                    if (used.contains(packPos(tx, tz))) { valid = false; break; }
+
+                    BlockPos floorPos = new BlockPos(ox + tx, oy, oz + tz);
+                    BlockPos abovePos = new BlockPos(ox + tx, oy + 1, oz + tz);
+                    BlockState floorState = world.getBlockState(floorPos);
+                    if (isAirLike(floorState) || !floorState.getFluidState().isEmpty()) { valid = false; break; }
+                    if (!world.getBlockState(abovePos).isAir()) { valid = false; break; }
+                    positions.add(new int[]{tx, tz});
+                }
+                if (!valid || positions.size() != length) continue;
+
                 for (int[] p : positions) {
                     world.setBlockState(new BlockPos(ox + p[0], oy + 1, oz + p[1]), logState, SET_FLAGS);
                     used.add(packPos(p[0], p[1]));

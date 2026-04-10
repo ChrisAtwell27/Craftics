@@ -96,9 +96,40 @@ public class CombatHudOverlay implements HudRenderCallback {
         int barW = 120;
         int barH = 10;
         int panelPad = 6;
-        int effectRowH = icons.isEmpty() ? 0 : 16;
+        int pillH = 11;
+        int pillSpacing = 2;
+        int rowSpacing = 2;
+
+        // Build each row as we go, wrapping pills to a new line when the current row
+        // overflows the panel width. This lets us always show the full effect name.
+        // We compute total height first so the panel background fits.
+        List<List<EffectRowItem>> rows = new ArrayList<>();
+        int availableWidth = barW;
+        if (!icons.isEmpty()) {
+            List<EffectRowItem> row = new ArrayList<>();
+            int rowW = 0;
+            for (EffectIcon icon : icons) {
+                String label = icon.fullName;
+                if (!icon.level.isEmpty()) label += " " + icon.level;
+                if (icon.turns > 0) label += " " + icon.turns + "t";
+                int pillW = client.textRenderer.getWidth(label) + 6;
+                if (rowW + pillW > availableWidth && !row.isEmpty()) {
+                    rows.add(row);
+                    row = new ArrayList<>();
+                    rowW = 0;
+                }
+                row.add(new EffectRowItem(icon, label, pillW));
+                rowW += pillW + pillSpacing;
+            }
+            if (!row.isEmpty()) rows.add(row);
+        }
+        int effectsBlockH = 0;
+        if (!rows.isEmpty()) {
+            effectsBlockH = 4 + rows.size() * pillH + (rows.size() - 1) * rowSpacing;
+        }
+
         int panelW = barW + panelPad * 2;
-        int panelH = panelPad + barH + (effectRowH > 0 ? 4 + effectRowH : 0) + panelPad;
+        int panelH = panelPad + barH + effectsBlockH + panelPad;
         int panelX = 8;
         int panelY = 6;
 
@@ -114,25 +145,27 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.drawTextWithShadow(client.textRenderer,
             Text.literal(hpText), barX + (barW - textW) / 2, barY + 1, 0xFFFFFFFF);
 
-        if (!icons.isEmpty()) {
-            int iconY = barY + barH + 4;
-            int iconX = barX;
-            for (EffectIcon icon : icons) {
-                int iconW = 12;
-                int bgColor = icon.isDebuff ? 0xCC882222 : 0xCC226622;
-                ctx.fill(iconX, iconY, iconX + iconW, iconY + iconW, bgColor);
-                ctx.drawTextWithShadow(client.textRenderer,
-                    Text.literal(icon.abbrev), iconX + 1, iconY + 2, icon.isDebuff ? 0xFFFF8888 : 0xFF88FF88);
-                if (icon.turns > 0) {
-                    String turns = String.valueOf(icon.turns);
-                    int tw = client.textRenderer.getWidth(turns);
+        if (!rows.isEmpty()) {
+            int rowY = barY + barH + 4;
+            for (List<EffectRowItem> row : rows) {
+                int pillX = barX;
+                for (EffectRowItem item : row) {
+                    int bgColor = item.icon.isDebuff ? 0xCC882222 : 0xCC226622;
+                    int borderColor = item.icon.isDebuff ? 0xFFCC5544 : 0xFF55CC55;
+                    int textColor = item.icon.isDebuff ? 0xFFFFCCCC : 0xFFCCFFCC;
+                    ctx.fill(pillX - 1, rowY - 1, pillX + item.width + 1, rowY + pillH, borderColor);
+                    ctx.fill(pillX, rowY, pillX + item.width, rowY + pillH - 1, bgColor);
                     ctx.drawTextWithShadow(client.textRenderer,
-                        Text.literal("\u00a77" + turns), iconX + iconW - tw, iconY + iconW - 8, 0xFFAAAAAA);
+                        Text.literal(item.label), pillX + 3, rowY + 2, textColor);
+                    pillX += item.width + pillSpacing;
                 }
-                iconX += iconW + 2;
+                rowY += pillH + rowSpacing;
             }
         }
     }
+
+    /** One pill in the effects row — precomputed width so we can wrap cleanly. */
+    private record EffectRowItem(EffectIcon icon, String label, int width) {}
 
     private void renderPartyHpList(DrawContext ctx, MinecraftClient client,
                                     java.util.List<CombatState.PartyMemberHp> members) {
@@ -338,7 +371,9 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         int hoveredId = CombatState.getHoveredEnemyId();
 
-        if (hoveredId != -1 && enemies.containsKey(hoveredId)) {
+        // Blindness hides enemy inspection entirely — no hover panel, no stat readout.
+        // The standard enemy roster (to the side) still shows below.
+        if (!CombatState.hasBlindness() && hoveredId != -1 && enemies.containsKey(hoveredId)) {
             renderInspectPanel(ctx, client, screenW, hoveredId, enemies.get(hoveredId),
                 types.getOrDefault(hoveredId, "minecraft:zombie"));
             return;
@@ -675,7 +710,8 @@ public class CombatHudOverlay implements HudRenderCallback {
 
     // ─── Effect Parsing ──────────────────────────────────────────────────
 
-    private record EffectIcon(String abbrev, int turns, boolean isDebuff) {}
+    /** One active combat effect shown under the HP bar. */
+    private record EffectIcon(String fullName, String level, int turns, boolean isDebuff) {}
 
     private static List<EffectIcon> parseEffects(String effects) {
         List<EffectIcon> icons = new ArrayList<>();
@@ -694,48 +730,26 @@ public class CombatHudOverlay implements HudRenderCallback {
                 name = name.substring(0, paren).trim();
             }
 
-            // Remove Roman numerals
-            name = name.replaceAll("\\s+[IVX]+$", "").trim();
+            // Split off the Roman numeral level suffix so we can render it small.
+            String level = "";
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\\s+([IVX]+)$").matcher(name);
+            if (m.find()) {
+                level = m.group(1);
+                name = name.substring(0, m.start()).trim();
+            }
 
             boolean isDebuff = name.equalsIgnoreCase("Poison") || name.equalsIgnoreCase("Wither")
                 || name.equalsIgnoreCase("Burning") || name.equalsIgnoreCase("Slowness")
                 || name.equalsIgnoreCase("Weakness") || name.equalsIgnoreCase("Blindness")
                 || name.equalsIgnoreCase("Darkness") || name.equalsIgnoreCase("Mining Fatigue")
-                || name.equalsIgnoreCase("Levitation") || name.equalsIgnoreCase("Hunger");
+                || name.equalsIgnoreCase("Levitation") || name.equalsIgnoreCase("Hunger")
+                || name.equalsIgnoreCase("Bleeding") || name.equalsIgnoreCase("Soaked")
+                || name.equalsIgnoreCase("Confusion");
 
-            String abbrev = getEffectAbbrev(name);
-            icons.add(new EffectIcon(abbrev, turns, isDebuff));
+            icons.add(new EffectIcon(name, level, turns, isDebuff));
         }
         return icons;
-    }
-
-    private static String getEffectAbbrev(String name) {
-        return switch (name.toLowerCase()) {
-            case "speed" -> "Spd";
-            case "poison" -> "Psn";
-            case "strength" -> "Str";
-            case "resistance" -> "Res";
-            case "regeneration" -> "Rgn";
-            case "fire resistance" -> "FR";
-            case "invisibility" -> "Inv";
-            case "wither" -> "Wth";
-            case "burning" -> "Brn";
-            case "slowness" -> "Slw";
-            case "weakness" -> "Wkn";
-            case "blindness" -> "Bln";
-            case "absorption" -> "Abs";
-            case "luck" -> "Lck";
-            case "slow falling" -> "SF";
-            case "haste" -> "Hst";
-            case "water breathing" -> "WB";
-            case "mining fatigue" -> "MF";
-            case "levitation" -> "Lev";
-            case "darkness" -> "Drk";
-            case "hunger" -> "Hgr";
-            case "jump boost" -> "Jmp";
-            case "night vision" -> "NV";
-            default -> name.length() >= 3 ? name.substring(0, 3) : name;
-        };
     }
 
     // ─── Stat Defaults ───────────────────────────────────────────────────

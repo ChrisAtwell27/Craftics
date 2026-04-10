@@ -5,7 +5,9 @@
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
 		"PlayerEntityMixin",
-		"SlimeEntityAccessor"
+		"ServerPlayNetworkHandlerMixin",
+		"SlimeEntityAccessor",
+		"SlimeEntitySplitMixin"
 	],
 	"client": [],
 	"injectors": {

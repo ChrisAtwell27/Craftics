@@ -12,16 +12,15 @@ import java.util.List;
 /**
  * Nether Wastes Boss — "The Molten King" (Magma Cube)
  *
- * Split mechanic: at 50% HP the boss dies and splits into 2 copies that retain
- * all boss abilities. Those copies split again at 50% HP into 4 total tiny bosses.
- * Generation 2 bosses do not split further.
+ * Split mechanic: at 50% HP the original boss dies and splits cleanly into 2
+ * smaller copies that retain all boss abilities. Each copy acts as an
+ * independent boss with its own state. The splits do NOT split further.
  *
- * Gen 0: 35HP / 8ATK / 2DEF / Size 3×3  →  splits into 2 × Gen 1
- * Gen 1: 20HP / 7ATK / 1DEF / Size 1×1  →  splits into 2 × Gen 2
- * Gen 2: 12HP / 6ATK / 0DEF / Size 1×1  →  no further splitting
+ * Gen 0: 4×4 footprint  →  splits into 2 × Gen 1 at 50% HP
+ * Gen 1: 2×2 footprint  →  no further splitting
  *
- * Abilities (all generations):
- * - Magma Eruption: Teleport-leap + 3×3 blast (8 dmg) + fire ring
+ * Abilities (both generations):
+ * - Magma Eruption: Teleport-leap + 3×3 blast + fire ring
  * - Lava Cage: Ring player with fire tiles
  * - Absorb: Merge with a nearby minion to heal
  * - Lava Creep (Phase 2): Arena shrinks via fire rings
@@ -29,7 +28,7 @@ import java.util.List;
  * Phase 2 — "Meltdown": Permanent fire tiles, arena shrink, faster cooldowns.
  */
 public class MoltenKingAI extends BossAI {
-    private final int generation; // 0 = original, 1 = first split, 2 = final split
+    private final int generation; // 0 = original, 1 = final split
     private static final String CD_CREEP = "lava_creep";
     private static final String CD_ERUPTION = "magma_eruption";
     private static final String CD_CAGE = "lava_cage";
@@ -39,19 +38,15 @@ public class MoltenKingAI extends BossAI {
     public MoltenKingAI() { this(0); }
     public MoltenKingAI(int generation) { this.generation = generation; }
 
-    @Override public int getGridSize() { return generation == 0 ? 3 : 1; }
+    @Override public int getGridSize() { return generation == 0 ? 4 : 2; }
 
-    /** Returns the AI key for spawned split copies. */
+    /** Returns the AI key for spawned split copies, or null if this generation doesn't split. */
     public String getNextGenAiKey() {
-        return switch (generation) {
-            case 0 -> "boss:nether_wastes_g1";
-            case 1 -> "boss:nether_wastes_g2";
-            default -> null; // gen 2 doesn't split
-        };
+        return generation == 0 ? "boss:nether_wastes_g1" : null;
     }
 
     /** Whether this generation can still split. */
-    public boolean canSplit() { return generation < 2; }
+    public boolean canSplit() { return generation == 0; }
 
     /** Get the generation number. */
     public int getGeneration() { return generation; }
@@ -67,15 +62,15 @@ public class MoltenKingAI extends BossAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        int eruptionDmg = switch (generation) { case 0 -> 8; case 1 -> 7; default -> 6; };
-        int cageDuration = isPhaseTwo() ? 0 : 2;
+        int eruptionDmg = generation == 0 ? 12 : 10;
+        int cageDuration = isPhaseTwo() ? 0 : 4;
 
         // Phase 2 mechanic: arena shrink every other round as a circular lava ring
         if (isPhaseTwo() && getTurnCounter() % 2 == 0 && !isOnCooldown(CD_CREEP)) {
             List<GridPos> creepRing = getCreepRingTiles(arena);
             if (!creepRing.isEmpty()) {
                 setCooldown(CD_CREEP, 2);
-                return new EnemyAction.CreateTerrain(creepRing, TileType.FIRE, 2);
+                return new EnemyAction.CreateTerrain(creepRing, TileType.FIRE, 0);
             }
         }
 
@@ -139,10 +134,11 @@ public class MoltenKingAI extends BossAI {
             return new EnemyAction.Idle();
         }
 
-        // Melee attack if adjacent
+        // Melee attack if adjacent — molten slam hits hard and pushes the player
+        // into whatever burning terrain the boss just left behind.
         if (dist <= 1) {
-            int meleeDmg = self.getAttackPower();
-            return new EnemyAction.AttackWithKnockback(meleeDmg, 1);
+            int meleeDmg = self.getAttackPower() + (isPhaseTwo() ? 3 : 2);
+            return new EnemyAction.AttackWithKnockback(meleeDmg, 2);
         }
 
         return meleeOrApproach(self, arena, playerPos, 0);

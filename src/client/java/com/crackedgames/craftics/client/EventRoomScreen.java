@@ -143,18 +143,29 @@ public class EventRoomScreen extends Screen {
     // Data format: "slotId:itemName:weapon:enchant|slotId:itemName:armor:trim|..."
     private void initEnchanter() {
         int cx = this.width / 2;
-        int startY = this.height / 2 + 10;
 
         if (eventData.isEmpty()) {
+            int emptyY = this.height / 2 + 10;
             this.addDrawableChild(ButtonWidget.builder(
                 Text.literal("§c✗ You have nothing to enchant..."),
                 b -> sendChoice(-1)
-            ).dimensions(cx - BTN_W / 2, startY, BTN_W, BTN_H).build());
+            ).dimensions(cx - BTN_W / 2, emptyY, BTN_W, BTN_H).build());
             return;
         }
 
         String[] entries = eventData.split("\\|");
         int count = Math.min(entries.length, 6);
+
+        // Anchor the button stack to the bottom so it never clips the screen
+        // edge regardless of how many items the player brought (1 weapon +
+        // up to 4 armor pieces + 1 decline = 6 buttons in the worst case).
+        int bottomMargin = 14;
+        int declineY = this.height - BTN_H - bottomMargin;
+        int startY = declineY - 6 - count * (BTN_H + BTN_GAP);
+        // Don't crawl above the header — keep at least the original top offset.
+        int minStartY = this.height / 2 - 20;
+        if (startY < minStartY) startY = minStartY;
+
         for (int i = 0; i < count; i++) {
             String[] parts = entries[i].split(":");
             if (parts.length < 3) continue;

@@ -145,13 +145,16 @@ public class WardenAI extends BossAI {
         int distToTarget = self.minDistanceTo(effectiveTarget);
         int distToPlayer = self.minDistanceTo(playerPos);
 
-        // Darkness Pulse
+        // Darkness Pulse — AoE around the player that blinds them. Telegraphed so the
+        // player sees it coming and can reposition out of the warning tiles.
         int darknessCooldown = isPhaseTwo() ? 2 : 4;
         if (!isOnCooldown(CD_DARKNESS)) {
             setCooldown(CD_DARKNESS, darknessCooldown);
+            int pulseRadius = isPhaseTwo() ? 3 : 2;
+            List<GridPos> pulseTiles = getAreaTiles(arena, playerPos, pulseRadius);
             return new EnemyAction.BossAbility("darkness_pulse",
-                new EnemyAction.ModifySelf("speed", 2, 1),
-                List.of(myPos));
+                new EnemyAction.AreaAttack(playerPos, pulseRadius, 2, "darkness_pulse"),
+                pulseTiles);
         }
 
         // Place Sculk Shrieker

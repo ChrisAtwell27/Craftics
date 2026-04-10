@@ -162,6 +162,11 @@ public class GridArena {
 
     public void setPlayerGridPos(GridPos pos) { this.playerGridPos = pos; }
 
+    // All alive player grid positions (populated before enemy AI decisions for multiplayer)
+    private java.util.List<GridPos> allPlayerGridPositions = new java.util.ArrayList<>();
+    public java.util.List<GridPos> getAllPlayerGridPositions() { return allPlayerGridPositions; }
+    public void setAllPlayerGridPositions(java.util.List<GridPos> positions) { this.allPlayerGridPositions = positions; }
+
     // Player held item context for AI decisions (e.g., cat + fish)
     private String playerHeldItemId = "";
     public String getPlayerHeldItemId() { return playerHeldItemId; }

@@ -84,7 +84,7 @@ public class AIRegistry {
         register("minecraft:magma_cube", new MagmaCubeAI());             // bounce over obstacles, fire trail, split
         register("minecraft:ghast", new GhastAI());                      // long-range fireball kiter
         register("minecraft:hoglin", new HoglinAI());                    // bull rush charge + knockback
-        register("minecraft:piglin", new PillagerAI());                  // crossbow ranged, retreats
+        register("minecraft:piglin", new PiglinAI());                    // melee or ranged based on weapon
         register("minecraft:piglin_brute", new VindicatorAI());          // rook-dash charger
         register("minecraft:blaze", new BlazeAI());                      // medium-range fire attacker
         register("minecraft:wither_skeleton", new WitherSkeletonAI());   // wither-strike, patrol, skull throw
@@ -119,7 +119,6 @@ public class AIRegistry {
         register("boss:deep_dark", new WardenAI());
         register("boss:nether_wastes", new MoltenKingAI(0));
         register("boss:nether_wastes_g1", new MoltenKingAI(1));
-        register("boss:nether_wastes_g2", new MoltenKingAI(2));
         register("boss:soul_sand_valley", new WailingRevenantAI());
         register("boss:crimson_forest", new BastionBruteAI());
         register("boss:warped_forest", new VoidWalkerAI());

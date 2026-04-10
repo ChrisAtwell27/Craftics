@@ -27,23 +27,6 @@ public class PlayerEntityMixin {
         }
     }
 
-    /**
-     * Suppress the Q / Ctrl+Q drop key during combat. We block at the
-     * dropSelectedItem level (rather than just dropItem) so the inventory
-     * is never emptied — vanilla calls removeStack BEFORE dropItem, which
-     * would otherwise destroy the held item even when the drop is cancelled.
-     */
-    @Inject(method = "dropSelectedItem", at = @At("HEAD"), cancellable = true)
-    private void craftics$blockSelectedItemDropDuringCombat(boolean entireStack, CallbackInfoReturnable<Boolean> cir) {
-        PlayerEntity player = (PlayerEntity) (Object) this;
-        if (player instanceof ServerPlayerEntity serverPlayer) {
-            var cm = com.crackedgames.craftics.combat.CombatManager.get(serverPlayer);
-            if (cm.isActive()) {
-                cir.setReturnValue(false);
-            }
-        }
-    }
-
     @Inject(method = "dropInventory", at = @At("HEAD"), cancellable = true)
     private void craftics$protectInventoryWithRecoveryCompass(CallbackInfo ci) {
         PlayerEntity player = (PlayerEntity) (Object) this;

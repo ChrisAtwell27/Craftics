@@ -251,8 +251,10 @@ public class CombatState {
     public static void setHoveredEnemyId(int id) { hoveredEnemyId = id; }
 
     /**
-     * Compute movement tiles for the currently hovered enemy.
-     * Uses manhattan distance with the enemy's speed stat (parsed from type metadata).
+     * Compute movement tiles for the currently hovered enemy. Parses the {@code mv=} tag
+     * from the enemy type metadata and dispatches to the matching pattern in
+     * {@link ClientGridHelper#getMovePatternTiles}, so each mob's hover preview reflects its
+     * actual AI (rook dash for vindicators, blink for endermites, teleport for endermen, etc.).
      */
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getHoveredEnemyMoveTiles() {
         java.util.Set<com.crackedgames.craftics.core.GridPos> result = new java.util.HashSet<>();
@@ -268,32 +270,27 @@ public class CombatState {
         }
         if (enemyPos == null) return result;
 
-        // Parse speed from enemy type metadata
+        // Parse speed and movement-style tags from enemy type metadata
         String typeData = enemyTypeMap.getOrDefault(hoveredEnemyId, "");
-        // Also check the HP-synced type map
         if (typeData.isEmpty()) {
             typeData = getEnemyTypeMap2().getOrDefault(hoveredEnemyId, "");
         }
         int speed = 1;
+        com.crackedgames.craftics.combat.MoveStyle style = com.crackedgames.craftics.combat.MoveStyle.WALK;
         for (String part : typeData.split(";")) {
             if (part.startsWith("spd=")) {
                 try { speed = Integer.parseInt(part.substring(4)); } catch (NumberFormatException ignored) {}
-                break;
+            } else if (part.startsWith("mv=")) {
+                style = com.crackedgames.craftics.combat.MoveStyle.fromTag(part.substring(3));
             }
         }
 
-        // Compute reachable tiles using manhattan distance
-        for (int dx = -speed; dx <= speed; dx++) {
-            for (int dz = -speed; dz <= speed; dz++) {
-                if (Math.abs(dx) + Math.abs(dz) > speed || (dx == 0 && dz == 0)) continue;
-                com.crackedgames.craftics.core.GridPos tile = new com.crackedgames.craftics.core.GridPos(
-                    enemyPos.x() + dx, enemyPos.z() + dz);
-                if (tile.x() >= 0 && tile.z() >= 0 && tile.x() < arenaWidth && tile.z() < arenaHeight) {
-                    result.add(tile);
-                }
-            }
-        }
-        return result;
+        // For pounce-style mobs (spider) the destination is determined by the player's position
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        com.crackedgames.craftics.core.GridPos playerPos =
+            ClientGridHelper.getPlayerGridPos(client);
+
+        return ClientGridHelper.getMovePatternTiles(client, enemyPos, speed, style, playerPos);
     }
 
     private static java.util.Map<Integer, String> getEnemyTypeMap2() { return enemyTypeMap; }
@@ -306,6 +303,64 @@ public class CombatState {
     private static int lastKnownEnemyCount = 0;
 
     public static String getPlayerEffects() { return playerEffects; }
+
+    /**
+     * Returns the current level (stack count) of the named combat effect on the player,
+     * or 0 if the effect is not active. Level I = 1, Level II = 2, etc. Parses the
+     * {@code CombatEffects.getDisplayString()} format: {@code "Name(turns) | Other II (3t)"}.
+     */
+    public static int getCombatEffectLevel(String effectName) {
+        if (playerEffects == null || playerEffects.isEmpty()) return 0;
+        for (String part : playerEffects.split(" \\| ")) {
+            int paren = part.indexOf('(');
+            String head = paren >= 0 ? part.substring(0, paren).trim() : part.trim();
+            // Split name from Roman numeral level suffix (if any).
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\\s+([IVX]+)$").matcher(head);
+            int level = 1;
+            String name = head;
+            if (m.find()) {
+                String roman = m.group(1);
+                name = head.substring(0, m.start()).trim();
+                level = romanToInt(roman);
+            }
+            if (name.equalsIgnoreCase(effectName)) return level;
+        }
+        return 0;
+    }
+
+    private static int romanToInt(String r) {
+        return switch (r) {
+            case "I" -> 1;
+            case "II" -> 2;
+            case "III" -> 3;
+            case "IV" -> 4;
+            case "V" -> 5;
+            case "VI" -> 6;
+            case "VII" -> 7;
+            case "VIII" -> 8;
+            case "IX" -> 9;
+            case "X" -> 10;
+            default -> 1;
+        };
+    }
+
+    public static boolean hasCombatEffect(String effectName) {
+        return getCombatEffectLevel(effectName) > 0;
+    }
+
+    /**
+     * Returns true if the player currently has the Blindness combat effect active.
+     * Used client-side to hide boss warning tiles, enemy movement previews and
+     * enemy stat tooltips — the player is literally blind.
+     */
+    public static boolean hasBlindness() { return hasCombatEffect("Blindness"); }
+    public static boolean hasPoison() { return hasCombatEffect("Poison"); }
+    public static boolean hasBurning() { return hasCombatEffect("Burning"); }
+
+    public static int getBlindnessLevel() { return getCombatEffectLevel("Blindness"); }
+    public static int getPoisonLevel() { return getCombatEffectLevel("Poison"); }
+    public static int getBurningLevel() { return getCombatEffectLevel("Burning"); }
     public static int getKillStreak() { return killStreak; }
     public static int getTotalDamageDealt() { return totalDamageDealt; }
     public static int getTotalDamageTaken() { return totalDamageTaken; }
@@ -452,7 +507,7 @@ public class CombatState {
     private static int playerLevel = 1;
     private static int unspentPoints = 0;
     private static int[] statPoints = new int[8]; // one per PlayerProgression.Stat ordinal
-    private static int[] affinityPoints = new int[8]; // one per PlayerProgression.Affinity ordinal (SLASHING,CLEAVING,BLUNT,RANGED,WATER,SPECIAL,PHYSICAL,PET)
+    private static int[] affinityPoints = new int[8]; // one per PlayerProgression.Affinity ordinal (SLASHING,CLEAVING,BLUNT,RANGED,WATER,SPECIAL,PET,PHYSICAL)
 
     public static void updateStats(int level, int unspent, String statData, String affinityData) {
         playerLevel = level;
