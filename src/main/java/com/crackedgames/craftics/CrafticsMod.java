@@ -93,6 +93,54 @@ public class CrafticsMod implements ModInitializer {
             return net.minecraft.util.ActionResult.PASS;
         });
 
+        // Trial keys: right-clicking during combat queues a guaranteed trial
+        // chamber (or ominous trial chamber) on the next level transition.
+        // Consumes one key per use. Outside combat the keys do nothing.
+        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+            if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
+                return net.minecraft.util.TypedActionResult.pass(player.getStackInHand(hand));
+            }
+            net.minecraft.item.ItemStack stack = player.getStackInHand(hand);
+            net.minecraft.item.Item item = stack.getItem();
+            String forced;
+            String label;
+            if (item == net.minecraft.item.Items.TRIAL_KEY) {
+                forced = "trial_chamber";
+                label = "Trial Chamber";
+            } else if (item == net.minecraft.item.Items.OMINOUS_TRIAL_KEY) {
+                forced = "ominous_trial";
+                label = "Ominous Trial Chamber";
+            } else {
+                return net.minecraft.util.TypedActionResult.pass(stack);
+            }
+
+            if (player instanceof net.minecraft.server.network.ServerPlayerEntity sp) {
+                var cm = com.crackedgames.craftics.combat.CombatManager.get(sp);
+                if (!cm.isActive()) {
+                    sp.sendMessage(net.minecraft.text.Text.literal(
+                        "\u00a7eThe " + (item == net.minecraft.item.Items.OMINOUS_TRIAL_KEY ? "ominous " : "")
+                            + "trial key hums faintly... use it during a fight to summon a trial chamber next."),
+                        true);
+                    return net.minecraft.util.TypedActionResult.pass(stack);
+                }
+                if (cm.getForcedNextEvent() != null) {
+                    sp.sendMessage(net.minecraft.text.Text.literal(
+                        "\u00a77A trial is already queued for the next transition."), true);
+                    return net.minecraft.util.TypedActionResult.fail(stack);
+                }
+                cm.setForcedNextEvent(forced);
+                stack.decrement(1);
+                sp.sendMessage(net.minecraft.text.Text.literal(
+                    "\u00a7d\u00a7l\u2728 " + label + " queued! \u00a7r\u00a7dIt will appear after this fight."),
+                    false);
+                sp.getWorld().playSound(null, sp.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.BLOCK_TRIAL_SPAWNER_OMINOUS_ACTIVATE,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+                return net.minecraft.util.TypedActionResult.success(stack, false);
+            }
+            return net.minecraft.util.TypedActionResult.pass(stack);
+        });
+
         // Clear static combat state between world loads (prevents leaking across saves in singleplayer)
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             CombatManager.clearAll();
@@ -385,6 +433,74 @@ public class CrafticsMod implements ModInitializer {
                 src.sendFeedback(() -> Text.literal("§aCombat state reset. Teleported to hub."), true);
                 return 1;
             }));
+
+            // /craftics rebuild_arenas [biome] — wipe and regenerate arena blocks,
+            // either all of them or just one biome's worth. Useful when a
+            // schematic change or world-edit has left the pre-built arenas in a
+            // broken state — the next combat will otherwise still scan the bad
+            // blocks. Corrupted arenas already auto-repair on fight entry, but
+            // this command lets an admin force a full sweep without waiting.
+            var rebuildArenasExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                ServerWorld overworld = src.getServer().getOverworld();
+                CrafticsSavedData data = CrafticsSavedData.get(overworld);
+                java.util.UUID uid = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
+                if (!data.hasPersonalWorld(uid)) {
+                    src.sendError(Text.literal("§cNo personal world found."));
+                    return 0;
+                }
+                // End any active combat so we're not scanning mid-fight.
+                CombatManager cm = CombatManager.get(cmdPlayer);
+                if (cm.isActive()) cm.endCombat();
+
+                String biomeFilter = null;
+                try {
+                    biomeFilter = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "biome");
+                } catch (IllegalArgumentException ignored) {}
+
+                final String filter = biomeFilter;
+                src.sendFeedback(() -> Text.literal(
+                    "§eRebuilding arenas" + (filter != null ? " for biome §6" + filter : "") + "... (this may take a few seconds)"), true);
+
+                int count = com.crackedgames.craftics.level.ArenaPreGenerator
+                    .regenerate(overworld, uid, filter);
+                final int finalCount = count;
+                src.sendFeedback(() -> Text.literal(
+                    "§a✓ Rebuilt §e" + finalCount + "§a arena" + (finalCount == 1 ? "" : "s") + "."), true);
+                return 1;
+            };
+
+            var rebuildArenasNode = CommandManager.literal("rebuild_arenas")
+                .requires(src -> src.hasPermissionLevel(2))
+                .executes(rebuildArenasExec);
+
+            // Register a literal child per biome so tab-completion suggests valid ids.
+            for (var biome : com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes()) {
+                rebuildArenasNode.then(CommandManager.literal(biome.biomeId).executes(ctx -> {
+                    ServerCommandSource src = ctx.getSource();
+                    ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                    ServerWorld overworld = src.getServer().getOverworld();
+                    CrafticsSavedData data = CrafticsSavedData.get(overworld);
+                    java.util.UUID uid = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
+                    if (!data.hasPersonalWorld(uid)) {
+                        src.sendError(Text.literal("§cNo personal world found."));
+                        return 0;
+                    }
+                    CombatManager cm = CombatManager.get(cmdPlayer);
+                    if (cm.isActive()) cm.endCombat();
+                    src.sendFeedback(() -> Text.literal(
+                        "§eRebuilding §6" + biome.biomeId + "§e arenas..."), true);
+                    int count = com.crackedgames.craftics.level.ArenaPreGenerator
+                        .regenerate(overworld, uid, biome.biomeId);
+                    final int finalCount = count;
+                    src.sendFeedback(() -> Text.literal(
+                        "§a✓ Rebuilt §e" + finalCount + "§a " + biome.biomeId + " arena"
+                            + (finalCount == 1 ? "" : "s") + "."), true);
+                    return 1;
+                }));
+            }
+            root.then(rebuildArenasNode);
 
             // /craftics reset_biomes — reset current biome level progress back to level 1
             root.then(CommandManager.literal("reset_biomes").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
@@ -821,7 +937,8 @@ public class CrafticsMod implements ModInitializer {
             // /home and /craftics home — teleport to personal hub
             var shortcutHomeCmd = (com.mojang.brigadier.Command<ServerCommandSource>) (ctx -> {
                 ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-                ServerWorld overworld = player.getServerWorld();
+                // Always operate against the overworld — personal hubs only exist there.
+                ServerWorld overworld = player.getServer().getOverworld();
                 CrafticsSavedData data = CrafticsSavedData.get(overworld);
 
                 // Check effective world owner (party leader's world if in a party)
@@ -867,7 +984,11 @@ public class CrafticsMod implements ModInitializer {
                         }
                     }
 
-                    homePlayer.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+                    // Safety net: if the hub floor is missing (build failed in the past,
+                    // chunks were wiped, etc.), rebuild it so we never teleport into void.
+                    ensureHubExists(homeWorld, hub);
+
+                    teleportToHub(homePlayer, homeWorld, hub);
                     homePlayer.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
                     homePlayer.sendMessage(Text.literal("\u00a7aTeleported home."), false);
                     ServerPlayNetworking.send(homePlayer,
@@ -956,7 +1077,7 @@ public class CrafticsMod implements ModInitializer {
         // /craftics world home — teleport to personal hub
         worldNode.then(CommandManager.literal("home").executes(ctx -> {
             ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-            ServerWorld overworld = player.getServerWorld();
+            ServerWorld overworld = player.getServer().getOverworld();
             CrafticsSavedData data = CrafticsSavedData.get(overworld);
 
             if (!data.hasPersonalWorld(player.getUuid())) {
@@ -970,7 +1091,8 @@ public class CrafticsMod implements ModInitializer {
             if (cm.isActive()) cm.endCombat();
 
             net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(player.getUuid());
-            player.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+            ensureHubExists(overworld, hub);
+            teleportToHub(player, overworld, hub);
             player.changeGameMode(GameMode.SURVIVAL);
             ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to your personal hub."), false);
             return 1;
@@ -1261,6 +1383,37 @@ public class CrafticsMod implements ModInitializer {
         stack.set(net.minecraft.component.DataComponentTypes.POTION_CONTENTS,
             new net.minecraft.component.type.PotionContentsComponent(potion));
         player.giveItemStack(stack);
+    }
+
+    /**
+     * Verify the personal hub has a solid floor below the teleport target. If not
+     * (build never ran, chunks were wiped, saved data out of sync with actual blocks),
+     * rebuild the hub at the given center so /home never drops a player into the void.
+     */
+    private static void ensureHubExists(ServerWorld world, net.minecraft.util.math.BlockPos hubCenter) {
+        net.minecraft.util.math.BlockPos floor = hubCenter.down();
+        net.minecraft.block.BlockState floorState = world.getBlockState(floor);
+        if (floorState.isAir() || !floorState.isSolidBlock(world, floor)) {
+            LOGGER.warn("Personal hub at {} is missing its floor — rebuilding", hubCenter);
+            HubRoomBuilder.build(world, hubCenter);
+        }
+    }
+
+    /**
+     * Teleport a player to their personal hub, switching dimension if they are not
+     * already in the overworld (hubs only exist in the overworld).
+     */
+    private static void teleportToHub(ServerPlayerEntity player, ServerWorld overworld,
+                                       net.minecraft.util.math.BlockPos hub) {
+        double x = hub.getX() + 0.5;
+        double y = hub.getY();
+        double z = hub.getZ() + 0.5;
+        if (player.getServerWorld() != overworld) {
+            player.teleport(overworld, x, y, z,
+                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
+        } else {
+            player.requestTeleport(x, y, z);
+        }
     }
 
     /**

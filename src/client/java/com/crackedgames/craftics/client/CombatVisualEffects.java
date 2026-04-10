@@ -205,6 +205,32 @@ public class CombatVisualEffects {
     }
 
     public static void render(DrawContext ctx, MinecraftClient client, int screenW, int screenH) {
+        // Status-effect vignettes. Rendered first so the flash/death overlays draw on top.
+        // These are purely client-side and only show for the player with the effect —
+        // each client reads its own CombatState which reflects only that player's effects.
+        // Depth scales with effect level so stacking the effect visibly encroaches further
+        // into the screen.
+        if (CombatState.isInCombat()) {
+            int blind = CombatState.getBlindnessLevel();
+            if (blind > 0) {
+                drawVignette(ctx, screenW, screenH, 0x000000,
+                    Math.min(255, 220 + blind * 8),
+                    scaledDepth(0.55f, blind, 0.12f, 0.9f));
+            }
+            int poison = CombatState.getPoisonLevel();
+            if (poison > 0) {
+                drawVignette(ctx, screenW, screenH, 0x33AA33,
+                    Math.min(220, 150 + poison * 18),
+                    scaledDepth(0.32f, poison, 0.10f, 0.75f));
+            }
+            int burning = CombatState.getBurningLevel();
+            if (burning > 0) {
+                drawVignette(ctx, screenW, screenH, 0xCC3311,
+                    Math.min(230, 170 + burning * 16),
+                    scaledDepth(0.34f, burning, 0.10f, 0.78f));
+            }
+        }
+
         if (screenFlashTicks > 0) {
             float alpha = (float) screenFlashTicks / 8.0f;
             int baseAlpha = (screenFlashColor >> 24) & 0xFF;
@@ -265,6 +291,53 @@ public class CombatVisualEffects {
                     Text.literal("\u00a7l\u00a76DOWNED"),
                     screenW / 2, screenH / 2 - 10, textColor);
             }
+        }
+    }
+
+    /**
+     * Scale a vignette's base depth by the effect level (stack count). Level 1 uses
+     * the base depth; each additional level adds {@code perLevel} fraction of screen
+     * up to {@code cap}. Used so stacking Poison II, III, etc. visibly encroaches
+     * further into the view.
+     */
+    private static float scaledDepth(float base, int level, float perLevel, float cap) {
+        float depth = base + Math.max(0, level - 1) * perLevel;
+        return Math.min(cap, depth);
+    }
+
+    /**
+     * Draw a rectangular vignette by layering nested frame slices with a quadratic
+     * alpha falloff from the edges toward the centre. No texture required.
+     *
+     * @param rgb           The vignette colour as 0xRRGGBB.
+     * @param maxAlpha      Peak alpha at the outermost pixel (0–255).
+     * @param depthFraction Fraction of the shortest screen side the vignette reaches
+     *                      before fully fading out. 0.35–0.6 looks natural.
+     */
+    private static void drawVignette(DrawContext ctx, int screenW, int screenH,
+                                     int rgb, int maxAlpha, float depthFraction) {
+        int shortSide = Math.min(screenW, screenH);
+        int bandDepth = Math.max(20, (int)(shortSide * depthFraction));
+        int slices = 32;
+        int sliceW = Math.max(1, bandDepth / slices);
+        int actualSlices = bandDepth / sliceW;
+
+        for (int i = 0; i < actualSlices; i++) {
+            int inset = i * sliceW;
+            // Quadratic fade from 1.0 at the edge to 0.0 at depth
+            float t = (float) i / actualSlices;
+            float fade = (1.0f - t) * (1.0f - t);
+            int alpha = (int)(maxAlpha * fade);
+            if (alpha <= 0) continue;
+            int color = (alpha << 24) | (rgb & 0xFFFFFF);
+            // Top band
+            ctx.fill(inset, inset, screenW - inset, inset + sliceW, color);
+            // Bottom band
+            ctx.fill(inset, screenH - inset - sliceW, screenW - inset, screenH - inset, color);
+            // Left band (exclude corners already covered by top/bottom)
+            ctx.fill(inset, inset + sliceW, inset + sliceW, screenH - inset - sliceW, color);
+            // Right band (exclude corners)
+            ctx.fill(screenW - inset - sliceW, inset + sliceW, screenW - inset, screenH - inset - sliceW, color);
         }
     }
 

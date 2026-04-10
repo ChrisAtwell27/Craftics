@@ -225,7 +225,12 @@ public class Pathfinding {
 
     /** Overload with hasBoat and ignoreObstacles for Pathfinder set bonus. */
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps, boolean hasBoat, boolean ignoreObstacles) {
-        return getReachableTiles(arena, from, maxSteps, 1, null, hasBoat, ignoreObstacles);
+        return getReachableTiles(arena, from, maxSteps, 1, null, hasBoat, ignoreObstacles, false);
+    }
+
+    /** Overload with hasBoat, ignoreObstacles, and ignoreHazardCost for player movement highlights. */
+    public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps, boolean hasBoat, boolean ignoreObstacles, boolean ignoreHazardCost) {
+        return getReachableTiles(arena, from, maxSteps, 1, null, hasBoat, ignoreObstacles, ignoreHazardCost);
     }
 
     /**
@@ -240,11 +245,16 @@ public class Pathfinding {
 
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
                                                    int entitySize, CombatEntity self, boolean hasBoat) {
-        return getReachableTiles(arena, from, maxSteps, entitySize, self, hasBoat, false);
+        return getReachableTiles(arena, from, maxSteps, entitySize, self, hasBoat, false, false);
     }
 
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
                                                    int entitySize, CombatEntity self, boolean hasBoat, boolean ignoreObstacles) {
+        return getReachableTiles(arena, from, maxSteps, entitySize, self, hasBoat, ignoreObstacles, false);
+    }
+
+    public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
+                                                   int entitySize, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean ignoreHazardCost) {
         Set<GridPos> reachable = new HashSet<>();
         Map<GridPos, Integer> dist = new HashMap<>();
         Queue<GridPos> queue = new LinkedList<>();
@@ -267,9 +277,11 @@ public class Pathfinding {
 
                 // Hazard cost: use highest move cost across the footprint
                 int moveCost = 1;
-                for (GridPos ft : GridArena.getOccupiedTiles(neighbor, entitySize)) {
-                    var ft_tile = arena.getTile(ft);
-                    if (ft_tile != null) moveCost = Math.max(moveCost, ft_tile.getMoveCost());
+                if (!ignoreHazardCost) {
+                    for (GridPos ft : GridArena.getOccupiedTiles(neighbor, entitySize)) {
+                        var ft_tile = arena.getTile(ft);
+                        if (ft_tile != null) moveCost = Math.max(moveCost, ft_tile.getMoveCost());
+                    }
                 }
                 int newDist = currentDist + moveCost;
                 if (newDist > maxSteps) continue;

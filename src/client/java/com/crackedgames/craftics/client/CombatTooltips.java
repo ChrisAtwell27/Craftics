@@ -433,50 +433,82 @@ public class CombatTooltips implements ItemTooltipCallback {
         };
     }
 
+    /**
+     * Generate the stat line dynamically from WeaponRegistry so tooltips always
+     * reflect the current config values (DMG, Range, AP, Type, break chance).
+     */
+    private static String weaponStatLine(Item item) {
+        var entry = com.crackedgames.craftics.api.registry.WeaponRegistry.getOrNull(item);
+        if (entry == null) return null;
+        int dmg = entry.attackPower().getAsInt();
+        int ap = entry.apCost();
+        int range = entry.range();
+        var type = entry.damageType();
+        double breakChance = entry.breakChance();
+        StringBuilder sb = new StringBuilder();
+        sb.append("\u00a7c").append(dmg).append(" DMG \u00a77| ");
+        if (entry.isRanged()) sb.append("\u00a7b");
+        if (range == com.crackedgames.craftics.combat.PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
+            sb.append("Rook Range");
+        } else {
+            sb.append("Range ").append(range);
+        }
+        sb.append(" \u00a77| ");
+        if (ap > 1) sb.append("\u00a7c");
+        sb.append(ap).append(" AP \u00a77| ").append(type.color).append(type.displayName);
+        if (breakChance > 0) {
+            sb.append("\n");
+            if (breakChance >= 0.05) sb.append("\u00a7c");
+            else sb.append("\u00a7e");
+            sb.append("\u26A0 ").append(Math.round(breakChance * 100)).append("% break chance per attack");
+        }
+        return sb.toString();
+    }
+
     private static String getTooltipFor(Item item) {
         // ── Weapons ──
-        if (item == Items.WOODEN_SWORD) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
-        if (item == Items.STONE_SWORD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
-        if (item == Items.IRON_SWORD) return "\u00a7c5 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
-        if (item == Items.DIAMOND_SWORD) return "\u00a7c6 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep + \u00a7630% Crit \u00a77(double damage)";
-        if (item == Items.GOLDEN_SWORD) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
-        if (item == Items.NETHERITE_SWORD) return "\u00a7c7 DMG \u00a77| Range 1 | 1 AP | \u00a7cSlashing\n\u00a7e\u2694 Sweep + \u00a74Execute \u00a77(3x if target <30% HP)";
+        if (item == Items.WOODEN_SWORD) return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
+        if (item == Items.STONE_SWORD) return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
+        if (item == Items.IRON_SWORD) return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
+        if (item == Items.DIAMOND_SWORD) return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep + \u00a7630% Crit \u00a77(double damage)";
+        if (item == Items.GOLDEN_SWORD) return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
+        if (item == Items.NETHERITE_SWORD) return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep + \u00a74Execute \u00a77(3x if target <30% HP)";
 
         // Axes
-        if (item == Items.WOODEN_AXE) return "\u00a7c4 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
-        if (item == Items.STONE_AXE) return "\u00a7c5 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
-        if (item == Items.IRON_AXE) return "\u00a7c6 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
-        if (item == Items.DIAMOND_AXE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
-        if (item == Items.GOLDEN_AXE) return "\u00a7c4 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
-        if (item == Items.NETHERITE_AXE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a76Cleaving\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.WOODEN_AXE) return weaponStatLine(item) + "\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.STONE_AXE) return weaponStatLine(item) + "\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.IRON_AXE) return weaponStatLine(item) + "\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.DIAMOND_AXE) return weaponStatLine(item) + "\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.GOLDEN_AXE) return weaponStatLine(item) + "\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+        if (item == Items.NETHERITE_AXE) return weaponStatLine(item) + "\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
 
         // Mace
-        if (item == Items.MACE) return "\u00a7c7 DMG \u00a77| Range 1 | \u00a7c2 AP \u00a77| \u00a78Blunt\n\u00a76AoE: \u00a77Half damage to all in 3x3\n\u00a76Knockback: \u00a77Pushes target back\n\u00a7dDensity: \u00a77+AoE dmg | \u00a74Breach: \u00a77Armor pen | \u00a7bWind Burst: \u00a77+KB range";
-        if (item == Items.STICK) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a78\u2716 Stun: \u00a775% chance to stun target\n\u00a7c\u26A0 10% break chance per attack";
-        if (item == Items.BAMBOO) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a78\u2716 Stun: \u00a775% chance to stun target\n\u00a7c\u26A0 5% break chance per attack";
-        if (item == Items.BLAZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a76\u2716 Fire: \u00a77+1 fire dmg | \u00a78Stun: \u00a775% chance\n\u00a7e\u26A0 1% break chance per attack";
-        if (item == Items.BREEZE_ROD) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a78Blunt\n\u00a7b\u2716 Knockback: \u00a77Push back 1 | \u00a78Stun: \u00a775% chance\n\u00a7e\u26A0 1% break chance per attack";
+        if (item == Items.MACE) return weaponStatLine(item) + "\n\u00a76AoE: \u00a77Half damage to all in 3x3\n\u00a76Knockback: \u00a77Pushes target back\n\u00a7dDensity: \u00a77+AoE dmg | \u00a74Breach: \u00a77Armor pen | \u00a7bWind Burst: \u00a77+KB range";
+        if (item == Items.STICK) return weaponStatLine(item) + "\n\u00a78\u2716 Stun: \u00a775% chance to stun target";
+        if (item == Items.BAMBOO) return weaponStatLine(item) + "\n\u00a78\u2716 Stun: \u00a775% chance to stun target";
+        if (item == Items.BLAZE_ROD) return weaponStatLine(item) + "\n\u00a76\u2716 Fire: \u00a77+1 fire dmg | \u00a78Stun: \u00a775% chance";
+        if (item == Items.BREEZE_ROD) return weaponStatLine(item) + "\n\u00a7b\u2716 Knockback: \u00a77Push back 1 | \u00a78Stun: \u00a775% chance";
 
         // Hoes — Special type (low damage, effects/utility)
-        if (item == Items.WOODEN_HOE) return "\u00a7c1 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a77Weak but channels special energy";
-        if (item == Items.STONE_HOE) return "\u00a7c1 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a77Weak but channels special energy";
-        if (item == Items.IRON_HOE) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a7d\u2728 Special weapon: \u00a77Low damage, boosted by Special affinity";
-        if (item == Items.GOLDEN_HOE) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a7d\u2728 Special weapon: \u00a77Enchanted gold channels power";
-        if (item == Items.DIAMOND_HOE) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a7d\u2728 Special weapon: \u00a77Strong special conduit";
-        if (item == Items.NETHERITE_HOE) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7dSpecial\n\u00a7d\u2728 Special weapon: \u00a77Ultimate special conduit";
+        if (item == Items.WOODEN_HOE) return weaponStatLine(item) + "\n\u00a77Weak but channels special energy";
+        if (item == Items.STONE_HOE) return weaponStatLine(item) + "\n\u00a77Weak but channels special energy";
+        if (item == Items.IRON_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Low damage, boosted by Special affinity";
+        if (item == Items.GOLDEN_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Enchanted gold channels power";
+        if (item == Items.DIAMOND_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Strong special conduit";
+        if (item == Items.NETHERITE_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Ultimate special conduit";
 
         // Shovels — Pet type (boosted by Pet affinity)
-        if (item == Items.WOODEN_SHOVEL) return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Boosted by Pet affinity";
-        if (item == Items.STONE_SHOVEL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Solid companion blade";
-        if (item == Items.IRON_SHOVEL) return "\u00a7c4 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Reliable pet synergy";
-        if (item == Items.GOLDEN_SHOVEL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Golden beast bond";
-        if (item == Items.DIAMOND_SHOVEL) return "\u00a7c5 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Strong pet synergy";
-        if (item == Items.NETHERITE_SHOVEL) return "\u00a7c6 DMG \u00a77| Range 1 | 1 AP | \u00a7aPet\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Ultimate beastmaster blade";
+        if (item == Items.WOODEN_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Boosted by Pet affinity";
+        if (item == Items.STONE_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Solid companion blade";
+        if (item == Items.IRON_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Reliable pet synergy";
+        if (item == Items.GOLDEN_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Golden beast bond";
+        if (item == Items.DIAMOND_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Strong pet synergy";
+        if (item == Items.NETHERITE_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Ultimate beastmaster blade";
 
         // Ranged
-        if (item == Items.BOW) return "\u00a7c5 DMG \u00a77| \u00a7bRange 3 \u00a77| 1 AP | \u00a7bRanged\n\u00a77Consumes arrows. Tipped arrows apply effects.\n\u00a7dPower: \u00a77+1 DMG/lvl | \u00a76Flame: \u00a77Ignite | \u00a7eInfinity: \u00a77Free ammo";
-        if (item == Items.CROSSBOW) return "\u00a7c6 DMG \u00a77| \u00a7bRange 4 \u00a77| \u00a7c4 AP \u00a77| \u00a7bRanged\n\u00a7bPierce: \u00a77Bolt hits targets behind for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.";
-        if (item == Items.TRIDENT) return "\u00a7c8 DMG \u00a77| \u00a73Water\n\u00a77Melee (1 AP) when adjacent.\n\u00a77Throw (2 AP) in straight/diagonal lines.\n\u00a77Thrown trident lodges in ground \u2014 retrieve manually.\n\u00a7bLoyalty: \u00a77auto-returns | \u00a73Riptide: \u00a77dash | \u00a7eChanneling: \u00a77lightning";
+        if (item == Items.BOW) return weaponStatLine(item) + "\n\u00a77Consumes arrows. Tipped arrows apply effects.\n\u00a7dPower: \u00a77+1 DMG/lvl | \u00a76Flame: \u00a77Ignite | \u00a7eInfinity: \u00a77Free ammo";
+        if (item == Items.CROSSBOW) return weaponStatLine(item) + "\n\u00a7bPierce: \u00a77Bolt hits targets behind for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.";
+        if (item == Items.TRIDENT) return "\u00a7c" + com.crackedgames.craftics.api.registry.WeaponRegistry.getAttackPower(Items.TRIDENT) + " DMG \u00a77| \u00a73Water\n\u00a77Melee (1 AP) when adjacent.\n\u00a77Throw (2 AP) in straight/diagonal lines.\n\u00a77Thrown trident lodges in ground \u2014 retrieve manually.\n\u00a7bLoyalty: \u00a77auto-returns | \u00a73Riptide: \u00a77dash | \u00a7eChanneling: \u00a77lightning";
 
         // ── Food ──
         if (item == Items.APPLE) return "\u00a7a+2 HP \u00a77| 1 AP";
@@ -540,11 +572,11 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.HEART_OF_THE_SEA) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 4)\n\u00a7c5 DMG \u00a77| Radius 3 | \u00a73Water\n\u00a73Soaked IV \u00a77+ \u00a7dConfusion II";
 
         // ── Coral Weapons (Water-type melee) ──
-        if (item == Items.TUBE_CORAL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a73\u2716 Soaked: \u00a77-1 Speed, 2x lightning dmg (1 turn)\n\u00a7e\u26A0 1% break chance per attack";
-        if (item == Items.BRAIN_CORAL) return "\u00a7c5 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7d\u2716 Confuse: \u00a7740% chance enemy attacks allies\n\u00a7e\u26A0 1% break chance per attack";
-        if (item == Items.BUBBLE_CORAL) return "\u00a7c3 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7b\u2716 Knockback: \u00a77Bubble burst pushes enemy 1 tile\n\u00a7e\u26A0 1% break chance per attack";
-        if (item == Items.FIRE_CORAL) return "\u00a7c7 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a76\u2716 Searing: \u00a77+3 bonus DMG to burning enemies\n\u00a7e\u26A0 1% break chance per attack";
-        if (item == Items.HORN_CORAL) return "\u00a7c6 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a7e\u2716 Pierce: \u00a77Ignores 3 armor for 1 turn\n\u00a7e\u26A0 1% break chance per attack";
+        if (item == Items.TUBE_CORAL) return weaponStatLine(item) + "\n\u00a73\u2716 Soaked: \u00a77-1 Speed, 2x lightning dmg (1 turn)";
+        if (item == Items.BRAIN_CORAL) return weaponStatLine(item) + "\n\u00a7d\u2716 Confuse: \u00a7740% chance enemy attacks allies";
+        if (item == Items.BUBBLE_CORAL) return weaponStatLine(item) + "\n\u00a7b\u2716 Knockback: \u00a77Bubble burst pushes enemy 1 tile";
+        if (item == Items.FIRE_CORAL) return weaponStatLine(item) + "\n\u00a76\u2716 Searing: \u00a77+3 bonus DMG to burning enemies";
+        if (item == Items.HORN_CORAL) return weaponStatLine(item) + "\n\u00a7e\u2716 Pierce: \u00a77Ignores 3 armor for 1 turn";
         // Dead corals
         if (item == Items.DEAD_TUBE_CORAL || item == Items.DEAD_BRAIN_CORAL
             || item == Items.DEAD_BUBBLE_CORAL || item == Items.DEAD_FIRE_CORAL
@@ -552,12 +584,12 @@ public class CombatTooltips implements ItemTooltipCallback {
             || item == Items.DEAD_TUBE_CORAL_FAN || item == Items.DEAD_BRAIN_CORAL_FAN
             || item == Items.DEAD_BUBBLE_CORAL_FAN || item == Items.DEAD_FIRE_CORAL_FAN
             || item == Items.DEAD_HORN_CORAL_FAN)
-            return "\u00a7c2 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a77\u2716 Weakened: \u00a77Saps enemy ATK by 2 for 1 turn\n\u00a7c\u26A0 5% break chance per attack";
+            return weaponStatLine(item) + "\n\u00a77\u2716 Weakened: \u00a77Saps enemy ATK by 2 for 1 turn";
         // Coral fans
         if (item == Items.TUBE_CORAL_FAN || item == Items.BRAIN_CORAL_FAN
             || item == Items.BUBBLE_CORAL_FAN || item == Items.FIRE_CORAL_FAN
             || item == Items.HORN_CORAL_FAN)
-            return "\u00a7c1 DMG \u00a77| Range 1 | 1 AP | \u00a73Water\n\u00a73\u2716 Splash: \u00a77Hits all enemies adjacent to target\n\u00a7e\u26A0 3% break chance per attack";
+            return weaponStatLine(item) + "\n\u00a73\u2716 Splash: \u00a77Hits all enemies adjacent to target";
 
         // ── Utility Items ──
         if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+1 DEF when in offhand\n\u00a79Block: \u00a7725% chance to fully block an attack\n\u00a77No AP cost \u2014 equip in offhand slot";

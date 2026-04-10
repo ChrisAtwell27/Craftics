@@ -119,6 +119,7 @@ public final class VanillaWeapons {
                 CombatEntity pushTarget = lineTargets.get(i);
                 GridPos kbPos = pushTarget.getGridPos();
                 boolean hitWall = false;
+                boolean hitHazard = false;
                 for (int step = 0; step < pushDist; step++) {
                     GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
                     if (!arena.isInBounds(next) || arena.isOccupied(next)) {
@@ -126,23 +127,66 @@ public final class VanillaWeapons {
                         break;
                     }
                     var tile = arena.getTile(next);
-                    if (tile == null || !tile.isWalkable()) { hitWall = true; break; }
+                    if (tile == null) { hitWall = true; break; }
+                    if (tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) {
+                        hitWall = true;
+                        break;
+                    }
+                    // Hazard tiles: land ON them, then take consequences
+                    if (tile.getType() == com.crackedgames.craftics.core.TileType.VOID
+                        || tile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER
+                        || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA
+                        || tile.getType() == com.crackedgames.craftics.core.TileType.WATER) {
+                        if (pushTarget.isHazardImmune()) { hitWall = true; break; }
+                        kbPos = next;
+                        hitHazard = true;
+                        break;
+                    }
+                    if (!tile.isWalkable()) { hitWall = true; break; }
                     kbPos = next;
                 }
                 if (!kbPos.equals(pushTarget.getGridPos())) {
                     arena.moveEntity(pushTarget, kbPos);
                     if (pushTarget.getMobEntity() != null) {
                         var bp = arena.gridToBlockPos(kbPos);
-                        pushTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                        pushTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(kbPos), bp.getZ() + 0.5);
+                    }
+                    if (hitHazard) {
+                        var hazardTile = arena.getTile(kbPos);
+                        if (hazardTile != null) {
+                            switch (hazardTile.getType()) {
+                                case VOID -> {
+                                    pushTarget.takeDamage(pushTarget.getCurrentHp() + 100);
+                                    if (pushTarget != target) extraTargets.add(pushTarget);
+                                    messages.add("\u00a74" + pushTarget.getDisplayName() + " fell into the void!");
+                                }
+                                case DEEP_WATER -> {
+                                    pushTarget.takeDamage(pushTarget.getCurrentHp() + 100);
+                                    if (pushTarget != target) extraTargets.add(pushTarget);
+                                    messages.add("\u00a71" + pushTarget.getDisplayName() + " drowned in deep water!");
+                                }
+                                case LAVA -> {
+                                    int lavaDmg = pushTarget.takeDamage(10);
+                                    totalExtra += lavaDmg;
+                                    if (pushTarget != target) extraTargets.add(pushTarget);
+                                    messages.add("\u00a76" + pushTarget.getDisplayName() + " knocked into lava for " + lavaDmg + " damage!");
+                                }
+                                case WATER -> {
+                                    pushTarget.stackSoaked(2, 1);
+                                    messages.add("\u00a7b" + pushTarget.getDisplayName() + " splashes into water! Soaked!");
+                                }
+                                default -> {}
+                            }
+                        }
                     }
                 }
                 // Collision damage if hit wall/obstacle
-                if (hitWall) {
+                if (hitWall && !hitHazard) {
                     int cDmg = pushTarget.takeDamage(collisionDmg);
                     totalExtra += cDmg;
                     if (pushTarget != target) extraTargets.add(pushTarget);
                     messages.add("\u00a76\ud83d\udca8 " + pushTarget.getDisplayName() + " slammed into obstacle for " + cDmg + " collision damage!");
-                } else if (pushTarget != target) {
+                } else if (!hitHazard && pushTarget != target) {
                     extraTargets.add(pushTarget);
                     messages.add("\u00a76\ud83d\udca8 " + pushTarget.getDisplayName() + " pushed back " + pushDist + " tiles!");
                 }
@@ -171,11 +215,40 @@ public final class VanillaWeapons {
                     GridPos sweepKbPos = new GridPos(sweepTarget.getGridPos().x() + sdx, sweepTarget.getGridPos().z() + sdz);
                     if (arena.isInBounds(sweepKbPos) && !arena.isOccupied(sweepKbPos)) {
                         var tile = arena.getTile(sweepKbPos);
-                        if (tile != null && tile.isWalkable()) {
-                            arena.moveEntity(sweepTarget, sweepKbPos);
-                            if (sweepTarget.getMobEntity() != null) {
-                                var bp = arena.gridToBlockPos(sweepKbPos);
-                                sweepTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                        if (tile != null && tile.getType() != com.crackedgames.craftics.core.TileType.OBSTACLE) {
+                            boolean sweepHazard = tile.getType() == com.crackedgames.craftics.core.TileType.VOID
+                                || tile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER
+                                || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA
+                                || tile.getType() == com.crackedgames.craftics.core.TileType.WATER;
+                            if (sweepHazard && sweepTarget.isHazardImmune()) sweepHazard = false;
+                            if (tile.isWalkable() || sweepHazard) {
+                                arena.moveEntity(sweepTarget, sweepKbPos);
+                                if (sweepTarget.getMobEntity() != null) {
+                                    var bp = arena.gridToBlockPos(sweepKbPos);
+                                    sweepTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(sweepKbPos), bp.getZ() + 0.5);
+                                }
+                                if (sweepHazard) {
+                                    switch (tile.getType()) {
+                                        case VOID -> {
+                                            sweepTarget.takeDamage(sweepTarget.getCurrentHp() + 100);
+                                            messages.add("\u00a74" + sweepTarget.getDisplayName() + " fell into the void!");
+                                        }
+                                        case DEEP_WATER -> {
+                                            sweepTarget.takeDamage(sweepTarget.getCurrentHp() + 100);
+                                            messages.add("\u00a71" + sweepTarget.getDisplayName() + " drowned in deep water!");
+                                        }
+                                        case LAVA -> {
+                                            int lavaDmg = sweepTarget.takeDamage(10);
+                                            totalExtra += lavaDmg;
+                                            messages.add("\u00a76" + sweepTarget.getDisplayName() + " knocked into lava for " + lavaDmg + " damage!");
+                                        }
+                                        case WATER -> {
+                                            sweepTarget.stackSoaked(2, 1);
+                                            messages.add("\u00a7b" + sweepTarget.getDisplayName() + " splashes into water! Soaked!");
+                                        }
+                                        default -> {}
+                                    }
+                                }
                             }
                         }
                     }

@@ -1,6 +1,7 @@
 package com.crackedgames.craftics.client;
 
 import com.crackedgames.craftics.combat.DamageType;
+import com.crackedgames.craftics.combat.PlayerProgression;
 import com.crackedgames.craftics.combat.TrimEffects;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
@@ -171,7 +172,7 @@ public class DamageTypePanel {
             case SPECIAL  -> "SPECIAL_POWER";
             case PET      -> "ALLY_DAMAGE";
             case RANGED   -> "RANGED_POWER";
-            default       -> null;
+            case PHYSICAL -> null;
         };
         if (bonusKey != null) {
             bonus += trimBonuses.getOrDefault(bonusKey, 0);
@@ -189,20 +190,12 @@ public class DamageTypePanel {
             bonus += CombatState.getAddonBonus("MELEE_POWER");
         }
 
-        // Affinity points from level-up choices
-        int affinityOrdinal = switch (type) {
-            case SLASHING -> 0;
-            case CLEAVING -> 1;
-            case BLUNT -> 2;
-            case RANGED -> 3;
-            case WATER -> 4;
-            case SPECIAL -> 5;
-            case PHYSICAL -> 6;
-            case PET -> -1;
-        };
-        if (affinityOrdinal >= 0) {
+        // Affinity points from level-up choices (use Affinity enum ordinal, not hardcoded)
+        try {
+            int affinityOrdinal = PlayerProgression.Affinity.valueOf(type.name()).ordinal();
             bonus += CombatState.getAffinityPoints(affinityOrdinal);
-        }
+        } catch (IllegalArgumentException ignored) {}
+
 
         return bonus;
     }

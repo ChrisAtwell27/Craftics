@@ -112,7 +112,7 @@ public class ItemUseHandler {
 
     // Items that are "usable" in combat
     private static final Set<Item> THROWABLES = Set.of(
-        Items.SNOWBALL, Items.EGG, Items.ENDER_PEARL, Items.FIRE_CHARGE
+        Items.SNOWBALL, Items.EGG, Items.ENDER_PEARL, Items.FIRE_CHARGE, Items.WIND_CHARGE
     );
 
     public static boolean isFood(Item item) {
@@ -260,6 +260,8 @@ public class ItemUseHandler {
             return useSplashPotion(player, arena, targetTile, held);
         } else if (item == Items.FIRE_CHARGE) {
             return useFireCharge(player, arena, targetTile, held);
+        } else if (item == Items.WIND_CHARGE) {
+            return useWindCharge(player, arena, targetTile, held);
         } else if (item == Items.MILK_BUCKET) {
             return useMilkBucket(player, held);
         } else if (item == Items.TNT) {
@@ -773,6 +775,65 @@ public class ItemUseHandler {
             enemy.getMobEntity().setFireTicks(60);
         }
         return "§6Fire charge hit " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
+    }
+
+    // --- Wind Charge: 1 Special damage + 3-tile knockback away from the player ---
+    private static String useWindCharge(ServerPlayerEntity player, GridArena arena,
+                                         GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+
+        stack.decrement(1);
+        int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
+
+        // Push the enemy up to 3 tiles directly away from the player. Stops
+        // early on walls, obstacles, or other occupants; lands ON the final
+        // walkable tile in the push direction.
+        GridPos playerPos = arena.getPlayerGridPos();
+        GridPos enemyStart = enemy.getGridPos();
+        int dx = Integer.signum(enemyStart.x() - playerPos.x());
+        int dz = Integer.signum(enemyStart.z() - playerPos.z());
+        if (dx == 0 && dz == 0) { dx = 1; }
+
+        GridPos landing = enemyStart;
+        int pushed = 0;
+        for (int i = 1; i <= 3; i++) {
+            GridPos candidate = new GridPos(enemyStart.x() + dx * i, enemyStart.z() + dz * i);
+            if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) break;
+            GridTile tile = arena.getTile(candidate);
+            if (tile == null || !tile.isWalkable()) break;
+            landing = candidate;
+            pushed = i;
+        }
+
+        if (pushed > 0) {
+            arena.moveEntity(enemy, landing);
+            if (enemy.getMobEntity() != null) {
+                BlockPos bp = arena.gridToBlockPos(landing);
+                enemy.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+            }
+
+            // Wind burst particles along the push path
+            if (player.getEntityWorld() instanceof ServerWorld sw) {
+                BlockPos bp = arena.gridToBlockPos(landing);
+                sw.spawnParticles(net.minecraft.particle.ParticleTypes.GUST,
+                    bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
+                    6, 0.4, 0.4, 0.4, 0.01);
+                sw.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                    bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
+                    2, 0.2, 0.2, 0.2, 0.0);
+                sw.playSound(null, bp,
+                    net.minecraft.sound.SoundEvents.ENTITY_WIND_CHARGE_WIND_BURST.value(),
+                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+            }
+
+            return "§fWind charge! " + enemy.getDisplayName() + " took " + dealt
+                + " Special damage and was blown back " + pushed + " tile"
+                + (pushed == 1 ? "" : "s") + "!";
+        }
+        return "§fWind charge hit " + enemy.getDisplayName() + " for " + dealt
+            + " Special damage! (no room to push)";
     }
 
     // --- Milk Bucket: clears all status effects (good and bad) ---

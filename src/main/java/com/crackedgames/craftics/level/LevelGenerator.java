@@ -7,10 +7,38 @@ import net.minecraft.block.Block;
 import net.minecraft.item.ItemStack;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 public class LevelGenerator {
+
+    /**
+     * Whitelist of add types each boss level is allowed to spawn at the start
+     * of the fight. Each boss should only bring themed backup — e.g. the
+     * Molten King spawns with basic nether grunts (zombified piglins), not the
+     * full biome hostile pool with blazes + ghasts + magma cubes.
+     *
+     * If a biome isn't listed the normal biome pool is used.
+     */
+    private static final Map<String, Set<String>> BOSS_ADD_TYPES = Map.ofEntries(
+        Map.entry("river",             Set.of("minecraft:drowned", "minecraft:zombie")),
+        Map.entry("desert",            Set.of("minecraft:husk")),
+        Map.entry("jungle",            Set.of("minecraft:spider", "minecraft:cave_spider")),
+        Map.entry("cave",              Set.of("minecraft:zombie", "minecraft:skeleton")),
+        Map.entry("deep_dark",         Set.of("minecraft:silverfish")),
+        Map.entry("nether_wastes",     Set.of("minecraft:zombified_piglin", "minecraft:piglin")),
+        Map.entry("soul_sand_valley",  Set.of("minecraft:wither_skeleton", "minecraft:skeleton")),
+        Map.entry("crimson_forest",    Set.of("minecraft:piglin", "minecraft:piglin_brute", "minecraft:zombified_piglin")),
+        Map.entry("warped_forest",     Set.of("minecraft:enderman", "minecraft:endermite")),
+        Map.entry("basalt_deltas",     Set.of("minecraft:wither_skeleton", "minecraft:blaze")),
+        Map.entry("end_city",          Set.of("minecraft:shulker")),
+        Map.entry("chorus_grove",      Set.of("minecraft:enderman", "minecraft:shulker")),
+        Map.entry("outer_end_islands", Set.of("minecraft:enderman", "minecraft:phantom")),
+        Map.entry("dragons_nest",      Set.of("minecraft:enderman", "minecraft:phantom"))
+    );
 
     public static LevelDefinition generate(int levelNumber) {
         return generate(levelNumber, -1);
@@ -101,7 +129,9 @@ public class LevelGenerator {
         int biomeCap = Math.min(6 + biomeOrdinal, com.crackedgames.craftics.CrafticsMod.CONFIG.maxEnemiesPerLevel());
         int count = 2 + biomeIndex / 2 + Math.min(biomeOrdinal, 6);
         count = Math.min(count, biomeCap);
-        if (isBoss) count = Math.min(Math.max(1, count - 1), com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAdds());
+        // Boss rounds: keep the add crew small and thematic. The boss itself is
+        // the main threat; extra random biome trash dilutes the fight.
+        if (isBoss) count = Math.min(3, com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAdds());
 
         float hostileRatio;
         if (biomeOrdinal == 0 && biomeIndex == 0) hostileRatio = 0.0f; // Plains I is always passive
@@ -153,9 +183,25 @@ public class LevelGenerator {
             ));
         }
 
+        // On boss rounds, restrict the hostile pool to the boss's themed backup
+        // (e.g. Molten King brings zombified piglins, not the full nether pool).
+        MobPoolEntry[] bossHostilePool = biome.hostileMobs;
+        if (isBoss) {
+            Set<String> allowed = BOSS_ADD_TYPES.get(biome.biomeId);
+            if (allowed != null) {
+                MobPoolEntry[] filtered = Arrays.stream(biome.hostileMobs)
+                    .filter(m -> allowed.contains(m.entityTypeId()))
+                    .toArray(MobPoolEntry[]::new);
+                if (filtered.length > 0) bossHostilePool = filtered;
+            }
+        }
+
         for (int i = 0; i < count && !validPositions.isEmpty(); i++) {
-            boolean hostile = rand.nextFloat() < hostileRatio;
-            MobPoolEntry[] pool = hostile ? biome.hostileMobs : biome.passiveMobs;
+            // Boss rounds spawn only themed hostile backup — no passives.
+            boolean hostile = isBoss ? true : (rand.nextFloat() < hostileRatio);
+            MobPoolEntry[] pool = hostile
+                ? (isBoss ? bossHostilePool : biome.hostileMobs)
+                : biome.passiveMobs;
             if (pool.length == 0) pool = biome.hostileMobs.length > 0 ? biome.hostileMobs : biome.passiveMobs;
             if (pool.length == 0) continue;
 

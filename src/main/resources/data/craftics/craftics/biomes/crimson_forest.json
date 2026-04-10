@@ -8,7 +8,7 @@
   "obstacle_blocks": ["minecraft:crimson_stem", "minecraft:shroomlight"],
   "obstacle_density": 0.0,
   "obstacle_density_growth": 0.0,
-  "environment": "nether",
+  "environment": "crimson_forest",
   "night": true,
   "enemies": {
     "passive": [],
