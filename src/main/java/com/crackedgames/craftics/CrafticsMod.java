@@ -43,6 +43,11 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.api.VanillaWeapons.registerAll();
         com.crackedgames.craftics.api.VanillaContent.registerAll();
 
+        // Optional mod compatibility — each call no-ops if its target mod isn't loaded.
+        com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.init();
+        com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.init();
+        com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.init();
+
         // Register custom chunk generator codec
         Registry.register(Registries.CHUNK_GENERATOR, Identifier.of(MOD_ID, "void"), VoidChunkGenerator.CODEC);
 
@@ -327,27 +332,48 @@ public class CrafticsMod implements ModInitializer {
 
         // Tick ALL active combat instances each server tick
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            CombatManager.tickAll();
+            try {
+                CombatManager.tickAll();
+            } catch (Throwable t) {
+                LOGGER.error("CombatManager.tickAll() crashed; continuing server tick", t);
+            }
 
             // Re-sync addon equipment scanner bonuses every second (20 ticks)
-            // so the inventory UI updates when players equip/unequip addon items
+            // so the inventory UI updates when players equip/unequip addon items.
+            // Each player is wrapped in try/catch so one failing scanner can't
+            // break sync for every other player on the server.
             if (server.getTicks() % 20 == 0) {
-                for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-                    com.crackedgames.craftics.api.StatModifiers addonMods =
-                        com.crackedgames.craftics.api.registry.EquipmentScannerRegistry.scanAll(p);
-                    StringBuilder sb = new StringBuilder();
-                    for (var e : addonMods.getAll().entrySet()) {
-                        if (sb.length() > 0) sb.append(",");
-                        sb.append(e.getKey().name()).append(":").append(e.getValue());
+                for (ServerPlayerEntity p : new java.util.ArrayList<>(server.getPlayerManager().getPlayerList())) {
+                    if (p == null || p.isRemoved() || p.isDisconnected() || p.networkHandler == null) continue;
+                    try {
+                        com.crackedgames.craftics.api.StatModifiers addonMods =
+                            com.crackedgames.craftics.api.registry.EquipmentScannerRegistry.scanAll(p);
+                        StringBuilder sb = new StringBuilder();
+                        for (var e : addonMods.getAll().entrySet()) {
+                            if (sb.length() > 0) sb.append(",");
+                            sb.append(e.getKey().name()).append(":").append(e.getValue());
+                        }
+                        String newData = sb.toString();
+                        // Only send if changed (avoid unnecessary packets)
+                        String lastData = addonBonusCache.getOrDefault(p.getUuid(), "");
+                        if (!newData.equals(lastData)) {
+                            addonBonusCache.put(p.getUuid(), newData);
+                            net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p,
+                                new com.crackedgames.craftics.network.AddonBonusSyncPayload(newData));
+                        }
+                    } catch (Throwable t) {
+                        LOGGER.error("Addon bonus sync failed for {}: {}",
+                            p.getName().getString(), t.toString(), t);
                     }
-                    String newData = sb.toString();
-                    // Only send if changed (avoid unnecessary packets)
-                    String lastData = addonBonusCache.getOrDefault(p.getUuid(), "");
-                    if (!newData.equals(lastData)) {
-                        addonBonusCache.put(p.getUuid(), newData);
-                        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p,
-                            new com.crackedgames.craftics.network.AddonBonusSyncPayload(newData));
-                    }
+                }
+            }
+
+            // Sync scoreboard to all players every 5 seconds
+            if (server.getTicks() % 100 == 0) {
+                try {
+                    syncScoreboard(server);
+                } catch (Throwable t) {
+                    LOGGER.error("Scoreboard sync failed: {}", t.toString(), t);
                 }
             }
         });
@@ -372,6 +398,10 @@ public class CrafticsMod implements ModInitializer {
             com.crackedgames.craftics.level.BiomeRegistry.loadFromDatapacks(
                 server.getResourceManager()
             );
+            // Apply compat overrides AFTER the base JSON pools are in place
+            // so our mutations aren't wiped by the datapack load.
+            com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.applyBiomeOverrides();
+            com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.applyBiomeOverrides();
         });
 
         // Also reload on /reload command
@@ -382,6 +412,8 @@ public class CrafticsMod implements ModInitializer {
                     com.crackedgames.craftics.level.BiomeRegistry.loadFromDatapacks(
                         server.getResourceManager()
                     );
+                    com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.applyBiomeOverrides();
+                    com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.applyBiomeOverrides();
                 }
             }
         );
@@ -395,6 +427,90 @@ public class CrafticsMod implements ModInitializer {
     private void registerCommands() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             var root = CommandManager.literal("craftics");
+
+            // /craftics warp — Artifacts Warp Drive activator. Arms the next attack to
+            // ignore range/LOS and teleport adjacent to the target. Once per combat.
+            root.then(CommandManager.literal("warp").executes(ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                if (!com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.isLoaded()) {
+                    src.sendError(Text.literal("§cArtifacts mod is not installed."));
+                    return 0;
+                }
+                if (!com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.playerHasArtifact(cmdPlayer, "warp_drive")) {
+                    src.sendError(Text.literal("§cYou must have a Warp Drive equipped."));
+                    return 0;
+                }
+                CombatManager cm = CombatManager.get(cmdPlayer);
+                if (cm == null || !cm.isActive()) {
+                    src.sendError(Text.literal("§cYou can only arm Warp Drive in combat."));
+                    return 0;
+                }
+                if (cm.isWarpDriveUsed()) {
+                    src.sendError(Text.literal("§cWarp Drive has already been used this combat."));
+                    return 0;
+                }
+                if (cm.isWarpDriveArmed()) {
+                    src.sendFeedback(() -> Text.literal("§dWarp Drive is already armed — your next attack will warp."), false);
+                    return 1;
+                }
+                if (cm.armWarpDrive()) {
+                    src.sendFeedback(() -> Text.literal("§5§l✦ Warp Drive armed! §r§dYour next attack ignores range and warps you adjacent to the target."), false);
+                    return 1;
+                }
+                src.sendError(Text.literal("§cCould not arm Warp Drive."));
+                return 0;
+            }));
+
+            // /craftics hp_per_level <on|off|status> — toggle per-level HP scaling
+            // for the caller's OWN island. Guests in someone else's world cannot
+            // change this; the owner's setting applies to everyone in their party.
+            var hpPerLevelNode = CommandManager.literal("hp_per_level");
+            com.mojang.brigadier.Command<ServerCommandSource> showStatus = ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
+                java.util.UUID owner = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
+                boolean enabled = data.getPlayerData(owner).scaleHpPerLevelEnabled;
+                boolean self = owner.equals(cmdPlayer.getUuid());
+                String label = self ? "your island" : "the party leader's island";
+                src.sendFeedback(() -> Text.literal("§ePer-level HP scaling on " + label + ": "
+                    + (enabled ? "§aON" : "§cOFF")), false);
+                return 1;
+            };
+            hpPerLevelNode.executes(showStatus);
+            hpPerLevelNode.then(CommandManager.literal("status").executes(showStatus));
+            hpPerLevelNode.then(CommandManager.literal("on").executes(ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
+                java.util.UUID owner = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
+                if (!owner.equals(cmdPlayer.getUuid())) {
+                    src.sendError(Text.literal("§cOnly the island owner can change this setting."));
+                    return 0;
+                }
+                data.getPlayerData(owner).scaleHpPerLevelEnabled = true;
+                data.markDirty();
+                src.sendFeedback(() -> Text.literal("§aPer-level HP scaling §lON§r§a for your island. "
+                    + "Enemies gain +HP per level within a biome."), true);
+                return 1;
+            }));
+            hpPerLevelNode.then(CommandManager.literal("off").executes(ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
+                java.util.UUID owner = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
+                if (!owner.equals(cmdPlayer.getUuid())) {
+                    src.sendError(Text.literal("§cOnly the island owner can change this setting."));
+                    return 0;
+                }
+                data.getPlayerData(owner).scaleHpPerLevelEnabled = false;
+                data.markDirty();
+                src.sendFeedback(() -> Text.literal("§aPer-level HP scaling §lOFF§r§a for your island. "
+                    + "Only the biome-ordinal base HP bonus still applies."), true);
+                return 1;
+            }));
+            root.then(hpPerLevelNode);
 
             // /craftics unlock_all — unlock every biome (op only)
             root.then(CommandManager.literal("unlock_all").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
@@ -897,12 +1013,16 @@ public class CrafticsMod implements ModInitializer {
                 // Show loading screen immediately
                 ServerPlayNetworking.send(player,
                     new com.crackedgames.craftics.network.LoadingScreenPayload(
-                        true, "Creating World...", "Building arenas..."));
+                        true, "Creating World...", "Building hub..."));
 
                 final java.util.UUID playerUuid = player.getUuid();
                 final ServerWorld finalOverworld = overworld;
 
-                // Run all generation on the server thread — player stays behind loading screen
+                // Island creation only builds the hub now. Arenas are created on
+                // demand the first time the player enters that level — see
+                // ArenaPreGenerator.ensureArena called from CombatManager.buildArena.
+                // The old path pre-built every arena here synchronously, which froze
+                // lower-end servers for multiple seconds.
                 overworld.getServer().execute(() -> {
                     CrafticsSavedData d = CrafticsSavedData.get(finalOverworld);
                     d.allocateWorldSlot(playerUuid);
@@ -913,7 +1033,7 @@ public class CrafticsMod implements ModInitializer {
                     pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
                     d.markDirty();
 
-                    // Pre-generate all arenas
+                    // Flip the lazy-mode flag on (no actual arenas built).
                     com.crackedgames.craftics.level.ArenaPreGenerator.generateAll(finalOverworld, playerUuid);
 
                     // Everything is ready — teleport and dismiss loading screen
@@ -1319,7 +1439,7 @@ public class CrafticsMod implements ModInitializer {
                 ctx.getSource().sendFeedback(() -> Text.literal("§7You are not in a party."), false);
                 return 1;
             }
-            StringBuilder sb = new StringBuilder("§6--- Party Members ---\n");
+            StringBuilder sb = new StringBuilder("§6--- " + party.getDisplayName() + " ---\n");
             for (java.util.UUID memberUuid : party.getMemberUuids()) {
                 ServerPlayerEntity member = ctx.getSource().getServer().getPlayerManager().getPlayer(memberUuid);
                 String name = member != null ? member.getName().getString() : memberUuid.toString().substring(0, 8) + "...";
@@ -1356,7 +1476,99 @@ public class CrafticsMod implements ModInitializer {
             return 1;
         }));
 
+        // /craftics party name <name>
+        partyNode.then(CommandManager.literal("name")
+            .then(CommandManager.argument("name", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
+                .executes(ctx -> {
+                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                    ServerWorld overworld = ctx.getSource().getServer().getOverworld();
+                    CrafticsSavedData data = CrafticsSavedData.get(overworld);
+                    com.crackedgames.craftics.world.Party party = data.getPlayerParty(player.getUuid());
+                    if (party == null) {
+                        ctx.getSource().sendError(Text.literal("§cYou are not in a party."));
+                        return 0;
+                    }
+                    if (!party.isLeader(player.getUuid())) {
+                        ctx.getSource().sendError(Text.literal("§cOnly the party leader can rename the party."));
+                        return 0;
+                    }
+                    String newName = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "name");
+                    if (newName.length() > 24) {
+                        ctx.getSource().sendError(Text.literal("§cParty name too long (max 24 characters)."));
+                        return 0;
+                    }
+                    party.setName(newName);
+                    data.markDirty();
+                    String displayName = party.getDisplayName();
+                    for (java.util.UUID memberUuid : party.getMemberUuids()) {
+                        ServerPlayerEntity member = ctx.getSource().getServer().getPlayerManager().getPlayer(memberUuid);
+                        if (member != null) {
+                            member.sendMessage(Text.literal("§aParty renamed to: §e" + displayName), false);
+                        }
+                    }
+                    return 1;
+                })));
+
         root.then(partyNode);
+    }
+
+    /**
+     * Calculate a player's "Power Score" for the server scoreboard.
+     * Formula: (level * 100) + (highestBiome * 50) + (ngPlus * 500) + (emeralds / 10) + (totalBossKills * 25)
+     */
+    private static int calculatePowerScore(com.crackedgames.craftics.combat.PlayerProgression.PlayerStats stats,
+                                            com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd) {
+        int levelScore = stats.level * 100;
+        int biomeScore = pd.highestBiomeUnlocked * 50;
+        int ngScore = pd.ngPlusLevel * 500;
+        int emeraldScore = pd.emeralds / 10;
+        // Sum boss kills across all biomes
+        int totalBossKills = 0;
+        for (var biomeId : new String[]{
+            "plains", "forest", "desert", "river", "mountain", "snowy", "cave", "jungle",
+            "deep_dark", "basalt_deltas", "crimson_forest", "nether_wastes", "soul_sand_valley",
+            "warped_forest", "chorus_grove", "end_city", "outer_end_islands", "dragons_nest",
+            "trial_chamber"
+        }) {
+            totalBossKills += stats.getBossKills(biomeId);
+        }
+        int killScore = totalBossKills * 25;
+        return levelScore + biomeScore + ngScore + emeraldScore + killScore;
+    }
+
+    /** Sync the power scoreboard to all online players. */
+    private static void syncScoreboard(net.minecraft.server.MinecraftServer server) {
+        ServerWorld overworld = server.getOverworld();
+        com.crackedgames.craftics.world.CrafticsSavedData data =
+            com.crackedgames.craftics.world.CrafticsSavedData.get(overworld);
+        com.crackedgames.craftics.combat.PlayerProgression prog =
+            com.crackedgames.craftics.combat.PlayerProgression.get(overworld);
+
+        java.util.List<String[]> scores = new java.util.ArrayList<>();
+        for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+            if (p == null || p.isRemoved()) continue;
+            com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd = data.getPlayerData(p.getUuid());
+            com.crackedgames.craftics.combat.PlayerProgression.PlayerStats stats = prog.getStats(p);
+            int score = calculatePowerScore(stats, pd);
+            scores.add(new String[]{ p.getName().getString(), String.valueOf(score) });
+        }
+        // Sort descending by score
+        scores.sort((a, b) -> Integer.compare(Integer.parseInt(b[1]), Integer.parseInt(a[1])));
+
+        StringBuilder sb = new StringBuilder();
+        for (String[] entry : scores) {
+            if (sb.length() > 0) sb.append("|");
+            sb.append(entry[0]).append(",").append(entry[1]);
+        }
+
+        com.crackedgames.craftics.network.ScoreboardSyncPayload payload =
+            new com.crackedgames.craftics.network.ScoreboardSyncPayload(sb.toString());
+        for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+            if (p == null || p.isRemoved() || p.isDisconnected() || p.networkHandler == null) continue;
+            try {
+                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p, payload);
+            } catch (Throwable ignored) {}
+        }
     }
 
     private static void giveItems(ServerPlayerEntity player, net.minecraft.item.Item... items) {

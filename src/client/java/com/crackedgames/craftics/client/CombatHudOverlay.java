@@ -47,6 +47,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         renderPlayerStatusPanel(ctx, client, screenW);
         renderAllyRoster(ctx, client, screenW);
         renderTurnBanner(ctx, client, screenW);
+        renderTurnOrder(ctx, client, screenW);
         renderEnemyRoster(ctx, client, screenW);
         renderModePill(ctx, client, screenW, screenH);
         renderResourceBar(ctx, client, screenW, screenH);
@@ -361,6 +362,50 @@ public class CombatHudOverlay implements HudRenderCallback {
             drawPill(ctx, badgeX, pillY + 2, badgeW, pillH - 4, badgeBg);
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal(streakBadge.trim()), badgeX + 3, textY, streakColor);
+        }
+    }
+
+    /**
+     * Render the turn order display below the turn banner — shows each party member
+     * in queue order with the active player highlighted.
+     */
+    private void renderTurnOrder(DrawContext ctx, MinecraftClient client, int screenW) {
+        java.util.List<CombatState.TurnOrderEntry> order = CombatState.getTurnOrderList();
+        if (order.isEmpty()) return; // solo play — nothing to show
+
+        int entryH = 12;
+        int panelPad = 4;
+        int indicatorW = 6; // width of the ">" arrow
+        int maxNameW = 0;
+        for (CombatState.TurnOrderEntry e : order) {
+            int w = client.textRenderer.getWidth(e.name());
+            if (w > maxNameW) maxNameW = w;
+        }
+        int panelW = panelPad + indicatorW + 2 + maxNameW + panelPad;
+        int panelH = panelPad + order.size() * entryH + panelPad - 2;
+        int panelX = screenW / 2 - panelW / 2;
+        int panelY = 22; // below the turn banner
+
+        drawPanel(ctx, panelX, panelY, panelW, panelH);
+
+        int y = panelY + panelPad;
+        for (CombatState.TurnOrderEntry entry : order) {
+            int nameColor;
+            String indicator;
+            if (entry.isCurrent()) {
+                nameColor = 0xFF55FF55; // bright green for active turn
+                indicator = "\u25B6"; // right-pointing triangle
+                // Highlight background for current player
+                ctx.fill(panelX + 1, y - 1, panelX + panelW - 1, y + entryH - 2, 0x44005500);
+            } else {
+                nameColor = 0xFFAAAAAA; // gray for waiting
+                indicator = " ";
+            }
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal(indicator), panelX + panelPad, y, 0xFF55FF55);
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal(entry.name()), panelX + panelPad + indicatorW + 2, y, nameColor);
+            y += entryH;
         }
     }
 

@@ -45,6 +45,18 @@ public class LevelGenerator {
     }
 
     public static LevelDefinition generate(int levelNumber, int branchChoice) {
+        // Default to the global config for backwards compat callers that don't know
+        // the island owner (e.g. anonymous test/arena pre-gen without player context).
+        return generate(levelNumber, branchChoice,
+            com.crackedgames.craftics.CrafticsMod.CONFIG.scaleHpPerLevel());
+    }
+
+    /**
+     * Full signature — {@code scaleHpPerLevel} comes from the island owner's
+     * {@code PlayerData.scaleHpPerLevelEnabled} so each island can independently
+     * disable the per-level HP ramp within a biome.
+     */
+    public static LevelDefinition generate(int levelNumber, int branchChoice, boolean scaleHpPerLevel) {
         BiomeTemplate biome = BiomeRegistry.getForLevel(levelNumber);
         if (biome == null) {
             throw new IllegalStateException("No biome registered for level " + levelNumber
@@ -71,7 +83,8 @@ public class LevelGenerator {
 
         GridPos playerStart = new GridPos(width / 2, 0);
         GridTile[][] tiles = generateTiles(biome, width, height, biomeIndex, rand);
-        LevelDefinition.EnemySpawn[] enemies = generateEnemies(biome, tiles, width, height, biomeIndex, levelNumber, isBoss, branchChoice, rand);
+        LevelDefinition.EnemySpawn[] enemies = generateEnemies(
+            biome, tiles, width, height, biomeIndex, levelNumber, isBoss, branchChoice, scaleHpPerLevel, rand);
         int lootMinTypes = 1 + biomeIndex / 2;
         int lootMaxTypes = 2 + biomeIndex / 2;
         int lootMinTotal = 2 + biomeIndex;
@@ -113,7 +126,8 @@ public class LevelGenerator {
     private static LevelDefinition.EnemySpawn[] generateEnemies(BiomeTemplate biome, GridTile[][] tiles,
                                                                    int w, int h,
                                                                    int biomeIndex, int globalLevel,
-                                                                   boolean isBoss, int branchChoice, Random rand) {
+                                                                   boolean isBoss, int branchChoice,
+                                                                   boolean scaleHpPerLevel, Random rand) {
         List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
 
         // Use BiomePath position for difficulty scaling (not registry index)
@@ -124,11 +138,17 @@ public class LevelGenerator {
             biomeOrdinal = BiomeRegistry.getAllBiomes().indexOf(biome);
         }
         if (biomeOrdinal < 0) biomeOrdinal = 0;
-        // Enemy count scales by biome: plains caps ~6, later biomes scale toward config max (10).
+        // Enemy count scales by biome: plains caps ~6, later biomes scale toward config max (7).
         // Per-biome cap rises from 6 (ordinal 0) by +1 per biome ordinal.
         int biomeCap = Math.min(6 + biomeOrdinal, com.crackedgames.craftics.CrafticsMod.CONFIG.maxEnemiesPerLevel());
+        // Arena-size cap: keep encounters breathable by budgeting one enemy per
+        // TILES_PER_ENEMY tiles of floor. A 9×9 arena gets ~4 max, a 15×15 gets ~12
+        // (then clamped by config). Floor of 2 so tiny arenas still have a fight.
+        final int TILES_PER_ENEMY = 18;
+        int arenaCap = Math.max(2, (w * h) / TILES_PER_ENEMY);
+        int hardCap = Math.min(biomeCap, arenaCap);
         int count = 2 + biomeIndex / 2 + Math.min(biomeOrdinal, 6);
-        count = Math.min(count, biomeCap);
+        count = Math.min(count, hardCap);
         // Boss rounds: keep the add crew small and thematic. The boss itself is
         // the main threat; extra random biome trash dilutes the fight.
         if (isBoss) count = Math.min(3, com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAdds());
@@ -142,7 +162,10 @@ public class LevelGenerator {
         if (biomeOrdinal >= 9) hostileRatio = 1.0f;
 
         int hpBonus = biomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
-        if (com.crackedgames.craftics.CrafticsMod.CONFIG.scaleHpPerLevel()) {
+        // Per-level ramp is controlled by the island owner (or the global config
+        // when the caller doesn't know the owner). Island owners can flip their
+        // setting with /craftics hp_per_level <on|off>.
+        if (scaleHpPerLevel) {
             hpBonus += biomeIndex * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerLevel();
         }
         int atkBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());

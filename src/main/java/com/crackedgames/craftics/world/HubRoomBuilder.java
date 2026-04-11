@@ -294,6 +294,37 @@ public class HubRoomBuilder {
         world.setBlockState(bp(0, interiorY + 2, 1), Blocks.LANTERN.getDefaultState()
             .with(Properties.HANGING, true));
 
+        // --- Farm area (east side of house) ---
+        // 5x5 farmland patch with a single water source in the center
+        int farmCX = 9, farmCZ = 0; // center of farm
+        for (int fx = farmCX - 2; fx <= farmCX + 2; fx++) {
+            for (int fz = farmCZ - 2; fz <= farmCZ + 2; fz++) {
+                world.setBlockState(bp(fx, floorY, fz),
+                    Blocks.FARMLAND.getDefaultState()
+                        .with(Properties.MOISTURE, 7)); // fully hydrated
+            }
+        }
+        // Water source in the center (replaces farmland there)
+        world.setBlockState(bp(farmCX, floorY, farmCZ), Blocks.WATER.getDefaultState());
+
+        // --- Single tree (west side of house) ---
+        int treeX = -9, treeZ = 0;
+        BlockState treeLog = Blocks.OAK_LOG.getDefaultState();
+        BlockState treeLeaves = Blocks.OAK_LEAVES.getDefaultState()
+            .with(Properties.PERSISTENT, true);
+        // Trunk (4 high)
+        for (int ty = 0; ty < 4; ty++) {
+            world.setBlockState(bp(treeX, interiorY + ty, treeZ), treeLog);
+        }
+        // Leaf canopy (3x3x2 on top of trunk, plus a cap)
+        for (int lx = -1; lx <= 1; lx++) {
+            for (int lz = -1; lz <= 1; lz++) {
+                world.setBlockState(bp(treeX + lx, interiorY + 3, treeZ + lz), treeLeaves);
+                world.setBlockState(bp(treeX + lx, interiorY + 4, treeZ + lz), treeLeaves);
+            }
+        }
+        world.setBlockState(bp(treeX, interiorY + 5, treeZ), treeLeaves);
+
         CrafticsMod.LOGGER.info("Starter hut built at ({}, {}).", ox, oz);
     }
 

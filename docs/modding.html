@@ -49,6 +49,7 @@
       <a href="#enemy-ai">Enemy AI</a>
       <a href="#complete-example">Complete Example</a>
       <a href="#arena-maps">Custom Arena Maps</a>
+      <a href="#mob-head-textures">Mob Head Textures</a>
       <a href="#addon-policy">Addon Policy</a>
     </nav>
   </aside>
@@ -1185,7 +1186,81 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
     </ul>
 
     <!-- ================================================================
-         13. ADDON POLICY
+         13. MOB HEAD TEXTURES
+         ================================================================ -->
+    <h2 id="mob-head-textures">Mob Head Textures</h2>
+    <p>
+      The combat HUD displays a small head icon for every enemy and ally in the arena. Craftics ships 80+ vanilla mob heads and auto-discovers textures for modded mobs at runtime, so <strong>no code changes are needed</strong> to add heads for new mobs.
+    </p>
+
+    <h3>Resolution Order</h3>
+    <p>
+      When the HUD requests a head for entity type <code>somemod:bigwolf</code>, <code>MobHeadTextures.get()</code> checks three sources in order:
+    </p>
+    <ol>
+      <li><strong>Hardcoded vanilla map</strong> &mdash; ~80 built-in entries for all vanilla mobs. Always checked first.</li>
+      <li><strong>Runtime registration</strong> &mdash; entries added via the Java API (see below). Checked second.</li>
+      <li><strong>Resource auto-discovery</strong> &mdash; probes the loaded resource manager for a PNG at two path conventions (see below). Results are cached until <code>/reload</code>.</li>
+    </ol>
+    <p>
+      If none of the three sources return a texture, the HUD falls back to a colored square with the mob&rsquo;s first initial.
+    </p>
+
+    <h3>Resource Pack Method (No Code)</h3>
+    <p>
+      Drop a <strong>16&times;16 PNG</strong> at one of these two paths inside any resource pack:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Convention</th><th>Path</th><th>Use Case</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Craftics namespace</td>
+            <td><code>assets/craftics/textures/mob_heads/{modid}/{mobname}.png</code></td>
+            <td>Resource packs shipping heads for any modded mob under Craftics&rsquo; namespace</td>
+          </tr>
+          <tr>
+            <td>Mod namespace</td>
+            <td><code>assets/{modid}/textures/mob_heads/{mobname}.png</code></td>
+            <td>A mod shipping its own head texture in its own namespace</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      For a mob with entity type <code>alexsmobs:bone_serpent</code>, the auto-discovery probes:
+    </p>
+    <pre><code>assets/craftics/textures/mob_heads/alexsmobs/bone_serpent.png   (Craftics namespace)
+assets/alexsmobs/textures/mob_heads/bone_serpent.png            (mod namespace)</code></pre>
+    <p>
+      Run <code>/reload</code> or toggle the resource pack and the head appears on the combat HUD immediately &mdash; no client restart required.
+    </p>
+
+    <h3>Java API Method (Mod Code)</h3>
+    <p>
+      Addon mods can register head textures explicitly during <strong>client initialization</strong>:
+    </p>
+    <pre><code>import com.crackedgames.craftics.client.MobHeadTextures;
+import net.minecraft.util.Identifier;
+
+// In your ClientModInitializer.onInitializeClient():
+MobHeadTextures.register(
+    "somemod:bigwolf",
+    Identifier.of("somemod", "textures/hud/bigwolf_head.png")
+);</code></pre>
+    <p>
+      Runtime-registered entries take priority over auto-discovery but not over the built-in vanilla map.
+    </p>
+
+    <h3>Cache &amp; Reload</h3>
+    <p>
+      Auto-discovered textures are cached after the first lookup. The cache is cleared automatically whenever <code>/reload</code> runs or resource packs change (via a <code>SimpleSynchronousResourceReloadListener</code> registered in <code>CrafticsClient</code>), so new or updated PNGs are picked up without restarting the client.
+    </p>
+
+    <!-- ================================================================
+         14. ADDON POLICY
          ================================================================ -->
     <h2 id="addon-policy">Addon Policy</h2>
 

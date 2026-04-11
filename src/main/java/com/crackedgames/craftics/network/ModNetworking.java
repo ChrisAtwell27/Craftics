@@ -41,6 +41,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(GuideBookSyncPayload.ID, GuideBookSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AddonBonusSyncPayload.ID, AddonBonusSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(LoadingScreenPayload.ID, LoadingScreenPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(ScoreboardSyncPayload.ID, ScoreboardSyncPayload.CODEC);
 
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);
@@ -54,6 +55,24 @@ public class ModNetworking {
             CrafticsSavedData data = CrafticsSavedData.get(world);
             data.claimLegacyData(player.getUuid());
             CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+
+            // Only the party leader may start a biome run — otherwise two members
+            // racing the Enter button would spawn parallel CombatManager instances
+            // and corrupt PARTY_COMBAT_LEADER routing.
+            com.crackedgames.craftics.world.Party playerParty = data.getPlayerParty(player.getUuid());
+            if (playerParty != null && !playerParty.isLeader(player.getUuid())) {
+                player.sendMessage(net.minecraft.text.Text.literal(
+                    "\u00a7cOnly the party leader can start a biome run."), false);
+                ServerPlayNetworking.send(player, new ExitCombatPayload(false));
+                return;
+            }
+
+            // Prevent the leader from double-starting (e.g. clicking Enter twice
+            // while an earlier transition is still in flight).
+            if (CombatManager.get(player).isActive()) {
+                ServerPlayNetworking.send(player, new ExitCombatPayload(false));
+                return;
+            }
 
             // Require a personal world before starting biome runs
             java.util.UUID effectiveOwner = data.getEffectiveWorldOwner(player.getUuid());
@@ -103,7 +122,12 @@ public class ModNetworking {
             }
 
             int globalLevel = biome.startLevel + levelIndex;
-            LevelDefinition levelDef = LevelRegistry.get(globalLevel, pd.branchChoice);
+            // HP-per-level scaling is an island-owner setting. For a guest entering
+            // a party-leader's world, the leader's flag applies; for a solo start,
+            // it's the player's own. getEffectiveWorldOwner handles both.
+            java.util.UUID hpScalingOwner = data.getEffectiveWorldOwner(player.getUuid());
+            boolean ownerHpScale = data.getPlayerData(hpScalingOwner).scaleHpPerLevelEnabled;
+            LevelDefinition levelDef = LevelRegistry.get(globalLevel, pd.branchChoice, ownerHpScale);
             if (levelDef == null) {
                 CrafticsMod.LOGGER.warn("No definition for level {}", globalLevel);
                 ServerPlayNetworking.send(player, new ExitCombatPayload(false));
@@ -141,16 +165,38 @@ public class ModNetworking {
             // Register leader as party participant
             leaderCm.addPartyMember(player);
 
-            // Teleport and register all online party members into the same combat
-            int memberOffset = 0;
+            // Teleport and register all online party members into the same combat.
+            //
+            // Each member gets a grid-space desired tile fanned out from the leader's
+            // spawn, clamped to the arena bounds, then resolved to the nearest free
+            // walkable tile. This mirrors CombatManager.transitionPartyToArena and
+            // guarantees players 3+ never land outside the grid (the previous formula
+            // added raw world-Z offsets with no bounds check).
+            com.crackedgames.craftics.core.GridPos leaderGrid = arena.getPlayerGridPos();
+            java.util.Set<com.crackedgames.craftics.core.GridPos> reservedSpawns = new java.util.HashSet<>();
+            reservedSpawns.add(leaderGrid);
+            int memberIndex = 0;
             for (java.util.UUID memberUuid : partyMembers) {
                 if (memberUuid.equals(player.getUuid())) continue;
                 ServerPlayerEntity member = world.getServer().getPlayerManager().getPlayer(memberUuid);
                 if (member != null) {
-                    // Offset each party member so they don't stack on the same tile
-                    memberOffset++;
-                    int offsetZ = (memberOffset % 2 == 1) ? memberOffset : -memberOffset;
-                    member.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5 + offsetZ);
+                    // memberIndex=0 → +1, =1 → -1, =2 → +2, =3 → -2, ...
+                    int dx = (memberIndex % 2 == 0) ? ((memberIndex / 2) + 1) : -((memberIndex / 2) + 1);
+                    memberIndex++;
+                    int cx = Math.max(0, Math.min(arena.getWidth() - 1, leaderGrid.x() + dx));
+                    int cz = Math.max(0, Math.min(arena.getHeight() - 1, leaderGrid.z()));
+                    com.crackedgames.craftics.core.GridPos desired = new com.crackedgames.craftics.core.GridPos(cx, cz);
+                    com.crackedgames.craftics.core.GridPos chosen =
+                        com.crackedgames.craftics.combat.CombatManager
+                            .findNearestWalkableUnreserved(arena, desired, reservedSpawns);
+                    if (chosen == null) chosen = leaderGrid;
+                    reservedSpawns.add(chosen);
+
+                    BlockPos memberBlockPos = arena.gridToBlockPos(chosen);
+                    member.requestTeleport(
+                        memberBlockPos.getX() + 0.5,
+                        memberBlockPos.getY(),
+                        memberBlockPos.getZ() + 0.5);
                     member.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
                     ServerPlayNetworking.send(member, new EnterCombatPayload(
                         origin.getX(), origin.getY(), origin.getZ(),

@@ -44,6 +44,7 @@ public class CombatState {
     }
 
     public static void enterCombat(int originX, int originY, int originZ, int width, int height) {
+        boolean wasInCombat = inCombat;
         inCombat = true;
         clearTileSets();
         arenaOriginX = originX;
@@ -56,15 +57,21 @@ public class CombatState {
         arenaCenterX = arenaBaseCenterX;
         arenaCenterY = originY + 1.0;
         arenaCenterZ = arenaBaseCenterZ;
-        // Reset camera to defaults for each new combat
-        combatCameraDistance = 15.0f;
-        cameraPanX = 0;
-        cameraPanZ = 0;
+        if (!wasInCombat) {
+            // Only reset camera on first combat entry, not between levels
+            combatCameraDistance = 15.0f;
+            cameraPanX = 0;
+            cameraPanZ = 0;
+        } else {
+            // Transitioning between levels — keep camera orientation, just reset pan
+            cameraPanX = 0;
+            cameraPanZ = 0;
+        }
         // Initialize focus position to arena center
         focusCurrentX = arenaBaseCenterX;
         focusCurrentZ = arenaBaseCenterZ;
-        focusZoomCurrent = 15.0f;
-        focusZoomTarget = 15.0f;
+        focusZoomCurrent = combatCameraDistance;
+        focusZoomTarget = combatCameraDistance;
         hasFocus = false;
         // Reset combat stats
         resetCombatStats();
@@ -148,9 +155,16 @@ public class CombatState {
     private static float focusZoomCurrent = 15.0f;
     private static boolean hasFocus = false;
     private static int focusTimer = 0;
+    /** True while the camera is smoothly easing back to the user's saved pan
+     *  after an auto-focus expired. Cleared when the camera settles or the user
+     *  takes manual pan control. While true, {@code tickCameraFocus} uses the
+     *  slow focus lerp speed instead of the near-instant pan speed so the
+     *  auto-return is as smooth as the auto-focus-out was. */
+    private static boolean returningFromFocus = false;
     private static final float FOCUS_ZOOM_DISTANCE = 10.0f; // closer zoom when focused
     private static final float FOCUS_LERP_SPEED = 0.35f; // smooth interpolation for focus animations
     private static final float PAN_LERP_SPEED = 0.85f;  // near-instant for pan/zoom to keep raycast aligned
+    private static final double RETURN_SETTLE_EPSILON = 0.05; // distance at which return is considered "done"
 
     /** Focus camera on a world position (e.g. an entity taking action). */
     public static void focusOn(double worldX, double worldZ) {
@@ -166,22 +180,34 @@ public class CombatState {
         focusOn(arenaOriginX + gridX + 0.5, arenaOriginZ + gridZ + 0.5);
     }
 
-    /** Release focus back to arena overview. */
+    /**
+     * Release focus back to the user's saved pan. Called from user-action paths
+     * ({@link #pan}, {@link #resetPan}) — no smooth return lerp needed because the
+     * user just took manual control.
+     */
     public static void releaseFocus() {
         hasFocus = false;
+        returningFromFocus = false;
         focusZoomTarget = combatCameraDistance;
     }
 
     /**
-     * Release focus while keeping camera anchored near the focused location.
-     * This avoids snapping back to an old pan position after attack/move focus events.
+     * End an auto-focus (e.g. attack/move event timer expired) and smoothly lerp
+     * the camera back to the user's manually-set pan/zoom instead of snapping.
+     * The lerp target in {@link #tickCameraFocus} naturally switches to
+     * {@code arenaBaseCenterX + cameraPanX} once {@code hasFocus} is false, and
+     * the {@code returningFromFocus} flag keeps the lerp speed slow (focus speed
+     * instead of near-instant pan speed) until the camera settles.
+     * <p>
+     * Previously this method overwrote {@code cameraPanX/Z} with the focus target,
+     * which meant each attack permanently pulled the camera off the user's set view.
+     * Over an enemy turn, the player's carefully-framed angle would drift anywhere
+     * the last focus event happened to land.
      */
-    private static void settleFocusAsPan() {
-        cameraPanX = Math.max(-MAX_PAN, Math.min(MAX_PAN, focusTargetX - arenaBaseCenterX));
-        cameraPanZ = Math.max(-MAX_PAN, Math.min(MAX_PAN, focusTargetZ - arenaBaseCenterZ));
-        arenaCenterX = arenaBaseCenterX + cameraPanX;
-        arenaCenterZ = arenaBaseCenterZ + cameraPanZ;
-        releaseFocus();
+    private static void endFocusWithReturn() {
+        hasFocus = false;
+        returningFromFocus = true;
+        focusZoomTarget = combatCameraDistance;
     }
 
     /** Tick camera focus lerp (call each client tick). */
@@ -191,16 +217,34 @@ public class CombatState {
         if (hasFocus) {
             focusTimer--;
             if (focusTimer <= 0) {
-                settleFocusAsPan();
+                endFocusWithReturn();
             }
         }
 
-        // Lerp toward target or back to arena center
+        // Lerp toward target or back to the user's saved pan
         double targetX = hasFocus ? focusTargetX : arenaBaseCenterX + cameraPanX;
         double targetZ = hasFocus ? focusTargetZ : arenaBaseCenterZ + cameraPanZ;
         float targetZoom = hasFocus ? focusZoomTarget : combatCameraDistance;
 
-        float speed = hasFocus ? FOCUS_LERP_SPEED : PAN_LERP_SPEED;
+        // While easing back from an expired focus, keep using the slow focus lerp
+        // so the return is as smooth as the auto-focus-out was. Once we're close
+        // enough to the user's saved pan, switch back to the fast pan lerp so
+        // subsequent manual pans feel near-instant again.
+        float speed;
+        if (hasFocus) {
+            speed = FOCUS_LERP_SPEED;
+        } else if (returningFromFocus) {
+            double dx = targetX - focusCurrentX;
+            double dz = targetZ - focusCurrentZ;
+            if (dx * dx + dz * dz < RETURN_SETTLE_EPSILON * RETURN_SETTLE_EPSILON) {
+                returningFromFocus = false;
+                speed = PAN_LERP_SPEED;
+            } else {
+                speed = FOCUS_LERP_SPEED;
+            }
+        } else {
+            speed = PAN_LERP_SPEED;
+        }
         focusCurrentX += (targetX - focusCurrentX) * speed;
         focusCurrentZ += (targetZ - focusCurrentZ) * speed;
         focusZoomCurrent += (targetZoom - focusZoomCurrent) * speed;
@@ -244,6 +288,11 @@ public class CombatState {
     // Party member HP list (empty in solo play)
     public record PartyMemberHp(String uuid, String name, int hp, int maxHp, boolean dead) {}
     private static java.util.List<PartyMemberHp> partyHpList = new java.util.ArrayList<>();
+
+    // Turn order list (empty in solo play)
+    public record TurnOrderEntry(String uuid, String name, boolean isCurrent) {}
+    private static java.util.List<TurnOrderEntry> turnOrderList = new java.util.ArrayList<>();
+    public static java.util.List<TurnOrderEntry> getTurnOrderList() { return turnOrderList; }
 
     // Hovered enemy inspection
     private static int hoveredEnemyId = -1;
@@ -376,6 +425,7 @@ public class CombatState {
         killStreak = 0;
         playerEffects = "";
         partyHpList.clear();
+        turnOrderList.clear();
     }
 
     public static void updateFromSync(int phase, int ap, int movePoints,
@@ -383,7 +433,7 @@ public class CombatState {
                                        int maxAp, int maxSpeed,
                                        int[] enemyData, String enemyTypeIds,
                                        String playerEffects, int killStreak,
-                                       String partyHpData) {
+                                       String partyHpData, String turnOrderData) {
         // Save old HP before overwriting so we can detect damage/heal
         int oldHp = CombatState.playerHp;
 
@@ -473,6 +523,16 @@ public class CombatState {
             if (self != null) partyHpList.add(self);
             partyHpList.addAll(others);
         }
+
+        // Parse turn order data: "uuid,name,isCurrent|..."
+        turnOrderList.clear();
+        if (turnOrderData != null && !turnOrderData.isEmpty()) {
+            for (String entry : turnOrderData.split("\\|")) {
+                String[] parts = entry.split(",");
+                if (parts.length < 3) continue;
+                turnOrderList.add(new TurnOrderEntry(parts[0], parts[1], "1".equals(parts[2])));
+            }
+        }
     }
 
     public static java.util.List<PartyMemberHp> getPartyHpList() { return partyHpList; }
@@ -497,6 +557,32 @@ public class CombatState {
     private static int emeralds = 0;
     public static int getEmeralds() { return emeralds; }
     public static void setEmeralds(int amount) { emeralds = amount; }
+
+    // --- Server scoreboard (synced every 5s) ---
+    public record ScoreboardEntry(String name, int score) {}
+    private static java.util.List<ScoreboardEntry> scoreboardEntries = new java.util.ArrayList<>();
+    public static java.util.List<ScoreboardEntry> getScoreboardEntries() { return scoreboardEntries; }
+    public static void updateScoreboard(String scoreData) {
+        java.util.List<ScoreboardEntry> entries = new java.util.ArrayList<>();
+        if (scoreData != null && !scoreData.isEmpty()) {
+            for (String entry : scoreData.split("\\|")) {
+                String[] parts = entry.split(",");
+                if (parts.length >= 2) {
+                    try {
+                        entries.add(new ScoreboardEntry(parts[0], Integer.parseInt(parts[1])));
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        scoreboardEntries = entries;
+    }
+    /** Get a player's score by name, or -1 if not found. */
+    public static int getPlayerScore(String name) {
+        for (ScoreboardEntry e : scoreboardEntries) {
+            if (e.name().equals(name)) return e.score();
+        }
+        return -1;
+    }
 
     // --- Trader state ---
     private static boolean traderActive = false;
