@@ -13,6 +13,7 @@ import java.util.*;
 public class Party {
     private final UUID partyId;
     private UUID leaderUuid;
+    private String name = "";
     private final Set<UUID> memberUuids = new LinkedHashSet<>();
     private final Set<UUID> pendingInvites = new HashSet<>();
 
@@ -24,6 +25,9 @@ public class Party {
 
     public UUID getPartyId() { return partyId; }
     public UUID getLeaderUuid() { return leaderUuid; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name != null ? name : ""; }
+    public String getDisplayName() { return name.isEmpty() ? "Party" : name; }
     public Set<UUID> getMemberUuids() { return Collections.unmodifiableSet(memberUuids); }
     public Set<UUID> getPendingInvites() { return Collections.unmodifiableSet(pendingInvites); }
     public int size() { return memberUuids.size(); }
@@ -65,6 +69,7 @@ public class Party {
         NbtCompound nbt = new NbtCompound();
         nbt.putUuid("partyId", partyId);
         nbt.putUuid("leaderUuid", leaderUuid);
+        nbt.putString("name", name);
         NbtList membersNbt = new NbtList();
         for (UUID uuid : memberUuids) {
             membersNbt.add(NbtString.of(uuid.toString()));
@@ -77,6 +82,9 @@ public class Party {
         UUID partyId = nbt.getUuid("partyId");
         UUID leaderUuid = nbt.getUuid("leaderUuid");
         Party party = new Party(partyId, leaderUuid);
+        if (nbt.contains("name")) {
+            party.name = nbt.getString("name");
+        }
         NbtList membersNbt = nbt.getList("members", net.minecraft.nbt.NbtElement.STRING_TYPE);
         for (int i = 0; i < membersNbt.size(); i++) {
             UUID memberUuid = UUID.fromString(membersNbt.getString(i));

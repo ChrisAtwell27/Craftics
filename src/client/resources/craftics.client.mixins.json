@@ -13,6 +13,8 @@
     "MovementDisableMixin",
     "InventoryStatsMixin",
     "OverlayMessageMixin",
+    "PlayerNameTagMixin",
+    "PlayerListHudMixin",
     "ScrollZoomMixin",
     "TitleScreenMixin"
   ],

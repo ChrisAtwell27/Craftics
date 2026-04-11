@@ -27,6 +27,17 @@ public class PlayerEntityMixin {
         }
     }
 
+    @Inject(method = "dropInventory", at = @At("TAIL"))
+    private void craftics$dropAccessoriesOnDeath(CallbackInfo ci) {
+        PlayerEntity player = (PlayerEntity) (Object) this;
+        if (!(player instanceof ServerPlayerEntity serverPlayer)) return;
+        if (serverPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
+        // If the HEAD injection just armed a recovery compass, it will have cancelled
+        // this method so TAIL shouldn't even fire — but defend against it anyway.
+        if (CrafticsComponents.DEATH_PROTECTION.get(serverPlayer).hasPendingRestore()) return;
+        com.crackedgames.craftics.compat.artifacts.AccessoriesReflect.dropAllAccessories(serverPlayer);
+    }
+
     @Inject(method = "dropInventory", at = @At("HEAD"), cancellable = true)
     private void craftics$protectInventoryWithRecoveryCompass(CallbackInfo ci) {
         PlayerEntity player = (PlayerEntity) (Object) this;

@@ -27,6 +27,10 @@ public final class EquipmentScannerRegistry {
             if (result.getSetBonus() != TrimEffects.SetBonus.NONE) {
                 combined.addSetBonus(result.getSetBonus(), result.getSetBonusName());
             }
+            // Propagate combat effect handlers contributed by scanners.
+            for (var effect : result.getCombatEffects()) {
+                combined.addCombatEffect(effect.name(), effect.handler());
+            }
         }
         return combined;
     }

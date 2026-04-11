@@ -18,6 +18,19 @@ public class CombatTooltips implements ItemTooltipCallback {
                            net.minecraft.item.tooltip.TooltipType type, java.util.List<Text> lines) {
         Item item = stack.getItem();
 
+        // Artifacts mod compat: replace the entire vanilla/Artifacts tooltip body with
+        // Craftics-only lines so the player sees the in-Craftics behaviour, not the
+        // original Artifacts mod description (which is misleading inside our combat).
+        // Keep the item name (lines.get(0)) and wipe everything else.
+        net.minecraft.util.Identifier itemId = net.minecraft.registry.Registries.ITEM.getId(item);
+        if (ArtifactsTooltips.isArtifactsItem(itemId)) {
+            if (lines.size() > 1) {
+                lines.subList(1, lines.size()).clear();
+            }
+            ArtifactsTooltips.appendLines(itemId.getPath(), lines);
+            return; // skip all other tooltip handlers — artifacts only show our text
+        }
+
         // Goat horn: scan existing tooltip lines for the variant name
         // (Minecraft adds the instrument name as a subtitle line like "Seek")
         if (item == Items.GOAT_HORN) {

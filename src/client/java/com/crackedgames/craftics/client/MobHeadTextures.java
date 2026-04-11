@@ -1,103 +1,188 @@
 package com.crackedgames.craftics.client;
 
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.resource.ResourceManager;
 import net.minecraft.util.Identifier;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Static registry of 16x16 mob head textures used by the combat HUD.
+ * Registry of 16x16 mob head textures used by the combat HUD.
+ *
+ * <p>Resolution order for {@link #get(String)}:
+ * <ol>
+ *   <li>Hardcoded vanilla textures bundled with Craftics.</li>
+ *   <li>Runtime overrides registered via {@link #register(String, Identifier)}
+ *       (intended for cross-mod compatibility add-ons).</li>
+ *   <li>Auto-discovery: the loaded resource manager is probed at two conventions
+ *       so users can drop PNGs into a resource pack for modded enemies without any code:
+ *       <ul>
+ *         <li>{@code craftics:textures/mob_heads/{namespace}/{path}.png}
+ *             — resource pack supplies a head for a modded mob under craftics' namespace.</li>
+ *         <li>{@code {namespace}:textures/mob_heads/{path}.png}
+ *             — mod ships its own head texture in its own namespace.</li>
+ *       </ul>
+ *   </li>
+ * </ol>
+ *
+ * <p>Probe results (both positive and negative) are cached so repeated HUD lookups are cheap.
+ * Call {@link #clearProbeCache()} from a resource-reload listener when resource packs change.
  */
 public final class MobHeadTextures {
 
-    private static final Map<String, Identifier> TEXTURES;
+    private static final Map<String, Identifier> VANILLA;
+    private static final Map<String, Identifier> RUNTIME = new ConcurrentHashMap<>();
+    /** Cache of resource-manager probe results. Optional.empty() = confirmed missing. */
+    private static final Map<String, Optional<Identifier>> PROBE_CACHE = new ConcurrentHashMap<>();
 
     static {
         Map<String, Identifier> m = new HashMap<>();
-        m.put("minecraft:zombie", Identifier.of("craftics", "textures/mob_heads/zombie.png"));
-        m.put("minecraft:husk", Identifier.of("craftics", "textures/mob_heads/husk.png"));
-        m.put("minecraft:drowned", Identifier.of("craftics", "textures/mob_heads/drowned.png"));
-        m.put("minecraft:zombie_villager", Identifier.of("craftics", "textures/mob_heads/zombie_villager.png"));
-        m.put("minecraft:skeleton", Identifier.of("craftics", "textures/mob_heads/skeleton.png"));
-        m.put("minecraft:stray", Identifier.of("craftics", "textures/mob_heads/stray.png"));
-        m.put("minecraft:wither_skeleton", Identifier.of("craftics", "textures/mob_heads/wither_skeleton.png"));
-        m.put("minecraft:bogged", Identifier.of("craftics", "textures/mob_heads/bogged.png"));
-        m.put("minecraft:spider", Identifier.of("craftics", "textures/mob_heads/spider.png"));
-        m.put("minecraft:cave_spider", Identifier.of("craftics", "textures/mob_heads/cave_spider.png"));
-        m.put("minecraft:endermite", Identifier.of("craftics", "textures/mob_heads/endermite.png"));
-        m.put("minecraft:silverfish", Identifier.of("craftics", "textures/mob_heads/silverfish.png"));
-        m.put("minecraft:bee", Identifier.of("craftics", "textures/mob_heads/bee.png"));
-        m.put("minecraft:creeper", Identifier.of("craftics", "textures/mob_heads/creeper.png"));
-        m.put("minecraft:blaze", Identifier.of("craftics", "textures/mob_heads/blaze.png"));
-        m.put("minecraft:ghast", Identifier.of("craftics", "textures/mob_heads/ghast.png"));
-        m.put("minecraft:magma_cube", Identifier.of("craftics", "textures/mob_heads/magma_cube.png"));
-        m.put("minecraft:slime", Identifier.of("craftics", "textures/mob_heads/slime.png"));
-        m.put("minecraft:breeze", Identifier.of("craftics", "textures/mob_heads/breeze.png"));
-        m.put("minecraft:enderman", Identifier.of("craftics", "textures/mob_heads/enderman.png"));
-        m.put("minecraft:ender_dragon", Identifier.of("craftics", "textures/mob_heads/ender_dragon.png"));
-        m.put("minecraft:shulker", Identifier.of("craftics", "textures/mob_heads/shulker.png"));
-        m.put("minecraft:witch", Identifier.of("craftics", "textures/mob_heads/witch.png"));
-        m.put("minecraft:pillager", Identifier.of("craftics", "textures/mob_heads/pillager.png"));
-        m.put("minecraft:vindicator", Identifier.of("craftics", "textures/mob_heads/vindicator.png"));
-        m.put("minecraft:evoker", Identifier.of("craftics", "textures/mob_heads/evoker.png"));
-        m.put("minecraft:vex", Identifier.of("craftics", "textures/mob_heads/vex.png"));
-        m.put("minecraft:illusioner", Identifier.of("craftics", "textures/mob_heads/illusioner.png"));
-        m.put("minecraft:ravager", Identifier.of("craftics", "textures/mob_heads/ravager.png"));
-        m.put("minecraft:piglin", Identifier.of("craftics", "textures/mob_heads/piglin.png"));
-        m.put("minecraft:piglin_brute", Identifier.of("craftics", "textures/mob_heads/piglin_brute.png"));
-        m.put("minecraft:zombified_piglin", Identifier.of("craftics", "textures/mob_heads/zombified_piglin.png"));
-        m.put("minecraft:hoglin", Identifier.of("craftics", "textures/mob_heads/hoglin.png"));
-        m.put("minecraft:zoglin", Identifier.of("craftics", "textures/mob_heads/zoglin.png"));
-        m.put("minecraft:strider", Identifier.of("craftics", "textures/mob_heads/strider.png"));
-        m.put("minecraft:warden", Identifier.of("craftics", "textures/mob_heads/warden.png"));
-        m.put("minecraft:phantom", Identifier.of("craftics", "textures/mob_heads/phantom.png"));
-        m.put("minecraft:guardian", Identifier.of("craftics", "textures/mob_heads/guardian.png"));
-        m.put("minecraft:elder_guardian", Identifier.of("craftics", "textures/mob_heads/elder_guardian.png"));
-        m.put("minecraft:wither", Identifier.of("craftics", "textures/mob_heads/wither.png"));
-        m.put("minecraft:wolf", Identifier.of("craftics", "textures/mob_heads/wolf.png"));
-        m.put("minecraft:ocelot", Identifier.of("craftics", "textures/mob_heads/ocelot.png"));
-        m.put("minecraft:cat", Identifier.of("craftics", "textures/mob_heads/cat.png"));
-        m.put("minecraft:goat", Identifier.of("craftics", "textures/mob_heads/goat.png"));
-        m.put("minecraft:polar_bear", Identifier.of("craftics", "textures/mob_heads/polar_bear.png"));
-        m.put("minecraft:panda", Identifier.of("craftics", "textures/mob_heads/panda.png"));
-        m.put("minecraft:fox", Identifier.of("craftics", "textures/mob_heads/fox.png"));
-        m.put("minecraft:bat", Identifier.of("craftics", "textures/mob_heads/bat.png"));
-        m.put("minecraft:cow", Identifier.of("craftics", "textures/mob_heads/cow.png"));
-        m.put("minecraft:pig", Identifier.of("craftics", "textures/mob_heads/pig.png"));
-        m.put("minecraft:sheep", Identifier.of("craftics", "textures/mob_heads/sheep.png"));
-        m.put("minecraft:chicken", Identifier.of("craftics", "textures/mob_heads/chicken.png"));
-        m.put("minecraft:rabbit", Identifier.of("craftics", "textures/mob_heads/rabbit.png"));
-        m.put("minecraft:mooshroom", Identifier.of("craftics", "textures/mob_heads/mooshroom.png"));
-        m.put("minecraft:camel", Identifier.of("craftics", "textures/mob_heads/camel.png"));
-        m.put("minecraft:sniffer", Identifier.of("craftics", "textures/mob_heads/sniffer.png"));
-        m.put("minecraft:iron_golem", Identifier.of("craftics", "textures/mob_heads/iron_golem.png"));
-        m.put("minecraft:snow_golem", Identifier.of("craftics", "textures/mob_heads/snow_golem.png"));
-        m.put("minecraft:villager", Identifier.of("craftics", "textures/mob_heads/villager.png"));
-        m.put("minecraft:wandering_trader", Identifier.of("craftics", "textures/mob_heads/wandering_trader.png"));
-        m.put("minecraft:dolphin", Identifier.of("craftics", "textures/mob_heads/dolphin.png"));
-        m.put("minecraft:squid", Identifier.of("craftics", "textures/mob_heads/squid.png"));
-        m.put("minecraft:glow_squid", Identifier.of("craftics", "textures/mob_heads/glow_squid.png"));
-        m.put("minecraft:turtle", Identifier.of("craftics", "textures/mob_heads/turtle.png"));
-        m.put("minecraft:cod", Identifier.of("craftics", "textures/mob_heads/cod.png"));
-        m.put("minecraft:salmon", Identifier.of("craftics", "textures/mob_heads/salmon.png"));
-        m.put("minecraft:pufferfish", Identifier.of("craftics", "textures/mob_heads/pufferfish.png"));
-        m.put("minecraft:axolotl", Identifier.of("craftics", "textures/mob_heads/axolotl.png"));
-        m.put("minecraft:frog", Identifier.of("craftics", "textures/mob_heads/frog.png"));
-        m.put("minecraft:tadpole", Identifier.of("craftics", "textures/mob_heads/tadpole.png"));
-        m.put("minecraft:allay", Identifier.of("craftics", "textures/mob_heads/allay.png"));
-        m.put("minecraft:horse", Identifier.of("craftics", "textures/mob_heads/horse.png"));
-        m.put("minecraft:donkey", Identifier.of("craftics", "textures/mob_heads/donkey.png"));
-        m.put("minecraft:mule", Identifier.of("craftics", "textures/mob_heads/mule.png"));
-        m.put("minecraft:skeleton_horse", Identifier.of("craftics", "textures/mob_heads/skeleton_horse.png"));
-        m.put("minecraft:zombie_horse", Identifier.of("craftics", "textures/mob_heads/zombie_horse.png"));
-        m.put("minecraft:llama", Identifier.of("craftics", "textures/mob_heads/llama.png"));
-        m.put("minecraft:parrot", Identifier.of("craftics", "textures/mob_heads/parrot.png"));
-        TEXTURES = Collections.unmodifiableMap(m);
+        m.put("minecraft:zombie", vanilla("zombie"));
+        m.put("minecraft:husk", vanilla("husk"));
+        m.put("minecraft:drowned", vanilla("drowned"));
+        m.put("minecraft:zombie_villager", vanilla("zombie_villager"));
+        m.put("minecraft:skeleton", vanilla("skeleton"));
+        m.put("minecraft:stray", vanilla("stray"));
+        m.put("minecraft:wither_skeleton", vanilla("wither_skeleton"));
+        m.put("minecraft:bogged", vanilla("bogged"));
+        m.put("minecraft:spider", vanilla("spider"));
+        m.put("minecraft:cave_spider", vanilla("cave_spider"));
+        m.put("minecraft:endermite", vanilla("endermite"));
+        m.put("minecraft:silverfish", vanilla("silverfish"));
+        m.put("minecraft:bee", vanilla("bee"));
+        m.put("minecraft:creeper", vanilla("creeper"));
+        m.put("minecraft:blaze", vanilla("blaze"));
+        m.put("minecraft:ghast", vanilla("ghast"));
+        m.put("minecraft:magma_cube", vanilla("magma_cube"));
+        m.put("minecraft:slime", vanilla("slime"));
+        m.put("minecraft:breeze", vanilla("breeze"));
+        m.put("minecraft:enderman", vanilla("enderman"));
+        m.put("minecraft:ender_dragon", vanilla("ender_dragon"));
+        m.put("minecraft:shulker", vanilla("shulker"));
+        m.put("minecraft:witch", vanilla("witch"));
+        m.put("minecraft:pillager", vanilla("pillager"));
+        m.put("minecraft:vindicator", vanilla("vindicator"));
+        m.put("minecraft:evoker", vanilla("evoker"));
+        m.put("minecraft:vex", vanilla("vex"));
+        m.put("minecraft:illusioner", vanilla("illusioner"));
+        m.put("minecraft:ravager", vanilla("ravager"));
+        m.put("minecraft:piglin", vanilla("piglin"));
+        m.put("minecraft:piglin_brute", vanilla("piglin_brute"));
+        m.put("minecraft:zombified_piglin", vanilla("zombified_piglin"));
+        m.put("minecraft:hoglin", vanilla("hoglin"));
+        m.put("minecraft:zoglin", vanilla("zoglin"));
+        m.put("minecraft:strider", vanilla("strider"));
+        m.put("minecraft:warden", vanilla("warden"));
+        m.put("minecraft:phantom", vanilla("phantom"));
+        m.put("minecraft:guardian", vanilla("guardian"));
+        m.put("minecraft:elder_guardian", vanilla("elder_guardian"));
+        m.put("minecraft:wither", vanilla("wither"));
+        m.put("minecraft:wolf", vanilla("wolf"));
+        m.put("minecraft:ocelot", vanilla("ocelot"));
+        m.put("minecraft:cat", vanilla("cat"));
+        m.put("minecraft:goat", vanilla("goat"));
+        m.put("minecraft:polar_bear", vanilla("polar_bear"));
+        m.put("minecraft:panda", vanilla("panda"));
+        m.put("minecraft:fox", vanilla("fox"));
+        m.put("minecraft:bat", vanilla("bat"));
+        m.put("minecraft:cow", vanilla("cow"));
+        m.put("minecraft:pig", vanilla("pig"));
+        m.put("minecraft:sheep", vanilla("sheep"));
+        m.put("minecraft:chicken", vanilla("chicken"));
+        m.put("minecraft:rabbit", vanilla("rabbit"));
+        m.put("minecraft:mooshroom", vanilla("mooshroom"));
+        m.put("minecraft:camel", vanilla("camel"));
+        m.put("minecraft:sniffer", vanilla("sniffer"));
+        m.put("minecraft:iron_golem", vanilla("iron_golem"));
+        m.put("minecraft:snow_golem", vanilla("snow_golem"));
+        m.put("minecraft:villager", vanilla("villager"));
+        m.put("minecraft:wandering_trader", vanilla("wandering_trader"));
+        m.put("minecraft:dolphin", vanilla("dolphin"));
+        m.put("minecraft:squid", vanilla("squid"));
+        m.put("minecraft:glow_squid", vanilla("glow_squid"));
+        m.put("minecraft:turtle", vanilla("turtle"));
+        m.put("minecraft:cod", vanilla("cod"));
+        m.put("minecraft:salmon", vanilla("salmon"));
+        m.put("minecraft:pufferfish", vanilla("pufferfish"));
+        m.put("minecraft:axolotl", vanilla("axolotl"));
+        m.put("minecraft:frog", vanilla("frog"));
+        m.put("minecraft:tadpole", vanilla("tadpole"));
+        m.put("minecraft:allay", vanilla("allay"));
+        m.put("minecraft:horse", vanilla("horse"));
+        m.put("minecraft:donkey", vanilla("donkey"));
+        m.put("minecraft:mule", vanilla("mule"));
+        m.put("minecraft:skeleton_horse", vanilla("skeleton_horse"));
+        m.put("minecraft:zombie_horse", vanilla("zombie_horse"));
+        m.put("minecraft:llama", vanilla("llama"));
+        m.put("minecraft:parrot", vanilla("parrot"));
+        VANILLA = Collections.unmodifiableMap(m);
     }
 
+    private static Identifier vanilla(String name) {
+        return Identifier.of("craftics", "textures/mob_heads/" + name + ".png");
+    }
+
+    /**
+     * Register a custom head texture for an entity type at runtime. Intended for mod-compat
+     * add-ons that want to provide heads for modded enemies without shipping a resource pack.
+     * Replaces any previously registered runtime override for that entity type.
+     */
+    public static void register(String entityTypeId, Identifier texture) {
+        if (entityTypeId == null || entityTypeId.isEmpty() || texture == null) return;
+        RUNTIME.put(entityTypeId, texture);
+        PROBE_CACHE.remove(entityTypeId);
+    }
+
+    /** Clear the auto-discovery cache. Call this from a resource-reload listener. */
+    public static void clearProbeCache() {
+        PROBE_CACHE.clear();
+    }
+
+    /**
+     * Resolve a head texture for an entity type, or {@code null} if none is available.
+     * Callers are expected to draw a fallback (colored square, initial letter, etc.) on null.
+     */
     public static Identifier get(String entityTypeId) {
-        return TEXTURES.get(entityTypeId);
+        if (entityTypeId == null || entityTypeId.isEmpty()) return null;
+        Identifier tex = VANILLA.get(entityTypeId);
+        if (tex != null) return tex;
+        tex = RUNTIME.get(entityTypeId);
+        if (tex != null) return tex;
+        Optional<Identifier> cached = PROBE_CACHE.get(entityTypeId);
+        if (cached != null) return cached.orElse(null);
+        Identifier probed = probe(entityTypeId);
+        PROBE_CACHE.put(entityTypeId, Optional.ofNullable(probed));
+        return probed;
+    }
+
+    private static Identifier probe(String entityTypeId) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) return null;
+        ResourceManager rm = client.getResourceManager();
+        if (rm == null) return null;
+
+        int colon = entityTypeId.indexOf(':');
+        String ns = colon >= 0 ? entityTypeId.substring(0, colon) : "minecraft";
+        String path = colon >= 0 ? entityTypeId.substring(colon + 1) : entityTypeId;
+
+        // 1. craftics:textures/mob_heads/{ns}/{path}.png — resource pack override for modded mobs
+        Identifier candidate = tryId("craftics", "textures/mob_heads/" + ns + "/" + path + ".png");
+        if (candidate != null && rm.getResource(candidate).isPresent()) return candidate;
+
+        // 2. {ns}:textures/mob_heads/{path}.png — mod ships its own head texture
+        if (!"minecraft".equals(ns) && !"craftics".equals(ns)) {
+            candidate = tryId(ns, "textures/mob_heads/" + path + ".png");
+            if (candidate != null && rm.getResource(candidate).isPresent()) return candidate;
+        }
+        return null;
+    }
+
+    private static Identifier tryId(String namespace, String path) {
+        return Identifier.tryParse(namespace + ":" + path);
     }
 
     public static void drawMobHead(net.minecraft.client.gui.DrawContext ctx, Identifier texture, int x, int y, int size) {
@@ -156,7 +241,7 @@ public final class MobHeadTextures {
             case "minecraft:cave_spider" -> "CS";
             case "minecraft:breeze" -> "Br";
             case "minecraft:bogged" -> "Bo";
-            default -> id.substring(0, 1).toUpperCase();
+            default -> id.isEmpty() ? "?" : id.substring(0, 1).toUpperCase();
         };
     }
 

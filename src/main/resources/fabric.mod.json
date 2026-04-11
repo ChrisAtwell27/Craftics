@@ -50,6 +50,7 @@
 		"player-animation-lib": "*",
 		"owo": "*",
 		"pehkui": "*",
-		"cardinal-components-api": "*"
+		"cardinal-components-api": "*",
+		"artifacts": "*"
 	}
 }

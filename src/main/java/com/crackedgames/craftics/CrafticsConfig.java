@@ -65,7 +65,7 @@ public class CrafticsConfig {
     // ===== Enemy Counts =====
 
     @RangeConstraint(min = 1, max = 15)
-    public int maxEnemiesPerLevel = 10;
+    public int maxEnemiesPerLevel = 7;
 
     @RangeConstraint(min = 1, max = 6)
     public int maxBossAdds = 4;

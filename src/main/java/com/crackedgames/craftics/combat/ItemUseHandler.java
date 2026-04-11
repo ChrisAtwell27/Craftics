@@ -116,7 +116,18 @@ public class ItemUseHandler {
     );
 
     public static boolean isFood(Item item) {
-        return FOOD_HEAL.containsKey(item);
+        return FOOD_HEAL.containsKey(item) || isArtifactsNonConsumingFood(item);
+    }
+
+    /**
+     * Eternal Steak / Everlasting Beef from the Artifacts mod — non-consuming food items.
+     * Detected by registry id so this works without a compile-time dependency on Artifacts.
+     */
+    public static boolean isArtifactsNonConsumingFood(Item item) {
+        net.minecraft.util.Identifier id = net.minecraft.registry.Registries.ITEM.getId(item);
+        if (id == null || !"artifacts".equals(id.getNamespace())) return false;
+        String path = id.getPath();
+        return "eternal_steak".equals(path) || "everlasting_beef".equals(path);
     }
 
     public static boolean isPotion(Item item) {
@@ -181,6 +192,7 @@ public class ItemUseHandler {
         if (PotterySherdSpells.isPotterySherd(item)) return PotterySherdSpells.getSherdApCost(item);
         if (item == Items.FISHING_ROD) return FISHING_AP_COST;
         if (TWO_AP_ITEMS.contains(item)) return 2;
+        if (isArtifactsNonConsumingFood(item)) return 2;
         return 1;
     }
 
@@ -351,27 +363,49 @@ public class ItemUseHandler {
     }
 
     private static String useFood(ServerPlayerEntity player, ItemStack stack, Item food) {
+        // Eternal Steak / Everlasting Beef (Artifacts mod) — non-consuming food.
+        // Per the Craftics × Artifacts spec: 2 AP, heals 3 HP, doesn't decrement the stack.
+        if (isArtifactsNonConsumingFood(food)) {
+            float curMax = player.getMaxHealth();
+            float curHp = player.getHealth();
+            int heal = 3;
+            float newHp = Math.min(curMax, curHp + heal);
+            player.setHealth(newHp);
+            String displayName = stack.getName().getString();
+            return "§dAte " + displayName + " — healed " + heal + " HP §7(it's eternal!)";
+        }
+
         int healAmount = FOOD_HEAL.getOrDefault(food, 1);
         float maxHealth = player.getMaxHealth();
         float newHealth = Math.min(maxHealth, player.getHealth() + healAmount);
         player.setHealth(newHealth);
         stack.decrement(1);
 
-        // Risky foods — apply debuff effects
-        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        // Risky foods — apply debuff effects via the hooked path so addon
+        // immunities (e.g. Antidote Vessel) can intercept them.
+        CombatManager cm = CombatManager.get(player);
         java.util.Random rng = java.util.concurrent.ThreadLocalRandom.current();
         if (food == Items.POISONOUS_POTATO && rng.nextFloat() < 0.60f) {
-            effects.addEffect(CombatEffects.EffectType.POISON, 2, 0);
-            player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.POISON, -1, 0, false, true));
-            return "§aAte Poisonous Potato! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)";
+            boolean applied = cm.addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
+            if (applied) {
+                player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.POISON, -1, 0, false, true));
+                return "§aAte Poisonous Potato! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)";
+            }
+            return "§aAte Poisonous Potato! Healed " + healAmount + " HP §a(Poison resisted!)";
         } else if (food == Items.SPIDER_EYE) {
-            effects.addEffect(CombatEffects.EffectType.POISON, 2, 0);
-            player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.POISON, -1, 0, false, true));
-            return "§aAte Spider Eye! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)";
+            boolean applied = cm.addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
+            if (applied) {
+                player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.POISON, -1, 0, false, true));
+                return "§aAte Spider Eye! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)";
+            }
+            return "§aAte Spider Eye! Healed " + healAmount + " HP §a(Poison resisted!)";
         } else if (food == Items.ROTTEN_FLESH && rng.nextFloat() < 0.80f) {
-            effects.addEffect(CombatEffects.EffectType.WEAKNESS, 2, 0);
-            player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.WEAKNESS, -1, 0, false, true));
-            return "§aAte Rotten Flesh! Healed " + healAmount + " HP §c(Weakened for 2 turns!)";
+            boolean applied = cm.addEffectHooked(CombatEffects.EffectType.WEAKNESS, 2, 0);
+            if (applied) {
+                player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.WEAKNESS, -1, 0, false, true));
+                return "§aAte Rotten Flesh! Healed " + healAmount + " HP §c(Weakened for 2 turns!)";
+            }
+            return "§aAte Rotten Flesh! Healed " + healAmount + " HP §a(Weakness resisted!)";
         }
 
         // Golden apple also gives absorption

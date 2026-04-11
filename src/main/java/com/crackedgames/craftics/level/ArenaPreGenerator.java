@@ -12,13 +12,33 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Pre-generates all arena variants at their designated positions when a player's
- * personal world is created. This eliminates edge glitching, loading delays, and
- * chunk sync issues by ensuring all arena blocks exist before combat starts.
+ * Manages on-demand arena generation in a player's personal world slot.
  *
- * Also provides targeted regeneration — any single biome can be rebuilt without
- * wiping the rest, and corrupted arenas (missing floors, too much void) can be
- * auto-detected and repaired without player intervention.
+ * <h2>Lazy generation</h2>
+ * Arenas used to be built eagerly at island creation time — every level, every
+ * biome, all placed into the world slot before the player could move. On
+ * lower-end servers this froze the main thread for multiple seconds and
+ * sometimes crashed the tick loop. The new flow:
+ * <ol>
+ *   <li>Island creation does zero arena work. {@link #generateAll} is a no-op.</li>
+ *   <li>{@link com.crackedgames.craftics.combat.CombatManager#buildArena} calls
+ *       {@link #ensureArena} on the way into a fight.</li>
+ *   <li>{@code ensureArena} builds only the requested level's arena, stores its
+ *       metadata, and returns immediately. Subsequent fights at the same level
+ *       hit the cached metadata and skip the build entirely.</li>
+ * </ol>
+ *
+ * <h2>Wipe bypass on fresh slots</h2>
+ * {@link #wipeArenaFootprint} is a ≥133,000 block-touch loop per arena. It's
+ * needed for rebuilds (to clear old schematic decorations / worldedits) but on
+ * a fresh, never-touched slot the volume is already pure air, so the wipe is
+ * pure overhead. {@link #ensureArena} passes {@code freshSlot=true} on the
+ * first build of a level in a slot and skips the wipe.
+ *
+ * <h2>Regeneration + corruption repair</h2>
+ * Admin paths ({@code /craftics rebuild_arenas}) still use {@link #regenerate}
+ * which iterates every level. The corruption auto-repair path still uses
+ * {@link #regenerateLevel} which does wipe (corrupted = possibly dirty).
  */
 public class ArenaPreGenerator {
 
@@ -26,11 +46,69 @@ public class ArenaPreGenerator {
     private static final double CORRUPTION_THRESHOLD = 0.25;
 
     /**
-     * Pre-generate every arena for a player's world slot.
-     * Called once when the personal world is created.
+     * Legacy entry point. Used to pre-build every arena at island creation.
+     * Now a no-op — arenas are built lazily on first combat entry via
+     * {@link #ensureArena}. Kept so existing callers don't need to change.
      */
     public static void generateAll(ServerWorld world, UUID playerUuid) {
-        regenerate(world, playerUuid, null);
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(playerUuid);
+        if (pd.worldSlot < 0) return;
+        // Mark the system as "enabled" so CombatManager.buildArena takes the
+        // pre-built-metadata path. Actual arenas get built on demand.
+        pd.arenasPreGenerated = true;
+        data.markDirty();
+        CrafticsMod.LOGGER.info(
+            "ArenaPreGenerator: lazy mode — no arenas built at creation for slot {} (player {})",
+            pd.worldSlot, playerUuid);
+    }
+
+    /**
+     * Build the requested level's arena if it hasn't been built yet for this
+     * player's slot. If metadata already exists, this is a cheap HashMap lookup
+     * and returns the cached origin. If not, it performs a single arena build
+     * (no wipe on fresh slots) and stores the metadata.
+     *
+     * @return the stored arena metadata after the call, or {@code null} if the
+     *         player has no world slot or the build failed.
+     */
+    public static int[] ensureArena(ServerWorld world, UUID playerUuid, int level) {
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(playerUuid);
+        if (pd.worldSlot < 0) return null;
+
+        int[] existing = pd.getArenaMetadata(level);
+        if (existing != null) return existing;
+
+        BiomeTemplate biome = BiomeRegistry.getForLevel(level);
+        if (biome == null) {
+            CrafticsMod.LOGGER.warn("ArenaPreGenerator.ensureArena: no biome for level {}", level);
+            return null;
+        }
+
+        try {
+            LevelDefinition levelDef = LevelGenerator.generate(level);
+            BlockPos origin = data.getArenaOrigin(playerUuid, level);
+            if (origin == null) return null;
+
+            // Fresh slot: no previous blocks to wipe, just build directly.
+            GridArena arena = ArenaBuilder.buildAt(world, levelDef, origin);
+            if (arena == null) return null;
+
+            pd.storeArenaMetadata(level, arena.getOrigin(),
+                arena.getWidth(), arena.getHeight(), arena.getPlayerStart());
+            pd.arenasPreGenerated = true;
+            data.markDirty();
+            CrafticsMod.LOGGER.debug(
+                "ArenaPreGenerator.ensureArena: built level {} ({}) for slot {} lazily",
+                level, biome.biomeId, pd.worldSlot);
+            return pd.getArenaMetadata(level);
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.error(
+                "ArenaPreGenerator.ensureArena: failed to build level {} for player {}",
+                level, playerUuid, e);
+            return null;
+        }
     }
 
     /**

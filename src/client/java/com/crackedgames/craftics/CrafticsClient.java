@@ -5,6 +5,7 @@ import com.crackedgames.craftics.client.CombatHudOverlay;
 import com.crackedgames.craftics.client.CombatInputHandler;
 import com.crackedgames.craftics.client.CombatTooltips;
 import com.crackedgames.craftics.client.CombatState;
+import com.crackedgames.craftics.client.MobHeadTextures;
 import com.crackedgames.craftics.client.TileOverlayRenderer;
 import com.crackedgames.craftics.client.CombatAnimations;
 import com.crackedgames.craftics.client.CombatVisualEffects;
@@ -52,21 +53,25 @@ public class CrafticsClient implements ClientModInitializer {
         };
 
         ClientPlayNetworking.registerGlobalReceiver(EnterCombatPayload.ID, (payload, context) -> {
+            boolean wasInCombat = CombatState.isInCombat();
             CombatState.enterCombat(
                 payload.originX(), payload.originY(), payload.originZ(),
                 payload.width(), payload.height()
             );
-            if (payload.cameraYaw() >= 0) {
-                CombatState.setCombatYaw(payload.cameraYaw());
-            } else {
-                CombatState.setCombatYaw(225.0f);
+            // Only set camera yaw on first combat entry; keep orientation between levels
+            if (!wasInCombat) {
+                if (payload.cameraYaw() >= 0) {
+                    CombatState.setCombatYaw(payload.cameraYaw());
+                } else {
+                    CombatState.setCombatYaw(225.0f);
+                }
             }
             previousBobView = context.client().options.getBobView().getValue();
             context.client().options.getBobView().setValue(false);
             // Shrink chat so it doesn't cover the arena
             previousChatScale = context.client().options.getChatScale().getValue();
             previousChatWidth = context.client().options.getChatWidth().getValue();
-            context.client().options.getChatScale().setValue(0.33);
+            context.client().options.getChatScale().setValue(0.5);
             context.client().options.getChatWidth().setValue(0.39);
             context.client().options.setPerspective(Perspective.THIRD_PERSON_BACK);
             context.client().mouse.unlockCursor();
@@ -81,9 +86,14 @@ public class CrafticsClient implements ClientModInitializer {
                 payload.maxAp(), payload.maxSpeed(),
                 payload.enemyData(), payload.enemyTypeIds(),
                 payload.playerEffects(), payload.killStreak(),
-                payload.partyHpData()
+                payload.partyHpData(), payload.turnOrderData()
             );
         });
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.ScoreboardSyncPayload.ID, (payload, context) -> {
+                CombatState.updateScoreboard(payload.scoreData());
+            });
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.CombatEventPayload.ID, (payload, context) -> {
@@ -301,6 +311,21 @@ public class CrafticsClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(new AchievementToast());
         CombatTooltips.register();
         TileOverlayRenderer.register();
+
+        // Clear mob head auto-discovery cache whenever resource packs reload,
+        // so newly added custom head PNGs are picked up without a restart.
+        net.fabricmc.fabric.api.resource.ResourceManagerHelper.get(
+                net.minecraft.resource.ResourceType.CLIENT_RESOURCES)
+            .registerReloadListener(new net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener() {
+                @Override
+                public net.minecraft.util.Identifier getFabricId() {
+                    return net.minecraft.util.Identifier.of("craftics", "mob_head_probe_cache");
+                }
+                @Override
+                public void reload(net.minecraft.resource.ResourceManager manager) {
+                    MobHeadTextures.clearProbeCache();
+                }
+            });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             AchievementToast.tick();

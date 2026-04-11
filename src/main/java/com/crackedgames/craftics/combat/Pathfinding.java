@@ -31,6 +31,15 @@ public class Pathfinding {
         return findPath(arena, from, to, maxSteps, null, hasBoat, ignoreObstacles);
     }
 
+    /**
+     * Player pathfinding with boat access, optional obstacle ignoring, and optional
+     * phase-through-enemies mode (Helium Flamingo). When {@code phaseThroughEnemies}
+     * is true, occupied tiles are walkable for traversal but not as the final destination.
+     */
+    public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, boolean hasBoat, boolean ignoreObstacles, boolean phaseThroughEnemies) {
+        return findPathFull(arena, from, to, maxSteps, null, hasBoat, ignoreObstacles, false, phaseThroughEnemies);
+    }
+
     /** Enemy pathfinding (no boat access). */
     public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self) {
         return findPath(arena, from, to, maxSteps, self, false);
@@ -74,6 +83,16 @@ public class Pathfinding {
      * When aquatic is true, WATER and DEEP_WATER tiles are walkable.
      */
     public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean aquatic) {
+        return findPathFull(arena, from, to, maxSteps, self, hasBoat, ignoreObstacles, aquatic, false);
+    }
+
+    /**
+     * A* pathfinding with the full option set including {@code phaseThroughEnemies}
+     * (Helium Flamingo). When phaseThroughEnemies is true, occupant blocking is
+     * skipped for intermediate path tiles — the destination still cannot be
+     * occupied (can't stop on top of an enemy).
+     */
+    public static List<GridPos> findPathFull(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean aquatic, boolean phaseThroughEnemies) {
         if (from.equals(to)) return List.of();
         if (!arena.isInBounds(to)) return List.of();
 
@@ -113,7 +132,11 @@ public class Pathfinding {
                 if (neighborTile == null || !neighborTile.isWalkableEx(hasBoat, ignoreObstacles, aquatic)) continue;
                 // Block enemy-occupied tiles (excluding self and the destination).
                 // Allies are passable for intermediate tiles — you can move through them but not stop on them.
-                if (!neighbor.equals(to) && isBlockedBy(arena, neighbor, self, false)) continue;
+                // Helium Flamingo: also pass through enemies on intermediate tiles.
+                if (!neighbor.equals(to)) {
+                    if (!phaseThroughEnemies && isBlockedBy(arena, neighbor, self, false)) continue;
+                    if (phaseThroughEnemies && neighbor.equals(arena.getPlayerGridPos())) continue;
+                }
 
                 int moveCost = neighborTile.getMoveCost();
                 int tentativeG = currentG + moveCost;

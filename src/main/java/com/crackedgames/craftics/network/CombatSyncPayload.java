@@ -12,13 +12,14 @@ import net.minecraft.util.Identifier;
  * enemyTypeIds is a pipe-separated string of entity type IDs in the same order as enemyData triplets.
  * partyHpData is a pipe-separated string of party member HP: "uuid,name,hp,maxHp,dead|..."
  *   (empty string when solo)
+ * turnOrderData is a pipe-separated string of turn queue: "uuid,name,isCurrent|..." (empty when solo)
  */
 public record CombatSyncPayload(int phase, int ap, int movePoints,
                                  int playerHp, int playerMaxHp, int turnNumber,
                                  int maxAp, int maxSpeed,
                                  int[] enemyData, String enemyTypeIds,
                                  String playerEffects, int killStreak,
-                                 String partyHpData) implements CustomPayload {
+                                 String partyHpData, String turnOrderData) implements CustomPayload {
 
     public static final CustomPayload.Id<CombatSyncPayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "combat_sync"));
@@ -44,7 +45,8 @@ public record CombatSyncPayload(int phase, int ap, int movePoints,
                 String playerEffects = buf.readString();
                 int killStreak = buf.readInt();
                 String partyHpData = buf.readString();
-                return new CombatSyncPayload(phase, ap, movePoints, playerHp, playerMaxHp, turnNumber, maxAp, maxSpeed, enemyData, enemyTypeIds, playerEffects, killStreak, partyHpData);
+                String turnOrderData = buf.readString();
+                return new CombatSyncPayload(phase, ap, movePoints, playerHp, playerMaxHp, turnNumber, maxAp, maxSpeed, enemyData, enemyTypeIds, playerEffects, killStreak, partyHpData, turnOrderData);
             }
 
             @Override
@@ -65,6 +67,7 @@ public record CombatSyncPayload(int phase, int ap, int movePoints,
                 buf.writeString(payload.playerEffects);
                 buf.writeInt(payload.killStreak);
                 buf.writeString(payload.partyHpData);
+                buf.writeString(payload.turnOrderData);
             }
         };
 

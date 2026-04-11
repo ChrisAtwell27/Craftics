@@ -43,6 +43,14 @@ public class CrafticsSavedData extends PersistentState {
         public int worldSlot = -1;
         public boolean personalHubBuilt = false;
         public int personalHubVersion = 0;
+        /**
+         * Per-island toggle for "enemies gain +hpPerLevel HP per level within a biome".
+         * Defaults to OFF — enemies only get the biome-ordinal HP bonus, no per-level
+         * ramp within a biome. Island owners can opt into the steeper per-level
+         * scaling via {@code /craftics hp_per_level on}. Only read for the
+         * effective world owner — guests inherit whatever the owner has set.
+         */
+        public boolean scaleHpPerLevelEnabled = false;
         /** Pity timer — resets when an event occurs */
         public int levelsSinceLastEvent = 0;
         /** Pets waiting at the hub to rejoin next fight */
@@ -175,6 +183,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putInt("worldSlot", worldSlot);
             nbt.putBoolean("personalHubBuilt", personalHubBuilt);
             nbt.putInt("personalHubVersion", personalHubVersion);
+            nbt.putBoolean("scaleHpPerLevelEnabled", scaleHpPerLevelEnabled);
             NbtList petList = new NbtList();
             hubPets.forEach(petList::add);
             nbt.put("hubPets", petList);
@@ -202,6 +211,9 @@ public class CrafticsSavedData extends PersistentState {
             pd.worldSlot = nbt.contains("worldSlot") ? nbt.getInt("worldSlot") : -1;
             pd.personalHubBuilt = nbt.contains("personalHubBuilt") && nbt.getBoolean("personalHubBuilt");
             pd.personalHubVersion = nbt.contains("personalHubVersion") ? nbt.getInt("personalHubVersion") : 0;
+            // Default: true (matches global config default) — islands created before this
+            // field existed keep the old scaling behavior.
+            pd.scaleHpPerLevelEnabled = !nbt.contains("scaleHpPerLevelEnabled") || nbt.getBoolean("scaleHpPerLevelEnabled");
             if (nbt.contains("hubPets")) {
                 NbtList pl = nbt.getList("hubPets", net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
                 for (int i = 0; i < pl.size(); i++) pd.hubPets.add(pl.getCompound(i));
@@ -453,6 +465,19 @@ public class CrafticsSavedData extends PersistentState {
         if (pd.worldSlot < 0) return null;
         int laneZ = pd.worldSlot * LANE_SPACING_Z;
         return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 600);
+    }
+
+    /**
+     * Get a dedicated "scratch" arena origin for addon event levels (e.g. the
+     * Artifacts mimic encounter). Placed inside the player's lane so chunks are
+     * already loaded near the hub, but offset away from the numbered arena row
+     * so it can't collide with a pre-built arena.
+     */
+    public net.minecraft.util.math.BlockPos getEventArenaOrigin(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot < 0) return null;
+        int laneZ = pd.worldSlot * LANE_SPACING_Z;
+        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 700);
     }
 
     /**
