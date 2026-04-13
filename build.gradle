@@ -86,10 +86,16 @@ dependencies {
 }
 
 processResources {
+	def mcDep = "~${project.minecraft_version}"
+
 	inputs.property "version", project.version
+	inputs.property "minecraft_dependency", mcDep
 
 	filesMatching("fabric.mod.json") {
-		expand "version": project.version
+		expand(
+			"version": project.version,
+			"minecraft_dependency": mcDep
+		)
 	}
 }
 
