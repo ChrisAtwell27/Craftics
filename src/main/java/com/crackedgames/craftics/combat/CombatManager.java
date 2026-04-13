@@ -88,6 +88,18 @@ public class CombatManager {
     private static final int MOVE_TICKS = 4; // ticks per tile of movement
     private int getMoveTicks() { return CrafticsMod.CONFIG.skipEnemyAnimations() ? 1 : MOVE_TICKS; }
 
+    //? if <=1.21.1 {
+    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+        net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE;
+    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
+        net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE;
+    //?} else {
+    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+        net.minecraft.entity.attribute.EntityAttributes.SCALE;
+    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
+        net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE;*/
+    //?}
+
     private static GridPos adaptSpawnToArena(GridPos originalPos, LevelDefinition levelDef, GridArena arena) {
         int mappedX = scaleGridCoordinate(originalPos.x(), levelDef.getWidth(), arena.getWidth());
         int mappedZ = scaleGridCoordinate(originalPos.z(), levelDef.getHeight(), arena.getHeight());
@@ -1641,7 +1653,7 @@ public class CombatManager {
                 // can't deal damage through their custom tick/collision logic. All combat
                 // damage is routed through our turn-based damagePlayer() instead.
                 var atkAttr = mob.getAttributeInstance(
-                    net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE);
+                    ATTACK_DAMAGE_ATTR);
                 if (atkAttr != null) atkAttr.setBaseValue(0.0);
 
                 // Artifacts Mimic: setAiDisabled only gates the vanilla GoalSelector,
@@ -3920,7 +3932,7 @@ public class CombatManager {
 
     /** Set boss scale using vanilla GENERIC_SCALE attribute. */
     private static void scaleBoss(MobEntity mob, double scale) {
-        var scaleAttr = mob.getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
+        var scaleAttr = mob.getAttributeInstance(SCALE_ATTR);
         if (scaleAttr != null) {
             scaleAttr.setBaseValue(scale);
         }
@@ -4175,7 +4187,7 @@ public class CombatManager {
 
     /** Scale baby variant mobs smaller using vanilla SCALE attribute. */
     private static void scaleBabyMob(MobEntity mob) {
-        var scaleAttr = mob.getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
+        var scaleAttr = mob.getAttributeInstance(SCALE_ATTR);
         if (scaleAttr != null) {
             scaleAttr.setBaseValue(0.7);
         }
@@ -4183,7 +4195,7 @@ public class CombatManager {
 
     /** Start a dying mob's gradual shrink + death particles. Returns original scale. */
     private float startDeathShrink(MobEntity mob) {
-        var scaleAttr = mob.getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
+        var scaleAttr = mob.getAttributeInstance(SCALE_ATTR);
         float startScale = scaleAttr != null ? (float) scaleAttr.getBaseValue() : 1.0f;
 
         // Hurt flash + death sound
@@ -5064,7 +5076,7 @@ public class CombatManager {
                 float progress = Math.min(1.0f, (float) elapsed / totalShrinkTicks);
                 float eased = progress * progress;
                 float currentScale = dm.startScale() * (1.0f - eased) + 0.01f * eased;
-                var scaleAttr = dm.mob().getAttributeInstance(net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
+                var scaleAttr = dm.mob().getAttributeInstance(SCALE_ATTR);
                 if (scaleAttr != null) scaleAttr.setBaseValue(currentScale);
 
                 if (elapsed % 3 == 0 && dm.mob().getWorld() instanceof ServerWorld sw) {
@@ -7273,7 +7285,7 @@ public class CombatManager {
                     mob.setSilent(true);
                     // Scale to near-zero so fire/particle effects don't render
                     var scaleAttr = mob.getAttributeInstance(
-                        net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE);
+                        SCALE_ATTR);
                     if (scaleAttr != null) scaleAttr.setBaseValue(0.01);
                 }
                 CombatEntity ce = new CombatEntity(
