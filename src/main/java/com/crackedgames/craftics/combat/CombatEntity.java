@@ -283,14 +283,13 @@ public class CombatEntity {
      * (triangular: 1 stack = 1, 2 = 3, 3 = 6, 4 = 10...) so stacking bleed is meaningful.
      */
     public static int computeBleedTickDamage(int stacks) {
-        if (stacks <= 0) return 0;
-        return stacks * (stacks + 1) / 2;
+        return Math.max(0, stacks);
     }
     public int getPermanentDefReduction() { return permanentDefReduction; }
     public void addPermanentDefReduction(int amount) { this.permanentDefReduction += amount; }
 
     // Duration refreshes to longer value, intensity stacks up to cap
-    private static final int MAX_EFFECT_AMPLIFIER = 10;
+    private static final int MAX_EFFECT_AMPLIFIER = 999;
 
     public void stackPoison(int turns, int ampIncrease) {
         poisonTurns = Math.max(poisonTurns, turns);

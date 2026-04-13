@@ -110,6 +110,21 @@ public abstract class BossAI implements EnemyAI {
         return true;
     }
 
+    /**
+     * Pick a movement/attack action the boss should perform on a telegraph turn
+     * ALONGSIDE rendering the warning. Used by the late-game bypass
+     * ({@code currentBiomeOrdinal >= 3} in CombatManager) so late-game bosses
+     * never waste a full turn just idling while charging an ability.
+     *
+     * Default: delegate to {@link #advanceWhileCharging}, which moves the boss
+     * toward the player (or attacks if already adjacent). Subclasses that want
+     * to stay put during a telegraph (e.g. cinematic off-map bosses) can
+     * override to return {@link EnemyAction.Idle}.
+     */
+    public EnemyAction getChargingAdvanceAction(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return advanceWhileCharging(self, arena, playerPos);
+    }
+
     // === Utility methods for subclasses ===
 
     protected boolean isOnCooldown(String ability) {

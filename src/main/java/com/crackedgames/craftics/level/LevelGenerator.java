@@ -242,19 +242,6 @@ public class LevelGenerator {
             ));
         }
 
-        // End Crystal: immobile, explodes the turn after taking damage
-        if ("dragons_nest".equals(biome.biomeId)) {
-            GridPos center = new GridPos(w / 2, h / 2);
-            validPositions.removeIf(p -> p.equals(center));
-            spawns.add(new LevelDefinition.EnemySpawn(
-                "minecraft:end_crystal", center,
-                8 + hpBonus,
-                12 + atkBonus,
-                0,
-                0
-            ));
-        }
-
         // Bee swarm: if a bee rolled, replace all passives with bees
         boolean hasBee = spawns.stream().anyMatch(s -> "minecraft:bee".equals(s.entityTypeId()));
         if (hasBee && com.crackedgames.craftics.CrafticsMod.CONFIG.beeSwarmReplacesPassives()) {

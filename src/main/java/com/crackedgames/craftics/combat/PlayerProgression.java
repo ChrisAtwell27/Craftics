@@ -38,14 +38,14 @@ public class PlayerProgression extends PersistentState {
     }
 
     public enum Affinity {
-        SLASHING("Slashing", "\u00a7c\u2694", "+1 dmg, +5% sweep chance"),
-        CLEAVING("Cleaving", "\u00a76\u2716", "+1 dmg, +3% armor ignore"),
-        BLUNT("Blunt", "\u00a78\u2B24", "+1 dmg, +3% stun chance"),
-        RANGED("Ranged", "\u00a7b\u27B3", "+1 ranged dmg, +5% ricochet chain chance"),
-        WATER("Water", "\u00a73\u2248", "+1 dmg, +3% knockback & Wet"),
-        SPECIAL("Special", "\u00a7d\u2728", "+1 dmg, +3% free AP on use"),
-        PET("Pet", "\u00a7a\uD83D\uDC3E", "+1 dmg, +3% pet stat boost"),
-        PHYSICAL("Physical", "\u00a77\u270A", "+1 dmg, +3% counterattack");
+        SLASHING("Slashing", "\u00a7c\u2694", "+3 dmg, +5% sweep chance"),
+        CLEAVING("Cleaving", "\u00a76\u2716", "+3 dmg, +3% armor ignore"),
+        BLUNT("Blunt", "\u00a78\u2B24", "+3 dmg, +3% stun chance"),
+        RANGED("Ranged", "\u00a7b\u27B3", "+3 ranged dmg, +5% ricochet chain chance"),
+        WATER("Water", "\u00a73\u2248", "+3 dmg, +3% knockback & Wet"),
+        SPECIAL("Special", "\u00a7d\u2728", "+3 dmg, +3% free AP on use"),
+        PET("Pet", "\u00a7a\uD83D\uDC3E", "+3 dmg, +3 HP to allies"),
+        PHYSICAL("Physical", "\u00a77\u270A", "+3 dmg, +3% counterattack");
 
         public final String displayName;
         public final String icon;

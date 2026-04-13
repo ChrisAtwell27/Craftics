@@ -63,6 +63,9 @@ public class GridArena {
 
     public boolean isOccupied(GridPos pos) {
         if (pos.equals(playerGridPos)) return true;
+        for (GridPos p : allPlayerGridPositions) {
+            if (pos.equals(p)) return true;
+        }
         var occupant = occupants.get(pos);
         // Background bosses don't block movement — they're targetable but pass-through
         return occupant != null && !occupant.isBackgroundBoss();

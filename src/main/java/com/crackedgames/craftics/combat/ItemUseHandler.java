@@ -563,7 +563,9 @@ public class ItemUseHandler {
     private static int getTypedDamageBonus(ServerPlayerEntity player, CombatEffects effects, DamageType type) {
         return DamageType.getTotalBonus(
             PlayerCombatStats.getArmorSet(player), CombatManager.get(player).getTrimScan(), effects,
-            type, getPlayerStats(player));
+            type, getPlayerStats(player))
+            + DamageType.getMobHeadBonus(
+                player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), type);
     }
 
     private static int applyTypedDamage(ServerPlayerEntity player, CombatEntity target, int baseDamage,

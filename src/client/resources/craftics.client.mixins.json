@@ -6,6 +6,7 @@
   "client": [
     "AttackSuppressMixin",
     "CameraLockMixin",
+    "EnderDragonRendererMixin",
     "FovLockMixin",
     "HudTransitionMixin",
     "InputAccessor",
@@ -16,7 +17,8 @@
     "PlayerNameTagMixin",
     "PlayerListHudMixin",
     "ScrollZoomMixin",
-    "TitleScreenMixin"
+    "TitleScreenMixin",
+    "WorldCreatorMixin"
   ],
   "injectors": {
     "defaultRequire": 1
