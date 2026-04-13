@@ -37,7 +37,17 @@ public class Pathfinding {
      * is true, occupied tiles are walkable for traversal but not as the final destination.
      */
     public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, boolean hasBoat, boolean ignoreObstacles, boolean phaseThroughEnemies) {
-        return findPathFull(arena, from, to, maxSteps, null, hasBoat, ignoreObstacles, false, phaseThroughEnemies);
+        return findPathFull(arena, from, to, maxSteps, null, hasBoat, ignoreObstacles, false, phaseThroughEnemies, false);
+    }
+
+    /**
+     * Player-facing pathfinding that treats hazard tiles (LAVA/FIRE) as cost 1
+     * so the player can walk freely across magma and fire. Damage still applies
+     * at move-tick time — this only removes the path-disruption behavior.
+     * Enemy pathfinding retains the high hazard cost so AI avoids stepping into hazards.
+     */
+    public static List<GridPos> findPathPlayer(GridArena arena, GridPos from, GridPos to, int maxSteps, boolean hasBoat, boolean ignoreObstacles, boolean phaseThroughEnemies) {
+        return findPathFull(arena, from, to, maxSteps, null, hasBoat, ignoreObstacles, false, phaseThroughEnemies, true);
     }
 
     /** Enemy pathfinding (no boat access). */
@@ -83,7 +93,7 @@ public class Pathfinding {
      * When aquatic is true, WATER and DEEP_WATER tiles are walkable.
      */
     public static List<GridPos> findPath(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean aquatic) {
-        return findPathFull(arena, from, to, maxSteps, self, hasBoat, ignoreObstacles, aquatic, false);
+        return findPathFull(arena, from, to, maxSteps, self, hasBoat, ignoreObstacles, aquatic, false, false);
     }
 
     /**
@@ -93,6 +103,17 @@ public class Pathfinding {
      * occupied (can't stop on top of an enemy).
      */
     public static List<GridPos> findPathFull(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean aquatic, boolean phaseThroughEnemies) {
+        return findPathFull(arena, from, to, maxSteps, self, hasBoat, ignoreObstacles, aquatic, phaseThroughEnemies, false);
+    }
+
+    /**
+     * A* pathfinding with full options. When {@code ignoreHazardCost} is true,
+     * LAVA/FIRE tiles cost 1 to step through instead of 50 — used for player
+     * movement so magma/fire behave like cobweb (damage on step but no path
+     * disruption) while leaving AI pathfinding untouched so enemies still
+     * naturally avoid hazards.
+     */
+    public static List<GridPos> findPathFull(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean aquatic, boolean phaseThroughEnemies, boolean ignoreHazardCost) {
         if (from.equals(to)) return List.of();
         if (!arena.isInBounds(to)) return List.of();
 
@@ -138,7 +159,7 @@ public class Pathfinding {
                     if (phaseThroughEnemies && neighbor.equals(arena.getPlayerGridPos())) continue;
                 }
 
-                int moveCost = neighborTile.getMoveCost();
+                int moveCost = ignoreHazardCost ? 1 : neighborTile.getMoveCost();
                 int tentativeG = currentG + moveCost;
                 if (tentativeG < gScore.getOrDefault(neighbor, Integer.MAX_VALUE)) {
                     cameFrom.put(neighbor, current);

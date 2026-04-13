@@ -1,6 +1,7 @@
 package com.crackedgames.craftics.combat;
 
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 
 // Each weapon maps to a damage type; armor sets, trims, and effects can specialize for bonus damage
@@ -100,6 +101,22 @@ public enum DamageType {
             }
         }
         return bonus;
+    }
+
+    /**
+     * Mob skull helmets grant +1 to a specific damage type when worn.
+     * Skeleton → Ranged, Creeper → Blunt, Piglin → Slashing,
+     * Wither Skeleton → Special, Zombie → Physical.
+     */
+    public static int getMobHeadBonus(ItemStack helmet, DamageType type) {
+        if (helmet == null || helmet.isEmpty()) return 0;
+        Item item = helmet.getItem();
+        if (item == Items.SKELETON_SKULL && type == RANGED) return 1;
+        if (item == Items.CREEPER_HEAD && type == BLUNT) return 1;
+        if (item == Items.PIGLIN_HEAD && type == SLASHING) return 1;
+        if (item == Items.WITHER_SKELETON_SKULL && type == SPECIAL) return 1;
+        if (item == Items.ZOMBIE_HEAD && type == PHYSICAL) return 1;
+        return 0;
     }
 
     /** Map DamageType to the corresponding Affinity for level-up bonuses. */

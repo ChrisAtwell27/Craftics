@@ -4,14 +4,15 @@ https://legacy.curseforge.com/minecraft/mc-mods/craftics-a-tactical-rpg-mod
 
 **Turn-based tactical RPG combat in Minecraft.**
 
-Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight through 18 procedurally generated biome arenas across the Overworld, Nether, and End, using vanilla items, crafting, and potions, in a complete turn-based combat system with an isometric camera, grid movement, and 40+ unique enemy AI behaviors.
+Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight through 18 procedurally generated biome arenas across the Overworld, Nether, and End, using vanilla items, crafting, and potions, in a complete turn-based combat system with an isometric camera, grid movement, and 65+ unique enemy AI behaviors.
 
 > **No new items. No new blocks.** (Except the Level Select.) Every item already in the game has a purpose in battle.
 
 - **Mod ID:** `craftics`
 - **Version:** 0.1.0
-- **Minecraft:** 1.21.11
+- **Minecraft:** 1.21.1
 - **Mod Loader:** Fabric (Fabric Loader ≥0.16.0, Fabric API)
+- **Required:** Pehkui, owo-lib, GeckoLib, Player Animator
 - **Java:** 21+
 - **Author:** CrackedGames
 - **License:** All Rights Reserved
@@ -23,7 +24,7 @@ Full documentation with in-depth guides:
 | Page | Description |
 |------|-------------|
 | [**Combat System**](https://chrisatwell27.github.io/Craftics/combat.html) | Weapons, abilities, armor trims, goat horns, items, damage formula |
-| [**Enemy AI**](https://chrisatwell27.github.io/Craftics/enemies.html) | 40+ mob behaviors, boss phases, on-hit effects |
+| [**Enemy AI**](https://chrisatwell27.github.io/Craftics/enemies.html) | 65+ mob behaviors, boss phases, on-hit effects |
 | [**Biome Progression**](https://chrisatwell27.github.io/Craftics/biomes.html) | 18 biomes, branching paths, procedural generation |
 | [**Progression & Builds**](https://chrisatwell27.github.io/Craftics/progression.html) | Stats, leveling, traders, NG+, recommended class builds |
 | [**Modding Guide**](https://chrisatwell27.github.io/Craftics/modding.html) | Custom arenas, JSON biomes, Java API, addon policy |
@@ -85,15 +86,19 @@ Between combat encounters, you craft, smelt, brew, and trade using emeralds earn
 ### Requirements
 
 - **Java 21** (Eclipse Adoptium JDK 21 recommended)
-- **Minecraft 1.21.11**
+- **Minecraft 1.21.1**
 - **Fabric Loader** ≥0.16.0
-- **Fabric API** 0.141.3+1.21.11
+- **Fabric API** 0.102.0+1.21.1
+- **Pehkui** 3.8.3+ (entity scaling)
+- **owo-lib** 0.12.15+ (UI framework)
+- **GeckoLib** 4.8.4+ (entity animations)
+- **Player Animator** 2.0.4+ (player animations)
 
 ### Building from Source
 
 ```bash
 git clone <repository-url>
-cd TacticalRPGMod
+cd Craftics
 ./gradlew build
 ```
 
@@ -322,7 +327,7 @@ Effects can also be frozen. Potions consumed in the hub activate when combat sta
 
 ### Enemy AI
 
-The mod includes 20+ unique AI strategies registered for 40+ mob types. Unregistered mobs default to passive behavior (flee when attacked). Each AI controls movement, targeting, and special mechanics. See the [full Enemy AI reference](https://chrisatwell27.github.io/Craftics/enemies.html) for every mob.
+The mod includes 65 unique AI strategies registered for 78+ mob types. Unregistered mobs default to passive behavior (flee when attacked). Each AI controls movement, targeting, and special mechanics. See the [full Enemy AI reference](https://chrisatwell27.github.io/Craftics/enemies.html) for every mob.
 
 | AI | Mobs | Key Behavior |
 |----|------|-------------|
@@ -517,7 +522,7 @@ src/
 │   │   ├── LevelSelectScreenHandler.java : Screen handler
 │   │   └── ModScreenHandlers.java       : Screen handler registration
 │   ├── combat/
-│   │   ├── CombatManager.java           : Server-side combat state machine (~1500 lines)
+│   │   ├── CombatManager.java           : Server-side combat state machine (~14,000 lines)
 │   │   ├── CombatEntity.java            : Combat enemy data
 │   │   ├── CombatPhase.java             : Phase enum
 │   │   ├── CombatEffects.java           : Turn-based effect system (12 effects)
@@ -532,9 +537,9 @@ src/
 │   │   └── ai/
 │   │       ├── EnemyAI.java             : AI interface
 │   │       ├── EnemyAction.java         : 13 action types (sealed interface)
-│   │       ├── AIRegistry.java          : 35+ mob→AI mappings
+│   │       ├── AIRegistry.java          : 78+ mob→AI mappings
 │   │       ├── AIUtils.java             : Shared AI utilities
-│   │       └── (20+ AI classes)         : One per mob behavior archetype
+│   │       └── (65 AI classes)           : One per mob behavior archetype (including 17 boss AIs)
 │   ├── core/
 │   │   ├── GridArena.java               : Width×height tile grid with occupants
 │   │   ├── GridPos.java                 : 2D grid coordinate
@@ -550,11 +555,11 @@ src/
 │   │   ├── GeneratedLevelDefinition.java : Concrete generated level
 │   │   ├── LevelRegistry.java           : Level lookup facade
 │   │   ├── ArenaBuilder.java            : Places blocks in world from definition
-│   │   ├── EnvironmentStyle.java        : 11 visual styles enum
+│   │   ├── EnvironmentStyle.java        : 13 visual styles enum
 │   │   └── MobPoolEntry.java            : Enemy pool data record
 │   ├── network/
-│   │   ├── ModNetworking.java           : Registers 6 C2S + 8 S2C payloads
-│   │   └── (14 payload record classes)  : Individual packet definitions
+│   │   ├── ModNetworking.java           : Registers 10 C2S + 16 S2C payloads
+│   │   └── (26 payload record classes)  : Individual packet definitions
 │   └── world/
 │       ├── VoidChunkGenerator.java      : Empty void world generation
 │       ├── HubRoomBuilder.java          : Decorated cottage at spawn
@@ -586,19 +591,27 @@ src/
 │   │   ├── LevelUpScreen.java           : Stat allocation GUI
 │   │   └── TraderScreen.java            : Trading GUI
 │   └── mixin/client/
+│       ├── AttackSuppressMixin.java     : Suppress vanilla attacks in combat
 │       ├── CameraLockMixin.java         : Isometric camera lock
-│       ├── ScrollZoomMixin.java         : Scroll wheel → zoom
-│       ├── MovementDisableMixin.java    : Disable WASD in combat
-│       ├── MouseUnlockMixin.java        : Free cursor in combat
+│       ├── EnderDragonRendererMixin.java: Dragon visibility during combat
+│       ├── FovLockMixin.java            : Lock FOV during combat
+│       ├── HudTransitionMixin.java      : HUD transition effects
 │       ├── InputAccessor.java           : Movement vector accessor
+│       ├── InventoryStatsMixin.java     : Stat panel in inventory screen
+│       ├── MouseUnlockMixin.java        : Free cursor in combat
+│       ├── MovementDisableMixin.java    : Disable WASD in combat
 │       ├── OverlayMessageMixin.java     : Action bar → combat log
-│       └── InventoryStatsMixin.java     : Stat panel in inventory screen
+│       ├── PlayerListHudMixin.java      : Player list HUD changes
+│       ├── PlayerNameTagMixin.java      : Player name tag rendering
+│       ├── ScrollZoomMixin.java         : Scroll wheel → zoom
+│       ├── TitleScreenMixin.java        : Title screen modifications
+│       └── WorldCreatorMixin.java       : Default world preset to Craftics
 │
 └── client/resources/
-    └── craftics.client.mixins.json   : 7 client mixins
+    └── craftics.client.mixins.json   : 15 client mixins
 ```
 
-**Total: 99 Java files, 27 JSON configs, 2 textures.**
+**Total: 248 Java files, 122 JSON configs.**
 
 ### Core Systems
 
@@ -618,28 +631,40 @@ src/
 
 | Mixin | Target | Purpose |
 |-------|--------|---------|
-| **CameraLockMixin** | `Camera.update` | Locks camera to isometric view (55° pitch, 225° yaw) centered on arena. Computes offset from arena center. |
-| **ScrollZoomMixin** | `Mouse.onMouseScroll` | Intercepts scroll wheel for zoom control (range 8–30 blocks). Cancels hotbar switching. |
-| **MovementDisableMixin** | `KeyboardInput.tick` | Zeroes all movement input during combat. |
-| **MouseUnlockMixin** | `Mouse.lockCursor` | Prevents cursor grab during combat for free mouse interaction. |
-| **InputAccessor** | `Input` | Accessor mixin exposing `setMovementVector`. |
-| **OverlayMessageMixin** | `InGameHud.setOverlayMessage` | Routes action bar messages to the combat log for persistent display. |
-| **InventoryStatsMixin** | `InventoryScreen.render` | Renders player stats panel alongside the inventory screen. |
+| **AttackSuppressMixin** | `ClientPlayerInteractionManager` | Suppresses vanilla attacks during combat |
+| **CameraLockMixin** | `Camera.update` | Locks camera to isometric view (55° pitch, 225° yaw) centered on arena |
+| **EnderDragonRendererMixin** | `EnderDragonEntityRenderer` | Hides dragon when off-stage during boss fight |
+| **FovLockMixin** | `GameRenderer` | Prevents FOV changes during combat |
+| **HudTransitionMixin** | `InGameHud` | Combat HUD transition effects |
+| **InputAccessor** | `Input` | Accessor mixin exposing `setMovementVector` |
+| **InventoryStatsMixin** | `InventoryScreen.render` | Renders player stats panel alongside the inventory screen |
+| **MouseUnlockMixin** | `Mouse.lockCursor` | Prevents cursor grab during combat for free mouse interaction |
+| **MovementDisableMixin** | `KeyboardInput.tick` | Zeroes all movement input during combat |
+| **OverlayMessageMixin** | `InGameHud.setOverlayMessage` | Routes action bar messages to the combat log for persistent display |
+| **PlayerListHudMixin** | `PlayerListHud` | Customizes player list display |
+| **PlayerNameTagMixin** | `EntityRenderer` | Customizes player name tag rendering |
+| **ScrollZoomMixin** | `Mouse.onMouseScroll` | Intercepts scroll wheel for zoom control (range 8–30 blocks) |
+| **TitleScreenMixin** | `TitleScreen` | Title screen modifications |
+| **WorldCreatorMixin** | `WorldCreator` | Defaults world preset to Craftics void world |
 
 ### Networking
 
-6 client-to-server payloads:
+10 client-to-server payloads:
 
 | Payload | Purpose |
 |---------|---------|
 | `StartLevelPayload` | Request to start a combat level |
-| `CombatActionPayload` | Player combat action (move, attack, use item, end turn, hover) |
+| `CombatActionPayload` | Player combat action (move, attack, use item, end turn) |
 | `PostLevelChoicePayload` | Go Home vs Continue after victory |
 | `TraderBuyPayload` | Purchase a trade |
 | `TraderDonePayload` | Finish trading |
 | `StatChoicePayload` | Allocate a stat point |
+| `AffinityChoicePayload` | Choose damage affinity |
+| `EventChoicePayload` | Event room choice (shrine/traveler/vault) |
+| `RespecPayload` | Refund and reallocate stat points |
+| `HoverUpdatePayload` | Relay tile hover to party members |
 
-8 server-to-client payloads:
+16 server-to-client payloads:
 
 | Payload | Purpose |
 |---------|---------|
@@ -651,6 +676,14 @@ src/
 | `TraderOfferPayload` | Trader encountered, show trades |
 | `LevelUpPayload` | Level up, show stat allocation |
 | `PlayerStatsSyncPayload` | Sync progression data to client |
+| `TileSetPayload` | Dynamic tile state updates |
+| `TeammateHoverPayload` | Relay teammate hover position |
+| `EventRoomPayload` | Event room encounter data |
+| `AchievementUnlockPayload` | Achievement unlock notification |
+| `GuideBookSyncPayload` | Guide book data sync |
+| `AddonBonusSyncPayload` | Addon bonus data sync |
+| `LoadingScreenPayload` | Loading screen state |
+| `ScoreboardSyncPayload` | Scoreboard data sync |
 
 ### World Generation
 
@@ -665,7 +698,7 @@ All 18 built-in biomes are defined as JSON files in `data/craftics/craftics/biom
 - Grid dimensions with per-level growth
 - Floor and obstacle block lists
 - Obstacle density with per-level scaling
-- Environment style (11 visual styles)
+- Environment style (13 visual styles)
 - Day/night mode
 - Passive, hostile, and boss mob pools with full stats
 - Weighted loot tables
@@ -762,7 +795,7 @@ The mod is in active development (v0.1.0). The following systems are implemented
 - [x] Click-to-attack (melee and ranged)
 - [x] Weapon abilities (sweep, stun, pierce, smash, crit, execute)
 - [x] Equipment-based combat stats
-- [x] 20+ unique enemy AI strategies for 40+ mob types
+- [x] 65 unique enemy AI strategies for 78+ mob types
 - [x] Turn-based status effects (12 effects, frozen effects)
 - [x] Food, potion, and throwable item use in combat
 - [x] Tile highlights (carpet-based movement/attack display)
@@ -772,12 +805,12 @@ The mod is in active development (v0.1.0). The following systems are implemented
 - [x] Branching biome progression across 3 dimensions
 - [x] Level Select map GUI with node graph
 - [x] Victory/defeat flow with Go Home/Continue choice
-- [x] Trader system (7 types, tier-scaled inventory)
+- [x] Trader system (8 types, tier-scaled inventory)
 - [x] Player progression (8 stats, level-up screen)
 - [x] Emerald economy
 - [x] New Game+ system (+25% enemy scaling per cycle)
 - [x] Persistent world state (progress, stats, currency)
-- [x] Client/server networking (14 packet types)
+- [x] Client/server networking (26 packet types)
 - [x] Combat tooltips on items
 - [x] Stat panel in inventory screen
 - [x] Modding API (custom AI + custom biomes)
@@ -785,5 +818,5 @@ The mod is in active development (v0.1.0). The following systems are implemented
 
 ### Known Limitations
 
-- **CombatHudRenderer** (world-space rendering for grid overlay and 3D enemy HP bars) is stubbed, blocked by Minecraft 1.21.11 render pipeline changes
+- **CombatHudRenderer** (world-space rendering for grid overlay and 3D enemy HP bars) is stubbed, blocked by Minecraft 1.21.1 render pipeline changes
 - Legacy hardcoded level definitions (Level1Definition, Level2Definition) remain in the codebase but are superseded by the procedural generation system

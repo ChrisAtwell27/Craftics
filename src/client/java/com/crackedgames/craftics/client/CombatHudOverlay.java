@@ -79,6 +79,48 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.fill(x, y, x + w, y + h, color);
     }
 
+    /**
+     * Draw a player's face (8×8 face region from the skin sheet, plus the hat overlay)
+     * at the given screen position, scaled to {@code size}×{@code size} pixels.
+     * Falls back to a gray square if the skin texture can't be resolved.
+     *
+     * @param playerName the player's name, used to look up the skin via the network handler
+     */
+    private static void drawPlayerHead(DrawContext ctx, MinecraftClient client, String playerName, int x, int y, int size) {
+        Identifier skinTex = getPlayerSkinTexture(client, playerName);
+        if (skinTex == null) {
+            // Fallback: colored square with first initial
+            ctx.fill(x, y, x + size, y + size, 0xFF555555);
+            if (playerName != null && !playerName.isEmpty()) {
+                ctx.drawCenteredTextWithShadow(client.textRenderer,
+                    Text.literal(playerName.substring(0, 1).toUpperCase()),
+                    x + size / 2, y + (size - 8) / 2, 0xFFFFFFFF);
+            }
+            return;
+        }
+        // The Minecraft skin texture is 64×64. The face is at (8,8)-(16,16),
+        // the hat overlay at (40,8)-(48,16). Both are 8×8 pixels.
+        // Draw face base layer
+        ctx.drawTexture(skinTex, x, y, size, size, 8.0f, 8.0f, 8, 8, 64, 64);
+        // Draw hat overlay on top (semi-transparent second layer on most skins)
+        ctx.drawTexture(skinTex, x, y, size, size, 40.0f, 8.0f, 8, 8, 64, 64);
+    }
+
+    /**
+     * Resolve the skin texture {@link Identifier} for a player by name.
+     * Returns null if the player isn't in the network handler's player list
+     * (e.g. offline, not yet loaded).
+     */
+    private static Identifier getPlayerSkinTexture(MinecraftClient client, String playerName) {
+        if (client.getNetworkHandler() == null || playerName == null) return null;
+        for (var entry : client.getNetworkHandler().getPlayerList()) {
+            if (playerName.equals(entry.getProfile().getName())) {
+                return entry.getSkinTextures().texture();
+            }
+        }
+        return null;
+    }
+
     private void renderPlayerStatusPanel(DrawContext ctx, MinecraftClient client, int screenW) {
         java.util.List<CombatState.PartyMemberHp> partyList = CombatState.getPartyHpList();
 
@@ -94,6 +136,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         String effects = CombatState.getPlayerEffects();
         List<EffectIcon> icons = parseEffects(effects);
 
+        int headSize = 10;
+        int headGap = 3;
         int barW = 120;
         int barH = 10;
         int panelPad = 6;
@@ -129,15 +173,21 @@ public class CombatHudOverlay implements HudRenderCallback {
             effectsBlockH = 4 + rows.size() * pillH + (rows.size() - 1) * rowSpacing;
         }
 
-        int panelW = barW + panelPad * 2;
-        int panelH = panelPad + barH + effectsBlockH + panelPad;
+        int panelW = panelPad + headSize + headGap + barW + panelPad;
+        int panelH = panelPad + Math.max(headSize, barH) + effectsBlockH + panelPad;
         int panelX = 8;
         int panelY = 6;
 
         drawPanel(ctx, panelX, panelY, panelW, panelH);
 
-        int barX = panelX + panelPad;
-        int barY = panelY + panelPad;
+        // Player head next to the HP bar
+        String playerName = client.player != null ? client.player.getName().getString() : null;
+        int headX = panelX + panelPad;
+        int headY = panelY + panelPad;
+        drawPlayerHead(ctx, client, playerName, headX, headY, headSize);
+
+        int barX = headX + headSize + headGap;
+        int barY = panelY + panelPad + (headSize - barH) / 2;
         ctx.fill(barX, barY, barX + barW, barY + barH, 0xFF222222);
         int hpColor = hpPct > 0.5f ? 0xFF55FF55 : hpPct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
         ctx.fill(barX, barY, barX + (int)(barW * hpPct), barY + barH, hpColor);
@@ -171,11 +221,13 @@ public class CombatHudOverlay implements HudRenderCallback {
     private void renderPartyHpList(DrawContext ctx, MinecraftClient client,
                                     java.util.List<CombatState.PartyMemberHp> members) {
         int panelPad = 6;
+        int headSz = 8;
+        int headGp = 2;
         int barW = 90;
         int barH = 8;
         int nameW = 50;
-        int rowH = barH + 4;
-        int panelW = panelPad + nameW + 4 + barW + panelPad;
+        int rowH = Math.max(headSz, barH) + 4;
+        int panelW = panelPad + headSz + headGp + nameW + 4 + barW + panelPad;
         int panelH = panelPad + members.size() * rowH + panelPad - 2;
         int panelX = 8;
         int panelY = 6;
@@ -212,10 +264,13 @@ public class CombatHudOverlay implements HudRenderCallback {
                 displayName += "..";
             }
 
-            ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal(displayName), panelX + panelPad, y, nameColor);
+            // Player head
+            drawPlayerHead(ctx, client, member.name(), panelX + panelPad, y, headSz);
 
-            int barX = panelX + panelPad + nameW + 4;
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal(displayName), panelX + panelPad + headSz + headGp, y, nameColor);
+
+            int barX = panelX + panelPad + headSz + headGp + nameW + 4;
             ctx.fill(barX, y, barX + barW, y + barH, 0xFF222222);
             if (!member.dead()) {
                 ctx.fill(barX, y, barX + (int)(barW * hpPct), y + barH, hpBarColor);
@@ -373,7 +428,9 @@ public class CombatHudOverlay implements HudRenderCallback {
         java.util.List<CombatState.TurnOrderEntry> order = CombatState.getTurnOrderList();
         if (order.isEmpty()) return; // solo play — nothing to show
 
-        int entryH = 12;
+        int headSz = 10;
+        int headGp = 2;
+        int entryH = headSz + 2;
         int panelPad = 4;
         int indicatorW = 6; // width of the ">" arrow
         int maxNameW = 0;
@@ -381,7 +438,7 @@ public class CombatHudOverlay implements HudRenderCallback {
             int w = client.textRenderer.getWidth(e.name());
             if (w > maxNameW) maxNameW = w;
         }
-        int panelW = panelPad + indicatorW + 2 + maxNameW + panelPad;
+        int panelW = panelPad + indicatorW + 2 + headSz + headGp + maxNameW + panelPad;
         int panelH = panelPad + order.size() * entryH + panelPad - 2;
         int panelX = screenW / 2 - panelW / 2;
         int panelY = 22; // below the turn banner
@@ -401,10 +458,13 @@ public class CombatHudOverlay implements HudRenderCallback {
                 nameColor = 0xFFAAAAAA; // gray for waiting
                 indicator = " ";
             }
+            int contentX = panelX + panelPad;
             ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal(indicator), panelX + panelPad, y, 0xFF55FF55);
+                Text.literal(indicator), contentX, y + 1, 0xFF55FF55);
+            int afterIndicator = contentX + indicatorW + 2;
+            drawPlayerHead(ctx, client, entry.name(), afterIndicator, y, headSz);
             ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal(entry.name()), panelX + panelPad + indicatorW + 2, y, nameColor);
+                Text.literal(entry.name()), afterIndicator + headSz + headGp, y + 1, nameColor);
             y += entryH;
         }
     }
@@ -527,6 +587,25 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
     }
 
+    /** Convert a numeric string level to a Roman numeral for display (1..10 range). */
+    private static String toRoman(String lvlStr) {
+        int lvl;
+        try { lvl = Integer.parseInt(lvlStr); } catch (NumberFormatException e) { return lvlStr; }
+        return switch (lvl) {
+            case 1 -> "I";
+            case 2 -> "II";
+            case 3 -> "III";
+            case 4 -> "IV";
+            case 5 -> "V";
+            case 6 -> "VI";
+            case 7 -> "VII";
+            case 8 -> "VIII";
+            case 9 -> "IX";
+            case 10 -> "X";
+            default -> String.valueOf(lvl);
+        };
+    }
+
     // ─── Inspect Panel (hover detail) ────────────────────────────────────
 
     private void renderInspectPanel(DrawContext ctx, MinecraftClient client, int screenW,
@@ -538,6 +617,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         String[] parts = typeIdRaw.split(";");
         String typeId = parts[0];
         List<String> enemyEffects = new ArrayList<>();
+        List<String> enemyEnchants = new ArrayList<>();
         String bossName = null;
         int bossAtk = -1, bossDef = -1, bossSpd = -1, bossRange = -1;
         for (int i = 1; i < parts.length; i++) {
@@ -546,6 +626,18 @@ public class CombatHudOverlay implements HudRenderCallback {
             else if (parts[i].startsWith("def=")) bossDef = Integer.parseInt(parts[i].substring(4));
             else if (parts[i].startsWith("spd=")) bossSpd = Integer.parseInt(parts[i].substring(4));
             else if (parts[i].startsWith("range=")) bossRange = Integer.parseInt(parts[i].substring(6));
+            else if (parts[i].startsWith("ench=")) {
+                String encoded = parts[i].substring(5);
+                if (!encoded.isEmpty()) {
+                    for (String pair : encoded.split(",")) {
+                        int sep = pair.indexOf(':');
+                        if (sep <= 0) continue;
+                        String name = pair.substring(0, sep).replace('_', ' ');
+                        String lvl = pair.substring(sep + 1);
+                        enemyEnchants.add(name + " " + toRoman(lvl));
+                    }
+                }
+            }
             else enemyEffects.add(parts[i]);
         }
 
@@ -560,7 +652,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
 
         int panelW = bossName != null ? 140 : 120;
-        int panelH = 100 + enemyEffects.size() * 10;
+        int panelH = 100 + enemyEffects.size() * 10 + (enemyEnchants.isEmpty() ? 0 : (enemyEnchants.size() * 10 + 4));
         int panelX = screenW - panelW - 8;
         int panelY = 4;
 
@@ -622,6 +714,19 @@ public class CombatHudOverlay implements HudRenderCallback {
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal("\u00a78No effects"), panelX + 4, y, 0xFF555555);
             y += 10;
+        }
+
+        // Enchantments on enemy gear
+        if (!enemyEnchants.isEmpty()) {
+            y += 2;
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal("\u00a7d\u2728 Enchants:"), panelX + 4, y, 0xFFDD88FF);
+            y += 10;
+            for (String ench : enemyEnchants) {
+                ctx.drawTextWithShadow(client.textRenderer,
+                    Text.literal("\u00a7d  " + ench), panelX + 4, y, 0xFFCC99FF);
+                y += 10;
+            }
         }
 
         String behavior = getAIHint(typeId);
@@ -713,12 +818,6 @@ public class CombatHudOverlay implements HudRenderCallback {
             x += pipSize + pipGap;
         }
 
-        // Show "+N" if AP exceeds displayed slots
-        if (maxAp > apDisplay) {
-            ctx.drawTextWithShadow(client.textRenderer, Text.literal("+" + (maxAp - apDisplay)),
-                x - pipGap + 2, rowY, 0xFFFFAA00);
-        }
-
         x += sectionGap - pipGap; // gap between sections
 
         // SPD label
@@ -746,11 +845,6 @@ public class CombatHudOverlay implements HudRenderCallback {
             x += pipSize + pipGap;
         }
 
-        // Show "+N" if SPD exceeds displayed slots
-        if (maxSpeed > spdDisplay) {
-            ctx.drawTextWithShadow(client.textRenderer, Text.literal("+" + (maxSpeed - spdDisplay)),
-                x - pipGap + 2, rowY, 0xFF55AAFF);
-        }
     }
 
     // ─── Effect Parsing ──────────────────────────────────────────────────

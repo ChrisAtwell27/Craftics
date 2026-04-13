@@ -745,6 +745,13 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.SKULL_POTTERY_SHERD) return "\u00a74[6 AP] Death Mark \u00a77\u2014 Execute <40% HP or 5 dmg + Wither III";
         if (item == Items.GUSTER_POTTERY_SHERD) return "\u00a7e[4 AP] Chain Lightning \u00a77\u2014 8 dmg, chains within 2 tiles (2x on Soaked)";
 
+        // ── Mob skulls (equip as helmet for a +1 damage type affinity) ──
+        if (item == Items.SKELETON_SKULL) return "\u00a7f\u2620 Wear: \u00a7b+1 Ranged \u00a77damage\n\u00a78Rare drop from skeletons, strays, bogged";
+        if (item == Items.WITHER_SKELETON_SKULL) return "\u00a7f\u2620 Wear: \u00a7d+1 Special \u00a77damage\n\u00a78Rare drop from wither skeletons";
+        if (item == Items.CREEPER_HEAD) return "\u00a7f\u2620 Wear: \u00a78+1 Blunt \u00a77damage\n\u00a78Rare drop from creepers";
+        if (item == Items.PIGLIN_HEAD) return "\u00a7f\u2620 Wear: \u00a7c+1 Slashing \u00a77damage\n\u00a78Rare drop from piglins, brutes, z.piglins";
+        if (item == Items.ZOMBIE_HEAD) return "\u00a7f\u2620 Wear: \u00a77+1 Physical \u00a77damage\n\u00a78Rare drop from zombies, husks, drowned";
+
         return null;
     }
 

@@ -4,6 +4,7 @@
 	"package": "com.crackedgames.craftics.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
+		"EnderDragonEntityMixin",
 		"PlayerEntityMixin",
 		"ServerPlayNetworkHandlerMixin",
 		"SlimeEntityAccessor",

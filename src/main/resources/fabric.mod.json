@@ -36,7 +36,8 @@
 		"fabricloader": ">=0.16.0",
 		"minecraft": "~1.21.1",
 		"java": ">=21",
-		"fabric-api": "*"
+		"fabric-api": "*",
+		"pehkui": "*"
 	},
 	"custom": {
 		"cardinal-components": [
@@ -49,7 +50,6 @@
 		"geckolib": "*",
 		"player-animation-lib": "*",
 		"owo": "*",
-		"pehkui": "*",
 		"cardinal-components-api": "*",
 		"artifacts": "*"
 	}

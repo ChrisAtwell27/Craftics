@@ -73,7 +73,7 @@ public class DamageTypePanel {
 
         // Panel position: left side of inventory
         int panelW = 120;
-        int panelH = 155;
+        int panelH = 185;
         int panelX = (screenWidth / 2) - 90 - panelW - 6;
         int panelY = (screenHeight / 2) - 80;
 
@@ -191,9 +191,10 @@ public class DamageTypePanel {
         }
 
         // Affinity points from level-up choices (use Affinity enum ordinal, not hardcoded)
+        // Each affinity point grants +3 damage (mirrors DamageType.getTotalBonus on the server).
         try {
             int affinityOrdinal = PlayerProgression.Affinity.valueOf(type.name()).ordinal();
-            bonus += CombatState.getAffinityPoints(affinityOrdinal);
+            bonus += CombatState.getAffinityPoints(affinityOrdinal) * 3;
         } catch (IllegalArgumentException ignored) {}
 
 

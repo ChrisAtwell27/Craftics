@@ -28,7 +28,6 @@ import net.minecraft.util.math.BlockPos;
 import com.crackedgames.craftics.combat.ai.AIRegistry;
 import com.crackedgames.craftics.combat.ai.EnemyAI;
 import com.crackedgames.craftics.combat.ai.EnemyAction;
-import com.crackedgames.craftics.combat.ai.DragonAI;
 import com.crackedgames.craftics.combat.ai.WardenAI;
 import com.crackedgames.craftics.combat.ai.boss.BossAI;
 import com.crackedgames.craftics.combat.ai.boss.BroodmotherAI;
@@ -824,20 +823,43 @@ public class CombatManager {
                     // schematic left a hole in the floor, chunks got wiped by
                     // a world-edit), rebuild it in place before scanning so
                     // the player never drops into the void mid-combat.
-                    if (com.crackedgames.craftics.level.ArenaPreGenerator.isCorrupted(
+                    // Snowy arenas always regenerate to restore melted ice/snow.
+                    boolean isSnowy = def instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld
+                        && gld.getBiomeTemplate() != null
+                        && "snowy".equals(gld.getBiomeTemplate().biomeId);
+                    if (isSnowy || com.crackedgames.craftics.level.ArenaPreGenerator.isCorrupted(
                             world, worldOwnerUuid, def.getLevelNumber())) {
-                        sendMessage("§e⚠ Detected corrupted arena — rebuilding...");
+                        if (!isSnowy) sendMessage("§e⚠ Detected corrupted arena — rebuilding...");
                         boolean repaired = com.crackedgames.craftics.level.ArenaPreGenerator
                             .regenerateLevel(world, worldOwnerUuid, def.getLevelNumber());
                         if (repaired) {
                             meta = pd.getArenaMetadata(def.getLevelNumber());
-                            sendMessage("§a✓ Arena rebuilt.");
+                            if (!isSnowy) sendMessage("§a✓ Arena rebuilt.");
                         }
                     }
                     if (meta != null) {
                         net.minecraft.util.math.BlockPos origin = new net.minecraft.util.math.BlockPos(
                             meta[0], meta[1], meta[2]);
                         int gridW = meta[3], gridH = meta[4];
+
+                        // Snowy arenas: replace any remaining water with ice
+                        if (isSnowy) {
+                            for (int dx = 0; dx < gridW; dx++) {
+                                for (int dz = 0; dz < gridH; dz++) {
+                                    net.minecraft.util.math.BlockPos bp = origin.add(dx, 0, dz);
+                                    // Check floor level and one below (water can pool)
+                                    for (int dy = -1; dy <= 1; dy++) {
+                                        net.minecraft.util.math.BlockPos check = bp.up(dy);
+                                        if (world.getBlockState(check).getBlock() == net.minecraft.block.Blocks.WATER) {
+                                            world.setBlockState(check,
+                                                net.minecraft.block.Blocks.ICE.getDefaultState(),
+                                                net.minecraft.block.Block.FORCE_STATE);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         com.crackedgames.craftics.core.GridPos playerStart =
                             new com.crackedgames.craftics.core.GridPos(meta[5], meta[6]);
                         return com.crackedgames.craftics.level.ArenaBuilder.scanExisting(
@@ -1096,7 +1118,9 @@ public class CombatManager {
             (ServerWorld) player.getEntityWorld()).getStats(player);
         return DamageType.getTotalBonus(
             PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects,
-            DamageType.SPECIAL, playerStats);
+            DamageType.SPECIAL, playerStats)
+            + DamageType.getMobHeadBonus(
+                player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), DamageType.SPECIAL);
     }
 
     private int applySpecialUtilityDamage(CombatEntity target, int baseDamage) {
@@ -1848,6 +1872,25 @@ public class CombatManager {
         }
     }
 
+    /** Refresh the arena's allPlayerGridPositions list from current party member world positions. */
+    private void refreshAllPlayerGridPositions() {
+        if (arena == null) return;
+        if (partyPlayers.size() > 1) {
+            java.util.List<GridPos> allPositions = new java.util.ArrayList<>();
+            net.minecraft.util.math.BlockPos ppOrigin = arena.getOrigin();
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (member != null && !member.isRemoved() && !member.isDisconnected()
+                        && !deadPartyMembers.contains(member.getUuid())) {
+                    net.minecraft.util.math.BlockPos mbp = member.getBlockPos();
+                    allPositions.add(new GridPos(mbp.getX() - ppOrigin.getX(), mbp.getZ() - ppOrigin.getZ()));
+                }
+            }
+            arena.setAllPlayerGridPositions(allPositions);
+        } else {
+            arena.setAllPlayerGridPositions(java.util.List.of(arena.getPlayerGridPos()));
+        }
+    }
+
     public void handleAction(CombatActionPayload action, java.util.UUID senderUuid) {
         if (!active) return;
 
@@ -1861,6 +1904,9 @@ public class CombatManager {
 
         // Block input during spell cast animations (particles still staging)
         if (spellAnimCooldown > 0) return;
+
+        // Keep all player grid positions fresh so isOccupied() sees party members
+        refreshAllPlayerGridPositions();
 
         switch (action.actionType()) {
             case CombatActionPayload.ACTION_MOVE -> handleMove(new GridPos(action.targetX(), action.targetZ()));
@@ -1877,7 +1923,11 @@ public class CombatManager {
 
     private void handleMove(GridPos target) {
         if (!arena.isInBounds(target)) return;
-        if (movePointsRemaining <= 0) {
+
+        // Elytra: first move of the turn can reach any tile for free
+        boolean elytraFreeMove = !movedThisTurn && playerHasElytra();
+
+        if (!elytraFreeMove && movePointsRemaining <= 0) {
             sendMessage("§cNo movement left this turn!");
             return;
         }
@@ -1892,7 +1942,11 @@ public class CombatManager {
             .ArtifactsCompat.playerHasArtifact(player, "helium_flamingo");
 
         GridPos playerPos = arena.getPlayerGridPos();
-        List<GridPos> path = Pathfinding.findPath(arena, playerPos, target, movePointsRemaining, hasBoat, pathfinderActive, phaseThroughEnemies);
+        // Player movement treats LAVA/FIRE as cost 1 so the player can freely walk
+        // across magma and fire (damage still applies per-step at tick time). This
+        // mirrors the reachable-tile highlight which also uses ignoreHazardCost=true.
+        int moveBudget = elytraFreeMove ? (arena.getWidth() + arena.getHeight()) : movePointsRemaining;
+        List<GridPos> path = Pathfinding.findPathPlayer(arena, playerPos, target, moveBudget, hasBoat, pathfinderActive, phaseThroughEnemies);
         if (path.isEmpty()) {
             // Check if the tile is water and they don't have a boat
             GridTile targetTile = arena.getTile(target);
@@ -1937,7 +1991,7 @@ public class CombatManager {
         // Check if leaving water to land
         GridTile endTile = arena.getTile(path.get(path.size() - 1));
 
-        int cost = hitCobweb ? movePointsRemaining : path.size(); // cobweb drains all remaining movement
+        int cost = hitCobweb ? movePointsRemaining : (elytraFreeMove ? 0 : path.size());
         movePointsRemaining -= cost;
         movedThisTurn = true;
         this.moveOriginPos = playerPos;
@@ -1949,6 +2003,11 @@ public class CombatManager {
         this.moveTickCounter = 0;
         this.phase = CombatPhase.ANIMATING;
         sendSync(); // tell client we're animating so walk animation plays
+    }
+
+    private boolean playerHasElytra() {
+        if (player == null) return false;
+        return player.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST).getItem() == Items.ELYTRA;
     }
 
     private boolean playerHasBoat() {
@@ -2327,7 +2386,8 @@ public class CombatManager {
         PlayerProgression.PlayerStats attackerStats = PlayerProgression.get(
             (ServerWorld) player.getEntityWorld()).getStats(player);
         int damageTypeBonus = DamageType.getTotalBonus(
-            PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects, damageType, attackerStats);
+            PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects, damageType, attackerStats)
+            + DamageType.getMobHeadBonus(player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), damageType);
         int baseDamage = PlayerCombatStats.getAttackPower(player) + combatEffects.getStrengthBonus()
             + progBonus + PlayerCombatStats.getSetAttackBonus(player)
             + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus;
@@ -3170,6 +3230,7 @@ public class CombatManager {
             // Roll a chance to drop the mob's equipped gear (rare; enchanted gear is even rarer to drop)
             if (!entity.isAlly() && entity.getMobEntity() != null) {
                 rollMobEquipmentDrops(entity);
+                rollMobHeadDrop(entity);
             }
             sendMessage("§a" + entity.getDisplayName() + " defeated!");
             GridPos deathPos = entity.getGridPos();
@@ -3551,10 +3612,14 @@ public class CombatManager {
             ItemStack equipped = mob.getEquippedStack(slot);
             if (equipped.isEmpty()) continue;
 
+            // Snapshot the enchantment component BEFORE we copy/clear — this guards against
+            // any subtle component transfer issues and lets us re-apply it to the drop stack
+            // if for any reason the copy didn't carry it over.
+            ItemEnchantmentsComponent enchantSnapshot = equipped.get(DataComponentTypes.ENCHANTMENTS);
+            boolean hasEnchant = enchantSnapshot != null && !enchantSnapshot.isEmpty();
+
             // Base 6% drop chance, +6% if the item carries enchantments (so enchanted gear
             // is the more exciting drop without being trivially farmable).
-            boolean hasEnchant = !equipped.getOrDefault(
-                DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT).isEmpty();
             double dropChance = hasEnchant ? 0.12 : 0.06;
             // Bosses always drop a piece of their gear (it's signature loot)
             if (enemy.isBoss()) dropChance = 1.0;
@@ -3563,6 +3628,12 @@ public class CombatManager {
 
             ItemStack dropCopy = equipped.copy();
             dropCopy.setCount(1);
+            // Ensure enchants are present on the drop — belt & suspenders against
+            // any component-map quirk during copy/equipStack(EMPTY) sequencing.
+            if (hasEnchant) {
+                dropCopy.set(DataComponentTypes.ENCHANTMENTS, enchantSnapshot);
+                dropCopy.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+            }
             // Clear the slot so the death animation doesn't double-render the item floating
             mob.equipStack(slot, ItemStack.EMPTY);
 
@@ -3572,6 +3643,77 @@ public class CombatManager {
             String label = hasEnchant ? "§b§l✦ ENCHANTED LOOT: " : "§e+ Loot: ";
             sendMessage(label + dropCopy.getName().getString());
         }
+    }
+
+    /**
+     * 1% chance to drop a themed mob skull for every party member. Skulls worn in
+     * the helmet slot grant a +1 damage type bonus (see DamageType.getMobHeadBonus).
+     * Only mob types with a matching vanilla skull item participate.
+     */
+    private void rollMobHeadDrop(CombatEntity enemy) {
+        Item headItem = getMobHeadForType(enemy.getEntityTypeId());
+        if (headItem == null) return;
+
+        List<ServerPlayerEntity> recipients = getAllParticipants();
+        if (recipients.isEmpty()) return;
+
+        if (Math.random() >= 0.01) return; // 1% drop rate
+
+        ItemStack head = new ItemStack(headItem, 1);
+        for (ServerPlayerEntity recipient : recipients) {
+            recipient.getInventory().insertStack(head.copy());
+        }
+        sendMessage("§d§l★ RARE DROP: " + head.getName().getString());
+    }
+
+    /** Maps a mob entity type ID to the matching vanilla skull item, or null if none. */
+    private static Item getMobHeadForType(String entityTypeId) {
+        return switch (entityTypeId) {
+            case "minecraft:skeleton", "minecraft:stray", "minecraft:bogged",
+                 "minecraft:skeleton_horse" -> Items.SKELETON_SKULL;
+            case "minecraft:wither_skeleton", "minecraft:wither" -> Items.WITHER_SKELETON_SKULL;
+            case "minecraft:creeper" -> Items.CREEPER_HEAD;
+            case "minecraft:piglin", "minecraft:piglin_brute", "minecraft:zombified_piglin" -> Items.PIGLIN_HEAD;
+            case "minecraft:zombie", "minecraft:husk", "minecraft:drowned",
+                 "minecraft:zombie_villager", "minecraft:zombie_horse" -> Items.ZOMBIE_HEAD;
+            default -> null;
+        };
+    }
+
+    /**
+     * Collects every enchantment on the mob's equipped gear into a compact comma-separated
+     * string like "sharpness:2,protection:3,power:1" for the client hover panel.
+     * Duplicates across slots are combined (max level kept).
+     */
+    private static String buildEnchantSyncString(MobEntity mob) {
+        if (mob == null) return "";
+        java.util.LinkedHashMap<String, Integer> merged = new java.util.LinkedHashMap<>();
+        net.minecraft.entity.EquipmentSlot[] slots = {
+            net.minecraft.entity.EquipmentSlot.MAINHAND,
+            net.minecraft.entity.EquipmentSlot.HEAD,
+            net.minecraft.entity.EquipmentSlot.CHEST,
+            net.minecraft.entity.EquipmentSlot.LEGS,
+            net.minecraft.entity.EquipmentSlot.FEET
+        };
+        for (net.minecraft.entity.EquipmentSlot slot : slots) {
+            ItemStack stack = mob.getEquippedStack(slot);
+            if (stack.isEmpty()) continue;
+            ItemEnchantmentsComponent enchants = stack.get(DataComponentTypes.ENCHANTMENTS);
+            if (enchants == null || enchants.isEmpty()) continue;
+            for (var entry : enchants.getEnchantmentEntries()) {
+                String path = entry.getKey().getKey().map(k -> k.getValue().getPath()).orElse("");
+                if (path.isEmpty()) continue;
+                int level = entry.getIntValue();
+                merged.merge(path, level, Math::max);
+            }
+        }
+        if (merged.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (var entry : merged.entrySet()) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(entry.getKey()).append(':').append(entry.getValue());
+        }
+        return sb.toString();
     }
 
     /** Apply a single enchantment by registry path to an itemstack. */
@@ -3591,8 +3733,11 @@ public class CombatManager {
     /**
      * Equip a boss mob with unique visuals based on biome.
      * Gives each boss custom equipment, name plate, and scale.
+     * Note: bosses skip the regular enchantMobGear path, so any enchants must be
+     * applied here if we want them to carry through to the guaranteed boss drop.
      */
     private static void equipBossVisuals(MobEntity mob, String bossBiomeId) {
+        ServerWorld world = (ServerWorld) mob.getWorld();
         switch (bossBiomeId) {
             case "plains" -> { // The Revenant — Zombie
                 mob.setCustomName(Text.literal("§4§lThe Revenant"));
@@ -3602,17 +3747,17 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.CHAINMAIL_CHESTPLATE));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.LEGS, new ItemStack(Items.IRON_LEGGINGS));
                 ItemStack sword = new ItemStack(Items.STONE_SWORD);
-                sword.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(sword, "sharpness", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, sword);
                 scaleBoss(mob, 1.6);
             }
             case "dark_forest" -> { // The Hexweaver — Evoker
                 mob.setCustomName(Text.literal("§2§lThe Hexweaver"));
                 mob.setCustomNameVisible(true);
-                // Evoker already has robes; give enchant glint hat for magical look
+                // Evoker already has robes; enchanted hat for magical look
                 ItemStack hat = new ItemStack(Items.LEATHER_HELMET);
                 hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B, false));
-                hat.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(hat, "protection", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, hat);
                 scaleBoss(mob, 1.5);
             }
@@ -3620,10 +3765,10 @@ public class CombatManager {
                 mob.setCustomName(Text.literal("§b§lThe Frostbound Huntsman"));
                 mob.setCustomNameVisible(true);
                 ItemStack crown = new ItemStack(Items.DIAMOND_HELMET);
-                crown.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(crown, "projectile_protection", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, crown);
                 ItemStack frostBow = new ItemStack(Items.BOW);
-                frostBow.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(frostBow, "power", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, frostBow);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.LEATHER_CHESTPLATE));
                 scaleBoss(mob, 1.5);
@@ -3636,9 +3781,9 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.IRON_CHESTPLATE));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.LEGS, new ItemStack(Items.IRON_LEGGINGS));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.FEET, new ItemStack(Items.IRON_BOOTS));
-                // War hammer (iron axe with glint)
+                // War hammer — enchanted iron axe
                 ItemStack hammer = new ItemStack(Items.IRON_AXE);
-                hammer.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(hammer, "sharpness", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, hammer);
                 scaleBoss(mob, 1.7);
             }
@@ -3648,11 +3793,11 @@ public class CombatManager {
                 // Coral crown = prismarine-tinted helmet
                 ItemStack crown = new ItemStack(Items.LEATHER_HELMET);
                 crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B, false));
-                crown.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(crown, "aqua_affinity", 1, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, crown);
                 // Enchanted trident
                 ItemStack trident = new ItemStack(Items.TRIDENT);
-                trident.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(trident, "impaling", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, trident);
                 scaleBoss(mob, 1.5);
             }
@@ -3662,9 +3807,10 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.GOLDEN_CHESTPLATE));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.LEGS, new ItemStack(Items.GOLDEN_LEGGINGS));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.FEET, new ItemStack(Items.GOLDEN_BOOTS));
-                // Golden sword
+                // Golden sword — enchanted
                 ItemStack goldenSword = new ItemStack(Items.GOLDEN_SWORD);
-                goldenSword.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(goldenSword, "sharpness", 2, world);
+                applyMobEnchant(goldenSword, "fire_aspect", 1, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, goldenSword);
                 scaleBoss(mob, 1.6);
             }
@@ -3677,13 +3823,14 @@ public class CombatManager {
             case "cave" -> { // The Hollow King — Zombie
                 mob.setCustomName(Text.literal("§e§lThe Hollow King"));
                 mob.setCustomNameVisible(true);
-                // Mining helmet with headlamp (gold helmet + glint)
+                // Mining helmet with headlamp (gold helmet)
                 ItemStack miningHelmet = new ItemStack(Items.GOLDEN_HELMET);
-                miningHelmet.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(miningHelmet, "protection", 1, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, miningHelmet);
                 // Glowing pickaxe
                 ItemStack pickaxe = new ItemStack(Items.IRON_PICKAXE);
-                pickaxe.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(pickaxe, "efficiency", 2, world);
+                applyMobEnchant(pickaxe, "unbreaking", 1, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, pickaxe);
                 // Ore-encrusted body = leather armor dyed gray-green
                 ItemStack oreChest = new ItemStack(Items.LEATHER_CHESTPLATE);
@@ -3712,13 +3859,13 @@ public class CombatManager {
                 mob.setCustomName(Text.literal("§4§lThe Bastion Brute"));
                 mob.setCustomNameVisible(true);
                 ItemStack piglinHead = new ItemStack(Items.PIGLIN_HEAD);
-                piglinHead.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, piglinHead);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.GOLDEN_CHESTPLATE));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.LEGS, new ItemStack(Items.GOLDEN_LEGGINGS));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.FEET, new ItemStack(Items.GOLDEN_BOOTS));
                 ItemStack goldenAxe = new ItemStack(Items.GOLDEN_AXE);
-                goldenAxe.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                applyMobEnchant(goldenAxe, "sharpness", 3, world);
+                applyMobEnchant(goldenAxe, "fire_aspect", 1, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, goldenAxe);
                 scaleBoss(mob, 1.35);
             }
@@ -3751,10 +3898,13 @@ public class CombatManager {
                 // No equipment — fused with chorus plants
                 scaleBoss(mob, 1.7);
             }
-            case "dragons_nest" -> { // The Ender Dragon — keep existing
+            case "dragons_nest" -> { // The Ender Dragon
                 mob.setCustomName(Text.literal("§5§lThe Ender Dragon"));
                 mob.setCustomNameVisible(true);
-                // Dragon is already massive; no scale change needed
+                // Scale to ~50% so the dragon is imposing but fits the arena.
+                // The mob is a backgroundBoss parked above the arena; it only
+                // appears at ground level during the PERCHING phase.
+                scaleBoss(mob, 0.5);
             }
             default -> {
                 // Fallback for unknown biomes — mild visual upgrade
@@ -3904,6 +4054,121 @@ public class CombatManager {
                             x, y + 2.0, z, 3, 0.8, 0.5, 0.8, 0.02);
                 }
                 default -> {} // No particles for unknown biomes
+            }
+        }
+    }
+
+    /**
+     * Every tick, enforce the Ender Dragon's world position based on its AI state.
+     * The vanilla EnderDragonEntity PhaseManager continuously overrides position,
+     * so we must re-apply every tick to win the tug-of-war.
+     *
+     * Also handles state transitions: adds/removes occupancy tiles and sends
+     * messages when the dragon perches or takes off.
+     *
+     * ATTACKING → parked 100 blocks above arena, not targetable.
+     * PERCHING  → forced to arena centre at ground level, visible + targetable.
+     */
+    private void tickDragonPositionEnforcer() {
+        if (player == null || arena == null) return;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || !e.isBoss()) continue;
+            EnemyAI ai = resolveAi(e);
+            if (!(ai instanceof com.crackedgames.craftics.combat.ai.DragonAI dragonAi)) continue;
+            MobEntity mob = e.getMobEntity();
+            if (mob == null) continue;
+
+            BlockPos origin = arena.getOrigin();
+            int arenaW = arena.getWidth();
+            int arenaH = arena.getHeight();
+            double cx = origin.getX() + arenaW / 2.0;
+            double cz = origin.getZ() + arenaH / 2.0;
+
+            // Handle state transitions: toggle occupancy tiles + messages
+            if (dragonAi.hasStateChanged()) {
+                dragonAi.acknowledgeStateChange();
+                int bw = 3, bh = 7;
+                int ox = (arenaW - bw) / 2;
+                int oz = (arenaH - bh) / 2;
+
+                if (dragonAi.getState() == com.crackedgames.craftics.combat.ai.DragonAI.State.PERCHING) {
+                    // Re-add occupancy tiles so the dragon is targetable
+                    for (int dx = 0; dx < bw; dx++) {
+                        for (int dz = 0; dz < bh; dz++) {
+                            arena.getOccupants().put(new GridPos(ox + dx, oz + dz), e);
+                        }
+                    }
+                    sendMessage("§5§l\u2726 The Ender Dragon perches! Strike now!");
+                    ServerWorld world = (ServerWorld) player.getEntityWorld();
+                    world.playSound(null, player.getBlockPos(),
+                        net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_GROWL,
+                        net.minecraft.sound.SoundCategory.HOSTILE, 2.0f, 0.7f);
+                } else {
+                    // Remove occupancy tiles so the dragon is NOT targetable
+                    for (int dx = 0; dx < bw; dx++) {
+                        for (int dz = 0; dz < bh; dz++) {
+                            GridPos slot = new GridPos(ox + dx, oz + dz);
+                            if (arena.getOccupant(slot) == e) {
+                                arena.getOccupants().remove(slot);
+                            }
+                        }
+                    }
+                    sendMessage("§8§l\u2726 The Ender Dragon takes flight!");
+                    ServerWorld world = (ServerWorld) player.getEntityWorld();
+                    world.playSound(null, player.getBlockPos(),
+                        net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_FLAP,
+                        net.minecraft.sound.SoundCategory.HOSTILE, 2.0f, 0.8f);
+                }
+                sendSync();
+            }
+
+            // Position enforcement every tick.
+            // Server-only mixin suppresses tickMovement() so vanilla PhaseManager
+            // can't fight our position. Client tickMovement() still runs to populate
+            // the segment buffer the renderer needs. A client-side renderer mixin
+            // checks isInvisible() + isAiDisabled() to skip drawing during ATTACKING.
+            if (dragonAi.getState() == com.crackedgames.craftics.combat.ai.DragonAI.State.PERCHING) {
+                double bobY = Math.sin(mob.age * 0.05) * 0.3;
+                double groundY = origin.getY() + 5.0 + bobY;
+                forceDragonPosition(mob, cx, groundY, cz);
+                float idleYaw = (mob.age * 0.5f) % 360f;
+                mob.setYaw(idleYaw);
+                mob.setHeadYaw(idleYaw);
+                mob.setSilent(false);
+                mob.setInvisible(false);
+            } else {
+                double hideY = origin.getY() + 100;
+                forceDragonPosition(mob, cx, hideY, cz);
+                mob.setSilent(true);
+                mob.setInvisible(true);
+            }
+            // Keep PhaseManager in HOVER so vanilla AI never overrides position
+            if (mob instanceof net.minecraft.entity.boss.dragon.EnderDragonEntity enforceDragon) {
+                enforceDragon.getPhaseManager().setPhase(
+                    net.minecraft.entity.boss.dragon.phase.PhaseType.HOVER);
+            }
+        }
+    }
+
+    /**
+     * Force the ender dragon AND all its body-part sub-entities to a position.
+     * The vanilla EnderDragonEntity has ~8 EnderDragonPart sub-entities (head,
+     * neck segments, body, tail, wings) that each have independent positions.
+     * If we only set the main entity position, the parts stay at their old
+     * coords and the renderer draws the dragon at the wrong place. This method
+     * forces everything to the same point.
+     */
+    private static void forceDragonPosition(MobEntity mob, double x, double y, double z) {
+        // requestTeleport flags the entity for a forced position sync to all
+        // tracking clients — setPosition alone only updates the server and the
+        // client never learns the dragon moved.
+        mob.requestTeleport(x, y, z);
+        mob.setVelocity(0, 0, 0);
+        // Sync body parts — EnderDragonEntity stores them as getBodyParts()
+        if (mob instanceof net.minecraft.entity.boss.dragon.EnderDragonEntity dragon) {
+            for (net.minecraft.entity.boss.dragon.EnderDragonPart part : dragon.getBodyParts()) {
+                part.refreshPositionAndAngles(x, y, z, 0, 0);
+                part.setPosition(x, y, z);
             }
         }
     }
@@ -4097,19 +4362,17 @@ public class CombatManager {
                             }
                         }
                     }
-                    // Pet affinity: bonus HP and ATK based on Pet affinity points (3% per point)
+                    // Pet affinity: flat +3 HP per point (damage bonus is applied per-attack
+                    // via DamageType.getTotalBonus on the PET damage type, so no ATK boost here
+                    // to avoid double-counting).
                     PlayerProgression.PlayerStats petOwnerStats = PlayerProgression.get(
                         (ServerWorld) player.getEntityWorld()).getStats(player);
                     int petPts = petOwnerStats.getAffinityPoints(PlayerProgression.Affinity.PET);
                     if (petPts > 0) {
-                        double petBoostPct = petPts * 0.03;
-                        int hpBoost = Math.max(1, (int)(e.getMaxHp() * petBoostPct));
-                        int atkBoost = Math.max(1, (int) Math.ceil(e.getAttackPower() * petBoostPct));
-                        // Increase effective max HP via negative reduction, then heal
+                        int hpBoost = petPts * 3;
                         e.addMaxHpReduction(-hpBoost);
                         e.heal(hpBoost);
-                        e.setAttackBoost(e.getAttackBoost() + atkBoost);
-                        sendMessage("\u00a7a\uD83D\uDC3E Pet Affinity: +" + hpBoost + " HP, +" + atkBoost + " ATK!");
+                        sendMessage("\u00a7a\uD83D\uDC3E Pet Affinity: +" + hpBoost + " HP!");
                     }
                     sendMessage("§a§l" + e.getDisplayName() + " has been tamed! They fight for you now!");
                     break;
@@ -4675,6 +4938,7 @@ public class CombatManager {
         if (player.isOnFire()) player.setFireTicks(0);
 
         tickBossAmbientParticles();
+        tickDragonPositionEnforcer();
         tickVoidRiftParticles();
 
         // Damage synced to animation impact frame
@@ -5445,6 +5709,7 @@ public class CombatManager {
             movedThisTurn = false;
 
             tickTemporaryTerrain();
+            tickDragonBreathWaves();
             detonatePendingTnts();
 
             if (partyPlayers.size() > 1) {
@@ -5583,25 +5848,22 @@ public class CombatManager {
             CrafticsMod.LOGGER.info("[BOSS DEBUG] Boss '{}' aiKey='{}' resolved AI class={}",
                 currentEnemy.getDisplayName(), currentEnemy.getAiKey(), ai.getClass().getSimpleName());
         }
-        // Populate all alive player grid positions for boss AIs (chain attacks, etc.)
-        if (partyPlayers.size() > 1 && arena != null) {
-            java.util.List<GridPos> allPositions = new java.util.ArrayList<>();
-            net.minecraft.util.math.BlockPos ppOrigin = arena.getOrigin();
-            for (ServerPlayerEntity member : partyPlayers) {
-                if (!deadPartyMembers.contains(member.getUuid())
-                        && member != null && !member.isRemoved() && !member.isDisconnected()) {
-                    net.minecraft.util.math.BlockPos mbp = member.getBlockPos();
-                    allPositions.add(new GridPos(mbp.getX() - ppOrigin.getX(), mbp.getZ() - ppOrigin.getZ()));
-                }
-            }
-            arena.setAllPlayerGridPositions(allPositions);
-        } else {
-            arena.setAllPlayerGridPositions(java.util.List.of(arena.getPlayerGridPos()));
-        }
+        refreshAllPlayerGridPositions();
         currentEnemyPetAggroTarget = resolveAggroPetTarget(currentEnemy);
-        GridPos aiTargetPos = currentEnemyPetAggroTarget != null
-            ? currentEnemyPetAggroTarget.getGridPos()
-            : arena.getPlayerGridPos();
+        GridPos aiTargetPos;
+        if (currentEnemyPetAggroTarget != null) {
+            aiTargetPos = currentEnemyPetAggroTarget.getGridPos();
+        } else {
+            java.util.List<GridPos> allPlayers = arena.getAllPlayerGridPositions();
+            if (allPlayers.size() > 1) {
+                final CombatEntity enemy = currentEnemy;
+                aiTargetPos = allPlayers.stream()
+                    .min(java.util.Comparator.comparingInt(p -> enemy.minDistanceTo(p)))
+                    .orElse(arena.getPlayerGridPos());
+            } else {
+                aiTargetPos = arena.getPlayerGridPos();
+            }
+        }
         pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
 
         // Addon combat effects: boss phase change notification
@@ -5808,56 +6070,57 @@ public class CombatManager {
                 startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
             }
             case EnemyAction.Swoop swoop -> {
-                // Phantom swoop — fly along path, damage player if in the way
-                sendMessage("§8" + currentEnemy.getDisplayName() + " swoops!");
+                // Lerped swoop — dragon/phantom physically flies along path tile-by-tile
+                // via startEnemyMove. Damage is applied up-front to anyone in the path
+                // (size-aware so the dragon's 3x3 footprint crushes the player) and the
+                // per-tile trail particles are spawned by tickEnemyMoving while lerping.
+                sendMessage("§5§l⌇ " + currentEnemy.getDisplayName() + " swoops!");
                 ServerWorld swoopWorld = (ServerWorld) player.getEntityWorld();
-                boolean hitPlayer = false;
+
+                // Force the mob visible for the lerp — cinematic swoops from off-stage
+                // bosses (like the Ender Dragon) rely on this so the lerp actually shows.
+                MobEntity swoopMob = currentEnemy.getMobEntity();
+                if (swoopMob != null) {
+                    swoopMob.setInvisible(false);
+                    swoopMob.setSilent(false);
+                    // Snap to the first tile of the path so the lerp starts at the correct
+                    // edge position for cross-arena swoops — prevents a diagonal snap from
+                    // the dragon's previous tile.
+                    if (!swoop.path().isEmpty()) {
+                        GridPos swoopStart = swoop.path().get(0);
+                        if (!currentEnemy.getGridPos().equals(swoopStart)) {
+                            BlockPos snapBlock = arena.gridToBlockPos(swoopStart);
+                            double snapOffset = currentEnemy.getSize() / 2.0;
+                            swoopMob.requestTeleport(
+                                snapBlock.getX() + snapOffset,
+                                arena.getEntityY(swoopStart),
+                                snapBlock.getZ() + snapOffset);
+                            arena.moveEntity(currentEnemy, swoopStart);
+                        }
+                    }
+                }
+
+                // Dragon roar on swoop start — adds presence to the invisible entity
+                if (currentEnemy.getAiKey() != null && currentEnemy.getAiKey().contains("dragons_nest")
+                        && currentEnemy.getMobEntity() != null) {
+                    swoopWorld.playSound(null, currentEnemy.getMobEntity().getBlockPos(),
+                        net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_GROWL,
+                        net.minecraft.sound.SoundCategory.HOSTILE, 2.0f, 0.85f);
+                }
+
+                // Damage the player if any path tile intersects their footprint
                 GridPos playerGridPos = arena.getPlayerGridPos();
-                GridPos finalPos = currentEnemy.getGridPos();
-
-                // Determine swoop particle based on the boss
-                net.minecraft.particle.ParticleEffect swoopTrail = net.minecraft.particle.ParticleTypes.CLOUD;
-                net.minecraft.particle.ParticleEffect swoopAccent = net.minecraft.particle.ParticleTypes.SMOKE;
-                if (currentEnemy.getAiKey() != null) {
-                    String aiKey = currentEnemy.getAiKey();
-                    if (aiKey.contains("wither") || aiKey.contains("Wither")) {
-                        swoopTrail = net.minecraft.particle.ParticleTypes.SOUL;
-                        swoopAccent = net.minecraft.particle.ParticleTypes.LARGE_SMOKE;
-                    } else if (aiKey.contains("crimson") || aiKey.contains("Crimson")) {
-                        swoopTrail = net.minecraft.particle.ParticleTypes.CRIMSON_SPORE;
-                        swoopAccent = net.minecraft.particle.ParticleTypes.FLAME;
-                    } else if (aiKey.contains("revenant") || aiKey.contains("Revenant")) {
-                        swoopTrail = net.minecraft.particle.ParticleTypes.SMOKE;
-                        swoopAccent = net.minecraft.particle.ParticleTypes.SOUL;
-                    }
-                }
-
+                int entitySize = currentEnemy.getSize();
+                boolean hitPlayer = false;
                 for (GridPos pos : swoop.path()) {
-                    if (pos.equals(playerGridPos)) {
+                    if (CombatEntity.minDistanceFromSizedEntity(pos, entitySize, playerGridPos) <= 0) {
                         hitPlayer = true;
+                        break;
                     }
-                    // Trail particles along each swoop tile
-                    BlockPos swoopBp = arena.gridToBlockPos(pos);
-                    swoopWorld.spawnParticles(swoopTrail,
-                        swoopBp.getX() + 0.5, swoopBp.getY() + 1.0, swoopBp.getZ() + 0.5,
-                        4, 0.2, 0.3, 0.2, 0.02);
-                    swoopWorld.spawnParticles(swoopAccent,
-                        swoopBp.getX() + 0.5, swoopBp.getY() + 0.5, swoopBp.getZ() + 0.5,
-                        2, 0.15, 0.2, 0.15, 0.01);
-                    finalPos = pos;
-                }
-                // Move phantom to end of swoop path
-                MobEntity mob = currentEnemy.getMobEntity();
-                if (mob != null && arena.isInBounds(finalPos) && !arena.isEnemyOccupied(finalPos)) {
-                    double wx = arena.getOrigin().getX() + finalPos.x() + 0.5;
-                    double wz = arena.getOrigin().getZ() + finalPos.z() + 0.5;
-                    mob.requestTeleport(wx, arena.getOrigin().getY() + 1.0, wz);
-                    arena.moveEntity(currentEnemy, finalPos);
                 }
                 if (hitPlayer) {
                     int actual = damagePlayer(swoop.damage());
                     sendMessage("§c  Swoops through you for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                    // Impact burst on player
                     swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
                         player.getX(), player.getY() + 1.0, player.getZ(), 10, 0.3, 0.5, 0.3, 0.03);
                     swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
@@ -5865,7 +6128,8 @@ public class CombatManager {
                     sendSync();
                     if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                 }
-                // Chain damage: check non-active party members hit by the swoop path
+
+                // Chain damage: non-active party members standing on the swoop path
                 if (partyPlayers.size() > 1) {
                     net.minecraft.util.math.BlockPos swoopOrigin = arena.getOrigin();
                     for (ServerPlayerEntity member : partyPlayers) {
@@ -5877,7 +6141,10 @@ public class CombatManager {
                             mbp.getX() - swoopOrigin.getX(), mbp.getZ() - swoopOrigin.getZ());
                         boolean memberHit = false;
                         for (GridPos pos : swoop.path()) {
-                            if (pos.equals(memberGrid)) { memberHit = true; break; }
+                            if (CombatEntity.minDistanceFromSizedEntity(pos, entitySize, memberGrid) <= 0) {
+                                memberHit = true;
+                                break;
+                            }
                         }
                         if (memberHit) {
                             int armorDef = PlayerCombatStats.getDefense(member);
@@ -5889,9 +6156,6 @@ public class CombatManager {
                             swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
                                 member.getX(), member.getY() + 1.0, member.getZ(),
                                 10, 0.3, 0.5, 0.3, 0.03);
-                            swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
-                                member.getX(), member.getY() + 0.8, member.getZ(),
-                                5, 0.2, 0.3, 0.2, 0.01);
                             if ((int) member.getHealth() <= 1) {
                                 ServerPlayerEntity savedPlayer = this.player;
                                 this.player = member;
@@ -5902,8 +6166,11 @@ public class CombatManager {
                     }
                     sendSync();
                 }
-                enemyTurnState = EnemyTurnState.DONE;
-                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+
+                // Start the actual per-tile lerp through the swoop path.
+                // tickEnemyMoving handles the visual interpolation and spawns trail
+                // particles when pendingAction is a Swoop (see tickEnemyMoving hook).
+                startEnemyMove(swoop.path());
             }
             case EnemyAction.StartFuse fuse -> {
                 sendMessage("§e" + currentEnemy.getDisplayName() + " is hissing... §c§lRUN!");
@@ -5940,35 +6207,54 @@ public class CombatManager {
             }
             case EnemyAction.MoveAndAttackWithKnockback maakb -> startEnemyMove(maakb.path());
             case EnemyAction.Idle idle -> {
-                // Late-game bosses (4th biome / ordinal >= 3) skip their telegraphed
-                // "waiting" turn: instead of stalling, they immediately resolve the
-                // pending warning the subclass just set up.
-                if (currentEnemy.isBoss() && currentBiomeOrdinal >= 3) {
-                    EnemyAI bossAi = resolveAi(currentEnemy);
-                    if (bossAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI ba
+                // Render the pending telegraph first — this is the red-cell /
+                // gathering-particle display the player reads to dodge. It MUST
+                // happen before any short-circuit so late-game bosses still show
+                // their warnings.
+                EnemyAI bossAiForWarning = null;
+                com.crackedgames.craftics.combat.ai.boss.BossAI pendingWarningBoss = null;
+                if (currentEnemy.isBoss()) {
+                    bossAiForWarning = resolveAi(currentEnemy);
+                    if (bossAiForWarning instanceof com.crackedgames.craftics.combat.ai.boss.BossAI ba
                             && ba.getPendingWarning() != null) {
-                        EnemyAction resolved = ba.getPendingWarning().getResolveAction();
-                        ba.clearPendingWarning();
-                        sendMessage("§c" + currentEnemy.getDisplayName() + " unleashes its attack!");
-                        dispatchBossSubAction(resolved);
-                        sendSync();
-                        enemyTurnState = EnemyTurnState.DONE;
-                        enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
-                        break;
+                        pendingWarningBoss = ba;
+                        renderBossWarning(ba.getPendingWarning());
+                    }
+                    triggerGhastScream(currentEnemy, true);
+                }
+
+                // Late-game bosses (4th biome / ordinal >= 3) don't waste their
+                // telegraph turn just idling: they also pick a movement/attack
+                // action via BossAI.getChargingAdvanceAction() and dispatch it
+                // this turn. The pendingWarning stays alive and resolves next
+                // turn like normal. Bosses that want to stay put while charging
+                // (e.g. DragonAI off-map) override getChargingAdvanceAction to
+                // return Idle.
+                if (currentEnemy.isBoss() && currentBiomeOrdinal >= 3
+                        && pendingWarningBoss != null) {
+                    EnemyAction chargeAction = pendingWarningBoss.getChargingAdvanceAction(
+                        currentEnemy, arena, arena.getPlayerGridPos());
+                    if (chargeAction != null && !(chargeAction instanceof EnemyAction.Idle)) {
+                        sendMessage("§e" + currentEnemy.getDisplayName() + " advances while charging...");
+                        pendingAction = chargeAction;
+                        // Re-enter the main dispatcher with the advance action.
+                        // Only common movement/attack cases are handled here; anything
+                        // else falls through to the idle wait below.
+                        if (chargeAction instanceof EnemyAction.Move mv) {
+                            startEnemyMove(mv.path());
+                            break;
+                        } else if (chargeAction instanceof EnemyAction.MoveAndAttack maa) {
+                            startEnemyMove(maa.path());
+                            break;
+                        } else if (chargeAction instanceof EnemyAction.Attack) {
+                            startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+                            break;
+                        }
+                        // Otherwise fall through to idle wait.
                     }
                 }
 
                 sendMessage("§7" + currentEnemy.getDisplayName() + " waits...");
-                // If boss has a pending warning, render its telegraph for the player's turn.
-                if (currentEnemy.isBoss()) {
-                    EnemyAI bossAi = resolveAi(currentEnemy);
-                    if (bossAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI ba
-                            && ba.getPendingWarning() != null) {
-                        renderBossWarning(ba.getPendingWarning());
-                    }
-                    // Ghast scream animation when telegraphing an attack
-                    triggerGhastScream(currentEnemy, true);
-                }
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -6218,7 +6504,9 @@ public class CombatManager {
             }
             
             int petBonus = DamageType.getTotalBonus(
-                PlayerCombatStats.getArmorSet(allyOwner), ownerTrimScan, combatEffects, DamageType.PET, allyOwnerStats);
+                PlayerCombatStats.getArmorSet(allyOwner), ownerTrimScan, combatEffects, DamageType.PET, allyOwnerStats)
+                + DamageType.getMobHeadBonus(
+                    allyOwner.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), DamageType.PET);
             // Rally set bonus: allies get +1 Attack
             if (ownerTrimScan != null && ownerTrimScan.setBonus() == TrimEffects.SetBonus.RALLY) {
                 petBonus += 1;
@@ -6697,6 +6985,28 @@ public class CombatManager {
                 for (EnemyAction sub : ca.actions()) {
                     dispatchBossSubAction(sub);
                 }
+            }
+            case EnemyAction.Swoop swoop -> {
+                // Dispatch the same way the top-level case does: snap the mob to
+                // the first path tile, make it visible, and kick off the lerp via
+                // startEnemyMove. The Idle-bypass code path that called us will
+                // then let tickEnemyMoving take over instead of forcing DONE.
+                MobEntity subMob = currentEnemy != null ? currentEnemy.getMobEntity() : null;
+                if (subMob != null && !swoop.path().isEmpty()) {
+                    subMob.setInvisible(false);
+                    subMob.setSilent(false);
+                    GridPos swoopStart = swoop.path().get(0);
+                    if (!currentEnemy.getGridPos().equals(swoopStart)) {
+                        BlockPos snapBlock = arena.gridToBlockPos(swoopStart);
+                        double snapOffset = currentEnemy.getSize() / 2.0;
+                        subMob.requestTeleport(
+                            snapBlock.getX() + snapOffset,
+                            arena.getEntityY(swoopStart),
+                            snapBlock.getZ() + snapOffset);
+                        arena.moveEntity(currentEnemy, swoopStart);
+                    }
+                }
+                startEnemyMove(swoop.path());
             }
             default -> {} // Ignore unsupported sub-actions
         }
@@ -7636,6 +7946,10 @@ public class CombatManager {
                     // Void Walker — void beam
                     lineParticle = net.minecraft.particle.ParticleTypes.PORTAL;
                     trailParticle = net.minecraft.particle.ParticleTypes.REVERSE_PORTAL;
+                } else if (aiKey.contains("dragons_nest")) {
+                    // Ender Dragon breath — magenta dragon breath + portal shimmer
+                    lineParticle = net.minecraft.particle.ParticleTypes.DRAGON_BREATH;
+                    trailParticle = net.minecraft.particle.ParticleTypes.PORTAL;
                 }
             }
         }
@@ -8091,6 +8405,68 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Advance all active dragon breath waves. Each wave moves 3 tiles per turn,
+     * placing fire and damaging the player if they stand in the path. Waves run
+     * autonomously — the dragon can keep choosing attacks while waves march.
+     */
+    private void tickDragonBreathWaves() {
+        if (player == null || arena == null) return;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || !e.isBoss()) continue;
+            EnemyAI ai = resolveAi(e);
+            if (!(ai instanceof com.crackedgames.craftics.combat.ai.DragonAI dragonAi)) continue;
+            if (dragonAi.getActiveWaves().isEmpty()) continue;
+
+            List<GridPos> burned = dragonAi.tickWaves(arena);
+            if (burned.isEmpty()) continue;
+
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+            // Update world blocks for the newly-fired tiles
+            for (GridPos pos : burned) {
+                GridTile tile = arena.getTile(pos);
+                if (tile == null) continue;
+                BlockPos bp = new BlockPos(
+                    arena.getOrigin().getX() + pos.x(),
+                    arena.getOrigin().getY(),
+                    arena.getOrigin().getZ() + pos.z());
+                world.setBlockState(bp, tile.getBlockType().getDefaultState());
+
+                // Dragon breath particles on the wave front
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.DRAGON_BREATH,
+                    bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5,
+                    5, 0.3, 0.4, 0.3, 0.03);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                    bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5,
+                    3, 0.2, 0.3, 0.2, 0.05);
+            }
+
+            // Damage player if they're standing on any burned tile
+            GridPos playerGridPos = arena.getPlayerGridPos();
+            for (GridPos pos : burned) {
+                if (pos.equals(playerGridPos)) {
+                    int waveDmg = e.getAttackPower() + (dragonAi.isDragonPhaseTwo() ? 3 : 0);
+                    int actual = damagePlayer(waveDmg);
+                    sendMessage("§5§l⌇ Dragon breath wave hits you for " + actual + " damage!");
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                        player.getX(), player.getY() + 1.0, player.getZ(),
+                        5, 0.3, 0.3, 0.3, 0.01);
+                    if (getPlayerHp() <= 0) {
+                        handlePlayerDeathOrGameOver();
+                    }
+                    sendSync();
+                    break; // only damage once per wave tick
+                }
+            }
+
+            // Sound effect for the advancing wave
+            world.playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_GROWL,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.5f, 1.5f);
+        }
+    }
+
     private void primePendingTnt(GridPos tile, String message) {
         if (!arena.isInBounds(tile)) return;
 
@@ -8350,15 +8726,6 @@ public class CombatManager {
             if (!e.isAlive() || !e.isBoss()) continue;
             EnemyAI ai = resolveAi(e);
 
-            // Dragon: crystal destroyed
-            if (ai instanceof DragonAI dragon) {
-                // Check if the dead entity is an end crystal (e.g. a minion with "crystal" marker)
-                if ("minecraft:end_crystal".equals(deadEntity.getEntityTypeId())) {
-                    dragon.onCrystalDestroyed();
-                    sendMessage("§d✦ End Crystal destroyed! Dragon weakened.");
-                }
-            }
-
             // ShulkerArchitect: turret destroyed
             if (ai instanceof ShulkerArchitectAI sa) {
                 if (deadEntity.getGridPos() != null) {
@@ -8401,6 +8768,69 @@ public class CombatManager {
             ServerWorld world = (ServerWorld) player.getEntityWorld();
             for (GridPos pos : sacPositions) {
                 placeEggSacEntity(broodmother, pos, world);
+            }
+        }
+
+        // Ender Dragon: backgroundBoss parked above the arena (same pattern as ghast).
+        // The mob entity sits 100 blocks above the arena centre; the PhaseManager is
+        // forced to HOVER so it never fights our per-tick position enforcement.
+        // The dragon occupies a 3×7 cluster of centre tiles for targeting.
+        if (ai instanceof com.crackedgames.craftics.combat.ai.DragonAI) {
+            int arenaW = arena.getWidth();
+            int arenaH = arena.getHeight();
+
+            arena.removeEntity(bossEntity);
+            bossEntity.setBackgroundBoss(true);
+
+            // Set grid position to centre but do NOT place occupancy tiles yet.
+            // The dragon starts in ATTACKING state (off-stage, not targetable).
+            // tickDragonPositionEnforcer adds occupancy tiles when it transitions
+            // to PERCHING state.
+            int bw = 3, bh = 7;
+            int ox = (arenaW - bw) / 2;
+            int oz = (arenaH - bh) / 2;
+            bossEntity.setGridPos(new GridPos(ox, oz));
+            bossEntity.setSize(1);
+
+            // Clear any enemies from the perch zone so they don't block it later
+            for (int dx = 0; dx < bw; dx++) {
+                for (int dz = 0; dz < bh; dz++) {
+                    GridPos slot = new GridPos(ox + dx, oz + dz);
+                    CombatEntity existing = arena.getOccupant(slot);
+                    if (existing != null && existing != bossEntity) {
+                        GridPos relocated = findNearestValidSpawn(arena, new GridPos(ox + dx, oz + dz + bh), existing.getSize());
+                        if (relocated != null) {
+                            arena.moveEntity(existing, relocated);
+                            MobEntity eMob = existing.getMobEntity();
+                            if (eMob != null) {
+                                BlockPos bp = arena.gridToBlockPos(relocated);
+                                eMob.refreshPositionAndAngles(
+                                    bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5, eMob.getYaw(), eMob.getPitch());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Park mob entity 100 blocks above centre — within entity tracking range
+            // The per-tick enforcer (tickDragonPositionEnforcer) keeps it there
+            // while in ATTACKING state.
+            MobEntity dragonMob = bossEntity.getMobEntity();
+            if (dragonMob != null) {
+                dragonMob.setAiDisabled(true);
+                dragonMob.setNoGravity(true);
+                dragonMob.noClip = true;
+                dragonMob.setInvisible(true);
+                // Neutralise the vanilla PhaseManager — HOVER is passive and won't
+                // fight our per-tick position enforcement.
+                if (dragonMob instanceof net.minecraft.entity.boss.dragon.EnderDragonEntity spawnDragon) {
+                    spawnDragon.getPhaseManager().setPhase(
+                        net.minecraft.entity.boss.dragon.phase.PhaseType.HOVER);
+                }
+                double cx = arena.getOrigin().getX() + arenaW / 2.0;
+                double cy = arena.getOrigin().getY() + 100;
+                double cz = arena.getOrigin().getZ() + arenaH / 2.0;
+                forceDragonPosition(dragonMob, cx, cy, cz);
             }
         }
 
@@ -8678,6 +9108,26 @@ public class CombatManager {
         // Sync visual projectile entity position with the invisible tracking mob
         if (currentEnemy.isProjectile()) {
             syncVisualProjectile(currentEnemy, x, y + 0.5, z);
+        }
+
+        // Swoop trail particles — spawned every tick along the lerp path so the
+        // dragon's flight is a visible sweep of breath particles across the arena.
+        if (pendingAction instanceof EnemyAction.Swoop && mob.getWorld() instanceof ServerWorld sw) {
+            boolean isDragon = currentEnemy.getAiKey() != null
+                && currentEnemy.getAiKey().contains("dragons_nest");
+            if (isDragon) {
+                sw.spawnParticles(net.minecraft.particle.ParticleTypes.DRAGON_BREATH,
+                    x, y + 1.5, z, 8, 0.6, 0.4, 0.6, 0.04);
+                sw.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                    x, y + 2.0, z, 6, 0.5, 0.3, 0.5, 0.08);
+                sw.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                    x, y + 1.0, z, 3, 0.4, 0.3, 0.4, 0.01);
+            } else {
+                sw.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    x, y + 1.0, z, 4, 0.3, 0.3, 0.3, 0.02);
+                sw.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                    x, y + 0.5, z, 2, 0.2, 0.2, 0.2, 0.01);
+            }
         }
 
         if (enemyMoveTickCounter >= emTicks2) {
@@ -12605,6 +13055,10 @@ public class CombatManager {
                 .add(Items.FEATHER, 8);
             case "minecraft:goat" -> new LootPool()
                 .add(Items.LEATHER, 5).add(Items.MUTTON, 3);
+            case "minecraft:bee" -> new LootPool()
+                .add(Items.HONEYCOMB, 6).add(Items.HONEY_BOTTLE, 4);
+            case "minecraft:rabbit" -> new LootPool()
+                .add(Items.RABBIT_FOOT, 2).add(Items.RABBIT_HIDE, 3).add(Items.RABBIT, 4);
             default -> null;
         };
         return pool != null ? pool.roll(1, 2, 1, 3) : List.of();
@@ -12814,6 +13268,36 @@ public class CombatManager {
         try { clearAllRevenantSummonMarkers(); } catch (Exception e) {
             CrafticsMod.LOGGER.warn("endCombat: revenant marker cleanup failed: {}", e.getMessage());
         }
+
+        // Restore any temporary terrain (boss magma/lava/etc.) that hadn't expired
+        // yet. Without this, tiles still in their countdown get left in the world
+        // — and because the arena is cached + revisits use scanExisting, those
+        // leftover hazard blocks get baked into the arena permanently on the
+        // next combat entry. This bit ALL bosses that place temporary terrain,
+        // not just the Revenant's Gravefire Grid.
+        try {
+            if (arena != null && player != null) {
+                ServerWorld restoreWorld = (ServerWorld) player.getEntityWorld();
+                for (int x = 0; x < arena.getWidth(); x++) {
+                    for (int z = 0; z < arena.getHeight(); z++) {
+                        GridTile tile = arena.getTile(x, z);
+                        if (tile == null || tile.getTurnsRemaining() <= 0) continue;
+                        // Force the decay to completion so blockType resets to the
+                        // stored restoreBlockType (preserving biome-specific floor).
+                        tile.setTurnsRemaining(1);
+                        tile.tickTurn();
+                        BlockPos bp = new BlockPos(
+                            arena.getOrigin().getX() + x,
+                            arena.getOrigin().getY(),
+                            arena.getOrigin().getZ() + z);
+                        restoreWorld.setBlockState(bp, tile.getBlockType().getDefaultState());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.warn("endCombat: temporary terrain restore failed: {}", e.getMessage());
+        }
+
         arena = null;
         enemies = null;
         player = null;
@@ -13302,7 +13786,13 @@ public class CombatManager {
             if (e.getSoakedTurns() > 0) efx.append(";Soaked(" + e.getSoakedTurns() + "t)");
             if (e.getConfusionTurns() > 0) efx.append(";Confused(" + e.getConfusionTurns() + "t)");
             if (e.getDefensePenaltyTurns() > 0) efx.append(";Exposed(-" + e.getDefensePenalty() + "DEF," + e.getDefensePenaltyTurns() + "t)");
+            if (e.getBleedStacks() > 0) efx.append(";Bleeding(" + e.getBleedStacks() + " stacks)");
             typeIds.append(efx);
+            // Enchantments on equipped gear (weapon + armor). Format: ";ench=name:lvl,name:lvl"
+            String enchStr = buildEnchantSyncString(e.getMobEntity());
+            if (!enchStr.isEmpty()) {
+                typeIds.append(";ench=").append(enchStr);
+            }
         }
 
         // Calculate max AP and max Speed from progression
