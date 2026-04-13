@@ -784,3 +784,88 @@ git branch -D worktree-stonecutter-multi-version
 ```
 
 The main branch is untouched until the worktree is merged via PR.
+
+---
+
+## Progress / Resume point (paused 2026-04-13)
+
+**Tasks complete: 1 through 7.** Branch `worktree-stonecutter-multi-version`, HEAD `a060e8b`.
+
+| # | Task | Commit |
+|---|---|---|
+| — | Plan doc added | `9b765ff` |
+| — | Pre-migration dep cleanup (GeckoLib + Pehkui removal, stale comments, JDK path) | `cffa31a` |
+| 1 | Stonecutter plugin in settings.gradle | `29675e1` |
+| 2 | stonecutter.gradle.kts with chiseled task orchestrator | `c7bc5cc` |
+| 3 | Per-shard gradle.properties for 1.21.1/3/4/5 + .gitignore fix | `1f754d2` |
+| 4 | build.gradle dep coord interpolation | `095b12d` |
+| 5 | fabric.mod.json minecraft constraint templating | `8d40c13` |
+| 6 | 1.21.1 baseline build verification | (no commit — verify only) |
+| 7 | EntityAttributes SCALE/ATTACK_DAMAGE guards in CombatManager.java | `a060e8b` |
+
+**State of each shard at the pause point:**
+- `./gradlew :1.21.1:build` → BUILD SUCCESSFUL
+- `./gradlew :1.21.3:build`, `:1.21.4:build`, `:1.21.5:build` → not yet attempted; expected to fail with API drift that Tasks 8-10 will fix
+- `./gradlew build` (root, all shards) → known to fail on 1.21.5 with at least these symbols: `TypedActionResult`, `GenerationStep.Carver`, `net.minecraft.item.trim.*` package. Tasks 8-10 will discover and guard these. DO NOT run root `build` expecting success until Tasks 8-10 are done.
+
+**Tasks remaining: 8 through 15.** Note the plan's Task 8 currently says to start with 1.21.4; that's still the recommendation (closest drift to 1.21.1, cleanest dep set, best environment to prove the workflow on).
+
+### Important corrections to apply when resuming
+
+The plan was written with some unverified Stonecutter syntax. Tasks 2 and 7 discovered the real API. When resuming, use these verified facts (they supersede the plan body above):
+
+1. **Stonecutter 0.7 removed `registerChiseled` / `stonecutter.chiseled`.** The working pattern is in the committed `stonecutter.gradle.kts`:
+   ```kotlin
+   tasks.register("chiseledBuild") {
+       group = "stonecutter"
+       description = "..."
+       dependsOn(stonecutter.tasks.named("build"))
+   }
+   stonecutter tasks {
+       order("build")
+       order("runClient")
+   }
+   ```
+   `stonecutter.tasks.named("foo")` returns a lazy `MapProperty<String, TaskProvider<Task>>`. `order("foo")` enables `sc.lock` serialization across shards (load-bearing for `runClient` to prevent parallel game-client launches).
+
+2. **Preprocessor comment syntax (Stonecutter 0.7.11, verified via jar bytecode introspection):**
+   - Single-line: `//? if <=1.21.1` followed by the next line of code
+   - Block opening: `//? if <=1.21.1 {`
+   - Block closing: `//?}`
+   - Else: `//?} else {`
+   - Elif: `//?} elif >1.21.1 {` (token is `ELIF`)
+   - Inactive branch wrapped in `/* ... */` block comments so the active branch is always plain code
+   - Operators: `=`, `!=`, `<`, `>`, `<=`, `>=`, `~` (same minor), `^` (same major)
+   - Version identifier: **none required** — the version on the left side of a comparison is implicit (the active shard's MC version). Write `//? if <=1.21.1`, not `//? if mc <=1.21.1`.
+   - See the guarded constants block in `CombatManager.java` (~lines 91-101) for a working example.
+
+3. **`./gradlew build` at the root invokes ALL shards simultaneously.** To build only the active shard, use `./gradlew :<version>:build` (e.g., `./gradlew :1.21.1:build`). The plan's Task 6 wording of "Run `./gradlew build`" is misleading and should be read as `:1.21.1:build`.
+
+4. **WispForest publishes one owo-lib build for the 1.21.2/1.21.3 range** under the `+1.21.2` suffix. The `versions/1.21.3/gradle.properties` intentionally pins `owo_version=0.12.18+1.21.2` — do not "fix" it.
+
+5. **Stonecutter auto-generates `stonecutter.gradle.kts`** (Kotlin DSL) on first run, even in an otherwise-Groovy project. Mixing one .kts file is fine; do not convert it to Groovy. The rest of the build stays Groovy.
+
+### Known 1.21.5 drift to guard in Task 10 (discovered during Task 4's exploratory all-shard build)
+
+Partial list — there is likely more. Each line is a compile error that will appear when `./gradlew :1.21.5:build` first runs:
+
+- `net.minecraft.util.TypedActionResult` — removed/renamed in 1.21.5
+- `net.minecraft.world.gen.GenerationStep.Carver` — moved/renamed
+- `net.minecraft.item.trim.*` package — moved/renamed
+
+Task 10 should add `//?` guards for each compile error using the same pattern as Task 7.
+
+### What to do before resuming
+
+1. `cd .claude/worktrees/stonecutter-multi-version` (or re-enter the worktree)
+2. `git status` — should be empty
+3. `grep 'stonecutter active' stonecutter.gradle.kts` — confirm 1.21.1 is the active shard
+4. `./gradlew :1.21.1:build` — confirm baseline still works
+5. Jump straight to Task 8 (start with 1.21.4)
+
+### Orphaned state outside the worktree
+
+The main worktree (`d:/_My Projects/Craftics/`) has 4 uncommitted files modified from this session's early exploratory work:
+- `build.gradle`, `gradle.properties`, `src/main/java/.../CombatManager.java`, `src/main/resources/fabric.mod.json`
+
+These edits were the dep cleanup and JDK path fix, which are **already committed in this worktree branch as `cffa31a`**. They are redundant in main and safe to `git restore` whenever someone gets back to main. They are not being actively carried forward.
