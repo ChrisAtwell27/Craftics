@@ -5,10 +5,10 @@
     "FB"
   ],
   "key": {
-    "P": { "item": "minecraft:paper" },
-    "I": { "item": "minecraft:ink_sac" },
-    "F": { "item": "minecraft:feather" },
-    "B": { "item": "minecraft:book" }
+    "P": "minecraft:paper",
+    "I": "minecraft:ink_sac",
+    "F": "minecraft:feather",
+    "B": "minecraft:book"
   },
   "result": {
     "id": "craftics:guide_book",

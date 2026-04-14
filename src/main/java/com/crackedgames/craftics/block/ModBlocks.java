@@ -16,8 +16,14 @@ import net.minecraft.util.Identifier;
 
 public class ModBlocks {
 
+    private static final RegistryKey<Block> LEVEL_SELECT_BLOCK_KEY =
+        RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "level_select_block"));
+
     public static final Block LEVEL_SELECT_BLOCK = registerBlock("level_select_block",
         new LevelSelectBlock(AbstractBlock.Settings.create()
+            //? if >=1.21.2 {
+            .registryKey(LEVEL_SELECT_BLOCK_KEY)
+            //?}
             .mapColor(MapColor.OAK_TAN)
             .strength(2.0f, 3.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.WOOD)
@@ -41,8 +47,14 @@ public class ModBlocks {
         Registry.register(Registries.BLOCK, id, block);
 
         // Register block item
+        //? if <=1.21.1 {
+        /*Item.Settings itemSettings = new Item.Settings();
+        *///?} else {
+        Item.Settings itemSettings = new Item.Settings()
+            .registryKey(RegistryKey.of(RegistryKeys.ITEM, id));
+        //?}
         Registry.register(Registries.ITEM, id,
-            new BlockItem(block, new Item.Settings()));
+            new BlockItem(block, itemSettings));
 
         return block;
     }
