@@ -12,8 +12,13 @@ import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.item.trim.ArmorTrim;
+//? if <=1.21.1 {
+/*import net.minecraft.item.trim.ArmorTrim;
 import net.minecraft.item.trim.ArmorTrimPattern;
+*///?} else {
+import net.minecraft.item.equipment.trim.ArmorTrim;
+import net.minecraft.item.equipment.trim.ArmorTrimPattern;
+//?}
 import net.minecraft.registry.entry.RegistryEntry;
 
 import java.util.HashMap;
@@ -237,7 +242,11 @@ public class DamageTypePanel {
             if (trim == null) continue;
 
             // Pattern bonus
-            RegistryEntry<ArmorTrimPattern> pattern = trim.getPattern();
+            //? if <=1.21.1 {
+            /*RegistryEntry<ArmorTrimPattern> pattern = trim.getPattern();
+            *///?} else {
+            RegistryEntry<ArmorTrimPattern> pattern = trim.pattern();
+            //?}
             String patternId = pattern.getKey().map(k -> k.getValue().getPath()).orElse("unknown");
             String bonusKey = getTrimBonusKey(patternId);
             if (bonusKey != null) {
@@ -245,7 +254,11 @@ public class DamageTypePanel {
             }
 
             // Material bonus
-            String materialId = trim.getMaterial().getKey().map(k -> k.getValue().getPath()).orElse("unknown");
+            //? if <=1.21.1 {
+            /*String materialId = trim.getMaterial().getKey().map(k -> k.getValue().getPath()).orElse("unknown");
+            *///?} else {
+            String materialId = trim.material().getKey().map(k -> k.getValue().getPath()).orElse("unknown");
+            //?}
             String matBonusKey = getMaterialBonusKey(materialId);
             if (matBonusKey != null) {
                 bonuses.merge(matBonusKey, 1, Integer::sum);

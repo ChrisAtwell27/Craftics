@@ -430,9 +430,15 @@ public class ItemUseHandler {
         player.getInventory().insertStack(new ItemStack(Items.GLASS_BOTTLE));
 
         // Drinking sound
-        player.getWorld().playSound(null, player.getBlockPos(),
+        //? if <=1.21.1 {
+        /*player.getWorld().playSound(null, player.getBlockPos(),
             net.minecraft.sound.SoundEvents.ENTITY_GENERIC_DRINK,
             net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        *///?} else {
+        player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+            net.minecraft.sound.SoundEvents.ENTITY_GENERIC_DRINK,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        //?}
 
         // Swirl particles on player
         net.minecraft.server.world.ServerWorld sw = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();

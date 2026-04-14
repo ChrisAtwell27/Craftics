@@ -12,10 +12,10 @@ import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.screen.NamedScreenHandlerFactory;
 import net.minecraft.state.StateManager;
 //? if <=1.21.1 {
-import net.minecraft.state.property.DirectionProperty;
-//?} else {
-/*import net.minecraft.state.property.EnumProperty;
-*///?}
+/*import net.minecraft.state.property.DirectionProperty;
+*///?} else {
+import net.minecraft.state.property.EnumProperty;
+//?}
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.BlockMirror;
@@ -32,10 +32,10 @@ public class LevelSelectBlock extends BlockWithEntity {
 
     public static final MapCodec<LevelSelectBlock> CODEC = createCodec(LevelSelectBlock::new);
     //? if <=1.21.1 {
-    public static final DirectionProperty FACING = Properties.HORIZONTAL_FACING;
-    //?} else {
-    /*public static final EnumProperty<Direction> FACING = Properties.HORIZONTAL_FACING;
-    *///?}
+    /*public static final DirectionProperty FACING = Properties.HORIZONTAL_FACING;
+    *///?} else {
+    public static final EnumProperty<Direction> FACING = Properties.HORIZONTAL_FACING;
+    //?}
 
     // Model extends 2 blocks along Z (0 to 32 in model space).
     // Blockstate rotates the model via Y rotation, so shapes must match.
