@@ -12,21 +12,12 @@ base {
 
 repositories {
 	maven {
-		name = 'GeckoLib'
-		url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
-		content { includeGroup('software.bernie.geckolib') }
-	}
-	maven {
 		name = 'KosmX'
 		url = 'https://maven.kosmx.dev/'
 	}
 	maven {
 		name = 'WispForest'
 		url = 'https://maven.wispforest.io/releases/'
-	}
-	maven {
-		name = 'JitPack'
-		url = 'https://jitpack.io'
 	}
 	maven {
 		name = 'Ladysnake'
@@ -76,9 +67,6 @@ dependencies {
 	// Fabric API
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-	// GeckoLib — entity animations
-	modImplementation "software.bernie.geckolib:geckolib-fabric-1.21.1:4.8.4"
-
 	// PlayerAnimator — player combat animations (JiJ bundled)
 	include modImplementation("dev.kosmx.player-anim:player-animation-lib-fabric:2.0.4+1.21.1")
 
@@ -86,11 +74,6 @@ dependencies {
 	modImplementation "io.wispforest:owo-lib:0.12.15.4+1.21"
 	include "io.wispforest:owo-sentinel:0.12.15.4+1.21"
 	annotationProcessor "io.wispforest:owo-lib:0.12.15.4+1.21"
-
-	// Pehkui — entity scaling (bosses, baby mobs)
-	modApi("com.github.Virtuoel:Pehkui:3.8.3") {
-		exclude group: "net.fabricmc.fabric-api"
-	}
 
 	// Cardinal Components API — auto-save/sync data on entities/worlds
 	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-base:6.1.3")

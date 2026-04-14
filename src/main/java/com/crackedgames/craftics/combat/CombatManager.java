@@ -333,7 +333,7 @@ public class CombatManager {
     private LevelDefinition levelDef;
     private List<CombatEntity> enemies;
     private int eggSacIdCounter = 10000;
-    // Mobs shrinking via Pehkui death anim
+    // Mobs gradually shrinking during death animation
     private record DyingMob(MobEntity mob, int timer, float startScale) {
         DyingMob withTimer(int t) { return new DyingMob(mob, t, startScale); }
     }
@@ -10901,7 +10901,7 @@ public class CombatManager {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
                     mob.getX(), mob.getY() + 1.0, mob.getZ(), 20, 2.0, 1.5, 2.0, 0.03);
             }
-            // Pehkui death shrink — mob shrinks to 0 then gets discarded after delay
+            // Death shrink — mob shrinks to 0 then gets discarded after delay
             float scale = startDeathShrink(mob);
             dyingMobs.add(new DyingMob(mob, 20, scale));
         }
