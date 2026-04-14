@@ -8,10 +8,17 @@ import com.crackedgames.craftics.api.registry.TrimPatternRegistry;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
+//? if <=1.21.1 {
 import net.minecraft.item.trim.ArmorTrim;
 import net.minecraft.item.trim.ArmorTrimMaterial;
 import net.minecraft.item.trim.ArmorTrimPattern;
 import net.minecraft.item.trim.ArmorTrimPatterns;
+//?} else {
+/*import net.minecraft.item.equipment.trim.ArmorTrim;
+import net.minecraft.item.equipment.trim.ArmorTrimMaterial;
+import net.minecraft.item.equipment.trim.ArmorTrimPattern;
+import net.minecraft.item.equipment.trim.ArmorTrimPatterns;
+*///?}
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.network.ServerPlayerEntity;
