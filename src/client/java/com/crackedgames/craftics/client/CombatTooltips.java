@@ -93,15 +93,33 @@ public class CombatTooltips implements ItemTooltipCallback {
         addEnchantmentTooltips(stack, lines);
 
         // Armor trim combat effects tooltip (on already-trimmed armor)
-        net.minecraft.item.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
+        //? if <=1.21.1 {
+        /*net.minecraft.item.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
+        *///?} else {
+        net.minecraft.item.equipment.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
+        //?}
         if (trim != null) {
-            String patternId = trim.getPattern().getKey()
+            //? if <=1.21.1 {
+            /*String patternId = trim.getPattern().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
+            *///?} else {
+            String patternId = trim.pattern().getKey()
+                .map(k -> k.getValue().getPath()).orElse("");
+            //?}
             if (patternId.isEmpty()) {
-                try { patternId = trim.getPattern().value().assetId().getPath(); } catch (Exception ignored) {}
+                //? if <=1.21.1 {
+                /*try { patternId = trim.getPattern().value().assetId().getPath(); } catch (Exception ignored) {}
+                *///?} else {
+                try { patternId = trim.pattern().value().assetId().getPath(); } catch (Exception ignored) {}
+                //?}
             }
-            String materialId = trim.getMaterial().getKey()
+            //? if <=1.21.1 {
+            /*String materialId = trim.getMaterial().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
+            *///?} else {
+            String materialId = trim.material().getKey()
+                .map(k -> k.getValue().getPath()).orElse("");
+            //?}
             String perPiece = getTrimPerPieceDescription(patternId);
             String matDesc = getMaterialDescription(materialId);
             if (!perPiece.isEmpty() || !matDesc.isEmpty()) {

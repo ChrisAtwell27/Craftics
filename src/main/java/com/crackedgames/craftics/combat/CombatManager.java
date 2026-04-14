@@ -89,15 +89,15 @@ public class CombatManager {
     private int getMoveTicks() { return CrafticsMod.CONFIG.skipEnemyAnimations() ? 1 : MOVE_TICKS; }
 
     //? if <=1.21.1 {
-    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE;
-    //?} else {
-    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+    *///?} else {
+    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
-        net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE;*/
+        net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE;
     //?}
 
     private static GridPos adaptSpawnToArena(GridPos originalPos, LevelDefinition levelDef, GridArena arena) {
@@ -2219,9 +2219,15 @@ public class CombatManager {
             if (warpDest != null) {
                 arena.setPlayerGridPos(warpDest);
                 BlockPos warpBlock = arena.gridToBlockPos(warpDest);
-                player.teleport((ServerWorld) player.getEntityWorld(),
+                //? if <=1.21.1 {
+                /*player.teleport((ServerWorld) player.getEntityWorld(),
                     warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
                     java.util.Collections.emptySet(), player.getYaw(), 0f);
+                *///?} else {
+                player.teleport((ServerWorld) player.getEntityWorld(),
+                    warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
+                    java.util.Collections.emptySet(), player.getYaw(), 0f, true);
+                //?}
                 pPos = warpDest;
                 consumeWarpDrive();
                 warpFired = true;
@@ -2300,9 +2306,15 @@ public class CombatManager {
         int dx = tPos.x() - pPos.x();
         int dz = tPos.z() - pPos.z();
         float attackYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-        player.teleport((ServerWorld) player.getEntityWorld(),
+        //? if <=1.21.1 {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
             player.getX(), player.getY(), player.getZ(),
             java.util.Collections.emptySet(), attackYaw, 0f);
+        *///?} else {
+        player.teleport((ServerWorld) player.getEntityWorld(),
+            player.getX(), player.getY(), player.getZ(),
+            java.util.Collections.emptySet(), attackYaw, 0f, true);
+        //?}
 
         String tippedEffect = null;
         if (PlayerCombatStats.isBow(player) || weapon == Items.CROSSBOW) {
@@ -3040,9 +3052,15 @@ public class CombatManager {
         // Move player to final dash position
         arena.setPlayerGridPos(finalPos);
         BlockPos endBlock = arena.gridToBlockPos(finalPos);
-        player.teleport((ServerWorld) player.getEntityWorld(),
+        //? if <=1.21.1 {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
             endBlock.getX() + 0.5, endBlock.getY(), endBlock.getZ() + 0.5,
             java.util.Collections.emptySet(), player.getYaw(), 0f);
+        *///?} else {
+        player.teleport((ServerWorld) player.getEntityWorld(),
+            endBlock.getX() + 0.5, endBlock.getY(), endBlock.getZ() + 0.5,
+            java.util.Collections.emptySet(), player.getYaw(), 0f, true);
+        //?}
 
         // Dash trail particles
         ServerWorld dashWorld = (ServerWorld) player.getEntityWorld();
@@ -3730,7 +3748,11 @@ public class CombatManager {
 
     /** Apply a single enchantment by registry path to an itemstack. */
     private static void applyMobEnchant(ItemStack stack, String enchantPath, int level, ServerWorld world) {
-        var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        //? if <=1.21.1 {
+        /*var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        *///?} else {
+        var enchantRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        //?}
         var enchantEntry = enchantRegistry.streamEntries()
             .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(enchantPath))
             .findFirst().orElse(null);
@@ -5175,8 +5197,14 @@ public class CombatManager {
                     if (activeBoat == null && player.getWorld() instanceof ServerWorld sw) {
                         BlockPos boatBlock = arena.gridToBlockPos(finalPos);
                         double boatY = boatBlock.getY(); // surface level, not lowered
-                        activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
+                        //? if <=1.21.1 {
+                        /*activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
                             net.minecraft.entity.EntityType.BOAT, sw);
+                        *///?} else {
+                        activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
+                            net.minecraft.entity.EntityType.OAK_BOAT, sw,
+                            () -> net.minecraft.item.Items.OAK_BOAT);
+                        //?}
                         activeBoat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
                         activeBoat.setYaw(player.getYaw() - 90f);
                         activeBoat.setInvulnerable(true);
@@ -7250,7 +7278,11 @@ public class CombatManager {
             int spawnedVisualId = -1;
             if (visualEntityId != null) {
                 EntityType<?> visualType = Registries.ENTITY_TYPE.get(Identifier.of(visualEntityId));
-                var visualEntity = visualType.create(world);
+                //? if <=1.21.1 {
+                /*var visualEntity = visualType.create(world);
+                *///?} else {
+                var visualEntity = visualType.create(world, net.minecraft.entity.SpawnReason.LOAD);
+                //?}
                 if (visualEntity != null) {
                     visualEntity.refreshPositionAndAngles(
                         spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5, 0, 0);
@@ -10143,9 +10175,15 @@ public class CombatManager {
             if (t.getType() == com.crackedgames.craftics.core.TileType.VOID) continue;
             arena.setPlayerGridPos(dest);
             BlockPos shoveBlock = arena.gridToBlockPos(dest);
-            player.teleport((ServerWorld) player.getEntityWorld(),
+            //? if <=1.21.1 {
+            /*player.teleport((ServerWorld) player.getEntityWorld(),
                 shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
                 java.util.Collections.emptySet(), player.getYaw(), 0f);
+            *///?} else {
+            player.teleport((ServerWorld) player.getEntityWorld(),
+                shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
+                java.util.Collections.emptySet(), player.getYaw(), 0f, true);
+            //?}
             return;
         }
     }
@@ -10589,11 +10627,18 @@ public class CombatManager {
         downedWorld.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
             player.getX(), player.getY() + 1.0, player.getZ(),
             8, 0.3, 0.5, 0.3, 0.02);
-        downedWorld.spawnParticles(
+        //? if <=1.21.1 {
+        /*downedWorld.spawnParticles(
             new net.minecraft.particle.DustParticleEffect(
                 new org.joml.Vector3f(1.0f, 0.2f, 0.2f), 1.5f),
             player.getX(), player.getY() + 0.5, player.getZ(),
             12, 0.4, 0.3, 0.4, 0.01);
+        *///?} else {
+        downedWorld.spawnParticles(
+            new net.minecraft.particle.DustParticleEffect(0xFF3333, 1.5f),
+            player.getX(), player.getY() + 0.5, player.getZ(),
+            12, 0.4, 0.3, 0.4, 0.01);
+        //?}
 
         // Send downed event to client (orange vignette, different from red death vignette)
         sendToAllParty(new CombatEventPayload(
@@ -12411,17 +12456,29 @@ public class CombatManager {
             String material = materials[rng.nextInt(materials.length)];
 
             // Apply trim via ArmorTrim component
-            var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            //? if <=1.21.1 {
+            /*var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            *///?} else {
+            var patternRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            //?}
             var patternEntry = patternRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(pattern))
                 .findFirst().orElse(null);
-            var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            //? if <=1.21.1 {
+            /*var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            *///?} else {
+            var materialRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            //?}
             var materialEntry = materialRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(material))
                 .findFirst().orElse(null);
 
             if (patternEntry != null && materialEntry != null) {
-                var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
+                //? if <=1.21.1 {
+                /*var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
+                *///?} else {
+                var trim = new net.minecraft.item.equipment.trim.ArmorTrim(materialEntry, patternEntry);
+                //?}
                 stack.set(DataComponentTypes.TRIM, trim);
                 sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " received a §e" + pattern + " §dtrim with §e" + material + " §dmaterial!");
                 // Unlock "How Trims Work" guide entry
@@ -12458,8 +12515,13 @@ public class CombatManager {
             String chosenKey = enchantKeys[rng.nextInt(enchantKeys.length)];
             int level = 1 + rng.nextInt(3); // level 1-3
 
-            var enchantRegistry = world.getRegistryManager()
+            //? if <=1.21.1 {
+            /*var enchantRegistry = world.getRegistryManager()
                 .get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+            *///?} else {
+            var enchantRegistry = world.getRegistryManager()
+                .getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+            //?}
             var enchantEntry = enchantRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(chosenKey))
                 .findFirst().orElse(null);
@@ -12778,7 +12840,11 @@ public class CombatManager {
     }
 
     private ItemStack randomEnchantedBook(ServerWorld world, int count, com.crackedgames.craftics.level.BiomeTemplate biome) {
-        var registry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
+        //? if <=1.21.1 {
+        /*var registry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
+        *///?} else {
+        var registry = world.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
+        //?}
         java.util.Random rng = new java.util.Random();
 
         net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment> entry = null;
