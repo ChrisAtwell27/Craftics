@@ -845,15 +845,47 @@ The plan was written with some unverified Stonecutter syntax. Tasks 2 and 7 disc
 
 5. **Stonecutter auto-generates `stonecutter.gradle.kts`** (Kotlin DSL) on first run, even in an otherwise-Groovy project. Mixing one .kts file is fine; do not convert it to Groovy. The rest of the build stays Groovy.
 
-### Known 1.21.5 drift to guard in Task 10 (discovered during Task 4's exploratory all-shard build)
+### Known 1.21.4 drift discovered during a 2026-04-13 Task 8 attempt (rolled back)
 
-Partial list — there is likely more. Each line is a compile error that will appear when `./gradlew :1.21.5:build` first runs:
+An attempt at Task 8 was made and rolled back because the scope was 3-5x what the plan anticipated. The attempt ran `./gradlew :1.21.4:build`, found 9 initial errors, wrote 4 working guards that fixed those, then hit **35 more errors** underneath. The guards were never committed. The branch is back at `a11ba7b` (plus this updated resume note).
 
-- `net.minecraft.util.TypedActionResult` — removed/renamed in 1.21.5
-- `net.minecraft.world.gen.GenerationStep.Carver` — moved/renamed
-- `net.minecraft.item.trim.*` package — moved/renamed
+**The plan's estimate for Tasks 8-10 (30-60 min each) is wrong.** Realistic effort: **2-4 hours per shard**, possibly with overlap since many fixes will be shared across 1.21.3/4/5. All three shards together are likely a **full workday** of focused porting, not the "discovery loop" the plan implied.
 
-Task 10 should add `//?` guards for each compile error using the same pattern as Task 7.
+**Initial 4 working guards (validated, then reverted — rewrite from this list when resuming):**
+
+| File | Drift | Fix |
+|---|---|---|
+| `src/main/java/.../combat/TrimEffects.java` (lines 11-14) | `net.minecraft.item.trim.*` package moved | Guard imports: `<=1.21.1` uses `net.minecraft.item.trim.*`, else uses `net.minecraft.item.equipment.trim.*` (ArmorTrim, ArmorTrimMaterial, ArmorTrimPattern, ArmorTrimPatterns all renamed via package only) |
+| `src/main/java/.../block/LevelSelectBlock.java` (lines 14, 30) | `net.minecraft.state.property.DirectionProperty` removed | Guard both the import and the `FACING` field declaration. Else branch: import `net.minecraft.state.property.EnumProperty`, declare as `EnumProperty<Direction> FACING`. The `Direction` import is already present. |
+| `src/main/java/.../item/GuideBookItem.java` (line 7, lines 22-28) | `TypedActionResult<ItemStack>` consolidated into `ActionResult` | Add unconditional `import net.minecraft.util.ActionResult;`. Guard `TypedActionResult` import. Guard `use()` method: else branch returns `ActionResult` (not generic), body returns `ActionResult.SUCCESS`, `ItemStack` import becomes unused in else branch (unused-import warning only, not error). |
+| `src/main/java/.../world/VoidChunkGenerator.java` (line 19, lines 45-50) | `ChunkGenerator.carve()` dropped the `GenerationStep.Carver carverStep` parameter | Guard `GenerationStep` import. Guard `carve()` method signature: else branch takes 6 params instead of 7, dropping the last one. Method body is identical (empty for void world). |
+
+**Additional drift that surfaced AFTER those 4 fixes (uncommitted research — all in 1.21.2+):**
+
+Symbol drift (affecting `CombatManager.java`, `TrimEffects.java`, `CrafticsMod.java`, `ArenaBuilder.java`, `ItemUseHandler.java`, `PlayerEntityMixin.java`, `VoidChunkGenerator.java`, and 4 network payload files):
+
+- **`ArmorTrim.getPattern()` / `getMaterial()`** → record accessors `pattern()` / `material()` (used in TrimEffects line 88, 97 and CombatManager line 12424)
+- **`DynamicRegistryManager.get(RegistryKey<Registry<T>>)`** → signature changed; likely `getOrThrow()` or a different overload. Affects 5+ call sites in CombatManager, ArenaBuilder (any `world.getRegistryManager().get(RegistryKeys.ENCHANTMENT)` etc.)
+- **`Entity.teleport(ServerWorld, double, double, double, Set<Object>, float, float)`** → signature changed (at least 5 call sites in CombatManager, CrafticsMod). Unclear what the new form is — needs yarn 1.21.4 docs check on `Entity.teleport`.
+- **`World.getGameRules()`** → removed from `World` interface. Check if it moved to `ServerWorld` or requires a different access pattern. Affects `PlayerEntityMixin.java` lines 34, 45.
+- **`World.getTopY(...)`** → signature changed. Affects `ArenaBuilder.java` line 1666.
+- **`World.playSound(...)`** → signature changed. Affects `ItemUseHandler.java` line 433. Error message mentioned `Reference<SoundEvent>` vs some other type.
+- **`WorldChunk.setNeedsSaving(boolean)`** → method renamed. Affects `ArenaBuilder.java` line 1721.
+- **`FallingBlockEntity.create(ServerWorld)` or similar `.create()` factory** → signature changed. Affects `CombatManager.java` line 7253.
+- **`Vector3f` vs `int` mismatch** → some particle or math call argument type changed. Affects `CombatManager.java` line 10594.
+- **`GenerationStep.Carver` additionally removes a declared method override** → `VoidChunkGenerator` should override `appendDebugHudText` instead of `getDebugHudText` in 1.21.2+ (method renamed on `ChunkGenerator`). Line 108.
+- **4 network payload files** (`ExitCombatPayload`, `LoadingScreenPayload`, `PostLevelChoicePayload`, `VictoryChoicePayload`) have unknown "cannot find symbol" errors — likely `PacketByteBuf` / codec API changes. Needs investigation.
+- **`CrafticsMod.java` lines 106-146** have 6 "cannot find symbol" errors of unknown cause — investigate before touching.
+
+Many of these are shared across 1.21.3/4/5 (any change introduced in 1.21.2 persists in all later shards), so guards written for 1.21.4 should mostly satisfy 1.21.3 and 1.21.5 too. 1.21.5 will likely surface some additional drift on top.
+
+**Suggested resumption strategy for Tasks 8-10 (when there's time):**
+
+1. Start a single dedicated session; plan 2-4 hours minimum.
+2. Re-apply the 4 validated guards from the table above as "Task 8 batch 1". Commit.
+3. Fix drift in categories, not files — pick one drift category (e.g., `DynamicRegistryManager.get` replacement), research the 1.21.4 signature once, grep for all call sites, guard them all, commit as "batch 2". Repeat per category.
+4. Don't bounce between shards. Stay on 1.21.4 until clean, THEN switch to 1.21.3 (should be a near-no-op if guards are correctly written with `<=1.21.1 / else`), then 1.21.5 (expect some additional unique drift).
+5. Skip the dispatched-subagent review ceremony for the drift-fix loop — it's mechanical error-driven work, inline execution is much faster.
 
 ### What to do before resuming
 
