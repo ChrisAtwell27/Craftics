@@ -16,7 +16,9 @@ import net.minecraft.world.gen.StructureAccessor;
 import net.minecraft.world.gen.chunk.Blender;
 import net.minecraft.world.gen.chunk.ChunkGenerator;
 import net.minecraft.world.gen.chunk.VerticalBlockSample;
-import net.minecraft.world.gen.GenerationStep;
+//? if <=1.21.1 {
+/*import net.minecraft.world.gen.GenerationStep;
+*///?}
 import net.minecraft.world.gen.noise.NoiseConfig;
 
 import java.util.List;
@@ -43,11 +45,19 @@ public class VoidChunkGenerator extends ChunkGenerator {
     }
 
     @Override
-    public void carve(ChunkRegion chunkRegion, long seed, NoiseConfig noiseConfig,
+    //? if <=1.21.1 {
+    /*public void carve(ChunkRegion chunkRegion, long seed, NoiseConfig noiseConfig,
                       BiomeAccess biomeAccess, StructureAccessor structureAccessor,
                       Chunk chunk, GenerationStep.Carver carverStep) {
         // No carving in void world
     }
+    *///?} else {
+    public void carve(ChunkRegion chunkRegion, long seed, NoiseConfig noiseConfig,
+                      BiomeAccess biomeAccess, StructureAccessor structureAccessor,
+                      Chunk chunk) {
+        // No carving in void world
+    }
+    //?}
 
     @Override
     public void buildSurface(ChunkRegion region, StructureAccessor structures,
@@ -95,8 +105,15 @@ public class VoidChunkGenerator extends ChunkGenerator {
         return new VerticalBlockSample(0, new BlockState[0]);
     }
 
-    @Override
+    //? if <=1.21.1 {
+    /*@Override
     public void getDebugHudText(List<String> text, NoiseConfig noiseConfig, BlockPos pos) {
         // No debug info
     }
+    *///?} else {
+    @Override
+    public void appendDebugHudText(List<String> text, NoiseConfig noiseConfig, BlockPos pos) {
+        // No debug info
+    }
+    //?}
 }

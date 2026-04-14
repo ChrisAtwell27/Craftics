@@ -101,7 +101,8 @@ public class CrafticsMod implements ModInitializer {
         // Trial keys: right-clicking during combat queues a guaranteed trial
         // chamber (or ominous trial chamber) on the next level transition.
         // Consumes one key per use. Outside combat the keys do nothing.
-        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+        //? if <=1.21.1 {
+        /*net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
                 return net.minecraft.util.TypedActionResult.pass(player.getStackInHand(hand));
             }
@@ -145,6 +146,52 @@ public class CrafticsMod implements ModInitializer {
             }
             return net.minecraft.util.TypedActionResult.pass(stack);
         });
+        *///?} else {
+        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+            if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
+                return net.minecraft.util.ActionResult.PASS;
+            }
+            net.minecraft.item.ItemStack stack = player.getStackInHand(hand);
+            net.minecraft.item.Item item = stack.getItem();
+            String forced;
+            String label;
+            if (item == net.minecraft.item.Items.TRIAL_KEY) {
+                forced = "trial_chamber";
+                label = "Trial Chamber";
+            } else if (item == net.minecraft.item.Items.OMINOUS_TRIAL_KEY) {
+                forced = "ominous_trial";
+                label = "Ominous Trial Chamber";
+            } else {
+                return net.minecraft.util.ActionResult.PASS;
+            }
+
+            if (player instanceof net.minecraft.server.network.ServerPlayerEntity sp) {
+                var cm = com.crackedgames.craftics.combat.CombatManager.get(sp);
+                if (!cm.isActive()) {
+                    sp.sendMessage(net.minecraft.text.Text.literal(
+                        "\u00a7eThe " + (item == net.minecraft.item.Items.OMINOUS_TRIAL_KEY ? "ominous " : "")
+                            + "trial key hums faintly... use it during a fight to summon a trial chamber next."),
+                        true);
+                    return net.minecraft.util.ActionResult.PASS;
+                }
+                if (cm.getForcedNextEvent() != null) {
+                    sp.sendMessage(net.minecraft.text.Text.literal(
+                        "\u00a77A trial is already queued for the next transition."), true);
+                    return net.minecraft.util.ActionResult.FAIL;
+                }
+                cm.setForcedNextEvent(forced);
+                stack.decrement(1);
+                sp.sendMessage(net.minecraft.text.Text.literal(
+                    "\u00a7d\u00a7l\u2728 " + label + " queued! \u00a7r\u00a7dIt will appear after this fight."),
+                    false);
+                sp.getWorld().playSound(null, sp.getX(), sp.getY(), sp.getZ(),
+                    net.minecraft.sound.SoundEvents.BLOCK_TRIAL_SPAWNER_OMINOUS_ACTIVATE,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+                return net.minecraft.util.ActionResult.SUCCESS;
+            }
+            return net.minecraft.util.ActionResult.PASS;
+        });
+        //?}
 
         // Clear static combat state between world loads (prevents leaking across saves in singleplayer)
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -1621,8 +1668,13 @@ public class CrafticsMod implements ModInitializer {
         double y = hub.getY();
         double z = hub.getZ() + 0.5;
         if (player.getServerWorld() != overworld) {
-            player.teleport(overworld, x, y, z,
+            //? if <=1.21.1 {
+            /*player.teleport(overworld, x, y, z,
                 java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
+            *///?} else {
+            player.teleport(overworld, x, y, z,
+                java.util.Collections.emptySet(), player.getYaw(), player.getPitch(), true);
+            //?}
         } else {
             player.requestTeleport(x, y, z);
         }

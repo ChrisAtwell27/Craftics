@@ -22,7 +22,8 @@ public record VictoryChoicePayload(int emeraldsEarned, int totalEmeralds,
     public static final CustomPayload.Id<VictoryChoicePayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "victory_choice"));
 
-    public static final PacketCodec<RegistryByteBuf, VictoryChoicePayload> CODEC =
+    //? if <=1.21.1 {
+    /*public static final PacketCodec<RegistryByteBuf, VictoryChoicePayload> CODEC =
         PacketCodec.tuple(
             PacketCodecs.INTEGER, VictoryChoicePayload::emeraldsEarned,
             PacketCodecs.INTEGER, VictoryChoicePayload::totalEmeralds,
@@ -31,6 +32,17 @@ public record VictoryChoicePayload(int emeraldsEarned, int totalEmeralds,
             PacketCodecs.INTEGER, VictoryChoicePayload::levelIndex,
             VictoryChoicePayload::new
         );
+    *///?} else {
+    public static final PacketCodec<RegistryByteBuf, VictoryChoicePayload> CODEC =
+        PacketCodec.tuple(
+            PacketCodecs.INTEGER, VictoryChoicePayload::emeraldsEarned,
+            PacketCodecs.INTEGER, VictoryChoicePayload::totalEmeralds,
+            PacketCodecs.BOOLEAN, VictoryChoicePayload::isBossLevel,
+            PacketCodecs.STRING, VictoryChoicePayload::biomeName,
+            PacketCodecs.INTEGER, VictoryChoicePayload::levelIndex,
+            VictoryChoicePayload::new
+        );
+    //?}
 
     @Override
     public Id<? extends CustomPayload> getId() { return ID; }

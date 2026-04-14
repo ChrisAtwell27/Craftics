@@ -101,9 +101,17 @@ public class CombatHudOverlay implements HudRenderCallback {
         // The Minecraft skin texture is 64×64. The face is at (8,8)-(16,16),
         // the hat overlay at (40,8)-(48,16). Both are 8×8 pixels.
         // Draw face base layer
-        ctx.drawTexture(skinTex, x, y, size, size, 8.0f, 8.0f, 8, 8, 64, 64);
+        //? if <=1.21.1 {
+        /*ctx.drawTexture(skinTex, x, y, size, size, 8.0f, 8.0f, 8, 8, 64, 64);
+        *///?} else {
+        ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 8.0f, 8.0f, size, size, 8, 8, 64, 64);
+        //?}
         // Draw hat overlay on top (semi-transparent second layer on most skins)
-        ctx.drawTexture(skinTex, x, y, size, size, 40.0f, 8.0f, 8, 8, 64, 64);
+        //? if <=1.21.1 {
+        /*ctx.drawTexture(skinTex, x, y, size, size, 40.0f, 8.0f, 8, 8, 64, 64);
+        *///?} else {
+        ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 40.0f, 8.0f, size, size, 8, 8, 64, 64);
+        //?}
     }
 
     /**

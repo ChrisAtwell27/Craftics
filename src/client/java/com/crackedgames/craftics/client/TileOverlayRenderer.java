@@ -49,7 +49,11 @@ public class TileOverlayRenderer {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        //? if <=1.21.1 {
+        /*RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        *///?} else {
+        RenderSystem.setShader(net.minecraft.client.gl.ShaderProgramKeys.POSITION_COLOR);
+        //?}
 
         Matrix4f matrix = matrices.peek().getPositionMatrix();
         Tessellator tessellator = Tessellator.getInstance();
