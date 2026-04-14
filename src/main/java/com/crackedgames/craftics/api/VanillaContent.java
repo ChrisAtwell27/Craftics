@@ -98,7 +98,7 @@ public final class VanillaContent {
             TrimEffects.SetBonus.BRUTE_FORCE, "Brute Force",
             "Melee attacks splash to adjacent enemies"));
         TrimPatternRegistry.register(new TrimPatternEntry("rib",
-            TrimEffects.Bonus.SPECIAL_POWER, "+1 Magic Power per piece",
+            TrimEffects.Bonus.SPECIAL_POWER, "+1 Special Power per piece",
             TrimEffects.SetBonus.INFERNAL, "Infernal",
             "Fire attacks deal +3 bonus damage"));
         TrimPatternRegistry.register(new TrimPatternEntry("spire",
@@ -139,14 +139,14 @@ public final class VanillaContent {
         TrimMaterialRegistry.register(new TrimMaterialEntry("iron",      TrimEffects.Bonus.DEFENSE,    1, "+1 Defense per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("copper",    TrimEffects.Bonus.SPEED,      1, "+1 Speed per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("gold",      TrimEffects.Bonus.LUCK,       1, "+1 Luck per piece"));
-        TrimMaterialRegistry.register(new TrimMaterialEntry("lapis",     TrimEffects.Bonus.SPECIAL_POWER, 1, "+1 Magic Power per piece"));
+        TrimMaterialRegistry.register(new TrimMaterialEntry("lapis",     TrimEffects.Bonus.SPECIAL_POWER, 1, "+1 Special Power per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("emerald",   TrimEffects.Bonus.AP,         1, "+1 AP per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("diamond",   TrimEffects.Bonus.MELEE_POWER, 1, "+1 Melee Power per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("netherite", TrimEffects.Bonus.ARMOR_PEN,  1, "+1 Armor Penetration per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("redstone",  TrimEffects.Bonus.RANGED_POWER, 1, "+1 Ranged Power per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("amethyst",  TrimEffects.Bonus.REGEN,      1, "+1 HP Regen per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("quartz",    TrimEffects.Bonus.MAX_HP,     2, "+2 Max HP per piece"));
-        TrimMaterialRegistry.register(new TrimMaterialEntry("resin",     TrimEffects.Bonus.MELEE_POWER, 1, "+1 Melee Power per piece"));
+        TrimMaterialRegistry.register(new TrimMaterialEntry("resin",     TrimEffects.Bonus.ALLY_DAMAGE, 1, "+1 Ally Damage per piece"));
     }
 
     private static void registerEnchantments() {

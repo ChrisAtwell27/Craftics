@@ -6,6 +6,7 @@ import com.crackedgames.craftics.api.EventHandler;
 import com.crackedgames.craftics.api.registry.EventEntry;
 import com.crackedgames.craftics.combat.CombatManager;
 import com.crackedgames.craftics.combat.EventManager;
+import com.crackedgames.craftics.combat.LootDelivery;
 import com.crackedgames.craftics.combat.ai.AIRegistry;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.BiomeTemplate;
@@ -103,10 +104,9 @@ public final class AbandonedCampsiteEvent {
                     p.sendMessage(Text.literal("§7The campsite is empty after all..."), false);
                     continue;
                 }
-                if (!p.getInventory().insertStack(reward)) {
-                    p.dropItem(reward, false);
-                }
                 String name = reward.getName().getString();
+                LootDelivery.deliver(p, reward);
+                if (!reward.isEmpty()) p.dropItem(reward, false);
                 p.sendMessage(Text.literal("§a✦ You loot the campsite — found §e" + name + "§a!"), false);
             }
             // Returning here lets handlePostLevelChoice's auto-continue kick in.

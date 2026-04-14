@@ -63,7 +63,7 @@ public class RandomEvents {
         }
 
         String rewardName = reward.getName().getString();
-        player.getInventory().insertStack(reward);
+        LootDelivery.deliver(player, reward);
         return "\u00a7e\u00a7lShrine of Fortune! \u00a7r\u00a77(" + cost + " emeralds offered)\n" + desc + "\n\u00a77Received: \u00a7f" + rewardName;
     }
 
@@ -119,7 +119,7 @@ public class RandomEvents {
         }
 
         String rewardName = reward.getName().getString();
-        player.getInventory().insertStack(reward);
+        LootDelivery.deliver(player, reward);
         return "\u00a7e\u00a7lWounded Traveler! \u00a7r\u00a77You give " + foodName + ".\n\u00a7a\"Thank you, brave warrior!\"\n\u00a77Received: \u00a7f" + rewardName;
     }
 
@@ -136,7 +136,7 @@ public class RandomEvents {
             net.minecraft.item.Item sherd = sherdList.get(rng.nextInt(sherdList.size()));
             ItemStack reward = new ItemStack(sherd, 1);
             String sherdName = reward.getName().getString();
-            player.getInventory().insertStack(reward);
+            LootDelivery.deliver(player, reward);
             return "\u00a76\u00a7l\u2726 " + blockName + "! \u2726\n"
                 + "\u00a77You carefully brush away the layers...\n"
                 + "\u00a7a\u00a7lYou uncover an ancient pottery sherd!\n"
@@ -147,7 +147,7 @@ public class RandomEvents {
                 ? new ItemStack(Items.CLAY_BALL, 2)
                 : new ItemStack(Items.FLINT, 2);
             String consolationName = consolation.getName().getString();
-            player.getInventory().insertStack(consolation);
+            LootDelivery.deliver(player, consolation);
             return "\u00a76\u00a7l\u2726 " + blockName + "! \u2726\n"
                 + "\u00a77You carefully brush away the layers...\n"
                 + "\u00a77Nothing of value — just " + consolationName.toLowerCase() + ".\n"

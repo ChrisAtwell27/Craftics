@@ -21,7 +21,7 @@ public record ExitCombatPayload(boolean won, boolean eventRoomFollows) implement
     public static final CustomPayload.Id<ExitCombatPayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "exit_combat"));
 
-    //? if <=1.21.1 {
+    //? if <=1.21.3 {
     /*public static final PacketCodec<RegistryByteBuf, ExitCombatPayload> CODEC =
         PacketCodec.tuple(
             PacketCodecs.BOOL, ExitCombatPayload::won,

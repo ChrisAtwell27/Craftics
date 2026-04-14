@@ -121,7 +121,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                 .map(k -> k.getValue().getPath()).orElse("");
             //?}
             String perPiece = getTrimPerPieceDescription(patternId);
-            String matDesc = getMaterialDescription(materialId);
+            String matDesc = com.crackedgames.craftics.api.registry.TrimMaterialRegistry.getDescription(materialId);
             if (!perPiece.isEmpty() || !matDesc.isEmpty()) {
                 lines.add(Text.empty());
                 lines.add(Text.literal("\u00a7b\u00a7lTrim Combat Bonus:"));
@@ -771,22 +771,6 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.ZOMBIE_HEAD) return "\u00a7f\u2620 Wear: \u00a77+1 Physical \u00a77damage\n\u00a78Rare drop from zombies, husks, drowned";
 
         return null;
-    }
-
-    private static String getMaterialDescription(String materialId) {
-        return switch (materialId) {
-            case "iron"      -> "+1 Defense per piece";
-            case "copper"    -> "+1 Speed per piece";
-            case "gold"      -> "+1 Luck per piece";
-            case "lapis"     -> "+1 Special Power per piece";
-            case "emerald"   -> "+1 AP per piece";
-            case "diamond"   -> "+1 Melee Power per piece";
-            case "netherite" -> "+1 Armor Penetration per piece";
-            case "redstone"  -> "+1 Ranged Power per piece";
-            case "amethyst"  -> "+1 HP Regen per piece";
-            case "quartz"    -> "+2 Max HP per piece";
-            default -> "";
-        };
     }
 
     public static void register() {

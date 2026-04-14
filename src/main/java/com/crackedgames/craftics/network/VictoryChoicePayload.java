@@ -22,7 +22,7 @@ public record VictoryChoicePayload(int emeraldsEarned, int totalEmeralds,
     public static final CustomPayload.Id<VictoryChoicePayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "victory_choice"));
 
-    //? if <=1.21.1 {
+    //? if <=1.21.3 {
     /*public static final PacketCodec<RegistryByteBuf, VictoryChoicePayload> CODEC =
         PacketCodec.tuple(
             PacketCodecs.INTEGER, VictoryChoicePayload::emeraldsEarned,
