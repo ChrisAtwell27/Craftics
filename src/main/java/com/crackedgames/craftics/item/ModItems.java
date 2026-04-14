@@ -11,8 +11,14 @@ import net.minecraft.util.Rarity;
 
 public class ModItems {
 
+    private static final RegistryKey<Item> GUIDE_BOOK_KEY =
+        RegistryKey.of(RegistryKeys.ITEM, Identifier.of(CrafticsMod.MOD_ID, "guide_book"));
+
     public static final Item GUIDE_BOOK = registerItem("guide_book",
         new GuideBookItem(new Item.Settings()
+            //? if >=1.21.2 {
+            .registryKey(GUIDE_BOOK_KEY)
+            //?}
             .maxCount(1)
             .rarity(Rarity.UNCOMMON)
         )
