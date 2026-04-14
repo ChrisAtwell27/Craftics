@@ -12,7 +12,7 @@ Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight th
 - **Version:** 0.1.0
 - **Minecraft:** 1.21.1
 - **Mod Loader:** Fabric (Fabric Loader ≥0.16.0, Fabric API)
-- **Required:** Pehkui, owo-lib, GeckoLib, Player Animator
+- **Required:** owo-lib, Player Animator, Cardinal Components API
 - **Java:** 21+
 - **Author:** CrackedGames
 - **License:** All Rights Reserved
@@ -89,9 +89,8 @@ Between combat encounters, you craft, smelt, brew, and trade using emeralds earn
 - **Minecraft 1.21.1**
 - **Fabric Loader** ≥0.16.0
 - **Fabric API** 0.102.0+1.21.1
-- **Pehkui** 3.8.3+ (entity scaling)
 - **owo-lib** 0.12.15+ (UI framework)
-- **GeckoLib** 4.8.4+ (entity animations)
+- **Cardinal Components API** 6.1.3+ (entity/world data persistence)
 - **Player Animator** 2.0.4+ (player animations)
 
 ### Building from Source

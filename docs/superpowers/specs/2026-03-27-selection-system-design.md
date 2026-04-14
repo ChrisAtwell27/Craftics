@@ -17,7 +17,7 @@
 
 ### Root causes
 - **Hover latency:** 20-50ms round-trip for every tile change means highlights lag behind crosshair or don't appear at all on busy servers
-- **Enemy mismatch:** Client scans world entities to detect who's on a tile (`findEnemyAtGridPos`), while server tracks positions in `arena.getEntityAt()`. Mob visual positions drift from logical grid positions due to entity interpolation, walk animations, and Pehkui scaling — causing "enemy not on tile" false negatives
+- **Enemy mismatch:** Client scans world entities to detect who's on a tile (`findEnemyAtGridPos`), while server tracks positions in `arena.getEntityAt()`. Mob visual positions drift from logical grid positions due to entity interpolation, walk animations, and scale-attribute transforms — causing "enemy not on tile" false negatives
 - **Physical blocks as UI:** Carpet blocks are a world mutation for a UI concern. They interact with lighting, entity spawning, and block update propagation. Wrong abstraction layer.
 
 ---

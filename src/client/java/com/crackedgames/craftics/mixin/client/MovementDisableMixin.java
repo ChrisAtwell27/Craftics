@@ -15,12 +15,16 @@ public class MovementDisableMixin {
     private void craftics$disableMovementInCombat(boolean slowDown, float slowDownFactor, CallbackInfo ci) {
         if (CombatState.isInCombat()) {
             Input input = (Input)(Object)this;
-            input.pressingForward = false;
+            //? if <=1.21.1 {
+            /*input.pressingForward = false;
             input.pressingBack = false;
             input.pressingLeft = false;
             input.pressingRight = false;
             input.jumping = false;
             input.sneaking = false;
+            *///?} else {
+            input.playerInput = new net.minecraft.util.PlayerInput(false, false, false, false, false, false, false);
+            //?}
             input.movementForward = 0f;
             input.movementSideways = 0f;
         }

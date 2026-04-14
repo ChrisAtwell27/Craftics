@@ -1663,7 +1663,11 @@ public class ArenaBuilder {
     private static void relightArena(ServerWorld world, int ox, int minY, int oz, int w, int h, int maxY) {
         int pad = 3;
         int fromY = Math.max(world.getBottomY(), minY);
-        int toY = Math.min(world.getTopY() - 1, maxY);
+        //? if <=1.21.1 {
+        /*int toY = Math.min(world.getTopY() - 1, maxY);
+        *///?} else {
+        int toY = Math.min(world.getTopYInclusive(), maxY);
+        //?}
         var lighting = world.getLightingProvider();
 
         for (int x = ox - pad; x < ox + w + pad; x++) {
@@ -1696,9 +1700,20 @@ public class ArenaBuilder {
     // Sets the MC biome on arena chunks so grass/fog/sky match the theme
     private static void setBiomeForArena(ServerWorld world, BlockPos origin, int w, int h, String crafticsBiomeId) {
         Identifier mcBiomeId = toMinecraftBiomeId(crafticsBiomeId);
-        var biomeRegistry = world.getRegistryManager().get(RegistryKeys.BIOME);
+        //? if <=1.21.1 {
+        /*var biomeRegistry = world.getRegistryManager().get(RegistryKeys.BIOME);
+        *///?} else {
+        var biomeRegistry = world.getRegistryManager().getOrThrow(RegistryKeys.BIOME);
+        //?}
         var biomeKey = RegistryKey.of(RegistryKeys.BIOME, mcBiomeId);
-        var optEntry = biomeRegistry.getEntry(biomeKey);
+        //? if <=1.21.1 {
+        /*java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.getEntry(biomeKey);
+        *///?} else {
+        java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.streamEntries()
+            .filter(e -> e.getKey().isPresent() && e.getKey().get().equals(biomeKey))
+            .map(e -> (RegistryEntry<Biome>) e)
+            .findFirst();
+        //?}
         if (optEntry.isEmpty()) {
             CrafticsMod.LOGGER.warn("BiomePainter: biome '{}' not found (craftics id: '{}')", mcBiomeId, crafticsBiomeId);
             return;
@@ -1718,7 +1733,11 @@ public class ArenaBuilder {
             for (int cz = minCZ; cz <= maxCZ; cz++) {
                 var chunk = world.getChunk(cx, cz);
                 chunk.populateBiomes((bx, by, bz, noise) -> biomeEntry, null);
-                chunk.setNeedsSaving(true);
+                //? if <=1.21.1 {
+                /*chunk.setNeedsSaving(true);
+                *///?} else {
+                chunk.markNeedsSaving();
+                //?}
                 count++;
             }
         }
