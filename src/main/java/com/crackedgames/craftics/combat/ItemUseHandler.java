@@ -1073,7 +1073,7 @@ public class ItemUseHandler {
             rarity = "§d";
         }
 
-        player.getInventory().insertStack(new ItemStack(loot, count));
+        LootDelivery.deliver(player, new ItemStack(loot, count));
         String lootName = new ItemStack(loot).getName().getString();
         return FISHING_PREFIX + rarity + "Caught: " + lootName + "!";
     }
@@ -1455,7 +1455,7 @@ public class ItemUseHandler {
             Items.FLINT, Items.COAL, Items.BRICK
         };
         Item found = loot[rng.nextInt(loot.length)];
-        player.getInventory().insertStack(new ItemStack(found, 1));
+        LootDelivery.deliver(player, new ItemStack(found, 1));
         String name = new ItemStack(found).getName().getString();
         return "§eBrushed up: " + name + "!";
     }

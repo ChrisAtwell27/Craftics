@@ -3668,7 +3668,7 @@ public class CombatManager {
             mob.equipStack(slot, ItemStack.EMPTY);
 
             for (ServerPlayerEntity recipient : recipients) {
-                recipient.getInventory().insertStack(dropCopy.copy());
+                LootDelivery.deliver(recipient, dropCopy.copy());
             }
             String label = hasEnchant ? "§b§l✦ ENCHANTED LOOT: " : "§e+ Loot: ";
             sendMessage(label + dropCopy.getName().getString());
@@ -3691,7 +3691,7 @@ public class CombatManager {
 
         ItemStack head = new ItemStack(headItem, 1);
         for (ServerPlayerEntity recipient : recipients) {
-            recipient.getInventory().insertStack(head.copy());
+            LootDelivery.deliver(recipient, head.copy());
         }
         sendMessage("§d§l★ RARE DROP: " + head.getName().getString());
     }
@@ -4548,7 +4548,7 @@ public class CombatManager {
                         default -> null;
                     };
                     if (giveItem != null) {
-                        player.getInventory().insertStack(new ItemStack(giveItem));
+                        LootDelivery.deliver(player, new ItemStack(giveItem));
                     }
                     if (giveParts.length > 1) sendMessage(giveParts[1]);
                 } else {
@@ -11032,7 +11032,7 @@ public class CombatManager {
                     if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
                         drop.setCount(drop.getCount() + 1);
                     }
-                    recipient.getInventory().insertStack(drop);
+                    LootDelivery.deliver(recipient, drop);
                 }
             }
             // Broadcast a representative message (leader's perspective)
@@ -11046,7 +11046,7 @@ public class CombatManager {
                     if (Math.random() < CrafticsMod.CONFIG.goatHornDropChance() + luckBonusItems * 0.02) {
                         ItemStack horn = GoatHornEffects.createRandomHorn(player.getRegistryManager());
                         if (horn != null) {
-                            recipient.getInventory().insertStack(horn);
+                            LootDelivery.deliver(recipient, horn);
                             sendMessageTo(recipient, "§6§l+ Goat Horn! " + horn.getName().getString());
                         }
                     }
@@ -11074,7 +11074,7 @@ public class CombatManager {
                     if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
                         item.setCount(item.getCount() + 1);
                     }
-                    recipient.getInventory().insertStack(item);
+                    LootDelivery.deliver(recipient, item);
                 }
             }
             // Show a representative loot message
@@ -11091,7 +11091,7 @@ public class CombatManager {
             Item sherdItem = sherdList.get(new java.util.Random().nextInt(sherdList.size()));
             ItemStack sherdStack = new ItemStack(sherdItem);
             for (ServerPlayerEntity recipient : rewardRecipients) {
-                recipient.getInventory().insertStack(sherdStack.copy());
+                LootDelivery.deliver(recipient, sherdStack.copy());
             }
             sendMessage("§d§l✦ RARE DROP: " + sherdStack.getName().getString() + "!");
         }
@@ -11164,7 +11164,7 @@ public class CombatManager {
                 lastDroppedTrim = trimItem;
                 ItemStack trimStack = new ItemStack(trimItem);
                 for (ServerPlayerEntity recipient : rewardRecipients) {
-                    recipient.getInventory().insertStack(trimStack.copy());
+                    LootDelivery.deliver(recipient, trimStack.copy());
                 }
                 sendMessage("\u00a7b\u00a7l\u2726 RARE DROP: " + trimStack.getName().getString() + "!");
 
@@ -12651,7 +12651,7 @@ public class CombatManager {
                     }
 
                     String rewardName = reward.getName().getString();
-                    choicePlayer.getInventory().insertStack(reward);
+                    LootDelivery.deliver(choicePlayer, reward);
                     sendMessageTo(choicePlayer, "§e§lShrine of Fortune! §r§7(" + cost + " emeralds offered)");
                     sendMessageTo(choicePlayer, desc);
                     sendMessageTo(choicePlayer, "§7Received: §f" + rewardName);
@@ -12714,7 +12714,7 @@ public class CombatManager {
                     }
 
                     String rewardName = reward.getName().getString();
-                    choicePlayer.getInventory().insertStack(reward);
+                    LootDelivery.deliver(choicePlayer, reward);
                     sendMessageTo(choicePlayer, "§e§lWounded Traveler! §r§7You give " + foodName + ".");
                     sendMessageTo(choicePlayer, "§a\"Thank you, brave warrior!\"");
                     sendMessageTo(choicePlayer, "§7Received: §f" + rewardName);
@@ -12731,7 +12731,7 @@ public class CombatManager {
                 int itemCount = 2 + rng.nextInt(3); // 2-4 items
                 for (int i = 0; i < itemCount; i++) {
                     ItemStack loot = getVaultLootItem(eventBiomeOrdinal, rng);
-                    choicePlayer.getInventory().insertStack(loot);
+                    LootDelivery.deliver(choicePlayer, loot);
                 }
                 sendMessageTo(choicePlayer, "§6§l✦ TREASURE VAULT OPENED! ✦");
                 sendMessageTo(choicePlayer, "§eYou claim " + itemCount + " treasures!");
