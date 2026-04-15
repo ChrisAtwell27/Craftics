@@ -124,7 +124,7 @@ public class EventManager {
                     com.crackedgames.craftics.world.CrafticsSavedData.get(world);
                 com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd = data.getPlayerData(uuid);
                 ServerPlayNetworking.send(p, new VictoryChoicePayload(
-                    emeraldsEarned, pd.emeralds, false, label, -1
+                    emeraldsEarned, pd.emeralds, false, label, -1, false
                 ));
             }
         }

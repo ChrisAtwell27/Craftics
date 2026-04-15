@@ -9,16 +9,44 @@ import java.util.List;
 
 /**
  * Evoker AI: Illager spellcaster with fang attacks.
+ * - SUMMON VEX: once per combat, summons a single vex near itself
  * - FANG SNAP: ranged attack at 3-4 tiles (evoker fangs)
  * - RETREAT: kites backward when player closes in
  * - REPOSITION: moves then attacks in same turn
  * - Prefers to maintain range 3-4
  */
 public class EvokerAI implements EnemyAI {
+
+    private boolean hasSummonedVex = false;
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
+
+        // Once per combat: summon a vex when the player is in range
+        if (!hasSummonedVex && dist <= self.getRange()) {
+            hasSummonedVex = true;
+            // Find an open tile adjacent to the evoker for the vex
+            List<GridPos> vexPositions = new java.util.ArrayList<>();
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dz == 0) continue;
+                    GridPos candidate = new GridPos(myPos.x() + dx, myPos.z() + dz);
+                    if (arena.isInBounds(candidate) && !arena.isOccupied(candidate)) {
+                        var tile = arena.getTile(candidate);
+                        if (tile != null && tile.isWalkable()) {
+                            vexPositions.add(candidate);
+                        }
+                    }
+                }
+            }
+            if (!vexPositions.isEmpty()) {
+                GridPos vexPos = vexPositions.get(new java.util.Random().nextInt(vexPositions.size()));
+                return new EnemyAction.SummonMinions("minecraft:vex", 1,
+                    List.of(vexPos), 8, self.getAttackPower(), 0);
+            }
+        }
 
         // Too close — retreat and cast
         if (dist <= 2) {

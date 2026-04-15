@@ -3,6 +3,9 @@ package com.crackedgames.craftics.world;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.nbt.NbtString;
+//? if >=1.21.5 {
+/*import net.minecraft.util.Uuids;
+*///?}
 
 import java.util.*;
 
@@ -65,6 +68,7 @@ public class Party {
         }
     }
 
+    //? if <=1.21.4 {
     public NbtCompound toNbt() {
         NbtCompound nbt = new NbtCompound();
         nbt.putUuid("partyId", partyId);
@@ -94,4 +98,33 @@ public class Party {
         }
         return party;
     }
+    //?} else {
+    /*public NbtCompound toNbt() {
+        NbtCompound nbt = new NbtCompound();
+        nbt.put("partyId", Uuids.INT_STREAM_CODEC, partyId);
+        nbt.put("leaderUuid", Uuids.INT_STREAM_CODEC, leaderUuid);
+        nbt.putString("name", name);
+        NbtList membersNbt = new NbtList();
+        for (UUID uuid : memberUuids) {
+            membersNbt.add(NbtString.of(uuid.toString()));
+        }
+        nbt.put("members", membersNbt);
+        return nbt;
+    }
+
+    public static Party fromNbt(NbtCompound nbt) {
+        UUID partyId = nbt.get("partyId", Uuids.INT_STREAM_CODEC).orElseThrow();
+        UUID leaderUuid = nbt.get("leaderUuid", Uuids.INT_STREAM_CODEC).orElseThrow();
+        Party party = new Party(partyId, leaderUuid);
+        party.name = nbt.getString("name", "");
+        NbtList membersNbt = nbt.getListOrEmpty("members");
+        for (int i = 0; i < membersNbt.size(); i++) {
+            UUID memberUuid = UUID.fromString(membersNbt.getString(i, ""));
+            if (!memberUuid.equals(leaderUuid)) {
+                party.memberUuids.add(memberUuid);
+            }
+        }
+        return party;
+    }
+    *///?}
 }

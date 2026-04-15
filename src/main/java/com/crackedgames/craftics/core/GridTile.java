@@ -88,9 +88,10 @@ public class GridTile {
         return type.walkable;
     }
 
-    /** Walkable and not hazardous — safe for spawning entities. */
+    /** Walkable, not hazardous, and not water — safe for spawning non-aquatic entities. */
     public boolean isSafeForSpawn() {
-        return type.walkable && type.damageOnStep <= 0;
+        return type.walkable && type.damageOnStep <= 0
+            && type != TileType.WATER && type != TileType.DEEP_WATER;
     }
 
     /**

@@ -1,6 +1,7 @@
 {
   "generator.craftics.craftics": "Craftics",
-  "block.craftics.level_select_block": "Level Select",
+  "block.craftics.level_select_block": "Level Select Table",
+  "item.craftics.level_select_block": "Level Select Table",
   "gui.craftics.level_select.title": "Level Select",
   "key.craftics.toggle_combat": "Toggle Combat Mode (Debug)",
   "key.craftics.attack_mode": "Toggle Attack/Move Mode",

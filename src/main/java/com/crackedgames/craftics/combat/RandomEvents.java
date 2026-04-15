@@ -108,7 +108,7 @@ public class RandomEvents {
         } else if (roll < 90) {
             reward = switch (rng.nextInt(3)) {
                 case 0 -> new ItemStack(Items.SADDLE, 1);
-                case 1 -> new ItemStack(Items.ENCHANTED_BOOK, 1);
+                case 1 -> createRandomEnchantedBook(player);
                 default -> new ItemStack(Items.NAME_TAG, 1);
             };
         } else {
@@ -203,5 +203,27 @@ public class RandomEvents {
      */
     public static String handleDigSiteForPlayer(ServerPlayerEntity player) {
         return handleSuspiciousBlock(player);
+    }
+
+    /** Create an enchanted book with a random enchantment from the full registry. */
+    private static ItemStack createRandomEnchantedBook(ServerPlayerEntity player) {
+        net.minecraft.server.world.ServerWorld world = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+        //? if <=1.21.1 {
+        /*var registry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        *///?} else {
+        var registry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        //?}
+        var entries = registry.streamEntries().toList();
+        if (entries.isEmpty()) return new ItemStack(Items.ENCHANTED_BOOK, 1);
+        Random rng = new Random();
+        var entry = entries.get(rng.nextInt(entries.size()));
+        int level = 1 + rng.nextInt(entry.value().getMaxLevel());
+        ItemStack book = new ItemStack(Items.ENCHANTED_BOOK, 1);
+        net.minecraft.component.type.ItemEnchantmentsComponent.Builder builder =
+            new net.minecraft.component.type.ItemEnchantmentsComponent.Builder(
+                net.minecraft.component.type.ItemEnchantmentsComponent.DEFAULT);
+        builder.add(entry, level);
+        book.set(net.minecraft.component.DataComponentTypes.STORED_ENCHANTMENTS, builder.build());
+        return book;
     }
 }

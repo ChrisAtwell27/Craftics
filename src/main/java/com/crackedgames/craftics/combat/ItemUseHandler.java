@@ -83,7 +83,7 @@ public class ItemUseHandler {
         Map.entry(Items.MELON_SLICE, 1),
         Map.entry(Items.SWEET_BERRIES, 1),
         Map.entry(Items.GLOW_BERRIES, 1),
-        Map.entry(Items.GOLDEN_CARROT, 4),
+        Map.entry(Items.GOLDEN_CARROT, 2),
         Map.entry(Items.GOLDEN_APPLE, 8),
         Map.entry(Items.ENCHANTED_GOLDEN_APPLE, 10),
         Map.entry(Items.HONEY_BOTTLE, 3),
@@ -189,6 +189,7 @@ public class ItemUseHandler {
     );
 
     public static int getApCost(Item item) {
+        if (item == Items.GOLDEN_CARROT) return 0;
         if (PotterySherdSpells.isPotterySherd(item)) return PotterySherdSpells.getSherdApCost(item);
         if (item == Items.FISHING_ROD) return FISHING_AP_COST;
         if (TWO_AP_ITEMS.contains(item)) return 2;
@@ -416,6 +417,23 @@ public class ItemUseHandler {
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 2400, 3));
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 6000, 0));
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 600, 1));
+        }
+
+        // Golden carrot restores 1 AP (capped at max AP)
+        if (food == Items.GOLDEN_CARROT) {
+            PlayerProgression.PlayerStats gcStats = PlayerProgression.get(
+                (net.minecraft.server.world.ServerWorld) player.getEntityWorld()).getStats(player);
+            int maxAp = gcStats.getEffective(PlayerProgression.Stat.AP)
+                + PlayerCombatStats.getSetApBonus(player);
+            if (cm.getApRemaining() >= maxAp) {
+                // Refund the food — AP is already full, undo the heal + consumption
+                player.setHealth(player.getHealth() - healAmount);
+                stack.increment(1);
+                return "§cAP is already full!";
+            }
+            cm.setApRemaining(Math.min(maxAp, cm.getApRemaining() + 1));
+            return "§aAte " + stack.getName().getString() + "! Healed " + healAmount + " HP, §b+1 AP §a(HP: "
+                + (int) newHealth + "/" + (int) maxHealth + ")";
         }
 
         return "§aAte " + stack.getName().getString() + "! Healed " + healAmount + " HP (HP: "

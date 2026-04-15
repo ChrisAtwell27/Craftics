@@ -556,7 +556,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.MELON_SLICE) return "\u00a7a+1 HP \u00a77| 1 AP";
         if (item == Items.SWEET_BERRIES) return "\u00a7a+1 HP \u00a77| 1 AP";
         if (item == Items.GLOW_BERRIES) return "\u00a7a+1 HP \u00a77| 1 AP";
-        if (item == Items.GOLDEN_CARROT) return "\u00a7a+4 HP \u00a77| 1 AP";
+        if (item == Items.GOLDEN_CARROT) return "\u00a7a+2 HP \u00a77| Free | \u00a7b+1 AP";
         if (item == Items.GOLDEN_APPLE) return "\u00a7a+8 HP \u00a77| 1 AP | \u00a7e+Absorption";
         if (item == Items.ENCHANTED_GOLDEN_APPLE) return "\u00a7a+FULL HP \u00a77| 1 AP\n\u00a7e+Absorption IV +Resistance +Regen II";
         if (item == Items.HONEY_BOTTLE) return "\u00a7a+3 HP \u00a77| 1 AP";
@@ -634,6 +634,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.SPYGLASS) return "\u00a7e1 AP \u00a77- Target an enemy\n\u00a77Reveals HP, ATK, DEF, Range, Speed";
         if (item == Items.COMPASS) return "\u00a761 AP \u00a77- Reveals all enemy positions\n\u00a77Shows grid coordinates of every enemy";
         if (item == Items.RECOVERY_COMPASS) return "\u00a76Passive: \u00a77Consumed on death\n\u00a77Saves your full inventory one time instead of losing it";
+        if (item == Items.BUNDLE) return "\u00a7ePassive: \u00a77Auto-collects loot\n\u00a77Combat drops go into the bundle first\n\u00a77Keeps your inventory organized";
         if (item == Items.BELL) return "\u00a762 AP \u00a77- Ring at target tile\n\u00a77Stuns ALL enemies within 2 tiles";
         if (item == Items.ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7c5 DMG \u00a77| Consumed on use";
         if (item == Items.HONEY_BLOCK) return "\u00a7e1 AP \u00a77- Place sticky trap\n\u00a77Enemies that step on it lose all movement";

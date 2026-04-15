@@ -18,6 +18,7 @@ public class GeneratedLevelDefinition extends LevelDefinition {
     private final List<ItemStack> loot;
     private final boolean nightLevel;
     private final BiomeTemplate biomeTemplate;
+    private String arenaBiomeOverride = null;
 
     public GeneratedLevelDefinition(int levelNumber, String name, int width, int height,
                                      GridPos playerStart, Block floorBlock, GridTile[][] tiles,
@@ -36,6 +37,8 @@ public class GeneratedLevelDefinition extends LevelDefinition {
         this.biomeTemplate = biomeTemplate;
     }
 
+    public void setArenaBiomeOverride(String biomeId) { this.arenaBiomeOverride = biomeId; }
+
     @Override public int getLevelNumber() { return levelNumber; }
     @Override public String getName() { return name; }
     @Override public int getWidth() { return width; }
@@ -45,6 +48,7 @@ public class GeneratedLevelDefinition extends LevelDefinition {
     @Override public GridTile[][] buildTiles() { return tiles; }
     @Override public EnemySpawn[] getEnemySpawns() { return enemySpawns; }
     @Override public boolean isNightLevel() { return nightLevel; }
+    @Override public String getArenaBiomeId() { return arenaBiomeOverride; }
 
     @Override
     public List<ItemStack> rollCompletionLoot() { return loot; }

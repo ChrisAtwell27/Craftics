@@ -795,9 +795,19 @@ public class CombatManager {
                     if (pmSlot == -1) pmSlot = 8;
                     member.getInventory().setStack(pmSlot, moveItem);
                 }
-                member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 40, 15));
-                member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
-                    Text.literal("\u00a7e" + newLevelDef.getName())));
+                boolean partyBoss = newLevelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition pgld
+                    && pgld.getBiomeTemplate() != null && pgld.getBiomeTemplate().isBossLevel(pgld.getLevelNumber());
+                if (partyBoss) {
+                    member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(10, 60, 20));
+                    member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
+                        Text.literal("\u00a74\u00a7l\u2620 BOSS FIGHT \u2620")));
+                    member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.SubtitleS2CPacket(
+                        Text.literal("\u00a7c" + newLevelDef.getName())));
+                } else {
+                    member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 40, 15));
+                    member.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
+                        Text.literal("\u00a7e" + newLevelDef.getName())));
+                }
             }
         }
     }
@@ -820,7 +830,10 @@ public class CombatManager {
         }
 
         // Try pre-built arena first (instant — no block placement needed)
-        if (worldOwnerUuid != null) {
+        // Only use the pre-gen cache for normal biome levels (GeneratedLevelDefinition).
+        // Event levels (trial chambers, ambushes, treasure vaults) use synthetic level
+        // numbers that would resolve to the wrong biome in ArenaPreGenerator.
+        if (worldOwnerUuid != null && def instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition) {
             com.crackedgames.craftics.world.CrafticsSavedData data =
                 com.crackedgames.craftics.world.CrafticsSavedData.get(world);
             com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd =
@@ -1572,6 +1585,43 @@ public class CombatManager {
                     requestedPos, resolvedPos, arena.getWidth(), arena.getHeight());
             }
 
+            // Creaking Heart: virtual block entity (armor stand visual + creaking_heart block)
+            if ("craftics:creaking_heart".equals(spawn.entityTypeId())) {
+                BlockPos heartBlockPos = arena.gridToBlockPos(resolvedPos);
+                // Place the creaking heart block in the world
+                //? if >=1.21.4 {
+                world.setBlockState(heartBlockPos, net.minecraft.block.Blocks.CREAKING_HEART.getDefaultState());
+                //?} else {
+                /*world.setBlockState(heartBlockPos, net.minecraft.block.Blocks.OAK_LOG.getDefaultState());
+                *///?}
+                // Spawn an invisible armor stand as the entity reference
+                //? if <=1.21.1 {
+                /*var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world);
+                *///?} else {
+                var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world, SpawnReason.COMMAND);
+                //?}
+                if (heartStand != null) {
+                    heartStand.refreshPositionAndAngles(
+                        heartBlockPos.getX() + 0.5, heartBlockPos.getY(), heartBlockPos.getZ() + 0.5, 0, 0);
+                    heartStand.setInvisible(true);
+                    heartStand.setInvulnerable(true);
+                    heartStand.setNoGravity(true);
+                    heartStand.addCommandTag("craftics_arena");
+                    world.spawnEntity(heartStand);
+                    int partySize = getAllParticipants().size();
+                    double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * 0.25 : 1.0;
+                    int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult
+                        * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier() * partyHpMult));
+                    CombatEntity ce = new CombatEntity(
+                        heartStand.getId(), "craftics:creaking_heart", resolvedPos,
+                        scaledHp, 0, spawn.defense(), 0
+                    );
+                    enemies.add(ce);
+                    arena.placeEntity(ce);
+                }
+                continue;
+            }
+
             Identifier entityId = Identifier.of(spawn.entityTypeId());
             if (!Registries.ENTITY_TYPE.containsId(entityId)) {
                 CrafticsMod.LOGGER.warn("Unknown entity type '{}', skipping spawn at {}", entityId, resolvedPos);
@@ -1579,6 +1629,12 @@ public class CombatManager {
             }
             EntityType<?> type = Registries.ENTITY_TYPE.get(entityId);
             BlockPos spawnPos = arena.gridToBlockPos(resolvedPos);
+
+            // Aquatic mobs spawn 1 block lower (in the water, not floating on top)
+            double entitySpawnY = spawnPos.getY();
+            if (aquatic) {
+                entitySpawnY -= 1.0;
+            }
 
             // create() + spawnEntity() bypasses Minecraft's placement validation
             // that rejects entities when others are nearby
@@ -1588,7 +1644,7 @@ public class CombatManager {
                 continue;
             }
             rawEntity.refreshPositionAndAngles(
-                spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, 0, 0);
+                spawnPos.getX() + 0.5, entitySpawnY, spawnPos.getZ() + 0.5, 0, 0);
 
             // Set invulnerable BEFORE spawning to prevent instant death from sun/suffocation
             if (rawEntity instanceof MobEntity preMob) {
@@ -1609,7 +1665,7 @@ public class CombatManager {
                 rawEntity = type.create(world, null, spawnPos, SpawnReason.COMMAND, false, false);
                 if (rawEntity != null) {
                     rawEntity.refreshPositionAndAngles(
-                        spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, 0, 0);
+                        spawnPos.getX() + 0.5, entitySpawnY, spawnPos.getZ() + 0.5, 0, 0);
                     world.spawnEntity(rawEntity);
                 }
                 if (rawEntity == null || rawEntity.isRemoved()) {
@@ -1804,6 +1860,24 @@ public class CombatManager {
             }
         }
 
+        // Link creakings to their hearts (spawned in pairs by LevelGenerator)
+        java.util.List<CombatEntity> unlinkedCreakings = new java.util.ArrayList<>();
+        java.util.List<CombatEntity> unlinkedHearts = new java.util.ArrayList<>();
+        for (CombatEntity e : enemies) {
+            if ("minecraft:creaking".equals(e.getEntityTypeId()) && e.getLinkedHeartId() < 0) {
+                unlinkedCreakings.add(e);
+            } else if ("craftics:creaking_heart".equals(e.getEntityTypeId()) && e.getLinkedCreakingId() < 0) {
+                unlinkedHearts.add(e);
+            }
+        }
+        for (int i = 0; i < Math.min(unlinkedCreakings.size(), unlinkedHearts.size()); i++) {
+            CombatEntity creaking = unlinkedCreakings.get(i);
+            CombatEntity heart = unlinkedHearts.get(i);
+            creaking.setLinkedHeartId(heart.getEntityId());
+            heart.setLinkedCreakingId(creaking.getEntityId());
+            CrafticsMod.LOGGER.info("Linked Creaking {} to Heart {}", creaking.getEntityId(), heart.getEntityId());
+        }
+
         // Unlock bestiary entries server-side for all enemy types encountered
         unlockBestiaryForCombat(world, player);
 
@@ -1830,19 +1904,29 @@ public class CombatManager {
             player.getInventory().setStack(targetSlot, moveItem);
             featherSlot = targetSlot;
         }
-        if (featherSlot >= 0 && featherSlot <= 8) {
-            player.getInventory().selectedSlot = featherSlot; // select feather if in hotbar
-        }
-        lastHeldItem = Items.FEATHER; // Reset weapon tracking so next slot change triggers refresh
+        // Don't force-select the feather — let the player keep their weapon selected
+        // so the first turn correctly recognises their held weapon for damage/range.
+        lastHeldItem = player.getMainHandStack().getItem();
 
         // Sound: combat start
         player.getWorld().playSound(null, player.getBlockPos(),
             net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_GROWL,
             net.minecraft.sound.SoundCategory.HOSTILE, 0.3f, 1.5f);
 
-        // Level name displayed as title on combat start
-        player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 40, 15));
-        player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(Text.literal("§e" + levelDef.getName())));
+        // Level name displayed as title on combat start — boss fights get a dramatic callout
+        boolean isBossFight = levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld3
+            && gld3.getBiomeTemplate() != null && gld3.getBiomeTemplate().isBossLevel(gld3.getLevelNumber());
+        if (isBossFight) {
+            player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(10, 60, 20));
+            player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
+                Text.literal("\u00a74\u00a7l\u2620 BOSS FIGHT \u2620")));
+            player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.SubtitleS2CPacket(
+                Text.literal("\u00a7c" + levelDef.getName())));
+        } else {
+            player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 40, 15));
+            player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
+                Text.literal("\u00a7e" + levelDef.getName())));
+        }
         // Show enemy intentions if enabled
         if (CrafticsMod.CONFIG.showEnemyIntentions()) {
             showEnemyIntentionPreviews();
@@ -2117,6 +2201,15 @@ public class CombatManager {
         }
         if (target == null) {
             sendMessage("§cNo valid target!");
+            return;
+        }
+
+        // Creaking immunity: can't damage the creaking directly, must kill its heart
+        if ("minecraft:creaking".equals(target.getEntityTypeId()) && target.getLinkedHeartId() >= 0) {
+            sendMessage("\u00a7c\u00a7lThe Creaking is invulnerable! \u00a77Destroy its \u00a74Creaking Heart\u00a77 instead!");
+            player.getWorld().playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_ZOMBIE_ATTACK_IRON_DOOR,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.5f, 0.5f);
             return;
         }
 
@@ -2412,7 +2505,7 @@ public class CombatManager {
         int damageTypeBonus = DamageType.getTotalBonus(
             PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects, damageType, attackerStats)
             + DamageType.getMobHeadBonus(player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), damageType);
-        int baseDamage = PlayerCombatStats.getAttackPower(player) + combatEffects.getStrengthBonus()
+        int baseDamage = PlayerCombatStats.getAttackPower(weapon) + combatEffects.getStrengthBonus()
             + progBonus + PlayerCombatStats.getSetAttackBonus(player)
             + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus;
         baseDamage = (int)(baseDamage * com.crackedgames.craftics.CrafticsMod.CONFIG.playerDamageMultiplier());
@@ -2487,6 +2580,15 @@ public class CombatManager {
         if (weapon == Items.MACE && windBurstDamageBonus > 0) {
             baseDamage += windBurstDamageBonus;
             windBurstDamageBonus = 0;
+        }
+
+        // Axes deal 50% bonus damage to Creaking Hearts (wood blocks)
+        if ("craftics:creaking_heart".equals(target.getEntityTypeId())) {
+            String weaponId = net.minecraft.registry.Registries.ITEM.getId(weapon).toString();
+            if (weaponId.contains("axe")) {
+                int axeBonus = Math.max(1, baseDamage / 2);
+                baseDamage += axeBonus;
+            }
         }
 
         int fireAspect = PlayerCombatStats.getFireAspect(player);
@@ -2655,6 +2757,7 @@ public class CombatManager {
                 int coneDx = Integer.signum(fTPos.x() - fPPos.x());
                 int coneDz = Integer.signum(fTPos.z() - fPPos.z());
                 int coneBurnCount = 0;
+                ServerWorld fireWorld = (ServerWorld) player.getEntityWorld();
                 // Scan cone: for each row, widen by 1 on each side perpendicular to direction
                 for (int depth = 1; depth <= coneDepth; depth++) {
                     int halfWidth = depth; // cone widens by 1 each row
@@ -2675,6 +2778,14 @@ public class CombatManager {
                         }
                         GridPos conePos = new GridPos(cx, cz);
                         if (!arena.isInBounds(conePos)) continue;
+                        // Spawn flame particles on every tile in the cone
+                        BlockPos fireBlock = arena.gridToBlockPos(conePos);
+                        fireWorld.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+                            fireBlock.getX() + 0.5, fireBlock.getY() + 0.5, fireBlock.getZ() + 0.5,
+                            8, 0.3, 0.3, 0.3, 0.02);
+                        fireWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                            fireBlock.getX() + 0.5, fireBlock.getY() + 0.8, fireBlock.getZ() + 0.5,
+                            4, 0.2, 0.2, 0.2, 0.01);
                         CombatEntity coneTarget = arena.getOccupant(conePos);
                         if (coneTarget != null && coneTarget.isAlive() && coneTarget != fTarget && !coneTarget.isAlly()) {
                             coneTarget.stackBurning(burnTurns, burnDmg);
@@ -3226,6 +3337,19 @@ public class CombatManager {
     private void checkAndHandleDeath(CombatEntity entity) {
         if (!entity.isAlive() && !entity.isDeathProcessed()) {
             entity.markDeathProcessed();
+
+            // Creaking Heart death → kill the linked Creaking
+            if ("craftics:creaking_heart".equals(entity.getEntityTypeId()) && entity.getLinkedCreakingId() >= 0) {
+                for (CombatEntity e : enemies) {
+                    if (e.getEntityId() == entity.getLinkedCreakingId() && e.isAlive()) {
+                        sendMessage("\u00a7d\u2726 The Creaking crumbles!");
+                        e.takeDamage(e.getCurrentHp() + e.getDefense() + 9999);
+                        checkAndHandleDeath(e);
+                        break;
+                    }
+                }
+            }
+
             // Notify bosses of minion death (crystals, turrets, chains, etc.)
             if (!entity.isBoss()) {
                 notifyBossOfMinionDeath(entity);
@@ -3440,9 +3564,9 @@ public class CombatManager {
     private static String getBossName(String bossBiomeId) {
         return switch (bossBiomeId) {
             case "plains" -> "The Revenant";
-            case "dark_forest" -> "The Hexweaver";
-            case "snowy_tundra" -> "The Frostbound Huntsman";
-            case "stony_peaks" -> "The Rockbreaker";
+            case "forest" -> "The Hexweaver";
+            case "snowy" -> "The Frostbound Huntsman";
+            case "mountain" -> "The Rockbreaker";
             case "river" -> "The Tidecaller";
             case "desert" -> "The Sandstorm Pharaoh";
             case "jungle" -> "The Broodmother";
@@ -3453,7 +3577,7 @@ public class CombatManager {
             case "crimson_forest" -> "The Bastion Brute";
             case "warped_forest" -> "The Void Walker";
             case "basalt_deltas" -> "The Wither";
-            case "outer_end" -> "The Void Herald";
+            case "outer_end_islands" -> "The Void Herald";
             case "end_city" -> "The Shulker Architect";
             case "chorus_grove" -> "The Chorus Mind";
             case "dragons_nest" -> "The Ender Dragon";
@@ -5904,6 +6028,34 @@ public class CombatManager {
                 aiTargetPos = arena.getPlayerGridPos();
             }
         }
+        // Creaking freeze: can't move when the player is looking at it (90° cone).
+        // Uses dot-product to check if the creaking falls anywhere inside the
+        // player's forward-facing cone. When not observed, the creaking has 6 speed.
+        if ("minecraft:creaking".equals(currentEnemy.getEntityTypeId())) {
+            BlockPos creakingBlock = arena.gridToBlockPos(currentEnemy.getGridPos());
+            // Player's look direction on the XZ plane from their yaw
+            double yawRad = Math.toRadians(player.getYaw());
+            double lookX = -Math.sin(yawRad);
+            double lookZ = Math.cos(yawRad);
+            // Vector from player to creaking
+            double toX = creakingBlock.getX() + 0.5 - player.getX();
+            double toZ = creakingBlock.getZ() + 0.5 - player.getZ();
+            double dist = Math.sqrt(toX * toX + toZ * toZ);
+            boolean playerLooking = false;
+            if (dist > 0.1) {
+                // Dot product gives cos(angle) between look direction and direction to creaking
+                double cosAngle = (lookX * toX + lookZ * toZ) / dist;
+                // 90° cone = 45° each side → cos(45°) ≈ 0.707
+                playerLooking = cosAngle > 0.707;
+            }
+            if (playerLooking) {
+                currentEnemy.setSpeedBonus(-currentEnemy.getMoveSpeed()); // freeze: 0 effective speed
+                sendMessage("\u00a77The Creaking freezes under your gaze...");
+            } else {
+                currentEnemy.setSpeedBonus(6 - currentEnemy.getMoveSpeed()); // 6 effective speed
+            }
+        }
+
         pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
 
         // Addon combat effects: boss phase change notification
@@ -9786,12 +9938,38 @@ public class CombatManager {
             } else {
                 int raActual = damagePlayer(raDamage, currentEnemy);
 
-                player.getWorld().playSound(null, player.getBlockPos(),
-                    net.minecraft.sound.SoundEvents.ENTITY_ARROW_HIT_PLAYER,
-                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+                // Evoker fangs: magic sound + fang particles at player position
+                String raEntityType = currentEnemy.getEntityTypeId();
+                if ("minecraft:evoker".equals(raEntityType) || "fangs".equals(resolvedRanged.effectName())) {
+                    ServerWorld raWorld = (ServerWorld) player.getEntityWorld();
+                    player.getWorld().playSound(null, player.getBlockPos(),
+                        net.minecraft.sound.SoundEvents.ENTITY_EVOKER_FANGS_ATTACK,
+                        net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.0f);
+                    // Spawn evoker fang entities at the player's feet for visual effect
+                    BlockPos fangPos = player.getBlockPos();
+                    for (int fi = 0; fi < 3; fi++) {
+                        double fx = fangPos.getX() + 0.5 + (Math.random() - 0.5) * 2;
+                        double fz = fangPos.getZ() + 0.5 + (Math.random() - 0.5) * 2;
+                        var fangs = new net.minecraft.entity.mob.EvokerFangsEntity(
+                            raWorld, fx, fangPos.getY(), fz, 0, fi * 2, null);
+                        raWorld.spawnEntity(fangs);
+                    }
+                    // Casting particles at the evoker
+                    if (currentEnemy.getMobEntity() != null) {
+                        raWorld.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH,
+                            currentEnemy.getMobEntity().getX(),
+                            currentEnemy.getMobEntity().getY() + 1.5,
+                            currentEnemy.getMobEntity().getZ(),
+                            15, 0.3, 0.5, 0.3, 0.05);
+                    }
+                } else {
+                    player.getWorld().playSound(null, player.getBlockPos(),
+                        net.minecraft.sound.SoundEvents.ENTITY_ARROW_HIT_PLAYER,
+                        net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+                }
 
                 sendMessage("§c" + currentEnemy.getDisplayName() + " hits you for " + raActual + "!");
-                applyEnemyHitEffect(currentEnemy.getEntityTypeId());
+                applyEnemyHitEffect(raEntityType);
                 // Flame enchant on enemy bow ignites the player
                 if (rangedFlame && !combatEffects.hasFireResistance()) {
                     addEffectHooked(CombatEffects.EffectType.BURNING, 2 + rangedFlameLevel, 0);
@@ -11029,6 +11207,7 @@ public class CombatManager {
             for (ServerPlayerEntity recipient : rewardRecipients) {
                 List<ItemStack> drops = getMobDrops(enemy.getEntityTypeId());
                 for (ItemStack drop : drops) {
+                    if (drop.isEmpty() || drop.getCount() <= 0) continue;
                     if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
                         drop.setCount(drop.getCount() + 1);
                     }
@@ -11038,6 +11217,7 @@ public class CombatManager {
             // Broadcast a representative message (leader's perspective)
             List<ItemStack> displayDrops = getMobDrops(enemy.getEntityTypeId());
             for (ItemStack drop : displayDrops) {
+                if (drop.isEmpty() || drop.getCount() <= 0) continue;
                 sendMessage("§e+ " + drop.getCount() + "x " + drop.getName().getString());
             }
             // Rare goat horn drop (rolled independently per player, Luck boosts chance)
@@ -11318,6 +11498,11 @@ public class CombatManager {
             }
             String biomeName = biomeTemplate != null ? biomeTemplate.displayName : "Unknown";
             int displayIndex = ld.activeBiomeLevelIndex;
+            // Check if the next level in this biome is a boss fight
+            int nextGlobalLevel = levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld2
+                ? gld2.getLevelNumber() + 1 : -1;
+            boolean nextIsBoss = biomeTemplate != null && nextGlobalLevel >= 0
+                && biomeTemplate.isBossLevel(nextGlobalLevel);
 
             // Send choice screen to the STABLE combat leader (resolved via
             // leaderUuid), not `this.player` — in party combat `this.player`
@@ -11332,7 +11517,7 @@ public class CombatManager {
                 return;
             }
             ServerPlayNetworking.send(decisionPlayer, new VictoryChoicePayload(
-                emeraldsEarned, ld.emeralds, false, biomeName, displayIndex
+                emeraldsEarned, ld.emeralds, false, biomeName, displayIndex, nextIsBoss
             ));
             // Non-leaders get a persistent "waiting" loading screen. It fades out
             // automatically when their next EnterCombatPayload arrives from the
@@ -11623,7 +11808,7 @@ public class CombatManager {
                         }
                         // Only leader gets the choice screen
                         ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
-                            0, ld.emeralds, false, "Ominous Trial", -1
+                            0, ld.emeralds, false, "Ominous Trial", -1, false
                         ));
                     } else if (forced != null ? forced.equals("trial") : (eventRoll < cTrial)) {
                         // Trial Chamber
@@ -11639,7 +11824,7 @@ public class CombatManager {
                             sendMessageTo(p, "\u00a7eAccept the challenge for rare loot?");
                         }
                         ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
-                            0, ld.emeralds, false, "Trial Chamber", -1
+                            0, ld.emeralds, false, "Trial Chamber", -1, false
                         ));
                     } else if (forced != null ? forced.equals("ambush") : (eventRoll < cAmbush)) {
                         // Ambush (unavoidable!)
@@ -11736,7 +11921,7 @@ public class CombatManager {
                                         sendMessageTo(p, "§e§l" + addonEvent.displayName() + " discovered!");
                                     }
                                     ServerPlayNetworking.send(savedPlayer, new VictoryChoicePayload(
-                                        0, ld.emeralds, false, addonEvent.displayName(), -1
+                                        0, ld.emeralds, false, addonEvent.displayName(), -1, false
                                     ));
                                 } else {
                                     // Non-choice event: execute immediately, then auto-continue
@@ -12703,7 +12888,7 @@ public class CombatManager {
                     } else if (roll < greatCap) {
                         reward = switch (rng.nextInt(3)) {
                             case 0 -> new ItemStack(Items.SADDLE, 1);
-                            case 1 -> new ItemStack(Items.ENCHANTED_BOOK, 1);
+                            case 1 -> randomEnchantedBook((ServerWorld) choicePlayer.getEntityWorld(), 1, null);
                             default -> new ItemStack(Items.NAME_TAG, 1);
                         };
                     } else {
@@ -13113,16 +13298,9 @@ public class CombatManager {
 
     private static List<ItemStack> getMobDrops(String entityTypeId) {
         LootPool pool = switch (entityTypeId) {
+            // === Passive mobs ===
             case "minecraft:cow" -> new LootPool()
                 .add(Items.LEATHER, 5).add(Items.BEEF, 5);
-            case "minecraft:zombie" -> new LootPool()
-                .add(Items.ROTTEN_FLESH, 6).add(Items.IRON_NUGGET, 2);
-            case "minecraft:skeleton" -> new LootPool()
-                .add(Items.BONE, 5).add(Items.ARROW, 5);
-            case "minecraft:creeper" -> new LootPool()
-                .add(Items.GUNPOWDER, 8);
-            case "minecraft:spider" -> new LootPool()
-                .add(Items.STRING, 6).add(Items.SPIDER_EYE, 3);
             case "minecraft:pig" -> new LootPool()
                 .add(Items.PORKCHOP, 8).add(Items.LEATHER, 2);
             case "minecraft:sheep" -> new LootPool()
@@ -13131,12 +13309,182 @@ public class CombatManager {
                 .add(Items.CHICKEN, 5).add(Items.FEATHER, 5);
             case "minecraft:parrot" -> new LootPool()
                 .add(Items.FEATHER, 8);
+            case "minecraft:panda" -> new LootPool()
+                .add(Items.BAMBOO, 8);
+            case "minecraft:horse", "minecraft:donkey", "minecraft:mule" -> new LootPool()
+                .add(Items.LEATHER, 8);
             case "minecraft:goat" -> new LootPool()
                 .add(Items.LEATHER, 5).add(Items.MUTTON, 3);
-            case "minecraft:bee" -> new LootPool()
-                .add(Items.HONEYCOMB, 6).add(Items.HONEY_BOTTLE, 4);
             case "minecraft:rabbit" -> new LootPool()
                 .add(Items.RABBIT_FOOT, 2).add(Items.RABBIT_HIDE, 3).add(Items.RABBIT, 4);
+            case "minecraft:bee" -> new LootPool()
+                .add(Items.HONEYCOMB, 6).add(Items.HONEY_BOTTLE, 4);
+            case "minecraft:llama" -> new LootPool()
+                .add(Items.LEATHER, 8);
+            case "minecraft:polar_bear" -> new LootPool()
+                .add(Items.COD, 5).add(Items.SALMON, 3);
+            case "minecraft:bat" -> new LootPool()
+                .add(Items.LEATHER, 8);
+            case "minecraft:camel" -> new LootPool()
+                .add(Items.LEATHER, 8);
+
+            // === Aquatic mobs ===
+            case "minecraft:cod" -> new LootPool()
+                .add(Items.COD, 6).add(Items.BONE_MEAL, 3);
+            case "minecraft:salmon" -> new LootPool()
+                .add(Items.SALMON, 6).add(Items.BONE_MEAL, 3);
+            case "minecraft:axolotl" -> new LootPool()
+                .add(Items.TROPICAL_FISH, 8);
+
+            // === Predators ===
+            case "minecraft:wolf" -> new LootPool()
+                .add(Items.BONE, 8);
+            case "minecraft:fox" -> new LootPool()
+                .add(Items.SWEET_BERRIES, 5).add(Items.FEATHER, 3);
+            case "minecraft:cat", "minecraft:ocelot" -> new LootPool()
+                .add(Items.STRING, 8);
+
+            // === Basic melee hostiles ===
+            case "minecraft:zombie" -> new LootPool()
+                .add(Items.ROTTEN_FLESH, 6).add(Items.IRON_NUGGET, 2);
+            case "minecraft:zombie_villager" -> new LootPool()
+                .add(Items.ROTTEN_FLESH, 5).add(Items.IRON_INGOT, 2).add(Items.EMERALD, 1);
+            case "minecraft:husk" -> new LootPool()
+                .add(Items.ROTTEN_FLESH, 5).add(Items.IRON_NUGGET, 2).add(Items.SAND, 3);
+            case "minecraft:drowned" -> new LootPool()
+                .add(Items.ROTTEN_FLESH, 4).add(Items.COPPER_INGOT, 3).add(Items.GOLD_NUGGET, 2);
+
+            // === Ranged hostiles ===
+            case "minecraft:skeleton" -> new LootPool()
+                .add(Items.BONE, 5).add(Items.ARROW, 5);
+            case "minecraft:stray" -> new LootPool()
+                .add(Items.BONE, 4).add(Items.ARROW, 3)
+                .add(Items.TIPPED_ARROW, 2);
+            case "minecraft:pillager" -> new LootPool()
+                .add(Items.ARROW, 5).add(Items.CROSSBOW, 1).add(Items.EMERALD, 1);
+
+            // === Rush melee hostiles ===
+            case "minecraft:vindicator" -> new LootPool()
+                .add(Items.EMERALD, 3).add(Items.IRON_AXE, 1);
+            case "minecraft:spider" -> new LootPool()
+                .add(Items.STRING, 6).add(Items.SPIDER_EYE, 3);
+            case "minecraft:creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 8);
+
+            // === Special hostiles ===
+            case "minecraft:witch" -> new LootPool()
+                .add(Items.GLOWSTONE_DUST, 3).add(Items.REDSTONE, 3)
+                .add(Items.GLASS_BOTTLE, 2).add(Items.SUGAR, 2);
+            case "minecraft:enderman" -> new LootPool()
+                .add(Items.ENDER_PEARL, 8);
+            case "minecraft:phantom" -> new LootPool()
+                .add(Items.PHANTOM_MEMBRANE, 8);
+            case "minecraft:ravager" -> new LootPool()
+                .add(Items.SADDLE, 2).add(Items.IRON_INGOT, 3).add(Items.EMERALD, 2);
+            case "minecraft:evoker" -> new LootPool()
+                .add(Items.TOTEM_OF_UNDYING, 2).add(Items.EMERALD, 3);
+
+            // === Nether mobs ===
+            case "minecraft:zombified_piglin" -> new LootPool()
+                .add(Items.GOLD_NUGGET, 5).add(Items.ROTTEN_FLESH, 3).add(Items.GOLD_INGOT, 1);
+            case "minecraft:magma_cube" -> new LootPool()
+                .add(Items.MAGMA_CREAM, 8);
+            case "minecraft:ghast" -> new LootPool()
+                .add(Items.GHAST_TEAR, 4).add(Items.GUNPOWDER, 4);
+            case "minecraft:hoglin" -> new LootPool()
+                .add(Items.PORKCHOP, 5).add(Items.LEATHER, 4);
+            case "minecraft:piglin" -> new LootPool()
+                .add(Items.GOLD_INGOT, 3).add(Items.CROSSBOW, 1).add(Items.GOLD_NUGGET, 4);
+            case "minecraft:piglin_brute" -> new LootPool()
+                .add(Items.GOLD_INGOT, 4).add(Items.GOLDEN_AXE, 1).add(Items.GOLD_BLOCK, 1);
+            case "minecraft:blaze" -> new LootPool()
+                .add(Items.BLAZE_ROD, 6).add(Items.BLAZE_POWDER, 3);
+            case "minecraft:wither_skeleton" -> new LootPool()
+                .add(Items.COAL, 4).add(Items.BONE, 3).add(Items.WITHER_SKELETON_SKULL, 1);
+
+            // === Trial Chamber mobs ===
+            case "minecraft:breeze" -> new LootPool()
+                .add(Items.BREEZE_ROD, 6).add(Items.WIND_CHARGE, 3);
+            case "minecraft:bogged" -> new LootPool()
+                .add(Items.BONE, 4).add(Items.ARROW, 3).add(Items.MUSHROOM_STEW, 1);
+            case "minecraft:cave_spider" -> new LootPool()
+                .add(Items.STRING, 5).add(Items.SPIDER_EYE, 3).add(Items.FERMENTED_SPIDER_EYE, 1);
+            case "minecraft:silverfish" -> new LootPool()
+                .add(Items.IRON_NUGGET, 5).add(Items.COBBLESTONE, 4);
+            case "minecraft:slime" -> new LootPool()
+                .add(Items.SLIME_BALL, 8);
+
+            // === End mobs ===
+            case "minecraft:endermite" -> new LootPool()
+                .add(Items.ENDER_PEARL, 3).add(Items.END_STONE, 5);
+            case "minecraft:shulker" -> new LootPool()
+                .add(Items.SHULKER_SHELL, 5).add(Items.POPPED_CHORUS_FRUIT, 3);
+            case "minecraft:ender_dragon" -> new LootPool()
+                .add(Items.DRAGON_BREATH, 4).add(Items.EXPERIENCE_BOTTLE, 3)
+                .add(Items.END_CRYSTAL, 1);
+
+            // === Creeper Overhaul variants ===
+            case "creeperoverhaul:plains_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.WHEAT_SEEDS, 3);
+            case "creeperoverhaul:desert_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.SAND, 3);
+            case "creeperoverhaul:jungle_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.COCOA_BEANS, 3);
+            case "creeperoverhaul:bamboo_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.BAMBOO, 3);
+            case "creeperoverhaul:cave_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.COBBLESTONE, 3);
+            case "creeperoverhaul:dripstone_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.POINTED_DRIPSTONE, 3);
+            case "creeperoverhaul:snowy_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.SNOWBALL, 3);
+            case "creeperoverhaul:hills_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.COBBLESTONE, 3);
+            case "creeperoverhaul:dark_oak_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.DARK_OAK_LOG, 3);
+            case "creeperoverhaul:beach_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.SAND, 3);
+            case "creeperoverhaul:ocean_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.PRISMARINE_SHARD, 3);
+            case "creeperoverhaul:mushroom_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 5).add(Items.RED_MUSHROOM, 2).add(Items.BROWN_MUSHROOM, 2);
+            case "creeperoverhaul:badlands_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.TERRACOTTA, 3);
+            case "creeperoverhaul:birch_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.BIRCH_LOG, 3);
+            case "creeperoverhaul:savannah_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.ACACIA_LOG, 3);
+            case "creeperoverhaul:spruce_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.SPRUCE_LOG, 3);
+            case "creeperoverhaul:swamp_creeper" -> new LootPool()
+                .add(Items.GUNPOWDER, 6).add(Items.LILY_PAD, 3);
+
+            // === Variants & Ventures ===
+            case "variantsandventures:gelid" -> new LootPool()
+                .add(Items.ROTTEN_FLESH, 5).add(Items.ICE, 3).add(Items.IRON_NUGGET, 1);
+            case "variantsandventures:thicket" -> new LootPool()
+                .add(Items.ROTTEN_FLESH, 4).add(Items.VINE, 3).add(Items.FERMENTED_SPIDER_EYE, 2);
+            case "variantsandventures:verdant" -> new LootPool()
+                .add(Items.BONE, 4).add(Items.ARROW, 3).add(Items.BAMBOO, 3);
+            case "variantsandventures:murk" -> new LootPool()
+                .add(Items.BONE, 4).add(Items.ARROW, 3).add(Items.PRISMARINE_SHARD, 2);
+
+            // === Pale Garden mobs ===
+            case "minecraft:creaking" -> new LootPool()
+                .add(Items.STICK, 5).add(Items.OAK_LOG, 3).add(Items.BONE, 2);
+            //? if >=1.21.4 {
+            case "craftics:creaking_heart" -> new LootPool()
+                .add(Items.PALE_OAK_LOG, 4).add(Items.BONE_MEAL, 3).add(Items.RESIN_CLUMP, 2);
+            //?}
+
+            // === Boss mobs (vanilla entities used as bosses) ===
+            case "minecraft:warden" -> new LootPool()
+                .add(Items.SCULK_CATALYST, 3).add(Items.ECHO_SHARD, 4)
+                .add(Items.SCULK, 3);
+            case "minecraft:guardian" -> new LootPool()
+                .add(Items.PRISMARINE_SHARD, 5).add(Items.PRISMARINE_CRYSTALS, 3)
+                .add(Items.COD, 2);
+
             default -> null;
         };
         return pool != null ? pool.roll(1, 2, 1, 3) : List.of();

@@ -422,6 +422,13 @@ public class ArenaBuilder {
                 searchRoots.add(currentDir.getParent().resolve("craftics_arenas"));
                 searchRoots.add(currentDir.getParent().resolve("run/config/worldedit/schematics"));
                 searchRoots.add(currentDir.getParent().resolve("config/worldedit/schematics"));
+                // Stonecutter layout: run/ is under versions/<ver>/run/, repo root is 3 levels up
+                if (currentDir.getParent().getParent() != null) {
+                    searchRoots.add(currentDir.getParent().getParent().resolve("craftics_arenas"));
+                    if (currentDir.getParent().getParent().getParent() != null) {
+                        searchRoots.add(currentDir.getParent().getParent().getParent().resolve("craftics_arenas"));
+                    }
+                }
             }
 
             for (java.nio.file.Path root : searchRoots) {
@@ -898,6 +905,15 @@ public class ArenaBuilder {
                                           boolean isBoss, List<java.nio.file.Path> results) {
         if (!java.nio.file.Files.isDirectory(searchDir)) return;
         try {
+            // Sub-biome IDs like "forest/pale_garden" → look for forest/pale_garden.schem
+            if (biomeId.contains("/")) {
+                java.nio.file.Path subBiomeSchem = searchDir.resolve(biomeId + ".schem");
+                if (java.nio.file.Files.exists(subBiomeSchem) && !results.contains(subBiomeSchem)) {
+                    results.add(subBiomeSchem);
+                }
+                return; // sub-biome: specific file only, no numbered variants
+            }
+
             // WorldEdit-style flat naming: <biome>.schem, <biome>_2.schem, <biome>_boss.schem
             java.util.List<String> aliases = new java.util.ArrayList<>();
             aliases.add(biomeId);

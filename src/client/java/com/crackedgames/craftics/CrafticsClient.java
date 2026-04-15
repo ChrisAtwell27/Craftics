@@ -192,7 +192,7 @@ public class CrafticsClient implements ClientModInitializer {
                 TransitionOverlay.startFadeOut();
                 context.client().setScreen(new com.crackedgames.craftics.client.VictoryChoiceScreen(
                     payload.emeraldsEarned(), payload.totalEmeralds(),
-                    payload.biomeName(), payload.levelIndex()
+                    payload.biomeName(), payload.levelIndex(), payload.nextIsBoss()
                 ));
                 CombatState.setEmeralds(payload.totalEmeralds());
             }

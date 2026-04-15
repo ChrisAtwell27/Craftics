@@ -1074,10 +1074,13 @@ public class CrafticsMod implements ModInitializer {
                     CrafticsSavedData d = CrafticsSavedData.get(finalOverworld);
                     d.allocateWorldSlot(playerUuid);
                     net.minecraft.util.math.BlockPos hubCenter = d.getHubOrigin(playerUuid);
-                    HubRoomBuilder.build(finalOverworld, hubCenter);
+                    net.minecraft.util.math.BlockPos spawnPos = HubRoomBuilder.build(finalOverworld, hubCenter);
                     CrafticsSavedData.PlayerData pd = d.getPlayerData(playerUuid);
                     pd.personalHubBuilt = true;
                     pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
+                    pd.hubSpawnX = spawnPos.getX();
+                    pd.hubSpawnY = spawnPos.getY();
+                    pd.hubSpawnZ = spawnPos.getZ();
                     d.markDirty();
 
                     // Flip the lazy-mode flag on (no actual arenas built).
@@ -1086,7 +1089,7 @@ public class CrafticsMod implements ModInitializer {
                     // Everything is ready — teleport and dismiss loading screen
                     var p = finalOverworld.getServer().getPlayerManager().getPlayer(playerUuid);
                     if (p != null) {
-                        p.requestTeleport(hubCenter.getX() + 0.5, hubCenter.getY(), hubCenter.getZ() + 0.5);
+                        p.requestTeleport(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
                         p.sendMessage(Text.literal(
                             "\u00a7a\u00a7l\u2726 Personal world created! \u00a7r\u00a7aUse \u00a7e/home\u00a7a to return anytime."), false);
                         ServerPlayNetworking.send(p,
@@ -1225,14 +1228,17 @@ public class CrafticsMod implements ModInitializer {
             net.minecraft.util.math.BlockPos hubCenter = data.getHubOrigin(player.getUuid());
 
             // Build the personal hub
-            HubRoomBuilder.build(overworld, hubCenter);
+            net.minecraft.util.math.BlockPos spawnPos = HubRoomBuilder.build(overworld, hubCenter);
             CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
             pd.personalHubBuilt = true;
             pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
+            pd.hubSpawnX = spawnPos.getX();
+            pd.hubSpawnY = spawnPos.getY();
+            pd.hubSpawnZ = spawnPos.getZ();
             data.markDirty();
 
             // Teleport player to their new hub
-            player.requestTeleport(hubCenter.getX() + 0.5, hubCenter.getY(), hubCenter.getZ() + 0.5);
+            player.requestTeleport(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
 
             ctx.getSource().sendFeedback(() -> Text.literal(
                 "\u00a7a\u00a7l\u2726 Personal world created! \u00a7r\u00a7a(Slot " + slot + ")"), true);
@@ -1654,6 +1660,9 @@ public class CrafticsMod implements ModInitializer {
         net.minecraft.block.BlockState floorState = world.getBlockState(floor);
         if (floorState.isAir() || !floorState.isSolidBlock(world, floor)) {
             LOGGER.warn("Personal hub at {} is missing its floor — rebuilding", hubCenter);
+            // Rebuild returns the podzol-based spawn, but we don't update PlayerData here
+            // because we don't have the player UUID. The stored spawn pos is still valid
+            // from the original build — the schematic is deterministic.
             HubRoomBuilder.build(world, hubCenter);
         }
     }
@@ -1665,8 +1674,36 @@ public class CrafticsMod implements ModInitializer {
     private static void teleportToHub(ServerPlayerEntity player, ServerWorld overworld,
                                        net.minecraft.util.math.BlockPos hub) {
         double x = hub.getX() + 0.5;
-        double y = hub.getY();
         double z = hub.getZ() + 0.5;
+        // Find a safe landing spot — scan upward first (island may be above),
+        // then downward as a fallback, to handle both old and new spawn positions.
+        double y = hub.getY();
+        net.minecraft.util.math.BlockPos.Mutable probe = new net.minecraft.util.math.BlockPos.Mutable(
+            hub.getX(), (int) y, hub.getZ());
+        boolean found = false;
+        // Scan upward first (covers raised islands)
+        for (int dy = 0; dy < 60; dy++) {
+            probe.setY((int) y + dy);
+            net.minecraft.block.BlockState below = overworld.getBlockState(probe);
+            net.minecraft.block.BlockState at = overworld.getBlockState(probe.up());
+            if (!below.isAir() && below.isSolidBlock(overworld, probe) && at.isAir()) {
+                y = probe.getY() + 1;
+                found = true;
+                break;
+            }
+        }
+        // Fallback: scan downward
+        if (!found) {
+            for (int dy = 1; dy < 40; dy++) {
+                probe.setY((int) hub.getY() - dy);
+                net.minecraft.block.BlockState below = overworld.getBlockState(probe);
+                net.minecraft.block.BlockState at = overworld.getBlockState(probe.up());
+                if (!below.isAir() && below.isSolidBlock(overworld, probe) && at.isAir()) {
+                    y = probe.getY() + 1;
+                    break;
+                }
+            }
+        }
         if (player.getServerWorld() != overworld) {
             //? if <=1.21.1 {
             /*player.teleport(overworld, x, y, z,

@@ -5,6 +5,10 @@ import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.PersistentState;
+//? if >=1.21.5 {
+/*import net.minecraft.world.PersistentStateType;
+import com.mojang.serialization.Codec;
+*///?}
 
 import com.crackedgames.craftics.achievement.Achievement;
 
@@ -276,6 +280,7 @@ public class PlayerProgression extends PersistentState {
 
     private final transient Map<UUID, PlayerStats> cache = new HashMap<>();
 
+    //? if <=1.21.4 {
     public static PlayerProgression fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
         PlayerProgression pp = new PlayerProgression();
         NbtCompound players = nbt.getCompound("players");
@@ -297,6 +302,30 @@ public class PlayerProgression extends PersistentState {
 
     private static final PersistentState.Type<PlayerProgression> TYPE =
         new PersistentState.Type<>(PlayerProgression::new, PlayerProgression::fromNbt, null);
+    //?} else {
+    /*private static final Codec<PlayerProgression> CODEC = NbtCompound.CODEC.xmap(
+        nbt -> {
+            PlayerProgression pp = new PlayerProgression();
+            NbtCompound players = nbt.getCompoundOrEmpty("players");
+            for (String key : players.getKeys()) {
+                pp.playerData.put(key, players.getString(key, ""));
+            }
+            return pp;
+        },
+        pp -> {
+            NbtCompound nbt = new NbtCompound();
+            NbtCompound players = new NbtCompound();
+            for (Map.Entry<String, String> entry : pp.playerData.entrySet()) {
+                players.putString(entry.getKey(), entry.getValue());
+            }
+            nbt.put("players", players);
+            return nbt;
+        }
+    );
+
+    private static final PersistentStateType<PlayerProgression> TYPE =
+        new PersistentStateType<>("craftics_progression", PlayerProgression::new, CODEC, null);
+    *///?}
 
     public PlayerProgression() {}
 
@@ -349,8 +378,14 @@ public class PlayerProgression extends PersistentState {
         return success;
     }
 
+    //? if <=1.21.4 {
     public static PlayerProgression get(ServerWorld world) {
         // Always overworld so data persists across dimensions
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE, "craftics_progression");
     }
+    //?} else {
+    /*public static PlayerProgression get(ServerWorld world) {
+        return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE);
+    }
+    *///?}
 }

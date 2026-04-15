@@ -147,9 +147,15 @@ public class DamageTypePanel {
         }
     }
 
-    /** Compute total bonus for a damage type from armor set + trims + partial pieces (client-side). */
+    /** Compute total bonus for a damage type from armor set + trims + partial pieces + mob heads (client-side). */
     private static int computeBonus(String armorSet, Map<String, Integer> trimBonuses, DamageType type) {
         int bonus = 0;
+
+        // Mob head bonus (+1 for matching skull type)
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.player != null) {
+            bonus += DamageType.getMobHeadBonus(mc.player.getEquippedStack(EquipmentSlot.HEAD), type);
+        }
 
         // Full armor set bonus
         bonus += switch (armorSet) {

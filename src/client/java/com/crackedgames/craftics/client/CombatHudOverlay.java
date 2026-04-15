@@ -501,13 +501,20 @@ public class CombatHudOverlay implements HudRenderCallback {
         int padding = 3;
         int entryH = headSize + 2;
 
+        // Check if there's a boss to render separately
+        boolean hasBoss = false;
+        for (String tRaw : types.values()) {
+            if (tRaw.contains(";boss=")) { hasBoss = true; break; }
+        }
+        int bossBarSection = hasBoss ? 24 : 0; // boss name + bar + padding
+        int nonBossCount = hasBoss ? enemies.size() - 1 : enemies.size();
         int enemyCount = enemies.size();
-        int showCount = (compact && enemyCount > 4) ? 3 : enemyCount;
-        boolean collapsed = compact && enemyCount > 4;
+        int showCount = (compact && nonBossCount > 4) ? 3 : nonBossCount;
+        boolean collapsed = compact && nonBossCount > 4;
 
-        int panelContentW = headSize + padding + barW + 40;
+        int panelContentW = hasBoss ? 150 : headSize + padding + barW + 40;
         int headerH = 14;
-        int panelContentH = headerH + showCount * entryH + (collapsed ? 14 : 0);
+        int panelContentH = headerH + bossBarSection + showCount * entryH + (collapsed ? 14 : 0);
         int panelPad = 4;
         int panelW = panelContentW + panelPad * 2;
         int panelH = panelContentH + panelPad;
@@ -523,11 +530,66 @@ public class CombatHudOverlay implements HudRenderCallback {
         int startX = panelX + panelPad;
         int y = panelY + headerH;
 
+        // First pass: find and render the boss with a special bar at the top
+        int bossEntityId = -1;
+        String bossDisplayName = null;
+        for (Map.Entry<Integer, String> tEntry : types.entrySet()) {
+            String tRaw = tEntry.getValue();
+            if (tRaw.contains(";boss=")) {
+                bossEntityId = tEntry.getKey();
+                int bIdx = tRaw.indexOf(";boss=") + 6;
+                int bEnd = tRaw.indexOf(';', bIdx);
+                bossDisplayName = bEnd > 0 ? tRaw.substring(bIdx, bEnd) : tRaw.substring(bIdx);
+                break;
+            }
+        }
+
+        if (bossEntityId >= 0 && enemies.containsKey(bossEntityId)) {
+            int[] bossHp = enemies.get(bossEntityId);
+            int bHp = bossHp[0];
+            int bMaxHp = bossHp[1];
+            float bPct = bMaxHp > 0 ? (float) bHp / bMaxHp : 0;
+            String bTypeFull = types.getOrDefault(bossEntityId, "");
+            String bTypeId = bTypeFull.contains(";") ? bTypeFull.substring(0, bTypeFull.indexOf(';')) : bTypeFull;
+
+            // Boss name label — truncate if too wide for the panel
+            String bossLabel = "\u00a74\u00a7l\u2620 " + bossDisplayName;
+            int maxNameW = panelW - panelPad * 2;
+            if (client.textRenderer.getWidth(bossLabel + " \u2620") > maxNameW) {
+                // Trim the display name until it fits
+                while (bossLabel.length() > 6 && client.textRenderer.getWidth(bossLabel + ".. \u2620") > maxNameW) {
+                    bossLabel = bossLabel.substring(0, bossLabel.length() - 1);
+                }
+                bossLabel = bossLabel + ".. \u2620";
+            } else {
+                bossLabel = bossLabel + " \u2620";
+            }
+            ctx.drawCenteredTextWithShadow(client.textRenderer,
+                Text.literal(bossLabel), panelX + panelW / 2, y + 1, 0xFFFF5555);
+            y += 12;
+
+            // Full-width boss HP bar with dark red background
+            int bossBarW = panelContentW;
+            int bossBarH = 8;
+            ctx.fill(startX - 1, y - 1, startX + bossBarW + 1, y + bossBarH + 1, 0xFF440000);
+            ctx.fill(startX, y, startX + bossBarW, y + bossBarH, 0xFF220000);
+            int bossColor = bPct > 0.5f ? 0xFFCC2222 : bPct > 0.25f ? 0xFFCC6600 : 0xFFFF0000;
+            ctx.fill(startX, y, startX + (int)(bossBarW * bPct), y + bossBarH, bossColor);
+            // Compact HP text centered on the bar
+            String bossHpText = "\u00a77" + bHp + "/" + bMaxHp;
+            int bossHpTw = client.textRenderer.getWidth(bossHpText);
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal(bossHpText), startX + (bossBarW - bossHpTw) / 2, y, 0xFFAAAAAA);
+            y += bossBarH + 4;
+        }
+
+        // Second pass: render non-boss enemies
         int drawn = 0;
         for (Map.Entry<Integer, int[]> entry : enemies.entrySet()) {
             if (drawn >= showCount) break;
 
             int entityId = entry.getKey();
+            if (entityId == bossEntityId) continue; // already rendered above
             int[] hpData = entry.getValue();
             int eHp = hpData[0];
             int eMaxHp = hpData[1];

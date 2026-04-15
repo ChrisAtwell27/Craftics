@@ -19,6 +19,11 @@ public class PlayerCombatStats {
         return com.crackedgames.craftics.api.registry.WeaponRegistry.getAttackPower(weapon);
     }
 
+    /** Get attack power for a specific weapon item (avoids reading live mainhand). */
+    public static int getAttackPower(Item weapon) {
+        return com.crackedgames.craftics.api.registry.WeaponRegistry.getAttackPower(weapon);
+    }
+
     public static int getDefense(ServerPlayerEntity player) {
         return player.getArmor();
     }

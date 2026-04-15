@@ -81,13 +81,13 @@ dependencies {
 	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-world:${project.cca_version}")
 
 	// WorldEdit — dev-only (modLocalRuntime, not shipped), used by runArenaEditor.
-	// EngineHub's `worldedit-fabric-mc1.21` artifact is 1.21.1-only and crashes at
-	// FabricWorldEdit.onInitialize on 1.21.2+ (references the removed intermediary
-	// net.minecraft.class_1271). Only attach it on the 1.21.1 shard until a newer
-	// WorldEdit build targets the refactored API; runClient on other shards works
-	// without it (arena building is 1.21.1-only for now).
+	// EngineHub publishes per-MC-version artifacts; pick the matching one per shard.
 	if (stonecutter.eval(project.minecraft_version, "<=1.21.1")) {
-		modLocalRuntime "com.sk89q.worldedit:worldedit-fabric-mc1.21:${project.worldedit_version}"
+		modLocalRuntime "com.sk89q.worldedit:worldedit-fabric-mc1.21:7.3.8"
+	} else if (stonecutter.eval(project.minecraft_version, "<1.21.4")) {
+		modLocalRuntime "com.sk89q.worldedit:worldedit-fabric-mc1.21.3:7.3.9"
+	} else if (stonecutter.eval(project.minecraft_version, ">=1.21.4")) {
+		modLocalRuntime "com.sk89q.worldedit:worldedit-fabric-mc1.21.4:7.3.11"
 	}
 }
 
