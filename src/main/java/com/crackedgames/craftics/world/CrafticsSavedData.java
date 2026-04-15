@@ -5,6 +5,10 @@ import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.PersistentState;
+//? if >=1.21.5 {
+/*import net.minecraft.world.PersistentStateType;
+import com.mojang.serialization.Codec;
+*///?}
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -58,6 +62,8 @@ public class CrafticsSavedData extends PersistentState {
         /** Server-authoritative unlocked guide entries (bestiary mobs, trims) */
         private final java.util.Set<String> unlockedGuideEntries = new java.util.LinkedHashSet<>();
         /** Whether arenas have been pre-generated for this world slot. */
+        /** Hub spawn point (podzol marker position). -1 = not set, fall back to hubCenter. */
+        public int hubSpawnX = -1, hubSpawnY = -1, hubSpawnZ = -1;
         public boolean arenasPreGenerated = false;
         /** Pre-built arena metadata: level -> "originX,originY,originZ,width,height,playerX,playerZ" */
         private final Map<Integer, String> preBuiltArenas = new HashMap<>();
@@ -188,6 +194,9 @@ public class CrafticsSavedData extends PersistentState {
             hubPets.forEach(petList::add);
             nbt.put("hubPets", petList);
             nbt.putString("unlockedGuideEntries", String.join("|", unlockedGuideEntries));
+            nbt.putInt("hubSpawnX", hubSpawnX);
+            nbt.putInt("hubSpawnY", hubSpawnY);
+            nbt.putInt("hubSpawnZ", hubSpawnZ);
             nbt.putBoolean("arenasPreGenerated", arenasPreGenerated);
             NbtCompound arenasMeta = new NbtCompound();
             for (var entry : preBuiltArenas.entrySet()) {
@@ -197,6 +206,7 @@ public class CrafticsSavedData extends PersistentState {
             return nbt;
         }
 
+        //? if <=1.21.4 {
         public static PlayerData fromNbt(NbtCompound nbt) {
             PlayerData pd = new PlayerData();
             pd.highestBiomeUnlocked = nbt.getInt("highestBiomeUnlocked");
@@ -226,6 +236,9 @@ public class CrafticsSavedData extends PersistentState {
                     }
                 }
             }
+            pd.hubSpawnX = nbt.contains("hubSpawnX") ? nbt.getInt("hubSpawnX") : -1;
+            pd.hubSpawnY = nbt.contains("hubSpawnY") ? nbt.getInt("hubSpawnY") : -1;
+            pd.hubSpawnZ = nbt.contains("hubSpawnZ") ? nbt.getInt("hubSpawnZ") : -1;
             pd.arenasPreGenerated = nbt.contains("arenasPreGenerated") && nbt.getBoolean("arenasPreGenerated");
             if (nbt.contains("preBuiltArenas")) {
                 NbtCompound arenasMeta = nbt.getCompound("preBuiltArenas");
@@ -237,6 +250,43 @@ public class CrafticsSavedData extends PersistentState {
             }
             return pd;
         }
+        //?} else {
+        /*public static PlayerData fromNbt(NbtCompound nbt) {
+            PlayerData pd = new PlayerData();
+            pd.highestBiomeUnlocked = nbt.getInt("highestBiomeUnlocked", 0);
+            pd.emeralds = nbt.getInt("emeralds", 0);
+            pd.activeBiomeId = nbt.getString("activeBiomeId", "");
+            pd.activeBiomeLevelIndex = nbt.getInt("activeBiomeLevelIndex", 0);
+            pd.branchChoice = nbt.getInt("branchChoice", -1);
+            pd.discoveredBiomes = nbt.getString("discoveredBiomes", "");
+            pd.ngPlusLevel = nbt.getInt("ngPlusLevel", 0);
+            pd.inCombat = nbt.getBoolean("inCombat", false);
+            pd.starterGuideGranted = nbt.getBoolean("starterGuideGranted", false);
+            pd.worldSlot = nbt.getInt("worldSlot", -1);
+            pd.personalHubBuilt = nbt.getBoolean("personalHubBuilt", false);
+            pd.personalHubVersion = nbt.getInt("personalHubVersion", 0);
+            pd.scaleHpPerLevelEnabled = nbt.getBoolean("scaleHpPerLevelEnabled", true);
+            NbtList pl = nbt.getListOrEmpty("hubPets");
+            for (int i = 0; i < pl.size(); i++) pl.getCompound(i).ifPresent(pd.hubPets::add);
+            String guideRaw = nbt.getString("unlockedGuideEntries", "");
+            if (!guideRaw.isEmpty()) {
+                for (String entry : guideRaw.split("\\|")) {
+                    if (!entry.isEmpty()) pd.unlockedGuideEntries.add(entry);
+                }
+            }
+            pd.hubSpawnX = nbt.getInt("hubSpawnX", -1);
+            pd.hubSpawnY = nbt.getInt("hubSpawnY", -1);
+            pd.hubSpawnZ = nbt.getInt("hubSpawnZ", -1);
+            pd.arenasPreGenerated = nbt.getBoolean("arenasPreGenerated", false);
+            NbtCompound arenasMeta = nbt.getCompoundOrEmpty("preBuiltArenas");
+            for (String key : arenasMeta.getKeys()) {
+                try {
+                    pd.preBuiltArenas.put(Integer.parseInt(key), arenasMeta.getString(key, ""));
+                } catch (NumberFormatException ignored) {}
+            }
+            return pd;
+        }
+        *///?}
     }
 
     public CrafticsSavedData() {}
@@ -250,6 +300,7 @@ public class CrafticsSavedData extends PersistentState {
         return getPlayerData(player.getUuid());
     }
 
+    //? if <=1.21.4 {
     public static CrafticsSavedData fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
         CrafticsSavedData data = new CrafticsSavedData();
         data.hubBuilt = nbt.getBoolean("hubBuilt");
@@ -324,6 +375,85 @@ public class CrafticsSavedData extends PersistentState {
     public static CrafticsSavedData get(ServerWorld world) {
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE, "craftics_data");
     }
+    //?} else {
+    /*private static CrafticsSavedData decodeNbt(NbtCompound nbt) {
+        CrafticsSavedData data = new CrafticsSavedData();
+        data.hubBuilt = nbt.getBoolean("hubBuilt", false);
+        data.hubVersion = nbt.getInt("hubVersion", 0);
+        data.nextWorldSlot = nbt.getInt("nextWorldSlot", 0);
+
+        NbtCompound playersNbt = nbt.getCompoundOrEmpty("players");
+        for (String key : playersNbt.getKeys()) {
+            try {
+                UUID uuid = UUID.fromString(key);
+                playersNbt.getCompound(key).ifPresent(playerNbt ->
+                    data.players.put(uuid, PlayerData.fromNbt(playerNbt)));
+            } catch (IllegalArgumentException ignored) {}
+        }
+
+        // Legacy migration from single-player save format
+        if (nbt.contains("highestBiomeUnlocked") && !nbt.contains("players")) {
+            PlayerData legacy = new PlayerData();
+            legacy.highestBiomeUnlocked = nbt.getInt("highestBiomeUnlocked", 0);
+            legacy.emeralds = nbt.getInt("emeralds", 0);
+            legacy.activeBiomeId = nbt.getString("activeBiomeId", "");
+            legacy.activeBiomeLevelIndex = nbt.getInt("activeBiomeLevelIndex", 0);
+            legacy.branchChoice = nbt.getInt("branchChoice", -1);
+            legacy.discoveredBiomes = nbt.getString("discoveredBiomes", "");
+            legacy.ngPlusLevel = nbt.getInt("ngPlusLevel", 0);
+            data.players.put(new UUID(0, 0), legacy);
+        }
+
+        NbtCompound partiesNbt = nbt.getCompoundOrEmpty("parties");
+        for (String key : partiesNbt.getKeys()) {
+            try {
+                UUID partyId = UUID.fromString(key);
+                partiesNbt.getCompound(key).ifPresent(partyNbt -> {
+                    Party party = Party.fromNbt(partyNbt);
+                    data.parties.put(partyId, party);
+                    for (UUID memberUuid : party.getMemberUuids()) {
+                        data.playerToParty.put(memberUuid, partyId);
+                    }
+                });
+            } catch (IllegalArgumentException ignored) {}
+        }
+
+        return data;
+    }
+
+    private NbtCompound encodeNbt() {
+        NbtCompound nbt = new NbtCompound();
+        nbt.putBoolean("hubBuilt", hubBuilt);
+        nbt.putInt("hubVersion", hubVersion);
+        nbt.putInt("nextWorldSlot", nextWorldSlot);
+
+        NbtCompound playersNbt = new NbtCompound();
+        for (var entry : players.entrySet()) {
+            playersNbt.put(entry.getKey().toString(), entry.getValue().toNbt());
+        }
+        nbt.put("players", playersNbt);
+
+        NbtCompound partiesNbt = new NbtCompound();
+        for (var entry : parties.entrySet()) {
+            partiesNbt.put(entry.getKey().toString(), entry.getValue().toNbt());
+        }
+        nbt.put("parties", partiesNbt);
+
+        return nbt;
+    }
+
+    private static final Codec<CrafticsSavedData> CODEC = NbtCompound.CODEC.xmap(
+        CrafticsSavedData::decodeNbt,
+        CrafticsSavedData::encodeNbt
+    );
+
+    private static final PersistentStateType<CrafticsSavedData> TYPE =
+        new PersistentStateType<>("craftics_data", CrafticsSavedData::new, CODEC, null);
+
+    public static CrafticsSavedData get(ServerWorld world) {
+        return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE);
+    }
+    *///?}
 
     public Party getParty(UUID partyId) {
         return parties.get(partyId);
@@ -440,6 +570,18 @@ public class CrafticsSavedData extends PersistentState {
         return getWorldOrigin(playerId);
     }
 
+    /**
+     * Returns the podzol-based spawn point if set, otherwise falls back to hub center.
+     * This is the position players actually teleport to for /home.
+     */
+    public net.minecraft.util.math.BlockPos getHubSpawnPos(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.hubSpawnX >= 0 && pd.hubSpawnY >= 0 && pd.hubSpawnZ >= 0) {
+            return new net.minecraft.util.math.BlockPos(pd.hubSpawnX, pd.hubSpawnY, pd.hubSpawnZ);
+        }
+        return getHubOrigin(playerId);
+    }
+
     /** Offset from hub center to first arena — well beyond render distance. */
     private static final int ARENA_OFFSET = 1000;
 
@@ -491,13 +633,13 @@ public class CrafticsSavedData extends PersistentState {
     }
 
     /**
-     * Get the hub teleport position for a player. Resolves to their personal hub,
-     * or the party leader's hub, or the central lobby if no personal world exists.
+     * Get the hub teleport position for a player. Resolves to the podzol-based spawn
+     * in their (or party leader's) personal hub, or the central lobby if no world exists.
      */
     public net.minecraft.util.math.BlockPos getHubTeleportPos(UUID playerId) {
         UUID owner = getEffectiveWorldOwner(playerId);
-        net.minecraft.util.math.BlockPos hub = getHubOrigin(owner);
-        if (hub != null) return hub;
+        net.minecraft.util.math.BlockPos spawn = getHubSpawnPos(owner);
+        if (spawn != null) return spawn;
         // Fallback to central lobby
         return new net.minecraft.util.math.BlockPos(0, 65, 0);
     }

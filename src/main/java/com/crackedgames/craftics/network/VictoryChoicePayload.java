@@ -14,33 +14,54 @@ import net.minecraft.util.Identifier;
  * isBossLevel: true if the player just beat the biome boss
  * biomeName: display name of the current biome
  * levelIndex: current level index within biome (0-4)
+ * nextIsBoss: true if the next level in the biome is a boss fight
  */
 public record VictoryChoicePayload(int emeraldsEarned, int totalEmeralds,
                                     boolean isBossLevel, String biomeName,
-                                    int levelIndex) implements CustomPayload {
+                                    int levelIndex, boolean nextIsBoss) implements CustomPayload {
 
     public static final CustomPayload.Id<VictoryChoicePayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "victory_choice"));
 
     //? if <=1.21.3 {
     /*public static final PacketCodec<RegistryByteBuf, VictoryChoicePayload> CODEC =
-        PacketCodec.tuple(
-            PacketCodecs.INTEGER, VictoryChoicePayload::emeraldsEarned,
-            PacketCodecs.INTEGER, VictoryChoicePayload::totalEmeralds,
-            PacketCodecs.BOOL, VictoryChoicePayload::isBossLevel,
-            PacketCodecs.STRING, VictoryChoicePayload::biomeName,
-            PacketCodecs.INTEGER, VictoryChoicePayload::levelIndex,
-            VictoryChoicePayload::new
+        PacketCodec.of(
+            (payload, buf) -> {
+                PacketCodecs.INTEGER.encode(buf, payload.emeraldsEarned);
+                PacketCodecs.INTEGER.encode(buf, payload.totalEmeralds);
+                PacketCodecs.BOOL.encode(buf, payload.isBossLevel);
+                PacketCodecs.STRING.encode(buf, payload.biomeName);
+                PacketCodecs.INTEGER.encode(buf, payload.levelIndex);
+                PacketCodecs.BOOL.encode(buf, payload.nextIsBoss);
+            },
+            buf -> new VictoryChoicePayload(
+                PacketCodecs.INTEGER.decode(buf),
+                PacketCodecs.INTEGER.decode(buf),
+                PacketCodecs.BOOL.decode(buf),
+                PacketCodecs.STRING.decode(buf),
+                PacketCodecs.INTEGER.decode(buf),
+                PacketCodecs.BOOL.decode(buf)
+            )
         );
     *///?} else {
     public static final PacketCodec<RegistryByteBuf, VictoryChoicePayload> CODEC =
-        PacketCodec.tuple(
-            PacketCodecs.INTEGER, VictoryChoicePayload::emeraldsEarned,
-            PacketCodecs.INTEGER, VictoryChoicePayload::totalEmeralds,
-            PacketCodecs.BOOLEAN, VictoryChoicePayload::isBossLevel,
-            PacketCodecs.STRING, VictoryChoicePayload::biomeName,
-            PacketCodecs.INTEGER, VictoryChoicePayload::levelIndex,
-            VictoryChoicePayload::new
+        PacketCodec.of(
+            (payload, buf) -> {
+                PacketCodecs.INTEGER.encode(buf, payload.emeraldsEarned);
+                PacketCodecs.INTEGER.encode(buf, payload.totalEmeralds);
+                PacketCodecs.BOOLEAN.encode(buf, payload.isBossLevel);
+                PacketCodecs.STRING.encode(buf, payload.biomeName);
+                PacketCodecs.INTEGER.encode(buf, payload.levelIndex);
+                PacketCodecs.BOOLEAN.encode(buf, payload.nextIsBoss);
+            },
+            buf -> new VictoryChoicePayload(
+                PacketCodecs.INTEGER.decode(buf),
+                PacketCodecs.INTEGER.decode(buf),
+                PacketCodecs.BOOLEAN.decode(buf),
+                PacketCodecs.STRING.decode(buf),
+                PacketCodecs.INTEGER.decode(buf),
+                PacketCodecs.BOOLEAN.decode(buf)
+            )
         );
     //?}
 

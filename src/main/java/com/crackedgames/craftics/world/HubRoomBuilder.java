@@ -182,150 +182,58 @@ public class HubRoomBuilder {
         buildLobby(world);
     }
 
-    /** Build a simple starter hut at the specified center position. Players can modify freely. */
-    public static void build(ServerWorld world, BlockPos hubCenter) {
-        ox = hubCenter.getX();
-        oz = hubCenter.getZ();
-        CrafticsMod.LOGGER.info("Building starter hut at ({}, {})...", ox, oz);
+    /**
+     * Build the player's home island by pasting the bundled home.schem at hubCenter.
+     * Scans for podzol to determine the spawn point. Returns the spawn BlockPos
+     * (one block above the podzol), or hubCenter as a fallback.
+     */
+    public static BlockPos build(ServerWorld world, BlockPos hubCenter) {
+        CrafticsMod.LOGGER.info("Building home island at {}...", hubCenter);
 
-        BlockState oak = Blocks.OAK_PLANKS.getDefaultState();
-        BlockState log = Blocks.OAK_LOG.getDefaultState();
-        BlockState glass = Blocks.GLASS.getDefaultState();
-        BlockState grass = Blocks.GRASS_BLOCK.getDefaultState();
-        BlockState dirt = Blocks.DIRT.getDefaultState();
-        BlockState air = Blocks.AIR.getDefaultState();
-        BlockState door_lower = Blocks.OAK_DOOR.getDefaultState()
-            .with(Properties.HORIZONTAL_FACING, Direction.SOUTH)
-            .with(Properties.DOUBLE_BLOCK_HALF, net.minecraft.block.enums.DoubleBlockHalf.LOWER);
-        BlockState door_upper = Blocks.OAK_DOOR.getDefaultState()
-            .with(Properties.HORIZONTAL_FACING, Direction.SOUTH)
-            .with(Properties.DOUBLE_BLOCK_HALF, net.minecraft.block.enums.DoubleBlockHalf.UPPER);
+        net.minecraft.util.Identifier schemId = net.minecraft.util.Identifier.of("craftics", "home.schem");
+        var resource = world.getServer().getResourceManager().getResource(schemId);
+        if (resource.isEmpty()) {
+            CrafticsMod.LOGGER.error("home.schem not found in resources — cannot build island");
+            return hubCenter;
+        }
 
-        // Hut: 10x10 exterior (even width so level select centers on 2 blocks)
-        // Walls at -4..5 in both axes, interior -3..4
-        int minX = -4, maxX = 5;
-        int minZ = -4, maxZ = 5;
-        int floorY = 64;
-        int interiorY = 65;
-        int ceilingY = 68;
+        com.crackedgames.craftics.level.SchemLoader.SchemData schem;
+        try (java.io.InputStream in = resource.get().getInputStream()) {
+            schem = com.crackedgames.craftics.level.SchemLoader.load(in, schemId.toString());
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.error("Failed to read home.schem", e);
+            return hubCenter;
+        }
+        if (schem == null) return hubCenter;
 
-        // Ground: grass platform with dirt below
-        int platMin = -12, platMax = 12;
-        for (int x = platMin; x <= platMax; x++) {
-            for (int z = platMin; z <= platMax; z++) {
-                world.setBlockState(bp(x, floorY - 2, z), dirt);
-                world.setBlockState(bp(x, floorY - 1, z), dirt);
-                world.setBlockState(bp(x, floorY, z), grass);
-                for (int y = interiorY; y <= ceilingY + 3; y++) {
-                    world.setBlockState(bp(x, y, z), air);
+        // Place the schematic centered on hubCenter, raised 20 blocks above the base Y
+        int placeX = hubCenter.getX() - schem.width() / 2;
+        int placeY = hubCenter.getY() - schem.height() / 2 + 20;
+        int placeZ = hubCenter.getZ() - schem.length() / 2;
+        schem.place(world, placeX, placeY, placeZ);
+
+        // Scan for podzol — the marker block for the spawn point
+        BlockPos spawnPos = hubCenter; // fallback
+        for (int y = 0; y < schem.height(); y++) {
+            for (int z = 0; z < schem.length(); z++) {
+                for (int x = 0; x < schem.width(); x++) {
+                    BlockState state = world.getBlockState(
+                        new BlockPos(placeX + x, placeY + y, placeZ + z));
+                    if (state.isOf(Blocks.PODZOL)) {
+                        // Spawn one block above the podzol
+                        spawnPos = new BlockPos(placeX + x, placeY + y + 1, placeZ + z);
+                        CrafticsMod.LOGGER.info("Home island podzol spawn marker at {}", spawnPos);
+                        break;
+                    }
                 }
+                if (spawnPos != hubCenter) break;
             }
+            if (spawnPos != hubCenter) break;
         }
 
-        // Floor
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                world.setBlockState(bp(x, floorY, z), oak);
-            }
-        }
-
-        // Walls (3 high)
-        for (int y = interiorY; y <= interiorY + 2; y++) {
-            for (int x = minX; x <= maxX; x++) {
-                world.setBlockState(bp(x, y, minZ), oak);
-                world.setBlockState(bp(x, y, maxZ), oak);
-            }
-            for (int z = minZ; z <= maxZ; z++) {
-                world.setBlockState(bp(minX, y, z), oak);
-                world.setBlockState(bp(maxX, y, z), oak);
-            }
-        }
-
-        // Corner logs (full height)
-        for (int y = interiorY; y <= interiorY + 2; y++) {
-            world.setBlockState(bp(minX, y, minZ), log);
-            world.setBlockState(bp(maxX, y, minZ), log);
-            world.setBlockState(bp(minX, y, maxZ), log);
-            world.setBlockState(bp(maxX, y, maxZ), log);
-        }
-
-        // Ceiling
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                world.setBlockState(bp(x, ceilingY, z), oak);
-            }
-        }
-
-        // Clear interior
-        for (int x = minX + 1; x <= maxX - 1; x++) {
-            for (int z = minZ + 1; z <= maxZ - 1; z++) {
-                for (int y = interiorY; y <= ceilingY - 1; y++) {
-                    world.setBlockState(bp(x, y, z), air);
-                }
-            }
-        }
-
-        // Door (south wall, centered between 0 and 1)
-        world.setBlockState(bp(0, interiorY, maxZ), door_lower);
-        world.setBlockState(bp(0, interiorY + 1, maxZ), door_upper);
-
-        // Windows (glass blocks, 2 wide on each wall)
-        for (int wx : new int[]{0, 1}) {
-            world.setBlockState(bp(wx, interiorY + 1, minZ), glass); // north
-        }
-        world.setBlockState(bp(minX, interiorY + 1, 0), glass); // west
-        world.setBlockState(bp(minX, interiorY + 1, 1), glass);
-        world.setBlockState(bp(maxX, interiorY + 1, 0), glass); // east
-        world.setBlockState(bp(maxX, interiorY + 1, 1), glass);
-
-        // Crafting table (NW corner)
-        world.setBlockState(bp(minX + 1, interiorY, minZ + 1), Blocks.CRAFTING_TABLE.getDefaultState());
-
-        // Furnace (NE corner)
-        world.setBlockState(bp(maxX - 1, interiorY, minZ + 1), Blocks.FURNACE.getDefaultState()
-            .with(Properties.HORIZONTAL_FACING, Direction.SOUTH));
-
-        // Level select block (centered on north wall, shifted 1 right)
-        world.setBlockState(bp(1, interiorY, minZ + 1),
-            ModBlocks.LEVEL_SELECT_BLOCK.getDefaultState()
-                .with(com.crackedgames.craftics.block.LevelSelectBlock.FACING, Direction.EAST));
-
-        // Hanging lantern (centered)
-        world.setBlockState(bp(0, interiorY + 2, 1), Blocks.LANTERN.getDefaultState()
-            .with(Properties.HANGING, true));
-
-        // --- Farm area (east side of house) ---
-        // 5x5 farmland patch with a single water source in the center
-        int farmCX = 9, farmCZ = 0; // center of farm
-        for (int fx = farmCX - 2; fx <= farmCX + 2; fx++) {
-            for (int fz = farmCZ - 2; fz <= farmCZ + 2; fz++) {
-                world.setBlockState(bp(fx, floorY, fz),
-                    Blocks.FARMLAND.getDefaultState()
-                        .with(Properties.MOISTURE, 7)); // fully hydrated
-            }
-        }
-        // Water source in the center (replaces farmland there)
-        world.setBlockState(bp(farmCX, floorY, farmCZ), Blocks.WATER.getDefaultState());
-
-        // --- Single tree (west side of house) ---
-        int treeX = -9, treeZ = 0;
-        BlockState treeLog = Blocks.OAK_LOG.getDefaultState();
-        BlockState treeLeaves = Blocks.OAK_LEAVES.getDefaultState()
-            .with(Properties.PERSISTENT, true);
-        // Trunk (4 high)
-        for (int ty = 0; ty < 4; ty++) {
-            world.setBlockState(bp(treeX, interiorY + ty, treeZ), treeLog);
-        }
-        // Leaf canopy (3x3x2 on top of trunk, plus a cap)
-        for (int lx = -1; lx <= 1; lx++) {
-            for (int lz = -1; lz <= 1; lz++) {
-                world.setBlockState(bp(treeX + lx, interiorY + 3, treeZ + lz), treeLeaves);
-                world.setBlockState(bp(treeX + lx, interiorY + 4, treeZ + lz), treeLeaves);
-            }
-        }
-        world.setBlockState(bp(treeX, interiorY + 5, treeZ), treeLeaves);
-
-        CrafticsMod.LOGGER.info("Starter hut built at ({}, {}).", ox, oz);
+        CrafticsMod.LOGGER.info("Home island built. origin=({},{},{}), size={}x{}x{}, spawn={}",
+            placeX, placeY, placeZ, schem.width(), schem.height(), schem.length(), spawnPos);
+        return spawnPos;
     }
 
     /**

@@ -95,12 +95,102 @@ public class LevelGenerator {
             (int)(Math.min(lootMinTotal, 8) * lootMult), (int)(Math.min(lootMaxTotal, 10) * lootMult)
         );
 
-        return new GeneratedLevelDefinition(
+        GeneratedLevelDefinition levelDef = new GeneratedLevelDefinition(
             levelNumber, name, width, height, playerStart,
             biome.floorBlocks[0], tiles, enemies, loot,
             biome.nightLevel, biome
         );
+
+        //? if >=1.21.4 {
+        // Pale Garden sub-biome: at the forest midpoint, spawn creakings instead
+        if ("forest".equals(biome.biomeId) && !isBoss && biomeIndex == biome.levelCount / 2) {
+            levelDef = buildPaleGardenLevel(levelNumber, biome, biomeIndex, width, height, loot, rand, scaleHpPerLevel, branchChoice);
+        }
+        //?}
+
+        return levelDef;
     }
+
+    //? if >=1.21.4 {
+    private static GeneratedLevelDefinition buildPaleGardenLevel(
+            int levelNumber, BiomeTemplate biome, int biomeIndex,
+            int width, int height, List<ItemStack> loot,
+            Random rand, boolean scaleHpPerLevel, int branchChoice) {
+
+        GridPos playerStart = new GridPos(width / 2, 0);
+        GridTile[][] tiles = generateTiles(biome, width, height, biomeIndex, rand);
+
+        // Compute scaling bonuses (mirrors generateEnemies logic)
+        java.util.List<String> fullPath = BiomePath.getFullPath(branchChoice);
+        int biomeOrdinal = Math.max(0, fullPath.indexOf(biome.biomeId));
+        int hpBonus = biomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
+        int atkBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());
+        if (scaleHpPerLevel) hpBonus += biomeIndex * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerLevel();
+
+        // Spawn 2 creakings, each paired with a creaking heart
+        int creakingCount = 2;
+        java.util.List<LevelDefinition.EnemySpawn> spawns = new java.util.ArrayList<>();
+        java.util.List<GridPos> used = new java.util.ArrayList<>();
+        used.add(playerStart);
+
+        for (int i = 0; i < creakingCount; i++) {
+            // Creaking mob
+            GridPos creakingPos = findOpenSpawn(tiles, width, height, used, rand);
+            if (creakingPos == null) continue;
+            used.add(creakingPos);
+            spawns.add(new LevelDefinition.EnemySpawn("minecraft:creaking", creakingPos,
+                18 + hpBonus, 5 + atkBonus, 2, 1));
+
+            // Creaking Heart — placed nearby behind the creaking (away from player)
+            GridPos heartPos = findOpenSpawn(tiles, width, height, used, rand);
+            if (heartPos == null) continue;
+            used.add(heartPos);
+            spawns.add(new LevelDefinition.EnemySpawn("craftics:creaking_heart", heartPos,
+                10 + hpBonus / 2, 0, 0, 0));
+        }
+
+        // Also add 1-2 normal forest hostiles for variety
+        int extraCount = 1 + (rand.nextFloat() < 0.5f ? 1 : 0);
+        for (int i = 0; i < extraCount; i++) {
+            if (biome.hostileMobs.length == 0) break;
+            MobPoolEntry mob = biome.hostileMobs[rand.nextInt(biome.hostileMobs.length)];
+            GridPos pos = findOpenSpawn(tiles, width, height, used, rand);
+            if (pos == null) continue;
+            used.add(pos);
+            spawns.add(new LevelDefinition.EnemySpawn(mob.entityTypeId(), pos,
+                mob.baseHp() + hpBonus, mob.baseAttack() + atkBonus, mob.baseDefense(), mob.range()));
+        }
+
+        LevelDefinition.EnemySpawn[] enemies = spawns.toArray(new LevelDefinition.EnemySpawn[0]);
+        String name = "Pale Garden";
+
+        GeneratedLevelDefinition def = new GeneratedLevelDefinition(
+            levelNumber, name, width, height, playerStart,
+            net.minecraft.block.Blocks.PALE_MOSS_BLOCK, tiles, enemies, loot,
+            true, biome // night = true for creepy atmosphere
+        );
+        def.setArenaBiomeOverride("forest/pale_garden");
+        return def;
+    }
+
+    private static GridPos findOpenSpawn(GridTile[][] tiles, int w, int h,
+                                          java.util.List<GridPos> used, Random rand) {
+        for (int attempts = 0; attempts < 40; attempts++) {
+            int x = 1 + rand.nextInt(w - 2);
+            int z = 2 + rand.nextInt(h - 3);
+            GridPos pos = new GridPos(x, z);
+            boolean tooClose = false;
+            for (GridPos u : used) {
+                if (Math.abs(u.x() - x) + Math.abs(u.z() - z) < 2) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (!tooClose && tiles[x][z].isSafeForSpawn()) return pos;
+        }
+        return null;
+    }
+    //?}
 
     private static GridTile[][] generateTiles(BiomeTemplate biome, int w, int h,
                                                 int biomeIndex, Random rand) {

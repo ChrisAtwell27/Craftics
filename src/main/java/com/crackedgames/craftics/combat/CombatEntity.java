@@ -48,6 +48,8 @@ public class CombatEntity {
     private boolean deathProcessed = false; // guards against double death handling
     private boolean hasSplit = false; // guards against double-splitting (Molten King)
     private EnemyAI aiInstance = null; // per-entity AI override (for split copies with own state)
+    private int linkedHeartId = -1; // creaking → heart link (heart death kills creaking)
+    private int linkedCreakingId = -1; // heart → creaking back-link
 
     public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
                         int maxHp, int attackPower, int defense, int range) {
@@ -94,6 +96,10 @@ public class CombatEntity {
     public void markDeathProcessed() { this.deathProcessed = true; }
     public boolean hasSplit() { return hasSplit; }
     public void markSplit() { this.hasSplit = true; }
+    public int getLinkedHeartId() { return linkedHeartId; }
+    public void setLinkedHeartId(int id) { this.linkedHeartId = id; }
+    public int getLinkedCreakingId() { return linkedCreakingId; }
+    public void setLinkedCreakingId(int id) { this.linkedCreakingId = id; }
     public EnemyAI getAiInstance() { return aiInstance; }
     public void setAiInstance(EnemyAI ai) { this.aiInstance = ai; }
 

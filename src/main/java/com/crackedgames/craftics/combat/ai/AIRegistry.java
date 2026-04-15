@@ -70,7 +70,8 @@ public class AIRegistry {
         register("minecraft:ocelot", new OcelotAI());         // fast hit-and-run
         register("minecraft:ravager", new RavagerAI());       // mounted melee, charges + stomps
         // === Spellcasters ===
-        register("minecraft:evoker", new EvokerAI());    // fang attacks, keeps distance
+        register("minecraft:evoker", new EvokerAI());    // fang attacks, summons 1 vex, keeps distance
+        register("minecraft:vex", new ZombieAI());        // fast aggressive melee (summoned by evoker)
 
         // === Boss mobs (vanilla AI fallback when not boss-flagged) ===
         register("minecraft:warden", new WardenAI());  // Deep Dark boss, phase-shifting
@@ -95,6 +96,12 @@ public class AIRegistry {
         register("minecraft:cave_spider", new CaveSpiderAI());   // fast venomous pouncer
         register("minecraft:silverfish", new SilverfishAI());     // swarmer flanker
         register("minecraft:slime", new SlimeAI());               // bouncy pounce charger
+
+        // === Pale Garden mobs (1.21.4+) ===
+        //? if >=1.21.4 {
+        register("minecraft:creaking", new CreakingAI());           // invulnerable guardian, linked to heart
+        register("craftics:creaking_heart", new CreakingHeartAI()); // stationary target, kill to destroy creaking
+        //?}
 
         // === End pests ===
         register("minecraft:endermite", new EndermiteAI()); // blink-swarmer, short-range teleport + attack

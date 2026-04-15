@@ -18,17 +18,19 @@ public class VictoryChoiceScreen extends Screen {
     private final int totalEmeralds;
     private final String biomeName;
     private final int levelIndex;
+    private final boolean nextIsBoss;
 
     /** True when this screen is prompting for a trial/event, not a regular level victory. */
     private final boolean isEventPrompt;
 
     public VictoryChoiceScreen(int emeraldsEarned, int totalEmeralds,
-                                String biomeName, int levelIndex) {
+                                String biomeName, int levelIndex, boolean nextIsBoss) {
         super(Text.literal("Victory!"));
         this.emeraldsEarned = emeraldsEarned;
         this.totalEmeralds = totalEmeralds;
         this.biomeName = biomeName;
         this.levelIndex = levelIndex;
+        this.nextIsBoss = nextIsBoss;
         this.isEventPrompt = (levelIndex == -1);
     }
 
@@ -100,16 +102,30 @@ public class VictoryChoiceScreen extends Screen {
             ).dimensions(centerX - btnW / 2, centerY + 30, btnW, btnH).build());
 
             int nextLevel = levelIndex + 1; // payload is already next level index (0-based)
-            this.addDrawableChild(ButtonWidget.builder(
-                Text.literal("\u00a7c\u2694 Continue to Level " + nextLevel + " (Risk it all!)"),
-                btn -> {
-                    this.close();
-                    TransitionOverlay.startTransition(
-                        biomeName + " \u2014 Level " + nextLevel, "Onward!",
-                        () -> ClientPlayNetworking.send(new PostLevelChoicePayload(false))
-                    );
-                }
-            ).dimensions(centerX - btnW / 2, centerY + 55, btnW, btnH).build());
+            if (nextIsBoss) {
+                this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal("\u00a74\u00a7l\u2620 BOSS FIGHT: " + biomeName + " \u2620 (Risk it all!)"),
+                    btn -> {
+                        this.close();
+                        TransitionOverlay.startTransition(
+                            "\u00a74\u00a7l\u2620 BOSS FIGHT \u2620",
+                            biomeName + " \u2014 Prepare yourself...",
+                            () -> ClientPlayNetworking.send(new PostLevelChoicePayload(false))
+                        );
+                    }
+                ).dimensions(centerX - btnW / 2, centerY + 55, btnW, btnH).build());
+            } else {
+                this.addDrawableChild(ButtonWidget.builder(
+                    Text.literal("\u00a7c\u2694 Continue to Level " + nextLevel + " (Risk it all!)"),
+                    btn -> {
+                        this.close();
+                        TransitionOverlay.startTransition(
+                            biomeName + " \u2014 Level " + nextLevel, "Onward!",
+                            () -> ClientPlayNetworking.send(new PostLevelChoicePayload(false))
+                        );
+                    }
+                ).dimensions(centerX - btnW / 2, centerY + 55, btnW, btnH).build());
+            }
         }
     }
 
@@ -201,10 +217,20 @@ public class VictoryChoiceScreen extends Screen {
             Text.literal("\u00a7a+ " + emeraldsEarned + " Emeralds  \u00a77(Total: " + totalEmeralds + ")"),
             cx, cy - 18, 0x55FF55);
 
-        // Warning
-        context.drawCenteredTextWithShadow(this.textRenderer,
-            Text.literal("\u00a7c\u26a0 If you die, you lose ALL items!"),
-            cx, cy + 10, 0xFF5555);
+        if (nextIsBoss) {
+            // Boss warning — big and red
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("\u00a74\u00a7l\u2620 WARNING: NEXT LEVEL IS A BOSS FIGHT! \u2620"),
+                cx, cy + 4, 0xFF5555);
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("\u00a7c\u26a0 If you die, you lose ALL items!"),
+                cx, cy + 18, 0xFF5555);
+        } else {
+            // Normal warning
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                Text.literal("\u00a7c\u26a0 If you die, you lose ALL items!"),
+                cx, cy + 10, 0xFF5555);
+        }
     }
 
     @Override

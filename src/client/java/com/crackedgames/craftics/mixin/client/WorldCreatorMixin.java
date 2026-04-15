@@ -26,7 +26,6 @@ public abstract class WorldCreatorMixin {
             Optional<RegistryKey<WorldPreset>> defaultPreset,
             OptionalLong seed,
             CallbackInfo ci) {
-        if (defaultPreset.isPresent()) return; // don't override an explicit preset
         WorldCreator self = (WorldCreator) (Object) this;
         for (WorldCreator.WorldType type : self.getNormalWorldTypes()) {
             if (type.preset().getKey().isPresent()
