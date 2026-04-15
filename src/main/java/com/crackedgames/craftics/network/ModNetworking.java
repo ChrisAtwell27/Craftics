@@ -223,7 +223,10 @@ public class ModNetworking {
                         memberFeatherSlot = targetSlot;
                     }
                     if (memberFeatherSlot >= 0 && memberFeatherSlot <= 8) {
+                        //? if <=1.21.4 {
                         member.getInventory().selectedSlot = memberFeatherSlot;
+                        //?} else
+                        /*member.getInventory().setSelectedSlot(memberFeatherSlot);*/
                     }
                     // Also set EventManager on their CombatManager for between-level coordination
                     CombatManager.get(memberUuid).setEventManager(em);

@@ -901,7 +901,33 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) p.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         BlockPos hub = data.getHubTeleportPos(p.getUuid());
-        p.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+        // Scan for a safe landing spot so stale/fallback hub Y values don't drop
+        // the player into air, water, or inside a block.
+        BlockPos.Mutable probe = new BlockPos.Mutable(hub.getX(), hub.getY(), hub.getZ());
+        int y = hub.getY();
+        boolean found = false;
+        for (int dy = 0; dy < 60; dy++) {
+            probe.setY(hub.getY() + dy);
+            net.minecraft.block.BlockState below = world.getBlockState(probe);
+            net.minecraft.block.BlockState at = world.getBlockState(probe.up());
+            if (!below.isAir() && below.isSolidBlock(world, probe) && at.isAir()) {
+                y = probe.getY() + 1;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            for (int dy = 1; dy < 40; dy++) {
+                probe.setY(hub.getY() - dy);
+                net.minecraft.block.BlockState below = world.getBlockState(probe);
+                net.minecraft.block.BlockState at = world.getBlockState(probe.up());
+                if (!below.isAir() && below.isSolidBlock(world, probe) && at.isAir()) {
+                    y = probe.getY() + 1;
+                    break;
+                }
+            }
+        }
+        p.requestTeleport(hub.getX() + 0.5, y, hub.getZ() + 0.5);
     }
 
     // Best-effort tame state via reflection -- resilient across mapping/name changes
@@ -1501,9 +1527,11 @@ public class CombatManager {
 
         String bossEntityTypeId = null;
         String bossBiomeId = null;
+        String spawnBiomeId = null;
         int spawnBiomeOrdinal = 0;
         if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
             BiomeTemplate biome = gld.getBiomeTemplate();
+            spawnBiomeId = biome.biomeId;
             if (biome.isBossLevel(gld.getLevelNumber()) && biome.boss != null) {
                 bossEntityTypeId = biome.boss.entityTypeId();
                 bossBiomeId = biome.biomeId;
@@ -1516,6 +1544,7 @@ public class CombatManager {
             if (idx >= 0) spawnBiomeOrdinal = idx;
         }
         final int finalBiomeOrdinal = spawnBiomeOrdinal;
+        final String finalSpawnBiomeId = spawnBiomeId;
 
         // Must set night before spawning undead or they burn on first tick
         boolean willHaveUndead = false;
@@ -1704,6 +1733,9 @@ public class CombatManager {
                 mob.setPersistent();
                 mob.setHealth(mob.getMaxHealth()); // Ensure full vanilla health after spawn
                 mob.addCommandTag("craftics_arena");
+
+                // 1.21.5 Spring to Life: assign cow/pig/chicken variant from biome climate
+                VariantHelper.applyVariant(mob, world, finalSpawnBiomeId);
 
                 // Zero out vanilla attack damage so modded mobs (e.g. Artifacts mimic)
                 // can't deal damage through their custom tick/collision logic. All combat
@@ -3709,10 +3741,17 @@ public class CombatManager {
         if (item instanceof net.minecraft.item.TridentItem) {
             return new String[]{"loyalty", "channeling", "impaling", "riptide", "unbreaking", "mending"};
         }
+        //? if <=1.21.4 {
         if (item instanceof net.minecraft.item.SwordItem) {
             return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
         }
+        //?} else {
+        /*if (item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) {
+            return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
+                "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
+        }
+        *///?}
         if (item instanceof net.minecraft.item.AxeItem) {
             return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "unbreaking", "mending"};
@@ -3914,7 +3953,10 @@ public class CombatManager {
                 mob.setCustomNameVisible(true);
                 // Evoker already has robes; enchanted hat for magical look
                 ItemStack hat = new ItemStack(Items.LEATHER_HELMET);
+                //? if <=1.21.4 {
                 hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B, false));
+                //?} else
+                /*hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B));*/
                 applyMobEnchant(hat, "protection", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, hat);
                 scaleBoss(mob, 1.5);
@@ -3950,7 +3992,10 @@ public class CombatManager {
                 mob.setCustomNameVisible(true);
                 // Coral crown = prismarine-tinted helmet
                 ItemStack crown = new ItemStack(Items.LEATHER_HELMET);
+                //? if <=1.21.4 {
                 crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B, false));
+                //?} else
+                /*crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B));*/
                 applyMobEnchant(crown, "aqua_affinity", 1, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, crown);
                 // Enchanted trident
@@ -3992,7 +4037,10 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, pickaxe);
                 // Ore-encrusted body = leather armor dyed gray-green
                 ItemStack oreChest = new ItemStack(Items.LEATHER_CHESTPLATE);
+                //? if <=1.21.4 {
                 oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F, false));
+                //?} else
+                /*oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F));*/
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, oreChest);
                 scaleBoss(mob, 1.6);
             }
@@ -4489,6 +4537,18 @@ public class CombatManager {
             int entityId = Integer.parseInt(result.substring(ItemUseHandler.TAME_PREFIX.length()));
             for (CombatEntity e : enemies) {
                 if (e.getEntityId() == entityId) {
+                    // Snapshot the mob's full NBT so variant/collar/name persist when it
+                    // returns to the hub after combat. Only needed for mobs that weren't
+                    // loaded from a hub snapshot already.
+                    if (e.getOriginalHubNbt() == null && e.getMobEntity() != null) {
+                        net.minecraft.nbt.NbtCompound tameSnap = new net.minecraft.nbt.NbtCompound();
+                        try {
+                            e.getMobEntity().writeNbt(tameSnap);
+                            e.setOriginalHubNbt(tameSnap);
+                        } catch (Throwable t) {
+                            CrafticsMod.LOGGER.warn("Failed to snapshot tamed mob NBT: {}", t.getMessage());
+                        }
+                    }
                     e.setAlly(true);
                     e.setOwnerUuid(player.getUuid());
                     // Apply per-species minimum stats for combat pets
@@ -5423,9 +5483,15 @@ public class CombatManager {
         player.setOnGround(true);
 
         // prevXYZ needed so client limb animator sees the movement delta
+        //? if <=1.21.4 {
         player.prevX = player.getX();
         player.prevY = player.getY();
         player.prevZ = player.getZ();
+        //?} else {
+        /*player.lastX = player.getX();
+        player.lastY = player.getY();
+        player.lastZ = player.getZ();
+        *///?}
         player.setPosition(x, y, z);
 
         // Velocity drives vanilla limb animation on client
@@ -11005,12 +11071,23 @@ public class CombatManager {
                     p.getInventory().setStack(slot, ItemStack.EMPTY);
                     itemsLost++;
                 }
+                //? if <=1.21.4 {
                 for (int slot = 0; slot < p.getInventory().armor.size(); slot++) {
                     if (!p.getInventory().armor.get(slot).isEmpty()) {
                         p.getInventory().armor.set(slot, ItemStack.EMPTY);
                         itemsLost++;
                     }
                 }
+                //?} else {
+                /*for (net.minecraft.entity.EquipmentSlot armorSlot : new net.minecraft.entity.EquipmentSlot[]{
+                        net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+                        net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
+                    if (!p.getEquippedStack(armorSlot).isEmpty()) {
+                        p.equipStack(armorSlot, ItemStack.EMPTY);
+                        itemsLost++;
+                    }
+                }
+                *///?}
                 if (!p.getOffHandStack().isEmpty()) {
                     p.setStackInHand(net.minecraft.util.Hand.OFF_HAND, ItemStack.EMPTY);
                     itemsLost++;
@@ -11029,7 +11106,10 @@ public class CombatManager {
                     && mainHand.getItem() != Items.FEATHER
                     && !(mainHand.getItem() instanceof com.crackedgames.craftics.item.GuideBookItem)) {
                     dropped = mainHand.copy();
+                    //? if <=1.21.4 {
                     p.getInventory().setStack(p.getInventory().selectedSlot, ItemStack.EMPTY);
+                    //?} else
+                    /*p.getInventory().setStack(p.getInventory().getSelectedSlot(), ItemStack.EMPTY);*/
                 }
 
                 if (dropped.isEmpty()) {
@@ -12584,7 +12664,8 @@ public class CombatManager {
                 if (stack.isEmpty()) continue;
                 Item item = stack.getItem();
                 if (item == Items.FEATHER || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
-                if (item instanceof net.minecraft.item.SwordItem || item instanceof net.minecraft.item.AxeItem
+                //? if <=1.21.4 {
+                boolean isWeapon = item instanceof net.minecraft.item.SwordItem || item instanceof net.minecraft.item.AxeItem
                         || item instanceof net.minecraft.item.HoeItem || item instanceof net.minecraft.item.ShovelItem
                         || item instanceof net.minecraft.item.MaceItem || item instanceof net.minecraft.item.TridentItem
                         || item instanceof net.minecraft.item.BowItem || item instanceof net.minecraft.item.CrossbowItem
@@ -12592,7 +12673,20 @@ public class CombatManager {
                         || item == Items.BLAZE_ROD || item == Items.BREEZE_ROD
                         || item == Items.TUBE_CORAL || item == Items.BRAIN_CORAL
                         || item == Items.BUBBLE_CORAL || item == Items.FIRE_CORAL
-                        || item == Items.HORN_CORAL) {
+                        || item == Items.HORN_CORAL;
+                //?} else {
+                /*boolean isWeapon = item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)
+                        || item instanceof net.minecraft.item.AxeItem
+                        || item instanceof net.minecraft.item.HoeItem || item instanceof net.minecraft.item.ShovelItem
+                        || item instanceof net.minecraft.item.MaceItem || item instanceof net.minecraft.item.TridentItem
+                        || item instanceof net.minecraft.item.BowItem || item instanceof net.minecraft.item.CrossbowItem
+                        || item == Items.STICK || item == Items.BAMBOO
+                        || item == Items.BLAZE_ROD || item == Items.BREEZE_ROD
+                        || item == Items.TUBE_CORAL || item == Items.BRAIN_CORAL
+                        || item == Items.BUBBLE_CORAL || item == Items.FIRE_CORAL
+                        || item == Items.HORN_CORAL;
+                *///?}
+                if (isWeapon) {
                     playerSlots.add(new int[]{i, 0, -1});
                     if (itemData.length() > 0) itemData.append("|");
                     itemData.append(i).append(":").append(stack.getName().getString()).append(":weapon:enchant");
@@ -12600,6 +12694,7 @@ public class CombatManager {
                 }
             }
             // Check armor slots
+            //? if <=1.21.4 {
             for (int i = 0; i < p.getInventory().armor.size(); i++) {
                 ItemStack armor = p.getInventory().armor.get(i);
                 if (!armor.isEmpty()) {
@@ -12611,6 +12706,22 @@ public class CombatManager {
                         .append(":armor:").append(armorEnhancement == 1 ? "trim" : "enchant");
                 }
             }
+            //?} else {
+            /*net.minecraft.entity.EquipmentSlot[] armorOrder = {
+                    net.minecraft.entity.EquipmentSlot.FEET, net.minecraft.entity.EquipmentSlot.LEGS,
+                    net.minecraft.entity.EquipmentSlot.CHEST, net.minecraft.entity.EquipmentSlot.HEAD};
+            for (int i = 0; i < 4; i++) {
+                ItemStack armor = p.getEquippedStack(armorOrder[i]);
+                if (!armor.isEmpty()) {
+                    int slotId = 100 + i;
+                    int armorEnhancement = rng.nextBoolean() ? 1 : 0;
+                    playerSlots.add(new int[]{slotId, 1, armorEnhancement});
+                    if (itemData.length() > 0) itemData.append("|");
+                    itemData.append(slotId).append(":").append(armor.getName().getString())
+                        .append(":armor:").append(armorEnhancement == 1 ? "trim" : "enchant");
+                }
+            }
+            *///?}
 
             perPlayerEnchanterSlots.put(p.getUuid(), playerSlots);
             ServerPlayNetworking.send(p, new EventRoomPayload("enchanter", itemData.toString()));
@@ -12622,7 +12733,14 @@ public class CombatManager {
         java.util.Random rng = new java.util.Random();
         ItemStack stack;
         if (slotId >= 100) {
+            //? if <=1.21.4 {
             stack = player.getInventory().armor.get(slotId - 100);
+            //?} else {
+            /*net.minecraft.entity.EquipmentSlot[] armorOrder = {
+                    net.minecraft.entity.EquipmentSlot.FEET, net.minecraft.entity.EquipmentSlot.LEGS,
+                    net.minecraft.entity.EquipmentSlot.CHEST, net.minecraft.entity.EquipmentSlot.HEAD};
+            stack = player.getEquippedStack(armorOrder[slotId - 100]);
+            *///?}
         } else {
             stack = player.getInventory().getStack(slotId);
         }
@@ -13765,9 +13883,15 @@ public class CombatManager {
             com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd =
                 saveData.getPlayerData(player.getUuid());
             for (var n : pd.drainHubPets()) {
+                //? if <=1.21.4 {
                 savedPets.add(new HubPetCollector.PetData(
                     n.getString("type"), n.getInt("hp"), n.getInt("maxHp"),
                     n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range"), null));
+                //?} else {
+                /*savedPets.add(new HubPetCollector.PetData(
+                    n.getString("type", ""), n.getInt("hp", 0), n.getInt("maxHp", 0),
+                    n.getInt("atk", 0), n.getInt("def", 0), n.getInt("speed", 0), n.getInt("range", 0), null));
+                *///?}
             }
             if (!savedPets.isEmpty()) saveData.markDirty();
         }

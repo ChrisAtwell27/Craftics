@@ -44,7 +44,10 @@ public class MovementDisableMixin {
         *///?} else {
         input.playerInput = new net.minecraft.util.PlayerInput(false, false, false, false, false, false, false);
         //?}
+        //? if <=1.21.4 {
         input.movementForward = 0f;
         input.movementSideways = 0f;
+        //?} else
+        /*((InputAccessor)(Object)input).craftics$setMovementVector(net.minecraft.util.math.Vec2f.ZERO);*/
     }
 }

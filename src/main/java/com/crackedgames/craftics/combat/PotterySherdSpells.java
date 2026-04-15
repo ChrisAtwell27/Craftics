@@ -872,7 +872,10 @@ public class PotterySherdSpells {
     private static String useShelterSherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock,
                                            CombatEffects combatEffects) {
         // Phase 0 — Cast: stone gathering
+        //? if <=1.21.4 {
         world.playSound(null, playerBlock, SoundEvents.ITEM_SHIELD_BLOCK, SoundCategory.PLAYERS, 1.0f, 1.0f);
+        //?} else
+        /*world.playSound(null, playerBlock, SoundEvents.ITEM_SHIELD_BLOCK.value(), SoundCategory.PLAYERS, 1.0f, 1.0f);*/
         world.spawnParticles(ParticleTypes.DUST_PLUME, playerBlock.getX() + 0.5, playerBlock.getY() + 0.2,
             playerBlock.getZ() + 0.5, 8, 0.4, 0.1, 0.4, 0.06);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.2, ParticleTypes.DUST_PLUME, 10);
@@ -1177,7 +1180,10 @@ public class PotterySherdSpells {
     private static String useHowlSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                         GridPos playerPos, BlockPos playerBlock, List<CombatEntity> enemies) {
         // Phase 0 — Cast: breath intake
+        //? if <=1.21.4 {
         world.playSound(null, playerBlock, SoundEvents.ENTITY_WOLF_HOWL, SoundCategory.PLAYERS, 2.0f, 0.8f);
+        //?} else
+        /*world.playSound(null, playerBlock, SoundEvents.ENTITY_WARDEN_ROAR, SoundCategory.PLAYERS, 2.0f, 0.8f);*/
         double cx = playerBlock.getX() + 0.5, cy = playerBlock.getY() + 1.0, cz = playerBlock.getZ() + 0.5;
         world.spawnParticles(ParticleTypes.SOUL, cx, cy, cz, 10, 0.2, 0.3, 0.2, 0.03);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.5, ParticleTypes.CLOUD, 8);
@@ -1203,7 +1209,10 @@ public class PotterySherdSpells {
         queueEffect(3, () -> {
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 1.0, ParticleTypes.CLOUD, 10);
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 2.0, ParticleTypes.CLOUD, 16);
+            //? if <=1.21.4 {
             world.playSound(null, playerBlock, SoundEvents.ENTITY_WOLF_HOWL, SoundCategory.PLAYERS, 1.0f, 1.2f);
+            //?} else
+            /*world.playSound(null, playerBlock, SoundEvents.ENTITY_WARDEN_ROAR, SoundCategory.PLAYERS, 1.0f, 1.2f);*/
         });
 
         // Phase 2 (7 ticks) — Final ring + enemy impacts

@@ -449,6 +449,7 @@ public class CrafticsMod implements ModInitializer {
             // so our mutations aren't wiped by the datapack load.
             com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.applyBiomeOverrides();
             com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.applyBiomeOverrides();
+            com.crackedgames.craftics.compat.springtolife.SpringToLifeCompat.applyBiomeOverrides();
         });
 
         // Also reload on /reload command
@@ -461,6 +462,7 @@ public class CrafticsMod implements ModInitializer {
                     );
                     com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.applyBiomeOverrides();
                     com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.applyBiomeOverrides();
+                    com.crackedgames.craftics.compat.springtolife.SpringToLifeCompat.applyBiomeOverrides();
                 }
             }
         );
@@ -1369,6 +1371,7 @@ public class CrafticsMod implements ModInitializer {
                     }
                     data.addPartyInvite(party.getPartyId(), target.getUuid());
                     ctx.getSource().sendFeedback(() -> Text.literal("§aInvited " + target.getName().getString() + " to the party."), false);
+                    //? if <=1.21.4 {
                     net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
                         .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent(
                             net.minecraft.text.ClickEvent.Action.RUN_COMMAND, "/craftics party accept"))
@@ -1379,6 +1382,14 @@ public class CrafticsMod implements ModInitializer {
                             net.minecraft.text.ClickEvent.Action.RUN_COMMAND, "/craftics party decline"))
                             .withHoverEvent(new net.minecraft.text.HoverEvent(
                                 net.minecraft.text.HoverEvent.Action.SHOW_TEXT, Text.literal("Click to decline"))));
+                    //?} else {
+                    /*net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
+                        .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent.RunCommand("/craftics party accept"))
+                            .withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(Text.literal("Click to accept"))));
+                    net.minecraft.text.MutableText declineText = Text.literal("§c[DECLINE]")
+                        .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent.RunCommand("/craftics party decline"))
+                            .withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(Text.literal("Click to decline"))));
+                    *///?}
                     target.sendMessage(Text.literal("§e" + player.getName().getString() + " invited you to their party! ")
                         .append(acceptText).append(Text.literal(" ")).append(declineText), false);
                     return 1;

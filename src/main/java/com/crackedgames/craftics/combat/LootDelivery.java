@@ -2,10 +2,18 @@ package com.crackedgames.craftics.combat;
 
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.BundleContentsComponent;
+import net.minecraft.component.type.PotionContentsComponent;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.BundleItem;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.potion.Potion;
+import net.minecraft.potion.Potions;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.network.ServerPlayerEntity;
+
+import java.util.List;
+import java.util.Random;
 
 /**
  * Helper for routing battle loot to a player.
@@ -24,6 +32,16 @@ public final class LootDelivery {
     private LootDelivery() {}
 
     /**
+     * Pool of vanilla tipped-arrow potion variants used when loot tables drop
+     * bare {@code Items.TIPPED_ARROW} stacks without any PotionContents set.
+     */
+    private static final List<RegistryEntry<Potion>> TIPPED_ARROW_POTIONS = List.of(
+        Potions.POISON, Potions.SLOWNESS, Potions.WEAKNESS, Potions.HARMING
+    );
+
+    private static final Random RANDOM = new Random();
+
+    /**
      * Routes battle loot to the player, preferring bundles for stackable items.
      * Call instead of {@code player.getInventory().insertStack(stack)} whenever
      * granting combat rewards, event rewards, or post-victory loot.
@@ -31,6 +49,20 @@ public final class LootDelivery {
     public static void deliver(ServerPlayerEntity player, ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return;
+        }
+
+        // Loot tables build tipped arrows via `new ItemStack(Items.TIPPED_ARROW, n)`
+        // which has no PotionContents component, so they render as grey arrows with
+        // no effect when shot. Assign a random vanilla variant at delivery time so
+        // every loot source (mob drops, biome completion loot) produces a working
+        // tipped arrow without needing per-call-site fixup.
+        if (stack.getItem() == Items.TIPPED_ARROW) {
+            PotionContentsComponent existing = stack.get(DataComponentTypes.POTION_CONTENTS);
+            if (existing == null || !existing.hasEffects()) {
+                RegistryEntry<Potion> pick = TIPPED_ARROW_POTIONS.get(
+                    RANDOM.nextInt(TIPPED_ARROW_POTIONS.size()));
+                stack.set(DataComponentTypes.POTION_CONTENTS, new PotionContentsComponent(pick));
+            }
         }
 
         PlayerInventory inv = player.getInventory();

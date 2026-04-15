@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(PlayerEntity.class)
 public class PlayerEntityMixin {
 
+    //? if <=1.21.4 {
     @Inject(method = "dropItem(Lnet/minecraft/item/ItemStack;ZZ)Lnet/minecraft/entity/ItemEntity;",
             at = @At("HEAD"), cancellable = true)
     private void craftics$blockItemDropDuringCombat(net.minecraft.item.ItemStack stack, boolean throwRandomly,
@@ -26,6 +27,20 @@ public class PlayerEntityMixin {
             }
         }
     }
+    //?} else {
+    /*@Inject(method = "dropItem(Lnet/minecraft/item/ItemStack;Z)Lnet/minecraft/entity/ItemEntity;",
+            at = @At("HEAD"), cancellable = true)
+    private void craftics$blockItemDropDuringCombat(net.minecraft.item.ItemStack stack, boolean throwRandomly,
+                                                     CallbackInfoReturnable<net.minecraft.entity.ItemEntity> cir) {
+        PlayerEntity player = (PlayerEntity) (Object) this;
+        if (player instanceof ServerPlayerEntity serverPlayer) {
+            var cm = com.crackedgames.craftics.combat.CombatManager.get(serverPlayer);
+            if (cm.isActive()) {
+                cir.setReturnValue(null);
+            }
+        }
+    }
+    *///?}
 
     @Inject(method = "dropInventory", at = @At("TAIL"))
     private void craftics$dropAccessoriesOnDeath(CallbackInfo ci) {

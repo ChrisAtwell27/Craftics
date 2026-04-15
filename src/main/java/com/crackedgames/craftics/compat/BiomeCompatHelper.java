@@ -126,6 +126,79 @@ public final class BiomeCompatHelper {
             new MobPoolEntry(entityTypeId, weight, baseHp, baseAttack, baseDefense, range, false));
     }
 
+    /** Rebuild {@code biome} with the given new passive pool and re-register it. */
+    private static void replaceBiomePassive(BiomeTemplate biome, MobPoolEntry[] newPool) {
+        BiomeTemplate replaced = new BiomeTemplate(
+            biome.biomeId, biome.displayName, biome.startLevel, biome.levelCount,
+            biome.baseWidth, biome.baseHeight, biome.widthGrowth, biome.heightGrowth,
+            biome.floorBlocks, biome.obstacleBlocks,
+            biome.baseObstacleDensity, biome.obstacleDensityGrowth,
+            newPool, biome.hostileMobs, biome.boss,
+            biome.lootItems, biome.lootWeights,
+            biome.enchantmentLootIds, biome.enchantmentLootWeights,
+            biome.nightLevel, biome.environmentStyle);
+        BiomeRegistry.register(replaced);
+    }
+
+    /**
+     * Append a new passive mob to a biome's pool. Skips the add if an entry
+     * with the same entity id already exists or if the entity isn't registered.
+     */
+    public static boolean appendPassiveMob(String biomeId, MobPoolEntry newEntry) {
+        if (newEntry == null) return false;
+        if (!entityExists(newEntry.entityTypeId())) return false;
+        BiomeTemplate biome = findBiome(biomeId);
+        if (biome == null) return false;
+
+        MobPoolEntry[] pool = biome.passiveMobs != null ? biome.passiveMobs : new MobPoolEntry[0];
+        for (MobPoolEntry existing : pool) {
+            if (existing != null && newEntry.entityTypeId().equals(existing.entityTypeId())) {
+                return false; // already present — don't double-add
+            }
+        }
+
+        MobPoolEntry[] appended = new MobPoolEntry[pool.length + 1];
+        System.arraycopy(pool, 0, appended, 0, pool.length);
+        appended[pool.length] = newEntry;
+        replaceBiomePassive(biome, appended);
+        CrafticsMod.LOGGER.info("[Compat] {}: added passive {}", biomeId, newEntry.entityTypeId());
+        return true;
+    }
+
+    /** Convenience wrapper for the common "add a passive mob with these stats" case. */
+    public static boolean appendPassiveMob(String biomeId, String entityTypeId, int weight,
+                                             int baseHp, int baseAttack, int baseDefense, int range) {
+        return appendPassiveMob(biomeId,
+            new MobPoolEntry(entityTypeId, weight, baseHp, baseAttack, baseDefense, range, true));
+    }
+
+    /**
+     * Remove all passive entries matching the given entity id from a biome's pool.
+     *
+     * @return true if at least one entry was removed
+     */
+    public static boolean removePassiveMob(String biomeId, String entityTypeId) {
+        BiomeTemplate biome = findBiome(biomeId);
+        if (biome == null) return false;
+        MobPoolEntry[] pool = biome.passiveMobs;
+        if (pool == null || pool.length == 0) return false;
+
+        List<MobPoolEntry> kept = new ArrayList<>(pool.length);
+        boolean removed = false;
+        for (MobPoolEntry entry : pool) {
+            if (entry != null && entityTypeId.equals(entry.entityTypeId())) {
+                removed = true;
+            } else {
+                kept.add(entry);
+            }
+        }
+        if (!removed) return false;
+
+        replaceBiomePassive(biome, kept.toArray(new MobPoolEntry[0]));
+        CrafticsMod.LOGGER.info("[Compat] {}: removed passive {}", biomeId, entityTypeId);
+        return true;
+    }
+
     private static BiomeTemplate findBiome(String biomeId) {
         if (biomeId == null) return null;
         List<BiomeTemplate> all = new ArrayList<>(BiomeRegistry.getAllBiomes());
