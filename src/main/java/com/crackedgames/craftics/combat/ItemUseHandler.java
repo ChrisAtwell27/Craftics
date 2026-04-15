@@ -139,7 +139,11 @@ public class ItemUseHandler {
     }
 
     public static boolean isThrowable(Item item) {
-        return THROWABLES.contains(item);
+        if (THROWABLES.contains(item)) return true;
+        //? if >=1.21.5 {
+        /*if (item == net.minecraft.item.Items.BLUE_EGG || item == net.minecraft.item.Items.BROWN_EGG) return true;
+        *///?}
+        return false;
     }
 
     // Breeding/taming materials — maps mob entity type → item that tames them
@@ -266,7 +270,11 @@ public class ItemUseHandler {
         } else if (item == Items.SNOWBALL) {
             return useSnowball(player, arena, targetTile, held);
         } else if (item == Items.EGG) {
-            return useEgg(player, arena, targetTile, held);
+            return useEgg(player, arena, targetTile, held, 1);
+        //? if >=1.21.5 {
+        /*} else if (item == net.minecraft.item.Items.BLUE_EGG || item == net.minecraft.item.Items.BROWN_EGG) {
+            return useEgg(player, arena, targetTile, held, 3);
+        *///?}
         } else if (item == Items.ENDER_PEARL) {
             return useEnderPearl(player, arena, targetTile, held);
         } else if (isSplashPotion(item)) {
@@ -644,13 +652,13 @@ public class ItemUseHandler {
     }
 
     private static String useEgg(ServerPlayerEntity player, GridArena arena,
-                                  GridPos targetTile, ItemStack stack) {
+                                  GridPos targetTile, ItemStack stack, int damage) {
         if (targetTile == null) return "§cNeed to target a tile!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
         stack.decrement(1);
-        int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
+        int dealt = applyTypedDamage(player, enemy, damage, DamageType.SPECIAL);
         return "§eEgg hit " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
     }
 

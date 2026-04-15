@@ -274,6 +274,13 @@ public class ArenaBuilder {
         // Biome-themed random obstacles on the arena floor
         placeBiomeObstacles(world, floorX, floorY, floorZ, finalW, finalH, envStyle, rng);
 
+        //? if >=1.21.5 {
+        /*// Spring to Life decorations: river gets a firefly bush on a grass border tile
+        if (envStyle == EnvironmentStyle.RIVER) {
+            placeRiverFireflyBush(world, floorX, floorY, floorZ, finalW, finalH, rng);
+        }
+        *///?}
+
         // Biome-themed light posts around the border
         placeLighting(world, floorX, floorY, floorZ, finalW, finalH, envStyle);
 
@@ -1231,7 +1238,12 @@ public class ArenaBuilder {
             case FOREST -> placeFallenLogs(world, ox, oy, oz, w, h, rng);
             case JUNGLE -> placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.COBWEB, 0, 5, rng);
             case MOUNTAIN -> placePitObstacles(world, ox, oy, oz, w, h, 3, 6, rng);
-            case DESERT -> placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.CACTUS, 1, 3, rng);
+            case DESERT -> {
+                placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.CACTUS, 1, 3, rng);
+                //? if >=1.21.5 {
+                /*placeCactusFlowerToppers(world, ox, oy, oz, w, h, rng);
+                *///?}
+            }
             case SNOWY -> placePowderSnowPatch(world, ox, oy, oz, w, h, rng);
             case CAVE, DEEP_DARK -> placePitObstacles(world, ox, oy, oz, w, h, 0, 7, rng);
             case NETHER -> placeFloorHazards(world, ox, oy, oz, w, h, Blocks.LAVA, 2, 5, rng);
@@ -1398,6 +1410,44 @@ public class ArenaBuilder {
             placed++;
         }
     }
+
+    //? if >=1.21.5 {
+    /*// Scan the arena floor for cactus blocks placed by placeSimpleObstacles and,
+    // for each one, roll a 50/50 to stack a cactus flower on top. 1.21.5+ only.
+    private static void placeCactusFlowerToppers(ServerWorld world, int ox, int oy, int oz,
+                                                   int w, int h, Random rng) {
+        for (int x = 2; x < w - 2; x++) {
+            for (int z = 2; z < h - 2; z++) {
+                BlockPos cactusPos = new BlockPos(ox + x, oy + 1, oz + z);
+                if (!world.getBlockState(cactusPos).isOf(Blocks.CACTUS)) continue;
+                if (rng.nextFloat() >= 0.5f) continue;
+                BlockPos flowerPos = cactusPos.up();
+                if (!world.getBlockState(flowerPos).isAir()) continue;
+                world.setBlockState(flowerPos, Blocks.CACTUS_FLOWER.getDefaultState(), SET_FLAGS);
+            }
+        }
+    }
+
+    // Place at least one firefly bush on a grass block adjacent to (but outside) the
+    // river arena grid. Scans the border ring for a grass block with air above.
+    private static void placeRiverFireflyBush(ServerWorld world, int ox, int oy, int oz,
+                                                 int w, int h, Random rng) {
+        java.util.List<BlockPos> candidates = new java.util.ArrayList<>();
+        int pad = 3;
+        for (int x = -pad; x < w + pad; x++) {
+            for (int z = -pad; z < h + pad; z++) {
+                if (x >= 0 && x < w && z >= 0 && z < h) continue;
+                BlockPos floorPos = new BlockPos(ox + x, oy, oz + z);
+                if (!world.getBlockState(floorPos).isOf(Blocks.GRASS_BLOCK)) continue;
+                if (!world.getBlockState(floorPos.up()).isAir()) continue;
+                candidates.add(floorPos.up());
+            }
+        }
+        if (candidates.isEmpty()) return;
+        BlockPos pick = candidates.get(rng.nextInt(candidates.size()));
+        world.setBlockState(pick, Blocks.FIREFLY_BUSH.getDefaultState(), SET_FLAGS);
+    }
+    *///?}
 
     /**
      * Place connected pit obstacles for mountain biomes.

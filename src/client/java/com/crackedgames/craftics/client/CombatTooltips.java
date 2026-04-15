@@ -594,6 +594,10 @@ public class CombatTooltips implements ItemTooltipCallback {
         // ── Throwables ──
         if (item == Items.SNOWBALL) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7bKnockback: \u00a77Push enemy 1 tile away";
         if (item == Items.EGG) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7c1 DMG \u00a77+ minor annoyance";
+        //? if >=1.21.5 {
+        /*if (item == net.minecraft.item.Items.BLUE_EGG) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7c3 DMG \u00a77- cold variant egg";
+        if (item == net.minecraft.item.Items.BROWN_EGG) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7c3 DMG \u00a77- warm variant egg";
+        *///?}
         if (item == Items.ENDER_PEARL) return "\u00a751 AP \u00a77- Click any empty tile\n\u00a75Teleport instantly! \u00a7c(Costs 2 HP)";
         if (item == Items.FIRE_CHARGE) return "\u00a761 AP \u00a77- Ranged fire attack\n\u00a7c4 DMG \u00a77+ sets enemy on fire";
 

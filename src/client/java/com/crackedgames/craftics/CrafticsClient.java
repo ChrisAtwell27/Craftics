@@ -149,20 +149,34 @@ public class CrafticsClient implements ClientModInitializer {
                                 double ox = (Math.random() - 0.5) * 1.2;
                                 double oy = Math.random() * 1.5;
                                 double oz = (Math.random() - 0.5) * 1.2;
+                                //? if <=1.21.4 {
                                 context.client().world.addParticle(
                                     net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
                                     entity.getX() + ox, entity.getY() + oy, entity.getZ() + oz,
                                     0, 0, 0);
+                                //?} else
+                                /*context.client().world.addParticleClient(
+                                    net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                                    entity.getX() + ox, entity.getY() + oy, entity.getZ() + oz,
+                                    0, 0, 0);*/
                             }
                             // Extra ground impact particles for knockback attacks
                             if (payload.valueA() == 1) {
                                 for (int i = 0; i < 4; i++) {
+                                    //? if <=1.21.4 {
                                     context.client().world.addParticle(
                                         net.minecraft.particle.ParticleTypes.CRIT,
                                         entity.getX() + (Math.random() - 0.5) * 0.8,
                                         entity.getY() + 0.2,
                                         entity.getZ() + (Math.random() - 0.5) * 0.8,
                                         (Math.random() - 0.5) * 0.3, 0.2, (Math.random() - 0.5) * 0.3);
+                                    //?} else
+                                    /*context.client().world.addParticleClient(
+                                        net.minecraft.particle.ParticleTypes.CRIT,
+                                        entity.getX() + (Math.random() - 0.5) * 0.8,
+                                        entity.getY() + 0.2,
+                                        entity.getZ() + (Math.random() - 0.5) * 0.8,
+                                        (Math.random() - 0.5) * 0.3, 0.2, (Math.random() - 0.5) * 0.3);*/
                                 }
                             }
                         }

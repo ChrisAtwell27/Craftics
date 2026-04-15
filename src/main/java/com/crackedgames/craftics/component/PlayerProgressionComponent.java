@@ -54,12 +54,21 @@ public class PlayerProgressionComponent implements RespawnableComponent<PlayerPr
 
     @Override
     public void readFromNbt(NbtCompound tag, RegistryWrapper.WrapperLookup registryLookup) {
+        //? if <=1.21.4 {
         level = tag.getInt("level");
         if (level < 1) level = 1;
         unspentPoints = tag.getInt("unspentPoints");
         for (PlayerProgression.Stat s : PlayerProgression.Stat.values()) {
             statPoints.put(s, tag.getInt("stat_" + s.name()));
         }
+        //?} else {
+        /*level = tag.getInt("level", 1);
+        if (level < 1) level = 1;
+        unspentPoints = tag.getInt("unspentPoints", 0);
+        for (PlayerProgression.Stat s : PlayerProgression.Stat.values()) {
+            statPoints.put(s, tag.getInt("stat_" + s.name(), 0));
+        }
+        *///?}
     }
 
     @Override

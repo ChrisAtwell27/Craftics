@@ -112,14 +112,23 @@ public class SchemLoader {
         // v3 wraps in "Schematic" compound; v2 is flat
         NbtCompound schem;
         if (root.contains("Schematic")) {
+            //? if <=1.21.4 {
             schem = root.getCompound("Schematic");
+            //?} else
+            /*schem = root.getCompoundOrEmpty("Schematic");*/
         } else {
             schem = root;
         }
 
+        //? if <=1.21.4 {
         int schemWidth = schem.getShort("Width") & 0xFFFF;
         int schemHeight = schem.getShort("Height") & 0xFFFF;
         int schemLength = schem.getShort("Length") & 0xFFFF;
+        //?} else {
+        /*int schemWidth = schem.getShort("Width").orElse((short) 0) & 0xFFFF;
+        int schemHeight = schem.getShort("Height").orElse((short) 0) & 0xFFFF;
+        int schemLength = schem.getShort("Length").orElse((short) 0) & 0xFFFF;
+        *///?}
 
         if (schemWidth == 0 || schemHeight == 0 || schemLength == 0) {
             CrafticsMod.LOGGER.warn("Invalid schematic dimensions in {}: {}x{}x{}",
@@ -132,20 +141,36 @@ public class SchemLoader {
         byte[] blockDataBytes;
 
         if (schem.contains("Blocks")) {
+            //? if <=1.21.4 {
             // v3
             NbtCompound blocks = schem.getCompound("Blocks");
             paletteNbt = blocks.getCompound("Palette");
             blockDataBytes = blocks.getByteArray("Data");
+            //?} else {
+            /*// v3
+            NbtCompound blocks = schem.getCompoundOrEmpty("Blocks");
+            paletteNbt = blocks.getCompoundOrEmpty("Palette");
+            blockDataBytes = blocks.getByteArray("Data").orElse(new byte[0]);
+            *///?}
         } else {
+            //? if <=1.21.4 {
             // v2
             paletteNbt = schem.getCompound("Palette");
             blockDataBytes = schem.getByteArray("BlockData");
+            //?} else {
+            /*// v2
+            paletteNbt = schem.getCompoundOrEmpty("Palette");
+            blockDataBytes = schem.getByteArray("BlockData").orElse(new byte[0]);
+            *///?}
         }
 
         int maxId = 0;
         Map<String, Integer> paletteMap = new HashMap<>();
         for (String key : paletteNbt.getKeys()) {
+            //? if <=1.21.4 {
             int id = paletteNbt.getInt(key);
+            //?} else
+            /*int id = paletteNbt.getInt(key, 0);*/
             paletteMap.put(key, id);
             if (id > maxId) maxId = id;
         }

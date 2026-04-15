@@ -82,11 +82,21 @@ public class HubPetCollector {
             // Check ownership and follow state
             if (animal instanceof TameableEntity tameable) {
                 if (!tameable.isTamed()) continue;
+                //? if <=1.21.4 {
                 if (!ownerUuid.equals(tameable.getOwnerUuid())) continue;
+                //?} else {
+                /*var ref = tameable.getOwnerReference();
+                if (ref == null || !ownerUuid.equals(ref.getUuid())) continue;
+                *///?}
                 if (tameable.isSitting()) continue; // sitting = stay home
             } else if (animal instanceof AbstractHorseEntity horse) {
                 if (!horse.isTame()) continue;
+                //? if <=1.21.4 {
                 if (!ownerUuid.equals(horse.getOwnerUuid())) continue;
+                //?} else {
+                /*var ref = horse.getOwnerReference();
+                if (ref == null || !ownerUuid.equals(ref.getUuid())) continue;
+                *///?}
                 // Horses don't sit, they're always "following"
             } else {
                 continue; // Unknown tameable type
@@ -113,6 +123,32 @@ public class HubPetCollector {
     }
 
     /**
+     * Scan up then down from {@code hub.y} for a solid block with air above, so
+     * pets don't spawn below the hub island or inside a block. Matches the
+     * safe-landing logic used by CombatManager.teleportToHub / CrafticsMod.teleportToHub.
+     */
+    private static int findSafeHubY(ServerWorld world, BlockPos hub, int dx, int dz) {
+        BlockPos.Mutable probe = new BlockPos.Mutable(hub.getX() + dx, hub.getY(), hub.getZ() + dz);
+        for (int dy = 0; dy < 60; dy++) {
+            probe.setY(hub.getY() + dy);
+            var below = world.getBlockState(probe);
+            var at = world.getBlockState(probe.up());
+            if (!below.isAir() && below.isSolidBlock(world, probe) && at.isAir()) {
+                return probe.getY() + 1;
+            }
+        }
+        for (int dy = 1; dy < 40; dy++) {
+            probe.setY(hub.getY() - dy);
+            var below = world.getBlockState(probe);
+            var at = world.getBlockState(probe.up());
+            if (!below.isAir() && below.isSolidBlock(world, probe) && at.isAir()) {
+                return probe.getY() + 1;
+            }
+        }
+        return hub.getY();
+    }
+
+    /**
      * Restore surviving pets to the hub world after a biome run ends.
      * Recreates entities from their original NBT snapshots with updated positions.
      */
@@ -130,11 +166,19 @@ public class HubPetCollector {
                     NbtCompound nbt = pet.originalNbt().copy();
                     // Override position to hub
                     double px = hubPos.getX() + offset + 0.5;
-                    double py = hubPos.getY();
+                    double py = findSafeHubY(world, hubPos, offset, 0);
                     double pz = hubPos.getZ() + 0.5;
 
                     // Remove old UUID so a fresh one is assigned (prevents duplicates)
                     nbt.remove("UUID");
+                    // Strip combat-arena flags so the pet walks/breathes/takes damage at the hub.
+                    // These get set by CombatManager when a mob enters the grid and would
+                    // otherwise freeze the restored pet in place.
+                    nbt.putBoolean("NoAI", false);
+                    nbt.putBoolean("NoGravity", false);
+                    nbt.putBoolean("Invulnerable", false);
+                    nbt.putBoolean("Silent", false);
+                    nbt.remove("Tags");
 
                     var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
                     Entity restored = entityType.create(world, null, BlockPos.ofFloored(px, py, pz),
@@ -156,18 +200,25 @@ public class HubPetCollector {
                 } else {
                     // Fallback: create a fresh entity (no NBT to restore)
                     var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
+                    int fallbackY = findSafeHubY(world, hubPos, offset, 0);
                     var rawEntity = entityType.create(world, null,
-                        BlockPos.ofFloored(hubPos.getX() + offset + 0.5, hubPos.getY(), hubPos.getZ() + 0.5),
+                        BlockPos.ofFloored(hubPos.getX() + offset + 0.5, fallbackY, hubPos.getZ() + 0.5),
                         SpawnReason.MOB_SUMMONED, false, false);
                     if (rawEntity instanceof net.minecraft.entity.mob.MobEntity mob) {
                         mob.setPersistent();
                         mob.setAiDisabled(false);
                         // Try to set tamed state
                         if (mob instanceof TameableEntity tameable) {
+                            //? if <=1.21.4 {
                             tameable.setOwnerUuid(player.getUuid());
+                            //?} else
+                            /*tameable.setOwner(player);*/
                             tameable.setTamed(true, false);
                         } else if (mob instanceof AbstractHorseEntity horse) {
+                            //? if <=1.21.4 {
                             horse.setOwnerUuid(player.getUuid());
+                            //?} else
+                            /*horse.setOwner(player);*/
                             horse.bondWithPlayer(player);
                         }
                         world.spawnEntity(mob);
