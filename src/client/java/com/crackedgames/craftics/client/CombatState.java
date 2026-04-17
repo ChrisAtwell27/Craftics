@@ -718,4 +718,43 @@ public class CombatState {
         teammateHoverTimestamps.clear();
         hoveredTile = null;
     }
+
+    /**
+     * Wipe all client combat state. Called from the disconnect handler so that
+     * leaving a world mid-battle (before the server can send ExitCombatPayload)
+     * doesn't leave the camera permanently locked into isometric view on the
+     * title screen or in subsequent worlds — previously this bricked the client
+     * until a full restart.
+     */
+    public static void resetAll() {
+        inCombat = false;
+        clearTileSets();
+        resetCombatStats();
+        combatPitch = 55.0f;
+        combatYaw = 225.0f;
+        combatCameraDistance = 15.0f;
+        cameraPanX = 0;
+        cameraPanZ = 0;
+        arenaCenterX = 0;
+        arenaCenterY = 100;
+        arenaCenterZ = 0;
+        arenaBaseCenterX = 0;
+        arenaBaseCenterZ = 0;
+        arenaOriginX = 0;
+        arenaOriginY = 100;
+        arenaOriginZ = 0;
+        arenaWidth = 0;
+        arenaHeight = 0;
+        hasFocus = false;
+        returningFromFocus = false;
+        focusTimer = 0;
+        focusTargetX = 0;
+        focusTargetZ = 0;
+        focusCurrentX = 0;
+        focusCurrentZ = 0;
+        focusZoomCurrent = 15.0f;
+        focusZoomTarget = 15.0f;
+        hoveredEnemyId = -1;
+        traderActive = false;
+    }
 }

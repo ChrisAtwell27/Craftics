@@ -70,9 +70,11 @@ dependencies {
 	// PlayerAnimator — player combat animations (JiJ bundled)
 	include modImplementation("dev.kosmx.player-anim:player-animation-lib-fabric:${project.player_anim_version}")
 
-	// owo-lib — UI framework, networking, config
+	// owo-lib — UI framework, networking, config.
+	// Do NOT `include` owo-sentinel — Modrinth auto-rejects jars that bundle
+	// an inner owo-sentinel jar, and Fabric's declared dependency already
+	// surfaces a proper missing-owo error without it.
 	modImplementation "io.wispforest:owo-lib:${project.owo_version}"
-	include "io.wispforest:owo-sentinel:${project.owo_version}"
 	annotationProcessor "io.wispforest:owo-lib:${project.owo_version}"
 
 	// Cardinal Components API — auto-save/sync data on entities/worlds

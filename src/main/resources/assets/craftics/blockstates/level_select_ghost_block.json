@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "craftics:block/level_select_ghost_block" },
+    "facing=south": { "model": "craftics:block/level_select_ghost_block" },
+    "facing=east":  { "model": "craftics:block/level_select_ghost_block" },
+    "facing=west":  { "model": "craftics:block/level_select_ghost_block" }
+  }
+}

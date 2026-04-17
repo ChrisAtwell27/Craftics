@@ -409,11 +409,21 @@ public class CombatManager {
     }
 
     public void removePartyMember(java.util.UUID memberUuid) {
+        // If the removed player currently holds the turn, `this.player` still
+        // points at their (possibly disconnected) entity after the removal.
+        // `handleAction` gates on `player.getUuid().equals(senderUuid)`, so
+        // without reassigning, every remaining party member's action gets
+        // rejected and combat deadlocks. Called directly from the server
+        // disconnect handler, which bypasses `leavePartyCombat`'s own reassign.
+        boolean wasCurrent = player != null && player.getUuid().equals(memberUuid);
         partyPlayers.removeIf(p -> p.getUuid().equals(memberUuid));
         PARTY_COMBAT_LEADER.remove(memberUuid);
         turnQueue.remove(memberUuid);
         if (currentTurnIndex >= turnQueue.size() && !turnQueue.isEmpty()) {
             currentTurnIndex = 0;
+        }
+        if (wasCurrent && !turnQueue.isEmpty()) {
+            switchToTurnPlayer();
         }
     }
 

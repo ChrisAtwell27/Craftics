@@ -36,7 +36,8 @@
 		"fabricloader": ">=0.16.0",
 		"minecraft": "${minecraft_dependency}",
 		"java": ">=21",
-		"fabric-api": "*"
+		"fabric-api": "*",
+		"owo": "*"
 	},
 	"custom": {
 		"cardinal-components": [
@@ -47,7 +48,6 @@
 	},
 	"suggests": {
 		"player-animation-lib": "*",
-		"owo": "*",
 		"cardinal-components-api": "*",
 		"artifacts": "*"
 	}
