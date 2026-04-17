@@ -19,6 +19,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.screen.ingame.HandledScreens;
 import net.minecraft.client.option.KeyBinding;
@@ -45,6 +46,14 @@ public class CrafticsClient implements ClientModInitializer {
 
         HandledScreens.register(ModScreenHandlers.LEVEL_SELECT_SCREEN_HANDLER, LevelSelectScreen::new);
 
+        // Ghost block uses a fully-transparent texture so MC's break-overlay
+        // has faces to render the crack animation on. Cutout render layer
+        // discards alpha=0 pixels so the block stays invisible in normal render.
+        net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap.INSTANCE.putBlock(
+            com.crackedgames.craftics.block.ModBlocks.LEVEL_SELECT_GHOST_BLOCK,
+            net.minecraft.client.render.RenderLayer.getCutout()
+        );
+
         // GuideBookItem.use() fires server-side, this opens the screen client-side
         com.crackedgames.craftics.item.GuideBookItem.openScreenAction = () -> {
             net.minecraft.client.MinecraftClient.getInstance().setScreen(
@@ -53,50 +62,53 @@ public class CrafticsClient implements ClientModInitializer {
         };
 
         ClientPlayNetworking.registerGlobalReceiver(EnterCombatPayload.ID, (payload, context) -> {
-            boolean wasInCombat = CombatState.isInCombat();
-            CombatState.enterCombat(
-                payload.originX(), payload.originY(), payload.originZ(),
-                payload.width(), payload.height()
-            );
-            // Only set camera yaw on first combat entry; keep orientation between levels
-            if (!wasInCombat) {
-                if (payload.cameraYaw() >= 0) {
-                    CombatState.setCombatYaw(payload.cameraYaw());
-                } else {
-                    CombatState.setCombatYaw(225.0f);
+            context.client().execute(() -> {
+                boolean wasInCombat = CombatState.isInCombat();
+                CombatState.enterCombat(
+                    payload.originX(), payload.originY(), payload.originZ(),
+                    payload.width(), payload.height()
+                );
+                // Only set camera yaw on first combat entry; keep orientation between levels
+                if (!wasInCombat) {
+                    if (payload.cameraYaw() >= 0) {
+                        CombatState.setCombatYaw(payload.cameraYaw());
+                    } else {
+                        CombatState.setCombatYaw(225.0f);
+                    }
                 }
-            }
-            previousBobView = context.client().options.getBobView().getValue();
-            context.client().options.getBobView().setValue(false);
-            // Shrink chat so it doesn't cover the arena
-            previousChatScale = context.client().options.getChatScale().getValue();
-            previousChatWidth = context.client().options.getChatWidth().getValue();
-            context.client().options.getChatScale().setValue(0.5);
-            context.client().options.getChatWidth().setValue(0.39);
-            context.client().options.setPerspective(Perspective.THIRD_PERSON_BACK);
-            context.client().mouse.unlockCursor();
-            TransitionOverlay.startFadeOut();
-            CrafticsMod.LOGGER.info("Entered combat mode");
+                previousBobView = context.client().options.getBobView().getValue();
+                context.client().options.getBobView().setValue(false);
+                // Shrink chat so it doesn't cover the arena
+                previousChatScale = context.client().options.getChatScale().getValue();
+                previousChatWidth = context.client().options.getChatWidth().getValue();
+                context.client().options.getChatScale().setValue(0.5);
+                context.client().options.getChatWidth().setValue(0.39);
+                context.client().options.setPerspective(Perspective.THIRD_PERSON_BACK);
+                context.client().mouse.unlockCursor();
+                TransitionOverlay.startFadeOut();
+                CrafticsMod.LOGGER.info("Entered combat mode");
+            });
         });
 
         ClientPlayNetworking.registerGlobalReceiver(CombatSyncPayload.ID, (payload, context) -> {
-            CombatState.updateFromSync(
+            context.client().execute(() -> CombatState.updateFromSync(
                 payload.phase(), payload.ap(), payload.movePoints(),
                 payload.playerHp(), payload.playerMaxHp(), payload.turnNumber(),
                 payload.maxAp(), payload.maxSpeed(),
                 payload.enemyData(), payload.enemyTypeIds(),
                 payload.playerEffects(), payload.killStreak(),
                 payload.partyHpData(), payload.turnOrderData()
-            );
+            ));
         });
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.ScoreboardSyncPayload.ID, (payload, context) -> {
-                CombatState.updateScoreboard(payload.scoreData());
+                context.client().execute(() -> CombatState.updateScoreboard(payload.scoreData()));
             });
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.CombatEventPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
                 switch (payload.eventType()) {
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_DAMAGED -> {
                         if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
@@ -182,62 +194,71 @@ public class CrafticsClient implements ClientModInitializer {
                         }
                     }
                 }
+                });
             }
         );
 
         ClientPlayNetworking.registerGlobalReceiver(ExitCombatPayload.ID, (payload, context) -> {
-            CombatState.setInCombat(false);
-            CombatVisualEffects.resetOverlays();
-            context.client().options.getBobView().setValue(previousBobView);
-            context.client().options.getChatScale().setValue(previousChatScale);
-            context.client().options.getChatWidth().setValue(previousChatWidth);
-            if (!payload.eventRoomFollows()) {
-                context.client().options.setPerspective(Perspective.FIRST_PERSON);
-                context.client().mouse.lockCursor();
-            }
-            TransitionOverlay.startFadeOut();
-            CrafticsMod.LOGGER.info("Exited combat mode (won: {}, eventRoom: {})", payload.won(), payload.eventRoomFollows());
+            context.client().execute(() -> {
+                CombatState.setInCombat(false);
+                CombatVisualEffects.resetOverlays();
+                context.client().options.getBobView().setValue(previousBobView);
+                context.client().options.getChatScale().setValue(previousChatScale);
+                context.client().options.getChatWidth().setValue(previousChatWidth);
+                if (!payload.eventRoomFollows()) {
+                    context.client().options.setPerspective(Perspective.FIRST_PERSON);
+                    context.client().mouse.lockCursor();
+                }
+                TransitionOverlay.startFadeOut();
+                CrafticsMod.LOGGER.info("Exited combat mode (won: {}, eventRoom: {})", payload.won(), payload.eventRoomFollows());
+            });
         });
 
         // Stay in isometric view for the choice screen
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.VictoryChoicePayload.ID, (payload, context) -> {
-                context.client().mouse.unlockCursor();
-                TransitionOverlay.startFadeOut();
-                context.client().setScreen(new com.crackedgames.craftics.client.VictoryChoiceScreen(
-                    payload.emeraldsEarned(), payload.totalEmeralds(),
-                    payload.biomeName(), payload.levelIndex(), payload.nextIsBoss()
-                ));
-                CombatState.setEmeralds(payload.totalEmeralds());
+                context.client().execute(() -> {
+                    context.client().mouse.unlockCursor();
+                    TransitionOverlay.startFadeOut();
+                    context.client().setScreen(new com.crackedgames.craftics.client.VictoryChoiceScreen(
+                        payload.emeraldsEarned(), payload.totalEmeralds(),
+                        payload.biomeName(), payload.levelIndex(), payload.nextIsBoss()
+                    ));
+                    CombatState.setEmeralds(payload.totalEmeralds());
+                });
             }
         );
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.PlayerStatsSyncPayload.ID, (payload, context) -> {
-                CombatState.updateStats(payload.playerLevel(), payload.unspentPoints(), payload.statData(), payload.affinityData());
-                CombatState.setEmeralds(payload.emeralds());
+                context.client().execute(() -> {
+                    CombatState.updateStats(payload.playerLevel(), payload.unspentPoints(), payload.statData(), payload.affinityData());
+                    CombatState.setEmeralds(payload.emeralds());
+                });
             }
         );
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.AddonBonusSyncPayload.ID, (payload, context) -> {
-                CombatState.updateAddonBonuses(payload.bonusData());
+                context.client().execute(() -> CombatState.updateAddonBonuses(payload.bonusData()));
             }
         );
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.LevelUpPayload.ID, (payload, context) -> {
-                context.client().setScreen(new com.crackedgames.craftics.client.LevelUpScreen(
+                context.client().execute(() -> context.client().setScreen(new com.crackedgames.craftics.client.LevelUpScreen(
                     payload.playerLevel(), payload.unspentPoints(), payload.statData()
-                ));
+                )));
             }
         );
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.TraderOfferPayload.ID, (payload, context) -> {
-                CombatState.setTraderActive(true);
-                CombatState.setEmeralds(payload.playerEmeralds());
-                TransitionOverlay.startFadeOut();
+                context.client().execute(() -> {
+                    CombatState.setTraderActive(true);
+                    CombatState.setEmeralds(payload.playerEmeralds());
+                    TransitionOverlay.startFadeOut();
+                });
             }
         );
 
@@ -310,13 +331,15 @@ public class CrafticsClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.AchievementUnlockPayload.ID, (payload, context) -> {
-                AchievementToast.enqueue(payload.displayName(), payload.description(), payload.categoryColor());
+                context.client().execute(() -> AchievementToast.enqueue(
+                    payload.displayName(), payload.description(), payload.categoryColor()));
             }
         );
 
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.GuideBookSyncPayload.ID, (payload, context) -> {
-                com.crackedgames.craftics.client.guide.GuideBookData.applySyncFromServer(payload.unlockedEntries());
+                context.client().execute(() ->
+                    com.crackedgames.craftics.client.guide.GuideBookData.applySyncFromServer(payload.unlockedEntries()));
             }
         );
 
@@ -325,6 +348,28 @@ public class CrafticsClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(new AchievementToast());
         CombatTooltips.register();
         TileOverlayRenderer.register();
+
+        // Without this, leaving a world mid-battle leaves CombatState.inCombat
+        // stuck true — CameraLockMixin then overrides camera rotation/position
+        // forever on the title screen and in every subsequent world, effectively
+        // bricking the client until restart. The server sends ExitCombatPayload
+        // on clean end-of-fight, but never gets the chance on abrupt disconnect.
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            boolean wasInCombat = CombatState.isInCombat();
+            CombatState.resetAll();
+            CombatVisualEffects.resetOverlays();
+            com.crackedgames.craftics.client.guide.GuideBookData.resetToDefaults();
+            if (wasInCombat && client != null) {
+                client.options.getBobView().setValue(previousBobView);
+                client.options.getChatScale().setValue(previousChatScale);
+                client.options.getChatWidth().setValue(previousChatWidth);
+                client.options.setPerspective(Perspective.FIRST_PERSON);
+                if (!client.mouse.isCursorLocked()) {
+                    client.mouse.lockCursor();
+                }
+            }
+            traderScreenOpened = false;
+        });
 
         // Clear mob head auto-discovery cache whenever resource packs reload,
         // so newly added custom head PNGs are picked up without a restart.

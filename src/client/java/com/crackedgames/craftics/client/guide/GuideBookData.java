@@ -66,6 +66,16 @@ public class GuideBookData {
         unlockedEntries.add(entryName);
     }
 
+    /**
+     * Reset unlock state to defaults. Called on client disconnect so bestiary
+     * / armor-trim unlocks from the previous world don't bleed into the next.
+     * The server resyncs via GuideBookSyncPayload on Craftics-world JOIN.
+     */
+    public static void resetToDefaults() {
+        unlockedEntries.clear();
+        unlockedEntries.addAll(defaultUnlocks);
+    }
+
     /** Unlock a bestiary entry locally by mob type ID (for immediate UI feedback during combat). */
     public static void unlockMob(String entityTypeId) {
         String raw = entityTypeId;
@@ -188,18 +198,23 @@ public class GuideBookData {
         enemies.add(mob("Parrot", "Speed: 2 | Passive\n\nColorful companion. Tame with seeds."));
         enemies.add(mob("Bee", "Speed: 2 | Passive until hit\n\nStings once then dies. Weak but annoying in groups."));
         enemies.add(mob("Cod", "Speed: 2 | Passive\n\nAquatic. Only found in water biomes."));
+        enemies.add(mob("Llama", "Speed: 2 | Range: 2 | Passive until hit\n\nAttacking a llama makes it permanently aggressive — it backs up to keep distance 2 and spits at you. Found in Mountain biomes.\n\nWeak to: Slashing"));
         // Hostile - Overworld
         enemies.add(mob("Zombie", "Speed: 2 | Range: 1\n\nBasic melee grunt. Baby zombies are faster. Armed variants hit harder.\n\nWeak to: Blunt, Cleaving"));
+        enemies.add(mob("Zombie Villager", "Speed: 2 | Range: 1\n\nZombified villager. Fights identically to a regular Zombie and shares its horde bonus (+1 ATK per adjacent zombie/husk/drowned). Spawns in Plains.\n\nWeak to: Blunt, Cleaving"));
         enemies.add(mob("Husk", "Speed: 2 | Range: 1\n\nDesert zombie variant. Tougher in dry heat.\n\nWeak to: Blunt, Water"));
         enemies.add(mob("Drowned", "Speed: 2 | Range: 1-3\n\nAquatic zombie. 50% spawn with tridents; they throw diagonally at range ≤3. Non-trident drowns are pure melee.\n\nWeak to: Blunt, Cleaving\nResist: Water"));
         enemies.add(mob("Skeleton", "Speed: 2 | Range: 3\n\nRanged archer. Keeps distance and retreats if you close in.\n\nWeak to: Blunt\nResist: Ranged"));
         enemies.add(mob("Stray", "Speed: 2 | Range: 3\n\nFrozen skeleton variant. Slowness arrows!\n\nWeak to: Blunt\nResist: Ranged, Water"));
         enemies.add(mob("Creeper", "Speed: 2 | Special: Explode\n\nSneaks close then detonates! Massive AoE damage to everything nearby.\n\nWeak to: Ranged, Cleaving\nResist: Slashing"));
         enemies.add(mob("Spider", "Speed: 3 | Size: 2x2\n\nAmbush predator that pounces from distance or drops from the ceiling. Chooses between attacking and shooting cobwebs to slow you or block escape routes.\n\nWeak to: Cleaving, Special\nResist: Blunt"));
+        enemies.add(mob("Cave Spider", "Speed: 3 | Range: 1\n\nSmaller, faster spider variant that poisons on hit. Pounces 2 tiles (one shorter than regular Spider) and can drop on you from the ceiling within 2 tiles. More aggressive in Jungle and Deep Dark biomes.\n\nWeak to: Cleaving, Special\nResist: Blunt"));
+        enemies.add(mob("Silverfish", "Speed: 3 | Range: 1\n\nFlanking swarmer — always tries to approach from the opposite side of other enemies. Low damage but attacks the instant it reaches you. Don't let a pack surround you. Spawns in Deep Dark.\n\nWeak to: Slashing\nResist: Ranged"));
         enemies.add(mob("Pillager", "Speed: 2 | Range: 3\n\nCrossbow-wielding raider. Fires from distance.\n\nWeak to: Slashing, Cleaving\nResist: Ranged"));
         enemies.add(mob("Vindicator", "Speed: 3 | Range: 1\n\nRook-movement axe berserker. Dashes in straight lines like a chess rook! Charge damage scales with distance traveled. When enraged (+50% ATK), attacks also knock you back.\n\nWeak to: Ranged\nResist: Cleaving"));
-        enemies.add(mob("Evoker", "Speed: 2 | Range: 4\n\nSummons vex fangs from distance. High priority target!"));
-        enemies.add(mob("Phantom", "Speed: 4 | Special: Swoop\n\nFlying enemy that swoops from distance, hits, and retreats.\n\nWeak to: Ranged\nResist: Slashing"));
+        enemies.add(mob("Ravager", "Speed: 2 | Range: 1 | Size 2x2 | 30HP / 6ATK / 2DEF\n\nBull Rush: charges up to 3 tiles in a straight line for heavy damage + knockback 2. If it can't charge, stomps every adjacent tile (AoE around itself). Always aggressive, very tanky — bring ranged. Spawns in Forest and Mountain.\n\nWeak to: Ranged, Water\nResist: Blunt"));
+        enemies.add(mob("Evoker", "Speed: 2 | Range: 4 | 7HP / 3ATK\n\nFragile illager caster — summons vex fangs in a line from distance. Low HP but devastating if ignored. Prioritize over front-line raiders whenever possible.\n\nWeak to: Slashing, Cleaving\nResist: Special"));
+        enemies.add(mob("Phantom", "Speed: 4 | Range: 1-3 | 14HP / 7ATK / 1DEF\n\nFlying swooper — dives from distance, hits, then retreats out of melee reach. Hard to pin down; ranged weapons preferred.\n\nWeak to: Ranged\nResist: Slashing"));
         // Hostile - Nether
         enemies.add(mob("Blaze", "Speed: 2 | Range: 3\n\nHovering ranged attacker. Fireball deals area damage.\n\nWeak to: Water\nResist: Special, Ranged"));
         enemies.add(mob("Ghast", "Speed: 1 | Range: 5\n\nSlow but extreme range. Fireball explosions!\n\nWeak to: Ranged, Slashing\nResist: Special"));
@@ -207,9 +222,11 @@ public class GuideBookData {
         enemies.add(mob("Wither Skeleton", "Speed: 3 | Range: 1\n\nRelentless pursuer with stone sword.\n\nWeak to: Blunt, Water\nResist: Special"));
         enemies.add(mob("Hoglin", "Speed: 3 | Range: 1\n\nCharging beast. Hits hard!\n\nWeak to: Special\nResist: Blunt"));
         enemies.add(mob("Piglin", "Speed: 2 | Range: 3\n\nCrossbow or gold sword. Trades if you have gold!\n\nWeak to: Special, Water\nResist: Ranged"));
-        enemies.add(mob("Zombified Piglin", "Speed: 2 | Range: 1\n\nNeutral until hit, then swarms!"));
+        enemies.add(mob("Piglin Brute", "Speed: 2 | Range: 1 | 20HP / 10ATK / 3DEF\n\nElite piglin with a golden axe — ignores gold bribes and hits like a truck. Dramatically tougher than a regular Piglin. Spawns in Crimson Forest.\n\nWeak to: Special, Water\nResist: Blunt"));
+        enemies.add(mob("Zombified Piglin", "Speed: 2 | Range: 1 | 10HP / 4ATK / 1DEF\n\nNeutral until hit — then every zombified piglin nearby aggros on you too. Safe to pass through; suicidal to swing at first.\n\nWeak to: Blunt, Water\nResist: Special"));
         // Hostile - End
         enemies.add(mob("Enderman", "Speed: 5 | Special: Teleport\n\nAggressive phase-shifting teleporter. Hunts in assault cycles of 2-3 rapid teleport-strikes before blinking away. Dodges sideways when hit instead of fleeing. Below 50% HP enters Frenzy: never retreats, +50% damage, relentless teleport-strikes every turn.\n\nWeak to: Water, Special\nResist: Ranged"));
+        enemies.add(mob("Endermite", "Speed: 3 | Range: 1 | 8HP / 3ATK | Special: Blink\n\nTiny void pest with short-range teleports. Blinks 2-3 tiles to reach you and attacks the instant it's adjacent — never idles. If blocked, blinks to a random nearby tile and rushes in next turn. Spawns in Warped Forest.\n\nWeak to: Water, Special"));
         enemies.add(mob("Shulker", "Speed: 1 | Range: 4\n\nStationary turret. Levitation projectiles!\n\nWeak to: Blunt\nResist: Ranged, Slashing"));
         enemies.add(mob("Witch", "Speed: 2 | Range: 4\n\nThrows harmful potions from long range.\n\nWeak to: Slashing, Cleaving\nResist: Special\nImmune: Water"));
         // Bosses
@@ -266,8 +283,8 @@ public class GuideBookData {
         enemies.add(mob("The Wither", "BOSS | Wither | 65HP / 8ATK / 5DEF / Range 5 / Speed 2\nBasalt Deltas final boss.\n\n" +
             "Abilities:\n- Wither Skull Barrage: 3 destroyable skull projectiles\n- Decay Aura: Tiles near Wither become fire\n- Summon Wither Skeletons (max 4)\n- Charge: 4-tile dash, ATK+3\n\n" +
             "Phase 2 — Wither Armor: Immune to ranged, transition explosion, 5 skulls, larger decay."));
-        enemies.add(mob("Warden", "BOSS | Warden | Speed 3\nDeep Dark boss. Sonic boom ignores defense. Massive HP.\n\nWeak to: Ranged\nResist: Blunt, Slashing"));
-        enemies.add(mob("Ender Dragon", "BOSS | Ender Dragon | Speed 4\nFinal boss. Massive, fast, devastating. Triggers NG+!\n\nWeak to: Ranged, Special\nResist: Water"));
+        enemies.add(mob("Warden", "BOSS | Warden | 60HP / 8ATK / 4DEF / Speed 3\nDeep Dark boss.\n\nAbilities:\n- Sonic Boom: straight-line ranged attack that ignores defense\n- Tremor Sense: always knows your position — stealth/distance don't help\n\nWeak to: Ranged\nResist: Blunt, Slashing"));
+        enemies.add(mob("Ender Dragon", "BOSS | Ender Dragon | 100HP / 15ATK / 5DEF / Speed 4\nDragon's Nest final boss. Massive, fast, devastating. Clearing it triggers New Game Plus.\n\nWeak to: Ranged, Special\nResist: Water"));
         CATEGORIES.add(new Category("Enemy Bestiary", "minecraft:zombie_head",
             "Know your foes. Entries unlock as you encounter them.", enemies));
 

@@ -5,10 +5,13 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.BlockWithEntity;
+import net.minecraft.block.Blocks;
 import net.minecraft.block.ShapeContext;
 import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemPlacementContext;
+import net.minecraft.item.ItemStack;
 import net.minecraft.screen.NamedScreenHandlerFactory;
 import net.minecraft.state.StateManager;
 //? if <=1.21.1 {
@@ -37,19 +40,28 @@ public class LevelSelectBlock extends BlockWithEntity {
     public static final EnumProperty<Direction> FACING = Properties.HORIZONTAL_FACING;
     //?}
 
-    // Model extends 2 blocks along Z (0 to 32 in model space).
-    // Blockstate rotates the model via Y rotation, so shapes must match.
-    // North (y=0):   model extends along +Z → shape goes Z 0..2
-    // South (y=180): model extends along -Z → shape goes Z -1..1
-    // East  (y=90):  model extends along +X → shape goes X 0..2
-    // West  (y=270): model extends along -X → shape goes X -1..1
-    // Outline shapes extend into the neighbor block for raycast/interaction (2 blocks wide)
+    // The model extends 2 blocks (0..32 in model space). Blockstate rotates it via
+    // y-rotation, and y=90 maps +Z → -X in MC's coordinate system, so the body
+    // extension per FACING is:
+    //   NORTH (y=0)   → body +Z  (phantom at realPos.south())
+    //   EAST  (y=90)  → body -X  (phantom at realPos.west())
+    //   SOUTH (y=180) → body -Z  (phantom at realPos.north())
+    //   WEST  (y=270) → body +X  (phantom at realPos.east())
+    // i.e. phantom = realPos.offset(FACING.getOpposite()).
+    // The outline still extends into the phantom column so hits from angles that
+    // cross the real block's column still register, but vanilla raycast won't
+    // test this extended shape when the ray stays purely in the phantom column —
+    // that's why a LevelSelectGhostBlock is placed there too (see onPlaced).
     private static final VoxelShape OUTLINE_NORTH = VoxelShapes.cuboid(0.0, 0.0, 0.0, 1.0, 0.5, 2.0);
     private static final VoxelShape OUTLINE_SOUTH = VoxelShapes.cuboid(0.0, 0.0, -1.0, 1.0, 0.5, 1.0);
     private static final VoxelShape OUTLINE_EAST  = VoxelShapes.cuboid(-1.0, 0.0, 0.0, 1.0, 0.5, 1.0);
     private static final VoxelShape OUTLINE_WEST  = VoxelShapes.cuboid(0.0, 0.0, 0.0, 2.0, 0.5, 1.0);
     // Collision shape stays within the single block (slab height)
     private static final VoxelShape COLLISION = VoxelShapes.cuboid(0.0, 0.0, 0.0, 1.0, 0.5, 1.0);
+
+    private static BlockPos phantomPos(BlockPos realPos, Direction facing) {
+        return realPos.offset(facing.getOpposite());
+    }
 
     public LevelSelectBlock(Settings settings) {
         super(settings);
@@ -69,7 +81,43 @@ public class LevelSelectBlock extends BlockWithEntity {
     @Override
     public BlockState getPlacementState(ItemPlacementContext ctx) {
         // Place sideways — model extends perpendicular to player facing
-        return getDefaultState().with(FACING, ctx.getHorizontalPlayerFacing().rotateYClockwise());
+        Direction facing = ctx.getHorizontalPlayerFacing().rotateYClockwise();
+        // Reject placement if the phantom half's position isn't free — we need
+        // to put a LevelSelectGhostBlock there so the other visual half is
+        // clickable from perpendicular angles.
+        if (!ctx.getWorld().getBlockState(phantomPos(ctx.getBlockPos(), facing)).canReplace(ctx)) {
+            return null;
+        }
+        return getDefaultState().with(FACING, facing);
+    }
+
+    @Override
+    public void onPlaced(World world, BlockPos pos, BlockState state, LivingEntity placer, ItemStack stack) {
+        super.onPlaced(world, pos, state, placer, stack);
+        if (!world.isClient()) {
+            Direction facing = state.get(FACING);
+            BlockPos ghostPos = phantomPos(pos, facing);
+            world.setBlockState(
+                ghostPos,
+                ModBlocks.LEVEL_SELECT_GHOST_BLOCK.getDefaultState()
+                    .with(LevelSelectGhostBlock.FACING, facing),
+                Block.NOTIFY_ALL
+            );
+        }
+    }
+
+    @Override
+    public BlockState onBreak(World world, BlockPos pos, BlockState state, PlayerEntity player) {
+        if (!world.isClient()) {
+            BlockPos ghostPos = phantomPos(pos, state.get(FACING));
+            // Use setBlockState (not breakBlock) so the ghost's onBreak doesn't
+            // recurse back into this block — the real half has already dropped
+            // its item, and the ghost has no drops of its own.
+            if (world.getBlockState(ghostPos).getBlock() instanceof LevelSelectGhostBlock) {
+                world.setBlockState(ghostPos, Blocks.AIR.getDefaultState(), Block.NOTIFY_ALL);
+            }
+        }
+        return super.onBreak(world, pos, state, player);
     }
 
     @Override

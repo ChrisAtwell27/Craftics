@@ -18,6 +18,8 @@ public class ModBlocks {
 
     private static final RegistryKey<Block> LEVEL_SELECT_BLOCK_KEY =
         RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "level_select_block"));
+    private static final RegistryKey<Block> LEVEL_SELECT_GHOST_BLOCK_KEY =
+        RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "level_select_ghost_block"));
 
     public static final Block LEVEL_SELECT_BLOCK = registerBlock("level_select_block",
         new LevelSelectBlock(AbstractBlock.Settings.create()
@@ -32,6 +34,23 @@ public class ModBlocks {
             .solidBlock((state, world, pos) -> false)
             .suffocates((state, world, pos) -> false)
             .blockVision((state, world, pos) -> false)
+        )
+    );
+
+    // Invisible second half of the level-select table. Auto-placed by LevelSelectBlock
+    // on placement and torn down on break — no BlockItem, no drops of its own.
+    public static final Block LEVEL_SELECT_GHOST_BLOCK = registerBlockNoItem("level_select_ghost_block",
+        new LevelSelectGhostBlock(AbstractBlock.Settings.create()
+            //? if >=1.21.2 {
+            .registryKey(LEVEL_SELECT_GHOST_BLOCK_KEY)
+            //?}
+            .strength(2.0f, 3.0f)
+            .sounds(net.minecraft.sound.BlockSoundGroup.WOOD)
+            .nonOpaque()
+            .solidBlock((state, world, pos) -> false)
+            .suffocates((state, world, pos) -> false)
+            .blockVision((state, world, pos) -> false)
+            .dropsNothing()
         )
     );
 
@@ -56,6 +75,11 @@ public class ModBlocks {
         Registry.register(Registries.ITEM, id,
             new BlockItem(block, itemSettings));
 
+        return block;
+    }
+
+    private static Block registerBlockNoItem(String name, Block block) {
+        Registry.register(Registries.BLOCK, Identifier.of(CrafticsMod.MOD_ID, name), block);
         return block;
     }
 

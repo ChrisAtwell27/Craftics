@@ -57,28 +57,11 @@ public class CrafticsMod implements ModInitializer {
         ModScreenHandlers.register();
         ModNetworking.registerServer();
 
-        // Level select block: redirect right-clicks on adjacent blocks to the level select
-        // (the model extends 2 blocks but only 1 block has the block entity)
-        net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
-            if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) return net.minecraft.util.ActionResult.PASS;
-            net.minecraft.util.math.BlockPos clickedPos = hitResult.getBlockPos();
-            if (world.getBlockState(clickedPos).getBlock() instanceof com.crackedgames.craftics.block.LevelSelectBlock) {
-                return net.minecraft.util.ActionResult.PASS; // let the block handle it directly
-            }
-            // Check all 4 horizontal neighbors for a LevelSelectBlock
-            for (net.minecraft.util.math.Direction dir : net.minecraft.util.math.Direction.Type.HORIZONTAL) {
-                net.minecraft.util.math.BlockPos neighborPos = clickedPos.offset(dir);
-                net.minecraft.block.BlockState neighborState = world.getBlockState(neighborPos);
-                if (neighborState.getBlock() instanceof com.crackedgames.craftics.block.LevelSelectBlock) {
-                    net.minecraft.block.entity.BlockEntity be = world.getBlockEntity(neighborPos);
-                    if (be instanceof net.minecraft.screen.NamedScreenHandlerFactory factory) {
-                        player.openHandledScreen(factory);
-                        return net.minecraft.util.ActionResult.SUCCESS;
-                    }
-                }
-            }
-            return net.minecraft.util.ActionResult.PASS;
-        });
+        // Level-select phantom-half click routing is now handled by the
+        // LevelSelectGhostBlock placed alongside the real block — no global
+        // UseBlockCallback needed. The previous callback scanned all 4 horizontal
+        // neighbors and hijacked clicks on any adjacent block (a chest placed
+        // next to the level-select opened the level-select screen instead).
 
         // Dig site event: intercept right-clicks on suspicious blocks
         net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
