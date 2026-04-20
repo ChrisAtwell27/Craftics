@@ -82,6 +82,10 @@ dependencies {
 	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-entity:${project.cca_version}")
 	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-world:${project.cca_version}")
 
+	// JUnit 5 — pure-logic unit tests (VFX descriptor builder, codecs, anchor resolver)
+	testImplementation platform('org.junit:junit-bom:5.10.2')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+
 	// WorldEdit — dev-only (modLocalRuntime, not shipped), used by runArenaEditor.
 	// EngineHub publishes per-MC-version artifacts; pick the matching one per shard.
 	if (stonecutter.eval(project.minecraft_version, "<=1.21.1")) {
@@ -124,4 +128,8 @@ jar {
 	from("LICENSE") {
 		rename { "${it}_${project.base.archivesName.get()}" }
 	}
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
 }
