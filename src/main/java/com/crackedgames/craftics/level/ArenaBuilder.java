@@ -1730,10 +1730,10 @@ public class ArenaBuilder {
         int pad = 3;
         int fromY = Math.max(world.getBottomY(), minY);
         //? if <=1.21.1 {
-        /*int toY = Math.min(world.getTopY() - 1, maxY);
-        *///?} else {
-        int toY = Math.min(world.getTopYInclusive(), maxY);
-        //?}
+        int toY = Math.min(world.getTopY() - 1, maxY);
+        //?} else {
+        /*int toY = Math.min(world.getTopYInclusive(), maxY);
+        *///?}
         var lighting = world.getLightingProvider();
 
         for (int x = ox - pad; x < ox + w + pad; x++) {
@@ -1767,19 +1767,19 @@ public class ArenaBuilder {
     private static void setBiomeForArena(ServerWorld world, BlockPos origin, int w, int h, String crafticsBiomeId) {
         Identifier mcBiomeId = toMinecraftBiomeId(crafticsBiomeId);
         //? if <=1.21.1 {
-        /*var biomeRegistry = world.getRegistryManager().get(RegistryKeys.BIOME);
-        *///?} else {
-        var biomeRegistry = world.getRegistryManager().getOrThrow(RegistryKeys.BIOME);
-        //?}
+        var biomeRegistry = world.getRegistryManager().get(RegistryKeys.BIOME);
+        //?} else {
+        /*var biomeRegistry = world.getRegistryManager().getOrThrow(RegistryKeys.BIOME);
+        *///?}
         var biomeKey = RegistryKey.of(RegistryKeys.BIOME, mcBiomeId);
         //? if <=1.21.1 {
-        /*java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.getEntry(biomeKey);
-        *///?} else {
-        java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.streamEntries()
+        java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.getEntry(biomeKey);
+        //?} else {
+        /*java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.streamEntries()
             .filter(e -> e.getKey().isPresent() && e.getKey().get().equals(biomeKey))
             .map(e -> (RegistryEntry<Biome>) e)
             .findFirst();
-        //?}
+        *///?}
         if (optEntry.isEmpty()) {
             CrafticsMod.LOGGER.warn("BiomePainter: biome '{}' not found (craftics id: '{}')", mcBiomeId, crafticsBiomeId);
             return;
@@ -1800,10 +1800,10 @@ public class ArenaBuilder {
                 var chunk = world.getChunk(cx, cz);
                 chunk.populateBiomes((bx, by, bz, noise) -> biomeEntry, null);
                 //? if <=1.21.1 {
-                /*chunk.setNeedsSaving(true);
-                *///?} else {
-                chunk.markNeedsSaving();
-                //?}
+                chunk.setNeedsSaving(true);
+                //?} else {
+                /*chunk.markNeedsSaving();
+                *///?}
                 count++;
             }
         }

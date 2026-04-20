@@ -17,16 +17,16 @@ public record PostLevelChoicePayload(boolean goHome) implements CustomPayload {
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "post_level_choice"));
 
     //? if <=1.21.3 {
-    /*public static final PacketCodec<RegistryByteBuf, PostLevelChoicePayload> CODEC =
+    public static final PacketCodec<RegistryByteBuf, PostLevelChoicePayload> CODEC =
         PacketCodecs.BOOL
             .xmap(PostLevelChoicePayload::new, PostLevelChoicePayload::goHome)
             .cast();
-    *///?} else {
-    public static final PacketCodec<RegistryByteBuf, PostLevelChoicePayload> CODEC =
+    //?} else {
+    /*public static final PacketCodec<RegistryByteBuf, PostLevelChoicePayload> CODEC =
         PacketCodecs.BOOLEAN
             .xmap(PostLevelChoicePayload::new, PostLevelChoicePayload::goHome)
             .cast();
-    //?}
+    *///?}
 
     @Override
     public Id<? extends CustomPayload> getId() { return ID; }

@@ -9,16 +9,16 @@ import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
 //? if <=1.21.1 {
-/*import net.minecraft.item.trim.ArmorTrim;
+import net.minecraft.item.trim.ArmorTrim;
 import net.minecraft.item.trim.ArmorTrimMaterial;
 import net.minecraft.item.trim.ArmorTrimPattern;
 import net.minecraft.item.trim.ArmorTrimPatterns;
-*///?} else {
-import net.minecraft.item.equipment.trim.ArmorTrim;
+//?} else {
+/*import net.minecraft.item.equipment.trim.ArmorTrim;
 import net.minecraft.item.equipment.trim.ArmorTrimMaterial;
 import net.minecraft.item.equipment.trim.ArmorTrimPattern;
 import net.minecraft.item.equipment.trim.ArmorTrimPatterns;
-//?}
+*///?}
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -93,10 +93,10 @@ public class TrimEffects {
 
             trimCount++;
             //? if <=1.21.1 {
-            /*RegistryEntry<ArmorTrimPattern> pattern = trim.getPattern();
-            *///?} else {
-            RegistryEntry<ArmorTrimPattern> pattern = trim.pattern();
-            //?}
+            RegistryEntry<ArmorTrimPattern> pattern = trim.getPattern();
+            //?} else {
+            /*RegistryEntry<ArmorTrimPattern> pattern = trim.pattern();
+            *///?}
             String patternId = pattern.getKey().map(k -> k.getValue().getPath()).orElse("unknown");
             patternCounts.merge(patternId, 1, Integer::sum);
 
@@ -106,10 +106,10 @@ public class TrimEffects {
             }
 
             //? if <=1.21.1 {
-            /*RegistryEntry<ArmorTrimMaterial> material = trim.getMaterial();
-            *///?} else {
-            RegistryEntry<ArmorTrimMaterial> material = trim.material();
-            //?}
+            RegistryEntry<ArmorTrimMaterial> material = trim.getMaterial();
+            //?} else {
+            /*RegistryEntry<ArmorTrimMaterial> material = trim.material();
+            *///?}
             String materialId = material.getKey().map(k -> k.getValue().getPath()).orElse("unknown");
             materialCounts.merge(materialId, 1, Integer::sum);
             Bonus matBonus = TrimMaterialRegistry.getMaterialBonus(materialId);

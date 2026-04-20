@@ -20,30 +20,30 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class MovementDisableMixin {
 
     //? if <=1.21.1 {
-    /*@Inject(method = "tick(ZF)V", at = @At("TAIL"))
+    @Inject(method = "tick(ZF)V", at = @At("TAIL"))
     private void craftics$disableMovementInCombat(boolean slowDown, float slowDownFactor, CallbackInfo ci) {
         craftics$clearMovement();
     }
-    *///?} else {
-    @Inject(method = "tick()V", at = @At("TAIL"))
+    //?} else {
+    /*@Inject(method = "tick()V", at = @At("TAIL"))
     private void craftics$disableMovementInCombat(CallbackInfo ci) {
         craftics$clearMovement();
     }
-    //?}
+    *///?}
 
     private void craftics$clearMovement() {
         if (!CombatState.isInCombat()) return;
         Input input = (Input)(Object)this;
         //? if <=1.21.1 {
-        /*input.pressingForward = false;
+        input.pressingForward = false;
         input.pressingBack = false;
         input.pressingLeft = false;
         input.pressingRight = false;
         input.jumping = false;
         input.sneaking = false;
-        *///?} else {
-        input.playerInput = new net.minecraft.util.PlayerInput(false, false, false, false, false, false, false);
-        //?}
+        //?} else {
+        /*input.playerInput = new net.minecraft.util.PlayerInput(false, false, false, false, false, false, false);
+        *///?}
         //? if <=1.21.4 {
         input.movementForward = 0f;
         input.movementSideways = 0f;

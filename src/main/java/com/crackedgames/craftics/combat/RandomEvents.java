@@ -209,10 +209,10 @@ public class RandomEvents {
     private static ItemStack createRandomEnchantedBook(ServerPlayerEntity player) {
         net.minecraft.server.world.ServerWorld world = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
         //? if <=1.21.1 {
-        /*var registry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        *///?} else {
-        var registry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        //?}
+        var registry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        //?} else {
+        /*var registry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        *///?}
         var entries = registry.streamEntries().toList();
         if (entries.isEmpty()) return new ItemStack(Items.ENCHANTED_BOOK, 1);
         Random rng = new Random();

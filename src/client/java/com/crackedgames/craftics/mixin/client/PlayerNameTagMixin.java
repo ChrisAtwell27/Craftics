@@ -7,8 +7,8 @@ import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.PlayerEntityRenderer;
 //? if >=1.21.2 {
-import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
-//?}
+/*import net.minecraft.client.render.entity.state.PlayerEntityRenderState;
+*///?}
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
@@ -32,7 +32,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class PlayerNameTagMixin {
 
     //? if <=1.21.1 {
-    /*@Inject(method = "renderLabelIfPresent(Lnet/minecraft/client/network/AbstractClientPlayerEntity;Lnet/minecraft/text/Text;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;IF)V",
+    @Inject(method = "renderLabelIfPresent(Lnet/minecraft/client/network/AbstractClientPlayerEntity;Lnet/minecraft/text/Text;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;IF)V",
             at = @At("HEAD"), cancellable = true)
     private void craftics$customNameTag(AbstractClientPlayerEntity player, Text text,
                                          MatrixStack matrices, VertexConsumerProvider vertexConsumers,
@@ -68,8 +68,8 @@ public class PlayerNameTagMixin {
         float labelHeight = player.getHeight() + 0.5f;
         craftics$drawCustomLabel(client, matrices, vertexConsumers, displayName, labelHeight, isActiveTurn, light);
     }
-    *///?} else {
-    @Inject(method = "renderLabelIfPresent(Lnet/minecraft/client/render/entity/state/PlayerEntityRenderState;Lnet/minecraft/text/Text;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
+    //?} else {
+    /*@Inject(method = "renderLabelIfPresent(Lnet/minecraft/client/render/entity/state/PlayerEntityRenderState;Lnet/minecraft/text/Text;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
             at = @At("HEAD"), cancellable = true)
     private void craftics$customNameTag(PlayerEntityRenderState state, Text text,
                                          MatrixStack matrices, VertexConsumerProvider vertexConsumers,
@@ -107,7 +107,7 @@ public class PlayerNameTagMixin {
         float labelHeight = state.height + 0.5f;
         craftics$drawCustomLabel(client, matrices, vertexConsumers, stateName, labelHeight, isActiveTurn, light);
     }
-    //?}
+    *///?}
 
     /**
      * Shared drawing routine used by both shard-specific injectors above.

@@ -17,8 +17,8 @@ public class ModItems {
     public static final Item GUIDE_BOOK = registerItem("guide_book",
         new GuideBookItem(new Item.Settings()
             //? if >=1.21.2 {
-            .registryKey(GUIDE_BOOK_KEY)
-            //?}
+            /*.registryKey(GUIDE_BOOK_KEY)
+            *///?}
             .maxCount(1)
             .rarity(Rarity.UNCOMMON)
         )

@@ -19,22 +19,22 @@ public record LoadingScreenPayload(boolean show, String title, String subtitle) 
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "loading_screen"));
 
     //? if <=1.21.3 {
-    /*public static final PacketCodec<RegistryByteBuf, LoadingScreenPayload> CODEC =
+    public static final PacketCodec<RegistryByteBuf, LoadingScreenPayload> CODEC =
         PacketCodec.tuple(
             PacketCodecs.BOOL, LoadingScreenPayload::show,
             PacketCodecs.STRING, LoadingScreenPayload::title,
             PacketCodecs.STRING, LoadingScreenPayload::subtitle,
             LoadingScreenPayload::new
         );
-    *///?} else {
-    public static final PacketCodec<RegistryByteBuf, LoadingScreenPayload> CODEC =
+    //?} else {
+    /*public static final PacketCodec<RegistryByteBuf, LoadingScreenPayload> CODEC =
         PacketCodec.tuple(
             PacketCodecs.BOOLEAN, LoadingScreenPayload::show,
             PacketCodecs.STRING, LoadingScreenPayload::title,
             PacketCodecs.STRING, LoadingScreenPayload::subtitle,
             LoadingScreenPayload::new
         );
-    //?}
+    *///?}
 
     @Override
     public Id<? extends CustomPayload> getId() { return ID; }

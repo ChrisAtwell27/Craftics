@@ -94,32 +94,32 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         // Armor trim combat effects tooltip (on already-trimmed armor)
         //? if <=1.21.1 {
-        /*net.minecraft.item.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
-        *///?} else {
-        net.minecraft.item.equipment.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
-        //?}
+        net.minecraft.item.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
+        //?} else {
+        /*net.minecraft.item.equipment.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
+        *///?}
         if (trim != null) {
             //? if <=1.21.1 {
-            /*String patternId = trim.getPattern().getKey()
+            String patternId = trim.getPattern().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
-            *///?} else {
-            String patternId = trim.pattern().getKey()
+            //?} else {
+            /*String patternId = trim.pattern().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
-            //?}
+            *///?}
             if (patternId.isEmpty()) {
                 //? if <=1.21.1 {
-                /*try { patternId = trim.getPattern().value().assetId().getPath(); } catch (Exception ignored) {}
-                *///?} else {
-                try { patternId = trim.pattern().value().assetId().getPath(); } catch (Exception ignored) {}
-                //?}
+                try { patternId = trim.getPattern().value().assetId().getPath(); } catch (Exception ignored) {}
+                //?} else {
+                /*try { patternId = trim.pattern().value().assetId().getPath(); } catch (Exception ignored) {}
+                *///?}
             }
             //? if <=1.21.1 {
-            /*String materialId = trim.getMaterial().getKey()
+            String materialId = trim.getMaterial().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
-            *///?} else {
-            String materialId = trim.material().getKey()
+            //?} else {
+            /*String materialId = trim.material().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
-            //?}
+            *///?}
             String perPiece = getTrimPerPieceDescription(patternId);
             String matDesc = com.crackedgames.craftics.api.registry.TrimMaterialRegistry.getDescription(materialId);
             if (!perPiece.isEmpty() || !matDesc.isEmpty()) {

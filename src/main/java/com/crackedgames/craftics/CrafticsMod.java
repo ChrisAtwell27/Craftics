@@ -47,6 +47,8 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.init();
         com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.init();
         com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.init();
+        com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
+        com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
 
         // Register custom chunk generator codec
         Registry.register(Registries.CHUNK_GENERATOR, Identifier.of(MOD_ID, "void"), VoidChunkGenerator.CODEC);
@@ -85,7 +87,7 @@ public class CrafticsMod implements ModInitializer {
         // chamber (or ominous trial chamber) on the next level transition.
         // Consumes one key per use. Outside combat the keys do nothing.
         //? if <=1.21.1 {
-        /*net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
                 return net.minecraft.util.TypedActionResult.pass(player.getStackInHand(hand));
             }
@@ -129,8 +131,8 @@ public class CrafticsMod implements ModInitializer {
             }
             return net.minecraft.util.TypedActionResult.pass(stack);
         });
-        *///?} else {
-        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+        //?} else {
+        /*net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
                 return net.minecraft.util.ActionResult.PASS;
             }
@@ -174,7 +176,7 @@ public class CrafticsMod implements ModInitializer {
             }
             return net.minecraft.util.ActionResult.PASS;
         });
-        //?}
+        *///?}
 
         // Clear static combat state between world loads (prevents leaking across saves in singleplayer)
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -1700,12 +1702,12 @@ public class CrafticsMod implements ModInitializer {
         }
         if (player.getServerWorld() != overworld) {
             //? if <=1.21.1 {
-            /*player.teleport(overworld, x, y, z,
-                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
-            *///?} else {
             player.teleport(overworld, x, y, z,
+                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
+            //?} else {
+            /*player.teleport(overworld, x, y, z,
                 java.util.Collections.emptySet(), player.getYaw(), player.getPitch(), true);
-            //?}
+            *///?}
         } else {
             player.requestTeleport(x, y, z);
         }
