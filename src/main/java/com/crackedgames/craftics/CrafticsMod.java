@@ -370,6 +370,15 @@ public class CrafticsMod implements ModInitializer {
                 LOGGER.error("CombatManager.tickAll() crashed; continuing server tick", t);
             }
 
+            try {
+                com.crackedgames.craftics.vfx.PhaseScheduler.tickAll();
+                for (net.minecraft.server.world.ServerWorld w : server.getWorlds()) {
+                    com.crackedgames.craftics.vfx.VfxBlockTracker.of(w).tick(w);
+                }
+            } catch (Throwable t) {
+                LOGGER.error("VFX tick crashed; continuing server tick", t);
+            }
+
             // Re-sync addon equipment scanner bonuses every second (20 ticks)
             // so the inventory UI updates when players equip/unequip addon items.
             // Each player is wrapped in try/catch so one failing scanner can't

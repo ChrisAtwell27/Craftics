@@ -386,6 +386,9 @@ public class CrafticsClient implements ClientModInitializer {
                 }
             });
 
+        // VFX: receive client-side VfxPrimitives from server
+        com.crackedgames.craftics.client.vfx.VfxClientDispatcher.register();
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             AchievementToast.tick();
 

@@ -42,6 +42,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(AddonBonusSyncPayload.ID, AddonBonusSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(LoadingScreenPayload.ID, LoadingScreenPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(ScoreboardSyncPayload.ID, ScoreboardSyncPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(VfxClientPayload.ID, VfxClientPayload.CODEC);
 
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);

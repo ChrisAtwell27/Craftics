@@ -267,6 +267,9 @@ public class CrafticsConfig {
     public boolean bossGlowEffect = true;
     public boolean deathShrinkAnimation = true;
     public boolean screenShakeOnHit = true;
+    public boolean vfxBlockEntitiesEnabled = true;
+    public boolean hitPauseEnabled = true;
+    public float vfxIntensity = 1.0f;
 
     // ===== Accessibility =====
 

@@ -85,6 +85,7 @@ dependencies {
 	// JUnit 5 — pure-logic unit tests (VFX descriptor builder, codecs, anchor resolver)
 	testImplementation platform('org.junit:junit-bom:5.10.2')
 	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
 	// WorldEdit — dev-only (modLocalRuntime, not shipped), used by runArenaEditor.
 	// EngineHub publishes per-MC-version artifacts; pick the matching one per shard.

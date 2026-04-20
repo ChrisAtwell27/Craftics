@@ -1038,6 +1038,7 @@ public class CombatManager {
     private GridPos droppedTridentPos = null;
     private ItemStack droppedTridentStack = null;
     private net.minecraft.entity.ItemEntity droppedTridentEntity = null;
+    private java.util.UUID droppedTridentOwner = null;
     public GridPos getDroppedTridentPos() { return droppedTridentPos; }
 
     private static final int SHIELD_PASSIVE_DEFENSE = 1;
@@ -1214,6 +1215,15 @@ public class CombatManager {
     private int moveTickCounter;
     private double lerpStartX, lerpStartY, lerpStartZ;
     private boolean lerpInitialized;
+
+    // === Riptide dash animation state ===
+    private boolean riptideAnimActive;
+    private double riptideStartX, riptideStartY, riptideStartZ;
+    private double riptideEndX, riptideEndY, riptideEndZ;
+    private int riptideAnimTick;
+    private int riptideAnimTotalTicks;
+    private float riptideAnimYaw;
+    private GridPos riptideFinalGridPos;
 
     private enum EnemyTurnState { DECIDING, MOVING, ANIMATING, ATTACKING, TANTRUM_HOPPING, DONE }
     private int enemyTurnIndex;
@@ -2053,6 +2063,7 @@ public class CombatManager {
             case CombatActionPayload.ACTION_ATTACK -> handleAttack(action.targetEntityId(), new GridPos(action.targetX(), action.targetZ()));
             case CombatActionPayload.ACTION_END_TURN -> handleEndTurn();
             case CombatActionPayload.ACTION_USE_ITEM -> handleUseItem(new GridPos(action.targetX(), action.targetZ()));
+            case CombatActionPayload.ACTION_MINE -> handleMine(new GridPos(action.targetX(), action.targetZ()));
         }
     }
 
@@ -2196,6 +2207,53 @@ public class CombatManager {
         if (id.contains("mace")) return 10;
         if (id.contains("trident")) return 5;
         return 6; // sword/fist default
+    }
+
+    /** Mine a VFX-placed obstacle tile adjacent to the player, if the player holds a pickaxe. Costs 1 AP. */
+    private void handleMine(GridPos targetTile) {
+        if (!active || player == null || arena == null || targetTile == null) return;
+        if (apRemaining < 1) {
+            sendMessage("§cNot enough AP to mine!");
+            return;
+        }
+        GridPos playerPos = arena.getPlayerGridPos();
+        if (playerPos == null || playerPos.manhattanDistance(targetTile) > 1) {
+            sendMessage("§cMust be adjacent to mine!");
+            return;
+        }
+        if (!arena.isVfxObstacle(targetTile)) {
+            // Silent — client optimistically sends ACTION_MINE for any obstacle click
+            return;
+        }
+        net.minecraft.item.Item weapon = player.getMainHandStack().getItem();
+        String path = net.minecraft.registry.Registries.ITEM.getId(weapon).getPath();
+        if (!path.endsWith("_pickaxe")) {
+            sendMessage("§cNeed a pickaxe to mine!");
+            return;
+        }
+
+        net.minecraft.server.world.ServerWorld world = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+        net.minecraft.util.math.BlockPos tileBlock = arena.gridToBlockPos(targetTile);
+        net.minecraft.block.BlockState mined = world.getBlockState(tileBlock);
+
+        arena.clearVfxObstacle(world, targetTile);
+        apRemaining -= 1;
+
+        // Mining VFX
+        net.minecraft.particle.BlockStateParticleEffect blockEffect =
+            new net.minecraft.particle.BlockStateParticleEffect(net.minecraft.particle.ParticleTypes.BLOCK, mined);
+        world.spawnParticles(blockEffect,
+            tileBlock.getX() + 0.5, tileBlock.getY() + 0.5, tileBlock.getZ() + 0.5,
+            12, 0.3, 0.3, 0.3, 0.2);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+            tileBlock.getX() + 0.5, tileBlock.getY() + 0.5, tileBlock.getZ() + 0.5,
+            6, 0.3, 0.3, 0.3, 0.15);
+        world.playSound(null, tileBlock, net.minecraft.sound.SoundEvents.BLOCK_STONE_BREAK,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.1f);
+
+        sendMessage("§7⛏ Mined obstacle!");
+        sendSync();
+        refreshHighlights();
     }
 
     private void handleAttack(int targetEntityId, GridPos clickedTile) {
@@ -2502,6 +2560,7 @@ public class CombatManager {
         // Trident throw: remove from hand and drop on arena (unless Loyalty)
         if (isTridentThrow && !tridentHasLoyalty) {
             droppedTridentStack = player.getMainHandStack().copy();
+            droppedTridentOwner = player.getUuid();
             // Calculate landing tile: one tile before the nearest target tile along throw direction
             int ddx = Integer.signum(tridentAimTile.x() - pPos.x());
             int ddz = Integer.signum(tridentAimTile.z() - pPos.z());
@@ -3055,13 +3114,33 @@ public class CombatManager {
             // Hit particles
             ServerWorld attackWorld = (ServerWorld) player.getEntityWorld();
             BlockPos targetBlock = arena.gridToBlockPos(fTarget.getGridPos());
-            attackWorld.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
-                targetBlock.getX() + 0.5, targetBlock.getY() + 1.0, targetBlock.getZ() + 0.5,
-                3, 0.3, 0.3, 0.3, 0.1);
-            attackWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
-                targetBlock.getX() + 0.5, targetBlock.getY() + 1.0, targetBlock.getZ() + 0.5,
-                5, 0.4, 0.4, 0.4, 0.2);
-            ProjectileSpawner.spawnImpact(attackWorld, targetBlock, fLuckCrit ? "critical" : "melee");
+            // VFX dispatch — framework handles particles + shake + hit-pause + floating text
+            {
+                net.minecraft.item.Item vfxWeapon = player.getMainHandStack().getItem();
+                com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome outcome;
+                if (fIsTridentThrow) {
+                    outcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.THROWN;
+                } else if (vfxWeapon == net.minecraft.item.Items.NETHERITE_SWORD
+                           && fTarget.getMaxHp() > 0
+                           && (fTarget.getCurrentHp() + dealt) <= fTarget.getMaxHp() * 0.3f) {
+                    // Netherite execute: target was at/below 30% HP before this hit
+                    outcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.EXECUTE;
+                } else if (fLuckCrit) {
+                    outcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.CRIT;
+                } else {
+                    outcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.BASIC_HIT;
+                }
+                com.crackedgames.craftics.vfx.VfxDescriptor descriptor =
+                    com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.select(vfxWeapon, outcome);
+                int originId = player.getId();
+                int targetId = fTarget.getMobEntity() != null ? fTarget.getMobEntity().getId() : -1;
+                com.crackedgames.craftics.vfx.VfxContext ctx =
+                    com.crackedgames.craftics.vfx.VfxContext.ofEntities(
+                        originId, targetId,
+                        player.getBlockPos(), targetBlock,
+                        (float) dealt, fLuckCrit, arena);
+                com.crackedgames.craftics.vfx.Vfx.play(attackWorld, descriptor, ctx);
+            }
 
             // Ranged affinity ricochet chain: 0% base, +5% chance per ranged affinity point + 2% per luck
             if (fIsRangedWeapon) {
@@ -3102,10 +3181,21 @@ public class CombatManager {
                         ));
 
                         BlockPos ricBlock = arena.gridToBlockPos(ricochetTarget.getGridPos());
-                        attackWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
-                            ricBlock.getX() + 0.5, ricBlock.getY() + 1.0, ricBlock.getZ() + 0.5,
-                            4, 0.35, 0.35, 0.35, 0.15);
-                        ProjectileSpawner.spawnImpact(attackWorld, ricBlock, "critical");
+                        {
+                            // Ricochet VFX — reuse PIERCE_SECONDARY flourish
+                            com.crackedgames.craftics.vfx.VfxDescriptor ricDesc =
+                                com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.select(
+                                    player.getMainHandStack().getItem(),
+                                    com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.PIERCE_SECONDARY);
+                            int ricOriginId = player.getId();
+                            int ricTargetId = ricochetTarget.getMobEntity() != null ? ricochetTarget.getMobEntity().getId() : -1;
+                            com.crackedgames.craftics.vfx.VfxContext ricCtx =
+                                com.crackedgames.craftics.vfx.VfxContext.ofEntities(
+                                    ricOriginId, ricTargetId,
+                                    player.getBlockPos(), ricBlock,
+                                    (float) ricDealt, false, arena);
+                            com.crackedgames.craftics.vfx.Vfx.play(attackWorld, ricDesc, ricCtx);
+                        }
 
                         checkAndHandleDeath(ricochetTarget);
                         ricochetSource = ricochetTarget;
@@ -3115,7 +3205,29 @@ public class CombatManager {
 
             // Check death
             checkAndHandleDeath(fTarget);
-            for (CombatEntity extra : abilityResult.extraTargets()) checkAndHandleDeath(extra);
+            for (CombatEntity extra : abilityResult.extraTargets()) {
+                net.minecraft.util.math.BlockPos extraBlock = arena.gridToBlockPos(extra.getGridPos());
+                com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome extraOutcome;
+                net.minecraft.item.Item extraWeapon = player.getMainHandStack().getItem();
+                if (extraWeapon == net.minecraft.item.Items.MACE) {
+                    extraOutcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.SMASH_AOE;
+                } else if (net.minecraft.registry.Registries.ITEM.getId(extraWeapon).getPath().endsWith("_axe")) {
+                    // Axes: reuse BASIC_HIT for the extra (stun is target-single; no visible secondary target damage).
+                    extraOutcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.BASIC_HIT;
+                } else {
+                    extraOutcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.SWEEP_SECONDARY;
+                }
+                com.crackedgames.craftics.vfx.VfxDescriptor extraDesc =
+                    com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.select(extraWeapon, extraOutcome);
+                int extraTargetId = extra.getMobEntity() != null ? extra.getMobEntity().getId() : -1;
+                com.crackedgames.craftics.vfx.VfxContext extraCtx =
+                    com.crackedgames.craftics.vfx.VfxContext.ofEntities(
+                        player.getId(), extraTargetId,
+                        player.getBlockPos(), extraBlock,
+                        0f, false, arena);
+                com.crackedgames.craftics.vfx.Vfx.play(attackWorld, extraDesc, extraCtx);
+                checkAndHandleDeath(extra);
+            }
 
             sendSync();
             refreshHighlights();
@@ -3229,42 +3341,101 @@ public class CombatManager {
             }
         }
 
-        // Move player to final dash position
-        arena.setPlayerGridPos(finalPos);
-        BlockPos endBlock = arena.gridToBlockPos(finalPos);
-        //? if <=1.21.1 {
-        player.teleport((ServerWorld) player.getEntityWorld(),
-            endBlock.getX() + 0.5, endBlock.getY(), endBlock.getZ() + 0.5,
-            java.util.Collections.emptySet(), player.getYaw(), 0f);
-        //?} else {
-        /*player.teleport((ServerWorld) player.getEntityWorld(),
-            endBlock.getX() + 0.5, endBlock.getY(), endBlock.getZ() + 0.5,
-            java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-        *///?}
-
-        // Dash trail particles
-        ServerWorld dashWorld = (ServerWorld) player.getEntityWorld();
-        for (GridPos tile : dashPath) {
-            if (tile.equals(finalPos) || dashPath.indexOf(tile) > dashPath.indexOf(finalPos)) break;
-            BlockPos trailBlock = arena.gridToBlockPos(tile);
-            dashWorld.spawnParticles(net.minecraft.particle.ParticleTypes.BUBBLE,
-                trailBlock.getX() + 0.5, trailBlock.getY() + 0.5, trailBlock.getZ() + 0.5,
-                5, 0.3, 0.2, 0.3, 0.05);
-        }
-
-        // Check deaths
+        // Resolve deaths before we hand off to the dash animation (the entities need to be
+        // removed from the grid before the player arrives at the final tile).
         for (CombatEntity hit : hitEnemies) checkAndHandleDeath(hit);
 
         if (hitEnemies.isEmpty()) {
             sendMessage("§3Riptide dash! No enemies in path.");
         }
 
-        sendSync();
-        refreshHighlights();
+        // Kick off the dash animation — player position interpolates with ease-out over
+        // N ticks, and riptide particles are emitted around the player each tick.
+        // Grid pos is committed immediately (so pathfinding/range are accurate) but the
+        // visual position lerps from start to end.
+        BlockPos endBlock = arena.gridToBlockPos(finalPos);
+        riptideStartX = player.getX();
+        riptideStartY = player.getY();
+        riptideStartZ = player.getZ();
+        riptideEndX = endBlock.getX() + 0.5;
+        riptideEndY = endBlock.getY();
+        riptideEndZ = endBlock.getZ() + 0.5;
+        // Scale duration with distance so short dashes are still crisp (min ~6 ticks)
+        double dashDist = Math.hypot(riptideEndX - riptideStartX, riptideEndZ - riptideStartZ);
+        riptideAnimTotalTicks = Math.max(6, Math.min(16, (int) Math.round(dashDist * 2.2)));
+        riptideAnimTick = 0;
+        riptideAnimYaw = (float) Math.toDegrees(Math.atan2(-ddx, ddz));
+        riptideFinalGridPos = finalPos;
+        riptideAnimActive = true;
 
-        // Check win
+        arena.setPlayerGridPos(finalPos);
+        phase = CombatPhase.ANIMATING;
+        sendSync();
+
+        // Check win only if all enemies are dead — even mid-dash victory is OK.
         if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
             handleVictory();
+        }
+    }
+
+    /** Per-tick interpolation for the riptide dash. Invoked from {@link #tickAnimation()}
+     *  when {@link #riptideAnimActive} is set. Uses an ease-out curve for the "decelerating"
+     *  feel — fast start, smooth stop — and continuously spawns BUBBLE+SPLASH particles
+     *  around the player to sell the riptide whirl. */
+    private void tickRiptideAnimation() {
+        if (player == null) { riptideAnimActive = false; phase = CombatPhase.PLAYER_TURN; return; }
+        riptideAnimTick++;
+        float t = Math.min(1.0f, (float) riptideAnimTick / Math.max(1, riptideAnimTotalTicks));
+        // Ease-out cubic: 1 - (1-t)^3 — fast start, smooth decelerating finish
+        float eased = 1f - (1f - t) * (1f - t) * (1f - t);
+        double x = riptideStartX + (riptideEndX - riptideStartX) * eased;
+        double y = riptideStartY + (riptideEndY - riptideStartY) * eased;
+        double z = riptideStartZ + (riptideEndZ - riptideStartZ) * eased;
+
+        player.setYaw(riptideAnimYaw);
+        player.setHeadYaw(riptideAnimYaw);
+        player.setOnGround(true);
+
+        //? if <=1.21.4 {
+        player.prevX = player.getX();
+        player.prevY = player.getY();
+        player.prevZ = player.getZ();
+        //?} else {
+        /*player.lastX = player.getX();
+        player.lastY = player.getY();
+        player.lastZ = player.getZ();
+        *///?}
+        player.setPosition(x, y, z);
+        player.networkHandler.requestTeleport(x, y, z, riptideAnimYaw, 0f);
+
+        // Riptide VFX around the player — bubbles + splashes. Emitted every tick so the
+        // whirl stays visually attached to the moving player.
+        ServerWorld w = (ServerWorld) player.getEntityWorld();
+        w.spawnParticles(net.minecraft.particle.ParticleTypes.BUBBLE,
+            x, y + 0.5, z, 8, 0.45, 0.45, 0.45, 0.15);
+        w.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH,
+            x, y + 0.2, z, 4, 0.3, 0.1, 0.3, 0.1);
+        if (riptideAnimTick % 2 == 0) {
+            w.spawnParticles(net.minecraft.particle.ParticleTypes.DRIPPING_WATER,
+                x, y + 1.0, z, 2, 0.35, 0.25, 0.35, 0.02);
+        }
+
+        if (riptideAnimTick >= riptideAnimTotalTicks) {
+            // Finalize
+            BlockPos endBlock = new BlockPos((int) Math.floor(riptideEndX), (int) Math.floor(riptideEndY), (int) Math.floor(riptideEndZ));
+            player.setVelocity(0, 0, 0);
+            player.velocityModified = true;
+            riptideAnimActive = false;
+
+            // Final burst
+            w.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH,
+                riptideEndX, riptideEndY + 0.5, riptideEndZ, 16, 0.5, 0.3, 0.5, 0.2);
+            w.playSound(null, endBlock, net.minecraft.sound.SoundEvents.ITEM_TRIDENT_RIPTIDE_1.value(),
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.2f);
+
+            phase = CombatPhase.PLAYER_TURN;
+            sendSync();
+            refreshHighlights();
         }
     }
 
@@ -3340,14 +3511,23 @@ public class CombatManager {
 
     // === TRIDENT: Return dropped trident to player ===
     private void returnDroppedTrident() {
-        if (droppedTridentStack != null && player != null) {
-            player.getInventory().insertStack(droppedTridentStack.copy());
-            droppedTridentStack = null;
-            droppedTridentPos = null;
-            if (droppedTridentEntity != null) {
-                droppedTridentEntity.discard();
-                droppedTridentEntity = null;
+        if (droppedTridentStack == null) return;
+        ServerPlayerEntity recipient = null;
+        if (droppedTridentOwner != null) {
+            for (ServerPlayerEntity p : getAllParticipants()) {
+                if (p != null && p.getUuid().equals(droppedTridentOwner)) { recipient = p; break; }
             }
+        }
+        if (recipient == null) recipient = player;
+        if (recipient != null) {
+            recipient.getInventory().insertStack(droppedTridentStack.copy());
+        }
+        droppedTridentStack = null;
+        droppedTridentPos = null;
+        droppedTridentOwner = null;
+        if (droppedTridentEntity != null) {
+            droppedTridentEntity.discard();
+            droppedTridentEntity = null;
         }
     }
 
@@ -5340,6 +5520,8 @@ public class CombatManager {
     }
 
     private void tickAnimation() {
+        // Riptide dash uses its own continuous-lerp animator (ease-out + particle whirl).
+        if (riptideAnimActive) { tickRiptideAnimation(); return; }
         if (movePathIndex >= movePath.size()) {
             int tilesMoved = movePath.size();
             GridPos walkedPos = arena.getPlayerGridPos();
@@ -11266,6 +11448,14 @@ public class CombatManager {
     }
 
     private void handleVictory() {
+        // If a thrown trident was lying on the arena when the final blow landed,
+        // auto-recover it — otherwise the player loses it permanently on level end.
+        if (droppedTridentStack != null) {
+            String tridentName = droppedTridentStack.getName().getString();
+            returnDroppedTrident();
+            sendMessage("§3\u21BA Recovered your " + tridentName + "!");
+        }
+
         // Diagnostic: in party combat, this.player is the current turn player
         // (whoever landed the killing blow), NOT the combat leader. Flag the
         // divergence so any downstream code that still uses this.player as a
@@ -13650,6 +13840,12 @@ public class CombatManager {
     }
 
     public void endCombat() {
+        try {
+            net.minecraft.server.world.ServerWorld w = (net.minecraft.server.world.ServerWorld) this.player.getEntityWorld();
+            com.crackedgames.craftics.vfx.PhaseScheduler.of(w).clearAll();
+            com.crackedgames.craftics.vfx.VfxBlockTracker.of(w).clearAll(w);
+            if (this.arena != null) this.arena.clearAllVfxObstacles(w);
+        } catch (Throwable ignored) { /* defensive — combat cleanup must not fail */ }
         if (!active) return;
         despawnActiveBoat();
 

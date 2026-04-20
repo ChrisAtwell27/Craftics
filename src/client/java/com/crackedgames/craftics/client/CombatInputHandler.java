@@ -170,9 +170,15 @@ public class CombatInputHandler {
 
         switch (mode) {
             case MOVE -> {
-                ClientPlayNetworking.send(new CombatActionPayload(
-                    CombatActionPayload.ACTION_MOVE, tilePos.x(), tilePos.z(), 0
-                ));
+                if (isPickaxeMineGesture(client, tilePos)) {
+                    ClientPlayNetworking.send(new CombatActionPayload(
+                        CombatActionPayload.ACTION_MINE, tilePos.x(), tilePos.z(), 0
+                    ));
+                } else {
+                    ClientPlayNetworking.send(new CombatActionPayload(
+                        CombatActionPayload.ACTION_MOVE, tilePos.x(), tilePos.z(), 0
+                    ));
+                }
             }
             case MELEE_ATTACK, RANGED_ATTACK -> {
                 Integer mappedId = CombatState.getEnemyGridMap().get(tilePos);
@@ -200,5 +206,21 @@ public class CombatInputHandler {
         ClientPlayNetworking.send(new CombatActionPayload(
             CombatActionPayload.ACTION_END_TURN, 0, 0, 0
         ));
+    }
+
+    /**
+     * True when the player holds a pickaxe and clicks a tile outside the walkable move set —
+     * most likely a VFX-placed obstacle. The server validates for real; this is a cheap
+     * client-side check so normal movement isn't hijacked.
+     */
+    private static boolean isPickaxeMineGesture(MinecraftClient client, GridPos tilePos) {
+        if (client.player == null) return false;
+        net.minecraft.item.Item held = client.player.getMainHandStack().getItem();
+        String path = net.minecraft.registry.Registries.ITEM.getId(held).getPath();
+        if (!path.endsWith("_pickaxe")) return false;
+        // Walkable tiles (the move set) should continue to fire MOVE. Anything else is
+        // either out-of-range or an obstacle — let the server decide.
+        java.util.Set<GridPos> moveTiles = CombatState.getMoveTiles();
+        return moveTiles == null || !moveTiles.contains(tilePos);
     }
 }

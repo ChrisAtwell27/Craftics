@@ -54,6 +54,7 @@ public class CombatAnimations {
     }
 
     public static void tick() {
+        if (com.crackedgames.craftics.client.vfx.HitPauseState.isFrozen()) return;
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return;
 
