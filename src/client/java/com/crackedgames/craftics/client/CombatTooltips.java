@@ -497,6 +497,33 @@ public class CombatTooltips implements ItemTooltipCallback {
     }
 
     private static String getTooltipFor(Item item) {
+        // ── Copper Age Backport ── (modded items; resolved at runtime)
+        Item copperSword = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperSword();
+        if (copperSword != null) {
+            // Tools keep their natural affinities — copper is just a new tier,
+            // it's the armor set that carries the Ranged theme.
+            if (item == copperSword)
+                return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
+            if (item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperAxe())
+                return weaponStatLine(item) + "\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
+            if (item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperShovel())
+                return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Copper spade \u2014 boosted by Pet affinity";
+            if (item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHoe())
+                return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Low damage, boosted by Special affinity";
+            // Copper armor is the Ranged-focused set — pure ricochet identity, no flat dmg bonus.
+            if (item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHelmet()
+                || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperChestplate()
+                || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperLeggings()
+                || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperBoots()) {
+                int chance = (int) Math.round(
+                    com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.RICOCHET_CHANCE * 100);
+                int dmgPct = (int) Math.round(
+                    com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.RICOCHET_DAMAGE_MULT * 100);
+                return "\u00a76Set Bonus (full set): Marksman\n\u00a77Ranged hits have a " + chance
+                    + "% chance to ricochet to a nearby enemy\n\u00a77(bouncing shot deals " + dmgPct + "% of base damage)";
+            }
+        }
+
         // ── Weapons ──
         if (item == Items.WOODEN_SWORD) return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
         if (item == Items.STONE_SWORD) return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
