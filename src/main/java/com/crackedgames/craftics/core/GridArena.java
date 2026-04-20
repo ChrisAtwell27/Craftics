@@ -18,6 +18,10 @@ public class GridArena {
     private GridPos playerGridPos;
     private final Map<GridPos, Integer> webOverlays = new HashMap<>();
 
+    /** Tracks tiles that were converted to OBSTACLE by VFX (mace slam debris landing).
+     *  Value is the prior TileType so we can restore on cleanup. */
+    private final java.util.Map<GridPos, TileType> vfxObstaclePriorType = new java.util.HashMap<>();
+
     public GridArena(int width, int height, GridTile[][] tiles, BlockPos origin,
                      int levelNumber, GridPos playerStart) {
         this.width = width;
@@ -157,6 +161,42 @@ public class GridArena {
 
     public void clearAllWebOverlays() {
         webOverlays.clear();
+    }
+
+    // --- VFX obstacle tracking (mace slam debris) ---
+
+    /** Mark a tile as a VFX-placed obstacle. Remembers the prior tile type for cleanup. */
+    public void markVfxObstacle(GridPos pos) {
+        if (pos == null || !isInBounds(pos)) return;
+        GridTile t = getTile(pos);
+        if (t == null) return;
+        // Don't overwrite existing obstacles or special tile types
+        if (t.getType() != TileType.NORMAL) return;
+        vfxObstaclePriorType.put(pos, t.getType());
+        t.setType(TileType.OBSTACLE);
+    }
+
+    public boolean isVfxObstacle(GridPos pos) {
+        return vfxObstaclePriorType.containsKey(pos);
+    }
+
+    /** Clear a single VFX obstacle — restores prior tile type and wipes the block in the world. */
+    public void clearVfxObstacle(net.minecraft.server.world.ServerWorld world, GridPos pos) {
+        TileType prior = vfxObstaclePriorType.remove(pos);
+        if (prior == null) return;
+        GridTile t = getTile(pos);
+        if (t != null) t.setType(prior);
+        // Remove the block from the world (gridToBlockPos gives the surface tile position)
+        net.minecraft.util.math.BlockPos blockPos = gridToBlockPos(pos);
+        world.setBlockState(blockPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+    }
+
+    /** Clear all VFX obstacles (called on combat exit). */
+    public void clearAllVfxObstacles(net.minecraft.server.world.ServerWorld world) {
+        for (java.util.Map.Entry<GridPos, TileType> e :
+                new java.util.ArrayList<>(vfxObstaclePriorType.entrySet())) {
+            clearVfxObstacle(world, e.getKey());
+        }
     }
 
     // --- Player position ---

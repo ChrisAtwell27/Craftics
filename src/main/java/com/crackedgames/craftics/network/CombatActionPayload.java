@@ -20,6 +20,7 @@ public record CombatActionPayload(int actionType, int targetX, int targetZ,
     public static final int ACTION_ATTACK = 1;
     public static final int ACTION_END_TURN = 2;
     public static final int ACTION_USE_ITEM = 3;
+    public static final int ACTION_MINE = 4;
 
     public static final CustomPayload.Id<CombatActionPayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "combat_action"));

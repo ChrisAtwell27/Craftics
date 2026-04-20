@@ -113,6 +113,31 @@ public class CombatVisualEffects {
         attackFlashTicks = 5;
     }
 
+    public static void triggerShakeTimed(float intensity, int durationTicks) {
+        triggerShake(intensity);
+        // durationTicks is honoured by the exponential decay already in tick() — we retain
+        // the parameter in the signature so callers stay forward-compatible if we later add
+        // a non-exponential duration model.
+    }
+
+    public static void flashWithColor(int argb, int durationTicks) {
+        screenFlashTicks = Math.max(1, durationTicks);
+        screenFlashColor = argb;
+    }
+
+    public static void addFloatingTextAt(double worldX, double worldY, double worldZ,
+                                          String text, int color, int lifetimeTicks) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getWindow() == null) return;
+        int screenW = client.getWindow().getScaledWidth();
+        int screenH = client.getWindow().getScaledHeight();
+        double relX = worldX - CombatState.getArenaCenterX();
+        double relZ = worldZ - CombatState.getArenaCenterZ();
+        float baseX = (float)(screenW / 2 + (relX - relZ) * 16);
+        float baseY = (float)(screenH / 2 + (relX + relZ) * 8 - 20);
+        activeTexts.add(new FloatingText(baseX, baseY, text, color, lifetimeTicks));
+    }
+
     // Distinct from downed flash: slower, darker, more ominous
     public static void startDeathOverlay(int durationTicks) {
         deathOverlayTick = 0;
@@ -166,6 +191,10 @@ public class CombatVisualEffects {
     }
 
     public static void tick() {
+        if (com.crackedgames.craftics.client.vfx.HitPauseState.isFrozen()) {
+            com.crackedgames.craftics.client.vfx.HitPauseState.tick();
+            return;
+        }
         if (screenFlashTicks > 0) screenFlashTicks--;
         if (attackFlashTicks > 0) attackFlashTicks--;
         if (downedFlashTicks > 0) downedFlashTicks--;

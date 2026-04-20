@@ -79,9 +79,12 @@ public final class Abilities {
     // -------------------------------------------------------------------------
 
     /**
-     * Affinity-scaled chance to deal bonus damage equal to the target's defense value.
+     * Affinity-scaled chance to PERMANENTLY destroy a portion of the target's defense.
+     * The destroyed defense is also dealt as bonus damage in the same swing — the axe
+     * doesn't just bypass armor, it shatters it for the rest of the fight.
      * Uses CLEAVING affinity.
      * Chance = baseChance + (CLEAVING affinity points * bonusPerPoint) + (luckPoints * 0.02).
+     * Destroyed amount = min(current defense, 2 + CLEAVING affinity points).
      */
     public static WeaponAbilityHandler armorIgnore(double baseChance, double bonusPerPoint) {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
@@ -92,11 +95,15 @@ public final class Abilities {
             if (Math.random() < chance) {
                 int def = target.getDefense();
                 if (def > 0) {
-                    int bonusDmg = target.takeDamage(def);
+                    int destroyed = Math.min(def, 2 + cleavingPts);
+                    target.addPermanentDefReduction(destroyed);
+                    int bonusDmg = target.takeDamage(destroyed);
                     totalDamage += bonusDmg;
-                    messages.add("§6✦ ARMOR CRUSH! Ignores " + def + " defense for +" + bonusDmg + " damage!");
+                    int remaining = target.getDefense();
+                    messages.add("§6✦ SHATTER ARMOR! §ePermanently destroyed " + destroyed
+                        + " DEF for +" + bonusDmg + " damage! §7(" + remaining + " DEF remaining)");
                 } else {
-                    messages.add("§6✦ ARMOR CRUSH! (target has no armor)");
+                    messages.add("§6✦ SHATTER ARMOR! §7(target has no armor left)");
                 }
             }
             return new WeaponAbility.AttackResult(totalDamage, messages, List.of());
