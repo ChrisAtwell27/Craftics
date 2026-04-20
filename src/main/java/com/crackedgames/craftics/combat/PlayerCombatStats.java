@@ -132,6 +132,15 @@ public class PlayerCombatStats {
         if (head == Items.NETHERITE_HELMET && chest == Items.NETHERITE_CHESTPLATE
             && legs == Items.NETHERITE_LEGGINGS && feet == Items.NETHERITE_BOOTS) return "netherite";
 
+        // Copper Age Backport — items resolved at runtime so we can detect them
+        // without a hard reference to the optional mod's classes/items.
+        Item copperHead  = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHelmet();
+        Item copperChest = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperChestplate();
+        Item copperLegs  = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperLeggings();
+        Item copperFeet  = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperBoots();
+        if (copperHead != null && head == copperHead && chest == copperChest
+            && legs == copperLegs && feet == copperFeet) return "copper";
+
         return "mixed";
     }
 

@@ -89,16 +89,16 @@ public class CombatManager {
     private int getMoveTicks() { return CrafticsMod.CONFIG.skipEnemyAnimations() ? 1 : MOVE_TICKS; }
 
     //? if <=1.21.1 {
-    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE;
-    *///?} else {
-    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+    //?} else {
+    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE;
-    //?}
+    *///?}
 
     private static GridPos adaptSpawnToArena(GridPos originalPos, LevelDefinition levelDef, GridArena arena) {
         int mappedX = scaleGridCoordinate(originalPos.x(), levelDef.getWidth(), arena.getWidth());
@@ -1627,18 +1627,18 @@ public class CombatManager {
             // Creaking Heart: virtual block entity (armor stand visual + creaking_heart block)
             if ("craftics:creaking_heart".equals(spawn.entityTypeId())) {
                 BlockPos heartBlockPos = arena.gridToBlockPos(resolvedPos);
-                // Place the creaking heart block in the world
-                //? if >=1.21.4 {
-                world.setBlockState(heartBlockPos, net.minecraft.block.Blocks.CREAKING_HEART.getDefaultState());
-                //?} else {
-                /*world.setBlockState(heartBlockPos, net.minecraft.block.Blocks.OAK_LOG.getDefaultState());
-                *///?}
+                // Place the creaking heart block in the world. The compat helper
+                // returns the right block for the active version (vanilla on 1.21.4+,
+                // palegardenbackport's block when that mod is loaded, oak log fallback).
+                world.setBlockState(heartBlockPos,
+                    com.crackedgames.craftics.compat.palegardenbackport
+                        .PaleGardenBackportCompat.creakingHeartBlock().getDefaultState());
                 // Spawn an invisible armor stand as the entity reference
                 //? if <=1.21.1 {
-                /*var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world);
-                *///?} else {
-                var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world, SpawnReason.COMMAND);
-                //?}
+                var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world);
+                //?} else {
+                /*var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world, SpawnReason.COMMAND);
+                *///?}
                 if (heartStand != null) {
                     heartStand.refreshPositionAndAngles(
                         heartBlockPos.getX() + 0.5, heartBlockPos.getY(), heartBlockPos.getZ() + 0.5, 0, 0);
@@ -1906,7 +1906,9 @@ public class CombatManager {
         java.util.List<CombatEntity> unlinkedCreakings = new java.util.ArrayList<>();
         java.util.List<CombatEntity> unlinkedHearts = new java.util.ArrayList<>();
         for (CombatEntity e : enemies) {
-            if ("minecraft:creaking".equals(e.getEntityTypeId()) && e.getLinkedHeartId() < 0) {
+            if (com.crackedgames.craftics.compat.palegardenbackport
+                    .PaleGardenBackportCompat.isCreakingEntity(e.getEntityTypeId())
+                && e.getLinkedHeartId() < 0) {
                 unlinkedCreakings.add(e);
             } else if ("craftics:creaking_heart".equals(e.getEntityTypeId()) && e.getLinkedCreakingId() < 0) {
                 unlinkedHearts.add(e);
@@ -2247,7 +2249,9 @@ public class CombatManager {
         }
 
         // Creaking immunity: can't damage the creaking directly, must kill its heart
-        if ("minecraft:creaking".equals(target.getEntityTypeId()) && target.getLinkedHeartId() >= 0) {
+        if (com.crackedgames.craftics.compat.palegardenbackport
+                .PaleGardenBackportCompat.isCreakingEntity(target.getEntityTypeId())
+            && target.getLinkedHeartId() >= 0) {
             sendMessage("\u00a7c\u00a7lThe Creaking is invulnerable! \u00a77Destroy its \u00a74Creaking Heart\u00a77 instead!");
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.ENTITY_ZOMBIE_ATTACK_IRON_DOOR,
@@ -2355,14 +2359,14 @@ public class CombatManager {
                 arena.setPlayerGridPos(warpDest);
                 BlockPos warpBlock = arena.gridToBlockPos(warpDest);
                 //? if <=1.21.1 {
-                /*player.teleport((ServerWorld) player.getEntityWorld(),
-                    warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
-                    java.util.Collections.emptySet(), player.getYaw(), 0f);
-                *///?} else {
                 player.teleport((ServerWorld) player.getEntityWorld(),
                     warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
+                    java.util.Collections.emptySet(), player.getYaw(), 0f);
+                //?} else {
+                /*player.teleport((ServerWorld) player.getEntityWorld(),
+                    warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
                     java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-                //?}
+                *///?}
                 pPos = warpDest;
                 consumeWarpDrive();
                 warpFired = true;
@@ -2442,14 +2446,14 @@ public class CombatManager {
         int dz = tPos.z() - pPos.z();
         float attackYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
         //? if <=1.21.1 {
-        /*player.teleport((ServerWorld) player.getEntityWorld(),
-            player.getX(), player.getY(), player.getZ(),
-            java.util.Collections.emptySet(), attackYaw, 0f);
-        *///?} else {
         player.teleport((ServerWorld) player.getEntityWorld(),
             player.getX(), player.getY(), player.getZ(),
+            java.util.Collections.emptySet(), attackYaw, 0f);
+        //?} else {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
+            player.getX(), player.getY(), player.getZ(),
             java.util.Collections.emptySet(), attackYaw, 0f, true);
-        //?}
+        *///?}
 
         String tippedEffect = null;
         if (PlayerCombatStats.isBow(player) || weapon == Items.CROSSBOW) {
@@ -3206,14 +3210,14 @@ public class CombatManager {
         arena.setPlayerGridPos(finalPos);
         BlockPos endBlock = arena.gridToBlockPos(finalPos);
         //? if <=1.21.1 {
-        /*player.teleport((ServerWorld) player.getEntityWorld(),
-            endBlock.getX() + 0.5, endBlock.getY(), endBlock.getZ() + 0.5,
-            java.util.Collections.emptySet(), player.getYaw(), 0f);
-        *///?} else {
         player.teleport((ServerWorld) player.getEntityWorld(),
             endBlock.getX() + 0.5, endBlock.getY(), endBlock.getZ() + 0.5,
+            java.util.Collections.emptySet(), player.getYaw(), 0f);
+        //?} else {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
+            endBlock.getX() + 0.5, endBlock.getY(), endBlock.getZ() + 0.5,
             java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-        //?}
+        *///?}
 
         // Dash trail particles
         ServerWorld dashWorld = (ServerWorld) player.getEntityWorld();
@@ -3922,10 +3926,10 @@ public class CombatManager {
     /** Apply a single enchantment by registry path to an itemstack. */
     private static void applyMobEnchant(ItemStack stack, String enchantPath, int level, ServerWorld world) {
         //? if <=1.21.1 {
-        /*var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        *///?} else {
-        var enchantRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        //?}
+        var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        //?} else {
+        /*var enchantRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        *///?}
         var enchantEntry = enchantRegistry.streamEntries()
             .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(enchantPath))
             .findFirst().orElse(null);
@@ -5392,13 +5396,13 @@ public class CombatManager {
                         BlockPos boatBlock = arena.gridToBlockPos(finalPos);
                         double boatY = boatBlock.getY(); // surface level, not lowered
                         //? if <=1.21.1 {
-                        /*activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
-                            net.minecraft.entity.EntityType.BOAT, sw);
-                        *///?} else {
                         activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
+                            net.minecraft.entity.EntityType.BOAT, sw);
+                        //?} else {
+                        /*activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
                             net.minecraft.entity.EntityType.OAK_BOAT, sw,
                             () -> net.minecraft.item.Items.OAK_BOAT);
-                        //?}
+                        *///?}
                         activeBoat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
                         activeBoat.setYaw(player.getYaw() - 90f);
                         activeBoat.setInvulnerable(true);
@@ -6107,7 +6111,8 @@ public class CombatManager {
         // Creaking freeze: can't move when the player is looking at it (90° cone).
         // Uses dot-product to check if the creaking falls anywhere inside the
         // player's forward-facing cone. When not observed, the creaking has 6 speed.
-        if ("minecraft:creaking".equals(currentEnemy.getEntityTypeId())) {
+        if (com.crackedgames.craftics.compat.palegardenbackport
+                .PaleGardenBackportCompat.isCreakingEntity(currentEnemy.getEntityTypeId())) {
             BlockPos creakingBlock = arena.gridToBlockPos(currentEnemy.getGridPos());
             // Player's look direction on the XZ plane from their yaw
             double yawRad = Math.toRadians(player.getYaw());
@@ -7507,10 +7512,10 @@ public class CombatManager {
             if (visualEntityId != null) {
                 EntityType<?> visualType = Registries.ENTITY_TYPE.get(Identifier.of(visualEntityId));
                 //? if <=1.21.1 {
-                /*var visualEntity = visualType.create(world);
-                *///?} else {
-                var visualEntity = visualType.create(world, net.minecraft.entity.SpawnReason.LOAD);
-                //?}
+                var visualEntity = visualType.create(world);
+                //?} else {
+                /*var visualEntity = visualType.create(world, net.minecraft.entity.SpawnReason.LOAD);
+                *///?}
                 if (visualEntity != null) {
                     visualEntity.refreshPositionAndAngles(
                         spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5, 0, 0);
@@ -10430,14 +10435,14 @@ public class CombatManager {
             arena.setPlayerGridPos(dest);
             BlockPos shoveBlock = arena.gridToBlockPos(dest);
             //? if <=1.21.1 {
-            /*player.teleport((ServerWorld) player.getEntityWorld(),
-                shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
-                java.util.Collections.emptySet(), player.getYaw(), 0f);
-            *///?} else {
             player.teleport((ServerWorld) player.getEntityWorld(),
                 shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
+                java.util.Collections.emptySet(), player.getYaw(), 0f);
+            //?} else {
+            /*player.teleport((ServerWorld) player.getEntityWorld(),
+                shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
                 java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-            //?}
+            *///?}
             return;
         }
     }
@@ -10882,17 +10887,17 @@ public class CombatManager {
             player.getX(), player.getY() + 1.0, player.getZ(),
             8, 0.3, 0.5, 0.3, 0.02);
         //? if <=1.21.1 {
-        /*downedWorld.spawnParticles(
+        downedWorld.spawnParticles(
             new net.minecraft.particle.DustParticleEffect(
                 new org.joml.Vector3f(1.0f, 0.2f, 0.2f), 1.5f),
             player.getX(), player.getY() + 0.5, player.getZ(),
             12, 0.4, 0.3, 0.4, 0.01);
-        *///?} else {
-        downedWorld.spawnParticles(
+        //?} else {
+        /*downedWorld.spawnParticles(
             new net.minecraft.particle.DustParticleEffect(0xFF3333, 1.5f),
             player.getX(), player.getY() + 0.5, player.getZ(),
             12, 0.4, 0.3, 0.4, 0.01);
-        //?}
+        *///?}
 
         // Send downed event to client (orange vignette, different from red death vignette)
         sendToAllParty(new CombatEventPayload(
@@ -12770,28 +12775,28 @@ public class CombatManager {
 
             // Apply trim via ArmorTrim component
             //? if <=1.21.1 {
-            /*var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
-            *///?} else {
-            var patternRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
-            //?}
+            var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            //?} else {
+            /*var patternRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            *///?}
             var patternEntry = patternRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(pattern))
                 .findFirst().orElse(null);
             //? if <=1.21.1 {
-            /*var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
-            *///?} else {
-            var materialRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
-            //?}
+            var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            //?} else {
+            /*var materialRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            *///?}
             var materialEntry = materialRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(material))
                 .findFirst().orElse(null);
 
             if (patternEntry != null && materialEntry != null) {
                 //? if <=1.21.1 {
-                /*var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
-                *///?} else {
-                var trim = new net.minecraft.item.equipment.trim.ArmorTrim(materialEntry, patternEntry);
-                //?}
+                var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
+                //?} else {
+                /*var trim = new net.minecraft.item.equipment.trim.ArmorTrim(materialEntry, patternEntry);
+                *///?}
                 stack.set(DataComponentTypes.TRIM, trim);
                 sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " received a §e" + pattern + " §dtrim with §e" + material + " §dmaterial!");
                 // Unlock "How Trims Work" guide entry
@@ -12829,12 +12834,12 @@ public class CombatManager {
             int level = 1 + rng.nextInt(3); // level 1-3
 
             //? if <=1.21.1 {
-            /*var enchantRegistry = world.getRegistryManager()
-                .get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-            *///?} else {
             var enchantRegistry = world.getRegistryManager()
+                .get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+            //?} else {
+            /*var enchantRegistry = world.getRegistryManager()
                 .getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-            //?}
+            *///?}
             var enchantEntry = enchantRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(chosenKey))
                 .findFirst().orElse(null);
@@ -13154,10 +13159,10 @@ public class CombatManager {
 
     private ItemStack randomEnchantedBook(ServerWorld world, int count, com.crackedgames.craftics.level.BiomeTemplate biome) {
         //? if <=1.21.1 {
-        /*var registry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
-        *///?} else {
-        var registry = world.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
-        //?}
+        var registry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
+        //?} else {
+        /*var registry = world.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
+        *///?}
         java.util.Random rng = new java.util.Random();
 
         net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment> entry = null;
@@ -13598,11 +13603,14 @@ public class CombatManager {
                 .add(Items.BONE, 4).add(Items.ARROW, 3).add(Items.PRISMARINE_SHARD, 2);
 
             // === Pale Garden mobs ===
-            case "minecraft:creaking" -> new LootPool()
+            case "minecraft:creaking", "palegardenbackport:creaking" -> new LootPool()
                 .add(Items.STICK, 5).add(Items.OAK_LOG, 3).add(Items.BONE, 2);
             //? if >=1.21.4 {
-            case "craftics:creaking_heart" -> new LootPool()
+            /*case "craftics:creaking_heart" -> new LootPool()
                 .add(Items.PALE_OAK_LOG, 4).add(Items.BONE_MEAL, 3).add(Items.RESIN_CLUMP, 2);
+            *///?} else {
+            case "craftics:creaking_heart" -> new LootPool()
+                .add(Items.OAK_LOG, 4).add(Items.BONE_MEAL, 3).add(Items.STICK, 2);
             //?}
 
             // === Boss mobs (vanilla entities used as bosses) ===

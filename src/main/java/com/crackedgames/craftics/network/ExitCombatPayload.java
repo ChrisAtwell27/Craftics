@@ -22,20 +22,20 @@ public record ExitCombatPayload(boolean won, boolean eventRoomFollows) implement
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "exit_combat"));
 
     //? if <=1.21.3 {
-    /*public static final PacketCodec<RegistryByteBuf, ExitCombatPayload> CODEC =
+    public static final PacketCodec<RegistryByteBuf, ExitCombatPayload> CODEC =
         PacketCodec.tuple(
             PacketCodecs.BOOL, ExitCombatPayload::won,
             PacketCodecs.BOOL, ExitCombatPayload::eventRoomFollows,
             ExitCombatPayload::new
         );
-    *///?} else {
-    public static final PacketCodec<RegistryByteBuf, ExitCombatPayload> CODEC =
+    //?} else {
+    /*public static final PacketCodec<RegistryByteBuf, ExitCombatPayload> CODEC =
         PacketCodec.tuple(
             PacketCodecs.BOOLEAN, ExitCombatPayload::won,
             PacketCodecs.BOOLEAN, ExitCombatPayload::eventRoomFollows,
             ExitCombatPayload::new
         );
-    //?}
+    *///?}
 
     @Override
     public Id<? extends CustomPayload> getId() { return ID; }

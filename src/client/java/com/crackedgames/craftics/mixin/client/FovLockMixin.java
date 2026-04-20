@@ -20,20 +20,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class FovLockMixin {
 
     //? if <=1.21.1 {
-    /*@Inject(method = "getFov", at = @At("RETURN"), cancellable = true)
+    @Inject(method = "getFov", at = @At("RETURN"), cancellable = true)
     private void lockFovDuringCombat(Camera camera, float tickDelta, boolean changingFov,
                                      CallbackInfoReturnable<Double> cir) {
         if (CombatState.isInCombat()) {
             cir.setReturnValue((double) MinecraftClient.getInstance().options.getFov().getValue());
         }
     }
-    *///?} else {
-    @Inject(method = "getFov", at = @At("RETURN"), cancellable = true)
+    //?} else {
+    /*@Inject(method = "getFov", at = @At("RETURN"), cancellable = true)
     private void lockFovDuringCombat(Camera camera, float tickDelta, boolean changingFov,
                                      CallbackInfoReturnable<Float> cir) {
         if (CombatState.isInCombat()) {
             cir.setReturnValue((float) (int) MinecraftClient.getInstance().options.getFov().getValue());
         }
     }
-    //?}
+    *///?}
 }

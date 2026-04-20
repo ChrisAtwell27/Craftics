@@ -5,8 +5,8 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.EnderDragonEntityRenderer;
 //? if >=1.21.2 {
-import net.minecraft.client.render.entity.state.EnderDragonEntityRenderState;
-//?}
+/*import net.minecraft.client.render.entity.state.EnderDragonEntityRenderState;
+*///?}
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.boss.dragon.EnderDragonEntity;
 import org.spongepowered.asm.mixin.Mixin;
@@ -29,7 +29,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class EnderDragonRendererMixin {
 
     //? if <=1.21.1 {
-    /*@Inject(method = "render(Lnet/minecraft/entity/boss/dragon/EnderDragonEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
+    @Inject(method = "render(Lnet/minecraft/entity/boss/dragon/EnderDragonEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
             at = @At("HEAD"), cancellable = true)
     private void craftics$hideDragonWhenOffStage(EnderDragonEntity entity, float yaw,
             float tickDelta, MatrixStack matrices, VertexConsumerProvider vertexConsumers,
@@ -41,8 +41,8 @@ public abstract class EnderDragonRendererMixin {
             }
         }
     }
-    *///?} else {
-    @Inject(method = "render(Lnet/minecraft/client/render/entity/state/EnderDragonEntityRenderState;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
+    //?} else {
+    /*@Inject(method = "render(Lnet/minecraft/client/render/entity/state/EnderDragonEntityRenderState;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
             at = @At("HEAD"), cancellable = true)
     private void craftics$hideDragonWhenOffStage(EnderDragonEntityRenderState state,
             MatrixStack matrices, VertexConsumerProvider vertexConsumers,
@@ -53,5 +53,5 @@ public abstract class EnderDragonRendererMixin {
             ci.cancel();
         }
     }
-    //?}
+    *///?}
 }

@@ -97,11 +97,13 @@ public class AIRegistry {
         register("minecraft:silverfish", new SilverfishAI());     // swarmer flanker
         register("minecraft:slime", new SlimeAI());               // bouncy pounce charger
 
-        // === Pale Garden mobs (1.21.4+) ===
-        //? if >=1.21.4 {
-        register("minecraft:creaking", new CreakingAI());           // invulnerable guardian, linked to heart
+        // === Pale Garden mobs (1.21.4+ vanilla, or palegardenbackport on older) ===
+        // Heart is a craftics-virtual entity, so its AI is registered on every version.
         register("craftics:creaking_heart", new CreakingHeartAI()); // stationary target, kill to destroy creaking
-        //?}
+        //? if >=1.21.4 {
+        /*register("minecraft:creaking", new CreakingAI());           // invulnerable guardian, linked to heart
+        *///?}
+        // palegardenbackport:creaking AI is registered by PaleGardenBackportCompat.init().
 
         // === End pests ===
         register("minecraft:endermite", new EndermiteAI()); // blink-swarmer, short-range teleport + attack

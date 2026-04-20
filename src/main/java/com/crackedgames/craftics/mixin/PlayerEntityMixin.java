@@ -47,10 +47,10 @@ public class PlayerEntityMixin {
         PlayerEntity player = (PlayerEntity) (Object) this;
         if (!(player instanceof ServerPlayerEntity serverPlayer)) return;
         //? if <=1.21.1 {
-        /*if (serverPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
-        *///?} else {
-        if (((net.minecraft.server.world.ServerWorld) serverPlayer.getWorld()).getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
-        //?}
+        if (serverPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
+        //?} else {
+        /*if (((net.minecraft.server.world.ServerWorld) serverPlayer.getWorld()).getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
+        *///?}
         // If the HEAD injection just armed a recovery compass, it will have cancelled
         // this method so TAIL shouldn't even fire — but defend against it anyway.
         if (CrafticsComponents.DEATH_PROTECTION.get(serverPlayer).hasPendingRestore()) return;
@@ -62,10 +62,10 @@ public class PlayerEntityMixin {
         PlayerEntity player = (PlayerEntity) (Object) this;
         if (!(player instanceof ServerPlayerEntity serverPlayer)) return;
         //? if <=1.21.1 {
-        /*if (serverPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
-        *///?} else {
-        if (((net.minecraft.server.world.ServerWorld) serverPlayer.getWorld()).getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
-        //?}
+        if (serverPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
+        //?} else {
+        /*if (((net.minecraft.server.world.ServerWorld) serverPlayer.getWorld()).getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
+        *///?}
         if (!DeathProtectionComponent.hasRecoveryCompass(serverPlayer)) return;
 
         var deathProtection = CrafticsComponents.DEATH_PROTECTION.get(serverPlayer);

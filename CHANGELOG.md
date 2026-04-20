@@ -1,5 +1,38 @@
 Changelog
 
+0.1.3
+
+Client fixes for all versions
+
+- Leaving a world mid-combat no longer locks the camera into isometric view on the title screen or in every subsequent world, disconnect now resets inCombat, camera pan, focus, arena origin, trader state, and all combat stats
+- Ghost hit boxes from the previous fight no longer render, tile sets and teammate hovers are cleared on disconnect too
+- Guide book unlock state resets to defaults on disconnect instead of leaking bestiary unlocks from the previous world into the next
+- Combat client packet receivers now dispatch to the render thread via context.client().execute, EnterCombat ExitCombat CombatSync CombatEvent VictoryChoice PlayerStats AddonBonus LevelUp TraderOffer Scoreboard Achievement and GuideBookSync were all mutating MinecraftClient state from the netty IO thread
+
+Multiplayer fixes for all versions
+
+- Party combat no longer deadlocks when the current turn holder disconnects, removePartyMember now reassigns this.player via switchToTurnPlayer so remaining party members can keep acting
+
+Level select table
+
+- Both visual halves are now clickable from every angle, the phantom half is backed by a new invisible LevelSelectGhostBlock that delegates onUse to the real block entity
+- Placing an interactable block next to the level select no longer opens the level select screen when the neighbor is clicked, the overly broad UseBlockCallback that scanned all four horizontal neighbors was removed
+- Breaking either half cleanly removes both and drops exactly one level select item
+- Breaking the phantom half now shows the normal block breaking crack animation, ghost block renders a slab shaped cuboid with a transparent texture on the cutout render layer so the overlay has faces to draw on
+- Placement now fails cleanly if the phantom position is already occupied
+
+Bestiary
+
+- Added entries for Zombie Villager, Cave Spider, Silverfish, Ravager, Piglin Brute, Endermite, and Llama which all spawn in biome data but had no guide book coverage
+- Filled in real stats for Evoker, Phantom, Zombified Piglin, Warden, and Ender Dragon, numbers come from biomes json and the matching EnemyAI classes
+- Bestiary entry count went from 53 to 60
+
+Packaging
+
+- owo-sentinel is no longer bundled in the jar, Modrinth auto rejects jars that include it
+- owo-lib promoted from suggests to depends in fabric.mod.json so Fabric Loader itself surfaces the missing lib error that sentinel used to handle
+
+
 0.1.2
 
 1.21.5 support

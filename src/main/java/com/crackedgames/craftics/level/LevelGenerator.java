@@ -101,17 +101,16 @@ public class LevelGenerator {
             biome.nightLevel, biome
         );
 
-        //? if >=1.21.4 {
-        // Pale Garden sub-biome: at the forest midpoint, spawn creakings instead
-        if ("forest".equals(biome.biomeId) && !isBoss && biomeIndex == biome.levelCount / 2) {
+        // Pale Garden sub-biome: at the forest midpoint, spawn creakings instead.
+        // Available natively on 1.21.4+ and via the Pale Garden Backport mod on older shards.
+        if ("forest".equals(biome.biomeId) && !isBoss && biomeIndex == biome.levelCount / 2
+            && com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.shouldSpawnPaleGarden()) {
             levelDef = buildPaleGardenLevel(levelNumber, biome, biomeIndex, width, height, loot, rand, scaleHpPerLevel, branchChoice);
         }
-        //?}
 
         return levelDef;
     }
 
-    //? if >=1.21.4 {
     private static GeneratedLevelDefinition buildPaleGardenLevel(
             int levelNumber, BiomeTemplate biome, int biomeIndex,
             int width, int height, List<ItemStack> loot,
@@ -133,12 +132,15 @@ public class LevelGenerator {
         java.util.List<GridPos> used = new java.util.ArrayList<>();
         used.add(playerStart);
 
+        String creakingId = com.crackedgames.craftics.compat.palegardenbackport
+            .PaleGardenBackportCompat.creakingEntityId();
+
         for (int i = 0; i < creakingCount; i++) {
-            // Creaking mob
+            // Creaking mob (vanilla on 1.21.4+, palegardenbackport on older)
             GridPos creakingPos = findOpenSpawn(tiles, width, height, used, rand);
             if (creakingPos == null) continue;
             used.add(creakingPos);
-            spawns.add(new LevelDefinition.EnemySpawn("minecraft:creaking", creakingPos,
+            spawns.add(new LevelDefinition.EnemySpawn(creakingId, creakingPos,
                 18 + hpBonus, 5 + atkBonus, 2, 1));
 
             // Creaking Heart — placed nearby behind the creaking (away from player)
@@ -166,7 +168,8 @@ public class LevelGenerator {
 
         GeneratedLevelDefinition def = new GeneratedLevelDefinition(
             levelNumber, name, width, height, playerStart,
-            net.minecraft.block.Blocks.PALE_MOSS_BLOCK, tiles, enemies, loot,
+            com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.paleMossBlock(),
+            tiles, enemies, loot,
             true, biome // night = true for creepy atmosphere
         );
         def.setArenaBiomeOverride("forest/pale_garden");
@@ -190,7 +193,6 @@ public class LevelGenerator {
         }
         return null;
     }
-    //?}
 
     private static GridTile[][] generateTiles(BiomeTemplate biome, int w, int h,
                                                 int biomeIndex, Random rand) {

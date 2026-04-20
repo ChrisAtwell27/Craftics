@@ -9,10 +9,10 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.screen.NamedScreenHandlerFactory;
 import net.minecraft.state.StateManager;
 //? if <=1.21.1 {
-/*import net.minecraft.state.property.DirectionProperty;
-*///?} else {
-import net.minecraft.state.property.EnumProperty;
-//?}
+import net.minecraft.state.property.DirectionProperty;
+//?} else {
+/*import net.minecraft.state.property.EnumProperty;
+*///?}
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.hit.BlockHitResult;
@@ -38,10 +38,10 @@ public class LevelSelectGhostBlock extends Block {
 
     public static final MapCodec<LevelSelectGhostBlock> CODEC = createCodec(LevelSelectGhostBlock::new);
     //? if <=1.21.1 {
-    /*public static final DirectionProperty FACING = Properties.HORIZONTAL_FACING;
-    *///?} else {
-    public static final EnumProperty<Direction> FACING = Properties.HORIZONTAL_FACING;
-    //?}
+    public static final DirectionProperty FACING = Properties.HORIZONTAL_FACING;
+    //?} else {
+    /*public static final EnumProperty<Direction> FACING = Properties.HORIZONTAL_FACING;
+    *///?}
 
     private static final VoxelShape SHAPE = VoxelShapes.cuboid(0.0, 0.0, 0.0, 1.0, 0.5, 1.0);
 
