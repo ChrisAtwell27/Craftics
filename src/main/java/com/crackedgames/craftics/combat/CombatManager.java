@@ -2979,6 +2979,29 @@ public class CombatManager {
                 fireEffectHook(h -> h.onCrit(effectContext, fTarget, abilityCritDmg));
             }
 
+            // === COPPER ARMOR "Marksman" SET: ranged-hit ricochet ===
+            // When the attacker is wearing the full copper armor set and lands a
+            // ranged hit, roll for a ricochet into the nearest unhit enemy within
+            // 2 tiles. Chance and damage live in CopperAgeCompat so both the
+            // bonus and its tooltip stay in sync.
+            if (fIsRangedWeapon
+                && com.crackedgames.craftics.combat.PlayerCombatStats.hasCopperSet(player)
+                && Math.random() < com.crackedgames.craftics.compat.copperagebackport
+                        .CopperAgeCompat.RICOCHET_CHANCE) {
+                Set<Integer> ricochetHitIds = new java.util.HashSet<>();
+                ricochetHitIds.add(fTarget.getEntityId());
+                CombatEntity ricochetTarget = findRicochetTarget(fTarget, ricochetHitIds);
+                if (ricochetTarget != null) {
+                    int ricochetDmg = Math.max(1, (int) Math.round(
+                        fBaseDamage * com.crackedgames.craftics.compat.copperagebackport
+                            .CopperAgeCompat.RICOCHET_DAMAGE_MULT));
+                    int dealtR = ricochetTarget.takeDamage(ricochetDmg);
+                    sendMessage("\u00a76\u27a4 Marksman ricochet! " + ricochetTarget.getDisplayName()
+                        + " takes " + dealtR + " damage!");
+                    checkAndHandleDeath(ricochetTarget);
+                }
+            }
+
             // === TRIDENT CHANNELING: Lightning strike on throw hit ===
             if (fIsTridentThrow && fTridentChanneling > 0 && fTarget.isAlive()) {
                 applyChannelingLightning(fTarget, fTridentChanneling, fBaseDamage);

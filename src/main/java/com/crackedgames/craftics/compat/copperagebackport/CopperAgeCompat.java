@@ -1,6 +1,7 @@
 package com.crackedgames.craftics.compat.copperagebackport;
 
 import com.crackedgames.craftics.CrafticsMod;
+import com.crackedgames.craftics.api.Abilities;
 import com.crackedgames.craftics.api.WeaponAbilityHandler;
 import com.crackedgames.craftics.api.registry.ArmorSetEntry;
 import com.crackedgames.craftics.api.registry.ArmorSetRegistry;
@@ -15,20 +16,19 @@ import net.minecraft.util.Identifier;
 /**
  * Compatibility module for the Copper Age Backport mod (Smallinger).
  * <p>
- * Adds the mod's copper tier to Craftics combat:
+ * Slots the mod's copper tier into Craftics combat:
  * <ul>
- *   <li>Copper sword/axe/pickaxe/shovel/hoe register as <b>Ranged</b> affinity weapons —
- *       copper is treated as a "marksman alloy" that benefits the same affinity tree as
- *       the bow and crossbow. Slots cleanly between stone and iron in raw damage.</li>
- *   <li>Wearing the full copper armor set ("Marksman") grants a Ranged damage bonus,
- *       extra range, and a small attack power buff that synergises with bow/crossbow
- *       builds.</li>
+ *   <li>Copper sword/axe/shovel/hoe keep their natural affinity lanes
+ *       (Slashing/Cleaving/Pet/Special) — copper is just a new metal tier,
+ *       not a weapon-type rework. Stats slot between stone and iron.</li>
+ *   <li>Copper armor is the Ranged-focused piece: wearing the full set
+ *       grants <b>Marksman</b> — +2 Ranged damage and +1 Attack, making
+ *       copper the canonical set for bow/crossbow builds.</li>
  * </ul>
  * <p>
- * The mod registers its tools/armor under the {@code minecraft:} namespace (verified
- * from the JAR's asset paths), so we resolve the items via the live item registry
- * after the mod has registered them. If the items aren't present (mod missing or
- * disabled) every call no-ops and the registry stays clean.
+ * The mod registers its items under the {@code minecraft:} namespace (verified
+ * from the JAR's asset paths), so we resolve them from the live registry after
+ * the mod has loaded. Missing items (mod absent) cause every call to no-op.
  */
 public final class CopperAgeCompat {
 
@@ -59,48 +59,26 @@ public final class CopperAgeCompat {
     }
 
     /**
-     * Register copper tools as Ranged-affinity weapons. Stats slot between stone
-     * (3 atk sword) and iron (5 atk sword) — copper is canonically a softer tier
-     * than iron, so 4 atk for the sword and similar for the rest.
+     * Register copper tools in their natural affinity lanes. Stats slot between
+     * stone and iron — copper is canonically a softer tier than iron. Abilities
+     * match the vanilla analogue so copper feels consistent with its sibling tools.
+     * Pickaxes are not combat weapons (matches vanilla pickaxes which are unregistered).
      */
     private static boolean registerWeapons() {
         boolean any = false;
+        // Shared handlers matching VanillaWeapons.registerSwords / registerAxes defaults.
+        WeaponAbilityHandler swordHandler = Abilities.sweepAdjacent(0.10, 0.05);
+        WeaponAbilityHandler axeHandler   = Abilities.armorIgnore(0.05, 0.03);
 
-        // Ranged-themed sword ability: small chance to "ricochet" into an adjacent
-        // enemy. Keeps with the marksman fantasy without being too strong.
-        WeaponAbilityHandler ricochet = (player, target, arena, baseDamage, stats, luckPoints) -> {
-            java.util.List<String> messages = new java.util.ArrayList<>();
-            java.util.List<com.crackedgames.craftics.combat.CombatEntity> extras = new java.util.ArrayList<>();
-            int extra = 0;
-            int rangedPts = stats != null
-                ? stats.getAffinityPoints(com.crackedgames.craftics.combat.PlayerProgression.Affinity.RANGED)
-                : 0;
-            double chance = 0.10 + rangedPts * 0.04
-                + luckPoints * com.crackedgames.craftics.api.VanillaWeapons.LUCK_BONUS_PER_POINT;
-            if (Math.random() < chance) {
-                for (int dx = -1; dx <= 1 && extras.isEmpty(); dx++) {
-                    for (int dz = -1; dz <= 1 && extras.isEmpty(); dz++) {
-                        if (dx == 0 && dz == 0) continue;
-                        var adj = new com.crackedgames.craftics.core.GridPos(
-                            target.getGridPos().x() + dx, target.getGridPos().z() + dz);
-                        var hit = arena.getOccupant(adj);
-                        if (hit != null && hit.isAlive() && hit != target && !hit.isAlly()) {
-                            int dmg = hit.takeDamage(Math.max(1, baseDamage / 2));
-                            extra += dmg;
-                            extras.add(hit);
-                            messages.add("\u00a76\u27a4 Ricochet! " + hit.getDisplayName() + " takes " + dmg + " bounce damage!");
-                        }
-                    }
-                }
-            }
-            return new com.crackedgames.craftics.combat.WeaponAbility.AttackResult(baseDamage + extra, messages, extras);
-        };
-
-        any |= registerWeapon("copper_sword", DamageType.RANGED, 4, 1, 1, false, 0.0, ricochet);
-        any |= registerWeapon("copper_axe",    DamageType.RANGED, 5, 2, 1, false, 0.0, null);
-        any |= registerWeapon("copper_pickaxe", DamageType.RANGED, 3, 1, 1, false, 0.0, null);
-        any |= registerWeapon("copper_shovel", DamageType.RANGED, 3, 1, 1, false, 0.0, null);
-        any |= registerWeapon("copper_hoe",    DamageType.RANGED, 2, 1, 1, false, 0.0, null);
+        // copper_sword — SLASHING, between stone (3) and iron (5)
+        any |= registerWeapon("copper_sword",  DamageType.SLASHING, 4, 1, 1, false, 0.0, swordHandler);
+        // copper_axe — CLEAVING, between stone (4) and iron (6)
+        any |= registerWeapon("copper_axe",    DamageType.CLEAVING, 5, 2, 1, false, 0.0, axeHandler);
+        // copper_shovel — PET, between stone (3) and iron (4)
+        any |= registerWeapon("copper_shovel", DamageType.PET,       3, 1, 1, false, 0.0, null);
+        // copper_hoe — SPECIAL, between stone (1) and iron (2)
+        any |= registerWeapon("copper_hoe",    DamageType.SPECIAL,   2, 1, 1, false, 0.0, null);
+        // copper_pickaxe intentionally skipped — vanilla pickaxes aren't combat weapons.
         return any;
     }
 
@@ -117,22 +95,36 @@ public final class CopperAgeCompat {
         return true;
     }
 
+    /** Chance for a ranged hit to ricochet when the full copper set is worn. */
+    public static final double RICOCHET_CHANCE = 0.40;
+    /** Fraction of the base damage dealt to the ricochet target. */
+    public static final double RICOCHET_DAMAGE_MULT = 0.50;
+
     /**
-     * Register the copper armor set bonus. Detection is wired up in
-     * {@link com.crackedgames.craftics.combat.PlayerCombatStats#getArmorSet}.
+     * Register the copper armor set bonus. The set has no flat damage or attack
+     * bonuses — its identity is the Marksman ricochet chance on ranged hits,
+     * handled in {@link com.crackedgames.craftics.combat.CombatManager}. Detection
+     * is wired up in {@link com.crackedgames.craftics.combat.PlayerCombatStats#getArmorSet}.
      */
     private static boolean registerArmorSet() {
         // Only register the set if at least one piece is actually present, otherwise
         // the bonus would never trigger anyway.
         if (lookupItem("copper_helmet") == null) return false;
 
+        int chancePct = (int) Math.round(RICOCHET_CHANCE * 100);
+        int dmgPct = (int) Math.round(RICOCHET_DAMAGE_MULT * 100);
         ArmorSetRegistry.register(ArmorSetEntry.builder("copper")
-            .damageBonus(DamageType.RANGED, 2)
-            .attackBonus(1)
-            .description("\u00a76Marksman: +2 Ranged dmg, +1 Attack, ranged weapons gain +1 range")
+            .description("\u00a76Marksman: " + chancePct + "% ranged hits ricochet to a nearby enemy for " + dmgPct + "%")
             .build());
         return true;
     }
+
+    /** Public getters for copper items — used by client tooltips and set detection. */
+    public static Item copperSword()     { return loaded ? lookupItem("copper_sword")     : null; }
+    public static Item copperAxe()       { return loaded ? lookupItem("copper_axe")       : null; }
+    public static Item copperPickaxe()   { return loaded ? lookupItem("copper_pickaxe")   : null; }
+    public static Item copperShovel()    { return loaded ? lookupItem("copper_shovel")    : null; }
+    public static Item copperHoe()       { return loaded ? lookupItem("copper_hoe")       : null; }
 
     private static Item lookupItem(String path) {
         // Copper Age Backport registers its tools/armor under the minecraft: namespace

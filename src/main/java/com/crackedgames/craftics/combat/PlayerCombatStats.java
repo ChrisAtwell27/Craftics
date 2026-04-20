@@ -180,6 +180,10 @@ public class PlayerCombatStats {
         return "gold".equals(getArmorSet(player));
     }
 
+    public static boolean hasCopperSet(ServerPlayerEntity player) {
+        return "copper".equals(getArmorSet(player));
+    }
+
     public static String findAndConsumeTippedArrow(ServerPlayerEntity player) {
         for (int i = 0; i < player.getInventory().size(); i++) {
             var stack = player.getInventory().getStack(i);
