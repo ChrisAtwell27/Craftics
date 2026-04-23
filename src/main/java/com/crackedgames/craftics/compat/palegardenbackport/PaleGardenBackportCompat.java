@@ -58,11 +58,10 @@ public final class PaleGardenBackportCompat {
         // Heart AI shares the same id across versions (craftics:creaking_heart) and
         // is registered in AIRegistry's static block already.
 
-        if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
-            CrafticsMod.LOGGER.debug(
-                "[Craftics × Pale Garden Backport] mod not loaded — AI registered for any future use");
-            return;
-        }
+        boolean modLoaded = FabricLoader.getInstance().isModLoaded(MOD_ID);
+        CrafticsMod.LOGGER.info(
+            "[Craftics × Pale Garden Backport] init() — FabricLoader.isModLoaded({}) = {}", MOD_ID, modLoaded);
+        if (!modLoaded) return;
         loaded = true;
         CrafticsMod.LOGGER.info(
             "[Craftics × Pale Garden Backport] enabled — pale garden uses modded creaking entity");
@@ -124,5 +123,52 @@ public final class PaleGardenBackportCompat {
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /**
+     * Identifier of the "pale garden" overworld biome, dependent on what's
+     * actually present at runtime: vanilla on 1.21.4+, the backport mod's
+     * version on 1.21.1.
+     */
+    public static Identifier paleGardenBiomeId() {
+        //? if >=1.21.4 {
+        /*return Identifier.of("minecraft", "pale_garden");
+        *///?} else {
+        return Identifier.of("palegardenbackport", "pale_garden");
+        //?}
+    }
+
+    /**
+     * Remap a {@code minecraft:}-namespaced pale-garden block id to its
+     * {@code palegardenbackport:} equivalent when the backport mod is loaded
+     * and the vanilla id isn't registered. Used by {@code SchemLoader} so the
+     * existing pale_garden.schem (built against vanilla 1.21.4 ids) loads
+     * correctly on 1.21.1 with the backport mod.
+     *
+     * @param fullId block id like {@code "minecraft:pale_oak_log"} (may include
+     *               trailing {@code [props]} — those are handled by the caller)
+     * @return remapped id, or the original if no remap applies
+     */
+    public static String remapBlockId(String fullId) {
+        if (!loaded || fullId == null) return fullId;
+        if (!fullId.startsWith("minecraft:")) return fullId;
+        String path = fullId.substring("minecraft:".length());
+        if (!isPaleGardenPath(path)) return fullId;
+        // Skip remap if the vanilla id is somehow already registered (e.g. on 1.21.4+).
+        try {
+            Identifier vanillaId = Identifier.of("minecraft", path);
+            if (Registries.BLOCK.containsId(vanillaId)) return fullId;
+            Identifier modId = Identifier.of("palegardenbackport", path);
+            if (Registries.BLOCK.containsId(modId)) return modId.toString();
+        } catch (Throwable ignored) {}
+        return fullId;
+    }
+
+    /** True if the block path looks like something the backport mod adds. */
+    private static boolean isPaleGardenPath(String path) {
+        return path.contains("pale_")
+            || path.contains("resin")
+            || path.equals("creaking_heart")
+            || path.contains("eyeblossom");
     }
 }

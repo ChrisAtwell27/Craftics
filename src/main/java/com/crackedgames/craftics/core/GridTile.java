@@ -153,6 +153,8 @@ public class GridTile {
             case WATER, DEEP_WATER -> Blocks.WATER;
             case LOW_GROUND -> Blocks.STONE;
             case POWDER_SNOW -> Blocks.POWDER_SNOW;
+            case TALL_GRASS -> Blocks.TALL_GRASS;
+            case TALL_FERN -> Blocks.LARGE_FERN;
         };
     }
 }

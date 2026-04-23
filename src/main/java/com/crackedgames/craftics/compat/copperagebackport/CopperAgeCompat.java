@@ -35,6 +35,7 @@ public final class CopperAgeCompat {
     public static final String MOD_ID = "copperagebackport";
 
     private static boolean loaded = false;
+    private static boolean registered = false;
 
     private CopperAgeCompat() {}
 
@@ -42,26 +43,51 @@ public final class CopperAgeCompat {
         return loaded;
     }
 
+    /**
+     * Early-phase init. Flags {@link #loaded} based on the mod's presence so
+     * other systems (e.g. armor-set detection) know to look for copper items,
+     * but does NOT touch {@link WeaponRegistry} — item registration order
+     * between Fabric mods isn't guaranteed, and copper items may not be in
+     * {@link Registries#ITEM} yet. {@link #registerDeferred()} finishes the job
+     * later, after all mod main entrypoints have completed.
+     */
     public static void init() {
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
             CrafticsMod.LOGGER.debug("[Craftics × Copper Age] mod not loaded — skipping registration");
             return;
         }
-
-        boolean anyRegistered = registerWeapons() | registerArmorSet();
-        if (anyRegistered) {
-            loaded = true;
-            CrafticsMod.LOGGER.info("[Craftics × Copper Age] enabled — copper tier registered as Ranged affinity");
-        } else {
-            CrafticsMod.LOGGER.warn(
-                "[Craftics × Copper Age] mod present but no copper items found in registry — skipping");
-        }
+        loaded = true;
     }
 
     /**
-     * Register copper tools in their natural affinity lanes. Stats slot between
-     * stone and iron — copper is canonically a softer tier than iron. Abilities
-     * match the vanilla analogue so copper feels consistent with its sibling tools.
+     * Late-phase registration. Safe to call from any lifecycle event that fires
+     * after all {@code main} entrypoints — e.g. {@code ServerLifecycleEvents.SERVER_STARTING}
+     * on the server, {@code ClientLifecycleEvents.CLIENT_STARTED} on the client, or
+     * lazily from the tooltip render path. Idempotent: the first successful run
+     * flips the guard and subsequent calls no-op.
+     */
+    public static void registerDeferred() {
+        // Hot path — called from every tooltip render as a belt-and-suspenders
+        // fallback. Both early-exits must stay silent or the log floods.
+        if (registered || !loaded) return;
+        boolean anyRegistered = registerWeapons() | registerArmorSet();
+        if (anyRegistered) {
+            registered = true;
+            CrafticsMod.LOGGER.info("[Craftics × Copper Age] enabled — copper tier registered (tools in native lanes, armor = Marksman)");
+        }
+        // No retry log: if items aren't in the registry yet, the next tooltip
+        // render will simply try again until they are.
+    }
+
+    /** True iff the deferred registration has completed at least once. */
+    public static boolean isRegistered() {
+        return registered;
+    }
+
+    /**
+     * Register copper tools in their natural affinity lanes, with damage slotting
+     * between stone and iron per the live config. Abilities mirror the vanilla
+     * analogue so copper feels consistent with its sibling tools.
      * Pickaxes are not combat weapons (matches vanilla pickaxes which are unregistered).
      */
     private static boolean registerWeapons() {
@@ -70,20 +96,31 @@ public final class CopperAgeCompat {
         WeaponAbilityHandler swordHandler = Abilities.sweepAdjacent(0.10, 0.05);
         WeaponAbilityHandler axeHandler   = Abilities.armorIgnore(0.05, 0.03);
 
-        // copper_sword — SLASHING, between stone (3) and iron (5)
-        any |= registerWeapon("copper_sword",  DamageType.SLASHING, 4, 1, 1, false, 0.0, swordHandler);
-        // copper_axe — CLEAVING, between stone (4) and iron (6)
-        any |= registerWeapon("copper_axe",    DamageType.CLEAVING, 5, 2, 1, false, 0.0, axeHandler);
-        // copper_shovel — PET, between stone (3) and iron (4)
-        any |= registerWeapon("copper_shovel", DamageType.PET,       3, 1, 1, false, 0.0, null);
-        // copper_hoe — SPECIAL, between stone (1) and iron (2)
-        any |= registerWeapon("copper_hoe",    DamageType.SPECIAL,   2, 1, 1, false, 0.0, null);
+        // Damage values slot between stone and iron. Read through the live config
+        // each attack so users who retune stone/iron via the config get a copper
+        // tier that still sits halfway between them.
+        java.util.function.IntSupplier copperSwordDmg  = () -> midpoint(CrafticsMod.CONFIG.dmgStoneSword(), CrafticsMod.CONFIG.dmgIronSword());
+        java.util.function.IntSupplier copperAxeDmg    = () -> midpoint(CrafticsMod.CONFIG.dmgStoneAxe(),   CrafticsMod.CONFIG.dmgIronAxe());
+
+        any |= registerWeapon("copper_sword",  DamageType.SLASHING, copperSwordDmg, 1, 1, false, 0.0, swordHandler);
+        any |= registerWeapon("copper_axe",    DamageType.CLEAVING, copperAxeDmg,   2, 1, false, 0.0, axeHandler);
+        // Shovels + hoes use fixed low damage in VanillaWeapons (no config), so pick a
+        // copper value that sits between stone and iron: shovel stone=3/iron=4 → 3,
+        // hoe stone=1/iron=2 → 2.
+        any |= registerWeapon("copper_shovel", DamageType.PET,      () -> 3, 1, 1, false, 0.0, null);
+        any |= registerWeapon("copper_hoe",    DamageType.SPECIAL,  () -> 2, 1, 1, false, 0.0, null);
         // copper_pickaxe intentionally skipped — vanilla pickaxes aren't combat weapons.
         return any;
     }
 
-    private static boolean registerWeapon(String path, DamageType type, int power, int apCost,
-                                           int range, boolean ranged, double breakChance,
+    /** Midpoint of two ints, rounded up so copper leans slightly closer to iron than stone. */
+    private static int midpoint(int stone, int iron) {
+        return (stone + iron + 1) / 2;
+    }
+
+    private static boolean registerWeapon(String path, DamageType type,
+                                           java.util.function.IntSupplier power,
+                                           int apCost, int range, boolean ranged, double breakChance,
                                            WeaponAbilityHandler ability) {
         Item item = lookupItem(path);
         if (item == null) return false;
@@ -96,15 +133,24 @@ public final class CopperAgeCompat {
     }
 
     /** Chance for a ranged hit to ricochet when the full copper set is worn. */
-    public static final double RICOCHET_CHANCE = 0.40;
+    public static final double RICOCHET_CHANCE = 0.65;
     /** Fraction of the base damage dealt to the ricochet target. */
-    public static final double RICOCHET_DAMAGE_MULT = 0.50;
+    public static final double RICOCHET_DAMAGE_MULT = 0.75;
+
+    /** Type-affinity bonus from the copper set, matching the vanilla +2 Power baseline. */
+    public static final int RANGED_POWER_BONUS = 2;
 
     /**
-     * Register the copper armor set bonus. The set has no flat damage or attack
-     * bonuses — its identity is the Marksman ricochet chance on ranged hits,
-     * handled in {@link com.crackedgames.craftics.combat.CombatManager}. Detection
-     * is wired up in {@link com.crackedgames.craftics.combat.PlayerCombatStats#getArmorSet}.
+     * Register the copper armor set bonus. Identity is "Marksman":
+     * <ul>
+     *   <li>{@value #RANGED_POWER_BONUS} Ranged Power type affinity — matches the
+     *       vanilla pattern (chainmail = +2 Slashing, iron = +2 Cleaving, etc.) so
+     *       copper slots cleanly alongside the existing armor tiers as the Ranged set.</li>
+     *   <li>A {@value #RICOCHET_CHANCE} chance on every ranged hit to ricochet
+     *       into a nearby enemy for {@value #RICOCHET_DAMAGE_MULT} of base damage,
+     *       handled in {@link com.crackedgames.craftics.combat.CombatManager}.</li>
+     * </ul>
+     * Set detection is wired up in {@link com.crackedgames.craftics.combat.PlayerCombatStats#getArmorSet}.
      */
     private static boolean registerArmorSet() {
         // Only register the set if at least one piece is actually present, otherwise
@@ -114,33 +160,35 @@ public final class CopperAgeCompat {
         int chancePct = (int) Math.round(RICOCHET_CHANCE * 100);
         int dmgPct = (int) Math.round(RICOCHET_DAMAGE_MULT * 100);
         ArmorSetRegistry.register(ArmorSetEntry.builder("copper")
-            .description("\u00a76Marksman: " + chancePct + "% ranged hits ricochet to a nearby enemy for " + dmgPct + "%")
+            .damageBonus(DamageType.RANGED, RANGED_POWER_BONUS)
+            .description("\u00a76Marksman: " + chancePct + "% ricochet for " + dmgPct + "%, +"
+                + RANGED_POWER_BONUS + " Ranged Power")
             .build());
         return true;
     }
 
-    /** Public getters for copper items — used by client tooltips and set detection. */
-    public static Item copperSword()     { return loaded ? lookupItem("copper_sword")     : null; }
-    public static Item copperAxe()       { return loaded ? lookupItem("copper_axe")       : null; }
-    public static Item copperPickaxe()   { return loaded ? lookupItem("copper_pickaxe")   : null; }
-    public static Item copperShovel()    { return loaded ? lookupItem("copper_shovel")    : null; }
-    public static Item copperHoe()       { return loaded ? lookupItem("copper_hoe")       : null; }
+    /**
+     * Public getters for copper items — used by client tooltips and armor-set
+     * detection. Each getter does a live registry lookup: this sidesteps the
+     * chicken-and-egg between our init and the backport mod's item registration,
+     * and costs one hashmap probe per tooltip render (negligible).
+     */
+    public static Item copperSword()     { return lookupItem("copper_sword"); }
+    public static Item copperAxe()       { return lookupItem("copper_axe"); }
+    public static Item copperPickaxe()   { return lookupItem("copper_pickaxe"); }
+    public static Item copperShovel()    { return lookupItem("copper_shovel"); }
+    public static Item copperHoe()       { return lookupItem("copper_hoe"); }
+    public static Item copperHelmet()    { return lookupItem("copper_helmet"); }
+    public static Item copperChestplate(){ return lookupItem("copper_chestplate"); }
+    public static Item copperLeggings()  { return lookupItem("copper_leggings"); }
+    public static Item copperBoots()     { return lookupItem("copper_boots"); }
 
     private static Item lookupItem(String path) {
         // Copper Age Backport registers its tools/armor under the minecraft: namespace
-        // (verified from the JAR's `assets/minecraft/models/item/copper_*.json` paths).
+        // (verified from the JAR's `assets/minecraft/models/item/copper_*.json` paths
+        // and its RegistryHelper.registerAuto, which hardcodes "minecraft").
         Identifier id = Identifier.of("minecraft", path);
         if (!Registries.ITEM.containsId(id)) return null;
         return Registries.ITEM.get(id);
     }
-
-    /**
-     * Returns the copper helmet item if the mod is loaded and the item is registered,
-     * otherwise null. Used by {@link com.crackedgames.craftics.combat.PlayerCombatStats}
-     * to detect the full set without holding a hard reference to the modded item.
-     */
-    public static Item copperHelmet()    { return loaded ? lookupItem("copper_helmet")    : null; }
-    public static Item copperChestplate(){ return loaded ? lookupItem("copper_chestplate"): null; }
-    public static Item copperLeggings()  { return loaded ? lookupItem("copper_leggings")  : null; }
-    public static Item copperBoots()     { return loaded ? lookupItem("copper_boots")     : null; }
 }

@@ -18,6 +18,11 @@ public class CombatTooltips implements ItemTooltipCallback {
                            net.minecraft.item.tooltip.TooltipType type, java.util.List<Text> lines) {
         Item item = stack.getItem();
 
+        // Belt-and-suspenders: ensure compat-mod weapons are registered. The lifecycle
+        // hooks usually win this race, but if they didn't (e.g. resource pack reload
+        // before a world is loaded), the first tooltip render finishes the job.
+        com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
+
         // Artifacts mod compat: replace the entire vanilla/Artifacts tooltip body with
         // Craftics-only lines so the player sees the in-Craftics behaviour, not the
         // original Artifacts mod description (which is misleading inside our combat).
@@ -510,7 +515,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                 return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Copper spade \u2014 boosted by Pet affinity";
             if (item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHoe())
                 return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Low damage, boosted by Special affinity";
-            // Copper armor is the Ranged-focused set — pure ricochet identity, no flat dmg bonus.
+            // Copper armor — Marksman set: ricochet flavor + Ranged Power type affinity.
             if (item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHelmet()
                 || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperChestplate()
                 || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperLeggings()
@@ -519,8 +524,10 @@ public class CombatTooltips implements ItemTooltipCallback {
                     com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.RICOCHET_CHANCE * 100);
                 int dmgPct = (int) Math.round(
                     com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.RICOCHET_DAMAGE_MULT * 100);
-                return "\u00a76Set Bonus (full set): Marksman\n\u00a77Ranged hits have a " + chance
-                    + "% chance to ricochet to a nearby enemy\n\u00a77(bouncing shot deals " + dmgPct + "% of base damage)";
+                int powerBonus = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.RANGED_POWER_BONUS;
+                return "\u00a76Set Bonus (full set): Marksman\n\u00a77" + chance
+                    + "% chance for ranged hits to ricochet (" + dmgPct + "% of base damage)\n\u00a7bType Affinity: \u00a77+"
+                    + powerBonus + " Ranged Power";
             }
         }
 

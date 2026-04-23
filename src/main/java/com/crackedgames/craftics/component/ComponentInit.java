@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.component;
 
+import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.world.World;
 import org.ladysnake.cca.api.v3.entity.EntityComponentFactoryRegistry;
 import org.ladysnake.cca.api.v3.entity.EntityComponentInitializer;
@@ -25,6 +26,14 @@ public class ComponentInit implements EntityComponentInitializer, WorldComponent
             CrafticsComponents.DEATH_PROTECTION,
             player -> new DeathProtectionComponent(),
             RespawnCopyStrategy.ALWAYS_COPY
+        );
+
+        // Animation state for every mob — mixin gates on craftics_arena tag so
+        // non-combat mobs never trigger pose overrides despite carrying the component.
+        registry.registerFor(
+            MobEntity.class,
+            CrafticsComponents.ANIM,
+            CrafticsAnimComponent::new
         );
     }
 

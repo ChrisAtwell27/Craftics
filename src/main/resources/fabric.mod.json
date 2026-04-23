@@ -43,7 +43,8 @@
 		"cardinal-components": [
 			"craftics:progression",
 			"craftics:world_data",
-			"craftics:death_protection"
+			"craftics:death_protection",
+			"craftics:anim"
 		]
 	},
 	"suggests": {

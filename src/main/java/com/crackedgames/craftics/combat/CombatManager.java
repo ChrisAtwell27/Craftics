@@ -2265,6 +2265,46 @@ public class CombatManager {
             return;
         }
 
+        // Tall grass / large fern breaking: any held weapon breaks it for 1 AP.
+        // Removes both block halves and resets the tile type so the stealth
+        // effect clears on the next tick.
+        if (clickedTile != null) {
+            GridTile clicked = arena.getTile(clickedTile);
+            if (clicked != null && clicked.getType().providesStealth) {
+                int dist = arena.getPlayerGridPos().manhattanDistance(clickedTile);
+                if (dist <= 1) {
+                    net.minecraft.item.ItemStack held = player.getMainHandStack();
+                    if (held != null && !held.isEmpty()) {
+                        if (apRemaining < 1) {
+                            sendMessage("§cNot enough AP!");
+                            return;
+                        }
+                        net.minecraft.server.world.ServerWorld sw =
+                            (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+                        net.minecraft.util.math.BlockPos floorBlock = arena.gridToBlockPos(clickedTile);
+                        net.minecraft.util.math.BlockPos lowerPos = floorBlock.up(1);
+                        net.minecraft.util.math.BlockPos upperPos = floorBlock.up(2);
+                        net.minecraft.block.BlockState broken = sw.getBlockState(lowerPos);
+                        sw.setBlockState(lowerPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+                        sw.setBlockState(upperPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+                        clicked.setType(com.crackedgames.craftics.core.TileType.NORMAL);
+                        apRemaining -= 1;
+                        // Break particles + sound
+                        sw.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
+                                net.minecraft.particle.ParticleTypes.BLOCK, broken),
+                            lowerPos.getX() + 0.5, lowerPos.getY() + 0.5, lowerPos.getZ() + 0.5,
+                            10, 0.3, 0.3, 0.3, 0.1);
+                        sw.playSound(null, lowerPos,
+                            net.minecraft.sound.SoundEvents.BLOCK_GRASS_BREAK,
+                            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+                        sendSync();
+                        refreshHighlights();
+                        return;
+                    }
+                }
+            }
+        }
+
         // Web breaking: player can break a web on clicked tile with sword or axe
         if (arena.hasWebOverlay(clickedTile)) {
             int webDist = arena.getPlayerGridPos().manhattanDistance(clickedTile);
@@ -3587,14 +3627,27 @@ public class CombatManager {
         if (!entity.isAlive() && !entity.isDeathProcessed()) {
             entity.markDeathProcessed();
 
-            // Creaking Heart death → kill the linked Creaking
-            if ("craftics:creaking_heart".equals(entity.getEntityTypeId()) && entity.getLinkedCreakingId() >= 0) {
-                for (CombatEntity e : enemies) {
-                    if (e.getEntityId() == entity.getLinkedCreakingId() && e.isAlive()) {
-                        sendMessage("\u00a7d\u2726 The Creaking crumbles!");
-                        e.takeDamage(e.getCurrentHp() + e.getDefense() + 9999);
-                        checkAndHandleDeath(e);
-                        break;
+            // Creaking Heart death → destroy the heart block AND kill the linked Creaking
+            if ("craftics:creaking_heart".equals(entity.getEntityTypeId())) {
+                // Remove the in-world heart block (placed when the heart was spawned in
+                // CombatManager.spawnEnemies — same grid pos resolves to same block pos).
+                if (player != null && arena != null) {
+                    ServerWorld w = (ServerWorld) player.getEntityWorld();
+                    BlockPos heartBlock = arena.gridToBlockPos(entity.getGridPos());
+                    w.setBlockState(heartBlock, net.minecraft.block.Blocks.AIR.getDefaultState());
+                    w.syncWorldEvent(2001, heartBlock,
+                        net.minecraft.block.Block.getRawIdFromState(
+                            com.crackedgames.craftics.compat.palegardenbackport
+                                .PaleGardenBackportCompat.creakingHeartBlock().getDefaultState()));
+                }
+                if (entity.getLinkedCreakingId() >= 0) {
+                    for (CombatEntity e : enemies) {
+                        if (e.getEntityId() == entity.getLinkedCreakingId() && e.isAlive()) {
+                            sendMessage("\u00a7d\u2726 The Creaking crumbles!");
+                            e.takeDamage(e.getCurrentHp() + e.getDefense() + 9999);
+                            checkAndHandleDeath(e);
+                            break;
+                        }
                     }
                 }
             }
@@ -5294,6 +5347,20 @@ public class CombatManager {
 
         tickCounter++;
 
+        // Decay per-mob animation state so a forgotten setter can't freeze a pose.
+        if (enemies != null) {
+            for (CombatEntity e : enemies) {
+                if (e != null && e.getMobEntity() != null) {
+                    com.crackedgames.craftics.combat.animation.MobAnimations.tick(e.getMobEntity());
+                }
+            }
+        }
+
+        // Stealth tiles: re-apply vanilla invisibility to any player/mob standing
+        // on a TALL_GRASS or TALL_FERN tile. AI targeting gate reads the tile
+        // directly elsewhere, so this is purely for the visual hide.
+        com.crackedgames.craftics.combat.StealthTiles.applyEach(arena, player, enemies);
+
         // Keep player mounted in boat — vanilla dismounts on interact/damage/position changes
         if (activeBoat != null && player != null && !player.hasVehicle()) {
             if (activeBoat.isRemoved()) {
@@ -6335,14 +6402,27 @@ public class CombatManager {
                 playerLooking = cosAngle > 0.707;
             }
             if (playerLooking) {
-                currentEnemy.setSpeedBonus(-currentEnemy.getMoveSpeed()); // freeze: 0 effective speed
+                // Hard freeze — flag bypasses the Math.max(1, ...) speed clamp AND
+                // CreakingAI returns Idle so it can't attack either.
+                currentEnemy.setFrozen(true);
                 sendMessage("\u00a77The Creaking freezes under your gaze...");
             } else {
-                currentEnemy.setSpeedBonus(6 - currentEnemy.getMoveSpeed()); // 6 effective speed
+                currentEnemy.setFrozen(false);
+                currentEnemy.setSpeedBonus(6 - currentEnemy.getMoveSpeed()); // 6 effective speed when unobserved
             }
         }
 
-        pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
+        // Stealth-tile target gate: if the player is on a tall-grass/fern tile
+        // and we're not adjacent, we can't see them — skip the turn entirely.
+        // Bosses included (per design: bosses do not ignore tall grass).
+        if (StealthTiles.isConcealedFrom(arena, currentEnemy.getGridPos(), aiTargetPos)) {
+            pendingAction = new EnemyAction.Idle();
+        } else {
+            pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
+            // Mob-vs-mob predators: downgrade to Idle if the prey is on a stealth
+            // tile and we're not adjacent to it. Uses the returned action's target.
+            pendingAction = gateMobTargetingThroughStealth(currentEnemy, pendingAction);
+        }
 
         // Addon combat effects: boss phase change notification
         if (ai instanceof BossAI bai && bai.consumePhaseTransition()) {
@@ -9752,12 +9832,46 @@ public class CombatManager {
         };
     }
 
+    /**
+     * Mob-vs-mob stealth gate: if the predator's returned action targets a mob
+     * that's on a tall-grass/fern tile and the predator isn't adjacent to it,
+     * downgrade the action to Idle. The player case is handled pre-decision.
+     */
+    private EnemyAction gateMobTargetingThroughStealth(CombatEntity predator, EnemyAction action) {
+        if (action == null) return action;
+        Integer targetId = extractTargetMobId(action);
+        if (targetId == null) return action;
+        CombatEntity prey = null;
+        if (enemies != null) {
+            for (CombatEntity e : enemies) {
+                if (e != null && e.getMobEntity() != null
+                        && e.getMobEntity().getId() == targetId) { prey = e; break; }
+            }
+        }
+        if (prey == null) return action;
+        if (StealthTiles.isConcealedFrom(arena, predator.getGridPos(), prey.getGridPos())) {
+            return new EnemyAction.Idle();
+        }
+        return action;
+    }
+
+    private static Integer extractTargetMobId(EnemyAction a) {
+        if (a instanceof EnemyAction.AttackMob am) return am.targetEntityId();
+        if (a instanceof EnemyAction.MoveAndAttackMob mam) return mam.targetEntityId();
+        return null;
+    }
+
     /** Initialize attack animation and transition to ANIMATING state. */
     private void startAttackAnimation(int delay) {
         attackAnimTick = 0;
         attackAnimSwung = false;
         enemyTurnState = EnemyTurnState.ANIMATING;
         enemyTurnDelay = delay;
+        if (currentEnemy != null && currentEnemy.getMobEntity() != null) {
+            com.crackedgames.craftics.combat.animation.MobAnimations.set(
+                currentEnemy.getMobEntity(),
+                com.crackedgames.craftics.combat.animation.AnimState.WINDUP);
+        }
     }
 
     /**

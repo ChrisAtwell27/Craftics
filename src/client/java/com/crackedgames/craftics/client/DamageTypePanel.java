@@ -69,6 +69,7 @@ public class DamageTypePanel {
                         case "iron" -> DamageType.CLEAVING;
                         case "gold" -> DamageType.SPECIAL;
                         case "diamond" -> DamageType.BLUNT;
+                        case "copper" -> DamageType.RANGED;
                         default -> null;
                     };
                     if (affinity != null) cachedPartialBonuses.put(affinity, 1);
@@ -147,18 +148,18 @@ public class DamageTypePanel {
         }
     }
 
-    /** Compute total bonus for a damage type from armor set + trims + partial pieces + mob heads (client-side). */
+    /**
+     * Compute total <b>affinity points</b> for a damage type. Every source —
+     * armor set, partial set, trim, mob head, level-up — contributes whole points.
+     * Combat damage is points × {@link DamageType#DAMAGE_PER_AFFINITY_POINT};
+     * the panel intentionally shows points so 2 same-material pieces displays as
+     * "+1" (one point) rather than "+3" (its damage equivalent).
+     */
     private static int computeBonus(String armorSet, Map<String, Integer> trimBonuses, DamageType type) {
-        int bonus = 0;
+        int points = 0;
 
-        // Mob head bonus (+1 for matching skull type)
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player != null) {
-            bonus += DamageType.getMobHeadBonus(mc.player.getEquippedStack(EquipmentSlot.HEAD), type);
-        }
-
-        // Full armor set bonus
-        bonus += switch (armorSet) {
+        // Full armor set points
+        points += switch (armorSet) {
             case "leather"   -> type == DamageType.PHYSICAL ? 2 : 0;
             case "chainmail" -> type == DamageType.SLASHING ? 2 : 0;
             case "iron"      -> type == DamageType.CLEAVING ? 2 : 0;
@@ -166,15 +167,17 @@ public class DamageTypePanel {
             case "diamond"   -> type == DamageType.BLUNT ? 2 : 0;
             case "netherite" -> 1;
             case "turtle"    -> type == DamageType.WATER ? 3 : 0;
+            // Copper Age Backport — Marksman: +2 Ranged Power baseline.
+            case "copper"    -> type == DamageType.RANGED ? 2 : 0;
             default -> 0;
         };
 
-        // Partial set bonus: 2+ pieces of same material gives +1 to its affinity type (even without full set)
+        // Partial set bonus: 2+ pieces of same material gives +1 to its affinity type
         if ("mixed".equals(armorSet)) {
-            bonus += cachedPartialBonuses.getOrDefault(type, 0);
+            points += cachedPartialBonuses.getOrDefault(type, 0);
         }
 
-        // Trim bonuses
+        // Trim bonuses (points)
         String bonusKey = switch (type) {
             case SLASHING -> "SWORD_POWER";
             case CLEAVING -> "CLEAVING_POWER";
@@ -186,30 +189,34 @@ public class DamageTypePanel {
             case PHYSICAL -> null;
         };
         if (bonusKey != null) {
-            bonus += trimBonuses.getOrDefault(bonusKey, 0);
+            points += trimBonuses.getOrDefault(bonusKey, 0);
         }
         // Generic melee power stacks with melee types
         if (type == DamageType.SLASHING || type == DamageType.CLEAVING || type == DamageType.BLUNT) {
-            bonus += trimBonuses.getOrDefault("MELEE_POWER", 0);
+            points += trimBonuses.getOrDefault("MELEE_POWER", 0);
         }
 
         // Addon equipment scanner bonuses (synced from server)
         if (bonusKey != null) {
-            bonus += CombatState.getAddonBonus(bonusKey);
+            points += CombatState.getAddonBonus(bonusKey);
         }
         if (type == DamageType.SLASHING || type == DamageType.CLEAVING || type == DamageType.BLUNT) {
-            bonus += CombatState.getAddonBonus("MELEE_POWER");
+            points += CombatState.getAddonBonus("MELEE_POWER");
         }
 
-        // Affinity points from level-up choices (use Affinity enum ordinal, not hardcoded)
-        // Each affinity point grants +3 damage (mirrors DamageType.getTotalBonus on the server).
+        // Affinity points from level-up choices (1 point per selection)
         try {
             int affinityOrdinal = PlayerProgression.Affinity.valueOf(type.name()).ordinal();
-            bonus += CombatState.getAffinityPoints(affinityOrdinal) * 3;
+            points += CombatState.getAffinityPoints(affinityOrdinal);
         } catch (IllegalArgumentException ignored) {}
 
+        // Mob head bonus contributes 1 affinity point for matching type.
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc.player != null) {
+            points += DamageType.getMobHeadAffinityPoints(mc.player.getEquippedStack(EquipmentSlot.HEAD), type);
+        }
 
-        return bonus;
+        return points;
     }
 
     /** Detect armor set from client player (mirrors PlayerCombatStats.getArmorSet). */
@@ -232,6 +239,16 @@ public class DamageTypePanel {
             && legs == Items.DIAMOND_LEGGINGS && feet == Items.DIAMOND_BOOTS) return "diamond";
         if (head == Items.NETHERITE_HELMET && chest == Items.NETHERITE_CHESTPLATE
             && legs == Items.NETHERITE_LEGGINGS && feet == Items.NETHERITE_BOOTS) return "netherite";
+
+        // Copper Age Backport — runtime-resolved items so we don't need a hard
+        // classpath dependency on the optional mod.
+        Item copperHead  = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHelmet();
+        Item copperChest = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperChestplate();
+        Item copperLegs  = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperLeggings();
+        Item copperFeet  = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperBoots();
+        if (copperHead != null && head == copperHead && chest == copperChest
+            && legs == copperLegs && feet == copperFeet) return "copper";
+
         return "mixed";
     }
 
@@ -324,6 +341,7 @@ public class DamageTypePanel {
             case "diamond"   -> "\u00a7bKnight";
             case "netherite" -> "\u00a74Juggernaut";
             case "turtle"    -> "\u00a72Aquatic";
+            case "copper"    -> "\u00a76Marksman";
             default -> "";
         };
     }
@@ -342,6 +360,17 @@ public class DamageTypePanel {
             || item == Items.DIAMOND_LEGGINGS || item == Items.DIAMOND_BOOTS) return "diamond";
         if (item == Items.NETHERITE_HELMET || item == Items.NETHERITE_CHESTPLATE
             || item == Items.NETHERITE_LEGGINGS || item == Items.NETHERITE_BOOTS) return "netherite";
+
+        // Copper Age Backport — runtime lookup so we don't need a hard dep.
+        if (item != null) {
+            Item copperH = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHelmet();
+            if (copperH != null && (item == copperH
+                || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperChestplate()
+                || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperLeggings()
+                || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperBoots())) {
+                return "copper";
+            }
+        }
         return null;
     }
 

@@ -192,10 +192,18 @@ public class SchemLoader {
     private static BlockState parseBlockState(String blockStr) {
         try {
             String plainId = blockStr.contains("[") ? blockStr.substring(0, blockStr.indexOf('[')) : blockStr;
-            Block block = Registries.BLOCK.get(Identifier.of(plainId));
-            if (block != Blocks.AIR || "minecraft:air".equals(plainId)) {
+            // Pale Garden Backport: rewrite vanilla 1.21.4 pale-garden block ids
+            // to the modded namespace when the backport mod is loaded (1.21.1).
+            // The schematic is built against vanilla ids and would otherwise
+            // resolve to AIR on older shards.
+            String remapped = com.crackedgames.craftics.compat.palegardenbackport
+                .PaleGardenBackportCompat.remapBlockId(plainId);
+            Block block = Registries.BLOCK.get(Identifier.of(remapped));
+            if (block != Blocks.AIR || "minecraft:air".equals(remapped)) {
                 if (blockStr.contains("[")) {
-                    return parseWithProperties(block, blockStr);
+                    // Reattach properties to the (possibly remapped) block id
+                    String propsTail = blockStr.contains("[") ? blockStr.substring(blockStr.indexOf('[')) : "";
+                    return parseWithProperties(block, remapped + propsTail);
                 }
                 return block.getDefaultState();
             }
