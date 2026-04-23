@@ -15,6 +15,14 @@ import java.util.List;
 public class CreakingAI implements EnemyAI {
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
+        // Gaze freeze: while the player is looking at the Creaking it cannot
+        // move OR attack. CombatManager flips the frozen flag based on the
+        // player's view-cone; honoring it here is what makes the gaze actually
+        // matter (short-circuiting before the dist==1 attack branch below).
+        if (self.isFrozen()) {
+            return new EnemyAction.Idle();
+        }
+
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 

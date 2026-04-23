@@ -27,6 +27,13 @@ public class CombatEntity {
     private int poisonTurns = 0;
     private int poisonAmplifier = 0; // 0 = level I, 1 = level II, etc
     private boolean enraged = false;
+    /**
+     * When set, the entity is fully immobilized this turn — used by the Creaking
+     * gaze mechanic. Bypasses the {@link #getMoveSpeed} clamp (which floors at 1)
+     * so a frozen Creaking truly can't move, and AI implementations check this
+     * flag at the top of {@code decideAction} to skip attacks too.
+     */
+    private boolean frozen = false;
     private boolean drownedHasTrident = false;
     private int defensePenalty = 0;
     private int defensePenaltyTurns = 0;
@@ -136,6 +143,9 @@ public class CombatEntity {
         return min;
     }
     public int getMoveSpeed() {
+        // Frozen entities (Creaking under gaze) bypass the +1 floor entirely —
+        // they truly can't move this turn.
+        if (frozen) return 0;
         int base = moveSpeed + speedBonus;
         if (soakedTurns > 0) base -= 1;
         if (slownessTurns > 0) base -= slownessPenalty;
@@ -144,6 +154,8 @@ public class CombatEntity {
     }
     public void setSpeedBonus(int bonus) { this.speedBonus = bonus; }
     public int getSpeedBonus() { return speedBonus; }
+    public boolean isFrozen() { return frozen; }
+    public void setFrozen(boolean f) { this.frozen = f; }
     public boolean isEnraged() { return enraged; }
     public void setEnraged(boolean e) { this.enraged = e; }
     public boolean isDrownedWithTrident() { return drownedHasTrident; }
@@ -347,6 +359,11 @@ public class CombatEntity {
         // Note: bleed is its own DOT and is classified as Special damage,
         // so it does NOT add bonus damage to direct hits anymore.
         applyDirectDamage(actual);
+        if (alive && mobEntity != null) {
+            com.crackedgames.craftics.combat.animation.MobAnimations.set(
+                mobEntity,
+                com.crackedgames.craftics.combat.animation.AnimState.HIT);
+        }
         return actual;
     }
 

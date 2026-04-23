@@ -30,5 +30,12 @@ public final class CrafticsComponents {
             WorldDataComponent.class
         );
 
+    /** Per-mob animation state driving client-side bone overrides for craftics_arena entities. */
+    public static final ComponentKey<CrafticsAnimComponent> ANIM =
+        ComponentRegistryV3.INSTANCE.getOrCreate(
+            Identifier.of("craftics", "anim"),
+            CrafticsAnimComponent.class
+        );
+
     private CrafticsComponents() {}
 }

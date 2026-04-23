@@ -329,6 +329,19 @@ public class ArenaBuilder {
                     continue;
                 }
 
+                // Tall grass / large fern at Y+1: walkable stealth tile. The upper half
+                // sits at Y+2 (headPos) — non-solid so it won't be flagged as obstacle.
+                if (tile.isWalkable() && aboveState.isOf(Blocks.TALL_GRASS)) {
+                    finalTiles[x][z] = new GridTile(
+                        com.crackedgames.craftics.core.TileType.TALL_GRASS, Blocks.TALL_GRASS);
+                    continue;
+                }
+                if (tile.isWalkable() && aboveState.isOf(Blocks.LARGE_FERN)) {
+                    finalTiles[x][z] = new GridTile(
+                        com.crackedgames.craftics.core.TileType.TALL_FERN, Blocks.LARGE_FERN);
+                    continue;
+                }
+
                 // Cactus has a non-full collision shape so isSolidBlock returns false for it,
                 // but we still want it to act as a hard movement obstacle.
                 boolean cactusObstacle = aboveState.isOf(Blocks.CACTUS);
@@ -1249,7 +1262,63 @@ public class ArenaBuilder {
             case NETHER -> placeFloorHazards(world, ox, oy, oz, w, h, Blocks.LAVA, 2, 5, rng);
             case CRIMSON_FOREST -> placeFallenNetherLogs(world, ox, oy, oz, w, h, Blocks.CRIMSON_STEM, rng);
             case WARPED_FOREST -> placeFallenNetherLogs(world, ox, oy, oz, w, h, Blocks.WARPED_STEM, rng);
+            case PLAINS -> placePlainsFoliage(world, ox, oy, oz, w, h, rng);
             default -> {} // no random obstacles for other biomes
+        }
+    }
+
+    /**
+     * Scatter patches of tall grass and large ferns across a plains arena. These
+     * are 2-block-tall plants; the occupant tile becomes {@code TALL_GRASS} /
+     * {@code TALL_FERN} during the post-placement scan and provides stealth.
+     */
+    private static void placePlainsFoliage(ServerWorld world, int ox, int oy, int oz,
+                                            int w, int h, Random rng) {
+        int grassCount = 4 + rng.nextInt(4); // 4-7 tall grass patches
+        int fernCount = 2 + rng.nextInt(3);  // 2-4 large fern patches
+
+        java.util.Set<Long> used = new java.util.HashSet<>();
+
+        for (int i = 0; i < grassCount; i++) {
+            tryPlaceDoublePlant(world, ox, oy, oz, w, h, Blocks.TALL_GRASS, used, rng);
+        }
+        for (int i = 0; i < fernCount; i++) {
+            tryPlaceDoublePlant(world, ox, oy, oz, w, h, Blocks.LARGE_FERN, used, rng);
+        }
+    }
+
+    /**
+     * Place a 2-block-tall plant (tall grass / large fern) at a random walkable
+     * floor tile with 2-block vertical clearance. LOWER half goes at Y+1, UPPER
+     * at Y+2. Silently skips if no valid spot is found within 20 attempts.
+     */
+    private static void tryPlaceDoublePlant(ServerWorld world, int ox, int oy, int oz,
+                                             int w, int h, Block plant,
+                                             java.util.Set<Long> used, Random rng) {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            int tx = 2 + rng.nextInt(Math.max(1, w - 4));
+            int tz = 2 + rng.nextInt(Math.max(1, h - 4));
+            if (used.contains(packPos(tx, tz))) continue;
+
+            BlockPos floorPos = new BlockPos(ox + tx, oy, oz + tz);
+            BlockPos abovePos = new BlockPos(ox + tx, oy + 1, oz + tz);
+            BlockPos headPos  = new BlockPos(ox + tx, oy + 2, oz + tz);
+
+            if (!world.getBlockState(floorPos).isSolidBlock(world, floorPos)) continue;
+            if (!isAirLike(world.getBlockState(abovePos))) continue;
+            if (!isAirLike(world.getBlockState(headPos))) continue;
+
+            BlockState lower = plant.getDefaultState()
+                .with(net.minecraft.state.property.Properties.DOUBLE_BLOCK_HALF,
+                      net.minecraft.block.enums.DoubleBlockHalf.LOWER);
+            BlockState upper = plant.getDefaultState()
+                .with(net.minecraft.state.property.Properties.DOUBLE_BLOCK_HALF,
+                      net.minecraft.block.enums.DoubleBlockHalf.UPPER);
+            world.setBlockState(abovePos, lower, 2);
+            world.setBlockState(headPos, upper, 2);
+
+            used.add(packPos(tx, tz));
+            return;
         }
     }
 
@@ -1813,6 +1882,12 @@ public class ArenaBuilder {
     }
 
     private static Identifier toMinecraftBiomeId(String crafticsBiomeId) {
+        // Pale Garden sub-biome — resolves to vanilla 1.21.4+ biome or the
+        // backport mod's biome on 1.21.1, depending on what's loaded.
+        if ("forest/pale_garden".equals(crafticsBiomeId)) {
+            return com.crackedgames.craftics.compat.palegardenbackport
+                .PaleGardenBackportCompat.paleGardenBiomeId();
+        }
         return Identifier.of("minecraft", switch (crafticsBiomeId) {
             case "plains"            -> "plains";
             case "forest"            -> "dark_forest";

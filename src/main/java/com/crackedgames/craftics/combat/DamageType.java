@@ -80,35 +80,54 @@ public enum DamageType {
     }
 
     /**
-     * Calculate total damage type bonus from all sources (armor set + trims + effects + affinity).
+     * Per-point damage multiplier for every affinity source. Single source of truth:
+     * 1 affinity "point" (from armor set, trim, mob head, effect, or level-up) always
+     * contributes {@value} damage of its type. Change this constant once and every
+     * source scales together — no hidden per-source math.
      */
-    public static int getTotalBonus(String armorSet, TrimEffects.TrimScan trimScan,
-                                     CombatEffects effects, DamageType type) {
+    public static final int DAMAGE_PER_AFFINITY_POINT = 3;
+
+    /**
+     * Total affinity points from gear sources: armor set + trims + potion effects.
+     * Returned as raw points so callers can display "+N Power" consistently with
+     * the damage formula ({@link #DAMAGE_PER_AFFINITY_POINT} per point).
+     */
+    public static int getTotalAffinityPoints(String armorSet, TrimEffects.TrimScan trimScan,
+                                              CombatEffects effects, DamageType type) {
         return getArmorSetBonus(armorSet, type)
              + getTrimBonus(trimScan, type)
              + getEffectBonus(effects, type);
     }
 
-    /** Version with player affinity points included. */
+    /**
+     * Total damage bonus from gear sources. Each point of affinity contributes
+     * {@link #DAMAGE_PER_AFFINITY_POINT} damage.
+     */
+    public static int getTotalBonus(String armorSet, TrimEffects.TrimScan trimScan,
+                                     CombatEffects effects, DamageType type) {
+        return getTotalAffinityPoints(armorSet, trimScan, effects, type) * DAMAGE_PER_AFFINITY_POINT;
+    }
+
+    /** Version that also folds in the player's level-up affinity points. */
     public static int getTotalBonus(String armorSet, TrimEffects.TrimScan trimScan,
                                      CombatEffects effects, DamageType type,
                                      PlayerProgression.PlayerStats playerStats) {
-        int bonus = getTotalBonus(armorSet, trimScan, effects, type);
+        int points = getTotalAffinityPoints(armorSet, trimScan, effects, type);
         if (playerStats != null) {
             PlayerProgression.Affinity affinity = mapToAffinity(type);
             if (affinity != null) {
-                bonus += playerStats.getAffinityPoints(affinity) * 3;
+                points += playerStats.getAffinityPoints(affinity);
             }
         }
-        return bonus;
+        return points * DAMAGE_PER_AFFINITY_POINT;
     }
 
     /**
-     * Mob skull helmets grant +1 to a specific damage type when worn.
+     * Mob skull helmets grant 1 affinity point of a specific type when worn.
      * Skeleton → Ranged, Creeper → Blunt, Piglin → Slashing,
      * Wither Skeleton → Special, Zombie → Physical.
      */
-    public static int getMobHeadBonus(ItemStack helmet, DamageType type) {
+    public static int getMobHeadAffinityPoints(ItemStack helmet, DamageType type) {
         if (helmet == null || helmet.isEmpty()) return 0;
         Item item = helmet.getItem();
         if (item == Items.SKELETON_SKULL && type == RANGED) return 1;
@@ -117,6 +136,15 @@ public enum DamageType {
         if (item == Items.WITHER_SKELETON_SKULL && type == SPECIAL) return 1;
         if (item == Items.ZOMBIE_HEAD && type == PHYSICAL) return 1;
         return 0;
+    }
+
+    /**
+     * Damage variant of {@link #getMobHeadAffinityPoints} — returns the actual
+     * damage contribution (points × {@link #DAMAGE_PER_AFFINITY_POINT}). Used by
+     * combat code that adds mob-head bonus alongside {@link #getTotalBonus}.
+     */
+    public static int getMobHeadBonus(ItemStack helmet, DamageType type) {
+        return getMobHeadAffinityPoints(helmet, type) * DAMAGE_PER_AFFINITY_POINT;
     }
 
     /** Map DamageType to the corresponding Affinity for level-up bonuses. */

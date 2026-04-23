@@ -132,6 +132,16 @@ public class CrafticsClient implements ClientModInitializer {
                             CombatVisualEffects.flashAttack();
                             float shakeAmount = Math.min(1.0f, payload.valueA() / 8.0f) * 0.6f + 0.15f;
                             CombatVisualEffects.triggerShake(shakeAmount);
+                            // Vanilla red hurt flash: Craftics bypasses mob.damage() so
+                            // we set hurtTime directly on the client entity. The renderer
+                            // reads hurtTime > 0 to apply the overlay; base tick decrements
+                            // it so the flash fades naturally over ~10 ticks.
+                            var hurtEntity = context.client().world != null
+                                ? context.client().world.getEntityById(payload.entityId()) : null;
+                            if (hurtEntity instanceof net.minecraft.entity.LivingEntity hurtLe) {
+                                hurtLe.maxHurtTime = 10;
+                                hurtLe.hurtTime = 10;
+                            }
                         }
                     }
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_MOVED -> {
@@ -348,6 +358,13 @@ public class CrafticsClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(new AchievementToast());
         CombatTooltips.register();
         TileOverlayRenderer.register();
+
+        // Client-side deferred copper-tier registration. The MP client never sees
+        // ServerLifecycleEvents, but tooltips still need WeaponRegistry populated.
+        // CLIENT_STARTED fires after every mod's main entrypoint has run, so the
+        // copperagebackport items are guaranteed to be in Registries.ITEM by now.
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STARTED.register(
+            client -> com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred());
 
         // Without this, leaving a world mid-battle leaves CombatState.inCombat
         // stuck true — CameraLockMixin then overrides camera rotation/position

@@ -433,6 +433,13 @@ public class CrafticsMod implements ModInitializer {
             }
         );
 
+        // Deferred copper-tier registration. WeaponRegistry needs the actual Item
+        // instances from copperagebackport, but Fabric doesn't guarantee that mod's
+        // main entrypoint has run by the time ours does — so finish the registration
+        // on SERVER_STARTING, which fires after every mod's main-phase init.
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTING.register(
+            server -> com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred());
+
         // Load biome definitions from JSON datapacks on server start
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             com.crackedgames.craftics.level.BiomeRegistry.clear();
