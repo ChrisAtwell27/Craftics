@@ -425,6 +425,37 @@ public class CombatManager {
         if (wasCurrent && !turnQueue.isEmpty()) {
             switchToTurnPlayer();
         }
+        // If the leaver was the last one we were waiting on at the trader or
+        // crafting station, finalize the event so the rest of the party isn't
+        // stranded in a non-combat room with no way to advance.
+        clearEventPendingForDisconnect(memberUuid);
+    }
+
+    /**
+     * Treat a disconnecting player as if they finished any non-combat event
+     * they were holding the party on (trader, crafting station). Without this,
+     * a mid-event DC leaves the player's UUID in the pending set forever and
+     * the transition never fires for the remaining online members.
+     */
+    private void clearEventPendingForDisconnect(java.util.UUID memberUuid) {
+        if (traderPendingPlayers.remove(memberUuid)
+                && traderPendingPlayers.isEmpty() && spawnedTrader != null) {
+            ServerPlayerEntity ref = firstOnlinePartyMember();
+            if (ref != null) finalizeTraderEvent(ref);
+        }
+        if (craftingStationPendingPlayers.remove(memberUuid)
+                && craftingStationPendingPlayers.isEmpty() && craftingStationActive) {
+            ServerPlayerEntity ref = firstOnlinePartyMember();
+            if (ref != null) finalizeCraftingStationEvent(ref);
+        }
+    }
+
+    /** First still-online party member, or {@code null} if everyone is gone. */
+    private ServerPlayerEntity firstOnlinePartyMember() {
+        for (ServerPlayerEntity p : partyPlayers) {
+            if (p != null && !p.isRemoved() && !p.isDisconnected()) return p;
+        }
+        return null;
     }
 
     // Pulls one player out of party combat, transferring leader role if needed
@@ -2267,41 +2298,48 @@ public class CombatManager {
 
         // Tall grass / large fern breaking: any held weapon breaks it for 1 AP.
         // Removes both block halves and resets the tile type so the stealth
-        // effect clears on the next tick.
+        // effect clears on the next tick. Stealth tiles always claim the click —
+        // we never fall through to entity targeting, otherwise out-of-range or
+        // empty-handed clicks produce a confusing "No valid target!" instead of
+        // an actionable hint.
         if (clickedTile != null) {
             GridTile clicked = arena.getTile(clickedTile);
-            if (clicked != null && clicked.getType().providesStealth) {
+            // World-aware check: also accept tiles whose live block is
+            // TALL_GRASS / LARGE_FERN even if the cached tile type wasn't
+            // classified as stealth (fallback path keeps grass interactable
+            // on MC versions where the post-build tile scan didn't tag it).
+            boolean isStealth = StealthTiles.isStealthTile(arena, clickedTile, player.getEntityWorld());
+            if (isStealth) {
                 int dist = arena.getPlayerGridPos().manhattanDistance(clickedTile);
-                if (dist <= 1) {
-                    net.minecraft.item.ItemStack held = player.getMainHandStack();
-                    if (held != null && !held.isEmpty()) {
-                        if (apRemaining < 1) {
-                            sendMessage("§cNot enough AP!");
-                            return;
-                        }
-                        net.minecraft.server.world.ServerWorld sw =
-                            (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
-                        net.minecraft.util.math.BlockPos floorBlock = arena.gridToBlockPos(clickedTile);
-                        net.minecraft.util.math.BlockPos lowerPos = floorBlock.up(1);
-                        net.minecraft.util.math.BlockPos upperPos = floorBlock.up(2);
-                        net.minecraft.block.BlockState broken = sw.getBlockState(lowerPos);
-                        sw.setBlockState(lowerPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
-                        sw.setBlockState(upperPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
-                        clicked.setType(com.crackedgames.craftics.core.TileType.NORMAL);
-                        apRemaining -= 1;
-                        // Break particles + sound
-                        sw.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
-                                net.minecraft.particle.ParticleTypes.BLOCK, broken),
-                            lowerPos.getX() + 0.5, lowerPos.getY() + 0.5, lowerPos.getZ() + 0.5,
-                            10, 0.3, 0.3, 0.3, 0.1);
-                        sw.playSound(null, lowerPos,
-                            net.minecraft.sound.SoundEvents.BLOCK_GRASS_BREAK,
-                            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
-                        sendSync();
-                        refreshHighlights();
-                        return;
-                    }
+                if (dist > 1) {
+                    sendMessage("§cMust be adjacent to break grass.");
+                    return;
                 }
+                if (apRemaining < 1) {
+                    sendMessage("§cNot enough AP!");
+                    return;
+                }
+                net.minecraft.server.world.ServerWorld sw =
+                    (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+                net.minecraft.util.math.BlockPos floorBlock = arena.gridToBlockPos(clickedTile);
+                net.minecraft.util.math.BlockPos lowerPos = floorBlock.up(1);
+                net.minecraft.util.math.BlockPos upperPos = floorBlock.up(2);
+                net.minecraft.block.BlockState broken = sw.getBlockState(lowerPos);
+                sw.setBlockState(lowerPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+                sw.setBlockState(upperPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+                clicked.setType(com.crackedgames.craftics.core.TileType.NORMAL);
+                apRemaining -= 1;
+                // Break particles + sound
+                sw.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
+                        net.minecraft.particle.ParticleTypes.BLOCK, broken),
+                    lowerPos.getX() + 0.5, lowerPos.getY() + 0.5, lowerPos.getZ() + 0.5,
+                    10, 0.3, 0.3, 0.3, 0.1);
+                sw.playSound(null, lowerPos,
+                    net.minecraft.sound.SoundEvents.BLOCK_GRASS_BREAK,
+                    net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+                sendSync();
+                refreshHighlights();
+                return;
             }
         }
 
@@ -6415,7 +6453,7 @@ public class CombatManager {
         // Stealth-tile target gate: if the player is on a tall-grass/fern tile
         // and we're not adjacent, we can't see them — skip the turn entirely.
         // Bosses included (per design: bosses do not ignore tall grass).
-        if (StealthTiles.isConcealedFrom(arena, currentEnemy.getGridPos(), aiTargetPos)) {
+        if (StealthTiles.isConcealedFrom(arena, currentEnemy.getGridPos(), aiTargetPos, player.getEntityWorld())) {
             pendingAction = new EnemyAction.Idle();
         } else {
             pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
@@ -9849,7 +9887,7 @@ public class CombatManager {
             }
         }
         if (prey == null) return action;
-        if (StealthTiles.isConcealedFrom(arena, predator.getGridPos(), prey.getGridPos())) {
+        if (StealthTiles.isConcealedFrom(arena, predator.getGridPos(), prey.getGridPos(), player.getEntityWorld())) {
             return new EnemyAction.Idle();
         }
         return action;
@@ -11150,35 +11188,92 @@ public class CombatManager {
     }
 
     /**
+     * Locate a Totem of Undying anywhere on the player. Hand slots are checked
+     * first to match vanilla totem priority; the rest of the inventory is
+     * scanned afterward so a totem placed in the hotbar/main/armor slots still
+     * saves the player. Returns the live stack reference (not a copy) so the
+     * caller can decrement it directly. {@code null} if no totem is held.
+     */
+    private net.minecraft.item.ItemStack findTotemStack() {
+        net.minecraft.item.ItemStack mainHand = player.getMainHandStack();
+        if (!mainHand.isEmpty() && mainHand.getItem() == Items.TOTEM_OF_UNDYING) {
+            return mainHand;
+        }
+        net.minecraft.item.ItemStack offHand = player.getOffHandStack();
+        if (!offHand.isEmpty() && offHand.getItem() == Items.TOTEM_OF_UNDYING) {
+            return offHand;
+        }
+        var inv = player.getInventory();
+        for (int i = 0; i < inv.size(); i++) {
+            net.minecraft.item.ItemStack stack = inv.getStack(i);
+            if (!stack.isEmpty() && stack.getItem() == Items.TOTEM_OF_UNDYING) {
+                return stack;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Consume a Totem of Undying and resurrect the player. Returns {@code true}
+     * if a totem was consumed (death should be skipped), {@code false} if the
+     * player has no totem.
+     *
+     * <p>Order is important: the totem is decremented <em>before</em> any other
+     * side effects, so an exception in particle/sound rendering can never
+     * leave the player half-resurrected with the totem still in hand. Status
+     * effects are cleared first (matches vanilla behavior) so lingering
+     * Wither/Poison from the killing blow can't chain-kill the resurrected
+     * player on the next tick.
+     */
+    private boolean tryConsumeTotemAndResurrect() {
+        net.minecraft.item.ItemStack totem = findTotemStack();
+        if (totem == null) return false;
+
+        totem.decrement(1);
+
+        // Vanilla parity: clear all status effects, then re-apply totem buffs.
+        player.clearStatusEffects();
+        player.setAbsorptionAmount(0f);
+
+        float halfMax = Math.max(1.0f, player.getMaxHealth() / 2.0f);
+        player.setHealth(halfMax);
+
+        player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+            net.minecraft.entity.effect.StatusEffects.REGENERATION, 900, 1));
+        player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+            net.minecraft.entity.effect.StatusEffects.ABSORPTION, 100, 1));
+        player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+            net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 800, 0));
+
+        // Visual + audio feedback. Wrapped so a particle/sound failure can't
+        // block the resurrection — the player must always be saved if a totem
+        // was consumed.
+        try {
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.TOTEM_OF_UNDYING,
+                player.getX(), player.getY() + 1.0, player.getZ(),
+                100, 0.6, 1.0, 0.6, 0.5);
+            world.playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ITEM_TOTEM_USE,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        } catch (Exception ignored) {
+        }
+
+        sendMessage("\u00a76\u00a7l\u2726 TOTEM OF UNDYING ACTIVATES! \u2726 \u00a7rResurrected with half health!");
+        achievementTracker.recordTotemProc();
+        sendSync();
+        return true;
+    }
+
+    /**
      * Called when the active player's HP reaches 0. In a party, the dead player
      * becomes a spectator and combat continues with the next alive member.
      * Only triggers a full game over when ALL party members are dead (or solo play).
      */
     private void handlePlayerDeathOrGameOver() {
-        // Totem of Undying: save the player from downing/death entirely
-        for (int i = 0; i < player.getInventory().size(); i++) {
-            if (player.getInventory().getStack(i).getItem() == Items.TOTEM_OF_UNDYING) {
-                player.getInventory().getStack(i).decrement(1);
-                player.setHealth(player.getMaxHealth() / 2);
-                player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
-                    net.minecraft.entity.effect.StatusEffects.REGENERATION, 900, 1));
-                player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
-                    net.minecraft.entity.effect.StatusEffects.ABSORPTION, 100, 1));
-                player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
-                    net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE, 800, 0));
-                // Particles + sound (vanilla totem effects)
-                ServerWorld world = (ServerWorld) player.getEntityWorld();
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.TOTEM_OF_UNDYING,
-                    player.getX(), player.getY() + 1.0, player.getZ(),
-                    100, 0.6, 1.0, 0.6, 0.5);
-                player.getWorld().playSound(null, player.getBlockPos(),
-                    net.minecraft.sound.SoundEvents.ITEM_TOTEM_USE,
-                    net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
-                sendMessage("\u00a76\u00a7l\u2726 TOTEM OF UNDYING ACTIVATES! \u2726 \u00a7rResurrected with half health!");
-                achievementTracker.recordTotemProc();
-                sendSync();
-                return; // Player is saved — no downing, no game over
-            }
+        // Totem of Undying: save the player from downing/death entirely.
+        if (tryConsumeTotemAndResurrect()) {
+            return;
         }
 
         // Solo play or no party → start death animation before game over
@@ -12208,6 +12303,7 @@ public class CombatManager {
                     float cDigSite = cVault + CrafticsMod.CONFIG.digSiteChance() * (1f - pityDiscount);
                     float cEnchanter = cDigSite + 0.06f * (1f - pityDiscount); // 6% enchanter chance
                     float cTrader = cEnchanter + CrafticsMod.CONFIG.traderSpawnChance() * (1f - pityDiscount);
+                    float cCraftingStation = cTrader + 0.05f * (1f - pityDiscount); // 5% crafting-station chance
 
                     if (skipEvents) {
                         // No event — go straight to next level
@@ -12304,6 +12400,13 @@ public class CombatManager {
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         offerTrader(savedPlayer, biome, biomeOrdinal);
+                    } else if (forced != null ? forced.equals("crafting_station") : (eventRoll < cCraftingStation)) {
+                        // Crafting Station — non-combat utility room
+                        ld.levelsSinceLastEvent = 0; // reset pity timer on event
+                        data.markDirty();
+                        pendingNextLevelDef = nextLevelDef;
+                        pendingBiome = biome;
+                        offerCraftingStation(savedPlayer, biome);
                     } else {
                         // Check addon-registered events from EventRegistry
                         String addonEventId = null;
@@ -12312,7 +12415,7 @@ public class CombatManager {
                             addonEventId = forced;
                         } else {
                             // Roll against addon event probabilities
-                            float addonRoll = eventRoll - cTrader; // remaining probability space
+                            float addonRoll = eventRoll - cCraftingStation; // remaining probability space
                             if (addonRoll >= 0) {
                                 for (var addonEvent : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
                                     if (biomeOrdinal >= addonEvent.minBiomeOrdinal()) {
@@ -12481,6 +12584,14 @@ public class CombatManager {
     private final java.util.Map<java.util.UUID, java.util.List<int[]>> perPlayerTravelerFood = new java.util.HashMap<>();
     private final java.util.Map<java.util.UUID, java.util.List<int[]>> perPlayerEnchanterSlots = new java.util.HashMap<>();
     private final java.util.Set<java.util.UUID> traderPendingPlayers = new java.util.HashSet<>();
+
+    // ---- Crafting Station event ----
+    private boolean craftingStationActive = false;
+    private final java.util.Set<java.util.UUID> craftingStationPendingPlayers = new java.util.HashSet<>();
+    private BlockPos craftingStationBellPos = null;
+
+    public boolean isCraftingStationActive() { return craftingStationActive; }
+    public BlockPos getCraftingStationBellPos() { return craftingStationBellPos; }
 
     // ---- Trader system ----
     private TraderSystem.TraderOffer activeTraderOffer;
@@ -13716,18 +13827,186 @@ public class CombatManager {
         traderPendingPlayers.remove(player.getUuid());
         if (!traderPendingPlayers.isEmpty()) return; // still waiting for other players
 
-        // All players done — despawn the trader
+        finalizeTraderEvent(player);
+    }
+
+    /**
+     * Despawn the trader entity and transition the party to the next combat
+     * level. Pulled out of {@link #handleTraderDone} so the disconnect path
+     * can finalize the event when the last pending player drops out without
+     * having to fake a {@code TraderDonePayload}.
+     *
+     * @param referencePlayer any still-online party member — used only to look
+     *                        up the world and as the {@code source} for
+     *                        {@code transitionPartyToArena}.
+     */
+    private void finalizeTraderEvent(ServerPlayerEntity referencePlayer) {
         if (spawnedTrader != null && spawnedTrader.isAlive()) {
             spawnedTrader.discard();
             spawnedTrader = null;
         }
-
         activeTraderOffer = null;
 
-        // Start the pending next level — transition whole party
-        if (pendingNextLevelDef != null && pendingBiome != null) {
+        if (pendingNextLevelDef != null && pendingBiome != null && referencePlayer != null) {
+            ServerWorld world = (ServerWorld) referencePlayer.getEntityWorld();
             GridArena nextArena = buildArena(world, pendingNextLevelDef);
-            transitionPartyToArena(player, nextArena, pendingNextLevelDef);
+            transitionPartyToArena(referencePlayer, nextArena, pendingNextLevelDef);
+            pendingNextLevelDef = null;
+            pendingBiome = null;
+            pendingEventBiomeOrdinal = 0;
+        }
+    }
+
+    /**
+     * Crafting Station event — drop the party into a small enclosed room with a
+     * smoker, furnace (each pre-loaded with 1 coal), and a crafting table. The
+     * room contains a bell; ringing it ends the event for that player and, once
+     * everyone has rung in, the party transitions to the next combat level.
+     */
+    private void offerCraftingStation(ServerPlayerEntity savedPlayer,
+                                      com.crackedgames.craftics.level.BiomeTemplate biome) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
+
+        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
+
+        // Reuse the trader-area lane slot for the room — it's a fresh build
+        // every time anyway, and the trader only ever uses this area during its
+        // own event so they can't collide.
+        BlockPos stationOrigin;
+        if (worldOwnerUuid != null) {
+            CrafticsSavedData stationData = CrafticsSavedData.get(world);
+            BlockPos dynamicOrigin = stationData.getTraderOrigin(worldOwnerUuid);
+            stationOrigin = dynamicOrigin != null ? dynamicOrigin : new BlockPos(500, 100, 500);
+        } else {
+            stationOrigin = new BlockPos(500, 100, 500);
+        }
+
+        buildCraftingStationArea(world, stationOrigin, biome);
+
+        craftingStationActive = true;
+        craftingStationPendingPlayers.clear();
+        for (ServerPlayerEntity p : members) {
+            craftingStationPendingPlayers.add(p.getUuid());
+        }
+
+        for (ServerPlayerEntity p : members) {
+            p.requestTeleport(stationOrigin.getX() + 4.5,
+                              stationOrigin.getY() + 1,
+                              stationOrigin.getZ() + 4.5);
+        }
+
+        for (ServerPlayerEntity p : members) {
+            sendMessageTo(p, "\u00a7e\u00a7l\u2726 Crafting Station! \u2726");
+            sendMessageTo(p, "\u00a77Use the smoker, furnace, and crafting table.");
+            sendMessageTo(p, "\u00a77Ring the bell when finished to continue.");
+        }
+    }
+
+    private void buildCraftingStationArea(ServerWorld world, BlockPos origin,
+                                          com.crackedgames.craftics.level.BiomeTemplate biome) {
+        int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
+        int sf = net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE;
+        net.minecraft.block.BlockState air = Blocks.AIR.getDefaultState();
+        net.minecraft.block.BlockState floor = Blocks.STONE_BRICKS.getDefaultState();
+        net.minecraft.block.BlockState wall = Blocks.OAK_LOG.getDefaultState();
+        net.minecraft.block.BlockState roof = Blocks.SPRUCE_PLANKS.getDefaultState();
+
+        // Clear and frame a 9x6x9 enclosed room.
+        for (int dy = 0; dy < 6; dy++) {
+            for (int dx = 0; dx < 9; dx++) {
+                for (int dz = 0; dz < 9; dz++) {
+                    world.setBlockState(new BlockPos(ox + dx, oy + dy, oz + dz), air, sf);
+                }
+            }
+        }
+        for (int dx = 0; dx < 9; dx++) {
+            for (int dz = 0; dz < 9; dz++) {
+                world.setBlockState(new BlockPos(ox + dx, oy, oz + dz), floor, sf);
+                world.setBlockState(new BlockPos(ox + dx, oy + 5, oz + dz), roof, sf);
+            }
+        }
+        for (int dy = 1; dy < 5; dy++) {
+            for (int dx = 0; dx < 9; dx++) {
+                world.setBlockState(new BlockPos(ox + dx, oy + dy, oz), wall, sf);
+                world.setBlockState(new BlockPos(ox + dx, oy + dy, oz + 8), wall, sf);
+            }
+            for (int dz = 1; dz < 8; dz++) {
+                world.setBlockState(new BlockPos(ox, oy + dy, oz + dz), wall, sf);
+                world.setBlockState(new BlockPos(ox + 8, oy + dy, oz + dz), wall, sf);
+            }
+        }
+
+        // Stations along the back wall.
+        BlockPos craftingTablePos = new BlockPos(ox + 2, oy + 1, oz + 2);
+        BlockPos furnacePos = new BlockPos(ox + 4, oy + 1, oz + 2);
+        BlockPos smokerPos = new BlockPos(ox + 6, oy + 1, oz + 2);
+        world.setBlockState(craftingTablePos, Blocks.CRAFTING_TABLE.getDefaultState(), sf);
+        world.setBlockState(furnacePos, Blocks.FURNACE.getDefaultState(), sf);
+        world.setBlockState(smokerPos, Blocks.SMOKER.getDefaultState(), sf);
+
+        // Pre-load 1 coal in each furnace's fuel slot (slot 1 of AbstractFurnaceBlockEntity).
+        var furnaceBe = world.getBlockEntity(furnacePos);
+        if (furnaceBe instanceof net.minecraft.block.entity.AbstractFurnaceBlockEntity furnace) {
+            furnace.setStack(1, new ItemStack(Items.COAL, 1));
+            furnace.markDirty();
+        }
+        var smokerBe = world.getBlockEntity(smokerPos);
+        if (smokerBe instanceof net.minecraft.block.entity.AbstractFurnaceBlockEntity smoker) {
+            smoker.setStack(1, new ItemStack(Items.COAL, 1));
+            smoker.markDirty();
+        }
+
+        // Exit bell — opposite wall from the stations so players can't fat-finger
+        // it while reaching for a furnace.
+        BlockPos bellPos = new BlockPos(ox + 4, oy + 2, oz + 7);
+        world.setBlockState(bellPos, Blocks.BELL.getDefaultState(), sf);
+        craftingStationBellPos = bellPos;
+
+        // Corner lanterns for visibility.
+        net.minecraft.block.BlockState lantern = Blocks.LANTERN.getDefaultState();
+        world.setBlockState(new BlockPos(ox + 1, oy + 4, oz + 1), lantern, sf);
+        world.setBlockState(new BlockPos(ox + 7, oy + 4, oz + 1), lantern, sf);
+        world.setBlockState(new BlockPos(ox + 1, oy + 4, oz + 7), lantern, sf);
+        world.setBlockState(new BlockPos(ox + 7, oy + 4, oz + 7), lantern, sf);
+    }
+
+    /**
+     * Bell-ring callback: marks this player as ready to leave. Once every party
+     * member has rung in, the party transitions to the next combat level. Wired
+     * up via the global {@code UseBlockCallback} in {@code CrafticsMod}.
+     */
+    public void handleCraftingStationDone(ServerPlayerEntity player) {
+        if (!craftingStationActive) return;
+        if (!craftingStationPendingPlayers.contains(player.getUuid())) return;
+
+        craftingStationPendingPlayers.remove(player.getUuid());
+        sendMessageTo(player, "\u00a7a\u2713 Ready to continue.");
+
+        if (!craftingStationPendingPlayers.isEmpty()) {
+            sendMessageTo(player, "\u00a77Waiting on "
+                + craftingStationPendingPlayers.size() + " other player(s)...");
+            return;
+        }
+
+        finalizeCraftingStationEvent(player);
+    }
+
+    /**
+     * Wind down the crafting station event and start the next combat level.
+     * Pulled out of {@link #handleCraftingStationDone} so the disconnect path
+     * can finalize without faking a bell ring.
+     */
+    private void finalizeCraftingStationEvent(ServerPlayerEntity referencePlayer) {
+        craftingStationActive = false;
+        craftingStationBellPos = null;
+
+        if (pendingNextLevelDef != null && pendingBiome != null && referencePlayer != null) {
+            ServerWorld world = (ServerWorld) referencePlayer.getEntityWorld();
+            GridArena nextArena = buildArena(world, pendingNextLevelDef);
+            transitionPartyToArena(referencePlayer, nextArena, pendingNextLevelDef);
             pendingNextLevelDef = null;
             pendingBiome = null;
             pendingEventBiomeOrdinal = 0;
@@ -14741,11 +15020,23 @@ public class CombatManager {
             turnOrderData = tob.toString();
         }
 
+        // Append "Hidden" to the effects strip whenever the active player is
+        // standing on a tall-grass / large-fern tile. Matches how vanilla
+        // status effects show under the HP bar so players can see at a glance
+        // that stealth is active. Falls through to the world-aware tile check
+        // so it works even when the cached tile type missed classification.
+        String effectsDisplay = combatEffects.getDisplayString();
+        if (arena != null && player != null && StealthTiles.isStealthTile(
+                arena, arena.getPlayerGridPos(), player.getEntityWorld())) {
+            String hidden = "Hidden";
+            effectsDisplay = effectsDisplay.isEmpty() ? hidden : (hidden + " | " + effectsDisplay);
+        }
+
         sendToAllParty(new CombatSyncPayload(
             phase.ordinal(), apRemaining, movePointsRemaining,
             getPlayerHp(), getPlayerMaxHpForDisplay(), turnNumber,
             maxAp, maxSpeed, enemyData, typeIds.toString(),
-            combatEffects.getDisplayString(), killStreak,
+            effectsDisplay, killStreak,
             partyHpData, turnOrderData
         ));
     }

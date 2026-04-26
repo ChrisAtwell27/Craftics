@@ -1274,8 +1274,8 @@ public class ArenaBuilder {
      */
     private static void placePlainsFoliage(ServerWorld world, int ox, int oy, int oz,
                                             int w, int h, Random rng) {
-        int grassCount = 4 + rng.nextInt(4); // 4-7 tall grass patches
-        int fernCount = 2 + rng.nextInt(3);  // 2-4 large fern patches
+        int grassCount = 2 + rng.nextInt(2); // 2-3 tall grass patches
+        int fernCount = 1 + rng.nextInt(2);  // 1-2 large fern patches
 
         java.util.Set<Long> used = new java.util.HashSet<>();
 

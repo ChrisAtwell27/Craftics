@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "PI",
+    "FB"
+  ],
+  "key": {
+    "P": "minecraft:paper",
+    "I": "minecraft:ink_sac",
+    "F": "minecraft:feather",
+    "B": "minecraft:book"
+  },
+  "result": {
+    "id": "craftics:guide_book",
+    "count": 1
+  }
+}

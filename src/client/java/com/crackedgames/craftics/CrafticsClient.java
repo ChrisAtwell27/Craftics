@@ -31,7 +31,6 @@ public class CrafticsClient implements ClientModInitializer {
 
     private static final String KEYBIND_CATEGORY = "key.categories.craftics";
 
-    private static KeyBinding combatToggleKey;
     private static KeyBinding guideBookKey;
     private static KeyBinding respecKey;
     private static KeyBinding endTurnKey;
@@ -313,12 +312,6 @@ public class CrafticsClient implements ClientModInitializer {
                 });
             });
 
-        combatToggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-            "key.craftics.toggle_combat",
-            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_F6,
-            KEYBIND_CATEGORY
-        ));
-
         guideBookKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.craftics.guide_book",
             InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_G,
@@ -366,6 +359,15 @@ public class CrafticsClient implements ClientModInitializer {
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STARTED.register(
             client -> com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred());
 
+        // Resolve keybind conflicts at startup. CLIENT_STARTED runs after every
+        // mod has registered its bindings and after options.txt has loaded, so
+        // we can see the final bound key of every other mod here. If an other
+        // mod's binding (e.g. Iris's "Reload Shaders" on R) shares a key with a
+        // Craftics combat binding, we unbind it so combat keys always win.
+        // Players can re-bind in vanilla controls if they prefer to revert.
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STARTED.register(
+            CrafticsClient::resolveKeybindConflicts);
+
         // Without this, leaving a world mid-battle leaves CombatState.inCombat
         // stuck true — CameraLockMixin then overrides camera rotation/position
         // forever on the title screen and in every subsequent world, effectively
@@ -408,21 +410,6 @@ public class CrafticsClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             AchievementToast.tick();
-
-            while (combatToggleKey.wasPressed()) {
-                CombatState.toggleCombat();
-                CrafticsMod.LOGGER.info("Combat mode: {}", CombatState.isInCombat() ? "ON" : "OFF");
-                if (CombatState.isInCombat()) {
-                    previousBobView = client.options.getBobView().getValue();
-                    client.options.getBobView().setValue(false);
-                    client.options.setPerspective(Perspective.THIRD_PERSON_BACK);
-                    client.mouse.unlockCursor();
-                } else {
-                    client.options.getBobView().setValue(previousBobView);
-                    client.options.setPerspective(Perspective.FIRST_PERSON);
-                    client.mouse.lockCursor();
-                }
-            }
 
             while (guideBookKey.wasPressed()) {
                 if (client.currentScreen == null) {
@@ -474,5 +461,39 @@ public class CrafticsClient implements ClientModInitializer {
                 client.mouse.unlockCursor();
             }
         });
+    }
+
+    /**
+     * Walk every registered keybind and unbind any non-Craftics binding that
+     * shares a key with one of ours. Without this, mods like Iris (which puts
+     * "Reload Shaders" on R) silently steal combat keys and the player has to
+     * dig into vanilla controls to fix it. Run once at CLIENT_STARTED, after
+     * every mod has registered and options.txt has loaded.
+     */
+    private static void resolveKeybindConflicts(net.minecraft.client.MinecraftClient client) {
+        KeyBinding[] ours = { guideBookKey, respecKey, endTurnKey };
+        java.util.Set<KeyBinding> oursSet = new java.util.HashSet<>(java.util.Arrays.asList(ours));
+        int cleared = 0;
+        for (KeyBinding mine : ours) {
+            if (mine == null || mine.isUnbound()) continue;
+            String mineBoundKey = mine.getBoundKeyTranslationKey();
+            for (KeyBinding other : client.options.allKeys) {
+                if (other == null || oursSet.contains(other) || other.isUnbound()) continue;
+                if (mineBoundKey.equals(other.getBoundKeyTranslationKey())) {
+                    CrafticsMod.LOGGER.info(
+                        "Unbinding {} (was on {}) — conflicts with Craftics's {}",
+                        other.getTranslationKey(),
+                        other.getBoundKeyTranslationKey(),
+                        mine.getTranslationKey());
+                    other.setBoundKey(InputUtil.UNKNOWN_KEY);
+                    cleared++;
+                }
+            }
+        }
+        if (cleared > 0) {
+            KeyBinding.updateKeysByCode();
+            client.options.write();
+            CrafticsMod.LOGGER.info("Resolved {} keybind conflict(s)", cleared);
+        }
     }
 }
