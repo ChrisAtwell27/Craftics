@@ -83,6 +83,25 @@ public class CrafticsMod implements ModInitializer {
             return net.minecraft.util.ActionResult.PASS;
         });
 
+        // Crafting Station exit: ringing the placed bell signals "done" for that
+        // player. PASS-through so vanilla still rings the bell — the player
+        // gets the satisfying sound on top of the event-end transition.
+        net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) return net.minecraft.util.ActionResult.PASS;
+            if (world.getBlockState(hitResult.getBlockPos()).getBlock() != net.minecraft.block.Blocks.BELL) {
+                return net.minecraft.util.ActionResult.PASS;
+            }
+            if (player instanceof net.minecraft.server.network.ServerPlayerEntity sp) {
+                var cm = com.crackedgames.craftics.combat.CombatManager.getActiveCombat(sp.getUuid());
+                if (cm.isCraftingStationActive()
+                    && cm.getCraftingStationBellPos() != null
+                    && cm.getCraftingStationBellPos().equals(hitResult.getBlockPos())) {
+                    cm.handleCraftingStationDone(sp);
+                }
+            }
+            return net.minecraft.util.ActionResult.PASS;
+        });
+
         // Trial keys: right-clicking during combat queues a guaranteed trial
         // chamber (or ominous trial chamber) on the next level transition.
         // Consumes one key per use. Outside combat the keys do nothing.
@@ -865,22 +884,6 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics tp_hub — teleport back to hub room (ends combat if active)
-            root.then(CommandManager.literal("tp_hub").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
-                ServerCommandSource src = ctx.getSource();
-                ServerPlayerEntity player = src.getPlayerOrThrow();
-                ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
-                if (cm.isActive()) {
-                    cm.endCombat();
-                }
-                CrafticsSavedData hubData = CrafticsSavedData.get(player.getServerWorld());
-                net.minecraft.util.math.BlockPos hub = hubData.getHubTeleportPos(player.getUuid());
-                player.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
-                player.changeGameMode(GameMode.SURVIVAL);
-                src.sendFeedback(() -> Text.literal("§aTeleported to hub."), true);
-                return 1;
-            }));
-
             // /craftics give <preset> — give a set of gear
             root.then(CommandManager.literal("give").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.literal("wood_gear").executes(ctx -> {
@@ -991,9 +994,11 @@ public class CrafticsMod implements ModInitializer {
 
             // /craftics force_event <event> — force the next between-level event
             var forceEventNode = CommandManager.literal("force_event");
-            // Built-in event names
+            // Built-in event names — bare strings that the dispatch in
+            // CombatManager.rollEvent compares against. Must match the
+            // {@code forced.equals("...")} arms over there exactly.
             java.util.List<String> eventNames = new java.util.ArrayList<>(java.util.List.of(
-                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "none"
+                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "crafting_station", "none"
             ));
             // Add addon-registered events from EventRegistry
             for (var entry : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
@@ -1157,10 +1162,6 @@ public class CrafticsMod implements ModInitializer {
                         }
                     }
 
-                    // Safety net: if the hub floor is missing (build failed in the past,
-                    // chunks were wiped, etc.), rebuild it so we never teleport into void.
-                    ensureHubExists(homeWorld, hub);
-
                     teleportToHub(homePlayer, homeWorld, hub);
                     homePlayer.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
                     homePlayer.sendMessage(Text.literal("\u00a7aTeleported home."), false);
@@ -1267,7 +1268,6 @@ public class CrafticsMod implements ModInitializer {
             if (cm.isActive()) cm.endCombat();
 
             net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(player.getUuid());
-            ensureHubExists(overworld, hub);
             teleportToHub(player, overworld, hub);
             player.changeGameMode(GameMode.SURVIVAL);
             ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to your personal hub."), false);
@@ -1663,32 +1663,16 @@ public class CrafticsMod implements ModInitializer {
     }
 
     /**
-     * Verify the personal hub has a solid floor below the teleport target. If not
-     * (build never ran, chunks were wiped, saved data out of sync with actual blocks),
-     * rebuild the hub at the given center so /home never drops a player into the void.
-     */
-    private static void ensureHubExists(ServerWorld world, net.minecraft.util.math.BlockPos hubCenter) {
-        net.minecraft.util.math.BlockPos floor = hubCenter.down();
-        net.minecraft.block.BlockState floorState = world.getBlockState(floor);
-        if (floorState.isAir() || !floorState.isSolidBlock(world, floor)) {
-            LOGGER.warn("Personal hub at {} is missing its floor — rebuilding", hubCenter);
-            // Rebuild returns the podzol-based spawn, but we don't update PlayerData here
-            // because we don't have the player UUID. The stored spawn pos is still valid
-            // from the original build — the schematic is deterministic.
-            HubRoomBuilder.build(world, hubCenter);
-        }
-    }
-
-    /**
      * Teleport a player to their personal hub, switching dimension if they are not
-     * already in the overworld (hubs only exist in the overworld).
+     * already in the overworld (hubs only exist in the overworld). If no safe
+     * landing is found near the saved hub spawn (e.g. the player wiped the floor
+     * under their spawn), fall back to the central lobby instead of dropping them
+     * into the void.
      */
     private static void teleportToHub(ServerPlayerEntity player, ServerWorld overworld,
                                        net.minecraft.util.math.BlockPos hub) {
         double x = hub.getX() + 0.5;
         double z = hub.getZ() + 0.5;
-        // Find a safe landing spot — scan upward first (island may be above),
-        // then downward as a fallback, to handle both old and new spawn positions.
         double y = hub.getY();
         net.minecraft.util.math.BlockPos.Mutable probe = new net.minecraft.util.math.BlockPos.Mutable(
             hub.getX(), (int) y, hub.getZ());
@@ -1712,9 +1696,19 @@ public class CrafticsMod implements ModInitializer {
                 net.minecraft.block.BlockState at = overworld.getBlockState(probe.up());
                 if (!below.isAir() && below.isSolidBlock(overworld, probe) && at.isAir()) {
                     y = probe.getY() + 1;
+                    found = true;
                     break;
                 }
             }
+        }
+        if (!found) {
+            LOGGER.warn("No safe landing near hub {} for {} — sending to central lobby",
+                hub, player.getName().getString());
+            player.sendMessage(Text.literal(
+                "\u00a7eYour home spawn point is blocked or missing — returning to the lobby."), false);
+            x = 0.5;
+            y = 65;
+            z = 0.5;
         }
         if (player.getServerWorld() != overworld) {
             //? if <=1.21.1 {

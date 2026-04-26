@@ -142,6 +142,14 @@ public class CombatInputHandler {
         CombatState.setHoveredTile(hoverPos);
         if (hoverPos != null) {
             Integer entityId = CombatState.getEnemyGridMap().get(hoverPos);
+            // Stealth: enemies on a tall-grass / large-fern tile are hidden from
+            // hover info (name, HP, intended move) unless the player is on an
+            // adjacent tile. Without this guard the enemy's identity would
+            // leak through the inspect panel even though the in-world model is
+            // invisible — defeating the purpose of the stealth tile.
+            if (entityId != null && isHoverHiddenByStealth(client, hoverPos)) {
+                entityId = null;
+            }
             CombatState.setHoveredEnemyId(entityId != null ? entityId : -1);
         } else {
             CombatState.setHoveredEnemyId(-1);
@@ -187,6 +195,11 @@ public class CombatInputHandler {
                     ClientPlayNetworking.send(new CombatActionPayload(
                         CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), entityId
                     ));
+                } else if (client.world != null && isBreakableGrassAt(client, tilePos)) {
+                    // Tall grass / large fern — server resolves the break with AP cost.
+                    ClientPlayNetworking.send(new CombatActionPayload(
+                        CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
+                    ));
                 } else if (client.player != null) {
                     client.player.sendMessage(
                         net.minecraft.text.Text.literal("\u00a7cNo enemy on that tile!"), false
@@ -213,6 +226,39 @@ public class CombatInputHandler {
      * most likely a VFX-placed obstacle. The server validates for real; this is a cheap
      * client-side check so normal movement isn't hijacked.
      */
+    /**
+     * True when the clicked tile has a tall-grass or large-fern block placed at
+     * arena floor + 1. Sampled from the client world — the server does the real
+     * validation (adjacency, AP cost) when ACTION_ATTACK arrives.
+     */
+    private static boolean isBreakableGrassAt(MinecraftClient client, GridPos tilePos) {
+        if (client.world == null || tilePos == null) return false;
+        int wx = CombatState.getArenaOriginX() + tilePos.x();
+        int wy = CombatState.getArenaOriginY() + 1;
+        int wz = CombatState.getArenaOriginZ() + tilePos.z();
+        net.minecraft.block.BlockState state =
+            client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy, wz));
+        return state.isOf(net.minecraft.block.Blocks.TALL_GRASS)
+            || state.isOf(net.minecraft.block.Blocks.LARGE_FERN);
+    }
+
+    /**
+     * True when the hovered tile contains a stealth plant (tall grass / large
+     * fern) AND the player is more than 1 tile away — matches the server's
+     * {@code StealthTiles.isConcealedFrom} rule (Chebyshev > 1, but Manhattan
+     * is a strict subset so it suffices for hover reveal). Used to hide enemy
+     * names/HP/intended moves on the inspect panel from far away.
+     */
+    private static boolean isHoverHiddenByStealth(MinecraftClient client, GridPos hoverPos) {
+        if (client.world == null || hoverPos == null) return false;
+        if (!isBreakableGrassAt(client, hoverPos)) return false;
+        GridPos playerPos = ClientGridHelper.getPlayerGridPos(client);
+        if (playerPos == null) return true;
+        int dx = Math.abs(playerPos.x() - hoverPos.x());
+        int dz = Math.abs(playerPos.z() - hoverPos.z());
+        return Math.max(dx, dz) > 1;
+    }
+
     private static boolean isPickaxeMineGesture(MinecraftClient client, GridPos tilePos) {
         if (client.player == null) return false;
         net.minecraft.item.Item held = client.player.getMainHandStack().getItem();

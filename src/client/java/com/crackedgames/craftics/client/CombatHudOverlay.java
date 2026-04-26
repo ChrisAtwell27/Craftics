@@ -18,6 +18,15 @@ public class CombatHudOverlay implements HudRenderCallback {
 
     private static int turnBannerAge = 0;
     private static int lastTurnPhase = -1;
+    /** Bottom Y of the enemy roster (or inspect panel) updated each render so the
+     *  tile tooltip can position itself directly below it without overlap. */
+    private static int enemyRosterBottomY = 4;
+    /** Width of the enemy roster (or inspect panel) updated each render so the
+     *  tile tooltip can match it visually instead of growing to fit text. */
+    private static int enemyRosterPanelW = 160;
+    /** Right edge X of the enemy roster (or inspect panel) so the tile tooltip
+     *  aligns with the same right margin even when its width differs. */
+    private static int enemyRosterRightX = -1;
 
     @Override
     public void onHudRender(DrawContext ctx, RenderTickCounter tickCounter) {
@@ -49,6 +58,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         renderTurnBanner(ctx, client, screenW);
         renderTurnOrder(ctx, client, screenW);
         renderEnemyRoster(ctx, client, screenW);
+        renderTileTooltip(ctx, client, screenW, screenH);
         renderModePill(ctx, client, screenW, screenH);
         renderResourceBar(ctx, client, screenW, screenH);
 
@@ -477,6 +487,154 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
     }
 
+    private record TileTooltipInfo(String title, String line1, String line2) {}
+
+    /**
+     * Identify the tile under the cursor and return its tooltip info, or
+     * {@code null} if the tile is just plain ground. Reads two block layers:
+     * the floor block (water/lava/snow/void) and the column above it
+     * (obstacles, plants, cobwebs, cactus).
+     */
+    private static TileTooltipInfo lookupTileTooltip(net.minecraft.world.World world,
+                                                     net.minecraft.util.math.BlockPos floorPos) {
+        net.minecraft.block.Block floor = world.getBlockState(floorPos).getBlock();
+        net.minecraft.block.Block above = world.getBlockState(floorPos.up()).getBlock();
+
+        // Stealth plants — tall grass / large fern (2-block-tall).
+        if (above == net.minecraft.block.Blocks.TALL_GRASS) {
+            return new TileTooltipInfo("\u00a7a\u00a7lTall Grass",
+                "\u00a7fEntities in tall grass are hidden.",
+                "\u00a77Attack to break it (1 AP), or hit from adjacent.");
+        }
+        if (above == net.minecraft.block.Blocks.LARGE_FERN) {
+            return new TileTooltipInfo("\u00a72\u00a7lLarge Fern",
+                "\u00a7fEntities in this fern are hidden.",
+                "\u00a77Attack to break it (1 AP), or hit from adjacent.");
+        }
+
+        // Cobweb — slow obstacle.
+        if (above == net.minecraft.block.Blocks.COBWEB) {
+            return new TileTooltipInfo("\u00a7f\u00a7lCobweb",
+                "\u00a7fSlows movement.",
+                "\u00a77Walking through clears the web.");
+        }
+
+        // Cactus — damaging obstacle.
+        if (above == net.minecraft.block.Blocks.CACTUS) {
+            return new TileTooltipInfo("\u00a72\u00a7lCactus",
+                "\u00a7fBlocks movement and line of sight.",
+                "\u00a77Damages anything that touches it.");
+        }
+
+        // Floor hazards — lava and magma.
+        if (floor == net.minecraft.block.Blocks.LAVA
+            || floor == net.minecraft.block.Blocks.MAGMA_BLOCK) {
+            return new TileTooltipInfo("\u00a7c\u00a7lLava",
+                "\u00a7fDeals 10 damage when stepped on.",
+                "\u00a77Avoid walking through.");
+        }
+
+        // Powder snow — sinks and freezes.
+        if (floor == net.minecraft.block.Blocks.POWDER_SNOW) {
+            return new TileTooltipInfo("\u00a7b\u00a7lPowder Snow",
+                "\u00a7fSinks you in.",
+                "\u00a77Freeze damage unless wearing leather boots.");
+        }
+
+        // Water — distinguish shallow (walkable) from deep (instant kill).
+        if (floor == net.minecraft.block.Blocks.WATER) {
+            net.minecraft.block.Block below = world.getBlockState(floorPos.down()).getBlock();
+            if (below == net.minecraft.block.Blocks.WATER) {
+                return new TileTooltipInfo("\u00a73\u00a7lDeep Water",
+                    "\u00a7fInstantly fatal.",
+                    "\u00a77Walk around or use a boat to cross.");
+            }
+            return new TileTooltipInfo("\u00a79\u00a7lWater",
+                "\u00a7fWalkable. Standing here applies Soaked.",
+                "\u00a77Soaked entities take more lightning damage.");
+        }
+
+        // Air at the floor level — sunken pit (solid below) or void (nothing below).
+        if (floor.getDefaultState().isAir()) {
+            net.minecraft.block.Block below = world.getBlockState(floorPos.down()).getBlock();
+            if (!below.getDefaultState().isAir()) {
+                return new TileTooltipInfo("\u00a77\u00a7lSunken Pit",
+                    "\u00a7fLower terrain. Walkable.",
+                    "\u00a77Stand here for slight cover from line-of-sight checks.");
+            }
+            return new TileTooltipInfo("\u00a74\u00a7lVoid",
+                "\u00a7fFalling here is instantly fatal.",
+                "\u00a77Mind your step.");
+        }
+
+        // Generic obstacle — any solid block above the floor that we didn't
+        // already special-case. Covers logs (fallen trees), stems, stone
+        // boulders, leaves, etc.
+        net.minecraft.block.BlockState aboveState = world.getBlockState(floorPos.up());
+        if (!aboveState.isAir()) {
+            return new TileTooltipInfo("\u00a78\u00a7lObstacle",
+                "\u00a7fBlocks movement and line of sight.",
+                "\u00a77Path around it or destroy it.");
+        }
+
+        return null;
+    }
+
+    /**
+     * Hover tooltip for any obstacle/hazard tile in the arena. Positioned just
+     * below the enemy roster (top-right) so it never covers the play area.
+     * Skipped when the cursor is on an enemy — the inspect panel takes priority
+     * there.
+     */
+    private void renderTileTooltip(DrawContext ctx, MinecraftClient client, int screenW, int screenH) {
+        com.crackedgames.craftics.core.GridPos hover = CombatState.getHoveredTile();
+        if (hover == null || client.world == null) return;
+        if (CombatState.getHoveredEnemyId() != -1) return;
+
+        net.minecraft.util.math.BlockPos floorPos = new net.minecraft.util.math.BlockPos(
+            CombatState.getArenaOriginX() + hover.x(),
+            CombatState.getArenaOriginY(),
+            CombatState.getArenaOriginZ() + hover.z());
+
+        TileTooltipInfo info = lookupTileTooltip(client.world, floorPos);
+        if (info == null) return;
+
+        int padX = 6;
+        int padY = 4;
+        // Match the enemy roster's width and right edge so the tooltip looks
+        // like a continuation of the panel above instead of a separate box.
+        int panelW = enemyRosterPanelW;
+        int panelX = enemyRosterRightX > 0 ? enemyRosterRightX - panelW : screenW - panelW - 6;
+        int contentW = panelW - padX * 2;
+
+        // Wrap long description lines to the available content width.
+        java.util.List<net.minecraft.text.OrderedText> line1Wrapped =
+            client.textRenderer.wrapLines(Text.literal(info.line1()), contentW);
+        java.util.List<net.minecraft.text.OrderedText> line2Wrapped =
+            client.textRenderer.wrapLines(Text.literal(info.line2()), contentW);
+        int totalLines = 1 + line1Wrapped.size() + line2Wrapped.size();
+        int lineH = 10;
+        int panelH = totalLines * lineH + padY * 2;
+
+        int panelY = enemyRosterBottomY;
+        int maxY = screenH - panelH - 6;
+        if (panelY > maxY) panelY = Math.max(4, maxY);
+
+        drawPanel(ctx, panelX, panelY, panelW, panelH);
+        int textX = panelX + padX;
+        int textY = panelY + padY;
+        ctx.drawTextWithShadow(client.textRenderer, Text.literal(info.title()), textX, textY, 0xFFFFFFFF);
+        textY += lineH;
+        for (net.minecraft.text.OrderedText line : line1Wrapped) {
+            ctx.drawTextWithShadow(client.textRenderer, line, textX, textY, 0xFFFFFFFF);
+            textY += lineH;
+        }
+        for (net.minecraft.text.OrderedText line : line2Wrapped) {
+            ctx.drawTextWithShadow(client.textRenderer, line, textX, textY, 0xFFAAAAAA);
+            textY += lineH;
+        }
+    }
+
     private void renderEnemyRoster(DrawContext ctx, MinecraftClient client, int screenW) {
         Map<Integer, int[]> enemies = CombatState.getEnemyHpMap();
         Map<Integer, String> types = CombatState.getEnemyTypeMap();
@@ -487,8 +645,15 @@ public class CombatHudOverlay implements HudRenderCallback {
         // Blindness hides enemy inspection entirely — no hover panel, no stat readout.
         // The standard enemy roster (to the side) still shows below.
         if (!CombatState.hasBlindness() && hoveredId != -1 && enemies.containsKey(hoveredId)) {
-            renderInspectPanel(ctx, client, screenW, hoveredId, enemies.get(hoveredId),
-                types.getOrDefault(hoveredId, "minecraft:zombie"));
+            String typeIdRaw = types.getOrDefault(hoveredId, "minecraft:zombie");
+            renderInspectPanel(ctx, client, screenW, hoveredId, enemies.get(hoveredId), typeIdRaw);
+            // Mirror renderInspectPanel's dimensions so the tile tooltip can
+            // align under it. Width matches the boss/non-boss split there.
+            boolean isBoss = typeIdRaw.contains(";boss=");
+            int inspectPanelW = isBoss ? 140 : 120;
+            enemyRosterPanelW = inspectPanelW;
+            enemyRosterRightX = screenW - 8;
+            enemyRosterBottomY = 200;
             return;
         }
 
@@ -520,6 +685,9 @@ public class CombatHudOverlay implements HudRenderCallback {
         int panelH = panelContentH + panelPad;
         int panelX = screenW - panelW - 6;
         int panelY = 4;
+        enemyRosterBottomY = panelY + panelH + 4;
+        enemyRosterPanelW = panelW;
+        enemyRosterRightX = panelX + panelW;
 
         drawPanel(ctx, panelX, panelY, panelW, panelH);
 

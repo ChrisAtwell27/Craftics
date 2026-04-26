@@ -172,5 +172,10 @@ public final class VanillaContent {
         EventRegistry.register(new EventEntry("craftics:treasure_vault", "Treasure Vault", 0.04f, 0, true, null));
         EventRegistry.register(new EventEntry("craftics:dig_site", "Dig Site", 0.06f, 0, true, null));
         EventRegistry.register(new EventEntry("craftics:trader", "Trader", traderChance, 0, true, null));
+        // NOTE: Crafting Station is a built-in, dispatched directly in
+        // CombatManager.rollEvent. Do NOT register it as an addon entry — that
+        // would surface a "craftics:crafting_station" entry in /craftics
+        // force_event tab completion that routes through the addon path with
+        // a null handler and silently fails.
     }
 }

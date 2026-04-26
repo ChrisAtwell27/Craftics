@@ -41,9 +41,26 @@ loom {
 	}
 
 	runs {
-		// Set a consistent username for the default client so player data persists
+		// Set a consistent username for the default client so player data persists.
+		//
+		// JVM flags:
+		//   -Djava.util.concurrent.ForkJoinPool.common.parallelism=1 — Forces
+		//   serial mod processing to dodge a known concurrency bug in Fabric
+		//   Loader 0.17.x–0.19.x where {@code OutputConsumerPath.addNonClassFiles}
+		//   walks a jar's ZipFileSystem on one thread while another thread
+		//   closes it, throwing {@code ClosedFileSystemException} (or sibling
+		//   errors like {@code Inflater has been closed} /
+		//   {@code ConcurrentModificationException}). Single-threaded the
+		//   remap path is a few seconds slower but stable.
 		client {
 			programArg "--username=Dev"
+			// -XX:ActiveProcessorCount=1 forces every thread pool sized by
+			// Runtime.availableProcessors() — including Fabric Loader's own
+			// fixed thread pool used by RuntimeModRemapper — down to a
+			// single worker. The bare ForkJoinPool.common.parallelism flag
+			// only affected Java's common pool, not Loader's, so the
+			// addNonClassFiles race in 0.17.x–0.19.x kept reproducing.
+			vmArg "-XX:ActiveProcessorCount=1"
 		}
 
 		// Dedicated client session for building arenas with WorldEdit.
@@ -53,6 +70,7 @@ loom {
 			client()
 			name "Arena Editor"
 			programArg "--username=ArenaBuilder"
+			vmArg "-XX:ActiveProcessorCount=1"
 			runDir "run"
 		}
 	}
@@ -100,11 +118,25 @@ dependencies {
 	}
 }
 
+// Per-version resource overrides. The shared src/main/resources/ holds files
+// that work on the project's oldest supported MC (1.21.1). Newer MC versions
+// pick up overrides from src/main_modern/resources/ — currently used for the
+// crafting-recipe ingredient format change (verbose {"item": "..."} bare
+// string) introduced in 1.21.2. Files here win over the shared dir thanks to
+// the duplicates strategy below.
+if (stonecutter.eval(project.minecraft_version, ">=1.21.2")) {
+	sourceSets.main.resources.srcDir "src/main_modern/resources"
+}
+
 processResources {
 	def mcDep = "~${project.minecraft_version}"
 
 	inputs.property "version", project.version
 	inputs.property "minecraft_dependency", mcDep
+
+	// Last-declared srcDir wins on duplicates, so the version-specific
+	// override above replaces the shared file when both define the same path.
+	duplicatesStrategy = DuplicatesStrategy.INCLUDE
 
 	filesMatching("fabric.mod.json") {
 		expand(
