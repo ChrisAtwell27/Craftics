@@ -15,6 +15,7 @@ public class CombatInputHandler {
     private static boolean lastLeftClick = false;
     private static long lastHoverBroadcastTime = 0;
     private static GridPos lastBroadcastedHover = null;
+    private static boolean wasPlayerTurnLastTick = false;
 
     // Middle mouse pan state
     private static boolean middleMouseDown = false;
@@ -79,6 +80,15 @@ public class CombatInputHandler {
     }
 
     public static void tick(MinecraftClient client) {
+        // Detect player-turn transitions to reset the "took action this turn" flag
+        // for the hint system. Done before the in-combat early-return so the flag
+        // resets even if a screen is open at the moment of transition.
+        boolean nowPlayerTurn = CombatState.isInCombat() && CombatState.isPlayerTurn();
+        if (nowPlayerTurn && !wasPlayerTurnLastTick) {
+            com.crackedgames.craftics.client.hints.HintManager.get().onPlayerTurnStart();
+        }
+        wasPlayerTurnLastTick = nowPlayerTurn;
+
         if (!CombatState.isInCombat()) return;
         if (client.currentScreen != null) return;
 
@@ -176,16 +186,21 @@ public class CombatInputHandler {
         GridPos tilePos = TileRaycast.getGridPosUnderCursor();
         if (tilePos == null) return;
 
+        var hintMgr = com.crackedgames.craftics.client.hints.HintManager.get();
+        hintMgr.notifyInput(System.currentTimeMillis());
+
         switch (mode) {
             case MOVE -> {
                 if (isPickaxeMineGesture(client, tilePos)) {
                     ClientPlayNetworking.send(new CombatActionPayload(
                         CombatActionPayload.ACTION_MINE, tilePos.x(), tilePos.z(), 0
                     ));
+                    hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.USED_ITEM);
                 } else {
                     ClientPlayNetworking.send(new CombatActionPayload(
                         CombatActionPayload.ACTION_MOVE, tilePos.x(), tilePos.z(), 0
                     ));
+                    hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.MOVED);
                 }
             }
             case MELEE_ATTACK, RANGED_ATTACK -> {
@@ -195,11 +210,13 @@ public class CombatInputHandler {
                     ClientPlayNetworking.send(new CombatActionPayload(
                         CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), entityId
                     ));
+                    hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ATTACKED);
                 } else if (client.world != null && isBreakableGrassAt(client, tilePos)) {
                     // Tall grass / large fern — server resolves the break with AP cost.
                     ClientPlayNetworking.send(new CombatActionPayload(
                         CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
                     ));
+                    hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ATTACKED);
                 } else if (client.player != null) {
                     client.player.sendMessage(
                         net.minecraft.text.Text.literal("\u00a7cNo enemy on that tile!"), false
@@ -211,6 +228,7 @@ public class CombatInputHandler {
                 ClientPlayNetworking.send(new CombatActionPayload(
                     CombatActionPayload.ACTION_USE_ITEM, tilePos.x(), tilePos.z(), 0
                 ));
+                hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.USED_ITEM);
             }
         }
     }
@@ -219,6 +237,9 @@ public class CombatInputHandler {
         ClientPlayNetworking.send(new CombatActionPayload(
             CombatActionPayload.ACTION_END_TURN, 0, 0, 0
         ));
+        var hintMgr = com.crackedgames.craftics.client.hints.HintManager.get();
+        hintMgr.notifyInput(System.currentTimeMillis());
+        hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ENDED_TURN);
     }
 
     /**
