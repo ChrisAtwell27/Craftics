@@ -40,6 +40,13 @@ public final class VfxBlockTracker {
     /** entity UUID → arena that spawned it (for obstacle marking on land). */
     private final Map<UUID, com.crackedgames.craftics.core.GridArena> arenaByEntity = new HashMap<>();
 
+    /** entity UUID → last observed block position. Vanilla FallingBlockEntity places
+     *  its block AND discards itself in the same tick that {@code onGround} becomes
+     *  true — and that entity tick runs before our END_SERVER_TICK pass. So when we
+     *  see the entity is gone, we use the position recorded on the prior tick to
+     *  locate the placed block and mark its grid tile as a VFX obstacle. */
+    private final Map<UUID, BlockPos> lastBlockPos = new HashMap<>();
+
     // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
@@ -85,7 +92,10 @@ public final class VfxBlockTracker {
 
         world.spawnEntity(fbe);
         tracked.put(fbe.getUuid(), world.getTime() + lifetimeTicks);
-        if (arena != null) arenaByEntity.put(fbe.getUuid(), arena);
+        if (arena != null) {
+            arenaByEntity.put(fbe.getUuid(), arena);
+            lastBlockPos.put(fbe.getUuid(), fbe.getBlockPos());
+        }
     }
 
     public void tick(ServerWorld world) {
@@ -94,9 +104,15 @@ public final class VfxBlockTracker {
         Iterator<Map.Entry<UUID, Long>> it = tracked.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<UUID, Long> entry = it.next();
-            Entity e = world.getEntity(entry.getKey());
+            UUID id = entry.getKey();
+            Entity e = world.getEntity(id);
             if (!(e instanceof FallingBlockEntity fbe) || fbe.isRemoved()) {
-                arenaByEntity.remove(entry.getKey());
+                // Vanilla discards the entity in the same tick that it places the block,
+                // and that entity tick runs before this END_SERVER_TICK pass. Mark the
+                // obstacle from the position we recorded on the prior tick.
+                markObstacleFromLastPos(world, id);
+                arenaByEntity.remove(id);
+                lastBlockPos.remove(id);
                 it.remove();
                 continue;
             }
@@ -108,29 +124,46 @@ public final class VfxBlockTracker {
                 Vec3d pos = fbe.getPos();
                 spawnPoof(world, pos, state);
                 fbe.discard();
-                arenaByEntity.remove(entry.getKey());
+                arenaByEntity.remove(id);
+                lastBlockPos.remove(id);
                 it.remove();
             } else if (landed) {
-                // Let vanilla handle the block placement (FallingBlockEntity will place the block
-                // on next tick if onGround is true). Mark the tile as VFX-obstacle so combat
-                // pathfinding respects it.
-                com.crackedgames.craftics.core.GridArena landArena = arenaByEntity.get(entry.getKey());
+                // Rare: entity has settled but vanilla hasn't placed yet (deferred until
+                // its next tick). Mark obstacle from the current resting position.
+                com.crackedgames.craftics.core.GridArena landArena = arenaByEntity.remove(id);
                 if (landArena != null) {
-                    BlockPos landedBlock = fbe.getBlockPos();
-                    // Compute grid position inline from arena origin
-                    net.minecraft.util.math.BlockPos arenaOrigin = landArena.getOrigin();
-                    int gx = landedBlock.getX() - arenaOrigin.getX();
-                    int gz = landedBlock.getZ() - arenaOrigin.getZ();
-                    com.crackedgames.craftics.core.GridPos gp =
-                        new com.crackedgames.craftics.core.GridPos(gx, gz);
-                    if (landArena.isInBounds(gp)) {
-                        landArena.markVfxObstacle(gp);
-                    }
+                    markObstacleAt(landArena, fbe.getBlockPos());
                 }
-                // Remove from tracking — vanilla continues the entity's placement logic
-                arenaByEntity.remove(entry.getKey());
+                lastBlockPos.remove(id);
                 it.remove();
+            } else {
+                // Still in flight — remember where we last saw it so we can mark the
+                // obstacle on the next tick if vanilla places + discards atomically.
+                lastBlockPos.put(id, fbe.getBlockPos());
             }
+        }
+    }
+
+    private void markObstacleFromLastPos(ServerWorld world, UUID id) {
+        BlockPos last = lastBlockPos.get(id);
+        com.crackedgames.craftics.core.GridArena landArena = arenaByEntity.get(id);
+        if (last == null || landArena == null) return;
+        // Vanilla places the block at the position above the floor (origin.y + 1).
+        // Use the arena's known floor Y to absorb 1-tick vertical movement between
+        // our last recording and the actual placement.
+        BlockPos placement = new BlockPos(last.getX(), landArena.getOrigin().getY() + 1, last.getZ());
+        if (world.getBlockState(placement).isAir()) return;
+        markObstacleAt(landArena, placement);
+    }
+
+    private void markObstacleAt(com.crackedgames.craftics.core.GridArena landArena, BlockPos blockPos) {
+        BlockPos arenaOrigin = landArena.getOrigin();
+        int gx = blockPos.getX() - arenaOrigin.getX();
+        int gz = blockPos.getZ() - arenaOrigin.getZ();
+        com.crackedgames.craftics.core.GridPos gp =
+            new com.crackedgames.craftics.core.GridPos(gx, gz);
+        if (landArena.isInBounds(gp)) {
+            landArena.markVfxObstacle(gp);
         }
     }
 
@@ -141,6 +174,7 @@ public final class VfxBlockTracker {
         }
         tracked.clear();
         arenaByEntity.clear();
+        lastBlockPos.clear();
     }
 
     // -------------------------------------------------------------------------

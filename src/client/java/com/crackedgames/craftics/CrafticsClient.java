@@ -346,9 +346,23 @@ public class CrafticsClient implements ClientModInitializer {
             }
         );
 
+        // Hint system: dismissal store, builtin registrations, and HUD renderer.
+        java.nio.file.Path hintsFile = net.fabricmc.loader.api.FabricLoader.getInstance()
+            .getConfigDir().resolve("craftics_hints.json");
+        com.crackedgames.craftics.client.hints.HintDismissalStore hintStore =
+            new com.crackedgames.craftics.client.hints.HintDismissalStore(hintsFile);
+        com.crackedgames.craftics.client.hints.HintManager.get().setDismissalStore(
+            new com.crackedgames.craftics.client.hints.HintManager.DismissalSink() {
+                @Override public boolean isDismissed(String id) { return hintStore.isDismissed(id); }
+                @Override public void markDismissed(String id) { hintStore.markDismissed(id); }
+            });
+        com.crackedgames.craftics.client.hints.CrafticsHints.registerAll(
+            com.crackedgames.craftics.client.hints.HintManager.get());
+
         HudRenderCallback.EVENT.register(new CombatHudOverlay());
         HudRenderCallback.EVENT.register(TransitionOverlay::render);
         HudRenderCallback.EVENT.register(new AchievementToast());
+        HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.hints.HintHudRenderer());
         CombatTooltips.register();
         TileOverlayRenderer.register();
 
@@ -455,6 +469,21 @@ public class CrafticsClient implements ClientModInitializer {
             CombatState.tickCameraFocus();
             CombatAnimations.tick();
             CombatInputHandler.tick(client);
+
+            // Hint system tick — applies idle multiplier, evaluates sensors, ticks renderers.
+            try {
+                var cfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
+                var hintMgr = com.crackedgames.craftics.client.hints.HintManager.get();
+                hintMgr.setIdleMultiplier(cfg.hintIdleMultiplier());
+                if (cfg.hintsEnabled()) {
+                    long now = System.currentTimeMillis();
+                    var ctx = com.crackedgames.craftics.client.hints.CrafticsHints.snapshot(client, now);
+                    hintMgr.tickWith(ctx, now);
+                    com.crackedgames.craftics.client.hints.HintArrowRenderer.tick(client);
+                }
+            } catch (Exception ignored) {
+                // Never let a hint bug crash the client tick.
+            }
 
             if (CombatState.isInCombat() && client.mouse.isCursorLocked()
                     && client.currentScreen == null) {

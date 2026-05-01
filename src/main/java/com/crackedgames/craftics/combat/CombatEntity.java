@@ -24,6 +24,7 @@ public class CombatEntity {
     private final int moveSpeed;
     private int speedBonus = 0;
     private int attackPenalty = 0;
+    private int attackPenaltyTurns = 0;
     private int poisonTurns = 0;
     private int poisonAmplifier = 0; // 0 = level I, 1 = level II, etc
     private boolean enraged = false;
@@ -162,6 +163,8 @@ public class CombatEntity {
     public void setDrownedWithTrident(boolean hasTrident) { this.drownedHasTrident = hasTrident; }
     public int getAttackPenalty() { return attackPenalty; }
     public void setAttackPenalty(int p) { this.attackPenalty = p; }
+    public int getAttackPenaltyTurns() { return attackPenaltyTurns; }
+    public void setAttackPenaltyTurns(int t) { this.attackPenaltyTurns = t; }
     public int getPoisonTurns() { return poisonTurns; }
     public void setPoisonTurns(int t) { this.poisonTurns = t; }
     public int getPoisonAmplifier() { return poisonAmplifier; }

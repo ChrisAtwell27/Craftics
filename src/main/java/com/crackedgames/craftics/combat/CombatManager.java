@@ -5082,13 +5082,10 @@ public class CombatManager {
             String hornId = parts[0];
             if (parts.length > 1) sendMessage(parts[1]);
 
-            // Play horn sound
-            var hornSounds = net.minecraft.sound.SoundEvents.GOAT_HORN_SOUNDS;
-            if (!hornSounds.isEmpty()) {
+            // Play the horn's own instrument sound (per-variant, not random)
+            HornVariants.soundForVariant(hornId).ifPresent(sound ->
                 player.getWorld().playSound(null, player.getBlockPos(),
-                    hornSounds.get((int)(Math.random() * hornSounds.size())).value(),
-                    net.minecraft.sound.SoundCategory.PLAYERS, 1.5f, 1.0f);
-            }
+                    sound, net.minecraft.sound.SoundCategory.PLAYERS, 1.5f, 1.0f));
 
             // Apply the actual effect
             String effectMsg = GoatHornEffects.useHorn(hornId, combatEffects, enemies);
@@ -6058,6 +6055,15 @@ public class CombatManager {
                 e.setDefensePenaltyTurns(e.getDefensePenaltyTurns() - 1);
                 if (e.getDefensePenaltyTurns() <= 0) {
                     e.setDefensePenalty(0);
+                }
+            }
+
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.getAttackPenaltyTurns() <= 0) continue;
+                e.setAttackPenaltyTurns(e.getAttackPenaltyTurns() - 1);
+                if (e.getAttackPenaltyTurns() <= 0) {
+                    e.setAttackPenalty(0);
+                    sendMessage("§7" + e.getDisplayName() + " is no longer weakened.");
                 }
             }
 
@@ -14960,7 +14966,7 @@ public class CombatManager {
             if (e.getSlownessTurns() > 0) efx.append(";Slowed(" + e.getSlownessTurns() + "t)");
             else if (e.getSpeedBonus() < 0) efx.append(";Slowed");
             if (e.getPoisonTurns() > 0) efx.append(";Poisoned(" + e.getPoisonTurns() + "t)");
-            if (e.getAttackPenalty() > 0) efx.append(";Weakened(-" + e.getAttackPenalty() + "ATK)");
+            if (e.getAttackPenaltyTurns() > 0) efx.append(";Weakened(-" + e.getAttackPenalty() + "ATK," + e.getAttackPenaltyTurns() + "t)");
             if (e.getBurningTurns() > 0) efx.append(";Burning(" + e.getBurningTurns() + "t)");
             else if (e.getMobEntity() != null && e.getMobEntity().isOnFire()) efx.append(";Burning");
             if (e.getSoakedTurns() > 0) efx.append(";Soaked(" + e.getSoakedTurns() + "t)");

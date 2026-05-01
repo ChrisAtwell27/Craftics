@@ -38,8 +38,10 @@ public sealed interface VfxPrimitive {
 
     // ---------- Block physics (server) ----------
 
-    /** Spawns a FallingBlockEntity with velocity. VfxBlockTracker discards it
-     *  before vanilla land-settling fires so no block is placed. */
+    /** Spawns a FallingBlockEntity with velocity. If the entity lands inside an
+     *  arena before {@code lifetimeTicks} elapse, vanilla places the block and
+     *  VfxBlockTracker marks the tile as a VFX obstacle. If the lifetime expires
+     *  in the air first, the entity is discarded with a poof — no block placed. */
     record LaunchBlock(VfxAnchor origin, Vec3d velocity,
                        BlockState state, int lifetimeTicks) implements VfxPrimitive {}
 

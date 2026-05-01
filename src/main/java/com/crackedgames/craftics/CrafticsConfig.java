@@ -276,4 +276,13 @@ public class CrafticsConfig {
     public boolean colorblindMode = false;
     public boolean largerUI = false;
     public boolean disableCameraShake = false;
+
+    // ===== Hints =====
+
+    /** Master toggle for all in-game UX hints. */
+    public boolean hintsEnabled = true;
+
+    /** Multiplier on every hint's idle threshold (0.5 = hints fire twice as fast, 2.0 = half as fast). */
+    @RangeConstraint(min = 0.5, max = 2.0)
+    public float hintIdleMultiplier = 1.0f;
 }

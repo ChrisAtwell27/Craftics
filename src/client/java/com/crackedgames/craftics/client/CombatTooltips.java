@@ -678,7 +678,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.HONEY_BLOCK) return "\u00a7e1 AP \u00a77- Place sticky trap\n\u00a77Enemies that step on it lose all movement";
         if (item == Items.POWDER_SNOW_BUCKET) return "\u00a7b1 AP \u00a77- Freeze an enemy\n\u00a7c1 DMG \u00a77+ stun (skip next turn)";
         if (item == Items.JUKEBOX) return "\u00a7d2 AP \u00a77- Play music\n\u00a77Buffs all ally pets +1 Speed\n\u00a77Consumed on use";
-        if (item == Items.GOAT_HORN) return "\u00a7c1 AP \u00a77- Taunt all enemies\n\u00a77All enemies will target you next turn\n\u00a77Draw aggro from low-HP allies";
+        if (item == Items.GOAT_HORN) return "\u00a761-3 AP \u00a77- Combat horn\n\u00a77Each variant gives a different buff or debuff\n\u00a77(see horn name for specific effect)";
         if (item == Items.ECHO_SHARD) return "\u00a751 AP \u00a77- Echo teleport\n\u00a77Return to start-of-turn position\n\u00a77Consumed on use";
         if (item == Items.BRUSH) return "\u00a7e1 AP \u00a77- Excavate adjacent tile\n\u00a77Dig up random loot (gold, gems, etc.)\n\u00a77Uses durability";
         if (item == Items.LANTERN) return "\u00a7e1 AP \u00a77- Place light source\n\u00a77Reveals hidden/invisible enemies in 3 tiles";

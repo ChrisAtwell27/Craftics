@@ -1,10 +1,8 @@
 package com.crackedgames.craftics.combat;
 
-import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.text.Text;
 
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -61,7 +59,9 @@ public class GoatHornEffects {
     public static ItemStack createRandomHorn(RegistryWrapper.WrapperLookup registryLookup) {
         HornEffectDef chosen = HORN_DEFS.get(ThreadLocalRandom.current().nextInt(HORN_DEFS.size()));
         ItemStack horn = new ItemStack(Items.GOAT_HORN);
-        horn.set(DataComponentTypes.CUSTOM_NAME, Text.literal(chosen.displayName));
+        if (registryLookup instanceof net.minecraft.registry.DynamicRegistryManager drm) {
+            HornVariants.writeVariant(horn, chosen.hornId, drm);
+        }
         return horn;
     }
 
@@ -70,19 +70,7 @@ public class GoatHornEffects {
      * Returns null if not a goat horn or has no recognized name.
      */
     public static String getHornId(ItemStack stack) {
-        if (stack.getItem() != Items.GOAT_HORN) return null;
-        Text name = stack.get(DataComponentTypes.CUSTOM_NAME);
-        if (name == null) return null;
-        String nameStr = name.getString();
-
-        for (HornEffectDef def : HORN_DEFS) {
-            // Match against the raw text (strip formatting codes)
-            String stripped = def.displayName.replaceAll("§.", "");
-            if (nameStr.contains(stripped) || nameStr.equals(stripped)) {
-                return def.hornId;
-            }
-        }
-        return null;
+        return HornVariants.readVariant(stack);
     }
 
     /**
@@ -104,7 +92,11 @@ public class GoatHornEffects {
             if (!def.hornId.equals(hornId)) continue;
 
             if (def.isPlayerBuff) {
-                combatEffects.addEffect(def.effectType, def.duration, def.amplifier);
+                int existing = combatEffects.hasEffect(def.effectType)
+                    ? combatEffects.getAll().get(def.effectType).turnsRemaining
+                    : 0;
+                int newDur = Math.max(existing, def.duration);
+                combatEffects.addEffect(def.effectType, newDur, def.amplifier);
                 return def.description;
             } else {
                 applyEnemyDebuff(def.effectType, def.duration, enemies);
@@ -122,17 +114,12 @@ public class GoatHornEffects {
             if (!enemy.isAlive()) continue;
             switch (type) {
                 case WEAKNESS -> {
-                    // Reduce effective attack — tracked via speed bonus repurposed as attack debuff
-                    // CombatManager will check enemy debuff state
+                    enemy.setAttackPenalty(2);
+                    enemy.setAttackPenaltyTurns(duration);
                 }
-                case SLOWNESS -> {
-                    enemy.setSpeedBonus(enemy.getSpeedBonus() - 1);
-                }
-                case POISON -> {
-                    // Deal 1 damage immediately as first tick of poison
-                    enemy.takeDamage(1);
-                }
-                default -> {}
+                case SLOWNESS -> enemy.stackSlowness(duration, 1);
+                case POISON   -> enemy.stackPoison(duration, 0);
+                default       -> {}
             }
         }
     }
