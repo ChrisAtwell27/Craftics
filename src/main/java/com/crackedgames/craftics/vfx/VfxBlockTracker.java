@@ -47,6 +47,12 @@ public final class VfxBlockTracker {
      *  locate the placed block and mark its grid tile as a VFX obstacle. */
     private final Map<UUID, BlockPos> lastBlockPos = new HashMap<>();
 
+    /** entity UUID → block state it carries. Used when scanning for the placed
+     *  block: the entity moves up to ~1 block in the final pre-landing tick, so
+     *  vanilla can place at any tile within ±1 of {@link #lastBlockPos}. We only
+     *  treat a tile as ours if its world block matches this exact state. */
+    private final Map<UUID, BlockState> launchedState = new HashMap<>();
+
     // -------------------------------------------------------------------------
     // Public API
     // -------------------------------------------------------------------------
@@ -95,6 +101,7 @@ public final class VfxBlockTracker {
         if (arena != null) {
             arenaByEntity.put(fbe.getUuid(), arena);
             lastBlockPos.put(fbe.getUuid(), fbe.getBlockPos());
+            launchedState.put(fbe.getUuid(), state);
         }
     }
 
@@ -111,8 +118,7 @@ public final class VfxBlockTracker {
                 // and that entity tick runs before this END_SERVER_TICK pass. Mark the
                 // obstacle from the position we recorded on the prior tick.
                 markObstacleFromLastPos(world, id);
-                arenaByEntity.remove(id);
-                lastBlockPos.remove(id);
+                forgetEntity(id);
                 it.remove();
                 continue;
             }
@@ -124,17 +130,16 @@ public final class VfxBlockTracker {
                 Vec3d pos = fbe.getPos();
                 spawnPoof(world, pos, state);
                 fbe.discard();
-                arenaByEntity.remove(id);
-                lastBlockPos.remove(id);
+                forgetEntity(id);
                 it.remove();
             } else if (landed) {
                 // Rare: entity has settled but vanilla hasn't placed yet (deferred until
                 // its next tick). Mark obstacle from the current resting position.
-                com.crackedgames.craftics.core.GridArena landArena = arenaByEntity.remove(id);
+                com.crackedgames.craftics.core.GridArena landArena = arenaByEntity.get(id);
                 if (landArena != null) {
                     markObstacleAt(landArena, fbe.getBlockPos());
                 }
-                lastBlockPos.remove(id);
+                forgetEntity(id);
                 it.remove();
             } else {
                 // Still in flight — remember where we last saw it so we can mark the
@@ -147,13 +152,23 @@ public final class VfxBlockTracker {
     private void markObstacleFromLastPos(ServerWorld world, UUID id) {
         BlockPos last = lastBlockPos.get(id);
         com.crackedgames.craftics.core.GridArena landArena = arenaByEntity.get(id);
-        if (last == null || landArena == null) return;
-        // Vanilla places the block at the position above the floor (origin.y + 1).
-        // Use the arena's known floor Y to absorb 1-tick vertical movement between
-        // our last recording and the actual placement.
-        BlockPos placement = new BlockPos(last.getX(), landArena.getOrigin().getY() + 1, last.getZ());
-        if (world.getBlockState(placement).isAir()) return;
-        markObstacleAt(landArena, placement);
+        BlockState expected = launchedState.get(id);
+        if (last == null || landArena == null || expected == null) return;
+
+        // Vanilla places at floor(entity.x), origin.y+1, floor(entity.z) at the moment
+        // it lands. Our last record is from the end of the prior tick, so the entity
+        // can have crossed an X/Z boundary in its final fall step. Scan ±1 around the
+        // last position; only mark a tile if the world block there matches the state
+        // we launched (so we don't accidentally claim a pre-existing wall or another
+        // boss-placed obstacle).
+        int placementY = landArena.getOrigin().getY() + 1;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                BlockPos candidate = new BlockPos(last.getX() + dx, placementY, last.getZ() + dz);
+                if (!world.getBlockState(candidate).equals(expected)) continue;
+                markObstacleAt(landArena, candidate);
+            }
+        }
     }
 
     private void markObstacleAt(com.crackedgames.craftics.core.GridArena landArena, BlockPos blockPos) {
@@ -167,6 +182,12 @@ public final class VfxBlockTracker {
         }
     }
 
+    private void forgetEntity(UUID id) {
+        arenaByEntity.remove(id);
+        lastBlockPos.remove(id);
+        launchedState.remove(id);
+    }
+
     public void clearAll(ServerWorld world) {
         for (UUID id : tracked.keySet()) {
             Entity e = world.getEntity(id);
@@ -175,6 +196,7 @@ public final class VfxBlockTracker {
         tracked.clear();
         arenaByEntity.clear();
         lastBlockPos.clear();
+        launchedState.clear();
     }
 
     // -------------------------------------------------------------------------
