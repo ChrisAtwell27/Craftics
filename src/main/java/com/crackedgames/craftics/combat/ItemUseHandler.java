@@ -232,7 +232,7 @@ public class ItemUseHandler {
     );
 
     private static boolean isBanner(Item item) {
-        return item.toString().contains("banner");
+        return BannerEffects.isBanner(item);
     }
 
     private static final Set<Item> WATER_THROWABLES = Set.of(
@@ -322,7 +322,7 @@ public class ItemUseHandler {
         } else if (item == Items.JUKEBOX) {
             return useJukebox(arena, held);
         } else if (isBanner(item)) {
-            return useBanner(arena, targetTile, held);
+            return useBanner(player, arena, targetTile, held);
         } else if (item == Items.WATER_BUCKET) {
             return useWaterBucket(arena, targetTile, held);
         } else if (item == Items.BUCKET) {
@@ -570,16 +570,15 @@ public class ItemUseHandler {
     }
 
     private static int getSpecialAffinityPoints(ServerPlayerEntity player) {
-        return getPlayerStats(player).getAffinityPoints(PlayerProgression.Affinity.SPECIAL);
+        return SpecialAffinity.points(player);
     }
 
     private static int getPotionPotencyBonus(ServerPlayerEntity player) {
-        return getSpecialAffinityPoints(player) / 3;
+        return SpecialAffinity.potencyBonus(player);
     }
 
     private static int getPotionDurationBonus(ServerPlayerEntity player) {
-        int specialPoints = getSpecialAffinityPoints(player);
-        return specialPoints > 0 ? 1 + ((specialPoints - 1) / 4) : 0;
+        return SpecialAffinity.durationBonus(player);
     }
 
     private static int getScaledPotionTurns(ServerPlayerEntity player, CombatEffects.EffectType type,
@@ -785,7 +784,8 @@ public class ItemUseHandler {
                         target.setAttackPenalty(target.getAttackPenalty() + 2 + scaledAmp);
                         msg.append("§8").append(target.getDisplayName()).append(" weakened ");
                     } else if (effectType == StatusEffects.WITHER.value()) {
-                        target.takeDamage(2 + scaledAmp + specialDamageBonus);
+                        int witherTurns = getScaledPotionTurns(player, CombatEffects.EffectType.WITHER, sei.getDuration());
+                        target.stackWither(witherTurns, scaledAmp);
                         msg.append("§8").append(target.getDisplayName()).append(" withered ");
                     } else if (effectType == StatusEffects.BLINDNESS.value() || effectType == StatusEffects.DARKNESS.value()) {
                         target.setStunned(true);
@@ -1228,13 +1228,19 @@ public class ItemUseHandler {
         return ALLY_BUFF_PREFIX + "music|§dMusic plays! " + buffed + " allies buffed (+1 speed for this battle).";
     }
 
-    // --- Banner: plant defense zone — +2 defense to player/allies within 2 tiles (1 AP) ---
-    private static String useBanner(GridArena arena, GridPos targetTile, ItemStack stack) {
+    // --- Banner: plant defense zone — +2 defense (scaled by Special affinity)
+    //     to player/allies within 2 tiles (1 AP) ---
+    private static String useBanner(ServerPlayerEntity player, GridArena arena,
+                                    GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        String color = BannerEffects.colorIdForItem(stack.getItem());
+        if (color == null) color = "white";
+        int totalDef = BannerEffects.DEFENSE_BONUS + SpecialAffinity.potencyBonus(player);
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "banner:" + targetTile.x() + ":" + targetTile.z()
-            + "|§5Banner planted! +2 defense for player/allies within 2 tiles.";
+            + ":" + color + ":" + totalDef
+            + "|§5Banner planted! §7+" + totalDef + " DEF for player/allies within 2 tiles.";
     }
 
     private static boolean isPickaxe(Item item) {

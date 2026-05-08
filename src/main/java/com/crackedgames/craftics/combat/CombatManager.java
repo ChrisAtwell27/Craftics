@@ -1129,10 +1129,15 @@ public class CombatManager {
             }
             return 0;
         }
-        defense += getBannerDefenseBonus(arena.getPlayerGridPos());
+        int bannerBonus = BannerEffects.defenseBonusAt(arena.getPlayerGridPos(), tileEffects);
+        defense += bannerBonus;
         // Each defense point = 5% reduction, capped at 60%
         double reduction = Math.min(0.60, defense * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
+        if (bannerBonus > 0 && rawDamage > 0) {
+            int bannerReductionPct = bannerBonus * 5;
+            sendMessage("§5🛡 Banner aura§r §7reduced damage by §5" + bannerReductionPct + "%§7.");
+        }
 
         // FORTRESS set bonus: 50% less damage when player didn't move this turn
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTRESS && !movedThisTurn) {
@@ -2991,6 +2996,10 @@ public class CombatManager {
                     case "poison" -> {
                         fTarget.stackPoison(3, 1);
                         sendMessage("\u00a75Poison arrow! Enemy poisoned for 3 turns.");
+                    }
+                    case "wither" -> {
+                        fTarget.stackWither(3, 0);
+                        sendMessage("\u00a78Wither arrow! Enemy withered for 3 turns.");
                     }
                     case "slowness" -> {
                         fTarget.stackSlowness(2, 1);
@@ -4998,7 +5007,16 @@ public class CombatManager {
                     net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
             } else {
                 GridPos effectPos = new GridPos(tx, tz);
-                tileEffects.put(effectPos, effectType);
+                // Banner: store color- and bonus-tagged form so the aura is visually
+                // distinct per color and the Special-scaled DEF bonus is frozen at
+                // placement time (later affinity gains don't retroactively buff old banners).
+                if ("banner".equals(effectType) && tileInfo.length >= 5) {
+                    tileEffects.put(effectPos, "banner:" + tileInfo[3] + ":" + tileInfo[4]);
+                } else if ("banner".equals(effectType) && tileInfo.length >= 4) {
+                    tileEffects.put(effectPos, "banner:" + tileInfo[3]);
+                } else {
+                    tileEffects.put(effectPos, effectType);
+                }
 
                 // Register light zones for torches and lanterns (negate darkness)
                 if ("torch".equals(effectType) || "lantern".equals(effectType) || "campfire".equals(effectType)) {
@@ -5017,6 +5035,19 @@ public class CombatManager {
                     ServerWorld cactusWorld = (ServerWorld) player.getEntityWorld();
                     cactusWorld.setBlockState(cactusBp, Blocks.CACTUS.getDefaultState(),
                         net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                }
+
+                // Player-placed banner: place a real, color-correct banner block.
+                // Tile stays NORMAL — banners have no collision; player can stand on/walk through.
+                if ("banner".equals(effectType) && tileInfo.length >= 4) {
+                    String colorId = tileInfo[3];
+                    net.minecraft.block.Block bannerBlock = BannerEffects.blockForColorId(colorId);
+                    if (bannerBlock != null) {
+                        BlockPos bannerBp = arena.gridToBlockPos(effectPos);
+                        ServerWorld bannerWorld = (ServerWorld) player.getEntityWorld();
+                        bannerWorld.setBlockState(bannerBp, bannerBlock.getDefaultState(),
+                            net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                    }
                 }
 
                 // Update the GridTile type so fishing/boat checks work
@@ -5087,8 +5118,11 @@ public class CombatManager {
                 player.getWorld().playSound(null, player.getBlockPos(),
                     sound, net.minecraft.sound.SoundCategory.PLAYERS, 1.5f, 1.0f));
 
-            // Apply the actual effect
-            String effectMsg = GoatHornEffects.useHorn(hornId, combatEffects, enemies);
+            // Apply the actual effect, scaled by the player's Special-class affinity
+            int hornDurationBonus = SpecialAffinity.durationBonus(player);
+            int hornPotencyBonus  = SpecialAffinity.potencyBonus(player);
+            String effectMsg = GoatHornEffects.useHorn(hornId, combatEffects, enemies,
+                hornDurationBonus, hornPotencyBonus);
             if (effectMsg != null && !effectMsg.isEmpty()) {
                 sendMessage(effectMsg);
             }
@@ -5993,7 +6027,7 @@ public class CombatManager {
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getPoisonTurns() <= 0) continue;
                 boolean wasAlive = e.isAlive();
-                int poisonDmg = applyStatusDot(e, 1 + e.getPoisonAmplifier());
+                int poisonDmg = applyStatusDot(e, e.getPoisonTickDamage());
                 e.setPoisonTurns(e.getPoisonTurns() - 1);
                 sendMessage("§2" + e.getDisplayName() + " took " + poisonDmg + " poison damage.");
                 if (e.getMobEntity() != null) {
@@ -6004,6 +6038,31 @@ public class CombatManager {
                 }
                 if (wasAlive && !e.isAlive()) achievementTracker.recordPoisonKill();
                 checkAndHandleDeath(e);
+            }
+
+            // --- Enemy Wither ticks: damage = remainingTurns + 1 + amp + maxHpBonus ---
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.getWitherTurns() <= 0) continue;
+                boolean wasAlive = e.isAlive();
+                int witherDmg = applyStatusDot(e, e.getWitherTickDamage());
+                e.setWitherTurns(e.getWitherTurns() - 1);
+                sendMessage("§8" + e.getDisplayName() + " withers for " + witherDmg + " damage.");
+                if (e.getMobEntity() != null) {
+                    ((ServerWorld) player.getEntityWorld()).spawnParticles(
+                        net.minecraft.particle.ParticleTypes.SOUL,
+                        e.getMobEntity().getX(), e.getMobEntity().getY() + 1.0, e.getMobEntity().getZ(),
+                        6, 0.3, 0.4, 0.3, 0.02);
+                }
+                if (e.getWitherTurns() <= 0) {
+                    e.setWitherAmplifier(0);
+                }
+                if (wasAlive && !e.isAlive()) achievementTracker.recordWitherKill();
+                checkAndHandleDeath(e);
+            }
+
+            if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+                handleVictory();
+                return;
             }
 
             if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
@@ -6212,6 +6271,20 @@ public class CombatManager {
                         if (d <= 1) {
                             e.takeDamage(1);
                             sendMessage("§2" + e.getDisplayName() + " is pricked by cactus for 1 damage!");
+                        }
+                    }
+                }
+                if (BannerEffects.isBannerEffect(effect)) {
+                    ServerWorld bannerWorld = (ServerWorld) player.getEntityWorld();
+                    for (int dx = -BannerEffects.AURA_RADIUS; dx <= BannerEffects.AURA_RADIUS; dx++) {
+                        for (int dz = -BannerEffects.AURA_RADIUS; dz <= BannerEffects.AURA_RADIUS; dz++) {
+                            if (Math.abs(dx) + Math.abs(dz) > BannerEffects.AURA_RADIUS) continue;
+                            GridPos auraPos = new GridPos(tPos.x() + dx, tPos.z() + dz);
+                            if (!arena.isInBounds(auraPos)) continue;
+                            BlockPos auraBp = arena.gridToBlockPos(auraPos);
+                            bannerWorld.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER,
+                                auraBp.getX() + 0.5, auraBp.getY() + 0.1, auraBp.getZ() + 0.5,
+                                3, 0.3, 0.05, 0.3, 0.0);
                         }
                     }
                 }
@@ -10316,7 +10389,10 @@ public class CombatManager {
         if (pendingAction instanceof EnemyAction.MoveAndAttackMob maam) {
             CombatEntity target = findEnemyById(maam.targetEntityId());
             if (target != null && target.isAlive()) {
-                int dealt = target.takeDamage(maam.damage());
+                int bannerBonus = target.isAlly()
+                    ? BannerEffects.defenseBonusAt(target.getGridPos(), tileEffects)
+                    : 0;
+                int dealt = target.takeDamage(maam.damage(), bannerBonus);
                 sendMessage("§6" + currentEnemy.getDisplayName() + " attacks " + target.getDisplayName() + " for " + dealt + "!");
                 checkAndHandleDeath(target);
             }
@@ -10749,16 +10825,6 @@ public class CombatManager {
         if (!attacker.isAlive()) {
             checkAndHandleDeath(attacker);
         }
-    }
-
-    /** Banner defense bonus: +2 DEF if pos is within 2 tiles of any banner tile effect. */
-    private int getBannerDefenseBonus(GridPos pos) {
-        for (var entry : tileEffects.entrySet()) {
-            if ("banner".equals(entry.getValue())) {
-                if (pos.manhattanDistance(entry.getKey()) <= 2) return 2;
-            }
-        }
-        return 0;
     }
 
     /** Scaffold range bonus: +1 range if player is standing on a scaffold tile. */

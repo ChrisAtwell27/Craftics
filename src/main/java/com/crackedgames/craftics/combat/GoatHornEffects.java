@@ -17,6 +17,10 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class GoatHornEffects {
 
+    /** Cap on how high the horn buff/debuff amplifier can stack. Keeps a
+     *  player who spams Seek from trivializing a fight. */
+    public static final int MAX_HORN_AMPLIFIER = 3;
+
     private record HornEffectDef(
         String hornId, String displayName, String description,
         int apCost, boolean isPlayerBuff, CombatEffects.EffectType effectType,
@@ -84,22 +88,45 @@ public class GoatHornEffects {
     }
 
     /**
-     * Use a goat horn in combat. Applies the buff/debuff.
-     * Returns a message describing the effect.
+     * Two-arg overload for callers without affinity context (e.g. unit tests
+     * that don't bootstrap a player).
      */
     public static String useHorn(String hornId, CombatEffects combatEffects, List<CombatEntity> enemies) {
+        return useHorn(hornId, combatEffects, enemies, 0, 0);
+    }
+
+    /**
+     * Apply the horn's effect, scaled by the caller's Special-class affinity.
+     * Re-using a buff horn before its previous duration expires stacks the
+     * amplifier (capped at {@link #MAX_HORN_AMPLIFIER}) and refreshes duration
+     * to the larger of remaining and (base + durationBonus).
+     *
+     * @param durationBonus added to the base duration (and to existing remaining
+     *        duration when re-casting); typically {@link SpecialAffinity#durationBonus}.
+     * @param potencyBonus  added to the amplifier on top of the per-cast +1 stack;
+     *        typically {@link SpecialAffinity#potencyBonus}.
+     */
+    public static String useHorn(String hornId, CombatEffects combatEffects,
+                                 List<CombatEntity> enemies,
+                                 int durationBonus, int potencyBonus) {
         for (HornEffectDef def : HORN_DEFS) {
             if (!def.hornId.equals(hornId)) continue;
 
+            int scaledDuration = def.duration + Math.max(0, durationBonus);
+            int scaledAmp = def.amplifier + Math.max(0, potencyBonus);
+
             if (def.isPlayerBuff) {
-                int existing = combatEffects.hasEffect(def.effectType)
-                    ? combatEffects.getAll().get(def.effectType).turnsRemaining
-                    : 0;
-                int newDur = Math.max(existing, def.duration);
-                combatEffects.addEffect(def.effectType, newDur, def.amplifier);
+                int existingTurns = combatEffects.hasEffect(def.effectType)
+                    ? combatEffects.getAll().get(def.effectType).turnsRemaining : 0;
+                int existingAmp = combatEffects.hasEffect(def.effectType)
+                    ? combatEffects.getAll().get(def.effectType).amplifier : 0;
+                int newDur = Math.max(existingTurns, scaledDuration);
+                // Re-cast adds +1 to amplifier on top of the scaled base, capped.
+                int newAmp = Math.min(MAX_HORN_AMPLIFIER, existingAmp + scaledAmp + 1);
+                combatEffects.addEffect(def.effectType, newDur, newAmp);
                 return def.description;
             } else {
-                applyEnemyDebuff(def.effectType, def.duration, enemies);
+                applyEnemyDebuff(def.effectType, scaledDuration, scaledAmp, enemies);
                 return def.description;
             }
         }
@@ -107,18 +134,24 @@ public class GoatHornEffects {
     }
 
     /**
-     * Apply a debuff to all living enemies.
+     * Apply a debuff to all living enemies. {@code amplifierBoost} stacks on
+     * top of the per-effect base amplifier (e.g. weakness's base -2 ATK,
+     * slowness's base -1 SPD).
      */
-    private static void applyEnemyDebuff(CombatEffects.EffectType type, int duration, List<CombatEntity> enemies) {
+    private static void applyEnemyDebuff(CombatEffects.EffectType type, int duration,
+                                         int amplifierBoost, List<CombatEntity> enemies) {
+        int boost = Math.max(0, amplifierBoost);
         for (CombatEntity enemy : enemies) {
             if (!enemy.isAlive()) continue;
             switch (type) {
                 case WEAKNESS -> {
-                    enemy.setAttackPenalty(2);
-                    enemy.setAttackPenaltyTurns(duration);
+                    int newPenalty = Math.min(MAX_HORN_AMPLIFIER + 2,
+                        enemy.getAttackPenalty() + 2 + boost);
+                    enemy.setAttackPenalty(newPenalty);
+                    enemy.setAttackPenaltyTurns(Math.max(enemy.getAttackPenaltyTurns(), duration));
                 }
-                case SLOWNESS -> enemy.stackSlowness(duration, 1);
-                case POISON   -> enemy.stackPoison(duration, 0);
+                case SLOWNESS -> enemy.stackSlowness(duration, 1 + boost);
+                case POISON   -> enemy.stackPoison(duration, boost);
                 default       -> {}
             }
         }

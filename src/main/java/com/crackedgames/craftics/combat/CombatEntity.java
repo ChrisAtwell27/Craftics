@@ -27,6 +27,8 @@ public class CombatEntity {
     private int attackPenaltyTurns = 0;
     private int poisonTurns = 0;
     private int poisonAmplifier = 0; // 0 = level I, 1 = level II, etc
+    private int witherTurns = 0;
+    private int witherAmplifier = 0; // 0 = level I, 1 = level II, etc
     private boolean enraged = false;
     /**
      * When set, the entity is fully immobilized this turn — used by the Creaking
@@ -169,6 +171,32 @@ public class CombatEntity {
     public void setPoisonTurns(int t) { this.poisonTurns = t; }
     public int getPoisonAmplifier() { return poisonAmplifier; }
     public void setPoisonAmplifier(int a) { this.poisonAmplifier = a; }
+    public int getWitherTurns() { return witherTurns; }
+    public void setWitherTurns(int t) { this.witherTurns = t; }
+    public int getWitherAmplifier() { return witherAmplifier; }
+    public void setWitherAmplifier(int a) { this.witherAmplifier = a; }
+
+    /** Bonus damage that scales DOTs (poison/wither) with the target's max HP.
+     *  +1 per 20 max HP, with a floor of 1. Encourages DOT use against tougher
+     *  enemies and bosses without making them devastating against trash mobs. */
+    public int getMaxHpDotBonus() {
+        return Math.max(1, maxHp / 20);
+    }
+
+    /** Damage one tick of poison would deal at this moment. Returns 0 if not
+     *  poisoned. Formula: {@code 1 + amplifier + maxHpBonus}. */
+    public int getPoisonTickDamage() {
+        if (poisonTurns <= 0) return 0;
+        return 1 + poisonAmplifier + getMaxHpDotBonus();
+    }
+
+    /** Damage one tick of wither would deal at this moment. Returns 0 if not
+     *  withered. Formula: {@code remainingTurns + 1 + amplifier + maxHpBonus}.
+     *  Damage tapers as the wither wears off — early ticks are heaviest. */
+    public int getWitherTickDamage() {
+        if (witherTurns <= 0) return 0;
+        return witherTurns + 1 + witherAmplifier + getMaxHpDotBonus();
+    }
 
     public MobEntity getMobEntity() { return mobEntity; }
     public void setMobEntity(MobEntity mob) { this.mobEntity = mob; }
@@ -312,6 +340,11 @@ public class CombatEntity {
     // Duration refreshes to longer value, intensity stacks up to cap
     private static final int MAX_EFFECT_AMPLIFIER = 999;
 
+    public void stackWither(int turns, int ampIncrease) {
+        witherTurns = Math.max(witherTurns, turns);
+        witherAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, witherAmplifier + ampIncrease);
+    }
+
     public void stackPoison(int turns, int ampIncrease) {
         poisonTurns = Math.max(poisonTurns, turns);
         poisonAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, poisonAmplifier + ampIncrease);
@@ -347,6 +380,16 @@ public class CombatEntity {
     }
 
     public int takeDamage(int rawDamage) {
+        return takeDamage(rawDamage, 0);
+    }
+
+    /**
+     * Variant that adds an externally-computed defense bonus on top of the
+     * entity's own defense for the reduction calculation. Used for tile-based
+     * auras (e.g. allied banner zones) so per-tile buffs compose with the
+     * entity's static defense without each caller duplicating the 5%/cap formula.
+     */
+    public int takeDamage(int rawDamage, int bonusDefense) {
         // Mirror images (Void Walker clones) vanish on any hit. No real HP loss
         // is reported so the attack still feels like a "wasted swing" on an illusion.
         if (mirrorClone) {
@@ -356,7 +399,7 @@ public class CombatEntity {
             return 0;
         }
         // Each DEF point = 5% reduction, capped at 60%
-        int effectiveDef = getEffectiveDefense();
+        int effectiveDef = getEffectiveDefense() + Math.max(0, bonusDefense);
         double reduction = Math.min(0.60, effectiveDef * 0.05);
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
         // Note: bleed is its own DOT and is classified as Special damage,

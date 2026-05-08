@@ -199,6 +199,7 @@ public class PlayerCombatStats {
                         else if (effectType == net.minecraft.entity.effect.StatusEffects.INSTANT_DAMAGE.value()) result = "harming";
                         else if (effectType == net.minecraft.entity.effect.StatusEffects.INSTANT_HEALTH.value()) result = "healing";
                         else if (effectType == net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE.value()) result = "fire_resistance";
+                        else if (effectType == net.minecraft.entity.effect.StatusEffects.WITHER.value()) result = "wither";
                         if (result != null) {
                             stack.decrement(1);
                             return result;

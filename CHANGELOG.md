@@ -1,5 +1,43 @@
 Changelog
 
+0.1.4
+
+Goat horn overhaul
+
+- All 8 horn variants now actually work in combat (Admire, Yearn, and Call previously did nothing or fired only once with no duration tracking)
+- Horns from any source work: goat-kill drops, raid loot, structure chests, trader trades, and /give all identify correctly via the vanilla INSTRUMENT data component instead of relying on a custom name
+- Each horn plays its own instrument sound (Ponder plays Ponder, Yearn plays Yearn, etc.) — the previous code picked a random sound from the goat-horn list on every use
+- Re-using a buff horn refreshes duration to max(remaining, fresh) instead of clobbering the existing effect
+- Weakness debuff lifecycle: enemies hit by Admire now lose the -2 ATK after the listed turn count, ticked alongside the existing defense-penalty system
+- Stale "Taunt all enemies" tooltip removed
+- Pre-overhaul horns with the legacy custom-name tag continue to work (backward-compatible)
+- Goat horns are now Special-class items: the player's Special affinity scales horn duration and amplifier the same way it scales potions
+- Re-using a horn before its previous effect expires now stacks the amplifier (capped at MAX_HORN_AMPLIFIER) and refreshes duration — consecutive casts make the buff or debuff stronger, not shorter
+- All four version shards (1.21.1, 1.21.3, 1.21.4, 1.21.5) compile and run; vanilla INSTRUMENT API drift in 1.21.5 isolated to a single helper class
+
+Banner overhaul
+
+- Banners now place a real, color-correct banner block on the target tile (previously the use was silent: no block, no visible AOE, no way to tell it had worked)
+- Each turn, the +DEF aura is outlined by sparse happy-villager particles on every tile within manhattan distance 2 of any planted banner
+- Allies inside the aura now actually get the banner DEF bonus — previously the placement message claimed they did, but only the player's damage path applied it
+- New "Banner aura reduced damage by N%" message when incoming damage to the player is mitigated by a banner zone
+- Banners are now Special-class items: the +2 DEF base scales with the player's Special affinity at placement time and is frozen into the tile-effect entry, so later affinity gains don't retroactively buff old banners
+- Overlapping banners take the max DEF of the strongest single banner instead of stacking (no infinite +DEF from carpet-bombing)
+- Banner color is preserved through the tile-effect lifecycle so all 16 vanilla colors stay visually distinct
+- 16-banner enumeration is now explicit (BannerEffects helper) instead of `item.toString().contains("banner")` string sniffing
+- Special-class scaling extracted into a SpecialAffinity helper used by potions, banners, and goat horns — one source of truth for the formula
+- All four version shards compile and run
+
+Wither & Poison enemy DOTs
+
+- Enemies can now actually be Withered. Previously the splash potion of Wither was a single-hit, the Skull Sherd's "Wither IV" was implemented as poison, and there was no enemy-side wither tick at all
+- Wither damage formula: `remainingTurns + 1 + amplifier + max(1, maxHp/20)` — damage is heaviest on the first tick and tapers as the curse wears off
+- Poison damage formula updated to `1 + amplifier + max(1, maxHp/20)` — base 1+amp like before, but now scales with the target's max HP so DOTs stay relevant against bosses
+- Splash Potion of Wither now applies a multi-turn DOT scaled by Special affinity, replacing the old single hit
+- Skull Sherd "Death Mark" now applies a real Wither IV (was poison wearing a wither costume)
+- New tipped Wither arrow case in PlayerCombatStats and the bow-shot pipeline — fire a tipped Wither arrow to apply 3 turns of Wither
+- The previously-dead `recordWitherKill()` achievement tracker is now wired into the wither tick loop, so the FEAT_WITHERED achievement can actually be earned
+
 0.1.3
 
 Client fixes for all versions

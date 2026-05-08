@@ -254,7 +254,7 @@
             <td>15</td>
             <td>2</td>
             <td>1</td>
-            <td>3x3 AoE (half damage) + knockback. Enchants: Density (+AoE dmg), Breach (+2 armor pen/lvl), Wind Burst (+1 knockback/lvl)</td>
+            <td>3x3 AoE (half damage) + knockback. Slam debris: chunks of the floor fly outward and land as temporary obstacles &mdash; mine them with a pickaxe (1 AP) or wait for combat exit (cleared automatically). Enchants: Density (+AoE dmg), Breach (+2 armor pen/lvl), Wind Burst (+1 knockback/lvl)</td>
           </tr>
         </tbody>
       </table>
@@ -558,7 +558,13 @@
          ================================================================ -->
     <h2 id="goat-horns">Goat Horn Effects</h2>
     <p>
-      Goat horns are rare drops from goats (<strong>10% chance</strong>). There are 8 variants, each with a unique sound and a powerful tactical effect. Horns are reusable but cost AP to play.
+      Goat horns are rare drops from goats (<strong>10% chance</strong>). There are 8 variants, each with a unique sound and a powerful tactical effect. Horns are reusable but cost AP to play. Each horn plays its own instrument sound on use (not a random one).
+    </p>
+    <p>
+      Horns are identified by their vanilla <code>INSTRUMENT</code> data component, so horns from <strong>any source</strong> work in combat: goat-kill drops, pillager raid loot, structure chests, trader trades, or <code>/give</code>. Re-using a buff horn refreshes its duration to the larger of remaining and fresh and <strong>stacks the amplifier</strong> (capped) so consecutive casts make the buff stronger — never shorter.
+    </p>
+    <p>
+      Horns are <strong>Special-class items</strong>: the player's Special affinity scales horn output the same way it scales potions. Each Special affinity point grants +1/3 amplifier and +1 duration on the first point (then +1 every 4 points after).
     </p>
     <img src="https://media.forgecdn.net/attachments/1605/46/screenshot-2026-03-29-201944.png" alt="Goat horn information" style="width:100%;max-width:700px;border-radius:8px;border:1px solid #d0d0d7;margin:12px 0 20px;">
     <div class="table-wrap">
@@ -695,7 +701,7 @@
           <tr><td>Honey Block</td><td>1</td><td>Enemies lose all movement stepping on it</td></tr>
           <tr><td>Powder Snow</td><td>1</td><td>1 damage + stun</td></tr>
           <tr><td>Jukebox</td><td>2</td><td>Buff all allies +1 speed</td></tr>
-          <tr><td>Banner</td><td>1</td><td>+2 defense within 2 tiles</td></tr>
+          <tr><td>Banner</td><td>1</td><td>Plants a real banner block on the target tile (color-correct). +2 DEF aura for the player and allies within 2 tiles. Particles outline the aura each turn; player gets a notification when the aura mitigates incoming damage. Special-class: bonus DEF scales with Special affinity at placement time.</td></tr>
           <tr><td>Water Bucket</td><td>1</td><td>Creates fishable water tile</td></tr>
           <tr><td>Scaffolding</td><td>1</td><td>+1 range from that tile</td></tr>
           <tr><td>Pickaxe</td><td>1</td><td>Breaks obstacle blocks</td></tr>
@@ -746,10 +752,10 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td>Poison</td><td>-1 HP/turn</td></tr>
+          <tr><td>Poison</td><td>Player: -1 HP/turn (configurable). Enemy: <code>1 + amplifier + max(1, maxHp/20)</code> per turn.</td></tr>
           <tr><td>Slowness</td><td>-1 movement</td></tr>
           <tr><td>Weakness</td><td>-2 attack</td></tr>
-          <tr><td>Wither</td><td>-2 HP/turn</td></tr>
+          <tr><td>Wither</td><td>Player: -2 HP/turn. Enemy: <code>remainingTurns + 1 + amplifier + max(1, maxHp/20)</code> per turn — front-loaded, tapers as the curse wears off.</td></tr>
           <tr><td>Burning</td><td>-1 HP/turn</td></tr>
           <tr><td>Blindness</td><td>-2 range</td></tr>
           <tr><td>Mining Fatigue</td><td>-1 AP</td></tr>
