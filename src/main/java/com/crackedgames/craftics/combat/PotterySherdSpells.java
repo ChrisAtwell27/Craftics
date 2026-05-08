@@ -1352,9 +1352,9 @@ public class PotterySherdSpells {
 
             return "§4§l☠ DEATH MARK — EXECUTE! §f" + target.getDisplayName() + " obliterated!";
         } else {
-            // Game state immediately — 10 damage (buffed from 5) + Wither IV for 4 turns (buffed from III/3)
+            // Game state immediately — 10 damage + real Wither IV for 4 turns
             int dealt = target.takeDamage(10);
-            target.stackPoison(4, 4); // Wither IV: 2 * (3+1) = 8 dmg/turn
+            target.stackWither(4, 3); // Wither IV (amp 3); damage = remainingTurns + 1 + amp + maxHpBonus
 
             // Phase 2 (8 ticks) — Wither curse impact
             queueEffect(8, () -> {
@@ -1366,7 +1366,7 @@ public class PotterySherdSpells {
                 ProjectileSpawner.spawnExpandingRing(world, targetBlock, 0.6, ParticleTypes.SOUL, 8);
             });
 
-            return "§4§lDeath Mark! §f" + target.getDisplayName() + " takes " + dealt + " damage + Wither IV (8 dmg/turn, 4 turns). ("
+            return "§4§lDeath Mark! §f" + target.getDisplayName() + " takes " + dealt + " damage + Wither IV (4 turns, tapering). ("
                 + target.getCurrentHp() + "/" + target.getMaxHp() + " HP)";
         }
     }
