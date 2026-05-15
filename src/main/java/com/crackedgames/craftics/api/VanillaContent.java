@@ -38,7 +38,7 @@ public final class VanillaContent {
         ArmorSetRegistry.register(ArmorSetEntry.builder("iron")
             .damageBonus(DamageType.CLEAVING, 2)
             .defenseBonus(2)
-            .description("§fGuard: +2 Defense, immune to knockback")
+            .description("§fGuard: +2 Armor Class, immune to knockback")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("gold")
             .damageBonus(DamageType.SPECIAL, 2)
@@ -47,12 +47,12 @@ public final class VanillaContent {
         ArmorSetRegistry.register(ArmorSetEntry.builder("diamond")
             .damageBonus(DamageType.BLUNT, 2)
             .defenseBonus(3).attackBonus(1)
-            .description("§bKnight: +3 Defense, +1 Attack")
+            .description("§bKnight: +3 Armor Class, +1 Attack")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("netherite")
             .allDamageBonus(1)
             .defenseBonus(4).attackBonus(2)
-            .description("§4Juggernaut: +4 Defense, +2 Attack, immune to fire damage")
+            .description("§4Juggernaut: +4 Armor Class, +2 Attack, immune to fire damage")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("turtle")
             .damageBonus(DamageType.WATER, 3)
@@ -78,7 +78,7 @@ public final class VanillaContent {
             TrimEffects.SetBonus.FERAL, "Feral",
             "Kill streak: 1.3x damage per streak level (resets if no kills on your turn)"));
         TrimPatternRegistry.register(new TrimPatternEntry("ward",
-            TrimEffects.Bonus.DEFENSE, "+1 Defense per piece",
+            TrimEffects.Bonus.DEFENSE, "+1 Armor Class per piece",
             TrimEffects.SetBonus.FORTRESS, "Fortress",
             "50% less damage when you didn't move this turn"));
         TrimPatternRegistry.register(new TrimPatternEntry("eye",
@@ -110,7 +110,7 @@ public final class VanillaContent {
             TrimEffects.SetBonus.PATHFINDER, "Pathfinder",
             "Movement ignores obstacle tiles"));
         TrimPatternRegistry.register(new TrimPatternEntry("shaper",
-            TrimEffects.Bonus.DEFENSE, "+1 Defense per piece",
+            TrimEffects.Bonus.DEFENSE, "+1 Armor Class per piece",
             TrimEffects.SetBonus.TERRAFORMER, "Earthshatter",
             "Moving 3+ tiles deals 2 damage to all enemies adjacent to your destination"));
         TrimPatternRegistry.register(new TrimPatternEntry("silence",
@@ -136,7 +136,7 @@ public final class VanillaContent {
     }
 
     private static void registerTrimMaterials() {
-        TrimMaterialRegistry.register(new TrimMaterialEntry("iron",      TrimEffects.Bonus.DEFENSE,    1, "+1 Defense per piece"));
+        TrimMaterialRegistry.register(new TrimMaterialEntry("iron",      TrimEffects.Bonus.DEFENSE,    1, "+1 Armor Class per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("copper",    TrimEffects.Bonus.SPEED,      1, "+1 Speed per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("gold",      TrimEffects.Bonus.LUCK,       1, "+1 Luck per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("lapis",     TrimEffects.Bonus.SPECIAL_POWER, 1, "+1 Special Power per piece"));

@@ -15,7 +15,7 @@
     "hostile": [
       {"type": "minecraft:hoglin", "weight": 5, "hp": 14, "attack": 5, "defense": 2},
       {"type": "minecraft:piglin", "weight": 5, "hp": 10, "attack": 4, "defense": 1, "range": 4},
-      {"type": "minecraft:piglin_brute", "weight": 3, "hp": 20, "attack": 10, "defense": 3},
+      {"type": "minecraft:piglin_brute", "weight": 3, "hp": 20, "attack": 7, "defense": 3},
       {"type": "minecraft:zombified_piglin", "weight": 4, "hp": 8, "attack": 3, "defense": 1}
     ],
     "boss": {"type": "minecraft:skeleton", "hp": 65, "attack": 8, "defense": 3}

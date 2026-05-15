@@ -40,6 +40,7 @@
       <a href="#weapons">Weapons</a>
       <a href="#damage-calculation">Damage Calculation</a>
       <a href="#damage-types">Damage Types</a>
+      <a href="#armor-class">Armor Class &amp; Dodge</a>
       <a href="#armor-sets">Armor Set Bonuses</a>
       <a href="#armor-trims">Armor Trims</a>
       <a href="#trim-materials">Trim Materials</a>
@@ -357,16 +358,97 @@
          ================================================================ -->
     <h2 id="damage-calculation">Damage Calculation</h2>
     <p>
-      Craftics uses <strong>percentage-based defense</strong>, not flat reduction. Each defense point grants 5% damage reduction, capped at 60% (12 defense points). The result is always at least 1, so no attack is ever completely negated.
+      Combat has two sides with different defense models. <strong>Damage you deal to enemies</strong>
+      uses percentage-based defense. <strong>Damage enemies deal to you</strong> uses
+      <a href="#armor-class">Armor Class</a> &mdash; a chance to dodge the hit entirely.
+    </p>
+
+    <h3>Damage You Deal to Enemies</h3>
+    <p>
+      Enemies use <strong>percentage-based defense</strong>. Each point of an enemy's defense grants
+      5% damage reduction, capped at 60% (12 points). The result is always at least 1, so no attack
+      is ever completely negated.
     </p>
     <div class="formula">
-      actual damage = max(1, rawDamage * (1.0 - min(0.60, defense * 0.05)))
+      actual damage = max(1, rawDamage * (1.0 - min(0.60, enemyDefense * 0.05)))
     </div>
     <p>
       Where <code>rawDamage</code> = weapon attack + stat bonuses + damage type bonus + enchantment bonuses.
     </p>
     <div class="callout">
-      <p><strong>Example:</strong> A weapon with 6 raw damage hitting a target with 4 defense: 4 * 0.05 = 0.20 (20% reduction). Actual damage = max(1, 6 * 0.80) = 4.8, rounded to <strong>4 or 5</strong> depending on implementation.</p>
+      <p><strong>Example:</strong> A weapon with 6 raw damage hitting an enemy with 4 defense:
+      4 &times; 0.05 = 0.20 (20% reduction). Actual damage = max(1, 6 &times; 0.80) = <strong>4</strong>.</p>
+    </div>
+
+    <!-- ================================================================
+         3b. ARMOR CLASS & DODGE
+         ================================================================ -->
+    <h2 id="armor-class">Armor Class &amp; Dodge</h2>
+    <p>
+      Your defense against enemy attacks is <strong>Armor Class (AC)</strong>. AC does not reduce
+      damage &mdash; instead it gives you a chance to <strong>dodge</strong> an attack entirely. A
+      dodged attack deals zero damage; an attack that lands deals its full flat damage. Dodging is
+      meant to be an uncommon, lucky break &mdash; not a wall you hide behind.
+    </p>
+    <div class="formula">
+      dodge% = clamp(3 &times; (AC &minus; enemyAttack) &minus; 8, 5, 40)
+    </div>
+    <p>
+      Every enemy attack rolls a d100 against this chance. Dodge has a <strong>5% floor</strong> (even
+      badly outmatched armor occasionally saves you) and a <strong>40% cap</strong> (dodge never
+      becomes reliable). A landed hit deals the enemy's full attack value &mdash; there is no
+      damage reduction, so staying geared matters.
+    </p>
+
+    <h3>How Armor Class Is Built</h3>
+    <p>Each worn armor piece contributes AC based on its material's <strong>base value (B)</strong>:</p>
+    <ul>
+      <li>Leggings &mdash; <code>B</code></li>
+      <li>Chestplate &mdash; <code>B + 1</code></li>
+      <li>Helmet &amp; Boots &mdash; <code>&lceil;B / 2&rceil;</code></li>
+    </ul>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Material</th><th>Base B</th><th>Full Set AC</th></tr></thead>
+        <tbody>
+          <tr><td>Leather</td><td>2</td><td>7</td></tr>
+          <tr><td>Chainmail / Gold</td><td>3</td><td>11</td></tr>
+          <tr><td>Iron / Copper</td><td>4</td><td>13</td></tr>
+          <tr><td>Diamond</td><td>6</td><td>19</td></tr>
+          <tr><td>Netherite</td><td>7</td><td>23</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Mixed armor sums each piece independently. On top of worn armor, AC also gains: the
+      <strong>Defense</strong> stat (+1 per point), <strong>Protection</strong> enchants (+1 per 2
+      levels worn), armor-set bonuses, armor trims, banner auras, a held shield (+1), and the
+      Resistance effect.
+    </p>
+
+    <h3>Dodge Chance Reference</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>AC &minus; Enemy Attack</th><th>Dodge %</th><th>Feel</th></tr></thead>
+        <tbody>
+          <tr><td>&le; 4</td><td>5% (floor)</td><td>outmatched / no armor</td></tr>
+          <tr><td>5</td><td>7%</td><td>full leather vs a starting enemy</td></tr>
+          <tr><td>9</td><td>19%</td><td>full iron vs an iron-tier enemy</td></tr>
+          <tr><td>13</td><td>31%</td><td>full diamond vs a diamond-tier enemy</td></tr>
+          <tr><td>15</td><td>37%</td><td>full netherite vs a netherite-tier enemy</td></tr>
+          <tr><td>&ge; 16</td><td>40% (cap)</td><td>you outclass this enemy</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <p><strong>Old armor stays useful:</strong> the 5% floor means weak or outdated armor is never
+      completely worthless. Enchanting old armor with Protection IV (up to +8 AC) keeps even leather
+      viable much deeper into the game.</p>
+    </div>
+    <div class="callout">
+      <p><strong>A dodge is unmissable:</strong> when you dodge, you see a swoosh of particles, hear a
+      whoosh and a bright chime, and get a <strong>&ldquo;&#10022; DODGED!&rdquo;</strong> banner above
+      your hotbar. The Ethereal set bonus and shield blocks share the same feedback.</p>
     </div>
 
     <!-- ================================================================
@@ -412,7 +494,7 @@
           <tr>
             <td>Iron</td>
             <td><span class="badge badge-amber">Guard</span></td>
-            <td>+2 Defense, immune to knockback</td>
+            <td>+2 Armor Class, immune to knockback</td>
             <td>Cleaving +2</td>
           </tr>
           <tr>
@@ -424,13 +506,13 @@
           <tr>
             <td>Diamond</td>
             <td><span class="badge badge-amber">Knight</span></td>
-            <td>+3 Defense, +1 Attack</td>
+            <td>+3 Armor Class, +1 Attack</td>
             <td>Blunt +2</td>
           </tr>
           <tr>
             <td>Netherite</td>
             <td><span class="badge badge-amber">Juggernaut</span></td>
-            <td>+4 Defense, +2 Attack, immune to fire damage</td>
+            <td>+4 Armor Class, +2 Attack, immune to fire damage</td>
             <td>ALL types +1</td>
           </tr>
           <tr>
@@ -466,7 +548,7 @@
           <tr><td>Dune</td><td>Blunt Power +1</td></tr>
           <tr><td>Coast</td><td>Water Power +1</td></tr>
           <tr><td>Wild</td><td>AP +1</td></tr>
-          <tr><td>Ward</td><td>Defense +1</td></tr>
+          <tr><td>Ward</td><td>Armor Class +1</td></tr>
           <tr><td>Eye</td><td>Attack Range +1</td></tr>
           <tr><td>Vex</td><td>Armor Penetration +1</td></tr>
           <tr><td>Tide</td><td>HP Regen +1</td></tr>
@@ -729,7 +811,7 @@
         <tbody>
           <tr><td>Speed</td><td>+2 movement</td></tr>
           <tr><td>Strength</td><td>+3 attack</td></tr>
-          <tr><td>Resistance</td><td>+2 defense</td></tr>
+          <tr><td>Resistance</td><td>+2 Armor Class</td></tr>
           <tr><td>Regeneration</td><td>+2 HP/turn</td></tr>
           <tr><td>Fire Resistance</td><td>Immune to fire damage</td></tr>
           <tr><td>Invisibility</td><td>Enemies skip you</td></tr>
@@ -795,7 +877,7 @@
 
     <h3>Armor Enchantments</h3>
     <ul>
-      <li><strong>Protection:</strong> Total levels / 2 = defense bonus.</li>
+      <li><strong>Protection:</strong> Total levels worn / 2 = Armor Class bonus.</li>
       <li><strong>Thorns:</strong> Reflects damage back to melee attackers.</li>
     </ul>
 
@@ -811,7 +893,7 @@
          ================================================================ -->
     <h2 id="shields">Shield &amp; Blocking</h2>
     <p>
-      Equipping a shield in your offhand (checked via <code>EquipmentSlot.OFFHAND</code>) provides <strong>passive defense</strong> at all times. You can also spend AP to <em>brace</em>, raising your shield for additional defense until the start of your next turn. This makes blocking a strong defensive option when you have AP to spare but no favorable attack.
+      Equipping a shield in your offhand (checked via <code>EquipmentSlot.OFFHAND</code>) provides a <strong>passive +1 Armor Class</strong> at all times, plus a <strong>25% chance to fully block</strong> any incoming attack &mdash; an independent roll layered on top of the Armor Class dodge. A successful block negates all damage and consumes a point of shield durability.
     </p>
 
   </main>

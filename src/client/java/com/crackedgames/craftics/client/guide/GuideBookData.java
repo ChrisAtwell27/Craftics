@@ -307,7 +307,7 @@ public class GuideBookData {
                 "Ranged Power - +1 ranged damage/point."),
             new Page("Defensive & Utility",
                 "Vitality - +2 max HP/point.\n\n" +
-                "Defense - -1 incoming damage/point.\n\n" +
+                "Defense - +1 Armor Class/point (raises dodge chance vs enemies).\n\n" +
                 "Luck - +2%/pt to ALL combat procs, crits & loot.\n\n" +
                 "Resourceful - +1 emerald/level & trader discounts."),
             new Page("Build Tips",
@@ -327,18 +327,18 @@ public class GuideBookData {
                 "Wear a full matching armor set for combat bonuses!\n\n" +
                 "Leather (Brawler): +2 Physical dmg, kill streak damage bonus\n" +
                 "Chainmail (Rogue): +1 Speed, -1 AP cost, +2 Slashing dmg\n" +
-                "Iron (Guard): +2 DEF, KB immune, +2 Cleaving dmg\n" +
+                "Iron (Guard): +2 AC, KB immune, +2 Cleaving dmg\n" +
                 "Gold (Gambler): +15% crit, +1 emerald/kill, +2 Special dmg"),
             new Page("Advanced Sets",
-                "Diamond (Knight): +3 DEF, +1 ATK, +2 Blunt dmg\n" +
-                "Netherite (Juggernaut): +4 DEF, +2 ATK, fire immune, +1 ALL dmg types\n" +
+                "Diamond (Knight): +3 AC, +1 ATK, +2 Blunt dmg\n" +
+                "Netherite (Juggernaut): +4 AC, +2 ATK, fire immune, +1 ALL dmg types\n" +
                 "Turtle Helmet (Aquatic): Walk on water, +1 HP regen, +3 Water dmg\n\n" +
                 "Each set has a Damage Type affinity - check the Damage Affinities panel in your inventory!")
         )));
         equipment.add(new Entry("Shield", "minecraft:shield", List.of(
             new Page("Shield Mechanics",
                 "Equip a shield in your OFFHAND slot.\n\n" +
-                "Passive: +1 Defense at all times.\n\n" +
+                "Passive: +1 Armor Class at all times.\n\n" +
                 "Block: 25% chance to completely block an incoming attack, negating all damage.\n\n" +
                 "No AP cost - purely passive! Equip and fight normally.")
         )));
@@ -370,7 +370,7 @@ public class GuideBookData {
                 "Loyalty: Trident ricochets to nearby enemies before returning. +1 ricochet per level (50% damage).\n\n" +
                 "Riptide: Dash through enemies instead of throwing."),
             new Page("Armor Enchantments",
-                "Protection: +1 DEF per 2 levels.\n\n" +
+                "Protection: +1 Armor Class per 2 levels worn.\n\n" +
                 "Fire Protection: Reduces fire damage (25%/50%/75%/100%).\n\n" +
                 "Thorns: Guaranteed damage reflection (15%/25%/35% of damage taken).\n\n" +
                 "Feather Falling: Knockback immunity. Attackers recoil off you.")
@@ -489,12 +489,12 @@ public class GuideBookData {
                 "Wild: +1 AP /piece\n  Full Set: Feral (1.3x kill streak dmg)"),
             new Page("Overworld Trims (cont.)",
                 "Wayfinder: +1 Speed /piece\n  Full Set: Pathfinder (ignore obstacles)\n\n" +
-                "Shaper: +1 Defense /piece\n  Full Set: Terraformer (free barrier/turn)\n\n" +
+                "Shaper: +1 Armor Class /piece\n  Full Set: Terraformer (free barrier/turn)\n\n" +
                 "Raiser: +1 ally damage /piece\n  Full Set: Rally (allies +2 Spd, +1 Atk)\n\n" +
                 "Host: +2 max HP /piece\n  Full Set: Symbiote (heal 1 HP/kill)\n\n" +
                 "Tide: +1 HP regen per 2 turns /piece\n  Full Set: Ocean's Blessing (emergency heal)"),
             new Page("Nether Trims",
-                "Ward: +1 Defense /piece\n  Full Set: Fortress (50% less dmg when stationary)\n\n" +
+                "Ward: +1 Armor Class /piece\n  Full Set: Fortress (50% less dmg when stationary)\n\n" +
                 "Snout: +1 Cleaving Power /piece\n  Full Set: Brute Force (splash damage)\n\n" +
                 "Rib: +1 Special Power /piece\n  Full Set: Infernal (fire +3 bonus dmg)\n\n" +
                 "Eye: +1 Attack Range /piece\n  Full Set: All-Seeing (see enemy stats)"),
@@ -506,7 +506,7 @@ public class GuideBookData {
                 "Bolt: +1 Slashing Power /piece\n  Full Set: Thunderstrike (crits stun)"),
             new Page("Trim Materials",
                 "The MATERIAL you use to apply a trim also grants a bonus!\n\n" +
-                "Iron: +1 Defense /piece\n" +
+                "Iron: +1 Armor Class /piece\n" +
                 "Copper: +1 Speed /piece\n" +
                 "Gold: +1 Luck /piece\n" +
                 "Lapis: +1 Special Power /piece\n" +

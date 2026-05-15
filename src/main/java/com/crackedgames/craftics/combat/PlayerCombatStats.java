@@ -24,8 +24,49 @@ public class PlayerCombatStats {
         return com.crackedgames.craftics.api.registry.WeaponRegistry.getAttackPower(weapon);
     }
 
+    /**
+     * Vanilla armor value. Retained for legacy callers that read raw armor
+     * points; for incoming-damage mitigation use {@link #getArmorClass} instead
+     * — the AC overhaul replaced %-reduction with an AC-driven dodge roll.
+     */
     public static int getDefense(ServerPlayerEntity player) {
         return player.getArmor();
+    }
+
+    /** Passive Armor Class granted while a shield is held in the offhand. */
+    public static final int SHIELD_PASSIVE_AC = 1;
+
+    /**
+     * Total Armor Class used for the incoming-damage dodge roll. Sums the
+     * per-piece AC of worn armor ({@link ArmorClassTable}) with every defense
+     * bonus source: Protection enchants, armor-set bonus, Resistance, the
+     * DEFENSE progression stat, trim defense, banner aura, and the shield
+     * passive. There is no soft-cap — the dodge formula's 40% cap bounds the
+     * benefit of stacking AC. See {@code DodgeRoll} and the AC overhaul spec.
+     *
+     * @param combatEffects    active combat effects (may be null)
+     * @param trimScan         active trim scan (may be null)
+     * @param progDefenseBonus the player's DEFENSE progression stat points
+     * @param bannerBonus      banner-aura AC for the player's current tile
+     */
+    public static int getArmorClass(ServerPlayerEntity player,
+                                    CombatEffects combatEffects,
+                                    TrimEffects.TrimScan trimScan,
+                                    int progDefenseBonus,
+                                    int bannerBonus) {
+        int ac = 0;
+        for (EquipmentSlot slot : new EquipmentSlot[]{
+                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            ac += ArmorClassTable.getPieceAC(player.getEquippedStack(slot));
+        }
+        ac += getTotalProtection(player);
+        ac += getSetDefenseBonus(player);
+        if (combatEffects != null) ac += combatEffects.getResistanceBonus();
+        ac += Math.max(0, progDefenseBonus);
+        if (trimScan != null) ac += trimScan.get(TrimEffects.Bonus.DEFENSE);
+        ac += Math.max(0, bannerBonus);
+        if (hasShield(player)) ac += SHIELD_PASSIVE_AC;
+        return Math.max(0, ac);
     }
 
     /** Crossbow uses special rook pattern — return -1 to signal unlimited cardinal range. */

@@ -50,6 +50,23 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
         com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
 
+        // Addon entrypoint — invoked after all built-in content and compat modules are
+        // registered, so addon registrations run last and win deterministically over
+        // any same-keyed built-in entry. Addons declare a "craftics" entrypoint in
+        // their fabric.mod.json pointing at a CrafticsAddon implementation.
+        for (com.crackedgames.craftics.api.CrafticsAddon addon :
+                net.fabricmc.loader.api.FabricLoader.getInstance()
+                    .getEntrypoints("craftics", com.crackedgames.craftics.api.CrafticsAddon.class)) {
+            try {
+                addon.onCrafticsInit();
+            } catch (Throwable t) {
+                LOGGER.error("Craftics addon failed during onCrafticsInit()", t);
+            }
+        }
+
+        // JSON datapack loaders — run on server start and after /reload.
+        com.crackedgames.craftics.data.CrafticsDataLoaders.init();
+
         // Register custom chunk generator codec
         Registry.register(Registries.CHUNK_GENERATOR, Identifier.of(MOD_ID, "void"), VoidChunkGenerator.CODEC);
 

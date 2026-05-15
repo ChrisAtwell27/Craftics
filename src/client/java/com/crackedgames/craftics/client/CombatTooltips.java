@@ -215,7 +215,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "quick_charge" -> "\u00a7a\u26A1 Quick Charge " + toRoman(level) + ": \u00a77Crossbow costs " + Math.max(1, 4 - level) + " AP";
 
             // Armor defense
-            case "protection" -> "\u00a79\u26E8 Protection " + toRoman(level) + ": \u00a77+" + (level / 2 + 1) + " defense";
+            case "protection" -> "\u00a79\u26E8 Protection " + toRoman(level) + ": \u00a77+" + (level / 2 + 1) + " Armor Class";
             case "blast_protection" -> "\u00a76\u26E8 Blast Prot " + toRoman(level) + ": \u00a77-" + level + " explosion damage";
             case "projectile_protection" -> "\u00a7b\u26E8 Proj Prot " + toRoman(level) + ": \u00a77-" + level + " ranged damage taken";
             case "fire_protection" -> "\u00a7c\u26E8 Fire Prot " + toRoman(level) + ": \u00a77-" + level + " fire damage taken";
@@ -314,7 +314,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "instant_health" -> prefix + "\u00a7aHealing" + lvl + ": \u00a77Restore " + (4 + amplifier * 4) + " HP instantly";
             case "instant_damage" -> prefix + "\u00a74Harming" + lvl + ": \u00a77Deal " + (4 + amplifier * 4) + " damage";
             case "regeneration" -> prefix + "\u00a7dRegen" + lvl + ": \u00a77+2 HP/turn for 3 turns";
-            case "resistance" -> prefix + "\u00a79Resistance" + lvl + ": \u00a77+2 defense for 3 turns";
+            case "resistance" -> prefix + "\u00a79Resistance" + lvl + ": \u00a77+2 Armor Class for 3 turns";
             case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for 3 turns, \u00a75+1 Special Power";
             case "poison" -> prefix + "\u00a72Poison" + lvl + ": \u00a77-" + (1 + amplifier) + " HP/turn for 3 turns";
             case "invisibility" -> prefix + "\u00a77Invisibility: \u00a77Enemies skip your turn for 2 turns";
@@ -386,7 +386,7 @@ public class CombatTooltips implements ItemTooltipCallback {
     }
 
     private static String getHornVariantTooltip(String nameStr) {
-        if (nameStr.contains("Ponder")) return "\u00a77Ponder Horn \u2014 \u00a77\u00a7oA contemplative note... \u00a79+2 Defense for 3 turns \u00a78(AP: 1)";
+        if (nameStr.contains("Ponder")) return "\u00a77Ponder Horn \u2014 \u00a77\u00a7oA contemplative note... \u00a79+2 Armor Class for 3 turns \u00a78(AP: 1)";
         if (nameStr.contains("Sing")) return "\u00a7eSing Horn \u2014 \u00a7e\u00a7oAn uplifting melody! \u00a7a+2 HP regen for 3 turns \u00a78(AP: 1)";
         if (nameStr.contains("Seek")) return "\u00a76Seek Horn \u2014 \u00a76\u00a7oA rallying cry! \u00a7c+3 Attack for 3 turns \u00a78(AP: 2)";
         if (nameStr.contains("Feel")) return "\u00a7dFeel Horn \u2014 \u00a7d\u00a7oA soothing hum... \u00a7b+2 Speed for 3 turns \u00a78(AP: 1)";
@@ -403,7 +403,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "dune"      -> "+1 Blunt Power per piece";
             case "coast"     -> "+1 Water Power per piece";
             case "wild"      -> "+1 AP per piece";
-            case "ward"      -> "+1 Defense per piece";
+            case "ward"      -> "+1 Armor Class per piece";
             case "eye"       -> "+1 Attack Range per piece";
             case "vex"       -> "Ignore 1 enemy DEF per piece";
             case "tide"      -> "+1 HP regen per 2 turns per piece";
@@ -411,7 +411,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "rib"       -> "+1 Special Power per piece";
             case "spire"     -> "+1 Luck per piece";
             case "wayfinder" -> "+1 Speed per piece";
-            case "shaper"    -> "+1 Defense per piece";
+            case "shaper"    -> "+1 Armor Class per piece";
             case "silence"   -> "+1 stealth range per piece";
             case "raiser"    -> "+1 ally damage per piece";
             case "host"      -> "+2 max HP per piece";
@@ -712,7 +712,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Iron
         if (item == Items.IRON_HELMET || item == Items.IRON_CHESTPLATE
             || item == Items.IRON_LEGGINGS || item == Items.IRON_BOOTS)
-            return "\u00a7fSet Bonus (full set): Guard\n\u00a77+2 Defense, knockback immune\n\u00a76Type Affinity: \u00a77+2 Cleaving Power";
+            return "\u00a7fSet Bonus (full set): Guard\n\u00a77+2 Armor Class, knockback immune\n\u00a76Type Affinity: \u00a77+2 Cleaving Power";
         // Gold
         if (item == Items.GOLDEN_HELMET || item == Items.GOLDEN_CHESTPLATE
             || item == Items.GOLDEN_LEGGINGS || item == Items.GOLDEN_BOOTS)
@@ -720,11 +720,11 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Diamond
         if (item == Items.DIAMOND_HELMET || item == Items.DIAMOND_CHESTPLATE
             || item == Items.DIAMOND_LEGGINGS || item == Items.DIAMOND_BOOTS)
-            return "\u00a7bSet Bonus (full set): Knight\n\u00a77+3 Defense, +1 Attack\n\u00a78Type Affinity: \u00a77+2 Blunt Power";
+            return "\u00a7bSet Bonus (full set): Knight\n\u00a77+3 Armor Class, +1 Attack\n\u00a78Type Affinity: \u00a77+2 Blunt Power";
         // Netherite
         if (item == Items.NETHERITE_HELMET || item == Items.NETHERITE_CHESTPLATE
             || item == Items.NETHERITE_LEGGINGS || item == Items.NETHERITE_BOOTS)
-            return "\u00a74Set Bonus (full set): Juggernaut\n\u00a77+4 Defense, +2 Attack, fire immune\n\u00a7eType Affinity: \u00a77+1 All Damage Types";
+            return "\u00a74Set Bonus (full set): Juggernaut\n\u00a77+4 Armor Class, +2 Attack, fire immune\n\u00a7eType Affinity: \u00a77+1 All Damage Types";
         // Turtle
         if (item == Items.TURTLE_HELMET)
             return "\u00a72Set Bonus: Aquatic\n\u00a77Water tiles walkable, +1 HP regen/turn\n\u00a77+1 Range when standing on water\n\u00a73Type Affinity: \u00a77+3 Water Power";
@@ -755,7 +755,7 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         // ── Banners ──
         if (item.toString().contains("banner"))
-            return "\u00a751 AP \u00a77- Plant defense zone\n\u00a77+2 DEF for player/allies within 2 tiles";
+            return "\u00a751 AP \u00a77- Plant defense zone\n\u00a77+2 Armor Class for you/allies within 2 tiles";
 
         // ── Move item ──
         if (item == Items.FEATHER) return "\u00a7aSelect to enter Move Mode\n\u00a77Click tiles to move your character";
