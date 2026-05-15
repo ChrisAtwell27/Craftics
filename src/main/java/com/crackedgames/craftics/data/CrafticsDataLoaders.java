@@ -33,10 +33,12 @@ public final class CrafticsDataLoaders {
         if (initialized) return;
         initialized = true;
 
-        // Built-in loaders. The armor-set and trim loaders are intentionally not yet
-        // registered — they are pending the armor-class overhaul, which may change the
-        // armor/trim data shapes. The event loader is pending EventTemplates.
+        // Built-in datapack loaders. An event loader is still pending — it depends
+        // on EventTemplates, which is not yet implemented.
         register(new WeaponJsonLoader());
+        register(new ArmorSetJsonLoader());
+        register(new TrimPatternJsonLoader());
+        register(new TrimMaterialJsonLoader());
         register(new EnchantmentJsonLoader());
 
         ServerLifecycleEvents.SERVER_STARTED.register(
