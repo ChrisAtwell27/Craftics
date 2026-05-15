@@ -1,16 +1,39 @@
 package com.crackedgames.craftics.api.registry;
 
+import com.crackedgames.craftics.api.RegistrationSource;
 import com.crackedgames.craftics.combat.DamageType;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class ArmorSetRegistry {
     private static final Map<String, ArmorSetEntry> REGISTRY = new ConcurrentHashMap<>();
+    /** Set IDs whose current entry came from a JSON datapack — dropped on /reload. */
+    private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private ArmorSetRegistry() {}
 
+    /** Register an armor set from code (survives {@code /reload}). */
     public static void register(ArmorSetEntry entry) {
+        register(entry, RegistrationSource.CODE);
+    }
+
+    /** Register an armor set, tagging whether it came from code or a datapack. */
+    public static void register(ArmorSetEntry entry, RegistrationSource source) {
         REGISTRY.put(entry.armorSetId(), entry);
+        if (source == RegistrationSource.DATAPACK) {
+            DATAPACK_KEYS.add(entry.armorSetId());
+        } else {
+            DATAPACK_KEYS.remove(entry.armorSetId());
+        }
+    }
+
+    /** Remove every armor set entry that was loaded from a JSON datapack. */
+    public static void clearDatapackEntries() {
+        for (String id : DATAPACK_KEYS) {
+            REGISTRY.remove(id);
+        }
+        DATAPACK_KEYS.clear();
     }
 
     public static ArmorSetEntry get(String armorSetId) {

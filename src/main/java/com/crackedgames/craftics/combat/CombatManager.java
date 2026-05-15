@@ -1072,8 +1072,10 @@ public class CombatManager {
     private java.util.UUID droppedTridentOwner = null;
     public GridPos getDroppedTridentPos() { return droppedTridentPos; }
 
-    private static final int SHIELD_PASSIVE_DEFENSE = 1;
     private static final double SHIELD_BLOCK_CHANCE = 0.25;
+
+    /** RNG for the incoming-damage AC dodge roll. */
+    private final java.util.Random combatRng = new java.util.Random();
 
     private int getPlayerHp() {
         if (player == null) return 0;
@@ -1103,24 +1105,37 @@ public class CombatManager {
     }
 
     private int damagePlayer(int rawDamage, CombatEntity attacker) {
-        // ETHEREAL set bonus: 20% dodge chance
-        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.ETHEREAL) {
-            if (Math.random() < 0.20) {
-                sendMessage("§b§l✦ Ethereal! §r§7Attack phased through you!");
+        // AC dodge roll — only enemy attacks roll. Environmental/self damage
+        // (attacker == null) and DoT ticks bypass the roll and apply directly.
+        // The attack's resolved damage (rawDamage) doubles as the enemy's
+        // effective attack value fed to the dodge formula.
+        if (attacker != null) {
+            int ac = PlayerCombatStats.getArmorClass(player, combatEffects, activeTrimScan,
+                getProgDefenseBonus(),
+                BannerEffects.defenseBonusAt(arena.getPlayerGridPos(), tileEffects));
+            DodgeRoll.DodgeResult dodge = DodgeRoll.roll(ac, rawDamage, combatRng);
+            if (dodge.dodged()) {
+                playDodgeFeedback("§b§l✦ DODGED!",
+                    "§b§l✦ Dodged!§r §7You slipped past the " + attacker.getDisplayName() + "'s attack.");
                 fireEffectHook(h -> h.onDodge(effectContext, attacker));
                 return 0;
             }
         }
 
-        int trimDefense = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.DEFENSE) : 0;
-        int defense = PlayerCombatStats.getDefense(player) + combatEffects.getResistanceBonus() + getProgDefenseBonus() + PlayerCombatStats.getSetDefenseBonus(player) + PlayerCombatStats.getTotalProtection(player) + trimDefense;
-        boolean hasShield = PlayerCombatStats.hasShield(player);
-        if (hasShield) {
-            defense += SHIELD_PASSIVE_DEFENSE;
+        // ETHEREAL set bonus: an extra 20% dodge layer, independent of AC.
+        if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.ETHEREAL) {
+            if (Math.random() < 0.20) {
+                playDodgeFeedback("§b§l✦ ETHEREAL!",
+                    "§b§l✦ Ethereal!§r §7The attack phased through you!");
+                fireEffectHook(h -> h.onDodge(effectContext, attacker));
+                return 0;
+            }
         }
-        // Shield passive: 25% chance to fully block the attack
-        if (hasShield && Math.random() < SHIELD_BLOCK_CHANCE) {
-            sendMessage("§9§l🛡 Shield blocked! §r§7Attack deflected!");
+
+        // Shield passive: 25% chance to fully block the attack.
+        if (PlayerCombatStats.hasShield(player) && Math.random() < SHIELD_BLOCK_CHANCE) {
+            playDodgeFeedback("§9§l🛡 BLOCKED!",
+                "§9§l🛡 Shield blocked!§r §7Attack deflected!");
             fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
             // Successful block consumes shield durability
             ItemStack shieldStack = player.getEquippedStack(net.minecraft.entity.EquipmentSlot.OFFHAND);
@@ -1129,15 +1144,9 @@ public class CombatManager {
             }
             return 0;
         }
-        int bannerBonus = BannerEffects.defenseBonusAt(arena.getPlayerGridPos(), tileEffects);
-        defense += bannerBonus;
-        // Each defense point = 5% reduction, capped at 60%
-        double reduction = Math.min(0.60, defense * 0.05);
-        int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
-        if (bannerBonus > 0 && rawDamage > 0) {
-            int bannerReductionPct = bannerBonus * 5;
-            sendMessage("§5🛡 Banner aura§r §7reduced damage by §5" + bannerReductionPct + "%§7.");
-        }
+
+        // The hit lands — flat damage, no %-reduction under the AC system.
+        int actual = Math.max(0, rawDamage);
 
         // FORTRESS set bonus: 50% less damage when player didn't move this turn
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTRESS && !movedThisTurn) {
@@ -1193,6 +1202,38 @@ public class CombatManager {
         MobThemeTags.applyOnHitEffect(this, attacker);
 
         return actual;
+    }
+
+    /**
+     * Plays the three-channel "the attack didn't land" feedback burst — a
+     * whoosh + confirming chime, a swoosh/cloud particle puff, and prominent
+     * text. Shared by the AC dodge, the Ethereal dodge, and the shield block so
+     * all three no-hit outcomes feel equally satisfying. Kept deliberately short
+     * so it stays punchy even when a high-AC player dodges frequently.
+     *
+     * @param actionBarText short punchy text flashed above the hotbar
+     * @param chatLine      descriptive line sent to chat
+     */
+    private void playDodgeFeedback(String actionBarText, String chatLine) {
+        if (player == null) return;
+        net.minecraft.util.math.BlockPos pos = player.getBlockPos();
+        // Sound: the attack whooshing past + a bright confirming ping.
+        player.getWorld().playSound(null, pos,
+            net.minecraft.sound.SoundEvents.ENTITY_PLAYER_ATTACK_SWEEP,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        player.getWorld().playSound(null, pos,
+            net.minecraft.sound.SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.4f);
+        // Particles: a swoosh arc + a quick puff at the player's feet.
+        if (player.getEntityWorld() instanceof ServerWorld sw) {
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                player.getX(), player.getY() + 1.0, player.getZ(), 2, 0.3, 0.3, 0.3, 0.0);
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                player.getX(), player.getY() + 0.4, player.getZ(), 8, 0.3, 0.1, 0.3, 0.02);
+        }
+        // Text: prominent action-bar flash + a descriptive chat line.
+        player.sendMessage(net.minecraft.text.Text.literal(actionBarText), true);
+        sendMessage(chatLine);
     }
 
     private int getProgMeleeBonus() {
@@ -6822,20 +6863,28 @@ public class CombatManager {
                             }
                         }
                         if (memberHit) {
-                            int armorDef = PlayerCombatStats.getDefense(member);
-                            double reduction = Math.min(0.60, armorDef * 0.05);
-                            int actual = Math.max(1, (int)(swoop.damage() * (1.0 - reduction)));
-                            member.setHealth(Math.max(1, member.getHealth() - actual));
-                            sendMessage("§c  Chains through " + member.getName().getString()
-                                + " for " + actual + " damage!");
-                            swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
-                                member.getX(), member.getY() + 1.0, member.getZ(),
-                                10, 0.3, 0.5, 0.3, 0.03);
-                            if ((int) member.getHealth() <= 1) {
-                                ServerPlayerEntity savedPlayer = this.player;
-                                this.player = member;
-                                handlePlayerDeathOrGameOver();
-                                this.player = savedPlayer;
+                            // Party member's AC dodge roll. Member-specific
+                            // combat effects / trims aren't tracked here, so
+                            // pass their armor + Defense stat only.
+                            int memberAc = PlayerCombatStats.getArmorClass(member, null, null,
+                                PlayerProgression.get((ServerWorld) member.getEntityWorld())
+                                    .getStats(member).getPoints(PlayerProgression.Stat.DEFENSE), 0);
+                            if (DodgeRoll.roll(memberAc, swoop.damage(), combatRng).dodged()) {
+                                sendMessage("§b  " + member.getName().getString() + " dodged the swoop!");
+                            } else {
+                                int actual = Math.max(1, swoop.damage());
+                                member.setHealth(Math.max(1, member.getHealth() - actual));
+                                sendMessage("§c  Chains through " + member.getName().getString()
+                                    + " for " + actual + " damage!");
+                                swoopWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                                    member.getX(), member.getY() + 1.0, member.getZ(),
+                                    10, 0.3, 0.5, 0.3, 0.03);
+                                if ((int) member.getHealth() <= 1) {
+                                    ServerPlayerEntity savedPlayer = this.player;
+                                    this.player = member;
+                                    handlePlayerDeathOrGameOver();
+                                    this.player = savedPlayer;
+                                }
                             }
                         }
                     }

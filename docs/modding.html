@@ -900,6 +900,17 @@ CrafticsAPI.registerEnchantment("mymod:swiftness", (ctx) -&gt; {
         </tbody>
       </table>
     </div>
+    <div class="callout">
+      <p><strong>Mob pool entries</strong> each take <code>type</code>, <code>weight</code> (relative
+      spawn chance), <code>hp</code>, <code>attack</code>, <code>defense</code>, and <code>range</code>.
+      <code>attack</code> is the mob's <em>base</em> attack &mdash; Craftics scales it up automatically
+      with the biome's progression depth (governed by the <code>atkPerBiome</code> config). The scaled
+      value is both the flat damage a landed hit deals and the number checked against the player's
+      <a href="combat.html#armor-class">Armor Class</a> for dodge chance. <code>defense</code> still
+      uses percentage reduction for damage the mob <em>receives</em>. Keep base <code>attack</code>
+      modest (roughly 1&ndash;10) &mdash; deeper biomes add a lot on top, and a landed hit deals full
+      flat damage with no reduction.</p>
+    </div>
 
     <h3>Programmatic Registration</h3>
     <pre><code>CrafticsAPI.registerBiome(myBiomeTemplate);

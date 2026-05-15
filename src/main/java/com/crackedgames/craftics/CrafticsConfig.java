@@ -40,9 +40,15 @@ public class CrafticsConfig {
     @RangeConstraint(min = 0, max = 5)
     public int hpPerLevel = 2;
 
-    /** Attack bonus divisor per biome. Lower = faster attack scaling. atkBonus = biomeOrdinal / atkPerBiome. */
+    /**
+     * Attack bonus divisor per biome. Lower = faster attack scaling.
+     * atkBonus = biomeOrdinal / atkPerBiome + (biomeIndex + 1) / 2.
+     * <p>Default 4: under the Armor Class system a landed hit deals flat damage
+     * (no %-reduction), so steep biome attack scaling would make late-game hits
+     * lethal. A gentle divisor keeps effective enemy attack in a survivable band.
+     */
     @RangeConstraint(min = 1, max = 10)
-    public int atkPerBiome = 1;
+    public int atkPerBiome = 4;
 
     /** Defense bonus divisor per biome. Lower = faster defense scaling. defBonus = biomeOrdinal / defPerBiome. */
     @RangeConstraint(min = 1, max = 10)

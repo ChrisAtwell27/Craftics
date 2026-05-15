@@ -17,7 +17,7 @@
       {"type": "minecraft:shulker", "weight": 4, "hp": 18, "attack": 8, "defense": 2, "range": 5},
       {"type": "minecraft:phantom", "weight": 3, "hp": 14, "attack": 7, "defense": 1}
     ],
-    "boss": {"type": "minecraft:ender_dragon", "hp": 100, "attack": 15, "defense": 5}
+    "boss": {"type": "minecraft:ender_dragon", "hp": 100, "attack": 11, "defense": 5}
   },
   "loot": [
     {"item": "minecraft:dragon_breath", "weight": 4},

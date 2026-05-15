@@ -24,7 +24,7 @@ public class PlayerProgression extends PersistentState {
         MELEE_POWER("Melee Power", "§c⚔", "+1 melee damage", 0),
         RANGED_POWER("Ranged Power", "§d\uD83C\uDFF9", "+1 ranged damage", 0),
         VITALITY("Vitality", "§a❤", "+2 max HP", 0),
-        DEFENSE("Defense", "§9\uD83D\uDEE1", "+1 damage reduction", 0),
+        DEFENSE("Defense", "§9\uD83D\uDEE1", "+1 Armor Class", 0),
         LUCK("Luck", "§6✦", "+2% all combat procs & loot", 0),
         RESOURCEFUL("Resourceful", "§2\uD83D\uDCB0", "+1 emerald/level & trader discount", 0);
 
