@@ -375,6 +375,43 @@ public class CombatEntity {
         defensePenalty = Math.min(MAX_EFFECT_AMPLIFIER, defensePenalty + penaltyIncrease);
     }
 
+    // --- Custom (addon-registered) status effects ---------------------------
+    // Keyed by effect id; value is [turnsRemaining, amplifier]. Ticked by
+    // CombatManager alongside the built-in DOTs. See the Craftics Addon SDK.
+    private final java.util.Map<String, int[]> customEffects = new java.util.LinkedHashMap<>();
+
+    /**
+     * Apply (or refresh) a custom status effect. Duration takes the longer value;
+     * amplifier stacks up to the shared effect cap.
+     */
+    public void applyCustomEffect(String effectId, int turns, int amplifier) {
+        int[] existing = customEffects.get(effectId);
+        if (existing != null) {
+            existing[0] = Math.max(existing[0], turns);
+            existing[1] = Math.min(MAX_EFFECT_AMPLIFIER, existing[1] + amplifier);
+        } else {
+            customEffects.put(effectId, new int[]{turns, amplifier});
+        }
+    }
+
+    /** Whether a custom effect with at least one turn remaining is active. */
+    public boolean hasCustomEffect(String effectId) {
+        int[] e = customEffects.get(effectId);
+        return e != null && e[0] > 0;
+    }
+
+    /** Current amplifier of a custom effect ({@code 0} if not active). */
+    public int getCustomEffectAmplifier(String effectId) {
+        int[] e = customEffects.get(effectId);
+        return e != null ? e[1] : 0;
+    }
+
+    /**
+     * Live custom-effect state — effect id to {@code [turnsRemaining, amplifier]}.
+     * CombatManager ticks, applies, and expires these each round.
+     */
+    public java.util.Map<String, int[]> getCustomEffects() { return customEffects; }
+
     public int getEffectiveDefense() {
         return Math.max(0, defense - defensePenalty - permanentDefReduction);
     }

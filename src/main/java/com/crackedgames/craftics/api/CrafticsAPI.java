@@ -95,6 +95,20 @@ public final class CrafticsAPI {
         UsableItemRegistry.register(item, entry);
     }
 
+    // === Custom Status Effects ===
+
+    /**
+     * Register a custom combat status effect. Addon content can then apply it to
+     * combatants (via a {@code UsableItemHandler} or {@code CombatEntity}), and it
+     * ticks each round alongside Craftics' built-in damage-over-time effects.
+     * Use {@link CustomEffectDef#builder(String)} for a fluent API.
+     *
+     * @param def the effect definition
+     */
+    public static void registerEffect(CustomEffectDef def) {
+        CombatEffectRegistry.register(def);
+    }
+
     // === New: Equipment Scanners ===
 
     /**

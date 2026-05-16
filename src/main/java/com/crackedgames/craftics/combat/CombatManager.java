@@ -5387,6 +5387,46 @@ public class CombatManager {
         return null;
     }
 
+    /**
+     * Tick every custom (addon-registered) status effect on {@code e}: apply its
+     * per-turn HP change (scaled by amplifier), run its scripted handler, decrement,
+     * and expire at zero turns. Called from the per-round DOT processing.
+     */
+    private void tickCustomEffects(CombatEntity e) {
+        java.util.Iterator<java.util.Map.Entry<String, int[]>> it =
+            e.getCustomEffects().entrySet().iterator();
+        while (it.hasNext()) {
+            java.util.Map.Entry<String, int[]> entry = it.next();
+            com.crackedgames.craftics.api.CustomEffectDef def =
+                com.crackedgames.craftics.api.registry.CombatEffectRegistry.get(entry.getKey());
+            if (def == null) {
+                it.remove(); // effect no longer registered (datapack removed on /reload)
+                continue;
+            }
+            int[] state = entry.getValue(); // [turnsRemaining, amplifier]
+            int amplifier = state[1];
+            int hpChange = def.hpChangePerTurn() * (amplifier + 1);
+            if (hpChange < 0) {
+                int dealt = applyStatusDot(e, -hpChange);
+                sendMessage(def.colorCode() + e.getDisplayName() + " suffers " + dealt
+                    + " from " + def.displayName() + ".");
+            } else if (hpChange > 0) {
+                e.heal(hpChange);
+            }
+            if (def.tickHandler() != null) {
+                try {
+                    def.tickHandler().onTick(e, amplifier, state[0]);
+                } catch (Throwable t) {
+                    CrafticsMod.LOGGER.error("Custom effect tick handler failed for {}", def.id(), t);
+                }
+            }
+            state[0]--;
+            if (state[0] <= 0 || !e.isAlive()) {
+                it.remove();
+            }
+        }
+    }
+
     /** {@code UsableItemContext} implementation backed by this combat session. */
     private final class UsableItemContextImpl implements com.crackedgames.craftics.api.UsableItemContext {
         private final GridPos targetPos;
@@ -5440,7 +5480,11 @@ public class CombatManager {
         }
         @Override public void applyCustomEffect(CombatEntity target, String effectId,
                                                 int turns, int amplifier) {
-            // Custom (addon-registered) status effects arrive in Phase 2 of the Addon SDK.
+            if (com.crackedgames.craftics.api.registry.CombatEffectRegistry.get(effectId) == null) {
+                CrafticsMod.LOGGER.warn("applyCustomEffect: no effect registered with id '{}'", effectId);
+                return;
+            }
+            target.applyCustomEffect(effectId, turns, amplifier);
         }
 
         @Override public void stun(CombatEntity target) {
@@ -6353,6 +6397,13 @@ public class CombatManager {
                         6, 0.3, 0.5, 0.3, 0.02);
                 }
                 e.setBleedStacks(Math.max(0, e.getBleedStacks() - 1));
+                checkAndHandleDeath(e);
+            }
+
+            // --- Custom (addon-registered) effect ticks ---
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.getCustomEffects().isEmpty()) continue;
+                tickCustomEffects(e);
                 checkAndHandleDeath(e);
             }
 
@@ -15299,6 +15350,14 @@ public class CombatManager {
             if (e.getConfusionTurns() > 0) efx.append(";Confused(" + e.getConfusionTurns() + "t)");
             if (e.getDefensePenaltyTurns() > 0) efx.append(";Exposed(-" + e.getDefensePenalty() + "DEF," + e.getDefensePenaltyTurns() + "t)");
             if (e.getBleedStacks() > 0) efx.append(";Bleeding(" + e.getBleedStacks() + " stacks)");
+            for (java.util.Map.Entry<String, int[]> ce : e.getCustomEffects().entrySet()) {
+                com.crackedgames.craftics.api.CustomEffectDef cdef =
+                    com.crackedgames.craftics.api.registry.CombatEffectRegistry.get(ce.getKey());
+                if (cdef != null && ce.getValue()[0] > 0) {
+                    efx.append(";").append(cdef.displayName())
+                        .append("(").append(ce.getValue()[0]).append("t)");
+                }
+            }
             typeIds.append(efx);
             // Enchantments on equipped gear (weapon + armor). Format: ";ench=name:lvl,name:lvl"
             String enchStr = buildEnchantSyncString(e.getMobEntity());
