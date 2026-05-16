@@ -40,6 +40,7 @@ public final class CrafticsDataLoaders {
         register(new TrimPatternJsonLoader());
         register(new TrimMaterialJsonLoader());
         register(new EnchantmentJsonLoader());
+        register(new UsableItemJsonLoader());
 
         ServerLifecycleEvents.SERVER_STARTED.register(
             server -> loadAll(server.getResourceManager()));

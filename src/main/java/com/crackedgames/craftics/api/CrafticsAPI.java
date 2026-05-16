@@ -79,6 +79,22 @@ public final class CrafticsAPI {
         WeaponRegistry.register(item, entry);
     }
 
+    // === Usable Items ===
+
+    /**
+     * Register an item the player can use during a Craftics turn — a consumable,
+     * throwable, or special-effect item. Registered items are checked before
+     * Craftics' built-in item handling, so an addon can add new usable items (or
+     * override a vanilla one) without touching combat code.
+     * Use {@link UsableItemEntry#builder(Item)} for a fluent API.
+     *
+     * @param item  the usable item
+     * @param entry the item's combat data and effect handler
+     */
+    public static void registerUsableItem(Item item, UsableItemEntry entry) {
+        UsableItemRegistry.register(item, entry);
+    }
+
     // === New: Equipment Scanners ===
 
     /**

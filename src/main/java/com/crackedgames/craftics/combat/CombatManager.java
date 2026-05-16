@@ -4832,6 +4832,16 @@ public class CombatManager {
         // Variable AP cost based on item type (stack-aware for goat horns)
         ItemStack heldStack = player.getMainHandStack();
         Item heldItem = heldStack.getItem();
+
+        // Registered usable items (addon mods / JSON datapacks) take priority over
+        // Craftics' built-in item handling. Unregistered items fall through unchanged.
+        com.crackedgames.craftics.api.registry.UsableItemEntry customEntry =
+            com.crackedgames.craftics.api.registry.UsableItemRegistry.getOrNull(heldItem);
+        if (customEntry != null) {
+            handleCustomUsableItem(targetTile, customEntry);
+            return;
+        }
+
         int apCost = ItemUseHandler.getApCost(heldStack);
 
         if (apRemaining < apCost) {
@@ -5269,6 +5279,207 @@ public class CombatManager {
 
         sendSync();
         refreshHighlights();
+    }
+
+    // ===== Addon SDK — registered usable items ===============================
+
+    /**
+     * Handle use of an item registered in {@code UsableItemRegistry} (addon or JSON
+     * datapack content). Validates AP and target, runs the item's handler through a
+     * {@link UsableItemContextImpl}, then spends AP, consumes the item, and runs the
+     * death/victory check. Built-in items never reach here — see {@link #handleUseItem}.
+     */
+    private void handleCustomUsableItem(GridPos targetTile,
+            com.crackedgames.craftics.api.registry.UsableItemEntry entry) {
+        int apCost = entry.apCost();
+        if (apRemaining < apCost) {
+            sendMessage("§cNeed " + apCost + " AP to use that! (have " + apRemaining + ")");
+            return;
+        }
+
+        String targetError = validateCustomItemTarget(entry, targetTile);
+        if (targetError != null) {
+            sendMessage(targetError);
+            sendSync();
+            refreshHighlights();
+            return;
+        }
+
+        UsableItemContextImpl ctx = new UsableItemContextImpl(targetTile, player.getMainHandStack());
+        com.crackedgames.craftics.api.ItemUseResult result;
+        try {
+            result = entry.handler().use(ctx);
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.error("Usable item handler failed for {}", entry.item(), t);
+            sendMessage("§cThat item fizzled.");
+            return;
+        }
+
+        if (result == null || !result.success()) {
+            if (result != null && result.failureMessage() != null) {
+                sendMessage(result.failureMessage());
+            }
+            sendSync();
+            refreshHighlights();
+            return;
+        }
+
+        // Success — spend AP, consume the item, play the use sound.
+        apRemaining -= apCost;
+        if (entry.consumedOnUse() && !player.isCreative()) {
+            player.getMainHandStack().decrement(1);
+        }
+        player.getWorld().playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.ENTITY_ITEM_PICKUP,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.5f, 1.2f);
+
+        // Death / victory check (mirrors handleSherdSpell).
+        List<CombatEntity> deadEnemies = enemies.stream()
+            .filter(e -> !e.isAlive() && e.getMobEntity() != null && e.getMobEntity().isAlive())
+            .toList();
+        for (CombatEntity dead : deadEnemies) {
+            sendMessage("§a" + dead.getDisplayName() + " defeated!");
+            sendToAllParty(new CombatEventPayload(
+                CombatEventPayload.EVENT_DIED, dead.getEntityId(), 0, 0,
+                dead.getGridPos().x(), dead.getGridPos().z()
+            ));
+            killEnemy(dead);
+        }
+        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            handleVictory();
+            return;
+        }
+
+        sendSync();
+        refreshHighlights();
+    }
+
+    /** Validate a registered item's target against its TargetType and range. */
+    private String validateCustomItemTarget(
+            com.crackedgames.craftics.api.registry.UsableItemEntry entry, GridPos targetTile) {
+        com.crackedgames.craftics.api.TargetType targetType = entry.targetType();
+        if (targetType == com.crackedgames.craftics.api.TargetType.SELF) {
+            return null;
+        }
+        if (targetTile == null || !arena.isInBounds(targetTile)) {
+            return "§cInvalid target.";
+        }
+        if (entry.range() > 0) {
+            int dist = arena.getPlayerGridPos().manhattanDistance(targetTile);
+            if (dist > entry.range()) {
+                return "§cToo far — that item reaches " + entry.range() + " tile(s).";
+            }
+        }
+        CombatEntity occupant = arena.getOccupant(targetTile);
+        switch (targetType) {
+            case SINGLE_ENEMY -> {
+                if (occupant == null || !occupant.isAlive() || occupant.isAlly()) {
+                    return "§cThat item needs an enemy target.";
+                }
+            }
+            case SINGLE_ALLY -> {
+                if (occupant == null || !occupant.isAlive() || !occupant.isAlly()) {
+                    return "§cThat item needs an allied target.";
+                }
+            }
+            default -> { /* ANY_TILE, AOE — any in-range tile is valid */ }
+        }
+        return null;
+    }
+
+    /** {@code UsableItemContext} implementation backed by this combat session. */
+    private final class UsableItemContextImpl implements com.crackedgames.craftics.api.UsableItemContext {
+        private final GridPos targetPos;
+        private final ItemStack stack;
+
+        UsableItemContextImpl(GridPos targetPos, ItemStack stack) {
+            this.targetPos = targetPos;
+            this.stack = stack;
+        }
+
+        @Override public ServerPlayerEntity player() { return player; }
+        @Override public GridArena arena() { return arena; }
+        @Override public GridPos targetPos() {
+            return targetPos != null ? targetPos : arena.getPlayerGridPos();
+        }
+        @Override public CombatEntity targetEntity() {
+            return targetPos != null ? arena.getOccupant(targetPos) : null;
+        }
+        @Override public ItemStack stack() { return stack; }
+        @Override public List<CombatEntity> combatants() { return enemies; }
+
+        @Override public int damage(CombatEntity target, int amount) {
+            return target.takeDamage(amount);
+        }
+        @Override public void healPlayer(int amount) {
+            player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + amount));
+        }
+        @Override public void healEntity(CombatEntity entity, int amount) {
+            entity.heal(amount);
+        }
+
+        @Override public void applyPlayerEffect(CombatEffects.EffectType type, int turns, int amplifier) {
+            combatEffects.addEffect(type, turns, amplifier);
+        }
+        @Override public void applyEffect(CombatEntity target, CombatEffects.EffectType type,
+                                          int turns, int amplifier) {
+            switch (type) {
+                case POISON -> target.stackPoison(turns, amplifier);
+                case WITHER -> target.stackWither(turns, amplifier);
+                case BURNING -> target.stackBurning(turns, amplifier);
+                case SOAKED -> target.stackSoaked(turns, amplifier);
+                case SLOWNESS -> target.stackSlowness(turns, amplifier);
+                case CONFUSION -> target.stackConfusion(turns, amplifier);
+                case WEAKNESS -> {
+                    target.setAttackPenalty(2 * (amplifier + 1));
+                    target.setAttackPenaltyTurns(turns);
+                }
+                case BLEEDING -> target.stackBleed(amplifier + 1);
+                default -> { /* effect type not applicable to enemy combatants */ }
+            }
+        }
+        @Override public void applyCustomEffect(CombatEntity target, String effectId,
+                                                int turns, int amplifier) {
+            // Custom (addon-registered) status effects arrive in Phase 2 of the Addon SDK.
+        }
+
+        @Override public void stun(CombatEntity target) {
+            target.setStunned(true);
+        }
+        @Override public void knockback(CombatEntity target, int distance) {
+            GridPos playerPos = arena.getPlayerGridPos();
+            int dx = Integer.signum(target.getGridPos().x() - playerPos.x());
+            int dz = Integer.signum(target.getGridPos().z() - playerPos.z());
+            if (dx == 0 && dz == 0) dx = 1;
+            GridPos kbPos = target.getGridPos();
+            for (int step = 0; step < distance; step++) {
+                GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
+                if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
+                GridTile tile = arena.getTile(next);
+                if (tile == null || !tile.isWalkable()) break;
+                kbPos = next;
+            }
+            if (!kbPos.equals(target.getGridPos())) {
+                arena.moveEntity(target, kbPos);
+                if (target.getMobEntity() != null) {
+                    BlockPos bp = arena.gridToBlockPos(kbPos);
+                    target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                }
+            }
+        }
+        @Override public void teleportPlayer(GridPos pos) {
+            arena.setPlayerGridPos(pos);
+            BlockPos bp = arena.gridToBlockPos(pos);
+            player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+        }
+
+        @Override public void placeTileEffect(GridPos pos, String effectType) {
+            tileEffects.put(pos, effectType);
+        }
+
+        @Override public void message(String text) {
+            sendMessage(text);
+        }
     }
 
     private void handleEndTurn() {
