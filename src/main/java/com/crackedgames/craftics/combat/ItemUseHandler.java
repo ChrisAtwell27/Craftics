@@ -193,6 +193,9 @@ public class ItemUseHandler {
     );
 
     public static int getApCost(Item item) {
+        com.crackedgames.craftics.api.registry.UsableItemEntry registered =
+            com.crackedgames.craftics.api.registry.UsableItemRegistry.getOrNull(item);
+        if (registered != null) return registered.apCost();
         if (item == Items.GOLDEN_CARROT) return 0;
         if (PotterySherdSpells.isPotterySherd(item)) return PotterySherdSpells.getSherdApCost(item);
         if (item == Items.FISHING_ROD) return FISHING_AP_COST;
@@ -244,7 +247,8 @@ public class ItemUseHandler {
     }
 
     public static boolean isUsableItem(Item item) {
-        return isFood(item) || isPotion(item) || isSplashPotion(item)
+        return com.crackedgames.craftics.api.registry.UsableItemRegistry.isRegistered(item)
+            || isFood(item) || isPotion(item) || isSplashPotion(item)
             || isThrowable(item) || isWaterThrowable(item) || item == Items.TNT || item == Items.SHIELD
             || item == Items.MILK_BUCKET || item == Items.BUCKET || item == Items.TOTEM_OF_UNDYING
             || item == Items.COBWEB || item == Items.FLINT_AND_STEEL
