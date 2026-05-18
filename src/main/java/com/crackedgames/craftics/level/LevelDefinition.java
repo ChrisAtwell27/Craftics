@@ -55,6 +55,20 @@ public abstract class LevelDefinition {
         return null;
     }
 
+    /**
+     * One enemy to place when building a level.
+     *
+     * <p>{@code aiKey} is the {@code AIRegistry} lookup key — normally equal to
+     * {@code entityTypeId}, differing only when an {@code EnemyEntry} pairs an
+     * appearance with a non-matching AI strategy.
+     */
     public record EnemySpawn(String entityTypeId, GridPos position,
-                              int hp, int attack, int defense, int range) {}
+                              int hp, int attack, int defense, int range,
+                              String aiKey) {
+        /** Spawn whose AI matches its entity type (the common case). */
+        public EnemySpawn(String entityTypeId, GridPos position,
+                          int hp, int attack, int defense, int range) {
+            this(entityTypeId, position, hp, attack, defense, range, entityTypeId);
+        }
+    }
 }

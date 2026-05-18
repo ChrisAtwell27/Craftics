@@ -42,6 +42,7 @@ public final class CrafticsDataLoaders {
         register(new EnchantmentJsonLoader());
         register(new UsableItemJsonLoader());
         register(new CustomEffectJsonLoader());
+        register(new EnemyJsonLoader());
 
         ServerLifecycleEvents.SERVER_STARTED.register(
             server -> loadAll(server.getResourceManager()));

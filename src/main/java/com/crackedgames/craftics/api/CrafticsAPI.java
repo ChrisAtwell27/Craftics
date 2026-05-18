@@ -95,6 +95,19 @@ public final class CrafticsAPI {
         UsableItemRegistry.register(item, entry);
     }
 
+    // === Enemies ===
+
+    /**
+     * Register a reusable enemy template. Biome JSON can then reference it by id
+     * with {@code "enemy": "<id>"} instead of redefining the enemy's stats inline.
+     * Use {@link EnemyEntry#builder(String, String)} for a fluent API.
+     *
+     * @param entry the enemy template (stats, appearance, and AI)
+     */
+    public static void registerEnemy(EnemyEntry entry) {
+        EnemyRegistry.register(entry);
+    }
+
     // === Custom Status Effects ===
 
     /**

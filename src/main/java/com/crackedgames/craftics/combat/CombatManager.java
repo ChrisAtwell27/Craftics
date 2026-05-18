@@ -1941,11 +1941,18 @@ public class CombatManager {
                     scaledHp, scaledAtk, finalDef, spawn.range(),
                     sizeOverride
                 );
+                // Honor an EnemyEntry's AI override (its appearance differs from its
+                // AI). The boss block below sets its own aiOverrideKey, which wins.
+                if (!spawn.aiKey().equals(spawn.entityTypeId())) {
+                    ce.setAiOverrideKey(spawn.aiKey());
+                }
                 // Apply baby speed bonus
                 if (equipSpeedBonus > 0) {
                     ce.setSpeedBonus(equipSpeedBonus);
                 }
-                // Per-entity AI instances for mobs that need turn-to-turn state
+                // Per-entity AI instances for mobs that need turn-to-turn state.
+                // Keyed on entity type (appearance), not aiKey — an EnemyEntry that
+                // pairs a blaze body with a divergent AI is not handled by this path.
                 if ("minecraft:blaze".equals(spawn.entityTypeId())) {
                     ce.setAiInstance(new com.crackedgames.craftics.combat.ai.BlazeAI());
                 }
@@ -15257,7 +15264,7 @@ public class CombatManager {
     private void showEnemyIntentionPreviews() {
         for (CombatEntity enemy : enemies) {
             if (!enemy.isAlive() || enemy.isAlly()) continue;
-            EnemyAI ai = AIRegistry.get(enemy.getEntityTypeId());
+            EnemyAI ai = resolveAi(enemy);
             EnemyAction action = ai.decideAction(enemy, arena, arena.getPlayerGridPos());
             String intent = switch (action) {
                 case EnemyAction.Attack a -> "§c\u2694 Attack";
