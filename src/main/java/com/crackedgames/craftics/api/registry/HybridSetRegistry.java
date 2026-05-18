@@ -1,5 +1,7 @@
 package com.crackedgames.craftics.api.registry;
 
+import com.crackedgames.craftics.api.RegistrationSource;
+
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -13,9 +15,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * the Copper Age compat module for the built-in 21 entries.
  */
 public final class HybridSetRegistry {
-    // Code-registered only — unlike ArmorSetRegistry there is no datapack/reload
-    // support in this version (hybrid sets are registered from code).
     private static final Map<String, HybridSetEntry> REGISTRY = new ConcurrentHashMap<>();
+    /** Pair keys whose current entry came from a JSON datapack — dropped on /reload. */
+    private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private HybridSetRegistry() {}
 
@@ -24,9 +26,28 @@ public final class HybridSetRegistry {
         return (matA.compareTo(matB) <= 0) ? matA + "+" + matB : matB + "+" + matA;
     }
 
-    /** Register a hybrid set. Keyed by its (already-normalized) material pair. */
+    /** Register a hybrid set from code (survives {@code /reload}). Keyed by its material pair. */
     public static void register(HybridSetEntry entry) {
-        REGISTRY.put(pairKey(entry.materialA(), entry.materialB()), entry);
+        register(entry, RegistrationSource.CODE);
+    }
+
+    /** Register a hybrid set, tagging whether it came from code or a datapack. */
+    public static void register(HybridSetEntry entry, RegistrationSource source) {
+        String key = pairKey(entry.materialA(), entry.materialB());
+        REGISTRY.put(key, entry);
+        if (source == RegistrationSource.DATAPACK) {
+            DATAPACK_KEYS.add(key);
+        } else {
+            DATAPACK_KEYS.remove(key);
+        }
+    }
+
+    /** Remove every hybrid set that was loaded from a JSON datapack. */
+    public static void clearDatapackEntries() {
+        for (String key : DATAPACK_KEYS) {
+            REGISTRY.remove(key);
+        }
+        DATAPACK_KEYS.clear();
     }
 
     /** The hybrid registered for an unordered material pair, or null. */

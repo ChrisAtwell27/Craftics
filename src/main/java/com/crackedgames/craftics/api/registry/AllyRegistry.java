@@ -1,9 +1,11 @@
 package com.crackedgames.craftics.api.registry;
 
+import com.crackedgames.craftics.api.RegistrationSource;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -19,12 +21,32 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class AllyRegistry {
 
     private static final Map<String, AllyEntry> REGISTRY = new ConcurrentHashMap<>();
+    /** Entity types whose current entry came from a JSON datapack — dropped on /reload. */
+    private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private AllyRegistry() {}
 
-    /** Register an ally definition, replacing any existing entry for the same entity type. */
+    /** Register an ally definition from code (survives {@code /reload}). */
     public static void register(AllyEntry entry) {
+        register(entry, RegistrationSource.CODE);
+    }
+
+    /** Register an ally definition, tagging whether it came from code or a datapack. */
+    public static void register(AllyEntry entry, RegistrationSource source) {
         REGISTRY.put(entry.entityTypeId(), entry);
+        if (source == RegistrationSource.DATAPACK) {
+            DATAPACK_KEYS.add(entry.entityTypeId());
+        } else {
+            DATAPACK_KEYS.remove(entry.entityTypeId());
+        }
+    }
+
+    /** Remove every ally definition that was loaded from a JSON datapack. */
+    public static void clearDatapackEntries() {
+        for (String id : DATAPACK_KEYS) {
+            REGISTRY.remove(id);
+        }
+        DATAPACK_KEYS.clear();
     }
 
     /** The entry for {@code entityTypeId}, or {@code null} if that mob is not a registered ally. */
