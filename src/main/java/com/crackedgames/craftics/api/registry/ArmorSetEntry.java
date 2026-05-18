@@ -4,6 +4,16 @@ import com.crackedgames.craftics.combat.DamageType;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * One armor set's combat bonuses.
+ *
+ * <p>{@code damageTypeBonuses} holds the affinity value <b>per 2 pieces</b> of the
+ * matching material — equivalently, each single worn piece grants half this much
+ * ({@code 0.5 × value}) affinity of that type, and a full 4-piece set grants
+ * {@code 2 × value}. Affinity is per-piece: every worn piece counts, not just
+ * complete sets. The stat bonuses ({@code speedBonus} etc.) and {@code description}
+ * still apply only when the complete 4-piece set is worn.
+ */
 public record ArmorSetEntry(
     String armorSetId,
     Map<DamageType, Integer> damageTypeBonuses,

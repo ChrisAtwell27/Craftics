@@ -27,6 +27,8 @@ public class CombatEntity {
     private int attackPenaltyTurns = 0;
     private int poisonTurns = 0;
     private int poisonAmplifier = 0; // 0 = level I, 1 = level II, etc
+    /** True once this enemy has taken its turn in the current round; cleared each player turn. */
+    private boolean actedThisRound = false;
     private int witherTurns = 0;
     private int witherAmplifier = 0; // 0 = level I, 1 = level II, etc
     private boolean enraged = false;
@@ -167,6 +169,8 @@ public class CombatEntity {
     public void setAttackPenalty(int p) { this.attackPenalty = p; }
     public int getAttackPenaltyTurns() { return attackPenaltyTurns; }
     public void setAttackPenaltyTurns(int t) { this.attackPenaltyTurns = t; }
+    public boolean hasActedThisRound() { return actedThisRound; }
+    public void setActedThisRound(boolean acted) { this.actedThisRound = acted; }
     public int getPoisonTurns() { return poisonTurns; }
     public void setPoisonTurns(int t) { this.poisonTurns = t; }
     public int getPoisonAmplifier() { return poisonAmplifier; }

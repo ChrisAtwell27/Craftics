@@ -42,6 +42,8 @@ public class CrafticsMod implements ModInitializer {
         CONFIG = CrafticsConfigWrapper.createAndLoad();
         com.crackedgames.craftics.api.VanillaWeapons.registerAll();
         com.crackedgames.craftics.api.VanillaContent.registerAll();
+        com.crackedgames.craftics.api.VanillaAllies.registerAll();
+        com.crackedgames.craftics.api.VanillaHybridSets.registerAll();
 
         // Optional mod compatibility — each call no-ops if its target mod isn't loaded.
         com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.init();

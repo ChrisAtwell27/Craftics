@@ -25,7 +25,10 @@ import net.minecraft.util.Identifier;
 import net.minecraft.block.Blocks;
 import net.minecraft.util.math.BlockPos;
 
+import com.crackedgames.craftics.api.registry.AllyEntry;
+import com.crackedgames.craftics.api.registry.AllyRegistry;
 import com.crackedgames.craftics.combat.ai.AIRegistry;
+import com.crackedgames.craftics.combat.ai.ally.AllyAI;
 import com.crackedgames.craftics.combat.ai.EnemyAI;
 import com.crackedgames.craftics.combat.ai.EnemyAction;
 import com.crackedgames.craftics.combat.ai.WardenAI;
@@ -1157,6 +1160,18 @@ public class CombatManager {
         actual = fireEffectHookChained(actual, (h, dmg) -> h.onTakeDamage(effectContext, attacker, dmg));
         if (actual <= 0) return 0;
 
+        // Worn armor takes durability damage scaled to the hit (dodged/blocked hits
+        // returned earlier, so reaching here means the hit landed).
+        int armorWear = Math.max(1, actual / 3);
+        for (net.minecraft.entity.EquipmentSlot armorSlot : new net.minecraft.entity.EquipmentSlot[]{
+                net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+                net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
+            ItemStack armorPiece = player.getEquippedStack(armorSlot);
+            if (armorPiece.isDamageable()) {
+                armorPiece.damage(armorWear, player, armorSlot);
+            }
+        }
+
         // Absorption hearts (golden apples, enchanted golden apples) are consumed
         // first, same as vanilla damage handling.
         int remaining = actual;
@@ -1256,7 +1271,7 @@ public class CombatManager {
         PlayerProgression.PlayerStats playerStats = PlayerProgression.get(
             (ServerWorld) player.getEntityWorld()).getStats(player);
         return DamageType.getTotalBonus(
-            PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects,
+            player, activeTrimScan, combatEffects,
             DamageType.SPECIAL, playerStats)
             + DamageType.getMobHeadBonus(
                 player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), DamageType.SPECIAL);
@@ -1555,6 +1570,9 @@ public class CombatManager {
         this.playerMounted = false;
         this.mountMob = null;
         this.movedThisTurn = false;
+        this.hybridFirstAttackUsed = false;
+        this.hybridLuckyStreak = 0;
+        this.hybridLastWeapon = null;
         this.oceanBlessingUsed = false;
         this.warpDriveArmed = false;
         this.warpDriveUsed = false;
@@ -2104,6 +2122,30 @@ public class CombatManager {
         if (partyPlayers.size() > 1) {
             rebuildTurnQueue();
         }
+    }
+
+    /** The HybridEffect the player's current armor combo grants, or null. */
+    private com.crackedgames.craftics.combat.HybridEffect activeHybridEffect() {
+        com.crackedgames.craftics.api.registry.HybridSetEntry h =
+            PlayerCombatStats.getHybridSet(player);
+        return h == null ? null : h.effect();
+    }
+
+    /** True if no other live, non-ally enemy occupies a tile adjacent to {@code target}. */
+    private boolean isTargetIsolated(CombatEntity target) {
+        com.crackedgames.craftics.core.GridPos pos = target.getGridPos();
+        if (pos == null) return true;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                CombatEntity adj = arena.getOccupant(
+                    new com.crackedgames.craftics.core.GridPos(pos.x() + dx, pos.z() + dz));
+                if (adj != null && adj.isAlive() && adj != target && !adj.isAlly()) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /** Refresh the arena's allPlayerGridPositions list from current party member world positions. */
@@ -2739,7 +2781,7 @@ public class CombatManager {
         PlayerProgression.PlayerStats attackerStats = PlayerProgression.get(
             (ServerWorld) player.getEntityWorld()).getStats(player);
         int damageTypeBonus = DamageType.getTotalBonus(
-            PlayerCombatStats.getArmorSet(player), activeTrimScan, combatEffects, damageType, attackerStats)
+            player, activeTrimScan, combatEffects, damageType, attackerStats)
             + DamageType.getMobHeadBonus(player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), damageType);
         int baseDamage = PlayerCombatStats.getAttackPower(weapon) + combatEffects.getStrengthBonus()
             + progBonus + PlayerCombatStats.getSetAttackBonus(player)
@@ -2797,11 +2839,27 @@ public class CombatManager {
 
         // Apply mob-type vulnerability/resistance multiplier
         double mobResistMult = MobResistances.getDamageMultiplier(target.getEntityTypeId(), damageType);
+        // Breaker hybrid: ignore enemy resistances/immunities (mult < 1.0 -> 1.0).
+        if (activeHybridEffect() == com.crackedgames.craftics.combat.HybridEffect.BREAKER
+                && mobResistMult < 1.0) {
+            mobResistMult = 1.0;
+        }
         int baseDamageBeforeResist = baseDamage;
         if (mobResistMult == 0.0) {
             baseDamage = 0; // immune
         } else if (mobResistMult != 1.0) {
             baseDamage = Math.max(1, (int)(baseDamage * mobResistMult));
+        }
+
+        // Skirmisher hybrid: +damage when the player moved before attacking this turn.
+        if (activeHybridEffect() == com.crackedgames.craftics.combat.HybridEffect.SKIRMISHER
+                && movedThisTurn && baseDamage > 0) {
+            baseDamage += com.crackedgames.craftics.combat.HybridSetEffects.SKIRMISHER_BONUS;
+        }
+        // Duelist hybrid: +damage vs a target with no other live enemy adjacent to it.
+        if (activeHybridEffect() == com.crackedgames.craftics.combat.HybridEffect.DUELIST
+                && baseDamage > 0 && isTargetIsolated(target)) {
+            baseDamage += com.crackedgames.craftics.combat.HybridSetEffects.DUELIST_BONUS;
         }
 
         // Prize sherd: Fortune's Favor — triple damage on next attack
@@ -4927,15 +4985,17 @@ public class CombatManager {
                     e.setAlly(true);
                     e.setOwnerUuid(player.getUuid());
                     // Apply per-species minimum stats for combat pets
-                    PetStats.Stats petMin = PetStats.get(e.getEntityTypeId());
-                    if (e.getAttackPower() < petMin.atk()) {
-                        e.setAttackBoost(petMin.atk() - e.getAttackPower());
-                    }
-                    if (e.getDefense() < petMin.def()) {
-                        e.setDefenseBoost(petMin.def() - e.getDefense());
-                    }
-                    if (e.getRange() < petMin.range()) {
-                        e.setRangeOverride(petMin.range());
+                    AllyEntry petMin = AllyRegistry.getOrNull(e.getEntityTypeId());
+                    if (petMin != null) {
+                        if (e.getAttackPower() < petMin.attack()) {
+                            e.setAttackBoost(petMin.attack() - e.getAttackPower());
+                        }
+                        if (e.getDefense() < petMin.defense()) {
+                            e.setDefenseBoost(petMin.defense() - e.getDefense());
+                        }
+                        if (e.getRange() < petMin.range()) {
+                            e.setRangeOverride(petMin.range());
+                        }
                     }
                     if (e.getMobEntity() != null) {
                         e.getMobEntity().setGlowing(false);
@@ -7410,127 +7470,84 @@ public class CombatManager {
     }
 
     /**
-     * Handle an ally pet's turn. Allies attack nearby enemies or retreat if low HP.
+     * Handle an ally's turn: resolve the ally's {@link com.crackedgames.craftics.combat.ai.ally.AllyAI}
+     * from the {@code AllyRegistry}, ask it for an action, and execute that action —
+     * applying owner-gear damage bonuses for gear-scaling allies.
      */
     private void handleAllyTurn(CombatEntity ally) {
-        GridPos allyPos = ally.getGridPos();
-        boolean lowHp = ally.getMaxHp() > 0 && (float) ally.getCurrentHp() / ally.getMaxHp() <= 0.25f;
+        // Resolve the ally's AI from the registry; fall back to the default melee AI.
+        AllyEntry entry = AllyRegistry.getOrNull(ally.getEntityTypeId());
+        AllyAI ai = entry != null ? entry.ai() : AllyEntry.DEFAULT_AI;
+        // null (unregistered ally) defaults to true: the pre-framework handleAllyTurn
+        // applied the owner-gear bonus to every ally, so this preserves that behavior.
+        boolean scalesWithGear = entry == null || entry.scalesWithOwnerGear();
 
-        if (lowHp) {
-            // RETREAT: move away from nearest enemy
-            CombatEntity nearestEnemy = null;
-            int nearestDist = Integer.MAX_VALUE;
+        EnemyAction action = ai.decideAction(ally, arena, enemies);
+
+        int doneDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
+
+        if (action instanceof EnemyAction.Flee flee) {
+            sendMessage("§e" + ally.getDisplayName() + " retreats!");
+            startEnemyMove(flee.path());
+            return;
+        }
+        if (action instanceof EnemyAction.Move move) {
+            sendMessage("§a" + ally.getDisplayName() + " advances!");
+            startEnemyMove(move.path());
+            return;
+        }
+
+        if (action instanceof EnemyAction.MoveAndAttackMob attack) {
+            CombatEntity target = null;
             for (CombatEntity e : enemies) {
-                if (!e.isAlive() || e.isAlly()) continue;
-                int d = Math.abs(e.getGridPos().x() - allyPos.x()) + Math.abs(e.getGridPos().z() - allyPos.z());
-                if (d < nearestDist) {
-                    nearestDist = d;
-                    nearestEnemy = e;
-                }
+                if (e.getEntityId() == attack.targetEntityId()) { target = e; break; }
             }
-            if (nearestEnemy != null) {
-                // Move away from nearest enemy
-                int dx = Integer.signum(allyPos.x() - nearestEnemy.getGridPos().x());
-                int dz = Integer.signum(allyPos.z() - nearestEnemy.getGridPos().z());
-                GridPos retreatTarget = new GridPos(allyPos.x() + dx * 2, allyPos.z() + dz * 2);
-                List<GridPos> path = Pathfinding.findPath(arena, allyPos, retreatTarget, ally.getMoveSpeed(), false);
-                if (path != null && !path.isEmpty()) {
-                    sendMessage("§e" + ally.getDisplayName() + " retreats! (low HP)");
-                    startEnemyMove(path);
-                    return;
-                }
+            if (target == null || !target.isAlive()) {
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = doneDelay;
+                return;
             }
-            sendMessage("§e" + ally.getDisplayName() + " cowers...");
-            enemyTurnState = EnemyTurnState.DONE;
-            enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
-            return;
-        }
 
-        // ATTACK: find best target using priority scoring
-        GridPos playerPos = arena.getPlayerGridPos();
-        CombatEntity target = null;
-        int bestScore = Integer.MIN_VALUE;
-        int targetDist = Integer.MAX_VALUE;
-        for (CombatEntity e : enemies) {
-            if (!e.isAlive() || e.isAlly()) continue;
-            int d = e.minDistanceTo(allyPos);
-            int dToPlayer = e.minDistanceTo(playerPos);
-            // Score: prefer close targets, targets near player, and wounded targets
-            int score = -d;
-            if (dToPlayer <= 2) score += 3; // protect the player
-            if (e.getCurrentHp() <= e.getMaxHp() / 2) score += 2; // finish wounded
-            if (score > bestScore || (score == bestScore && d < targetDist)) {
-                bestScore = score;
-                targetDist = d;
-                target = e;
-            }
-        }
-
-        if (target == null) {
-            // No enemies left to fight
-            enemyTurnState = EnemyTurnState.DONE;
-            enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
-            return;
-        }
-
-        int range = ally.getRange();
-        if (targetDist <= range) {
-            // In range — compute damage with pet bonuses, then stage the attack animation
-            // Get the correct player (pet owner) for stat bonuses
-            ServerPlayerEntity allyOwner = player; // default to active player
-            if (ally.getOwnerUuid() != null) {
-                // Look up the pet's owner from party members
-                for (ServerPlayerEntity member : getAllParticipants()) {
-                    if (member.getUuid().equals(ally.getOwnerUuid())) {
-                        allyOwner = member;
-                        break;
+            int totalDamage = attack.damage();
+            int petBonus = 0;
+            if (scalesWithGear) {
+                // Apply the owner's armor-set / trim / mob-head bonuses to this ally's damage.
+                ServerPlayerEntity allyOwner = player;
+                if (ally.getOwnerUuid() != null) {
+                    for (ServerPlayerEntity member : getAllParticipants()) {
+                        if (member.getUuid().equals(ally.getOwnerUuid())) {
+                            allyOwner = member;
+                            break;
+                        }
                     }
                 }
+                PlayerProgression.PlayerStats allyOwnerStats = PlayerProgression.get(
+                    (ServerWorld) allyOwner.getEntityWorld()).getStats(allyOwner);
+                TrimEffects.TrimScan ownerTrimScan = activeTrimScan;
+                if (ally.getOwnerUuid() != null && allyOwner != player) {
+                    ownerTrimScan = TrimEffects.scan(allyOwner);
+                }
+                petBonus = DamageType.getTotalBonus(
+                        allyOwner, ownerTrimScan, combatEffects,
+                        DamageType.PET, allyOwnerStats)
+                    + DamageType.getMobHeadBonus(
+                        allyOwner.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), DamageType.PET);
+                if (ownerTrimScan != null && ownerTrimScan.setBonus() == TrimEffects.SetBonus.RALLY) {
+                    petBonus += 1;
+                }
+                totalDamage += petBonus;
             }
-            
-            PlayerProgression.PlayerStats allyOwnerStats = PlayerProgression.get(
-                (ServerWorld) allyOwner.getEntityWorld()).getStats(allyOwner);
-            // Get owner's trim scan if different from active player
-            TrimEffects.TrimScan ownerTrimScan = activeTrimScan;
-            if (ally.getOwnerUuid() != null && allyOwner != player) {
-                ownerTrimScan = TrimEffects.scan(allyOwner);
-            }
-            
-            int petBonus = DamageType.getTotalBonus(
-                PlayerCombatStats.getArmorSet(allyOwner), ownerTrimScan, combatEffects, DamageType.PET, allyOwnerStats)
-                + DamageType.getMobHeadBonus(
-                    allyOwner.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), DamageType.PET);
-            // Rally set bonus: allies get +1 Attack
-            if (ownerTrimScan != null && ownerTrimScan.setBonus() == TrimEffects.SetBonus.RALLY) {
-                petBonus += 1;
-            }
-            int totalDamage = ally.getAttackPower() + petBonus;
-            pendingAllyPetMsg = petBonus > 0 ? " \u00a7a+" + petBonus + " Pet" : "";
+            pendingAllyPetMsg = petBonus > 0 ? " §a+" + petBonus + " Pet" : "";
             pendingAllyAttackTarget = target;
             pendingAction = new EnemyAction.MoveAndAttackMob(
-                java.util.List.of(), target.getEntityId(), totalDamage);
+                attack.path(), target.getEntityId(), totalDamage);
             startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
-            return; // damage resolves in tickEnemyAttacking after the animation
-        } else {
-            // Move toward target
-            List<GridPos> path = Pathfinding.findPath(arena, allyPos, target.getGridPos(), ally.getMoveSpeed(), false);
-            if (path != null && !path.isEmpty()) {
-                sendMessage("§a" + ally.getDisplayName() + " advances toward " + target.getDisplayName() + "!");
-                startEnemyMove(path);
-            } else {
-                // Can't path — use seek
-                GridPos closest = Pathfinding.findClosestReachableTo(arena, allyPos, target.getGridPos(), ally.getMoveSpeed(), ally);
-                if (closest != null && !closest.equals(allyPos)) {
-                    List<GridPos> seekPath = Pathfinding.findPath(arena, allyPos, closest, ally.getMoveSpeed(), false);
-                    if (seekPath != null && !seekPath.isEmpty()) {
-                        startEnemyMove(seekPath);
-                        return;
-                    }
-                }
-                enemyTurnState = EnemyTurnState.DONE;
-                enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
-            }
+            return;
         }
+
+        // EnemyAction.Idle (or anything else): the ally holds position / has no move.
+        enemyTurnState = EnemyTurnState.DONE;
+        enemyTurnDelay = doneDelay;
     }
 
     // ==================== Boss Action Resolution ====================
@@ -15014,12 +15031,12 @@ public class CombatManager {
             mob.addCommandTag("craftics_arena");
             world.spawnEntity(mob);
 
-            // Build combat stats from PetStats
-            PetStats.Stats stats = snapshot.combatStats();
-            int hp = stats.hp();
-            int atk = stats.atk();
-            int def = stats.def();
-            int range = stats.range();
+            // Build combat stats from the ally definition
+            AllyEntry allyEntry = snapshot.allyEntry();
+            int hp = allyEntry.hp();
+            int atk = allyEntry.attack();
+            int def = allyEntry.defense();
+            int range = allyEntry.range();
 
             CombatEntity ce = new CombatEntity(
                 mob.getId(), snapshot.entityTypeId(), spawnPos,
@@ -15498,6 +15515,12 @@ public class CombatManager {
 
     // Trim set bonus state
     private boolean movedThisTurn = false;           // FORTRESS: track if player moved
+    /** Hybrid: consumed by Ambush — the first attack of the combat is a guaranteed crit. */
+    private boolean hybridFirstAttackUsed = false;
+    /** Hybrid: Lucky Streak's kill streak — increments per kill, resets when the player is hit. */
+    private int hybridLuckyStreak = 0;
+    /** Hybrid: the weapon item the player last attacked with (for Counterpuncher). */
+    private net.minecraft.item.Item hybridLastWeapon = null;
     private boolean moveBoatProtected = false;       // Water crossing with boat = no Soaked
     private int powderSnowTurns = 0;                 // Escalating freeze damage counter
     private net.minecraft.entity.vehicle.BoatEntity activeBoat = null; // Visual boat while in water

@@ -5,9 +5,12 @@ import com.crackedgames.craftics.api.Abilities;
 import com.crackedgames.craftics.api.WeaponAbilityHandler;
 import com.crackedgames.craftics.api.registry.ArmorSetEntry;
 import com.crackedgames.craftics.api.registry.ArmorSetRegistry;
+import com.crackedgames.craftics.api.registry.HybridSetEntry;
+import com.crackedgames.craftics.api.registry.HybridSetRegistry;
 import com.crackedgames.craftics.api.registry.WeaponEntry;
 import com.crackedgames.craftics.api.registry.WeaponRegistry;
 import com.crackedgames.craftics.combat.DamageType;
+import com.crackedgames.craftics.combat.HybridEffect;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.item.Item;
 import net.minecraft.registry.Registries;
@@ -137,14 +140,14 @@ public final class CopperAgeCompat {
     /** Fraction of the base damage dealt to the ricochet target. */
     public static final double RICOCHET_DAMAGE_MULT = 0.75;
 
-    /** Type-affinity bonus from the copper set, matching the vanilla +2 Power baseline. */
-    public static final int RANGED_POWER_BONUS = 2;
+    /** Type-affinity bonus from the copper set, per-2-pieces value (full 4-piece set = 2×). */
+    public static final int RANGED_POWER_BONUS = 1;
 
     /**
      * Register the copper armor set bonus. Identity is "Marksman":
      * <ul>
-     *   <li>{@value #RANGED_POWER_BONUS} Ranged Power type affinity — matches the
-     *       vanilla pattern (chainmail = +2 Slashing, iron = +2 Cleaving, etc.) so
+     *   <li>{@value #RANGED_POWER_BONUS} Ranged Power type affinity (per-2-pieces) — matches
+     *       the vanilla pattern (chainmail = +1 Slashing, iron = +1 Cleaving, etc.) so
      *       copper slots cleanly alongside the existing armor tiers as the Ranged set.</li>
      *   <li>A {@value #RICOCHET_CHANCE} chance on every ranged hit to ricochet
      *       into a nearby enemy for {@value #RICOCHET_DAMAGE_MULT} of base damage,
@@ -162,9 +165,36 @@ public final class CopperAgeCompat {
         ArmorSetRegistry.register(ArmorSetEntry.builder("copper")
             .damageBonus(DamageType.RANGED, RANGED_POWER_BONUS)
             .description("\u00a76Marksman: " + chancePct + "% ricochet for " + dmgPct + "%, +"
-                + RANGED_POWER_BONUS + " Ranged Power")
+                + (RANGED_POWER_BONUS * 2) + " Ranged Power")
             .build());
+        registerCopperHybrids();
         return true;
+    }
+
+    /**
+     * Register the 6 copper hybrid armor sets — copper paired with each standard
+     * material. Called from {@link #registerArmorSet()}, so these exist only when
+     * Copper Age Backport is installed.
+     */
+    private static void registerCopperHybrids() {
+        registerHybrid("copper", "leather", "Run and Gun", HybridEffect.RUN_AND_GUN,
+            "Ranged attacks gain +1 range if you moved this turn");
+        registerHybrid("copper", "chainmail", "Deadeye", HybridEffect.DEADEYE,
+            "Ranged attacks vs an enemy that hasn't acted: +3 damage");
+        registerHybrid("copper", "iron", "Aegis", HybridEffect.AEGIS,
+            "Incoming ranged attacks have a 30% chance to be dodged");
+        registerHybrid("copper", "gold", "Contagion", HybridEffect.CONTAGION,
+            "Negative status effects spread to adjacent enemies");
+        registerHybrid("copper", "diamond", "Siege", HybridEffect.SIEGE,
+            "Ranged attacks splash half damage to adjacent enemies");
+        registerHybrid("copper", "netherite", "Stormbringer", HybridEffect.STORMBRINGER,
+            "Your attacks arc to one extra nearby enemy");
+    }
+
+    private static void registerHybrid(String matA, String matB, String className,
+                                        HybridEffect effect, String description) {
+        HybridSetRegistry.register(HybridSetEntry.builder(matA, matB)
+            .className(className).effect(effect).description(description).build());
     }
 
     /**

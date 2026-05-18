@@ -1,8 +1,13 @@
 package com.crackedgames.craftics.combat;
 
+import com.crackedgames.craftics.api.registry.ArmorSetRegistry;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.server.network.ServerPlayerEntity;
+import java.util.HashMap;
+import java.util.Map;
 
 // Each weapon maps to a damage type; armor sets, trims, and effects can specialize for bonus damage
 public enum DamageType {
@@ -42,9 +47,50 @@ public enum DamageType {
             || weapon == Items.DEAD_HORN_CORAL_FAN;
     }
 
-    // Each armor set specializes in a damage type (netherite = +1 all)
-    public static int getArmorSetBonus(String armorSet, DamageType type) {
-        return com.crackedgames.craftics.api.registry.ArmorSetRegistry.getDamageTypeBonus(armorSet, type);
+    private static final EquipmentSlot[] ARMOR_SLOTS = {
+        EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
+    };
+
+    /**
+     * Per-piece armor affinity for a damage type, in <b>half-points</b>. Every worn
+     * armor piece of a material contributes that material's per-piece affinity, so a
+     * single piece counts — affinity is no longer full-set-only. Returned in
+     * half-points: each piece is worth 0.5 affinity, so a full 4-piece set totals 4
+     * half-points (= 2 whole affinity points). The half-point unit keeps the 0.5
+     * per-piece granularity exact without floating-point math.
+     */
+    public static int getArmorAffinityHalfPoints(ServerPlayerEntity player, DamageType type) {
+        Map<String, Integer> counts = new HashMap<>();
+        for (EquipmentSlot slot : ARMOR_SLOTS) {
+            String material = ArmorClassTable.armorSetKeyOf(player.getEquippedStack(slot).getItem());
+            if (material != null) counts.merge(material, 1, Integer::sum);
+        }
+        return affinityFromCounts(counts, type);
+    }
+
+    /**
+     * Pure per-piece affinity math, in half-points: {@code Σ count × ArmorSetEntry value}.
+     * The registered {@code ArmorSetEntry} value is the affinity per 2 pieces, which
+     * equals the half-point value of one piece — so multiplying by the worn count gives
+     * that material's affinity total in half-points.
+     */
+    public static int affinityFromCounts(Map<String, Integer> materialCounts, DamageType type) {
+        int halfPoints = 0;
+        for (Map.Entry<String, Integer> e : materialCounts.entrySet()) {
+            halfPoints += e.getValue() * ArmorSetRegistry.getDamageTypeBonus(e.getKey(), type);
+        }
+        return halfPoints;
+    }
+
+    /**
+     * Formats an affinity value given in half-points as a human-readable number:
+     * {@code 0 → "0"}, {@code 1 → "0.5"}, {@code 2 → "1"}, {@code 3 → "1.5"},
+     * {@code 4 → "2"}. Used by the armor tooltip and the affinity panel.
+     */
+    public static String formatAffinityHalfPoints(int halfPoints) {
+        return (halfPoints % 2 == 0)
+            ? String.valueOf(halfPoints / 2)
+            : (halfPoints / 2) + ".5";
     }
 
     public static int getTrimBonus(TrimEffects.TrimScan scan, DamageType type) {
@@ -88,38 +134,33 @@ public enum DamageType {
     public static final int DAMAGE_PER_AFFINITY_POINT = 3;
 
     /**
-     * Total affinity points from gear sources: armor set + trims + potion effects.
-     * Returned as raw points so callers can display "+N Power" consistently with
-     * the damage formula ({@link #DAMAGE_PER_AFFINITY_POINT} per point).
-     */
-    public static int getTotalAffinityPoints(String armorSet, TrimEffects.TrimScan trimScan,
-                                              CombatEffects effects, DamageType type) {
-        return getArmorSetBonus(armorSet, type)
-             + getTrimBonus(trimScan, type)
-             + getEffectBonus(effects, type);
-    }
-
-    /**
-     * Total damage bonus from gear sources. Each point of affinity contributes
+     * Total damage bonus from gear sources: per-piece armor affinity + trims + potion
+     * effects. Armor affinity is per-piece (half-point granularity) and is converted
+     * to damage at half resolution so a single piece's 0.5 affinity is not floored
+     * away; trims and effects are whole affinity points. Each whole point contributes
      * {@link #DAMAGE_PER_AFFINITY_POINT} damage.
      */
-    public static int getTotalBonus(String armorSet, TrimEffects.TrimScan trimScan,
+    public static int getTotalBonus(ServerPlayerEntity player, TrimEffects.TrimScan trimScan,
                                      CombatEffects effects, DamageType type) {
-        return getTotalAffinityPoints(armorSet, trimScan, effects, type) * DAMAGE_PER_AFFINITY_POINT;
+        return getTotalBonus(player, trimScan, effects, type, null);
     }
 
     /** Version that also folds in the player's level-up affinity points. */
-    public static int getTotalBonus(String armorSet, TrimEffects.TrimScan trimScan,
+    public static int getTotalBonus(ServerPlayerEntity player, TrimEffects.TrimScan trimScan,
                                      CombatEffects effects, DamageType type,
                                      PlayerProgression.PlayerStats playerStats) {
-        int points = getTotalAffinityPoints(armorSet, trimScan, effects, type);
+        // Armor affinity is per-piece in half-points: multiply by the damage rate then
+        // halve, so a lone piece (1 half-point) still yields floor(3/2) = 1 damage.
+        int armorDamage = getArmorAffinityHalfPoints(player, type) * DAMAGE_PER_AFFINITY_POINT / 2;
+        // Trims, potion effects, and level-up choices are whole affinity points.
+        int wholePoints = getTrimBonus(trimScan, type) + getEffectBonus(effects, type);
         if (playerStats != null) {
             PlayerProgression.Affinity affinity = mapToAffinity(type);
             if (affinity != null) {
-                points += playerStats.getAffinityPoints(affinity);
+                wholePoints += playerStats.getAffinityPoints(affinity);
             }
         }
-        return points * DAMAGE_PER_AFFINITY_POINT;
+        return armorDamage + wholePoints * DAMAGE_PER_AFFINITY_POINT;
     }
 
     /**

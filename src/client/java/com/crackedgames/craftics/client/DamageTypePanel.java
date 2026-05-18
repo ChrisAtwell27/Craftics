@@ -1,8 +1,10 @@
 package com.crackedgames.craftics.client;
 
+import com.crackedgames.craftics.api.registry.HybridSetEntry;
+import com.crackedgames.craftics.api.registry.HybridSetRegistry;
+import com.crackedgames.craftics.combat.ArmorClassTable;
 import com.crackedgames.craftics.combat.DamageType;
 import com.crackedgames.craftics.combat.PlayerProgression;
-import com.crackedgames.craftics.combat.TrimEffects;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -40,8 +42,9 @@ public class DamageTypePanel {
     private static final int COLOR_RANGED   = 0xFF55FFFF; // cyan
     private static final int COLOR_PHYSICAL = 0xFFAAAAAA; // light gray
 
-    // Cached partial set bonuses for mixed armor (computed each frame in render)
-    private static Map<DamageType, Integer> cachedPartialBonuses = new HashMap<>();
+    private static final EquipmentSlot[] ARMOR_SLOTS = {
+        EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
+    };
 
     public static void render(DrawContext ctx, int screenWidth, int screenHeight) {
         MinecraftClient client = MinecraftClient.getInstance();
@@ -53,28 +56,15 @@ public class DamageTypePanel {
         String armorSet = getArmorSet(player);
         Map<String, Integer> trimBonuses = scanTrimBonuses(player);
 
-        // Compute partial set bonuses for mixed armor (2+ pieces of same material = +1)
-        cachedPartialBonuses.clear();
-        if ("mixed".equals(armorSet)) {
-            Map<String, Integer> materialCounts = new HashMap<>();
-            for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
-                String mat = getArmorMaterial(player.getEquippedStack(slot).getItem());
-                if (mat != null) materialCounts.merge(mat, 1, Integer::sum);
-            }
-            for (var entry : materialCounts.entrySet()) {
-                if (entry.getValue() >= 2) {
-                    DamageType affinity = switch (entry.getKey()) {
-                        case "leather" -> DamageType.PHYSICAL;
-                        case "chainmail" -> DamageType.SLASHING;
-                        case "iron" -> DamageType.CLEAVING;
-                        case "gold" -> DamageType.SPECIAL;
-                        case "diamond" -> DamageType.BLUNT;
-                        case "copper" -> DamageType.RANGED;
-                        default -> null;
-                    };
-                    if (affinity != null) cachedPartialBonuses.put(affinity, 1);
-                }
-            }
+        // Per-piece armor affinity: count each worn piece by its armor-set material.
+        // armorSetKeyOf normalizes the registry path (e.g. "golden" -> "gold").
+        Map<String, Integer> armorCounts = new HashMap<>();
+        String[] wornMaterials = new String[4];
+        int materialSlot = 0;
+        for (EquipmentSlot slot : ARMOR_SLOTS) {
+            String mat = ArmorClassTable.armorSetKeyOf(player.getEquippedStack(slot).getItem());
+            wornMaterials[materialSlot++] = mat;
+            if (mat != null) armorCounts.merge(mat, 1, Integer::sum);
         }
 
         // Panel position: left side of inventory
@@ -88,25 +78,33 @@ public class DamageTypePanel {
         ctx.fill(panelX - 3, panelY - 3, panelX + panelW + 3, panelY + panelH + 3, 0xCC1A1A2E);
 
         // Title
-        ctx.drawTextWithShadow(tr, "\u00a76\u00a7l\u2694 Damage Affinities", panelX, panelY, 0xFFFFAA00);
+        ctx.drawTextWithShadow(tr, "§6§l⚔ Damage Affinities", panelX, panelY, 0xFFFFAA00);
         panelY += 13;
 
         // Divider
         ctx.fill(panelX, panelY, panelX + panelW, panelY + 1, 0xFF444444);
         panelY += 4;
 
-        // Armor set label
+        // Armor set / hybrid label
         String setName = getSetDisplayName(armorSet);
         if (!setName.isEmpty()) {
-            ctx.drawTextWithShadow(tr, "\u00a77Set: " + setName, panelX, panelY, 0xFFAAAAAA);
+            ctx.drawTextWithShadow(tr, "§7Set: " + setName, panelX, panelY, 0xFFAAAAAA);
             panelY += 11;
+        } else {
+            // Not a full set — show the hybrid subclass name if a two-material combo is worn.
+            HybridSetEntry hybrid = HybridSetRegistry.resolve(wornMaterials);
+            if (hybrid != null) {
+                ctx.drawTextWithShadow(tr, "§7Hybrid: §d" + hybrid.className(),
+                    panelX, panelY, 0xFFAAAAAA);
+                panelY += 11;
+            }
         }
 
         // Bar graph for each damage type
         int barMaxWidth = panelW - 4;
         int barHeight = 8;
         int lineHeight = 14;
-        int maxBonus = 8; // max expected bonus for scaling bars
+        int maxBonusHalf = 16; // max expected bonus for scaling bars (16 half-points = 8)
 
         DamageType[] types = { DamageType.SLASHING, DamageType.CLEAVING, DamageType.BLUNT,
             DamageType.RANGED, DamageType.WATER, DamageType.SPECIAL, DamageType.PHYSICAL, DamageType.PET };
@@ -115,15 +113,15 @@ public class DamageTypePanel {
 
         for (int i = 0; i < types.length; i++) {
             DamageType type = types[i];
-            int bonus = computeBonus(armorSet, trimBonuses, type);
+            int bonusHalf = computeBonus(armorCounts, trimBonuses, type);
 
             // Label
             String label = type.displayName;
             ctx.drawTextWithShadow(tr, label, panelX, panelY, colors[i]);
 
             // Bonus number on right
-            if (bonus > 0) {
-                String bonusStr = "+" + bonus;
+            if (bonusHalf > 0) {
+                String bonusStr = "+" + DamageType.formatAffinityHalfPoints(bonusHalf);
                 int bonusWidth = tr.getWidth(bonusStr);
                 ctx.drawTextWithShadow(tr, bonusStr, panelX + panelW - bonusWidth, panelY, 0xFFFFFFFF);
             }
@@ -134,8 +132,8 @@ public class DamageTypePanel {
             ctx.fill(panelX, panelY, panelX + barMaxWidth, panelY + barHeight, 0xFF222222);
 
             // Bar fill
-            if (bonus > 0) {
-                int fillWidth = Math.min(barMaxWidth, (int)((bonus / (float) maxBonus) * barMaxWidth));
+            if (bonusHalf > 0) {
+                int fillWidth = Math.min(barMaxWidth, (int)((bonusHalf / (float) maxBonusHalf) * barMaxWidth));
                 fillWidth = Math.max(3, fillWidth); // minimum visible width
                 int barColor = colors[i];
                 ctx.fill(panelX, panelY, panelX + fillWidth, panelY + barHeight, barColor);
@@ -149,35 +147,20 @@ public class DamageTypePanel {
     }
 
     /**
-     * Compute total <b>affinity points</b> for a damage type. Every source —
-     * armor set, partial set, trim, mob head, level-up — contributes whole points.
-     * Combat damage is points × {@link DamageType#DAMAGE_PER_AFFINITY_POINT};
-     * the panel intentionally shows points so 2 same-material pieces displays as
-     * "+1" (one point) rather than "+3" (its damage equivalent).
+     * Total affinity for a damage type, in <b>half-points</b> (each armor piece is
+     * worth 0.5 affinity = 1 half-point). Armor affinity is per-piece — every worn
+     * piece counts; every other source (trim, addon scan, level-up, mob head) is a
+     * whole affinity point and is doubled into half-points so the units match.
+     * Combat damage is the whole-point total × {@link DamageType#DAMAGE_PER_AFFINITY_POINT}.
      */
-    private static int computeBonus(String armorSet, Map<String, Integer> trimBonuses, DamageType type) {
-        int points = 0;
+    private static int computeBonus(Map<String, Integer> armorCounts,
+                                    Map<String, Integer> trimBonuses, DamageType type) {
+        // Per-piece armor affinity, already in half-points.
+        int halfPoints = DamageType.affinityFromCounts(armorCounts, type);
 
-        // Full armor set points
-        points += switch (armorSet) {
-            case "leather"   -> type == DamageType.PHYSICAL ? 2 : 0;
-            case "chainmail" -> type == DamageType.SLASHING ? 2 : 0;
-            case "iron"      -> type == DamageType.CLEAVING ? 2 : 0;
-            case "gold"      -> type == DamageType.SPECIAL ? 2 : 0;
-            case "diamond"   -> type == DamageType.BLUNT ? 2 : 0;
-            case "netherite" -> 1;
-            case "turtle"    -> type == DamageType.WATER ? 3 : 0;
-            // Copper Age Backport — Marksman: +2 Ranged Power baseline.
-            case "copper"    -> type == DamageType.RANGED ? 2 : 0;
-            default -> 0;
-        };
+        // Every other source is a whole affinity point — doubled into half-points.
+        int wholePoints = 0;
 
-        // Partial set bonus: 2+ pieces of same material gives +1 to its affinity type
-        if ("mixed".equals(armorSet)) {
-            points += cachedPartialBonuses.getOrDefault(type, 0);
-        }
-
-        // Trim bonuses (points)
         String bonusKey = switch (type) {
             case SLASHING -> "SWORD_POWER";
             case CLEAVING -> "CLEAVING_POWER";
@@ -189,34 +172,35 @@ public class DamageTypePanel {
             case PHYSICAL -> null;
         };
         if (bonusKey != null) {
-            points += trimBonuses.getOrDefault(bonusKey, 0);
+            wholePoints += trimBonuses.getOrDefault(bonusKey, 0);
         }
         // Generic melee power stacks with melee types
         if (type == DamageType.SLASHING || type == DamageType.CLEAVING || type == DamageType.BLUNT) {
-            points += trimBonuses.getOrDefault("MELEE_POWER", 0);
+            wholePoints += trimBonuses.getOrDefault("MELEE_POWER", 0);
         }
 
         // Addon equipment scanner bonuses (synced from server)
         if (bonusKey != null) {
-            points += CombatState.getAddonBonus(bonusKey);
+            wholePoints += CombatState.getAddonBonus(bonusKey);
         }
         if (type == DamageType.SLASHING || type == DamageType.CLEAVING || type == DamageType.BLUNT) {
-            points += CombatState.getAddonBonus("MELEE_POWER");
+            wholePoints += CombatState.getAddonBonus("MELEE_POWER");
         }
 
         // Affinity points from level-up choices (1 point per selection)
         try {
             int affinityOrdinal = PlayerProgression.Affinity.valueOf(type.name()).ordinal();
-            points += CombatState.getAffinityPoints(affinityOrdinal);
+            wholePoints += CombatState.getAffinityPoints(affinityOrdinal);
         } catch (IllegalArgumentException ignored) {}
 
         // Mob head bonus contributes 1 affinity point for matching type.
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player != null) {
-            points += DamageType.getMobHeadAffinityPoints(mc.player.getEquippedStack(EquipmentSlot.HEAD), type);
+            wholePoints += DamageType.getMobHeadAffinityPoints(
+                mc.player.getEquippedStack(EquipmentSlot.HEAD), type);
         }
 
-        return points;
+        return halfPoints + wholePoints * 2;
     }
 
     /** Detect armor set from client player (mirrors PlayerCombatStats.getArmorSet). */
@@ -334,44 +318,16 @@ public class DamageTypePanel {
 
     private static String getSetDisplayName(String armorSet) {
         return switch (armorSet) {
-            case "leather"   -> "\u00a7eBrawler";
-            case "chainmail" -> "\u00a77Rogue";
-            case "iron"      -> "\u00a7fGuard";
-            case "gold"      -> "\u00a76Gambler";
-            case "diamond"   -> "\u00a7bKnight";
-            case "netherite" -> "\u00a74Juggernaut";
-            case "turtle"    -> "\u00a72Aquatic";
-            case "copper"    -> "\u00a76Marksman";
+            case "leather"   -> "§eBrawler";
+            case "chainmail" -> "§7Rogue";
+            case "iron"      -> "§fGuard";
+            case "gold"      -> "§6Gambler";
+            case "diamond"   -> "§bKnight";
+            case "netherite" -> "§4Juggernaut";
+            case "turtle"    -> "§2Aquatic";
+            case "copper"    -> "§6Marksman";
             default -> "";
         };
-    }
-
-    /** Detect which armor material a single piece belongs to (for partial set detection). */
-    private static String getArmorMaterial(Item item) {
-        if (item == Items.LEATHER_HELMET || item == Items.LEATHER_CHESTPLATE
-            || item == Items.LEATHER_LEGGINGS || item == Items.LEATHER_BOOTS) return "leather";
-        if (item == Items.CHAINMAIL_HELMET || item == Items.CHAINMAIL_CHESTPLATE
-            || item == Items.CHAINMAIL_LEGGINGS || item == Items.CHAINMAIL_BOOTS) return "chainmail";
-        if (item == Items.IRON_HELMET || item == Items.IRON_CHESTPLATE
-            || item == Items.IRON_LEGGINGS || item == Items.IRON_BOOTS) return "iron";
-        if (item == Items.GOLDEN_HELMET || item == Items.GOLDEN_CHESTPLATE
-            || item == Items.GOLDEN_LEGGINGS || item == Items.GOLDEN_BOOTS) return "gold";
-        if (item == Items.DIAMOND_HELMET || item == Items.DIAMOND_CHESTPLATE
-            || item == Items.DIAMOND_LEGGINGS || item == Items.DIAMOND_BOOTS) return "diamond";
-        if (item == Items.NETHERITE_HELMET || item == Items.NETHERITE_CHESTPLATE
-            || item == Items.NETHERITE_LEGGINGS || item == Items.NETHERITE_BOOTS) return "netherite";
-
-        // Copper Age Backport — runtime lookup so we don't need a hard dep.
-        if (item != null) {
-            Item copperH = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHelmet();
-            if (copperH != null && (item == copperH
-                || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperChestplate()
-                || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperLeggings()
-                || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperBoots())) {
-                return "copper";
-            }
-        }
-        return null;
     }
 
     /** Brighten an ARGB color by adding to RGB channels. */

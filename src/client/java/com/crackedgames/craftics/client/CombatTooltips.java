@@ -13,6 +13,11 @@ import java.util.Map;
  */
 public class CombatTooltips implements ItemTooltipCallback {
 
+    private static final net.minecraft.entity.EquipmentSlot[] ARMOR_SLOTS = {
+        net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+        net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET
+    };
+
     @Override
     public void getTooltip(net.minecraft.item.ItemStack stack, net.minecraft.item.Item.TooltipContext ctx,
                            net.minecraft.item.tooltip.TooltipType type, java.util.List<Text> lines) {
@@ -83,14 +88,107 @@ public class CombatTooltips implements ItemTooltipCallback {
             }
         }
 
+        // Armor pieces get the dedicated "Craftics Armor:" block below instead of the
+        // generic "Craftics Combat:" block \u2014 the armor block already covers AC,
+        // affinity, and the full-set bonus, so the generic one would be redundant.
+        int armorAC = com.crackedgames.craftics.combat.ArmorClassTable.getPieceAC(item);
+
         // The Move feather has a custom name; plain loot feathers should not get a tooltip
         String tip = (item == net.minecraft.item.Items.FEATHER && !stack.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME))
             ? null : getTooltipFor(item);
-        if (tip != null) {
+        if (tip != null && armorAC <= 0) {
             lines.add(Text.empty());
             lines.add(Text.literal("\u00a76\u00a7lCraftics Combat:"));
             for (String line : tip.split("\n")) {
                 lines.add(Text.literal(line));
+            }
+        }
+
+        // Armor pieces: replace the vanilla defense/attribute lines with the
+        // Craftics Armor Class + per-piece affinity block.
+        if (armorAC > 0) {
+            // Remove the vanilla attribute-modifier lines ("+X Armor / +X Armor Toughness",
+            // and the "When worn:" header). They are TranslatableText with attribute keys.
+            lines.removeIf(line -> {
+                if (line.getContent() instanceof net.minecraft.text.TranslatableTextContent tc) {
+                    String key = tc.getKey();
+                    return key.startsWith("item.modifiers.") || key.startsWith("attribute.modifier.");
+                }
+                return false;
+            });
+            // Removing the attribute block above orphans vanilla's blank separator
+            // line(s); drop any trailing blanks so exactly one separates the item
+            // name from the Craftics block (otherwise the tooltip shows a big gap).
+            while (lines.size() > 1 && lines.get(lines.size() - 1).getString().isEmpty()) {
+                lines.remove(lines.size() - 1);
+            }
+            lines.add(Text.empty());
+            lines.add(Text.literal("\u00a76\u00a7lCraftics Armor:"));
+            lines.add(Text.literal("\u00a7f  Armor Class: +" + armorAC));
+
+            String setKey = com.crackedgames.craftics.combat.ArmorClassTable.armorSetKeyOf(item);
+            if (setKey != null) {
+                com.crackedgames.craftics.combat.DamageType[] types =
+                    com.crackedgames.craftics.combat.DamageType.values();
+                int[] bonuses = new int[types.length];
+                for (int i = 0; i < types.length; i++) {
+                    bonuses[i] = com.crackedgames.craftics.api.registry.ArmorSetRegistry
+                        .getDamageTypeBonus(setKey, types[i]);
+                }
+                int firstVal = bonuses[0];
+                boolean allSame = true;
+                for (int i = 1; i < bonuses.length; i++) {
+                    if (bonuses[i] != firstVal) { allSame = false; break; }
+                }
+                if (allSame && firstVal > 0) {
+                    // netherite grants every type — show one combined line
+                    lines.add(Text.literal("\u00a79  All damage types: +"
+                        + com.crackedgames.craftics.combat.DamageType.formatAffinityHalfPoints(firstVal)
+                        + " per piece"));
+                } else {
+                    for (int i = 0; i < types.length; i++) {
+                        int v = bonuses[i];
+                        if (v > 0) {
+                            lines.add(Text.literal("\u00a79  " + types[i].displayName + ": +"
+                                + com.crackedgames.craftics.combat.DamageType.formatAffinityHalfPoints(v)
+                                + " per piece"));
+                        }
+                    }
+                }
+
+                // Full-set bonus — shown only when the client player wears the full matching set.
+                net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+                if (mc.player != null) {
+                    boolean fullSet = true;
+                    for (net.minecraft.entity.EquipmentSlot slot : ARMOR_SLOTS) {
+                        String wornKey = com.crackedgames.craftics.combat.ArmorClassTable.armorSetKeyOf(
+                            mc.player.getEquippedStack(slot).getItem());
+                        if (!setKey.equals(wornKey)) { fullSet = false; break; }
+                    }
+                    if (fullSet) {
+                        String desc = com.crackedgames.craftics.api.registry.ArmorSetRegistry
+                            .getDescription(setKey);
+                        if (desc != null && !desc.isEmpty()) {
+                            lines.add(Text.literal("\u00a7a  Full set: " + desc));
+                        }
+                    }
+
+                    // Hybrid set \u2014 shown when the client wears a qualifying two-material
+                    // combo and this piece's material is one of the pair.
+                    String[] wornMaterials = new String[4];
+                    int slotIdx = 0;
+                    for (net.minecraft.entity.EquipmentSlot slot : ARMOR_SLOTS) {
+                        wornMaterials[slotIdx++] = com.crackedgames.craftics.combat.ArmorClassTable
+                            .armorSetKeyOf(mc.player.getEquippedStack(slot).getItem());
+                    }
+                    com.crackedgames.craftics.api.registry.HybridSetEntry hybrid =
+                        com.crackedgames.craftics.api.registry.HybridSetRegistry.resolve(wornMaterials);
+                    if (hybrid != null
+                            && (setKey.equals(hybrid.materialA()) || setKey.equals(hybrid.materialB()))) {
+                        lines.add(Text.literal("\u00a7d  Hybrid: " + hybrid.className()));
+                        lines.add(Text.literal("\u00a77  " + hybrid.description()));
+                    }
+                }
             }
         }
 
@@ -527,7 +625,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                 int powerBonus = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.RANGED_POWER_BONUS;
                 return "\u00a76Set Bonus (full set): Marksman\n\u00a77" + chance
                     + "% chance for ranged hits to ricochet (" + dmgPct + "% of base damage)\n\u00a7bType Affinity: \u00a77+"
-                    + powerBonus + " Ranged Power";
+                    + (powerBonus * 2) + " Ranged Power";
             }
         }
 
