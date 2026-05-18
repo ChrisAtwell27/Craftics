@@ -1,6 +1,8 @@
 package com.crackedgames.craftics.combat;
 
 import com.crackedgames.craftics.CrafticsMod;
+import com.crackedgames.craftics.api.registry.AllyEntry;
+import com.crackedgames.craftics.api.registry.AllyRegistry;
 import com.crackedgames.craftics.world.CrafticsSavedData;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.SpawnReason;
@@ -17,13 +19,13 @@ import net.minecraft.util.math.Box;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 /**
- * Scans the hub world for vanilla-tamed animals that are following the player
- * and collects them for combat. Handles restoring surviving pets to the hub
- * after a biome run ends.
+ * Scans the hub yard for registered allies ({@link AllyEntry} in {@code AllyRegistry})
+ * and collects them for combat. {@code TAMED} allies must be tamed and owned by the
+ * player; {@code BUILT} allies qualify by entity type alone. Handles restoring
+ * surviving allies to the hub after a biome run ends.
  */
 public class HubPetCollector {
 
@@ -35,20 +37,12 @@ public class HubPetCollector {
     private static final int YARD_MIN_Z = -20, YARD_MAX_Z = 40;
     private static final int SCAN_HEIGHT = 20;
 
-    /** Vanilla entity types that qualify as tameable combat pets. */
-    private static final Set<String> TAMEABLE_TYPES = Set.of(
-        "minecraft:wolf", "minecraft:cat", "minecraft:parrot",
-        "minecraft:horse", "minecraft:donkey", "minecraft:mule",
-        "minecraft:skeleton_horse", "minecraft:zombie_horse",
-        "minecraft:camel", "minecraft:llama"
-    );
-
     /** Snapshot of a tamed pet collected from the hub before combat. */
     public record TamedPetSnapshot(
         String entityTypeId,
         UUID entityUuid,
         NbtCompound fullEntityNbt,
-        PetStats.Stats combatStats,
+        AllyEntry allyEntry,
         UUID playerUuid
     ) {}
 
@@ -77,37 +71,44 @@ public class HubPetCollector {
             if (results.size() >= MAX_COMBAT_PETS) break;
 
             String typeId = Registries.ENTITY_TYPE.getId(animal.getType()).toString();
-            if (!TAMEABLE_TYPES.contains(typeId)) continue;
-
-            // Check ownership and follow state
-            if (animal instanceof TameableEntity tameable) {
-                if (!tameable.isTamed()) continue;
-                //? if <=1.21.4 {
-                if (!ownerUuid.equals(tameable.getOwnerUuid())) continue;
-                //?} else {
-                /*var ref = tameable.getOwnerReference();
-                if (ref == null || !ownerUuid.equals(ref.getUuid())) continue;
-                *///?}
-                if (tameable.isSitting()) continue; // sitting = stay home
-            } else if (animal instanceof AbstractHorseEntity horse) {
-                if (!horse.isTame()) continue;
-                //? if <=1.21.4 {
-                if (!ownerUuid.equals(horse.getOwnerUuid())) continue;
-                //?} else {
-                /*var ref = horse.getOwnerReference();
-                if (ref == null || !ownerUuid.equals(ref.getUuid())) continue;
-                *///?}
-                // Horses don't sit, they're always "following"
-            } else {
-                continue; // Unknown tameable type
+            AllyEntry allyEntry = AllyRegistry.getOrNull(typeId);
+            if (allyEntry == null) continue; // not a registered ally — stays home
+            if (allyEntry.recruitMode() == AllyEntry.RecruitMode.IN_COMBAT_ONLY) {
+                continue; // registered for combat stats only — never recruited from the hub
             }
+
+            // TAMED allies must be tamed + owned by this player and not sitting.
+            // BUILT allies (golems) qualify on type alone.
+            if (allyEntry.recruitMode() == AllyEntry.RecruitMode.TAMED) {
+                if (animal instanceof TameableEntity tameable) {
+                    if (!tameable.isTamed()) continue;
+                    //? if <=1.21.4 {
+                    if (!ownerUuid.equals(tameable.getOwnerUuid())) continue;
+                    //?} else {
+                    /*var ref = tameable.getOwnerReference();
+                    if (ref == null || !ownerUuid.equals(ref.getUuid())) continue;
+                    *///?}
+                    if (tameable.isSitting()) continue; // sitting = stay home
+                } else if (animal instanceof AbstractHorseEntity horse) {
+                    if (!horse.isTame()) continue;
+                    //? if <=1.21.4 {
+                    if (!ownerUuid.equals(horse.getOwnerUuid())) continue;
+                    //?} else {
+                    /*var ref = horse.getOwnerReference();
+                    if (ref == null || !ownerUuid.equals(ref.getUuid())) continue;
+                    *///?}
+                    // Horses don't sit, they're always "following"
+                } else {
+                    continue; // TAMED entry but not a tameable entity class
+                }
+            }
+            // recruitMode == BUILT: no taming/ownership check.
 
             // Capture full NBT snapshot
             NbtCompound nbt = new NbtCompound();
             animal.writeNbt(nbt);
 
-            PetStats.Stats stats = PetStats.get(typeId);
-            results.add(new TamedPetSnapshot(typeId, animal.getUuid(), nbt, stats, ownerUuid));
+            results.add(new TamedPetSnapshot(typeId, animal.getUuid(), nbt, allyEntry, ownerUuid));
             toDiscard.add(animal);
 
             CrafticsMod.LOGGER.info("Collected following pet for combat: {} ({})",
@@ -240,9 +241,9 @@ public class HubPetCollector {
 
         /** Create from a TamedPetSnapshot (first level entry). */
         public static PetData fromSnapshot(TamedPetSnapshot snapshot) {
-            var s = snapshot.combatStats();
-            return new PetData(snapshot.entityTypeId(), s.hp(), s.hp(), s.atk(), s.def(), s.speed(), s.range(),
-                snapshot.fullEntityNbt());
+            var a = snapshot.allyEntry();
+            return new PetData(snapshot.entityTypeId(), a.hp(), a.hp(), a.attack(), a.defense(),
+                a.speed(), a.range(), snapshot.fullEntityNbt());
         }
 
         /** Create from a surviving combat entity (between levels). */

@@ -25,27 +25,27 @@ public final class VanillaContent {
     }
 
     private static void registerArmorSets() {
-        // Values from PlayerCombatStats.getSetBonusDescription() and DamageType.getArmorSetBonus()
+        // damageBonus is the per-2-pieces affinity value (a full 4-piece set = 2×).
         ArmorSetRegistry.register(ArmorSetEntry.builder("leather")
-            .damageBonus(DamageType.PHYSICAL, 2)
+            .damageBonus(DamageType.PHYSICAL, 1)
             .description("§eBrawler: +2 Physical dmg, kill streak damage bonus")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("chainmail")
-            .damageBonus(DamageType.SLASHING, 2)
+            .damageBonus(DamageType.SLASHING, 1)
             .speedBonus(1).apCostReduction(1)
             .description("§7Rogue: +1 Speed, attacks cost -1 AP (min 1)")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("iron")
-            .damageBonus(DamageType.CLEAVING, 2)
+            .damageBonus(DamageType.CLEAVING, 1)
             .defenseBonus(2)
             .description("§fGuard: +2 Armor Class, immune to knockback")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("gold")
-            .damageBonus(DamageType.SPECIAL, 2)
+            .damageBonus(DamageType.SPECIAL, 1)
             .description("§6Gambler: +3 Luck crit chance, +1 emerald per kill")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("diamond")
-            .damageBonus(DamageType.BLUNT, 2)
+            .damageBonus(DamageType.BLUNT, 1)
             .defenseBonus(3).attackBonus(1)
             .description("§bKnight: +3 Armor Class, +1 Attack")
             .build());
@@ -55,7 +55,7 @@ public final class VanillaContent {
             .description("§4Juggernaut: +4 Armor Class, +2 Attack, immune to fire damage")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("turtle")
-            .damageBonus(DamageType.WATER, 3)
+            .damageBonus(DamageType.WATER, 1)
             .description("§2Aquatic: Water tiles are walkable, +1 HP regen per turn, +1 Range when on water")
             .build());
     }

@@ -108,6 +108,18 @@ public final class CrafticsAPI {
         EnemyRegistry.register(entry);
     }
 
+    // === Allies ===
+
+    /**
+     * Register a combat ally — a mob recruited from the player's hub that fights
+     * alongside them. Use {@link AllyEntry#builder(String)} for a fluent API.
+     *
+     * @param entry the ally definition (stats, recruitment mode, and AI)
+     */
+    public static void registerAlly(AllyEntry entry) {
+        AllyRegistry.register(entry);
+    }
+
     // === Custom Status Effects ===
 
     /**
@@ -148,6 +160,18 @@ public final class CrafticsAPI {
      */
     public static void registerArmorSet(ArmorSetEntry entry) {
         ArmorSetRegistry.register(entry);
+    }
+
+    // === New: Hybrid Armor Sets ===
+
+    /**
+     * Register a hybrid armor set — the subclass bonus a player gets from wearing
+     * exactly two distinct armor materials. Keyed by the unordered material pair.
+     *
+     * @param entry The hybrid set data
+     */
+    public static void registerHybridSet(HybridSetEntry entry) {
+        HybridSetRegistry.register(entry);
     }
 
     // === New: Trim Patterns & Materials ===

@@ -1,0 +1,109 @@
+package com.crackedgames.craftics.api.registry;
+
+import com.crackedgames.craftics.combat.ai.ally.AllyAI;
+import com.crackedgames.craftics.combat.ai.ally.AllyRoundHook;
+import com.crackedgames.craftics.combat.ai.ally.MeleeAllyAI;
+import net.minecraft.item.Item;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * Immutable definition of a combat ally — a mob recruited from the player's hub
+ * that fights alongside them in the arena.
+ *
+ * <p>Registered allies are referenced by {@link #entityTypeId() entityTypeId};
+ * {@code HubPetCollector} recruits any matching mob from the hub yard. Build
+ * entries with {@link #builder(String)}.
+ *
+ * @param entityTypeId        the mob this entry describes, e.g. {@code minecraft:wolf}
+ * @param hp                  base health
+ * @param attack              base attack
+ * @param defense             base defense
+ * @param range               attack range in tiles
+ * @param speed               movement tiles per turn
+ * @param recruitMode         how the ally is collected from the hub
+ * @param ai                  combat behavior
+ * @param scalesWithOwnerGear whether attack gains the owner's armor/trim bonuses
+ * @param roundHook           optional per-round effect, or {@code null}
+ * @param healItem            optional item that heals this ally in combat, or {@code null}
+ * @param healAmount          HP restored by {@code healItem}
+ * @since 0.2.0
+ */
+public record AllyEntry(
+    String entityTypeId,
+    int hp,
+    int attack,
+    int defense,
+    int range,
+    int speed,
+    RecruitMode recruitMode,
+    AllyAI ai,
+    boolean scalesWithOwnerGear,
+    @Nullable AllyRoundHook roundHook,
+    @Nullable Item healItem,
+    int healAmount
+) {
+    /** How a hub mob qualifies to be recruited into combat. */
+    public enum RecruitMode {
+        /** Must be tamed and owned by the hub's player (wolves, cats, horses, …). */
+        TAMED,
+        /** Any mob of this type in the hub yard, no taming/ownership (golems). */
+        BUILT,
+        /**
+         * Never recruited from the hub. Registered only so its combat stats are
+         * defined — used when a mob of this type is tamed mid-battle.
+         */
+        IN_COMBAT_ONLY
+    }
+
+    /** Shared default AI instance for allies with no custom behavior. */
+    public static final AllyAI DEFAULT_AI = new MeleeAllyAI();
+
+    public static Builder builder(String entityTypeId) {
+        return new Builder(entityTypeId);
+    }
+
+    /** Fluent builder for {@link AllyEntry}. */
+    public static class Builder {
+        private final String entityTypeId;
+        private int hp = 6;
+        private int attack = 1;
+        private int defense = 0;
+        private int range = 1;
+        private int speed = 2;
+        private RecruitMode recruitMode = RecruitMode.TAMED;
+        private AllyAI ai = DEFAULT_AI;
+        private boolean scalesWithOwnerGear = true;
+        private AllyRoundHook roundHook = null;
+        private Item healItem = null;
+        private int healAmount = 0;
+
+        public Builder(String entityTypeId) {
+            this.entityTypeId = entityTypeId;
+        }
+
+        public Builder hp(int hp) { this.hp = hp; return this; }
+        public Builder attack(int attack) { this.attack = attack; return this; }
+        public Builder defense(int defense) { this.defense = defense; return this; }
+        public Builder range(int range) { this.range = range; return this; }
+        public Builder speed(int speed) { this.speed = speed; return this; }
+        public Builder recruitMode(RecruitMode mode) { this.recruitMode = mode; return this; }
+        public Builder ai(AllyAI ai) { this.ai = ai; return this; }
+        public Builder scalesWithOwnerGear(boolean v) { this.scalesWithOwnerGear = v; return this; }
+        public Builder roundHook(AllyRoundHook hook) { this.roundHook = hook; return this; }
+
+        /** Bind a combat heal item: using {@code item} on this ally restores {@code amount} HP. */
+        public Builder healItem(Item item, int amount) {
+            this.healItem = item;
+            this.healAmount = amount;
+            return this;
+        }
+
+        public AllyEntry build() {
+            if (entityTypeId == null || entityTypeId.isBlank()) {
+                throw new IllegalStateException("AllyEntry requires a non-blank entityTypeId");
+            }
+            return new AllyEntry(entityTypeId, hp, attack, defense, range, speed,
+                recruitMode, ai, scalesWithOwnerGear, roundHook, healItem, healAmount);
+        }
+    }
+}

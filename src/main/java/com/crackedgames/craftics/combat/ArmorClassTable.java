@@ -60,19 +60,45 @@ public final class ArmorClassTable {
     }
 
     /**
+     * The material prefix of an armor item's registry ID (e.g. {@code "iron"} from
+     * {@code iron_helmet}), or {@code null} if the item is not an armor piece.
+     */
+    public static String materialOf(Item item) {
+        if (item == null) return null;
+        String path = Registries.ITEM.getId(item).getPath();
+        if (!(path.endsWith("_helmet") || path.endsWith("_chestplate")
+                || path.endsWith("_leggings") || path.endsWith("_boots"))) {
+            return null;
+        }
+        return path.substring(0, path.lastIndexOf('_'));
+    }
+
+    /**
+     * The armor-set registry key for an armor item: its {@link #materialOf} material,
+     * normalized to the key the armor-set registry uses. The registry registers gold
+     * armor under {@code "gold"} while the item registry path yields {@code "golden"};
+     * this bridges that one mismatch. Returns {@code null} for non-armor items.
+     */
+    public static String armorSetKeyOf(Item item) {
+        String material = materialOf(item);
+        if (material == null) return null;
+        return "golden".equals(material) ? "gold" : material;
+    }
+
+    /**
      * AC contributed by a single armor item (vanilla + Copper Age Backport).
      * Returns 0 for empty slots, non-armor items, or unrecognized materials.
      */
     public static int getPieceAC(Item item) {
         if (item == null) return 0;
+        String material = materialOf(item);
+        if (material == null) return 0;
         String path = Registries.ITEM.getId(item).getPath();
         Slot slot;
         if (path.endsWith("_helmet"))          slot = Slot.HELMET;
         else if (path.endsWith("_chestplate")) slot = Slot.CHESTPLATE;
         else if (path.endsWith("_leggings"))   slot = Slot.LEGGINGS;
-        else if (path.endsWith("_boots"))      slot = Slot.BOOTS;
-        else return 0;
-        String material = path.substring(0, path.lastIndexOf('_'));
+        else                                   slot = Slot.BOOTS;
         return pieceAC(baseAC(material), slot);
     }
 

@@ -185,6 +185,21 @@ public class PlayerCombatStats {
         return "mixed";
     }
 
+    /**
+     * The hybrid armor set the player is wearing, or {@code null} if their armor is
+     * not a valid two-material combo. Sibling to {@link #getArmorSet}.
+     */
+    public static com.crackedgames.craftics.api.registry.HybridSetEntry getHybridSet(
+            ServerPlayerEntity player) {
+        String[] mats = new String[4];
+        EquipmentSlot[] slots = { EquipmentSlot.HEAD, EquipmentSlot.CHEST,
+                                  EquipmentSlot.LEGS, EquipmentSlot.FEET };
+        for (int i = 0; i < 4; i++) {
+            mats[i] = ArmorClassTable.armorSetKeyOf(player.getEquippedStack(slots[i]).getItem());
+        }
+        return com.crackedgames.craftics.api.registry.HybridSetRegistry.resolve(mats);
+    }
+
     public static String getSetBonusDescription(String armorSet) {
         return ArmorSetRegistry.getDescription(armorSet);
     }
