@@ -57,7 +57,7 @@
   <!-- Content -->
   <main class="content">
     <h1>Modding Guide</h1>
-    <p class="page-desc">Full public API reference for addon mod developers &mdash; weapons, equipment, trims, events, enchantments, biomes, and AI.</p>
+    <p class="page-desc">Full public API reference for addon mod developers: weapons, equipment, trims, events, enchantments, biomes, and AI.</p>
 
     <!-- ================================================================
          1. OVERVIEW
@@ -177,9 +177,9 @@ public class CrafticsCompat implements ModInitializer {
     <h3>API Package Structure</h3>
     <p>All public API types live under these packages:</p>
     <ul>
-      <li><code>com.crackedgames.craftics.api</code> &mdash; <code>CrafticsAPI</code>, interfaces (<code>WeaponAbilityHandler</code>, <code>EquipmentScanner</code>, <code>EventHandler</code>, <code>EnchantmentEffectHandler</code>), helpers (<code>Abilities</code>, <code>EventTemplates</code>, <code>StatModifiers</code>, <code>EnchantmentContext</code>)</li>
-      <li><code>com.crackedgames.craftics.api.registry</code> &mdash; Data records (<code>WeaponEntry</code>, <code>ArmorSetEntry</code>, <code>TrimPatternEntry</code>, <code>TrimMaterialEntry</code>, <code>EventEntry</code>)</li>
-      <li><code>com.crackedgames.craftics.combat</code> &mdash; Enums referenced by the API (<code>DamageType</code>, <code>TrimEffects.Bonus</code>, <code>TrimEffects.SetBonus</code>)</li>
+      <li><code>com.crackedgames.craftics.api</code>: <code>CrafticsAPI</code>, interfaces (<code>WeaponAbilityHandler</code>, <code>EquipmentScanner</code>, <code>EventHandler</code>, <code>EnchantmentEffectHandler</code>), helpers (<code>Abilities</code>, <code>EventTemplates</code>, <code>StatModifiers</code>, <code>EnchantmentContext</code>)</li>
+      <li><code>com.crackedgames.craftics.api.registry</code>: Data records (<code>WeaponEntry</code>, <code>ArmorSetEntry</code>, <code>TrimPatternEntry</code>, <code>TrimMaterialEntry</code>, <code>EventEntry</code>)</li>
+      <li><code>com.crackedgames.craftics.combat</code>: Enums referenced by the API (<code>DamageType</code>, <code>TrimEffects.Bonus</code>, <code>TrimEffects.SetBonus</code>)</li>
     </ul>
 
     <!-- ================================================================
@@ -249,7 +249,7 @@ CrafticsAPI.registerWeapon(myItem, entry);</code></pre>
 
     <h3>Abilities (Built-in Ability Factories)</h3>
     <p>
-      The <code>Abilities</code> class provides static factory methods that return <code>WeaponAbilityHandler</code> instances. These are composable &mdash; chain them with <code>.and()</code> to combine multiple effects on one weapon.
+      The <code>Abilities</code> class provides static factory methods that return <code>WeaponAbilityHandler</code> instances. They are composable; chain them with <code>.and()</code> to combine multiple effects on one weapon.
     </p>
     <pre><code>// Compose two abilities: bleed + sweep
 WeaponAbilityHandler handler = Abilities.bleed()
@@ -384,7 +384,7 @@ CrafticsAPI.registerEquipmentScanner("mymod", (player) -&gt; {
 
     <h3>Overview</h3>
     <p>
-      Combat effects are custom lifecycle callbacks that fire during combat. Unlike flat stat bonuses, they can react to events &mdash; taking damage, killing enemies, moving &mdash; and modify combat behavior dynamically. They are registered by calling <code>StatModifiers.addCombatEffect()</code> inside an <code>EquipmentScanner</code>.
+      Combat effects are custom lifecycle callbacks that fire during combat. Unlike flat stat bonuses, they can react to events (taking damage, killing enemies, moving) and modify combat behavior dynamically. They are registered by calling <code>StatModifiers.addCombatEffect()</code> inside an <code>EquipmentScanner</code>.
     </p>
 
     <h3>CombatEffectHandler Interface</h3>
@@ -501,7 +501,7 @@ ctx.getAllAllies()       // List&lt;CombatEntity&gt; &mdash; all current allies<
 
     <h3>Statefulness</h3>
     <p>
-      Handlers are per-combat instances &mdash; a fresh instance is created at combat start each time the scanner runs. This means you can safely use instance fields to track state within a single fight:
+      Handlers are per-combat instances. A fresh instance is created at combat start each time the scanner runs, so you can safely use instance fields to track state within a single fight:
     </p>
     <pre><code>mods.addCombatEffect("One-Shot Shield", new CombatEffectHandler() {
     private boolean used = false; // resets each combat
@@ -518,7 +518,7 @@ ctx.getAllAllies()       // List&lt;CombatEntity&gt; &mdash; all current allies<
 
     <h3>Registration</h3>
     <p>
-      Call <code>mods.addCombatEffect(name, handler)</code> inside your <code>EquipmentScanner</code>. Multiple effects per item are allowed &mdash; each registered independently with its own name and instance.
+      Call <code>mods.addCombatEffect(name, handler)</code> inside your <code>EquipmentScanner</code>. Multiple effects per item are allowed, each registered independently with its own name and instance.
     </p>
     <pre><code>CrafticsAPI.registerEquipmentScanner("mymod", (player) -&gt; {
     StatModifiers mods = new StatModifiers();
@@ -771,10 +771,10 @@ public interface EventHandler {
       The <code>EventTemplates</code> class will provide pre-built patterns for common event types. Planned templates include:
     </p>
     <ul>
-      <li><code>EventTemplates.gamble()</code> &mdash; Risk-reward gambling event</li>
-      <li><code>EventTemplates.giveReward()</code> &mdash; Simple item/stat reward</li>
-      <li><code>EventTemplates.ambush()</code> &mdash; Surprise enemy encounter</li>
-      <li><code>EventTemplates.spawnTrader()</code> &mdash; Shop/trade event</li>
+      <li><code>EventTemplates.gamble()</code>: Risk-reward gambling event</li>
+      <li><code>EventTemplates.giveReward()</code>: Simple item/stat reward</li>
+      <li><code>EventTemplates.ambush()</code>: Surprise enemy encounter</li>
+      <li><code>EventTemplates.spawnTrader()</code>: Shop/trade event</li>
     </ul>
     <div class="callout callout-muted">
       <p>EventTemplates are currently under development. For now, implement <code>EventHandler</code> directly.</p>
@@ -903,12 +903,12 @@ CrafticsAPI.registerEnchantment("mymod:swiftness", (ctx) -&gt; {
     <div class="callout">
       <p><strong>Mob pool entries</strong> each take <code>type</code>, <code>weight</code> (relative
       spawn chance), <code>hp</code>, <code>attack</code>, <code>defense</code>, and <code>range</code>.
-      <code>attack</code> is the mob's <em>base</em> attack &mdash; Craftics scales it up automatically
+      <code>attack</code> is the mob's <em>base</em> attack. Craftics scales it up automatically
       with the biome's progression depth (governed by the <code>atkPerBiome</code> config). The scaled
       value is both the flat damage a landed hit deals and the number checked against the player's
       <a href="combat.html#armor-class">Armor Class</a> for dodge chance. <code>defense</code> still
       uses percentage reduction for damage the mob <em>receives</em>. Keep base <code>attack</code>
-      modest (roughly 1&ndash;10) &mdash; deeper biomes add a lot on top, and a landed hit deals full
+      modest (roughly 1&ndash;10), since deeper biomes add a lot on top and a landed hit deals full
       flat damage with no reduction.</p>
     </div>
 
@@ -1209,9 +1209,9 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
       When the HUD requests a head for entity type <code>somemod:bigwolf</code>, <code>MobHeadTextures.get()</code> checks three sources in order:
     </p>
     <ol>
-      <li><strong>Hardcoded vanilla map</strong> &mdash; ~80 built-in entries for all vanilla mobs. Always checked first.</li>
-      <li><strong>Runtime registration</strong> &mdash; entries added via the Java API (see below). Checked second.</li>
-      <li><strong>Resource auto-discovery</strong> &mdash; probes the loaded resource manager for a PNG at two path conventions (see below). Results are cached until <code>/reload</code>.</li>
+      <li><strong>Hardcoded vanilla map</strong>: ~80 built-in entries for all vanilla mobs. Always checked first.</li>
+      <li><strong>Runtime registration</strong>: entries added via the Java API (see below). Checked second.</li>
+      <li><strong>Resource auto-discovery</strong>: probes the loaded resource manager for a PNG at two path conventions (see below). Results are cached until <code>/reload</code>.</li>
     </ol>
     <p>
       If none of the three sources return a texture, the HUD falls back to a colored square with the mob&rsquo;s first initial.
@@ -1246,7 +1246,7 @@ data/craftics/structures/arenas/   (in datapack, for .nbt)
     <pre><code>assets/craftics/textures/mob_heads/alexsmobs/bone_serpent.png   (Craftics namespace)
 assets/alexsmobs/textures/mob_heads/bone_serpent.png            (mod namespace)</code></pre>
     <p>
-      Run <code>/reload</code> or toggle the resource pack and the head appears on the combat HUD immediately &mdash; no client restart required.
+      Run <code>/reload</code> or toggle the resource pack and the head appears on the combat HUD immediately, with no client restart required.
     </p>
 
     <h3>Java API Method (Mod Code)</h3>

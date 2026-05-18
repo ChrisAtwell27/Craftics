@@ -1,6 +1,8 @@
 package com.crackedgames.craftics.level;
 
 import com.crackedgames.craftics.CrafticsMod;
+import com.crackedgames.craftics.api.registry.EnemyEntry;
+import com.crackedgames.craftics.api.registry.EnemyRegistry;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -34,12 +36,22 @@ import java.util.Map;
  *   "environment": "plains", "night": false,
  *   "enemies": {
  *     "passive": [{"type": "minecraft:cow", "weight": 5, "hp": 4, "attack": 0, "defense": 0, "range": 1}],
- *     "hostile": [{"type": "minecraft:zombie", "weight": 8, "hp": 6, "attack": 2, "defense": 0, "range": 1}],
+ *     "hostile": [
+ *       {"type": "minecraft:zombie", "weight": 8, "hp": 6, "attack": 2, "defense": 0, "range": 1},
+ *       {"enemy": "mymod:elite_zombie", "weight": 4}
+ *     ],
  *     "boss": {"type": "minecraft:zombie", "hp": 15, "attack": 3, "defense": 1, "range": 1}
  *   },
  *   "loot": [{"item": "minecraft:oak_planks", "weight": 10}]
  * }
  * }</pre>
+ *
+ * Each enemy slot ({@code passive}, {@code hostile}, {@code boss}) accepts either
+ * the inline form shown above ({@code "type"} plus stats) or a reference form,
+ * {@code {"enemy": "<id>", "weight": N}}, that points at an {@code EnemyEntry}
+ * registered from a {@code craftics/enemies/} datapack file or via the API. With
+ * the reference form the template supplies appearance, AI, and stats; {@code weight}
+ * stays biome-local.
  */
 public class BiomeJsonLoader {
 
@@ -175,14 +187,41 @@ public class BiomeJsonLoader {
     }
 
     private static MobPoolEntry[] parseMobPool(JsonArray arr, boolean passive) {
-        MobPoolEntry[] entries = new MobPoolEntry[arr.size()];
+        List<MobPoolEntry> entries = new ArrayList<>(arr.size());
         for (int i = 0; i < arr.size(); i++) {
-            entries[i] = parseSingleMob(arr.get(i).getAsJsonObject(), passive);
+            MobPoolEntry entry = parseSingleMob(arr.get(i).getAsJsonObject(), passive);
+            if (entry != null) entries.add(entry);
         }
-        return entries;
+        return entries.toArray(new MobPoolEntry[0]);
     }
 
+    /**
+     * Parse one enemy entry. Two forms are accepted:
+     * <ul>
+     *   <li><b>Reference</b> — {@code {"enemy": "<id>", "weight": N}} resolves a
+     *       registered {@link EnemyEntry}. {@code weight} stays biome-local; the
+     *       template supplies appearance, AI, and stats.</li>
+     *   <li><b>Inline</b> — {@code {"type": "<entity>", "hp": ..., ...}} defines the
+     *       enemy fully in the biome JSON (the original form).</li>
+     * </ul>
+     * Returns {@code null} (logged) when an {@code "enemy"} reference is unknown.
+     */
     private static MobPoolEntry parseSingleMob(JsonObject obj, boolean passive) {
+        if (obj.has("enemy")) {
+            String ref = obj.get("enemy").getAsString();
+            EnemyEntry entry = EnemyRegistry.getOrNull(ref);
+            if (entry == null) {
+                CrafticsMod.LOGGER.warn(
+                    "Unknown enemy reference '{}' in biome JSON — skipping entry", ref);
+                return null;
+            }
+            int weight = obj.has("weight") ? obj.get("weight").getAsInt() : 1;
+            return new MobPoolEntry(
+                entry.entityTypeId(), weight,
+                entry.hp(), entry.attack(), entry.defense(), entry.range(),
+                passive, entry.aiKey()
+            );
+        }
         return new MobPoolEntry(
             obj.get("type").getAsString(),
             obj.has("weight") ? obj.get("weight").getAsInt() : 1,

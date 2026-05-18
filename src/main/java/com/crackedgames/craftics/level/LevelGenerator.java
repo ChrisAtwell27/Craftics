@@ -160,7 +160,8 @@ public class LevelGenerator {
             if (pos == null) continue;
             used.add(pos);
             spawns.add(new LevelDefinition.EnemySpawn(mob.entityTypeId(), pos,
-                mob.baseHp() + hpBonus, mob.baseAttack() + atkBonus, mob.baseDefense(), mob.range()));
+                mob.baseHp() + hpBonus, mob.baseAttack() + atkBonus, mob.baseDefense(), mob.range(),
+                mob.aiKey()));
         }
 
         LevelDefinition.EnemySpawn[] enemies = spawns.toArray(new LevelDefinition.EnemySpawn[0]);
@@ -294,7 +295,8 @@ public class LevelGenerator {
                 bossHp,
                 biome.boss.baseAttack() + atkBonus,
                 biome.boss.baseDefense() + defBonus,
-                biome.boss.range()
+                biome.boss.range(),
+                biome.boss.aiKey()
             ));
         }
 
@@ -330,7 +332,8 @@ public class LevelGenerator {
                 mob.baseHp() + (isPassive ? 0 : hpBonus),
                 mob.baseAttack() + (isPassive ? 0 : atkBonus),
                 mob.baseDefense() + (isPassive ? 0 : defBonus),
-                mob.range()
+                mob.range(),
+                mob.aiKey()
             ));
         }
 
@@ -351,7 +354,8 @@ public class LevelGenerator {
                             bee.baseHp() + hpBonus + biomeIndex,
                             bee.baseAttack() + atkBonus,
                             bee.baseDefense() + defBonus,
-                            bee.range()
+                            bee.range(),
+                            bee.aiKey()
                         ));
                     }
                 }
