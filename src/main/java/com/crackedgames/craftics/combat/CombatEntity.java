@@ -303,6 +303,16 @@ public class CombatEntity {
     public boolean isMounted() { return mounted; }
     public void setMounted(boolean m) { this.mounted = m; }
 
+    /**
+     * Resolved combat AI for this entity when it is an ally. Set when a party
+     * mob is spawned into the arena (see {@code AllyArchetypes}); {@code null}
+     * for enemies or allies whose AI hasn't been resolved, in which case
+     * {@code handleAllyTurn} falls back to the registry / default melee AI.
+     */
+    private com.crackedgames.craftics.combat.ai.ally.AllyAI allyAi = null;
+    public com.crackedgames.craftics.combat.ai.ally.AllyAI getAllyAi() { return allyAi; }
+    public void setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyAI ai) { this.allyAi = ai; }
+
     private int aggroAllyEntityId = -1; // pet that hit us, for aggro target selection
     public int getAggroAllyEntityId() { return aggroAllyEntityId; }
     public void setAggroAllyEntityId(int id) { this.aggroAllyEntityId = id; }

@@ -45,6 +45,7 @@ public final class CrafticsDataLoaders {
         register(new EnemyJsonLoader());
         register(new AllyJsonLoader());
         register(new HybridSetJsonLoader());
+        register(new EnvironmentJsonLoader());
 
         ServerLifecycleEvents.SERVER_STARTED.register(
             server -> loadAll(server.getResourceManager()));

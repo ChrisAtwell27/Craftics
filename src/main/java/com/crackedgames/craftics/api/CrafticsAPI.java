@@ -5,7 +5,6 @@ import com.crackedgames.craftics.combat.ai.AIRegistry;
 import com.crackedgames.craftics.combat.ai.EnemyAI;
 import com.crackedgames.craftics.level.BiomeRegistry;
 import com.crackedgames.craftics.level.BiomeTemplate;
-import com.crackedgames.craftics.level.EnvironmentStyle;
 import net.minecraft.item.Item;
 
 /**
@@ -134,6 +133,19 @@ public final class CrafticsAPI {
         CombatEffectRegistry.register(def);
     }
 
+    // === Environments ===
+
+    /**
+     * Register a custom arena environment theme — floor, post, and light blocks plus a
+     * flavor-obstacle style. Biomes select an environment by id with their
+     * {@code "environment"} field. Use {@link EnvironmentDef#builder(String)}.
+     *
+     * @param def the environment definition
+     */
+    public static void registerEnvironment(EnvironmentDef def) {
+        EnvironmentRegistry.register(def);
+    }
+
     // === New: Equipment Scanners ===
 
     /**
@@ -248,11 +260,6 @@ public final class CrafticsAPI {
      * Check if a custom environment style is registered.
      */
     public static boolean hasEnvironmentStyle(String styleName) {
-        try {
-            EnvironmentStyle.valueOf(styleName.toUpperCase());
-            return true;
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
+        return EnvironmentRegistry.isRegistered(styleName);
     }
 }
