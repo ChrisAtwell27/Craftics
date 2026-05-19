@@ -45,6 +45,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.api.VanillaAllies.registerAll();
         com.crackedgames.craftics.api.VanillaHybridSets.registerAll();
         com.crackedgames.craftics.api.VanillaEnvironments.registerAll();
+        com.crackedgames.craftics.api.VanillaBiomePaths.registerAll();
 
         // Optional mod compatibility — each call no-ops if its target mod isn't loaded.
         com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.init();

@@ -146,6 +146,18 @@ public final class CrafticsAPI {
         EnvironmentRegistry.register(def);
     }
 
+    // === Biome Paths ===
+
+    /**
+     * Register a custom biome progression path — a named, ordered sequence of biome
+     * ids forming a themed realm. Use {@link BiomePathEntry#builder(String)}.
+     *
+     * @param entry the path definition
+     */
+    public static void registerBiomePath(BiomePathEntry entry) {
+        BiomePathRegistry.register(entry);
+    }
+
     // === New: Equipment Scanners ===
 
     /**
