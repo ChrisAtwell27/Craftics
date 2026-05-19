@@ -130,6 +130,12 @@ public class CrafticsMod implements ModInitializer {
             if (!player.isSneaking() || !player.getMainHandStack().isEmpty()) return net.minecraft.util.ActionResult.PASS;
             if (!(entity instanceof net.minecraft.entity.mob.MobEntity mob)) return net.minecraft.util.ActionResult.PASS;
             if (!(player instanceof net.minecraft.server.network.ServerPlayerEntity sp)) return net.minecraft.util.ActionResult.PASS;
+            // A single right-click fires this callback twice — once for the
+            // INTERACT_AT packet (hitResult != null) and once for INTERACT
+            // (hitResult == null). Consume both so vanilla interaction is fully
+            // blocked, but toggle the party only on the INTERACT pass so one
+            // click is one toggle.
+            if (hitResult != null) return net.minecraft.util.ActionResult.SUCCESS;
             return com.crackedgames.craftics.combat.PartyMobs.toggleParty(sp, mob);
         });
 

@@ -32,9 +32,6 @@ import java.util.UUID;
  */
 public class HubPetCollector {
 
-    /** Max pets that can join a single combat run — mirrors the party cap. */
-    public static final int MAX_COMBAT_PETS = CrafticsSavedData.PlayerData.MAX_PARTY_MOBS;
-
     /** Snapshot of a party mob collected from the hub before combat. */
     public record TamedPetSnapshot(
         String entityTypeId,
@@ -49,7 +46,7 @@ public class HubPetCollector {
      * Collect the player's battle-party mobs for combat. Each mob in the party
      * list is looked up by UUID, snapshotted, and discarded from the hub world.
      * Party entries whose mob no longer exists (died, despawned) are pruned.
-     * Returns up to {@link #MAX_COMBAT_PETS} snapshots.
+     * Fields up to the player's {@code PartyMobs.partyCap} mobs.
      */
     public static List<TamedPetSnapshot> collectFollowingPets(
             ServerWorld world, ServerPlayerEntity player, CrafticsSavedData data) {
@@ -58,6 +55,7 @@ public class HubPetCollector {
         List<UUID> party = pd.getPartyMobs();
         if (party.isEmpty()) return List.of();
 
+        int cap = PartyMobs.partyCap(player);
         UUID ownerUuid = player.getUuid();
         List<TamedPetSnapshot> results = new ArrayList<>();
         List<Entity> toDiscard = new ArrayList<>();
@@ -69,7 +67,7 @@ public class HubPetCollector {
                 continue; // dead / despawned / unloaded — drop this party entry
             }
             survivors.add(mobUuid);
-            if (results.size() >= MAX_COMBAT_PETS) continue;
+            if (results.size() >= cap) continue;
 
             String typeId = Registries.ENTITY_TYPE.getId(mob.getType()).toString();
             // Hand-tuned stats when registered, otherwise derived from the mob itself.

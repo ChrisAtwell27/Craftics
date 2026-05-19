@@ -378,6 +378,13 @@ public class CombatManager {
     private List<HubPetCollector.TamedPetSnapshot> hubPetSnapshots = new ArrayList<>();
     public void setHubPetSnapshots(List<HubPetCollector.TamedPetSnapshot> snapshots) { this.hubPetSnapshots = snapshots; }
 
+    // True once a normal combat exit (boss win, biome complete, return-home,
+    // next-level) has explicitly disposed of the surviving allied pets. When
+    // false at endCombat() time, the exit is abnormal (disconnect, death, error)
+    // and endCombat() must restore the survivors to the hub itself, otherwise
+    // they are discarded and lost forever.
+    private boolean petsRescued = false;
+
     private CombatEntity pendingAllyAttackTarget = null;
     /** Pet bonus message fragment ("§a+N Pet") stored until the post-animation damage message. */
     private String pendingAllyPetMsg = "";
@@ -2105,6 +2112,17 @@ public class CombatManager {
             showEnemyIntentionPreviews();
         }
 
+        // Track which player owns the biome run data (resolved before pets spawn).
+        this.leaderUuid = player.getUuid();
+
+        // Spawn hub-tamed pets that followed the player into combat (first level
+        // only) plus any pets carried over from a previous level — BEFORE the
+        // no-collision team is built and the first sync/highlights are sent, so
+        // allies are immediately visible, hoverable, and collision-exempt on the
+        // player's very first turn instead of only appearing after their first move.
+        spawnHubPets();
+        spawnSavedPets();
+
         // Create a no-collision team for all arena entities to prevent player pushing
         setupNoCollisionTeam();
 
@@ -2125,15 +2143,6 @@ public class CombatManager {
         CrafticsSavedData.PlayerData startPd = startData.getPlayerData(player.getUuid());
         startPd.inCombat = true;
         startData.markDirty();
-
-        // Track which player owns the biome run data
-        this.leaderUuid = player.getUuid();
-
-        // Spawn hub-tamed pets that followed the player into combat (first level only)
-        spawnHubPets();
-
-        // Respawn saved pets from a previous level (level 2+ within a biome run)
-        spawnSavedPets();
 
         // Build turn queue now so player 2 gets their turn in the first cycle
         if (partyPlayers.size() > 1) {
@@ -2246,6 +2255,30 @@ public class CombatManager {
             }
         }
         return any;
+    }
+
+    /**
+     * The full melee damage a normal attack with {@code weapon} would deal, before
+     * crit and mob resistances — attack power plus Strength, melee progression, set
+     * bonus, weapon enchants, and the weapon's damage-type affinity bonus, scaled by
+     * the configured player damage multiplier. Mirrors the melee path of the
+     * baseDamage computation in {@code handleAttack} so a counterattack hits as hard
+     * as a real swing rather than dealing only the weapon's bare attack power.
+     */
+    private int computeMeleeAttackDamage(net.minecraft.item.Item weapon) {
+        DamageType damageType = DamageType.fromWeapon(weapon);
+        PlayerProgression.PlayerStats attackerStats = PlayerProgression.get(
+            (ServerWorld) player.getEntityWorld()).getStats(player);
+        int damageTypeBonus = DamageType.getTotalBonus(
+                player, activeTrimScan, combatEffects, damageType, attackerStats)
+            + DamageType.getMobHeadBonus(
+                player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), damageType);
+        int baseDamage = PlayerCombatStats.getAttackPower(weapon) + combatEffects.getStrengthBonus()
+            + getProgMeleeBonus() + PlayerCombatStats.getSetAttackBonus(player)
+            + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus;
+        baseDamage = (int)(baseDamage
+            * com.crackedgames.craftics.CrafticsMod.CONFIG.playerDamageMultiplier());
+        return Math.max(1, baseDamage);
     }
 
     /**
@@ -7800,7 +7833,13 @@ public class CombatManager {
             pendingAllyAttackTarget = target;
             pendingAction = new EnemyAction.MoveAndAttackMob(
                 attack.path(), target.getEntityId(), totalDamage);
-            startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+            // Walk the approach path first when there is one — tickEnemyMoving
+            // chains into the attack, so the ally moves and strikes in one turn.
+            if (attack.path().isEmpty()) {
+                startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+            } else {
+                startEnemyMove(attack.path());
+            }
             return;
         }
 
@@ -10970,8 +11009,12 @@ public class CombatManager {
             if (allyTarget != null && allyTarget.isAlive()) {
                 int dealt = allyTarget.takeDamage(maam.damage());
                 allyTarget.setAggroAllyEntityId(currentEnemy.getEntityId());
+                // Special on-hit ability (strider burn, soak, slow, …).
+                String abilityMsg = allyTarget.isAlive()
+                    ? com.crackedgames.craftics.combat.ai.ally.AllyAbilities.applyOnHit(currentEnemy, allyTarget)
+                    : "";
                 sendMessage("§a" + currentEnemy.getDisplayName() + " attacks "
-                    + allyTarget.getDisplayName() + " for " + dealt + " damage!" + petMsg);
+                    + allyTarget.getDisplayName() + " for " + dealt + " damage!" + petMsg + abilityMsg);
                 // Addon combat effects: ally attack notification
                 final CombatEntity fAlly = currentEnemy;
                 final CombatEntity fAllyTarget = allyTarget;
@@ -11354,7 +11397,7 @@ public class CombatManager {
                 double counterChance = physPts * 0.03 + physLuck * 0.02; // 3% per affinity + 2% per luck
                 if (counterChance > 0 && Math.random() < counterChance) {
                     int counterDmg = performCounterAttack(currentEnemy,
-                        PlayerCombatStats.getAttackPower(player));
+                        computeMeleeAttackDamage(player.getMainHandStack().getItem()));
                     sendMessage("\u00a77\u270A Counter! You strike back for " + counterDmg + " damage!");
                     if (!currentEnemy.isAlive()) {
                         achievementTracker.recordCounterKill();
@@ -11377,7 +11420,7 @@ public class CombatManager {
                 net.minecraft.item.Item counterWeapon = hybridLastWeapon != null
                     ? hybridLastWeapon : player.getMainHandStack().getItem();
                 int counterDmg = performCounterAttack(currentEnemy,
-                    PlayerCombatStats.getAttackPower(counterWeapon));
+                    computeMeleeAttackDamage(counterWeapon));
                 sendMessage("\u00a7e\u270A Counterpuncher! You strike back for " + counterDmg + " damage!");
                 if (!currentEnemy.isAlive()) {
                     achievementTracker.recordCounterKill();
@@ -12645,6 +12688,8 @@ public class CombatManager {
                 HubPetCollector.restorePetsToHub(world, player, savedPets, data);
                 savedPets.clear();
             }
+            // Pets handled — endCombat() must not restore them a second time.
+            petsRescued = true;
 
             // Check achievements before endCombat() clears state
             String achievBiomeId = biomeTemplate != null ? biomeTemplate.biomeId : "";
@@ -12907,8 +12952,11 @@ public class CombatManager {
         int branchChoice = ld.branchChoice;
         int ngPlusLevel = ld.ngPlusLevel;
 
-        // Persist tamed pets so they carry over to the next level
+        // Persist tamed pets so they carry over to the next level (continue) or
+        // get restored to the hub just below (go home). Either branch disposes of
+        // the survivors explicitly, so endCombat() must not touch them.
         savePets();
+        petsRescued = true;
 
         if (goHome) {
             sendMessage("§7Returning to hub...");
@@ -14972,6 +15020,38 @@ public class CombatManager {
             }
         }
 
+        // === Safety net: recover surviving allied pets ===
+        // Normal combat exits (boss win, biome complete, return-home, next-level)
+        // dispose of the surviving pets explicitly and set petsRescued. Any other
+        // exit — a disconnect mid-fight, a player death, an error path — reaches
+        // endCombat() without doing so, and the arena-mob discard further below
+        // would destroy the ally mobs permanently. Since each party mob was
+        // removed from the hub world when the run began, that loss is forever.
+        // Restore the survivors to the hub here using their original NBT.
+        if (!petsRescued) {
+            try {
+                if (enemies != null && player != null) {
+                    ServerWorld petWorld = (ServerWorld) player.getEntityWorld();
+                    CrafticsSavedData petData = CrafticsSavedData.get(petWorld);
+                    ServerPlayerEntity petOwner = getCombatLeader();
+                    if (petOwner == null) petOwner = player;
+                    List<HubPetCollector.PetData> rescued = new ArrayList<>();
+                    for (CombatEntity e : enemies) {
+                        if (e.isAlive() && e.isAlly()) {
+                            rescued.add(HubPetCollector.PetData.fromCombatEntity(e, e.getOriginalHubNbt()));
+                        }
+                    }
+                    if (!rescued.isEmpty()) {
+                        HubPetCollector.restorePetsToHub(petWorld, petOwner, rescued, petData);
+                        CrafticsMod.LOGGER.info("Recovered {} ally pet(s) to the hub on abnormal combat exit.",
+                            rescued.size());
+                    }
+                }
+            } catch (Exception e) {
+                CrafticsMod.LOGGER.warn("endCombat: ally pet recovery failed: {}", e.getMessage());
+            }
+        }
+
         // === World cleanup (wrapped so failures don't prevent state reset) ===
         try {
             clearHighlights();
@@ -15189,6 +15269,8 @@ public class CombatManager {
         testRange = false;
         combatEffects.clear();
         tileEffects.clear();
+        // Reset for the next combat — the pet disposition is undecided again.
+        petsRescued = false;
 
         CrafticsMod.LOGGER.info("Combat ended.");
     }
@@ -15282,7 +15364,10 @@ public class CombatManager {
                 net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
             if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) continue;
 
-            mob.requestTeleport(blockPos.getX() + 0.5, blockPos.getY() + 1.0, blockPos.getZ() + 0.5);
+            // Stand the pet on the floor — same Y as the player, enemies, and
+            // spawnHubPets. gridToBlockPos already returns the standing Y; the
+            // old "+ 1.0" left saved pets hovering one block above the ground.
+            mob.requestTeleport(blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5);
             mob.setPersistent();
             mob.setAiDisabled(true);
             mob.noClip = true;
@@ -15790,8 +15875,85 @@ public class CombatManager {
             getPlayerHp(), getPlayerMaxHpForDisplay(), turnNumber,
             maxAp, maxSpeed, enemyData, typeIds.toString(),
             effectsDisplay, killStreak,
-            partyHpData, turnOrderData
+            partyHpData, turnOrderData, buildPlayerStatsData()
         ));
+    }
+
+    /**
+     * The damage a normal hit from {@code member} would deal right now — the same
+     * pre-crit, pre-enemy-resistance {@code baseDamage} that {@code handleAttack}
+     * computes. Folds in weapon power, melee/ranged progression, armor-set attack
+     * bonus, weapon enchants, the full damage-type affinity bonus (armor affinity +
+     * armor trims + level-up affinity + mob-head), Bow Power for ranged weapons,
+     * and the INFERNAL trim set bonus. Live combat effects (Strength) are included
+     * only for the manager's current player, whose combat context is tracked.
+     */
+    private int computeAttackReadout(ServerPlayerEntity member,
+                                     PlayerProgression.PlayerStats ms,
+                                     TrimEffects.TrimScan trimScan) {
+        Item weapon = member.getMainHandStack().getItem();
+        boolean ranged = weapon == Items.BOW || weapon == Items.CROSSBOW;
+        DamageType damageType = DamageType.fromWeapon(weapon);
+        CombatEffects fx = (member == player) ? combatEffects : null;
+        int progBonus = ranged
+            ? ms.getPoints(PlayerProgression.Stat.RANGED_POWER)
+            : ms.getPoints(PlayerProgression.Stat.MELEE_POWER);
+        int damageTypeBonus = DamageType.getTotalBonus(member, trimScan, fx, damageType, ms)
+            + DamageType.getMobHeadBonus(
+                member.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), damageType);
+        int strength = fx != null ? fx.getStrengthBonus() : 0;
+        int baseDamage = PlayerCombatStats.getAttackPower(weapon) + strength + progBonus
+            + PlayerCombatStats.getSetAttackBonus(member)
+            + PlayerCombatStats.getWeaponEnchantBonus(member) + damageTypeBonus;
+        baseDamage = (int)(baseDamage
+            * com.crackedgames.craftics.CrafticsMod.CONFIG.playerDamageMultiplier());
+        if (ranged) baseDamage += PlayerCombatStats.getBowPower(member);
+        // INFERNAL trim set: fire attacks deal +3.
+        if (trimScan != null && trimScan.setBonus() == TrimEffects.SetBonus.INFERNAL
+                && (PlayerCombatStats.getFireAspect(member) > 0
+                    || (ranged && PlayerCombatStats.getBowFlame(member) > 0))) {
+            baseDamage += 3;
+        }
+        return Math.max(1, baseDamage);
+    }
+
+    /**
+     * Per-player combat readout for the client hover panel — one entry per party
+     * member (just the local player when solo). Format per entry:
+     * {@code uuid,name,hp,maxHp,dead,atk,ac,ap,speed}, entries joined with {@code |}.
+     * Each member's stats are computed live from their own gear, trims, and
+     * progression via {@link #computeAttackReadout}, so the panel reflects the
+     * damage a hit would actually land.
+     */
+    private String buildPlayerStatsData() {
+        java.util.List<ServerPlayerEntity> members =
+            partyPlayers.isEmpty() ? java.util.List.of(player) : partyPlayers;
+        StringBuilder sb = new StringBuilder();
+        for (ServerPlayerEntity member : members) {
+            if (member == null || member.isRemoved()) continue;
+            boolean dead = deadPartyMembers.contains(member.getUuid());
+            int hp = dead ? 0 : ((int) member.getHealth() <= 1 ? 0 : (int) member.getHealth());
+            int maxHp = (int) member.getMaxHealth();
+            PlayerProgression.PlayerStats ms = PlayerProgression.get(
+                (ServerWorld) member.getEntityWorld()).getStats(member);
+            TrimEffects.TrimScan trimScan = TrimEffects.scan(member);
+            int atk = computeAttackReadout(member, ms, trimScan);
+            int ac = PlayerCombatStats.getArmorClass(member,
+                member == player ? combatEffects : null, trimScan,
+                ms.getPoints(PlayerProgression.Stat.DEFENSE), 0);
+            int ap = ms.getEffective(PlayerProgression.Stat.AP)
+                + PlayerCombatStats.getSetApBonus(member);
+            int speed = ms.getEffective(PlayerProgression.Stat.SPEED)
+                + PlayerCombatStats.getSetSpeedBonus(member);
+            if (sb.length() > 0) sb.append("|");
+            sb.append(member.getUuid()).append(",")
+              .append(member.getName().getString()).append(",")
+              .append(hp).append(",").append(maxHp).append(",")
+              .append(dead ? 1 : 0).append(",")
+              .append(atk).append(",").append(ac).append(",")
+              .append(ap).append(",").append(speed);
+        }
+        return sb.toString();
     }
 
     /**

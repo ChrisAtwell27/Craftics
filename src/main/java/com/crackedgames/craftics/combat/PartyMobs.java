@@ -33,10 +33,21 @@ public final class PartyMobs {
 
     private PartyMobs() {}
 
-    /** Max mobs in a party — mirrors {@link CrafticsSavedData.PlayerData#MAX_PARTY_MOBS}. */
-    public static final int MAX_PARTY = CrafticsSavedData.PlayerData.MAX_PARTY_MOBS;
+    /** Party size with 0 Pet Affinity. Each Pet Affinity level adds one more — no hard cap. */
+    public static final int BASE_PARTY = 1;
     /** Only one rideable mob may be in a party at a time. */
     public static final int MAX_RIDEABLE = 1;
+
+    /**
+     * The current battle-party cap for {@code player}: {@link #BASE_PARTY} plus
+     * the player's Pet Affinity level ({@code Affinity.PET}). There is no hard maximum.
+     */
+    public static int partyCap(ServerPlayerEntity player) {
+        int petAffinity = PlayerProgression.get((ServerWorld) player.getEntityWorld())
+            .getStats(player)
+            .getAffinityPoints(PlayerProgression.Affinity.PET);
+        return BASE_PARTY + petAffinity;
+    }
 
     //? if <=1.21.1 {
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
@@ -163,21 +174,23 @@ public final class PartyMobs {
         List<UUID> party = pd.getPartyMobs();
         UUID mobId = mob.getUuid();
         String name = mob.getName().getString();
+        int cap = partyCap(player);
 
         // Already in the party — Shift+Right-Click again removes it.
         if (party.contains(mobId)) {
             party.remove(mobId);
             data.markDirty();
             PartyMobSync.sync(player);
-            actionBar(player, "§e" + name + " left your battle party. (" + party.size() + "/" + MAX_PARTY + ")");
+            actionBar(player, "§e" + name + " left your battle party. (" + party.size() + "/" + cap + ")");
             return ActionResult.SUCCESS;
         }
 
         // Adding — drop any dead/gone members first so their slots free up.
         if (pruneDangling(world, party)) data.markDirty();
 
-        if (party.size() >= MAX_PARTY) {
-            actionBar(player, "§cYour battle party is full (" + MAX_PARTY + "/" + MAX_PARTY + ").");
+        if (party.size() >= cap) {
+            actionBar(player, "§cYour battle party is full (" + party.size() + "/" + cap
+                + "). Raise the cap with the Pet Affinity.");
             return ActionResult.SUCCESS;
         }
         if (isRideable(mob) && countRideable(world, party) >= MAX_RIDEABLE) {
@@ -193,7 +206,7 @@ public final class PartyMobs {
         String suffix = isSaddledMount(mob)
             ? " §7(saddled — it will mount you in battle)"
             : (isRideable(mob) ? " §7(no saddle — it will fight on foot)" : "");
-        actionBar(player, "§a" + name + " — §a§lActive In Party §r§7(" + party.size() + "/" + MAX_PARTY + ")" + suffix);
+        actionBar(player, "§a" + name + " — §a§lActive In Party §r§7(" + party.size() + "/" + cap + ")" + suffix);
         return ActionResult.SUCCESS;
     }
 

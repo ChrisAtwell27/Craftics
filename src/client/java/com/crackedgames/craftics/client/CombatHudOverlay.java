@@ -638,9 +638,34 @@ public class CombatHudOverlay implements HudRenderCallback {
     private void renderEnemyRoster(DrawContext ctx, MinecraftClient client, int screenW) {
         Map<Integer, int[]> enemies = CombatState.getEnemyHpMap();
         Map<Integer, String> types = CombatState.getEnemyTypeMap();
-        if (enemies.isEmpty()) return;
 
         int hoveredId = CombatState.getHoveredEnemyId();
+
+        // Hovered party player → player inspect panel (friendly info, shown even under blindness).
+        String hoveredPlayer = CombatState.getHoveredPlayerUuid();
+        if (hoveredPlayer != null) {
+            CombatState.PlayerStats ps = CombatState.getPlayerStats(hoveredPlayer);
+            if (ps != null) {
+                renderPlayerInspectPanel(ctx, client, screenW, ps);
+                enemyRosterPanelW = 130;
+                enemyRosterRightX = screenW - 8;
+                enemyRosterBottomY = 200;
+                return;
+            }
+        }
+
+        // Hovered ally → reuse the enemy inspect panel; ally type strings carry full stats.
+        if (hoveredId != -1 && CombatState.getAllyHpMap().containsKey(hoveredId)) {
+            String allyType = CombatState.getAllyTypeMap().getOrDefault(hoveredId, "minecraft:wolf");
+            renderInspectPanel(ctx, client, screenW, hoveredId,
+                CombatState.getAllyHpMap().get(hoveredId), allyType);
+            enemyRosterPanelW = 120;
+            enemyRosterRightX = screenW - 8;
+            enemyRosterBottomY = 200;
+            return;
+        }
+
+        if (enemies.isEmpty()) return;
 
         // Blindness hides enemy inspection entirely — no hover panel, no stat readout.
         // The standard enemy roster (to the side) still shows below.
@@ -851,6 +876,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         int eHp = hpData[0];
         int eMaxHp = hpData[1];
         float ePct = eMaxHp > 0 ? (float) eHp / eMaxHp : 0;
+        boolean isAlly = typeIdRaw.contains(";ally");
 
         String[] parts = typeIdRaw.split(";");
         String typeId = parts[0];
@@ -876,6 +902,8 @@ public class CombatHudOverlay implements HudRenderCallback {
                     }
                 }
             }
+            else if (parts[i].startsWith("mv=")) { /* movement style — not a status effect */ }
+            else if (parts[i].equals("ally")) { /* ally tag — not a status effect */ }
             else enemyEffects.add(parts[i]);
         }
 
@@ -898,11 +926,11 @@ public class CombatHudOverlay implements HudRenderCallback {
         int bgColor = bossName != null ? 0xBB2A0A0A : PANEL_BG;
         ctx.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, PANEL_BORDER);
         ctx.fill(panelX, panelY, panelX + panelW, panelY + panelH, bgColor);
-        // Name header bar
-        int headerColor = bossName != null ? 0xBB8B0000 : 0xBB222244;
+        // Name header bar — green-tinted for allies so friend/foe reads at a glance.
+        int headerColor = bossName != null ? 0xBB8B0000 : isAlly ? 0xBB1B4A1B : 0xBB222244;
         ctx.fill(panelX, panelY, panelX + panelW, panelY + 14, headerColor);
 
-        int nameColor = bossName != null ? 0xFFFFAA00 : 0xFFFFFFFF;
+        int nameColor = bossName != null ? 0xFFFFAA00 : isAlly ? 0xFF66DD66 : 0xFFFFFFFF;
         Identifier inspectHead = MobHeadTextures.get(typeId);
         if (inspectHead != null) {
             MobHeadTextures.drawMobHead(ctx, inspectHead, panelX, panelY, 14);
@@ -971,6 +999,73 @@ public class CombatHudOverlay implements HudRenderCallback {
         if (behavior != null) {
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal("\u00a78" + behavior), panelX + 4, y, 0xFF888888);
+        }
+    }
+
+    /** Hover detail panel for a party player \u2014 mirrors the enemy inspect panel layout. */
+    private void renderPlayerInspectPanel(DrawContext ctx, MinecraftClient client, int screenW,
+                                          CombatState.PlayerStats ps) {
+        // Active effects are only known for the local client player.
+        boolean isSelf = client.player != null
+            && client.player.getUuid().toString().equals(ps.uuid());
+        List<String> effects = new ArrayList<>();
+        if (isSelf) {
+            String fx = CombatState.getPlayerEffects();
+            if (fx != null && !fx.isEmpty()) {
+                for (String part : fx.split(" \\| ")) {
+                    String t = part.trim();
+                    if (!t.isEmpty()) effects.add(t);
+                }
+            }
+        }
+
+        int effectRows = effects.isEmpty() ? (isSelf ? 1 : 0) : effects.size();
+        int panelW = 130;
+        int panelH = 62 + effectRows * 10;
+        int panelX = screenW - panelW - 8;
+        int panelY = 4;
+
+        ctx.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, PANEL_BORDER);
+        ctx.fill(panelX, panelY, panelX + panelW, panelY + panelH, PANEL_BG);
+        // Blue-tinted header marks a player \u2014 distinct from enemy (dark) and ally (green).
+        ctx.fill(panelX, panelY, panelX + panelW, panelY + 14, 0xBB1B3A5A);
+
+        String title = (ps.dead() ? "\u2620 " : "") + ps.name();
+        ctx.drawCenteredTextWithShadow(client.textRenderer,
+            Text.literal("\u00a7l" + title), panelX + panelW / 2, panelY + 3,
+            ps.dead() ? 0xFFFF5555 : 0xFF88CCFF);
+
+        int y = panelY + 17;
+
+        // HP bar
+        int barW = panelW - 4;
+        int barH = 8;
+        float pct = ps.maxHp() > 0 ? (float) ps.hp() / ps.maxHp() : 0;
+        ctx.fill(panelX + 2, y, panelX + 2 + barW, y + barH, 0xFF333333);
+        int hpColor = pct > 0.5f ? 0xFF55FF55 : pct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
+        ctx.fill(panelX + 2, y, panelX + 2 + (int)(barW * pct), y + barH, hpColor);
+        ctx.drawCenteredTextWithShadow(client.textRenderer,
+            Text.literal(ps.hp() + " / " + ps.maxHp() + " HP"), panelX + panelW / 2, y, 0xFFFFFFFF);
+        y += barH + 5;
+
+        ctx.drawTextWithShadow(client.textRenderer,
+            Text.literal("\u00a7c\u2694 ATK " + ps.atk() + "  \u00a79\u26e8 AC " + ps.ac()),
+            panelX + 4, y, 0xFFCCCCCC);
+        y += 11;
+        ctx.drawTextWithShadow(client.textRenderer,
+            Text.literal("\u00a7b\u2b06 SPD " + ps.speed() + "  \u00a7e\u26a1 AP " + ps.ap()),
+            panelX + 4, y, 0xFFCCCCCC);
+        y += 11;
+
+        if (!effects.isEmpty()) {
+            for (String eff : effects) {
+                ctx.drawTextWithShadow(client.textRenderer,
+                    Text.literal("\u00a7e\u2728 " + eff), panelX + 4, y, 0xFFFFAA00);
+                y += 10;
+            }
+        } else if (isSelf) {
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal("\u00a78No effects"), panelX + 4, y, 0xFF555555);
         }
     }
 

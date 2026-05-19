@@ -155,7 +155,10 @@ public class CombatEntity {
         if (soakedTurns > 0) base -= 1;
         if (slownessTurns > 0) base -= slownessPenalty;
         float mult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyMoveSpeedMultiplier();
-        return Math.max(1, (int)(base * mult));
+        // Allies always keep a usable move budget — never below 2 tiles/turn,
+        // even under the speed multiplier or Soaked/Slowness debuffs. Enemies
+        // keep the standard floor of 1.
+        return Math.max(ally ? 2 : 1, (int)(base * mult));
     }
     public void setSpeedBonus(int bonus) { this.speedBonus = bonus; }
     public int getSpeedBonus() { return speedBonus; }
@@ -515,7 +518,8 @@ public class CombatEntity {
         return switch (entityTypeId) {
             case "minecraft:spider", "minecraft:hoglin",
                  "minecraft:slime", "minecraft:magma_cube",
-                 "minecraft:ghast" -> 2;
+                 "minecraft:ghast",
+                 "minecraft:polar_bear", "minecraft:camel" -> 2;
             default -> 1;
         };
     }

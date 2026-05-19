@@ -9,9 +9,9 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Shared target-selection and movement helpers for the ally-AI archetypes
- * ({@link RangedAllyAI}, {@link FlyerAllyAI}, {@link TankAllyAI},
- * {@link SupportAllyAI}, {@link FarmAnimalAllyAI}).
+ * Shared target-selection and movement helpers for the ally-AI archetypes.
+ * All pathfinding here is size-aware, so 2x2 allies (polar bear, camel) route
+ * their full footprint correctly.
  *
  * @since 0.3.0
  */
@@ -52,24 +52,31 @@ final class AllyTargeting {
         return best;
     }
 
+    /** Size-aware path from the ally's tile to {@code to} (delegates to 1x1 routing for small allies). */
+    static List<GridPos> pathTo(CombatEntity self, GridArena arena, GridPos to) {
+        return Pathfinding.findPathSized(
+            arena, self.getGridPos(), to, self.getMoveSpeed(), self, self.getSize());
+    }
+
     /**
-     * Standard "advance on a target, attack when reachable" action used by the
-     * aggressive archetypes. Attacks in place when already in range, moves into
-     * range when a path lands adjacent, otherwise seeks the closest reachable tile.
+     * Standard "advance on a target, attack when reachable" action. Attacks in
+     * place when already in range; when an approach path lands in range it
+     * returns a move-and-attack so the ally moves and strikes in one turn;
+     * otherwise it moves toward / seeks the closest reachable tile.
      */
     static EnemyAction advance(CombatEntity self, GridArena arena, CombatEntity target) {
         GridPos pos = self.getGridPos();
-        int speed = self.getMoveSpeed();
 
         if (target.minDistanceTo(pos) <= self.getRange()) {
             return new EnemyAction.MoveAndAttackMob(
                 List.of(), target.getEntityId(), self.getAttackPower());
         }
 
-        List<GridPos> path = Pathfinding.findPath(arena, pos, target.getGridPos(), speed, false);
+        List<GridPos> path = pathTo(self, arena, target.getGridPos());
         if (path != null && !path.isEmpty()) {
             GridPos end = path.get(path.size() - 1);
             if (target.minDistanceTo(end) <= self.getRange()) {
+                // Move-and-attack: walk the approach path, then strike this turn.
                 return new EnemyAction.MoveAndAttackMob(
                     path, target.getEntityId(), self.getAttackPower());
             }
@@ -77,9 +84,9 @@ final class AllyTargeting {
         }
 
         GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, pos, target.getGridPos(), speed, self);
+            arena, pos, target.getGridPos(), self.getMoveSpeed(), self, self.getSize());
         if (closest != null && !closest.equals(pos)) {
-            List<GridPos> seek = Pathfinding.findPath(arena, pos, closest, speed, false);
+            List<GridPos> seek = pathTo(self, arena, closest);
             if (seek != null && !seek.isEmpty()) return new EnemyAction.Move(seek);
         }
         return new EnemyAction.Idle();
@@ -91,7 +98,7 @@ final class AllyTargeting {
         int dx = Integer.signum(pos.x() - threat.getGridPos().x());
         int dz = Integer.signum(pos.z() - threat.getGridPos().z());
         GridPos retreat = new GridPos(pos.x() + dx * 2, pos.z() + dz * 2);
-        List<GridPos> path = Pathfinding.findPath(arena, pos, retreat, self.getMoveSpeed(), false);
+        List<GridPos> path = pathTo(self, arena, retreat);
         if (path != null && !path.isEmpty()) return new EnemyAction.Flee(path);
         return null;
     }

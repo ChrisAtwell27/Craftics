@@ -265,6 +265,11 @@ public class ItemUseHandler {
         ItemStack held = player.getMainHandStack();
         Item item = held.getItem();
 
+        // Per-ally heal item (iron ingot → iron golem, snowball → snow golem, …)
+        // takes priority over the item's normal combat use.
+        String allyHeal = tryHealAlly(arena, targetTile, item, held);
+        if (allyHeal != null) return allyHeal;
+
         if (item == Items.GOAT_HORN) {
             return useGoatHorn(arena, held);
         } else if (isFood(item)) {
@@ -1388,6 +1393,29 @@ public class ItemUseHandler {
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "cactus:" + targetTile.x() + ":" + targetTile.z()
             + "|§2Cactus placed! It blocks movement and pricks adjacent enemies for 1 damage.";
+    }
+
+    /**
+     * Per-ally heal item: if {@code targetTile} holds an ally whose registered
+     * {@code AllyEntry.healItem} is the held item, heal it for {@code healAmount}
+     * HP (e.g. iron ingot on an iron golem, snowball on a snow golem). Returns
+     * {@code null} when this isn't a heal interaction, so the item falls through
+     * to its normal combat use.
+     */
+    private static String tryHealAlly(GridArena arena, GridPos targetTile, Item item, ItemStack held) {
+        if (targetTile == null) return null;
+        CombatEntity ally = arena.getOccupant(targetTile);
+        if (ally == null || !ally.isAlive() || !ally.isAlly()) return null;
+        com.crackedgames.craftics.api.registry.AllyEntry entry =
+            com.crackedgames.craftics.api.registry.AllyRegistry.getOrNull(ally.getEntityTypeId());
+        if (entry == null || entry.healItem() == null || entry.healItem() != item) return null;
+        if (ally.getCurrentHp() >= ally.getMaxHp()) {
+            return "§c" + ally.getDisplayName() + " is already at full health!";
+        }
+        held.decrement(1);
+        int healed = Math.min(entry.healAmount(), ally.getMaxHp() - ally.getCurrentHp());
+        return ALLY_BUFF_PREFIX + "heal:" + ally.getEntityId() + ":" + healed
+            + "|§a" + ally.getDisplayName() + " heals for " + healed + " HP!";
     }
 
     // --- Hay Bale: throw to ally pet, heals 50% max HP (1 AP) ---

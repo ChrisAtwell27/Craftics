@@ -34,7 +34,7 @@ public final class AllyArchetypes {
         "minecraft:cow", "minecraft:mooshroom", "minecraft:sheep", "minecraft:pig",
         "minecraft:chicken", "minecraft:rabbit", "minecraft:horse", "minecraft:donkey",
         "minecraft:mule", "minecraft:skeleton_horse", "minecraft:zombie_horse",
-        "minecraft:camel", "minecraft:strider"
+        "minecraft:camel"
     );
 
     /** Per-type archetype assignment. Farm animals are handled separately. */
@@ -47,6 +47,7 @@ public final class AllyArchetypes {
         Map.entry("minecraft:polar_bear", MELEE),
         Map.entry("minecraft:panda", MELEE),
         Map.entry("minecraft:dolphin", MELEE),
+        Map.entry("minecraft:strider", MELEE),
         Map.entry("minecraft:hoglin", MELEE),
         Map.entry("minecraft:zombified_piglin", MELEE),
         Map.entry("minecraft:piglin", MELEE),

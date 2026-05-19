@@ -13,13 +13,16 @@ import net.minecraft.util.Identifier;
  * partyHpData is a pipe-separated string of party member HP: "uuid,name,hp,maxHp,dead|..."
  *   (empty string when solo)
  * turnOrderData is a pipe-separated string of turn queue: "uuid,name,isCurrent|..." (empty when solo)
+ * playerStatsData is a pipe-separated per-player combat readout for the hover panel:
+ *   "uuid,name,hp,maxHp,dead,atk,ac,ap,speed|..." — always populated (one entry when solo).
  */
 public record CombatSyncPayload(int phase, int ap, int movePoints,
                                  int playerHp, int playerMaxHp, int turnNumber,
                                  int maxAp, int maxSpeed,
                                  int[] enemyData, String enemyTypeIds,
                                  String playerEffects, int killStreak,
-                                 String partyHpData, String turnOrderData) implements CustomPayload {
+                                 String partyHpData, String turnOrderData,
+                                 String playerStatsData) implements CustomPayload {
 
     public static final CustomPayload.Id<CombatSyncPayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "combat_sync"));
@@ -46,7 +49,8 @@ public record CombatSyncPayload(int phase, int ap, int movePoints,
                 int killStreak = buf.readInt();
                 String partyHpData = buf.readString();
                 String turnOrderData = buf.readString();
-                return new CombatSyncPayload(phase, ap, movePoints, playerHp, playerMaxHp, turnNumber, maxAp, maxSpeed, enemyData, enemyTypeIds, playerEffects, killStreak, partyHpData, turnOrderData);
+                String playerStatsData = buf.readString();
+                return new CombatSyncPayload(phase, ap, movePoints, playerHp, playerMaxHp, turnNumber, maxAp, maxSpeed, enemyData, enemyTypeIds, playerEffects, killStreak, partyHpData, turnOrderData, playerStatsData);
             }
 
             @Override
@@ -68,6 +72,7 @@ public record CombatSyncPayload(int phase, int ap, int movePoints,
                 buf.writeInt(payload.killStreak);
                 buf.writeString(payload.partyHpData);
                 buf.writeString(payload.turnOrderData);
+                buf.writeString(payload.playerStatsData);
             }
         };
 

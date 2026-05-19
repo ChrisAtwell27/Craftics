@@ -1,7 +1,6 @@
 package com.crackedgames.craftics.combat.ai.ally;
 
 import com.crackedgames.craftics.combat.CombatEntity;
-import com.crackedgames.craftics.combat.Pathfinding;
 import com.crackedgames.craftics.combat.ai.EnemyAction;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
@@ -9,10 +8,10 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Default ally combat AI: a melee fighter. Retreats when badly wounded, otherwise
- * advances on and attacks the best enemy target. This is the behavior every tamed
- * pet used before the ally framework existed — extracted verbatim from the old
- * {@code CombatManager.handleAllyTurn()}.
+ * Default ally combat AI: a melee fighter. Retreats when badly wounded ({@code <=25%}
+ * HP); otherwise scores every live enemy — closer is better, with bonuses for
+ * threats near the player and for wounded enemies — then closes on the best
+ * target, moving and striking in the same turn when the approach ends in range.
  *
  * @since 0.2.0
  */
@@ -21,31 +20,13 @@ public class MeleeAllyAI implements AllyAI {
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, List<CombatEntity> combatants) {
         GridPos allyPos = self.getGridPos();
-        boolean lowHp = self.getMaxHp() > 0
-            && (float) self.getCurrentHp() / self.getMaxHp() <= 0.25f;
 
-        if (lowHp) {
-            // RETREAT: move away from the nearest enemy.
-            CombatEntity nearestEnemy = null;
-            int nearestDist = Integer.MAX_VALUE;
-            for (CombatEntity e : combatants) {
-                if (!e.isAlive() || e.isAlly()) continue;
-                int d = Math.abs(e.getGridPos().x() - allyPos.x())
-                    + Math.abs(e.getGridPos().z() - allyPos.z());
-                if (d < nearestDist) {
-                    nearestDist = d;
-                    nearestEnemy = e;
-                }
-            }
-            if (nearestEnemy != null) {
-                int dx = Integer.signum(allyPos.x() - nearestEnemy.getGridPos().x());
-                int dz = Integer.signum(allyPos.z() - nearestEnemy.getGridPos().z());
-                GridPos retreatTarget = new GridPos(allyPos.x() + dx * 2, allyPos.z() + dz * 2);
-                List<GridPos> path = Pathfinding.findPath(
-                    arena, allyPos, retreatTarget, self.getMoveSpeed(), false);
-                if (path != null && !path.isEmpty()) {
-                    return new EnemyAction.Flee(path);
-                }
+        // RETREAT when badly wounded.
+        if (AllyTargeting.lowHp(self, 0.25f)) {
+            CombatEntity nearest = AllyTargeting.nearestEnemy(allyPos, combatants);
+            if (nearest != null) {
+                EnemyAction flee = AllyTargeting.fleeFrom(self, arena, nearest);
+                if (flee != null) return flee;
             }
             return new EnemyAction.Idle(); // cower
         }
@@ -60,8 +41,8 @@ public class MeleeAllyAI implements AllyAI {
             int d = e.minDistanceTo(allyPos);
             int dToPlayer = e.minDistanceTo(playerPos);
             int score = -d;
-            if (dToPlayer <= 2) score += 3;       // protect the player
-            if (e.getCurrentHp() <= e.getMaxHp() / 2) score += 2; // finish wounded
+            if (dToPlayer <= 2) score += 3;                        // protect the player
+            if (e.getCurrentHp() <= e.getMaxHp() / 2) score += 2;  // finish the wounded
             if (score > bestScore || (score == bestScore && d < targetDist)) {
                 bestScore = score;
                 targetDist = d;
@@ -73,28 +54,7 @@ public class MeleeAllyAI implements AllyAI {
             return new EnemyAction.Idle();
         }
 
-        if (targetDist <= self.getRange()) {
-            // In range — attack in place. Owner-gear bonus is added by the executor.
-            return new EnemyAction.MoveAndAttackMob(
-                List.of(), target.getEntityId(), self.getAttackPower());
-        }
-
-        // Move toward the target.
-        List<GridPos> path = Pathfinding.findPath(
-            arena, allyPos, target.getGridPos(), self.getMoveSpeed(), false);
-        if (path != null && !path.isEmpty()) {
-            return new EnemyAction.Move(path);
-        }
-        // Can't path directly — seek the closest reachable tile.
-        GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, allyPos, target.getGridPos(), self.getMoveSpeed(), self);
-        if (closest != null && !closest.equals(allyPos)) {
-            List<GridPos> seekPath = Pathfinding.findPath(
-                arena, allyPos, closest, self.getMoveSpeed(), false);
-            if (seekPath != null && !seekPath.isEmpty()) {
-                return new EnemyAction.Move(seekPath);
-            }
-        }
-        return new EnemyAction.Idle();
+        // advance() attacks in place when in range, or moves-and-attacks in one turn.
+        return AllyTargeting.advance(self, arena, target);
     }
 }
