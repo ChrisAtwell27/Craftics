@@ -14,7 +14,7 @@ package com.crackedgames.craftics.api.registry;
  * <pre>{@code
  * EnemyEntry.builder("craftics:parched_husk", "minecraft:husk")
  *     .ai("minecraft:skeleton")
- *     .hp(10).attack(3).defense(1).range(1)
+ *     .hp(10).attack(3).defense(1).range(1).speed(2)
  *     .build();
  * }</pre>
  *
@@ -25,6 +25,7 @@ package com.crackedgames.craftics.api.registry;
  * @param attack       base attack
  * @param defense      base defense
  * @param range        attack range in tiles
+ * @param speed        combat move speed in tiles per turn; {@code 0} = use the entity type's default
  * @since 0.2.0
  */
 public record EnemyEntry(
@@ -34,7 +35,8 @@ public record EnemyEntry(
     int hp,
     int attack,
     int defense,
-    int range
+    int range,
+    int speed
 ) {
     public static Builder builder(String id, String entityTypeId) {
         return new Builder(id, entityTypeId);
@@ -49,6 +51,7 @@ public record EnemyEntry(
         private int attack = 2;
         private int defense = 0;
         private int range = 1;
+        private int speed = 0;
 
         public Builder(String id, String entityTypeId) {
             this.id = id;
@@ -85,6 +88,16 @@ public record EnemyEntry(
             return this;
         }
 
+        /**
+         * Combat move speed in tiles per turn. Default {@code 0} — the enemy moves
+         * at the speed Craftics assigns its entity type. Set a positive value to
+         * override that with a fixed speed.
+         */
+        public Builder speed(int speed) {
+            this.speed = speed;
+            return this;
+        }
+
         public EnemyEntry build() {
             if (id == null || id.isBlank()) {
                 throw new IllegalStateException("EnemyEntry requires a non-blank id");
@@ -95,7 +108,7 @@ public record EnemyEntry(
             }
             return new EnemyEntry(id, entityTypeId,
                 aiKey != null ? aiKey : entityTypeId,
-                hp, attack, defense, range);
+                hp, attack, defense, range, speed);
         }
     }
 }

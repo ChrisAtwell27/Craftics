@@ -18,7 +18,7 @@ import net.minecraft.util.Identifier;
  *   "id": "craftics:parched_husk",
  *   "entity": "minecraft:husk",
  *   "ai": "minecraft:skeleton",
- *   "hp": 10, "attack": 3, "defense": 1, "range": 1
+ *   "hp": 10, "attack": 3, "defense": 1, "range": 1, "speed": 2
  * }
  * }</pre>
  *
@@ -57,6 +57,7 @@ public final class EnemyJsonLoader extends CrafticsDataLoader<EnemyEntry> {
         if (json.has("attack")) builder.attack(json.get("attack").getAsInt());
         if (json.has("defense")) builder.defense(json.get("defense").getAsInt());
         if (json.has("range")) builder.range(json.get("range").getAsInt());
+        if (json.has("speed")) builder.speed(json.get("speed").getAsInt());
         return builder.build();
     }
 

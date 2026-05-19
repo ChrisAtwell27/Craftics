@@ -68,4 +68,18 @@ class EnemyEntryTest {
         assertThrows(IllegalStateException.class,
             () -> EnemyEntry.builder("craftics:husk", "").build());
     }
+
+    @Test
+    void builder_speedDefaultsToZero() {
+        EnemyEntry e = EnemyEntry.builder("craftics:husk", "minecraft:husk").build();
+        assertEquals(0, e.speed());
+    }
+
+    @Test
+    void builder_storesSpeed() {
+        EnemyEntry e = EnemyEntry.builder("exampleaddon:moa", "aether:moa")
+            .speed(3)
+            .build();
+        assertEquals(3, e.speed());
+    }
 }

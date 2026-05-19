@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics - Gear (Modding Guide)</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo"><img src="https://media.forgecdn.net/avatars/thumbnails/1730/614/64/64/639101389968942522.png" alt="Craftics Logo" style="height:32px;width:32px;vertical-align:middle;border-radius:6px;margin-right:10px;">Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html" class="active">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============================================================
+     PAGE LAYOUT
+     ============================================================ -->
+<div class="page-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Modding Guide</div>
+    <nav class="sidebar-nav">
+      <a href="../modding.html">Introduction</a>
+      <a href="gear.html" class="active">Gear</a>
+      <a href="items-and-effects.html">Items &amp; Effects</a>
+      <a href="enemies.html">Enemies &amp; Allies</a>
+      <a href="world.html">World</a>
+      <a href="reference.html">Reference</a>
+    </nav>
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+    <h1>Gear</h1>
+    <p class="page-desc">Register custom weapons, armor sets, hybrid subclasses, trim patterns, trim materials, enchantments, and equipment scanners.</p>
+
+    <!-- ================================================================
+         1. WEAPONS
+         ================================================================ -->
+    <h2 id="weapons">Weapons</h2>
+    <p>
+      Any <code>Item</code> can be registered as a Craftics weapon. The registration gives it a damage type, base stats, and an optional on-hit ability. Call <code>CrafticsAPI.registerWeapon(item, entry)</code> during <code>onCrafticsInit()</code>.
+    </p>
+
+    <h3>API Method</h3>
+    <pre><code>CrafticsAPI.registerWeapon(Item item, WeaponEntry entry);</code></pre>
+
+    <h3>WeaponEntry Builder</h3>
+    <pre><code>WeaponEntry entry = WeaponEntry.builder(myItem)
+    .damageType(DamageType.SLASHING)   // damage category
+    .attackPower(8)                    // flat attack value
+    .apCost(1)                         // action points per attack
+    .range(1)                          // attack range in tiles
+    .ranged(false)                     // true for projectile weapons
+    .breakChance(0.0)                  // probability of breaking on use (0.0 to 1.0)
+    .ability(myAbilityHandler)         // optional on-hit ability
+    .build();</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Builder Method</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>damageType(DamageType)</code></td><td>enum</td><td>PHYSICAL</td><td>Weapon's damage category</td></tr>
+          <tr><td><code>attackPower(int)</code></td><td>int</td><td>1</td><td>Base attack power</td></tr>
+          <tr><td><code>attackPower(IntSupplier)</code></td><td>supplier</td><td></td><td>Dynamic attack power computed each time the weapon attacks</td></tr>
+          <tr><td><code>apCost(int)</code></td><td>int</td><td>1</td><td>Action point cost per attack</td></tr>
+          <tr><td><code>range(int)</code></td><td>int</td><td>1</td><td>Attack range in tiles</td></tr>
+          <tr><td><code>ranged(boolean)</code></td><td>bool</td><td>false</td><td>Whether this is a projectile weapon</td></tr>
+          <tr><td><code>breakChance(double)</code></td><td>double</td><td>0.0</td><td>Chance to break on use (0.0 to 1.0)</td></tr>
+          <tr><td><code>ability(WeaponAbilityHandler)</code></td><td>handler</td><td>null</td><td>On-hit ability (see below)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>DamageType Values</h3>
+    <p>Every weapon belongs to one of eight damage types. Armor sets, trims, and player affinity points grant bonuses to specific types.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Value</th><th>Display Name</th><th>Typical Weapons</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>SLASHING</code></td><td>Slashing</td><td>Swords</td></tr>
+          <tr><td><code>CLEAVING</code></td><td>Cleaving</td><td>Axes</td></tr>
+          <tr><td><code>BLUNT</code></td><td>Blunt</td><td>Maces, shovels</td></tr>
+          <tr><td><code>WATER</code></td><td>Water</td><td>Tridents, corals</td></tr>
+          <tr><td><code>SPECIAL</code></td><td>Special</td><td>Blaze rods, end rods, breeze rods</td></tr>
+          <tr><td><code>PET</code></td><td>Pet</td><td>Pet and ally attacks</td></tr>
+          <tr><td><code>RANGED</code></td><td>Ranged</td><td>Bows, crossbows</td></tr>
+          <tr><td><code>PHYSICAL</code></td><td>Physical</td><td>Default / untyped weapons</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Built-in Ability Factories (Abilities class)</h3>
+    <p>
+      The <code>Abilities</code> class provides static factory methods that return <code>WeaponAbilityHandler</code> instances. Compose multiple abilities with <code>.and()</code>.
+    </p>
+    <pre><code>WeaponAbilityHandler handler = Abilities.bleed()
+    .and(Abilities.sweepAdjacent(0.10, 0.05));</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Factory Method</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>bleed()</code></td><td>Applies bleed stacks equal to the weapon's Sharpness enchant level.</td></tr>
+          <tr><td><code>sweepAdjacent(baseChance, bonusPerPoint)</code></td><td>Chance to hit one adjacent enemy for half damage. Scales with SLASHING affinity. Chance = baseChance + (affinity * bonusPerPoint) + (luck * 0.02).</td></tr>
+          <tr><td><code>armorIgnore(baseChance, bonusPerPoint)</code></td><td>Chance to permanently destroy a portion of the target's defense and deal that amount as bonus damage. Scales with CLEAVING affinity.</td></tr>
+          <tr><td><code>stun(baseChance, bonusPerPoint)</code></td><td>Chance to stun the target for one turn. Scales with BLUNT affinity.</td></tr>
+          <tr><td><code>knockbackDirection(distance)</code></td><td>Pushes the target away from the player by up to N tiles, checking bounds and walkability each step.</td></tr>
+          <tr><td><code>aoe(radius, damageMultiplier)</code></td><td>Hits all non-ally enemies within radius (Manhattan distance) of the target for <code>(int)(baseDamage * damageMultiplier)</code>.</td></tr>
+          <tr><td><code>applyEffect(type, turns, amplifier)</code></td><td>Applies a status effect to the target. Supported types: POISON, BURNING, SOAKED, SLOWNESS, CONFUSION.</td></tr>
+          <tr><td><code>pierce()</code></td><td>Hits the first enemy directly behind the target in the attack direction for full base damage.</td></tr>
+          <tr><td><code>fireDamage(bonusDmg)</code></td><td>Sets the target on fire and deals flat bonus fire damage.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Custom Ability Handler</h3>
+    <p>
+      <code>WeaponAbilityHandler</code> is a <code>@FunctionalInterface</code>. Implement it directly for fully custom on-hit logic.
+    </p>
+    <pre><code>@FunctionalInterface
+public interface WeaponAbilityHandler {
+    WeaponAbility.AttackResult apply(
+        ServerPlayerEntity player,
+        CombatEntity target,
+        GridArena arena,
+        int baseDamage,
+        PlayerProgression.PlayerStats stats,
+        int luckPoints
+    );
+
+    // Chain with another handler:
+    default WeaponAbilityHandler and(WeaponAbilityHandler next);
+}</code></pre>
+    <p>
+      Return a <code>WeaponAbility.AttackResult(totalDamage, messages, extraTargets)</code>. The <code>messages</code> list holds combat log strings and <code>extraTargets</code> lists any additional entities your ability hit.
+    </p>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place weapon JSON files at <code>data/&lt;namespace&gt;/craftics/weapons/*.json</code>. The <code>ability</code> array is an ordered list of built-in ability blocks chained together.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>item</code></td><td>string</td><td>yes</td><td>Full item registry ID, e.g. <code>minecraft:diamond_sword</code></td></tr>
+          <tr><td><code>damage_type</code></td><td>string</td><td>no</td><td>DamageType name (case-insensitive). Defaults to PHYSICAL.</td></tr>
+          <tr><td><code>attack_power</code></td><td>int</td><td>no</td><td>Base attack value. Defaults to 1.</td></tr>
+          <tr><td><code>ap_cost</code></td><td>int</td><td>no</td><td>Action point cost per attack. Defaults to 1.</td></tr>
+          <tr><td><code>range</code></td><td>int</td><td>no</td><td>Attack range in tiles. Defaults to 1.</td></tr>
+          <tr><td><code>ranged</code></td><td>bool</td><td>no</td><td>Whether this is a projectile weapon. Defaults to false.</td></tr>
+          <tr><td><code>break_chance</code></td><td>float</td><td>no</td><td>Probability of breaking on use (0.0 to 1.0). Defaults to 0.0.</td></tr>
+          <tr><td><code>ability</code></td><td>array</td><td>no</td><td>Ordered list of ability objects (see ability kinds below).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Ability object <code>kind</code> values and their fields:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>kind</th><th>Extra Fields</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>bleed</code></td><td>(none)</td></tr>
+          <tr><td><code>pierce</code></td><td>(none)</td></tr>
+          <tr><td><code>sweep</code></td><td><code>base_chance</code> (float, default 0.10), <code>bonus_per_point</code> (float, default 0.05)</td></tr>
+          <tr><td><code>armor_ignore</code></td><td><code>base_chance</code> (float, default 0.10), <code>bonus_per_point</code> (float, default 0.05)</td></tr>
+          <tr><td><code>stun</code></td><td><code>base_chance</code> (float, default 0.10), <code>bonus_per_point</code> (float, default 0.05)</td></tr>
+          <tr><td><code>knockback</code></td><td><code>distance</code> (int, default 1)</td></tr>
+          <tr><td><code>aoe</code></td><td><code>radius</code> (int, default 1), <code>damage_multiplier</code> (float, default 0.5)</td></tr>
+          <tr><td><code>fire_damage</code></td><td><code>bonus_damage</code> (int, default 2)</td></tr>
+          <tr><td><code>apply_effect</code></td><td><code>effect</code> (string, e.g. <code>POISON</code>), <code>turns</code> (int, default 3), <code>amplifier</code> (int, default 0)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code>{
+  "item": "minecraft:diamond_sword",
+  "damage_type": "slashing",
+  "attack_power": 7,
+  "ap_cost": 1,
+  "range": 1,
+  "ranged": false,
+  "break_chance": 0.0,
+  "ability": [
+    { "kind": "bleed" },
+    { "kind": "sweep", "base_chance": 0.1, "bonus_per_point": 0.05 }
+  ]
+}</code></pre>
+
+    <h3>Code Example</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.Abilities;
+import com.crackedgames.craftics.api.registry.WeaponEntry;
+import com.crackedgames.craftics.combat.DamageType;
+
+// Heavy Claymore: cleaving type, armor ignore + knockback
+Item claymore = Registries.ITEM.get(Identifier.of("mymod", "heavy_claymore"));
+CrafticsAPI.registerWeapon(claymore, WeaponEntry.builder(claymore)
+    .damageType(DamageType.CLEAVING)
+    .attackPower(7)
+    .apCost(2)
+    .range(1)
+    .ability(Abilities.armorIgnore(0.15, 0.03)
+        .and(Abilities.knockbackDirection(2)))
+    .build());</code></pre>
+
+    <!-- ================================================================
+         2. ARMOR SETS
+         ================================================================ -->
+    <h2 id="armor-sets">Armor Sets</h2>
+    <p>
+      Armor sets grant per-piece damage affinity bonuses and full-set stat bonuses when all four matching armor pieces are worn. The set ID must match the material key that <code>PlayerCombatStats.getArmorSet()</code> derives from the player's equipped armor. Call <code>CrafticsAPI.registerArmorSet(entry)</code> during <code>onCrafticsInit()</code>.
+    </p>
+    <p>
+      Damage affinity is per-piece: each worn piece of a material contributes half the <code>damageBonus</code> value for that type. A full four-piece set contributes twice the value. The flat stat bonuses (<code>speedBonus</code>, <code>defenseBonus</code>, etc.) apply only when all four pieces are worn.
+    </p>
+
+    <h3>API Method</h3>
+    <pre><code>CrafticsAPI.registerArmorSet(ArmorSetEntry entry);</code></pre>
+
+    <h3>ArmorSetEntry Builder</h3>
+    <pre><code>ArmorSetEntry entry = ArmorSetEntry.builder("mymod:mythril")
+    .damageBonus(DamageType.SLASHING, 2)  // affinity value per 2 pieces (per-piece = 1)
+    .damageBonus(DamageType.SPECIAL, 1)
+    .allDamageBonus(1)                    // applied first; per-type entries override it
+    .speedBonus(1)
+    .apBonus(0)
+    .defenseBonus(3)
+    .attackBonus(1)
+    .apCostReduction(0)
+    .description("Mythril Armor: light and sharp")
+    .build();
+
+CrafticsAPI.registerArmorSet(entry);</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Builder Method</th><th>Type</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>damageBonus(DamageType, int)</code></td><td>per-type</td><td>0</td><td>Affinity value per 2 pieces for this damage type. A single piece grants half this amount.</td></tr>
+          <tr><td><code>allDamageBonus(int)</code></td><td>all types</td><td></td><td>Sets the same affinity value for every damage type. Per-type entries override it for that specific type.</td></tr>
+          <tr><td><code>speedBonus(int)</code></td><td>int</td><td>0</td><td>Movement speed bonus (full set only)</td></tr>
+          <tr><td><code>apBonus(int)</code></td><td>int</td><td>0</td><td>Extra action points per turn (full set only)</td></tr>
+          <tr><td><code>defenseBonus(int)</code></td><td>int</td><td>0</td><td>Defense stat bonus (full set only)</td></tr>
+          <tr><td><code>attackBonus(int)</code></td><td>int</td><td>0</td><td>Base attack bonus (full set only)</td></tr>
+          <tr><td><code>apCostReduction(int)</code></td><td>int</td><td>0</td><td>Reduction in AP cost per attack (full set only)</td></tr>
+          <tr><td><code>description(String)</code></td><td>string</td><td>""</td><td>Tooltip description shown in the combat HUD</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place armor set JSON files at <code>data/&lt;namespace&gt;/craftics/armor_sets/*.json</code>. The <code>id</code> must match the armor-set name your material produces.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td>yes</td><td>Armor-set material key, e.g. <code>mythril</code></td></tr>
+          <tr><td><code>description</code></td><td>string</td><td>no</td><td>Tooltip description</td></tr>
+          <tr><td><code>all_damage_bonus</code></td><td>int</td><td>no</td><td>Affinity value applied to every damage type first</td></tr>
+          <tr><td><code>damage_bonuses</code></td><td>array</td><td>no</td><td>Per-type affinity overrides: each object has <code>type</code> (DamageType name) and <code>amount</code> (int)</td></tr>
+          <tr><td><code>speed_bonus</code></td><td>int</td><td>no</td><td>Speed bonus (full set only)</td></tr>
+          <tr><td><code>ap_bonus</code></td><td>int</td><td>no</td><td>Extra action points (full set only)</td></tr>
+          <tr><td><code>defense_bonus</code></td><td>int</td><td>no</td><td>Defense bonus (full set only)</td></tr>
+          <tr><td><code>attack_bonus</code></td><td>int</td><td>no</td><td>Attack bonus (full set only)</td></tr>
+          <tr><td><code>ap_cost_reduction</code></td><td>int</td><td>no</td><td>AP cost reduction per attack (full set only)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code>{
+  "id": "mythril",
+  "description": "Mythril Set: light and sharp",
+  "all_damage_bonus": 0,
+  "damage_bonuses": [
+    { "type": "SLASHING", "amount": 2 },
+    { "type": "SPECIAL",  "amount": 1 }
+  ],
+  "speed_bonus": 1,
+  "ap_bonus": 0,
+  "defense_bonus": 3,
+  "attack_bonus": 1,
+  "ap_cost_reduction": 0
+}</code></pre>
+
+    <h3>Code Example</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.registry.ArmorSetEntry;
+import com.crackedgames.craftics.combat.DamageType;
+
+CrafticsAPI.registerArmorSet(ArmorSetEntry.builder("mythril")
+    .damageBonus(DamageType.SLASHING, 2)
+    .damageBonus(DamageType.SPECIAL, 1)
+    .speedBonus(1)
+    .defenseBonus(3)
+    .attackBonus(1)
+    .description("Mythril Armor: light and sharp")
+    .build());</code></pre>
+
+    <!-- ================================================================
+         3. HYBRID SETS
+         ================================================================ -->
+    <h2 id="hybrid-sets">Hybrid Sets</h2>
+    <p>
+      A hybrid set is a subclass bonus a player earns by wearing exactly two distinct armor materials at once. The pair is unordered: {iron, diamond} and {diamond, iron} resolve to the same hybrid. Call <code>CrafticsAPI.registerHybridSet(entry)</code> during <code>onCrafticsInit()</code>.
+    </p>
+
+    <h3>API Method</h3>
+    <pre><code>CrafticsAPI.registerHybridSet(HybridSetEntry entry);</code></pre>
+
+    <h3>HybridSetEntry Builder</h3>
+    <pre><code>HybridSetEntry entry = HybridSetEntry.builder("iron", "diamond")
+    .className("Warlord")
+    .description("Build stacks on kill; spend them to empower your next attack.")
+    .effect(HybridEffect.WARLORD)
+    .build();
+
+CrafticsAPI.registerHybridSet(entry);</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Builder Method / Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>builder(materialA, materialB)</code></td><td></td><td>yes</td><td>The two armor-set material keys. The builder normalizes the pair alphabetically so order does not matter.</td></tr>
+          <tr><td><code>className(String)</code></td><td>string</td><td>no</td><td>Subclass display name shown on the armor tooltip</td></tr>
+          <tr><td><code>description(String)</code></td><td>string</td><td>no</td><td>One-line mechanic description shown on the armor tooltip</td></tr>
+          <tr><td><code>effect(HybridEffect)</code></td><td>enum</td><td>yes</td><td>The combat mechanic applied during Phase 2 (see HybridEffect values below)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>HybridEffect Values</h3>
+    <p>
+      Pass one of these enum constants to <code>.effect()</code>. Each constant maps to a distinct combat mechanic implemented internally.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>HybridEffect</th><th>HybridEffect</th><th>HybridEffect</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>SKIRMISHER</code></td>
+            <td><code>COUNTERPUNCHER</code></td>
+            <td><code>LUCKY_STREAK</code></td>
+          </tr>
+          <tr>
+            <td><code>BREAKER</code></td>
+            <td><code>RAMPAGE</code></td>
+            <td><code>RUN_AND_GUN</code></td>
+          </tr>
+          <tr>
+            <td><code>SENTINEL</code></td>
+            <td><code>CUTPURSE</code></td>
+            <td><code>DUELIST</code></td>
+          </tr>
+          <tr>
+            <td><code>AMBUSH</code></td>
+            <td><code>DEADEYE</code></td>
+            <td><code>GILDED_GUARD</code></td>
+          </tr>
+          <tr>
+            <td><code>WARLORD</code></td>
+            <td><code>IMMOVABLE</code></td>
+            <td><code>AEGIS</code></td>
+          </tr>
+          <tr>
+            <td><code>GLADIATOR</code></td>
+            <td><code>BERSERKER</code></td>
+            <td><code>CONTAGION</code></td>
+          </tr>
+          <tr>
+            <td><code>STONEWALL</code></td>
+            <td><code>SIEGE</code></td>
+            <td><code>STORMBRINGER</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place hybrid set JSON files at <code>data/&lt;namespace&gt;/craftics/hybrid_sets/*.json</code>. The three required fields are <code>material_a</code>, <code>material_b</code>, and <code>effect</code>.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>material_a</code></td><td>string</td><td>yes</td><td>First armor material key (e.g. <code>iron</code>)</td></tr>
+          <tr><td><code>material_b</code></td><td>string</td><td>yes</td><td>Second armor material key (e.g. <code>diamond</code>)</td></tr>
+          <tr><td><code>effect</code></td><td>string</td><td>yes</td><td>HybridEffect name (case-insensitive)</td></tr>
+          <tr><td><code>class_name</code></td><td>string</td><td>no</td><td>Subclass display name</td></tr>
+          <tr><td><code>description</code></td><td>string</td><td>no</td><td>One-line mechanic description</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code>{
+  "material_a": "iron",
+  "material_b": "diamond",
+  "class_name": "Warlord",
+  "description": "Build stacks on kill; spend them to empower your next attack.",
+  "effect": "WARLORD"
+}</code></pre>
+
+    <h3>Code Example</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.registry.HybridSetEntry;
+import com.crackedgames.craftics.combat.HybridEffect;
+
+CrafticsAPI.registerHybridSet(HybridSetEntry.builder("iron", "diamond")
+    .className("Warlord")
+    .description("Build stacks on kill; spend them to empower your next attack.")
+    .effect(HybridEffect.WARLORD)
+    .build());</code></pre>
+
+    <!-- ================================================================
+         4. TRIM PATTERNS
+         ================================================================ -->
+    <h2 id="trim-patterns">Trim Patterns</h2>
+    <p>
+      Each trim pattern grants a per-piece stat bonus and a full-set bonus activated when all four armor pieces carry the same pattern. Register custom patterns for modded trim templates. Call <code>CrafticsAPI.registerTrimPattern(entry)</code> during <code>onCrafticsInit()</code>.
+    </p>
+    <p>
+      The pattern <code>id</code> must match the registry path of the vanilla trim pattern, not the full namespaced ID. For example, <code>minecraft:sentry</code> uses <code>"sentry"</code>.
+    </p>
+
+    <h3>API Method</h3>
+    <pre><code>CrafticsAPI.registerTrimPattern(TrimPatternEntry entry);</code></pre>
+
+    <h3>TrimPatternEntry Record</h3>
+    <p>
+      <code>TrimPatternEntry</code> is a record with no builder. Construct it directly.
+    </p>
+    <pre><code>CrafticsAPI.registerTrimPattern(new TrimPatternEntry(
+    "mymod:dragon",                      // patternId
+    TrimEffects.Bonus.MELEE_POWER,       // perPieceStat
+    "+1 Melee Power per piece",          // perPieceDescription
+    TrimEffects.SetBonus.FERAL,          // setBonus
+    "Dragon's Fury",                     // setBonusName
+    "First attack each turn costs 0 AP"  // setBonusDescription
+));</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>patternId</code></td><td>String</td><td>Registry path of the trim pattern (e.g. <code>"mymod:dragon"</code>)</td></tr>
+          <tr><td><code>perPieceStat</code></td><td>TrimEffects.Bonus</td><td>Stat bonus added once per armor piece carrying this pattern. Null means no per-piece bonus.</td></tr>
+          <tr><td><code>perPieceDescription</code></td><td>String</td><td>Human-readable text for the per-piece bonus</td></tr>
+          <tr><td><code>setBonus</code></td><td>TrimEffects.SetBonus</td><td>Bonus activated when all four pieces use this pattern. Use NONE for no set bonus.</td></tr>
+          <tr><td><code>setBonusName</code></td><td>String</td><td>Display name for the set bonus</td></tr>
+          <tr><td><code>setBonusDescription</code></td><td>String</td><td>Human-readable text for the set bonus</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place trim pattern JSON files at <code>data/&lt;namespace&gt;/craftics/trim_patterns/*.json</code>.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td>yes</td><td>Registry path of the trim pattern</td></tr>
+          <tr><td><code>per_piece_stat</code></td><td>string</td><td>no</td><td>TrimEffects.Bonus name (case-insensitive). Omit for no per-piece bonus.</td></tr>
+          <tr><td><code>per_piece_description</code></td><td>string</td><td>no</td><td>Description of the per-piece bonus</td></tr>
+          <tr><td><code>set_bonus</code></td><td>string</td><td>no</td><td>TrimEffects.SetBonus name (case-insensitive). Defaults to NONE.</td></tr>
+          <tr><td><code>set_bonus_name</code></td><td>string</td><td>no</td><td>Display name for the set bonus</td></tr>
+          <tr><td><code>set_bonus_description</code></td><td>string</td><td>no</td><td>Description of the set bonus</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code>{
+  "id": "sentry",
+  "per_piece_stat": "RANGED_POWER",
+  "per_piece_description": "+1 Ranged Power per trimmed piece",
+  "set_bonus": "OVERWATCH",
+  "set_bonus_name": "Overwatch",
+  "set_bonus_description": "Counter-attack ranged enemies that hit you"
+}</code></pre>
+
+    <h3>TrimEffects.Bonus Values</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Bonus</th><th>Effect</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>RANGED_POWER</code></td><td>Bonus ranged attack damage</td></tr>
+          <tr><td><code>MELEE_POWER</code></td><td>Bonus melee damage (all melee types)</td></tr>
+          <tr><td><code>SPEED</code></td><td>Movement speed (tiles per turn)</td></tr>
+          <tr><td><code>AP</code></td><td>Extra action points per turn</td></tr>
+          <tr><td><code>DEFENSE</code></td><td>Damage reduction</td></tr>
+          <tr><td><code>LUCK</code></td><td>Affects loot rolls and ability proc chances</td></tr>
+          <tr><td><code>ATTACK_RANGE</code></td><td>Extra attack range in tiles</td></tr>
+          <tr><td><code>MAX_HP</code></td><td>Bonus maximum hit points</td></tr>
+          <tr><td><code>ARMOR_PEN</code></td><td>Ignore a portion of enemy defense</td></tr>
+          <tr><td><code>REGEN</code></td><td>HP regeneration per turn</td></tr>
+          <tr><td><code>ALLY_DAMAGE</code></td><td>Bonus damage for pet and ally attacks</td></tr>
+          <tr><td><code>STEALTH_RANGE</code></td><td>Reduced enemy detection range</td></tr>
+          <tr><td><code>SWORD_POWER</code></td><td>Bonus SLASHING damage specifically</td></tr>
+          <tr><td><code>CLEAVING_POWER</code></td><td>Bonus CLEAVING damage specifically</td></tr>
+          <tr><td><code>BLUNT_POWER</code></td><td>Bonus BLUNT damage specifically</td></tr>
+          <tr><td><code>WATER_POWER</code></td><td>Bonus WATER damage specifically</td></tr>
+          <tr><td><code>SPECIAL_POWER</code></td><td>Bonus SPECIAL damage specifically</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>TrimEffects.SetBonus Values</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>SetBonus</th><th>Name</th><th>Effect</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>NONE</code></td><td></td><td>No set bonus</td></tr>
+          <tr><td><code>OVERWATCH</code></td><td>Sentry</td><td>Counter-attack ranged enemies that hit you</td></tr>
+          <tr><td><code>SANDSTORM</code></td><td>Dune</td><td>Enemies within 2 tiles lose 1 Speed</td></tr>
+          <tr><td><code>TIDAL</code></td><td>Coast</td><td>Water tiles heal 1 HP per turn</td></tr>
+          <tr><td><code>FERAL</code></td><td>Wild</td><td>Kill streak: 1.3x damage per streak level (resets if no kills on your turn)</td></tr>
+          <tr><td><code>FORTRESS</code></td><td>Ward</td><td>50% less damage when you did not move this turn</td></tr>
+          <tr><td><code>ALL_SEEING</code></td><td>Eye</td><td>Ranged attacks have +30% crit chance</td></tr>
+          <tr><td><code>ETHEREAL</code></td><td>Vex</td><td>20% chance to dodge incoming attacks</td></tr>
+          <tr><td><code>OCEAN_BLESSING</code></td><td>Tide</td><td>Full heal when dropping below 25% HP (once per combat)</td></tr>
+          <tr><td><code>BRUTE_FORCE</code></td><td>Snout</td><td>Melee attacks splash to adjacent enemies</td></tr>
+          <tr><td><code>INFERNAL</code></td><td>Rib</td><td>Fire attacks deal +3 bonus damage</td></tr>
+          <tr><td><code>FORTUNE_PEAK</code></td><td>Spire</td><td>Double emerald rewards</td></tr>
+          <tr><td><code>PATHFINDER</code></td><td>Wayfinder</td><td>Movement ignores obstacle tiles</td></tr>
+          <tr><td><code>TERRAFORMER</code></td><td>Shaper</td><td>Moving 3 or more tiles deals 2 damage to all enemies adjacent to your destination</td></tr>
+          <tr><td><code>PHANTOM</code></td><td>Silence</td><td>Invisible for the first 2 turns (enemies do not act)</td></tr>
+          <tr><td><code>RALLY</code></td><td>Raiser</td><td>Tamed allies get +2 Speed and +1 Attack</td></tr>
+          <tr><td><code>SYMBIOTE</code></td><td>Host</td><td>Heal 1 HP for each enemy killed</td></tr>
+          <tr><td><code>CURRENT</code></td><td>Flow</td><td>Killing an enemy refunds 1 AP</td></tr>
+          <tr><td><code>THUNDERSTRIKE</code></td><td>Bolt</td><td>Critical hits stun the target for 1 turn</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ================================================================
+         5. TRIM MATERIALS
+         ================================================================ -->
+    <h2 id="trim-materials">Trim Materials</h2>
+    <p>
+      Each trim material grants a per-piece stat bonus stacking once for each armor piece that carries a trim using that material. Register custom materials for modded ingots. Call <code>CrafticsAPI.registerTrimMaterial(entry)</code> during <code>onCrafticsInit()</code>.
+    </p>
+    <p>
+      The material <code>id</code> must match the registry path of the trim material, not the full namespaced ID. For example, <code>minecraft:iron</code> uses <code>"iron"</code>.
+    </p>
+
+    <h3>API Method</h3>
+    <pre><code>CrafticsAPI.registerTrimMaterial(TrimMaterialEntry entry);</code></pre>
+
+    <h3>TrimMaterialEntry Record</h3>
+    <p>
+      <code>TrimMaterialEntry</code> is a record with no builder. Construct it directly.
+    </p>
+    <pre><code>CrafticsAPI.registerTrimMaterial(new TrimMaterialEntry(
+    "mymod:orichalcum",          // materialId
+    TrimEffects.Bonus.ARMOR_PEN, // stat
+    2,                           // valuePerPiece
+    "+2 Armor Penetration per piece"
+));</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>materialId</code></td><td>String</td><td>Registry path of the trim material</td></tr>
+          <tr><td><code>stat</code></td><td>TrimEffects.Bonus</td><td>Stat bonus type</td></tr>
+          <tr><td><code>valuePerPiece</code></td><td>int</td><td>Amount of the stat bonus added per trimmed armor piece</td></tr>
+          <tr><td><code>description</code></td><td>String</td><td>Human-readable description shown in the armor tooltip</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place trim material JSON files at <code>data/&lt;namespace&gt;/craftics/trim_materials/*.json</code>.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td>yes</td><td>Registry path of the trim material</td></tr>
+          <tr><td><code>stat</code></td><td>string</td><td>yes</td><td>TrimEffects.Bonus name (case-insensitive). An unknown value causes the file to be skipped.</td></tr>
+          <tr><td><code>value_per_piece</code></td><td>int</td><td>no</td><td>Bonus amount per trimmed piece. Defaults to 1.</td></tr>
+          <tr><td><code>description</code></td><td>string</td><td>no</td><td>Human-readable description</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code>{
+  "id": "iron",
+  "stat": "DEFENSE",
+  "value_per_piece": 1,
+  "description": "+1 Defense per trimmed piece"
+}</code></pre>
+
+    <h3>Code Example</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.registry.TrimMaterialEntry;
+import com.crackedgames.craftics.combat.TrimEffects;
+
+// Orichalcum trim: +2 armor pen per trimmed piece
+CrafticsAPI.registerTrimMaterial(new TrimMaterialEntry(
+    "mymod:orichalcum",
+    TrimEffects.Bonus.ARMOR_PEN,
+    2,
+    "+2 Armor Penetration per trimmed piece"
+));</code></pre>
+
+    <!-- ================================================================
+         6. ENCHANTMENTS
+         ================================================================ -->
+    <h2 id="enchantments">Enchantments</h2>
+    <p>
+      Register enchantments that contribute passive stat bonuses during Craftics combat. The handler receives an <code>EnchantmentContext</code> holding the enchantment level, the player, and a <code>StatModifiers</code> accumulator. Call <code>CrafticsAPI.registerEnchantment(enchantmentId, handler)</code> during <code>onCrafticsInit()</code>.
+    </p>
+    <p>
+      Enchantments that modify weapon abilities, such as Sharpness or Smite, are handled by weapon ability handlers rather than this registry.
+    </p>
+
+    <h3>API Method</h3>
+    <pre><code>CrafticsAPI.registerEnchantment(String enchantmentId, EnchantmentEffectHandler handler);</code></pre>
+
+    <h3>EnchantmentEffectHandler and EnchantmentContext</h3>
+    <pre><code>@FunctionalInterface
+public interface EnchantmentEffectHandler {
+    void apply(EnchantmentContext ctx);
+}
+
+public class EnchantmentContext {
+    public int getLevel();                  // enchantment level (1, 2, 3, ...)
+    public ServerPlayerEntity getPlayer();  // the player
+    public StatModifiers getModifiers();    // accumulator to add bonuses to
+}</code></pre>
+
+    <p>
+      Add bonuses to the accumulator using <code>ctx.getModifiers().add(TrimEffects.Bonus, amount)</code>. The full list of available <code>TrimEffects.Bonus</code> values is in the Trim Patterns section above.
+    </p>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place enchantment JSON files at <code>data/&lt;namespace&gt;/craftics/enchantments/*.json</code>. Each bonus entry grants <code>(enchantLevel / per_levels) * amount</code> of the specified stat.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>enchantment</code></td><td>string</td><td>yes</td><td>Full enchantment registry ID, e.g. <code>minecraft:protection</code></td></tr>
+          <tr><td><code>bonuses</code></td><td>array</td><td>no</td><td>List of stat bonus objects</td></tr>
+          <tr><td><code>bonuses[].stat</code></td><td>string</td><td>yes</td><td>TrimEffects.Bonus name (case-insensitive)</td></tr>
+          <tr><td><code>bonuses[].amount</code></td><td>int</td><td>no</td><td>Bonus amount per qualifying level. Defaults to 1.</td></tr>
+          <tr><td><code>bonuses[].per_levels</code></td><td>int</td><td>no</td><td>How many enchantment levels are needed per <code>amount</code>. Defaults to 1 (one bonus per level).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code>{
+  "enchantment": "minecraft:protection",
+  "bonuses": [
+    { "stat": "DEFENSE", "amount": 1, "per_levels": 2 }
+  ]
+}</code></pre>
+    <p>
+      With <code>per_levels: 2</code> and <code>amount: 1</code>, Protection IV (level 4) grants <code>(4 / 2) * 1 = 2</code> Defense.
+    </p>
+
+    <h3>Code Example</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.combat.TrimEffects;
+
+// Holy Blessing: +1 Defense and +1 Regen per enchantment level
+CrafticsAPI.registerEnchantment("mymod:holy_blessing", (ctx) -&gt; {
+    ctx.getModifiers().add(TrimEffects.Bonus.DEFENSE, ctx.getLevel());
+    ctx.getModifiers().add(TrimEffects.Bonus.REGEN, ctx.getLevel());
+});
+
+// Swiftness: +1 Speed regardless of level
+CrafticsAPI.registerEnchantment("mymod:swiftness", (ctx) -&gt; {
+    ctx.getModifiers().add(TrimEffects.Bonus.SPEED, 1);
+});</code></pre>
+
+    <!-- ================================================================
+         7. EQUIPMENT SCANNERS
+         ================================================================ -->
+    <h2 id="equipment-scanners">Equipment Scanners</h2>
+    <p>
+      Equipment scanners let addon mods contribute stat bonuses from non-standard inventory slots, such as trinkets, baubles, or curio slots, into Craftics combat stats. The scanner is called during combat stat calculation and its results are merged with trim and armor bonuses. Call <code>CrafticsAPI.registerEquipmentScanner(id, scanner)</code> during <code>onCrafticsInit()</code>.
+    </p>
+    <p>
+      This registry is code-only; no JSON datapack loader exists for scanners. The scanner function must be provided in Java.
+    </p>
+
+    <h3>API Method</h3>
+    <pre><code>CrafticsAPI.registerEquipmentScanner(String id, EquipmentScanner scanner);</code></pre>
+
+    <h3>EquipmentScanner Interface</h3>
+    <pre><code>@FunctionalInterface
+public interface EquipmentScanner {
+    StatModifiers scan(ServerPlayerEntity player);
+}</code></pre>
+
+    <h3>StatModifiers Class</h3>
+    <p>
+      <code>StatModifiers</code> accumulates bonuses using the <code>TrimEffects.Bonus</code> enum as keys. It can also carry an optional set bonus and custom combat effect handlers.
+    </p>
+    <pre><code>StatModifiers mods = new StatModifiers();
+mods.add(TrimEffects.Bonus.DEFENSE, 2);       // +2 Defense
+mods.add(TrimEffects.Bonus.SPEED, 1);         // +1 Speed
+mods.add(TrimEffects.Bonus.MAX_HP, 4);        // +4 Max HP
+mods.addSetBonus(TrimEffects.SetBonus.FERAL, "Feral Ring Set"); // optional set bonus</code></pre>
+
+    <p>
+      Call <code>mods.addCombatEffect(name, handler)</code> to register a dynamic <code>CombatEffectHandler</code> alongside the stat bonuses. Combat effect handlers are covered on the Items &amp; Effects page.
+    </p>
+
+    <h3>Code Example</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.EquipmentScanner;
+import com.crackedgames.craftics.api.StatModifiers;
+import com.crackedgames.craftics.combat.TrimEffects;
+import net.minecraft.item.ItemStack;
+
+CrafticsAPI.registerEquipmentScanner("mymod", (player) -&gt; {
+    StatModifiers mods = new StatModifiers();
+
+    // Read items from your addon's custom equipment slots
+    ItemStack belt = getCustomSlot(player, "belt");
+    if (!belt.isEmpty()) {
+        if (belt.isOf(MY_SWIFT_BELT)) {
+            mods.add(TrimEffects.Bonus.SPEED, 1);
+        } else if (belt.isOf(MY_IRON_BELT)) {
+            mods.add(TrimEffects.Bonus.DEFENSE, 2);
+        }
+    }
+
+    ItemStack amulet = getCustomSlot(player, "amulet");
+    if (!amulet.isEmpty() &amp;&amp; amulet.isOf(MY_LUCKY_CHARM)) {
+        mods.add(TrimEffects.Bonus.LUCK, 3);
+    }
+
+    return mods;
+});</code></pre>
+
+  </main>
+</div>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer>
+  <span>Craftics by Cracked Games LLC</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+</body>
+</html>

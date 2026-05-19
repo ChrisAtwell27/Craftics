@@ -10,9 +10,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Context object passed to all combat effect callbacks.
- * Provides access to the player, arena, and combat state.
- * Created once per combat encounter and updated each turn.
+ * Context object passed to all {@link CombatEffectHandler} callbacks.
+ *
+ * <p>Provides read access to the player, the arena, current status effects, and the
+ * trim scan for the fight. Created once per encounter and refreshed at the start of
+ * each turn via {@link #update}.
+ *
+ * @since 0.2.0
  */
 public class CombatEffectContext {
     private ServerPlayerEntity player;
@@ -28,11 +32,19 @@ public class CombatEffectContext {
         this.trimScan = trimScan;
     }
 
+    /** The player taking part in the fight. */
     public ServerPlayerEntity getPlayer() { return player; }
+
+    /** The arena the fight is taking place in. */
     public GridArena getArena() { return arena; }
+
+    /** The player's current active status effects. */
     public CombatEffects getPlayerEffects() { return playerEffects; }
+
+    /** The player's trim scan results for the current fight. */
     public TrimEffects.TrimScan getTrimScan() { return trimScan; }
 
+    /** All alive, non-ally combatants currently in the arena. */
     public List<CombatEntity> getAllEnemies() {
         List<CombatEntity> enemies = new ArrayList<>();
         for (CombatEntity e : arena.getOccupants().values()) {
@@ -41,6 +53,7 @@ public class CombatEffectContext {
         return enemies;
     }
 
+    /** All alive allied combatants currently in the arena. */
     public List<CombatEntity> getAllAllies() {
         List<CombatEntity> allies = new ArrayList<>();
         for (CombatEntity e : arena.getOccupants().values()) {

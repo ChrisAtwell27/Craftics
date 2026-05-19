@@ -18,8 +18,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Registers every vanilla weapon into the WeaponRegistry.
- * Called once during mod initialization, before VanillaContent.registerAll().
+ * Registers every vanilla weapon into the {@link com.crackedgames.craftics.api.registry.WeaponRegistry}.
+ * Called once during mod initialization, before {@code VanillaContent.registerAll()}.
+ *
+ * <p>This class is internal to Craftics. Addons register their own weapons through
+ * {@link CrafticsAPI#registerWeapon}.
+ *
+ * @since 0.2.0
  */
 public final class VanillaWeapons {
     private VanillaWeapons() {}

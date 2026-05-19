@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics - Reference</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo"><img src="https://media.forgecdn.net/avatars/thumbnails/1730/614/64/64/639101389968942522.png" alt="Craftics Logo" style="height:32px;width:32px;vertical-align:middle;border-radius:6px;margin-right:10px;">Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html" class="active">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============================================================
+     PAGE LAYOUT
+     ============================================================ -->
+<div class="page-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Modding Guide</div>
+    <nav class="sidebar-nav">
+      <a href="../modding.html">Introduction</a>
+      <a href="gear.html">Gear</a>
+      <a href="items-and-effects.html">Items &amp; Effects</a>
+      <a href="enemies.html">Enemies &amp; Allies</a>
+      <a href="world.html">World</a>
+      <a href="reference.html" class="active">Reference</a>
+    </nav>
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+    <h1>Reference</h1>
+    <p class="page-desc">Custom arena maps, mob head textures for the combat HUD, and the addon policy for distributing Craftics addons.</p>
+
+    <!-- ================================================================
+         1. CUSTOM ARENA MAPS
+         ================================================================ -->
+    <h2 id="arena-maps">Custom Arena Maps</h2>
+
+    <h3>Step 1: Build Your Arena</h3>
+    <p>
+      Create the full scene in creative mode including a flat area for the grid, surrounding decorations (trees, ruins, water, cliffs), and any blocks you want. The area outside the grid is purely cosmetic. The game only reads the grid boundaries and spawn markers.
+    </p>
+
+    <h3>Step 2: Place Marker Blocks</h3>
+    <p>
+      Place special marker blocks to define the playable grid and spawn positions. The game scans for these blocks when loading the arena.
+    </p>
+
+    <div class="marker-diagram">  &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+  &#9474;      Decorations...          &#9474;
+  &#9474;  <span class="go">DIAMOND</span>&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;<span class="em">EMERALD</span> &#9474;  &#8592; Diamond + Emerald on opposite corners OUTSIDE grid
+  &#9474;  &#9474;  <span class="go">GOLD</span>                  &#9474;  &#9474;  &#8592; Gold = Player 1 spawn (inside grid)
+  &#9474;  &#9474;     (playable grid)    &#9474;  &#9474;
+  &#9474;  &#9474;  <span class="ir">IRON</span>                  &#9474;  &#9474;  &#8592; Iron = Player 2 spawn (optional)
+  &#9474;  &#9474;                        &#9474;  &#9474;
+  &#9474;  &#9474;                        &#9474;  &#9474;
+  &#9474;      More terrain...         &#9474;
+  &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</div>
+
+    <h4>Marker Block Reference</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Block</th><th>Purpose</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Diamond Block</td><td>Camera corner. Place on one corner outside the grid (required).</td></tr>
+          <tr><td>Emerald Block</td><td>Opposite corner. Place on the corner diagonally opposite the Diamond Block (required).</td></tr>
+          <tr><td>Gold Block</td><td>Player 1 spawn (primary)</td></tr>
+          <tr><td>Iron Block</td><td>Player 2 spawn (multiplayer)</td></tr>
+          <tr><td>Copper Block</td><td>Player 3 spawn</td></tr>
+          <tr><td>Coal Block</td><td>Player 4 spawn</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout callout-muted">
+      <p>All markers must be at the same Y level.</p>
+    </div>
+
+    <h3>Step 3: Export</h3>
+
+    <h4>Option A: WorldEdit (recommended)</h4>
+    <ol>
+      <li>Select: <code>//pos1</code> and <code>//pos2</code></li>
+      <li>Copy: <code>//copy</code></li>
+      <li>Save: <code>//schem save &lt;name&gt;</code></li>
+      <li>Find in <code>config/worldedit/schematics/</code></li>
+      <li>Copy to <code>craftics_arenas/&lt;biome&gt;/&lt;number&gt;.schem</code></li>
+    </ol>
+
+    <h4>Option B: Vanilla Structure Block (48&times;48&times;48 limit)</h4>
+    <ol>
+      <li><code>/give @s structure_block</code></li>
+      <li>Set to Save mode, define box, name it, click SAVE</li>
+      <li>Find in <code>&lt;world&gt;/generated/minecraft/structures/</code></li>
+      <li>Copy to datapack at <code>data/craftics/structures/arenas/&lt;biome&gt;/&lt;number&gt;.nbt</code></li>
+    </ol>
+
+    <h3>File Naming</h3>
+    <pre><code>craftics_arenas/          (in game run directory, for .schem)
+  plains/
+    1.schem
+    2.schem
+    boss_1.schem
+  forest/
+    1.schem
+
+data/craftics/structures/arenas/   (in datapack, for .nbt)
+  plains/
+    1.nbt
+    boss_1.nbt</code></pre>
+
+    <h4>Biome IDs for Arena Folders</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Overworld</th><th>Nether</th><th>End</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>plains</td><td>nether_wastes</td><td>outer_end_islands</td></tr>
+          <tr><td>forest</td><td>soul_sand_valley</td><td>end_city</td></tr>
+          <tr><td>desert</td><td>crimson_forest</td><td>chorus_grove</td></tr>
+          <tr><td>jungle</td><td>warped_forest</td><td>dragons_nest</td></tr>
+          <tr><td>river</td><td>basalt_deltas</td><td></td></tr>
+          <tr><td>mountain</td><td></td><td></td></tr>
+          <tr><td>snowy</td><td></td><td></td></tr>
+          <tr><td>cave</td><td></td><td></td></tr>
+          <tr><td>deep_dark</td><td></td><td></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Tips</h3>
+    <ul>
+      <li>Size your grid for the biome's growth range (e.g., Plains starts 8&times;8, grows +1 per level).</li>
+      <li>The isometric camera looks from the southwest at ~55&deg;. Tall structures on the north/east edges may block the view.</li>
+      <li>Floor level = marker Y level.</li>
+      <li>Obstacles are overlaid by the game, so your arena provides the base terrain only.</li>
+      <li>Add atmosphere outside the grid (lanterns, campfires, particle-emitting blocks, etc.).</li>
+      <li>Under-floor lighting is automatic (glowstone every 3 blocks).</li>
+    </ul>
+
+    <!-- ================================================================
+         2. MOB HEAD TEXTURES
+         ================================================================ -->
+    <h2 id="mob-head-textures">Mob Head Textures</h2>
+    <p>
+      The combat HUD displays a small head icon for every enemy and ally in the arena. Craftics ships 80+ vanilla mob heads and auto-discovers textures for modded mobs at runtime, so <strong>no code changes are needed</strong> to add heads for new mobs.
+    </p>
+
+    <h3>Resolution Order</h3>
+    <p>
+      When the HUD requests a head for entity type <code>somemod:bigwolf</code>, <code>MobHeadTextures.get()</code> checks three sources in order:
+    </p>
+    <ol>
+      <li><strong>Hardcoded vanilla map</strong>: ~80 built-in entries for all vanilla mobs. Always checked first.</li>
+      <li><strong>Runtime registration</strong>: entries added via the Java API (see below). Checked second.</li>
+      <li><strong>Resource auto-discovery</strong>: probes the loaded resource manager for a PNG at two path conventions (see below). Results are cached until <code>/reload</code>.</li>
+    </ol>
+    <p>
+      If none of the three sources return a texture, the HUD falls back to a colored square with the mob's first initial.
+    </p>
+
+    <h3>Resource Pack Method (No Code)</h3>
+    <p>
+      Drop a <strong>16&times;16 PNG</strong> at one of these two paths inside any resource pack:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Convention</th><th>Path</th><th>Use Case</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Craftics namespace</td>
+            <td><code>assets/craftics/textures/mob_heads/{modid}/{mobname}.png</code></td>
+            <td>Resource packs shipping heads for any modded mob under Craftics' namespace</td>
+          </tr>
+          <tr>
+            <td>Mod namespace</td>
+            <td><code>assets/{modid}/textures/mob_heads/{mobname}.png</code></td>
+            <td>A mod shipping its own head texture in its own namespace</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      For a mob with entity type <code>alexsmobs:bone_serpent</code>, the auto-discovery probes:
+    </p>
+    <pre><code>assets/craftics/textures/mob_heads/alexsmobs/bone_serpent.png   (Craftics namespace)
+assets/alexsmobs/textures/mob_heads/bone_serpent.png            (mod namespace)</code></pre>
+    <p>
+      Run <code>/reload</code> or toggle the resource pack and the head appears on the combat HUD immediately, with no client restart required.
+    </p>
+
+    <h3>Java API Method (Mod Code)</h3>
+    <p>
+      Addon mods can register head textures explicitly during <strong>client initialization</strong>:
+    </p>
+    <pre><code>import com.crackedgames.craftics.client.MobHeadTextures;
+import net.minecraft.util.Identifier;
+
+// In your ClientModInitializer.onInitializeClient():
+MobHeadTextures.register(
+    "somemod:bigwolf",
+    Identifier.of("somemod", "textures/hud/bigwolf_head.png")
+);</code></pre>
+    <p>
+      Runtime-registered entries take priority over auto-discovery but not over the built-in vanilla map.
+    </p>
+
+    <h3>Cache and Reload</h3>
+    <p>
+      Auto-discovered textures are cached after the first lookup. The cache is cleared automatically whenever <code>/reload</code> runs or resource packs change (via a <code>SimpleSynchronousResourceReloadListener</code> registered in <code>CrafticsClient</code>), so new or updated PNGs are picked up without restarting the client.
+    </p>
+
+    <!-- ================================================================
+         3. ADDON POLICY
+         ================================================================ -->
+    <h2 id="addon-policy">Addon Policy</h2>
+
+    <h3>Allowed</h3>
+    <ul>
+      <li>Addons via API (weapons, equipment, armor sets, trims, events, enchantments, biomes, enemies, AI)</li>
+      <li>Datapacks (arenas, loot, biome configs)</li>
+      <li>Resource packs retexturing Craftics content</li>
+      <li>Modpacks on CurseForge/Modrinth with credit</li>
+      <li>Videos, streams, reviews (no permission needed)</li>
+    </ul>
+
+    <h3>Not Allowed</h3>
+    <ul>
+      <li>Redistributing Craftics outside modpack launchers</li>
+      <li>Copying source code into your projects</li>
+      <li>Re-uploading without permission</li>
+    </ul>
+
+  </main>
+</div>
+
+<footer>
+  <span>Craftics by Cracked Games LLC</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+
+</body>
+</html>

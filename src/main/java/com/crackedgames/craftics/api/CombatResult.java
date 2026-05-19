@@ -3,8 +3,16 @@ package com.crackedgames.craftics.api;
 import java.util.List;
 
 /**
- * Return type for combat effect callbacks that can modify combat values.
- * Carries a modified value, combat log messages, and a cancellation flag.
+ * Return type for {@link CombatEffectHandler} callbacks that can modify combat values.
+ *
+ * <p>Carries the modified value, optional combat-log messages, and a cancellation flag.
+ * Use the static factories instead of the record constructor directly.
+ *
+ * @param modifiedValue  the value after modification; passed back to the combat engine
+ * @param messages       combat-log lines to display to the player; may be empty
+ * @param cancelled      if {@code true} the originating action is suppressed entirely
+ *                       (for example, lethal damage that should be prevented)
+ * @since 0.2.0
  */
 public record CombatResult(
     int modifiedValue,

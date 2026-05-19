@@ -81,14 +81,31 @@ public record AllyEntry(
             this.entityTypeId = entityTypeId;
         }
 
+        /** Base health. Default {@code 6}. */
         public Builder hp(int hp) { this.hp = hp; return this; }
+
+        /** Base attack. Default {@code 1}. */
         public Builder attack(int attack) { this.attack = attack; return this; }
+
+        /** Base defense. Default {@code 0}. */
         public Builder defense(int defense) { this.defense = defense; return this; }
+
+        /** Attack range in tiles. Default {@code 1}. */
         public Builder range(int range) { this.range = range; return this; }
+
+        /** Movement tiles per turn. Default {@code 2}. */
         public Builder speed(int speed) { this.speed = speed; return this; }
+
+        /** How the ally is recruited from the hub. Default {@link RecruitMode#TAMED}. */
         public Builder recruitMode(RecruitMode mode) { this.recruitMode = mode; return this; }
+
+        /** Combat behavior. Default {@link AllyEntry#DEFAULT_AI}. */
         public Builder ai(AllyAI ai) { this.ai = ai; return this; }
+
+        /** Whether the ally's attack gains the owner's armor and trim bonuses. Default {@code true}. */
         public Builder scalesWithOwnerGear(boolean v) { this.scalesWithOwnerGear = v; return this; }
+
+        /** Optional per-round effect hook, or {@code null} for none. */
         public Builder roundHook(AllyRoundHook hook) { this.roundHook = hook; return this; }
 
         /** Bind a combat heal item: using {@code item} on this ally restores {@code amount} HP. */

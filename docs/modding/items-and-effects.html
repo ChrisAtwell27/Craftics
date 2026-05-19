@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics - Items &amp; Effects (Modding Guide)</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo"><img src="https://media.forgecdn.net/avatars/thumbnails/1730/614/64/64/639101389968942522.png" alt="Craftics Logo" style="height:32px;width:32px;vertical-align:middle;border-radius:6px;margin-right:10px;">Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html" class="active">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============================================================
+     PAGE LAYOUT
+     ============================================================ -->
+<div class="page-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Modding Guide</div>
+    <nav class="sidebar-nav">
+      <a href="../modding.html">Introduction</a>
+      <a href="gear.html">Gear</a>
+      <a href="items-and-effects.html" class="active">Items &amp; Effects</a>
+      <a href="enemies.html">Enemies &amp; Allies</a>
+      <a href="world.html">World</a>
+      <a href="reference.html">Reference</a>
+    </nav>
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+    <h1>Items &amp; Effects</h1>
+    <p class="page-desc">Register consumables and special-use items, define custom combat status effects, and attach lifecycle combat effect handlers to equipment scanners.</p>
+
+    <!-- ================================================================
+         1. USABLE ITEMS
+         ================================================================ -->
+    <h2 id="usable-items">Usable Items</h2>
+    <p>
+      A usable item is any item the player can activate during their Craftics turn: a consumable draught, a thrown explosive, a support item aimed at an ally, or any other in-combat action tied to an item. Registered items are checked before Craftics' built-in item handling, so an addon can introduce entirely new items or remap an existing vanilla item without touching combat code.
+    </p>
+    <p>
+      Call <code>CrafticsAPI.registerUsableItem(item, entry)</code> from your addon's <code>onCrafticsInit()</code>.
+    </p>
+
+    <h3>API Method</h3>
+    <pre><code>CrafticsAPI.registerUsableItem(Item item, UsableItemEntry entry);</code></pre>
+
+    <h3>UsableItemEntry Builder</h3>
+    <pre><code>UsableItemEntry entry = UsableItemEntry.builder(myItem)
+    .apCost(1)                       // action points spent per use
+    .range(0)                        // max tile distance to target (0 = self / no range check)
+    .targetType(TargetType.SELF)     // what the player must click
+    .consumedOnUse(true)             // whether one of the item is consumed on success
+    .handler(myHandler)              // the effect to run (required)
+    .build();
+
+CrafticsAPI.registerUsableItem(myItem, entry);</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Builder Method</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>apCost(int)</code></td><td>int</td><td>1</td><td>Action points spent per use</td></tr>
+          <tr><td><code>range(int)</code></td><td>int</td><td>0</td><td>Max tile distance to the target. 0 means self or no range check.</td></tr>
+          <tr><td><code>targetType(TargetType)</code></td><td>enum</td><td>SELF</td><td>What the item targets (see TargetType values below)</td></tr>
+          <tr><td><code>consumedOnUse(boolean)</code></td><td>bool</td><td>true</td><td>Whether one of the item is consumed on a successful use</td></tr>
+          <tr><td><code>handler(UsableItemHandler)</code></td><td>handler</td><td></td><td>The effect to run. Required.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>TargetType Values</h3>
+    <p>
+      Craftics uses the <code>TargetType</code> to validate the player's click and to highlight valid tiles before the handler runs.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Value</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>SELF</code></td><td>No targeting required. The item acts on the player only (food, a self-buff).</td></tr>
+          <tr><td><code>SINGLE_ENEMY</code></td><td>A single hostile combatant standing on the targeted tile.</td></tr>
+          <tr><td><code>SINGLE_ALLY</code></td><td>A single allied combatant (pet, party member) on the targeted tile.</td></tr>
+          <tr><td><code>ANY_TILE</code></td><td>Any tile within range, occupied or not. Use for placing hazards or teleporting.</td></tr>
+          <tr><td><code>AOE</code></td><td>An area centered on the targeted tile.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>UsableItemHandler Interface</h3>
+    <p>
+      <code>UsableItemHandler</code> is a <code>@FunctionalInterface</code>. Implement it directly for custom scripted logic, or compose built-in building blocks from <code>ItemEffects</code>. The handler receives a <code>UsableItemContext</code> and returns an <code>ItemUseResult</code>.
+    </p>
+    <pre><code>@FunctionalInterface
+public interface UsableItemHandler {
+    ItemUseResult use(UsableItemContext ctx);
+
+    // Chain with another handler (second runs only if first succeeds):
+    default UsableItemHandler and(UsableItemHandler next);
+}</code></pre>
+
+    <h3>ItemUseResult</h3>
+    <p>
+      Return one of two factory values. On <code>ok()</code>, Craftics spends the AP cost and optionally consumes the item. On <code>fail(reason)</code>, nothing is spent and the reason is shown to the player.
+    </p>
+    <pre><code>ItemUseResult.ok()              // item used successfully
+ItemUseResult.fail("No target there.")  // item failed, keep AP</code></pre>
+
+    <h3>UsableItemContext</h3>
+    <p>
+      The context exposes the combat state and a set of typed operations so handlers never need to touch Craftics internals.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Method</th><th>Returns</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>player()</code></td><td>ServerPlayerEntity</td><td>The player using the item</td></tr>
+          <tr><td><code>arena()</code></td><td>GridArena</td><td>The active arena</td></tr>
+          <tr><td><code>targetPos()</code></td><td>GridPos</td><td>The tile the player targeted (player's tile for SELF items)</td></tr>
+          <tr><td><code>targetEntity()</code></td><td>CombatEntity or null</td><td>The combatant on the targeted tile, or null if empty</td></tr>
+          <tr><td><code>stack()</code></td><td>ItemStack</td><td>The item stack being used</td></tr>
+          <tr><td><code>combatants()</code></td><td>List&lt;CombatEntity&gt;</td><td>All combatants (enemies and allies). Read-only.</td></tr>
+          <tr><td><code>damage(target, amount)</code></td><td>int</td><td>Deal damage through the target's defense. Returns actual damage dealt.</td></tr>
+          <tr><td><code>healPlayer(amount)</code></td><td>void</td><td>Heal the player (capped at max health)</td></tr>
+          <tr><td><code>healEntity(entity, amount)</code></td><td>void</td><td>Heal a combatant (capped at max HP)</td></tr>
+          <tr><td><code>applyPlayerEffect(type, turns, amplifier)</code></td><td>void</td><td>Apply a built-in status effect to the player</td></tr>
+          <tr><td><code>applyEffect(target, type, turns, amplifier)</code></td><td>void</td><td>Apply a built-in status effect to a combatant</td></tr>
+          <tr><td><code>applyCustomEffect(target, effectId, turns, amplifier)</code></td><td>void</td><td>Apply a registered custom status effect to a combatant. Reserved for a future SDK phase, currently a no-op.</td></tr>
+          <tr><td><code>stun(target)</code></td><td>void</td><td>Stun a combatant so it loses its next turn</td></tr>
+          <tr><td><code>knockback(target, distance)</code></td><td>void</td><td>Push a combatant up to N tiles away from the player</td></tr>
+          <tr><td><code>teleportPlayer(pos)</code></td><td>void</td><td>Teleport the player to a walkable, unoccupied tile</td></tr>
+          <tr><td><code>placeTileEffect(pos, effectType)</code></td><td>void</td><td>Place a tile effect (e.g. "lava", "campfire", "poison_cloud")</td></tr>
+          <tr><td><code>message(text)</code></td><td>void</td><td>Send a chat message to the player</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Built-in Effect Factories (ItemEffects class)</h3>
+    <p>
+      The <code>ItemEffects</code> class provides static factory methods that return composable <code>UsableItemHandler</code> building blocks. Chain them with <code>.and()</code>. Blocks that need a combatant on the targeted tile fail cleanly when the tile is empty, returning the AP to the player.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Factory Method</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>heal(amount)</code></td><td>Heal the player by amount.</td></tr>
+          <tr><td><code>applyToSelf(type, turns, amplifier)</code></td><td>Apply a built-in status effect to the player.</td></tr>
+          <tr><td><code>damageTarget(amount)</code></td><td>Deal amount damage to the combatant on the targeted tile. Fails if the tile is empty.</td></tr>
+          <tr><td><code>applyToTarget(type, turns, amplifier)</code></td><td>Apply a built-in status effect to the combatant on the targeted tile. Fails if the tile is empty.</td></tr>
+          <tr><td><code>stunTarget()</code></td><td>Stun the combatant on the targeted tile. Fails if the tile is empty.</td></tr>
+          <tr><td><code>knockbackTarget(distance)</code></td><td>Push the combatant on the targeted tile up to distance tiles away. Fails if the tile is empty.</td></tr>
+          <tr><td><code>aoeDamage(radius, amount)</code></td><td>Deal amount damage to every enemy within radius tiles of the target tile (Manhattan distance).</td></tr>
+          <tr><td><code>teleportToTarget()</code></td><td>Teleport the player onto the targeted tile.</td></tr>
+          <tr><td><code>placeTile(effectType)</code></td><td>Place a tile effect on the targeted tile.</td></tr>
+          <tr><td><code>message(text)</code></td><td>Send a chat message to the player.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place usable item JSON files at <code>data/&lt;namespace&gt;/craftics/items/*.json</code>. The <code>effects</code> array is an ordered list of building blocks that run in sequence. Each block must succeed for the next to run. Items needing scripted logic must be registered through <code>CrafticsAPI.registerUsableItem</code> in Java.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>item</code></td><td>string</td><td>yes</td><td>Full item registry ID, e.g. <code>minecraft:golden_apple</code></td></tr>
+          <tr><td><code>ap_cost</code></td><td>int</td><td>no</td><td>Action points spent per use. Defaults to 1.</td></tr>
+          <tr><td><code>range</code></td><td>int</td><td>no</td><td>Max tile distance to the target. Defaults to 0 (self / no range check).</td></tr>
+          <tr><td><code>target</code></td><td>string</td><td>no</td><td>TargetType name (case-insensitive). Defaults to SELF.</td></tr>
+          <tr><td><code>consumed</code></td><td>bool</td><td>no</td><td>Whether one of the item is consumed on success. Defaults to true.</td></tr>
+          <tr><td><code>effects</code></td><td>array</td><td>yes</td><td>Ordered list of effect objects (see effect kinds below).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Effect object <code>kind</code> values and their extra fields:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>kind</th><th>Extra Fields</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>heal</code></td><td><code>amount</code> (int, default 1)</td></tr>
+          <tr><td><code>damage_target</code></td><td><code>amount</code> (int, default 1)</td></tr>
+          <tr><td><code>stun_target</code></td><td>(none)</td></tr>
+          <tr><td><code>knockback_target</code></td><td><code>distance</code> (int, default 1)</td></tr>
+          <tr><td><code>aoe_damage</code></td><td><code>radius</code> (int, default 1), <code>amount</code> (int, default 1)</td></tr>
+          <tr><td><code>teleport</code></td><td>(none)</td></tr>
+          <tr><td><code>place_tile</code></td><td><code>tile</code> (string, e.g. <code>"lava"</code>)</td></tr>
+          <tr><td><code>message</code></td><td><code>text</code> (string)</td></tr>
+          <tr><td><code>apply_self</code></td><td><code>effect</code> (EffectType name), <code>turns</code> (int, default 3), <code>amplifier</code> (int, default 0)</td></tr>
+          <tr><td><code>apply_target</code></td><td><code>effect</code> (EffectType name), <code>turns</code> (int, default 3), <code>amplifier</code> (int, default 0)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code>{
+  "item": "minecraft:golden_apple",
+  "ap_cost": 1,
+  "range": 0,
+  "target": "SELF",
+  "consumed": true,
+  "effects": [
+    { "kind": "heal", "amount": 4 },
+    { "kind": "apply_self", "effect": "ABSORPTION", "turns": 4, "amplifier": 0 }
+  ]
+}</code></pre>
+
+    <h3>Code Example</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.ItemEffects;
+import com.crackedgames.craftics.api.TargetType;
+import com.crackedgames.craftics.api.registry.UsableItemEntry;
+import com.crackedgames.craftics.combat.CombatEffects;
+
+// Healing draught: heal 8 HP and apply Absorption for 4 turns
+CrafticsAPI.registerUsableItem(MyItems.HEALING_DRAUGHT,
+    UsableItemEntry.builder(MyItems.HEALING_DRAUGHT)
+        .apCost(1)
+        .targetType(TargetType.SELF)
+        .consumedOnUse(true)
+        .handler(ItemEffects.heal(8)
+            .and(ItemEffects.applyToSelf(CombatEffects.EffectType.ABSORPTION, 4, 0)))
+        .build());
+
+// Poison vial: deal 4 damage and apply Poison to a single enemy
+CrafticsAPI.registerUsableItem(MyItems.POISON_VIAL,
+    UsableItemEntry.builder(MyItems.POISON_VIAL)
+        .apCost(1)
+        .range(3)
+        .targetType(TargetType.SINGLE_ENEMY)
+        .consumedOnUse(true)
+        .handler(ItemEffects.damageTarget(4)
+            .and(ItemEffects.applyToTarget(CombatEffects.EffectType.POISON, 3, 0)))
+        .build());</code></pre>
+
+    <!-- ================================================================
+         2. CUSTOM STATUS EFFECTS
+         ================================================================ -->
+    <h2 id="custom-effects">Custom Status Effects</h2>
+    <p>
+      Craftics has 23 built-in status effects keyed by the <code>CombatEffects.EffectType</code> enum. Custom effects extend that set with a string id instead of an enum constant, so addons can introduce their own debuffs and buffs without forking the mod. A custom effect ticks once per round for each combatant carrying it: the declarative <code>hpChangePerTurn</code> is applied first, then the optional <code>CustomEffectTickHandler</code> runs for scripted logic.
+    </p>
+    <p>
+      Call <code>CrafticsAPI.registerEffect(def)</code> from your addon's <code>onCrafticsInit()</code>. A registered effect ticks once per round on any combatant carrying it. Note that <code>UsableItemContext.applyCustomEffect</code>, the planned way for an item to place a custom effect on a combatant, is currently a no-op reserved for a future SDK phase.
+    </p>
+
+    <h3>API Method</h3>
+    <pre><code>CrafticsAPI.registerEffect(CustomEffectDef def);</code></pre>
+
+    <h3>CustomEffectDef Builder</h3>
+    <pre><code>CustomEffectDef def = CustomEffectDef.builder("mymod:frostbite")
+    .displayName("Frostbite")
+    .description("-2 HP per turn")
+    .colorCode("§b")
+    .harmful(true)
+    .hpChangePerTurn(-2)
+    .tickHandler(myTickHandler)    // optional
+    .build();
+
+CrafticsAPI.registerEffect(def);</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Builder Method</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>builder(id)</code></td><td>string</td><td></td><td>Unique effect id, e.g. <code>"mymod:frostbite"</code>. Required.</td></tr>
+          <tr><td><code>displayName(String)</code></td><td>string</td><td>id</td><td>Name shown to players</td></tr>
+          <tr><td><code>description(String)</code></td><td>string</td><td>""</td><td>Short description for tooltips and guides</td></tr>
+          <tr><td><code>colorCode(String)</code></td><td>string</td><td>"§7"</td><td>Minecraft section-sign color code for messages and the effect display</td></tr>
+          <tr><td><code>harmful(boolean)</code></td><td>bool</td><td>true</td><td>Whether this is a debuff (vs. a buff)</td></tr>
+          <tr><td><code>hpChangePerTurn(int)</code></td><td>int</td><td>0</td><td>Per-turn HP change, scaled by (amplifier + 1). Negative damages, positive heals. Use 0 for no automatic HP change.</td></tr>
+          <tr><td><code>tickHandler(CustomEffectTickHandler)</code></td><td>handler</td><td>null</td><td>Optional scripted per-turn logic (see below)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>CustomEffectTickHandler Interface</h3>
+    <p>
+      <code>CustomEffectTickHandler</code> is a <code>@FunctionalInterface</code>. It runs once per round, per combatant carrying the effect, after <code>hpChangePerTurn</code> has already been applied. Effects that only need a flat HP change do not need a handler at all.
+    </p>
+    <pre><code>@FunctionalInterface
+public interface CustomEffectTickHandler {
+    void onTick(CombatEntity entity, int amplifier, int turnsRemaining);
+}</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>entity</code></td><td>The combatant carrying the effect</td></tr>
+          <tr><td><code>amplifier</code></td><td>The effect's current amplifier (0 = level I)</td></tr>
+          <tr><td><code>turnsRemaining</code></td><td>Turns remaining including the current one</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place status effect JSON files at <code>data/&lt;namespace&gt;/craftics/effects/*.json</code>. Datapack effects are declarative: they support a flat per-turn HP change but no scripted tick logic. Effects needing a <code>CustomEffectTickHandler</code> must be registered through <code>CrafticsAPI.registerEffect</code> in Java.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td>yes</td><td>Unique effect id, e.g. <code>"mymod:frostbite"</code></td></tr>
+          <tr><td><code>name</code></td><td>string</td><td>no</td><td>Display name shown to players. Defaults to the id.</td></tr>
+          <tr><td><code>description</code></td><td>string</td><td>no</td><td>Short description for tooltips</td></tr>
+          <tr><td><code>color</code></td><td>string</td><td>no</td><td>Minecraft section-sign color code. Defaults to <code>"§7"</code>.</td></tr>
+          <tr><td><code>harmful</code></td><td>bool</td><td>no</td><td>Whether this is a debuff. Defaults to true.</td></tr>
+          <tr><td><code>hp_change_per_turn</code></td><td>int</td><td>no</td><td>Per-turn HP change, scaled by (amplifier + 1). Negative damages, positive heals. Defaults to 0.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code>{
+  "id": "mymod:frostbite",
+  "name": "Frostbite",
+  "description": "-2 HP per turn",
+  "color": "§b",
+  "harmful": true,
+  "hp_change_per_turn": -2
+}</code></pre>
+
+    <h3>Code Example</h3>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.CustomEffectDef;
+
+// Frostbite: a simple damage-over-time debuff, registered from a datapack or in code
+CrafticsAPI.registerEffect(CustomEffectDef.builder("mymod:frostbite")
+    .displayName("Frostbite")
+    .description("-2 HP per turn")
+    .colorCode("§b")
+    .harmful(true)
+    .hpChangePerTurn(-2)
+    .build());
+
+// Festering Wound: a damage-over-time effect that flares up as it fades.
+// A tick handler receives only the carrying entity, its amplifier, and the
+// turns remaining, so it acts on that entity.
+CrafticsAPI.registerEffect(CustomEffectDef.builder("mymod:festering_wound")
+    .displayName("Festering Wound")
+    .description("-1 HP per turn, with a burst of damage as it fades")
+    .colorCode("§2")
+    .harmful(true)
+    .hpChangePerTurn(-1)
+    .tickHandler((entity, amplifier, turnsRemaining) -> {
+        // Scripted logic runs after the flat hpChangePerTurn is applied.
+        if (turnsRemaining <= 1) {
+            entity.takeDamage(3 + amplifier);
+        }
+    })
+    .build());</code></pre>
+
+    <!-- ================================================================
+         3. COMBAT EFFECT HANDLERS
+         ================================================================ -->
+    <h2 id="combat-effects">Combat Effect Handlers</h2>
+    <p>
+      Combat effect handlers are lifecycle callbacks that fire at specific moments during a Craftics combat encounter. Unlike flat stat bonuses, they can react to events such as taking damage, killing an enemy, or moving on the grid, and they can intercept and modify combat values. They are the mechanism behind trinket effects, ring abilities, set bonuses from custom equipment, and any other dynamic in-combat behavior an addon needs.
+    </p>
+    <p>
+      Handlers are registered through <code>StatModifiers.addCombatEffect(name, handler)</code> inside an <code>EquipmentScanner</code>. The scanner runs at the start of each combat encounter and produces fresh handler instances, so instance fields reset naturally between fights.
+    </p>
+
+    <h3>Registration</h3>
+    <p>
+      There is no <code>CrafticsAPI.registerCombatEffect</code> method. Instead, combat effect handlers live alongside stat bonuses in a <code>StatModifiers</code> object returned by an <code>EquipmentScanner</code>. That scanner is registered once via <code>CrafticsAPI.registerEquipmentScanner</code>.
+    </p>
+    <pre><code>CrafticsAPI.registerEquipmentScanner("mymod", (player) -&gt; {
+    StatModifiers mods = new StatModifiers();
+
+    ItemStack ring = getCustomSlot(player, "ring");
+    if (ring.isOf(MY_THORNS_RING)) {
+        mods.addCombatEffect("Thorns Ring", new ThornsCombatEffect());
+    }
+
+    return mods;
+});</code></pre>
+
+    <p>
+      Multiple effects per scanner are allowed, each with its own name and handler instance. You can also mix stat bonuses and combat effects in the same <code>StatModifiers</code>.
+    </p>
+
+    <h3>CombatEffectHandler Interface</h3>
+    <p>
+      <code>CombatEffectHandler</code> is an interface with default no-op implementations for every method. Override only the callbacks your effect needs.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Callback</th>
+            <th>Returns</th>
+            <th>When it fires</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>onCombatStart(ctx)</code></td><td>void</td><td>Combat begins, before the first turn</td></tr>
+          <tr><td><code>onTurnStart(ctx)</code></td><td>void</td><td>Player's turn starts</td></tr>
+          <tr><td><code>onTurnEnd(ctx)</code></td><td>void</td><td>Player's turn ends, before enemies act</td></tr>
+          <tr><td><code>onCombatEnd(ctx)</code></td><td>void</td><td>Combat finishes (victory or defeat)</td></tr>
+          <tr><td><code>onDealDamage(ctx, target, damage)</code></td><td>CombatResult</td><td>Player deals damage. Can modify the amount.</td></tr>
+          <tr><td><code>onDealKillingBlow(ctx, killed)</code></td><td>void</td><td>Player kills an enemy</td></tr>
+          <tr><td><code>onCrit(ctx, target, damage)</code></td><td>void</td><td>Player lands a critical hit</td></tr>
+          <tr><td><code>onMiss(ctx, target)</code></td><td>void</td><td>Player's attack misses</td></tr>
+          <tr><td><code>onTakeDamage(ctx, attacker, damage)</code></td><td>CombatResult</td><td>Player takes damage. Can modify the amount.</td></tr>
+          <tr><td><code>onLethalDamage(ctx, attacker, damage)</code></td><td>CombatResult</td><td>Damage would kill the player. Can cancel to prevent death.</td></tr>
+          <tr><td><code>onDodge(ctx, attacker)</code></td><td>void</td><td>Player dodges an attack</td></tr>
+          <tr><td><code>onBlocked(ctx, attacker, blockedDamage)</code></td><td>void</td><td>Player's shield blocks damage</td></tr>
+          <tr><td><code>onMove(ctx, from, to, distance)</code></td><td>void</td><td>Player moves on the grid</td></tr>
+          <tr><td><code>onKnockback(ctx, source, distance)</code></td><td>CombatResult</td><td>Player is knocked back. Can modify the distance.</td></tr>
+          <tr><td><code>onAllyAttack(ctx, ally, target, damage)</code></td><td>void</td><td>A pet or ally deals damage</td></tr>
+          <tr><td><code>onAllyTakeDamage(ctx, ally, attacker, damage)</code></td><td>CombatResult</td><td>A pet or ally takes damage. Can modify the amount.</td></tr>
+          <tr><td><code>onAllyKill(ctx, ally, killed)</code></td><td>void</td><td>A pet or ally kills an enemy</td></tr>
+          <tr><td><code>onAllyDeath(ctx, ally)</code></td><td>void</td><td>A pet or ally dies</td></tr>
+          <tr><td><code>onEffectApplied(ctx, effect, turns)</code></td><td>CombatResult</td><td>A status effect is applied to the player. Can modify duration.</td></tr>
+          <tr><td><code>onEffectExpired(ctx, effect)</code></td><td>void</td><td>A status effect expires on the player</td></tr>
+          <tr><td><code>onLootRoll(ctx, loot)</code></td><td>void</td><td>Loot is generated after a level. Modify the mutable list directly.</td></tr>
+          <tr><td><code>onEmeraldGain(ctx, amount)</code></td><td>CombatResult</td><td>Emeralds are awarded. Can modify the amount.</td></tr>
+          <tr><td><code>onEnemySpawn(ctx, enemy)</code></td><td>void</td><td>An enemy spawns into the arena</td></tr>
+          <tr><td><code>onBossPhaseChange(ctx, boss, newPhase)</code></td><td>void</td><td>A boss transitions to a new phase</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>CombatResult</h3>
+    <p>
+      Callbacks that return <code>CombatResult</code> can intercept and modify the value in question. Three factory methods are available:
+    </p>
+    <pre><code>CombatResult.unchanged(originalValue)       // pass through with no change
+CombatResult.modify(newValue, "message")    // change the value, add a combat log message
+CombatResult.cancel("message")             // cancel the action entirely (e.g., prevent death)</code></pre>
+
+    <h3>CombatEffectContext</h3>
+    <p>
+      All callbacks receive a <code>CombatEffectContext</code> as their first argument. The context is created once at combat start and updated each turn.
+    </p>
+    <pre><code>ctx.getPlayer()         // ServerPlayerEntity, the player
+ctx.getArena()          // GridArena, the active arena
+ctx.getPlayerEffects()  // CombatEffects, active status effects on the player
+ctx.getTrimScan()       // TrimEffects.TrimScan, the player's trim data
+ctx.getAllEnemies()     // List&lt;CombatEntity&gt;, all living enemies
+ctx.getAllAllies()      // List&lt;CombatEntity&gt;, all living allies</code></pre>
+
+    <h3>Statefulness</h3>
+    <p>
+      Handlers are per-combat instances. The <code>EquipmentScanner</code> is called at combat start, producing a fresh handler each time. Instance fields therefore reset automatically between fights, and you can safely use them to track per-combat state.
+    </p>
+    <pre><code>mods.addCombatEffect("One-Shot Shield", new CombatEffectHandler() {
+    private boolean used = false; // resets each combat
+
+    @Override
+    public CombatResult onLethalDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
+        if (!used) {
+            used = true;
+            ctx.getPlayer().heal(10);
+            return CombatResult.cancel("§dOne-Shot Shield absorbs the blow!");
+        }
+        return CombatResult.unchanged(damage);
+    }
+});</code></pre>
+
+    <h3>Code Examples</h3>
+
+    <h4>Thorns Ring (reflect incoming damage)</h4>
+    <pre><code>mods.addCombatEffect("Thorns Ring", new CombatEffectHandler() {
+    @Override
+    public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
+        if (attacker != null) {
+            attacker.takeDamage(Math.max(1, damage / 4));
+        }
+        return CombatResult.modify(damage, "§6Thorns Ring reflects damage!");
+    }
+});</code></pre>
+
+    <h4>Fortune Amulet (bonus emeralds)</h4>
+    <pre><code>mods.addCombatEffect("Fortune Amulet", new CombatEffectHandler() {
+    @Override
+    public CombatResult onEmeraldGain(CombatEffectContext ctx, int amount) {
+        return CombatResult.modify(amount + 2, "§6Fortune Amulet: +2 bonus emeralds!");
+    }
+});</code></pre>
+
+    <h4>Death Prevention (once per combat)</h4>
+    <pre><code>mods.addCombatEffect("Lucky Charm", new CombatEffectHandler() {
+    private boolean used = false;
+
+    @Override
+    public CombatResult onLethalDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
+        if (!used) {
+            used = true;
+            ctx.getPlayer().heal(10);
+            return CombatResult.cancel("§d❦ Lucky Charm saves you from death!");
+        }
+        return CombatResult.unchanged(damage);
+    }
+});</code></pre>
+
+  </main>
+</div>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer>
+  <span>Craftics by Cracked Games LLC</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+</body>
+</html>

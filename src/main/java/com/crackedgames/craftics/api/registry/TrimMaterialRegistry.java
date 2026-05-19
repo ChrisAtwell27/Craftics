@@ -9,6 +9,14 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Registry of armor trim material combat bonuses, keyed by {@link TrimMaterialEntry#materialId()}.
+ *
+ * <p>Craftics registers its 11 built-in materials at startup via {@code VanillaContent};
+ * addons register their own through {@code CrafticsAPI.registerTrimMaterial}.
+ *
+ * @since 0.2.0
+ */
 public final class TrimMaterialRegistry {
     private TrimMaterialRegistry() {}
 
@@ -39,21 +47,25 @@ public final class TrimMaterialRegistry {
         DATAPACK_KEYS.clear();
     }
 
+    /** The entry for {@code materialId}, or {@code null} if none is registered. */
     public static TrimMaterialEntry get(String materialId) {
         return REGISTRY.get(materialId);
     }
 
+    /** Every registered trim material entry, as an unmodifiable view. */
     public static Map<String, TrimMaterialEntry> getAll() {
         return Collections.unmodifiableMap(REGISTRY);
     }
 
     // Convenience getters used by TrimEffects
 
+    /** The stat bonus type for {@code materialId}, or {@code null} if not registered. */
     public static TrimEffects.Bonus getMaterialBonus(String materialId) {
         TrimMaterialEntry entry = REGISTRY.get(materialId);
         return entry != null ? entry.stat() : null;
     }
 
+    /** Tooltip description for {@code materialId}, or an empty string if not registered. */
     public static String getDescription(String materialId) {
         TrimMaterialEntry entry = REGISTRY.get(materialId);
         return entry != null ? entry.description() : "";

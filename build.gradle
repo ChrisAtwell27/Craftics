@@ -3,7 +3,7 @@ plugins {
 	id 'maven-publish'
 }
 
-version = project.mod_version
+version = "${project.mod_version}+${project.minecraft_version}"
 group = project.maven_group
 
 base {
@@ -152,9 +152,19 @@ tasks.withType(JavaCompile).configureEach {
 
 java {
 	withSourcesJar()
+	withJavadocJar()
 
 	sourceCompatibility = JavaVersion.VERSION_21
 	targetCompatibility = JavaVersion.VERSION_21
+}
+
+// The published javadoc documents only the addon-facing API surface
+// (com.crackedgames.craftics.api), not the internal combat engine.
+javadoc {
+	include 'com/crackedgames/craftics/api/**'
+	options {
+		addStringOption('Xdoclint:none', '-quiet')
+	}
 }
 
 jar {
@@ -165,4 +175,25 @@ jar {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			artifactId = project.archives_base_name   // "craftics"
+			from components.java
+		}
+	}
+	repositories {
+		maven {
+			name = 'GitHubPackages'
+			url = 'https://maven.pkg.github.com/ChrisAtwell27/Craftics'
+			credentials {
+				username = providers.gradleProperty('gpr.user')
+					.orElse(providers.environmentVariable('GITHUB_ACTOR')).orNull
+				password = providers.gradleProperty('gpr.key')
+					.orElse(providers.environmentVariable('GITHUB_TOKEN')).orNull
+			}
+		}
+	}
 }

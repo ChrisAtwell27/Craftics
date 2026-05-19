@@ -1,0 +1,38 @@
+name: Publish to GitHub Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Remove machine-specific JDK path
+        # gradle.properties pins org.gradle.java.home to a local Windows path
+        # that does not exist on the runner. Strip it from the CI checkout only
+        # (never committed back) so Gradle uses the JDK from setup-java.
+        run: sed -i '/^org\.gradle\.java\.home=/d' gradle.properties
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Publish all shards to GitHub Packages
+        run: ./gradlew chiseledPublish --no-daemon --stacktrace
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1981,7 +1981,7 @@ public class CombatManager {
                 CombatEntity ce = new CombatEntity(
                     mob.getId(), spawn.entityTypeId(), resolvedPos,
                     scaledHp, scaledAtk, finalDef, spawn.range(),
-                    sizeOverride
+                    sizeOverride, spawn.speed()
                 );
                 // Honor an EnemyEntry's AI override (its appearance differs from its
                 // AI). The boss block below sets its own aiOverrideKey, which wins.
@@ -2028,7 +2028,7 @@ public class CombatManager {
                 int scaledAtk = Math.max(1, (int)(spawn.attack() * ngMult));
                 CombatEntity ce = new CombatEntity(
                     rawEntity.getId(), spawn.entityTypeId(), resolvedPos,
-                    scaledHp, scaledAtk, spawn.defense(), spawn.range()
+                    scaledHp, scaledAtk, spawn.defense(), spawn.range(), -1, spawn.speed()
                 );
                 // mobEntity is null; the EndCrystalEntity in the world serves as visual only
                 enemies.add(ce);

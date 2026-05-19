@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics - World Modding</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo"><img src="https://media.forgecdn.net/avatars/thumbnails/1730/614/64/64/639101389968942522.png" alt="Craftics Logo" style="height:32px;width:32px;vertical-align:middle;border-radius:6px;margin-right:10px;">Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html" class="active">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============================================================
+     PAGE LAYOUT
+     ============================================================ -->
+<div class="page-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Modding Guide</div>
+    <nav class="sidebar-nav">
+      <a href="../modding.html">Introduction</a>
+      <a href="gear.html">Gear</a>
+      <a href="items-and-effects.html">Items &amp; Effects</a>
+      <a href="enemies.html">Enemies &amp; Allies</a>
+      <a href="world.html" class="active">World</a>
+      <a href="reference.html">Reference</a>
+    </nav>
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+    <h1>World</h1>
+    <p class="page-desc">How to add custom biomes, arena environment themes, biome progression paths, and between-level events to Craftics.</p>
+
+    <!-- ================================================================
+         1. BIOMES
+         ================================================================ -->
+    <h2 id="biomes">Biomes</h2>
+    <p>
+      Biomes are the arenas players fight through. Each biome has a grid size, floor and obstacle blocks, an environment theme, an enemy pool, and a loot table. Biomes slot into the progression sequence by their <code>order</code> value, so an addon biome with <code>"order": 50</code> is inserted after any built-in biome with a lower order and before any with a higher one.
+    </p>
+    <p>
+      Biomes can be added two ways: through a JSON datapack file (no code required) or programmatically through <code>CrafticsAPI.registerBiome()</code>. The JSON path is simpler for pure content; the code path is needed when you want to share a <code>BiomeTemplate</code> object built entirely in Java.
+    </p>
+
+    <h3>JSON Datapack</h3>
+    <p>
+      Place a JSON file at <code>data/&lt;namespace&gt;/craftics/biomes/&lt;biome_id&gt;.json</code>. Craftics discovers every file at that path automatically on resource reload. Use <code>/reload</code> to hot-reload biome JSON without restarting the server.
+    </p>
+    <pre><code>{
+  "id": "mymod:cavern",
+  "name": "Cavern",
+  "order": 20,
+  "levels": 5,
+  "grid": {
+    "base_width": 10,
+    "base_height": 10,
+    "width_growth": 1,
+    "height_growth": 1
+  },
+  "floor_blocks": ["minecraft:stone_bricks", "minecraft:mossy_stone_bricks"],
+  "obstacle_blocks": ["minecraft:cobblestone_wall"],
+  "obstacle_density": 0.1,
+  "obstacle_density_growth": 0.02,
+  "environment": "cave",
+  "night": true,
+  "enemies": {
+    "passive": [
+      {"type": "minecraft:bat", "weight": 3, "hp": 2, "attack": 0, "defense": 0, "range": 1}
+    ],
+    "hostile": [
+      {"type": "minecraft:skeleton", "weight": 8, "hp": 10, "attack": 3, "defense": 0, "range": 3},
+      {"type": "minecraft:spider",   "weight": 6, "hp": 8,  "attack": 3, "defense": 0, "range": 1},
+      {"enemy": "mymod:cave_witch", "weight": 3}
+    ],
+    "boss": {"type": "minecraft:warden", "hp": 50, "attack": 8, "defense": 4, "range": 2}
+  },
+  "loot": [
+    {"item": "minecraft:diamond",   "weight": 5},
+    {"item": "minecraft:iron_ingot","weight": 15}
+  ],
+  "enchantment_loot": [
+    {"enchantment": "minecraft:sharpness", "weight": 3}
+  ]
+}</code></pre>
+
+    <h4>Field Reference</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td>Yes</td><td>Unique biome identifier, e.g. <code>"mymod:cavern"</code>. Using the same id as a built-in biome overrides it.</td></tr>
+          <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Display name shown in the HUD and level select.</td></tr>
+          <tr><td><code>order</code></td><td>int</td><td>Yes</td><td>Sort position in the progression sequence. Lower values appear earlier.</td></tr>
+          <tr><td><code>levels</code></td><td>int</td><td>Yes</td><td>Total number of levels in this biome. The last level is the boss fight.</td></tr>
+          <tr><td><code>grid.base_width</code></td><td>int</td><td>Yes</td><td>Arena grid width on level 1.</td></tr>
+          <tr><td><code>grid.base_height</code></td><td>int</td><td>Yes</td><td>Arena grid height on level 1.</td></tr>
+          <tr><td><code>grid.width_growth</code></td><td>int</td><td>No</td><td>Columns added per level. Default 0.</td></tr>
+          <tr><td><code>grid.height_growth</code></td><td>int</td><td>No</td><td>Rows added per level. Default 0.</td></tr>
+          <tr><td><code>floor_blocks</code></td><td>string[]</td><td>Yes</td><td>Block ids used for the arena floor, drawn in a checkerboard pattern.</td></tr>
+          <tr><td><code>obstacle_blocks</code></td><td>string[]</td><td>No</td><td>Block ids placed as obstacles. Default none.</td></tr>
+          <tr><td><code>obstacle_density</code></td><td>float</td><td>No</td><td>Base probability (0.0 to 1.0) that a tile spawns an obstacle. Default 0.</td></tr>
+          <tr><td><code>obstacle_density_growth</code></td><td>float</td><td>No</td><td>Additional obstacle probability added per level. Default 0.</td></tr>
+          <tr><td><code>environment</code></td><td>string</td><td>No</td><td>Environment id for the arena's visual theme. Built-in values: <code>plains</code>, <code>forest</code>, <code>desert</code>, <code>jungle</code>, <code>river</code>, <code>mountain</code>, <code>snowy</code>, <code>cave</code>, <code>nether_wastes</code>, <code>end</code>, <code>deep_dark</code>. Addon environments are accepted here too. Default <code>plains</code>.</td></tr>
+          <tr><td><code>night</code></td><td>bool</td><td>No</td><td>When true the arena is treated as nighttime, preventing undead from burning. Default false.</td></tr>
+          <tr><td><code>enemies</code></td><td>object</td><td>Yes</td><td>Container for the enemy pools. Must be present even if all sub-fields use their defaults.</td></tr>
+          <tr><td><code>enemies.passive</code></td><td>array</td><td>No</td><td>Weighted pool of passive mobs that populate the arena alongside hostile enemies.</td></tr>
+          <tr><td><code>enemies.hostile</code></td><td>array</td><td>No</td><td>Weighted pool of hostile mobs that spawn each level.</td></tr>
+          <tr><td><code>enemies.boss</code></td><td>object</td><td>No</td><td>Single enemy definition used for the boss level.</td></tr>
+          <tr><td><code>loot</code></td><td>array</td><td>Yes</td><td>Weighted item table. Craftics rolls 1 to 3 items per level from this pool.</td></tr>
+          <tr><td><code>enchantment_loot</code></td><td>array</td><td>No</td><td>Optional list of enchantment ids with weights. When present, enchantment book drops are restricted to these entries.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <p><strong>Enemy entries.</strong> Each object in <code>passive</code>, <code>hostile</code>, and <code>boss</code> accepts two forms. The inline form uses <code>"type"</code> (a Minecraft entity id) plus stat fields: <code>hp</code>, <code>attack</code>, <code>defense</code>, <code>range</code>, and <code>speed</code> (defaults: 6 / 2 / 0 / 1 / 0). The reference form uses <code>"enemy": "&lt;id&gt;"</code> to point at a registered enemy template, with an optional <code>"weight"</code>; the template supplies all stats and AI. The <code>attack</code> field is the base attack value. Craftics scales it up with biome depth, so keep base values modest (roughly 1 to 10).</p>
+    </div>
+
+    <h3>Java API</h3>
+    <p>
+      To register a biome from code, build a <code>BiomeTemplate</code> and pass it to <code>CrafticsAPI.registerBiome()</code>. You can also call <code>CrafticsAPI.getTotalLevels()</code> at any time to query the total level count across all registered biomes.
+    </p>
+    <pre><code>// In your CrafticsAddon.onCrafticsInit():
+CrafticsAPI.registerBiome(myBiomeTemplate);
+
+// Query total level count
+int totalLevels = CrafticsAPI.getTotalLevels();</code></pre>
+
+    <!-- ================================================================
+         2. ENVIRONMENTS
+         ================================================================ -->
+    <h2 id="environments">Environments</h2>
+    <p>
+      An environment defines the visual theme of an arena: which block covers the floor, which block forms the border light-posts, which block sits on top of each post as a light source, and which built-in decoration style is used for flavor obstacles. Biomes select an environment with their <code>"environment"</code> field.
+    </p>
+    <p>
+      Craftics ships built-in environments for <code>plains</code>, <code>forest</code>, <code>desert</code>, <code>jungle</code>, <code>river</code>, <code>mountain</code>, <code>snowy</code>, <code>cave</code>, <code>nether_wastes</code>, <code>end</code>, and <code>deep_dark</code>. Addons can register new ones via a JSON datapack or the Java API.
+    </p>
+
+    <h3>JSON Datapack</h3>
+    <p>
+      Place a JSON file at <code>data/&lt;namespace&gt;/craftics/environments/&lt;env_id&gt;.json</code>. Only <code>id</code> is required; the block fields fall back to plains defaults (grass block floor, oak fence posts, lantern lights) when omitted.
+    </p>
+    <pre><code>{
+  "id": "mymod:aether",
+  "floor_block": "minecraft:quartz_block",
+  "post_block":  "minecraft:quartz_pillar",
+  "light_block": "minecraft:sea_lantern",
+  "decor_style": "forest"
+}</code></pre>
+
+    <h4>Field Reference</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td>Yes</td><td>Unique environment id, e.g. <code>"mymod:aether"</code>. Referenced by biomes with their <code>"environment"</code> field.</td></tr>
+          <tr><td><code>floor_block</code></td><td>string</td><td>No</td><td>Block id used for normal arena floor tiles. Default <code>minecraft:grass_block</code>.</td></tr>
+          <tr><td><code>post_block</code></td><td>string</td><td>No</td><td>Block id used for the arena border light-posts. Default <code>minecraft:oak_fence</code>.</td></tr>
+          <tr><td><code>light_block</code></td><td>string</td><td>No</td><td>Block id placed on top of each light-post. Default <code>minecraft:lantern</code>.</td></tr>
+          <tr><td><code>decor_style</code></td><td>string</td><td>No</td><td>Flavor-obstacle style. Pass a built-in environment id (e.g. <code>"forest"</code>) to reuse its obstacles. Defaults to this environment's own id (no flavor obstacles).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Java API</h3>
+    <p>
+      Use <code>EnvironmentDef.builder(id)</code> for a fluent build, then pass the result to <code>CrafticsAPI.registerEnvironment()</code>. You can verify registration with <code>CrafticsAPI.hasEnvironmentStyle(id)</code>.
+    </p>
+    <pre><code>import com.crackedgames.craftics.api.EnvironmentDef;
+import net.minecraft.block.Blocks;
+
+// In your CrafticsAddon.onCrafticsInit():
+CrafticsAPI.registerEnvironment(
+    EnvironmentDef.builder("mymod:aether")
+        .floorBlock(Blocks.QUARTZ_BLOCK)
+        .postBlock(Blocks.QUARTZ_PILLAR)
+        .lightBlock(Blocks.SEA_LANTERN)
+        .decorStyle("forest")
+        .build()
+);
+
+// Check registration
+boolean exists = CrafticsAPI.hasEnvironmentStyle("mymod:aether");</code></pre>
+
+    <h4>EnvironmentDef builder methods</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Method</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>floorBlock(Block)</code></td><td><code>Blocks.GRASS_BLOCK</code></td><td>Block used for normal arena floor tiles.</td></tr>
+          <tr><td><code>postBlock(Block)</code></td><td><code>Blocks.OAK_FENCE</code></td><td>Block used for arena border light-posts.</td></tr>
+          <tr><td><code>lightBlock(Block)</code></td><td><code>Blocks.LANTERN</code></td><td>Block placed atop each light-post.</td></tr>
+          <tr><td><code>decorStyle(String)</code></td><td>This environment's own id</td><td>Flavor-obstacle style. Pass a built-in environment id to reuse its obstacle decorations.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ================================================================
+         3. BIOME PATHS
+         ================================================================ -->
+    <h2 id="biome-paths">Biome Paths</h2>
+    <p>
+      A biome path is a named, ordered group of biome ids that form a themed realm. Craftics ships three built-in paths (Overworld, Nether, End). Addon paths appear alongside them in the player's progression map.
+    </p>
+    <p>
+      A path is a grouping and metadata construct. Biomes slot into the global run sequence by their own <code>order</code> value regardless of path membership, so an addon biome is fully playable without belonging to any path. Paths are most useful when you want a named region that clearly groups several addon biomes together in the progression map.
+    </p>
+
+    <h3>JSON Datapack</h3>
+    <p>
+      Place a JSON file at <code>data/&lt;namespace&gt;/craftics/paths/&lt;path_id&gt;.json</code>. Both <code>id</code> and <code>biomes</code> are required.
+    </p>
+    <pre><code>{
+  "id": "mymod:aether",
+  "display_name": "The Aether",
+  "biomes": [
+    "mymod:aether_meadow",
+    "mymod:aether_dungeon",
+    "mymod:aether_throne"
+  ]
+}</code></pre>
+
+    <h4>Field Reference</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td>Yes</td><td>Unique path id, e.g. <code>"mymod:aether"</code>.</td></tr>
+          <tr><td><code>display_name</code></td><td>string</td><td>No</td><td>Name shown to players in the progression map. Defaults to the id.</td></tr>
+          <tr><td><code>biomes</code></td><td>string[]</td><td>Yes</td><td>Ordered list of biome ids that make up this realm. The ids should match biomes registered from a <code>craftics/biomes/</code> datapack or via the API.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Java API</h3>
+    <p>
+      Use <code>BiomePathEntry.builder(id)</code> for a fluent build, then pass the result to <code>CrafticsAPI.registerBiomePath()</code>. Append biomes one at a time with <code>biome(id)</code> or in bulk with <code>biomes(Collection)</code>.
+    </p>
+    <pre><code>import com.crackedgames.craftics.api.BiomePathEntry;
+import java.util.List;
+
+// In your CrafticsAddon.onCrafticsInit():
+CrafticsAPI.registerBiomePath(
+    BiomePathEntry.builder("mymod:aether")
+        .displayName("The Aether")
+        .biome("mymod:aether_meadow")
+        .biome("mymod:aether_dungeon")
+        .biome("mymod:aether_throne")
+        .build()
+);
+
+// Or add multiple biomes at once
+CrafticsAPI.registerBiomePath(
+    BiomePathEntry.builder("mymod:nether_extended")
+        .displayName("Extended Nether")
+        .biomes(List.of("mymod:soul_shore", "mymod:basalt_delta_deep"))
+        .build()
+);</code></pre>
+
+    <h4>BiomePathEntry builder methods</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Method</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>displayName(String)</code></td><td>Name shown to players. Defaults to the path id.</td></tr>
+          <tr><td><code>biome(String)</code></td><td>Append one biome id to the end of the path.</td></tr>
+          <tr><td><code>biomes(Collection&lt;String&gt;)</code></td><td>Append all ids in the collection, in order.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ================================================================
+         4. EVENTS
+         ================================================================ -->
+    <h2 id="events">Events</h2>
+    <p>
+      Between-level events fire after a combat level completes. Craftics rolls through all registered events by probability and triggers one when the roll succeeds. Events are code-only for now: there is no JSON datapack loader for events. Register them through <code>CrafticsAPI.registerEvent()</code>.
+    </p>
+
+    <h3>EventEntry fields</h3>
+    <p>
+      Construct an <code>EventEntry</code> record directly and pass it to <code>CrafticsAPI.registerEvent()</code>.
+    </p>
+    <pre><code>import com.crackedgames.craftics.api.registry.EventEntry;
+import com.crackedgames.craftics.api.EventHandler;
+
+CrafticsAPI.registerEvent(new EventEntry(
+    "mymod:treasure_chest",  // unique event id
+    "Treasure Chest",        // display name shown in the event popup
+    0.15f,                   // probability per level (0.0 to 1.0)
+    2,                       // minBiomeOrdinal: earliest biome (0-indexed) where this can appear
+    true,                    // isChoiceEvent: true if the player picks from multiple options
+    myEventHandler           // EventHandler implementation
+));</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>String</td><td>Unique event identifier, e.g. <code>"mymod:treasure_chest"</code>.</td></tr>
+          <tr><td><code>displayName</code></td><td>String</td><td>Name shown in the event popup.</td></tr>
+          <tr><td><code>probability</code></td><td>float</td><td>Chance the event triggers after each level (0.0 to 1.0).</td></tr>
+          <tr><td><code>minBiomeOrdinal</code></td><td>int</td><td>The earliest biome index (0 = first biome) where this event can appear. Use this to keep late-game events from appearing in early biomes.</td></tr>
+          <tr><td><code>isChoiceEvent</code></td><td>boolean</td><td>When true, the event presents the player with a set of options to choose from.</td></tr>
+          <tr><td><code>handler</code></td><td>EventHandler</td><td>The logic executed when the event fires.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>EventHandler interface</h3>
+    <p>
+      <code>EventHandler</code> is a functional interface. Its <code>execute</code> method receives the list of participating players, the server world, and the <code>EventManager</code>, which provides helpers for showing UI popups, giving items, applying effects, and managing event state.
+    </p>
+    <pre><code>@FunctionalInterface
+public interface EventHandler {
+    void execute(List&lt;ServerPlayerEntity&gt; participants,
+                 ServerWorld world,
+                 EventManager eventManager);
+}</code></pre>
+
+    <h3>Forcing an event</h3>
+    <p>
+      During development or for scripted sequences you can force a specific event to trigger at the next between-level transition for a given player. Pass <code>null</code> to clear any forced event.
+    </p>
+    <pre><code>// Force the next event for a specific player
+CrafticsAPI.forceNextEvent(player, "mymod:treasure_chest");
+
+// Clear the forced event
+CrafticsAPI.forceNextEvent(player, null);</code></pre>
+
+    <h3>Example: custom event</h3>
+    <pre><code>CrafticsAPI.registerEvent(new EventEntry(
+    "mymod:healing_spring",
+    "Healing Spring",
+    0.10f,
+    1,      // available from biome index 1 onwards
+    false,  // not a choice event, it just fires
+    (participants, world, eventManager) -&gt; {
+        for (ServerPlayerEntity player : participants) {
+            player.heal(4.0f);
+        }
+    }
+));</code></pre>
+
+    <div class="callout">
+      <p><strong>EventTemplates.</strong> A future <code>EventTemplates</code> class will provide pre-built patterns for common event types such as gamble, reward, ambush, and trader. For now implement <code>EventHandler</code> directly as shown above.</p>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <span>Craftics by Cracked Games LLC</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+
+</body>
+</html>

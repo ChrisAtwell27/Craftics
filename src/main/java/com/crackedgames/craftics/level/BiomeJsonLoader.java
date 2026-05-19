@@ -37,7 +37,7 @@ import java.util.Map;
  *   "enemies": {
  *     "passive": [{"type": "minecraft:cow", "weight": 5, "hp": 4, "attack": 0, "defense": 0, "range": 1}],
  *     "hostile": [
- *       {"type": "minecraft:zombie", "weight": 8, "hp": 6, "attack": 2, "defense": 0, "range": 1},
+ *       {"type": "minecraft:zombie", "weight": 8, "hp": 6, "attack": 2, "defense": 0, "range": 1, "speed": 2},
  *       {"enemy": "mymod:elite_zombie", "weight": 4}
  *     ],
  *     "boss": {"type": "minecraft:zombie", "hp": 15, "attack": 3, "defense": 1, "range": 1}
@@ -218,17 +218,20 @@ public class BiomeJsonLoader {
             return new MobPoolEntry(
                 entry.entityTypeId(), weight,
                 entry.hp(), entry.attack(), entry.defense(), entry.range(),
-                passive, entry.aiKey()
+                passive, entry.aiKey(), entry.speed()
             );
         }
+        String type = obj.get("type").getAsString();
         return new MobPoolEntry(
-            obj.get("type").getAsString(),
+            type,
             obj.has("weight") ? obj.get("weight").getAsInt() : 1,
             obj.has("hp") ? obj.get("hp").getAsInt() : 6,
             obj.has("attack") ? obj.get("attack").getAsInt() : 2,
             obj.has("defense") ? obj.get("defense").getAsInt() : 0,
             obj.has("range") ? obj.get("range").getAsInt() : 1,
-            passive
+            passive,
+            type,
+            obj.has("speed") ? obj.get("speed").getAsInt() : 0
         );
     }
 }

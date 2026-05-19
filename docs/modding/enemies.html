@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics - Enemies &amp; Allies</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo"><img src="https://media.forgecdn.net/avatars/thumbnails/1730/614/64/64/639101389968942522.png" alt="Craftics Logo" style="height:32px;width:32px;vertical-align:middle;border-radius:6px;margin-right:10px;">Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html" class="active">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============================================================
+     PAGE LAYOUT
+     ============================================================ -->
+<div class="page-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Modding Guide</div>
+    <nav class="sidebar-nav">
+      <a href="../modding.html">Introduction</a>
+      <a href="gear.html">Gear</a>
+      <a href="items-and-effects.html">Items &amp; Effects</a>
+      <a href="enemies.html" class="active">Enemies &amp; Allies</a>
+      <a href="world.html">World</a>
+      <a href="reference.html">Reference</a>
+    </nav>
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+    <h1>Enemies &amp; Allies</h1>
+    <p class="page-desc">Register reusable enemy templates, write custom AI strategies, and define combat allies that fight alongside the player.</p>
+
+    <!-- ================================================================
+         1. ENEMIES
+         ================================================================ -->
+    <h2 id="enemies">Enemies</h2>
+    <p>
+      An <strong>enemy template</strong> is a reusable set of combat stats tied to a mob entity type. Once registered, biome JSON can reference it by id with <code>"enemy": "&lt;id&gt;"</code> instead of spelling out the same stats in every biome that uses that mob. Templates are registered with <code>CrafticsAPI.registerEnemy()</code>.
+    </p>
+    <p>
+      Enemy templates can also be loaded from JSON datapacks with no Java code required. Both approaches produce the same result: a named entry in the enemy registry that biomes can reference.
+    </p>
+
+    <h3>Java API</h3>
+    <p>
+      Build an <code>EnemyEntry</code> with its fluent builder and pass it to <code>CrafticsAPI.registerEnemy()</code>:
+    </p>
+    <pre><code>EnemyEntry entry = EnemyEntry.builder("mymod:desert_husk", "minecraft:husk")
+    .ai("minecraft:skeleton")   // optional: use a different AI key
+    .hp(10)
+    .attack(3)
+    .defense(1)
+    .range(1)
+    .speed(2)
+    .build();
+
+CrafticsAPI.registerEnemy(entry);</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Builder Method</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>builder(id, entityTypeId)</code></td>
+            <td>String, String</td>
+            <td>required</td>
+            <td>Registry key (e.g. <code>"mymod:desert_husk"</code>) and the Minecraft entity type to render (e.g. <code>"minecraft:husk"</code>). Both are required.</td>
+          </tr>
+          <tr>
+            <td><code>ai(String)</code></td>
+            <td>String</td>
+            <td>entityTypeId</td>
+            <td>Key used to look up the AI strategy in <code>AIRegistry</code>. Defaults to the <code>entityTypeId</code>, so most enemies need no explicit AI key unless you want to reuse another mob's strategy.</td>
+          </tr>
+          <tr>
+            <td><code>hp(int)</code></td>
+            <td>int</td>
+            <td>6</td>
+            <td>Base health.</td>
+          </tr>
+          <tr>
+            <td><code>attack(int)</code></td>
+            <td>int</td>
+            <td>2</td>
+            <td>Base attack.</td>
+          </tr>
+          <tr>
+            <td><code>defense(int)</code></td>
+            <td>int</td>
+            <td>0</td>
+            <td>Base defense.</td>
+          </tr>
+          <tr>
+            <td><code>range(int)</code></td>
+            <td>int</td>
+            <td>1</td>
+            <td>Attack range in tiles.</td>
+          </tr>
+          <tr>
+            <td><code>speed(int)</code></td>
+            <td>int</td>
+            <td>0</td>
+            <td>Combat move speed in tiles per turn. <code>0</code> means use the entity type's built-in default speed. Set a positive integer to override it with a fixed value.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place JSON files at <code>data/&lt;namespace&gt;/craftics/enemies/&lt;name&gt;.json</code>. The <code>id</code> and <code>entity</code> fields are required. All stat fields are optional and fall back to the same defaults as the Java builder. The <code>entity</code> value must be a valid, loaded entity type or the file is skipped with a warning.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Required</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>id</code></td>
+            <td>string</td>
+            <td>yes</td>
+            <td></td>
+            <td>Registry key for this template, e.g. <code>"mymod:desert_husk"</code>.</td>
+          </tr>
+          <tr>
+            <td><code>entity</code></td>
+            <td>string</td>
+            <td>yes</td>
+            <td></td>
+            <td>Minecraft entity type to render, e.g. <code>"minecraft:husk"</code>. Must be a loaded entity type.</td>
+          </tr>
+          <tr>
+            <td><code>ai</code></td>
+            <td>string</td>
+            <td>no</td>
+            <td><code>entity</code></td>
+            <td>AI registry key. Resolved at runtime; unknown keys fall back to the entity type's default strategy.</td>
+          </tr>
+          <tr>
+            <td><code>hp</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>6</td>
+            <td>Base health.</td>
+          </tr>
+          <tr>
+            <td><code>attack</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>2</td>
+            <td>Base attack.</td>
+          </tr>
+          <tr>
+            <td><code>defense</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>0</td>
+            <td>Base defense.</td>
+          </tr>
+          <tr>
+            <td><code>range</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>1</td>
+            <td>Attack range in tiles.</td>
+          </tr>
+          <tr>
+            <td><code>speed</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>0</td>
+            <td>Move speed in tiles per turn. <code>0</code> means use the entity type default.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Example JSON</h3>
+    <pre><code>// data/mymod/craftics/enemies/desert_husk.json
+{
+  "id": "mymod:desert_husk",
+  "entity": "minecraft:husk",
+  "ai": "minecraft:skeleton",
+  "hp": 10,
+  "attack": 3,
+  "defense": 1,
+  "range": 1,
+  "speed": 2
+}</code></pre>
+
+    <p>
+      Once loaded, a biome JSON can reference this template with <code>"enemy": "mymod:desert_husk"</code> instead of repeating all the stat fields inline.
+    </p>
+
+    <div class="callout callout-muted">
+      <strong>Tip:</strong> The <code>entity</code> field controls only how the mob looks in the arena. You can render a husk but give it skeleton AI, or render any modded mob entity as long as it is loaded by the time the datapack is applied. The stat block is completely independent of the entity's vanilla behavior.
+    </div>
+
+    <!-- ================================================================
+         2. ENEMY AI
+         ================================================================ -->
+    <h2 id="enemy-ai">Enemy AI</h2>
+    <p>
+      Craftics uses a strategy interface, <code>EnemyAI</code>, to decide what each enemy does on its turn. Built-in strategies cover all vanilla hostile mobs. Addon mods can register custom strategies for new mob types (or override behavior for existing ones) with <code>CrafticsAPI.registerAI()</code>.
+    </p>
+
+    <h3>Registration</h3>
+    <pre><code>CrafticsAPI.registerAI("mymod:custom_zombie", (self, arena, playerPos) -&gt; {
+    // Decide what this enemy does this turn and return an EnemyAction.
+    return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
+});</code></pre>
+
+    <p>
+      The first argument is the entity type id (or any custom string you used as the <code>ai</code> key in an enemy template). The second argument is an <code>EnemyAI</code> instance, which is a functional interface.
+    </p>
+
+    <h3>The EnemyAI Interface</h3>
+    <pre><code>public interface EnemyAI {
+    EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos);
+
+    default Set&lt;GridPos&gt; computeThreatTiles(CombatEntity self, GridArena arena) {
+        return null; // null = use the generic speed+range danger diamond
+    }
+}</code></pre>
+
+    <p>
+      <code>decideAction</code> is called once per enemy turn. It receives the enemy's own <code>CombatEntity</code>, the full <code>GridArena</code> (tile data, occupancy, obstacle positions), and the player's current <code>GridPos</code>. Return any <code>EnemyAction</code> record to describe what the enemy does.
+    </p>
+    <p>
+      <code>computeThreatTiles</code> is optional. Override it when the enemy's real attack reach does not match the generic danger diamond computed from <code>speed + range</code>. Return a set of <code>GridPos</code> values that Craftics will highlight red as the danger indicator for the player. Return <code>null</code> (the default) to use the generic formula.
+    </p>
+
+    <h3>AIUtils Helpers</h3>
+    <p>
+      The <code>AIUtils</code> class provides pathfinding and geometry helpers so you do not have to implement common patterns from scratch.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>seekOrWander(self, arena, playerPos)</code></td>
+            <td>Universal fallback: move toward the player using pathfinding, or wander to a random adjacent tile if no path exists. Returns a <code>Move</code> or <code>MoveAndAttack</code> action, never <code>Idle</code> unless the enemy is completely boxed in.</td>
+          </tr>
+          <tr>
+            <td><code>wander(self, arena)</code></td>
+            <td>Move to a random adjacent walkable tile. Use for neutral or passive mobs that are not targeting anyone.</td>
+          </tr>
+          <tr>
+            <td><code>getAdjacentTiles(arena, pos)</code></td>
+            <td>Returns all walkable, unoccupied tiles cardinally adjacent to <code>pos</code>.</td>
+          </tr>
+          <tr>
+            <td><code>findBestAdjacentTarget(arena, self, playerPos, maxSteps)</code></td>
+            <td>Finds the closest tile adjacent to the player that this entity can path to within <code>maxSteps</code>.</td>
+          </tr>
+          <tr>
+            <td><code>findBestAdjacentTarget(arena, self, playerPos, maxSteps, entitySize)</code></td>
+            <td>Size-aware variant: checks that the full entity footprint fits at each candidate tile.</td>
+          </tr>
+          <tr>
+            <td><code>canPlaceFootprint(arena, anchor, entitySize)</code></td>
+            <td>Returns <code>true</code> if a sized entity can occupy all footprint tiles at <code>anchor</code> (in-bounds, walkable, not enemy-occupied).</td>
+          </tr>
+          <tr>
+            <td><code>hasCardinalLOS(arena, from, to, maxRange)</code></td>
+            <td>Returns <code>true</code> if <code>from</code> and <code>to</code> share an axis and every tile between them is clear and walkable.</td>
+          </tr>
+          <tr>
+            <td><code>getFleeTarget(arena, self, threat, maxSteps)</code></td>
+            <td>Finds a tile 1-2 steps away from <code>threat</code> in the primary flee direction. Returns <code>null</code> if the enemy is stuck.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>EnemyAction Types</h3>
+    <p>
+      <code>EnemyAction</code> is a sealed interface. Return one of these records from <code>decideAction</code>. The records marked with an asterisk carry additional fields described below the table.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Record</th>
+            <th>Fields</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>Move</code></td><td><code>path</code></td><td>Move along a list of grid positions. The enemy does not attack.</td></tr>
+          <tr><td><code>Attack</code></td><td><code>damage</code></td><td>Attack the player from the current position.</td></tr>
+          <tr><td><code>MoveAndAttack</code></td><td><code>path, damage</code></td><td>Move, then attack.</td></tr>
+          <tr><td><code>MoveAttackMove</code></td><td><code>approachPath, damage, retreatPath</code></td><td>Move in, attack, then reposition in the same turn using remaining movement.</td></tr>
+          <tr><td><code>Flee</code></td><td><code>path</code></td><td>Move away from the player. Does not attack.</td></tr>
+          <tr><td><code>Idle</code></td><td></td><td>Do nothing this turn.</td></tr>
+          <tr><td><code>Teleport</code></td><td><code>target</code></td><td>Instantly relocate to a tile with no movement animation.</td></tr>
+          <tr><td><code>TeleportAndAttack</code></td><td><code>target, damage</code></td><td>Teleport, then immediately attack.</td></tr>
+          <tr><td><code>Pounce</code></td><td><code>landingPos, damage</code></td><td>Leap over one tile gap to land adjacent and attack.</td></tr>
+          <tr><td><code>Explode</code></td><td><code>damage, radius, blastEffects</code></td><td>AoE explosion centered on self. <code>blastEffects</code> is a list of <code>BlastEffect(effectType, turns, amplifier)</code> applied to the player on hit. Use the two-arg constructor for no status effects.</td></tr>
+          <tr><td><code>StartFuse</code></td><td></td><td>Begin a fuse countdown (creeper-style). Pair with <code>Detonate</code> on the next turn.</td></tr>
+          <tr><td><code>Detonate</code></td><td></td><td>Resolve a pending fuse explosion.</td></tr>
+          <tr><td><code>RangedAttack</code></td><td><code>damage, effectName</code></td><td>Attack from range without moving (potion throw, arrow, etc.).</td></tr>
+          <tr><td><code>Swoop</code></td><td><code>path, damage</code></td><td>Sweep along a line; deal damage if the player is in the path.</td></tr>
+          <tr><td><code>AttackMob</code></td><td><code>targetEntityId, damage</code></td><td>Attack another mob (predator-prey behavior) instead of the player.</td></tr>
+          <tr><td><code>MoveAndAttackMob</code></td><td><code>path, targetEntityId, damage</code></td><td>Move, then attack another mob.</td></tr>
+          <tr><td><code>AttackWithKnockback</code></td><td><code>damage, knockbackTiles</code></td><td>Attack and push the player N tiles away from the attacker.</td></tr>
+          <tr><td><code>MoveAndAttackWithKnockback</code></td><td><code>path, damage, knockbackTiles</code></td><td>Move, then attack with knockback.</td></tr>
+          <tr><td><code>MimicDash</code></td><td><code>dirX, dirZ, damage</code></td><td>Charge in a cardinal direction until blocked; shove players or allies in the path sideways.</td></tr>
+          <tr><td><code>MimicTantrum</code></td><td><code>path, damage</code></td><td>Hop through an ordered list of tiles; stop and deal damage if any hop lands on the player.</td></tr>
+          <tr><td><code>SummonMinions</code></td><td><code>entityTypeId, count, positions, hp, atk, def</code></td><td>Boss action: spawn minions at the given positions.</td></tr>
+          <tr><td><code>AreaAttack</code></td><td><code>center, radius, damage, effectName</code></td><td>Hit all entities within <code>radius</code> tiles of <code>center</code>.</td></tr>
+          <tr><td><code>CreateTerrain</code></td><td><code>tiles, terrainType, duration</code></td><td>Place or transform terrain tiles. <code>duration</code> of <code>0</code> is permanent.</td></tr>
+          <tr><td><code>LineAttack</code></td><td><code>start, dx, dz, length, damage</code></td><td>Hit every tile along a line from <code>start</code> in direction <code>(dx, dz)</code>.</td></tr>
+          <tr><td><code>ModifySelf</code></td><td><code>stat, amount, duration</code></td><td>Boss action: temporarily change the enemy's own stat. <code>duration</code> of <code>0</code> is permanent.</td></tr>
+          <tr><td><code>ForcedMovement</code></td><td><code>targetEntityId, dx, dz, tiles</code></td><td>Push a target entity in direction <code>(dx, dz)</code>. Use <code>targetEntityId = -1</code> to target the player.</td></tr>
+          <tr><td><code>BossAbility</code></td><td><code>abilityName, resolvedAction, warningTiles</code></td><td>Telegraph a warning this turn; the <code>resolvedAction</code> executes next turn.</td></tr>
+          <tr><td><code>CeilingAscend</code></td><td></td><td>Rise off the grid for one turn (spider ceiling mechanic).</td></tr>
+          <tr><td><code>CeilingDrop</code></td><td><code>landingPos, damage</code></td><td>Drop from ceiling onto a tile near the player and attack.</td></tr>
+          <tr><td><code>SpawnProjectile</code></td><td><code>entityTypeId, positions, directions, hp, atk, def, projectileType</code></td><td>Boss action: create traveling projectile entities.</td></tr>
+          <tr><td><code>ProjectileMove</code></td><td><code>path, impacts, impactPos</code></td><td>Advance a projectile; <code>impacts = true</code> means it collides at path end.</td></tr>
+          <tr><td><code>CompositeAction</code></td><td><code>actions</code></td><td>Execute multiple actions in sequence in a single turn.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Supported Mob Types (Built-in)</h3>
+    <p>
+      These mobs already have registered AI strategies. You can use them in enemy templates and biome JSON without writing any code.
+    </p>
+    <ul>
+      <li><strong>Passive:</strong> <code>minecraft:cow</code>, <code>minecraft:pig</code>, <code>minecraft:sheep</code>, <code>minecraft:chicken</code>, <code>minecraft:horse</code>, <code>minecraft:donkey</code>, <code>minecraft:panda</code>, <code>minecraft:parrot</code>, <code>minecraft:rabbit</code>, <code>minecraft:bat</code>, <code>minecraft:cod</code>, <code>minecraft:salmon</code>, <code>minecraft:axolotl</code>, <code>minecraft:cat</code>, <code>minecraft:ocelot</code>, <code>minecraft:fox</code>, <code>minecraft:bee</code>, <code>minecraft:wolf</code>, <code>minecraft:goat</code>, <code>minecraft:polar_bear</code>, <code>minecraft:llama</code></li>
+      <li><strong>Hostile:</strong> <code>minecraft:zombie</code>, <code>minecraft:zombie_villager</code>, <code>minecraft:husk</code>, <code>minecraft:drowned</code>, <code>minecraft:zombified_piglin</code>, <code>minecraft:skeleton</code>, <code>minecraft:stray</code>, <code>minecraft:bogged</code>, <code>minecraft:spider</code>, <code>minecraft:cave_spider</code>, <code>minecraft:creeper</code>, <code>minecraft:vindicator</code>, <code>minecraft:evoker</code>, <code>minecraft:pillager</code>, <code>minecraft:ravager</code>, <code>minecraft:witch</code>, <code>minecraft:enderman</code>, <code>minecraft:endermite</code>, <code>minecraft:phantom</code>, <code>minecraft:silverfish</code>, <code>minecraft:slime</code>, <code>minecraft:hoglin</code>, <code>minecraft:piglin</code>, <code>minecraft:blaze</code>, <code>minecraft:ghast</code>, <code>minecraft:shulker</code>, <code>minecraft:breeze</code>, <code>minecraft:magma_cube</code>, <code>minecraft:wither_skeleton</code></li>
+      <li><strong>Boss:</strong> <code>minecraft:warden</code>, <code>minecraft:ender_dragon</code></li>
+    </ul>
+
+    <h3>Example: Custom Ranged AI</h3>
+    <pre><code>import com.crackedgames.craftics.combat.ai.EnemyAI;
+import com.crackedgames.craftics.combat.ai.EnemyAction;
+import com.crackedgames.craftics.combat.ai.AIUtils;
+
+// A simple ranged AI: attack in place if in range, else close the distance.
+EnemyAI archerAI = (self, arena, playerPos) -&gt; {
+    int dist = self.getGridPos().manhattanDistance(playerPos);
+    int range = self.getRange();
+
+    if (dist &lt;= range &amp;&amp; AIUtils.hasCardinalLOS(arena, self.getGridPos(), playerPos, range)) {
+        // Already in range with a clear line: shoot.
+        return new EnemyAction.RangedAttack(self.getAttackPower(), "arrow");
+    }
+
+    // Out of range or blocked: move toward the player.
+    return AIUtils.seekOrWander(self, arena, playerPos);
+};
+
+CrafticsAPI.registerAI("mymod:dungeon_archer", archerAI);</code></pre>
+
+    <!-- ================================================================
+         3. ALLIES
+         ================================================================ -->
+    <h2 id="allies">Allies</h2>
+    <p>
+      Combat allies are mobs recruited from the player's hub that fight alongside them in the arena. Allies have their own combat stats and can optionally scale with the owner's gear, accept a heal item during combat, or run a custom per-round effect. Allies are registered with <code>CrafticsAPI.registerAlly()</code>.
+    </p>
+    <p>
+      Like enemies, allies can be defined in JSON datapacks. Datapack allies always use the default melee AI. Allies that need a custom AI strategy, a per-round hook, or programmatic stat logic must be registered through the Java API.
+    </p>
+
+    <h3>Java API</h3>
+    <pre><code>AllyEntry entry = AllyEntry.builder("minecraft:wolf")
+    .hp(12)
+    .attack(4)
+    .defense(1)
+    .range(1)
+    .speed(3)
+    .recruitMode(AllyEntry.RecruitMode.TAMED)
+    .scalesWithOwnerGear(true)
+    .healItem(Items.BONE, 6)
+    .build();
+
+CrafticsAPI.registerAlly(entry);</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Builder Method</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>builder(entityTypeId)</code></td>
+            <td>String</td>
+            <td>required</td>
+            <td>The Minecraft entity type this entry describes, e.g. <code>"minecraft:wolf"</code>.</td>
+          </tr>
+          <tr>
+            <td><code>hp(int)</code></td>
+            <td>int</td>
+            <td>6</td>
+            <td>Base health.</td>
+          </tr>
+          <tr>
+            <td><code>attack(int)</code></td>
+            <td>int</td>
+            <td>1</td>
+            <td>Base attack.</td>
+          </tr>
+          <tr>
+            <td><code>defense(int)</code></td>
+            <td>int</td>
+            <td>0</td>
+            <td>Base defense.</td>
+          </tr>
+          <tr>
+            <td><code>range(int)</code></td>
+            <td>int</td>
+            <td>1</td>
+            <td>Attack range in tiles.</td>
+          </tr>
+          <tr>
+            <td><code>speed(int)</code></td>
+            <td>int</td>
+            <td>2</td>
+            <td>Movement tiles per turn.</td>
+          </tr>
+          <tr>
+            <td><code>recruitMode(RecruitMode)</code></td>
+            <td>enum</td>
+            <td>TAMED</td>
+            <td>How the ally is collected from the hub. See the <code>RecruitMode</code> table below.</td>
+          </tr>
+          <tr>
+            <td><code>ai(AllyAI)</code></td>
+            <td>AllyAI</td>
+            <td>MeleeAllyAI</td>
+            <td>Combat behavior. Defaults to <code>AllyEntry.DEFAULT_AI</code>, which is a standard melee strategy.</td>
+          </tr>
+          <tr>
+            <td><code>scalesWithOwnerGear(boolean)</code></td>
+            <td>boolean</td>
+            <td>true</td>
+            <td>When <code>true</code>, the ally's attack gains bonuses from the owner's armor and trim.</td>
+          </tr>
+          <tr>
+            <td><code>roundHook(AllyRoundHook)</code></td>
+            <td>AllyRoundHook</td>
+            <td>null</td>
+            <td>Optional callback invoked at the start of each combat round. Signature: <code>(CombatEntity self, EnvironmentDef environment)</code>. Use for aura effects, per-round stat changes, or environment-reactive triggers.</td>
+          </tr>
+          <tr>
+            <td><code>healItem(Item, int)</code></td>
+            <td>Item, int</td>
+            <td>null, 0</td>
+            <td>Binds a heal item: using this item on the ally during combat restores the given amount of HP.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>RecruitMode Values</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Value</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>TAMED</code></td>
+            <td>The mob must be tamed and owned by the hub's player (wolves, cats, horses, and similar). Default.</td>
+          </tr>
+          <tr>
+            <td><code>BUILT</code></td>
+            <td>Any mob of this type present in the hub yard qualifies, with no taming or ownership requirement. Use for golems and constructed mobs.</td>
+          </tr>
+          <tr>
+            <td><code>IN_COMBAT_ONLY</code></td>
+            <td>Never recruited from the hub. The entry exists only to define combat stats for a mob tamed mid-battle.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>JSON Datapack Schema</h3>
+    <p>
+      Place JSON files at <code>data/&lt;namespace&gt;/craftics/allies/&lt;name&gt;.json</code>. The <code>entity</code> field is required. Datapack allies always use the default melee AI and cannot have a per-round hook.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Required</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>entity</code></td>
+            <td>string</td>
+            <td>yes</td>
+            <td></td>
+            <td>Minecraft entity type, e.g. <code>"minecraft:wolf"</code>. Must be a loaded entity type.</td>
+          </tr>
+          <tr>
+            <td><code>hp</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>6</td>
+            <td>Base health.</td>
+          </tr>
+          <tr>
+            <td><code>attack</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>1</td>
+            <td>Base attack.</td>
+          </tr>
+          <tr>
+            <td><code>defense</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>0</td>
+            <td>Base defense.</td>
+          </tr>
+          <tr>
+            <td><code>range</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>1</td>
+            <td>Attack range in tiles.</td>
+          </tr>
+          <tr>
+            <td><code>speed</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>2</td>
+            <td>Movement tiles per turn.</td>
+          </tr>
+          <tr>
+            <td><code>recruit_mode</code></td>
+            <td>string</td>
+            <td>no</td>
+            <td><code>"TAMED"</code></td>
+            <td>Recruitment requirement. Accepts <code>"TAMED"</code>, <code>"BUILT"</code>, or <code>"IN_COMBAT_ONLY"</code> (case-insensitive). Unknown values fall back to <code>TAMED</code> with a warning.</td>
+          </tr>
+          <tr>
+            <td><code>scales_with_owner_gear</code></td>
+            <td>boolean</td>
+            <td>no</td>
+            <td>true</td>
+            <td>Whether the ally's attack gains bonuses from the owner's armor and trim.</td>
+          </tr>
+          <tr>
+            <td><code>heal_item</code></td>
+            <td>string</td>
+            <td>no</td>
+            <td></td>
+            <td>Item id that heals this ally when used on it in combat, e.g. <code>"minecraft:bone"</code>. Ignored if the item is not loaded.</td>
+          </tr>
+          <tr>
+            <td><code>heal_amount</code></td>
+            <td>int</td>
+            <td>no</td>
+            <td>0</td>
+            <td>HP restored by <code>heal_item</code>. Only meaningful when <code>heal_item</code> is set.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Example JSON</h3>
+    <pre><code>// data/mymod/craftics/allies/iron_golem.json
+{
+  "entity": "minecraft:iron_golem",
+  "hp": 20,
+  "attack": 6,
+  "defense": 3,
+  "range": 1,
+  "speed": 1,
+  "recruit_mode": "BUILT",
+  "scales_with_owner_gear": false
+}</code></pre>
+
+    <h3>Example: Custom Ally with a Round Hook</h3>
+    <p>
+      Round hooks require the Java API. The hook receives the living ally as a <code>CombatEntity</code> and the arena's <code>EnvironmentDef</code>. It is called once per round for each living ally of this type.
+    </p>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.api.registry.AllyEntry;
+
+CrafticsAPI.registerAlly(AllyEntry.builder("minecraft:cat")
+    .hp(8)
+    .attack(2)
+    .defense(0)
+    .range(1)
+    .speed(3)
+    .recruitMode(AllyEntry.RecruitMode.TAMED)
+    .scalesWithOwnerGear(false)
+    .roundHook((self, environment) -&gt; {
+        // Round hook receives the ally itself and the arena environment.
+        // Use self to read or modify the ally's own combat state each round.
+    })
+    .build());</code></pre>
+
+    <div class="callout callout-muted">
+      <strong>Note:</strong> Datapack allies always use the default melee AI (<code>MeleeAllyAI</code>) and cannot have a custom <code>roundHook</code>. If your ally needs custom combat behavior or per-round effects, register it through <code>CrafticsAPI.registerAlly()</code> in your <code>onCrafticsInit()</code> method instead.
+    </div>
+
+  </main>
+</div>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer>
+  <span>Craftics by Cracked Games LLC</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+</body>
+</html>

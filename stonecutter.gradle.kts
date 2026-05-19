@@ -20,7 +20,14 @@ tasks.register("chiseledRunClient") {
     dependsOn(stonecutter.tasks.named("runClient"))
 }
 
+tasks.register("chiseledPublish") {
+    group = "stonecutter"
+    description = "Publishes all version shards to their Maven repositories"
+    dependsOn(stonecutter.tasks.named("publish"))
+}
+
 stonecutter tasks {
     order("build")
     order("runClient")
+    order("publish")
 }

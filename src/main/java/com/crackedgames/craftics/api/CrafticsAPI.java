@@ -35,6 +35,8 @@ import net.minecraft.item.Item;
  *     .ability(Abilities.bleed().and(Abilities.sweepAdjacent(0.1, 0.05)))
  *     .build());
  * }</pre>
+ *
+ * @since 0.2.0
  */
 public final class CrafticsAPI {
 
