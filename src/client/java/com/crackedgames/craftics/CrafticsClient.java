@@ -346,6 +346,24 @@ public class CrafticsClient implements ClientModInitializer {
             }
         );
 
+        // Battle-party membership → "Active In Party" floating labels
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.PartyMobsSyncPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    java.util.Set<java.util.UUID> ids = new java.util.HashSet<>();
+                    String raw = payload.mobUuids();
+                    if (!raw.isEmpty()) {
+                        for (String s : raw.split("\\|")) {
+                            if (s.isEmpty()) continue;
+                            try { ids.add(java.util.UUID.fromString(s)); }
+                            catch (IllegalArgumentException ignored) {}
+                        }
+                    }
+                    com.crackedgames.craftics.client.PartyLabelRenderer.setPartyMobs(ids);
+                });
+            }
+        );
+
         // Hint system: dismissal store, builtin registrations, and HUD renderer.
         java.nio.file.Path hintsFile = net.fabricmc.loader.api.FabricLoader.getInstance()
             .getConfigDir().resolve("craftics_hints.json");
@@ -365,6 +383,7 @@ public class CrafticsClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.hints.HintHudRenderer());
         CombatTooltips.register();
         TileOverlayRenderer.register();
+        com.crackedgames.craftics.client.PartyLabelRenderer.register();
 
         // Client-side deferred copper-tier registration. The MP client never sees
         // ServerLifecycleEvents, but tooltips still need WeaponRegistry populated.
@@ -392,6 +411,7 @@ public class CrafticsClient implements ClientModInitializer {
             CombatState.resetAll();
             CombatVisualEffects.resetOverlays();
             com.crackedgames.craftics.client.guide.GuideBookData.resetToDefaults();
+            com.crackedgames.craftics.client.PartyLabelRenderer.clear();
             if (wasInCombat && client != null) {
                 client.options.getBobView().setValue(previousBobView);
                 client.options.getChatScale().setValue(previousChatScale);

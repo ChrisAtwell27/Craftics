@@ -107,13 +107,12 @@ public class BiomeJsonLoader {
             float obstacleDensityGrowth = json.has("obstacle_density_growth")
                 ? json.get("obstacle_density_growth").getAsFloat() : 0f;
 
-            String envStr = json.has("environment") ? json.get("environment").getAsString() : "PLAINS";
-            EnvironmentStyle envStyle;
-            try {
-                envStyle = EnvironmentStyle.valueOf(envStr.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                CrafticsMod.LOGGER.warn("Unknown environment style '{}' in {}, defaulting to PLAINS", envStr, source);
-                envStyle = EnvironmentStyle.PLAINS;
+            String environmentId = json.has("environment")
+                ? json.get("environment").getAsString().toLowerCase()
+                : "plains";
+            if (!com.crackedgames.craftics.api.registry.EnvironmentRegistry.isRegistered(environmentId)) {
+                CrafticsMod.LOGGER.warn("Unknown environment '{}' in {} — arena will use a default theme",
+                    environmentId, source);
             }
             boolean night = json.has("night") && json.get("night").getAsBoolean();
 
@@ -166,7 +165,7 @@ public class BiomeJsonLoader {
                 passive, hostile, boss,
                 lootItems, lootWeights,
                 enchantmentLootIds, enchantmentLootWeights,
-                night, envStyle
+                night, environmentId
             );
         } catch (Exception e) {
             CrafticsMod.LOGGER.error("Error parsing biome JSON {}: {}", source, e.getMessage());

@@ -192,14 +192,17 @@ public class ArenaBuilder {
         String biomeId = "plains";
         boolean isBoss = false;
         int biomeLevelIndex = 0;
-        EnvironmentStyle envStyle = EnvironmentStyle.PLAINS;
+        com.crackedgames.craftics.api.EnvironmentDef env =
+            com.crackedgames.craftics.api.registry.EnvironmentRegistry.get("plains");
         if (levelDef instanceof GeneratedLevelDefinition gld) {
             BiomeTemplate bt = gld.getBiomeTemplate();
             if (bt != null) {
                 biomeId = bt.biomeId;
                 isBoss = bt.isBossLevel(gld.getLevelNumber());
                 biomeLevelIndex = bt.getBiomeLevelIndex(gld.getLevelNumber());
-                if (bt.environmentStyle != null) envStyle = bt.environmentStyle;
+                if (bt.environmentId != null) {
+                    env = com.crackedgames.craftics.api.registry.EnvironmentRegistry.get(bt.environmentId);
+                }
             }
         }
 
@@ -223,8 +226,8 @@ public class ArenaBuilder {
         structureGridH = -1;
         structureHeight = -1;
 
-        CrafticsMod.LOGGER.info("ArenaBuilder: resolved biomeId='{}' isBoss={} envStyle={} levelDef={} (instanceof GLD: {})",
-            biomeId, isBoss, envStyle, levelDef.getClass().getSimpleName(),
+        CrafticsMod.LOGGER.info("ArenaBuilder: resolved biomeId='{}' isBoss={} env={} levelDef={} (instanceof GLD: {})",
+            biomeId, isBoss, env.id(), levelDef.getClass().getSimpleName(),
             levelDef instanceof GeneratedLevelDefinition);
 
         // Try structure preset, fall back to procedural
@@ -272,17 +275,17 @@ public class ArenaBuilder {
         }
 
         // Biome-themed random obstacles on the arena floor
-        placeBiomeObstacles(world, floorX, floorY, floorZ, finalW, finalH, envStyle, rng);
+        placeBiomeObstacles(world, floorX, floorY, floorZ, finalW, finalH, env, rng);
 
         //? if >=1.21.5 {
         /*// Spring to Life decorations: river gets a firefly bush on a grass border tile
-        if (envStyle == EnvironmentStyle.RIVER) {
+        if ("river".equals(env.id())) {
             placeRiverFireflyBush(world, floorX, floorY, floorZ, finalW, finalH, rng);
         }
         *///?}
 
         // Biome-themed light posts around the border
-        placeLighting(world, floorX, floorY, floorZ, finalW, finalH, envStyle);
+        placeLighting(world, floorX, floorY, floorZ, finalW, finalH, env);
 
         // FORCE_STATE can leave stale light — recheck arena bounds
         int relightTop = floorY + Math.max(12, structureHeight > 0 ? structureHeight + 3 : 12);
@@ -1163,9 +1166,9 @@ public class ArenaBuilder {
 
     // Light posts around the arena border, themed per biome
     private static void placeLighting(ServerWorld world, int ox, int oy, int oz,
-                                       int w, int h, EnvironmentStyle style) {
-        Block postBlock = getPostBlock(style);
-        Block lightBlock = getLightBlock(style);
+                                       int w, int h, com.crackedgames.craftics.api.EnvironmentDef env) {
+        Block postBlock = env.postBlock();
+        Block lightBlock = env.lightBlock();
 
         List<int[]> posts = new ArrayList<>();
         posts.add(new int[]{-1, -1});
@@ -1210,60 +1213,31 @@ public class ArenaBuilder {
         return false;
     }
 
-    private static Block getPostBlock(EnvironmentStyle style) {
-        return switch (style) {
-            case PLAINS -> Blocks.OAK_FENCE;
-            case FOREST -> Blocks.DARK_OAK_FENCE;
-            case SNOWY -> Blocks.SPRUCE_FENCE;
-            case MOUNTAIN -> Blocks.COBBLESTONE_WALL;
-            case RIVER -> Blocks.PRISMARINE_WALL;
-            case DESERT -> Blocks.SANDSTONE_WALL;
-            case JUNGLE -> Blocks.JUNGLE_FENCE;
-            case CAVE -> Blocks.COBBLESTONE_WALL;
-            case DEEP_DARK -> Blocks.DEEPSLATE_BRICK_WALL;
-            case NETHER -> Blocks.NETHER_BRICK_FENCE;
-            case CRIMSON_FOREST -> Blocks.CRIMSON_FENCE;
-            case WARPED_FOREST -> Blocks.WARPED_FENCE;
-            case END -> Blocks.PURPUR_PILLAR;
-        };
-    }
-
-    private static Block getLightBlock(EnvironmentStyle style) {
-        return switch (style) {
-            case PLAINS, FOREST, MOUNTAIN, DESERT, CAVE -> Blocks.LANTERN;
-            case SNOWY, DEEP_DARK, NETHER -> Blocks.SOUL_LANTERN;
-            case CRIMSON_FOREST -> Blocks.SHROOMLIGHT;
-            case WARPED_FOREST -> Blocks.SOUL_LANTERN;
-            case RIVER -> Blocks.SEA_LANTERN;
-            case JUNGLE -> Blocks.SHROOMLIGHT;
-            case END -> Blocks.END_ROD;
-        };
-    }
-
     /**
      * Place biome-themed random obstacles on the arena floor.
      * Only placed on solid, non-liquid, non-air tiles with clearance above.
      * Avoids a 2-tile margin from each edge so obstacles don't crowd the border.
      */
     private static void placeBiomeObstacles(ServerWorld world, int ox, int oy, int oz,
-                                              int w, int h, EnvironmentStyle style, Random rng) {
-        switch (style) {
-            case FOREST -> placeFallenLogs(world, ox, oy, oz, w, h, rng);
-            case JUNGLE -> placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.COBWEB, 0, 5, rng);
-            case MOUNTAIN -> placePitObstacles(world, ox, oy, oz, w, h, 3, 6, rng);
-            case DESERT -> {
+                                              int w, int h, com.crackedgames.craftics.api.EnvironmentDef env,
+                                              Random rng) {
+        switch (env.decorStyle()) {
+            case "forest" -> placeFallenLogs(world, ox, oy, oz, w, h, rng);
+            case "jungle" -> placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.COBWEB, 0, 5, rng);
+            case "mountain" -> placePitObstacles(world, ox, oy, oz, w, h, 3, 6, rng);
+            case "desert" -> {
                 placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.CACTUS, 1, 3, rng);
                 //? if >=1.21.5 {
                 /*placeCactusFlowerToppers(world, ox, oy, oz, w, h, rng);
                 *///?}
             }
-            case SNOWY -> placePowderSnowPatch(world, ox, oy, oz, w, h, rng);
-            case CAVE, DEEP_DARK -> placePitObstacles(world, ox, oy, oz, w, h, 0, 7, rng);
-            case NETHER -> placeFloorHazards(world, ox, oy, oz, w, h, Blocks.LAVA, 2, 5, rng);
-            case CRIMSON_FOREST -> placeFallenNetherLogs(world, ox, oy, oz, w, h, Blocks.CRIMSON_STEM, rng);
-            case WARPED_FOREST -> placeFallenNetherLogs(world, ox, oy, oz, w, h, Blocks.WARPED_STEM, rng);
-            case PLAINS -> placePlainsFoliage(world, ox, oy, oz, w, h, rng);
-            default -> {} // no random obstacles for other biomes
+            case "snowy" -> placePowderSnowPatch(world, ox, oy, oz, w, h, rng);
+            case "cave", "deep_dark" -> placePitObstacles(world, ox, oy, oz, w, h, 0, 7, rng);
+            case "nether" -> placeFloorHazards(world, ox, oy, oz, w, h, Blocks.LAVA, 2, 5, rng);
+            case "crimson_forest" -> placeFallenNetherLogs(world, ox, oy, oz, w, h, Blocks.CRIMSON_STEM, rng);
+            case "warped_forest" -> placeFallenNetherLogs(world, ox, oy, oz, w, h, Blocks.WARPED_STEM, rng);
+            case "plains" -> placePlainsFoliage(world, ox, oy, oz, w, h, rng);
+            default -> {} // no flavor obstacles for custom environments
         }
     }
 

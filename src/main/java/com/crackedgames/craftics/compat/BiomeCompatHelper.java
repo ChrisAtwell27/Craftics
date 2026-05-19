@@ -49,7 +49,7 @@ public final class BiomeCompatHelper {
             biome.passiveMobs, newPool, biome.boss,
             biome.lootItems, biome.lootWeights,
             biome.enchantmentLootIds, biome.enchantmentLootWeights,
-            biome.nightLevel, biome.environmentStyle);
+            biome.nightLevel, biome.environmentId);
         BiomeRegistry.register(replaced);
     }
 
@@ -136,7 +136,7 @@ public final class BiomeCompatHelper {
             newPool, biome.hostileMobs, biome.boss,
             biome.lootItems, biome.lootWeights,
             biome.enchantmentLootIds, biome.enchantmentLootWeights,
-            biome.nightLevel, biome.environmentStyle);
+            biome.nightLevel, biome.environmentId);
         BiomeRegistry.register(replaced);
     }
 

@@ -44,6 +44,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.api.VanillaContent.registerAll();
         com.crackedgames.craftics.api.VanillaAllies.registerAll();
         com.crackedgames.craftics.api.VanillaHybridSets.registerAll();
+        com.crackedgames.craftics.api.VanillaEnvironments.registerAll();
 
         // Optional mod compatibility — each call no-ops if its target mod isn't loaded.
         com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.init();
@@ -119,6 +120,16 @@ public class CrafticsMod implements ModInitializer {
                 }
             }
             return net.minecraft.util.ActionResult.PASS;
+        });
+
+        // Battle party: Shift+Right-Click (empty main hand) any passive or neutral
+        // mob on your island to add it to — or remove it from — your battle party.
+        net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) return net.minecraft.util.ActionResult.PASS;
+            if (!player.isSneaking() || !player.getMainHandStack().isEmpty()) return net.minecraft.util.ActionResult.PASS;
+            if (!(entity instanceof net.minecraft.entity.mob.MobEntity mob)) return net.minecraft.util.ActionResult.PASS;
+            if (!(player instanceof net.minecraft.server.network.ServerPlayerEntity sp)) return net.minecraft.util.ActionResult.PASS;
+            return com.crackedgames.craftics.combat.PartyMobs.toggleParty(sp, mob);
         });
 
         // Trial keys: right-clicking during combat queues a guaranteed trial
@@ -306,6 +317,9 @@ public class CrafticsMod implements ModInitializer {
                     new com.crackedgames.craftics.network.GuideBookSyncPayload(
                         String.join("|", pd.getUnlockedGuideEntries())
                     ));
+
+                // Sync battle-party membership so the client can label party mobs
+                com.crackedgames.craftics.network.PartyMobSync.sync(player);
 
                 // Grant the Craftics advancement root so the tab is visible,
                 // plus re-grant any already-unlocked achievements (persisted in PlayerProgression)

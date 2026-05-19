@@ -1121,6 +1121,7 @@ public class CombatManager {
                 playDodgeFeedback("§b§l✦ DODGED!",
                     "§b§l✦ Dodged!§r §7You slipped past the " + attacker.getDisplayName() + "'s attack.");
                 fireEffectHook(h -> h.onDodge(effectContext, attacker));
+                hybridSentinelRiposte(attacker);
                 return 0;
             }
         }
@@ -1131,6 +1132,7 @@ public class CombatManager {
                 playDodgeFeedback("§b§l✦ ETHEREAL!",
                     "§b§l✦ Ethereal!§r §7The attack phased through you!");
                 fireEffectHook(h -> h.onDodge(effectContext, attacker));
+                hybridSentinelRiposte(attacker);
                 return 0;
             }
         }
@@ -1148,8 +1150,22 @@ public class CombatManager {
             return 0;
         }
 
+        // Gilded Guard hybrid: a flat chance to fully negate an incoming enemy hit.
+        if (attacker != null && activeHybridEffect() == HybridEffect.GILDED_GUARD
+                && Math.random() < HybridSetEffects.GILDED_GUARD_CHANCE) {
+            playDodgeFeedback("§6§l✦ GILDED GUARD!",
+                "§6§l✦ Gilded Guard!§r §7The " + attacker.getDisplayName() + "'s hit glanced off your gilding.");
+            fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
+            return 0;
+        }
+
         // The hit lands — flat damage, no %-reduction under the AC system.
         int actual = Math.max(0, rawDamage);
+
+        // Stonewall hybrid: every incoming hit is capped.
+        if (activeHybridEffect() == HybridEffect.STONEWALL) {
+            actual = HybridSetEffects.capIncomingDamage(actual);
+        }
 
         // FORTRESS set bonus: 50% less damage when player didn't move this turn
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTRESS && !movedThisTurn) {
@@ -1573,6 +1589,7 @@ public class CombatManager {
         this.hybridFirstAttackUsed = false;
         this.hybridLuckyStreak = 0;
         this.hybridLastWeapon = null;
+        this.hybridEnemiesActed.clear();
         this.oceanBlessingUsed = false;
         this.warpDriveArmed = false;
         this.warpDriveUsed = false;
@@ -2125,7 +2142,7 @@ public class CombatManager {
     }
 
     /** The HybridEffect the player's current armor combo grants, or null. */
-    private com.crackedgames.craftics.combat.HybridEffect activeHybridEffect() {
+    private HybridEffect activeHybridEffect() {
         com.crackedgames.craftics.api.registry.HybridSetEntry h =
             PlayerCombatStats.getHybridSet(player);
         return h == null ? null : h.effect();
@@ -2146,6 +2163,148 @@ public class CombatManager {
             }
         }
         return true;
+    }
+
+    /** Sentinel hybrid: riposte an attacker the player just dodged. No-op for any other set. */
+    private void hybridSentinelRiposte(CombatEntity attacker) {
+        if (attacker == null || !attacker.isAlive()) return;
+        if (activeHybridEffect() != HybridEffect.SENTINEL) return;
+        int dealt = performCounterAttack(attacker, HybridSetEffects.SENTINEL_RIPOSTE);
+        sendMessage("§b⚔ Sentinel riposte! " + attacker.getDisplayName() + " takes " + dealt + " damage.");
+        if (!attacker.isAlive()) killEnemy(attacker);
+    }
+
+    /**
+     * Contagion hybrid: copy the source enemy's negative status effects onto every
+     * adjacent enemy, bringing each up to (but not past) the source's intensity.
+     * No-op for any other hybrid set.
+     */
+    private void spreadContagion(CombatEntity source) {
+        if (source == null || !source.isAlive()) return;
+        if (activeHybridEffect() != HybridEffect.CONTAGION) return;
+        GridPos center = source.getGridPos();
+        if (center == null) return;
+        int spread = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                CombatEntity adj = arena.getOccupant(new GridPos(center.x() + dx, center.z() + dz));
+                if (adj == null || !adj.isAlive() || adj == source || adj.isAlly()) continue;
+                if (copyNegativeEffects(source, adj)) spread++;
+            }
+        }
+        if (spread > 0) {
+            sendMessage("§2☣ Contagion spreads from " + source.getDisplayName()
+                + " to " + spread + " adjacent " + (spread == 1 ? "enemy" : "enemies") + "!");
+        }
+    }
+
+    /** Raise {@code to}'s negative status effects to match {@code from}'s. Returns true if anything spread. */
+    private boolean copyNegativeEffects(CombatEntity from, CombatEntity to) {
+        boolean any = false;
+        if (from.getPoisonTurns() > 0) {
+            to.stackPoison(from.getPoisonTurns(),
+                Math.max(0, from.getPoisonAmplifier() - to.getPoisonAmplifier()));
+            any = true;
+        }
+        if (from.getWitherTurns() > 0) {
+            to.stackWither(from.getWitherTurns(),
+                Math.max(0, from.getWitherAmplifier() - to.getWitherAmplifier()));
+            any = true;
+        }
+        if (from.getBurningTurns() > 0) {
+            to.stackBurning(from.getBurningTurns(),
+                Math.max(0, from.getBurningDamage() - to.getBurningDamage()));
+            any = true;
+        }
+        if (from.getSoakedTurns() > 0) {
+            to.stackSoaked(from.getSoakedTurns(),
+                Math.max(0, from.getSoakedAmplifier() - to.getSoakedAmplifier()));
+            any = true;
+        }
+        if (from.getSlownessTurns() > 0) {
+            to.stackSlowness(from.getSlownessTurns(),
+                Math.max(0, from.getSlownessPenalty() - to.getSlownessPenalty()));
+            any = true;
+        }
+        if (from.getConfusionTurns() > 0) {
+            to.stackConfusion(from.getConfusionTurns(),
+                Math.max(0, from.getConfusionAmplifier() - to.getConfusionAmplifier()));
+            any = true;
+        }
+        if (from.getBleedStacks() > 0) {
+            to.stackBleed(Math.max(0, from.getBleedStacks() - to.getBleedStacks()));
+            any = true;
+        }
+        for (var entry : from.getCustomEffects().entrySet()) {
+            int turns = entry.getValue()[0];
+            int amp = entry.getValue()[1];
+            if (turns > 0) {
+                to.applyCustomEffect(entry.getKey(), turns,
+                    Math.max(0, amp - to.getCustomEffectAmplifier(entry.getKey())));
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    /**
+     * Player counterattack against {@code target}: faces the player, plays the
+     * weapon-swing animation, hit sound, damage number, and hit VFX so a riposte
+     * reads as a real physical attack rather than a silent chat line. Applies the
+     * damage and returns the amount dealt; the caller handles any resulting death.
+     */
+    private int performCounterAttack(CombatEntity target, int rawDamage) {
+        if (target == null || !target.isAlive() || player == null) return 0;
+        GridPos tPos = target.getGridPos();
+        GridPos pPos = arena.getPlayerGridPos();
+
+        // Face the target so the swing animation points the right way.
+        int dx = tPos.x() - pPos.x();
+        int dz = tPos.z() - pPos.z();
+        float counterYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        //? if <=1.21.1 {
+        player.teleport((ServerWorld) player.getEntityWorld(),
+            player.getX(), player.getY(), player.getZ(),
+            java.util.Collections.emptySet(), counterYaw, 0f);
+        //?} else {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
+            player.getX(), player.getY(), player.getZ(),
+            java.util.Collections.emptySet(), counterYaw, 0f, true);
+        *///?}
+
+        // Weapon-swing animation (valueA == 0 → animation-only event, valueB = attacker id).
+        sendToAllParty(new CombatEventPayload(
+            CombatEventPayload.EVENT_DAMAGED, target.getEntityId(),
+            0, player.getId(), tPos.x(), tPos.z()));
+        player.getWorld().playSound(null, player.getBlockPos(),
+            net.minecraft.sound.SoundEvents.ENTITY_PLAYER_ATTACK_STRONG,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.05f);
+
+        // Apply the hit.
+        int dealt = target.takeDamage(rawDamage);
+        notifyBossOfDamage(target, dealt);
+
+        // Damage number + hurt flash on the target.
+        sendToAllParty(new CombatEventPayload(
+            CombatEventPayload.EVENT_DAMAGED, target.getEntityId(),
+            dealt, target.getCurrentHp(), tPos.x(), tPos.z()));
+
+        // Hit VFX — reuse the basic weapon-hit flourish.
+        ServerWorld counterWorld = (ServerWorld) player.getEntityWorld();
+        BlockPos targetBlock = arena.gridToBlockPos(tPos);
+        com.crackedgames.craftics.vfx.VfxDescriptor counterDesc =
+            com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.select(
+                player.getMainHandStack().getItem(),
+                com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.BASIC_HIT);
+        int targetMobId = target.getMobEntity() != null ? target.getMobEntity().getId() : -1;
+        com.crackedgames.craftics.vfx.VfxContext counterCtx =
+            com.crackedgames.craftics.vfx.VfxContext.ofEntities(
+                player.getId(), targetMobId,
+                player.getBlockPos(), targetBlock,
+                (float) dealt, false, arena);
+        com.crackedgames.craftics.vfx.Vfx.play(counterWorld, counterDesc, counterCtx);
+        return dealt;
     }
 
     /** Refresh the arena's allPlayerGridPositions list from current party member world positions. */
@@ -2466,6 +2625,10 @@ public class CombatManager {
 
         Item weapon = player.getMainHandStack().getItem();
 
+        // Hybrid armor set in effect for this attack — snapshot once so the value
+        // is stable through the range check, damage math, and delayed-impact lambda.
+        final HybridEffect activeHybrid = activeHybridEffect();
+
         // Find target first (needed for trident mode detection)
         CombatEntity target = null;
         for (CombatEntity e : enemies) {
@@ -2617,6 +2780,11 @@ public class CombatManager {
         if (!warpFired && weapon != Items.TRIDENT) {
             int range = getEffectiveWeaponRange();
             if (range > 1) range += getScaffoldRangeBonus(pPos);
+            // Run and Gun hybrid: ranged attacks gain +1 range if the player moved this turn.
+            if (range > 1 && range != PlayerCombatStats.RANGE_CROSSBOW_ROOK
+                    && activeHybrid == HybridEffect.RUN_AND_GUN && movedThisTurn) {
+                range += HybridSetEffects.RUN_AND_GUN_RANGE_BONUS;
+            }
 
             if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
                 boolean crossbowInLine = false;
@@ -2774,6 +2942,9 @@ public class CombatManager {
         achievementTracker.recordWeaponUsed(weapon);
         achievementTracker.recordPlayerDealtDamage();
 
+        // Remember the weapon for Counterpuncher's counterattack damage.
+        hybridLastWeapon = weapon;
+
         // Pre-calculate damage before the delay (snapshot current stats)
         boolean isRangedWeapon = weapon == Items.BOW || weapon == Items.CROSSBOW;
         int progBonus = isRangedWeapon ? getProgRangedBonus() : getProgMeleeBonus();
@@ -2818,8 +2989,24 @@ public class CombatManager {
                 luckCrit = Math.random() < CrafticsMod.CONFIG.criticalHitChance();
             }
         }
+        // Hybrid armor-set crit sources — independent of the vanilla sources above.
+        if (!luckCrit && activeHybrid == HybridEffect.AMBUSH && !hybridFirstAttackUsed) {
+            // Ambush: the first attack of the combat is a guaranteed critical.
+            luckCrit = true;
+            hybridFirstAttackUsed = true;
+        }
+        if (!luckCrit && activeHybrid == HybridEffect.LUCKY_STREAK) {
+            luckCrit = Math.random() < HybridSetEffects.luckyStreakCritChance(hybridLuckyStreak);
+        }
+        if (!luckCrit && activeHybrid == HybridEffect.BERSERKER) {
+            luckCrit = Math.random()
+                < HybridSetEffects.berserkerCritChance(player.getHealth(), player.getMaxHealth());
+        }
         if (luckCrit) {
-            baseDamage = (int)(baseDamage * 1.5);
+            // Gladiator: critical hits deal +50% extra damage (2.0x in place of 1.5x).
+            double critMult = activeHybrid == HybridEffect.GLADIATOR
+                ? HybridSetEffects.GLADIATOR_CRIT_MULT : HybridSetEffects.NORMAL_CRIT_MULT;
+            baseDamage = (int)(baseDamage * critMult);
         }
         // Kill streak damage multipliers (stack multiplicatively)
         if (killStreak > 0) {
@@ -2840,8 +3027,7 @@ public class CombatManager {
         // Apply mob-type vulnerability/resistance multiplier
         double mobResistMult = MobResistances.getDamageMultiplier(target.getEntityTypeId(), damageType);
         // Breaker hybrid: ignore enemy resistances/immunities (mult < 1.0 -> 1.0).
-        if (activeHybridEffect() == com.crackedgames.craftics.combat.HybridEffect.BREAKER
-                && mobResistMult < 1.0) {
+        if (activeHybrid == HybridEffect.BREAKER && mobResistMult < 1.0) {
             mobResistMult = 1.0;
         }
         int baseDamageBeforeResist = baseDamage;
@@ -2852,14 +3038,17 @@ public class CombatManager {
         }
 
         // Skirmisher hybrid: +damage when the player moved before attacking this turn.
-        if (activeHybridEffect() == com.crackedgames.craftics.combat.HybridEffect.SKIRMISHER
-                && movedThisTurn && baseDamage > 0) {
-            baseDamage += com.crackedgames.craftics.combat.HybridSetEffects.SKIRMISHER_BONUS;
+        if (activeHybrid == HybridEffect.SKIRMISHER && movedThisTurn && baseDamage > 0) {
+            baseDamage += HybridSetEffects.SKIRMISHER_BONUS;
         }
         // Duelist hybrid: +damage vs a target with no other live enemy adjacent to it.
-        if (activeHybridEffect() == com.crackedgames.craftics.combat.HybridEffect.DUELIST
-                && baseDamage > 0 && isTargetIsolated(target)) {
-            baseDamage += com.crackedgames.craftics.combat.HybridSetEffects.DUELIST_BONUS;
+        if (activeHybrid == HybridEffect.DUELIST && baseDamage > 0 && isTargetIsolated(target)) {
+            baseDamage += HybridSetEffects.DUELIST_BONUS;
+        }
+        // Deadeye hybrid: ranged attacks deal +damage vs an enemy that hasn't acted yet.
+        if (activeHybrid == HybridEffect.DEADEYE && isRangedWeapon && baseDamage > 0
+                && !hybridEnemiesActed.contains(target.getEntityId())) {
+            baseDamage += HybridSetEffects.DEADEYE_BONUS;
         }
 
         // Prize sherd: Fortune's Favor — triple damage on next attack
@@ -2995,6 +3184,13 @@ public class CombatManager {
             if (fLuckCrit) {
                 final int critDealt = dealt;
                 fireEffectHook(h -> h.onCrit(effectContext, fTarget, critDealt));
+                // Cutpurse hybrid: critical hits restore HP.
+                if (activeHybrid == HybridEffect.CUTPURSE
+                        && player.getHealth() < player.getMaxHealth()) {
+                    player.setHealth(Math.min(player.getMaxHealth(),
+                        player.getHealth() + HybridSetEffects.CUTPURSE_HEAL));
+                    sendMessage("§e✂ Cutpurse! Restored " + HybridSetEffects.CUTPURSE_HEAL + " HP.");
+                }
             }
 
             // Boss reaction callback
@@ -3394,6 +3590,64 @@ public class CombatManager {
                         ricochetSource = ricochetTarget;
                     }
                 }
+            }
+
+            // === Hybrid armor-set post-hit effects ===
+            // Siege: ranged hits splash half damage to every adjacent enemy.
+            if (activeHybrid == HybridEffect.SIEGE && fIsRangedWeapon) {
+                int splashDmg = Math.max(1, fBaseDamage / HybridSetEffects.SIEGE_SPLASH_DIVISOR);
+                GridPos siegeCenter = fTarget.getGridPos();
+                int siegeHits = 0;
+                for (int sdx = -1; sdx <= 1; sdx++) {
+                    for (int sdz = -1; sdz <= 1; sdz++) {
+                        if (sdx == 0 && sdz == 0) continue;
+                        CombatEntity adj = arena.getOccupant(
+                            new GridPos(siegeCenter.x() + sdx, siegeCenter.z() + sdz));
+                        if (adj != null && adj.isAlive() && adj != fTarget && !adj.isAlly()) {
+                            int sd = adj.takeDamage(splashDmg);
+                            sendToAllParty(new CombatEventPayload(
+                                CombatEventPayload.EVENT_DAMAGED, adj.getEntityId(),
+                                sd, adj.getCurrentHp(), adj.getGridPos().x(), adj.getGridPos().z()));
+                            siegeHits++;
+                            checkAndHandleDeath(adj);
+                        }
+                    }
+                }
+                if (siegeHits > 0) {
+                    sendMessage("§c☄ Siege! Splash hits " + siegeHits + " adjacent "
+                        + (siegeHits == 1 ? "enemy" : "enemies") + " for " + splashDmg + ".");
+                }
+            }
+
+            // Stormbringer: the attack arcs to one extra nearby enemy.
+            if (activeHybrid == HybridEffect.STORMBRINGER && fTarget.isAlive()) {
+                Set<Integer> arcHit = new HashSet<>();
+                arcHit.add(fTarget.getEntityId());
+                CombatEntity arcTarget = findRicochetTarget(fTarget, arcHit);
+                if (arcTarget != null) {
+                    int arcDmg = Math.max(1, fBaseDamage / HybridSetEffects.STORMBRINGER_ARC_DIVISOR);
+                    int arcDealt = arcTarget.takeDamage(arcDmg);
+                    sendMessage("§b⚡ Stormbringer! The strike arcs to " + arcTarget.getDisplayName()
+                        + " for " + arcDealt + " damage!");
+                    sendToAllParty(new CombatEventPayload(
+                        CombatEventPayload.EVENT_DAMAGED, arcTarget.getEntityId(),
+                        arcDealt, arcTarget.getCurrentHp(),
+                        arcTarget.getGridPos().x(), arcTarget.getGridPos().z()));
+                    checkAndHandleDeath(arcTarget);
+                }
+            }
+
+            // Contagion: the target's negative status effects spread to adjacent enemies.
+            spreadContagion(fTarget);
+
+            // Warlord: melee hits drive the target back one tile.
+            if (activeHybrid == HybridEffect.WARLORD && !fIsRangedWeapon && fTarget.isAlive()) {
+                GridPos wPos = fTarget.getGridPos();
+                int wdx = Integer.signum(wPos.x() - fPPos.x());
+                int wdz = Integer.signum(wPos.z() - fPPos.z());
+                if (wdx == 0 && wdz == 0) wdx = 1;
+                knockEnemyBack(fTarget, wdx, wdz, HybridSetEffects.WARLORD_KNOCKBACK);
+                sendMessage("§6⚔ Warlord! " + fTarget.getDisplayName() + " is driven back.");
             }
 
             // Check death
@@ -4947,20 +5201,7 @@ public class CombatManager {
             for (CombatEntity e : enemies) {
                 if (e.getEntityId() == entityId) {
                     e.setAlly(true);
-                    e.setMounted(true);
-                    playerMounted = true;
-                    mountMob = e.getMobEntity();
-                    if (mountMob != null) {
-                        mountMob.setGlowing(false);
-                        mountMob.setAiDisabled(true);
-                        // Position mount under the player
-                        mountMob.requestTeleport(player.getX(), player.getY(), player.getZ());
-                        player.startRiding(mountMob);
-                    }
-                    // Remove from arena grid so it doesn't block tiles
-                    arena.removeEntity(e);
-                    movePointsRemaining += MOUNT_SPEED_BONUS;
-                    sendMessage("§a§l" + e.getDisplayName() + " saddled and mounted! +" + MOUNT_SPEED_BONUS + " Speed!");
+                    mountPlayerOn(e);
                     break;
                 }
             }
@@ -6230,8 +6471,12 @@ public class CombatManager {
             activeBoat.setYaw(playerMoveYaw - 90f);
         }
 
+        // Drive the mount tile-by-tile exactly like the combat boat — direct
+        // setPosition + yaw — so the ride interpolates smoothly on the client.
         if (playerMounted && mountMob != null) {
-            mountMob.requestTeleport(x, y, z);
+            mountMob.setPosition(x, y, z);
+            mountMob.setYaw(playerMoveYaw);
+            mountMob.setHeadYaw(playerMoveYaw);
         }
 
         if (moveTickCounter >= getMoveTicks()) {
@@ -6799,6 +7044,9 @@ public class CombatManager {
 
         currentEnemy = enemies.get(enemyTurnIndex);
         currentEnemyPetAggroTarget = null;
+        // Deadeye hybrid: record that this enemy has begun a turn — once it has,
+        // it no longer counts as "hasn't acted" for the ranged damage bonus.
+        hybridEnemiesActed.add(currentEnemy.getEntityId());
 
         if (currentEnemy.isStunned()) {
             sendMessage("§7" + currentEnemy.getDisplayName() + " is stunned!");
@@ -7475,9 +7723,20 @@ public class CombatManager {
      * applying owner-gear damage bonuses for gear-scaling allies.
      */
     private void handleAllyTurn(CombatEntity ally) {
-        // Resolve the ally's AI from the registry; fall back to the default melee AI.
+        // A mounted ally is the player's vehicle, not a combatant — it has no
+        // grid tile and moves with the player, so it never takes a turn.
+        if (ally.isMounted()) {
+            enemyTurnState = EnemyTurnState.DONE;
+            enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
+            return;
+        }
+        // Use the archetype AI resolved when the ally was spawned; if it wasn't
+        // resolved, fall back to the registry entry and finally the melee default.
         AllyEntry entry = AllyRegistry.getOrNull(ally.getEntityTypeId());
-        AllyAI ai = entry != null ? entry.ai() : AllyEntry.DEFAULT_AI;
+        AllyAI ai = ally.getAllyAi();
+        if (ai == null) {
+            ai = entry != null ? entry.ai() : AllyEntry.DEFAULT_AI;
+        }
         // null (unregistered ally) defaults to true: the pre-framework handleAllyTurn
         // applied the owner-gear bonus to every ally, so this preserves that behavior.
         boolean scalesWithGear = entry == null || entry.scalesWithOwnerGear();
@@ -7927,6 +8186,16 @@ public class CombatManager {
                 }
             }
             case EnemyAction.RangedAttack ra -> {
+                // Aegis hybrid: a chance to dodge incoming ranged attacks outright.
+                if (activeHybridEffect() == HybridEffect.AEGIS
+                        && Math.random() < HybridSetEffects.AEGIS_DODGE_CHANCE) {
+                    playDodgeFeedback("§b§l✦ AEGIS!",
+                        "§b§l✦ Aegis!§r §7You sidestep the " + currentEnemy.getDisplayName()
+                            + "'s ranged attack.");
+                    fireEffectHook(h -> h.onDodge(effectContext, currentEnemy));
+                    sendSync();
+                    break;
+                }
                 int actual = damagePlayer(ra.damage(), currentEnemy);
                 // Ranged impact particles based on attack type
                 String rangedType = ra.effectName() != null ? ra.effectName() : "";
@@ -11084,12 +11353,35 @@ public class CombatManager {
                 int physLuck = pStats.getPoints(PlayerProgression.Stat.LUCK);
                 double counterChance = physPts * 0.03 + physLuck * 0.02; // 3% per affinity + 2% per luck
                 if (counterChance > 0 && Math.random() < counterChance) {
-                    int counterDmg = currentEnemy.takeDamage(PlayerCombatStats.getAttackPower(player));
+                    int counterDmg = performCounterAttack(currentEnemy,
+                        PlayerCombatStats.getAttackPower(player));
                     sendMessage("\u00a77\u270A Counter! You strike back for " + counterDmg + " damage!");
                     if (!currentEnemy.isAlive()) {
                         achievementTracker.recordCounterKill();
                         killEnemy(currentEnemy);
                     }
+                }
+            }
+
+            // Immovable hybrid: reflect a flat amount back at melee attackers.
+            if (activeHybridEffect() == HybridEffect.IMMOVABLE && currentEnemy.isAlive()) {
+                int reflected = performCounterAttack(currentEnemy, HybridSetEffects.IMMOVABLE_REFLECT);
+                sendMessage("\u00a78\u26cf Immovable! " + currentEnemy.getDisplayName()
+                    + " takes " + reflected + " reflected damage.");
+                if (!currentEnemy.isAlive()) killEnemy(currentEnemy);
+            }
+
+            // Counterpuncher hybrid: a chance to immediately strike a melee attacker back.
+            if (activeHybridEffect() == HybridEffect.COUNTERPUNCHER && currentEnemy.isAlive()
+                    && Math.random() < HybridSetEffects.COUNTERPUNCH_CHANCE) {
+                net.minecraft.item.Item counterWeapon = hybridLastWeapon != null
+                    ? hybridLastWeapon : player.getMainHandStack().getItem();
+                int counterDmg = performCounterAttack(currentEnemy,
+                    PlayerCombatStats.getAttackPower(counterWeapon));
+                sendMessage("\u00a7e\u270A Counterpuncher! You strike back for " + counterDmg + " damage!");
+                if (!currentEnemy.isAlive()) {
+                    achievementTracker.recordCounterKill();
+                    killEnemy(currentEnemy);
                 }
             }
 
@@ -11246,6 +11538,11 @@ public class CombatManager {
      * Knock the player back N tiles away from the attacker position.
      */
     private void applyPlayerKnockback(GridPos attackerPos, int tiles, CombatEntity source) {
+        // Immovable hybrid: the player cannot be knocked back at all.
+        if (activeHybridEffect() == HybridEffect.IMMOVABLE) {
+            sendMessage("§8⛏ Immovable — you don't budge.");
+            return;
+        }
         // Addon combat effects: modify knockback distance
         tiles = fireEffectHookChained(tiles, (h, d) -> h.onKnockback(effectContext, source, d));
         if (tiles <= 0) return;
@@ -13048,8 +13345,7 @@ public class CombatManager {
         int sf = net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE;
 
         // Determine if sand or gravel themed
-        boolean isSandBiome = biome != null && biome.environmentStyle != null
-            && biome.environmentStyle.name().contains("DESERT");
+        boolean isSandBiome = biome != null && "desert".equals(biome.environmentId);
         net.minecraft.block.Block groundBlock = isSandBiome ? Blocks.SAND : Blocks.GRAVEL;
         net.minecraft.block.Block suspiciousBlock = isSandBiome ? Blocks.SUSPICIOUS_SAND : Blocks.SUSPICIOUS_GRAVEL;
         net.minecraft.block.Block edgeBlock = isSandBiome ? Blocks.SANDSTONE : Blocks.COBBLESTONE;
@@ -13251,29 +13547,29 @@ public class CombatManager {
         net.minecraft.block.Block carpetBlock = Blocks.RED_CARPET;
         net.minecraft.block.Block roofBlock = Blocks.RED_WOOL;
 
-        if (biome != null && biome.environmentStyle != null) {
-            switch (biome.environmentStyle) {
-                case FOREST -> {
+        if (biome != null && biome.environmentId != null) {
+            switch (biome.environmentId) {
+                case "forest" -> {
                     floorBlock = Blocks.PODZOL; accentBlock = Blocks.SPRUCE_PLANKS;
                     postBlock = Blocks.SPRUCE_LOG; carpetBlock = Blocks.GREEN_CARPET; roofBlock = Blocks.GREEN_WOOL;
                 }
-                case SNOWY -> {
+                case "snowy" -> {
                     floorBlock = Blocks.SNOW_BLOCK; accentBlock = Blocks.SPRUCE_PLANKS;
                     postBlock = Blocks.SPRUCE_LOG; carpetBlock = Blocks.LIGHT_BLUE_CARPET; roofBlock = Blocks.WHITE_WOOL;
                 }
-                case CAVE, DEEP_DARK -> {
+                case "cave", "deep_dark" -> {
                     floorBlock = Blocks.DEEPSLATE_BRICKS; accentBlock = Blocks.POLISHED_DEEPSLATE;
                     postBlock = Blocks.DEEPSLATE_BRICK_WALL; carpetBlock = Blocks.GRAY_CARPET; roofBlock = Blocks.GRAY_WOOL;
                 }
-                case DESERT -> {
+                case "desert" -> {
                     floorBlock = Blocks.SMOOTH_SANDSTONE; accentBlock = Blocks.CUT_SANDSTONE;
                     postBlock = Blocks.SANDSTONE_WALL; carpetBlock = Blocks.ORANGE_CARPET; roofBlock = Blocks.ORANGE_WOOL;
                 }
-                case NETHER, CRIMSON_FOREST, WARPED_FOREST -> {
+                case "nether", "crimson_forest", "warped_forest" -> {
                     floorBlock = Blocks.NETHER_BRICKS; accentBlock = Blocks.CRIMSON_PLANKS;
                     postBlock = Blocks.CRIMSON_STEM; carpetBlock = Blocks.RED_CARPET; roofBlock = Blocks.RED_WOOL;
                 }
-                case END -> {
+                case "end" -> {
                     floorBlock = Blocks.PURPUR_BLOCK; accentBlock = Blocks.END_STONE_BRICKS;
                     postBlock = Blocks.PURPUR_PILLAR; carpetBlock = Blocks.PURPLE_CARPET; roofBlock = Blocks.PURPLE_WOOL;
                 }
@@ -14901,13 +15197,40 @@ public class CombatManager {
     private void savePets() {
         if (enemies == null) return;
         for (CombatEntity e : enemies) {
-            if (e.isAlive() && e.isAlly() && !e.isMounted()) {
+            // Mounts are saved too (PetData carries the mounted flag) so the
+            // rideable mob persists for the whole run, not just one level.
+            if (e.isAlive() && e.isAlly()) {
                 savedPets.add(HubPetCollector.PetData.fromCombatEntity(e, e.getOriginalHubNbt()));
             }
         }
         if (!savedPets.isEmpty()) {
             CrafticsMod.LOGGER.info("Saved {} pet(s) for next level.", savedPets.size());
         }
+    }
+
+    /**
+     * Mount the player on an ally entity — a saddled rideable party mob, or a
+     * mob saddled mid-combat. Mirrors the combat-boat setup so the ride is
+     * smooth: the mount has gravity/AI off and is driven directly each tick.
+     * Grants the mount-speed buff and removes the mount from the arena grid.
+     */
+    private void mountPlayerOn(CombatEntity e) {
+        e.setMounted(true);
+        playerMounted = true;
+        mountMob = e.getMobEntity();
+        if (mountMob != null) {
+            mountMob.setGlowing(false);
+            mountMob.setAiDisabled(true);
+            mountMob.setNoGravity(true);
+            mountMob.setInvulnerable(true);
+            mountMob.setSilent(true);
+            if (player.hasVehicle()) player.stopRiding();
+            mountMob.setPosition(player.getX(), player.getY(), player.getZ());
+            player.startRiding(mountMob, true);
+        }
+        arena.removeEntity(e);
+        movePointsRemaining += MOUNT_SPEED_BONUS;
+        sendMessage("§a§l" + e.getDisplayName() + " mounted! +" + MOUNT_SPEED_BONUS + " Speed!");
     }
 
     /** Spawn previously saved pets into the current arena near the player start. */
@@ -14923,11 +15246,11 @@ public class CombatManager {
                 //? if <=1.21.4 {
                 savedPets.add(new HubPetCollector.PetData(
                     n.getString("type"), n.getInt("hp"), n.getInt("maxHp"),
-                    n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range"), null));
+                    n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range"), null, false));
                 //?} else {
                 /*savedPets.add(new HubPetCollector.PetData(
                     n.getString("type", ""), n.getInt("hp", 0), n.getInt("maxHp", 0),
-                    n.getInt("atk", 0), n.getInt("def", 0), n.getInt("speed", 0), n.getInt("range", 0), null));
+                    n.getInt("atk", 0), n.getInt("def", 0), n.getInt("speed", 0), n.getInt("range", 0), null, false));
                 *///?}
             }
             if (!savedPets.isEmpty()) saveData.markDirty();
@@ -14977,10 +15300,19 @@ public class CombatManager {
             ce.setAlly(true);
             ce.setOwnerUuid(player.getUuid());
             ce.setMobEntity(mob);
+            // Carry the hub snapshot forward so end-of-run restoration keeps the
+            // mob's variant/collar/saddle and \u2014 crucially \u2014 its battle-party UUID.
+            ce.setOriginalHubNbt(pet.originalNbt());
+            ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(pet.entityType()));
             enemies.add(ce);
             arena.placeEntity(ce);
 
-            sendMessage("\u00a7a" + ce.getDisplayName() + " rejoins the fight!");
+            if (pet.mounted()) {
+                // This pet was the player's mount last level \u2014 re-mount it here.
+                mountPlayerOn(ce);
+            } else {
+                sendMessage("\u00a7a" + ce.getDisplayName() + " rejoins the fight!");
+            }
         }
         savedPets.clear();
     }
@@ -15045,10 +15377,16 @@ public class CombatManager {
             ce.setOwnerUuid(snapshot.playerUuid());
             ce.setMobEntity(mob);
             ce.setOriginalHubNbt(snapshot.fullEntityNbt());
+            ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(snapshot.entityTypeId()));
             enemies.add(ce);
             arena.placeEntity(ce);
 
-            sendMessage("\u00a7a" + ce.getDisplayName() + " joins the fight!");
+            if (snapshot.saddledMount() && !playerMounted) {
+                // A saddled rideable party mob auto-mounts the player for the run.
+                mountPlayerOn(ce);
+            } else {
+                sendMessage("\u00a7a" + ce.getDisplayName() + " joins the fight!");
+            }
             CrafticsMod.LOGGER.info("Spawned hub pet {} at {}", snapshot.entityTypeId(), spawnPos);
         }
         hubPetSnapshots.clear();
@@ -15521,6 +15859,8 @@ public class CombatManager {
     private int hybridLuckyStreak = 0;
     /** Hybrid: the weapon item the player last attacked with (for Counterpuncher). */
     private net.minecraft.item.Item hybridLastWeapon = null;
+    /** Hybrid: entity IDs of enemies that have begun a turn this combat (for Deadeye). */
+    private final java.util.Set<Integer> hybridEnemiesActed = new java.util.HashSet<>();
     private boolean moveBoatProtected = false;       // Water crossing with boat = no Soaked
     private int powderSnowTurns = 0;                 // Escalating freeze damage counter
     private net.minecraft.entity.vehicle.BoatEntity activeBoat = null; // Visual boat while in water
@@ -15586,8 +15926,8 @@ public class CombatManager {
     private net.minecraft.block.Block getBiomeFloorBlock() {
         if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
             BiomeTemplate biome = gld.getBiomeTemplate();
-            if (biome != null && biome.environmentStyle != null) {
-                return biome.environmentStyle.getFloorBlock();
+            if (biome != null && biome.environmentId != null) {
+                return com.crackedgames.craftics.api.registry.EnvironmentRegistry.get(biome.environmentId).floorBlock();
             }
         }
         return Blocks.GRASS_BLOCK;
@@ -15624,6 +15964,19 @@ public class CombatManager {
             apRemaining++;
             sendMessage("§b§l✦ Current! §r§b+1 AP refunded");
         }
+        // Rampage hybrid: getting a kill refunds AP.
+        if (activeHybridEffect() == HybridEffect.RAMPAGE) {
+            apRemaining += HybridSetEffects.RAMPAGE_AP_REFUND;
+            sendMessage("§c§l⚔ Rampage! §r§c+" + HybridSetEffects.RAMPAGE_AP_REFUND + " AP refunded");
+        }
+        // Lucky Streak hybrid: each consecutive kill raises crit chance (resets when hit).
+        if (activeHybridEffect() == HybridEffect.LUCKY_STREAK) {
+            hybridLuckyStreak++;
+            int pct = (int) Math.round(
+                HybridSetEffects.luckyStreakCritChance(hybridLuckyStreak) * 100);
+            sendMessage("§6§l✦ Lucky Streak! §r§6" + hybridLuckyStreak + " kill"
+                + (hybridLuckyStreak == 1 ? "" : "s") + " — +" + pct + "% crit chance");
+        }
         // Addon combat effects: killing blow
         fireEffectHook(h -> h.onDealKillingBlow(effectContext, enemy));
     }
@@ -15631,6 +15984,11 @@ public class CombatManager {
     /** Called when player takes damage. Kill streaks no longer reset on damage — only on turns with no kills. */
     private void onPlayerDamaged() {
         // Kill streak is preserved through damage — only resets at end of turn with no kills
+        // Lucky Streak hybrid: the consecutive-kill crit bonus breaks when the player is hit.
+        if (hybridLuckyStreak > 0 && activeHybridEffect() == HybridEffect.LUCKY_STREAK) {
+            hybridLuckyStreak = 0;
+            sendMessage("§7Your Lucky Streak is broken!");
+        }
     }
 
     /** Calculate flanking bonus: +25% damage if attacking from behind enemy. */

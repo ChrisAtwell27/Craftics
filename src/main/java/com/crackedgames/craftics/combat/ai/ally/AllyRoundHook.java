@@ -1,7 +1,7 @@
 package com.crackedgames.craftics.combat.ai.ally;
 
+import com.crackedgames.craftics.api.EnvironmentDef;
 import com.crackedgames.craftics.combat.CombatEntity;
-import com.crackedgames.craftics.level.EnvironmentStyle;
 
 /**
  * Optional per-round effect for an ally type — runs once per round for each living
@@ -14,7 +14,7 @@ import com.crackedgames.craftics.level.EnvironmentStyle;
 public interface AllyRoundHook {
     /**
      * @param self        the living ally
-     * @param environment the arena's environment style
+     * @param environment the arena's environment
      */
-    void onRound(CombatEntity self, EnvironmentStyle environment);
+    void onRound(CombatEntity self, EnvironmentDef environment);
 }

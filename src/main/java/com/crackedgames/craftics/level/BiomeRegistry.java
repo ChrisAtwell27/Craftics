@@ -50,7 +50,7 @@ public class BiomeRegistry {
                     old.passiveMobs, old.hostileMobs, old.boss,
                     old.lootItems, old.lootWeights,
                     old.enchantmentLootIds, old.enchantmentLootWeights,
-                    old.nightLevel, old.environmentStyle
+                    old.nightLevel, old.environmentId
                 ));
             }
             currentLevel += BIOMES.get(i).levelCount;

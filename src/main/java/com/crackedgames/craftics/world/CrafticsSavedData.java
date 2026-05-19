@@ -59,6 +59,12 @@ public class CrafticsSavedData extends PersistentState {
         public int levelsSinceLastEvent = 0;
         /** Pets waiting at the hub to rejoin next fight */
         private final java.util.List<net.minecraft.nbt.NbtCompound> hubPets = new java.util.ArrayList<>();
+        /**
+         * Entity UUIDs of mobs the player explicitly added to their battle party
+         * via Shift+Right-Click. Order-preserving, capped at {@code MAX_PARTY_MOBS}.
+         * These — and only these — are the mobs collected into combat.
+         */
+        private final java.util.List<UUID> partyMobs = new java.util.ArrayList<>();
         /** Server-authoritative unlocked guide entries (bestiary mobs, trims) */
         private final java.util.Set<String> unlockedGuideEntries = new java.util.LinkedHashSet<>();
         /** Whether arenas have been pre-generated for this world slot. */
@@ -111,6 +117,18 @@ public class CrafticsSavedData extends PersistentState {
             hubPets.clear();
             return pets;
         }
+
+        /** Max mobs allowed in a player's battle party. */
+        public static final int MAX_PARTY_MOBS = 4;
+
+        /**
+         * Live battle-party mob UUID list — mutable, order-preserving, capped at
+         * {@link #MAX_PARTY_MOBS}. Always call {@code markDirty()} after changing it.
+         */
+        public java.util.List<UUID> getPartyMobs() { return partyMobs; }
+
+        /** Whether {@code mobUuid} is currently in the player's battle party. */
+        public boolean isPartyMob(UUID mobUuid) { return partyMobs.contains(mobUuid); }
 
         public boolean isInBiomeRun() {
             return activeBiomeId != null && !activeBiomeId.isEmpty();
@@ -194,6 +212,12 @@ public class CrafticsSavedData extends PersistentState {
             hubPets.forEach(petList::add);
             nbt.put("hubPets", petList);
             nbt.putString("unlockedGuideEntries", String.join("|", unlockedGuideEntries));
+            StringBuilder partyMobsRaw = new StringBuilder();
+            for (UUID mob : partyMobs) {
+                if (partyMobsRaw.length() > 0) partyMobsRaw.append('|');
+                partyMobsRaw.append(mob.toString());
+            }
+            nbt.putString("partyMobs", partyMobsRaw.toString());
             nbt.putInt("hubSpawnX", hubSpawnX);
             nbt.putInt("hubSpawnY", hubSpawnY);
             nbt.putInt("hubSpawnZ", hubSpawnZ);
@@ -236,6 +260,16 @@ public class CrafticsSavedData extends PersistentState {
                     }
                 }
             }
+            if (nbt.contains("partyMobs")) {
+                String partyRaw = nbt.getString("partyMobs");
+                if (!partyRaw.isEmpty()) {
+                    for (String entry : partyRaw.split("\\|")) {
+                        if (entry.isEmpty()) continue;
+                        try { pd.partyMobs.add(UUID.fromString(entry)); }
+                        catch (IllegalArgumentException ignored) {}
+                    }
+                }
+            }
             pd.hubSpawnX = nbt.contains("hubSpawnX") ? nbt.getInt("hubSpawnX") : -1;
             pd.hubSpawnY = nbt.contains("hubSpawnY") ? nbt.getInt("hubSpawnY") : -1;
             pd.hubSpawnZ = nbt.contains("hubSpawnZ") ? nbt.getInt("hubSpawnZ") : -1;
@@ -272,6 +306,14 @@ public class CrafticsSavedData extends PersistentState {
             if (!guideRaw.isEmpty()) {
                 for (String entry : guideRaw.split("\\|")) {
                     if (!entry.isEmpty()) pd.unlockedGuideEntries.add(entry);
+                }
+            }
+            String partyRaw = nbt.getString("partyMobs", "");
+            if (!partyRaw.isEmpty()) {
+                for (String entry : partyRaw.split("\\|")) {
+                    if (entry.isEmpty()) continue;
+                    try { pd.partyMobs.add(UUID.fromString(entry)); }
+                    catch (IllegalArgumentException ignored) {}
                 }
             }
             pd.hubSpawnX = nbt.getInt("hubSpawnX", -1);

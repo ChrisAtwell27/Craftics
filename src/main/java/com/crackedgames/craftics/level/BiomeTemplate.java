@@ -24,7 +24,7 @@ public class BiomeTemplate {
     public final String[] enchantmentLootIds;
     public final int[] enchantmentLootWeights;
     public final boolean nightLevel;
-    public final EnvironmentStyle environmentStyle;
+    public final String environmentId;
 
     public BiomeTemplate(String biomeId, String displayName, int startLevel, int levelCount,
                           int baseWidth, int baseHeight, int widthGrowth, int heightGrowth,
@@ -34,7 +34,7 @@ public class BiomeTemplate {
                           MobPoolEntry boss,
                           Item[] lootItems, int[] lootWeights,
                           String[] enchantmentLootIds, int[] enchantmentLootWeights,
-                          boolean nightLevel, EnvironmentStyle environmentStyle) {
+                          boolean nightLevel, String environmentId) {
         this.biomeId = biomeId;
         this.displayName = displayName;
         this.startLevel = startLevel;
@@ -55,7 +55,7 @@ public class BiomeTemplate {
         this.enchantmentLootIds = enchantmentLootIds;
         this.enchantmentLootWeights = enchantmentLootWeights;
         this.nightLevel = nightLevel;
-        this.environmentStyle = environmentStyle;
+        this.environmentId = environmentId;
     }
 
     public int getEndLevel() {
