@@ -161,8 +161,12 @@ public class CombatInputHandler {
                 entityId = null;
             }
             CombatState.setHoveredEnemyId(entityId != null ? entityId : -1);
+            // Player hover — only when no enemy/ally occupies the tile.
+            CombatState.setHoveredPlayerUuid(
+                entityId == null ? playerUuidAtTile(client, hoverPos) : null);
         } else {
             CombatState.setHoveredEnemyId(-1);
+            CombatState.setHoveredPlayerUuid(null);
         }
 
         // Throttled hover broadcast for teammates
@@ -278,6 +282,26 @@ public class CombatInputHandler {
         int dx = Math.abs(playerPos.x() - hoverPos.x());
         int dz = Math.abs(playerPos.z() - hoverPos.z());
         return Math.max(dx, dz) > 1;
+    }
+
+    /**
+     * UUID string of a party player whose grid tile is {@code tile}, or null. Only
+     * players present in the synced combat-stats map count, so a bystander wandering
+     * near the arena never registers as a hover target.
+     */
+    private static String playerUuidAtTile(MinecraftClient client, GridPos tile) {
+        if (client.world == null || tile == null) return null;
+        int originX = CombatState.getArenaOriginX();
+        int originZ = CombatState.getArenaOriginZ();
+        for (net.minecraft.entity.player.PlayerEntity p : client.world.getPlayers()) {
+            int gx = (int) Math.floor(p.getX()) - originX;
+            int gz = (int) Math.floor(p.getZ()) - originZ;
+            if (gx == tile.x() && gz == tile.z()) {
+                String uuid = p.getUuid().toString();
+                if (CombatState.getPlayerStats(uuid) != null) return uuid;
+            }
+        }
+        return null;
     }
 
     private static boolean isPickaxeMineGesture(MinecraftClient client, GridPos tilePos) {

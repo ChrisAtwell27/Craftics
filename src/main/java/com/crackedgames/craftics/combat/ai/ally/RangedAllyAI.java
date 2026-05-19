@@ -11,7 +11,8 @@ import java.util.List;
 /**
  * Ranged ally AI — a kiter (llama spit, snow golem snowballs). Fires from its
  * full attack range and backs away when an enemy closes to melee, snapping off
- * a parting shot while it retreats. Flees outright when badly wounded.
+ * a parting shot while it retreats. Flees outright when badly wounded. When out
+ * of range it closes the gap and fires in the same turn.
  *
  * @since 0.3.0
  */
@@ -20,7 +21,6 @@ public class RangedAllyAI implements AllyAI {
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, List<CombatEntity> combatants) {
         GridPos pos = self.getGridPos();
-        int speed = self.getMoveSpeed();
         int range = Math.max(1, self.getRange());
 
         CombatEntity target = AllyTargeting.nearestEnemy(pos, combatants);
@@ -34,7 +34,7 @@ public class RangedAllyAI implements AllyAI {
             int dx = Integer.signum(pos.x() - target.getGridPos().x());
             int dz = Integer.signum(pos.z() - target.getGridPos().z());
             GridPos retreat = new GridPos(pos.x() + dx * 2, pos.z() + dz * 2);
-            List<GridPos> path = Pathfinding.findPath(arena, pos, retreat, speed, false);
+            List<GridPos> path = AllyTargeting.pathTo(self, arena, retreat);
             if (path != null && !path.isEmpty()) {
                 GridPos end = path.get(path.size() - 1);
                 // Parting shot if the target stays in range and we aren't fleeing for our life.
@@ -55,8 +55,8 @@ public class RangedAllyAI implements AllyAI {
                 List.of(), target.getEntityId(), self.getAttackPower());
         }
 
-        // Out of range — close just enough to fire.
-        List<GridPos> path = Pathfinding.findPath(arena, pos, target.getGridPos(), speed, false);
+        // Out of range — close just enough to fire, moving and shooting in one turn.
+        List<GridPos> path = AllyTargeting.pathTo(self, arena, target.getGridPos());
         if (path != null && !path.isEmpty()) {
             GridPos end = path.get(path.size() - 1);
             if (target.minDistanceTo(end) <= range) {
@@ -66,9 +66,9 @@ public class RangedAllyAI implements AllyAI {
             return new EnemyAction.Move(path);
         }
         GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, pos, target.getGridPos(), speed, self);
+            arena, pos, target.getGridPos(), self.getMoveSpeed(), self, self.getSize());
         if (closest != null && !closest.equals(pos)) {
-            List<GridPos> seek = Pathfinding.findPath(arena, pos, closest, speed, false);
+            List<GridPos> seek = AllyTargeting.pathTo(self, arena, closest);
             if (seek != null && !seek.isEmpty()) return new EnemyAction.Move(seek);
         }
         return new EnemyAction.Idle();

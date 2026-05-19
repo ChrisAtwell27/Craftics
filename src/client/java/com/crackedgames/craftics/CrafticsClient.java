@@ -96,7 +96,8 @@ public class CrafticsClient implements ClientModInitializer {
                 payload.maxAp(), payload.maxSpeed(),
                 payload.enemyData(), payload.enemyTypeIds(),
                 payload.playerEffects(), payload.killStreak(),
-                payload.partyHpData(), payload.turnOrderData()
+                payload.partyHpData(), payload.turnOrderData(),
+                payload.playerStatsData()
             ));
         });
 

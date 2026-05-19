@@ -289,6 +289,18 @@ public class CombatState {
     public record PartyMemberHp(String uuid, String name, int hp, int maxHp, boolean dead) {}
     private static java.util.List<PartyMemberHp> partyHpList = new java.util.ArrayList<>();
 
+    /** Per-player combat readout for the hover inspect panel, keyed by uuid string. */
+    public record PlayerStats(String uuid, String name, int hp, int maxHp, boolean dead,
+                              int atk, int ac, int ap, int speed) {}
+    private static final java.util.Map<String, PlayerStats> playerStatsMap = new java.util.LinkedHashMap<>();
+    public static java.util.Map<String, PlayerStats> getPlayerStatsMap() { return playerStatsMap; }
+    public static PlayerStats getPlayerStats(String uuid) { return playerStatsMap.get(uuid); }
+
+    /** UUID of the player whose tile is under the cursor, or null when none. */
+    private static String hoveredPlayerUuid = null;
+    public static String getHoveredPlayerUuid() { return hoveredPlayerUuid; }
+    public static void setHoveredPlayerUuid(String uuid) { hoveredPlayerUuid = uuid; }
+
     // Turn order list (empty in solo play)
     public record TurnOrderEntry(String uuid, String name, boolean isCurrent) {}
     private static java.util.List<TurnOrderEntry> turnOrderList = new java.util.ArrayList<>();
@@ -433,7 +445,8 @@ public class CombatState {
                                        int maxAp, int maxSpeed,
                                        int[] enemyData, String enemyTypeIds,
                                        String playerEffects, int killStreak,
-                                       String partyHpData, String turnOrderData) {
+                                       String partyHpData, String turnOrderData,
+                                       String playerStatsData) {
         // Save old HP before overwriting so we can detect damage/heal
         int oldHp = CombatState.playerHp;
 
@@ -531,6 +544,21 @@ public class CombatState {
                 String[] parts = entry.split(",");
                 if (parts.length < 3) continue;
                 turnOrderList.add(new TurnOrderEntry(parts[0], parts[1], "1".equals(parts[2])));
+            }
+        }
+
+        // Parse per-player combat stats: "uuid,name,hp,maxHp,dead,atk,ac,ap,speed|..."
+        playerStatsMap.clear();
+        if (playerStatsData != null && !playerStatsData.isEmpty()) {
+            for (String entry : playerStatsData.split("\\|")) {
+                String[] p = entry.split(",");
+                if (p.length < 9) continue;
+                try {
+                    playerStatsMap.put(p[0], new PlayerStats(p[0], p[1],
+                        Integer.parseInt(p[2]), Integer.parseInt(p[3]), "1".equals(p[4]),
+                        Integer.parseInt(p[5]), Integer.parseInt(p[6]),
+                        Integer.parseInt(p[7]), Integer.parseInt(p[8])));
+                } catch (NumberFormatException ignored) {}
             }
         }
     }
@@ -755,6 +783,8 @@ public class CombatState {
         focusZoomCurrent = 15.0f;
         focusZoomTarget = 15.0f;
         hoveredEnemyId = -1;
+        hoveredPlayerUuid = null;
+        playerStatsMap.clear();
         traderActive = false;
     }
 }

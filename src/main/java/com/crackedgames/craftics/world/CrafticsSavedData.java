@@ -61,7 +61,8 @@ public class CrafticsSavedData extends PersistentState {
         private final java.util.List<net.minecraft.nbt.NbtCompound> hubPets = new java.util.ArrayList<>();
         /**
          * Entity UUIDs of mobs the player explicitly added to their battle party
-         * via Shift+Right-Click. Order-preserving, capped at {@code MAX_PARTY_MOBS}.
+         * via Shift+Right-Click. Order-preserving; the effective cap scales with
+         * the player's Pet Affinity (see {@code PartyMobs.partyCap}).
          * These — and only these — are the mobs collected into combat.
          */
         private final java.util.List<UUID> partyMobs = new java.util.ArrayList<>();
@@ -118,12 +119,10 @@ public class CrafticsSavedData extends PersistentState {
             return pets;
         }
 
-        /** Max mobs allowed in a player's battle party. */
-        public static final int MAX_PARTY_MOBS = 4;
-
         /**
-         * Live battle-party mob UUID list — mutable, order-preserving, capped at
-         * {@link #MAX_PARTY_MOBS}. Always call {@code markDirty()} after changing it.
+         * Live battle-party mob UUID list — mutable and order-preserving. The
+         * effective cap is dynamic ({@code PartyMobs.partyCap}: 1 + the player's
+         * Pet Affinity level). Always call {@code markDirty()} after changing it.
          */
         public java.util.List<UUID> getPartyMobs() { return partyMobs; }
 

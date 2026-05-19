@@ -55,6 +55,21 @@ public final class VanillaAllies {
         registerInCombatOnly("minecraft:pig",       8, 2, 1, 2, 1);
         registerInCombatOnly("minecraft:chicken",   4, 1, 0, 3, 1);
         registerInCombatOnly("minecraft:rabbit",    4, 1, 0, 3, 1);
+
+        // Golems — built combat allies, each healed in battle by its build material:
+        // an iron ingot patches up an iron golem, a snowball repacks a snow golem.
+        AllyRegistry.register(AllyEntry.builder("minecraft:iron_golem")
+            .hp(20).attack(5).defense(3).speed(2).range(1)
+            .recruitMode(AllyEntry.RecruitMode.BUILT)
+            .scalesWithOwnerGear(true)
+            .healItem(net.minecraft.item.Items.IRON_INGOT, 6)
+            .build());
+        AllyRegistry.register(AllyEntry.builder("minecraft:snow_golem")
+            .hp(5).attack(2).defense(0).speed(2).range(3)
+            .recruitMode(AllyEntry.RecruitMode.BUILT)
+            .scalesWithOwnerGear(true)
+            .healItem(net.minecraft.item.Items.SNOWBALL, 3)
+            .build());
     }
 
     /** Register one tamed combat pet using the default melee AI. */
