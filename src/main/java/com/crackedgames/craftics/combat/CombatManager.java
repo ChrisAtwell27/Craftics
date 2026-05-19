@@ -6251,11 +6251,15 @@ public class CombatManager {
             }
         }
 
-        if (phase == CombatPhase.PLAYER_TURN && player != null) {
+        // Detect a held-item swap in any phase: refresh the move/attack highlights
+        // (range changed) on the player's turn, and always re-sync so the hover
+        // panel's attack/range readout tracks the weapon currently in hand.
+        if (player != null) {
             var currentItem = player.getMainHandStack().getItem();
             if (currentItem != lastHeldItem) {
                 lastHeldItem = currentItem;
-                refreshHighlights();
+                if (phase == CombatPhase.PLAYER_TURN) refreshHighlights();
+                sendSync();
             }
         }
 
