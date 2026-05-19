@@ -9,6 +9,14 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Registry of armor trim pattern combat bonuses, keyed by {@link TrimPatternEntry#patternId()}.
+ *
+ * <p>Craftics registers its 18 built-in patterns at startup via {@code VanillaContent};
+ * addons register their own through {@code CrafticsAPI.registerTrimPattern}.
+ *
+ * @since 0.2.0
+ */
 public final class TrimPatternRegistry {
     private TrimPatternRegistry() {}
 
@@ -39,36 +47,43 @@ public final class TrimPatternRegistry {
         DATAPACK_KEYS.clear();
     }
 
+    /** The entry for {@code patternId}, or {@code null} if none is registered. */
     public static TrimPatternEntry get(String patternId) {
         return REGISTRY.get(patternId);
     }
 
+    /** Every registered trim pattern entry, as an unmodifiable view. */
     public static Map<String, TrimPatternEntry> getAll() {
         return Collections.unmodifiableMap(REGISTRY);
     }
 
     // Convenience getters used by TrimEffects
 
+    /** The per-piece stat bonus type for {@code patternId}, or {@code null} if not registered. */
     public static TrimEffects.Bonus getPerPieceBonus(String patternId) {
         TrimPatternEntry entry = REGISTRY.get(patternId);
         return entry != null ? entry.perPieceStat() : null;
     }
 
+    /** Short per-piece bonus description for {@code patternId}, or an empty string if not registered. */
     public static String getPerPieceDescription(String patternId) {
         TrimPatternEntry entry = REGISTRY.get(patternId);
         return entry != null ? entry.perPieceDescription() : "";
     }
 
+    /** The four-piece set bonus mechanic for {@code patternId}, or {@code NONE} if not registered. */
     public static TrimEffects.SetBonus getSetBonus(String patternId) {
         TrimPatternEntry entry = REGISTRY.get(patternId);
         return entry != null ? entry.setBonus() : TrimEffects.SetBonus.NONE;
     }
 
+    /** Display name of the set bonus for {@code patternId}, or an empty string if not registered. */
     public static String getSetBonusName(String patternId) {
         TrimPatternEntry entry = REGISTRY.get(patternId);
         return entry != null ? entry.setBonusName() : "";
     }
 
+    /** One-line mechanic description of the set bonus for {@code patternId}, or an empty string if not registered. */
     public static String getSetBonusDescription(String patternId) {
         TrimPatternEntry entry = REGISTRY.get(patternId);
         return entry != null ? entry.setBonusDescription() : "";

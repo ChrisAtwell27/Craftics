@@ -1,0 +1,59 @@
+plugins {
+	// Use the same fabric-loom version as the Craftics root project (build.gradle line 2).
+	id 'fabric-loom' version '1.15.5'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// Craftics is published to GitHub Packages. Resolving it requires a GitHub
+	// token with the read:packages scope. See README.md.
+	maven {
+		name = 'Craftics'
+		url = 'https://maven.pkg.github.com/ChrisAtwell27/Craftics'
+		credentials {
+			username = providers.gradleProperty('gpr.user')
+				.orElse(providers.environmentVariable('GITHUB_ACTOR')).orNull
+			password = providers.gradleProperty('gpr.key')
+				.orElse(providers.environmentVariable('GITHUB_TOKEN')).orNull
+		}
+	}
+	// Repositories for Craftics' own mod dependencies (owo-lib, Cardinal
+	// Components, PlayerAnimator) so Craftics resolves and runs in the dev
+	// environment. fabric-loom adds the Fabric and Mojang repositories itself.
+	maven { name = 'KosmX';      url = 'https://maven.kosmx.dev/' }
+	maven { name = 'WispForest'; url = 'https://maven.wispforest.io/releases/' }
+	maven { name = 'Ladysnake';  url = 'https://maven.ladysnake.org/releases' }
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+	// Craftics, the mod this addon extends. modImplementation (not include) keeps
+	// it present at runtime as a separate mod, never bundled into the addon jar.
+	modImplementation "com.crackedgames:craftics:${project.craftics_version}"
+}
+
+processResources {
+	inputs.property 'version', project.version
+	filesMatching('fabric.mod.json') {
+		expand 'version': project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 21
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}

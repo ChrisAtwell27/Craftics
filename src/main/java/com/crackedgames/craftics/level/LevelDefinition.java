@@ -61,14 +61,23 @@ public abstract class LevelDefinition {
      * <p>{@code aiKey} is the {@code AIRegistry} lookup key — normally equal to
      * {@code entityTypeId}, differing only when an {@code EnemyEntry} pairs an
      * appearance with a non-matching AI strategy.
+     *
+     * <p>{@code speed} is the combat move speed in tiles per turn; {@code 0} uses
+     * the entity type's default speed.
      */
     public record EnemySpawn(String entityTypeId, GridPos position,
                               int hp, int attack, int defense, int range,
-                              String aiKey) {
-        /** Spawn whose AI matches its entity type (the common case). */
+                              String aiKey, int speed) {
+        /** Spawn whose AI matches its entity type, at the entity type's default speed. */
         public EnemySpawn(String entityTypeId, GridPos position,
                           int hp, int attack, int defense, int range) {
-            this(entityTypeId, position, hp, attack, defense, range, entityTypeId);
+            this(entityTypeId, position, hp, attack, defense, range, entityTypeId, 0);
+        }
+
+        /** Spawn with an explicit AI key, at the entity type's default speed. */
+        public EnemySpawn(String entityTypeId, GridPos position,
+                          int hp, int attack, int defense, int range, String aiKey) {
+            this(entityTypeId, position, hp, attack, defense, range, aiKey, 0);
         }
     }
 }

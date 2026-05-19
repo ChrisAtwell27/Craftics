@@ -1,0 +1,11 @@
+{
+	"_comment": "A custom Craftics enemy that adopts the Aether mod's Moa (aether:moa) as a turn-based combat enemy. 'ai' names a custom AI this addon registers in code (see MoaAI.java); it fights in melee while healthy and kites at range when wounded. 'range' 4 gives that ranged phase its reach. 'speed' 3 overrides the default move speed because a Moa is fast. Biome JSON references this enemy with {\"enemy\": \"exampleaddon:moa\"}.",
+	"id": "exampleaddon:moa",
+	"entity": "aether:moa",
+	"ai": "exampleaddon:moa",
+	"hp": 12,
+	"attack": 3,
+	"defense": 0,
+	"range": 4,
+	"speed": 3
+}

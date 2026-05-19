@@ -17,10 +17,12 @@ import java.util.List;
  * Handlers can be composed with {@link WeaponAbilityHandler#and(WeaponAbilityHandler)}.
  *
  * <p>Example:
- * <pre>
+ * <pre>{@code
  *   WeaponAbilityHandler handler = Abilities.bleed()
  *       .and(Abilities.sweepAdjacent(0.10, 0.05));
- * </pre>
+ * }</pre>
+ *
+ * @since 0.2.0
  */
 public final class Abilities {
 

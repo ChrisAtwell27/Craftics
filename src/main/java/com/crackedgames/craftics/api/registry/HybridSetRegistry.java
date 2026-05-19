@@ -10,9 +10,14 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Registry of hybrid armor sets, keyed by the unordered material pair. Mirrors
- * {@link ArmorSetRegistry}. Code-registerable; see {@code VanillaHybridSets} and
- * the Copper Age compat module for the built-in 21 entries.
+ * Registry of hybrid armor sets, keyed by the unordered material pair.
+ *
+ * <p>A hybrid entry activates when the player wears exactly two distinct armor
+ * materials across all four slots. Craftics registers 15 built-in pairs at startup
+ * via {@code VanillaHybridSets}; the Copper Age compat module adds 6 more. Addons
+ * register their own through {@code CrafticsAPI.registerHybridSet}.
+ *
+ * @since 0.2.0
  */
 public final class HybridSetRegistry {
     private static final Map<String, HybridSetEntry> REGISTRY = new ConcurrentHashMap<>();
@@ -72,7 +77,13 @@ public final class HybridSetRegistry {
         return pairKey(it.next(), it.next());
     }
 
-    /** The registered hybrid for a player's four worn armor materials, or null. */
+    /**
+     * The registered hybrid for a player's four worn armor materials, or {@code null}
+     * if the four materials do not form a valid two-material pair.
+     *
+     * @param fourMaterials the material keys for the four armor slots (none may be null)
+     * @return the matching hybrid entry, or {@code null}
+     */
     public static HybridSetEntry resolve(String[] fourMaterials) {
         String key = detectHybridPairKey(fourMaterials);
         return key == null ? null : REGISTRY.get(key);

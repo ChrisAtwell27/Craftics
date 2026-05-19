@@ -65,11 +65,22 @@ public class CombatEntity {
 
     public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
                         int maxHp, int attackPower, int defense, int range) {
-        this(entityId, entityTypeId, gridPos, maxHp, attackPower, defense, range, -1);
+        this(entityId, entityTypeId, gridPos, maxHp, attackPower, defense, range, -1, -1);
     }
 
     public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
                         int maxHp, int attackPower, int defense, int range, int sizeOverride) {
+        this(entityId, entityTypeId, gridPos, maxHp, attackPower, defense, range, sizeOverride, -1);
+    }
+
+    /**
+     * @param sizeOverride  grid size in tiles, or {@code <= 0} to use the entity type's default
+     * @param speedOverride combat move speed in tiles per turn, or {@code <= 0} to use the
+     *                      entity type's default (see {@link #getDefaultMoveSpeed})
+     */
+    public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
+                        int maxHp, int attackPower, int defense, int range,
+                        int sizeOverride, int speedOverride) {
         this.entityId = entityId;
         this.entityTypeId = entityTypeId;
         this.gridPos = gridPos;
@@ -80,7 +91,7 @@ public class CombatEntity {
         this.range = range;
         this.alive = true;
         this.size = sizeOverride > 0 ? sizeOverride : getDefaultSize(entityTypeId);
-        this.moveSpeed = getDefaultMoveSpeed(entityTypeId);
+        this.moveSpeed = speedOverride > 0 ? speedOverride : getDefaultMoveSpeed(entityTypeId);
     }
 
     public int getEntityId() { return entityId; }

@@ -19,6 +19,8 @@ import java.util.List;
  * <p>
  * Register via {@code StatModifiers.addCombatEffect(name, handler)} inside an
  * {@link EquipmentScanner}.
+ *
+ * @since 0.2.0
  */
 public interface CombatEffectHandler {
 

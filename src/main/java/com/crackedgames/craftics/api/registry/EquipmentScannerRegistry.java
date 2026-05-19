@@ -11,6 +11,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Registry of {@link com.crackedgames.craftics.api.EquipmentScanner} instances that
+ * contribute stat bonuses from non-standard inventory slots.
+ *
+ * <p>Scanners are run in insertion order before each combat. Their combined results are
+ * merged into the player's {@link com.crackedgames.craftics.api.StatModifiers}. Register
+ * scanners through {@code CrafticsAPI.registerEquipmentScanner}.
+ *
+ * @since 0.2.0
+ */
 public final class EquipmentScannerRegistry {
     private static final Map<String, EquipmentScanner> SCANNERS = new LinkedHashMap<>();
     /** Scanner IDs whose current entry came from a JSON datapack — dropped on /reload. */
@@ -41,6 +51,13 @@ public final class EquipmentScannerRegistry {
         DATAPACK_KEYS.clear();
     }
 
+    /**
+     * Run every registered scanner against {@code player} and merge the results into a
+     * single {@link StatModifiers} accumulator.
+     *
+     * @param player the player to scan
+     * @return the merged stat modifiers from all registered scanners
+     */
     public static StatModifiers scanAll(ServerPlayerEntity player) {
         StatModifiers combined = new StatModifiers();
         for (EquipmentScanner scanner : SCANNERS.values()) {

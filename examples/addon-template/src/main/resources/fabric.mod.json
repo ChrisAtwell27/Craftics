@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "exampleaddon",
+	"version": "${version}",
+	"name": "Craftics Example Addon",
+	"description": "A template Craftics addon: adds a Highlands region via JSON datapacks, and integrates the Aether mod's Zanite Sword as a Craftics weapon.",
+	"authors": [
+		"Your Name"
+	],
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"craftics": [
+			"com.example.exampleaddon.ExampleCrafticsAddon"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.16.0",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*",
+		"craftics": ">=0.2.0"
+	},
+	"suggests": {
+		"aether": "*"
+	}
+}

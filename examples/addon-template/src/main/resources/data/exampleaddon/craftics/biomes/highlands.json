@@ -1,0 +1,24 @@
+{
+	"_comment": "A custom biome (arena progression level). Selects the custom environment above. See data/craftics/craftics/biomes/ in Craftics for more examples.",
+	"id": "exampleaddon:highlands",
+	"name": "Highlands",
+	"order": 50,
+	"levels": 3,
+	"grid": { "base_width": 8, "base_height": 8, "width_growth": 1, "height_growth": 0 },
+	"floor_blocks": ["minecraft:moss_block", "minecraft:grass_block"],
+	"obstacle_blocks": ["minecraft:bamboo_block"],
+	"obstacle_density": 0.05,
+	"obstacle_density_growth": 0.01,
+	"environment": "exampleaddon:highlands",
+	"night": false,
+	"enemies": {
+		"hostile": [
+			{ "enemy": "exampleaddon:moa", "weight": 10 }
+		],
+		"boss": { "enemy": "exampleaddon:moa", "weight": 1 }
+	},
+	"loot": [
+		{ "item": "minecraft:glistering_melon_slice", "weight": 10 },
+		{ "item": "minecraft:phantom_membrane", "weight": 6 }
+	]
+}

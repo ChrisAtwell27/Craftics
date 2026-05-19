@@ -1,0 +1,8 @@
+{
+	"_comment": "An arena environment theme: the floor, border-post, and light blocks an arena is built from. Referenced by a biome's 'environment' field.",
+	"id": "exampleaddon:highlands",
+	"floor_block": "minecraft:moss_block",
+	"post_block": "minecraft:bamboo_fence",
+	"light_block": "minecraft:ochre_froglight",
+	"decor_style": "forest"
+}
