@@ -6859,8 +6859,14 @@ public class CombatManager {
                         2, 0.2, 0.3, 0.2, 0.01);
                 }
 
-                // Snap idle mobs to grid — skip currently animating + background bosses
+                // Snap idle mobs to grid — skip currently animating + background
+                // bosses + the active mount. The mount's CombatEntity gridPos
+                // tracks the player's tile, but the player's tile isn't updated
+                // until the move lerp completes; snapping the mount every tick
+                // would drag it back to the lerp's starting tile (the rubberband).
+                // Its world position is driven by the lerp tick directly.
                 if (!e.isBackgroundBoss()
+                        && !e.isMounted()
                         && (e != currentEnemy || enemyTurnState == EnemyTurnState.DONE
                         || enemyTurnState == EnemyTurnState.DECIDING)) {
                     BlockPos gridBlock = arena.gridToBlockPos(e.getGridPos());
@@ -7104,12 +7110,9 @@ public class CombatManager {
         double z = lerpStartZ + (endZ - lerpStartZ) * progress;
 
         if (playerMounted && mountMob != null) {
-            // Mounted ride: drive only the mount. The rider (player) is a
-            // passenger and the client renders them at the mount's tracked
-            // position. requestTeleport force-broadcasts the new mount
-            // position immediately so the client doesn't fall behind.
-            // CombatMountMixin neutralizes getControllingPassenger so the
-            // client's input prediction can't override our movement.
+            // Mounted ride: drive the mount via requestTeleport so the
+            // server broadcasts the new position immediately. The rider
+            // (player) renders at the mount's tracked position.
             mountMob.setYaw(playerMoveYaw);
             mountMob.setHeadYaw(playerMoveYaw);
             mountMob.setBodyYaw(playerMoveYaw);
