@@ -14,10 +14,23 @@ public class ModItems {
     private static final RegistryKey<Item> GUIDE_BOOK_KEY =
         RegistryKey.of(RegistryKeys.ITEM, Identifier.of(CrafticsMod.MOD_ID, "guide_book"));
 
+    private static final RegistryKey<Item> MOVE_ITEM_KEY =
+        RegistryKey.of(RegistryKeys.ITEM, Identifier.of(CrafticsMod.MOD_ID, "move"));
+
     public static final Item GUIDE_BOOK = registerItem("guide_book",
         new GuideBookItem(new Item.Settings()
             //? if >=1.21.2 {
             /*.registryKey(GUIDE_BOOK_KEY)
+            *///?}
+            .maxCount(1)
+            .rarity(Rarity.UNCOMMON)
+        )
+    );
+
+    public static final Item MOVE_ITEM = registerItem("move",
+        new MoveItem(new Item.Settings()
+            //? if >=1.21.2 {
+            /*.registryKey(MOVE_ITEM_KEY)
             *///?}
             .maxCount(1)
             .rarity(Rarity.UNCOMMON)

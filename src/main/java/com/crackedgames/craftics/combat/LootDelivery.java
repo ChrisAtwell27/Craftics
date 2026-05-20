@@ -45,10 +45,13 @@ public final class LootDelivery {
      * Routes battle loot to the player, preferring bundles for stackable items.
      * Call instead of {@code player.getInventory().insertStack(stack)} whenever
      * granting combat rewards, event rewards, or post-victory loot.
+     *
+     * @return the portion of {@code stack} that did not fit anywhere — empty if
+     *         the loot was fully delivered.
      */
-    public static void deliver(ServerPlayerEntity player, ItemStack stack) {
+    public static ItemStack deliver(ServerPlayerEntity player, ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
-            return;
+            return ItemStack.EMPTY;
         }
 
         // Loot tables build tipped arrows via `new ItemStack(Items.TIPPED_ARROW, n)`
@@ -70,7 +73,7 @@ public final class LootDelivery {
         // Unstackable items (max count 1) must never go into bundles.
         if (stack.getMaxCount() == 1) {
             inv.insertStack(stack);
-            return;
+            return stack;
         }
 
         // Try every bundle in the inventory until the loot stack is drained.
@@ -89,7 +92,7 @@ public final class LootDelivery {
                 slot.set(DataComponentTypes.BUNDLE_CONTENTS, builder.build());
                 stack.decrement(added);
                 if (stack.isEmpty()) {
-                    return;
+                    return ItemStack.EMPTY;
                 }
             }
         }
@@ -98,5 +101,6 @@ public final class LootDelivery {
         if (!stack.isEmpty()) {
             inv.insertStack(stack);
         }
+        return stack;
     }
 }

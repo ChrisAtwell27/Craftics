@@ -386,8 +386,6 @@ public class CombatManager {
     private boolean petsRescued = false;
 
     private CombatEntity pendingAllyAttackTarget = null;
-    /** Pet bonus message fragment ("§a+N Pet") stored until the post-animation damage message. */
-    private String pendingAllyPetMsg = "";
     /** Non-ally target chosen this turn when an enemy should focus a pet that damaged it. */
     private CombatEntity currentEnemyPetAggroTarget = null;
 
@@ -458,6 +456,9 @@ public class CombatManager {
             ServerPlayerEntity ref = firstOnlinePartyMember();
             if (ref != null) finalizeCraftingStationEvent(ref);
         }
+        if (lootPendingPlayers.remove(memberUuid) && lootPendingPlayers.isEmpty()) {
+            continueVictoryAfterLoot();
+        }
     }
 
     /** First still-online party member, or {@code null} if everyone is gone. */
@@ -473,12 +474,7 @@ public class CombatManager {
         if (!active) return;
         java.util.UUID leaverUuid = leaver.getUuid();
 
-        for (int i = 0; i < leaver.getInventory().size(); i++) {
-            ItemStack s = leaver.getInventory().getStack(i);
-            if (s.getItem() == Items.FEATHER && s.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME)) {
-                leaver.getInventory().removeStack(i);
-            }
-        }
+        // Move item is persistent across combat — no per-combat cleanup needed.
         leaver.clearStatusEffects();
         leaver.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
 
@@ -830,22 +826,8 @@ public class CombatManager {
                         }
                     }
                 }
-                // Give move feather if not already in inventory (party member)
-                boolean pmHasFeather = false;
-                for (int fi = 0; fi < member.getInventory().size(); fi++) {
-                    ItemStack fs = member.getInventory().getStack(fi);
-                    if (fs.getItem() == Items.FEATHER && fs.contains(DataComponentTypes.CUSTOM_NAME)) {
-                        pmHasFeather = true;
-                        break;
-                    }
-                }
-                if (!pmHasFeather) {
-                    ItemStack moveItem = new ItemStack(Items.FEATHER);
-                    moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("\u00a7aMove"));
-                    int pmSlot = member.getInventory().getEmptySlot();
-                    if (pmSlot == -1) pmSlot = 8;
-                    member.getInventory().setStack(pmSlot, moveItem);
-                }
+                // Move item is persistent \u2014 server tick keeps it stocked.
+                com.crackedgames.craftics.item.MoveSlotManager.enforce(member);
                 boolean partyBoss = newLevelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition pgld
                     && pgld.getBiomeTemplate() != null && pgld.getBiomeTemplate().isBossLevel(pgld.getLevelNumber());
                 if (partyBoss) {
@@ -1026,6 +1008,18 @@ public class CombatManager {
     private MobEntity mountMob = null;
     private static final int MOUNT_SPEED_BONUS = 3;
 
+    // ── Lead-command state ───────────────────────────────────────────────────
+    /** The ally currently glowing because the player picked it with a Lead. */
+    private CombatEntity leadSelectedAlly = null;
+
+    /** Lerped walk-to-target queued by a Lead move-command. */
+    private CombatEntity leadWalkAlly = null;
+    private java.util.List<GridPos> leadWalkPath = null;
+    private int leadWalkPathIndex = 0;
+    private int leadWalkTickCounter = 0;
+    private double leadWalkStartX, leadWalkStartY, leadWalkStartZ;
+    private boolean leadWalkLerpInit = false;
+
     private static final String TILE_EFFECT_REVENANT_HEAD = "revenant_head";
 
     private final java.util.Map<GridPos, String> tileEffects = new java.util.HashMap<>();
@@ -1060,8 +1054,40 @@ public class CombatManager {
     private record PendingTnt(GridPos tile, BlockPos blockPos) {}
     private final List<PendingTnt> pendingTnts = new ArrayList<>();
 
+    /**
+     * Anvil drop animation in progress: spawns a falling anvil entity above
+     * the target enemy and applies the actual Special damage when the
+     * countdown reaches 0. Vanilla anvil gravity damage is disabled.
+     */
+    private record PendingAnvil(int targetEntityId, int damage, java.util.UUID fbeUuid, int ticksLeft) {}
+    private final List<PendingAnvil> pendingAnvils = new ArrayList<>();
+
     private boolean tripleDamageNextAttack = false;
     private int windBurstDamageBonus = 0;
+    /** Armed by a Wind Charge self-launch; the next attack deals 1.5x, cleared on any move or end of turn. */
+    private boolean windChargeMomentum = false;
+
+    /** Party members whose post-victory loot screen is still open. */
+    private final java.util.Set<java.util.UUID> lootPendingPlayers = new java.util.HashSet<>();
+
+    /** Victory context stashed while loot screens are open, consumed by continueVictoryAfterLoot(). */
+    private record PendingVictory(boolean isBoss, int biomeOrdinal,
+                                  com.crackedgames.craftics.level.BiomeTemplate biomeTemplate,
+                                  int emeraldsEarned) {}
+    private PendingVictory pendingVictory;
+
+    /**
+     * Curated pool of spawn eggs awarded as rare end-of-battle loot. Using one
+     * during combat summons a temporary in-combat ally on the target tile.
+     */
+    private static final Item[] SPAWN_EGG_DROP_POOL = {
+        Items.WOLF_SPAWN_EGG, Items.CAT_SPAWN_EGG, Items.PARROT_SPAWN_EGG,
+        Items.FOX_SPAWN_EGG, Items.OCELOT_SPAWN_EGG, Items.POLAR_BEAR_SPAWN_EGG,
+        Items.AXOLOTL_SPAWN_EGG, Items.FROG_SPAWN_EGG, Items.ALLAY_SPAWN_EGG,
+        Items.BEE_SPAWN_EGG, Items.GOAT_SPAWN_EGG, Items.PANDA_SPAWN_EGG,
+        Items.TURTLE_SPAWN_EGG, Items.SNIFFER_SPAWN_EGG,
+        Items.ZOMBIE_SPAWN_EGG, Items.SKELETON_SPAWN_EGG, Items.SPIDER_SPAWN_EGG
+    };
 
     private TrimEffects.TrimScan activeTrimScan = null;
     public TrimEffects.TrimScan getTrimScan() { return activeTrimScan; }
@@ -1517,22 +1543,8 @@ public class CombatManager {
             origin.getX(), origin.getY(), origin.getZ(), size, size, -1f
         ));
 
-        // Give move feather if not already in inventory (test range)
-        boolean trHasFeather = false;
-        for (int i = 0; i < player.getInventory().size(); i++) {
-            ItemStack stack = player.getInventory().getStack(i);
-            if (stack.getItem() == Items.FEATHER && stack.contains(DataComponentTypes.CUSTOM_NAME)) {
-                trHasFeather = true;
-                break;
-            }
-        }
-        if (!trHasFeather) {
-            ItemStack moveItem = new ItemStack(Items.FEATHER);
-            moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§aMove"));
-            int trSlot = player.getInventory().getEmptySlot();
-            if (trSlot == -1) trSlot = 8;
-            player.getInventory().setStack(trSlot, moveItem);
-        }
+        // Move item is persistent — server tick keeps it stocked.
+        com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
 
         this.activeTrimScan = TrimEffects.scan(player);
         this.activeCombatEffects = activeTrimScan.getCombatEffects();
@@ -1751,6 +1763,14 @@ public class CombatManager {
             if (!resolvedPos.equals(requestedPos)) {
                 CrafticsMod.LOGGER.info("Adapted enemy spawn {} -> {} for arena {}x{}",
                     requestedPos, resolvedPos, arena.getWidth(), arena.getHeight());
+            }
+
+            // Stacked enemy (Zombie Stack, Slime Tower, etc.) — synthetic entity
+            // type id. Spawn the base layer's real mob + visual rider, seed the
+            // stack chain on the CombatEntity, and skip the normal spawn path.
+            if (StackVariants.isStackType(spawn.entityTypeId())) {
+                spawnStackedEnemy(spawn, resolvedPos, world, ngMult, finalSpawnBiomeId);
+                continue;
             }
 
             // Creaking Heart: virtual block entity (armor stand visual + creaking_heart block)
@@ -2038,6 +2058,8 @@ public class CombatManager {
             }
         }
 
+        // Stacked enemies were spawned via spawnStackedEnemy during the loop above.
+
         // Link creakings to their hearts (spawned in pairs by LevelGenerator)
         java.util.List<CombatEntity> unlinkedCreakings = new java.util.ArrayList<>();
         java.util.List<CombatEntity> unlinkedHearts = new java.util.ArrayList<>();
@@ -2065,25 +2087,8 @@ public class CombatManager {
         boolean hasUndead = enemies.stream().anyMatch(e -> isUndeadMob(e.getEntityTypeId()));
         world.setTimeOfDay((levelDef.isNightLevel() || hasUndead) ? 18000 : 6000);
 
-        // Give the player a named "Move" feather if they don't already have one
-        boolean hasFeather = false;
-        int featherSlot = -1;
-        for (int i = 0; i < player.getInventory().size(); i++) {
-            ItemStack stack = player.getInventory().getStack(i);
-            if (stack.getItem() == Items.FEATHER && stack.contains(DataComponentTypes.CUSTOM_NAME)) {
-                hasFeather = true;
-                featherSlot = i;
-                break;
-            }
-        }
-        if (!hasFeather) {
-            ItemStack moveItem = new ItemStack(Items.FEATHER);
-            moveItem.set(DataComponentTypes.CUSTOM_NAME, Text.literal("§aMove"));
-            int targetSlot = player.getInventory().getEmptySlot();
-            if (targetSlot == -1) targetSlot = 8; // fallback to slot 8 if full
-            player.getInventory().setStack(targetSlot, moveItem);
-            featherSlot = targetSlot;
-        }
+        // Move item is persistent — server tick keeps it stocked.
+        com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
         // Don't force-select the feather — let the player keep their weapon selected
         // so the first turn correctly recognises their held weapon for damage/range.
         lastHeldItem = player.getMainHandStack().getItem();
@@ -2390,6 +2395,240 @@ public class CombatManager {
         handleAction(action, player != null ? player.getUuid() : null);
     }
 
+    /**
+     * Server-side selection state for the Lead. Glows the picked ally so it
+     * shows to everyone in the party (client-side setGlowing gets reset by
+     * the data tracker sync). Pass {@code -1} to clear.
+     */
+    public void handleLeadSelect(int allyEntityId) {
+        if (!active) return;
+        // Clear the previous glow regardless.
+        if (leadSelectedAlly != null && leadSelectedAlly.getMobEntity() != null) {
+            leadSelectedAlly.getMobEntity().setGlowing(false);
+        }
+        leadSelectedAlly = null;
+        if (allyEntityId < 0) return;
+        for (CombatEntity e : enemies) {
+            if (e.getEntityId() == allyEntityId && e.isAlive() && e.isAlly()) {
+                leadSelectedAlly = e;
+                if (e.getMobEntity() != null) e.getMobEntity().setGlowing(true);
+                break;
+            }
+        }
+    }
+
+    /**
+     * Resolve a Lead-issued command. Costs 2 AP and does NOT consume the
+     * ally's own AI turn this round. Two modes:
+     * <ul>
+     *   <li>{@code targetEntityId >= 0}: the ally attacks the target enemy
+     *       (must be within 1 tile of the ally). Resolves immediately.
+     *   <li>{@code targetEntityId == -1}: the ally walks (lerped, one tile
+     *       per several ticks) toward the target tile. Path is capped at
+     *       the ally's move speed, so commanding a far-away tile sends them
+     *       as far as their speed budget allows.
+     * </ul>
+     */
+    public void handleLeadCommand(int allyEntityId, int targetX, int targetZ, int targetEntityId) {
+        if (!active) return;
+        if (phase != CombatPhase.PLAYER_TURN) return;
+        if (player == null) return;
+        // Must be holding a Lead.
+        if (player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) {
+            sendMessage("§cYou need to hold a Lead to command allies.");
+            return;
+        }
+        if (apRemaining < 2) {
+            sendMessage("§cNeed 2 AP to command an ally with the Lead!");
+            return;
+        }
+        // One walk at a time.
+        if (leadWalkAlly != null) {
+            sendMessage("§cAn ally is already moving.");
+            return;
+        }
+
+        CombatEntity ally = null;
+        for (CombatEntity e : enemies) {
+            if (e.getEntityId() == allyEntityId) { ally = e; break; }
+        }
+        if (ally == null || !ally.isAlive() || !ally.isAlly()) {
+            sendMessage("§cThat's not one of your allies.");
+            return;
+        }
+        if (ally.getOwnerUuid() != null && !ally.getOwnerUuid().equals(player.getUuid())) {
+            sendMessage("§cThat ally doesn't follow you.");
+            return;
+        }
+
+        GridPos allyPos = ally.getGridPos();
+        GridPos targetTile = new GridPos(targetX, targetZ);
+
+        if (targetEntityId >= 0) {
+            CombatEntity victim = null;
+            for (CombatEntity e : enemies) {
+                if (e.getEntityId() == targetEntityId) { victim = e; break; }
+            }
+            if (victim == null || !victim.isAlive() || victim.isAlly()) {
+                sendMessage("§cInvalid lead target.");
+                return;
+            }
+            if (victim.minDistanceTo(allyPos) > 1) {
+                sendMessage("§cThat enemy is too far from " + ally.getDisplayName() + " (need adjacent).");
+                return;
+            }
+            int rawDamage = ally.getAttackPower() + computeAllyPetBonus(ally);
+            int dealt = victim.takeDamage(rawDamage);
+            apRemaining -= 2;
+            sendMessage("§a" + ally.getDisplayName() + " strikes " + victim.getDisplayName()
+                + " for " + dealt + " damage! §7(-2 AP)");
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            if (victim.getMobEntity() != null) {
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                    victim.getMobEntity().getX(), victim.getMobEntity().getY() + 0.8,
+                    victim.getMobEntity().getZ(), 8, 0.3, 0.4, 0.3, 0.05);
+            }
+            checkAndHandleDeath(victim);
+            // Clear the glow now that the ally has acted.
+            handleLeadSelect(-1);
+            sendSync();
+            refreshHighlights();
+            return;
+        }
+
+        // Move mode — walk the ally along a pathfound route, capped at its
+        // move speed. Reject only true instakill hazards; water and divots
+        // are fair game.
+        if (!arena.isInBounds(targetTile)) {
+            sendMessage("§cTarget tile is out of bounds.");
+            return;
+        }
+        if (targetTile.equals(allyPos)) {
+            sendMessage("§c" + ally.getDisplayName() + " is already there.");
+            return;
+        }
+        if (arena.isOccupied(targetTile)) {
+            sendMessage("§cTarget tile is occupied.");
+            return;
+        }
+        GridTile gridTile = arena.getTile(targetTile);
+        if (gridTile == null || !gridTile.isWalkableEx(false, false,
+                CombatEntity.isAquatic(ally.getEntityTypeId()))) {
+            sendMessage("§cTarget tile isn't walkable.");
+            return;
+        }
+        com.crackedgames.craftics.core.TileType tt = gridTile.getType();
+        boolean instakill = tt == com.crackedgames.craftics.core.TileType.LAVA
+            || tt == com.crackedgames.craftics.core.TileType.FIRE
+            || tt == com.crackedgames.craftics.core.TileType.VOID
+            || (tt == com.crackedgames.craftics.core.TileType.DEEP_WATER
+                && !CombatEntity.isAquatic(ally.getEntityTypeId()));
+        if (instakill && !ally.isHazardImmune()) {
+            sendMessage("§cThat tile would kill " + ally.getDisplayName() + ".");
+            return;
+        }
+
+        int allySpeed = Math.max(1, ally.getMoveSpeed());
+        java.util.List<GridPos> path = com.crackedgames.craftics.combat.Pathfinding
+            .findPath(arena, allyPos, targetTile, allySpeed, ally);
+        if (path == null || path.isEmpty()) {
+            sendMessage("§c" + ally.getDisplayName() + " can't reach that tile (max "
+                + allySpeed + " tile" + (allySpeed == 1 ? "" : "s") + " per command).");
+            return;
+        }
+
+        apRemaining -= 2;
+        sendMessage("§a" + ally.getDisplayName() + " moves! §7(-2 AP)");
+        startLeadWalk(ally, path);
+        // Clear the glow once the walk starts.
+        handleLeadSelect(-1);
+        sendSync();
+    }
+
+    /** Kick off a per-tick lerped walk for a lead-commanded ally. */
+    private void startLeadWalk(CombatEntity ally, java.util.List<GridPos> path) {
+        leadWalkAlly = ally;
+        leadWalkPath = path;
+        leadWalkPathIndex = 0;
+        leadWalkTickCounter = 0;
+        leadWalkLerpInit = false;
+    }
+
+    /**
+     * Advance the active lead-commanded walk one tick. Mirrors the regular
+     * enemy lerp logic (4 ticks per tile) but lives outside the enemy-turn
+     * state machine so it can run during the player's turn.
+     */
+    private void tickLeadWalk() {
+        if (leadWalkAlly == null || leadWalkPath == null || leadWalkPath.isEmpty()) return;
+        if (!leadWalkAlly.isAlive() || leadWalkAlly.getMobEntity() == null) {
+            clearLeadWalk();
+            return;
+        }
+        if (leadWalkPathIndex >= leadWalkPath.size()) {
+            clearLeadWalk();
+            refreshHighlights();
+            return;
+        }
+        MobEntity mob = leadWalkAlly.getMobEntity();
+        GridPos next = leadWalkPath.get(leadWalkPathIndex);
+        BlockPos endBlock = arena.gridToBlockPos(next);
+        double moveOffset = leadWalkAlly.getSize() > 1 ? leadWalkAlly.getSize() / 2.0 : 0.5;
+        boolean flying = leadWalkAlly.isFlying();
+        double endX = endBlock.getX() + moveOffset;
+        double endY = arena.getEntityY(next, flying);
+        double endZ = endBlock.getZ() + moveOffset;
+
+        if (!leadWalkLerpInit) {
+            leadWalkStartX = mob.getX();
+            leadWalkStartY = mob.getY();
+            leadWalkStartZ = mob.getZ();
+            leadWalkLerpInit = true;
+            // Face the destination.
+            int dx = next.x() - leadWalkAlly.getGridPos().x();
+            int dz = next.z() - leadWalkAlly.getGridPos().z();
+            float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            mob.setYaw(yaw);
+            mob.setHeadYaw(yaw);
+        }
+
+        leadWalkTickCounter++;
+        int ticks = getMoveTicks();
+        float progress = Math.min(1.0f, (float) leadWalkTickCounter / ticks);
+        double x = leadWalkStartX + (endX - leadWalkStartX) * progress;
+        double y = leadWalkStartY + (endY - leadWalkStartY) * progress;
+        double z = leadWalkStartZ + (endZ - leadWalkStartZ) * progress;
+        mob.requestTeleport(x, y, z);
+
+        if (leadWalkTickCounter >= ticks) {
+            arena.moveEntity(leadWalkAlly, next);
+            leadWalkPathIndex++;
+            leadWalkTickCounter = 0;
+            leadWalkLerpInit = false;
+            if (leadWalkPathIndex >= leadWalkPath.size()) {
+                sendSync();
+                clearLeadWalk();
+                refreshHighlights();
+            }
+        }
+    }
+
+    private void clearLeadWalk() {
+        leadWalkAlly = null;
+        leadWalkPath = null;
+        leadWalkPathIndex = 0;
+        leadWalkTickCounter = 0;
+        leadWalkLerpInit = false;
+    }
+
+    /**
+     * Arms the Wind Charge momentum bonus. Called by a Wind Charge self-launch;
+     * the player's next attack deals 1.5x damage unless they move first.
+     */
+    public void setWindChargeMomentum(boolean armed) {
+        this.windChargeMomentum = armed;
+    }
+
     private void handleMove(GridPos target) {
         if (!arena.isInBounds(target)) return;
 
@@ -2426,6 +2665,10 @@ public class CombatManager {
             }
             return;
         }
+
+        // Walking forfeits Wind Charge momentum — the strike must come right
+        // after the launch, with no move in between.
+        windChargeMomentum = false;
 
         // Check if path crosses water — boat prevents Soaked effect
         boolean pathHasWater = false;
@@ -2554,8 +2797,23 @@ public class CombatManager {
         net.minecraft.util.math.BlockPos tileBlock = arena.gridToBlockPos(targetTile);
         net.minecraft.block.BlockState mined = world.getBlockState(tileBlock);
 
+        // Player-placed walls refund their block when mined. Cache the item
+        // before clearing the wall so the lookup survives the clear call.
+        com.crackedgames.craftics.core.GridArena.PlacedWall placed = arena.getPlacedWall(targetTile);
+        net.minecraft.item.Item refundItem = placed != null ? placed.item() : null;
+        // Tell the client to stop the breaking animation on this tile.
+        sendBlockBreakingProgress(targetTile, -1);
+
         arena.clearVfxObstacle(world, targetTile);
         apRemaining -= 1;
+
+        if (refundItem != null) {
+            net.minecraft.item.ItemStack refund = new net.minecraft.item.ItemStack(refundItem);
+            if (!player.getInventory().insertStack(refund)) {
+                player.dropItem(refund, false);
+            }
+            sendMessage("§7⛏ Wall picked up.");
+        }
 
         // Mining VFX
         net.minecraft.particle.BlockStateParticleEffect blockEffect =
@@ -2569,7 +2827,9 @@ public class CombatManager {
         world.playSound(null, tileBlock, net.minecraft.sound.SoundEvents.BLOCK_STONE_BREAK,
             net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.1f);
 
-        sendMessage("§7⛏ Mined obstacle!");
+        if (refundItem == null) {
+            sendMessage("§7⛏ Mined obstacle!");
+        }
         sendSync();
         refreshHighlights();
     }
@@ -2597,8 +2857,14 @@ public class CombatManager {
             // on MC versions where the post-build tile scan didn't tag it).
             boolean isStealth = StealthTiles.isStealthTile(arena, clickedTile, player.getEntityWorld());
             if (isStealth) {
-                int dist = arena.getPlayerGridPos().manhattanDistance(clickedTile);
-                if (dist > 1) {
+                // Chebyshev distance so diagonals (the 8 surrounding tiles) count
+                // as adjacent — players can clear grass/ferns boxing them in from
+                // a corner, not just from the four cardinal sides.
+                GridPos pPos = arena.getPlayerGridPos();
+                int chebyshev = Math.max(
+                    Math.abs(pPos.x() - clickedTile.x()),
+                    Math.abs(pPos.z() - clickedTile.z()));
+                if (chebyshev > 1) {
                     sendMessage("§cMust be adjacent to break grass.");
                     return;
                 }
@@ -2672,6 +2938,21 @@ public class CombatManager {
         }
         if (target == null) {
             sendMessage("§cNo valid target!");
+            return;
+        }
+
+        // Clicking an ally is never an attack. Holding that ally's heal item
+        // heals it (routed through the use-item path); anything else is rejected
+        // without spending the turn.
+        if (target.isAlly()) {
+            com.crackedgames.craftics.api.registry.AllyEntry allyEntry =
+                com.crackedgames.craftics.api.registry.AllyRegistry.getOrNull(target.getEntityTypeId());
+            if (allyEntry != null && allyEntry.healItem() != null
+                    && player.getMainHandStack().isOf(allyEntry.healItem())) {
+                handleUseItem(target.getGridPos());
+            } else {
+                sendMessage("§c" + target.getDisplayName() + " is your ally — you can't attack it!");
+            }
             return;
         }
 
@@ -2767,11 +3048,14 @@ public class CombatManager {
         }
 
         // Ranged ammo requirement: bows/crossbows need ammo unless bow has Infinity.
+        // A firework rocket in the offhand is valid crossbow ammo (rocket crossbow).
         boolean isBowWeapon = weapon == Items.BOW;
         boolean isCrossbowWeapon = weapon == Items.CROSSBOW;
+        boolean crossbowRocket = isCrossbowWeapon
+            && player.getOffHandStack().isOf(Items.FIREWORK_ROCKET);
         if (isBowWeapon || isCrossbowWeapon) {
             boolean hasInfinity = isBowWeapon && PlayerCombatStats.hasInfinity(player);
-            if (!hasInfinity && !PlayerCombatStats.hasArrows(player)) {
+            if (!hasInfinity && !crossbowRocket && !PlayerCombatStats.hasArrows(player)) {
                 sendMessage("§cYou need arrows to use ranged weapons!");
                 return;
             }
@@ -2887,8 +3171,10 @@ public class CombatManager {
             java.util.Collections.emptySet(), attackYaw, 0f, true);
         *///?}
 
+        // Rocket crossbow shots spend a firework rocket (consumed by the crossbow
+        // weapon ability), not an arrow — skip arrow/tipped-arrow consumption.
         String tippedEffect = null;
-        if (PlayerCombatStats.isBow(player) || weapon == Items.CROSSBOW) {
+        if ((PlayerCombatStats.isBow(player) || weapon == Items.CROSSBOW) && !crossbowRocket) {
             if (PlayerCombatStats.hasTippedArrows(player)) {
                 tippedEffect = PlayerCombatStats.findAndConsumeTippedArrow(player);
             } else if (!PlayerCombatStats.hasInfinity(player)) {
@@ -3096,6 +3382,14 @@ public class CombatManager {
         if (weapon == Items.MACE && windBurstDamageBonus > 0) {
             baseDamage += windBurstDamageBonus;
             windBurstDamageBonus = 0;
+        }
+
+        // Wind Charge momentum — striking immediately after a self-launch (with
+        // no move in between) deals 1.5x total damage.
+        if (windChargeMomentum) {
+            baseDamage = Math.round(baseDamage * 1.5f);
+            windChargeMomentum = false;
+            sendMessage("§f✨ Wind-charge momentum! 1.5x damage!");
         }
 
         // Axes deal 50% bonus damage to Creaking Hearts (wood blocks)
@@ -4065,6 +4359,13 @@ public class CombatManager {
 
     private void checkAndHandleDeath(CombatEntity entity) {
         if (!entity.isAlive() && !entity.isDeathProcessed()) {
+            // Stacked enemies: instead of dying, drop a layer and transform
+            // into the next form on the same tile. The rider joins the enemy
+            // turn order from the NEXT round because actedThisRound is set so
+            // the freshly-revealed mob doesn't get a free turn this round.
+            if (entity.hasStackLayers()) {
+                if (transformStackLayer(entity)) return;
+            }
             entity.markDeathProcessed();
 
             // Creaking Heart death → destroy the heart block AND kill the linked Creaking
@@ -4277,6 +4578,215 @@ public class CombatManager {
             case "minecraft:cow", "minecraft:pig", "minecraft:sheep", "minecraft:chicken" -> true;
             default -> false;
         };
+    }
+
+    /**
+     * Spawn a stacked enemy (Zombie Stack, Slime Tower, etc). The first layer
+     * is built as the real combat mob; the remaining layers are seeded onto the
+     * CombatEntity so it transforms instead of dying on each "kill". The
+     * second layer's entity type is spawned as a visual passenger riding the
+     * base for the iconic "rider on mount" look.
+     */
+    private void spawnStackedEnemy(LevelDefinition.EnemySpawn spawn, GridPos resolvedPos,
+                                    ServerWorld world, float ngMult, String biomeId) {
+        StackVariants.StackDef def = StackVariants.getByTypeId(spawn.entityTypeId());
+        if (def == null || def.layers().isEmpty()) {
+            CrafticsMod.LOGGER.warn("Unknown stack type '{}' — skipping", spawn.entityTypeId());
+            return;
+        }
+
+        StackVariants.Layer baseLayer = def.layers().get(0);
+        Identifier baseTypeId = Identifier.of(baseLayer.entityTypeId());
+        if (!Registries.ENTITY_TYPE.containsId(baseTypeId)) {
+            CrafticsMod.LOGGER.warn("Stack base '{}' has unknown entity type, skipping", baseLayer.entityTypeId());
+            return;
+        }
+        EntityType<?> baseType = Registries.ENTITY_TYPE.get(baseTypeId);
+        BlockPos blockPos = arena.gridToBlockPos(resolvedPos);
+
+        var rawBase = baseType.create(world, null, blockPos, SpawnReason.MOB_SUMMONED, false, false);
+        if (!(rawBase instanceof MobEntity baseMob)) {
+            CrafticsMod.LOGGER.warn("Stack base '{}' failed to spawn", baseLayer.entityTypeId());
+            return;
+        }
+        prepareArenaMob(baseMob, blockPos, biomeId);
+        // Adult zombies/piglins in stacks must NOT be baby — the rider above
+        // them is the baby. Force baby=false on the base mob explicitly.
+        if (baseMob instanceof net.minecraft.entity.passive.PassiveEntity passive) {
+            passive.setBaby(false);
+        } else if (baseMob instanceof net.minecraft.entity.mob.ZombieEntity zEnt) {
+            zEnt.setBaby(false);
+        } else if (baseMob instanceof net.minecraft.entity.mob.PiglinEntity pEnt) {
+            pEnt.setBaby(false);
+        }
+        world.spawnEntity(baseMob);
+
+        // Spawn the visual passenger (next layer up) and mount it on the base.
+        String passengerType = def.passengerTypeFor(0);
+        if (passengerType != null) {
+            spawnAndMountPassenger(baseMob, passengerType, world);
+        }
+
+        int partySize = getAllParticipants().size();
+        double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * 0.25 : 1.0;
+        double hpMult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
+        int scaledHp = Math.max(1, (int)(baseLayer.hp() * ngMult * hpMult * partyHpMult));
+        int scaledAtk = Math.max(1, (int)(baseLayer.attack() * ngMult));
+
+        CombatEntity ce = new CombatEntity(
+            baseMob.getId(), baseLayer.entityTypeId(), resolvedPos,
+            scaledHp, scaledAtk, baseLayer.defense(), baseLayer.range(),
+            -1, baseLayer.speed()
+        );
+        ce.setMobEntity(baseMob);
+        ce.setStackDisplayName(baseLayer.displayName());
+        ce.setStackId(def.id());
+
+        // Seed the remaining layers (everything after the base). These will be
+        // popped one at a time on each "death" until only the final form
+        // remains, at which point the entity dies normally.
+        if (def.layers().size() > 1) {
+            ce.setStackChain(def.layers().subList(1, def.layers().size()));
+        }
+
+        // Blaze Tower has bespoke turn behavior (triple fireball, immobile)
+        // while it has more than the final layer remaining. The final blaze
+        // falls through to the normal BlazeAI.
+        if ("blaze_tower".equals(def.id())) {
+            ce.setAiInstance(new com.crackedgames.craftics.combat.ai.BlazeTowerAI());
+        }
+
+        enemies.add(ce);
+        arena.placeEntity(ce);
+        fireEffectHook(h -> h.onEnemySpawn(effectContext, ce));
+    }
+
+    /** Apply the standard arena-mob settings to a freshly-created MobEntity. */
+    private void prepareArenaMob(MobEntity mob, BlockPos blockPos, String biomeId) {
+        mob.refreshPositionAndAngles(
+            blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5, 0, 0);
+        mob.setAiDisabled(true);
+        mob.setInvulnerable(true);
+        mob.setNoGravity(true);
+        mob.noClip = true;
+        mob.setPersistent();
+        mob.addCommandTag("craftics_arena");
+        var atkAttr = mob.getAttributeInstance(ATTACK_DAMAGE_ATTR);
+        if (atkAttr != null) atkAttr.setBaseValue(0.0);
+    }
+
+    /** Spawn a cosmetic mob that rides {@code mount}. The passenger is fully invulnerable and arena-tagged. */
+    private void spawnAndMountPassenger(MobEntity mount, String passengerTypeId, ServerWorld world) {
+        Identifier pId = Identifier.of(passengerTypeId);
+        if (!Registries.ENTITY_TYPE.containsId(pId)) return;
+        EntityType<?> pType = Registries.ENTITY_TYPE.get(pId);
+        var rawRider = pType.create(world, null, mount.getBlockPos(), SpawnReason.MOB_SUMMONED, false, false);
+        if (!(rawRider instanceof MobEntity riderMob)) return;
+        riderMob.refreshPositionAndAngles(mount.getX(), mount.getY(), mount.getZ(), 0, 0);
+        riderMob.setAiDisabled(true);
+        riderMob.setInvulnerable(true);
+        riderMob.setNoGravity(true);
+        riderMob.noClip = true;
+        riderMob.setPersistent();
+        riderMob.addCommandTag("craftics_arena");
+        riderMob.addCommandTag("craftics_stack_visual");
+        // Baby variant for the baby-zombie-on-adult-zombie stack.
+        if (passengerTypeId.equals("minecraft:zombie") && mount instanceof net.minecraft.entity.mob.ZombieEntity) {
+            if (riderMob instanceof net.minecraft.entity.mob.ZombieEntity rz) rz.setBaby(true);
+        }
+        world.spawnEntity(riderMob);
+        riderMob.startRiding(mount, true);
+    }
+
+    /**
+     * Discard any cosmetic passenger riders on a stack mob (tagged with
+     * craftics_stack_visual). Called when a stack transforms or fully dies so
+     * the visual passenger doesn't linger.
+     */
+    private void clearStackPassengers(MobEntity mount) {
+        if (mount == null) return;
+        for (net.minecraft.entity.Entity p : new java.util.ArrayList<>(mount.getPassengerList())) {
+            if (p.getCommandTags().contains("craftics_stack_visual")) {
+                p.stopRiding();
+                p.discard();
+            }
+        }
+    }
+
+    /**
+     * Consume the next layer of a stack and morph {@code entity} into it,
+     * despawning the old mob and spawning a fresh mob of the new type at the
+     * same tile. Returns true if the transformation succeeded — in that case
+     * the entity stays alive and {@code checkAndHandleDeath} bails without
+     * running its normal death side effects.
+     */
+    private boolean transformStackLayer(CombatEntity entity) {
+        java.util.List<StackVariants.Layer> chain = entity.getStackChain();
+        if (chain == null || chain.isEmpty()) return false;
+        StackVariants.Layer next = chain.remove(0);
+
+        StackVariants.StackDef def = entity.getStackId() != null
+            ? StackVariants.get(entity.getStackId()) : null;
+
+        // Despawn the old mob (and its cosmetic passenger).
+        MobEntity oldMob = entity.getMobEntity();
+        GridPos pos = entity.getGridPos();
+        if (oldMob != null) {
+            clearStackPassengers(oldMob);
+            oldMob.discard();
+        }
+
+        // Spawn the new layer's mob at the same tile.
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos blockPos = arena.gridToBlockPos(pos);
+        Identifier newTypeId = Identifier.of(next.entityTypeId());
+        if (!Registries.ENTITY_TYPE.containsId(newTypeId)) {
+            CrafticsMod.LOGGER.warn("Stack next layer '{}' has unknown entity type", next.entityTypeId());
+            return false;
+        }
+        EntityType<?> newType = Registries.ENTITY_TYPE.get(newTypeId);
+        var rawNew = newType.create(world, null, blockPos, SpawnReason.MOB_SUMMONED, false, false);
+        if (!(rawNew instanceof MobEntity newMob)) {
+            CrafticsMod.LOGGER.warn("Stack next layer '{}' failed to spawn", next.entityTypeId());
+            return false;
+        }
+        prepareArenaMob(newMob, blockPos, null);
+        // Baby zombie for the second layer of a zombie_stack.
+        if ("zombie_stack".equals(entity.getStackId()) && newMob instanceof net.minecraft.entity.mob.ZombieEntity zEnt) {
+            zEnt.setBaby(true);
+        }
+        world.spawnEntity(newMob);
+        entity.setMobEntity(newMob);
+
+        // Mount the layer above this one as the visual passenger, if any.
+        int currentLayerIndex = def != null ? (def.layers().size() - 1 - chain.size()) : -1;
+        if (def != null && currentLayerIndex >= 0) {
+            String passengerType = def.passengerTypeFor(currentLayerIndex);
+            if (passengerType != null) spawnAndMountPassenger(newMob, passengerType, world);
+        }
+
+        // Re-arm CombatEntity stats from the new layer.
+        entity.applyStackLayer(next, newMob.getId());
+
+        // Swap the per-entity AI to match the new layer. Blaze Tower uses the
+        // bespoke triple-fire AI on tower layers; the final lone blaze uses
+        // the regular BlazeAI so it keeps the 5-turn barrage cycle.
+        if ("blaze_tower".equals(entity.getStackId())) {
+            if (chain.isEmpty()) {
+                entity.setAiInstance(new com.crackedgames.craftics.combat.ai.BlazeAI());
+            } else {
+                entity.setAiInstance(new com.crackedgames.craftics.combat.ai.BlazeTowerAI());
+            }
+        }
+
+        // Joins next round, not this one.
+        entity.setActedThisRound(true);
+
+        // Sync to clients and post a flavor message so the player knows the
+        // stack collapsed by one tier.
+        sendMessage("§e" + entity.getDisplayName() + " drops down!");
+        sendSync();
+        return true;
     }
 
     private static boolean isUndeadMob(String entityTypeId) {
@@ -4658,7 +5168,7 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, sword);
                 scaleBoss(mob, 1.6);
             }
-            case "dark_forest" -> { // The Hexweaver — Evoker
+            case "forest" -> { // The Hexweaver — Evoker
                 mob.setCustomName(Text.literal("§2§lThe Hexweaver"));
                 mob.setCustomNameVisible(true);
                 // Evoker already has robes; enchanted hat for magical look
@@ -4671,7 +5181,7 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, hat);
                 scaleBoss(mob, 1.5);
             }
-            case "snowy_tundra" -> { // The Frostbound Huntsman — Stray
+            case "snowy" -> { // The Frostbound Huntsman — Stray
                 mob.setCustomName(Text.literal("§b§lThe Frostbound Huntsman"));
                 mob.setCustomNameVisible(true);
                 ItemStack crown = new ItemStack(Items.DIAMOND_HELMET);
@@ -4683,7 +5193,7 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.LEATHER_CHESTPLATE));
                 scaleBoss(mob, 1.5);
             }
-            case "stony_peaks" -> { // The Rockbreaker — Vindicator
+            case "mountain" -> { // The Rockbreaker — Vindicator
                 mob.setCustomName(Text.literal("§7§lThe Rockbreaker"));
                 mob.setCustomNameVisible(true);
                 // Stone-plated armor
@@ -4796,7 +5306,7 @@ public class CombatManager {
                 mob.setCustomNameVisible(true);
                 // Wither is naturally large — no scaling needed
             }
-            case "outer_end" -> { // The Void Herald — Enderman
+            case "outer_end_islands" -> { // The Void Herald — Enderman
                 mob.setCustomName(Text.literal("§d§lThe Void Herald"));
                 mob.setCustomNameVisible(true);
                 // No equipment — channels the void
@@ -4876,17 +5386,17 @@ public class CombatManager {
                         sw.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME,
                             x, y + 1.5, z, 2, 0.3, 0.5, 0.3, 0.01);
                 }
-                case "dark_forest" -> { // Swirling potion particles
+                case "forest" -> { // Swirling potion particles
                     if (tickCounter % 6 == 0)
                         sw.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH,
                             x, y + 1.0, z, 3, 0.4, 0.6, 0.4, 0.02);
                 }
-                case "snowy_tundra" -> { // Pale blue snowflakes
+                case "snowy" -> { // Pale blue snowflakes
                     if (tickCounter % 8 == 0)
                         sw.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE,
                             x, y + 1.2, z, 3, 0.5, 0.8, 0.5, 0.01);
                 }
-                case "stony_peaks" -> { // Dust / rock particles
+                case "mountain" -> { // Dust / rock particles
                     if (tickCounter % 12 == 0)
                         sw.spawnParticles(net.minecraft.particle.ParticleTypes.ASH,
                             x, y + 0.3, z, 4, 0.5, 0.2, 0.5, 0.01);
@@ -4949,7 +5459,7 @@ public class CombatManager {
                             x, y + 0.5, z, 3, 0.5, 0.3, 0.5, 0.01);
                     }
                 }
-                case "outer_end" -> { // Storm / electric
+                case "outer_end_islands" -> { // Storm / electric
                     if (tickCounter % 6 == 0)
                         sw.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
                             x, y + 2.0, z, 3, 0.6, 1.0, 0.6, 0.03);
@@ -5155,7 +5665,7 @@ public class CombatManager {
         BlockPos endBlock = arena.gridToBlockPos(next);
         double moveOffset = (currentEnemy != null && currentEnemy.getSize() > 1) ? currentEnemy.getSize() / 2.0 : 0.5;
         double endX = endBlock.getX() + moveOffset;
-        double endY = arena.getEntityY(next);
+        double endY = arena.getEntityY(next, currentEnemy != null && currentEnemy.isFlying());
         double endZ = endBlock.getZ() + moveOffset;
 
         int emTicks = getMoveTicks();
@@ -5191,6 +5701,18 @@ public class CombatManager {
             com.crackedgames.craftics.api.registry.UsableItemRegistry.getOrNull(heldItem);
         if (customEntry != null) {
             handleCustomUsableItem(targetTile, customEntry);
+            return;
+        }
+
+        // Spawn eggs summon a temporary in-combat ally on the target tile.
+        if (heldItem instanceof net.minecraft.item.SpawnEggItem) {
+            handleSpawnEggSummon(heldStack, targetTile);
+            return;
+        }
+
+        // Eligible blocks place a temporary wall obstacle on the target tile.
+        if (WallBlocks.isEligible(heldStack)) {
+            handleWallBlockPlacement(heldStack, targetTile);
             return;
         }
 
@@ -5429,6 +5951,14 @@ public class CombatManager {
                         net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
                 }
 
+                // Player-placed utility blocks: physically drop the right block
+                // in the world. Full-cube blocks (honey, slime, jukebox, sponge,
+                // powder snow) also turn their tile into an OBSTACLE so the
+                // grid pathing respects the wall. Non-full-cube blocks
+                // (campfire, scaffolding, spore blossom, bell) only place the
+                // block — the tile stays walkable.
+                placeUtilityBlock(effectType, effectPos);
+
                 // Player-placed banner: place a real, color-correct banner block.
                 // Tile stays NORMAL — banners have no collision; player can stand on/walk through.
                 if ("banner".equals(effectType) && tileInfo.length >= 4) {
@@ -5448,6 +5978,7 @@ public class CombatManager {
                     if ("water".equals(effectType)) effectTile.setType(TileType.WATER);
                     else if ("lava".equals(effectType)) effectTile.setType(TileType.LAVA);
                     else if ("fire".equals(effectType)) effectTile.setType(TileType.FIRE);
+                    else if ("powder_snow".equals(effectType)) effectTile.setType(TileType.POWDER_SNOW);
                 }
             }
             // Process message part - handle GIVE: prefix for item rewards
@@ -5460,6 +5991,7 @@ public class CombatManager {
                     net.minecraft.item.Item giveItem = switch (itemId) {
                         case "water_bucket" -> Items.WATER_BUCKET;
                         case "lava_bucket" -> Items.LAVA_BUCKET;
+                        case "bucket" -> Items.BUCKET;
                         default -> null;
                     };
                     if (giveItem != null) {
@@ -5497,6 +6029,22 @@ public class CombatManager {
         // Fishing result — strip prefix, display the catch message
         if (result.startsWith(ItemUseHandler.FISHING_PREFIX)) {
             sendMessage(result.substring(ItemUseHandler.FISHING_PREFIX.length()));
+        }
+        // Anvil drop — spawn a falling anvil entity above the target and defer
+        // the actual damage until the block lands. Vanilla anvil gravity damage
+        // is disabled; only the queued base damage applies.
+        if (result.startsWith(ItemUseHandler.ANVIL_DROP_PREFIX)) {
+            String data = result.substring(ItemUseHandler.ANVIL_DROP_PREFIX.length());
+            String[] parts = data.split("\\|", 2);
+            String[] body = parts[0].split(":");
+            if (body.length >= 2) {
+                try {
+                    int targetEntityId = Integer.parseInt(body[0]);
+                    int damage = Integer.parseInt(body[1]);
+                    spawnAnvilDrop(targetEntityId, damage);
+                } catch (NumberFormatException ignored) {}
+            }
+            if (parts.length > 1) sendMessage(parts[1]);
         }
         // Goat horn effect — apply buff/debuff
         if (result.startsWith(ItemUseHandler.HORN_EFFECT_PREFIX)) {
@@ -5873,6 +6421,8 @@ public class CombatManager {
             sendSync();
         }
         killedThisTurn = false;
+        // Wind Charge momentum is a same-turn window — it does not carry over.
+        windChargeMomentum = false;
 
 
         // Lazy init: party members register AFTER startCombat, so the queue may be empty on first use
@@ -6052,6 +6602,21 @@ public class CombatManager {
         }
 
         tickCounter++;
+
+        // Keep the hidden fire-resistance baseline alive. Other effect sources
+        // (potions, sherds, totem revival) can override the icon-hidden ambient
+        // version we apply on combat start with a visible-icon one. Force ours
+        // back whenever the active FIRE_RESISTANCE instance is showing an icon
+        // or particles, so the inventory UI doesn't misleadingly tell players
+        // they're lava-immune. Players ARE protected from ambient fire damage,
+        // but the lava/fire tile damage runs through Craftics' tile system.
+        enforceHiddenFireResistance();
+
+        // Advance any lead-commanded walk animation.
+        tickLeadWalk();
+
+        // Advance any in-flight anvil drops.
+        tickPendingAnvils();
 
         // Decay per-mob animation state so a forgotten setter can't freeze a pose.
         if (enemies != null) {
@@ -6813,6 +7378,8 @@ public class CombatManager {
                 }
             }
 
+            tickPlacedWalls();
+
             String expired = combatEffects.tickTurn();
             if (expired != null) {
                 // Strip vanilla status effects that mapped to expired combat effects
@@ -6837,7 +7404,7 @@ public class CombatManager {
                 sendMessage("§a♥ Trim regen healed " + trimRegen + " HP");
             }
 
-            int hpChange = combatEffects.applyPerTurnEffects();
+            int hpChange = combatEffects.applyPerTurnEffects(SpecialAffinity.points(player));
             if (hpChange != 0 && player != null) {
                 float newHp = Math.max(1, Math.min(player.getMaxHealth(), player.getHealth() + hpChange));
                 player.setHealth(newHp);
@@ -6887,10 +7454,15 @@ public class CombatManager {
                 }
                 if ("campfire".equals(effect)) {
                     GridPos pPos = arena.getPlayerGridPos();
-                    int d = Math.abs(pPos.x() - tPos.x()) + Math.abs(pPos.z() - tPos.z());
-                    if (d <= 1) {
-                        player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 1));
-                        sendMessage("§6Campfire heals 1 HP.");
+                    // 5x5 square around the campfire = Chebyshev distance <= 2.
+                    int dx = Math.abs(pPos.x() - tPos.x());
+                    int dz = Math.abs(pPos.z() - tPos.z());
+                    if (Math.max(dx, dz) <= 2) {
+                        float healed = Math.min(player.getMaxHealth(), player.getHealth() + 2);
+                        if (healed > player.getHealth()) {
+                            player.setHealth(healed);
+                            sendMessage("§6Campfire heals 2 HP.");
+                        }
                     }
                 }
                 if ("poison_cloud".equals(effect)) {
@@ -7833,7 +8405,6 @@ public class CombatManager {
                 }
                 totalDamage += petBonus;
             }
-            pendingAllyPetMsg = petBonus > 0 ? " §a+" + petBonus + " Pet" : "";
             pendingAllyAttackTarget = target;
             pendingAction = new EnemyAction.MoveAndAttackMob(
                 attack.path(), target.getEntityId(), totalDamage);
@@ -8255,7 +8826,7 @@ public class CombatManager {
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER,
                             player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
                         addEffectHooked(CombatEffects.EffectType.POISON, 3, 1);
-                        sendMessage("§2  Poisoned! (-2 HP/turn for 3 turns)");
+                        sendMessage("§2  Poisoned for 3 turns!");
                     }
                     case "hex_bolt" -> {
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.WITCH,
@@ -8279,6 +8850,24 @@ public class CombatManager {
                         // Sonic boom ruptures your hearing and sight — you go blind.
                         addEffectHooked(CombatEffects.EffectType.BLINDNESS, 3, 0);
                         sendMessage("§8  The sonic boom blinds you! (3 turns)");
+                    }
+                    case "poison_arrow" -> {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME,
+                            player.getX(), player.getY() + 0.8, player.getZ(), 8, 0.3, 0.4, 0.3, 0.02);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.HAPPY_VILLAGER,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.2, 0.3, 0.2, 0.01);
+                        addEffectHooked(CombatEffects.EffectType.POISON, 3, 1);
+                        sendMessage("§2  Poisoned for 3 turns!");
+                    }
+                    case "wind_charge" -> {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.GUST,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 8, 0.4, 0.4, 0.4, 0.02);
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                            player.getX(), player.getY() + 1.0, player.getZ(), 2, 0.2, 0.2, 0.2, 0.0);
+                        world.playSound(null, player.getBlockPos(),
+                            net.minecraft.sound.SoundEvents.ENTITY_WIND_CHARGE_WIND_BURST.value(),
+                            net.minecraft.sound.SoundCategory.HOSTILE, 1.2f, 0.9f);
+                        applyWindChargeKnockback(currentEnemy);
                     }
                     default -> {
                         world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
@@ -8731,7 +9320,7 @@ public class CombatManager {
                 sendMessage("§c  Explosion hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 if (!combatEffects.hasFireResistance()) {
                     addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
-                    sendMessage("§6  You're burning! (-1 HP/turn for 2 turns)");
+                    sendMessage("§6  You're burning for 2 turns!");
                 }
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
@@ -8786,7 +9375,7 @@ public class CombatManager {
                 int actual = damagePlayer(damage);
                 sendMessage("§8  Wither Skull hits for " + actual + " damage!");
                 addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
-                sendMessage("§8  Wither applied! (-2 HP/turn for 3 turns)");
+                sendMessage("§8  Withered for 3 turns! (damage ramps up)");
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
         }
@@ -8884,16 +9473,27 @@ public class CombatManager {
             case "burning", "fire", "magma", "raining_fireball" -> {
                 if (!combatEffects.hasFireResistance()) {
                     addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
-                    sendMessage("§6  You're burning! (-1 HP/turn for 2 turns)");
+                    sendMessage("§6  You're burning for 2 turns!");
                 }
             }
             case "poison", "venom", "web_poison" -> {
                 addEffectHooked(CombatEffects.EffectType.POISON, 3, 0);
-                sendMessage("§2  Poison applied! (-1 HP/turn for 3 turns)");
+                sendMessage("§2  Poisoned for 3 turns!");
             }
             case "wither", "wither_slash" -> {
                 addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
-                sendMessage("§8  Wither applied! (-2 HP/turn for 3 turns)");
+                sendMessage("§8  Withered for 3 turns! (damage ramps up)");
+            }
+            case "wither_decay" -> {
+                // Decay aura tick — short refresh of Wither so standing in
+                // the aura every turn keeps the player at peak Wither stacks.
+                addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
+                sendMessage("§8  Decay aura corrupts you! (Withered 3 turns)");
+            }
+            case "wither_explosion" -> {
+                // Phase 2 transition burst — heavier and longer-lasting.
+                addEffectHooked(CombatEffects.EffectType.WITHER, 4, 1);
+                sendMessage("§4  The Wither's roar withers you to the bone! (Wither II, 4 turns)");
             }
             case "darkness", "lights_out" -> {
                 // Check if the player is standing in a lit zone (torch/lantern)
@@ -9824,6 +10424,148 @@ public class CombatManager {
     }
 
     /**
+     * Spawn a falling-block anvil visual above the target enemy, queue the
+     * actual damage to apply when it lands (~12 ticks). The block is
+     * non-damaging on impact — Craftics' base damage applies instead. Falling
+     * block has a kill-after-landing flag so it doesn't add an obstacle.
+     */
+    private void spawnAnvilDrop(int targetEntityId, int damage) {
+        CombatEntity victim = null;
+        for (CombatEntity e : enemies) {
+            if (e.getEntityId() == targetEntityId) { victim = e; break; }
+        }
+        if (victim == null || !victim.isAlive()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos targetBp = arena.gridToBlockPos(victim.getGridPos());
+        double cx = targetBp.getX() + 0.5;
+        double cz = targetBp.getZ() + 0.5;
+        // Spawn 6 blocks above the target so the fall is visible but quick.
+        double spawnY = targetBp.getY() + 6.0;
+
+        //? if <=1.21.1 {
+        net.minecraft.entity.FallingBlockEntity fbe =
+            net.minecraft.entity.EntityType.FALLING_BLOCK.create(world);
+        //?} else {
+        /*net.minecraft.entity.FallingBlockEntity fbe =
+            net.minecraft.entity.EntityType.FALLING_BLOCK.create(world, net.minecraft.entity.SpawnReason.TRIGGERED);
+        *///?}
+        if (fbe == null) return;
+        net.minecraft.nbt.NbtCompound nbt = new net.minecraft.nbt.NbtCompound();
+        fbe.writeNbt(nbt);
+        nbt.put("BlockState",
+            net.minecraft.nbt.NbtHelper.fromBlockState(Blocks.ANVIL.getDefaultState()));
+        nbt.putBoolean("DropItem", false);
+        nbt.putBoolean("HurtEntities", false);
+        nbt.putInt("Time", 1);
+        fbe.readNbt(nbt);
+        fbe.setPosition(cx, spawnY, cz);
+        fbe.setVelocity(0, -0.4, 0);
+        fbe.timeFalling = 1;
+        world.spawnEntity(fbe);
+
+        pendingAnvils.add(new PendingAnvil(targetEntityId, damage, fbe.getUuid(), 14));
+
+        world.playSound(null, targetBp,
+            net.minecraft.sound.SoundEvents.BLOCK_ANVIL_FALL,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.85f);
+    }
+
+    /**
+     * Tick pending anvil drops once per combat tick. When the countdown hits
+     * 0, discard the visual entity, apply the queued Special damage, and run
+     * the death check. Mirrors the pendingTnts tick pattern.
+     */
+    private void tickPendingAnvils() {
+        if (pendingAnvils.isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        java.util.Iterator<PendingAnvil> it = pendingAnvils.iterator();
+        while (it.hasNext()) {
+            PendingAnvil pa = it.next();
+            int next = pa.ticksLeft() - 1;
+            if (next > 0) {
+                // Replace with a decremented copy (record is immutable).
+                int idx = pendingAnvils.indexOf(pa);
+                pendingAnvils.set(idx, new PendingAnvil(pa.targetEntityId(), pa.damage(), pa.fbeUuid(), next));
+                // Iterator is now stale — we set in place so continue.
+                continue;
+            }
+            it.remove();
+            // Discard the visual falling block before vanilla can convert it.
+            net.minecraft.entity.Entity fbe = world.getEntity(pa.fbeUuid());
+            if (fbe != null) fbe.discard();
+
+            CombatEntity victim = null;
+            for (CombatEntity e : enemies) {
+                if (e.getEntityId() == pa.targetEntityId()) { victim = e; break; }
+            }
+            if (victim == null || !victim.isAlive()) continue;
+            int dealt = victim.takeDamage(pa.damage());
+            BlockPos vbp = arena.gridToBlockPos(victim.getGridPos());
+            world.playSound(null, vbp,
+                net.minecraft.sound.SoundEvents.BLOCK_ANVIL_LAND,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+            world.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
+                    net.minecraft.particle.ParticleTypes.BLOCK,
+                    Blocks.ANVIL.getDefaultState()),
+                vbp.getX() + 0.5, vbp.getY() + 0.3, vbp.getZ() + 0.5,
+                14, 0.4, 0.1, 0.4, 0.05);
+            sendMessage("§8Anvil crushes " + victim.getDisplayName()
+                + " for " + dealt + " Special damage!");
+            checkAndHandleDeath(victim);
+            sendSync();
+            refreshHighlights();
+        }
+    }
+
+    /**
+     * Drop a real block in the world for a placed utility-item tile effect, and
+     * mark the tile as OBSTACLE when the block is a full cube so pathing
+     * respects the wall. Non-full-cube blocks (campfire, scaffolding, spore
+     * blossom, bell) leave the tile walkable.
+     */
+    private void placeUtilityBlock(String effectType, GridPos effectPos) {
+        if (effectPos == null || !arena.isInBounds(effectPos)) return;
+        net.minecraft.block.Block block;
+        boolean obstacle;
+        boolean atFloorLevel; // honey/slime sit IN the floor (trap), not on top of it
+        switch (effectType) {
+            case "campfire"      -> { block = Blocks.CAMPFIRE;      obstacle = false; atFloorLevel = false; }
+            case "scaffold"      -> { block = Blocks.SCAFFOLDING;   obstacle = false; atFloorLevel = false; }
+            case "spore_blossom" -> { block = Blocks.SPORE_BLOSSOM; obstacle = false; atFloorLevel = false; }
+            case "bell"          -> { block = Blocks.BELL;          obstacle = false; atFloorLevel = false; }
+            case "jukebox"       -> { block = Blocks.JUKEBOX;       obstacle = true;  atFloorLevel = false; }
+            case "sponge"        -> { block = Blocks.SPONGE;        obstacle = true;  atFloorLevel = false; }
+            // Honey + slime are TRAPS, not walls — they replace the floor block
+            // so the enemy walks ONTO them and triggers the effect. Tile stays
+            // walkable so pathing AI doesn't route around them.
+            case "honey"         -> { block = Blocks.HONEY_BLOCK;   obstacle = false; atFloorLevel = true;  }
+            case "slime"         -> { block = Blocks.SLIME_BLOCK;   obstacle = false; atFloorLevel = true;  }
+            // Powder snow keeps the existing TileType.POWDER_SNOW behavior
+            // (mobs sink into it / freeze) rather than becoming an OBSTACLE.
+            // The tile type is set by the caller's setType branch.
+            case "powder_snow"   -> { block = Blocks.POWDER_SNOW;   obstacle = false; atFloorLevel = false; }
+            default -> { return; } // not a utility-block effect
+        }
+        BlockPos bp = arena.gridToBlockPos(effectPos);
+        if (atFloorLevel) bp = bp.down();
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        world.setBlockState(bp, block.getDefaultState(),
+            net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+        GridTile tile = arena.getTile(effectPos);
+        if (tile != null) {
+            if (obstacle) {
+                tile.setType(TileType.OBSTACLE);
+                tile.setBlockType(block);
+            } else if (!atFloorLevel) {
+                // Don't overwrite the floor block type for floor-level traps
+                // (honey/slime) — we need the original block ID preserved so
+                // the trap can restore the floor on consumption.
+                tile.setBlockType(block);
+            }
+        }
+    }
+
+    /**
      * Unregister a light zone at the given position.
      */
     private void unregisterLightZone(GridPos pos) {
@@ -10421,7 +11163,7 @@ public class CombatManager {
         BlockPos endBlock = arena.gridToBlockPos(next);
         double moveOffset = (currentEnemy != null && currentEnemy.getSize() > 1) ? currentEnemy.getSize() / 2.0 : 0.5;
         double endX = endBlock.getX() + moveOffset;
-        double endY = arena.getEntityY(next);
+        double endY = arena.getEntityY(next, currentEnemy != null && currentEnemy.isFlying());
         double endZ = endBlock.getZ() + moveOffset;
 
         int emTicks2 = getMoveTicks();
@@ -10505,6 +11247,35 @@ public class CombatManager {
                 enemyMovePathIndex = enemyMovePath.size();
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                // Restore the original floor block under the consumed honey.
+                BlockPos honeyBp = arena.gridToBlockPos(next).down();
+                ServerWorld honeyWorld = (ServerWorld) player.getEntityWorld();
+                GridTile honeyTile = arena.getTile(next);
+                net.minecraft.block.Block honeyRestore = honeyTile != null
+                    ? honeyTile.getBlockType() : getBiomeFloorBlock();
+                honeyWorld.setBlockState(honeyBp, honeyRestore.getDefaultState(),
+                    net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                return;
+            }
+
+            // Check for slime trap — enemy bounces, gets stunned + loses
+            // remaining movement. Consume the trap (one bounce per slime block).
+            if (tileEffects.containsKey(next) && "slime".equals(tileEffects.get(next))) {
+                sendMessage("§a" + currentEnemy.getDisplayName() + " bounces off the slime block!");
+                tileEffects.remove(next);
+                currentEnemy.setStunned(true);
+                enemyLerpInitialized = false;
+                enemyMovePathIndex = enemyMovePath.size();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                // Replace the slime block visual with the original floor block.
+                BlockPos slimeBp = arena.gridToBlockPos(next).down();
+                ServerWorld slimeWorld = (ServerWorld) player.getEntityWorld();
+                GridTile slimeTile = arena.getTile(next);
+                net.minecraft.block.Block restoreFloor = slimeTile != null
+                    ? slimeTile.getBlockType() : getBiomeFloorBlock();
+                slimeWorld.setBlockState(slimeBp, restoreFloor.getDefaultState(),
+                    net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
                 return;
             }
 
@@ -11007,9 +11778,7 @@ public class CombatManager {
         // Ally pet attack resolution — damage applies after the animation completes
         if (currentEnemy.isAlly() && pendingAction instanceof EnemyAction.MoveAndAttackMob maam) {
             CombatEntity allyTarget = findEnemyById(maam.targetEntityId());
-            String petMsg = pendingAllyPetMsg;
             pendingAllyAttackTarget = null;
-            pendingAllyPetMsg = "";
             if (allyTarget != null && allyTarget.isAlive()) {
                 int dealt = allyTarget.takeDamage(maam.damage());
                 allyTarget.setAggroAllyEntityId(currentEnemy.getEntityId());
@@ -11018,7 +11787,7 @@ public class CombatManager {
                     ? com.crackedgames.craftics.combat.ai.ally.AllyAbilities.applyOnHit(currentEnemy, allyTarget)
                     : "";
                 sendMessage("§a" + currentEnemy.getDisplayName() + " attacks "
-                    + allyTarget.getDisplayName() + " for " + dealt + " damage!" + petMsg + abilityMsg);
+                    + allyTarget.getDisplayName() + " for " + dealt + " damage!" + abilityMsg);
                 // Addon combat effects: ally attack notification
                 final CombatEntity fAlly = currentEnemy;
                 final CombatEntity fAllyTarget = allyTarget;
@@ -11028,6 +11797,10 @@ public class CombatManager {
                     // Addon combat effects: ally kill notification
                     fireEffectHook(h -> h.onAllyKill(effectContext, fAlly, fAllyTarget));
                     killEnemy(allyTarget);
+                }
+                // Bee allies pay the same sting recoil as enemy bees do.
+                if ("minecraft:bee".equals(currentEnemy.getEntityTypeId())) {
+                    applyBeeStingRecoil(currentEnemy);
                 }
             }
             sendSync();
@@ -11683,6 +12456,55 @@ public class CombatManager {
     }
 
     /**
+     * Breeze wind charge: punt the player 2 tiles away from the breeze, then
+     * blow every entity adjacent to the player's new position 2 tiles further
+     * outward. Stops early on walls, obstacles, occupants, or hazards.
+     */
+    private void applyWindChargeKnockback(CombatEntity breeze) {
+        if (breeze == null) return;
+        GridPos breezePos = breeze.getGridPos();
+        GridPos playerStart = arena.getPlayerGridPos();
+        int pdx = Integer.signum(playerStart.x() - breezePos.x());
+        int pdz = Integer.signum(playerStart.z() - breezePos.z());
+        if (pdx == 0 && pdz == 0) { pdx = 1; }
+
+        GridPos playerLanding = playerStart;
+        for (int i = 1; i <= 2; i++) {
+            GridPos candidate = new GridPos(playerStart.x() + pdx * i, playerStart.z() + pdz * i);
+            if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) break;
+            GridTile tile = arena.getTile(candidate);
+            if (tile == null || !tile.isWalkable()) break;
+            playerLanding = candidate;
+        }
+        if (!playerLanding.equals(playerStart)) {
+            arena.setPlayerGridPos(playerLanding);
+            BlockPos bp = arena.gridToBlockPos(playerLanding);
+            player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+        }
+
+        // Push every entity adjacent to the player's new position 2 tiles
+        // outward (away from the player). Diagonals included so the gust
+        // radiates in all 8 directions.
+        java.util.List<CombatEntity> nearby = new java.util.ArrayList<>();
+        for (CombatEntity e : enemies) {
+            if (e == null || !e.isAlive() || e == breeze) continue;
+            GridPos epos = e.getGridPos();
+            int dx = epos.x() - playerLanding.x();
+            int dz = epos.z() - playerLanding.z();
+            if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1 && !(dx == 0 && dz == 0)) {
+                nearby.add(e);
+            }
+        }
+        for (CombatEntity e : nearby) {
+            GridPos epos = e.getGridPos();
+            int dx = Integer.signum(epos.x() - playerLanding.x());
+            int dz = Integer.signum(epos.z() - playerLanding.z());
+            if (dx == 0 && dz == 0) continue;
+            knockEnemyBack(e, dx, dz, 2);
+        }
+    }
+
+    /**
      * Knock an enemy back, allowing them to land on hazard tiles (void/lava/water).
      * Returns the final landing position.
      */
@@ -11779,7 +12601,7 @@ public class CombatManager {
             arena.moveEntity(enemy, landingPos);
             if (enemy.getMobEntity() != null) {
                 var bp = arena.gridToBlockPos(landingPos);
-                enemy.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(landingPos), bp.getZ() + 0.5);
+                enemy.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(landingPos, enemy.isFlying()), bp.getZ() + 0.5);
             }
 
             if (hitHazard) {
@@ -11864,12 +12686,18 @@ public class CombatManager {
         switch (entityTypeId) {
             case "minecraft:wither_skeleton" -> {
                 addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
-                sendMessage("§8  Wither effect applied! (-2 HP/turn for 3 turns)");
+                sendMessage("§8  Withered for 3 turns! (damage ramps up)");
+            }
+            case "minecraft:wither" -> {
+                // The Wither boss applies Wither II on every direct hit — the
+                // signature mechanic of the boss. Stronger than its minions.
+                addEffectHooked(CombatEffects.EffectType.WITHER, 4, 1);
+                sendMessage("§8  Withered II for 4 turns! (damage ramps up)");
             }
             case "minecraft:blaze" -> {
                 if (!combatEffects.hasFireResistance()) {
                     addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
-                    sendMessage("§6  You're burning! (-1 HP/turn for 2 turns)");
+                    sendMessage("§6  You're burning for 2 turns!");
                 }
             }
             case "minecraft:husk" -> {
@@ -11886,7 +12714,7 @@ public class CombatManager {
             }
             case "minecraft:witch" -> {
                 addEffectHooked(CombatEffects.EffectType.POISON, 3, 0);
-                sendMessage("§2  Poison applied! (-1 HP/turn for 3 turns)");
+                sendMessage("§2  Poisoned for 3 turns!");
             }
             case "minecraft:shulker" -> {
                 addEffectHooked(CombatEffects.EffectType.SLOWNESS, 2, 0);
@@ -11896,7 +12724,7 @@ public class CombatManager {
                 // Ghast fireball splash: also damages nearby enemies? No — just applies burning
                 if (!combatEffects.hasFireResistance()) {
                     addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
-                    sendMessage("§6  Fireball burns you! (-1 HP/turn for 2 turns)");
+                    sendMessage("§6  Fireball burns you for 2 turns!");
                 }
             }
             case "minecraft:breeze" -> {
@@ -11908,13 +12736,60 @@ public class CombatManager {
                 sendMessage("§5  Dragon breath weakens you! (-2 attack for 2 turns)");
             }
             case "minecraft:bee" -> {
-                addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
-                sendMessage("§2  Bee sting! Poison applied! (-1 HP/turn for 2 turns)");
+                addEffectHooked(CombatEffects.EffectType.POISON, 3, 0);
+                sendMessage("§2  Bee sting! Poisoned for 3 turns!");
             }
             case "minecraft:llama" -> {
                 sendMessage("§a  Splat! Llama spit!");
             }
             default -> {} // no special effect
+        }
+        // Bee post-attack recoil: stinging the player costs the bee 25% of its
+        // max HP every time it attacks, just like the vanilla bee dying after
+        // a sting.
+        if ("minecraft:bee".equals(entityTypeId) && currentEnemy != null) {
+            applyBeeStingRecoil(currentEnemy);
+        }
+    }
+
+    /**
+     * Bees lose 25% of their max HP every time they attack (rounded up, min 1).
+     * Models the vanilla "bees die after stinging" mechanic without one-shotting
+     * them, since arena bees have boosted HP. Kills the bee if recoil drops it.
+     */
+    /**
+     * Count live allies that belong to {@code owner}. Used to gate spawn-egg
+     * summons against the player's party cap. Unowned arena tames count as
+     * belonging to the local active player.
+     */
+    private int countOwnedAllies(ServerPlayerEntity owner) {
+        if (owner == null) return 0;
+        java.util.UUID ownerId = owner.getUuid();
+        int n = 0;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || !e.isAlly()) continue;
+            java.util.UUID eOwner = e.getOwnerUuid();
+            if (eOwner == null && owner == player) { n++; continue; }
+            if (eOwner != null && eOwner.equals(ownerId)) n++;
+        }
+        return n;
+    }
+
+    private void applyBeeStingRecoil(CombatEntity bee) {
+        if (bee == null || !bee.isAlive()) return;
+        if (!"minecraft:bee".equals(bee.getEntityTypeId())) return;
+        int recoil = Math.max(1, (bee.getMaxHp() + 3) / 4);
+        bee.takeDamage(recoil);
+        if (bee.getMobEntity() != null && player != null
+                && player.getEntityWorld() instanceof ServerWorld bw) {
+            bw.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                bee.getMobEntity().getX(), bee.getMobEntity().getY() + 0.5,
+                bee.getMobEntity().getZ(), 4, 0.2, 0.2, 0.2, 0.02);
+        }
+        sendMessage("§e  " + bee.getDisplayName() + " loses " + recoil
+            + " HP from stinging. (" + bee.getCurrentHp() + "/" + bee.getMaxHp() + ")");
+        if (!bee.isAlive()) {
+            checkAndHandleDeath(bee);
         }
     }
 
@@ -12247,7 +13122,7 @@ public class CombatManager {
                     ItemStack stack = p.getInventory().getStack(slot);
                     if (stack.isEmpty()) continue;
                     Item item = stack.getItem();
-                    if (item == Items.FEATHER || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
+                    if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
                     p.getInventory().setStack(slot, ItemStack.EMPTY);
                     itemsLost++;
                 }
@@ -12283,7 +13158,7 @@ public class CombatManager {
 
                 var mainHand = p.getMainHandStack();
                 if (!mainHand.isEmpty()
-                    && mainHand.getItem() != Items.FEATHER
+                    && mainHand.getItem() != com.crackedgames.craftics.item.ModItems.MOVE_ITEM
                     && !(mainHand.getItem() instanceof com.crackedgames.craftics.item.GuideBookItem)) {
                     dropped = mainHand.copy();
                     //? if <=1.21.4 {
@@ -12297,7 +13172,7 @@ public class CombatManager {
                         ItemStack stack = p.getInventory().getStack(slot);
                         if (stack.isEmpty()) continue;
                         Item item = stack.getItem();
-                        if (item == Items.FEATHER || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
+                        if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
                         dropped = stack.copy();
                         p.getInventory().setStack(slot, ItemStack.EMPTY);
                         break;
@@ -12307,7 +13182,7 @@ public class CombatManager {
                 if (dropped.isEmpty()) {
                     ItemStack offhand = p.getOffHandStack();
                     if (!offhand.isEmpty()
-                        && offhand.getItem() != Items.FEATHER
+                        && offhand.getItem() != com.crackedgames.craftics.item.ModItems.MOVE_ITEM
                         && !(offhand.getItem() instanceof com.crackedgames.craftics.item.GuideBookItem)) {
                         dropped = offhand.copy();
                         p.setStackInHand(net.minecraft.util.Hand.OFF_HAND, ItemStack.EMPTY);
@@ -12319,7 +13194,7 @@ public class CombatManager {
                         ItemStack stack = p.getInventory().getStack(slot);
                         if (stack.isEmpty()) continue;
                         Item item = stack.getItem();
-                        if (item == Items.FEATHER || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
+                        if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
                         dropped = stack.copy();
                         p.getInventory().setStack(slot, ItemStack.EMPTY);
                         break;
@@ -12363,6 +13238,22 @@ public class CombatManager {
         if (!enemy.isAlly() && !enemy.isDeathProcessed() && enemy.getMobEntity() != null) {
             rollMobEquipmentDrops(enemy);
         }
+        // Ally died: drop from the persistent battle-party list right now so
+        // the cap-aware spawn-egg gate, party HUD, and post-fight pet collector
+        // all see the slot freed without waiting for combat to end.
+        if (enemy.isAlly() && enemy.getMobEntity() != null && player != null
+                && enemy.getMobEntity().getEntityWorld() instanceof ServerWorld dw) {
+            java.util.UUID mobUuid = enemy.getMobEntity().getUuid();
+            java.util.UUID ownerId = enemy.getOwnerUuid() != null
+                ? enemy.getOwnerUuid() : player.getUuid();
+            com.crackedgames.craftics.world.CrafticsSavedData savedData =
+                com.crackedgames.craftics.world.CrafticsSavedData.get(dw);
+            com.crackedgames.craftics.world.CrafticsSavedData.PlayerData pd =
+                savedData.getPlayerData(ownerId);
+            if (pd.getPartyMobs().remove(mobUuid)) {
+                savedData.markDirty();
+            }
+        }
         // Background bosses occupy many manually-registered tiles — clear them all
         if (enemy.isBackgroundBoss()) {
             arena.getOccupants().values().removeIf(e -> e == enemy);
@@ -12404,6 +13295,49 @@ public class CombatManager {
         boolean allDead = enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly());
         if (allDead) {
             handleVictory();
+        }
+    }
+
+    /**
+     * Delivers a loot stack to a recipient; any portion that did not fit is
+     * recorded in {@code overflow} keyed by the recipient's UUID.
+     */
+    private static void deliverLoot(ServerPlayerEntity recipient, ItemStack stack,
+                                    java.util.Map<java.util.UUID, List<ItemStack>> overflow) {
+        ItemStack leftover = LootDelivery.deliver(recipient, stack);
+        if (leftover != null && !leftover.isEmpty()) {
+            overflow.computeIfAbsent(recipient.getUuid(), k -> new ArrayList<>()).add(leftover);
+        }
+    }
+
+    /**
+     * Opens the post-victory loot screen for one player, pre-filled with their overflow.
+     * Returns whether the screen actually opened (false if the player already had a screen open).
+     */
+    private boolean openLootScreen(ServerPlayerEntity p, List<ItemStack> overflowItems) {
+        net.minecraft.inventory.SimpleInventory lootInv = new net.minecraft.inventory.SimpleInventory(
+            com.crackedgames.craftics.screen.LootManagementScreenHandler.LOOT_SLOTS);
+        int placed = 0;
+        for (ItemStack item : overflowItems) {
+            if (placed >= com.crackedgames.craftics.screen.LootManagementScreenHandler.LOOT_SLOTS) {
+                CrafticsMod.LOGGER.warn(
+                    "[Craftics] Loot overflow exceeded {} slots for {} — {} item(s) discarded",
+                    com.crackedgames.craftics.screen.LootManagementScreenHandler.LOOT_SLOTS,
+                    p.getName().getString(), overflowItems.size() - placed);
+                break;
+            }
+            lootInv.setStack(placed++, item);
+        }
+        return p.openHandledScreen(new net.minecraft.screen.SimpleNamedScreenHandlerFactory(
+            (syncId, playerInv, viewer) ->
+                new com.crackedgames.craftics.screen.LootManagementScreenHandler(syncId, playerInv, lootInv),
+            net.minecraft.text.Text.literal("Battle Loot"))).isPresent();
+    }
+
+    /** Called by the loot screen handler when a player closes their loot screen. */
+    public void handleLootScreenClosed(ServerPlayerEntity p) {
+        if (lootPendingPlayers.remove(p.getUuid()) && lootPendingPlayers.isEmpty()) {
+            continueVictoryAfterLoot();
         }
     }
 
@@ -12466,6 +13400,7 @@ public class CombatManager {
 
         // Give mob drops to each party participant individually (each player rolls their own loot)
         List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
+        java.util.Map<java.util.UUID, List<ItemStack>> lootOverflow = new java.util.HashMap<>();
         int luckBonusItems = PlayerProgression.get((ServerWorld) player.getEntityWorld())
             .getStats(player).getPoints(PlayerProgression.Stat.LUCK);
         for (CombatEntity enemy : enemies) {
@@ -12479,7 +13414,7 @@ public class CombatManager {
                     if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
                         drop.setCount(drop.getCount() + 1);
                     }
-                    LootDelivery.deliver(recipient, drop);
+                    deliverLoot(recipient, drop, lootOverflow);
                 }
             }
             // Broadcast a representative message (leader's perspective)
@@ -12494,7 +13429,7 @@ public class CombatManager {
                     if (Math.random() < CrafticsMod.CONFIG.goatHornDropChance() + luckBonusItems * 0.02) {
                         ItemStack horn = GoatHornEffects.createRandomHorn(player.getRegistryManager());
                         if (horn != null) {
-                            LootDelivery.deliver(recipient, horn);
+                            deliverLoot(recipient, horn, lootOverflow);
                             sendMessageTo(recipient, "§6§l+ Goat Horn! " + horn.getName().getString());
                         }
                     }
@@ -12522,7 +13457,7 @@ public class CombatManager {
                     if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
                         item.setCount(item.getCount() + 1);
                     }
-                    LootDelivery.deliver(recipient, item);
+                    deliverLoot(recipient, item, lootOverflow);
                 }
             }
             // Show a representative loot message
@@ -12539,9 +13474,20 @@ public class CombatManager {
             Item sherdItem = sherdList.get(new java.util.Random().nextInt(sherdList.size()));
             ItemStack sherdStack = new ItemStack(sherdItem);
             for (ServerPlayerEntity recipient : rewardRecipients) {
-                LootDelivery.deliver(recipient, sherdStack.copy());
+                deliverLoot(recipient, sherdStack.copy(), lootOverflow);
             }
             sendMessage("§d§l✦ RARE DROP: " + sherdStack.getName().getString() + "!");
+        }
+
+        // Rare spawn egg drop (Luck boosts chance) — summons a temporary ally in combat.
+        float eggChance = 0.04f + luckBonusItems * 0.01f;
+        if (eggChance > 0 && Math.random() < eggChance) {
+            Item eggItem = SPAWN_EGG_DROP_POOL[new java.util.Random().nextInt(SPAWN_EGG_DROP_POOL.length)];
+            ItemStack eggStack = new ItemStack(eggItem);
+            for (ServerPlayerEntity recipient : rewardRecipients) {
+                deliverLoot(recipient, eggStack.copy(), lootOverflow);
+            }
+            sendMessage("§e§l✦ RARE DROP: " + eggStack.getName().getString() + "!");
         }
 
         // Award emeralds (scales with biome progression)
@@ -12612,7 +13558,7 @@ public class CombatManager {
                 lastDroppedTrim = trimItem;
                 ItemStack trimStack = new ItemStack(trimItem);
                 for (ServerPlayerEntity recipient : rewardRecipients) {
-                    LootDelivery.deliver(recipient, trimStack.copy());
+                    deliverLoot(recipient, trimStack.copy(), lootOverflow);
                 }
                 sendMessage("\u00a7b\u00a7l\u2726 RARE DROP: " + trimStack.getName().getString() + "!");
 
@@ -12629,6 +13575,48 @@ public class CombatManager {
             }
         }
 
+        // Stash the victory context, then route through the loot screen for any
+        // player whose rewards overflowed a full inventory. continueVictoryAfterLoot()
+        // runs the boss / non-boss branch — immediately, or once every loot screen closes.
+        this.pendingVictory = new PendingVictory(isBoss, biomeOrdinal, biomeTemplate, emeraldsEarned);
+        if (lootOverflow.isEmpty()) {
+            continueVictoryAfterLoot();
+        } else {
+            lootPendingPlayers.clear();
+            lootPendingPlayers.addAll(lootOverflow.keySet());
+            for (java.util.Map.Entry<java.util.UUID, List<ItemStack>> entry : lootOverflow.entrySet()) {
+                ServerPlayerEntity p = world.getServer().getPlayerManager().getPlayer(entry.getKey());
+                if (p == null || !openLootScreen(p, entry.getValue())) {
+                    lootPendingPlayers.remove(entry.getKey());
+                }
+            }
+            // Every player with overflow has since disconnected — continue anyway.
+            if (lootPendingPlayers.isEmpty()) {
+                continueVictoryAfterLoot();
+            }
+        }
+    }
+
+    /**
+     * Runs the boss / non-boss victory branch — either straight after loot
+     * delivery (no overflow) or once every player's loot screen has closed.
+     */
+    private void continueVictoryAfterLoot() {
+        PendingVictory pv = this.pendingVictory;
+        this.pendingVictory = null;
+        if (pv == null) return;
+        boolean isBoss = pv.isBoss();
+        int biomeOrdinal = pv.biomeOrdinal();
+        com.crackedgames.craftics.level.BiomeTemplate biomeTemplate = pv.biomeTemplate();
+        int emeraldsEarned = pv.emeraldsEarned();
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        java.util.UUID dataOwner = leaderUuid != null ? leaderUuid : player.getUuid();
+        CrafticsSavedData.PlayerData ld = data.getPlayerData(dataOwner);
+        List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
+
+        // ===== begin block moved verbatim from handleVictory =====
         // Check combat feat achievements for ALL victories (boss and non-boss)
         if (!isBoss) {
             for (ServerPlayerEntity recipient : rewardRecipients) {
@@ -12805,6 +13793,7 @@ public class CombatManager {
             // But do clear the arena
             clearHighlights();
         }
+        // ===== end moved block =====
     }
 
     /**
@@ -13871,7 +14860,7 @@ public class CombatManager {
                 ItemStack stack = p.getInventory().getStack(i);
                 if (stack.isEmpty()) continue;
                 Item item = stack.getItem();
-                if (item == Items.FEATHER || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
+                if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
                 //? if <=1.21.4 {
                 boolean isWeapon = item instanceof net.minecraft.item.SwordItem || item instanceof net.minecraft.item.AxeItem
                         || item instanceof net.minecraft.item.HoeItem || item instanceof net.minecraft.item.ShovelItem
@@ -15110,21 +16099,7 @@ public class CombatManager {
             CrafticsMod.LOGGER.warn("endCombat: game rule/mode reset failed: {}", e.getMessage());
         }
 
-        // Remove only the named Move feather from all participants' inventories
-        try {
-            for (ServerPlayerEntity p : getAllParticipants()) {
-                if (p != null) {
-                    for (int i = 0; i < p.getInventory().size(); i++) {
-                        ItemStack stack = p.getInventory().getStack(i);
-                        if (stack.getItem() == Items.FEATHER && stack.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME)) {
-                            p.getInventory().removeStack(i);
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            CrafticsMod.LOGGER.warn("endCombat: feather cleanup failed: {}", e.getMessage());
-        }
+        // Move item is persistent — kept across combat exit by the per-tick MoveSlotManager.
 
         // Dismount and discard mount mob
         try {
@@ -15273,6 +16248,8 @@ public class CombatManager {
         testRange = false;
         combatEffects.clear();
         tileEffects.clear();
+        lootPendingPlayers.clear();
+        pendingVictory = null;
         // Reset for the next combat — the pet disposition is undecided again.
         petsRescued = false;
 
@@ -15486,7 +16463,7 @@ public class CombatManager {
 
         // --- Build move tiles ---
         var held = player.getMainHandStack().getItem();
-        boolean isMoveMode = (held == Items.FEATHER);
+        boolean isMoveMode = (held == com.crackedgames.craftics.item.ModItems.MOVE_ITEM);
 
         java.util.List<Integer> moveList = new java.util.ArrayList<>();
         java.util.List<Integer> attackList = new java.util.ArrayList<>();
@@ -15759,6 +16736,278 @@ public class CombatManager {
         ));
     }
 
+    /**
+     * Per-turn tick for player-placed wall blocks: decrement remaining turns,
+     * update the breaking-animation overlay so players can see expiry coming,
+     * and silently clear walls that hit zero.
+     */
+    private void tickPlacedWalls() {
+        if (arena == null) return;
+        java.util.Map<GridPos, com.crackedgames.craftics.core.GridArena.PlacedWall> walls = arena.getPlacedWalls();
+        if (walls.isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        // Copy keys so we can mutate the map during iteration.
+        for (GridPos pos : new java.util.ArrayList<>(walls.keySet())) {
+            com.crackedgames.craftics.core.GridArena.PlacedWall pw = walls.get(pos);
+            if (pw == null) continue;
+            int next = pw.turnsRemaining() - 1;
+            if (next <= 0) {
+                sendBlockBreakingProgress(pos, -1);
+                arena.clearVfxObstacle(world, pos);
+                continue;
+            }
+            arena.setPlacedWallTurns(pos, next);
+            // Map remaining-turns to a 0..9 breaking-stage value. Newer walls
+            // (close to start) get a small crack, walls one tick from expiry
+            // get the deepest visible crack.
+            int start = Math.max(1, pw.startTurns());
+            int consumed = start - next;
+            int stage = Math.min(9, Math.max(0, (consumed * 9) / start));
+            sendBlockBreakingProgress(pos, stage);
+        }
+    }
+
+    /**
+     * Send the vanilla block-breaking-progress S2C packet to every party
+     * member so the crack overlay shows on the wall tile. {@code stage} is
+     * 0..9 for visible cracks or {@code -1} to clear.
+     */
+    private void sendBlockBreakingProgress(GridPos pos, int stage) {
+        if (player == null || arena == null) return;
+        BlockPos bp = arena.gridToBlockPos(pos);
+        // Use a per-tile pseudo-entity id derived from the tile coords so
+        // each wall gets its own breaking-info slot in the client cache.
+        int sourceId = -100000 - (pos.x() * 1024 + pos.z());
+        net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket packet =
+            new net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket(sourceId, bp, stage);
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p != null && p.networkHandler != null) {
+                p.networkHandler.sendPacket(packet);
+            }
+        }
+    }
+
+    /**
+     * Place an eligible block on the target tile as a temporary wall. Costs
+     * 1 AP, consumes one block from the stack, and lasts {@link
+     * WallBlocks#WALL_DURATION_TURNS} turns. The tile is registered both as a
+     * VFX obstacle (so pathing/mining works) and as a placed wall (so the per
+     * turn tick can expire it). Mining the wall before expiry refunds the
+     * block; expiry is silent.
+     */
+    private void handleWallBlockPlacement(ItemStack stack, GridPos targetTile) {
+        if (targetTile == null || !arena.isInBounds(targetTile)) {
+            sendMessage("§cTarget tile is out of bounds.");
+            return;
+        }
+        GridPos playerPos = arena.getPlayerGridPos();
+        // 5x5 around the player = Chebyshev distance <= 2.
+        int dx = Math.abs(targetTile.x() - playerPos.x());
+        int dz = Math.abs(targetTile.z() - playerPos.z());
+        if (Math.max(dx, dz) > 2) {
+            sendMessage("§cToo far away to place a wall there.");
+            return;
+        }
+        if (targetTile.equals(playerPos)) {
+            sendMessage("§cCan't place a wall under yourself.");
+            return;
+        }
+        if (apRemaining < 1) {
+            sendMessage("§cNeed 1 AP to place a wall!");
+            return;
+        }
+        if (arena.isOccupied(targetTile)) {
+            sendMessage("§cSomething's standing there.");
+            return;
+        }
+        GridTile gridTile = arena.getTile(targetTile);
+        if (gridTile == null || gridTile.getType() != com.crackedgames.craftics.core.TileType.NORMAL) {
+            sendMessage("§cCan only place walls on flat ground.");
+            return;
+        }
+
+        net.minecraft.item.BlockItem blockItem = (net.minecraft.item.BlockItem) stack.getItem();
+        net.minecraft.block.Block wallBlock = blockItem.getBlock();
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos wallPos = arena.gridToBlockPos(targetTile);
+        world.setBlockState(wallPos, wallBlock.getDefaultState(), 3);
+
+        arena.markVfxObstacle(targetTile);
+        arena.markPlacedWall(targetTile, stack.getItem(), WallBlocks.WALL_DURATION_TURNS);
+
+        apRemaining -= 1;
+        stack.decrement(1);
+
+        world.playSound(null, wallPos,
+            net.minecraft.sound.SoundEvents.BLOCK_STONE_PLACE,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.1f);
+        world.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
+                net.minecraft.particle.ParticleTypes.BLOCK, wallBlock.getDefaultState()),
+            wallPos.getX() + 0.5, wallPos.getY() + 0.5, wallPos.getZ() + 0.5,
+            8, 0.3, 0.3, 0.3, 0.05);
+        sendMessage("§7◫ Wall placed! (" + WallBlocks.WALL_DURATION_TURNS + " turns)");
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * Summons a temporary in-combat ally from a spawn egg. The ally fights for
+     * the current battle only and is discarded with the rest of the arena mobs
+     * when combat ends.
+     */
+    private void handleSpawnEggSummon(ItemStack eggStack, GridPos targetTile) {
+        if (!(eggStack.getItem() instanceof net.minecraft.item.SpawnEggItem egg)) return;
+        if (targetTile == null || !arena.isInBounds(targetTile) || arena.isOccupied(targetTile)) {
+            sendMessage("§cTarget tile isn't free!");
+            return;
+        }
+        GridTile gridTile = arena.getTile(targetTile);
+        if (gridTile == null || !gridTile.isWalkable()) {
+            sendMessage("§cCan't summon there!");
+            return;
+        }
+        GridPos playerPos = arena.getPlayerGridPos();
+        int dist = Math.abs(targetTile.x() - playerPos.x()) + Math.abs(targetTile.z() - playerPos.z());
+        if (dist > 5) {
+            sendMessage("§cToo far away to summon there!");
+            return;
+        }
+
+        //? if <=1.21.3 {
+        net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(eggStack);
+        //?} else {
+        /*net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(player.getEntityWorld().getRegistryManager(), eggStack);
+        *///?}
+        if (entityType == null) {
+            sendMessage("§cThis spawn egg is empty!");
+            return;
+        }
+        String typeId = net.minecraft.registry.Registries.ENTITY_TYPE.getId(entityType).toString();
+
+        AllyEntry entry = AllyRegistry.getOrNull(typeId);
+        int hp, atk, def, range;
+        if (entry != null) {
+            hp = entry.hp();
+            atk = entry.attack();
+            def = entry.defense();
+            range = entry.range();
+        } else {
+            // Sensible defaults for any spawn egg not in the ally registry.
+            hp = 8;
+            atk = 2;
+            def = 0;
+            range = 1;
+        }
+
+        int apCost = 2;
+        if (apRemaining < apCost) {
+            sendMessage("§cNeed " + apCost + " AP to summon!");
+            return;
+        }
+
+        // Block summoning when the player is already at their pet-affinity
+        // party cap. Counts every live ally the player owns (tamed mobs,
+        // saved pets, previously-spawned eggs, mounts).
+        int cap = com.crackedgames.craftics.combat.PartyMobs.partyCap(player);
+        int currentAllyCount = countOwnedAllies(player);
+        if (currentAllyCount >= cap) {
+            sendMessage("§cParty is already full! (" + currentAllyCount + "/" + cap
+                + ") §7Raise Pet Affinity to fit more allies.");
+            return;
+        }
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos blockPos = arena.gridToBlockPos(targetTile);
+        net.minecraft.entity.Entity rawEntity = entityType.create(world, null, blockPos,
+            net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
+        if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) {
+            sendMessage("§cCan't summon that mob in combat.");
+            return;
+        }
+        mob.refreshPositionAndAngles(
+            blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5, 0, 0);
+        mob.setPersistent();
+        mob.setAiDisabled(true);
+        mob.setInvulnerable(true);
+        mob.setNoGravity(true);
+        mob.noClip = true;
+        mob.setSilent(true);
+        mob.addCommandTag("craftics_arena");
+        world.spawnEntity(mob);
+
+        CombatEntity ce = new CombatEntity(mob.getId(), typeId, targetTile, hp, atk, def, range);
+        ce.setAlly(true);
+        ce.setOwnerUuid(player.getUuid());
+        ce.setMobEntity(mob);
+        ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(typeId));
+        enemies.add(ce);
+        arena.placeEntity(ce);
+
+        apRemaining -= apCost;
+        eggStack.decrement(1);
+        sendMessage("§a✦ " + ce.getDisplayName() + " joins the fight!");
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * Pet affinity bonus the ally would add to a single attack. Mirrors the
+     * per-attack computation in {@code handleAllyTurn} so the inspect-panel ATK
+     * sent in {@link #sendSync} matches the damage the ally actually deals.
+     * Returns 0 for non-allies and for allies whose entry opts out of gear scaling.
+     */
+    private int computeAllyPetBonus(CombatEntity ally) {
+        if (!ally.isAlly()) return 0;
+        AllyEntry entry = AllyRegistry.getOrNull(ally.getEntityTypeId());
+        // Unregistered allies default to gear-scaling — matches handleAllyTurn.
+        boolean scalesWithGear = entry == null || entry.scalesWithOwnerGear();
+        if (!scalesWithGear) return 0;
+
+        ServerPlayerEntity allyOwner = player;
+        if (ally.getOwnerUuid() != null) {
+            for (ServerPlayerEntity member : getAllParticipants()) {
+                if (member.getUuid().equals(ally.getOwnerUuid())) {
+                    allyOwner = member;
+                    break;
+                }
+            }
+        }
+        if (allyOwner == null) return 0;
+
+        PlayerProgression.PlayerStats allyOwnerStats = PlayerProgression.get(
+            (ServerWorld) allyOwner.getEntityWorld()).getStats(allyOwner);
+        TrimEffects.TrimScan ownerTrimScan = activeTrimScan;
+        if (ally.getOwnerUuid() != null && allyOwner != player) {
+            ownerTrimScan = TrimEffects.scan(allyOwner);
+        }
+        int petBonus = DamageType.getTotalBonus(
+                allyOwner, ownerTrimScan, combatEffects, DamageType.PET, allyOwnerStats)
+            + DamageType.getMobHeadBonus(
+                allyOwner.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), DamageType.PET);
+        if (ownerTrimScan != null && ownerTrimScan.setBonus() == TrimEffects.SetBonus.RALLY) {
+            petBonus += 1;
+        }
+        return petBonus;
+    }
+
+    /**
+     * Runtime damage bonus an enemy adds on top of {@code getAttackPower()} from gear
+     * the entity's spawn-time stats didn't already fold in. Specifically: the
+     * Power enchant on a ranged enemy's bow, which is applied per-shot in the
+     * actual attack flow rather than baked into {@code attackPower}.
+     * Returns 0 for allies, for enemies without a mob entity, or for melee
+     * enemies (whose Sharpness and weapon-tier bonuses are already in
+     * {@code attackPower} at spawn time).
+     */
+    private int computeEnemyRuntimeAttackBonus(CombatEntity enemy) {
+        if (enemy.isAlly() || enemy.getMobEntity() == null) return 0;
+        if (getRangedProjectileType(enemy.getEntityTypeId()) == null) return 0;
+        ItemStack ew = enemy.getMobEntity().getMainHandStack();
+        if (ew.isEmpty()) return 0;
+        return PlayerCombatStats.getEnchantLevel(ew, "minecraft:power");
+    }
+
     private void sendSync() {
         if (player == null || !active) return;
 
@@ -15776,9 +17025,19 @@ public class CombatManager {
             // Append boss metadata if this is a boss enemy
             if (e.isBoss()) {
                 typeIds.append(";boss=").append(e.getDisplayName());
+            } else if (e.getStackDisplayName() != null) {
+                // Stack mobs (Zombie Stack, Slime Tower etc.) override the
+                // species name in the hover panel using the same "name=" pair
+                // the client already parses for bosses.
+                typeIds.append(";name=").append(e.getStackDisplayName());
             }
-            // Always send actual stats so client hover panel is accurate
-            typeIds.append(";atk=").append(e.getAttackPower());
+            // Always send actual stats so client hover panel is accurate. Roll
+            // runtime gear bonuses into ATK so the inspect number matches what
+            // the entity actually hits for — Pet affinity for allies, Power
+            // enchant on the bow for ranged enemies (Sharpness, weapon-tier and
+            // armor bonuses are already folded in at spawn time).
+            typeIds.append(";atk=").append(
+                e.getAttackPower() + computeAllyPetBonus(e) + computeEnemyRuntimeAttackBonus(e));
             typeIds.append(";def=").append(e.getDefense());
             typeIds.append(";spd=").append(e.getMoveSpeed());
             typeIds.append(";range=").append(e.getRange());
@@ -16199,6 +17458,30 @@ public class CombatManager {
     /** Public hook so addon handlers can refresh the client after grid mutations (pulls, pushes). */
     public void requestSync() {
         sendSync();
+    }
+
+    /**
+     * Make sure the player has the icon-hidden FIRE_RESISTANCE that suppresses
+     * ambient lava/fire damage out-of-turn. If another source applied a
+     * normal-visible fire-resistance effect (e.g. drinking a potion) it gets
+     * stripped and replaced with the hidden version. Called every combat tick.
+     *
+     * <p>This is purely a UI/visibility concern — the player isn't actually
+     * fire-immune for the combat tile system. Showing the icon misleads
+     * players into thinking they can stand on lava tiles for free.
+     */
+    private void enforceHiddenFireResistance() {
+        if (player == null) return;
+        var fireRes = net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE;
+        var existing = player.getStatusEffect(fireRes);
+        if (existing != null && !existing.shouldShowIcon() && !existing.shouldShowParticles()) {
+            return; // already hidden — nothing to do
+        }
+        if (existing != null) {
+            player.removeStatusEffect(fireRes);
+        }
+        player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+            fireRes, Integer.MAX_VALUE, 0, true, false, false));
     }
 
     /** Sync addon equipment scanner bonuses to the client for UI display. */

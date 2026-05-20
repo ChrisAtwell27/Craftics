@@ -46,12 +46,19 @@ public class CombatEffects {
         public int turnsRemaining; // -1 = frozen (waiting for combat start)
         public int amplifier;     // 0 = level I, 1 = level II, etc
         public int frozenDefaultTurns;
+        /**
+         * Highest turnsRemaining this effect has reached. Used by the wither
+         * ramp so the per-turn multiplier is computed against the peak rather
+         * than the current value. Updated when a stronger stack is applied.
+         */
+        public int peakTurns;
 
         public ActiveEffect(EffectType type, int turns, int amplifier) {
             this.type = type;
             this.turnsRemaining = turns;
             this.amplifier = amplifier;
             this.frozenDefaultTurns = turns;
+            this.peakTurns = turns;
         }
 
         public boolean isFrozen() {
@@ -69,7 +76,16 @@ public class CombatEffects {
 
     public void addEffect(EffectType type, int turns, int amplifier) {
         int maxDur = com.crackedgames.craftics.CrafticsMod.CONFIG.maxCombatEffectDuration();
-        effects.put(type, new ActiveEffect(type, Math.min(turns, maxDur), amplifier));
+        int finalTurns = Math.min(turns, maxDur);
+        ActiveEffect prev = effects.get(type);
+        ActiveEffect next = new ActiveEffect(type, finalTurns, amplifier);
+        // When stacking the SAME effect, keep the highest peak the player has
+        // seen so the wither ramp doesn't reset to 1x just because the user
+        // re-applied at a longer duration.
+        if (prev != null) {
+            next.peakTurns = Math.max(prev.peakTurns, finalTurns);
+        }
+        effects.put(type, next);
     }
 
     // Frozen = applied in hub, timer starts when combat begins
@@ -111,8 +127,25 @@ public class CombatEffects {
         return expired.length() > 0 ? expired.toString() : null;
     }
 
-    // Returns net HP change from regen/poison/wither/burning (positive = heal)
-    public int applyPerTurnEffects() {
+    /**
+     * Net HP change from regen / poison / wither / burning / bleeding this turn.
+     * Positive = heal, negative = damage.
+     *
+     * <p>{@code specialAffinity} is the victim's Special affinity points;
+     * burning, poison, and wither all scale with it. Pass 0 for non-player
+     * victims (mob-on-mob DoTs don't read player affinity).
+     *
+     * <p>Damage formulas:
+     * <ul>
+     *   <li>Burning = 1 + level + specialAffinity (per turn). Blocked by Fire Resistance.
+     *   <li>Poison  = (2 × level) + turnsRemaining + specialAffinity. Higher
+     *       early, fades as the effect ticks down.
+     *   <li>Wither  = (1 + level + specialAffinity) × (peakTurns - turnsRemaining + 1).
+     *       Opposite ramp — starts at 1× base and climbs to (peakTurns)× on
+     *       the final tick. {@code peakTurns} updates when stacked higher.
+     * </ul>
+     */
+    public int applyPerTurnEffects(int specialAffinity) {
         int hpChange = 0;
 
         ActiveEffect regen = effects.get(EffectType.REGENERATION);
@@ -122,17 +155,24 @@ public class CombatEffects {
 
         ActiveEffect poison = effects.get(EffectType.POISON);
         if (poison != null && !poison.isFrozen()) {
-            hpChange -= com.crackedgames.craftics.CrafticsMod.CONFIG.poisonDamagePerTurn() * (poison.amplifier + 1);
+            int level = poison.amplifier + 1;
+            int dmg = (2 * level) + poison.turnsRemaining + specialAffinity;
+            hpChange -= Math.max(1, dmg);
         }
 
         ActiveEffect wither = effects.get(EffectType.WITHER);
         if (wither != null && !wither.isFrozen()) {
-            hpChange -= 2 * (wither.amplifier + 1);
+            int level = wither.amplifier + 1;
+            int base = 1 + level + specialAffinity;
+            int peak = Math.max(1, wither.peakTurns);
+            int consumed = Math.max(1, peak - wither.turnsRemaining + 1);
+            hpChange -= Math.max(1, base * consumed);
         }
 
         ActiveEffect burning = effects.get(EffectType.BURNING);
         if (burning != null && !burning.isFrozen() && !hasFireResistance()) {
-            hpChange -= 1 * (burning.amplifier + 1);
+            int level = burning.amplifier + 1;
+            hpChange -= Math.max(1, 1 + level + specialAffinity);
         }
 
         ActiveEffect bleeding = effects.get(EffectType.BLEEDING);
@@ -143,6 +183,11 @@ public class CombatEffects {
         }
 
         return hpChange;
+    }
+
+    /** Backwards-compatible overload — assumes 0 special affinity. */
+    public int applyPerTurnEffects() {
+        return applyPerTurnEffects(0);
     }
 
     public boolean hasEffect(EffectType type) {

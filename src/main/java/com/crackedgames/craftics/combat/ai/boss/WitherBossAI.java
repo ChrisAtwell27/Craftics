@@ -44,9 +44,12 @@ public class WitherBossAI extends BossAI {
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
 
-        // Phase 2 transition explosion — 8 damage to all within 3 tiles
+        // Phase 2 transition explosion — heavier hit + Wither application
+        // signal via the effectName so the AreaAttack resolver can apply Wither
+        // to the player on contact (handled in CombatManager).
         List<GridPos> blastTiles = getAreaTiles(arena, self.getGridPos(), 3);
-        EnemyAction explosion = new EnemyAction.AreaAttack(self.getGridPos(), 3, 8, "wither_explosion");
+        EnemyAction explosion = new EnemyAction.AreaAttack(
+            self.getGridPos(), 3, 12, "wither_explosion");
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.ENTITY_GLOW,
             blastTiles, 1, explosion, 0xFFFFFFFF // white flash
@@ -78,24 +81,19 @@ public class WitherBossAI extends BossAI {
                     directions.add(new int[]{dir[0], dir[1]});
                 }
 
+                // Tougher skulls — 6 HP and 7 damage. Still killable by the
+                // player, but no longer one-tap-killable by a basic bow shot.
+                // Entity type is the actual wither skull (was a copy-paste
+                // bug referencing "minecraft:wither_skeleton").
                 EnemyAction spawnSkulls = new EnemyAction.SpawnProjectile(
-                    "minecraft:wither_skeleton", skullSpawnPositions, directions,
-                    3, 5, 0, "wither_skull"
+                    "minecraft:wither_skull", skullSpawnPositions, directions,
+                    6, 7, 0, "wither_skull"
                 );
 
-                // Also apply decay aura as part of this turn
-                int decayRadius = isPhaseTwo() ? 3 : 2;
-                List<GridPos> decayTiles = getAreaTiles(arena, myPos, decayRadius);
-                decayTiles.removeIf(p -> p.equals(myPos));
-
                 List<GridPos> warningTiles = new ArrayList<>(skullSpawnPositions);
-                EnemyAction combined = new EnemyAction.CompositeAction(List.of(
-                    spawnSkulls,
-                    new EnemyAction.CreateTerrain(decayTiles, TileType.FIRE, 2)
-                ));
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.GATHERING_PARTICLES,
-                    warningTiles, 1, combined, 0xFF222222 // dark particles
+                    warningTiles, 1, spawnSkulls, 0xFF222222 // dark particles
                 );
                 return new EnemyAction.Idle();
             }
@@ -143,24 +141,28 @@ public class WitherBossAI extends BossAI {
             }
         }
 
-        // === Decay aura as standalone if no other ability fired ===
-        int decayRadius = isPhaseTwo() ? 3 : 2;
-        List<GridPos> decayTiles = getAreaTiles(arena, myPos, decayRadius);
-        decayTiles.removeIf(p -> p.equals(myPos));
-        if (!decayTiles.isEmpty()) {
-            // Create decay terrain + melee/approach
-            EnemyAction decay = new EnemyAction.CreateTerrain(decayTiles, TileType.FIRE, 2);
-            if (dist <= 1) {
-                return new EnemyAction.CompositeAction(List.of(
-                    decay,
-                    new EnemyAction.Attack(self.getAttackPower())
-                ));
-            }
+        // === Decay aura — Wither application instead of fire tiles ===
+        // The Wither pulses a corrupted aura around itself. Anyone inside
+        // takes a chunk of damage AND gets the Wither effect refreshed, which
+        // bypasses Fire Resistance and makes standing near the boss
+        // genuinely dangerous. Larger radius in Phase 2.
+        int decayRadius = isPhaseTwo() ? 4 : 3;
+        EnemyAction decay = new EnemyAction.AreaAttack(
+            myPos, decayRadius, 2, "wither_decay");
+        if (dist <= 1) {
+            // In melee, hit the player AND tick the aura.
+            return new EnemyAction.CompositeAction(List.of(
+                decay,
+                new EnemyAction.Attack(self.getAttackPower())
+            ));
+        }
+        // Outside melee, fire the aura and step toward the player so the
+        // boss closes the gap instead of standing still firing pulses.
+        EnemyAction approach = meleeOrApproach(self, arena, playerPos, 0);
+        if (approach instanceof EnemyAction.Idle) {
             return decay;
         }
-
-        // Fallback: melee or approach
-        return meleeOrApproach(self, arena, playerPos, 0);
+        return new EnemyAction.CompositeAction(List.of(decay, approach));
     }
 
     /**

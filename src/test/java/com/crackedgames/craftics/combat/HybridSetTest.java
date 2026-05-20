@@ -17,23 +17,31 @@ class HybridSetTest {
     }
 
     @Test
-    void detectHybridPairKey_twoMaterialsAnySplit() {
+    void detectHybridPairKey_requiresTwoTwoSplit() {
+        // Exactly two of each material — the only valid hybrid configuration.
         assertEquals("diamond+leather", HybridSetRegistry.detectHybridPairKey(
             new String[]{"leather", "leather", "diamond", "diamond"}));
-        assertEquals("gold+iron", HybridSetRegistry.detectHybridPairKey(
-            new String[]{"iron", "iron", "iron", "gold"}));
-        assertEquals("copper+leather", HybridSetRegistry.detectHybridPairKey(
-            new String[]{"copper", "leather", "leather", "leather"}));
+        assertEquals("diamond+leather", HybridSetRegistry.detectHybridPairKey(
+            new String[]{"diamond", "leather", "diamond", "leather"}));
     }
 
     @Test
     void detectHybridPairKey_rejectsNonHybrids() {
+        // Full set — not a hybrid.
         assertNull(HybridSetRegistry.detectHybridPairKey(
             new String[]{"iron", "iron", "iron", "iron"}));
+        // Three materials — too varied.
         assertNull(HybridSetRegistry.detectHybridPairKey(
             new String[]{"iron", "iron", "gold", "diamond"}));
+        // Empty slot — not a hybrid.
         assertNull(HybridSetRegistry.detectHybridPairKey(
             new String[]{"iron", "iron", "diamond", null}));
+        // 3/1 split — rejected so a near-full set with one odd piece doesn't
+        // accidentally trigger a hybrid bonus.
+        assertNull(HybridSetRegistry.detectHybridPairKey(
+            new String[]{"iron", "iron", "iron", "gold"}));
+        assertNull(HybridSetRegistry.detectHybridPairKey(
+            new String[]{"copper", "leather", "leather", "leather"}));
     }
 
     @Test

@@ -8,6 +8,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -108,6 +110,84 @@ public final class AccessoriesReflect {
             }
         } catch (Throwable t) {
             CrafticsMod.LOGGER.debug("[Craftics × Accessories] container drop failed", t);
+        }
+    }
+
+    /** A captured accessory stack together with the slot it came from. */
+    public record AccessorySnapshot(String container, int kind, int slot, ItemStack stack) {}
+
+    /**
+     * Captures every non-empty accessory + cosmetic accessory stack on the entity.
+     * Pure read of the live containers — needs no registry lookup. Returns an empty
+     * list when Accessories isn't installed. Recovery-compass death protection uses
+     * this so trinkets survive death exactly like the main inventory does.
+     */
+    public static List<AccessorySnapshot> saveAccessories(LivingEntity entity) {
+        List<AccessorySnapshot> out = new ArrayList<>();
+        if (!AVAILABLE || entity == null) return out;
+        try {
+            Object capability = CAPABILITY_GET.invoke(null, entity);
+            if (capability == null) return out;
+            Object containersObj = GET_CONTAINERS.invoke(capability);
+            if (!(containersObj instanceof Map<?, ?> containers)) return out;
+
+            for (Object keyObj : containers.keySet()) {
+                if (keyObj == null) continue;
+                Object container = containers.get(keyObj);
+                if (container == null) continue;
+                String key = keyObj.toString();
+                collectSlots(out, key, 0, container, GET_ACCESSORIES);
+                collectSlots(out, key, 1, container, GET_COSMETIC_ACCESSORIES);
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.warn("[Craftics × Accessories] saveAccessories failed", t);
+        }
+        return out;
+    }
+
+    private static void collectSlots(List<AccessorySnapshot> out, String containerKey, int kind,
+                                     Object container, Method getter) {
+        try {
+            Object invObj = getter.invoke(container);
+            if (!(invObj instanceof Inventory inv)) return;
+            for (int i = 0; i < inv.size(); i++) {
+                ItemStack stack = inv.getStack(i);
+                if (stack == null || stack.isEmpty()) continue;
+                out.add(new AccessorySnapshot(containerKey, kind, i, stack.copy()));
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.debug("[Craftics × Accessories] collectSlots failed", t);
+        }
+    }
+
+    /**
+     * Re-applies accessory + cosmetic stacks previously captured by
+     * {@link #saveAccessories}. No-op when Accessories isn't installed or the
+     * snapshot is empty.
+     */
+    public static void restoreAccessories(LivingEntity entity, List<AccessorySnapshot> saved) {
+        if (!AVAILABLE || entity == null || saved == null || saved.isEmpty()) return;
+        try {
+            Object capability = CAPABILITY_GET.invoke(null, entity);
+            if (capability == null) return;
+            Object containersObj = GET_CONTAINERS.invoke(capability);
+            if (!(containersObj instanceof Map<?, ?> containers)) return;
+
+            for (AccessorySnapshot snap : saved) {
+                Object container = containers.get(snap.container());
+                if (container == null) continue;
+                Object invObj = (snap.kind() == 1 ? GET_COSMETIC_ACCESSORIES : GET_ACCESSORIES).invoke(container);
+                if (!(invObj instanceof Inventory inv)) continue;
+                if (snap.slot() < 0 || snap.slot() >= inv.size()) continue;
+                inv.setStack(snap.slot(), snap.stack().copy());
+            }
+
+            for (Object container : containers.values()) {
+                if (container == null) continue;
+                try { MARK_CHANGED.invoke(container, true); } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.warn("[Craftics × Accessories] restoreAccessories failed", t);
         }
     }
 }

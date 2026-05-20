@@ -409,6 +409,14 @@ public class TrialChamberEvent {
         @Override public boolean isNightLevel() { return true; } // dark atmosphere
 
         @Override
+        public net.minecraft.util.math.BlockPos getOverrideOrigin(
+                java.util.UUID worldOwner,
+                com.crackedgames.craftics.world.CrafticsSavedData data) {
+            if (worldOwner == null || data == null) return null;
+            return data.getTrialChamberOrigin(worldOwner);
+        }
+
+        @Override
         public GridTile[][] buildTiles() {
             // Add some obstacles to make the trial chamber more interesting
             GridTile[][] tiles = super.buildTiles();

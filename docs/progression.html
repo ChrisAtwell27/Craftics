@@ -295,168 +295,406 @@
     <!-- ================================================================
          7. RECOMMENDED BUILDS
          ================================================================ -->
-    <h2 id="recommended-builds">Recommended Builds</h2>
+    <h2 id="recommended-builds">Damage Affinity Loadouts</h2>
     <p>
-      Class builds for each stage of the game, combining armor set bonuses, trim patterns, weapons, and stat priorities.
+      Multiple build options for each of Craftics' eight damage affinities. Pick a route that fits your playstyle and stat investment.
+      Each card lists armor, weapon, hybrid synergies, trims, and key items. Hybrid armor sets are mixes of two materials (2 pieces each) that unlock unique combat effects.
     </p>
 
-    <!-- ======== EARLY OVERWORLD ======== -->
-    <div class="build-stage" id="build-early">Early Overworld</div>
+    <!-- ======== SLASHING ======== -->
+    <div class="build-stage" id="build-slashing">Slashing</div>
     <div class="build-grid">
       <div class="build-card">
         <div class="build-card-header">
-          <h4>The Survivor</h4>
-          <span class="build-class">Starter</span>
+          <h4>Bleed Striker</h4>
+          <span class="build-class">Melee / DoT</span>
         </div>
         <div class="build-card-body">
-          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Leather or Iron (whatever you find)</span></div>
-          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Iron Sword</strong> (6 ATK, Sweeping Edge)</span></div>
-          <div class="build-row"><span class="build-label">Trim</span><span class="build-value">None (too early for trims)</span></div>
-          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Speed +1, Vitality +1</span></div>
-          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Food for healing, save emeralds</span></div>
-        </div>
-        <div class="build-strategy">Focus on mobility and staying alive. Sweeping Edge is strong even at this stage. Buy from Provisioner for food and Weaponsmith for weapon upgrades.</div>
-      </div>
-    </div>
-
-    <!-- ======== MID OVERWORLD ======== -->
-    <div class="build-stage" id="build-mid">Mid Overworld</div>
-    <div class="build-grid">
-      <div class="build-card">
-        <div class="build-card-header">
-          <h4>The Rogue</h4>
-          <span class="build-class">Melee / Crit</span>
-        </div>
-        <div class="build-card-body">
-          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Chainmail</strong> <span class="green">(Rogue: +1 Speed, attacks cost -1 AP)</span></span></div>
-          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Diamond Sword</strong> (8 ATK, Sweeping Edge + 30% crit)</span></div>
-          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Bolt &times;4</strong> (Slashing Power +4)<br>Full set <strong>Thunderstrike</strong>: crits stun target</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Diamond or Netherite Sword</strong> + Sharpness (each hit stacks Bleed)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Chainmail</strong> (Rogue): +2 Slashing, -1 AP cost, +1 Speed</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Bolt &times;4</strong>: +1 Slashing per piece</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Sweeping Edge to spread bleed; Piglin Head for +1 Slashing</span></div>
           <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Melee Power &gt; Speed &gt; AP</span></div>
-          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Strength potions, Sharpness enchant</span></div>
         </div>
-        <div class="build-strategy">Chainmail makes every attack 1 AP cheaper. Every crit stuns the target via Thunderstrike. Sweep hits neighbors. Stack Sharpness for even more damage.</div>
+        <div class="build-strategy">Sweeping Edge spreads bleed to every adjacent enemy. Bleed scales triangularly (1, 3, 6, 10 dmg/turn), so stacking 3-4 hits on a tough target front-loads massive damage over the next few turns.</div>
       </div>
-
       <div class="build-card">
         <div class="build-card-header">
-          <h4>The Sniper</h4>
-          <span class="build-class">Ranged</span>
+          <h4>First-Strike Assassin</h4>
+          <span class="build-class">Burst / Mobility</span>
         </div>
         <div class="build-card-body">
-          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Leather</strong> <span class="green">(Brawler: +2 Speed, +1 AP)</span></span></div>
-          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Crossbow</strong> (10 ATK, unlimited cardinal range, pierce-through)</span></div>
-          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Sentry &times;4</strong> (Ranged Power +4)<br>Full set <strong>Overwatch</strong>: counter-attack ranged enemies</span></div>
-          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Ranged Power &gt; Speed &gt; AP</span></div>
-          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Tipped arrows (poison, slowness), Power enchant</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Diamond Sword</strong> (30% crit) or <strong>Netherite Sword</strong> (execute &lt;30% HP)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Hybrid <strong>Chain+Netherite</strong> (Ambush): first attack each combat = guaranteed crit</span></div>
+          <div class="build-row"><span class="build-label">Alt Hybrid</span><span class="build-value"><strong>Leather+Chain</strong> (Skirmisher): +3 dmg if you moved before attacking</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Speed &gt; Melee Power &gt; AP</span></div>
         </div>
-        <div class="build-strategy">Leather gives the most actions per turn (+1 AP, +2 Speed). Crossbow has infinite range on cardinal lines and pierce-through hits two enemies per shot. Kite everything.</div>
+        <div class="build-strategy">Open from max move range, eat the Ambush crit, then Skirmisher keeps stacking +3 as long as you reposition each turn. Pairs with mounts for free "moved this turn" triggers.</div>
       </div>
-    </div>
-
-    <!-- ======== LATE OVERWORLD ======== -->
-    <div class="build-stage" id="build-late">Late Overworld (Caverns / Deep Dark)</div>
-    <div class="build-grid">
       <div class="build-card">
         <div class="build-card-header">
-          <h4>The Knight</h4>
-          <span class="build-class">Tank / AoE</span>
+          <h4>Sweeper</h4>
+          <span class="build-class">Crowd Clear</span>
         </div>
         <div class="build-card-body">
-          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Diamond</strong> <span class="green">(Knight: +3 Armor Class, +1 Attack)</span></span></div>
-          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Mace</strong> (15 ATK, 3&times;3 AoE + knockback)</span></div>
-          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Ward &times;4</strong> (Armor Class +4)<br>Full set <strong>Fortress</strong>: 50% less damage when stationary</span></div>
-          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Defense &gt; Vitality &gt; Melee Power</span></div>
-          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Resistance potions, Golden Apples, Shield</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value">Any Sword + <strong>Sweeping Edge III</strong> (90% AoE)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Iron</strong> (Guard) for survival in the middle of swarms, or hybrid <strong>Chain+Iron</strong> (Sentinel): riposte dodged hits</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Vitality &gt; Defense &gt; Melee Power</span></div>
         </div>
-        <div class="build-strategy">Stack Armor Class to push your dodge chance toward the 40% cap, and let Fortress halve the hits that do land while you're stationary. Protection enchants add Armor Class on top of your armor pieces. Smash groups with the Mace's AoE and use Density for bonus shockwave damage.</div>
-      </div>
-
-      <div class="build-card">
-        <div class="build-card-header">
-          <h4>The Gambler</h4>
-          <span class="build-class">Luck / Economy</span>
-        </div>
-        <div class="build-card-body">
-          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Gold</strong> <span class="green">(Gambler: +3 Luck/crit, +1 emerald per kill)</span></span></div>
-          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Diamond Sword</strong> (8 ATK, crit + Luck = high crit rate)</span></div>
-          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Spire &times;4</strong> (Luck +4)<br>Full set <strong>Fortune's Peak</strong>: double emerald rewards</span></div>
-          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Luck &gt; Resourceful &gt; Melee Power</span></div>
-          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Golden Apples, Totem of Undying</span></div>
-        </div>
-        <div class="build-strategy">Low defense, high risk. +3 Luck from Gold armor plus Spire trims gives massive crit chance and loot quality. Fortune's Peak doubles emerald rewards. Use this to farm emeralds and buy your way to better gear.</div>
+        <div class="build-strategy">Built for swarms. Slimes, bees, wither skeletons, anything that comes in groups. Iron + Sentinel turns the swarm's own attacks into counter-damage.</div>
       </div>
     </div>
 
-    <!-- ======== NETHER ======== -->
-    <div class="build-stage" id="build-nether">The Nether</div>
+    <!-- ======== CLEAVING ======== -->
+    <div class="build-stage" id="build-cleaving">Cleaving</div>
     <div class="build-grid">
       <div class="build-card">
         <div class="build-card-header">
-          <h4>The Infernal</h4>
-          <span class="build-class">Bruiser / Execute</span>
+          <h4>Armor Crusher</h4>
+          <span class="build-class">Anti-Tank</span>
         </div>
         <div class="build-card-body">
-          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Netherite</strong> <span class="green">(Juggernaut: +4 DEF, +2 ATK, fire immune)</span></span></div>
-          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Netherite Sword</strong> (10 ATK, Sweeping Edge + Execute &lt;30% HP)</span></div>
-          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Flow &times;4</strong> (Speed +4)<br>Full set <strong>Current</strong>: kills refund 1 AP</span></div>
-          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Speed &gt; AP &gt; Melee Power</span></div>
-          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Goat Horn (Seek: +3 ATK), Golden Apples</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Iron / Diamond / Netherite Axe</strong> (5% per hit to ignore armor entirely)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Iron</strong> (Guard): +2 Cleaving, +2 AC, KB immune</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Snout &times;4</strong>: +1 Cleaving per piece</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Melee Power &gt; Defense &gt; Vitality</span></div>
         </div>
-        <div class="build-strategy">Fire immunity is essential in the Nether. Flow's Current refunds 1 AP per kill, chaining through groups. Execute instantly kills anything below 30% HP. Blaze and Ghast fire attacks do nothing to you.</div>
+        <div class="build-strategy">Best targets are bosses, golems, anything with DEF 3 or higher. The armor-ignore proc is your main source of consistent damage against tanks.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Wall Slammer</h4>
+          <span class="build-class">Control / Burst</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value">Any Axe + <strong>Knockback II</strong></span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Hybrid <strong>Iron+Diamond</strong> (Warlord): every melee hit KB 1, or <strong>Iron+Netherite</strong> (Immovable): reflect 2 + KB immune</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Cactus or wall placements to slam enemies into hazards</span></div>
+        </div>
+        <div class="build-strategy">Knock enemies into terrain hazards (cactus, fire, lava) for free DoT. Warlord's chained KB lets you do this every turn.</div>
       </div>
     </div>
 
-    <!-- ======== THE END ======== -->
-    <div class="build-stage" id="build-end">The End</div>
+    <!-- ======== BLUNT ======== -->
+    <div class="build-stage" id="build-blunt">Blunt</div>
     <div class="build-grid">
       <div class="build-card">
         <div class="build-card-header">
-          <h4>The Phantom</h4>
-          <span class="build-class">Stealth / Burst</span>
+          <h4>Mace AoE King</h4>
+          <span class="build-class">AoE Burst</span>
         </div>
         <div class="build-card-body">
-          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Netherite</strong> <span class="green">(Juggernaut: +4 DEF, +2 ATK, fire immune)</span></span></div>
-          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Netherite Sword</strong> + <strong>Crossbow</strong> (swap between)</span></div>
-          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Silence &times;4</strong> (Stealth Range +4)<br>Full set <strong>Phantom</strong>: invisible for first 2 turns</span></div>
-          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">AP &gt; Speed &gt; balanced Melee/Ranged</span></div>
-          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Ender Pearls, Golden Apples, Strength potions</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Mace</strong> + Density + Wind Burst + Breach</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Diamond</strong> (Knight): +2 Blunt, +1 ATK, +3 AC</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Dune &times;4</strong>: +1 Blunt per piece</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Creeper Head (+1 Blunt)</span></div>
         </div>
-        <div class="build-strategy">2 turns invisible means enemies don't act. Use that time to position perfectly, then burst. Ender Pearls for emergency repositioning during the Dragon fight. Swap to Crossbow for Shulker turrets at range.</div>
+        <div class="build-strategy">Half-damage to a 3x3 every swing. Density crushes the AoE harder, Wind Burst chains knockback, Breach permanently reduces target DEF. The endgame Cleaving alternative when you have multiple targets at once.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Stun Lock</h4>
+          <span class="build-class">Control</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Stick</strong> or <strong>Bamboo</strong> (5% stun); upgrade to <strong>Blaze Rod</strong> (fire+stun) or <strong>Breeze Rod</strong> (wind burst)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Any survival set. Outlast their stuns.</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Bell (2-tile AoE stun), Cobweb (single-target stun), Powder Snow Bucket (freeze)</span></div>
+        </div>
+        <div class="build-strategy">Lock down the most dangerous enemy each round so your party / damage builds can clean up. Cheap weapons, great early-game starter for Blunt.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Stonewall Brawler</h4>
+          <span class="build-class">Tank</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Hybrid <strong>Diamond+Netherite</strong> (Stonewall): incoming damage capped at 6 per hit</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Mace</strong> for AoE, or <strong>Blaze Rod</strong> for fire ticks</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Vitality &gt; Defense &gt; Melee Power</span></div>
+        </div>
+        <div class="build-strategy">Walk into a swarm, eat the damage, mace them all. Stonewall makes every individual hit predictable.</div>
       </div>
     </div>
 
-    <!-- ======== NEW GAME+ ======== -->
-    <div class="build-stage" id="build-ngplus">New Game+ (Cycle 2+)</div>
+    <!-- ======== WATER ======== -->
+    <div class="build-stage" id="build-water">Water</div>
     <div class="build-grid">
       <div class="build-card">
         <div class="build-card-header">
-          <h4>The Juggernaut</h4>
-          <span class="build-class">Action Economy</span>
+          <h4>Riptide Bruiser</h4>
+          <span class="build-class">Mobility / Line</span>
         </div>
         <div class="build-card-body">
-          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Netherite</strong> <span class="green">(Juggernaut: +4 DEF, +2 ATK, fire immune)</span></span></div>
-          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Netherite Sword</strong> (10 ATK, Sweeping Edge + Execute)</span></div>
-          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Wild &times;4</strong> (AP +4)<br>Full set <strong>Feral</strong>: 1.3x damage per kill streak level</span></div>
-          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">AP &gt; Melee Power &gt; Vitality</span></div>
-          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Goat Horn (Seek: +3 ATK), Enchanted Golden Apples, Totem of Undying</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Trident</strong> + <strong>Riptide II/III</strong> (dash + KB everything in the line)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Turtle Helmet</strong> (Aquatic) + any survival set: +3 Water, walk on water, +1 HP regen</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Coast &times;4</strong>: +1 Water per piece</span></div>
         </div>
-        <div class="build-strategy">Wild gives +4 AP for a massive action economy (7+ actions per turn). Feral stacks 1.3x multiplicative damage per consecutive kill, so your damage ramps up as you chain kills. Stack Enchanted Golden Apples for survivability against +50%+ scaled enemies.</div>
+        <div class="build-strategy">Best on tight arenas. Riptide turns a row of mobs into pinballs. KB scales by 1 + level, so Riptide III shoves enemies 4 tiles per dash.</div>
       </div>
-
       <div class="build-card">
         <div class="build-card-header">
-          <h4>The Healer</h4>
-          <span class="build-class">Sustain / Attrition</span>
+          <h4>Lightning Caller</h4>
+          <span class="build-class">Channeling + Soaked</span>
         </div>
         <div class="build-card-body">
-          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Netherite</strong> <span class="green">(Juggernaut: +4 DEF, +2 ATK, fire immune)</span></span></div>
-          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Netherite Sword</strong> (10 ATK, Execute)</span></div>
-          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Host &times;4</strong> (Max HP +4)<br>Full set <strong>Symbiote</strong>: heal 1 HP per enemy killed</span></div>
-          <div class="build-row"><span class="build-label">Material</span><span class="build-value"><strong>Amethyst</strong> (+1 HP Regen per piece = +4)</span></div>
-          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Vitality &gt; Defense &gt; AP</span></div>
-          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Goat Horn (Sing: +2 Regen), Campfire, Regeneration potions</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Trident</strong> + <strong>Channeling III</strong> + Loyalty</span></div>
+          <div class="build-row"><span class="build-label">Damage</span><span class="build-value">Channeling: 4 + 2/lvl on throw, DOUBLES vs Soaked, chains to (level-1) extra targets</span></div>
+          <div class="build-row"><span class="build-label">Setup</span><span class="build-value">Soak first with corals, pufferfish, or throw the trident into a water tile</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Turtle Helmet + Coast-trimmed survival set</span></div>
         </div>
-        <div class="build-strategy">Outlast everything. Symbiote heals on kills, Amethyst material adds regen, plus Vitality stacking gives massive HP. Use Campfire for passive healing. Slower but nearly unkillable in NG+ cycles.</div>
+        <div class="build-strategy">Soaked also gives -1 enemy Speed so they can't kite. With Channeling III on a Soaked target you're hitting for (4 + 6) × 2 = 20 damage on a chain that hits 2 extra targets.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Coral Statuses</h4>
+          <span class="build-class">Debuff Swapping</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapons</span><span class="build-value"><strong>Tube</strong> (Soaked), <strong>Brain</strong> (40% Confuse), <strong>Bubble</strong> (KB), <strong>Fire</strong> (+3 dmg to burning), <strong>Horn</strong> (pierce 3 armor)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Turtle Helmet + Coast trim, or full Coast set for max Water Power</span></div>
+        </div>
+        <div class="build-strategy">Keep 2-3 corals on the hotbar and swap to match the fight. Best vs single tough enemies. Stack debuffs, then finish.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Water-Burst Throwables</h4>
+          <span class="build-class">AoE Throwable</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Turtle Egg (T1) / Pufferfish (T2) / Nautilus Shell (T3) / Heart of the Sea (T4) — each AoE + Soaked + extra effect</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Turtle Helmet + Coast trim</span></div>
+        </div>
+        <div class="build-strategy">Combo: open with a Heart of the Sea throw for AoE Soak IV + Confuse II, then Channeling Trident for 2x lightning across the soaked mob.</div>
+      </div>
+    </div>
+
+    <!-- ======== SPECIAL ======== -->
+    <div class="build-stage" id="build-special">Special</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Hoe Specialist</h4>
+          <span class="build-class">Scaling Power</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Diamond or Netherite Hoe</strong> (1-3 base, +3 per Special point)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Gold</strong> (Gambler): +2 Special, +3 Luck, +1 emerald/kill</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Rib &times;4</strong>: +1 Special per piece</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Wither Skeleton Skull (+1 Special)</span></div>
+        </div>
+        <div class="build-strategy">Affinity perk: 3% chance per Special point to make ANY attack cost 0 AP. Stack Special hard and you'll get multi-attack turns regularly.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Sherd Caster</h4>
+          <span class="build-class">Spellcaster</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapons</span><span class="build-value">Pottery Sherds: Heart (heal+regen), Skull (execute), Prize (3x next hit), Arms Up (war cry), Blade (phantom slash)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Gold</strong> (Gambler) or hybrid <strong>Gold+Diamond</strong> (Gladiator): crits +50% dmg</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Special Power, Resourceful (for sherd budget)</span></div>
+        </div>
+        <div class="build-strategy">Stash 4-6 sherds with complementary effects. Resourceful keeps your trader budget for refills.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Wind Mage</h4>
+          <span class="build-class">Knockback Control</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Wind Charges</strong> (KB enemies OR self-launch off adjacent tile = +50% momentum bonus on next hit)</span></div>
+          <div class="build-row"><span class="build-label">Combine</span><span class="build-value">Any Special weapon for the momentum follow-up; wall placements to trap targets after KB; Snort sherd (Tectonic Charge) for chained shoves</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Gold + Special trim for damage scaling</span></div>
+        </div>
+        <div class="build-strategy">Self-launch into position, eat the +50% momentum, deliver a Sharpness/Diamond Sword crit. Or chain Wind Charges off a sherd Tectonic Charge for arena-wide repositioning.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Crit Gambler</h4>
+          <span class="build-class">Crit Stacking</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Hybrid <strong>Gold+Diamond</strong> (Gladiator): crits +50% extra dmg, or <strong>Gold+Netherite</strong> (Berserker): crit rises as HP drops</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Diamond Sword</strong> (30% native crit) or <strong>Diamond Hoe</strong> (Special ramp)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Spire</strong>: +1 Luck per piece (boosts every Craftics proc)</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Luck &gt; Special Power &gt; Resourceful</span></div>
+        </div>
+        <div class="build-strategy">Berserker is the panic build. As your HP drops, crit chance climbs, and Gladiator multiplies those crits by 1.5x. Make every desperate hit a finisher.</div>
+      </div>
+    </div>
+
+    <!-- ======== PET ======== -->
+    <div class="build-stage" id="build-pet">Pet</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Beastmaster</h4>
+          <span class="build-class">Ally Damage</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Diamond or Netherite Shovel</strong> (Pet damage type, scales with Pet affinity)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Raiser &times;4</strong>: +1 ally damage per piece</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Build a battle party at the hub (Shift+RClick): Wolf + Iron Golem + Llama = melee, tank, ranged</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Pet affinity (+3 ally HP/point) &gt; AP &gt; Vitality</span></div>
+        </div>
+        <div class="build-strategy">Let your party do the work. Stack Pet affinity for HP, Raiser for damage, and use Spawn Eggs mid-fight for emergency reinforcements.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Lead Commander</h4>
+          <span class="build-class">Ally Control</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Item</span><span class="build-value"><strong>Lead</strong> in main hand (2 AP per command)</span></div>
+          <div class="build-row"><span class="build-label">Commands</span><span class="build-value">Click ally to select, click adjacent enemy (attack) or any tile (move). Does NOT consume the ally's own turn.</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Any survival set. Raiser trim still buffs lead-commanded hits.</span></div>
+        </div>
+        <div class="build-strategy">Each ally gets two turns per round: their normal AI turn, plus your lead-commanded bonus. Pair with Beastmaster for the highest possible ally damage output.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Mount Build</h4>
+          <span class="build-class">Mobility</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Setup</span><span class="build-value">Tame a rideable mob, equip a Saddle on it, then add it to your party. You auto-mount at combat start.</span></div>
+          <div class="build-row"><span class="build-label">Mounts</span><span class="build-value">Horse, Donkey, Mule, Camel, Skeleton/Zombie Horse</span></div>
+          <div class="build-row"><span class="build-label">Bonus</span><span class="build-value">+3 Speed, mount HP pool acts as shield</span></div>
+          <div class="build-row"><span class="build-label">Pair with</span><span class="build-value">Riptide Trident, Skirmisher hybrid (+3 if you moved), Mace hit-and-run</span></div>
+        </div>
+        <div class="build-strategy">Mounted Speed turns any "if you moved" trigger into permanent damage. Horse Armor on the mount pre-tame adds DEF (Leather +1, Iron +2, Gold +1/+1 ATK, Diamond +3/+1 ATK, Wolf Armor +2/+1).</div>
+      </div>
+    </div>
+
+    <!-- ======== RANGED ======== -->
+    <div class="build-stage" id="build-ranged">Ranged</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Bow Sniper</h4>
+          <span class="build-class">Single Target</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Bow</strong> + Power IV/V (+1 dmg/lvl + range)</span></div>
+          <div class="build-row"><span class="build-label">Enchants</span><span class="build-value">Flame for burn on hit, or Infinity to skip arrow drain (tipped arrows still consume)</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value"><strong>Sentry &times;4</strong>: +1 Ranged per piece</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Skeleton Skull (+1 Ranged)</span></div>
+        </div>
+        <div class="build-strategy">Pure range damage. Sentry stacks with the affinity perk (5% ricochet per Ranged point) for chain shots on stacked enemies.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Crossbow Pierce</h4>
+          <span class="build-class">Line AoE</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Crossbow</strong> + Piercing III (hits 4 in a line) + Quick Charge</span></div>
+          <div class="build-row"><span class="build-label">Effects</span><span class="build-value">Bolts deal 50% to targets behind the first and inflict Bleed</span></div>
+          <div class="build-row"><span class="build-label">Trim</span><span class="build-value">Sentry per piece. Skeleton Skull.</span></div>
+        </div>
+        <div class="build-strategy">Best vs single-file enemy lines or stacked mobs. The bleed-on-pierce makes Piercing III worth 4 enemy hits + 4 bleed stacks per shot.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Multishot Spread</h4>
+          <span class="build-class">Cluster AoE</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Crossbow</strong> + Multishot (3 bolts, 45° fan)</span></div>
+          <div class="build-row"><span class="build-label">Ammo</span><span class="build-value">Tipped Arrows: Slowness / Weakness for crowd lockdown (each bolt applies)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Hybrid <strong>Chain+Netherite</strong> (Ambush) for guaranteed first-volley crit</span></div>
+        </div>
+        <div class="build-strategy">Best vs clusters where all 3 spread lines land. Open with an Ambush-buffed crit volley, then tipped-arrow follow-ups to lock down the survivors.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Rocket Crossbow</h4>
+          <span class="build-class">AoE Burst</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value"><strong>Crossbow</strong> + Firework Rocket in OFF-HAND</span></div>
+          <div class="build-row"><span class="build-label">How</span><span class="build-value">Rockets bypass arrow check. Massive AoE damage at full crossbow range. Quick Charge for AP reduction.</span></div>
+          <div class="build-row"><span class="build-label">Supply</span><span class="build-value">Resourceful stat + Curiosity Dealer trades to keep rockets stocked</span></div>
+        </div>
+        <div class="build-strategy">The endgame Ranged finisher. Fires from full range with massive AoE, no arrow drain. Skip Multishot/Piercing on a separate crossbow specifically for this loadout.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Ricochet Chain</h4>
+          <span class="build-class">Affinity Stack</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Affinity</span><span class="build-value">5% chain-ricochet chance per Ranged affinity point</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value">Any Bow or Crossbow. Punch I/II also pushes targets and adds collision damage.</span></div>
+          <div class="build-row"><span class="build-label">Goal</span><span class="build-value">Stack Ranged affinity to 10+ for nearly every shot to chain</span></div>
+        </div>
+        <div class="build-strategy">Best on packed arenas. Every shot can chain to another target, multiplying single-shot output. The pure affinity build, no special weapon required.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Copper Marksman <span class="green">(addon)</span></h4>
+          <span class="build-class">Needs Copper Age Backport</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Full <strong>Copper</strong> set (Marksman): +4 Ranged Power + ranged ricochet that stacks on top of the affinity perk</span></div>
+          <div class="build-row"><span class="build-label">Hybrids</span><span class="build-value">Copper+Leather (Run and Gun): +1 range if you moved.<br>Copper+Chain (Deadeye): +3 vs unacted enemies.<br>Copper+Iron (Aegis): 30% dodge vs incoming ranged.<br>Copper+Gold (Contagion): spread debuffs to adjacent.<br>Copper+Diamond (Siege): splash half dmg to adjacent.<br>Copper+Netherite (Stormbringer): arc to extra enemy.</span></div>
+        </div>
+        <div class="build-strategy">Only works with the Copper Age Backport addon mod. Adds the strongest Ranged set in the game and 6 more hybrid options on top of the standard 15.</div>
+      </div>
+    </div>
+
+    <!-- ======== PHYSICAL ======== -->
+    <div class="build-stage" id="build-physical">Physical</div>
+    <div class="build-grid">
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Brawler Streaker</h4>
+          <span class="build-class">Kill Streak</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value">Empty main hand (fists are Physical)</span></div>
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value"><strong>Leather</strong> (Brawler): +2 Physical + kill streak (+30% dmg per kill, max 3 stacks)</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Zombie Head (+1 Physical)</span></div>
+          <div class="build-row"><span class="build-label">Affinity perk</span><span class="build-value">3% counter chance per point</span></div>
+        </div>
+        <div class="build-strategy">Best vs swarms. Chained kills keep your buff alive at max stack. The cheapest viable opener and a real endgame option.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Counterpuncher</h4>
+          <span class="build-class">Reactive</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Hybrid <strong>Leather+Iron</strong> (Counterpuncher): 50% chance to instantly attack back when hit</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Vitality + Defense. The more attacks you eat the more free retaliations you get.</span></div>
+          <div class="build-row"><span class="build-label">Items</span><span class="build-value">Shield offhand (+1 DEF, 25% block) + Thorns armor</span></div>
+        </div>
+        <div class="build-strategy">Want to be hit. Counter, block, reflect. Pairs with the Lucky Streak hybrid since the kill streak doesn't reset on a counter-killed attacker.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Lucky Streak</h4>
+          <span class="build-class">Crit Ramp</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Armor</span><span class="build-value">Hybrid <strong>Leather+Gold</strong> (Lucky Streak): +10% crit per kill, resets when hit</span></div>
+          <div class="build-row"><span class="build-label">Weapon</span><span class="build-value">Diamond Sword (30% native crit) or any sword + Sharpness (bleed chains between kills)</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Speed first. Never get hit, never reset the streak.</span></div>
+        </div>
+        <div class="build-strategy">The high-skill Physical build. Sub 100% uptime on the streak is fine; even partial stacks make every swing a coin-flip crit.</div>
+      </div>
+      <div class="build-card">
+        <div class="build-card-header">
+          <h4>Breaker / Rampage</h4>
+          <span class="build-class">Hybrid Power</span>
+        </div>
+        <div class="build-card-body">
+          <div class="build-row"><span class="build-label">Breaker</span><span class="build-value">Hybrid <strong>Leather+Diamond</strong>: your attacks ignore all damage-type resistances</span></div>
+          <div class="build-row"><span class="build-label">Rampage</span><span class="build-value">Hybrid <strong>Leather+Netherite</strong>: every kill refunds 1 AP. Multi-kill turns become possible.</span></div>
+          <div class="build-row"><span class="build-label">Stats</span><span class="build-value">Melee Power + Strength. You want to be the one swinging.</span></div>
+        </div>
+        <div class="build-strategy">Breaker is the bossfight pick (resist-heavy targets). Rampage is the swarm pick (chain kills snowball). Both pair with any melee weapon, just choose the right kit for the encounter.</div>
       </div>
     </div>
 

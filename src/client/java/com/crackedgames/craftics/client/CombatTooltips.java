@@ -66,6 +66,14 @@ public class CombatTooltips implements ItemTooltipCallback {
             }
         }
 
+        // Spawn eggs: summon a one-battle ally for 2 AP
+        if (item instanceof net.minecraft.item.SpawnEggItem) {
+            lines.add(Text.empty());
+            lines.add(Text.literal("§6§lCraftics Combat:"));
+            lines.add(Text.literal("§d2 AP §7- Summon ally on target tile"));
+            lines.add(Text.literal("§7Range 5 tiles. Ally fights for this battle only."));
+        }
+
         // Potions and tipped arrows: read the actual effect from POTION_CONTENTS
         if (item == Items.POTION || item == Items.SPLASH_POTION || item == Items.LINGERING_POTION
                 || item == Items.TIPPED_ARROW) {
@@ -93,9 +101,8 @@ public class CombatTooltips implements ItemTooltipCallback {
         // affinity, and the full-set bonus, so the generic one would be redundant.
         int armorAC = com.crackedgames.craftics.combat.ArmorClassTable.getPieceAC(item);
 
-        // The Move feather has a custom name; plain loot feathers should not get a tooltip
-        String tip = (item == net.minecraft.item.Items.FEATHER && !stack.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME))
-            ? null : getTooltipFor(item);
+        // Plain loot feathers should not get a tooltip — only the Move item does.
+        String tip = (item == net.minecraft.item.Items.FEATHER) ? null : getTooltipFor(item);
         if (tip != null && armorAC <= 0) {
             lines.add(Text.empty());
             lines.add(Text.literal("\u00a76\u00a7lCraftics Combat:"));
@@ -414,7 +421,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "regeneration" -> prefix + "\u00a7dRegen" + lvl + ": \u00a77+2 HP/turn for 3 turns";
             case "resistance" -> prefix + "\u00a79Resistance" + lvl + ": \u00a77+2 Armor Class for 3 turns";
             case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for 3 turns, \u00a75+1 Special Power";
-            case "poison" -> prefix + "\u00a72Poison" + lvl + ": \u00a77-" + (1 + amplifier) + " HP/turn for 3 turns";
+            case "poison" -> prefix + "\u00a72Poison" + lvl + ": \u00a77Damage fades as it ticks down";
             case "invisibility" -> prefix + "\u00a77Invisibility: \u00a77Enemies skip your turn for 2 turns";
             case "night_vision" -> prefix + "\u00a7eNight Vision: \u00a77See in darkness (no combat effect)";
             case "absorption" -> prefix + "\u00a76Absorption" + lvl + ": \u00a77+" + (4 + amplifier * 4) + " bonus HP";
@@ -425,7 +432,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "mining_fatigue" -> prefix + "\u00a78Mining Fatigue: \u00a77-1 AP for 2 turns";
             case "levitation" -> prefix + "\u00a7dLevitation: \u00a77-1 movement for 2 turns";
             case "slow_falling" -> prefix + "\u00a7fSlow Falling: \u00a77No knockback for 3 turns";
-            case "wither" -> prefix + "\u00a78Wither" + lvl + ": \u00a77-2 HP/turn for 3 turns";
+            case "wither" -> prefix + "\u00a78Wither" + lvl + ": \u00a77Damage ramps up as it ticks down";
             case "blindness" -> prefix + "\u00a78Blindness: \u00a77-2 attack range for 2 turns";
             default -> null;
         };
@@ -449,7 +456,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "harming" -> prefix + "\u00a74Harming" + lvl + ": \u00a77Deal " + (strong ? 8 : 4) + " damage";
             case "regeneration" -> prefix + "\u00a7dRegen" + lvl + ": \u00a77+2 HP/turn for 3 turns";
             case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for 3 turns, \u00a75+1 Special Power";
-            case "poison" -> prefix + "\u00a72Poison" + lvl + ": \u00a77-1 HP/turn for 3 turns";
+            case "poison" -> prefix + "\u00a72Poison" + lvl + ": \u00a77Damage fades as it ticks down";
             case "invisibility" -> prefix + "\u00a77Invisibility: \u00a77Enemies skip you for 2 turns";
             case "night_vision" -> prefix + "\u00a7eNight Vision: \u00a77(no combat effect)";
             case "leaping" -> prefix + "\u00a7aLeaping" + lvl + ": \u00a77+1 movement for 3 turns";
@@ -856,14 +863,18 @@ public class CombatTooltips implements ItemTooltipCallback {
             return "\u00a751 AP \u00a77- Plant defense zone\n\u00a77+2 Armor Class for you/allies within 2 tiles";
 
         // ── Move item ──
-        if (item == Items.FEATHER) return "\u00a7aSelect to enter Move Mode\n\u00a77Click tiles to move your character";
+        if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM)
+            return "\u00a7aSelect to enter Move Mode\n\u00a77Click tiles to move your character\n\u00a77Left/Right arrows rotate its hotbar slot";
 
         // ── Trial/Event items ──
         if (item == Items.TRIAL_KEY) return "\u00a76Trial Chamber reward\n\u00a77Rare drop from trial chamber events";
         if (item == Items.OMINOUS_TRIAL_KEY) return "\u00a74Ominous Trial Chamber reward\n\u00a77Legendary drop from trial chambers";
         if (item == Items.BREEZE_ROD) return "\u00a7bBreeze drop\n\u00a77Crafting material from trial chambers";
         if (item == Items.HEAVY_CORE) return "\u00a78Mace crafting component\n\u00a77Rare trial chamber drop";
-        if (item == Items.WIND_CHARGE) return "\u00a78WIP \u00a77- Not yet implemented in combat";
+        if (item == Items.WIND_CHARGE) return "\u00a7f1 AP \u00a77- Knock an enemy back, or launch yourself off an adjacent tile\n\u00a77Strike an enemy right after a self-launch for \u00a7a1.5x damage";
+
+        // \u2500\u2500 Lead (ally command tool) \u2500\u2500
+        if (item == Items.LEAD) return "\u00a7b2 AP \u00a77- Command an ally\n\u00a77Click an ally to select them, then click an adjacent enemy to make them strike (no ally turn used) or any tile to reposition them";
 
         // ── Enchanting related ──
         // Enchanted books handled dynamically below

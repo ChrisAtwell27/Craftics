@@ -26,6 +26,7 @@ public class TileOverlayRenderer {
     public static void register() {
         WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
             if (!CombatState.isInCombat()) return;
+            if (net.minecraft.client.MinecraftClient.getInstance().options.hudHidden) return;
             frameCounter++;
             //? if <=1.21.4 {
             render(context.matrixStack(), context.camera());

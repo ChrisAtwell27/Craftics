@@ -17,6 +17,15 @@ public class ModScreenHandlers {
                 LevelSelectScreenHandler.LevelSelectData.PACKET_CODEC)
         );
 
+    public static final ScreenHandlerType<com.crackedgames.craftics.screen.LootManagementScreenHandler>
+        LOOT_MANAGEMENT_SCREEN_HANDLER =
+        Registry.register(
+            Registries.SCREEN_HANDLER,
+            Identifier.of(CrafticsMod.MOD_ID, "loot_management"),
+            new ScreenHandlerType<>(
+                com.crackedgames.craftics.screen.LootManagementScreenHandler::new,
+                net.minecraft.resource.featuretoggle.FeatureFlags.VANILLA_FEATURES));
+
     public static void register() {
         CrafticsMod.LOGGER.info("Registering Craftics screen handlers...");
     }

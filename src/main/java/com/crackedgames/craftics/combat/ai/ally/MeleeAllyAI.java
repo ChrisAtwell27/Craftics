@@ -38,8 +38,8 @@ public class MeleeAllyAI implements AllyAI {
         int targetDist = Integer.MAX_VALUE;
         for (CombatEntity e : combatants) {
             if (!e.isAlive() || e.isAlly()) continue;
-            int d = e.minDistanceTo(allyPos);
-            int dToPlayer = e.minDistanceTo(playerPos);
+            int d = AllyTargeting.distanceToTarget(e, arena, allyPos);
+            int dToPlayer = AllyTargeting.distanceToTarget(e, arena, playerPos);
             int score = -d;
             if (dToPlayer <= 2) score += 3;                        // protect the player
             if (e.getCurrentHp() <= e.getMaxHp() / 2) score += 2;  // finish the wounded

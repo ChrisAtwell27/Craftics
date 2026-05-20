@@ -6,14 +6,17 @@ import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.nbt.NbtCompound;
 
 public class CombatEntity {
-    private final int entityId;
-    private final String entityTypeId;
+    // Stack transformations (Zombie Stack, Slime Tower, etc.) mutate these in
+    // place via applyStackLayer when the entity is "killed" but still has
+    // remaining layers, so they intentionally aren't final.
+    private int entityId;
+    private String entityTypeId;
     private GridPos gridPos;
-    private final int maxHp;
+    private int maxHp;
     private int currentHp;
-    private final int attackPower;
-    private final int defense;
-    private final int range;
+    private int attackPower;
+    private int defense;
+    private int range;
     private boolean alive;
     private MobEntity mobEntity;
 
@@ -21,7 +24,7 @@ public class CombatEntity {
     private int fuseTimer = 0;
     private boolean selfExploded = false; // creeper self-detonation = no drops
     private int size;
-    private final int moveSpeed;
+    private int moveSpeed;
     private int speedBonus = 0;
     private int attackPenalty = 0;
     private int attackPenaltyTurns = 0;
@@ -253,6 +256,45 @@ public class CombatEntity {
 
     private String bossDisplayName = null;
     public void setBossDisplayName(String name) { this.bossDisplayName = name; }
+
+    /**
+     * Stack chain: the layers UNDER the current one, base-first. When this is
+     * non-empty and the entity would die, it instead consumes the head of the
+     * list and re-arms with that layer's stats and display name. Used by the
+     * stacked-enemy variants (Zombie Stack, Slime Tower, Blaze Tower, etc).
+     */
+    private java.util.List<StackVariants.Layer> stackChain = new java.util.ArrayList<>();
+    public java.util.List<StackVariants.Layer> getStackChain() { return stackChain; }
+    public void setStackChain(java.util.List<StackVariants.Layer> chain) {
+        this.stackChain = chain != null ? new java.util.ArrayList<>(chain) : new java.util.ArrayList<>();
+    }
+    public boolean hasStackLayers() { return stackChain != null && !stackChain.isEmpty(); }
+
+    /** Display name override used by stack-layer transformations (overrides the species name). */
+    private String stackDisplayName = null;
+    public void setStackDisplayName(String name) { this.stackDisplayName = name; }
+    public String getStackDisplayName() { return stackDisplayName; }
+
+    /** Stack id (e.g. "zombie_stack") for blaze-tower triple-fire logic and similar branches. */
+    private String stackId = null;
+    public void setStackId(String id) { this.stackId = id; }
+    public String getStackId() { return stackId; }
+
+    /** Mutate the entity into a new layer of its stack chain. Called by CombatManager on "death". */
+    public void applyStackLayer(StackVariants.Layer next, int entityIdForNewMob) {
+        this.entityTypeId = next.entityTypeId();
+        this.maxHp = Math.max(1, next.hp());
+        this.currentHp = this.maxHp;
+        this.attackPower = Math.max(1, next.attack());
+        this.defense = next.defense();
+        this.range = next.range();
+        if (next.speed() > 0) this.moveSpeed = next.speed();
+        else this.moveSpeed = getDefaultMoveSpeed(next.entityTypeId());
+        this.stackDisplayName = next.displayName();
+        this.alive = true;
+        this.deathProcessed = false;
+        this.entityId = entityIdForNewMob;
+    }
 
     /**
      * Void Walker mirror image flag. If true, any incoming damage instantly kills this
@@ -499,6 +541,7 @@ public class CombatEntity {
 
     public String getDisplayName() {
         if (bossDisplayName != null) return bossDisplayName;
+        if (stackDisplayName != null) return stackDisplayName;
         String id = entityTypeId;
         int colon = id.indexOf(':');
         if (colon >= 0) id = id.substring(colon + 1);
@@ -535,6 +578,33 @@ public class CombatEntity {
         };
     }
 
+    /**
+     * Mobs that should hover above the floor in combat. Flyers ignore the
+     * water/low-ground Y dip and float a block higher when they end up on an
+     * obstacle tile so the mob model sits on top of the obstacle instead of
+     * inside it.
+     */
+    public boolean isFlying() {
+        return isFlyingType(entityTypeId);
+    }
+
+    public static boolean isFlyingType(String entityTypeId) {
+        if (entityTypeId == null) return false;
+        return switch (entityTypeId) {
+            case "minecraft:bee",
+                 "minecraft:parrot",
+                 "minecraft:allay",
+                 "minecraft:bat",
+                 "minecraft:vex",
+                 "minecraft:phantom",
+                 "minecraft:ghast",
+                 "minecraft:blaze",
+                 "minecraft:wither",
+                 "minecraft:ender_dragon" -> true;
+            default -> false;
+        };
+    }
+
     private static int getDefaultMoveSpeed(String entityTypeId) {
         return switch (entityTypeId) {
             case "minecraft:zombie" -> 1;
@@ -542,6 +612,7 @@ public class CombatEntity {
             case "minecraft:spider" -> 3;
             case "minecraft:ocelot" -> 4;
             case "minecraft:wolf" -> 3;
+            case "minecraft:bee" -> 4;
             case "minecraft:vindicator" -> 3;
             case "minecraft:hoglin" -> 3;
             case "minecraft:wither_skeleton" -> 3;

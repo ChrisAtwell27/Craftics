@@ -18,7 +18,7 @@
       {"type": "minecraft:magma_cube", "weight": 4, "hp": 8, "attack": 3, "defense": 1}
 
     ],
-    "boss": {"type": "minecraft:wither", "hp": 75, "attack": 8, "defense": 5, "range": 5, "speed": 2}
+    "boss": {"type": "minecraft:wither", "hp": 110, "attack": 10, "defense": 5, "range": 5, "speed": 2}
   },
   "loot": [
     {"item": "minecraft:blackstone", "weight": 8},

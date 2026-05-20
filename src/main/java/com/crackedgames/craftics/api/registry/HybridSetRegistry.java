@@ -62,8 +62,12 @@ public final class HybridSetRegistry {
 
     /**
      * Pure detection: the canonical pair key when {@code materials} holds 4 non-null
-     * entries spanning exactly 2 distinct values, else {@code null}. A null entry
-     * (empty armor slot), 4-of-one (a full set), or 3+ distinct materials all yield null.
+     * entries split exactly 2/2 between two distinct values, else {@code null}.
+     *
+     * <p>A null entry (empty armor slot), 4-of-one (a full set), 3/1 split, or
+     * 3+ distinct materials all yield null. The 3/1 case is intentionally
+     * excluded: hybrids are meant to reward a deliberate two-piece-each combo,
+     * not a near-full set with a single odd piece.
      */
     public static String detectHybridPairKey(String[] materials) {
         if (materials == null || materials.length != 4) return null;
@@ -72,9 +76,14 @@ public final class HybridSetRegistry {
         }
         Set<String> distinct = new HashSet<>(Arrays.asList(materials));
         if (distinct.size() != 2) return null;
-        // The two distinct materials, in arbitrary HashSet order — fine, pairKey normalizes.
         Iterator<String> it = distinct.iterator();
-        return pairKey(it.next(), it.next());
+        String a = it.next();
+        String b = it.next();
+        int countA = 0;
+        for (String m : materials) if (a.equals(m)) countA++;
+        // Require a 2/2 split; reject 3/1 (and by symmetry 1/3).
+        if (countA != 2) return null;
+        return pairKey(a, b);
     }
 
     /**

@@ -18,6 +18,10 @@ public class InventoryStatsMixin {
 
     @Inject(method = "render", at = @At("TAIL"))
     private void craftics$renderStats(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+        // Hidden by the "hide/reveal inventory UI" keybind — skips both this
+        // stats panel and the damage-affinity panel drawn below.
+        if (!CombatState.isStatsOverlayVisible()) return;
+
         InventoryScreen screen = (InventoryScreen)(Object)this;
         int screenWidth = screen.width;
         int screenHeight = screen.height;

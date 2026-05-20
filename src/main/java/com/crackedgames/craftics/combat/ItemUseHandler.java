@@ -218,7 +218,7 @@ public class ItemUseHandler {
 
     private static final Set<Item> EXTRA_USABLE = Set.of(
         Items.SPYGLASS, Items.COMPASS, Items.BELL, Items.LAVA_BUCKET,
-        Items.SCAFFOLDING, Items.CAMPFIRE, Items.ANVIL, Items.HONEY_BLOCK,
+        Items.SCAFFOLDING, Items.CAMPFIRE, Items.ANVIL, Items.HONEY_BLOCK, Items.SLIME_BLOCK,
         Items.POWDER_SNOW_BUCKET, Items.JUKEBOX,
         Items.WHITE_BANNER, Items.BLACK_BANNER, Items.RED_BANNER,
         Items.BLUE_BANNER, Items.GREEN_BANNER, Items.YELLOW_BANNER,
@@ -315,7 +315,7 @@ public class ItemUseHandler {
         } else if (item == Items.COMPASS) {
             return useCompass(arena);
         } else if (item == Items.BELL) {
-            return useBell(arena, targetTile);
+            return useBell(arena, targetTile, held);
         } else if (item == Items.LAVA_BUCKET) {
             return useLavaBucket(arena, targetTile, held);
         } else if (item == Items.SCAFFOLDING) {
@@ -326,10 +326,12 @@ public class ItemUseHandler {
             return useAnvil(player, arena, targetTile, held);
         } else if (item == Items.HONEY_BLOCK) {
             return useHoneyBlock(arena, targetTile, held);
+        } else if (item == Items.SLIME_BLOCK) {
+            return useSlimeBlock(arena, targetTile, held);
         } else if (item == Items.POWDER_SNOW_BUCKET) {
             return usePowderSnow(player, arena, targetTile, held);
         } else if (item == Items.JUKEBOX) {
-            return useJukebox(arena, held);
+            return useJukebox(arena, targetTile, held);
         } else if (isBanner(item)) {
             return useBanner(player, arena, targetTile, held);
         } else if (item == Items.WATER_BUCKET) {
@@ -373,11 +375,13 @@ public class ItemUseHandler {
 
     /** Prefix for tile effects — CombatManager processes these. Format: TILE:type:x:z */
     public static final String TILE_EFFECT_PREFIX = "§eTILE:";
+    /** Anvil-drop signal: §8ANVIL:targetEntityId:damage. Server spawns the falling-anvil VFX. */
+    public static final String ANVIL_DROP_PREFIX = "§8ANVIL:";
     /** Prefix for ally buff — CombatManager processes this. */
     public static final String ALLY_BUFF_PREFIX = "§dBUFF:";
 
     private static boolean isMoveFeather(ItemStack s) {
-        return s.getItem() == Items.FEATHER && s.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME);
+        return s.getItem() == com.crackedgames.craftics.item.ModItems.MOVE_ITEM;
     }
 
     private static String useFood(ServerPlayerEntity player, ItemStack stack, Item food) {
@@ -854,11 +858,26 @@ public class ItemUseHandler {
         return "§6Fire charge hit " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
     }
 
-    // --- Wind Charge: 1 Special damage + 3-tile knockback away from the player ---
+    // --- Wind Charge: contextual. Thrown at an adjacent empty tile it launches
+    //     the player away (mobility tool); thrown at an enemy it deals 1 Special
+    //     damage and knocks them up to 3 tiles back, as before. ---
     private static String useWindCharge(ServerPlayerEntity player, GridArena arena,
                                          GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
+
+        GridPos playerPos = arena.getPlayerGridPos();
+        int ddx = targetTile.x() - playerPos.x();
+        int ddz = targetTile.z() - playerPos.z();
+        boolean adjacent = Math.abs(ddx) <= 1 && Math.abs(ddz) <= 1 && !(ddx == 0 && ddz == 0);
+
         CombatEntity enemy = arena.getOccupant(targetTile);
+
+        // Self-launch: an adjacent empty tile blasts the player the opposite way.
+        if (adjacent && (enemy == null || !enemy.isAlive())) {
+            return windChargeSelfLaunch(player, arena, stack, playerPos, ddx, ddz);
+        }
+
+        // Otherwise: knock an enemy back — the original behaviour.
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
         stack.decrement(1);
@@ -867,7 +886,6 @@ public class ItemUseHandler {
         // Push the enemy up to 3 tiles directly away from the player. Stops
         // early on walls, obstacles, or other occupants; lands ON the final
         // walkable tile in the push direction.
-        GridPos playerPos = arena.getPlayerGridPos();
         GridPos enemyStart = enemy.getGridPos();
         int dx = Integer.signum(enemyStart.x() - playerPos.x());
         int dz = Integer.signum(enemyStart.z() - playerPos.z());
@@ -911,6 +929,51 @@ public class ItemUseHandler {
         }
         return "§fWind charge hit " + enemy.getDisplayName() + " for " + dealt
             + " Special damage! (no room to push)";
+    }
+
+    /**
+     * Wind Charge self-movement: launches the player up to 2 tiles in the
+     * direction opposite the targeted (adjacent) tile, stopping early at walls,
+     * obstacles, or occupants. Arms the wind-charge momentum bonus so an attack
+     * made immediately afterwards — with no move in between — deals 1.5x damage.
+     */
+    private static String windChargeSelfLaunch(ServerPlayerEntity player, GridArena arena,
+                                                ItemStack stack, GridPos playerPos, int ddx, int ddz) {
+        int dx = -Integer.signum(ddx);
+        int dz = -Integer.signum(ddz);
+
+        GridPos landing = playerPos;
+        int moved = 0;
+        for (int i = 1; i <= 2; i++) {
+            GridPos candidate = new GridPos(playerPos.x() + dx * i, playerPos.z() + dz * i);
+            if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) break;
+            GridTile tile = arena.getTile(candidate);
+            if (tile == null || !tile.isWalkable()) break;
+            landing = candidate;
+            moved = i;
+        }
+
+        if (moved == 0) return "§fWind charge fizzles — no room to launch!";
+
+        stack.decrement(1);
+        arena.setPlayerGridPos(landing);
+        BlockPos bp = arena.gridToBlockPos(landing);
+        player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+
+        // Arm the momentum bonus for the player's next attack.
+        CombatManager.get(player).setWindChargeMomentum(true);
+
+        if (player.getEntityWorld() instanceof ServerWorld sw) {
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.GUST,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 8, 0.4, 0.4, 0.4, 0.02);
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 2, 0.2, 0.2, 0.2, 0.0);
+            sw.playSound(null, bp,
+                net.minecraft.sound.SoundEvents.ENTITY_WIND_CHARGE_WIND_BURST.value(),
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        }
+        return "§fWind charge! Launched " + moved + " tile" + (moved == 1 ? "" : "s")
+            + " — strike an enemy now for 1.5x damage!";
     }
 
     // --- Milk Bucket: clears all status effects (good and bad) ---
@@ -1151,9 +1214,11 @@ public class ItemUseHandler {
         return sb.toString();
     }
 
-    // --- Bell: AoE stun all enemies within 2 tiles of target (2 AP, no consume) ---
-    private static String useBell(GridArena arena, GridPos targetTile) {
+    // --- Bell: place a bell block, AoE stun enemies within 2 tiles (2 AP). ---
+    private static String useBell(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         int stunned = 0;
         for (CombatEntity e : arena.getOccupants().values()) {
             if (!e.isAlive() || e.isAlly()) continue;
@@ -1163,7 +1228,9 @@ public class ItemUseHandler {
                 stunned++;
             }
         }
-        return "§6Bell rings! " + stunned + " enemies stunned for 1 turn.";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "bell:" + targetTile.x() + ":" + targetTile.z()
+            + "|§6Bell rings! " + stunned + " enemies stunned for 1 turn.";
     }
 
     // --- Lava Bucket: place lava on tile — deals damage to enemies that step on it (1 AP) ---
@@ -1191,50 +1258,83 @@ public class ItemUseHandler {
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "campfire:" + targetTile.x() + ":" + targetTile.z()
-            + "|§6Placed campfire! Heals 1 HP per turn when standing on or next to it + creates light (negate darkness).";
+            + "|§6Placed campfire! Heals 2 HP per turn while you're inside the 5x5 area + creates light (negate darkness).";
     }
 
-    // --- Anvil: drop on enemy — 5 damage, consumes item (1 AP) ---
+    // --- Anvil: drop on enemy — falling-block animation, then 15 Special damage. ---
+    // The actual damage is deferred to the moment the falling anvil "lands" so
+    // the player sees it crash down on the target. Vanilla anvil gravity damage
+    // is disabled — only the Craftics base damage applies.
     private static String useAnvil(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target an enemy!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
         stack.decrement(1);
-        int dealt = applyTypedDamage(player, enemy, 15, DamageType.SPECIAL);
-        return "§8Anvil dropped on " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
+        return ANVIL_DROP_PREFIX + enemy.getEntityId() + ":15"
+            + "|§8An anvil falls toward " + enemy.getDisplayName() + "!";
     }
 
     // --- Honey Block: place sticky trap — enemies lose all movement when stepping on it (1 AP) ---
     private static String useHoneyBlock(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "honey:" + targetTile.x() + ":" + targetTile.z()
             + "|§eHoney block placed! Enemies that walk onto it lose all remaining movement.";
     }
 
-    // --- Powder Snow Bucket: freeze enemy — stun + 1 cold damage (1 AP) ---
-    private static String usePowderSnow(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
-        if (targetTile == null) return "§cNeed to target an enemy!";
-        CombatEntity enemy = arena.getOccupant(targetTile);
-        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+    // --- Slime Block: place a bouncy wall. Acts as a sturdy obstacle and
+    //     stuns any enemy adjacent at the end of their turn (bounce effect).
+    private static String useSlimeBlock(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         stack.decrement(1);
-        int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
-        enemy.setStunned(true);
-        return "§bFrozen! " + enemy.getDisplayName() + " takes " + dealt + " Special damage and skips next turn.";
+        return TILE_EFFECT_PREFIX + "slime:" + targetTile.x() + ":" + targetTile.z()
+            + "|§aSlime block placed! Bouncy wall — pushes adjacent enemies back when they end their turn next to it.";
     }
 
-    // --- Jukebox: play music — buff all allies +1 speed for this battle (2 AP, consumes) ---
-    private static String useJukebox(GridArena arena, ItemStack stack) {
+    // --- Powder Snow Bucket: place powder snow block on a tile. Enemies who
+    //     stand or step on it sink into it, get stunned + take freeze damage
+    //     via the existing POWDER_SNOW tile mechanic. Bucket is returned empty.
+    private static String usePowderSnow(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        // If an enemy is right on the target tile, freeze them immediately.
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        String hitMsg = "";
+        if (enemy != null && enemy.isAlive() && !enemy.isAlly()) {
+            int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
+            enemy.setStunned(true);
+            hitMsg = " §bFroze " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
+        }
+        stack.decrement(1);
+        // Empty bucket returned via GIVE: prefix, mirroring useEmptyBucket.
+        return TILE_EFFECT_PREFIX + "powder_snow:" + targetTile.x() + ":" + targetTile.z()
+            + "|GIVE:bucket|§bPowder snow placed! Enemies that step on it freeze." + hitMsg;
+    }
+
+    // --- Jukebox: place a jukebox block (full cube, obstacle) on a target tile.
+    //     Music plays — buffs all allies +1 speed for this battle. (2 AP)
+    private static String useJukebox(GridArena arena, GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        GridPos playerPos = arena.getPlayerGridPos();
+        int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
+        if (dist > 1) return "§cMust place next to yourself.";
         stack.decrement(1);
         int buffed = 0;
         for (CombatEntity e : arena.getOccupants().values()) {
             if (e.isAlive() && e.isAlly()) {
-                e.setSpeedBonus(e.getSpeedBonus() + 1);
+                e.setSpeedBonus(e.getSpeedBonus() + 3);
                 buffed++;
             }
         }
-        return ALLY_BUFF_PREFIX + "music|§dMusic plays! " + buffed + " allies buffed (+1 speed for this battle).";
+        return TILE_EFFECT_PREFIX + "jukebox:" + targetTile.x() + ":" + targetTile.z()
+            + "|§dMusic plays across the arena! " + buffed + " allies buffed (+3 speed for this battle).";
     }
 
     // --- Banner: plant defense zone — +2 defense (scaled by Special affinity)
@@ -1284,17 +1384,29 @@ public class ItemUseHandler {
         return "§cThat tile has no liquid to pick up!";
     }
 
-    // --- Sponge: absorb adjacent water tile (1 AP) ---
+    // --- Sponge: place a sponge block on a tile, also draining any adjacent
+    //     water tiles. The placed block makes the tile untraversable.
     private static String useSponge(GridArena arena, GridPos targetTile, ItemStack stack) {
-        if (targetTile == null) return "§cNeed to target a water tile!";
-        GridTile tile = arena.getTile(targetTile);
-        if (tile == null || !tile.isWater()) return "§cThat's not a water tile!";
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         GridPos playerPos = arena.getPlayerGridPos();
         int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
-        if (dist > 1) return "§cToo far! Stand next to the water.";
+        if (dist > 1) return "§cMust place next to yourself.";
+        // Drain adjacent water tiles in a 1-tile cross.
+        int drained = 0;
+        for (int[] off : new int[][]{{0,0},{1,0},{-1,0},{0,1},{0,-1}}) {
+            GridPos near = new com.crackedgames.craftics.core.GridPos(
+                targetTile.x() + off[0], targetTile.z() + off[1]);
+            GridTile gt = arena.getTile(near);
+            if (gt != null && gt.isWater()) {
+                gt.setType(com.crackedgames.craftics.core.TileType.NORMAL);
+                drained++;
+            }
+        }
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "sponge:" + targetTile.x() + ":" + targetTile.z()
-            + "|§eSponge absorbed the water!";
+            + "|§eSponge placed! Drained " + drained + " water tile" + (drained == 1 ? "" : "s") + ".";
     }
 
     // --- Pickaxe: break obstacle tile, making it walkable (1 AP, durability cost) ---
@@ -1439,10 +1551,12 @@ public class ItemUseHandler {
             + "|§dCake placed! Heals 2 HP when stepped on (3 uses).";
     }
 
-    // --- Spore Blossom: AoE slow, enemies within 3 tiles get -1 speed for 2 turns (1 AP) ---
+    // --- Spore Blossom: place a spore blossom + AoE slow enemies within 3 tiles.
+    //     The placed block is purely decorative (non-full-cube, tile stays walkable).
     private static String useSporeBlossom(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
-        stack.decrement(1);
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         int slowed = 0;
         for (CombatEntity e : arena.getOccupants().values()) {
             if (!e.isAlive() || e.isAlly()) continue;
@@ -1452,7 +1566,9 @@ public class ItemUseHandler {
                 slowed++;
             }
         }
-        return "§dSpore cloud! " + slowed + " enemies slowed (-1 speed).";
+        stack.decrement(1);
+        return TILE_EFFECT_PREFIX + "spore_blossom:" + targetTile.x() + ":" + targetTile.z()
+            + "|§dSpore cloud! " + slowed + " enemies slowed (-1 speed).";
     }
 
     // --- Lantern: reveals invisible/hidden enemies in 3-tile radius (1 AP, consumes) ---

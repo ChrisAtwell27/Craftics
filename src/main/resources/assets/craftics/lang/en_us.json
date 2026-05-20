@@ -7,7 +7,12 @@
   "key.craftics.end_turn": "End Turn",
   "key.craftics.guide_book": "Open Guide Book",
   "key.craftics.respec": "Respec Stats",
+  "key.craftics.respec_affinity": "Respec Affinities",
+  "key.craftics.toggle_ui": "Hide/Reveal Inventory UI",
   "key.categories.craftics": "Craftics",
   "category.craftics": "Craftics",
-  "item.craftics.guide_book": "Tactics Field Manual"
+  "item.craftics.guide_book": "Tactics Field Manual",
+  "item.craftics.move": "Move",
+  "key.craftics.move_slot_left": "Move Item: Shift Locked Slot Left",
+  "key.craftics.move_slot_right": "Move Item: Shift Locked Slot Right"
 }

@@ -90,6 +90,11 @@ public class PlayerProgression extends PersistentState {
             pendingAffinityChoice = false;
         }
 
+        /** Sets an affinity's point total directly (used by the affinity respec). */
+        public void setAffinityPoints(Affinity affinity, int points) {
+            affinityPoints.put(affinity, Math.max(0, points));
+        }
+
         /** Total affinity points allocated across all types. */
         public int getTotalAffinityPoints() {
             int total = 0;
@@ -101,9 +106,7 @@ public class PlayerProgression extends PersistentState {
 
         /** Player is owed an affinity pick if they have fewer affinity points than expected for their level. */
         public boolean canAllocateAffinity() {
-            // Affinities are awarded on odd levels (3, 5, 7...) — count how many they should have
-            int expectedAffinities = (level - 1) / 2; // level 3→1, level 5→2, level 7→3
-            return getTotalAffinityPoints() < expectedAffinities;
+            return getTotalAffinityPoints() < expectedAffinityPoints();
         }
 
         public boolean hasAchievement(Achievement achievement) {
@@ -192,6 +195,30 @@ public class PlayerProgression extends PersistentState {
             return level % 2 == 1 && level > 1;
         }
 
+        /** Total stat points the player's level entitles them to (one per even level). */
+        public int expectedStatPoints() {
+            return level / 2;
+        }
+
+        /** Total affinity points the player's level entitles them to (one per odd level &gt; 1). */
+        public int expectedAffinityPoints() {
+            return (level - 1) / 2;
+        }
+
+        /**
+         * Heals point counters after force-leveling (e.g. {@code /craftics set_level}),
+         * version upgrades, or any path that bumped {@link #level} without granting the
+         * stat points it owes. Only ever adds unspent points — never removes them.
+         * Affinity entitlement is derived from {@link #level} directly, so it needs no
+         * stored counter to reconcile.
+         */
+        public void reconcilePoints() {
+            int allocated = 0;
+            for (Stat s : Stat.values()) allocated += getPoints(s);
+            int owed = expectedStatPoints() - allocated - unspentPoints;
+            if (owed > 0) unspentPoints += owed;
+        }
+
         // Format: "level:unspent:s0:s1:...:s7|bossKills|affinities|achievements"
         public String serialize() {
             StringBuilder sb = new StringBuilder();
@@ -272,6 +299,9 @@ public class PlayerProgression extends PersistentState {
                     }
                 }
             }
+            // Heal point counters for saves from older versions or any path that
+            // set the level without granting its stat points.
+            ps.reconcilePoints();
             return ps;
         }
     }

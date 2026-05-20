@@ -281,6 +281,9 @@ public class CrafticsMod implements ModInitializer {
                     joinData.markDirty();
                 }
 
+                // Always stock the Move item into the locked slot on join.
+                com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
+
                 // Sync player stats to client for inventory display
                 com.crackedgames.craftics.combat.PlayerProgression progression =
                     com.crackedgames.craftics.combat.PlayerProgression.get(overworld);
@@ -409,6 +412,11 @@ public class CrafticsMod implements ModInitializer {
             if (!deathProtection.hasPendingRestore()) return;
 
             deathProtection.restoreTo(newPlayer);
+            // Trinkets (Accessories slots) are snapshotted in memory on the
+            // dying player's component; restore them from there so a recovery
+            // compass keeps them just like the main inventory.
+            com.crackedgames.craftics.compat.artifacts.AccessoriesReflect.restoreAccessories(
+                newPlayer, CrafticsComponents.DEATH_PROTECTION.get(oldPlayer).getSavedAccessories());
             // Particles on respawn to confirm restoration
             if (newPlayer.getWorld() instanceof net.minecraft.server.world.ServerWorld serverWorld) {
                 serverWorld.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
@@ -436,6 +444,16 @@ public class CrafticsMod implements ModInitializer {
                 }
             } catch (Throwable t) {
                 LOGGER.error("VFX tick crashed; continuing server tick", t);
+            }
+
+            // Keep the Move item locked to its hotbar slot for every player. Cheap
+            // when nothing's out of place; auto-repairs drag/drop/Q-throw attempts.
+            try {
+                for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
+                    com.crackedgames.craftics.item.MoveSlotManager.enforce(p);
+                }
+            } catch (Throwable t) {
+                LOGGER.error("MoveSlotManager.enforce crashed; continuing server tick", t);
             }
 
             // Re-sync addon equipment scanner bonuses every second (20 ticks)
@@ -764,11 +782,14 @@ public class CrafticsMod implements ModInitializer {
                         int level = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "level");
                         var progression = com.crackedgames.craftics.combat.PlayerProgression.get(src.getServer().getOverworld());
                         var stats = progression.getStats(player);
-                        int oldLevel = stats.level;
                         stats.level = level;
-                        stats.unspentPoints = Math.max(0, stats.unspentPoints + (level - oldLevel));
+                        // Credit the stat points this level owes; affinity points are
+                        // derived from the level and become available in the respec menu.
+                        stats.reconcilePoints();
                         progression.saveStats(player);
-                        src.sendFeedback(() -> Text.literal("§aSet player level to " + level + " (" + stats.unspentPoints + " unspent points)."), true);
+                        com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(player);
+                        src.sendFeedback(() -> Text.literal("§aSet player level to " + level
+                            + " (" + stats.unspentPoints + " unspent stat points)."), true);
                         return 1;
                     })));
 
@@ -901,6 +922,7 @@ public class CrafticsMod implements ModInitializer {
                             int oldValue = stats.getPoints(stat);
                             stats.setPoints(stat, value);
                             progression.saveStats(player);
+                            com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(player);
                             src.sendFeedback(() -> Text.literal("§aSet " + stat.displayName + " to " + value + " (was " + oldValue + ")."), true);
                             return 1;
                         }))));
@@ -919,6 +941,7 @@ public class CrafticsMod implements ModInitializer {
                 }
                 stats.unspentPoints += totalAllocated;
                 progression.saveStats(player);
+                com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(player);
                 int refunded = stats.unspentPoints;
                 src.sendFeedback(() -> Text.literal("§aReset all stats. " + refunded + " unspent points available."), true);
                 return 1;
