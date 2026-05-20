@@ -934,6 +934,12 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) p.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         BlockPos hub = data.getHubTeleportPos(p.getUuid());
+        // Dismount first. While a passenger of a combat mount/boat,
+        // requestTeleport silently keeps the player bound to the vehicle
+        // and snaps them back, leaving them stuck inside the arena.
+        if (p.hasVehicle()) {
+            p.stopRiding();
+        }
         // Scan for a safe landing spot so stale/fallback hub Y values don't drop
         // the player into air, water, or inside a block.
         BlockPos.Mutable probe = new BlockPos.Mutable(hub.getX(), hub.getY(), hub.getZ());
@@ -1098,9 +1104,6 @@ public class CombatManager {
     private GridPos moveOriginPos = null;
 
     private static net.minecraft.item.Item lastDroppedTrim = null;
-
-    private boolean testRange = false;
-    public boolean isTestRange() { return testRange; }
 
     private GridPos droppedTridentPos = null;
     private ItemStack droppedTridentStack = null;
@@ -1435,129 +1438,6 @@ public class CombatManager {
     /** Admin: force-win current combat (identical to killing all enemies). */
     public void adminWinCombat() {
         adminKillAllEnemies();
-    }
-
-    /**
-     * Start a test range — a simple arena with a training dummy for testing weapons/spells.
-     * Player gets infinite AP and movement. No rewards or penalties.
-     */
-    public void startTestRange(ServerPlayerEntity player) {
-        this.testRange = true;
-        ServerWorld world = (ServerWorld) player.getEntityWorld();
-
-        // Use level 999 with player UUID for unique positioning
-        BlockPos origin = GridArena.arenaOriginForLevel(999, player.getUuid());
-        int size = 9;
-        GridTile[][] tiles = new GridTile[size][size];
-        for (int x = 0; x < size; x++)
-            for (int z = 0; z < size; z++)
-                tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, Blocks.STONE_BRICKS);
-
-        GridPos playerStart = new GridPos(1, 1);
-        GridArena testArena = new GridArena(size, size, tiles, origin, 999, playerStart);
-
-        forcedChunks.clear();
-        int minCX = (origin.getX() - 2) >> 4;
-        int maxCX = (origin.getX() + size + 2) >> 4;
-        int minCZ = (origin.getZ() - 2) >> 4;
-        int maxCZ = (origin.getZ() + size + 2) >> 4;
-        for (int cx = minCX; cx <= maxCX; cx++)
-            for (int cz = minCZ; cz <= maxCZ; cz++) {
-                world.setChunkForced(cx, cz, true);
-                forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
-            }
-
-        int SET_FLAGS = net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE;
-        for (int x = 0; x < size; x++) {
-            for (int z = 0; z < size; z++) {
-                world.setBlockState(new BlockPos(origin.getX() + x, origin.getY(), origin.getZ() + z),
-                    Blocks.STONE_BRICKS.getDefaultState(), SET_FLAGS);
-                for (int y = 1; y <= 4; y++)
-                    world.setBlockState(new BlockPos(origin.getX() + x, origin.getY() + y, origin.getZ() + z),
-                        Blocks.AIR.getDefaultState(), SET_FLAGS);
-            }
-        }
-
-        net.minecraft.util.math.Box arenaBox = new net.minecraft.util.math.Box(
-            origin.getX() - 2, origin.getY() - 1, origin.getZ() - 2,
-            origin.getX() + size + 2, origin.getY() + 5, origin.getZ() + size + 2
-        );
-        for (var entity : world.getEntitiesByClass(MobEntity.class, arenaBox, e -> true)) {
-            entity.discard();
-        }
-
-        GridPos dummyPos = new GridPos(4, 4);
-        BlockPos dummyBlockPos = testArena.gridToBlockPos(dummyPos);
-        var zombie = EntityType.ZOMBIE.create(world, null, dummyBlockPos, SpawnReason.COMMAND, false, false);
-        if (zombie != null) {
-            zombie.refreshPositionAndAngles(
-                dummyBlockPos.getX() + 0.5, dummyBlockPos.getY(), dummyBlockPos.getZ() + 0.5, 0, 0);
-            zombie.setAiDisabled(true);
-            zombie.setInvulnerable(true);
-            zombie.setNoGravity(true);
-            zombie.noClip = true;
-            zombie.setPersistent();
-            zombie.setBaby(false);
-            zombie.setCustomName(Text.literal("§6Training Dummy"));
-            zombie.setCustomNameVisible(true);
-            zombie.addCommandTag("craftics_arena");
-            for (net.minecraft.entity.EquipmentSlot slot : net.minecraft.entity.EquipmentSlot.values()) {
-                zombie.equipStack(slot, ItemStack.EMPTY);
-            }
-            world.spawnEntity(zombie);
-
-            CombatEntity dummyEntity = new CombatEntity(
-                zombie.getId(), "minecraft:zombie", dummyPos,
-                9999, 0, 0, 1
-            );
-            dummyEntity.setMobEntity(zombie);
-
-            this.enemies = new ArrayList<>();
-            this.enemies.add(dummyEntity);
-            testArena.placeEntity(dummyEntity);
-        }
-
-        this.player = player;
-        this.arena = testArena;
-        this.levelDef = null;
-        this.phase = CombatPhase.PLAYER_TURN;
-        this.apRemaining = 999;
-        this.movePointsRemaining = 999;
-        this.turnNumber = 1;
-        this.active = true;
-        this.playerMounted = false;
-        this.mountMob = null;
-        clearAllRevenantSummonMarkers();
-        tileEffects.clear();
-        litZones.clear();
-        combatEffects.clear();
-
-        player.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
-        world.getGameRules().get(net.minecraft.world.GameRules.NATURAL_REGENERATION).set(false, world.getServer());
-        world.setTimeOfDay(6000);
-
-        BlockPos startPos = testArena.getPlayerStartBlockPos();
-        player.requestTeleport(startPos.getX() + 0.5, startPos.getY(), startPos.getZ() + 0.5);
-
-        ServerPlayNetworking.send(player, new EnterCombatPayload(
-            origin.getX(), origin.getY(), origin.getZ(), size, size, -1f
-        ));
-
-        // Move item is persistent — server tick keeps it stocked.
-        com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
-
-        this.activeTrimScan = TrimEffects.scan(player);
-        this.activeCombatEffects = activeTrimScan.getCombatEffects();
-        this.effectContext = new com.crackedgames.craftics.api.CombatEffectContext(player, arena, combatEffects, activeTrimScan);
-        fireEffectHook(h -> h.onCombatStart(effectContext));
-
-        sendMessage("§e§l--- Test Range ---");
-        sendMessage("§aInfinite AP & Movement | Training Dummy: 9999 HP");
-        sendMessage("§7Use §e/craftics leave §7to exit.");
-        sendSync();
-        refreshHighlights();
-
-        CrafticsMod.LOGGER.info("Player {} entered test range", player.getName().getString());
     }
 
     public void startCombat(ServerPlayerEntity player, GridArena arena, LevelDefinition levelDef) {
@@ -2937,6 +2817,15 @@ public class CombatManager {
             }
         }
         if (target == null) {
+            // Rocket crossbow can fire at an empty tile. The 3x3 blast still
+            // catches enemies near the impact, so the player can splash a
+            // cluster of mobs that wouldn't all sit on one tile.
+            if (weapon == Items.CROSSBOW
+                    && player.getOffHandStack().isOf(Items.FIREWORK_ROCKET)
+                    && clickedTile != null) {
+                resolveRocketCrossbowOnTile(clickedTile);
+                return;
+            }
             sendMessage("§cNo valid target!");
             return;
         }
@@ -4014,6 +3903,149 @@ public class CombatManager {
     }
 
     /**
+     * Rocket-crossbow empty-tile blast. The player held a firework rocket in
+     * the offhand and clicked an empty tile within crossbow range. Fires a
+     * 3x3 explosion at the clicked tile, hitting any enemies in the splash.
+     * Multishot adds two extra rockets that explode where their fan lines
+     * leave the arena, so the player visibly sees three projectiles.
+     */
+    private void resolveRocketCrossbowOnTile(GridPos impactTile) {
+        if (apRemaining < 4) {
+            sendMessage("§cNot enough AP! Crossbow costs 4 AP.");
+            return;
+        }
+        GridPos pPos = arena.getPlayerGridPos();
+        if (!PlayerCombatStats.isInCrossbowLine(arena, pPos, impactTile)) {
+            sendMessage("§cCrossbow requires a clear straight line! (N/S/E/W only)");
+            return;
+        }
+
+        // Consume cost: AP + offhand rocket + ammo (if any). Skip ammo
+        // strictness so a player can fire purely off the rocket like vanilla.
+        apRemaining -= 4;
+        player.getOffHandStack().decrement(1);
+
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        BlockPos shotFrom = arena.gridToBlockPos(pPos);
+        BlockPos shotTo = arena.gridToBlockPos(impactTile);
+        sw.playSound(null, shotFrom, net.minecraft.sound.SoundEvents.ITEM_CROSSBOW_SHOOT,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        ProjectileSpawner.spawnProjectile(sw, shotFrom, shotTo, "fireball");
+
+        // Primary blast at the clicked tile.
+        int weaponPower = CrafticsMod.CONFIG.dmgCrossbow();
+        detonateRocketBlast(impactTile, weaponPower);
+
+        // Multishot: two diagonal rockets that fly past the impact tile
+        // and detonate where their line leaves the arena. Same visual fan
+        // as the bolt multishot so the extra projectiles read clearly.
+        if (PlayerCombatStats.hasMultishot(player)) {
+            int dx = Integer.signum(impactTile.x() - pPos.x());
+            int dz = Integer.signum(impactTile.z() - pPos.z());
+            int[][] diagonals;
+            if (dz == 0) {
+                diagonals = new int[][]{{dx, -1}, {dx, 1}};
+            } else if (dx == 0) {
+                diagonals = new int[][]{{-1, dz}, {1, dz}};
+            } else {
+                diagonals = new int[0][];
+            }
+            for (int[] diag : diagonals) {
+                // Walk the diagonal; detonate where the rocket first hits an
+                // enemy along the swept 3-tile band, slams into a wall, or
+                // otherwise at the arena edge.
+                GridPos walk = new GridPos(pPos.x() + diag[0], pPos.z() + diag[1]);
+                GridPos detonateAt = walk;
+                while (arena.isInBounds(walk)) {
+                    if (isRocketBlocked(walk, diag[0], diag[1])) {
+                        detonateAt = walk;
+                        break;
+                    }
+                    CombatEntity h = pickRocketHit(walk, diag[0], diag[1]);
+                    if (h != null) {
+                        detonateAt = walk;
+                        break;
+                    }
+                    detonateAt = walk;
+                    walk = new GridPos(walk.x() + diag[0], walk.z() + diag[1]);
+                }
+                BlockPos extraTo = arena.gridToBlockPos(detonateAt);
+                ProjectileSpawner.spawnProjectile(sw, shotFrom, extraTo, "fireball");
+                sw.playSound(null, shotFrom, net.minecraft.sound.SoundEvents.ITEM_CROSSBOW_SHOOT,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 0.6f, 1.2f);
+                detonateRocketBlast(detonateAt, weaponPower);
+            }
+        }
+
+        sendSync();
+        refreshHighlights();
+        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            handleVictory();
+        }
+    }
+
+    /** True if a multishot rocket is blocked by a wall (non-walkable tile)
+     *  at this step of its diagonal flight. The rocket detonates against
+     *  the wall. FIRE tiles don't block projectiles. */
+    private boolean isRocketBlocked(GridPos diagTile, int dx, int dz) {
+        return isRocketWall(diagTile)
+            || isRocketWall(new GridPos(diagTile.x() - dx, diagTile.z()))
+            || isRocketWall(new GridPos(diagTile.x(), diagTile.z() - dz));
+    }
+
+    private boolean isRocketWall(GridPos pos) {
+        if (!arena.isInBounds(pos)) return false;
+        var tile = arena.getTile(pos);
+        return tile != null && !tile.isWalkable()
+            && tile.getType() != com.crackedgames.craftics.core.TileType.FIRE;
+    }
+
+    /** Pick the first live non-ally enemy on the diagonal tile or either
+     *  cardinal-adjacent tile the rocket sweeps through. Mirrors the bolt
+     *  multishot's 3-tile-wide diagonal pass so the rocket detonates on
+     *  the first enemy it visually crosses rather than overflying them. */
+    private CombatEntity pickRocketHit(GridPos diagTile, int dx, int dz) {
+        GridPos[] candidates = new GridPos[] {
+            diagTile,
+            new GridPos(diagTile.x() - dx, diagTile.z()),
+            new GridPos(diagTile.x(), diagTile.z() - dz),
+        };
+        for (GridPos pos : candidates) {
+            if (!arena.isInBounds(pos)) continue;
+            CombatEntity occ = arena.getOccupant(pos);
+            if (occ == null || !occ.isAlive() || occ.isAlly()) continue;
+            return occ;
+        }
+        return null;
+    }
+
+    /** Apply a 3x3 rocket blast at the given tile, damaging any non-ally
+     *  enemies in the splash. Damage is halved at the edges, mirroring the
+     *  rocket-crossbow primary-hit behavior. */
+    private void detonateRocketBlast(GridPos center, int weaponPower) {
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        BlockPos centerBp = arena.gridToBlockPos(center);
+        ProjectileSpawner.spawnImpact(sw, centerBp, "explosion");
+        sw.playSound(null, centerBp, net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        sw.playSound(null, centerBp, net.minecraft.sound.SoundEvents.ENTITY_FIREWORK_ROCKET_LARGE_BLAST,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.2f, 1.0f);
+
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                GridPos splashPos = new GridPos(center.x() + dx, center.z() + dz);
+                CombatEntity splash = arena.getOccupant(splashPos);
+                if (splash == null || !splash.isAlive() || splash.isAlly()) continue;
+                int dmg = (dx == 0 && dz == 0) ? weaponPower : weaponPower / 2;
+                int actual = splash.takeDamage(Math.max(1, dmg));
+                sendMessage("§6✦ Rocket blast hits " + splash.getDisplayName()
+                    + " for " + actual + "!");
+                checkAndHandleDeath(splash);
+            }
+        }
+    }
+
+    /**
      * Find the nearest enemy within 2 tiles of the source that has not already been hit.
      */
     private CombatEntity findRicochetTarget(CombatEntity source, Set<Integer> hitIds) {
@@ -4619,12 +4651,22 @@ public class CombatManager {
         } else if (baseMob instanceof net.minecraft.entity.mob.PiglinEntity pEnt) {
             pEnt.setBaby(false);
         }
+        // Slime Tower base must also be a medium slime (size 2) — the entity
+        // spawns with a random size otherwise.
+        if (baseMob instanceof net.minecraft.entity.mob.SlimeEntity) {
+            ((com.crackedgames.craftics.mixin.SlimeEntityAccessor) baseMob).craftics$setSize(2, true);
+        }
         world.spawnEntity(baseMob);
 
-        // Spawn the visual passenger (next layer up) and mount it on the base.
-        String passengerType = def.passengerTypeFor(0);
-        if (passengerType != null) {
-            spawnAndMountPassenger(baseMob, passengerType, world);
+        // Spawn the full chain of visual passengers so a 3+ layer stack
+        // visually shows every layer. Each rider mounts the previous mob in
+        // sequence (base ← layer[1] ← layer[2] ← ...).
+        MobEntity currentMount = baseMob;
+        for (int i = 1; i < def.layers().size(); i++) {
+            String passengerType = def.layers().get(i).entityTypeId();
+            MobEntity nextRider = spawnAndMountPassenger(currentMount, passengerType, world);
+            if (nextRider == null) break;
+            currentMount = nextRider;
         }
 
         int partySize = getAllParticipants().size();
@@ -4675,13 +4717,15 @@ public class CombatManager {
         if (atkAttr != null) atkAttr.setBaseValue(0.0);
     }
 
-    /** Spawn a cosmetic mob that rides {@code mount}. The passenger is fully invulnerable and arena-tagged. */
-    private void spawnAndMountPassenger(MobEntity mount, String passengerTypeId, ServerWorld world) {
+    /** Spawn a cosmetic mob that rides {@code mount}. The passenger is fully
+     *  invulnerable and arena-tagged. Returns the spawned rider so callers
+     *  can chain a second passenger on top (for 3+ layer stacks). */
+    private MobEntity spawnAndMountPassenger(MobEntity mount, String passengerTypeId, ServerWorld world) {
         Identifier pId = Identifier.of(passengerTypeId);
-        if (!Registries.ENTITY_TYPE.containsId(pId)) return;
+        if (!Registries.ENTITY_TYPE.containsId(pId)) return null;
         EntityType<?> pType = Registries.ENTITY_TYPE.get(pId);
         var rawRider = pType.create(world, null, mount.getBlockPos(), SpawnReason.MOB_SUMMONED, false, false);
-        if (!(rawRider instanceof MobEntity riderMob)) return;
+        if (!(rawRider instanceof MobEntity riderMob)) return null;
         riderMob.refreshPositionAndAngles(mount.getX(), mount.getY(), mount.getZ(), 0, 0);
         riderMob.setAiDisabled(true);
         riderMob.setInvulnerable(true);
@@ -4694,8 +4738,15 @@ public class CombatManager {
         if (passengerTypeId.equals("minecraft:zombie") && mount instanceof net.minecraft.entity.mob.ZombieEntity) {
             if (riderMob instanceof net.minecraft.entity.mob.ZombieEntity rz) rz.setBaby(true);
         }
+        // Slime Tower: every layer is a medium slime (vanilla size 2). Without
+        // this the entity spawns with a random size and the tower looks like
+        // mismatched slimes stacked on each other.
+        if (riderMob instanceof net.minecraft.entity.mob.SlimeEntity) {
+            ((com.crackedgames.craftics.mixin.SlimeEntityAccessor) riderMob).craftics$setSize(2, true);
+        }
         world.spawnEntity(riderMob);
         riderMob.startRiding(mount, true);
+        return riderMob;
     }
 
     /**
@@ -4755,14 +4806,24 @@ public class CombatManager {
         if ("zombie_stack".equals(entity.getStackId()) && newMob instanceof net.minecraft.entity.mob.ZombieEntity zEnt) {
             zEnt.setBaby(true);
         }
+        // Slime Tower transformations also need size-locked medium slimes.
+        if (newMob instanceof net.minecraft.entity.mob.SlimeEntity) {
+            ((com.crackedgames.craftics.mixin.SlimeEntityAccessor) newMob).craftics$setSize(2, true);
+        }
         world.spawnEntity(newMob);
         entity.setMobEntity(newMob);
 
-        // Mount the layer above this one as the visual passenger, if any.
+        // Spawn every remaining layer above this one as visual passengers so
+        // the tower still shows its full silhouette mid-collapse.
         int currentLayerIndex = def != null ? (def.layers().size() - 1 - chain.size()) : -1;
         if (def != null && currentLayerIndex >= 0) {
-            String passengerType = def.passengerTypeFor(currentLayerIndex);
-            if (passengerType != null) spawnAndMountPassenger(newMob, passengerType, world);
+            MobEntity currentMount = newMob;
+            for (int i = currentLayerIndex + 1; i < def.layers().size(); i++) {
+                String passengerType = def.layers().get(i).entityTypeId();
+                MobEntity nextRider = spawnAndMountPassenger(currentMount, passengerType, world);
+                if (nextRider == null) break;
+                currentMount = nextRider;
+            }
         }
 
         // Re-arm CombatEntity stats from the new layer.
@@ -6484,21 +6545,16 @@ public class CombatManager {
             ));
         }
 
-        if (testRange) {
-            apRemaining = 999;
-            movePointsRemaining = 999;
-        } else {
-            PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
-            PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
-            apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP)
-                + PlayerCombatStats.getSetApBonus(player);
-            movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
-                + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
-                + (playerMounted ? MOUNT_SPEED_BONUS : 0)
-                + PlayerCombatStats.getSetSpeedBonus(player);
-            if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
-                movePointsRemaining = Math.max(1, movePointsRemaining - 1);
-            }
+        PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+        PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
+        apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP)
+            + PlayerCombatStats.getSetApBonus(player);
+        movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
+            + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
+            + (playerMounted ? MOUNT_SPEED_BONUS : 0)
+            + PlayerCombatStats.getSetSpeedBonus(player);
+        if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
+            movePointsRemaining = Math.max(1, movePointsRemaining - 1);
         }
 
         this.activeTrimScan = TrimEffects.scan(player);
@@ -6550,15 +6606,13 @@ public class CombatManager {
             // Skip directly to new player turn
             turnNumber++;
             movedThisTurn = false;
-            if (!testRange) {
-                PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
-                PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
-                apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP)
-                    + PlayerCombatStats.getSetApBonus(player);
-                movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
-                    + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
-                    + PlayerCombatStats.getSetSpeedBonus(player);
-            }
+            PlayerProgression turnProg2 = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+            PlayerProgression.PlayerStats turnStats2 = turnProg2.getStats(player);
+            apRemaining = turnStats2.getEffective(PlayerProgression.Stat.AP)
+                + PlayerCombatStats.getSetApBonus(player);
+            movePointsRemaining = turnStats2.getEffective(PlayerProgression.Stat.SPEED)
+                + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
+                + PlayerCombatStats.getSetSpeedBonus(player);
             phase = CombatPhase.PLAYER_TURN;
             sendSync();
             refreshHighlights();
@@ -6638,6 +6692,15 @@ public class CombatManager {
                 activeBoat = null;
             } else {
                 player.startRiding(activeBoat, true);
+            }
+        }
+        // Mount cleanup + re-attach safety net.
+        if (playerMounted && mountMob != null) {
+            if (mountMob.isRemoved() || !mountMob.isAlive()) {
+                playerMounted = false;
+                mountMob = null;
+            } else if (player != null && !player.hasVehicle()) {
+                player.startRiding(mountMob, true);
             }
         }
 
@@ -7039,46 +7102,57 @@ public class CombatManager {
         double x = lerpStartX + (endX - lerpStartX) * progress;
         double y = lerpStartY + (endY - lerpStartY) * progress;
         double z = lerpStartZ + (endZ - lerpStartZ) * progress;
-        player.setYaw(playerMoveYaw);
-        player.setHeadYaw(playerMoveYaw);
-        player.setOnGround(true);
 
-        // prevXYZ needed so client limb animator sees the movement delta
-        //? if <=1.21.4 {
-        player.prevX = player.getX();
-        player.prevY = player.getY();
-        player.prevZ = player.getZ();
-        //?} else {
-        /*player.lastX = player.getX();
-        player.lastY = player.getY();
-        player.lastZ = player.getZ();
-        *///?}
-        player.setPosition(x, y, z);
+        if (playerMounted && mountMob != null) {
+            // Mounted ride: drive only the mount. The rider (player) is a
+            // passenger and the client renders them at the mount's tracked
+            // position. requestTeleport force-broadcasts the new mount
+            // position immediately so the client doesn't fall behind.
+            // CombatMountMixin neutralizes getControllingPassenger so the
+            // client's input prediction can't override our movement.
+            mountMob.setYaw(playerMoveYaw);
+            mountMob.setHeadYaw(playerMoveYaw);
+            mountMob.setBodyYaw(playerMoveYaw);
+            mountMob.setOnGround(true);
+            mountMob.requestTeleport(x, y, z);
+            // Re-attach the rider if vanilla silently dropped the link.
+            if (!player.hasVehicle() && !mountMob.isRemoved()) {
+                player.startRiding(mountMob, true);
+            }
+        } else {
+            player.setYaw(playerMoveYaw);
+            player.setHeadYaw(playerMoveYaw);
+            player.setOnGround(true);
 
-        // Velocity drives vanilla limb animation on client
-        double dx = endX - lerpStartX;
-        double dz = endZ - lerpStartZ;
-        double len = Math.sqrt(dx * dx + dz * dz);
-        if (len > 0) {
-            double speed = 0.12;
-            player.setVelocity(dx / len * speed, 0, dz / len * speed);
-            player.velocityDirty = true;
+            // prevXYZ needed so client limb animator sees the movement delta
+            //? if <=1.21.4 {
+            player.prevX = player.getX();
+            player.prevY = player.getY();
+            player.prevZ = player.getZ();
+            //?} else {
+            /*player.lastX = player.getX();
+            player.lastY = player.getY();
+            player.lastZ = player.getZ();
+            *///?}
+            player.setPosition(x, y, z);
+
+            // Velocity drives vanilla limb animation on client
+            double dx = endX - lerpStartX;
+            double dz = endZ - lerpStartZ;
+            double len = Math.sqrt(dx * dx + dz * dz);
+            if (len > 0) {
+                double speed = 0.12;
+                player.setVelocity(dx / len * speed, 0, dz / len * speed);
+                player.velocityDirty = true;
+            }
+
+            player.networkHandler.requestTeleport(x, y, z, playerMoveYaw, 0f);
         }
-
-        player.networkHandler.requestTeleport(x, y, z, playerMoveYaw, 0f);
 
         // Keep boat in sync with player during movement — boats face 90° offset from entity yaw
         if (activeBoat != null) {
             activeBoat.setPosition(x, y, z);
             activeBoat.setYaw(playerMoveYaw - 90f);
-        }
-
-        // Drive the mount tile-by-tile exactly like the combat boat — direct
-        // setPosition + yaw — so the ride interpolates smoothly on the client.
-        if (playerMounted && mountMob != null) {
-            mountMob.setPosition(x, y, z);
-            mountMob.setYaw(playerMoveYaw);
-            mountMob.setHeadYaw(playerMoveYaw);
         }
 
         if (moveTickCounter >= getMoveTicks()) {
@@ -7591,25 +7665,20 @@ public class CombatManager {
                 }
             }
 
-            if (testRange) {
-                apRemaining = 999;
-                movePointsRemaining = 999;
-            } else {
-                // `player` may have been switched by the turn queue above
-                PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
-                PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
-                apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP);
-                apRemaining += PlayerCombatStats.getSetApBonus(player);
-                if (activeTrimScan != null) apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
-                apRemaining = Math.max(0, apRemaining - combatEffects.getMiningFatiguePenalty());
-                movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
-                    + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
-                    + (playerMounted ? MOUNT_SPEED_BONUS : 0);
-                movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
-                if (activeTrimScan != null) movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
-                if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
-                    movePointsRemaining = Math.max(1, movePointsRemaining - 1);
-                }
+            // `player` may have been switched by the turn queue above
+            PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+            PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
+            apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP);
+            apRemaining += PlayerCombatStats.getSetApBonus(player);
+            if (activeTrimScan != null) apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
+            apRemaining = Math.max(0, apRemaining - combatEffects.getMiningFatiguePenalty());
+            movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
+                + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
+                + (playerMounted ? MOUNT_SPEED_BONUS : 0);
+            movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
+            if (activeTrimScan != null) movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
+            if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
+                movePointsRemaining = Math.max(1, movePointsRemaining - 1);
             }
             phase = CombatPhase.PLAYER_TURN;
             player.getWorld().playSound(null, player.getBlockPos(),
@@ -7979,6 +8048,23 @@ public class CombatManager {
                 sendMessage("§5§l⌇ " + currentEnemy.getDisplayName() + " swoops!");
                 ServerWorld swoopWorld = (ServerWorld) player.getEntityWorld();
 
+                // Truncate the swoop path at the first obstacle that appeared
+                // after the boss planned its charge (player placed a barrier
+                // on the line). FIRE is walkable for swoops by design.
+                List<GridPos> swoopPath = swoop.path();
+                int swoopBlockedAt = -1;
+                for (int i = 0; i < swoopPath.size(); i++) {
+                    var stile = arena.getTile(swoopPath.get(i));
+                    if (stile != null && !stile.isWalkable()
+                            && stile.getType() != com.crackedgames.craftics.core.TileType.FIRE) {
+                        swoopBlockedAt = i;
+                        break;
+                    }
+                }
+                if (swoopBlockedAt >= 0) {
+                    swoopPath = new ArrayList<>(swoopPath.subList(0, swoopBlockedAt));
+                }
+
                 // Force the mob visible for the lerp — cinematic swoops from off-stage
                 // bosses (like the Ender Dragon) rely on this so the lerp actually shows.
                 MobEntity swoopMob = currentEnemy.getMobEntity();
@@ -7988,8 +8074,8 @@ public class CombatManager {
                     // Snap to the first tile of the path so the lerp starts at the correct
                     // edge position for cross-arena swoops — prevents a diagonal snap from
                     // the dragon's previous tile.
-                    if (!swoop.path().isEmpty()) {
-                        GridPos swoopStart = swoop.path().get(0);
+                    if (!swoopPath.isEmpty()) {
+                        GridPos swoopStart = swoopPath.get(0);
                         if (!currentEnemy.getGridPos().equals(swoopStart)) {
                             BlockPos snapBlock = arena.gridToBlockPos(swoopStart);
                             double snapOffset = currentEnemy.getSize() / 2.0;
@@ -8014,7 +8100,7 @@ public class CombatManager {
                 GridPos playerGridPos = arena.getPlayerGridPos();
                 int entitySize = currentEnemy.getSize();
                 boolean hitPlayer = false;
-                for (GridPos pos : swoop.path()) {
+                for (GridPos pos : swoopPath) {
                     if (CombatEntity.minDistanceFromSizedEntity(pos, entitySize, playerGridPos) <= 0) {
                         hitPlayer = true;
                         break;
@@ -8042,7 +8128,7 @@ public class CombatManager {
                         GridPos memberGrid = new GridPos(
                             mbp.getX() - swoopOrigin.getX(), mbp.getZ() - swoopOrigin.getZ());
                         boolean memberHit = false;
-                        for (GridPos pos : swoop.path()) {
+                        for (GridPos pos : swoopPath) {
                             if (CombatEntity.minDistanceFromSizedEntity(pos, entitySize, memberGrid) <= 0) {
                                 memberHit = true;
                                 break;
@@ -8080,7 +8166,12 @@ public class CombatManager {
                 // Start the actual per-tile lerp through the swoop path.
                 // tickEnemyMoving handles the visual interpolation and spawns trail
                 // particles when pendingAction is a Swoop (see tickEnemyMoving hook).
-                startEnemyMove(swoop.path());
+                if (swoopPath.isEmpty()) {
+                    enemyTurnState = EnemyTurnState.DONE;
+                    enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                } else {
+                    startEnemyMove(swoopPath);
+                }
             }
             case EnemyAction.StartFuse fuse -> {
                 sendMessage("§e" + currentEnemy.getDisplayName() + " is hissing... §c§lRUN!");
@@ -11076,6 +11167,19 @@ public class CombatManager {
     }
 
     private void startEnemyMove(List<GridPos> path) {
+        // Obstacle collision: stop the mob the tile BEFORE a non-walkable
+        // tile that appeared after the AI planned its path (eg the player
+        // dropped an obstacle on the dash line). FIRE is treated as
+        // walkable since some boss charges intentionally leave fire trails.
+        for (int i = 0; i < path.size(); i++) {
+            var tile = arena.getTile(path.get(i));
+            if (tile != null && !tile.isWalkable()
+                    && tile.getType() != com.crackedgames.craftics.core.TileType.FIRE) {
+                path = new ArrayList<>(path.subList(0, i));
+                sendMessage("§7" + currentEnemy.getDisplayName() + " slams into the obstacle!");
+                break;
+            }
+        }
         // Cobweb trap: truncate path if enemy walks through a web
         for (int i = 0; i < path.size(); i++) {
             if (arena.hasWebOverlay(path.get(i))) {
@@ -13047,18 +13151,6 @@ public class CombatManager {
     }
 
     private void handleGameOver() {
-        // Test range: no penalties, just end cleanly
-        if (testRange) {
-            sendMessage("§c§l*** DEFEATED ***");
-            sendMessage("§7Test range — no penalties applied.");
-            for (ServerPlayerEntity p : getAllParticipants()) {
-                p.setHealth(p.getMaxHealth());
-                teleportToHub(p);
-            }
-            sendToAllParty(new ExitCombatPayload(false));
-            endCombat();
-            return;
-        }
         phase = CombatPhase.GAME_OVER;
         // Sound: defeat
         if (player != null) {
@@ -13362,18 +13454,6 @@ public class CombatManager {
                 realLeader != null ? realLeader.getName().getString() : leaderUuid);
         }
 
-        // Test range: no rewards, just end cleanly
-        if (testRange) {
-            sendMessage("§a§l*** VICTORY ***");
-            sendMessage("§7Test range — no rewards given.");
-            for (ServerPlayerEntity p : getAllParticipants()) {
-                p.setHealth(p.getMaxHealth());
-                teleportToHub(p);
-            }
-            sendToAllParty(new ExitCombatPayload(true));
-            endCombat();
-            return;
-        }
         // Sound: victory
         if (player != null) {
             player.getWorld().playSound(null, player.getBlockPos(),
@@ -16245,7 +16325,6 @@ public class CombatManager {
         // party when handlePostLevelChoice → transitionPartyToArena runs
         // after endCombat. ModNetworking overwrites it on the next biome
         // start, so there is no stale-data risk.
-        testRange = false;
         combatEffects.clear();
         tileEffects.clear();
         lootPendingPlayers.clear();
@@ -16287,11 +16366,24 @@ public class CombatManager {
             mountMob.setNoGravity(true);
             mountMob.setInvulnerable(true);
             mountMob.setSilent(true);
+            // The craftics_arena_mount tag opts the mob out of the vanilla
+            // controlling-passenger system (see CombatMountMixin). Without
+            // that, the client steers the mount from the rider's input and
+            // overrides the server's tile-by-tile movement, slingshotting
+            // it back to the rider's predicted position each tick.
+            mountMob.addCommandTag("craftics_arena_mount");
             if (player.hasVehicle()) player.stopRiding();
-            mountMob.setPosition(player.getX(), player.getY(), player.getZ());
+            mountMob.refreshPositionAndAngles(
+                player.getX(), player.getY(), player.getZ(),
+                player.getYaw(), 0f);
             player.startRiding(mountMob, true);
         }
         arena.removeEntity(e);
+        // Mount's CombatEntity is no longer on the grid, but other systems
+        // still query its gridPos (death checks, save snapshots). Park it
+        // on the player's tile so any later position-aware logic reads a
+        // sensible value.
+        e.setGridPos(arena.getPlayerGridPos());
         movePointsRemaining += MOUNT_SPEED_BONUS;
         sendMessage("§a§l" + e.getDisplayName() + " mounted! +" + MOUNT_SPEED_BONUS + " Speed!");
     }

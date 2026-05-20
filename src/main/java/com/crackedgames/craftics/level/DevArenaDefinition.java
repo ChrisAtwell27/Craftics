@@ -44,6 +44,16 @@ public class DevArenaDefinition extends LevelDefinition {
         int midX = width / 2;
         int midZ = height / 2;
         spawns.add(new EnemySpawn("minecraft:husk", new GridPos(midX - 2, midZ + 3), 15, 3, 0, 1));
+        // Stack-enemy showcase. Hp/atk/def/range are ignored for stacks — the
+        // values come from StackVariants. Use typeIdFor so the spawn loop's
+        // isStackType check routes them to spawnStackedEnemy. Placed off to
+        // the side so they don't sit on hazards.
+        spawns.add(new EnemySpawn(
+            com.crackedgames.craftics.combat.StackVariants.typeIdFor("slime_tower"),
+            new GridPos(midX + 3, 2), 0, 0, 0, 0));
+        spawns.add(new EnemySpawn(
+            com.crackedgames.craftics.combat.StackVariants.typeIdFor("blaze_tower"),
+            new GridPos(midX - 3, 2), 0, 0, 0, 0));
         return spawns.toArray(new EnemySpawn[0]);
     }
 

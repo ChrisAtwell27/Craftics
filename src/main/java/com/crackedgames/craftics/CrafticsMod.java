@@ -1043,18 +1043,6 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics test_range — enter a test arena with a training dummy
-            root.then(CommandManager.literal("test_range").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
-                ServerPlayerEntity p = ctx.getSource().getPlayerOrThrow();
-                com.crackedgames.craftics.combat.CombatManager cm = com.crackedgames.craftics.combat.CombatManager.get(p);
-                if (cm.isActive()) {
-                    ctx.getSource().sendError(Text.literal("§cYou are already in combat! Use /craftics leave to exit first."));
-                    return 0;
-                }
-                cm.startTestRange(p);
-                return 1;
-            }));
-
             // /craftics force_event <event> — force the next between-level event
             var forceEventNode = CommandManager.literal("force_event");
             // Built-in event names — bare strings that the dispatch in
@@ -1085,30 +1073,6 @@ public class CrafticsMod implements ModInitializer {
                 }));
             }
             root.then(forceEventNode);
-
-            // /craftics leave — leave the test range (or any combat)
-            root.then(CommandManager.literal("leave").executes(ctx -> {
-                ServerPlayerEntity p = ctx.getSource().getPlayerOrThrow();
-                com.crackedgames.craftics.combat.CombatManager cm = com.crackedgames.craftics.combat.CombatManager.get(p);
-                if (!cm.isActive()) {
-                    ctx.getSource().sendError(Text.literal("§cYou are not in combat."));
-                    return 0;
-                }
-                if (!cm.isTestRange()) {
-                    ctx.getSource().sendError(Text.literal("§cYou can only use /craftics leave in the test range."));
-                    return 0;
-                }
-                p.setHealth(p.getMaxHealth());
-                cm.endCombat();
-                CrafticsSavedData leaveData = CrafticsSavedData.get(p.getServerWorld());
-                net.minecraft.util.math.BlockPos leaveHub = leaveData.getHubTeleportPos(p.getUuid());
-                p.requestTeleport(leaveHub.getX() + 0.5, leaveHub.getY(), leaveHub.getZ() + 0.5);
-                p.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
-                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p,
-                    new com.crackedgames.craftics.network.ExitCombatPayload(false));
-                ctx.getSource().sendFeedback(() -> Text.literal("§aLeft the test range."), false);
-                return 1;
-            }));
 
             registerPartyCommands(root);
             registerWorldCommands(root);

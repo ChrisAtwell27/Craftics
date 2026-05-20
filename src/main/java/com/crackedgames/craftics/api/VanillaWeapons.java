@@ -38,6 +38,48 @@ public final class VanillaWeapons {
     /** Luck bonus per point added to all probability-based weapon effects. */
     public static final double LUCK_BONUS_PER_POINT = 0.02;
 
+    /**
+     * Multishot diagonal bolts cross corner-to-corner, so the bolt visually
+     * passes between two cardinal tiles on each step. Pick the first live
+     * non-ally enemy on the diagonal tile or either adjacent cardinal tile
+     * that the bolt sweeps through. The primary target is excluded so a
+     * diagonal bolt can't double-hit them.
+     */
+    private static CombatEntity pickMultishotHit(GridArena arena, GridPos diagTile,
+                                                 int dx, int dz, CombatEntity primary) {
+        GridPos[] candidates = new GridPos[] {
+            diagTile,
+            new GridPos(diagTile.x() - dx, diagTile.z()),
+            new GridPos(diagTile.x(), diagTile.z() - dz),
+        };
+        for (GridPos pos : candidates) {
+            if (!arena.isInBounds(pos)) continue;
+            CombatEntity occ = arena.getOccupant(pos);
+            if (occ == null || !occ.isAlive()) continue;
+            if (occ.isAlly()) continue;
+            if (occ == primary) continue;
+            return occ;
+        }
+        return null;
+    }
+
+    /**
+     * True if the multishot bolt is blocked by a wall (non-walkable tile)
+     * at this step of its diagonal flight. FIRE tiles don't block projectiles.
+     */
+    private static boolean isMultishotBlocked(GridArena arena, GridPos diagTile, int dx, int dz) {
+        return isWall(arena, diagTile)
+            || isWall(arena, new GridPos(diagTile.x() - dx, diagTile.z()))
+            || isWall(arena, new GridPos(diagTile.x(), diagTile.z() - dz));
+    }
+
+    private static boolean isWall(GridArena arena, GridPos pos) {
+        if (!arena.isInBounds(pos)) return false;
+        var tile = arena.getTile(pos);
+        return tile != null && !tile.isWalkable()
+            && tile.getType() != com.crackedgames.craftics.core.TileType.FIRE;
+    }
+
     public static void registerAll() {
         registerSwords();
         registerAxes();
@@ -664,6 +706,11 @@ public final class VanillaWeapons {
             if (offhand.isOf(Items.FIREWORK_ROCKET)) {
                 offhand.decrement(1);
                 GridPos tPos = target.getGridPos();
+                GridPos pPosRocket = arena.getPlayerGridPos();
+                ServerWorld sw = player.getEntityWorld() instanceof ServerWorld s ? s : null;
+                BlockPos fromBp = sw != null ? arena.gridToBlockPos(pPosRocket) : null;
+
+                // Primary blast around the clicked target.
                 for (int dx = -1; dx <= 1; dx++) {
                     for (int dz = -1; dz <= 1; dz++) {
                         if (dx == 0 && dz == 0) continue;
@@ -676,8 +723,9 @@ public final class VanillaWeapons {
                             + " for " + splashDmg + "!");
                     }
                 }
-                if (player.getEntityWorld() instanceof ServerWorld sw) {
+                if (sw != null) {
                     BlockPos bp = arena.gridToBlockPos(tPos);
+                    ProjectileSpawner.spawnProjectile(sw, fromBp, bp, "fireball");
                     ProjectileSpawner.spawnImpact(sw, bp, "explosion");
                     sw.playSound(null, bp, SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
                         SoundCategory.PLAYERS, 1.0f, 1.0f);
@@ -685,6 +733,78 @@ public final class VanillaWeapons {
                         SoundCategory.PLAYERS, 1.2f, 1.0f);
                 }
                 messages.add("§6✦ Explosive bolt!");
+
+                // Multishot — two extra rockets fly along the diagonal fan
+                // lines, exploding wherever they leave the arena. Each blast
+                // damages any non-ally caught in its 3x3 footprint.
+                if (PlayerCombatStats.hasMultishot(player)) {
+                    int rdx = Integer.signum(tPos.x() - pPosRocket.x());
+                    int rdz = Integer.signum(tPos.z() - pPosRocket.z());
+                    int[][] diagonals;
+                    if (rdz == 0) {
+                        diagonals = new int[][]{{rdx, -1}, {rdx, 1}};
+                    } else if (rdx == 0) {
+                        diagonals = new int[][]{{-1, rdz}, {1, rdz}};
+                    } else {
+                        diagonals = new int[0][];
+                    }
+                    for (int[] diag : diagonals) {
+                        // Walk the diagonal until the rocket either hits a
+                        // mob (along the swept 3-tile-wide band, same logic
+                        // as the multishot bolt), slams into a wall, or
+                        // leaves the arena. A wall stops the rocket and the
+                        // blast detonates against it.
+                        GridPos walk = new GridPos(pPosRocket.x() + diag[0], pPosRocket.z() + diag[1]);
+                        GridPos detonateAt = walk;
+                        CombatEntity rocketHit = null;
+                        while (arena.isInBounds(walk)) {
+                            if (isMultishotBlocked(arena, walk, diag[0], diag[1])) {
+                                detonateAt = walk;
+                                break;
+                            }
+                            CombatEntity h = pickMultishotHit(arena, walk, diag[0], diag[1], target);
+                            if (h != null && !extraTargets.contains(h)) {
+                                rocketHit = h;
+                                detonateAt = walk;
+                                break;
+                            }
+                            detonateAt = walk;
+                            walk = new GridPos(walk.x() + diag[0], walk.z() + diag[1]);
+                        }
+                        if (sw != null) {
+                            BlockPos extraBp = arena.gridToBlockPos(detonateAt);
+                            ProjectileSpawner.spawnProjectile(sw, fromBp, extraBp, "fireball");
+                            ProjectileSpawner.spawnImpact(sw, extraBp, "explosion");
+                            sw.playSound(null, extraBp, SoundEvents.ENTITY_FIREWORK_ROCKET_LARGE_BLAST,
+                                SoundCategory.PLAYERS, 1.0f, 1.05f);
+                        }
+                        // Direct rocket hit (if any) takes full half-damage
+                        // before the 3x3 splash, so the targeted mob doesn't
+                        // get penalized by sitting at the splash edge.
+                        if (rocketHit != null) {
+                            int directDmg = rocketHit.takeDamage(Math.max(1, baseDamage / 2));
+                            extraTargets.add(rocketHit);
+                            totalExtra += directDmg;
+                            messages.add("§d✦ Multishot rocket hits " + rocketHit.getDisplayName()
+                                + " for " + directDmg + "!");
+                        }
+                        // 3x3 splash at the detonation point. Half damage,
+                        // matching the primary blast edges.
+                        for (int sdx = -1; sdx <= 1; sdx++) {
+                            for (int sdz = -1; sdz <= 1; sdz++) {
+                                GridPos sp = new GridPos(detonateAt.x() + sdx, detonateAt.z() + sdz);
+                                CombatEntity splash = arena.getOccupant(sp);
+                                if (splash == null || !splash.isAlive() || splash.isAlly()) continue;
+                                if (splash == target || extraTargets.contains(splash)) continue;
+                                int splashDmg = splash.takeDamage(Math.max(1, baseDamage / 2));
+                                extraTargets.add(splash);
+                                totalExtra += splashDmg;
+                                messages.add("§6✦ Rocket splash hits " + splash.getDisplayName()
+                                    + " for " + splashDmg + "!");
+                            }
+                        }
+                    }
+                }
                 return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
             }
 
@@ -738,17 +858,50 @@ public final class VanillaWeapons {
                     diagonals = new int[0][];
                 }
                 for (int[] diag : diagonals) {
+                    // Walk the diagonal line one step at a time. At each step
+                    // the bolt sweeps through three tiles: the diagonal tile
+                    // itself, plus the two cardinal tiles it passes between
+                    // (so an enemy visually in the bolt's path gets hit even
+                    // if it's not on the exact 45\u00b0 corner trajectory).
                     GridPos diagCheck = new GridPos(pPos.x() + diag[0], pPos.z() + diag[1]);
+                    GridPos diagImpact = diagCheck;
+                    CombatEntity diagTarget = null;
+                    boolean diagBlocked = false;
                     while (arena.isInBounds(diagCheck)) {
-                        CombatEntity diagTarget = arena.getOccupant(diagCheck);
-                        if (diagTarget != null && diagTarget.isAlive()) {
-                            int diagDmg = diagTarget.takeDamage(baseDamage / 2);
-                            extraTargets.add(diagTarget);
-                            totalExtra += diagDmg;
-                            messages.add("\u00a7d\u2694 Multishot bolt hits " + diagTarget.getDisplayName() + " for " + diagDmg + "!");
-                            break; // Each diagonal bolt hits only the first target
+                        if (isMultishotBlocked(arena, diagCheck, diag[0], diag[1])) {
+                            diagImpact = diagCheck;
+                            diagBlocked = true;
+                            break;
                         }
+                        CombatEntity hit = pickMultishotHit(arena, diagCheck, diag[0], diag[1], target);
+                        if (hit != null) {
+                            diagTarget = hit;
+                            diagImpact = diagCheck;
+                            break;
+                        }
+                        diagImpact = diagCheck;
                         diagCheck = new GridPos(diagCheck.x() + diag[0], diagCheck.z() + diag[1]);
+                    }
+
+                    // Spawn a particle trail for every multishot bolt, hit or
+                    // miss, so the player sees all three projectiles fan out.
+                    if (player.getEntityWorld() instanceof ServerWorld msw) {
+                        BlockPos fromBp = arena.gridToBlockPos(pPos);
+                        BlockPos toBp = arena.gridToBlockPos(diagImpact);
+                        ProjectileSpawner.spawnProjectile(msw, fromBp, toBp, "crossbow");
+                        msw.playSound(null, fromBp, SoundEvents.ITEM_CROSSBOW_SHOOT,
+                            SoundCategory.PLAYERS, 0.6f, 1.2f);
+                    }
+
+                    if (diagTarget != null) {
+                        int diagDmg = diagTarget.takeDamage(baseDamage / 2);
+                        extraTargets.add(diagTarget);
+                        totalExtra += diagDmg;
+                        messages.add("\u00a7d\u2694 Multishot bolt hits " + diagTarget.getDisplayName() + " for " + diagDmg + "!");
+                    } else if (diagBlocked) {
+                        messages.add("\u00a78\u2694 Multishot bolt thuds into the wall.");
+                    } else {
+                        messages.add("\u00a78\u2694 Multishot bolt sails past.");
                     }
                 }
             }
