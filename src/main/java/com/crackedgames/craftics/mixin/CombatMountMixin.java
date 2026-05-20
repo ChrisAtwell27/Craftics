@@ -4,29 +4,28 @@ import net.minecraft.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Neutralize the controlling-passenger relationship for Craftics combat
- * mounts. When the player rides a mount in combat, vanilla treats them as
- * the mount's controlling passenger and lets the client steer the mount via
- * input prediction — that prediction overrides the server's tile-by-tile
- * movement and slingshots the mount back each tick.
+ * Freeze Craftics combat mounts so vanilla's per-tick movement physics
+ * don't fight {@link com.crackedgames.craftics.combat.CombatManager}'s
+ * tile-by-tile control. With a player passenger, vanilla tickMovement
+ * applies rider-input prediction, velocity decay, collision, and friction
+ * each tick — those nudges add up on the client and slingshot the mount.
  *
- * <p>Mobs tagged with {@code craftics_arena_mount} return {@code null} from
- * {@link LivingEntity#getControllingPassenger()}, so {@code travel()} skips
- * the rider-input branch and the server is the sole authority for the
- * mount's position. The player still renders as a passenger visually.
+ * <p>Cancelling {@code tickMovement} at HEAD for entities tagged
+ * {@code craftics_arena_mount} freezes the mount's position entirely.
+ * CombatManager is the sole authority; the riding link stays intact so
+ * the player still renders on top of the mount.
  */
 @Mixin(LivingEntity.class)
 public abstract class CombatMountMixin {
 
-    @Inject(method = "getControllingPassenger", at = @At("HEAD"), cancellable = true)
-    private void craftics$disableSteeringForCombatMount(
-            CallbackInfoReturnable<LivingEntity> cir) {
+    @Inject(method = "tickMovement", at = @At("HEAD"), cancellable = true)
+    private void craftics$skipMovementForCombatMount(CallbackInfo ci) {
         LivingEntity self = (LivingEntity) (Object) this;
         if (self.getCommandTags().contains("craftics_arena_mount")) {
-            cir.setReturnValue(null);
+            ci.cancel();
         }
     }
 }
