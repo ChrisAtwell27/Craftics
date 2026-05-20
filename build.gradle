@@ -124,8 +124,13 @@ dependencies {
 // crafting-recipe ingredient format change (verbose {"item": "..."} bare
 // string) introduced in 1.21.2. Files here win over the shared dir thanks to
 // the duplicates strategy below.
+//
+// Note: this build.gradle is evaluated inside each versions/<mc>/ subproject,
+// so a bare "src/main_modern/resources" resolves relative to the subproject
+// dir, which doesn't exist. Use rootProject.file(...) so every version reads
+// the shared override dir at the repo root.
 if (stonecutter.eval(project.minecraft_version, ">=1.21.2")) {
-	sourceSets.main.resources.srcDir "src/main_modern/resources"
+	sourceSets.main.resources.srcDir rootProject.file("src/main_modern/resources")
 }
 
 processResources {

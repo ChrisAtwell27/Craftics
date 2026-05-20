@@ -120,8 +120,12 @@ public class ArenaBuilder {
                     continue;
                 }
 
-                // Lava at floor level = LAVA tile
+                // Lava at floor level = LAVA tile. Cap the depth so the
+                // player can't fall through a multi-block lava column to an
+                // instant death — fill any lava directly below with stone,
+                // turning a hidden pit into a fair single-tile hazard.
                 if (floorBlock == Blocks.LAVA || floorBlock == Blocks.MAGMA_BLOCK) {
+                    capLavaDepth(world, floorX + x, floorY, floorZ + z);
                     tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.LAVA, Blocks.LAVA);
                     continue;
                 }
@@ -385,9 +389,11 @@ public class ArenaBuilder {
                         Blocks.POWDER_SNOW);
                 }
 
-                // Lava or magma at floor level = LAVA tile
+                // Lava or magma at floor level = LAVA tile. Cap depth so the
+                // tile is a fair single-block hazard (see capLavaDepth).
                 if (finalTiles[x][z].isWalkable()
                     && (floorState.getBlock() == Blocks.LAVA || floorState.getBlock() == Blocks.MAGMA_BLOCK)) {
+                    capLavaDepth(world, floorX + x, floorY, floorZ + z);
                     finalTiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.LAVA,
                         Blocks.LAVA);
                 }
@@ -1883,5 +1889,26 @@ public class ArenaBuilder {
             case "dragons_nest"      -> "the_end";
             default                  -> "plains";
         });
+    }
+
+    /**
+     * Cap lava depth at the tile so the player can't fall through a hidden
+     * multi-block lava column into instant death. If the block directly
+     * under the top lava tile is also lava, replace it with stone. The
+     * top lava block stays visible so the hazard reads identically; only
+     * the depth changes.
+     */
+    private static void capLavaDepth(net.minecraft.server.world.ServerWorld world,
+                                     int wx, int floorY, int wz) {
+        net.minecraft.util.math.BlockPos belowPos =
+            new net.minecraft.util.math.BlockPos(wx, floorY - 1, wz);
+        net.minecraft.block.BlockState below = world.getBlockState(belowPos);
+        if (below.getBlock() == Blocks.LAVA
+            || !below.getFluidState().isEmpty()
+            || below.isAir()) {
+            int flags = net.minecraft.block.Block.NOTIFY_LISTENERS
+                | net.minecraft.block.Block.FORCE_STATE;
+            world.setBlockState(belowPos, Blocks.STONE.getDefaultState(), flags);
+        }
     }
 }

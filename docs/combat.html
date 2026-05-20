@@ -391,13 +391,10 @@
       meant to be an uncommon, lucky break, not a wall you hide behind.
     </p>
     <div class="formula">
-      dodge% = clamp(3 &times; (AC &minus; enemyAttack) &minus; 8, 5, 40)
+      dodge% = clamp(diff&sup2; / 3 + diff, 3, 60) &nbsp; where &nbsp; diff = max(0, AC &minus; enemyAttack)
     </div>
     <p>
-      Every enemy attack rolls a d100 against this chance. Dodge has a <strong>5% floor</strong> (even
-      badly outmatched armor occasionally saves you) and a <strong>40% cap</strong> (dodge never
-      becomes reliable). A landed hit deals the enemy's full attack value, with no
-      damage reduction, so staying geared matters.
+      Every enemy attack rolls a d100 against this chance. The curve is smooth and slightly accelerating, so small AC advantages give modest dodge while large advantages compound. Dodge has a <strong>3% floor</strong> (even badly outmatched armor occasionally saves you) and a <strong>60% cap</strong> (dodge never becomes a guaranteed wall). A landed hit deals the enemy's full attack value with no damage reduction, so staying geared matters.
     </p>
 
     <h3>How Armor Class Is Built</h3>
@@ -431,17 +428,19 @@
       <table>
         <thead><tr><th>AC &minus; Enemy Attack</th><th>Dodge %</th><th>Feel</th></tr></thead>
         <tbody>
-          <tr><td>&le; 4</td><td>5% (floor)</td><td>outmatched / no armor</td></tr>
-          <tr><td>5</td><td>7%</td><td>full leather vs a starting enemy</td></tr>
-          <tr><td>9</td><td>19%</td><td>full iron vs an iron-tier enemy</td></tr>
-          <tr><td>13</td><td>31%</td><td>full diamond vs a diamond-tier enemy</td></tr>
-          <tr><td>15</td><td>37%</td><td>full netherite vs a netherite-tier enemy</td></tr>
-          <tr><td>&ge; 16</td><td>40% (cap)</td><td>you outclass this enemy</td></tr>
+          <tr><td>&le; 2</td><td>3% (floor)</td><td>outmatched / no armor edge</td></tr>
+          <tr><td>3</td><td>6%</td><td>small advantage (eg AC 8 vs ATK 5)</td></tr>
+          <tr><td>5</td><td>13%</td><td>full leather (AC 7) vs a starting enemy, or AC 8 vs a 3-ATK zombie</td></tr>
+          <tr><td>7</td><td>23%</td><td>AC 10 vs a 3-ATK enemy</td></tr>
+          <tr><td>9</td><td>36%</td><td>full iron (AC 13) vs an iron-tier enemy</td></tr>
+          <tr><td>10</td><td>43%</td><td>strong gear edge</td></tr>
+          <tr><td>12</td><td>60% (cap)</td><td>diamond/netherite outclassing earlier enemies</td></tr>
+          <tr><td>&ge; 12</td><td>60% (cap)</td><td>you fully outclass this enemy</td></tr>
         </tbody>
       </table>
     </div>
     <div class="callout">
-      <p><strong>Old armor stays useful:</strong> the 5% floor means weak or outdated armor is never
+      <p><strong>Old armor stays useful:</strong> the 3% floor means weak or outdated armor is never
       completely worthless. Enchanting old armor with Protection IV (up to +8 AC) keeps even leather
       viable much deeper into the game.</p>
     </div>

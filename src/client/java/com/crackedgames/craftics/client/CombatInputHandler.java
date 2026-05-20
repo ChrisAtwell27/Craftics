@@ -226,6 +226,16 @@ public class CombatInputHandler {
                         CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
                     ));
                     hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ATTACKED);
+                } else if (client.player != null
+                        && client.player.getMainHandStack().getItem() == Items.CROSSBOW
+                        && client.player.getOffHandStack().getItem() == Items.FIREWORK_ROCKET) {
+                    // Rocket crossbow can target any empty tile so the 3x3
+                    // blast catches enemies the player couldn't single-tile.
+                    // Server validates range, AP, and consumes the rocket.
+                    ClientPlayNetworking.send(new CombatActionPayload(
+                        CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
+                    ));
+                    hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ATTACKED);
                 } else if (client.player != null) {
                     client.player.sendMessage(
                         net.minecraft.text.Text.literal("\u00a7cNo enemy on that tile!"), false
