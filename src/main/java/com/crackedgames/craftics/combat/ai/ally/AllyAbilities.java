@@ -16,7 +16,7 @@ public final class AllyAbilities {
     private AllyAbilities() {}
 
     /** A status an ally inflicts on whatever it attacks. */
-    public enum OnHitEffect { NONE, BURN, SOAK, SLOW }
+    public enum OnHitEffect { NONE, BURN, SOAK, SLOW, POISON }
 
     private static final Map<String, OnHitEffect> BY_TYPE = Map.ofEntries(
         // Striders set their target alight.
@@ -29,7 +29,9 @@ public final class AllyAbilities {
         Map.entry("minecraft:frog", OnHitEffect.SOAK),
         // Cold allies chill their target with Slowness.
         Map.entry("minecraft:snow_golem", OnHitEffect.SLOW),
-        Map.entry("minecraft:polar_bear", OnHitEffect.SLOW)
+        Map.entry("minecraft:polar_bear", OnHitEffect.SLOW),
+        // Bees sting their target with Poison, like their hostile counterparts.
+        Map.entry("minecraft:bee", OnHitEffect.POISON)
     );
 
     /** The on-hit effect for a given ally type, or {@link OnHitEffect#NONE}. */
@@ -45,10 +47,11 @@ public final class AllyAbilities {
      */
     public static String applyOnHit(CombatEntity ally, CombatEntity target) {
         switch (effectFor(ally.getEntityTypeId())) {
-            case BURN -> { target.stackBurning(3, 2);  return " §6Burning!"; }
-            case SOAK -> { target.stackSoaked(3, 0);   return " §bSoaked!"; }
-            case SLOW -> { target.stackSlowness(3, 1); return " §7Slowed!"; }
-            default   -> { return ""; }
+            case BURN   -> { target.stackBurning(3, 2);  return " §6Burning!"; }
+            case SOAK   -> { target.stackSoaked(3, 0);   return " §bSoaked!"; }
+            case SLOW   -> { target.stackSlowness(3, 1); return " §7Slowed!"; }
+            case POISON -> { target.stackPoison(3, 0);   return " §2Poisoned!"; }
+            default     -> { return ""; }
         }
     }
 }

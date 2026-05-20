@@ -7,12 +7,18 @@ import com.crackedgames.craftics.combat.CombatEntity;
 import com.crackedgames.craftics.combat.DamageType;
 import com.crackedgames.craftics.combat.PlayerCombatStats;
 import com.crackedgames.craftics.combat.PlayerProgression;
+import com.crackedgames.craftics.combat.ProjectileSpawner;
 import com.crackedgames.craftics.combat.WeaponAbility;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.util.math.BlockPos;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -154,7 +160,7 @@ public final class VanillaWeapons {
                     arena.moveEntity(pushTarget, kbPos);
                     if (pushTarget.getMobEntity() != null) {
                         var bp = arena.gridToBlockPos(kbPos);
-                        pushTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(kbPos), bp.getZ() + 0.5);
+                        pushTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(kbPos, pushTarget.isFlying()), bp.getZ() + 0.5);
                     }
                     if (hitHazard) {
                         var hazardTile = arena.getTile(kbPos);
@@ -230,7 +236,7 @@ public final class VanillaWeapons {
                                 arena.moveEntity(sweepTarget, sweepKbPos);
                                 if (sweepTarget.getMobEntity() != null) {
                                     var bp = arena.gridToBlockPos(sweepKbPos);
-                                    sweepTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(sweepKbPos), bp.getZ() + 0.5);
+                                    sweepTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(sweepKbPos, sweepTarget.isFlying()), bp.getZ() + 0.5);
                                 }
                                 if (sweepHazard) {
                                     switch (tile.getType()) {
@@ -649,6 +655,38 @@ public final class VanillaWeapons {
             List<String> messages = new ArrayList<>();
             List<CombatEntity> extraTargets = new ArrayList<>();
             int totalExtra = 0;
+
+            // Rocket crossbow — a firework rocket held in the offhand turns the bolt
+            // into an explosive shell: a 3x3 blast around the impact tile, in place
+            // of the usual Piercing / Multishot bolt logic. Mirrors vanilla's
+            // firework-loaded crossbow.
+            ItemStack offhand = player.getOffHandStack();
+            if (offhand.isOf(Items.FIREWORK_ROCKET)) {
+                offhand.decrement(1);
+                GridPos tPos = target.getGridPos();
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        if (dx == 0 && dz == 0) continue;
+                        CombatEntity splash = arena.getOccupant(new GridPos(tPos.x() + dx, tPos.z() + dz));
+                        if (splash == null || !splash.isAlive() || splash.isAlly() || splash == target) continue;
+                        int splashDmg = splash.takeDamage(baseDamage / 2);
+                        extraTargets.add(splash);
+                        totalExtra += splashDmg;
+                        messages.add("§6✦ Firework blast hits " + splash.getDisplayName()
+                            + " for " + splashDmg + "!");
+                    }
+                }
+                if (player.getEntityWorld() instanceof ServerWorld sw) {
+                    BlockPos bp = arena.gridToBlockPos(tPos);
+                    ProjectileSpawner.spawnImpact(sw, bp, "explosion");
+                    sw.playSound(null, bp, SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+                        SoundCategory.PLAYERS, 1.0f, 1.0f);
+                    sw.playSound(null, bp, SoundEvents.ENTITY_FIREWORK_ROCKET_LARGE_BLAST,
+                        SoundCategory.PLAYERS, 1.2f, 1.0f);
+                }
+                messages.add("§6✦ Explosive bolt!");
+                return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
+            }
 
             int piercingLevel = PlayerCombatStats.getPiercing(player);
 

@@ -362,6 +362,28 @@ public class LevelGenerator {
             }
         }
 
+        // Stacked enemy replacements (Zombie Stack, Slime Tower, etc.). Each
+        // eligible spawn rolls independently against its stack's spawnChance.
+        // The stack mob inherits the spawn's position; CombatManager handles
+        // building the actual stack visuals from its definition.
+        for (int i = 0; i < spawns.size(); i++) {
+            LevelDefinition.EnemySpawn s = spawns.get(i);
+            if (com.crackedgames.craftics.combat.StackVariants.isStackType(s.entityTypeId())) continue;
+            com.crackedgames.craftics.combat.StackVariants.StackDef def =
+                com.crackedgames.craftics.combat.StackVariants.findReplacementFor(s.entityTypeId(), biome.biomeId);
+            if (def == null) continue;
+            if (rand.nextFloat() >= def.spawnChance()) continue;
+            spawns.set(i, new LevelDefinition.EnemySpawn(
+                com.crackedgames.craftics.combat.StackVariants.typeIdFor(def.id()),
+                s.position(),
+                // HP/ATK/DEF/range/speed come from the stack's BASE layer at
+                // spawn time, looked up in CombatManager. Passing 1s here is
+                // intentional — these values are unused for stack types.
+                1, 1, 0, 1,
+                s.aiKey(), 0
+            ));
+        }
+
         return spawns.toArray(new LevelDefinition.EnemySpawn[0]);
     }
 

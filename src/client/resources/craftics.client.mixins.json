@@ -11,6 +11,7 @@
     "LivingEntityRendererAnimMixin",
     "LivingEntityRenderStateAnimMixin",
     "FovLockMixin",
+    "HandledScreenKeyMixin",
     "HudTransitionMixin",
     "InputAccessor",
     "MouseUnlockMixin",

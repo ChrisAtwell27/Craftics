@@ -45,6 +45,8 @@ public class CrafticsSavedData extends PersistentState {
         public boolean inCombat = false;
         public boolean starterGuideGranted = false;
         public int worldSlot = -1;
+        /** Hotbar slot index (0-8) where the Move item is force-locked. Default slot 9 (index 8). */
+        public int lockedMoveSlot = 8;
         public boolean personalHubBuilt = false;
         public int personalHubVersion = 0;
         /**
@@ -204,6 +206,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putBoolean("inCombat", inCombat);
             nbt.putBoolean("starterGuideGranted", starterGuideGranted);
             nbt.putInt("worldSlot", worldSlot);
+            nbt.putInt("lockedMoveSlot", lockedMoveSlot);
             nbt.putBoolean("personalHubBuilt", personalHubBuilt);
             nbt.putInt("personalHubVersion", personalHubVersion);
             nbt.putBoolean("scaleHpPerLevelEnabled", scaleHpPerLevelEnabled);
@@ -242,6 +245,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.inCombat = nbt.contains("inCombat") && nbt.getBoolean("inCombat");
             pd.starterGuideGranted = nbt.contains("starterGuideGranted") && nbt.getBoolean("starterGuideGranted");
             pd.worldSlot = nbt.contains("worldSlot") ? nbt.getInt("worldSlot") : -1;
+            pd.lockedMoveSlot = nbt.contains("lockedMoveSlot") ? Math.max(0, Math.min(8, nbt.getInt("lockedMoveSlot"))) : 8;
             pd.personalHubBuilt = nbt.contains("personalHubBuilt") && nbt.getBoolean("personalHubBuilt");
             pd.personalHubVersion = nbt.contains("personalHubVersion") ? nbt.getInt("personalHubVersion") : 0;
             // Default: true (matches global config default) — islands created before this
@@ -296,6 +300,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.inCombat = nbt.getBoolean("inCombat", false);
             pd.starterGuideGranted = nbt.getBoolean("starterGuideGranted", false);
             pd.worldSlot = nbt.getInt("worldSlot", -1);
+            pd.lockedMoveSlot = Math.max(0, Math.min(8, nbt.getInt("lockedMoveSlot", 8)));
             pd.personalHubBuilt = nbt.getBoolean("personalHubBuilt", false);
             pd.personalHubVersion = nbt.getInt("personalHubVersion", 0);
             pd.scaleHpPerLevelEnabled = nbt.getBoolean("scaleHpPerLevelEnabled", true);
@@ -661,6 +666,22 @@ public class CrafticsSavedData extends PersistentState {
         if (pd.worldSlot < 0) return null;
         int laneZ = pd.worldSlot * LANE_SPACING_Z;
         return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 700);
+    }
+
+    /**
+     * Dedicated origin slot for trial chamber arenas. Trial chamber level
+     * numbers are 9000+ to avoid colliding with regular biome levels; routing
+     * those through the standard {@code level * 300} origin sends them out to
+     * world X ~2.7 million where single-precision float math in the client
+     * overlay renderer produces visible half-block offsets and per-frame
+     * jitter. Park them in the player's lane instead so the chunks are loaded
+     * and the coordinates stay in well-conditioned float range.
+     */
+    public net.minecraft.util.math.BlockPos getTrialChamberOrigin(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot < 0) return null;
+        int laneZ = pd.worldSlot * LANE_SPACING_Z;
+        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 800);
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.component;
 
+import com.crackedgames.craftics.compat.artifacts.AccessoriesReflect;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -9,12 +10,16 @@ import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.ladysnake.cca.api.v3.entity.RespawnableComponent;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Stores a one-time inventory snapshot for recovery compass protection.
  */
 public class DeathProtectionComponent implements RespawnableComponent<DeathProtectionComponent> {
     private boolean pendingRestore = false;
     private NbtList savedInventory = new NbtList();
+    private List<AccessoriesReflect.AccessorySnapshot> savedAccessories = new ArrayList<>();
     private int selectedSlot = 0;
 
     public boolean hasPendingRestore() {
@@ -26,6 +31,9 @@ public class DeathProtectionComponent implements RespawnableComponent<DeathProte
 
         pendingRestore = true;
         savedInventory = player.getInventory().writeNbt(new NbtList());
+        // Trinkets (Accessories-mod slots) are protected alongside the main
+        // inventory so recovery-compass deaths don't strip them.
+        savedAccessories = AccessoriesReflect.saveAccessories(player);
         //? if <=1.21.4 {
         selectedSlot = player.getInventory().selectedSlot;
         //?} else
@@ -47,9 +55,19 @@ public class DeathProtectionComponent implements RespawnableComponent<DeathProte
         clear();
     }
 
+    /**
+     * The trinket snapshot captured at death. Accessories are kept in memory only
+     * (not serialised), so this is read from the *dying* player's component on
+     * respawn — see {@code CrafticsMod}'s AFTER_RESPAWN handler.
+     */
+    public List<AccessoriesReflect.AccessorySnapshot> getSavedAccessories() {
+        return savedAccessories;
+    }
+
     public void clear() {
         pendingRestore = false;
         savedInventory = new NbtList();
+        savedAccessories = new ArrayList<>();
         selectedSlot = 0;
     }
 

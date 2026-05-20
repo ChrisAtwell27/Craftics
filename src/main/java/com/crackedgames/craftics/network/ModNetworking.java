@@ -24,6 +24,10 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(AffinityChoicePayload.ID, AffinityChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(EventChoicePayload.ID, EventChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(RespecPayload.ID, RespecPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(AffinityRespecPayload.ID, AffinityRespecPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(MoveSlotShiftPayload.ID, MoveSlotShiftPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(LeadCommandPayload.ID, LeadCommandPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(LeadSelectPayload.ID, LeadSelectPayload.CODEC);
 
         // Register S2C payload types
         PayloadTypeRegistry.playS2C().register(EnterCombatPayload.ID, EnterCombatPayload.CODEC);
@@ -205,31 +209,8 @@ public class ModNetworking {
                         arena.getWidth(), arena.getHeight(), cameraYaw
                     ));
                     leaderCm.addPartyMember(member);
-                    // Give party member the Move feather if they don't already have one
-                    int memberFeatherSlot = -1;
-                    for (int fi = 0; fi < member.getInventory().size(); fi++) {
-                        net.minecraft.item.ItemStack fs = member.getInventory().getStack(fi);
-                        if (fs.getItem() == net.minecraft.item.Items.FEATHER
-                                && fs.contains(net.minecraft.component.DataComponentTypes.CUSTOM_NAME)) {
-                            memberFeatherSlot = fi;
-                            break;
-                        }
-                    }
-                    if (memberFeatherSlot == -1) {
-                        net.minecraft.item.ItemStack moveItem = new net.minecraft.item.ItemStack(net.minecraft.item.Items.FEATHER);
-                        moveItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
-                            net.minecraft.text.Text.literal("\u00a7aMove"));
-                        int targetSlot = member.getInventory().getEmptySlot();
-                        if (targetSlot == -1) targetSlot = 8;
-                        member.getInventory().setStack(targetSlot, moveItem);
-                        memberFeatherSlot = targetSlot;
-                    }
-                    if (memberFeatherSlot >= 0 && memberFeatherSlot <= 8) {
-                        //? if <=1.21.4 {
-                        member.getInventory().selectedSlot = memberFeatherSlot;
-                        //?} else
-                        /*member.getInventory().setSelectedSlot(memberFeatherSlot);*/
-                    }
+                    // Move item is persistent \u2014 server tick keeps it stocked.
+                    com.crackedgames.craftics.item.MoveSlotManager.enforce(member);
                     // Also set EventManager on their CombatManager for between-level coordination
                     CombatManager.get(memberUuid).setEventManager(em);
                     CrafticsMod.LOGGER.info("Party member {} joined combat (biome {}, level {})",
@@ -431,6 +412,105 @@ public class ModNetworking {
                 "\u00a7aStats respecced! \u00a77(-" + totalRefunded + " XP level" + (totalRefunded != 1 ? "s" : "") + ")"), false);
         });
 
+        // Rotate the Move item's locked hotbar slot one step left or right.
+        ServerPlayNetworking.registerGlobalReceiver(MoveSlotShiftPayload.ID, (payload, context) -> {
+            ServerPlayerEntity p = context.player();
+            context.player().getServer().execute(() ->
+                com.crackedgames.craftics.item.MoveSlotManager.shift(p, payload.direction()));
+        });
+
+        // Lead command: player commands an ally to move/attack using a Lead.
+        ServerPlayNetworking.registerGlobalReceiver(LeadCommandPayload.ID, (payload, context) -> {
+            ServerPlayerEntity p = context.player();
+            context.player().getServer().execute(() -> {
+                com.crackedgames.craftics.combat.CombatManager cm =
+                    com.crackedgames.craftics.combat.CombatManager.get(p);
+                if (cm != null && cm.isActive()) {
+                    cm.handleLeadCommand(payload.allyEntityId(),
+                        payload.targetX(), payload.targetZ(), payload.targetEntityId());
+                }
+            });
+        });
+
+        // Lead selection: tell the server to glow the picked ally so it shows
+        // to everyone in the party (client-side setGlowing gets overwritten by
+        // the data tracker sync). -1 clears the selection's glow.
+        ServerPlayNetworking.registerGlobalReceiver(LeadSelectPayload.ID, (payload, context) -> {
+            ServerPlayerEntity p = context.player();
+            context.player().getServer().execute(() -> {
+                com.crackedgames.craftics.combat.CombatManager cm =
+                    com.crackedgames.craftics.combat.CombatManager.get(p);
+                if (cm != null && cm.isActive()) {
+                    cm.handleLeadSelect(payload.allyEntityId());
+                }
+            });
+        });
+
+        // Handle affinity respec — allocate unspent affinity points and/or refund
+        // allocated ones. Refunds cost 1 XP level each; allocating from the
+        // level-derived unspent pool is free. Mirrors the stat respec.
+        ServerPlayNetworking.registerGlobalReceiver(AffinityRespecPayload.ID, (payload, context) -> {
+            ServerPlayerEntity player = context.player();
+            ServerWorld overworld = (ServerWorld) player.getEntityWorld();
+            com.crackedgames.craftics.combat.PlayerProgression progression =
+                com.crackedgames.craftics.combat.PlayerProgression.get(overworld);
+            com.crackedgames.craftics.combat.PlayerProgression.PlayerStats ps =
+                progression.getStats(player);
+            com.crackedgames.craftics.combat.PlayerProgression.Affinity[] affinities =
+                com.crackedgames.craftics.combat.PlayerProgression.Affinity.values();
+
+            // Parse deltas
+            String[] parts = payload.affinityDeltas().split(":");
+            if (parts.length != affinities.length) return;
+
+            int[] deltas = new int[affinities.length];
+            int totalRefunded = 0;
+            int totalAllocated = 0;
+            for (int i = 0; i < affinities.length; i++) {
+                try {
+                    deltas[i] = Integer.parseInt(parts[i]);
+                } catch (NumberFormatException e) { return; }
+                if (deltas[i] < 0) {
+                    totalRefunded += -deltas[i];
+                    // Ensure the player actually has enough points to refund here
+                    if (ps.getAffinityPoints(affinities[i]) + deltas[i] < 0) return;
+                } else if (deltas[i] > 0) {
+                    totalAllocated += deltas[i];
+                }
+            }
+
+            if (totalRefunded == 0 && totalAllocated == 0) return;
+
+            // Net new allocations draw from the level-derived unspent affinity pool —
+            // this is what lets force-given levels and older saves be spent here.
+            int unspentAffinity = Math.max(0, ps.expectedAffinityPoints() - ps.getTotalAffinityPoints());
+            int unspentNeeded = totalAllocated - totalRefunded;
+            if (unspentNeeded > 0 && unspentAffinity < unspentNeeded) return;
+
+            if (player.experienceLevel < totalRefunded) {
+                player.sendMessage(net.minecraft.text.Text.literal(
+                    "§cNot enough XP levels! Need " + totalRefunded + ", have " + player.experienceLevel), false);
+                return;
+            }
+
+            // Apply: deduct XP levels for refunds, then redistribute affinity points
+            if (totalRefunded > 0) {
+                player.addExperienceLevels(-totalRefunded);
+            }
+            for (int i = 0; i < affinities.length; i++) {
+                if (deltas[i] != 0) {
+                    ps.setAffinityPoints(affinities[i], ps.getAffinityPoints(affinities[i]) + deltas[i]);
+                }
+            }
+            progression.saveStats(player);
+            syncPlayerStats(player);
+
+            player.sendMessage(net.minecraft.text.Text.literal(
+                "§aAffinities respecced!" + (totalRefunded > 0
+                    ? " §7(-" + totalRefunded + " XP level" + (totalRefunded != 1 ? "s" : "") + ")"
+                    : "")), false);
+        });
+
         // Handle hover updates — relay to party members
         ServerPlayNetworking.registerGlobalReceiver(HoverUpdatePayload.ID, (payload, context) -> {
             ServerPlayerEntity hoverPlayer = context.player();
@@ -449,5 +529,36 @@ public class ModNetworking {
                 }
             }
         });
+    }
+
+    /**
+     * Builds the player's current progression stats (level, unspent points, stat
+     * and affinity allocations, emeralds) and pushes them to their client. Call
+     * after anything that changes a player's stats outside the normal level-up /
+     * respec flow — notably the admin {@code set_level}/{@code set_stat}/
+     * {@code reset_stats} commands — so the respec menus always show live data.
+     */
+    public static void syncPlayerStats(ServerPlayerEntity player) {
+        ServerWorld overworld = player.getServer().getOverworld();
+        com.crackedgames.craftics.combat.PlayerProgression progression =
+            com.crackedgames.craftics.combat.PlayerProgression.get(overworld);
+        com.crackedgames.craftics.combat.PlayerProgression.PlayerStats ps = progression.getStats(player);
+
+        StringBuilder statData = new StringBuilder();
+        for (com.crackedgames.craftics.combat.PlayerProgression.Stat s :
+                com.crackedgames.craftics.combat.PlayerProgression.Stat.values()) {
+            if (statData.length() > 0) statData.append(":");
+            statData.append(ps.getPoints(s));
+        }
+        StringBuilder affData = new StringBuilder();
+        for (com.crackedgames.craftics.combat.PlayerProgression.Affinity a :
+                com.crackedgames.craftics.combat.PlayerProgression.Affinity.values()) {
+            if (affData.length() > 0) affData.append(":");
+            affData.append(ps.getAffinityPoints(a));
+        }
+        CrafticsSavedData data = CrafticsSavedData.get(overworld);
+        ServerPlayNetworking.send(player, new PlayerStatsSyncPayload(
+            ps.level, ps.unspentPoints, statData.toString(),
+            data.getPlayerData(player.getUuid()).emeralds, affData.toString()));
     }
 }

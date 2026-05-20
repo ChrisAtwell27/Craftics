@@ -44,7 +44,7 @@ public final class VanillaAllies {
         registerInCombatOnly("minecraft:ocelot",    6, 2, 0, 4, 1);
         registerInCombatOnly("minecraft:fox",       7, 3, 0, 3, 1);
         registerInCombatOnly("minecraft:goat",      8, 3, 1, 2, 1);
-        registerInCombatOnly("minecraft:bee",       4, 2, 0, 3, 1);
+        registerInCombatOnly("minecraft:bee",       4, 2, 0, 4, 1);
         registerInCombatOnly("minecraft:frog",      5, 2, 0, 3, 1);
         registerInCombatOnly("minecraft:axolotl",   6, 2, 0, 3, 1);
         registerInCombatOnly("minecraft:cow",      12, 1, 2, 1, 1);

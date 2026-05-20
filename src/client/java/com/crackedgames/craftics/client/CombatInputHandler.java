@@ -27,7 +27,7 @@ public class CombatInputHandler {
     private static final float ORBIT_YAW_SENSITIVITY = 0.35f;
     private static final float ORBIT_PITCH_SENSITIVITY = 0.25f;
 
-    public enum ActionMode { MOVE, MELEE_ATTACK, RANGED_ATTACK, USE_ITEM }
+    public enum ActionMode { MOVE, MELEE_ATTACK, RANGED_ATTACK, USE_ITEM, LEAD }
 
     // Food items for client-side detection (must match ItemUseHandler.FOOD_HEAL on server)
     private static final Set<Item> FOODS = Set.of(
@@ -67,11 +67,16 @@ public class CombatInputHandler {
         if (client.player == null) return ActionMode.MOVE;
         Item held = client.player.getMainHandStack().getItem();
 
-        if (held == Items.FEATHER) return ActionMode.MOVE;
+        if (held == com.crackedgames.craftics.item.ModItems.MOVE_ITEM) return ActionMode.MOVE;
+        if (held == Items.LEAD) return ActionMode.LEAD;
         if (held == Items.BOW || held == Items.CROSSBOW || held == Items.TRIDENT) return ActionMode.RANGED_ATTACK;
         if (SWORDS.contains(held) || AXES.contains(held) || SPEARS.contains(held)
             || held == Items.MACE)
             return ActionMode.MELEE_ATTACK;
+        // Spawn eggs are use-items — clicking a tile summons an ally there.
+        if (held instanceof net.minecraft.item.SpawnEggItem) return ActionMode.USE_ITEM;
+        // Eligible wall blocks place a 4-turn obstacle on click.
+        if (com.crackedgames.craftics.combat.WallBlocks.isEligibleItem(held)) return ActionMode.USE_ITEM;
         if (FOODS.contains(held) || USE_ITEMS.contains(held)
             || com.crackedgames.craftics.combat.ItemUseHandler.isUsableItem(held))
             return ActionMode.USE_ITEM;
@@ -234,7 +239,63 @@ public class CombatInputHandler {
                 ));
                 hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.USED_ITEM);
             }
+            case LEAD -> handleLeadClick(tilePos, hintMgr);
         }
+    }
+
+    /**
+     * Two-stage Lead click flow:
+     * <ol>
+     *   <li>No ally selected → click an ally tile to select them (sets glow).</li>
+     *   <li>Ally selected → click an adjacent enemy to attack-command, or any
+     *       walkable tile to move-command. Server validates and charges 2 AP.
+     *       Click the same ally again to deselect.</li>
+     * </ol>
+     */
+    private static void handleLeadClick(GridPos tilePos,
+            com.crackedgames.craftics.client.hints.HintManager hintMgr) {
+        Integer selected = CombatState.getLeadSelectedAllyId();
+        Integer mappedId = CombatState.getEnemyGridMap().get(tilePos);
+        // The TileSetPayload's per-tile type string doesn't carry the ;ally
+        // flag (only CombatSyncPayload's inspect-type list does). Use the
+        // ally HP map as the source of truth for which entity ids are allies.
+        boolean tileIsAlly = mappedId != null
+            && CombatState.getAllyHpMap().containsKey(mappedId);
+
+        if (selected == null) {
+            // Stage 1: need to pick an ally.
+            if (tileIsAlly) {
+                CombatState.setLeadSelectedAllyId(mappedId);
+                ClientPlayNetworking.send(new com.crackedgames.craftics.network.LeadSelectPayload(mappedId));
+                return;
+            }
+            // Clicking elsewhere with no ally selected is a no-op.
+            return;
+        }
+
+        // Stage 2: a target is being commanded.
+        // Clicking the same ally cancels the selection.
+        if (mappedId != null && mappedId.equals(selected)) {
+            CombatState.setLeadSelectedAllyId(null);
+            ClientPlayNetworking.send(new com.crackedgames.craftics.network.LeadSelectPayload(-1));
+            return;
+        }
+
+        // Clicking another ally re-selects (instead of moving the first one
+        // onto the second ally's tile, which would fail server-side anyway).
+        if (tileIsAlly) {
+            CombatState.setLeadSelectedAllyId(mappedId);
+            ClientPlayNetworking.send(new com.crackedgames.craftics.network.LeadSelectPayload(mappedId));
+            return;
+        }
+
+        // Adjacent enemy → attack command. Otherwise treat as a move command
+        // and let the server validate the destination tile.
+        int targetEntityId = (mappedId != null) ? mappedId : -1;
+        ClientPlayNetworking.send(new com.crackedgames.craftics.network.LeadCommandPayload(
+            selected, tilePos.x(), tilePos.z(), targetEntityId));
+        CombatState.setLeadSelectedAllyId(null);
+        hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.USED_ITEM);
     }
 
     public static void sendEndTurn() {

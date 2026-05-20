@@ -34,6 +34,13 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding guideBookKey;
     private static KeyBinding respecKey;
     private static KeyBinding endTurnKey;
+    private static KeyBinding affinityRespecKey;
+    private static KeyBinding toggleUiKey;
+    private static KeyBinding moveSlotLeftKey;
+    private static KeyBinding moveSlotRightKey;
+
+    /** The "hide/reveal inventory UI" keybind — read by {@code HandledScreenKeyMixin}. */
+    public static KeyBinding getToggleUiKey() { return toggleUiKey; }
     private static boolean traderScreenOpened = false;
     private static boolean previousBobView = true;
     private static double previousChatScale = 1.0;
@@ -44,6 +51,8 @@ public class CrafticsClient implements ClientModInitializer {
         CrafticsMod.LOGGER.info("Craftics client initializing...");
 
         HandledScreens.register(ModScreenHandlers.LEVEL_SELECT_SCREEN_HANDLER, LevelSelectScreen::new);
+        HandledScreens.register(ModScreenHandlers.LOOT_MANAGEMENT_SCREEN_HANDLER,
+            com.crackedgames.craftics.client.LootManagementScreen::new);
 
         // Ghost block uses a fully-transparent texture so MC's break-overlay
         // has faces to render the crack animation on. Cutout render layer
@@ -331,6 +340,30 @@ public class CrafticsClient implements ClientModInitializer {
             KEYBIND_CATEGORY
         ));
 
+        affinityRespecKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.respec_affinity",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_J,
+            KEYBIND_CATEGORY
+        ));
+
+        toggleUiKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.toggle_ui",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_U,
+            KEYBIND_CATEGORY
+        ));
+
+        moveSlotLeftKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.move_slot_left",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_LEFT,
+            KEYBIND_CATEGORY
+        ));
+
+        moveSlotRightKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.move_slot_right",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT,
+            KEYBIND_CATEGORY
+        ));
+
         CombatAnimations.register();
 
         ClientPlayNetworking.registerGlobalReceiver(
@@ -446,6 +479,20 @@ public class CrafticsClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             AchievementToast.tick();
 
+            // Lead-command ally glow is server-driven via LeadSelectPayload —
+            // the server toggles glowing on the picked mob so the data tracker
+            // sync makes it visible to everyone in the party.
+
+            // If the player drops the Lead while an ally is selected, clear
+            // the local selection so the COMMAND pill doesn't lie about state.
+            if (client.player != null
+                    && CombatState.getLeadSelectedAllyId() != null
+                    && client.player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) {
+                CombatState.setLeadSelectedAllyId(null);
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
+                    new com.crackedgames.craftics.network.LeadSelectPayload(-1));
+            }
+
             while (guideBookKey.wasPressed()) {
                 if (client.currentScreen == null) {
                     client.setScreen(new com.crackedgames.craftics.client.guide.GuideBookScreen());
@@ -461,6 +508,31 @@ public class CrafticsClient implements ClientModInitializer {
             while (endTurnKey.wasPressed()) {
                 if (CombatState.isInCombat() && client.currentScreen == null) {
                     CombatInputHandler.sendEndTurn();
+                }
+            }
+
+            while (affinityRespecKey.wasPressed()) {
+                if (client.currentScreen == null && !CombatState.isInCombat()) {
+                    client.setScreen(new com.crackedgames.craftics.client.AffinityRespecScreen());
+                }
+            }
+
+            while (toggleUiKey.wasPressed()) {
+                if (client.currentScreen == null) {
+                    CombatState.toggleStatsOverlay();
+                }
+            }
+
+            while (moveSlotLeftKey.wasPressed()) {
+                if (client.currentScreen == null) {
+                    net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
+                        new com.crackedgames.craftics.network.MoveSlotShiftPayload(-1));
+                }
+            }
+            while (moveSlotRightKey.wasPressed()) {
+                if (client.currentScreen == null) {
+                    net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
+                        new com.crackedgames.craftics.network.MoveSlotShiftPayload(1));
                 }
             }
 
@@ -521,7 +593,7 @@ public class CrafticsClient implements ClientModInitializer {
      * every mod has registered and options.txt has loaded.
      */
     private static void resolveKeybindConflicts(net.minecraft.client.MinecraftClient client) {
-        KeyBinding[] ours = { guideBookKey, respecKey, endTurnKey };
+        KeyBinding[] ours = { guideBookKey, respecKey, endTurnKey, affinityRespecKey, toggleUiKey, moveSlotLeftKey, moveSlotRightKey };
         java.util.Set<KeyBinding> oursSet = new java.util.HashSet<>(java.util.Arrays.asList(ours));
         int cleared = 0;
         for (KeyBinding mine : ours) {

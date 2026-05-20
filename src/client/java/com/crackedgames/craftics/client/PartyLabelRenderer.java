@@ -55,6 +55,7 @@ public final class PartyLabelRenderer {
         if (PARTY_MOBS.isEmpty()) return;
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.world == null) return;
+        if (client.options.hudHidden) return;
 
         MatrixStack matrices = ctx.matrixStack();
         VertexConsumerProvider consumers = ctx.consumers();

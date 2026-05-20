@@ -26,19 +26,20 @@ public class RangedAllyAI implements AllyAI {
         CombatEntity target = AllyTargeting.nearestEnemy(pos, combatants);
         if (target == null) return new EnemyAction.Idle();
 
-        int dist = target.minDistanceTo(pos);
+        int dist = AllyTargeting.distanceToTarget(target, arena, pos);
         boolean lowHp = AllyTargeting.lowHp(self, 0.25f);
 
         // Wounded, or an enemy has closed to melee — kite away from the threat.
         if (lowHp || dist <= 1) {
-            int dx = Integer.signum(pos.x() - target.getGridPos().x());
-            int dz = Integer.signum(pos.z() - target.getGridPos().z());
+            GridPos targetAnchor = AllyTargeting.nearestTileOnTarget(target, arena, pos);
+            int dx = Integer.signum(pos.x() - targetAnchor.x());
+            int dz = Integer.signum(pos.z() - targetAnchor.z());
             GridPos retreat = new GridPos(pos.x() + dx * 2, pos.z() + dz * 2);
             List<GridPos> path = AllyTargeting.pathTo(self, arena, retreat);
             if (path != null && !path.isEmpty()) {
                 GridPos end = path.get(path.size() - 1);
                 // Parting shot if the target stays in range and we aren't fleeing for our life.
-                if (!lowHp && target.minDistanceTo(end) <= range) {
+                if (!lowHp && AllyTargeting.distanceToTarget(target, arena, end) <= range) {
                     return new EnemyAction.MoveAndAttackMob(
                         path, target.getEntityId(), self.getAttackPower());
                 }
@@ -56,20 +57,21 @@ public class RangedAllyAI implements AllyAI {
         }
 
         // Out of range — close just enough to fire, moving and shooting in one turn.
-        List<GridPos> path = AllyTargeting.pathTo(self, arena, target.getGridPos());
-        if (path != null && !path.isEmpty()) {
-            GridPos end = path.get(path.size() - 1);
-            if (target.minDistanceTo(end) <= range) {
-                return new EnemyAction.MoveAndAttackMob(
-                    path, target.getEntityId(), self.getAttackPower());
-            }
-            return new EnemyAction.Move(path);
-        }
+        // pathTo(target.getGridPos()) returns empty (target's tile is "blocked"
+        // by the target), so route to the closest reachable tile and fire if it
+        // lands within range.
+        GridPos aim = AllyTargeting.nearestTileOnTarget(target, arena, pos);
         GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, pos, target.getGridPos(), self.getMoveSpeed(), self, self.getSize());
+            arena, pos, aim, self.getMoveSpeed(), self, self.getSize());
         if (closest != null && !closest.equals(pos)) {
             List<GridPos> seek = AllyTargeting.pathTo(self, arena, closest);
-            if (seek != null && !seek.isEmpty()) return new EnemyAction.Move(seek);
+            if (seek != null && !seek.isEmpty()) {
+                if (AllyTargeting.distanceToTarget(target, arena, closest) <= range) {
+                    return new EnemyAction.MoveAndAttackMob(
+                        seek, target.getEntityId(), self.getAttackPower());
+                }
+                return new EnemyAction.Move(seek);
+            }
         }
         return new EnemyAction.Idle();
     }

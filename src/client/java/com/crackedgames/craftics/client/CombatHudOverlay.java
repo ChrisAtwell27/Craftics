@@ -30,6 +30,8 @@ public class CombatHudOverlay implements HudRenderCallback {
 
     @Override
     public void onHudRender(DrawContext ctx, RenderTickCounter tickCounter) {
+        // F1 (vanilla "hide HUD") collapses all combat UI together with the rest.
+        if (MinecraftClient.getInstance().options.hudHidden) return;
         if (!CombatState.isInCombat()) return;
 
         MinecraftClient client = MinecraftClient.getInstance();
@@ -883,9 +885,11 @@ public class CombatHudOverlay implements HudRenderCallback {
         List<String> enemyEffects = new ArrayList<>();
         List<String> enemyEnchants = new ArrayList<>();
         String bossName = null;
+        String stackName = null;
         int bossAtk = -1, bossDef = -1, bossSpd = -1, bossRange = -1;
         for (int i = 1; i < parts.length; i++) {
             if (parts[i].startsWith("boss=")) bossName = parts[i].substring(5);
+            else if (parts[i].startsWith("name=")) stackName = parts[i].substring(5);
             else if (parts[i].startsWith("atk=")) bossAtk = Integer.parseInt(parts[i].substring(4));
             else if (parts[i].startsWith("def=")) bossDef = Integer.parseInt(parts[i].substring(4));
             else if (parts[i].startsWith("spd=")) bossSpd = Integer.parseInt(parts[i].substring(4));
@@ -910,6 +914,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         String displayName;
         if (bossName != null) {
             displayName = bossName;
+        } else if (stackName != null) {
+            displayName = stackName;
         } else {
             String rawId = typeId;
             int colon = rawId.indexOf(':');
@@ -1081,6 +1087,11 @@ public class CombatHudOverlay implements HudRenderCallback {
             case MELEE_ATTACK -> { modeText = "ATTACK"; modeColor = 0xFFFF5555; pillBg = 0xBB331111; }
             case RANGED_ATTACK -> { modeText = "RANGED"; modeColor = 0xFFFFAA00; pillBg = 0xBB332211; }
             case USE_ITEM -> { modeText = "ITEM"; modeColor = 0xFFFF55FF; pillBg = 0xBB331133; }
+            case LEAD -> {
+                boolean picked = CombatState.getLeadSelectedAllyId() != null;
+                modeText = picked ? "COMMAND" : "COMMAND: PICK ALLY";
+                modeColor = 0xFF66BBFF; pillBg = 0xBB112233;
+            }
             default -> { modeText = "MOVE"; modeColor = 0xFF55FF55; pillBg = 0xBB113311; }
         }
 

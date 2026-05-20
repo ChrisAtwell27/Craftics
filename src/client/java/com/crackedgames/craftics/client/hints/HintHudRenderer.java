@@ -22,6 +22,7 @@ public final class HintHudRenderer implements HudRenderCallback {
 
     @Override
     public void onHudRender(DrawContext ctx, RenderTickCounter tickCounter) {
+        if (net.minecraft.client.MinecraftClient.getInstance().options.hudHidden) return;
         var maybeHint = HintManager.get().getActiveHudHint();
         if (maybeHint.isEmpty()) {
             currentId = null;

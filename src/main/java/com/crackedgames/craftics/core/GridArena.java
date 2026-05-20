@@ -22,6 +22,22 @@ public class GridArena {
      *  Value is the prior TileType so we can restore on cleanup. */
     private final java.util.Map<GridPos, TileType> vfxObstaclePriorType = new java.util.HashMap<>();
 
+    /**
+     * Player-placed wall blocks. Tracks the item the player consumed, the
+     * turns remaining before silent expiry, and the starting duration so the
+     * client can show progressive breaking texture as the wall ticks down.
+     * These tiles also live in {@link #vfxObstaclePriorType} for tile-type
+     * restoration; the two maps are kept in sync.
+     */
+    public record PlacedWall(net.minecraft.item.Item item, int turnsRemaining, int startTurns) {
+        public PlacedWall withTurns(int newTurns) { return new PlacedWall(item, newTurns, startTurns); }
+    }
+    private final java.util.Map<GridPos, PlacedWall> placedWalls = new java.util.HashMap<>();
+
+    public java.util.Map<GridPos, PlacedWall> getPlacedWalls() { return placedWalls; }
+    public PlacedWall getPlacedWall(GridPos pos) { return placedWalls.get(pos); }
+    public boolean isPlacedWall(GridPos pos) { return placedWalls.containsKey(pos); }
+
     public GridArena(int width, int height, GridTile[][] tiles, BlockPos origin,
                      int levelNumber, GridPos playerStart) {
         this.width = width;
@@ -183,12 +199,31 @@ public class GridArena {
     /** Clear a single VFX obstacle — restores prior tile type and wipes the block in the world. */
     public void clearVfxObstacle(net.minecraft.server.world.ServerWorld world, GridPos pos) {
         TileType prior = vfxObstaclePriorType.remove(pos);
+        placedWalls.remove(pos);
         if (prior == null) return;
         GridTile t = getTile(pos);
         if (t != null) t.setType(prior);
         // Remove the block from the world (gridToBlockPos gives the surface tile position)
         net.minecraft.util.math.BlockPos blockPos = gridToBlockPos(pos);
         world.setBlockState(blockPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+    }
+
+    /**
+     * Register a tile as a temporary player-placed wall. The caller is
+     * responsible for actually setting the block in the world and marking the
+     * tile type via {@link #markVfxObstacle}. {@code item} is the item that
+     * was consumed, so mining can refund it.
+     */
+    public void markPlacedWall(GridPos pos, net.minecraft.item.Item item, int turns) {
+        if (pos == null || !isInBounds(pos)) return;
+        placedWalls.put(pos, new PlacedWall(item, turns, turns));
+    }
+
+    /** Update the remaining-turns counter for a placed wall (no-op if absent). */
+    public void setPlacedWallTurns(GridPos pos, int turns) {
+        PlacedWall pw = placedWalls.get(pos);
+        if (pw == null) return;
+        placedWalls.put(pos, pw.withTurns(turns));
     }
 
     /** Clear all VFX obstacles (called on combat exit). */
@@ -225,10 +260,22 @@ public class GridArena {
 
     /** Get entity Y position for a tile — lowered by 1 for water and low ground tiles. */
     public double getEntityY(GridPos pos) {
+        return getEntityY(pos, false);
+    }
+
+    /**
+     * Entity Y position aware of flight. Flyers ignore water/low-ground/snow
+     * dips and float at obstacle-top + 1 instead of clipping into obstacles.
+     */
+    public double getEntityY(GridPos pos, boolean flying) {
         GridTile tile = getTile(pos);
         double baseY = origin.getY() + 1;
         if (tile != null) {
             TileType t = tile.getType();
+            if (flying) {
+                if (t == TileType.OBSTACLE) return baseY + 1;
+                return baseY;
+            }
             if (t == TileType.WATER || t == TileType.DEEP_WATER || t == TileType.LOW_GROUND || t == TileType.POWDER_SNOW) {
                 return baseY - 1;
             }

@@ -651,6 +651,15 @@ public class CombatState {
         return ordinal >= 0 && ordinal < affinityPoints.length ? affinityPoints[ordinal] : 0;
     }
 
+    // --- Inventory stats/affinity overlay visibility (toggled by a keybind) ---
+    private static boolean statsOverlayVisible = true;
+
+    /** Whether the inventory stats + damage-affinity panels should be drawn. */
+    public static boolean isStatsOverlayVisible() { return statsOverlayVisible; }
+
+    /** Flips the inventory stats + damage-affinity panel visibility. */
+    public static void toggleStatsOverlay() { statsOverlayVisible = !statsOverlayVisible; }
+
     // === Addon equipment scanner bonuses (from AddonBonusSyncPayload) ===
 
     private static final java.util.Map<String, Integer> addonBonuses = new java.util.HashMap<>();
@@ -687,6 +696,16 @@ public class CombatState {
 
     // Client-local hover (used directly by renderer, no server round-trip)
     private static com.crackedgames.craftics.core.GridPos hoveredTile = null;
+
+    /**
+     * Client-local: the ally entity id currently selected by a Lead command.
+     * Cleared on combat end and whenever the player either commits a command
+     * or clicks the same ally again to cancel. Read by the input handler and
+     * the renderer (to glow the selected mob).
+     */
+    private static Integer leadSelectedAllyId = null;
+    public static Integer getLeadSelectedAllyId() { return leadSelectedAllyId; }
+    public static void setLeadSelectedAllyId(Integer id) { leadSelectedAllyId = id; }
 
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getMoveTiles() { return cachedMoveTiles; }
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getAttackTiles() { return cachedAttackTiles; }
@@ -745,6 +764,7 @@ public class CombatState {
         teammateNames.clear();
         teammateHoverTimestamps.clear();
         hoveredTile = null;
+        leadSelectedAllyId = null;
     }
 
     /**

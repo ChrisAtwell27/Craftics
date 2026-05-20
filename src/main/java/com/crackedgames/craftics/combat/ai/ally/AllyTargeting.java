@@ -36,6 +36,40 @@ final class AllyTargeting {
         return best;
     }
 
+    /**
+     * Distance between {@code from} and the closest tile an enemy actually
+     * occupies, including the many manually-registered tiles a background
+     * boss (Ghast, Ender Dragon) lives on. {@link CombatEntity#minDistanceTo}
+     * only sees the single anchor tile for size-1 entities, so it always
+     * reports a huge distance for background bosses and allies never read
+     * them as adjacent.
+     */
+    static int distanceToTarget(CombatEntity target, GridArena arena, GridPos from) {
+        if (!target.isBackgroundBoss()) return target.minDistanceTo(from);
+        int best = Integer.MAX_VALUE;
+        for (var entry : arena.getOccupants().entrySet()) {
+            if (entry.getValue() != target) continue;
+            GridPos tile = entry.getKey();
+            int d = Math.abs(tile.x() - from.x()) + Math.abs(tile.z() - from.z());
+            if (d < best) best = d;
+        }
+        return best == Integer.MAX_VALUE ? target.minDistanceTo(from) : best;
+    }
+
+    /** A tile the target actually occupies that's closest to {@code from}. */
+    static GridPos nearestTileOnTarget(CombatEntity target, GridArena arena, GridPos from) {
+        if (!target.isBackgroundBoss()) return target.nearestTileTo(from);
+        GridPos best = target.getGridPos();
+        int bestDist = Integer.MAX_VALUE;
+        for (var entry : arena.getOccupants().entrySet()) {
+            if (entry.getValue() != target) continue;
+            GridPos tile = entry.getKey();
+            int d = Math.abs(tile.x() - from.x()) + Math.abs(tile.z() - from.z());
+            if (d < bestDist) { bestDist = d; best = tile; }
+        }
+        return best;
+    }
+
     /** Live enemy closest to the player — the biggest threat to body-block. */
     static CombatEntity nearestEnemyToPlayer(GridArena arena, List<CombatEntity> combatants) {
         return nearestEnemy(arena.getPlayerGridPos(), combatants);
@@ -67,27 +101,31 @@ final class AllyTargeting {
     static EnemyAction advance(CombatEntity self, GridArena arena, CombatEntity target) {
         GridPos pos = self.getGridPos();
 
-        if (target.minDistanceTo(pos) <= self.getRange()) {
+        if (distanceToTarget(target, arena, pos) <= self.getRange()) {
             return new EnemyAction.MoveAndAttackMob(
                 List.of(), target.getEntityId(), self.getAttackPower());
         }
 
-        List<GridPos> path = pathTo(self, arena, target.getGridPos());
-        if (path != null && !path.isEmpty()) {
-            GridPos end = path.get(path.size() - 1);
-            if (target.minDistanceTo(end) <= self.getRange()) {
-                // Move-and-attack: walk the approach path, then strike this turn.
-                return new EnemyAction.MoveAndAttackMob(
-                    path, target.getEntityId(), self.getAttackPower());
-            }
-            return new EnemyAction.Move(path);
-        }
-
+        // pathTo(target.getGridPos()) usually returns empty because the target's
+        // own tile is reported blocked by the target. Route to the closest tile
+        // we can actually stand on instead, and if that tile lands within attack
+        // range, walk-and-strike in the same turn so the ally doesn't end its
+        // turn parked next to an enemy without hitting it. For background bosses
+        // (Ghast, Ender Dragon) the boss's anchor tile is at the arena corner
+        // and bears no relation to where the boss actually sits, so steer toward
+        // the boss tile that is genuinely closest to us instead.
+        GridPos aim = nearestTileOnTarget(target, arena, pos);
         GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, pos, target.getGridPos(), self.getMoveSpeed(), self, self.getSize());
+            arena, pos, aim, self.getMoveSpeed(), self, self.getSize());
         if (closest != null && !closest.equals(pos)) {
             List<GridPos> seek = pathTo(self, arena, closest);
-            if (seek != null && !seek.isEmpty()) return new EnemyAction.Move(seek);
+            if (seek != null && !seek.isEmpty()) {
+                if (distanceToTarget(target, arena, closest) <= self.getRange()) {
+                    return new EnemyAction.MoveAndAttackMob(
+                        seek, target.getEntityId(), self.getAttackPower());
+                }
+                return new EnemyAction.Move(seek);
+            }
         }
         return new EnemyAction.Idle();
     }

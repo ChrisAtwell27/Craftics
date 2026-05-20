@@ -117,7 +117,7 @@ public final class CrafticsHints {
 
     /** Mirrors the server-side check in ItemUseHandler.isMoveFeather. */
     public static boolean isMoveFeather(ItemStack s) {
-        return s.getItem() == Items.FEATHER && s.contains(DataComponentTypes.CUSTOM_NAME);
+        return s.getItem() == com.crackedgames.craftics.item.ModItems.MOVE_ITEM;
     }
 
     private static boolean hotbarHasFoodOrPotion(PlayerInventory inv) {

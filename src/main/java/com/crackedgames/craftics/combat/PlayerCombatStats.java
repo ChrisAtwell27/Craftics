@@ -82,8 +82,10 @@ public class PlayerCombatStats {
         if (weapon == Items.BOW && hasArrows(player)) {
             return baseRange + getBowPowerRange(player);
         }
-        // Crossbow needs arrows to fire
-        if (weapon == Items.CROSSBOW && !hasArrows(player)) {
+        // Crossbow needs ammo to fire — arrows, or a firework rocket in the
+        // offhand (the rocket-crossbow shot). Without either it falls to melee.
+        if (weapon == Items.CROSSBOW && !hasArrows(player)
+                && !player.getOffHandStack().isOf(Items.FIREWORK_ROCKET)) {
             return 1; // melee range fallback
         }
         return baseRange;

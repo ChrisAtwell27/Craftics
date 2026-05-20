@@ -51,6 +51,7 @@ public class AchievementToast implements HudRenderCallback {
 
     @Override
     public void onHudRender(DrawContext ctx, RenderTickCounter tickCounter) {
+        if (MinecraftClient.getInstance().options.hudHidden) return;
         if (current == null) return;
 
         MinecraftClient client = MinecraftClient.getInstance();
