@@ -163,6 +163,14 @@ java {
 	targetCompatibility = JavaVersion.VERSION_21
 }
 
+// The sources jar bundles every resource srcDir, which on 1.21.2+ includes
+// both src/main/resources and the src/main_modern/resources override (same
+// recipe paths in both). Mirror processResources' duplicates handling so the
+// jar takes the last-declared (modern) copy instead of failing on the clash.
+tasks.named('sourcesJar') {
+	duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
 // The published javadoc documents only the addon-facing API surface
 // (com.crackedgames.craftics.api), not the internal combat engine.
 javadoc {

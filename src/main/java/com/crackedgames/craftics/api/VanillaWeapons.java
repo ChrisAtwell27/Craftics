@@ -3,6 +3,7 @@ package com.crackedgames.craftics.api;
 import com.crackedgames.craftics.CrafticsMod;
 import com.crackedgames.craftics.api.registry.WeaponEntry;
 import com.crackedgames.craftics.api.registry.WeaponRegistry;
+import com.crackedgames.craftics.combat.AoeShapes;
 import com.crackedgames.craftics.combat.CombatEntity;
 import com.crackedgames.craftics.combat.DamageType;
 import com.crackedgames.craftics.combat.PlayerCombatStats;
@@ -249,12 +250,16 @@ public final class VanillaWeapons {
             }
         }
 
-        // Sweeping Edge: 360 spin hitting ALL adjacent enemies
+        // Sweeping Edge: the swing geometry scales with enchant level —
+        // Lv1 = 3-wide chop across the swing direction, Lv2 = 5-wide arc,
+        // Lv3 = full 360 ring around the player (see AoeShapes.sweepingEdge).
         int sweepingEdge = PlayerCombatStats.getSweepingEdge(player);
         if (sweepingEdge > 0) {
             double sweepDmgPct = sweepingEdge == 1 ? 0.60 : (sweepingEdge == 2 ? 0.75 : 0.90);
             int sweepKb = sweepingEdge >= 3 ? 1 : 0;
-            List<CombatEntity> sweepTargets = Abilities.findAdjacentEnemies(arena, target, 99); // all adjacent
+            List<CombatEntity> sweepTargets = AoeShapes.enemiesOn(arena,
+                AoeShapes.sweepingEdge(arena.getPlayerGridPos(), target.getGridPos(), sweepingEdge),
+                target);
             for (CombatEntity sweepTarget : sweepTargets) {
                 int sweepDmg = sweepTarget.takeDamage((int)(baseDamage * sweepDmgPct));
                 extraTargets.add(sweepTarget);
@@ -402,31 +407,25 @@ public final class VanillaWeapons {
     }
 
     // =========================================================================
-    // Coral fan AoE splash handler (shared by all live coral fans)
-    // Note: does NOT filter allies — matches original behavior
+    // Coral fan AoE splash. Each live fan type has its own shape (see
+    // AoeShapes). Full coral-fan damage to every enemy on the shape tiles.
     // =========================================================================
 
-    private static WeaponAbility.AttackResult coralFanSplash(ServerPlayerEntity player,
-                                                              CombatEntity target,
+    /** Damage every distinct enemy standing on {@code tiles} (minus the primary
+     *  target, which the engine already damaged). Shared damage rule; the
+     *  caller supplies the per-coral shape's tiles. */
+    private static WeaponAbility.AttackResult shapedFanSplash(CombatEntity target,
                                                               GridArena arena,
                                                               int baseDamage,
-                                                              PlayerProgression.PlayerStats playerStats,
-                                                              int luckPoints) {
+                                                              List<GridPos> tiles) {
         List<String> messages = new ArrayList<>();
         List<CombatEntity> extraTargets = new ArrayList<>();
         int totalExtra = 0;
-        for (int fdx = -1; fdx <= 1; fdx++) {
-            for (int fdz = -1; fdz <= 1; fdz++) {
-                if (fdx == 0 && fdz == 0) continue;
-                GridPos adj = new GridPos(target.getGridPos().x() + fdx, target.getGridPos().z() + fdz);
-                CombatEntity splash = arena.getOccupant(adj);
-                if (splash != null && splash.isAlive() && splash != target) {
-                    int splashDmg = splash.takeDamage(baseDamage);
-                    extraTargets.add(splash);
-                    totalExtra += splashDmg;
-                    messages.add("\u00a73\u2716 Splash! " + splash.getDisplayName() + " hit for " + splashDmg + "!");
-                }
-            }
+        for (CombatEntity splash : AoeShapes.enemiesOn(arena, tiles, target)) {
+            int splashDmg = splash.takeDamage(baseDamage);
+            extraTargets.add(splash);
+            totalExtra += splashDmg;
+            messages.add("\u00a73\u2716 Splash! " + splash.getDisplayName() + " hit for " + splashDmg + "!");
         }
         return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
     }
@@ -580,19 +579,14 @@ public final class VanillaWeapons {
                 }
             }
 
-            // Base mace AoE shockwave (always active)
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    if (dx == 0 && dz == 0) continue;
-                    GridPos aoePos = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
-                    CombatEntity aoeTarget = arena.getOccupant(aoePos);
-                    if (aoeTarget != null && aoeTarget.isAlive() && aoeTarget != target && !aoeTarget.isAlly()) {
-                        int aoeDmg = aoeTarget.takeDamage(baseDamage / 2);
-                        extraTargets.add(aoeTarget);
-                        totalExtra += aoeDmg;
-                        messages.add("\u00a76\ud83d\udca5 Shockwave hits " + aoeTarget.getDisplayName() + " for " + aoeDmg + "!");
-                    }
-                }
+            // Base mace AoE shockwave (always active): 3x3 slam around the
+            // target, half damage to the ring (see AoeShapes.slam3x3).
+            for (CombatEntity aoeTarget : AoeShapes.enemiesOn(arena,
+                    AoeShapes.slam3x3(target.getGridPos()), target)) {
+                int aoeDmg = aoeTarget.takeDamage(baseDamage / 2);
+                extraTargets.add(aoeTarget);
+                totalExtra += aoeDmg;
+                messages.add("\u00a76\ud83d\udca5 Shockwave hits " + aoeTarget.getDisplayName() + " for " + aoeDmg + "!");
             }
 
             // Wind Burst: knockback ALL adjacent + accumulate bonus for next mace hit
@@ -611,16 +605,24 @@ public final class VanillaWeapons {
                         }
                     }
                 }
+                // Combo: Density (gravity pull) ran just above and yanked nearby
+                // enemies inward. Wind Burst then blasts that gathered cluster
+                // back out. With both, the outward blast also deals collision
+                // damage on wall impact \u2014 a vacuum-implosion followed by an
+                // explosion.
+                boolean implosionCombo = densityLevel > 0;
+                int comboCollisionDmg = densityLevel + windBurstLevel; // scales with both
                 for (CombatEntity kbTarget : kbTargets) {
                     int kdx = Integer.signum(kbTarget.getGridPos().x() - pPos.x());
                     int kdz = Integer.signum(kbTarget.getGridPos().z() - pPos.z());
                     if (kdx == 0 && kdz == 0) kdx = 1;
                     GridPos kbPos = kbTarget.getGridPos();
+                    boolean slammedWall = false;
                     for (int step = 0; step < wbKb; step++) {
                         GridPos next = new GridPos(kbPos.x() + kdx, kbPos.z() + kdz);
-                        if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
+                        if (!arena.isInBounds(next) || arena.isOccupied(next)) { slammedWall = true; break; }
                         var tile = arena.getTile(next);
-                        if (tile == null || !tile.isWalkable()) break;
+                        if (tile == null || !tile.isWalkable()) { slammedWall = true; break; }
                         kbPos = next;
                     }
                     if (!kbPos.equals(kbTarget.getGridPos())) {
@@ -630,8 +632,18 @@ public final class VanillaWeapons {
                             kbTarget.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
                         }
                     }
+                    // Implosion combo: collision damage when blasted into a wall.
+                    if (implosionCombo && slammedWall) {
+                        int cDmg = kbTarget.takeDamage(comboCollisionDmg);
+                        totalExtra += cDmg;
+                        if (kbTarget != target) extraTargets.add(kbTarget);
+                    }
                 }
-                messages.add("\u00a7b\ud83d\udca8 Wind Burst! Shockwave knocks back enemies " + wbKb + " tiles. Next mace hit +" + wbNextBonus + " damage!");
+                if (implosionCombo) {
+                    messages.add("\u00a7b\u00a7l\u2726 Implosion Blast! \u00a7r\u00a7bGravity gathered the cluster, then the shockwave hurled it out (+" + comboCollisionDmg + " collision)!");
+                } else {
+                    messages.add("\u00a7b\ud83d\udca8 Wind Burst! Shockwave knocks back enemies " + wbKb + " tiles. Next mace hit +" + wbNextBonus + " damage!");
+                }
                 // Convention: CombatManager reads [WB_BONUS:N] from messages
                 messages.add("[WB_BONUS:" + wbNextBonus + "]");
             } else {
@@ -857,6 +869,10 @@ public final class VanillaWeapons {
                     // Already diagonal (shouldn't happen for crossbow rook pattern) -- skip
                     diagonals = new int[0][];
                 }
+                // Combo: Piercing + Multishot makes every diagonal bolt pierce
+                // through up to (1 + piercingLevel) enemies instead of stopping
+                // at the first. Without Piercing, each bolt hits just one.
+                int diagMaxHits = 1 + piercingLevel;
                 for (int[] diag : diagonals) {
                     // Walk the diagonal line one step at a time. At each step
                     // the bolt sweeps through three tiles: the diagonal tile
@@ -865,19 +881,32 @@ public final class VanillaWeapons {
                     // if it's not on the exact 45\u00b0 corner trajectory).
                     GridPos diagCheck = new GridPos(pPos.x() + diag[0], pPos.z() + diag[1]);
                     GridPos diagImpact = diagCheck;
-                    CombatEntity diagTarget = null;
+                    int diagHits = 0;
                     boolean diagBlocked = false;
-                    while (arena.isInBounds(diagCheck)) {
+                    java.util.Set<Integer> diagHitIds = new java.util.HashSet<>();
+                    while (arena.isInBounds(diagCheck) && diagHits < diagMaxHits) {
                         if (isMultishotBlocked(arena, diagCheck, diag[0], diag[1])) {
                             diagImpact = diagCheck;
                             diagBlocked = true;
                             break;
                         }
                         CombatEntity hit = pickMultishotHit(arena, diagCheck, diag[0], diag[1], target);
-                        if (hit != null) {
-                            diagTarget = hit;
+                        if (hit != null && !diagHitIds.contains(hit.getEntityId())) {
+                            int diagDmg = hit.takeDamage(baseDamage / 2);
+                            extraTargets.add(hit);
+                            totalExtra += diagDmg;
+                            diagHitIds.add(hit.getEntityId());
+                            diagHits++;
                             diagImpact = diagCheck;
-                            break;
+                            // Piercing bolts inflict bleed like the primary line.
+                            if (piercingLevel > 0) {
+                                int bleedStacks = piercingLevel <= 2 ? 1 : (piercingLevel <= 3 ? 2 : 3);
+                                hit.stackBleed(bleedStacks);
+                            }
+                            String pierceTag = piercingLevel > 0 ? " \u00a7d\u2694 Piercing multishot" : " \u00a7d\u2694 Multishot bolt";
+                            messages.add(pierceTag + " hits " + hit.getDisplayName() + " for " + diagDmg + "!");
+                            // Stop at the first hit when not piercing.
+                            if (piercingLevel == 0) break;
                         }
                         diagImpact = diagCheck;
                         diagCheck = new GridPos(diagCheck.x() + diag[0], diagCheck.z() + diag[1]);
@@ -893,15 +922,12 @@ public final class VanillaWeapons {
                             SoundCategory.PLAYERS, 0.6f, 1.2f);
                     }
 
-                    if (diagTarget != null) {
-                        int diagDmg = diagTarget.takeDamage(baseDamage / 2);
-                        extraTargets.add(diagTarget);
-                        totalExtra += diagDmg;
-                        messages.add("\u00a7d\u2694 Multishot bolt hits " + diagTarget.getDisplayName() + " for " + diagDmg + "!");
-                    } else if (diagBlocked) {
-                        messages.add("\u00a78\u2694 Multishot bolt thuds into the wall.");
-                    } else {
-                        messages.add("\u00a78\u2694 Multishot bolt sails past.");
+                    if (diagHits == 0) {
+                        if (diagBlocked) {
+                            messages.add("\u00a78\u2694 Multishot bolt thuds into the wall.");
+                        } else {
+                            messages.add("\u00a78\u2694 Multishot bolt sails past.");
+                        }
                     }
                 }
             }
@@ -952,7 +978,19 @@ public final class VanillaWeapons {
         // The waterProc handler is composed with each coral's unique ability via .and()
         WeaponAbilityHandler waterProcHandler = VanillaWeapons::waterProc;
         WeaponAbilityHandler deadHandler = VanillaWeapons::deadCoralAbility;
-        WeaponAbilityHandler fanSplash = VanillaWeapons::coralFanSplash;
+
+        // Per-type live coral fan splash shapes (see AoeShapes). Each fan's
+        // geometry echoes its status theme.
+        WeaponAbilityHandler tubeFan = (p, t, a, dmg, s, lp) ->        // Soaked -> plus/cross
+            shapedFanSplash(t, a, dmg, AoeShapes.plus(t.getGridPos()));
+        WeaponAbilityHandler brainFan = (p, t, a, dmg, s, lp) ->       // Confusion -> 3x3 splash
+            shapedFanSplash(t, a, dmg, AoeShapes.slam3x3(t.getGridPos()));
+        WeaponAbilityHandler bubbleFan = (p, t, a, dmg, s, lp) ->      // Knockback -> line outward
+            shapedFanSplash(t, a, dmg, AoeShapes.lineOutward(a.getPlayerGridPos(), t.getGridPos(), 3));
+        WeaponAbilityHandler fireFan = (p, t, a, dmg, s, lp) ->        // Burning -> cone in front
+            shapedFanSplash(t, a, dmg, AoeShapes.cone(a.getPlayerGridPos(), t.getGridPos(), 2));
+        WeaponAbilityHandler hornFan = (p, t, a, dmg, s, lp) ->        // Defense pierce -> single + pierce behind
+            shapedFanSplash(t, a, dmg, AoeShapes.pierceBehind(a.getPlayerGridPos(), t.getGridPos()));
 
         // --- Tube Coral: stackSoaked + water proc ---
         WeaponAbilityHandler tubeAbility = ((WeaponAbilityHandler) (player, target, arena, baseDamage, stats, luckPoints) -> {
@@ -1073,33 +1111,31 @@ public final class VanillaWeapons {
             .apCost(1).range(1).breakChance(0.05).ability(deadWithWater)
             .build());
 
-        // --- Live coral fans: AoE splash + water proc ---
-        WeaponAbilityHandler fanWithWater = fanSplash.and(waterProcHandler);
-
+        // --- Live coral fans: per-type AoE shape + water proc ---
         WeaponRegistry.register(Items.TUBE_CORAL_FAN, WeaponEntry.builder(Items.TUBE_CORAL_FAN)
             .damageType(DamageType.WATER)
             .attackPower(CrafticsMod.CONFIG::dmgCoralFan)
-            .apCost(1).range(1).breakChance(0.03).ability(fanWithWater)
+            .apCost(1).range(1).breakChance(0.03).ability(tubeFan.and(waterProcHandler))
             .build());
         WeaponRegistry.register(Items.BRAIN_CORAL_FAN, WeaponEntry.builder(Items.BRAIN_CORAL_FAN)
             .damageType(DamageType.WATER)
             .attackPower(CrafticsMod.CONFIG::dmgCoralFan)
-            .apCost(1).range(1).breakChance(0.03).ability(fanWithWater)
+            .apCost(1).range(1).breakChance(0.03).ability(brainFan.and(waterProcHandler))
             .build());
         WeaponRegistry.register(Items.BUBBLE_CORAL_FAN, WeaponEntry.builder(Items.BUBBLE_CORAL_FAN)
             .damageType(DamageType.WATER)
             .attackPower(CrafticsMod.CONFIG::dmgCoralFan)
-            .apCost(1).range(1).breakChance(0.03).ability(fanWithWater)
+            .apCost(1).range(1).breakChance(0.03).ability(bubbleFan.and(waterProcHandler))
             .build());
         WeaponRegistry.register(Items.FIRE_CORAL_FAN, WeaponEntry.builder(Items.FIRE_CORAL_FAN)
             .damageType(DamageType.WATER)
             .attackPower(CrafticsMod.CONFIG::dmgCoralFan)
-            .apCost(1).range(1).breakChance(0.03).ability(fanWithWater)
+            .apCost(1).range(1).breakChance(0.03).ability(fireFan.and(waterProcHandler))
             .build());
         WeaponRegistry.register(Items.HORN_CORAL_FAN, WeaponEntry.builder(Items.HORN_CORAL_FAN)
             .damageType(DamageType.WATER)
             .attackPower(CrafticsMod.CONFIG::dmgCoralFan)
-            .apCost(1).range(1).breakChance(0.03).ability(fanWithWater)
+            .apCost(1).range(1).breakChance(0.03).ability(hornFan.and(waterProcHandler))
             .build());
 
         // --- Dead coral fans: weakness + water proc ---

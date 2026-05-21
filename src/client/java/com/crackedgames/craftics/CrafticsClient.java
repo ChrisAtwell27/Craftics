@@ -38,6 +38,7 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding toggleUiKey;
     private static KeyBinding moveSlotLeftKey;
     private static KeyBinding moveSlotRightKey;
+    private static KeyBinding clearPartyKey;
 
     /** The "hide/reveal inventory UI" keybind — read by {@code HandledScreenKeyMixin}. */
     public static KeyBinding getToggleUiKey() { return toggleUiKey; }
@@ -364,6 +365,12 @@ public class CrafticsClient implements ClientModInitializer {
             KEYBIND_CATEGORY
         ));
 
+        clearPartyKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.clear_party",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_KP_0,
+            KEYBIND_CATEGORY
+        ));
+
         CombatAnimations.register();
 
         ClientPlayNetworking.registerGlobalReceiver(
@@ -533,6 +540,15 @@ public class CrafticsClient implements ClientModInitializer {
                 if (client.currentScreen == null) {
                     net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
                         new com.crackedgames.craftics.network.MoveSlotShiftPayload(1));
+                }
+            }
+
+            while (clearPartyKey.wasPressed()) {
+                // Hub-only: clear the whole battle party. Server re-checks the
+                // in-combat state, so this is only a convenience gate.
+                if (client.currentScreen == null && !CombatState.isInCombat()) {
+                    net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
+                        new com.crackedgames.craftics.network.ClearPartyPayload());
                 }
             }
 
