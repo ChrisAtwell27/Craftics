@@ -236,6 +236,17 @@ public class CombatInputHandler {
                         CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
                     ));
                     hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ATTACKED);
+                } else if (client.player != null
+                        && isInAttackFootprint(client, tilePos)) {
+                    // Empty-tile AoE: the clicked tile is inside the held
+                    // weapon's attack footprint (e.g. Fire Aspect cone, sweep,
+                    // mace slam). Even with no enemy on the exact tile, the AoE
+                    // may catch one. Send it; the server suppresses the direct
+                    // hit and resolves the AoE, or rejects if nothing's caught.
+                    ClientPlayNetworking.send(new CombatActionPayload(
+                        CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
+                    ));
+                    hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ATTACKED);
                 } else if (client.player != null) {
                     client.player.sendMessage(
                         net.minecraft.text.Text.literal("\u00a7cNo enemy on that tile!"), false
@@ -336,6 +347,19 @@ public class CombatInputHandler {
             client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy, wz));
         return state.isOf(net.minecraft.block.Blocks.TALL_GRASS)
             || state.isOf(net.minecraft.block.Blocks.LARGE_FERN);
+    }
+
+    /**
+     * True if {@code tilePos} is inside the held weapon's attack footprint when
+     * aimed at that tile (damage or effect layer). Lets the player click an
+     * empty highlighted tile to fire an AoE that catches enemies off the
+     * directly-clicked tile. Uses the same {@link AttackAoePreview} the hover
+     * highlight draws, so what you see is what you can click.
+     */
+    private static boolean isInAttackFootprint(MinecraftClient client, GridPos tilePos) {
+        if (tilePos == null) return false;
+        AttackAoePreview.Preview p = AttackAoePreview.compute(client, tilePos);
+        return p.damageTiles().contains(tilePos) || p.effectTiles().contains(tilePos);
     }
 
     /**

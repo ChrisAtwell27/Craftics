@@ -117,13 +117,16 @@ public final class StackVariants {
             0.05
         ));
 
-        // Slime Tower: 3 slimes stacked. The last slime is a regular slime and
-        // runs the usual split-on-death logic. Spawns in wet/jungly biomes.
+        // Slime Tower: 3 medium slimes stacked. Attack scales with how many
+        // slimes remain on the tower — 8 with all 3, 6 with 2, 4 with the lone
+        // medium slime. The final slime runs the usual split-on-death logic;
+        // the mini slimes it splits into deal only 1 damage each (handled in
+        // CombatManager.trySplitOnDeath). All layers are speed-1 beeline mobs.
         register(new StackDef("slime_tower",
             List.of(
-                new Layer("minecraft:slime", "Slime Tower (3)", 10, 2, 0, 1, 1),
-                new Layer("minecraft:slime", "Slime Tower (2)",  8, 2, 0, 1, 1),
-                new Layer("minecraft:slime", "Slime",            6, 2, 0, 1, 2)
+                new Layer("minecraft:slime", "Slime Tower (3)", 10, 8, 0, 1, 1),
+                new Layer("minecraft:slime", "Slime Tower (2)",  8, 6, 0, 1, 1),
+                new Layer("minecraft:slime", "Slime",            6, 4, 0, 1, 1)
             ),
             List.of("river", "jungle", "forest"),
             0.05

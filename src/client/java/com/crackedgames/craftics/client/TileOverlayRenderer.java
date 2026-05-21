@@ -123,6 +123,23 @@ public class TileOverlayRenderer {
             drawTileQuad(tessellator, matrix, originX + tile.x(), renderY, originZ + tile.z(), 0.9f, 0.9f, 0.9f, fadeAlpha);
         }
 
+        // Draw attack AoE preview for the hovered tile (amber = damage,
+        // cyan = effect-only like Density pull / Wind Burst). Reuses the
+        // server's AoeShapes geometry so the preview matches the real hit.
+        GridPos aoeHover = CombatState.getHoveredTile();
+        if (!blind && aoeHover != null) {
+            AttackAoePreview.Preview ap =
+                AttackAoePreview.compute(net.minecraft.client.MinecraftClient.getInstance(), aoeHover);
+            for (GridPos tile : ap.effectTiles()) {
+                drawTileQuad(tessellator, matrix, originX + tile.x(), renderY + 0.006f, originZ + tile.z(),
+                    0.2f, 0.7f, 1.0f, 0.25f);
+            }
+            for (GridPos tile : ap.damageTiles()) {
+                drawTileQuad(tessellator, matrix, originX + tile.x(), renderY + 0.007f, originZ + tile.z(),
+                    1.0f, 0.75f, 0.1f, 0.35f);
+            }
+        }
+
         // Draw hover tile (bright, pulsing) — LAST so it renders on top
         GridPos hover = CombatState.getHoveredTile();
         if (hover != null) {
@@ -242,6 +259,21 @@ public class TileOverlayRenderer {
             if (fadeAlpha <= 0) continue;
             GridPos tile = entry.getValue();
             drawTileQuadV5(vc, matrix, originX + tile.x(), renderY, originZ + tile.z(), 0.9f, 0.9f, 0.9f, fadeAlpha);
+        }
+
+        // Draw attack AoE preview (amber = damage, cyan = effect-only).
+        GridPos aoeHover = CombatState.getHoveredTile();
+        if (!blind && aoeHover != null) {
+            AttackAoePreview.Preview ap =
+                AttackAoePreview.compute(net.minecraft.client.MinecraftClient.getInstance(), aoeHover);
+            for (GridPos tile : ap.effectTiles()) {
+                drawTileQuadV5(vc, matrix, originX + tile.x(), renderY + 0.006f, originZ + tile.z(),
+                    0.2f, 0.7f, 1.0f, 0.25f);
+            }
+            for (GridPos tile : ap.damageTiles()) {
+                drawTileQuadV5(vc, matrix, originX + tile.x(), renderY + 0.007f, originZ + tile.z(),
+                    1.0f, 0.75f, 0.1f, 0.35f);
+            }
         }
 
         // Draw hover tile (bright, pulsing) — LAST so it renders on top

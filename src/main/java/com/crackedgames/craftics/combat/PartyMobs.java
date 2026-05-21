@@ -211,6 +211,35 @@ public final class PartyMobs {
     }
 
     /**
+     * Empty the player's entire battle party at once (hub-only convenience,
+     * triggered by a keybind). The mobs themselves stay in the hub world — only
+     * their party membership is dropped, so they simply won't be collected into
+     * the next fight. No-op (with feedback) during combat or when already empty.
+     */
+    public static void clearParty(ServerPlayerEntity player) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+
+        if (pd.inCombat) {
+            actionBar(player, "§cYou can't manage your battle party during combat.");
+            return;
+        }
+
+        List<UUID> party = pd.getPartyMobs();
+        if (party.isEmpty()) {
+            actionBar(player, "§7Your battle party is already empty.");
+            return;
+        }
+
+        int removed = party.size();
+        party.clear();
+        data.markDirty();
+        PartyMobSync.sync(player);
+        actionBar(player, "§eCleared your battle party. (" + removed + " removed)");
+    }
+
+    /**
      * Remove party UUIDs whose entity is no longer a live mob in {@code world}
      * (died in combat, despawned, unloaded). Returns whether anything changed.
      */

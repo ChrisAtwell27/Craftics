@@ -1,6 +1,70 @@
 Changelog
 
-0.1.4
+0.2.0
+
+Party and allies
+
+- Shift + Right Click a passive or neutral mob on your island with an empty hand to bring it into your battle party, click again to remove it, the action bar reports party status like "Active In Party (1/1)"
+- Party capacity is 1 plus your Pet affinity level, and always-hostile mobs (zombies, skeletons, creepers, and friends) can never be recruited
+- Spawn eggs are now rare loot drops, throw one at a tile in battle to summon that mob as an ally for 2 AP within 5 tiles, it fights alongside you for the current battle and counts toward your party cap
+- Leads command pets, hold a lead to enter command mode, click an ally to select it, then click an adjacent enemy to order an attack or any walkable tile to order a move, each command costs 2 AP and does not use up the ally's own turn
+- Bee allies inflict poison, any bee that lands a sting applies 3 turns of poison and takes recoil damage equal to a quarter of its max HP, mirroring vanilla bee behavior
+- Jukebox buff, placing a jukebox in battle plays music across the arena and grants every ally +3 speed for the rest of that battle
+
+Hybrid classes
+
+- Two distinct armor materials worn in an exact 2/2 split form a hybrid class with its own name and combat effect, 15 vanilla material pairs are registered (leather and chainmail, leather and iron, and so on)
+- Fixed hybrid classes triggering on a 3/1 (or 1/3) split, the detector now requires exactly two of each of two distinct materials across all four armor slots and rejects any other distribution
+
+Movement and the Move item
+
+- New custom Move item replaces the feather, a single-stack uncommon item shown as green "Move"
+- The Move item is force-locked to a single hotbar slot during combat, MoveSlotManager re-seats it every tick and restocks it if it is dropped or moved
+- New keybinds rotate the locked Move slot left or right so you can put it where you want without losing the lock
+- Wind Charge works as a self-movement special, target an adjacent empty tile to launch yourself up to 2 tiles the opposite way and arm a 1.5x momentum bonus on your next attack, or target an enemy to deal 1 damage and knock it back up to 3 tiles
+
+Combat items and weapons
+
+- Rocket Crossbow AOE, loading a firework rocket in the off hand turns crossbow shots into a 3x3 explosive blast that deals half damage around the target, with Multishot it fires two extra rockets along the perpendicular diagonals, each with its own 3x3 blast
+- Attack AOE preview, an on-grid preview now shows which tiles a weapon will hit (amber for damage, blue for effect-only) for maces, crossbows, swords, bows, and coral fans, driven by a shared AoeShapes geometry library covering slam, plus, sweeping edge, cone, ring, line, and pierce shapes
+
+Status effect rework
+
+- Wither now scales up as it wears off, base damage of (1 + level + Special affinity) is multiplied each turn by how far the curse has progressed toward its end, so the final ticks hit hardest, peak duration is tracked so re-applying does not reset the ramp
+- Fire is now flat damage from the source for its whole duration, (1 + level + Special affinity) per turn, blocked entirely by Fire Resistance
+- Poison damage is (2 x level) + remaining turns + Special affinity per turn, minimum 1
+
+Battlefield obstacles
+
+- Fire spreads to flammable obstacles, each turn a burning tile ignites flammable orthogonal neighbors for 3 turns, flammables include tall grass and fern, cactus, plus logs, planks, leaves, wool, wooden fences, saplings, flowers, carpets, hay, bookshelves, scaffolding, bamboo, dried kelp, target blocks, and cobwebs
+- Any non-functional full-cube block can be placed on the ground in battle as a temporary wall for 4 turns, block-entity blocks (chests, furnaces, jukeboxes, and the like), half-blocks, tall or hinged blocks, and an explicit blocklist (TNT, slime, honey, magma, beacon, spawner, and more) are excluded
+- Tall grass can now be broken from diagonal tiles too, breaking uses Chebyshev distance so all 8 surrounding tiles count as adjacent, costs 1 AP, and clears both halves
+
+Stacked enemies
+
+- New stacked enemy variants where a rider sits on a mount, killing the lower layer drops the upper layer to keep fighting
+- Zombie Stack, an adult zombie carrying a baby zombie, kill the adult and the faster baby (speed 3) takes over
+- Skeleton Horseman and Zombie Horseman, a skeleton or zombie riding its matching undead horse, the mount is the fast frontline and the rider drops as the final layer
+- Piglin Cavalry, a piglin riding a hoglin, Nether only and the toughest stack at 18 HP on the mount
+- Slime Tower, three slimes stacked into a tower whose attack scales with the layers left (8, then 6, then 4), the final slime still splits on death into mini slimes that deal only 1 damage each
+- Blaze Tower, three immobile blazes stacked into a stationary turret that fires fireballs at range 3
+
+Wither boss rework
+
+- The Wither boss fight is rebuilt as a two-phase encounter at 65 HP, 8 ATK, 5 DEF, range 5, on a 2x2 footprint
+- Phase 1, a barrage of 3 tougher skulls every 2 turns (6 HP, 7 damage, up to 6 active), a passive radius-3 decay aura dealing 2 damage a turn, summoning 2 wither skeletons every 4 turns (up to 4 alive), and a 4-tile charge when the player keeps distance
+- Phase 2 below half HP, an enraging explosion deals 8 damage in a radius-3 burst, then skull volleys grow to 5 (up to 10 active), summons to 3 (up to 6 alive), the decay aura expands to radius 4, charges leave a decay trail, and the boss becomes immune to ranged attacks
+
+UI and loot management
+
+- Player hover stats, hovering a party player on the grid opens an inspect panel with HP bar, ATK, AC, SPD, AP, and active effects, tinted blue to set it apart from enemy and ally panels
+- Toggle button for stats in the inventory, a stats panel on the right of the inventory screen shows level, unspent points, all six stats with base and spent breakdowns, emeralds, and the damage-type affinity panel, toggled on and off
+- Respec affinities, a dedicated screen lets you allocate unspent affinity points for free or refund spent points at a cost of 1 XP level each, sent to the server as per-affinity deltas
+- Full inventory loot management, the post-victory loot screen is now a chest-style GUI with your inventory below, a Take All button, and a Continue button that warns before leaving items behind
+- Trinkets are no longer lost on death, accessories from the Accessories slots are saved alongside your inventory when a Recovery Compass triggers and restored on respawn
+- F1 hides all combat UI, the combat HUD and tile overlays now respect the vanilla hud-hidden flag and skip rendering entirely
+- More in-game hints covering newer features (moving without a feather, ending your turn, healing at low HP, first combat, and the hub level-select arrow)
+- Fixed the Trial Chamber arena grid merging into itself, it now renders as a crisp, properly aligned grid like every other arena
 
 Goat horn overhaul
 
@@ -28,15 +92,61 @@ Banner overhaul
 - Special-class scaling extracted into a SpecialAffinity helper used by potions, banners, and goat horns — one source of truth for the formula
 - All four version shards compile and run
 
-Wither & Poison enemy DOTs
+0.1.4
 
-- Enemies can now actually be Withered. Previously the splash potion of Wither was a single-hit, the Skull Sherd's "Wither IV" was implemented as poison, and there was no enemy-side wither tick at all
-- Wither damage formula: `remainingTurns + 1 + amplifier + max(1, maxHp/20)` — damage is heaviest on the first tick and tapers as the curse wears off
-- Poison damage formula updated to `1 + amplifier + max(1, maxHp/20)` — base 1+amp like before, but now scales with the target's max HP so DOTs stay relevant against bosses
-- Splash Potion of Wither now applies a multi-turn DOT scaled by Special affinity, replacing the old single hit
-- Skull Sherd "Death Mark" now applies a real Wither IV (was poison wearing a wither costume)
-- New tipped Wither arrow case in PlayerCombatStats and the bow-shot pipeline — fire a tipped Wither arrow to apply 3 turns of Wither
-- The previously-dead `recordWitherKill()` achievement tracker is now wired into the wither tick loop, so the FEAT_WITHERED achievement can actually be earned
+Crafting Station event
+
+- New non-combat Crafting Station event with build/teleport, bell-based per-player exit, and pending-player tracking
+- Disconnect cleanup paths and a fallback to the central lobby when no safe hub landing is found
+- Added to event roll probabilities alongside Trader, with trader finalization tidied alongside
+
+VFX framework
+
+- Server-driven VFX core: PhaseScheduler, Vfx, VfxPrimitive and VfxAnchorResolver, with a sealed VfxAnchor interface
+- Client VfxClientPayload codec and VfxClientDispatcher handle screen shake, colored flashes, hit-pause, floating text, and vignette primitives
+- VfxBlockTracker manages falling-block entities and marks landings as VFX obstacles, GridArena tracks and clears them on combat end
+- New combat hooks: hit and ricochet descriptors, ACTION_MINE so a pickaxe gesture mines VFX obstacles for 1 AP, riptide dash interpolation animation with particles and dropped-trident owner tracking
+- HitPauseState freezes client animations while hit-pause is active, CombatVisualEffects honors hit-pause in tick
+- Config flags vfxBlockEntitiesEnabled, hitPauseEnabled, and vfxIntensity
+- JUnit 5 harness added for pure-logic VFX tests
+
+Mob animation system
+
+- AnimState enum, MobAnimations helper, and CrafticsAnimComponent integration ferry pose state from server to client
+- Client mixins BipedAnimMixin, LivingEntityRendererAnimMixin, and LivingEntityRenderStateAnimMixin apply pose overrides through CrafticsAnimHolder in setAngles
+- Server sets WINDUP on attack start, mob AnimState set on hit, per-tick decay in CombatManager
+- Client shows hurt flash by setting hurtTime on entities from damage payloads
+
+Stealth tiles
+
+- New StealthTiles utility applies vanilla INVISIBILITY to occupants and provides isConcealedFrom gating
+- CombatManager applies stealth visuals each tick and gates AI target selection so distant hunters cannot see concealed targets
+- CombatEntity gained a frozen flag and move-speed handling, CreakingAI respects it for gaze-freeze behavior
+- Tall grass and fern can be broken with a held item for 1 AP, removes both halves, plays particles and sound, and clears the stealth tile
+- Creaking heart death now removes the in-world heart block and kills the linked Creaking
+
+Copper Age and Pale Garden backport compatibility
+
+- CopperAgeCompat and PaleGardenBackportCompat registered in CrafticsMod.init() with deferred registration on server SERVER_STARTING and client CLIENT_STARTED
+- Marksman ricochet for ranged hits when wearing the full copper set, with chance and damage multiplier constants centralized in CopperAgeCompat
+- PlayerCombatStats.hasCopperSet() for set detection
+- Copper tools register in their natural affinity lanes via shared Abilities handlers for sword and axe, pickaxe skipped as a combat weapon
+- Copper armor set description registered describing ricochet behavior, client tooltips added for copper tools and armor
+- DamageTypePanel and tooltips updated to recognize copper set, show Marksman set bonus and Ranged Power affinity
+- PaleGarden helpers used for creaking entity and heart detection and block placement
+
+Damage and affinity refactor
+
+- DamageType exposes DAMAGE_PER_AFFINITY_POINT and separates getTotalAffinityPoints from getTotalBonus
+- Mob-head helper renamed to getMobHeadAffinityPoints, new damage-returning getMobHeadBonus added
+- DamageTypePanel.computeBonus now returns affinity points instead of raw damage, accounting for trims, partial sets, mob-head points, and level-up affinity points
+
+Combat fixes and polish
+
+- Totem of Undying handling refactored into safer helper methods
+- Stealth checks are now world-aware
+- Client keybind conflict resolution at startup
+- Hover tile tooltips for obstacles and hazards aligned with the enemy roster
 
 0.1.3
 

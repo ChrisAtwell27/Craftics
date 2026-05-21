@@ -421,7 +421,11 @@ public class CombatEntity {
     }
 
     public void stackBurning(int turns, int dmgIncrease) {
-        burningTurns = Math.max(burningTurns, turns);
+        // Repeat hits EXTEND the burn: the new turns add onto whatever's left
+        // (so re-applying Fire Aspect prolongs the fire), capped at the
+        // configured max effect duration so it can't run away.
+        int maxDur = com.crackedgames.craftics.CrafticsMod.CONFIG.maxCombatEffectDuration();
+        burningTurns = Math.min(maxDur, burningTurns + turns);
         burningDamage = Math.min(MAX_EFFECT_AMPLIFIER + 1, burningDamage + dmgIncrease);
     }
 

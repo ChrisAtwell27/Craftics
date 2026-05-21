@@ -61,7 +61,8 @@ public class PlayerCombatStats {
         }
         ac += getTotalProtection(player);
         ac += getSetDefenseBonus(player);
-        if (combatEffects != null) ac += combatEffects.getResistanceBonus();
+        // NOTE: Resistance no longer feeds AC. It now reduces incoming damage
+        // directly (flat per-level reduction in CombatManager.damagePlayer).
         ac += Math.max(0, progDefenseBonus);
         if (trimScan != null) ac += trimScan.get(TrimEffects.Bonus.DEFENSE);
         ac += Math.max(0, bannerBonus);

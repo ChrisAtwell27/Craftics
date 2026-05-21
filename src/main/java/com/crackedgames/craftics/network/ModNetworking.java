@@ -28,6 +28,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(MoveSlotShiftPayload.ID, MoveSlotShiftPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeadCommandPayload.ID, LeadCommandPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeadSelectPayload.ID, LeadSelectPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(ClearPartyPayload.ID, ClearPartyPayload.CODEC);
 
         // Register S2C payload types
         PayloadTypeRegistry.playS2C().register(EnterCombatPayload.ID, EnterCombatPayload.CODEC);
@@ -417,6 +418,13 @@ public class ModNetworking {
             ServerPlayerEntity p = context.player();
             context.player().getServer().execute(() ->
                 com.crackedgames.craftics.item.MoveSlotManager.shift(p, payload.direction()));
+        });
+
+        // Clear every mob from the player's battle party (hub-only keybind).
+        ServerPlayNetworking.registerGlobalReceiver(ClearPartyPayload.ID, (payload, context) -> {
+            ServerPlayerEntity p = context.player();
+            context.player().getServer().execute(() ->
+                com.crackedgames.craftics.combat.PartyMobs.clearParty(p));
         });
 
         // Lead command: player commands an ally to move/attack using a Lead.

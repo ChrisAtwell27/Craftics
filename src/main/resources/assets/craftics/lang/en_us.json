@@ -14,5 +14,6 @@
   "item.craftics.guide_book": "Tactics Field Manual",
   "item.craftics.move": "Move",
   "key.craftics.move_slot_left": "Move Item: Shift Locked Slot Left",
-  "key.craftics.move_slot_right": "Move Item: Shift Locked Slot Right"
+  "key.craftics.move_slot_right": "Move Item: Shift Locked Slot Right",
+  "key.craftics.clear_party": "Clear Battle Party (hub)"
 }

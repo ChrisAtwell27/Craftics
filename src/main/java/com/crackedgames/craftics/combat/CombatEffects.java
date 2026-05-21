@@ -10,7 +10,7 @@ public class CombatEffects {
     public enum EffectType {
         SPEED("Speed", "+2 movement"),
         STRENGTH("Strength", "+3 attack"),
-        RESISTANCE("Resistance", "+2 defense"),
+        RESISTANCE("Resistance", "-2 damage taken/level"),
         REGENERATION("Regeneration", "+2 HP/turn"),
         FIRE_RESISTANCE("Fire Resistance", "immune to fire"),
         INVISIBILITY("Invisibility", "enemies skip you"),

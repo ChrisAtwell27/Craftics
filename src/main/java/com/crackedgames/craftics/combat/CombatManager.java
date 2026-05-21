@@ -1111,6 +1111,17 @@ public class CombatManager {
     private java.util.UUID droppedTridentOwner = null;
     public GridPos getDroppedTridentPos() { return droppedTridentPos; }
 
+    /**
+     * Indirect (empty-tile) attack state. When the player clicks a tile in
+     * their attack footprint that has no enemy on it, but the AoE catches one,
+     * the attack still fires: the AoE/effects resolve normally but the direct
+     * hit deals nothing. {@code indirectAimTile} is the clicked tile (so cones/
+     * sweeps/lines orient correctly) and {@code suppressDirectHit} gates the
+     * base weapon damage off. Both reset per attack in handleAttack.
+     */
+    private GridPos indirectAimTile = null;
+    private boolean suppressDirectHit = false;
+
     private static final double SHIELD_BLOCK_CHANCE = 0.25;
 
     /** RNG for the incoming-damage AC dodge roll. */
@@ -1195,8 +1206,17 @@ public class CombatManager {
             return 0;
         }
 
-        // The hit lands — flat damage, no %-reduction under the AC system.
+        // The hit lands — flat damage under the AC system.
         int actual = Math.max(0, rawDamage);
+
+        // Resistance: flat damage reduction per level (Resistance I = -2,
+        // II = -4, ...). Always leaves at least 1 damage so it's a mitigation,
+        // not full immunity. Applies to enemy hits, not environmental/DoT
+        // (those pass attacker == null and we still want hazards to bite).
+        if (attacker != null && actual > 0) {
+            int resist = combatEffects.getResistanceBonus();
+            if (resist > 0) actual = Math.max(1, actual - resist);
+        }
 
         // Stonewall hybrid: every incoming hit is capped.
         if (activeHybridEffect() == HybridEffect.STONEWALL) {
@@ -2760,16 +2780,35 @@ public class CombatManager {
                 net.minecraft.block.BlockState broken = sw.getBlockState(lowerPos);
                 sw.setBlockState(lowerPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
                 sw.setBlockState(upperPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
-                clicked.setType(com.crackedgames.craftics.core.TileType.NORMAL);
                 apRemaining -= 1;
-                // Break particles + sound
-                sw.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
-                        net.minecraft.particle.ParticleTypes.BLOCK, broken),
-                    lowerPos.getX() + 0.5, lowerPos.getY() + 0.5, lowerPos.getZ() + 0.5,
-                    10, 0.3, 0.3, 0.3, 0.1);
-                sw.playSound(null, lowerPos,
-                    net.minecraft.sound.SoundEvents.BLOCK_GRASS_BREAK,
-                    net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+                // A Fire Aspect sword sets the cleared grass alight instead of
+                // just removing it — the tile becomes burning terrain that
+                // spreads to adjacent flammable tiles on later turns.
+                boolean fireSword = PlayerCombatStats.getFireAspect(player) > 0
+                    && player.getMainHandStack().getItem() != Items.BOW
+                    && player.getMainHandStack().getItem() != Items.CROSSBOW;
+                if (fireSword) {
+                    clicked.setTemporaryType(com.crackedgames.craftics.core.TileType.FIRE,
+                        FlammableTiles.FIRE_BURN_TURNS);
+                    sw.setBlockState(floorBlock, clicked.getBlockType().getDefaultState(), 3);
+                    sw.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+                        floorBlock.getX() + 0.5, floorBlock.getY() + 0.5, floorBlock.getZ() + 0.5,
+                        12, 0.3, 0.3, 0.3, 0.02);
+                    sw.playSound(null, floorBlock,
+                        net.minecraft.sound.SoundEvents.ITEM_FLINTANDSTEEL_USE,
+                        net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+                    sendMessage("§6The grass catches fire!");
+                } else {
+                    clicked.setType(com.crackedgames.craftics.core.TileType.NORMAL);
+                    // Break particles + sound
+                    sw.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
+                            net.minecraft.particle.ParticleTypes.BLOCK, broken),
+                        lowerPos.getX() + 0.5, lowerPos.getY() + 0.5, lowerPos.getZ() + 0.5,
+                        10, 0.3, 0.3, 0.3, 0.1);
+                    sw.playSound(null, lowerPos,
+                        net.minecraft.sound.SoundEvents.BLOCK_GRASS_BREAK,
+                        net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+                }
                 sendSync();
                 refreshHighlights();
                 return;
@@ -2816,6 +2855,10 @@ public class CombatManager {
                 break;
             }
         }
+        // Reset per-attack indirect state (set below only for empty-tile AoE).
+        indirectAimTile = null;
+        suppressDirectHit = false;
+
         if (target == null) {
             // Rocket crossbow can fire at an empty tile. The 3x3 blast still
             // catches enemies near the impact, so the player can splash a
@@ -2826,8 +2869,29 @@ public class CombatManager {
                 resolveRocketCrossbowOnTile(clickedTile);
                 return;
             }
-            sendMessage("§cNo valid target!");
-            return;
+            // Empty-tile AoE: the clicked tile has no enemy, but if the held
+            // weapon's footprint (cone, sweep, slam, line, fan) aimed at that
+            // tile catches an enemy, fire anyway. The direct hit lands on
+            // nothing (suppressed), but the AoE/effects resolve on the caught
+            // enemies. Anchor to a footprint enemy so the existing pipeline has
+            // a valid target, but aim the shapes at the clicked tile.
+            if (clickedTile != null && arena.isInBounds(clickedTile)) {
+                java.util.Set<GridPos> footprint =
+                    weaponFootprintTiles(weapon, player.getMainHandStack(),
+                        arena.getPlayerGridPos(), clickedTile);
+                CombatEntity anchor = firstEnemyOnTiles(footprint);
+                if (anchor != null) {
+                    indirectAimTile = clickedTile;
+                    suppressDirectHit = true;
+                    target = anchor;
+                } else {
+                    sendMessage("§cNo enemy in range of that attack!");
+                    return;
+                }
+            } else {
+                sendMessage("§cNo valid target!");
+                return;
+            }
         }
 
         // Clicking an ally is never an attack. Holding that ally's heal item
@@ -2864,7 +2928,10 @@ public class CombatManager {
         }
 
         GridPos pPos = arena.getPlayerGridPos();
-        GridPos tPos = target.getGridPos();
+        // For an indirect (empty-tile) attack, orient the AoE shapes toward the
+        // clicked tile rather than the anchor enemy, so the cone/sweep/line
+        // points where the player actually aimed.
+        GridPos tPos = indirectAimTile != null ? indirectAimTile : target.getGridPos();
 
         // === TRIDENT MODE DETECTION ===
         boolean isTridentMelee = false;
@@ -3315,6 +3382,10 @@ public class CombatManager {
         final boolean fLuckCrit = luckCrit;
         final String fTippedEffect = tippedEffect;
         final int fFireAspect = fireAspect;
+        // Sweeping Edge level scales the Fire Aspect shape (cone -> wide cone
+        // -> ring) when both enchants are present on a sword.
+        final int fSweepingEdge = (weapon != Items.BOW && weapon != Items.CROSSBOW)
+            ? PlayerCombatStats.getSweepingEdge(player) : 0;
         final boolean fHasBowFlame = hasBowFlame;
         final int fBowFlameLevel = bowFlameLevel;
         final int fBowPunchLevel = bowPunchLevel;
@@ -3326,6 +3397,9 @@ public class CombatManager {
         final GridPos fTPos = tPos;
         final PlayerProgression.PlayerStats fAttackerStats = attackerStats;
         final int fLuckPoints = luckPoints;
+        // Indirect (empty-tile) attack: the direct hit lands on nothing, so the
+        // base weapon damage is suppressed. AoE/effects still resolve normally.
+        final boolean fSuppressDirectHit = suppressDirectHit;
 
         // Trigger client animation immediately (damage visuals are already delayed on client)
         // valueB = attacker entity ID so clients animate the correct player, not themselves
@@ -3393,7 +3467,11 @@ public class CombatManager {
             // Addon combat effects: modify outgoing damage before it is applied
             int hookedBaseDmg = fireEffectHookChained(fBaseDamage,
                 (h, dmg) -> h.onDealDamage(effectContext, fTarget, dmg));
-            int dealt = fTarget.takeDamage(hookedBaseDmg);
+            // Indirect empty-tile attack: the anchor enemy is only here to
+            // orient the AoE; the direct swing hit nothing, so deal no base
+            // damage. The weapon ability (cone burn, sweep, slam, fan) still
+            // runs below and damages whoever the shape catches.
+            int dealt = fSuppressDirectHit ? 0 : fTarget.takeDamage(hookedBaseDmg);
             if (trimArmorPen > 0) fTarget.setDefensePenalty(fTarget.getDefensePenalty() - trimArmorPen);
 
             // Addon combat effects: critical hit notification
@@ -3449,62 +3527,51 @@ public class CombatManager {
                 }
             }
 
-            // Fire Aspect — cone of fire in swing direction
+            // Fire Aspect — burn footprint in swing direction. The shape scales
+            // with Sweeping Edge level (cone -> wide cone -> ring around the
+            // player + outer fire ring); see AoeShapes.fireAspectShape.
             if (fFireAspect > 0 && !fIsRangedWeapon) {
                 int burnTurns = fFireAspect + 1; // Lv1 = 2 turns, Lv2 = 3 turns
                 int burnDmg = fFireAspect;        // Lv1 = 1/turn, Lv2 = 2/turn
-                int coneDepth = fFireAspect + 1;  // Lv1 = 2 deep, Lv2 = 3 deep
-                // Burn the primary target
-                fTarget.stackBurning(burnTurns, burnDmg);
-                if (fTarget.getMobEntity() != null) {
-                    fTarget.getMobEntity().setFireTicks(burnTurns * 80);
-                }
-                // Calculate cone direction from player to target
-                int coneDx = Integer.signum(fTPos.x() - fPPos.x());
-                int coneDz = Integer.signum(fTPos.z() - fPPos.z());
-                int coneBurnCount = 0;
-                ServerWorld fireWorld = (ServerWorld) player.getEntityWorld();
-                // Scan cone: for each row, widen by 1 on each side perpendicular to direction
-                for (int depth = 1; depth <= coneDepth; depth++) {
-                    int halfWidth = depth; // cone widens by 1 each row
-                    for (int w = -halfWidth; w <= halfWidth; w++) {
-                        int cx, cz;
-                        if (coneDz == 0) {
-                            // Swinging East/West: cone expands along Z
-                            cx = fPPos.x() + coneDx * depth;
-                            cz = fPPos.z() + w;
-                        } else if (coneDx == 0) {
-                            // Swinging North/South: cone expands along X
-                            cx = fPPos.x() + w;
-                            cz = fPPos.z() + coneDz * depth;
-                        } else {
-                            // Diagonal: project along both axes
-                            cx = fPPos.x() + coneDx * depth;
-                            cz = fPPos.z() + coneDz * depth + w;
-                        }
-                        GridPos conePos = new GridPos(cx, cz);
-                        if (!arena.isInBounds(conePos)) continue;
-                        // Spawn flame particles on every tile in the cone
-                        BlockPos fireBlock = arena.gridToBlockPos(conePos);
-                        fireWorld.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
-                            fireBlock.getX() + 0.5, fireBlock.getY() + 0.5, fireBlock.getZ() + 0.5,
-                            8, 0.3, 0.3, 0.3, 0.02);
-                        fireWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
-                            fireBlock.getX() + 0.5, fireBlock.getY() + 0.8, fireBlock.getZ() + 0.5,
-                            4, 0.2, 0.2, 0.2, 0.01);
-                        CombatEntity coneTarget = arena.getOccupant(conePos);
-                        if (coneTarget != null && coneTarget.isAlive() && coneTarget != fTarget && !coneTarget.isAlly()) {
-                            coneTarget.stackBurning(burnTurns, burnDmg);
-                            if (coneTarget.getMobEntity() != null) {
-                                coneTarget.getMobEntity().setFireTicks(burnTurns * 80);
-                            }
-                            coneBurnCount++;
-                        }
+                // Burn the primary target (if a real enemy was struck).
+                if (!fSuppressDirectHit) {
+                    fTarget.stackBurning(burnTurns, burnDmg);
+                    if (fTarget.getMobEntity() != null) {
+                        fTarget.getMobEntity().setFireTicks(burnTurns * 80);
                     }
                 }
-                String coneMsg = coneBurnCount > 0
-                    ? "§6Fire Aspect! Cone of fire burns " + (coneBurnCount + 1) + " enemies for " + burnTurns + " turns!"
-                    : "§6Fire Aspect! Enemy burns for " + burnTurns + " turns.";
+                int coneBurnCount = 0;
+                ServerWorld fireWorld = (ServerWorld) player.getEntityWorld();
+                java.util.List<GridPos> coneTiles = AoeShapes.fireAspectShape(fPPos, fTPos, fFireAspect, fSweepingEdge);
+                for (GridPos firePos : coneTiles) {
+                    if (!arena.isInBounds(firePos)) continue;
+                    BlockPos fireBlock = arena.gridToBlockPos(firePos);
+                    fireWorld.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+                        fireBlock.getX() + 0.5, fireBlock.getY() + 0.5, fireBlock.getZ() + 0.5,
+                        8, 0.3, 0.3, 0.3, 0.02);
+                    fireWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                        fireBlock.getX() + 0.5, fireBlock.getY() + 0.8, fireBlock.getZ() + 0.5,
+                        4, 0.2, 0.2, 0.2, 0.01);
+                    CombatEntity coneTarget = arena.getOccupant(firePos);
+                    // Skip the primary target only when it was directly struck
+                    // (it's already burning from the direct hit above). On an
+                    // indirect empty-tile attack the anchor wasn't directly hit,
+                    // so the cone must burn it like any other caught enemy.
+                    boolean skipPrimary = coneTarget == fTarget && !fSuppressDirectHit;
+                    if (coneTarget != null && coneTarget.isAlive() && !skipPrimary && !coneTarget.isAlly()) {
+                        coneTarget.stackBurning(burnTurns, burnDmg);
+                        if (coneTarget.getMobEntity() != null) {
+                            coneTarget.getMobEntity().setFireTicks(burnTurns * 80);
+                        }
+                        coneBurnCount++;
+                    }
+                }
+                // Ignite flammable terrain caught in the cone (grass, logs, etc.).
+                igniteFlammableTiles(coneTiles);
+                int totalBurned = coneBurnCount + (fSuppressDirectHit ? 0 : 1);
+                String coneMsg = totalBurned > 0
+                    ? "§6Fire Aspect! Fire burns " + totalBurned + " enem" + (totalBurned == 1 ? "y" : "ies") + " for " + burnTurns + " turns!"
+                    : "§6Fire Aspect! The flames find nothing.";
                 sendMessage(coneMsg);
             }
 
@@ -3558,6 +3625,8 @@ public class CombatManager {
                     ? "§6Flame! Burns " + (flameSplash + 1) + " enemies for " + flameBurnTurns + " turns (" + flameBurnDmg + "/turn)."
                     : "§6Flame! Enemy burns for " + flameBurnTurns + " turns (" + flameBurnDmg + "/turn).";
                 sendMessage(flameMsg);
+                // Ignite flammable terrain in the Flame 3x3.
+                igniteFlammableTiles(AoeShapes.slam3x3(flamePos));
             }
 
             // Bow Punch — radial knockback burst at impact point
@@ -3578,18 +3647,59 @@ public class CombatManager {
                         }
                     }
                 }
+                // Combo: Flame + Punch. When a punched enemy is shoved INTO
+                // another enemy, that collision spreads fire to the enemy it
+                // slammed against. Detected per-target before the knockback by
+                // scanning the push path for the first occupying enemy.
+                boolean flamePunchCombo = fHasBowFlame;
+                int comboBurnDmg = fBowFlameLevel == 1 ? 1 : 3;
+                int comboBurnTurns = fBowFlameLevel == 1 ? 2 : 4;
+                int collisionIgnites = 0;
                 for (CombatEntity pTarget : punchTargets) {
                     int pdx = Integer.signum(pTarget.getGridPos().x() - impactPos.x());
                     int pdz = Integer.signum(pTarget.getGridPos().z() - impactPos.z());
                     if (pdx == 0 && pdz == 0) { pdx = Integer.signum(impactPos.x() - fPPos.x()); pdz = Integer.signum(impactPos.z() - fPPos.z()); }
                     if (pdx == 0 && pdz == 0) pdx = 1;
-                    GridPos kbBefore = pTarget.getGridPos();
+                    // Find the enemy this target would collide into along its
+                    // push, and collect the path tiles so the flame knockback
+                    // leaves fire in its tracks across flammable terrain.
+                    CombatEntity collidedInto = null;
+                    java.util.List<GridPos> pushPath = new java.util.ArrayList<>();
+                    if (flamePunchCombo) {
+                        GridPos scan = pTarget.getGridPos();
+                        pushPath.add(scan);
+                        for (int i = 1; i <= punchKb; i++) {
+                            GridPos cand = new GridPos(scan.x() + pdx * i, scan.z() + pdz * i);
+                            if (!arena.isInBounds(cand)) break;
+                            CombatEntity occ = arena.getOccupant(cand);
+                            if (occ != null && occ.isAlive() && !occ.isAlly() && occ != pTarget) {
+                                collidedInto = occ;
+                                break;
+                            }
+                            var t = arena.getTile(cand);
+                            if (t == null || !t.isWalkable()) break;
+                            pushPath.add(cand);
+                        }
+                    }
                     knockEnemyBack(pTarget, pdx, pdz, punchKb);
+                    if (flamePunchCombo) igniteFlammableTiles(pushPath);
+                    // Spread fire to the enemy that was slammed into.
+                    if (collidedInto != null) {
+                        collidedInto.stackBurning(comboBurnTurns, comboBurnDmg);
+                        if (collidedInto.getMobEntity() != null) {
+                            collidedInto.getMobEntity().setFireTicks(comboBurnTurns * 80);
+                        }
+                        collisionIgnites++;
+                    }
                 }
                 if (punchTargets.size() > 1) {
                     sendMessage("§6💨 Impact burst! Knocked back " + punchTargets.size() + " enemies!");
                 } else {
                     sendMessage("§6💨 Punch! Knocked back " + fTarget.getDisplayName() + "!");
+                }
+                if (collisionIgnites > 0) {
+                    sendMessage("§c§l✦ Burning Impact! §r§cFire spread to " + collisionIgnites
+                        + " enem" + (collisionIgnites == 1 ? "y" : "ies") + " slammed into!");
                 }
             }
 
@@ -3599,10 +3709,24 @@ public class CombatManager {
             String resistMsg = fMobResistMult == 0.0 ? " \u00a74IMMUNE!" :
                 fMobResistMult < 1.0 ? " \u00a7cResisted (" + fDamageType.displayName + ")" :
                 fMobResistMult > 1.0 ? " \u00a7aWeak! (" + fDamageType.displayName + ")" : "";
-            sendMessage("§6Hit " + fTarget.getDisplayName() + " for " + dealt + "!" + tripleMsg + critMsg + typeMsg + resistMsg);
+            if (fSuppressDirectHit) {
+                // Empty-tile attack: no direct hit landed; the AoE messages
+                // below report what the shape caught.
+                sendMessage("§7You strike at empty ground...");
+            } else {
+                sendMessage("§6Hit " + fTarget.getDisplayName() + " for " + dealt + "!" + tripleMsg + critMsg + typeMsg + resistMsg);
+            }
 
-            // Weapon ability (cleave, pierce, etc.)
-            WeaponAbility.AttackResult abilityResult = WeaponAbility.applyAbility(player, fWeapon, fTarget, arena, fBaseDamage, fAttackerStats, fLuckPoints);
+            // Weapon ability (cleave, pierce, etc.). On an indirect (empty-tile)
+            // attack the sword connected with nothing, so its on-hit effects —
+            // Sharpness bleed, Bane poison, the sweep that centers on the
+            // struck enemy — must NOT apply to the anchor we borrowed for
+            // orientation. The directional AoE that the player actually aimed
+            // (the Fire Aspect cone) is resolved separately above via fTPos and
+            // still lands. Skip the ability entirely when suppressed.
+            WeaponAbility.AttackResult abilityResult = fSuppressDirectHit
+                ? new WeaponAbility.AttackResult(0, "")
+                : WeaponAbility.applyAbility(player, fWeapon, fTarget, arena, fBaseDamage, fAttackerStats, fLuckPoints);
             for (String msg : abilityResult.messages()) {
                 // Wind Burst bonus tag — accumulate for next mace hit
                 if (msg.startsWith("[WB_BONUS:")) {
@@ -3900,6 +4024,69 @@ public class CombatManager {
                 handleVictory();
             }
         };
+    }
+
+    /**
+     * The tiles the held weapon's AoE/effects would cover if aimed at
+     * {@code aim}, used to decide whether an empty-tile click should still
+     * fire (the click lands on nothing, but the shape catches enemies). Mirrors
+     * the client-side AttackAoePreview damage+effect union, built from the same
+     * {@link AoeShapes} geometry. Returns an empty set for single-target
+     * weapons (no footprint to attack into).
+     */
+    private java.util.Set<GridPos> weaponFootprintTiles(Item weapon, ItemStack held, GridPos player, GridPos aim) {
+        java.util.Set<GridPos> tiles = new java.util.LinkedHashSet<>();
+
+        if (weapon == Items.MACE) {
+            tiles.addAll(AoeShapes.slam3x3(aim));
+            return tiles;
+        }
+        if (weapon == Items.CROSSBOW) {
+            // Pierce line through the aim tile (rocket is handled separately).
+            tiles.add(aim);
+            tiles.addAll(AoeShapes.lineBehind(player, aim,
+                Math.max(arena.getWidth(), arena.getHeight())));
+            return tiles;
+        }
+        if (isSwordItem(weapon)) {
+            tiles.add(aim);
+            int sweep = PlayerCombatStats.getEnchantLevel(held, "minecraft:sweeping_edge");
+            if (sweep > 0) tiles.addAll(AoeShapes.sweepingEdge(player, aim, sweep));
+            int fireAspect = PlayerCombatStats.getEnchantLevel(held, "minecraft:fire_aspect");
+            if (fireAspect > 0) tiles.addAll(AoeShapes.fireAspectShape(player, aim, fireAspect, sweep));
+            return tiles;
+        }
+        if (weapon == Items.BOW) {
+            tiles.add(aim);
+            if (PlayerCombatStats.getEnchantLevel(held, "minecraft:flame") > 0) {
+                tiles.addAll(AoeShapes.slam3x3(aim));
+            }
+            return tiles;
+        }
+        // Live coral fans: per-type shape.
+        if (weapon == Items.TUBE_CORAL_FAN) { tiles.addAll(AoeShapes.plus(aim)); return tiles; }
+        if (weapon == Items.BRAIN_CORAL_FAN) { tiles.addAll(AoeShapes.slam3x3(aim)); return tiles; }
+        if (weapon == Items.BUBBLE_CORAL_FAN) { tiles.addAll(AoeShapes.lineOutward(player, aim, 3)); return tiles; }
+        if (weapon == Items.FIRE_CORAL_FAN) { tiles.addAll(AoeShapes.cone(player, aim, 2)); return tiles; }
+        if (weapon == Items.HORN_CORAL_FAN) { tiles.addAll(AoeShapes.pierceBehind(player, aim)); return tiles; }
+
+        return tiles; // single-target weapon: empty footprint
+    }
+
+    private static boolean isSwordItem(Item item) {
+        return item == Items.WOODEN_SWORD || item == Items.STONE_SWORD
+            || item == Items.IRON_SWORD || item == Items.GOLDEN_SWORD
+            || item == Items.DIAMOND_SWORD || item == Items.NETHERITE_SWORD;
+    }
+
+    /** First live non-ally enemy on any of {@code tiles}, or null. */
+    private CombatEntity firstEnemyOnTiles(java.util.Set<GridPos> tiles) {
+        for (GridPos t : tiles) {
+            if (!arena.isInBounds(t)) continue;
+            CombatEntity occ = arena.getOccupant(t);
+            if (occ != null && occ.isAlive() && !occ.isAlly()) return occ;
+        }
+        return null;
     }
 
     /**
@@ -4461,7 +4648,12 @@ public class CombatManager {
                 rollMobEquipmentDrops(entity);
                 rollMobHeadDrop(entity);
             }
-            sendMessage("§a" + entity.getDisplayName() + " defeated!");
+            // A fallen ally is a loss, not a victory: no "defeated!" line.
+            if (entity.isAlly()) {
+                sendMessage("§c" + entity.getDisplayName() + " has fallen!");
+            } else {
+                sendMessage("§a" + entity.getDisplayName() + " defeated!");
+            }
             GridPos deathPos = entity.getGridPos();
             int deathSize = entity.getSize();
             String deathType = entity.getEntityTypeId();
@@ -4480,9 +4672,12 @@ public class CombatManager {
                 deathBlock.getX() + 0.5, deathBlock.getY() + 0.5, deathBlock.getZ() + 0.5,
                 8, 0.3, 0.3, 0.3, 0.02);
 
-            // Grant XP to all participants on kill
-            for (ServerPlayerEntity p : getAllParticipants()) {
-                p.addExperience(entity.isBoss() ? 50 : 10);
+            // Grant XP to all participants on kill — only for real enemy
+            // kills, never for a fallen ally.
+            if (!entity.isAlly()) {
+                for (ServerPlayerEntity p : getAllParticipants()) {
+                    p.addExperience(entity.isBoss() ? 50 : 10);
+                }
             }
 
             // Combat sound: enemy death
@@ -4543,7 +4738,11 @@ public class CombatManager {
         java.util.Collections.shuffle(candidates);
 
         int miniHp = Math.max(2, parentMaxHp / 3);
-        int miniAtk = Math.max(1, parentAtk / 2);
+        // Mini slimes are the swarm filler — chip damage only (1). Magma cubes
+        // keep the halved-parent formula so they stay a real Nether threat.
+        int miniAtk = entityTypeId.equals("minecraft:slime")
+            ? 1
+            : Math.max(1, parentAtk / 2);
         int spawned = 0;
 
         for (GridPos pos : candidates) {
@@ -4750,13 +4949,18 @@ public class CombatManager {
     }
 
     /**
-     * Discard any cosmetic passenger riders on a stack mob (tagged with
+     * Discard cosmetic passenger riders on a stack mob (tagged with
      * craftics_stack_visual). Called when a stack transforms or fully dies so
-     * the visual passenger doesn't linger.
+     * the visual passengers don't linger. A 3+ layer tower stacks riders in a
+     * chain (base ← layer1 ← layer2), so this recurses through every nested
+     * passenger — otherwise the topmost rider is left floating ("ghost mob")
+     * when its direct mount is discarded.
      */
-    private void clearStackPassengers(MobEntity mount) {
+    private void clearStackPassengers(net.minecraft.entity.Entity mount) {
         if (mount == null) return;
         for (net.minecraft.entity.Entity p : new java.util.ArrayList<>(mount.getPassengerList())) {
+            // Recurse first so nested riders are released before this one goes.
+            clearStackPassengers(p);
             if (p.getCommandTags().contains("craftics_stack_visual")) {
                 p.stopRiding();
                 p.discard();
@@ -5224,7 +5428,11 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, helmet);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.CHAINMAIL_CHESTPLATE));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.LEGS, new ItemStack(Items.IRON_LEGGINGS));
-                ItemStack sword = new ItemStack(Items.STONE_SWORD);
+                // Base attack is intentionally low (1); the sword carries most
+                // of the Revenant's damage. Iron sword (+2) + Sharpness II (+2)
+                // brings its hit to ~5, and the hover inspect reflects the full
+                // equipment-included attack value.
+                ItemStack sword = new ItemStack(Items.IRON_SWORD);
                 applyMobEnchant(sword, "sharpness", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, sword);
                 scaleBoss(mob, 1.6);
@@ -7643,6 +7851,9 @@ public class CombatManager {
             movedThisTurn = false;
 
             tickTemporaryTerrain();
+            // Spread fire AFTER existing temporary tiles decay, so a tile lit
+            // this tick keeps its full burn duration instead of losing a turn.
+            tickFireSpread();
             tickDragonBreathWaves();
             detonatePendingTnts();
 
@@ -9878,6 +10089,76 @@ public class CombatManager {
     /**
      * Resolve terrain creation/transformation.
      */
+    /**
+     * Ignite any flammable tiles among {@code tiles} (tall grass/fern, cactus,
+     * wood/leaf/wool obstacles, etc.) into temporary FIRE tiles that burn down
+     * and spread on later turns (see tickFireSpread). Called by fire-based
+     * attacks — Fire Aspect cone, bow Flame, fire knockback — so any flammable
+     * obstacle caught in the attack is set alight. Returns the count ignited.
+     */
+    private int igniteFlammableTiles(Iterable<GridPos> tiles) {
+        if (arena == null || player == null) return 0;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        int ignited = 0;
+        for (GridPos pos : tiles) {
+            if (!arena.isInBounds(pos)) continue;
+            GridTile tile = arena.getTile(pos);
+            if (tile == null || !FlammableTiles.isFlammable(tile)) continue;
+            // Clear any standing block (tall grass/fern occupy Y+1) so the
+            // obstacle is visibly burned away, then set the floor to FIRE.
+            BlockPos floor = new BlockPos(
+                arena.getOrigin().getX() + pos.x(),
+                arena.getOrigin().getY(),
+                arena.getOrigin().getZ() + pos.z());
+            world.setBlockState(floor.up(1), Blocks.AIR.getDefaultState(),
+                net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+            world.setBlockState(floor.up(2), Blocks.AIR.getDefaultState(),
+                net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+            tile.setTemporaryType(TileType.FIRE, FlammableTiles.FIRE_BURN_TURNS);
+            world.setBlockState(floor, tile.getBlockType().getDefaultState());
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+                floor.getX() + 0.5, floor.getY() + 0.5, floor.getZ() + 0.5,
+                10, 0.3, 0.3, 0.3, 0.02);
+            ignited++;
+        }
+        return ignited;
+    }
+
+    /**
+     * Per-turn fire propagation. Every active FIRE tile spreads to its
+     * orthogonally-adjacent flammable tiles, igniting them as fresh FIRE tiles
+     * (which burn down and spread further on subsequent turns). Spread is
+     * computed from a snapshot so newly-lit tiles don't chain across the whole
+     * arena in a single turn. Called once per round from the turn tick.
+     */
+    private void tickFireSpread() {
+        if (arena == null || player == null) return;
+        java.util.List<GridPos> sources = new java.util.ArrayList<>();
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridTile tile = arena.getTile(x, z);
+                if (tile != null && tile.getType() == TileType.FIRE) {
+                    sources.add(new GridPos(x, z));
+                }
+            }
+        }
+        if (sources.isEmpty()) return;
+        java.util.LinkedHashSet<GridPos> toIgnite = new java.util.LinkedHashSet<>();
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (GridPos src : sources) {
+            for (int[] d : dirs) {
+                GridPos n = new GridPos(src.x() + d[0], src.z() + d[1]);
+                if (!arena.isInBounds(n)) continue;
+                GridTile nt = arena.getTile(n);
+                if (nt != null && FlammableTiles.isFlammable(nt)) toIgnite.add(n);
+            }
+        }
+        int spread = igniteFlammableTiles(toIgnite);
+        if (spread > 0) {
+            sendMessage("§6The fire spreads to " + spread + " more tile" + (spread == 1 ? "" : "s") + "!");
+        }
+    }
+
     private void resolveCreateTerrain(EnemyAction.CreateTerrain ct) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         int duration = ct.duration();
@@ -13355,7 +13636,12 @@ public class CombatManager {
         } else {
             arena.removeEntity(enemy);
         }
-        onEnemyKilled(enemy); // track kill streak
+        // Only real enemy kills count toward streaks / rewards. A dying ally
+        // (killed by an enemy) routes through here too, but it must not award
+        // kill-streak emeralds, Symbiote heals, AP refunds, or loot procs.
+        if (!enemy.isAlly()) {
+            onEnemyKilled(enemy); // track kill streak
+        }
         // Clean up visual projectile entity
         if (enemy.isProjectile()) {
             killVisualProjectileNear(enemy);
@@ -13487,6 +13773,10 @@ public class CombatManager {
         int luckBonusItems = PlayerProgression.get((ServerWorld) player.getEntityWorld())
             .getStats(player).getPoints(PlayerProgression.Stat.LUCK);
         for (CombatEntity enemy : enemies) {
+            // The enemies list also holds the player's allies. A *surviving*
+            // ally is not loot (a bee ally that lives must not award honey).
+            // A *fallen* ally does drop its mob loot, same as any defeated mob.
+            if (enemy.isAlly() && enemy.isAlive()) continue;
             // Skip drops for creepers that self-exploded (rewards killing them properly)
             if (enemy.isSelfExploded()) continue;
             // Each player gets their own independent drop roll
