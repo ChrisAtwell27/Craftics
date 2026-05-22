@@ -1861,8 +1861,10 @@ public class CombatManager {
                     else if (weapon == Items.DIAMOND_SWORD || weapon == Items.DIAMOND_AXE) equipAtkBonus += 3;
                     else if (weapon == Items.NETHERITE_SWORD || weapon == Items.NETHERITE_AXE) equipAtkBonus += 4;
                     else if (weapon == Items.GOLDEN_SWORD || weapon == Items.BOW || weapon == Items.CROSSBOW) equipAtkBonus += 1;
-                    // Sharpness adds raw attack bonus (1 per level)
-                    equipAtkBonus += PlayerCombatStats.getEnchantLevel(mainHand, "minecraft:sharpness");
+                    // NOTE: Sharpness is intentionally NOT added to attack power here.
+                    // It is applied once on hit (damage += sharpness level, plus a bleed
+                    // stack per level) in the melee-resolution path. Folding it in here too
+                    // double-counted the bonus, inflating every sharpened enemy's damage.
                 }
                 // Armor check (sum of all armor slots)
                 for (net.minecraft.entity.EquipmentSlot slot : new net.minecraft.entity.EquipmentSlot[]{
@@ -2183,6 +2185,8 @@ public class CombatManager {
             + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus;
         baseDamage = (int)(baseDamage
             * com.crackedgames.craftics.CrafticsMod.CONFIG.playerDamageMultiplier());
+        // Weakness reduces the player's outgoing damage (matches the main attack path).
+        baseDamage -= combatEffects.getWeaknessPenalty();
         return Math.max(1, baseDamage);
     }
 
@@ -3242,19 +3246,26 @@ public class CombatManager {
                 baseDamage += 3;
             }
         }
+        // Weakness reduces the player's outgoing damage (flat, applied to the final
+        // assembled base damage; floored to 1 so a weakened player still chips).
+        baseDamage = Math.max(1, baseDamage - combatEffects.getWeaknessPenalty());
         int luckPoints = PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player)
             .getPoints(PlayerProgression.Stat.LUCK);
         int trimLuck = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.LUCK) : 0;
         // Eagle Eye set bonus: ranged attacks always have a crit source
         boolean hasEagleEye = isRangedWeapon && activeTrimScan != null
             && activeTrimScan.setBonus() == TrimEffects.SetBonus.ALL_SEEING;
-        boolean hasAnyCritSource = luckPoints > 0 || PlayerCombatStats.hasGoldSet(player) || trimLuck > 0 || hasEagleEye;
+        int luckEffectLevel = combatEffects.getLuckBonus(); // Luck status effect: +5% crit per level
+        boolean hasAnyCritSource = luckPoints > 0 || PlayerCombatStats.hasGoldSet(player) || trimLuck > 0
+            || hasEagleEye || luckEffectLevel > 0;
         boolean luckCrit = false;
         if (hasAnyCritSource) {
             // Eagle Eye set bonus: +30% crit chance for ranged attacks
             if (!luckCrit && hasEagleEye) luckCrit = Math.random() < 0.30;
             // Luck stat: 5% per point
             if (!luckCrit && luckPoints > 0) luckCrit = Math.random() < (luckPoints * 0.05);
+            // Luck status effect: 5% per level (potions, Luck sherd, Artifacts)
+            if (!luckCrit && luckEffectLevel > 0) luckCrit = Math.random() < (luckEffectLevel * 0.05);
             // Gold set: flat 15% crit
             if (!luckCrit && PlayerCombatStats.hasGoldSet(player)) luckCrit = Math.random() < 0.15;
             // Trim luck bonus: 3% per piece
@@ -3311,6 +3322,9 @@ public class CombatManager {
         } else if (mobResistMult != 1.0) {
             baseDamage = Math.max(1, (int)(baseDamage * mobResistMult));
         }
+        // NOTE: the Marked damage bonus (2x / 1.5x boss) is applied centrally in
+        // CombatEntity.takeDamage(), so every damage source to a marked target is
+        // amplified — no per-site multiplier needed here.
 
         // Skirmisher hybrid: +damage when the player moved before attacking this turn.
         if (activeHybrid == HybridEffect.SKIRMISHER && movedThisTurn && baseDamage > 0) {
@@ -5428,12 +5442,13 @@ public class CombatManager {
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, helmet);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, new ItemStack(Items.CHAINMAIL_CHESTPLATE));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.LEGS, new ItemStack(Items.IRON_LEGGINGS));
-                // Base attack is intentionally low (1); the sword carries most
-                // of the Revenant's damage. Iron sword (+2) + Sharpness II (+2)
-                // brings its hit to ~5, and the hover inspect reflects the full
-                // equipment-included attack value.
-                ItemStack sword = new ItemStack(Items.IRON_SWORD);
-                applyMobEnchant(sword, "sharpness", 2, world);
+                // Damage budget (unarmoured player): base attack 1 + per-level scaling
+                // (2 on the boss level) = 3 attack power; a stone sword adds no flat
+                // attack bonus (only iron/diamond/netherite/gold do), and Sharpness 1
+                // adds +1 once on hit plus a single bleed stack. (3 + 1) × 1.35 ≈ 5,
+                // so the Revenant lands a 5-damage hit + 1 stack of bleed.
+                ItemStack sword = new ItemStack(Items.STONE_SWORD);
+                applyMobEnchant(sword, "sharpness", 1, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, sword);
                 scaleBoss(mob, 1.6);
             }
@@ -6755,15 +6770,19 @@ public class CombatManager {
 
         PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
         PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
-        apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP)
-            + PlayerCombatStats.getSetApBonus(player);
+        apRemaining = Math.max(0, turnStats.getEffective(PlayerProgression.Stat.AP)
+            + PlayerCombatStats.getSetApBonus(player)
+            + combatEffects.getHasteBonus()            // Haste: +1 AP per level
+            - combatEffects.getMiningFatiguePenalty()); // Mining Fatigue: -1 AP per level
         movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
             + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
             + (playerMounted ? MOUNT_SPEED_BONUS : 0)
-            + PlayerCombatStats.getSetSpeedBonus(player);
+            + PlayerCombatStats.getSetSpeedBonus(player)
+            - combatEffects.getLevitationPenalty();    // Levitation: -1 movement per level
         if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
             movePointsRemaining = Math.max(1, movePointsRemaining - 1);
         }
+        movePointsRemaining = Math.max(0, movePointsRemaining);
 
         this.activeTrimScan = TrimEffects.scan(player);
         this.activeCombatEffects = activeTrimScan.getCombatEffects();
@@ -6816,11 +6835,18 @@ public class CombatManager {
             movedThisTurn = false;
             PlayerProgression turnProg2 = PlayerProgression.get((ServerWorld) player.getEntityWorld());
             PlayerProgression.PlayerStats turnStats2 = turnProg2.getStats(player);
-            apRemaining = turnStats2.getEffective(PlayerProgression.Stat.AP)
-                + PlayerCombatStats.getSetApBonus(player);
+            apRemaining = Math.max(0, turnStats2.getEffective(PlayerProgression.Stat.AP)
+                + PlayerCombatStats.getSetApBonus(player)
+                + combatEffects.getHasteBonus()
+                - combatEffects.getMiningFatiguePenalty());
             movePointsRemaining = turnStats2.getEffective(PlayerProgression.Stat.SPEED)
                 + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
-                + PlayerCombatStats.getSetSpeedBonus(player);
+                + PlayerCombatStats.getSetSpeedBonus(player)
+                - combatEffects.getLevitationPenalty();
+            if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
+                movePointsRemaining = Math.max(1, movePointsRemaining - 1);
+            }
+            movePointsRemaining = Math.max(0, movePointsRemaining);
             phase = CombatPhase.PLAYER_TURN;
             sendSync();
             refreshHighlights();
@@ -7628,6 +7654,16 @@ public class CombatManager {
                 }
             }
 
+            // Marked countdown — clear the glow + status when it expires.
+            for (CombatEntity e : enemies) {
+                if (e.getMarkedTurns() <= 0) continue;
+                e.setMarkedTurns(e.getMarkedTurns() - 1);
+                if (e.getMarkedTurns() <= 0) {
+                    if (e.getMobEntity() != null) e.getMobEntity().setGlowing(false);
+                    if (e.isAlive()) sendMessage("§7" + e.getDisplayName() + " is no longer marked.");
+                }
+            }
+
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getSoakedTurns() <= 0) continue;
                 e.setSoakedTurns(e.getSoakedTurns() - 1);
@@ -7885,15 +7921,18 @@ public class CombatManager {
             apRemaining = turnStats.getEffective(PlayerProgression.Stat.AP);
             apRemaining += PlayerCombatStats.getSetApBonus(player);
             if (activeTrimScan != null) apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
+            apRemaining += combatEffects.getHasteBonus();              // Haste: +1 AP per level
             apRemaining = Math.max(0, apRemaining - combatEffects.getMiningFatiguePenalty());
             movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
                 + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
                 + (playerMounted ? MOUNT_SPEED_BONUS : 0);
             movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
             if (activeTrimScan != null) movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
+            movePointsRemaining -= combatEffects.getLevitationPenalty(); // Levitation: -1 movement per level
             if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
                 movePointsRemaining = Math.max(1, movePointsRemaining - 1);
             }
+            movePointsRemaining = Math.max(0, movePointsRemaining);
             phase = CombatPhase.PLAYER_TURN;
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(),
@@ -8039,10 +8078,16 @@ public class CombatManager {
             }
         }
 
+        // Invisibility target gate: while the player is invisible, enemies that would
+        // target the player can't see them and skip their action. Enemies aggroed onto
+        // a pet (currentEnemyPetAggroTarget) still act against the pet.
+        boolean invisibleToThisEnemy = combatEffects.isInvisible() && currentEnemyPetAggroTarget == null;
+
         // Stealth-tile target gate: if the player is on a tall-grass/fern tile
         // and we're not adjacent, we can't see them — skip the turn entirely.
         // Bosses included (per design: bosses do not ignore tall grass).
-        if (StealthTiles.isConcealedFrom(arena, currentEnemy.getGridPos(), aiTargetPos, player.getEntityWorld())) {
+        if (invisibleToThisEnemy
+                || StealthTiles.isConcealedFrom(arena, currentEnemy.getGridPos(), aiTargetPos, player.getEntityWorld())) {
             pendingAction = new EnemyAction.Idle();
         } else {
             pendingAction = ai.decideAction(currentEnemy, arena, aiTargetPos);
@@ -9803,7 +9848,8 @@ public class CombatManager {
             case "darkness", "lights_out" -> {
                 // Check if the player is standing in a lit zone (torch/lantern)
                 if (!isPositionLit(arena.getPlayerGridPos())) {
-                    sendMessage("§8  Darkness falls! Vision reduced.");
+                    addEffectHooked(CombatEffects.EffectType.DARKNESS, 2, 0);
+                    sendMessage("§8  Darkness falls! Vision reduced (-1 range for 2 turns).");
                 } else {
                     sendMessage("§8  Darkness tries to encroach... §eYour light holds it back!");
                 }
@@ -12644,9 +12690,13 @@ public class CombatManager {
     /** Get effective weapon range including trim ATTACK_RANGE bonus. */
     private int getEffectiveWeaponRange() {
         int range = PlayerCombatStats.getWeaponRange(player);
-        // Crossbow rook pattern is special — don't add flat range to it
-        if (range != PlayerCombatStats.RANGE_CROSSBOW_ROOK && activeTrimScan != null) {
-            range += activeTrimScan.get(TrimEffects.Bonus.ATTACK_RANGE);
+        // Crossbow rook pattern is special (a sentinel, not a literal range) — don't
+        // apply flat range bonuses or vision penalties to it.
+        if (range != PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
+            if (activeTrimScan != null) range += activeTrimScan.get(TrimEffects.Bonus.ATTACK_RANGE);
+            // Blindness (-2) and Darkness (-1) shrink vision/range, floored to 1.
+            int visionPenalty = combatEffects.getBlindnessPenalty() + combatEffects.getDarknessPenalty();
+            if (visionPenalty > 0) range = Math.max(1, range - visionPenalty);
         }
         return range;
     }
@@ -12749,6 +12799,11 @@ public class CombatManager {
         // Immovable hybrid: the player cannot be knocked back at all.
         if (activeHybridEffect() == HybridEffect.IMMOVABLE) {
             sendMessage("§8⛏ Immovable — you don't budge.");
+            return;
+        }
+        // Slow Falling: the player resists knockback (floats in place).
+        if (combatEffects.hasSlowFalling()) {
+            sendMessage("§f☁ Slow Falling — you drift, unmoved by the blow.");
             return;
         }
         // Addon combat effects: modify knockback distance
@@ -16634,7 +16689,9 @@ public class CombatManager {
         for (CombatEntity e : enemies) {
             // Mounts are saved too (PetData carries the mounted flag) so the
             // rideable mob persists for the whole run, not just one level.
-            if (e.isAlive() && e.isAlly()) {
+            // Temporary allies (spawn-egg summons) fight only this battle and are
+            // never carried over or returned to the hub — skip them.
+            if (e.isAlive() && e.isAlly() && !e.isTemporaryAlly()) {
                 savedPets.add(HubPetCollector.PetData.fromCombatEntity(e, e.getOriginalHubNbt()));
             }
         }
@@ -17323,6 +17380,7 @@ public class CombatManager {
 
         CombatEntity ce = new CombatEntity(mob.getId(), typeId, targetTile, hp, atk, def, range);
         ce.setAlly(true);
+        ce.setTemporaryAlly(true); // spawn-egg summons fight this battle only — never returned to hub
         ce.setOwnerUuid(player.getUuid());
         ce.setMobEntity(mob);
         ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(typeId));
@@ -17435,6 +17493,7 @@ public class CombatManager {
             StringBuilder efx = new StringBuilder();
             if (e.isStunned()) efx.append(";Stunned");
             if (e.isEnraged()) efx.append(";Enraged");
+            if (e.isMarked()) efx.append(";Marked(" + e.getMarkedTurns() + "t)");
             if (e.getSlownessTurns() > 0) efx.append(";Slowed(" + e.getSlownessTurns() + "t)");
             else if (e.getSpeedBonus() < 0) efx.append(";Slowed");
             if (e.getPoisonTurns() > 0) efx.append(";Poisoned(" + e.getPoisonTurns() + "t)");
@@ -17562,6 +17621,9 @@ public class CombatManager {
                     || (ranged && PlayerCombatStats.getBowFlame(member) > 0))) {
             baseDamage += 3;
         }
+        // Weakness lowers the readout too (current player only — fx is null for others),
+        // so the inspect ATK matches the damage a weakened player actually deals.
+        if (fx != null) baseDamage -= fx.getWeaknessPenalty();
         return Math.max(1, baseDamage);
     }
 
@@ -17835,6 +17897,13 @@ public class CombatManager {
             (h, t) -> h.onEffectApplied(effectContext, effectType, t));
         if (hookedTurns > 0) {
             combatEffects.addEffect(effectType, hookedTurns, amplifier);
+            // Absorption grants extra HP as vanilla absorption hearts (4 HP per level),
+            // which damagePlayer already consumes before real HP. Take the max so a
+            // higher-level application tops up rather than reducing an existing shield.
+            if (effectType == CombatEffects.EffectType.ABSORPTION && player != null) {
+                float grant = 4f * (amplifier + 1);
+                player.setAbsorptionAmount(Math.max(player.getAbsorptionAmount(), grant));
+            }
             return true;
         }
         return false;

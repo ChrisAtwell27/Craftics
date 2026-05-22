@@ -246,6 +246,15 @@ public class CombatVisualEffects {
                     Math.min(255, 220 + blind * 8),
                     scaledDepth(0.55f, blind, 0.12f, 0.9f));
             }
+            // Darkness: a softer black vignette than Blindness (it's a milder vision
+            // effect, -1 range vs -2). Only drawn when Blindness isn't already darkening
+            // the screen, so the two don't stack into an opaque blackout.
+            int darkness = CombatState.getDarknessLevel();
+            if (darkness > 0 && blind <= 0) {
+                drawVignette(ctx, screenW, screenH, 0x000000,
+                    Math.min(220, 170 + darkness * 8),
+                    scaledDepth(0.40f, darkness, 0.10f, 0.7f));
+            }
             int poison = CombatState.getPoisonLevel();
             if (poison > 0) {
                 drawVignette(ctx, screenW, screenH, 0x33AA33,
