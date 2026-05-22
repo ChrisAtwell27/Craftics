@@ -769,7 +769,7 @@ public class GuideBookData {
                 "Totem (Passive): Auto-revive on death!\n" +
                 "Goat Horn (1 AP): Taunt all enemies\n" +
                 "Echo Shard (1 AP): Teleport back to start\n" +
-                "Spyglass (1 AP): See enemy stats\n" +
+                "Spyglass (2 AP): Mark an enemy — it takes 2x damage (1.5x bosses) this turn and next\n" +
                 "Compass (1 AP): Reveal all positions\n" +
                 "Brush (1 AP): Dig random loot from tiles")
         )));

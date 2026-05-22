@@ -189,7 +189,7 @@ public class ItemUseHandler {
 
     // Items with special AP costs
     private static final Set<Item> TWO_AP_ITEMS = Set.of(
-        Items.BELL, Items.JUKEBOX, Items.CROSSBOW
+        Items.BELL, Items.JUKEBOX, Items.CROSSBOW, Items.SPYGLASS
     );
 
     public static int getApCost(Item item) {
@@ -430,11 +430,19 @@ public class ItemUseHandler {
             return "§aAte Rotten Flesh! Healed " + healAmount + " HP §a(Weakness resisted!)";
         }
 
-        // Golden apple also gives absorption
+        // Golden apple also gives absorption. Route the buffs through the combat
+        // effect system (addEffectHooked) so they actually function in combat — the
+        // ABSORPTION hook grants the combat absorption shield, and RESISTANCE/
+        // REGENERATION register as real combat effects. The vanilla addStatusEffect
+        // calls are kept only for the vanilla HUD icons.
         if (food == Items.GOLDEN_APPLE) {
+            cm.addEffectHooked(CombatEffects.EffectType.ABSORPTION, 5, 0);
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 2400, 0));
         } else if (food == Items.ENCHANTED_GOLDEN_APPLE) {
             player.setHealth(maxHealth);
+            cm.addEffectHooked(CombatEffects.EffectType.ABSORPTION, 5, 3);
+            cm.addEffectHooked(CombatEffects.EffectType.RESISTANCE, 5, 0);
+            cm.addEffectHooked(CombatEffects.EffectType.REGENERATION, 5, 1);
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 2400, 3));
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 6000, 0));
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 600, 1));
@@ -1051,6 +1059,11 @@ public class ItemUseHandler {
     private static String useTotem(ServerPlayerEntity player, ItemStack stack) {
         stack.decrement(1);
         player.setHealth(player.getMaxHealth());
+        // Route the buffs through the combat effect system so they function in combat
+        // (the ABSORPTION hook grants the real shield). Vanilla effects kept for HUD icons.
+        CombatManager cm = CombatManager.get(player);
+        cm.addEffectHooked(CombatEffects.EffectType.REGENERATION, 5, 1);
+        cm.addEffectHooked(CombatEffects.EffectType.ABSORPTION, 5, 1);
         player.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 900, 1));
         player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 100, 1));
         return "§6§lTotem activated! Full heal + Regeneration!";
@@ -1191,12 +1204,30 @@ public class ItemUseHandler {
         "minecraft:mule", "minecraft:skeleton_horse", "minecraft:zombie_horse"
     );
 
-    // --- Spyglass: reveal enemy stats (1 AP, no consume) ---
+    // --- Spyglass: Mark an enemy (2 AP, no consume) ---
+    // Marks the target so it takes extra damage (2x; 1.5x for bosses) for the rest of
+    // this turn and the next, gives it the Glowing outline, and reveals its stats. Only
+    // one enemy can be marked at a time — marking a new target clears the previous mark.
     private static String useSpyglass(GridArena arena, GridPos targetTile) {
         if (targetTile == null) return "§cNeed to target an enemy!";
         CombatEntity enemy = arena.getOccupant(targetTile);
-        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
-        return "§e" + enemy.getDisplayName() + " — HP: " + enemy.getCurrentHp() + "/" + enemy.getMaxHp()
+        if (enemy == null || !enemy.isAlive() || enemy.isAlly()) return "§cNo enemy at target!";
+
+        // Only one mark at a time: clear any existing mark (and its glow) first.
+        for (CombatEntity other : arena.getOccupants().values()) {
+            if (other != enemy && other.isMarked()) {
+                other.setMarkedTurns(0);
+                if (other.getMobEntity() != null) other.getMobEntity().setGlowing(false);
+            }
+        }
+
+        // Mark for 2 turns: covers the rest of this turn + the next (ticks down once per
+        // round at turn start). Glowing outline mirrors the lead-on-ally highlight.
+        enemy.setMarkedTurns(2);
+        if (enemy.getMobEntity() != null) enemy.getMobEntity().setGlowing(true);
+
+        return "§d✦ Marked §e" + enemy.getDisplayName() + "§d! §7(takes "
+            + (enemy.isBoss() ? "1.5x" : "2x") + " damage) §8— HP: " + enemy.getCurrentHp() + "/" + enemy.getMaxHp()
             + " | ATK: " + enemy.getAttackPower() + " | DEF: " + enemy.getDefense()
             + " | Range: " + enemy.getRange() + " | Speed: " + enemy.getMoveSpeed();
     }

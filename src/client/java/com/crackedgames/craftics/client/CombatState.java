@@ -420,6 +420,7 @@ public class CombatState {
     public static boolean hasBurning() { return hasCombatEffect("Burning"); }
 
     public static int getBlindnessLevel() { return getCombatEffectLevel("Blindness"); }
+    public static int getDarknessLevel() { return getCombatEffectLevel("Darkness"); }
     public static int getPoisonLevel() { return getCombatEffectLevel("Poison"); }
     public static int getBurningLevel() { return getCombatEffectLevel("Burning"); }
     public static int getKillStreak() { return killStreak; }
