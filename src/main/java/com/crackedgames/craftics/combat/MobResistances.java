@@ -27,7 +27,7 @@ public class MobResistances {
         vuln("minecraft:zombie_villager",   DamageType.BLUNT, DamageType.CLEAVING);
 
         vuln("minecraft:zombified_piglin",  DamageType.BLUNT, DamageType.CLEAVING);
-        resist("minecraft:zombified_piglin", DamageType.SPECIAL);
+        resist("minecraft:zombified_piglin", DamageType.SPECIAL, DamageType.PHYSICAL);
 
         vuln("minecraft:husk",              DamageType.BLUNT, DamageType.WATER);
 
@@ -35,51 +35,58 @@ public class MobResistances {
         resist("minecraft:drowned",         DamageType.WATER);
 
         vuln("minecraft:skeleton",          DamageType.BLUNT);
-        resist("minecraft:skeleton",        DamageType.RANGED);
+        resist("minecraft:skeleton",        DamageType.RANGED, DamageType.PHYSICAL);
 
         vuln("minecraft:stray",            DamageType.BLUNT);
-        resist("minecraft:stray",          DamageType.RANGED, DamageType.WATER);
+        resist("minecraft:stray",          DamageType.RANGED, DamageType.WATER, DamageType.PHYSICAL);
 
         vuln("minecraft:bogged",           DamageType.BLUNT);
-        resist("minecraft:bogged",         DamageType.SPECIAL);
+        resist("minecraft:bogged",         DamageType.SPECIAL, DamageType.PHYSICAL);
 
         vuln("minecraft:wither_skeleton",   DamageType.BLUNT, DamageType.WATER);
-        resist("minecraft:wither_skeleton", DamageType.SPECIAL);
+        resist("minecraft:wither_skeleton", DamageType.SPECIAL, DamageType.PHYSICAL);
 
         vuln("minecraft:phantom",           DamageType.RANGED);
         resist("minecraft:phantom",         DamageType.SLASHING);
 
         // ── Arthropods: weak to CLEAVING (chopping legs), resist BLUNT ──
         vuln("minecraft:spider",            DamageType.CLEAVING, DamageType.SPECIAL);
-        resist("minecraft:spider",          DamageType.BLUNT);
+        resist("minecraft:spider",          DamageType.BLUNT, DamageType.PHYSICAL);
 
         vuln("minecraft:cave_spider",       DamageType.CLEAVING, DamageType.SPECIAL);
-        resist("minecraft:cave_spider",     DamageType.BLUNT);
+        resist("minecraft:cave_spider",     DamageType.BLUNT, DamageType.PHYSICAL);
 
         vuln("minecraft:silverfish",        DamageType.CLEAVING, DamageType.BLUNT);
         resist("minecraft:silverfish",      DamageType.RANGED);
 
         vuln("minecraft:endermite",         DamageType.CLEAVING, DamageType.WATER);
-        resist("minecraft:endermite",       DamageType.RANGED);
+        resist("minecraft:endermite",       DamageType.RANGED, DamageType.PHYSICAL);
 
         // ── Nether mobs: weak to WATER, resist SPECIAL ──
         vuln("minecraft:blaze",             DamageType.WATER);
-        resist("minecraft:blaze",           DamageType.SPECIAL, DamageType.RANGED);
+        resist("minecraft:blaze",           DamageType.SPECIAL, DamageType.RANGED, DamageType.PHYSICAL);
 
         vuln("minecraft:ghast",             DamageType.RANGED, DamageType.SLASHING);
-        resist("minecraft:ghast",           DamageType.SPECIAL);
+        resist("minecraft:ghast",           DamageType.SPECIAL, DamageType.PHYSICAL);
 
         vuln("minecraft:magma_cube",        DamageType.WATER);
         resist("minecraft:magma_cube",      DamageType.BLUNT);
 
         vuln("minecraft:hoglin",            DamageType.SPECIAL);
-        resist("minecraft:hoglin",          DamageType.BLUNT);
+        resist("minecraft:hoglin",          DamageType.BLUNT, DamageType.PHYSICAL);
 
         vuln("minecraft:piglin",            DamageType.SPECIAL, DamageType.WATER);
-        resist("minecraft:piglin",          DamageType.RANGED);
+        resist("minecraft:piglin",          DamageType.RANGED, DamageType.PHYSICAL);
 
         vuln("minecraft:piglin_brute",      DamageType.SPECIAL, DamageType.WATER);
-        resist("minecraft:piglin_brute",    DamageType.BLUNT, DamageType.SLASHING);
+        resist("minecraft:piglin_brute",    DamageType.BLUNT, DamageType.SLASHING, DamageType.PHYSICAL);
+
+        // strider: lava-walker, barely a combat mob — only fist-resistant.
+        resist("minecraft:strider",         DamageType.PHYSICAL);
+
+        // zoglin: mirrors hoglin.
+        vuln("minecraft:zoglin",            DamageType.SPECIAL);
+        resist("minecraft:zoglin",          DamageType.BLUNT, DamageType.PHYSICAL);
 
         // ── Breeze: weak to BLUNT (dense body), resist RANGED (wind deflects) ──
         vuln("minecraft:breeze",            DamageType.BLUNT);
@@ -87,33 +94,52 @@ public class MobResistances {
 
         // ── Creeper: weak to RANGED (keep your distance), resist SLASHING ──
         vuln("minecraft:creeper",           DamageType.RANGED, DamageType.CLEAVING);
-        resist("minecraft:creeper",         DamageType.SLASHING);
+        resist("minecraft:creeper",         DamageType.SLASHING, DamageType.PHYSICAL);
 
         // ── Illagers: weak to SLASHING (dueling), resist SPECIAL ──
         vuln("minecraft:vindicator",        DamageType.RANGED);
-        resist("minecraft:vindicator",      DamageType.CLEAVING);
+        resist("minecraft:vindicator",      DamageType.CLEAVING, DamageType.PHYSICAL);
 
         vuln("minecraft:pillager",          DamageType.SLASHING, DamageType.CLEAVING);
-        resist("minecraft:pillager",        DamageType.RANGED);
+        resist("minecraft:pillager",        DamageType.RANGED, DamageType.PHYSICAL);
 
         vuln("minecraft:ravager",           DamageType.SPECIAL);
-        resist("minecraft:ravager",         DamageType.BLUNT, DamageType.RANGED);
+        resist("minecraft:ravager",         DamageType.BLUNT, DamageType.RANGED, DamageType.PHYSICAL);
 
         vuln("minecraft:witch",             DamageType.SLASHING, DamageType.CLEAVING);
-        resist("minecraft:witch",           DamageType.SPECIAL);
+        resist("minecraft:witch",           DamageType.SPECIAL, DamageType.PHYSICAL);
         immune("minecraft:witch",           DamageType.WATER);
 
         // ── Endermen: weak to WATER (lore-accurate), resist RANGED ──
         vuln("minecraft:enderman",          DamageType.WATER, DamageType.SPECIAL);
-        resist("minecraft:enderman",        DamageType.RANGED);
+        resist("minecraft:enderman",        DamageType.RANGED, DamageType.PHYSICAL);
 
         // ── Evoker: illager spellcaster ──
         vuln("minecraft:evoker",            DamageType.SLASHING, DamageType.CLEAVING);
-        resist("minecraft:evoker",          DamageType.SPECIAL);
+        resist("minecraft:evoker",          DamageType.SPECIAL, DamageType.PHYSICAL);
+
+        // ── Illusioner: mirrors evoker ──
+        vuln("minecraft:illusioner",        DamageType.SLASHING, DamageType.CLEAVING);
+        resist("minecraft:illusioner",      DamageType.SPECIAL, DamageType.PHYSICAL);
+
+        // ── Vex: small fast flyer ──
+        vuln("minecraft:vex",               DamageType.SLASHING);
+        resist("minecraft:vex",             DamageType.RANGED, DamageType.PHYSICAL);
+
+        // ── Guardians: aquatic, weak to crushing ──
+        vuln("minecraft:guardian",          DamageType.BLUNT);
+        resist("minecraft:guardian",        DamageType.WATER, DamageType.PHYSICAL);
+
+        vuln("minecraft:elder_guardian",    DamageType.BLUNT);
+        resist("minecraft:elder_guardian",  DamageType.WATER, DamageType.PHYSICAL);
+
+        // ── Iron Golem: armored, rusts in water ──
+        vuln("minecraft:iron_golem",        DamageType.WATER);
+        resist("minecraft:iron_golem",      DamageType.BLUNT, DamageType.SLASHING, DamageType.PHYSICAL);
 
         // ── Shulker: weak to BLUNT (cracking the shell), resist RANGED ──
         vuln("minecraft:shulker",           DamageType.BLUNT);
-        resist("minecraft:shulker",         DamageType.RANGED, DamageType.SLASHING);
+        resist("minecraft:shulker",         DamageType.RANGED, DamageType.SLASHING, DamageType.PHYSICAL);
 
         // ── Animals / passives: no special resistances ──
         // (cows, pigs, sheep, chickens — neutral to everything)
@@ -130,10 +156,14 @@ public class MobResistances {
 
         // ── Bosses ──
         vuln("minecraft:warden",            DamageType.RANGED);
-        resist("minecraft:warden",          DamageType.BLUNT, DamageType.SLASHING);
+        resist("minecraft:warden",          DamageType.BLUNT, DamageType.SLASHING, DamageType.PHYSICAL);
 
         vuln("minecraft:ender_dragon",      DamageType.RANGED, DamageType.SPECIAL);
-        resist("minecraft:ender_dragon",    DamageType.WATER);
+        resist("minecraft:ender_dragon",    DamageType.WATER, DamageType.PHYSICAL);
+
+        // wither: dimension-agnostic boss, tanky.
+        vuln("minecraft:wither",            DamageType.WATER);
+        resist("minecraft:wither",          DamageType.BLUNT, DamageType.SLASHING, DamageType.RANGED, DamageType.PHYSICAL);
     }
 
     // ── Helpers to populate the maps ──

@@ -1,5 +1,11 @@
 Changelog
 
+0.2.1
+
+Combat
+
+- Most Nether, End, and many Overworld enemies now resist unarmed Physical attacks, taking half damage from fists and the leather Brawler set, while soft and low-tier mobs (zombies, slimes, silverfish, phantoms, and the like) stay fist-vulnerable
+
 0.2.0
 
 Party and allies

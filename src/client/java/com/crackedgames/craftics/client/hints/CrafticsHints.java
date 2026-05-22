@@ -39,7 +39,7 @@ public final class CrafticsHints {
                 && ctx.speedRemaining() == ctx.speedMax()
                 && !ctx.holdingMoveFeather(),
             8,
-            new HintPresenter.HudPopup(Text.literal("Hold the Move feather to walk"), 240),
+            new HintPresenter.HudPopup(Text.literal("Hold the Move item to walk"), 240),
             Hint.Priority.MEDIUM,
             Hint.Mode.RECURRING
         ));
@@ -82,7 +82,7 @@ public final class CrafticsHints {
             ctx -> ctx.inCombat() && ctx.isPlayerTurn() && ctx.turnNumber() == 1,
             0,
             new HintPresenter.HudPopup(
-                Text.literal("Hold the Move feather and click a tile to move"), 240),
+                Text.literal("Hold the Move item and click a tile to move"), 240),
             Hint.Priority.HIGH,
             Hint.Mode.ONE_SHOT_PERSISTENT
         ));
