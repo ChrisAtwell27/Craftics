@@ -14,7 +14,7 @@ public final class VanillaDialogue {
     private static final String TRADER = "minecraft:wandering_trader";
 
     public static void register() {
-        intro("weaponsmith", "Steel and sweat, friend.", "Blades that'll outlast your foes — care to look?");
+        intro("weaponsmith", "Steel and sweat, friend.", "Blades that'll outlast your foes. Care to look?");
         intro("armorer", "Sturdy gear for sturdy travelers.", "Plate, mail, the works. Shall we trade?");
         intro("provisioner", "Hungry from the road?", "Fresh provisions to keep you fighting. Interested?");
         intro("alchemist", "Ahh, a customer with potential...", "Potions, poisons, powders. What'll it be?");
@@ -28,6 +28,16 @@ public final class VanillaDialogue {
             List.of("Are you done shopping?"),
             List.of(new DialogueChoice("Yes, I'm done", "finish"),
                     new DialogueChoice("No, keep shopping", "reopen_shop"))));
+
+        // Shrine of Fortune narrator dialogue (no NPC). Empty speaker = narrator box.
+        DialogueRegistry.register(new DialogueDefinition(
+            "craftics:shrine_intro", "", "shrine_intro",
+            List.of("A shrine of fortune hums before you.",
+                    "Make an offering and test your luck."),
+            List.of(new DialogueChoice("Small Offering (2 emeralds)", "shrine:small"),
+                    new DialogueChoice("Medium Offering (5 emeralds)", "shrine:medium"),
+                    new DialogueChoice("Large Offering (10 emeralds)", "shrine:large"),
+                    new DialogueChoice("Walk away", "shrine:leave"))));
     }
 
     private static void intro(String type, String line1, String line2) {

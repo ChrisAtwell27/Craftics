@@ -630,6 +630,26 @@ public class CrafticsClient implements ClientModInitializer {
             CombatAnimations.tick();
             CombatInputHandler.tick(client);
 
+            // Keep combat/cinematic players' body facing aligned with their head, so
+            // they don't render "crooked" (diagonal body, forward head). Vanilla lets a
+            // player's body lag behind the head, but our turn-based movement forces a
+            // fixed facing each tile, so the body never naturally catches up. Pin
+            // bodyYaw = headYaw every client tick for arena players.
+            if ((CombatState.isInCombat() || CombatState.isCinematicActive()) && client.world != null) {
+                for (net.minecraft.entity.player.PlayerEntity p : client.world.getPlayers()) {
+                    if (p.getCommandTags().contains("craftics_arena") || p == client.player) {
+                        p.setBodyYaw(p.getHeadYaw());
+                        // prev/last body yaw field renamed in 1.21.5 — set it too so the
+                        // body doesn't interpolate from a stale angle for one frame.
+                        //? if <=1.21.4 {
+                        /*p.prevBodyYaw = p.getHeadYaw();
+                        *///?} else {
+                        p.lastBodyYaw = p.getHeadYaw();
+                        //?}
+                    }
+                }
+            }
+
             // Hint system tick — applies idle multiplier, evaluates sensors, ticks renderers.
             try {
                 var cfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
