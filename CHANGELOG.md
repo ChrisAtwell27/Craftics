@@ -1,5 +1,14 @@
 Changelog
 
+0.2.2
+
+Events and dialogue
+
+- Events now play out in third person: your whole party walks up to the trader together before trading begins, with the camera following each player
+- New dialogue system introduces the trader before you shop, with a unique greeting for each of the 8 trader types, text that types out one letter at a time with the speaker's voice, and a click to skip ahead
+- After you close the shop, the trader asks if you're done; choosing "No" reopens the shop so you can keep browsing, and the run continues once everyone in the party is finished
+- Dialogue is fully data-driven (JSON files under data/craftics/dialogue) and reusable for future NPCs and content
+
 0.2.1
 
 Combat

@@ -92,16 +92,16 @@ public class CombatManager {
     private int getMoveTicks() { return CrafticsMod.CONFIG.skipEnemyAnimations() ? 1 : MOVE_TICKS; }
 
     //? if <=1.21.1 {
-    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE;
-    //?} else {
-    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+    *///?} else {
+    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE;
-    *///?}
+    //?}
 
     private static GridPos adaptSpawnToArena(GridPos originalPos, LevelDefinition levelDef, GridArena arena) {
         int mappedX = scaleGridCoordinate(originalPos.x(), levelDef.getWidth(), arena.getWidth());
@@ -446,6 +446,8 @@ public class CombatManager {
      * the transition never fires for the remaining online members.
      */
     private void clearEventPendingForDisconnect(java.util.UUID memberUuid) {
+        // Drop the leaver from the cinematic so they never block the arrived/finished gates.
+        if (activeCinematic != null) activeCinematic.removePlayer(memberUuid);
         if (traderPendingPlayers.remove(memberUuid)
                 && traderPendingPlayers.isEmpty() && spawnedTrader != null) {
             ServerPlayerEntity ref = firstOnlinePartyMember();
@@ -1684,10 +1686,10 @@ public class CombatManager {
                         .PaleGardenBackportCompat.creakingHeartBlock().getDefaultState());
                 // Spawn an invisible armor stand as the entity reference
                 //? if <=1.21.1 {
-                var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world);
-                //?} else {
-                /*var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world, SpawnReason.COMMAND);
-                *///?}
+                /*var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world);
+                *///?} else {
+                var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world, SpawnReason.COMMAND);
+                //?}
                 if (heartStand != null) {
                     heartStand.refreshPositionAndAngles(
                         heartBlockPos.getX() + 0.5, heartBlockPos.getY(), heartBlockPos.getZ() + 0.5, 0, 0);
@@ -2202,14 +2204,14 @@ public class CombatManager {
         int dz = tPos.z() - pPos.z();
         float counterYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
         //? if <=1.21.1 {
-        player.teleport((ServerWorld) player.getEntityWorld(),
-            player.getX(), player.getY(), player.getZ(),
-            java.util.Collections.emptySet(), counterYaw, 0f);
-        //?} else {
         /*player.teleport((ServerWorld) player.getEntityWorld(),
             player.getX(), player.getY(), player.getZ(),
+            java.util.Collections.emptySet(), counterYaw, 0f);
+        *///?} else {
+        player.teleport((ServerWorld) player.getEntityWorld(),
+            player.getX(), player.getY(), player.getZ(),
             java.util.Collections.emptySet(), counterYaw, 0f, true);
-        *///?}
+        //?}
 
         // Weapon-swing animation (valueA == 0 → animation-only event, valueB = attacker id).
         sendToAllParty(new CombatEventPayload(
@@ -3026,14 +3028,14 @@ public class CombatManager {
                 arena.setPlayerGridPos(warpDest);
                 BlockPos warpBlock = arena.gridToBlockPos(warpDest);
                 //? if <=1.21.1 {
-                player.teleport((ServerWorld) player.getEntityWorld(),
-                    warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
-                    java.util.Collections.emptySet(), player.getYaw(), 0f);
-                //?} else {
                 /*player.teleport((ServerWorld) player.getEntityWorld(),
                     warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
+                    java.util.Collections.emptySet(), player.getYaw(), 0f);
+                *///?} else {
+                player.teleport((ServerWorld) player.getEntityWorld(),
+                    warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
                     java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-                *///?}
+                //?}
                 pPos = warpDest;
                 consumeWarpDrive();
                 warpFired = true;
@@ -3118,14 +3120,14 @@ public class CombatManager {
         int dz = tPos.z() - pPos.z();
         float attackYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
         //? if <=1.21.1 {
-        player.teleport((ServerWorld) player.getEntityWorld(),
-            player.getX(), player.getY(), player.getZ(),
-            java.util.Collections.emptySet(), attackYaw, 0f);
-        //?} else {
         /*player.teleport((ServerWorld) player.getEntityWorld(),
             player.getX(), player.getY(), player.getZ(),
+            java.util.Collections.emptySet(), attackYaw, 0f);
+        *///?} else {
+        player.teleport((ServerWorld) player.getEntityWorld(),
+            player.getX(), player.getY(), player.getZ(),
             java.util.Collections.emptySet(), attackYaw, 0f, true);
-        *///?}
+        //?}
 
         // Rocket crossbow shots spend a firework rocket (consumed by the crossbow
         // weapon ability), not an arrow — skip arrow/tipped-arrow consumption.
@@ -4390,14 +4392,14 @@ public class CombatManager {
         player.setOnGround(true);
 
         //? if <=1.21.4 {
-        player.prevX = player.getX();
+        /*player.prevX = player.getX();
         player.prevY = player.getY();
         player.prevZ = player.getZ();
-        //?} else {
-        /*player.lastX = player.getX();
+        *///?} else {
+        player.lastX = player.getX();
         player.lastY = player.getY();
         player.lastZ = player.getZ();
-        *///?}
+        //?}
         player.setPosition(x, y, z);
         player.networkHandler.requestTeleport(x, y, z, riptideAnimYaw, 0f);
 
@@ -5227,16 +5229,16 @@ public class CombatManager {
             return new String[]{"loyalty", "channeling", "impaling", "riptide", "unbreaking", "mending"};
         }
         //? if <=1.21.4 {
-        if (item instanceof net.minecraft.item.SwordItem) {
+        /*if (item instanceof net.minecraft.item.SwordItem) {
             return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
         }
-        //?} else {
-        /*if (item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) {
+        *///?} else {
+        if (item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) {
             return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
         }
-        *///?}
+        //?}
         if (item instanceof net.minecraft.item.AxeItem) {
             return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "unbreaking", "mending"};
@@ -5397,10 +5399,10 @@ public class CombatManager {
     /** Apply a single enchantment by registry path to an itemstack. */
     private static void applyMobEnchant(ItemStack stack, String enchantPath, int level, ServerWorld world) {
         //? if <=1.21.1 {
-        var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        //?} else {
-        /*var enchantRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        *///?}
+        /*var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        *///?} else {
+        var enchantRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        //?}
         var enchantEntry = enchantRegistry.streamEntries()
             .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(enchantPath))
             .findFirst().orElse(null);
@@ -5443,9 +5445,9 @@ public class CombatManager {
                 // Evoker already has robes; enchanted hat for magical look
                 ItemStack hat = new ItemStack(Items.LEATHER_HELMET);
                 //? if <=1.21.4 {
-                hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B, false));
-                //?} else
-                /*hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B));*/
+                /*hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B, false));
+                *///?} else
+                hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B));
                 applyMobEnchant(hat, "protection", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, hat);
                 scaleBoss(mob, 1.5);
@@ -5482,9 +5484,9 @@ public class CombatManager {
                 // Coral crown = prismarine-tinted helmet
                 ItemStack crown = new ItemStack(Items.LEATHER_HELMET);
                 //? if <=1.21.4 {
-                crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B, false));
-                //?} else
-                /*crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B));*/
+                /*crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B, false));
+                *///?} else
+                crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B));
                 applyMobEnchant(crown, "aqua_affinity", 1, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, crown);
                 // Enchanted trident
@@ -5527,9 +5529,9 @@ public class CombatManager {
                 // Ore-encrusted body = leather armor dyed gray-green
                 ItemStack oreChest = new ItemStack(Items.LEATHER_CHESTPLATE);
                 //? if <=1.21.4 {
-                oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F, false));
-                //?} else
-                /*oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F));*/
+                /*oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F, false));
+                *///?} else
+                oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F));
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, oreChest);
                 scaleBoss(mob, 1.6);
             }
@@ -6856,6 +6858,14 @@ public class CombatManager {
     }
 
     public void tick() {
+        // Drive the event cinematic walk-up. This must run even when combat isn't
+        // active: tickAll() ticks every CombatManager instance unconditionally, and
+        // the trader event lives outside active combat. Runs before the !active guard.
+        if (!activeWalkers.isEmpty()) {
+            for (EntityWalker w : activeWalkers) w.tick();
+            activeWalkers.removeIf(EntityWalker::isComplete);
+        }
+
         if (!active) return;
 
         if (player == null || player.isRemoved() || player.isDisconnected()) {
@@ -7220,13 +7230,13 @@ public class CombatManager {
                         BlockPos boatBlock = arena.gridToBlockPos(finalPos);
                         double boatY = boatBlock.getY(); // surface level, not lowered
                         //? if <=1.21.1 {
-                        activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
-                            net.minecraft.entity.EntityType.BOAT, sw);
-                        //?} else {
                         /*activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
+                            net.minecraft.entity.EntityType.BOAT, sw);
+                        *///?} else {
+                        activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
                             net.minecraft.entity.EntityType.OAK_BOAT, sw,
                             () -> net.minecraft.item.Items.OAK_BOAT);
-                        *///?}
+                        //?}
                         activeBoat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
                         activeBoat.setYaw(player.getYaw() - 90f);
                         activeBoat.setInvulnerable(true);
@@ -7337,14 +7347,14 @@ public class CombatManager {
 
             // prevXYZ needed so client limb animator sees the movement delta
             //? if <=1.21.4 {
-            player.prevX = player.getX();
+            /*player.prevX = player.getX();
             player.prevY = player.getY();
             player.prevZ = player.getZ();
-            //?} else {
-            /*player.lastX = player.getX();
+            *///?} else {
+            player.lastX = player.getX();
             player.lastY = player.getY();
             player.lastZ = player.getZ();
-            *///?}
+            //?}
             player.setPosition(x, y, z);
 
             // Velocity drives vanilla limb animation on client
@@ -9455,10 +9465,10 @@ public class CombatManager {
             if (visualEntityId != null) {
                 EntityType<?> visualType = Registries.ENTITY_TYPE.get(Identifier.of(visualEntityId));
                 //? if <=1.21.1 {
-                var visualEntity = visualType.create(world);
-                //?} else {
-                /*var visualEntity = visualType.create(world, net.minecraft.entity.SpawnReason.LOAD);
-                *///?}
+                /*var visualEntity = visualType.create(world);
+                *///?} else {
+                var visualEntity = visualType.create(world, net.minecraft.entity.SpawnReason.LOAD);
+                //?}
                 if (visualEntity != null) {
                     visualEntity.refreshPositionAndAngles(
                         spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5, 0, 0);
@@ -10818,12 +10828,12 @@ public class CombatManager {
         double spawnY = targetBp.getY() + 6.0;
 
         //? if <=1.21.1 {
-        net.minecraft.entity.FallingBlockEntity fbe =
-            net.minecraft.entity.EntityType.FALLING_BLOCK.create(world);
-        //?} else {
         /*net.minecraft.entity.FallingBlockEntity fbe =
+            net.minecraft.entity.EntityType.FALLING_BLOCK.create(world);
+        *///?} else {
+        net.minecraft.entity.FallingBlockEntity fbe =
             net.minecraft.entity.EntityType.FALLING_BLOCK.create(world, net.minecraft.entity.SpawnReason.TRIGGERED);
-        *///?}
+        //?}
         if (fbe == null) return;
         net.minecraft.nbt.NbtCompound nbt = new net.minecraft.nbt.NbtCompound();
         fbe.writeNbt(nbt);
@@ -12699,14 +12709,14 @@ public class CombatManager {
             arena.setPlayerGridPos(dest);
             BlockPos shoveBlock = arena.gridToBlockPos(dest);
             //? if <=1.21.1 {
-            player.teleport((ServerWorld) player.getEntityWorld(),
-                shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
-                java.util.Collections.emptySet(), player.getYaw(), 0f);
-            //?} else {
             /*player.teleport((ServerWorld) player.getEntityWorld(),
                 shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
+                java.util.Collections.emptySet(), player.getYaw(), 0f);
+            *///?} else {
+            player.teleport((ServerWorld) player.getEntityWorld(),
+                shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
                 java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-            *///?}
+            //?}
             return;
         }
     }
@@ -13315,17 +13325,17 @@ public class CombatManager {
             player.getX(), player.getY() + 1.0, player.getZ(),
             8, 0.3, 0.5, 0.3, 0.02);
         //? if <=1.21.1 {
-        downedWorld.spawnParticles(
+        /*downedWorld.spawnParticles(
             new net.minecraft.particle.DustParticleEffect(
                 new org.joml.Vector3f(1.0f, 0.2f, 0.2f), 1.5f),
             player.getX(), player.getY() + 0.5, player.getZ(),
             12, 0.4, 0.3, 0.4, 0.01);
-        //?} else {
-        /*downedWorld.spawnParticles(
+        *///?} else {
+        downedWorld.spawnParticles(
             new net.minecraft.particle.DustParticleEffect(0xFF3333, 1.5f),
             player.getX(), player.getY() + 0.5, player.getZ(),
             12, 0.4, 0.3, 0.4, 0.01);
-        *///?}
+        //?}
 
         // Send downed event to client (orange vignette, different from red death vignette)
         sendToAllParty(new CombatEventPayload(
@@ -13503,14 +13513,14 @@ public class CombatManager {
                     itemsLost++;
                 }
                 //? if <=1.21.4 {
-                for (int slot = 0; slot < p.getInventory().armor.size(); slot++) {
+                /*for (int slot = 0; slot < p.getInventory().armor.size(); slot++) {
                     if (!p.getInventory().armor.get(slot).isEmpty()) {
                         p.getInventory().armor.set(slot, ItemStack.EMPTY);
                         itemsLost++;
                     }
                 }
-                //?} else {
-                /*for (net.minecraft.entity.EquipmentSlot armorSlot : new net.minecraft.entity.EquipmentSlot[]{
+                *///?} else {
+                for (net.minecraft.entity.EquipmentSlot armorSlot : new net.minecraft.entity.EquipmentSlot[]{
                         net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
                         net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
                     if (!p.getEquippedStack(armorSlot).isEmpty()) {
@@ -13518,7 +13528,7 @@ public class CombatManager {
                         itemsLost++;
                     }
                 }
-                *///?}
+                //?}
                 if (!p.getOffHandStack().isEmpty()) {
                     p.setStackInHand(net.minecraft.util.Hand.OFF_HAND, ItemStack.EMPTY);
                     itemsLost++;
@@ -13538,9 +13548,9 @@ public class CombatManager {
                     && !(mainHand.getItem() instanceof com.crackedgames.craftics.item.GuideBookItem)) {
                     dropped = mainHand.copy();
                     //? if <=1.21.4 {
-                    p.getInventory().setStack(p.getInventory().selectedSlot, ItemStack.EMPTY);
-                    //?} else
-                    /*p.getInventory().setStack(p.getInventory().getSelectedSlot(), ItemStack.EMPTY);*/
+                    /*p.getInventory().setStack(p.getInventory().selectedSlot, ItemStack.EMPTY);
+                    *///?} else
+                    p.getInventory().setStack(p.getInventory().getSelectedSlot(), ItemStack.EMPTY);
                 }
 
                 if (dropped.isEmpty()) {
@@ -14703,6 +14713,11 @@ public class CombatManager {
     private final java.util.Map<java.util.UUID, java.util.List<int[]>> perPlayerEnchanterSlots = new java.util.HashMap<>();
     private final java.util.Set<java.util.UUID> traderPendingPlayers = new java.util.HashSet<>();
 
+    // ---- Event cinematic (dialogue intro walk-up) ----
+    private EventCinematic activeCinematic;
+    private final java.util.List<EntityWalker> activeWalkers = new java.util.ArrayList<>();
+    private String activeTraderIntroGroup;
+
     // ---- Crafting Station event ----
     private boolean craftingStationActive = false;
     private final java.util.Set<java.util.UUID> craftingStationPendingPlayers = new java.util.HashSet<>();
@@ -14909,9 +14924,36 @@ public class CombatManager {
         }
         buildTraderArea(world, traderAreaOrigin, biome);
 
-        // Teleport all party members to trader area
+        // Force-load the trader area + walkway chunks so the spawned trader entity stays
+        // loaded and its merchant screen works. Without this the trader's chunk unloads
+        // (removed=UNLOADED_TO_CHUNK) and opening the shop flickers shut instantly.
+        // Reuses the same forcedChunks set the arena uses; released in finalizeTraderEvent.
+        {
+            int margin = 32;
+            int minCX = (traderAreaOrigin.getX() - margin) >> 4;
+            int maxCX = (traderAreaOrigin.getX() + 9 + margin) >> 4;
+            // Walkway extends to oz - WALKWAY_LEN - 1 (low z); include it plus margin.
+            int minCZ = (traderAreaOrigin.getZ() - 8 - 1 - margin) >> 4;
+            int maxCZ = (traderAreaOrigin.getZ() + 9 + margin) >> 4;
+            for (int cx = minCX; cx <= maxCX; cx++) {
+                for (int cz = minCZ; cz <= maxCZ; cz++) {
+                    world.setChunkForced(cx, cz, true);
+                    forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
+                }
+            }
+        }
+
+        // Teleport all party members to the FAR END of the approach walkway (low-z),
+        // facing the trader, so they walk up the path before dialogue. The walkway is
+        // 8 long on the x=3..5 lane (see buildTraderArea WALKWAY_LEN). z = origin - 8.
+        final int WALKWAY_LEN = 8;
         for (ServerPlayerEntity p : members) {
-            p.requestTeleport(traderAreaOrigin.getX() + 4.5, traderAreaOrigin.getY() + 1, traderAreaOrigin.getZ() + 4.5);
+            p.requestTeleport(
+                traderAreaOrigin.getX() + 4.5,
+                traderAreaOrigin.getY() + 1,
+                traderAreaOrigin.getZ() - WALKWAY_LEN + 0.5);
+            p.setYaw(0f);       // face +Z, toward the trader area
+            p.setHeadYaw(0f);
         }
 
         // Spawn real wandering trader in the trader area
@@ -14923,6 +14965,7 @@ public class CombatManager {
                 -90f, 0f);
             spawnedTrader.setAiDisabled(true);
             spawnedTrader.setInvulnerable(true);
+            spawnedTrader.setPersistent(); // never despawn during the event
 
             // Set custom trades using emerald items as payment
             net.minecraft.village.TradeOfferList tradeOffers = spawnedTrader.getOffers();
@@ -14937,15 +14980,86 @@ public class CombatManager {
             world.spawnEntity(spawnedTrader);
         }
 
-        // Signal each client that trader is active
+        // Begin the dialogue intro cinematic: walk every member up to a talk tile
+        // in front of the trader, then (once all arrive) push the intro dialogue.
+        this.activeTraderIntroGroup = "trader_intro_" + activeTraderOffer.type().name().toLowerCase();
+        java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
+        for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
+
+        ServerPlayerEntity ref = savedPlayer;
+        this.activeWalkers.clear();
+        this.activeCinematic = new EventCinematic(partyUuids,
+            () -> {
+                for (ServerPlayerEntity p : getOnlinePartyMembers(ref)) {
+                    var def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry
+                        .pickFromGroup(activeTraderIntroGroup, new java.util.Random());
+                    if (def == null) def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry
+                        .pickFromGroup("trader_intro", new java.util.Random());
+                    if (def == null) {
+                        CrafticsMod.LOGGER.error(
+                            "No intro dialogue for group '{}' — opening trade directly for {}",
+                            activeTraderIntroGroup, p.getName().getString());
+                        openTraderFor(p);   // fail safe: skip dialogue, go straight to trading
+                        continue;
+                    }
+                    sendDialogue(p, def);
+                }
+            },
+            () -> { /* all-finished handled via traderPendingPlayers/finalizeTraderEvent */ });
+
+        // Walk each member from the walkway end up to a talk tile a couple blocks in
+        // front of the trader, fanned along x so they don't overlap. Move at the same
+        // per-tick rate combat uses (one 1.0-block tile per getMoveTicks() ticks =
+        // 0.25 blocks/tick) so the walk-up reads identically to in-combat movement.
+        final double WALK_SPEED = 1.0 / getMoveTicks(); // blocks per tick, matches combat
+        int idx = 0;
         for (ServerPlayerEntity p : members) {
-            int pEmeralds = data.getPlayerData(p.getUuid()).emeralds;
-            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.TraderOfferPayload(
-                activeTraderOffer.type().displayName, activeTraderOffer.type().icon, "", pEmeralds
-            ));
-            sendMessageTo(p, "§e§lA wandering trader appears!");
-            sendMessageTo(p, "§7Right-click to trade. Your emeralds are in your inventory.");
-            sendMessageTo(p, "§7Type §e/craftics done§7 or wait to continue.");
+            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
+            // Talk tiles in front of the trader (trader at origin+6.5 x, origin+4.5 z),
+            // fanned across the x=3..5 lane so multiple members stand side by side.
+            double tx = traderAreaOrigin.getX() + 3.5 + (idx % 3);
+            double ty = traderAreaOrigin.getY() + 1;
+            double tz = traderAreaOrigin.getZ() + 4.5;
+            // Tick count from distance at combat speed, so each tick advances the same
+            // distance combat does and the client's entity interpolation lines up.
+            double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
+            int walkTicks = Math.max(1, (int) Math.round(walkDist / WALK_SPEED));
+            final ServerPlayerEntity fp = p;
+            EntityWalker.Mover mover = (x, y, z, yaw) -> {
+                fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
+                // prevXYZ (lastXYZ on 1.21.5+) must be set BEFORE setPosition so the
+                // client limb animator sees a movement delta and interpolates smoothly —
+                // matches the combat movement code (tickAnimation).
+                //? if <=1.21.4 {
+                /*fp.prevX = fp.getX();
+                fp.prevY = fp.getY();
+                fp.prevZ = fp.getZ();
+                *///?} else {
+                fp.lastX = fp.getX();
+                fp.lastY = fp.getY();
+                fp.lastZ = fp.getZ();
+                //?}
+                // Velocity drives vanilla limb-swing fallback; magnitude matches combat.
+                double dx = x - fp.getX(), dz = z - fp.getZ();
+                double len = Math.sqrt(dx * dx + dz * dz);
+                if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
+                fp.setPosition(x, y, z);
+                fp.networkHandler.requestTeleport(x, y, z, yaw, 0f);
+            };
+            final java.util.UUID fu = p.getUuid();
+            final double traderX = traderAreaOrigin.getX() + 6.5;
+            final double traderZ = traderAreaOrigin.getZ() + 4.5;
+            final double ftx = tx, ftz = tz;
+            activeWalkers.add(new EntityWalker(mover,
+                p.getX(), p.getY(), p.getZ(), tx, ty, tz, walkTicks,
+                () -> {
+                    // On arrival, turn to face the trader before dialogue opens.
+                    float faceYaw = (float) Math.toDegrees(Math.atan2(-(traderX - ftx), traderZ - ftz));
+                    fp.setYaw(faceYaw); fp.setHeadYaw(faceYaw); fp.setBodyYaw(faceYaw);
+                    fp.networkHandler.requestTeleport(fp.getX(), fp.getY(), fp.getZ(), faceYaw, 0f);
+                    activeCinematic.markArrived(fu);
+                }));
+            idx++;
         }
     }
 
@@ -14959,33 +15073,32 @@ public class CombatManager {
         net.minecraft.block.Block accentBlock = Blocks.OAK_PLANKS;
         net.minecraft.block.Block postBlock = Blocks.OAK_LOG;
         net.minecraft.block.Block carpetBlock = Blocks.RED_CARPET;
-        net.minecraft.block.Block roofBlock = Blocks.RED_WOOL;
 
         if (biome != null && biome.environmentId != null) {
             switch (biome.environmentId) {
                 case "forest" -> {
                     floorBlock = Blocks.PODZOL; accentBlock = Blocks.SPRUCE_PLANKS;
-                    postBlock = Blocks.SPRUCE_LOG; carpetBlock = Blocks.GREEN_CARPET; roofBlock = Blocks.GREEN_WOOL;
+                    postBlock = Blocks.SPRUCE_LOG; carpetBlock = Blocks.GREEN_CARPET;
                 }
                 case "snowy" -> {
                     floorBlock = Blocks.SNOW_BLOCK; accentBlock = Blocks.SPRUCE_PLANKS;
-                    postBlock = Blocks.SPRUCE_LOG; carpetBlock = Blocks.LIGHT_BLUE_CARPET; roofBlock = Blocks.WHITE_WOOL;
+                    postBlock = Blocks.SPRUCE_LOG; carpetBlock = Blocks.LIGHT_BLUE_CARPET;
                 }
                 case "cave", "deep_dark" -> {
                     floorBlock = Blocks.DEEPSLATE_BRICKS; accentBlock = Blocks.POLISHED_DEEPSLATE;
-                    postBlock = Blocks.DEEPSLATE_BRICK_WALL; carpetBlock = Blocks.GRAY_CARPET; roofBlock = Blocks.GRAY_WOOL;
+                    postBlock = Blocks.DEEPSLATE_BRICK_WALL; carpetBlock = Blocks.GRAY_CARPET;
                 }
                 case "desert" -> {
                     floorBlock = Blocks.SMOOTH_SANDSTONE; accentBlock = Blocks.CUT_SANDSTONE;
-                    postBlock = Blocks.SANDSTONE_WALL; carpetBlock = Blocks.ORANGE_CARPET; roofBlock = Blocks.ORANGE_WOOL;
+                    postBlock = Blocks.SANDSTONE_WALL; carpetBlock = Blocks.ORANGE_CARPET;
                 }
                 case "nether", "crimson_forest", "warped_forest" -> {
                     floorBlock = Blocks.NETHER_BRICKS; accentBlock = Blocks.CRIMSON_PLANKS;
-                    postBlock = Blocks.CRIMSON_STEM; carpetBlock = Blocks.RED_CARPET; roofBlock = Blocks.RED_WOOL;
+                    postBlock = Blocks.CRIMSON_STEM; carpetBlock = Blocks.RED_CARPET;
                 }
                 case "end" -> {
                     floorBlock = Blocks.PURPUR_BLOCK; accentBlock = Blocks.END_STONE_BRICKS;
-                    postBlock = Blocks.PURPUR_PILLAR; carpetBlock = Blocks.PURPLE_CARPET; roofBlock = Blocks.PURPLE_WOOL;
+                    postBlock = Blocks.PURPUR_PILLAR; carpetBlock = Blocks.PURPLE_CARPET;
                 }
                 default -> {} // plains default
             }
@@ -15025,16 +15138,9 @@ public class CombatManager {
             world.setBlockState(new BlockPos(ox + 8, oy + y, oz + 8), postBlock.getDefaultState(), sf);
         }
 
-        // Canopy roof (wool at y+4, spanning 5x5 center)
-        for (int x = 2; x <= 6; x++)
-            for (int z = 2; z <= 6; z++)
-                world.setBlockState(new BlockPos(ox + x, oy + 4, oz + z), roofBlock.getDefaultState(), sf);
-
-        // Lanterns hanging from canopy corners
-        world.setBlockState(new BlockPos(ox + 2, oy + 3, oz + 2), Blocks.LANTERN.getDefaultState(), sf);
-        world.setBlockState(new BlockPos(ox + 6, oy + 3, oz + 2), Blocks.LANTERN.getDefaultState(), sf);
-        world.setBlockState(new BlockPos(ox + 2, oy + 3, oz + 6), Blocks.LANTERN.getDefaultState(), sf);
-        world.setBlockState(new BlockPos(ox + 6, oy + 3, oz + 6), Blocks.LANTERN.getDefaultState(), sf);
+        // No overhead roof: the third-person isometric camera looks down at a steep
+        // pitch, so a canopy would occlude the whole scene. Decoration is kept to the
+        // corner posts and lanterns only.
 
         // Lanterns on top of corner posts
         world.setBlockState(new BlockPos(ox, oy + 4, oz), Blocks.LANTERN.getDefaultState(), sf);
@@ -15052,20 +15158,60 @@ public class CombatManager {
         world.setBlockState(new BlockPos(ox + 3, oy + 1, oz + 7), Blocks.BARREL.getDefaultState(), sf);
         world.setBlockState(new BlockPos(ox + 5, oy + 1, oz + 7), Blocks.BARREL.getDefaultState(), sf);
 
-        // Lectern near entrance
-        world.setBlockState(new BlockPos(ox + 4, oy + 1, oz + 1), Blocks.LECTERN.getDefaultState(), sf);
+        // Lectern beside the entrance (moved off-center so the walkway lane is clear)
+        world.setBlockState(new BlockPos(ox + 1, oy + 1, oz + 1), Blocks.LECTERN.getDefaultState(), sf);
 
-        // Barrier walls around perimeter (invisible 2-high walls prevent falling off)
+        // ── Approach walkway ──
+        // Players teleport in at the far (low-z) end of an 8-long, 3-wide path and walk
+        // up to the trader. The walkway runs along -Z from the area's entrance edge
+        // (oz) back to oz - WALKWAY_LEN, centered on the x=3..5 lane.
+        final int WALKWAY_LEN = 8;
+        for (int wz = 1; wz <= WALKWAY_LEN; wz++) {
+            int z = oz - wz;
+            for (int x = 3; x <= 5; x++) {
+                // clear headroom + floor each walkway tile
+                for (int y = 1; y <= 6; y++) world.setBlockState(new BlockPos(ox + x, oy + y, z), air, sf);
+                world.setBlockState(new BlockPos(ox + x, oy, z), accentBlock.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + x, oy + 1, z), carpetBlock.getDefaultState(), sf);
+            }
+            // lanterns on posts every few tiles for a lit approach
+            if (wz % 3 == 0) {
+                world.setBlockState(new BlockPos(ox + 2, oy + 1, z), postBlock.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 2, oy + 2, z), Blocks.LANTERN.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 6, oy + 1, z), postBlock.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 6, oy + 2, z), Blocks.LANTERN.getDefaultState(), sf);
+            }
+        }
+
+        // Barrier walls. Perimeter stays sealed EXCEPT the entrance lane (x=3..5 at oz),
+        // which opens onto the walkway. The walkway gets its own side + end barriers.
         for (int x = -1; x <= 9; x++) {
             for (int y = 1; y <= 2; y++) {
-                world.setBlockState(new BlockPos(ox + x, oy + y, oz - 1), Blocks.BARRIER.getDefaultState(), sf);
+                // entrance edge (oz - ... wait: the area's low-z wall is at oz). Keep the
+                // wall solid except over the walkway lane (x 3..5).
+                if (x < 3 || x > 5) {
+                    world.setBlockState(new BlockPos(ox + x, oy + y, oz), Blocks.BARRIER.getDefaultState(), sf);
+                }
                 world.setBlockState(new BlockPos(ox + x, oy + y, oz + 9), Blocks.BARRIER.getDefaultState(), sf);
             }
         }
-        for (int z = -1; z <= 9; z++) {
+        for (int z = 0; z <= 9; z++) {
             for (int y = 1; y <= 2; y++) {
                 world.setBlockState(new BlockPos(ox - 1, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
                 world.setBlockState(new BlockPos(ox + 9, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+        // Walkway side + far-end barriers (lane is x=3..5, so sides are x=2 and x=6).
+        for (int wz = 1; wz <= WALKWAY_LEN; wz++) {
+            int z = oz - wz;
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox + 2, oy + y, z), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 6, oy + y, z), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+        for (int x = 2; x <= 6; x++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz - WALKWAY_LEN - 1), Blocks.BARRIER.getDefaultState(), sf);
             }
         }
     }
@@ -15235,7 +15381,7 @@ public class CombatManager {
                 Item item = stack.getItem();
                 if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
                 //? if <=1.21.4 {
-                boolean isWeapon = item instanceof net.minecraft.item.SwordItem || item instanceof net.minecraft.item.AxeItem
+                /*boolean isWeapon = item instanceof net.minecraft.item.SwordItem || item instanceof net.minecraft.item.AxeItem
                         || item instanceof net.minecraft.item.HoeItem || item instanceof net.minecraft.item.ShovelItem
                         || item instanceof net.minecraft.item.MaceItem || item instanceof net.minecraft.item.TridentItem
                         || item instanceof net.minecraft.item.BowItem || item instanceof net.minecraft.item.CrossbowItem
@@ -15244,8 +15390,8 @@ public class CombatManager {
                         || item == Items.TUBE_CORAL || item == Items.BRAIN_CORAL
                         || item == Items.BUBBLE_CORAL || item == Items.FIRE_CORAL
                         || item == Items.HORN_CORAL;
-                //?} else {
-                /*boolean isWeapon = item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)
+                *///?} else {
+                boolean isWeapon = item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)
                         || item instanceof net.minecraft.item.AxeItem
                         || item instanceof net.minecraft.item.HoeItem || item instanceof net.minecraft.item.ShovelItem
                         || item instanceof net.minecraft.item.MaceItem || item instanceof net.minecraft.item.TridentItem
@@ -15255,7 +15401,7 @@ public class CombatManager {
                         || item == Items.TUBE_CORAL || item == Items.BRAIN_CORAL
                         || item == Items.BUBBLE_CORAL || item == Items.FIRE_CORAL
                         || item == Items.HORN_CORAL;
-                *///?}
+                //?}
                 if (isWeapon) {
                     playerSlots.add(new int[]{i, 0, -1});
                     if (itemData.length() > 0) itemData.append("|");
@@ -15265,7 +15411,7 @@ public class CombatManager {
             }
             // Check armor slots
             //? if <=1.21.4 {
-            for (int i = 0; i < p.getInventory().armor.size(); i++) {
+            /*for (int i = 0; i < p.getInventory().armor.size(); i++) {
                 ItemStack armor = p.getInventory().armor.get(i);
                 if (!armor.isEmpty()) {
                     int slotId = 100 + i;
@@ -15276,8 +15422,8 @@ public class CombatManager {
                         .append(":armor:").append(armorEnhancement == 1 ? "trim" : "enchant");
                 }
             }
-            //?} else {
-            /*net.minecraft.entity.EquipmentSlot[] armorOrder = {
+            *///?} else {
+            net.minecraft.entity.EquipmentSlot[] armorOrder = {
                     net.minecraft.entity.EquipmentSlot.FEET, net.minecraft.entity.EquipmentSlot.LEGS,
                     net.minecraft.entity.EquipmentSlot.CHEST, net.minecraft.entity.EquipmentSlot.HEAD};
             for (int i = 0; i < 4; i++) {
@@ -15291,7 +15437,7 @@ public class CombatManager {
                         .append(":armor:").append(armorEnhancement == 1 ? "trim" : "enchant");
                 }
             }
-            *///?}
+            //?}
 
             perPlayerEnchanterSlots.put(p.getUuid(), playerSlots);
             ServerPlayNetworking.send(p, new EventRoomPayload("enchanter", itemData.toString()));
@@ -15304,13 +15450,13 @@ public class CombatManager {
         ItemStack stack;
         if (slotId >= 100) {
             //? if <=1.21.4 {
-            stack = player.getInventory().armor.get(slotId - 100);
-            //?} else {
-            /*net.minecraft.entity.EquipmentSlot[] armorOrder = {
+            /*stack = player.getInventory().armor.get(slotId - 100);
+            *///?} else {
+            net.minecraft.entity.EquipmentSlot[] armorOrder = {
                     net.minecraft.entity.EquipmentSlot.FEET, net.minecraft.entity.EquipmentSlot.LEGS,
                     net.minecraft.entity.EquipmentSlot.CHEST, net.minecraft.entity.EquipmentSlot.HEAD};
             stack = player.getEquippedStack(armorOrder[slotId - 100]);
-            *///?}
+            //?}
         } else {
             stack = player.getInventory().getStack(slotId);
         }
@@ -15330,28 +15476,28 @@ public class CombatManager {
 
             // Apply trim via ArmorTrim component
             //? if <=1.21.1 {
-            var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
-            //?} else {
-            /*var patternRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
-            *///?}
+            /*var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            *///?} else {
+            var patternRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            //?}
             var patternEntry = patternRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(pattern))
                 .findFirst().orElse(null);
             //? if <=1.21.1 {
-            var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
-            //?} else {
-            /*var materialRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
-            *///?}
+            /*var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            *///?} else {
+            var materialRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            //?}
             var materialEntry = materialRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(material))
                 .findFirst().orElse(null);
 
             if (patternEntry != null && materialEntry != null) {
                 //? if <=1.21.1 {
-                var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
-                //?} else {
-                /*var trim = new net.minecraft.item.equipment.trim.ArmorTrim(materialEntry, patternEntry);
-                *///?}
+                /*var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
+                *///?} else {
+                var trim = new net.minecraft.item.equipment.trim.ArmorTrim(materialEntry, patternEntry);
+                //?}
                 stack.set(DataComponentTypes.TRIM, trim);
                 sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " received a §e" + pattern + " §dtrim with §e" + material + " §dmaterial!");
                 // Unlock "How Trims Work" guide entry
@@ -15389,12 +15535,12 @@ public class CombatManager {
             int level = 1 + rng.nextInt(3); // level 1-3
 
             //? if <=1.21.1 {
-            var enchantRegistry = world.getRegistryManager()
-                .get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-            //?} else {
             /*var enchantRegistry = world.getRegistryManager()
+                .get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+            *///?} else {
+            var enchantRegistry = world.getRegistryManager()
                 .getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-            *///?}
+            //?}
             var enchantEntry = enchantRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(chosenKey))
                 .findFirst().orElse(null);
@@ -15714,10 +15860,10 @@ public class CombatManager {
 
     private ItemStack randomEnchantedBook(ServerWorld world, int count, com.crackedgames.craftics.level.BiomeTemplate biome) {
         //? if <=1.21.1 {
-        var registry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
-        //?} else {
-        /*var registry = world.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
-        *///?}
+        /*var registry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
+        *///?} else {
+        var registry = world.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
+        //?}
         java.util.Random rng = new java.util.Random();
 
         net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment> entry = null;
@@ -15923,6 +16069,53 @@ public class CombatManager {
         // No longer used — vanilla trading handles purchases directly
     }
 
+    /** Push a dialogue definition to one player as a {@code DialoguePayload}. No-op if null. */
+    private void sendDialogue(ServerPlayerEntity player,
+                              com.crackedgames.craftics.combat.dialogue.DialogueDefinition def) {
+        if (def == null) return;
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        java.util.List<String> actions = new java.util.ArrayList<>();
+        for (var ch : def.choices()) { labels.add(ch.label()); actions.add(ch.action()); }
+        ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.DialoguePayload(
+            def.speaker(),
+            com.crackedgames.craftics.network.DialoguePayload.encodeLines(def.lines()),
+            com.crackedgames.craftics.network.DialoguePayload.encodeChoices(labels, actions)));
+    }
+
+    /** Resolve a dialogue choice action and drive the trader event accordingly. */
+    public void handleDialogueChoice(ServerPlayerEntity player, String action) {
+        if (com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_MERCHANT_CLOSED.equals(action)) {
+            var done = com.crackedgames.craftics.combat.dialogue.DialogueRegistry.get("craftics:trader_done");
+            sendDialogue(player, done);
+            return;
+        }
+        if (com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_DISMISS.equals(action)) {
+            // Choiceless dialogue clicked through — finish the trader session without
+            // routing through DialogueActions.resolve (which would warn on the sentinel).
+            handleTraderDone(player);
+            return;
+        }
+        var outcome = com.crackedgames.craftics.combat.dialogue.DialogueActions.resolve(action);
+        switch (outcome) {
+            case OPEN_TRADE, REOPEN_SHOP -> openTraderFor(player);
+            case FINISH, CLOSE -> handleTraderDone(player);
+        }
+    }
+
+    /** Open the vanilla merchant screen for the player against the spawned trader. */
+    private void openTraderFor(ServerPlayerEntity player) {
+        if (spawnedTrader == null || activeTraderOffer == null) return;
+        // Mirror vanilla WanderingTraderEntity.interactMob: bind the customer and open
+        // the MerchantScreenHandler via the Merchant.sendOffers default. We deliberately
+        // do NOT re-send TraderOfferPayload here — that payload's client receiver kicks
+        // off a TransitionOverlay fade (legacy teleport-trade flow) which raced with and
+        // tore down this freshly-opened merchant screen. The client self-arms its
+        // merchant-close detection when it sees the MerchantScreen open during a
+        // cinematic (see CrafticsClient), so no extra signal is needed.
+        spawnedTrader.setCustomer(player);
+        spawnedTrader.sendOffers(player, spawnedTrader.getDisplayName(), 1);
+    }
+
     public void handleTraderDone(ServerPlayerEntity player) {
         if (spawnedTrader == null) return; // no active trader session
         // Collect remaining emerald items from this player's inventory back into their own currency
@@ -15942,6 +16135,8 @@ public class CombatManager {
 
         // Remove this player from pending traders
         traderPendingPlayers.remove(player.getUuid());
+        // Restore this finishing player's camera/control out of the cinematic.
+        ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.ExitEventCinematicPayload());
         if (!traderPendingPlayers.isEmpty()) return; // still waiting for other players
 
         finalizeTraderEvent(player);
@@ -15958,11 +16153,22 @@ public class CombatManager {
      *                        {@code transitionPartyToArena}.
      */
     private void finalizeTraderEvent(ServerPlayerEntity referencePlayer) {
-        if (spawnedTrader != null && spawnedTrader.isAlive()) {
+        if (spawnedTrader != null) {
             spawnedTrader.discard();
             spawnedTrader = null;
         }
         activeTraderOffer = null;
+        this.activeCinematic = null;
+        this.activeWalkers.clear();
+
+        // Release the trader-area chunks we force-loaded in offerTrader.
+        if (!forcedChunks.isEmpty() && referencePlayer != null) {
+            ServerWorld cw = (ServerWorld) referencePlayer.getEntityWorld();
+            for (net.minecraft.util.math.ChunkPos cp : forcedChunks) {
+                cw.setChunkForced(cp.x, cp.z, false);
+            }
+            forcedChunks.clear();
+        }
 
         if (pendingNextLevelDef != null && pendingBiome != null && referencePlayer != null) {
             ServerWorld world = (ServerWorld) referencePlayer.getEntityWorld();
@@ -16329,12 +16535,12 @@ public class CombatManager {
             case "minecraft:creaking", "palegardenbackport:creaking" -> new LootPool()
                 .add(Items.STICK, 5).add(Items.OAK_LOG, 3).add(Items.BONE, 2);
             //? if >=1.21.4 {
-            /*case "craftics:creaking_heart" -> new LootPool()
-                .add(Items.PALE_OAK_LOG, 4).add(Items.BONE_MEAL, 3).add(Items.RESIN_CLUMP, 2);
-            *///?} else {
             case "craftics:creaking_heart" -> new LootPool()
+                .add(Items.PALE_OAK_LOG, 4).add(Items.BONE_MEAL, 3).add(Items.RESIN_CLUMP, 2);
+            //?} else {
+            /*case "craftics:creaking_heart" -> new LootPool()
                 .add(Items.OAK_LOG, 4).add(Items.BONE_MEAL, 3).add(Items.STICK, 2);
-            //?}
+            *///?}
 
             // === Boss mobs (vanilla entities used as bosses) ===
             case "minecraft:warden" -> new LootPool()
@@ -16692,14 +16898,14 @@ public class CombatManager {
                 saveData.getPlayerData(player.getUuid());
             for (var n : pd.drainHubPets()) {
                 //? if <=1.21.4 {
-                savedPets.add(new HubPetCollector.PetData(
+                /*savedPets.add(new HubPetCollector.PetData(
                     n.getString("type"), n.getInt("hp"), n.getInt("maxHp"),
                     n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range"), null, false));
-                //?} else {
-                /*savedPets.add(new HubPetCollector.PetData(
+                *///?} else {
+                savedPets.add(new HubPetCollector.PetData(
                     n.getString("type", ""), n.getInt("hp", 0), n.getInt("maxHp", 0),
                     n.getInt("atk", 0), n.getInt("def", 0), n.getInt("speed", 0), n.getInt("range", 0), null, false));
-                *///?}
+                //?}
             }
             if (!savedPets.isEmpty()) saveData.markDirty();
         }
@@ -17260,10 +17466,10 @@ public class CombatManager {
         }
 
         //? if <=1.21.3 {
-        net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(eggStack);
-        //?} else {
-        /*net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(player.getEntityWorld().getRegistryManager(), eggStack);
-        *///?}
+        /*net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(eggStack);
+        *///?} else {
+        net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(player.getEntityWorld().getRegistryManager(), eggStack);
+        //?}
         if (entityType == null) {
             sendMessage("§cThis spawn egg is empty!");
             return;

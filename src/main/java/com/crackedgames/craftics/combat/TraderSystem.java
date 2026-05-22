@@ -431,8 +431,8 @@ public class TraderSystem {
         // Bundle — passive loot collector. Vanilla bundle item only exists on
         // 1.21.2+, so skip the trade on shards that don't ship it.
         //? if >=1.21.2 {
-        /*pool.add(trade(Items.BUNDLE, 1, 5, "Bundle §7(auto loot)"));
-        *///?}
+        pool.add(trade(Items.BUNDLE, 1, 5, "Bundle §7(auto loot)"));
+        //?}
         // Flint & Steel — fire-and-forget ignite tool.
         pool.add(trade(Items.FLINT_AND_STEEL, 1, 4, "Flint & Steel"));
 

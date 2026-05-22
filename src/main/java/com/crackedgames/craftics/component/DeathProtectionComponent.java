@@ -35,9 +35,9 @@ public class DeathProtectionComponent implements RespawnableComponent<DeathProte
         // inventory so recovery-compass deaths don't strip them.
         savedAccessories = AccessoriesReflect.saveAccessories(player);
         //? if <=1.21.4 {
-        selectedSlot = player.getInventory().selectedSlot;
-        //?} else
-        /*selectedSlot = player.getInventory().getSelectedSlot();*/
+        /*selectedSlot = player.getInventory().selectedSlot;
+        *///?} else
+        selectedSlot = player.getInventory().getSelectedSlot();
         return true;
     }
 
@@ -48,9 +48,9 @@ public class DeathProtectionComponent implements RespawnableComponent<DeathProte
         inventory.clear();
         inventory.readNbt(savedInventory);
         //? if <=1.21.4 {
-        inventory.selectedSlot = Math.max(0, Math.min(selectedSlot, PlayerInventory.getHotbarSize() - 1));
-        //?} else
-        /*inventory.setSelectedSlot(Math.max(0, Math.min(selectedSlot, PlayerInventory.getHotbarSize() - 1)));*/
+        /*inventory.selectedSlot = Math.max(0, Math.min(selectedSlot, PlayerInventory.getHotbarSize() - 1));
+        *///?} else
+        inventory.setSelectedSlot(Math.max(0, Math.min(selectedSlot, PlayerInventory.getHotbarSize() - 1)));
         inventory.markDirty();
         clear();
     }
@@ -105,14 +105,14 @@ public class DeathProtectionComponent implements RespawnableComponent<DeathProte
     @Override
     public void readFromNbt(NbtCompound tag, RegistryWrapper.WrapperLookup registryLookup) {
         //? if <=1.21.4 {
-        pendingRestore = tag.getBoolean("pendingRestore");
+        /*pendingRestore = tag.getBoolean("pendingRestore");
         selectedSlot = tag.getInt("selectedSlot");
         savedInventory = tag.contains("savedInventory", 9) ? tag.getList("savedInventory", 10) : new NbtList();
-        //?} else {
-        /*pendingRestore = tag.getBoolean("pendingRestore", false);
+        *///?} else {
+        pendingRestore = tag.getBoolean("pendingRestore", false);
         selectedSlot = tag.getInt("selectedSlot", 0);
         savedInventory = tag.getListOrEmpty("savedInventory");
-        *///?}
+        //?}
     }
 
     @Override

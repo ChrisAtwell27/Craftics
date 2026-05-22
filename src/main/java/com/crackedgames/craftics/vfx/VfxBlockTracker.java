@@ -75,10 +75,10 @@ public final class VfxBlockTracker {
         //   (a) writes BlockState into the world at spawnPos as a side effect
         //   (b) spawns the entity before position/velocity are applied → 1-tick render lag
         //? if <=1.21.1 {
-        FallingBlockEntity fbe = net.minecraft.entity.EntityType.FALLING_BLOCK.create(world);
-        //?} else {
-        /*FallingBlockEntity fbe = net.minecraft.entity.EntityType.FALLING_BLOCK.create(world, net.minecraft.entity.SpawnReason.TRIGGERED);
-        *///?}
+        /*FallingBlockEntity fbe = net.minecraft.entity.EntityType.FALLING_BLOCK.create(world);
+        *///?} else {
+        FallingBlockEntity fbe = net.minecraft.entity.EntityType.FALLING_BLOCK.create(world, net.minecraft.entity.SpawnReason.TRIGGERED);
+        //?}
         if (fbe == null) {
             spawnFallbackDebris(world, origin, state);
             return;

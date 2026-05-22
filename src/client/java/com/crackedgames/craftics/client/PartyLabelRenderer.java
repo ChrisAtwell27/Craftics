@@ -64,10 +64,10 @@ public final class PartyLabelRenderer {
         Camera camera = ctx.camera();
         Vec3d cam = camera.getPos();
         //? if <=1.21.4 {
-        float tickDelta = ctx.tickCounter().getTickDelta(false);
-        //?} else {
-        /*float tickDelta = ctx.tickCounter().getTickProgress(false);
-        *///?}
+        /*float tickDelta = ctx.tickCounter().getTickDelta(false);
+        *///?} else {
+        float tickDelta = ctx.tickCounter().getTickProgress(false);
+        //?}
         TextRenderer textRenderer = client.textRenderer;
 
         float labelX = -textRenderer.getWidth(LABEL) / 2.0f;

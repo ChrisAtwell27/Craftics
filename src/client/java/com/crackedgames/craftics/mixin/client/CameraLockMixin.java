@@ -30,7 +30,7 @@ public abstract class CameraLockMixin {
 
     @Inject(method = "update", at = @At("TAIL"))
     private void craftics$lockCameraInCombat(CallbackInfo ci) {
-        if (CombatState.isInCombat()) {
+        if (CombatState.isInCombat() || CombatState.isCinematicActive()) {
             setRotation(CombatState.getCombatYaw(), CombatState.getCombatPitch());
 
             // Use smooth focus zoom/position instead of static arena center

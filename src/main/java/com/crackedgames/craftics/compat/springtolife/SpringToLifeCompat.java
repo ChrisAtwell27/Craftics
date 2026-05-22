@@ -18,7 +18,7 @@ public final class SpringToLifeCompat {
 
     public static void applyBiomeOverrides() {
         //? if >=1.21.5 {
-        /*// Pull cow/pig/chicken out of temperate biomes so only climate-matched
+        // Pull cow/pig/chicken out of temperate biomes so only climate-matched
         // variants are seen in combat.
         BiomeCompatHelper.removePassiveMob("plains", "minecraft:cow");
         BiomeCompatHelper.removePassiveMob("plains", "minecraft:pig");
@@ -40,6 +40,6 @@ public final class SpringToLifeCompat {
         BiomeCompatHelper.appendPassiveMob("mountain", "minecraft:cow",     5, 4, 0, 0, 1);
         BiomeCompatHelper.appendPassiveMob("mountain", "minecraft:pig",     4, 4, 0, 0, 1);
         BiomeCompatHelper.appendPassiveMob("mountain", "minecraft:chicken", 3, 3, 0, 0, 1);
-        *///?}
+        //?}
     }
 }

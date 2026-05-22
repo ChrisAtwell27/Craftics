@@ -2,8 +2,8 @@ package com.crackedgames.craftics.client;
 
 import com.crackedgames.craftics.core.GridPos;
 //? if <=1.21.4 {
-import com.mojang.blaze3d.systems.RenderSystem;
-//?}
+/*import com.mojang.blaze3d.systems.RenderSystem;
+*///?}
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.render.*;
@@ -29,14 +29,14 @@ public class TileOverlayRenderer {
             if (net.minecraft.client.MinecraftClient.getInstance().options.hudHidden) return;
             frameCounter++;
             //? if <=1.21.4 {
-            render(context.matrixStack(), context.camera());
-            //?} else
-            /*renderV5(context);*/
+            /*render(context.matrixStack(), context.camera());
+            *///?} else
+            renderV5(context);
         });
     }
 
     //? if <=1.21.4 {
-    private static void render(MatrixStack matrices, Camera camera) {
+    /*private static void render(MatrixStack matrices, Camera camera) {
         if (matrices == null || camera == null) return;
 
         Vec3d camPos = camera.getPos();
@@ -58,10 +58,10 @@ public class TileOverlayRenderer {
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();
         //? if <=1.21.1 {
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        //?} else {
-        /*RenderSystem.setShader(net.minecraft.client.gl.ShaderProgramKeys.POSITION_COLOR);
-        *///?}
+        /^RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        ^///?} else {
+        RenderSystem.setShader(net.minecraft.client.gl.ShaderProgramKeys.POSITION_COLOR);
+        //?}
 
         Matrix4f matrix = matrices.peek().getPositionMatrix();
         Tessellator tessellator = Tessellator.getInstance();
@@ -183,8 +183,8 @@ public class TileOverlayRenderer {
         buffer.vertex(matrix, x1, y, z0).color(color);
         BufferRenderer.drawWithGlobalProgram(buffer.end());
     }
-    //?} else {
-    /*private static void renderV5(WorldRenderContext context) {
+    *///?} else {
+    private static void renderV5(WorldRenderContext context) {
         MatrixStack matrices = context.matrixStack();
         Camera camera = context.camera();
         if (matrices == null || camera == null) return;
@@ -311,5 +311,5 @@ public class TileOverlayRenderer {
         vc.vertex(matrix, x1, y, z1).color(r, g, b, a);
         vc.vertex(matrix, x1, y, z0).color(r, g, b, a);
     }
-    *///?}
+    //?}
 }

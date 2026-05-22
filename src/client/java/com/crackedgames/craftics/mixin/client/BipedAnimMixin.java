@@ -6,8 +6,8 @@ import com.crackedgames.craftics.component.CrafticsAnimComponent;
 import com.crackedgames.craftics.component.CrafticsComponents;
 import net.minecraft.client.render.entity.model.BipedEntityModel;
 //? if >=1.21.3 {
-/*import net.minecraft.client.render.entity.state.BipedEntityRenderState;
-*///?}
+import net.minecraft.client.render.entity.state.BipedEntityRenderState;
+//?}
 import net.minecraft.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -26,7 +26,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class BipedAnimMixin {
 
     //? if <=1.21.1 {
-    @Inject(method = "setAngles(Lnet/minecraft/entity/LivingEntity;FFFFF)V",
+    /*@Inject(method = "setAngles(Lnet/minecraft/entity/LivingEntity;FFFFF)V",
             at = @At("TAIL"))
     private void craftics$applyAnim(LivingEntity entity, float limbAngle, float limbDistance,
                                     float animationProgress, float headYaw, float headPitch,
@@ -40,8 +40,8 @@ public abstract class BipedAnimMixin {
         float ticks = Math.max(0f, (float)(now - comp.getStartTick()));
         applyPose((BipedEntityModel<?>)(Object) this, state, ticks);
     }
-    //?} else {
-    /*@Inject(method = "setAngles(Lnet/minecraft/client/render/entity/state/BipedEntityRenderState;)V",
+    *///?} else {
+    @Inject(method = "setAngles(Lnet/minecraft/client/render/entity/state/BipedEntityRenderState;)V",
             at = @At("TAIL"))
     private void craftics$applyAnim(BipedEntityRenderState state, CallbackInfo ci) {
         CrafticsAnimHolder h = (CrafticsAnimHolder) state;
@@ -49,7 +49,7 @@ public abstract class BipedAnimMixin {
         if (s == null || s == AnimState.IDLE) return;
         applyPose((BipedEntityModel<?>)(Object) this, s, h.craftics$getAnimTicks());
     }
-    *///?}
+    //?}
 
     /**
      * Shared pose code — reads the bone fields inherited from AnimalModel via
