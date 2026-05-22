@@ -3,6 +3,28 @@ package com.crackedgames.craftics.client;
 public class CombatState {
     private static boolean inCombat = false;
 
+    // Non-combat event cinematic flag (mirrors inCombat; gates camera + movement
+    // lock during dialogue / event cutscenes). Driven by EnterEventCinematicPayload /
+    // ExitEventCinematicPayload, read by CameraLockMixin and MovementDisableMixin.
+    private static boolean cinematicActive = false;
+    public static boolean isCinematicActive() { return cinematicActive; }
+    public static void setCinematicActive(boolean v) { cinematicActive = v; }
+
+    /**
+     * Snap the camera focus point onto the local player at the start of an event
+     * cinematic, so {@link #tickCameraFocus()} begins following from the player's
+     * position instead of sweeping in from the stale arena center / origin.
+     */
+    public static void seedCinematicFocusOnPlayer() {
+        net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+        if (mc.player == null) return;
+        focusCurrentX = mc.player.getX();
+        focusCurrentZ = mc.player.getZ();
+        focusZoomCurrent = FOCUS_ZOOM_DISTANCE;
+        focusZoomTarget = FOCUS_ZOOM_DISTANCE;
+        arenaCenterY = mc.player.getY() + 1.0;
+    }
+
     // Camera settings for isometric view
     private static float combatPitch = 55.0f;  // Looking down
     private static float combatYaw = 225.0f;   // SW-facing isometric angle
@@ -212,7 +234,25 @@ public class CombatState {
 
     /** Tick camera focus lerp (call each client tick). */
     public static void tickCameraFocus() {
-        if (!isInCombat()) return;
+        if (!isInCombat() && !isCinematicActive()) return;
+
+        if (isCinematicActive() && !isInCombat()) {
+            // During the event walk-up, smoothly follow the local player so the
+            // camera tracks them up to the trader instead of sitting on a stale
+            // arena center (which tickCameraFocus used to early-return on).
+            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+            if (mc.player != null) {
+                double tx = mc.player.getX();
+                double tz = mc.player.getZ();
+                focusCurrentX += (tx - focusCurrentX) * FOCUS_LERP_SPEED;
+                focusCurrentZ += (tz - focusCurrentZ) * FOCUS_LERP_SPEED;
+                focusZoomCurrent += (FOCUS_ZOOM_DISTANCE - focusZoomCurrent) * FOCUS_LERP_SPEED;
+                // Track the player's Y too so the camera height matches the walk-up
+                // (CameraLockMixin reads getArenaCenterY() for the camera's Y origin).
+                arenaCenterY += (mc.player.getY() + 1.0 - arenaCenterY) * FOCUS_LERP_SPEED;
+            }
+            return;
+        }
 
         if (hasFocus) {
             focusTimer--;
@@ -252,12 +292,16 @@ public class CombatState {
 
     /** Get the camera focus X (used by CameraLockMixin instead of arenaCenterX). */
     public static double getCameraFocusX() {
+        // During a (non-combat) cinematic, focusCurrentX tracks the live player
+        // position; arena center is stale, so always use the smoothed focus point.
+        if (isCinematicActive() && !isInCombat()) return focusCurrentX;
         return hasFocus || Math.abs(focusCurrentX - (arenaBaseCenterX + cameraPanX)) > 0.01
             ? focusCurrentX : arenaCenterX;
     }
 
     /** Get the camera focus Z. */
     public static double getCameraFocusZ() {
+        if (isCinematicActive() && !isInCombat()) return focusCurrentZ;
         return hasFocus || Math.abs(focusCurrentZ - (arenaBaseCenterZ + cameraPanZ)) > 0.01
             ? focusCurrentZ : arenaCenterZ;
     }
@@ -776,6 +820,7 @@ public class CombatState {
      */
     public static void resetAll() {
         inCombat = false;
+        cinematicActive = false;
         clearTileSets();
         resetCombatStats();
         combatPitch = 55.0f;

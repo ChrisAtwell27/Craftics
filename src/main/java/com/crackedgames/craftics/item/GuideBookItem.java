@@ -6,8 +6,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 //? if <=1.21.1 {
-import net.minecraft.util.TypedActionResult;
-//?}
+/*import net.minecraft.util.TypedActionResult;
+*///?}
 import net.minecraft.world.World;
 
 /**
@@ -24,18 +24,18 @@ public class GuideBookItem extends Item {
 
     @Override
     //? if <=1.21.1 {
-    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
+    /*public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
         if (world.isClient() && openScreenAction != null) {
             openScreenAction.run();
         }
         return TypedActionResult.success(user.getStackInHand(hand));
     }
-    //?} else {
-    /*public ActionResult use(World world, PlayerEntity user, Hand hand) {
+    *///?} else {
+    public ActionResult use(World world, PlayerEntity user, Hand hand) {
         if (world.isClient() && openScreenAction != null) {
             openScreenAction.run();
         }
         return ActionResult.SUCCESS;
     }
-    *///?}
+    //?}
 }

@@ -143,7 +143,7 @@ public class CrafticsMod implements ModInitializer {
         // chamber (or ominous trial chamber) on the next level transition.
         // Consumes one key per use. Outside combat the keys do nothing.
         //? if <=1.21.1 {
-        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+        /*net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
                 return net.minecraft.util.TypedActionResult.pass(player.getStackInHand(hand));
             }
@@ -187,8 +187,8 @@ public class CrafticsMod implements ModInitializer {
             }
             return net.minecraft.util.TypedActionResult.pass(stack);
         });
-        //?} else {
-        /*net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+        *///?} else {
+        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
                 return net.minecraft.util.ActionResult.PASS;
             }
@@ -232,7 +232,7 @@ public class CrafticsMod implements ModInitializer {
             }
             return net.minecraft.util.ActionResult.PASS;
         });
-        *///?}
+        //?}
 
         // Clear static combat state between world loads (prevents leaking across saves in singleplayer)
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -1400,7 +1400,7 @@ public class CrafticsMod implements ModInitializer {
                     data.addPartyInvite(party.getPartyId(), target.getUuid());
                     ctx.getSource().sendFeedback(() -> Text.literal("§aInvited " + target.getName().getString() + " to the party."), false);
                     //? if <=1.21.4 {
-                    net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
+                    /*net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
                         .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent(
                             net.minecraft.text.ClickEvent.Action.RUN_COMMAND, "/craftics party accept"))
                             .withHoverEvent(new net.minecraft.text.HoverEvent(
@@ -1410,14 +1410,14 @@ public class CrafticsMod implements ModInitializer {
                             net.minecraft.text.ClickEvent.Action.RUN_COMMAND, "/craftics party decline"))
                             .withHoverEvent(new net.minecraft.text.HoverEvent(
                                 net.minecraft.text.HoverEvent.Action.SHOW_TEXT, Text.literal("Click to decline"))));
-                    //?} else {
-                    /*net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
+                    *///?} else {
+                    net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
                         .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent.RunCommand("/craftics party accept"))
                             .withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(Text.literal("Click to accept"))));
                     net.minecraft.text.MutableText declineText = Text.literal("§c[DECLINE]")
                         .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent.RunCommand("/craftics party decline"))
                             .withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(Text.literal("Click to decline"))));
-                    *///?}
+                    //?}
                     target.sendMessage(Text.literal("§e" + player.getName().getString() + " invited you to their party! ")
                         .append(acceptText).append(Text.literal(" ")).append(declineText), false);
                     return 1;
@@ -1739,12 +1739,12 @@ public class CrafticsMod implements ModInitializer {
         }
         if (player.getServerWorld() != overworld) {
             //? if <=1.21.1 {
-            player.teleport(overworld, x, y, z,
-                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
-            //?} else {
             /*player.teleport(overworld, x, y, z,
+                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
+            *///?} else {
+            player.teleport(overworld, x, y, z,
                 java.util.Collections.emptySet(), player.getYaw(), player.getPitch(), true);
-            *///?}
+            //?}
         } else {
             player.requestTeleport(x, y, z);
         }

@@ -14,8 +14,8 @@ import com.crackedgames.craftics.combat.DamageType;
 import com.crackedgames.craftics.combat.TrimEffects;
 
 /**
- * Registers Craftics' built-in armor sets, trim patterns, trim materials, events, and
- * enchantment hooks into their respective registries. Called once from
+ * Registers Craftics' built-in armor sets, trim patterns, trim materials, events,
+ * enchantment hooks, and dialogue into their respective registries. Called once from
  * {@code CrafticsMod.onInitialize()}, before addon {@code onCrafticsInit()} callbacks.
  *
  * <p>This class is internal to Craftics. Addons should not call it directly; use
@@ -32,6 +32,7 @@ public final class VanillaContent {
         registerTrimMaterials();
         registerEvents();
         registerEnchantments();
+        VanillaDialogue.register();
     }
 
     private static void registerArmorSets() {

@@ -204,32 +204,32 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         // Armor trim combat effects tooltip (on already-trimmed armor)
         //? if <=1.21.1 {
-        net.minecraft.item.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
-        //?} else {
-        /*net.minecraft.item.equipment.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
-        *///?}
+        /*net.minecraft.item.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
+        *///?} else {
+        net.minecraft.item.equipment.trim.ArmorTrim trim = stack.get(net.minecraft.component.DataComponentTypes.TRIM);
+        //?}
         if (trim != null) {
             //? if <=1.21.1 {
-            String patternId = trim.getPattern().getKey()
+            /*String patternId = trim.getPattern().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
-            //?} else {
-            /*String patternId = trim.pattern().getKey()
+            *///?} else {
+            String patternId = trim.pattern().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
-            *///?}
+            //?}
             if (patternId.isEmpty()) {
                 //? if <=1.21.1 {
-                try { patternId = trim.getPattern().value().assetId().getPath(); } catch (Exception ignored) {}
-                //?} else {
-                /*try { patternId = trim.pattern().value().assetId().getPath(); } catch (Exception ignored) {}
-                *///?}
+                /*try { patternId = trim.getPattern().value().assetId().getPath(); } catch (Exception ignored) {}
+                *///?} else {
+                try { patternId = trim.pattern().value().assetId().getPath(); } catch (Exception ignored) {}
+                //?}
             }
             //? if <=1.21.1 {
-            String materialId = trim.getMaterial().getKey()
+            /*String materialId = trim.getMaterial().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
-            //?} else {
-            /*String materialId = trim.material().getKey()
+            *///?} else {
+            String materialId = trim.material().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
-            *///?}
+            //?}
             String perPiece = getTrimPerPieceDescription(patternId);
             String matDesc = com.crackedgames.craftics.api.registry.TrimMaterialRegistry.getDescription(materialId);
             if (!perPiece.isEmpty() || !matDesc.isEmpty()) {
@@ -734,9 +734,9 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.SNOWBALL) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7bKnockback: \u00a77Push enemy 1 tile away";
         if (item == Items.EGG) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7c1 DMG \u00a77+ minor annoyance";
         //? if >=1.21.5 {
-        /*if (item == net.minecraft.item.Items.BLUE_EGG) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7c3 DMG \u00a77- cold variant egg";
+        if (item == net.minecraft.item.Items.BLUE_EGG) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7c3 DMG \u00a77- cold variant egg";
         if (item == net.minecraft.item.Items.BROWN_EGG) return "\u00a7b1 AP \u00a77- Throw at enemy\n\u00a7c3 DMG \u00a77- warm variant egg";
-        *///?}
+        //?}
         if (item == Items.ENDER_PEARL) return "\u00a751 AP \u00a77- Click any empty tile\n\u00a75Teleport instantly! \u00a7c(Costs 2 HP)";
         if (item == Items.FIRE_CHARGE) return "\u00a761 AP \u00a77- Ranged fire attack\n\u00a7c4 DMG \u00a77+ sets enemy on fire";
 

@@ -20,8 +20,8 @@ public class ModItems {
     public static final Item GUIDE_BOOK = registerItem("guide_book",
         new GuideBookItem(new Item.Settings()
             //? if >=1.21.2 {
-            /*.registryKey(GUIDE_BOOK_KEY)
-            *///?}
+            .registryKey(GUIDE_BOOK_KEY)
+            //?}
             .maxCount(1)
             .rarity(Rarity.UNCOMMON)
         )
@@ -30,8 +30,8 @@ public class ModItems {
     public static final Item MOVE_ITEM = registerItem("move",
         new MoveItem(new Item.Settings()
             //? if >=1.21.2 {
-            /*.registryKey(MOVE_ITEM_KEY)
-            *///?}
+            .registryKey(MOVE_ITEM_KEY)
+            //?}
             .maxCount(1)
             .rarity(Rarity.UNCOMMON)
         )

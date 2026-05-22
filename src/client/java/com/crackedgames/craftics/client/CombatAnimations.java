@@ -19,6 +19,11 @@ public class CombatAnimations {
     private static int attackAnimTimer = 0;
     private static ModifierLayer<IAnimation> currentLayer = null;
 
+    // Cinematic walk tracking: drive the same WalkAnimation used in combat while the
+    // player is being walked (position changing) during a non-combat event cinematic.
+    private static boolean wasCinematicWalking = false;
+    private static double lastCinX = Double.NaN, lastCinZ = Double.NaN;
+
     // WeakHashMap: survives respawns, gets GC'd with the player
     private static java.util.WeakHashMap<AbstractClientPlayerEntity, ModifierLayer<IAnimation>> layerMap = new java.util.WeakHashMap<>();
 
@@ -60,6 +65,28 @@ public class CombatAnimations {
 
         if (!CombatState.isInCombat()) {
             if (wasAnimating) { stopAll(); wasAnimating = false; }
+            // During a non-combat event cinematic, play the same WalkAnimation combat
+            // uses while the player is actually moving (position changing this tick),
+            // and stop it when they arrive/stand still.
+            if (CombatState.isCinematicActive()) {
+                double x = client.player.getX();
+                double z = client.player.getZ();
+                boolean movingNow = false;
+                if (!Double.isNaN(lastCinX)) {
+                    double dx = x - lastCinX, dz = z - lastCinZ;
+                    movingNow = (dx * dx + dz * dz) > 1.0e-5; // moved a meaningful amount
+                }
+                lastCinX = x;
+                lastCinZ = z;
+                if (movingNow && !wasCinematicWalking) startWalking(client.player);
+                else if (!movingNow && wasCinematicWalking) stopWalking(client.player);
+                wasCinematicWalking = movingNow;
+            } else if (wasCinematicWalking) {
+                stopWalking(client.player);
+                wasCinematicWalking = false;
+                lastCinX = Double.NaN;
+                lastCinZ = Double.NaN;
+            }
             return;
         }
 

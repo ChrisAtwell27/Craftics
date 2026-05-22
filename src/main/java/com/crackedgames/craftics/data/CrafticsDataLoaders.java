@@ -47,6 +47,7 @@ public final class CrafticsDataLoaders {
         register(new HybridSetJsonLoader());
         register(new EnvironmentJsonLoader());
         register(new BiomePathJsonLoader());
+        register(new DialogueJsonLoader());
 
         ServerLifecycleEvents.SERVER_STARTED.register(
             server -> loadAll(server.getResourceManager()));

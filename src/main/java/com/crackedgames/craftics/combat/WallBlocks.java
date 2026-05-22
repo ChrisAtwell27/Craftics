@@ -54,10 +54,10 @@ public final class WallBlocks {
 
     private static boolean isOpaqueFullCube(BlockState state) {
         //? if <=1.21.1 {
-        return state.isOpaqueFullCube(net.minecraft.world.EmptyBlockView.INSTANCE, net.minecraft.util.math.BlockPos.ORIGIN);
-        //?} else {
-        /*return state.isOpaqueFullCube();
-        *///?}
+        /*return state.isOpaqueFullCube(net.minecraft.world.EmptyBlockView.INSTANCE, net.minecraft.util.math.BlockPos.ORIGIN);
+        *///?} else {
+        return state.isOpaqueFullCube();
+        //?}
     }
 
     private static boolean isTallOrHinged(Block block) {

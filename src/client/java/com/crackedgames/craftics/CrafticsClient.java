@@ -182,33 +182,35 @@ public class CrafticsClient implements ClientModInitializer {
                                 double oy = Math.random() * 1.5;
                                 double oz = (Math.random() - 0.5) * 1.2;
                                 //? if <=1.21.4 {
-                                context.client().world.addParticle(
+                                /*context.client().world.addParticle(
                                     net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
                                     entity.getX() + ox, entity.getY() + oy, entity.getZ() + oz,
                                     0, 0, 0);
-                                //?} else
-                                /*context.client().world.addParticleClient(
+                                *///?} else {
+                                context.client().world.addParticleClient(
                                     net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
                                     entity.getX() + ox, entity.getY() + oy, entity.getZ() + oz,
-                                    0, 0, 0);*/
+                                    0, 0, 0);
+                                //?}
                             }
                             // Extra ground impact particles for knockback attacks
                             if (payload.valueA() == 1) {
                                 for (int i = 0; i < 4; i++) {
                                     //? if <=1.21.4 {
-                                    context.client().world.addParticle(
+                                    /*context.client().world.addParticle(
                                         net.minecraft.particle.ParticleTypes.CRIT,
                                         entity.getX() + (Math.random() - 0.5) * 0.8,
                                         entity.getY() + 0.2,
                                         entity.getZ() + (Math.random() - 0.5) * 0.8,
                                         (Math.random() - 0.5) * 0.3, 0.2, (Math.random() - 0.5) * 0.3);
-                                    //?} else
-                                    /*context.client().world.addParticleClient(
+                                    *///?} else {
+                                    context.client().world.addParticleClient(
                                         net.minecraft.particle.ParticleTypes.CRIT,
                                         entity.getX() + (Math.random() - 0.5) * 0.8,
                                         entity.getY() + 0.2,
                                         entity.getZ() + (Math.random() - 0.5) * 0.8,
-                                        (Math.random() - 0.5) * 0.3, 0.2, (Math.random() - 0.5) * 0.3);*/
+                                        (Math.random() - 0.5) * 0.3, 0.2, (Math.random() - 0.5) * 0.3);
+                                    //?}
                                 }
                             }
                         }
@@ -291,6 +293,50 @@ public class CrafticsClient implements ClientModInitializer {
                     context.client().setScreen(new com.crackedgames.craftics.client.EventRoomScreen(
                         payload.eventType(), payload.eventData()
                     ));
+                });
+            }
+        );
+
+        // NPC dialogue box (intro / shopping prompts during event cinematics).
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.DialoguePayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    java.util.List<String> lines =
+                        com.crackedgames.craftics.network.DialoguePayload.decodeLines(payload.lines());
+                    java.util.List<String> labels =
+                        com.crackedgames.craftics.network.DialoguePayload.decodeChoiceLabels(payload.choices());
+                    java.util.List<String> actions =
+                        com.crackedgames.craftics.network.DialoguePayload.decodeChoiceActions(payload.choices());
+                    context.client().setScreen(new com.crackedgames.craftics.client.DialogueScreen(
+                        payload.speaker(), lines, labels, actions));
+                });
+            }
+        );
+
+        // Enter the non-combat event cinematic: lock camera + movement, isometric
+        // view + free cursor (mirrors the EnterCombatPayload perspective/cursor path).
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.EnterEventCinematicPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    CombatState.setCinematicActive(true);
+                    // Seed the focus on the player so the camera starts centered on
+                    // them and follows the walk-up smoothly (instead of sweeping in
+                    // from a stale arena center).
+                    CombatState.seedCinematicFocusOnPlayer();
+                    context.client().options.setPerspective(Perspective.THIRD_PERSON_BACK);
+                    context.client().mouse.unlockCursor();
+                });
+            }
+        );
+
+        // Exit the event cinematic: restore first-person + cursor lock
+        // (mirrors the ExitCombatPayload path).
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.ExitEventCinematicPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    CombatState.setCinematicActive(false);
+                    context.client().options.setPerspective(Perspective.FIRST_PERSON);
+                    context.client().mouse.lockCursor();
                 });
             }
         );
@@ -560,16 +606,21 @@ public class CrafticsClient implements ClientModInitializer {
                 }
             }
 
-            // When player closes the vanilla merchant screen, tell server we're done
-            if (CombatState.isTraderActive()) {
+            // Detect the vanilla merchant screen opening/closing during an event
+            // cinematic so we can show the "Are you done shopping?" dialogue on close.
+            // Self-arm here (rather than relying on a server-pushed trader-active flag)
+            // so opening the shop from dialogue doesn't need a side-effect-laden payload.
+            {
                 boolean isMerchantScreen = client.currentScreen instanceof
                     net.minecraft.client.gui.screen.ingame.MerchantScreen;
-                if (isMerchantScreen) {
+                if (isMerchantScreen && CombatState.isCinematicActive()) {
                     traderScreenOpened = true;
                 } else if (traderScreenOpened && client.currentScreen == null) {
                     traderScreenOpened = false;
-                    CombatState.setTraderActive(false);
-                    ClientPlayNetworking.send(new com.crackedgames.craftics.network.TraderDonePayload());
+                    // Tell the server the merchant screen closed so it shows the
+                    // "Are you done shopping?" dialogue (Yes=finish, No=reopen_shop).
+                    ClientPlayNetworking.send(new com.crackedgames.craftics.network.DialogueChoicePayload(
+                        com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_MERCHANT_CLOSED));
                 }
             }
 
