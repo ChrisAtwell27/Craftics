@@ -7,7 +7,6 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.registry.Registries;
-import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
@@ -130,8 +129,10 @@ public class DialogueScreen extends Screen {
     private void playVoice() {
         if (this.client == null || this.client.world == null) return;
         float pitch = 0.9f + this.client.world.random.nextFloat() * 0.3f;
-        this.client.getSoundManager().play(
-            PositionedSoundInstance.master(SoundEvents.ENTITY_VILLAGER_AMBIENT, pitch));
+        net.minecraft.sound.SoundEvent voice = isNarrator()
+            ? net.minecraft.sound.SoundEvents.UI_BUTTON_CLICK.value() // neutral narrator blip
+            : net.minecraft.sound.SoundEvents.ENTITY_VILLAGER_AMBIENT;
+        this.client.getSoundManager().play(PositionedSoundInstance.master(voice, pitch));
     }
 
     @Override
@@ -169,69 +170,67 @@ public class DialogueScreen extends Screen {
         int boxW = this.width - 2 * BOX_MARGIN;
         int boxY = this.height - BOX_BOTTOM_GAP - BOX_H;
 
-        // Speaker portrait resting on the box's top-right edge.
-        int px = boxX + boxW - PORTRAIT - 8;
-        // Portrait rests on (overlaps) the box's top edge by a few px (layout B).
-        int py = boxY - PORTRAIT + 6;
-        // While actively talking (line still typing), give the portrait a gentle
-        // vertical bob; hold still once the line is complete.
-        int portraitYOff = 0;
-        if (!lineComplete) {
-            portraitYOff = (int) Math.round(Math.sin(System.currentTimeMillis() / 90.0) * 2.0);
-        }
-        int portraitY = py + portraitYOff;
-        int panelX = px - PORTRAIT_PAD;
-        int panelY = portraitY - PORTRAIT_PAD;
-        int panelW = PORTRAIT + 2 * PORTRAIT_PAD;
+        boolean narrator = isNarrator();
 
-        // Portrait backing panel: a small extension that only occupies the strip ABOVE
-        // the box's top edge. The box background is translucent, so drawing the panel
-        // behind the box would show through (and shift as the portrait bobs). Instead we
-        // clip the panel to [panelY, boxY) and let it merge seamlessly into the box top:
-        // no overlap, no show-through. If the portrait bobs down far enough to sit
-        // entirely inside the box, the panel simply isn't drawn (nothing above the box).
-        int panelBottom = boxY; // meet the box's top edge exactly
-        if (panelY < panelBottom) {
-            ctx.fill(panelX, panelY, panelX + panelW, panelBottom, BOX_BG);
-            // Border: top + the two sides down to the box edge (no bottom border — it
-            // joins the box). The box's own top border closes the seam.
-            ctx.fill(panelX, panelY, panelX + panelW, panelY + 1, BOX_BORDER);            // top
-            ctx.fill(panelX, panelY, panelX + 1, panelBottom, BOX_BORDER);                // left
-            ctx.fill(panelX + panelW - 1, panelY, panelX + panelW, panelBottom, BOX_BORDER); // right
-        }
+        if (!narrator) {
+            // Speaker portrait resting on the box's top-right edge.
+            int px = boxX + boxW - PORTRAIT - 8;
+            // Portrait rests on (overlaps) the box's top edge by a few px (layout B).
+            int py = boxY - PORTRAIT + 6;
+            // While actively talking (line still typing), give the portrait a gentle
+            // vertical bob; hold still once the line is complete.
+            int portraitYOff = 0;
+            if (!lineComplete) {
+                portraitYOff = (int) Math.round(Math.sin(System.currentTimeMillis() / 90.0) * 2.0);
+            }
+            int portraitY = py + portraitYOff;
+            int panelX = px - PORTRAIT_PAD;
+            int panelY = portraitY - PORTRAIT_PAD;
+            int panelW = PORTRAIT + 2 * PORTRAIT_PAD;
 
-        // Box background (single translucent layer — note the panel strip above never
-        // overlaps this region, so there's no double-alpha show-through).
-        ctx.fill(boxX, boxY, boxX + boxW, boxY + BOX_H, BOX_BG);
-        // Box border: bottom + sides as usual, but the TOP border is drawn in two
-        // segments that skip the panel's inner width, so the panel opening flows into
-        // the box as one continuous cavity (no border line cutting across the seam,
-        // and no overpaint artifact).
-        ctx.fill(boxX, boxY + BOX_H - 1, boxX + boxW, boxY + BOX_H, BOX_BORDER); // bottom
-        ctx.fill(boxX, boxY, boxX + 1, boxY + BOX_H, BOX_BORDER);               // left
-        ctx.fill(boxX + boxW - 1, boxY, boxX + boxW, boxY + BOX_H, BOX_BORDER); // right
-        boolean panelAbove = panelY < boxY;
-        int seamL = panelX + 1, seamR = panelX + panelW - 1;
-        if (panelAbove) {
-            ctx.fill(boxX, boxY, seamL, boxY + 1, BOX_BORDER);            // top, left of panel
-            ctx.fill(seamR, boxY, boxX + boxW, boxY + 1, BOX_BORDER);     // top, right of panel
+            // Portrait backing panel: a small extension that only occupies the strip ABOVE
+            // the box's top edge. The box background is translucent, so drawing the panel
+            // behind the box would show through (and shift as the portrait bobs). Instead we
+            // clip the panel to [panelY, boxY) and let it merge seamlessly into the box top.
+            int panelBottom = boxY; // meet the box's top edge exactly
+            if (panelY < panelBottom) {
+                ctx.fill(panelX, panelY, panelX + panelW, panelBottom, BOX_BG);
+                ctx.fill(panelX, panelY, panelX + panelW, panelY + 1, BOX_BORDER);            // top
+                ctx.fill(panelX, panelY, panelX + 1, panelBottom, BOX_BORDER);                // left
+                ctx.fill(panelX + panelW - 1, panelY, panelX + panelW, panelBottom, BOX_BORDER); // right
+            }
+
+            // Box background + border with the panel seam.
+            ctx.fill(boxX, boxY, boxX + boxW, boxY + BOX_H, BOX_BG);
+            ctx.fill(boxX, boxY + BOX_H - 1, boxX + boxW, boxY + BOX_H, BOX_BORDER); // bottom
+            ctx.fill(boxX, boxY, boxX + 1, boxY + BOX_H, BOX_BORDER);               // left
+            ctx.fill(boxX + boxW - 1, boxY, boxX + boxW, boxY + BOX_H, BOX_BORDER); // right
+            boolean panelAbove = panelY < boxY;
+            int seamL = panelX + 1, seamR = panelX + panelW - 1;
+            if (panelAbove) {
+                ctx.fill(boxX, boxY, seamL, boxY + 1, BOX_BORDER);            // top, left of panel
+                ctx.fill(seamR, boxY, boxX + boxW, boxY + 1, BOX_BORDER);     // top, right of panel
+            } else {
+                ctx.fill(boxX, boxY, boxX + boxW, boxY + 1, BOX_BORDER);      // full top (no panel above)
+            }
+
+            // Portrait drawn last so it sits on top of both panel and box.
+            Identifier headTex = MobHeadTextures.get(speakerId);
+            if (headTex != null) {
+                MobHeadTextures.drawMobHead(ctx, headTex, px, portraitY, PORTRAIT);
+            } else {
+                ctx.fill(px, portraitY, px + PORTRAIT, portraitY + PORTRAIT, MobHeadTextures.getMobColor(speakerId));
+                drawBorderRect(ctx, px, portraitY, PORTRAIT, PORTRAIT, BOX_BORDER);
+            }
+
+            // Speaker name inside the box.
+            ctx.drawTextWithShadow(this.textRenderer,
+                Text.literal("§e" + speakerDisplayName()), boxX + 8, boxY + 6, 0xFFFFAA);
         } else {
-            ctx.fill(boxX, boxY, boxX + boxW, boxY + 1, BOX_BORDER);      // full top (no panel above)
+            // Narrator: plain box, no portrait, panel, or name.
+            ctx.fill(boxX, boxY, boxX + boxW, boxY + BOX_H, BOX_BG);
+            drawBorderRect(ctx, boxX, boxY, boxW, BOX_H, BOX_BORDER);
         }
-
-        // Portrait drawn last so it sits on top of both panel and box.
-        Identifier headTex = MobHeadTextures.get(speakerId);
-        if (headTex != null) {
-            MobHeadTextures.drawMobHead(ctx, headTex, px, portraitY, PORTRAIT);
-        } else {
-            // Colored-square fallback when no head texture is available.
-            ctx.fill(px, portraitY, px + PORTRAIT, portraitY + PORTRAIT, MobHeadTextures.getMobColor(speakerId));
-            drawBorderRect(ctx, px, portraitY, PORTRAIT, PORTRAIT, BOX_BORDER);
-        }
-
-        // Speaker name inside the box.
-        ctx.drawTextWithShadow(this.textRenderer,
-            Text.literal("§e" + speakerDisplayName()), boxX + 8, boxY + 6, 0xFFFFAA);
 
         // Current line (revealed prefix). While typing, the most recently revealed
         // characters wiggle a little as they're placed, settling as they age. Once
@@ -277,6 +276,8 @@ public class DialogueScreen extends Screen {
         ctx.fill(x, y, x + 1, y + h, color);             // left
         ctx.fill(x + w - 1, y, x + w, y + h, color);     // right
     }
+
+    private boolean isNarrator() { return speakerId == null || speakerId.isEmpty(); }
 
     private String speakerDisplayName() {
         try {

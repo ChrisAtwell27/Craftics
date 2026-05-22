@@ -847,6 +847,41 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Schedule the return-to-battle transition after an event finishes. Shows a
+     * loading screen to the whole party immediately, then holds for at least
+     * {@link #EVENT_RETURN_HOLD_TICKS} (the build, which is the slow part, happens
+     * behind the screen when the timer fires). Counted down in {@link #tick()} so the
+     * server thread is never blocked. Relies on {@code pendingNextLevelDef}/
+     * {@code pendingBiome} still being set; they are read and cleared when it fires.
+     */
+    private void scheduleEventReturnTransition(ServerPlayerEntity referencePlayer) {
+        if (referencePlayer == null || pendingNextLevelDef == null || pendingBiome == null) return;
+        this.eventReturnLeader = referencePlayer;
+        this.eventReturnTicks = EVENT_RETURN_HOLD_TICKS;
+        for (ServerPlayerEntity p : getOnlinePartyMembers(referencePlayer)) {
+            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.LoadingScreenPayload(
+                true, "§eLoading Battle...", "§7Preparing the arena..."));
+        }
+    }
+
+    /** Fire a scheduled event-return transition: build the next arena and enter battle.
+     *  The incoming EnterCombatPayload dismisses the loading screen on each client. */
+    private void fireEventReturnTransition() {
+        ServerPlayerEntity leader = eventReturnLeader;
+        eventReturnLeader = null;
+        if (leader == null || leader.isRemoved() || leader.isDisconnected()) {
+            leader = firstOnlinePartyMember();
+        }
+        if (leader == null || pendingNextLevelDef == null || pendingBiome == null) return;
+        ServerWorld world = (ServerWorld) leader.getEntityWorld();
+        GridArena nextArena = buildArena(world, pendingNextLevelDef);
+        transitionPartyToArena(leader, nextArena, pendingNextLevelDef);
+        pendingNextLevelDef = null;
+        pendingBiome = null;
+        pendingEventBiomeOrdinal = 0;
+    }
+
     private GridArena buildArena(ServerWorld world, LevelDefinition def) {
         // Addon event levels (e.g. Artifacts mimic fight) can override the world
         // origin so they don't get placed in a random far-away row based on their
@@ -6866,6 +6901,15 @@ public class CombatManager {
             activeWalkers.removeIf(EntityWalker::isComplete);
         }
 
+        // Deferred event-return: hold the loading screen, then enter battle. Runs
+        // outside active combat (events live between levels), so it's before the guard.
+        if (eventReturnTicks > 0) {
+            eventReturnTicks--;
+            if (eventReturnTicks == 0) {
+                fireEventReturnTransition();
+            }
+        }
+
         if (!active) return;
 
         if (player == null || player.isRemoved() || player.isDisconnected()) {
@@ -7343,6 +7387,10 @@ public class CombatManager {
         } else {
             player.setYaw(playerMoveYaw);
             player.setHeadYaw(playerMoveYaw);
+            // Also align the BODY yaw, otherwise the body keeps its old angle while the
+            // head snaps to the move direction — the player renders walking "crooked"
+            // (diagonal body, forward head). Matches the mounted path above.
+            player.setBodyYaw(playerMoveYaw);
             player.setOnGround(true);
 
             // prevXYZ needed so client limb animator sees the movement delta
@@ -14718,6 +14766,15 @@ public class CombatManager {
     private final java.util.List<EntityWalker> activeWalkers = new java.util.ArrayList<>();
     private String activeTraderIntroGroup;
 
+    // ---- Deferred event-return transition ----
+    // When an event finishes, we show a loading screen and hold it for at least
+    // EVENT_RETURN_HOLD_TICKS before building the next arena and entering battle, so
+    // there's always a visible "loading" beat (and the build, which is the slow part,
+    // happens behind the screen). Counted down in tick() — never blocks the server thread.
+    private static final int EVENT_RETURN_HOLD_TICKS = 40; // 2 seconds at 20 tps
+    private int eventReturnTicks = 0;
+    private ServerPlayerEntity eventReturnLeader;
+
     // ---- Crafting Station event ----
     private boolean craftingStationActive = false;
     private final java.util.Set<java.util.UUID> craftingStationPendingPlayers = new java.util.HashSet<>();
@@ -14857,17 +14914,9 @@ public class CombatManager {
             net.minecraft.sound.SoundEvents.ITEM_BRUSH_BRUSHING_GENERIC,
             net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
 
-        // Start the pending next level after a short delay — transition whole party
-        world.getServer().execute(() -> {
-            try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
-            if (pendingNextLevelDef != null && pendingBiome != null) {
-                GridArena nextArena = buildArena(world, pendingNextLevelDef);
-                transitionPartyToArena(player, nextArena, pendingNextLevelDef);
-                pendingNextLevelDef = null;
-                pendingBiome = null;
-                pendingEventBiomeOrdinal = 0;
-            }
-        });
+        // Show the loading screen and hold before entering battle (built behind it).
+        // Replaces a server-thread-blocking Thread.sleep(1500) with a tick-based hold.
+        scheduleEventReturnTransition(player);
     }
 
     private void offerTrader(ServerPlayerEntity savedPlayer, com.crackedgames.craftics.level.BiomeTemplate biome, int biomeOrdinal) {
@@ -15249,7 +15298,7 @@ public class CombatManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
 
         BlockPos shrineOrigin = getEventRoomOrigin(savedPlayer);
-        buildShrineArea(world, shrineOrigin);
+        buildShrineArea(world, shrineOrigin, true);
         for (ServerPlayerEntity p : members) {
             p.requestTeleport(
                 shrineOrigin.getX() + 4.5, shrineOrigin.getY() + 1, shrineOrigin.getZ() + 4.5);
@@ -15344,7 +15393,7 @@ public class CombatManager {
         }
 
         BlockPos enchanterOrigin = getEventRoomOrigin(savedPlayer);
-        buildShrineArea(world, enchanterOrigin); // reuse shrine room
+        buildShrineArea(world, enchanterOrigin, false); // reuse shrine room
         for (ServerPlayerEntity p : members) {
             p.requestTeleport(
                 enchanterOrigin.getX() + 4.5, enchanterOrigin.getY() + 1, enchanterOrigin.getZ() + 4.5);
@@ -15807,17 +15856,9 @@ public class CombatManager {
             perPlayerEnchanterSlots.clear();
         }
 
-        // Transition to next level after a short delay
-        world.getServer().execute(() -> {
-            try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
-            if (pendingNextLevelDef != null && pendingBiome != null) {
-                GridArena nextArena = buildArena(world, pendingNextLevelDef);
-                transitionPartyToArena(choicePlayer, nextArena, pendingNextLevelDef);
-                pendingNextLevelDef = null;
-                pendingBiome = null;
-                pendingEventBiomeOrdinal = 0;
-            }
-        });
+        // Show the loading screen and hold before entering battle (built behind it).
+        // Replaces a server-thread-blocking Thread.sleep(1500) with a tick-based hold.
+        scheduleEventReturnTransition(choicePlayer);
     }
 
     /** Generate a random treasure vault loot item scaled to biome progression. */
@@ -15900,7 +15941,7 @@ public class CombatManager {
 
     // ── Event Room Builders ──
 
-    private void buildShrineArea(ServerWorld world, BlockPos origin) {
+    private void buildShrineArea(ServerWorld world, BlockPos origin, boolean walkway) {
         int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
         net.minecraft.block.BlockState air = Blocks.AIR.getDefaultState();
         int sf = net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE;
@@ -15937,17 +15978,63 @@ public class CombatManager {
         world.setBlockState(new BlockPos(ox + 1, oy + 1, oz + 7), Blocks.CANDLE.getDefaultState(), sf);
         world.setBlockState(new BlockPos(ox + 7, oy + 1, oz + 7), Blocks.CANDLE.getDefaultState(), sf);
 
-        // Barrier walls
+        if (!walkway) {
+            // Fully sealed perimeter (no walkway) -- original behavior, used by the enchanter room.
+            for (int x = -1; x <= 9; x++) {
+                for (int y = 1; y <= 2; y++) {
+                    world.setBlockState(new BlockPos(ox + x, oy + y, oz - 1), Blocks.BARRIER.getDefaultState(), sf);
+                    world.setBlockState(new BlockPos(ox + x, oy + y, oz + 9), Blocks.BARRIER.getDefaultState(), sf);
+                }
+            }
+            for (int z = -1; z <= 9; z++) {
+                for (int y = 1; y <= 2; y++) {
+                    world.setBlockState(new BlockPos(ox - 1, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+                    world.setBlockState(new BlockPos(ox + 9, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+                }
+            }
+            return;
+        }
+
+        // Approach walkway: 8 long, 3 wide (x=3..5 lane) extending out the low-z side.
+        final int WALKWAY_LEN = 8;
+        for (int wz = 1; wz <= WALKWAY_LEN; wz++) {
+            int z = oz - wz;
+            for (int x = 3; x <= 5; x++) {
+                for (int y = 1; y <= 6; y++) world.setBlockState(new BlockPos(ox + x, oy + y, z), air, sf);
+                world.setBlockState(new BlockPos(ox + x, oy, z), Blocks.POLISHED_BLACKSTONE.getDefaultState(), sf);
+            }
+            if (wz % 3 == 0) {
+                world.setBlockState(new BlockPos(ox + 2, oy + 1, z), Blocks.SOUL_TORCH.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 6, oy + 1, z), Blocks.SOUL_TORCH.getDefaultState(), sf);
+            }
+        }
+
+        // Perimeter barriers -- seal everything except the entrance lane (x=3..5 at oz).
         for (int x = -1; x <= 9; x++) {
             for (int y = 1; y <= 2; y++) {
-                world.setBlockState(new BlockPos(ox + x, oy + y, oz - 1), Blocks.BARRIER.getDefaultState(), sf);
+                if (x < 3 || x > 5) {
+                    world.setBlockState(new BlockPos(ox + x, oy + y, oz), Blocks.BARRIER.getDefaultState(), sf);
+                }
                 world.setBlockState(new BlockPos(ox + x, oy + y, oz + 9), Blocks.BARRIER.getDefaultState(), sf);
             }
         }
-        for (int z = -1; z <= 9; z++) {
+        for (int z = 0; z <= 9; z++) {
             for (int y = 1; y <= 2; y++) {
                 world.setBlockState(new BlockPos(ox - 1, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
                 world.setBlockState(new BlockPos(ox + 9, oy + y, oz + z), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+        // Walkway side + far-end barriers (lane x=3..5; sides at x=2 and x=6).
+        for (int wz = 1; wz <= WALKWAY_LEN; wz++) {
+            int z = oz - wz;
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox + 2, oy + y, z), Blocks.BARRIER.getDefaultState(), sf);
+                world.setBlockState(new BlockPos(ox + 6, oy + y, z), Blocks.BARRIER.getDefaultState(), sf);
+            }
+        }
+        for (int x = 2; x <= 6; x++) {
+            for (int y = 1; y <= 2; y++) {
+                world.setBlockState(new BlockPos(ox + x, oy + y, oz - WALKWAY_LEN - 1), Blocks.BARRIER.getDefaultState(), sf);
             }
         }
     }
@@ -16170,14 +16257,8 @@ public class CombatManager {
             forcedChunks.clear();
         }
 
-        if (pendingNextLevelDef != null && pendingBiome != null && referencePlayer != null) {
-            ServerWorld world = (ServerWorld) referencePlayer.getEntityWorld();
-            GridArena nextArena = buildArena(world, pendingNextLevelDef);
-            transitionPartyToArena(referencePlayer, nextArena, pendingNextLevelDef);
-            pendingNextLevelDef = null;
-            pendingBiome = null;
-            pendingEventBiomeOrdinal = 0;
-        }
+        // Show the loading screen and hold before entering battle (built behind it).
+        scheduleEventReturnTransition(referencePlayer);
     }
 
     /**
@@ -16326,14 +16407,8 @@ public class CombatManager {
         craftingStationActive = false;
         craftingStationBellPos = null;
 
-        if (pendingNextLevelDef != null && pendingBiome != null && referencePlayer != null) {
-            ServerWorld world = (ServerWorld) referencePlayer.getEntityWorld();
-            GridArena nextArena = buildArena(world, pendingNextLevelDef);
-            transitionPartyToArena(referencePlayer, nextArena, pendingNextLevelDef);
-            pendingNextLevelDef = null;
-            pendingBiome = null;
-            pendingEventBiomeOrdinal = 0;
-        }
+        // Show the loading screen and hold before entering battle (built behind it).
+        scheduleEventReturnTransition(referencePlayer);
     }
 
     /** Create EnterCombatPayload, consuming any pending camera yaw from ArenaBuilder. */
