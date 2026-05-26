@@ -21,7 +21,7 @@ import java.util.List;
  * fully typed, the choice buttons are built; each sends a {@link DialogueChoicePayload}
  * and closes the screen.
  *
- * <p>Mirrors {@link EventRoomScreen}'s DrawContext usage and {@link MobHeadTextures}
+ * <p>Uses the same DrawContext-based rendering as other custom screens, with {@link MobHeadTextures}
  * for the speaker portrait (with a colored-square fallback when no head texture exists).
  */
 public class DialogueScreen extends Screen {
@@ -160,6 +160,28 @@ public class DialogueScreen extends Screen {
             // On the last finished line, the choice buttons handle clicks.
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    /** Background mode:
+     *  <ul>
+     *    <li>Event-area dialogues (trader, enchanter, traveler, vault, etc.)
+     *        run inside an event cinematic — the player was teleported into a
+     *        scene built for them and should still see it behind the box.</li>
+     *    <li>Mid-combat dialogues should keep the arena visible for the same
+     *        reason — losing the battlefield is jarring.</li>
+     *    <li>Pre-level intros (boss intros, trial vote, shiny vote, ambush
+     *        warnings) fire between levels with no cinematic and no active
+     *        combat. The stale previous arena would blur behind the box if we
+     *        let it show through, so we paint solid black for focus.</li>
+     *  </ul> */
+    @Override
+    public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        boolean keepScenery = CombatState.isCinematicActive() || CombatState.isInCombat();
+        if (keepScenery) {
+            super.renderBackground(ctx, mouseX, mouseY, delta);
+        } else {
+            ctx.fill(0, 0, this.width, this.height, 0xFF000000);
+        }
     }
 
     @Override

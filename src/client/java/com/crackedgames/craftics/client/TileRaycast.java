@@ -24,6 +24,11 @@ public class TileRaycast {
         Vec3d camPos = camera.getPos();
         float pitch = camera.getPitch();
         float yaw = camera.getYaw();
+        int originX = CombatState.getArenaOriginX();
+        int originY = CombatState.getArenaOriginY();
+        int originZ = CombatState.getArenaOriginZ();
+        int arenaW = CombatState.getArenaWidth();
+        int arenaH = CombatState.getArenaHeight();
 
         // Mouse coords are in screen space; window dimensions may be framebuffer space on HiDPI.
         // Use GLFW window size (screen coords) to match mouse coords.
@@ -68,6 +73,35 @@ public class TileRaycast {
         double rayDirX = fwdX + ndcX * tanHalfFov * aspect * rightX + ndcY * tanHalfFov * upX;
         double rayDirY = fwdY + ndcX * tanHalfFov * aspect * rightY + ndcY * tanHalfFov * upY;
         double rayDirZ = fwdZ + ndcX * tanHalfFov * aspect * rightZ + ndcY * tanHalfFov * upZ;
+
+        // World raycast first — catches elevated blocks (Creaking Heart and
+        // any other block-based enemy whose collider sits at floor+1) that the
+        // flat plane intersection below would pass through. If the cursor ray
+        // hits any block ABOVE the arena floor within the arena footprint, use
+        // its column for the grid coord. Otherwise fall through to the plane
+        // intersection so empty/low tiles still target correctly.
+        if (arenaW > 0 && arenaH > 0) {
+            double rayLen = 64.0;
+            Vec3d start = camPos;
+            Vec3d end = camPos.add(rayDirX * rayLen, rayDirY * rayLen, rayDirZ * rayLen);
+            net.minecraft.util.hit.BlockHitResult worldHit = client.world.raycast(
+                new net.minecraft.world.RaycastContext(start, end,
+                    net.minecraft.world.RaycastContext.ShapeType.COLLIDER,
+                    net.minecraft.world.RaycastContext.FluidHandling.NONE,
+                    client.player));
+            if (worldHit.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
+                net.minecraft.util.math.BlockPos bp = worldHit.getBlockPos();
+                int gx = bp.getX() - originX;
+                int gz = bp.getZ() - originZ;
+                // Only honor block hits inside the arena footprint and at or
+                // above the floor (skip ceiling clips from above-arena debris).
+                if (gx >= 0 && gx < arenaW && gz >= 0 && gz < arenaH
+                        && bp.getY() >= originY + 1 && bp.getY() <= originY + 4) {
+                    lastDebugPos = new GridPos(gx, gz);
+                    return new GridPos(gx, gz);
+                }
+            }
+        }
 
         // Intersect ray with the floor plane at Y = arenaOriginY (the block surface)
         double floorY = CombatState.getArenaOriginY() + 1.0; // top of floor blocks

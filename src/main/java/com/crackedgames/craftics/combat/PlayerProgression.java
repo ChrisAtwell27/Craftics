@@ -47,7 +47,7 @@ public class PlayerProgression extends PersistentState {
         BLUNT("Blunt", "\u00a78\u2B24", "+3 dmg, +3% stun chance"),
         RANGED("Ranged", "\u00a7b\u27B3", "+3 ranged dmg, +5% ricochet chain chance"),
         WATER("Water", "\u00a73\u2248", "+3 dmg, +3% knockback & Wet"),
-        SPECIAL("Special", "\u00a7d\u2728", "+3 dmg, +3% free AP on use"),
+        SPECIAL("Special", "\u00a7d\u2728", "+3 dmg, +3% free AP, +10% conserve consumable"),
         PET("Pet", "\u00a7a\uD83D\uDC3E", "+3 dmg, +3 HP to allies"),
         PHYSICAL("Physical", "\u00a77\u270A", "+3 dmg, +3% counterattack");
 

@@ -119,6 +119,24 @@ public class ItemUseHandler {
         return FOOD_HEAL.containsKey(item) || isArtifactsNonConsumingFood(item);
     }
 
+    /** Heal an ally party member by consuming one of the held food stack. Used
+     *  when a player clicks an adjacent ally tile while holding food, so co-op
+     *  parties can share consumables. Returns the chat-formatted result message,
+     *  or {@code null} if {@code stack} isn't an edible food item we recognise. */
+    public static String feedAlly(ServerPlayerEntity ally, ItemStack stack) {
+        Item food = stack.getItem();
+        if (!FOOD_HEAL.containsKey(food)) return null;
+        int healAmount = FOOD_HEAL.getOrDefault(food, 1);
+        float maxHealth = ally.getMaxHealth();
+        float newHealth = Math.min(maxHealth, ally.getHealth() + healAmount);
+        ally.setHealth(newHealth);
+        String itemName = stack.getName().getString();
+        String allyName = ally.getName().getString();
+        stack.decrement(1);
+        return "§aFed " + itemName + " to " + allyName + " — healed " + healAmount
+            + " HP §7(" + (int) newHealth + "/" + (int) maxHealth + ")";
+    }
+
     /**
      * Eternal Steak / Everlasting Beef from the Artifacts mod — non-consuming food items.
      * Detected by registry id so this works without a compile-time dependency on Artifacts.
@@ -407,27 +425,25 @@ public class ItemUseHandler {
         // immunities (e.g. Antidote Vessel) can intercept them.
         CombatManager cm = CombatManager.get(player);
         java.util.Random rng = java.util.concurrent.ThreadLocalRandom.current();
+        // These foods apply the CRAFTICS combat effect only — the vanilla
+        // StatusEffect doubled up as real per-tick HP damage that bypasses the
+        // turn-based combat system and kept ticking even outside combat. The
+        // combat-effect handles the turn-based debuff on its own.
         if (food == Items.POISONOUS_POTATO && rng.nextFloat() < 0.60f) {
             boolean applied = cm.addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
-            if (applied) {
-                player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.POISON, -1, 0, false, true));
-                return "§aAte Poisonous Potato! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)";
-            }
-            return "§aAte Poisonous Potato! Healed " + healAmount + " HP §a(Poison resisted!)";
+            return applied
+                ? "§aAte Poisonous Potato! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)"
+                : "§aAte Poisonous Potato! Healed " + healAmount + " HP §a(Poison resisted!)";
         } else if (food == Items.SPIDER_EYE) {
             boolean applied = cm.addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
-            if (applied) {
-                player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.POISON, -1, 0, false, true));
-                return "§aAte Spider Eye! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)";
-            }
-            return "§aAte Spider Eye! Healed " + healAmount + " HP §a(Poison resisted!)";
+            return applied
+                ? "§aAte Spider Eye! Healed " + healAmount + " HP §c(Poisoned for 2 turns!)"
+                : "§aAte Spider Eye! Healed " + healAmount + " HP §a(Poison resisted!)";
         } else if (food == Items.ROTTEN_FLESH && rng.nextFloat() < 0.80f) {
             boolean applied = cm.addEffectHooked(CombatEffects.EffectType.WEAKNESS, 2, 0);
-            if (applied) {
-                player.addStatusEffect(new StatusEffectInstance(net.minecraft.entity.effect.StatusEffects.WEAKNESS, -1, 0, false, true));
-                return "§aAte Rotten Flesh! Healed " + healAmount + " HP §c(Weakened for 2 turns!)";
-            }
-            return "§aAte Rotten Flesh! Healed " + healAmount + " HP §a(Weakness resisted!)";
+            return applied
+                ? "§aAte Rotten Flesh! Healed " + healAmount + " HP §c(Weakened for 2 turns!)"
+                : "§aAte Rotten Flesh! Healed " + healAmount + " HP §a(Weakness resisted!)";
         }
 
         // Golden apple also gives absorption
@@ -465,8 +481,11 @@ public class ItemUseHandler {
         CombatEffects effects = CombatManager.get(player).getCombatEffects();
         // Read potion contents BEFORE decrementing (decrement destroys component data)
         var potionContents = stack.get(net.minecraft.component.DataComponentTypes.POTION_CONTENTS);
-        stack.decrement(1);
-        player.getInventory().insertStack(new ItemStack(Items.GLASS_BOTTLE));
+        if (!trySpecialConserve(player, stack)) {
+            stack.decrement(1);
+            // Bottle only refunds when the potion was actually consumed.
+            player.getInventory().insertStack(new ItemStack(Items.GLASS_BOTTLE));
+        }
 
         // Drinking sound
         //? if <=1.21.1 {
@@ -586,6 +605,42 @@ public class ItemUseHandler {
         return SpecialAffinity.points(player);
     }
 
+    /**
+     * Roll the Special "conserve" save: each Special affinity point grants a
+     * 10% chance to NOT consume a caster-class item this use. Returns
+     * {@code true} on a successful conserve (caller should skip the
+     * decrement and any side effects tied to consumption, e.g. the empty
+     * bottle refund). On a save, also sends the flair chat line so every
+     * call site has identical UX. Returns {@code false} when there's no
+     * Special investment or the roll missed.
+     */
+    private static boolean trySpecialConserve(ServerPlayerEntity player, ItemStack stack) {
+        int specialPts = SpecialAffinity.points(player);
+        double saveChance = specialPts * 0.10;
+        if (saveChance <= 0 || Math.random() >= saveChance) return false;
+        CombatManager.get(player).sendMessage(
+            "§d✨ Conserved! Special focus preserves your "
+                + stack.getName().getString() + ".");
+        return true;
+    }
+
+    /**
+     * Consume one of a Special-class consumable (banner, horn, fire/wind
+     * charge, snowball, egg, ender pearl, …). Wraps {@link #trySpecialConserve}
+     * so simple call sites don't have to duplicate the if/decrement pattern.
+     * Use {@code trySpecialConserve} directly when the consume site has extra
+     * side effects to gate on the save (potions refund a glass bottle, etc.).
+     *
+     * <p>Non-Special utility items (TNT, hay block, pickaxe durability, …)
+     * should keep plain {@code stack.decrement(1)} so this perk stays scoped
+     * to the caster archetype.
+     */
+    private static void consumeSpecialItem(ServerPlayerEntity player, ItemStack stack) {
+        if (!trySpecialConserve(player, stack)) {
+            stack.decrement(1);
+        }
+    }
+
     private static int getPotionPotencyBonus(ServerPlayerEntity player) {
         return SpecialAffinity.potencyBonus(player);
     }
@@ -640,7 +695,7 @@ public class ItemUseHandler {
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
-        stack.decrement(1);
+        consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
 
         // Knockback: push enemy 1 tile away from player
@@ -669,7 +724,7 @@ public class ItemUseHandler {
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
-        stack.decrement(1);
+        consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, damage, DamageType.SPECIAL);
         return "§eEgg hit " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
     }
@@ -682,7 +737,7 @@ public class ItemUseHandler {
         var tile = arena.getTile(targetTile);
         if (tile == null || !tile.isWalkable()) return "§cCan't teleport there!";
 
-        stack.decrement(1);
+        consumeSpecialItem(player, stack);
         arena.setPlayerGridPos(targetTile);
         var bp = arena.gridToBlockPos(targetTile);
         player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
@@ -733,7 +788,7 @@ public class ItemUseHandler {
 
         // Read potion contents BEFORE decrementing (decrement destroys component data)
         var potionContents = stack.get(net.minecraft.component.DataComponentTypes.POTION_CONTENTS);
-        stack.decrement(1);
+        consumeSpecialItem(player, stack);
 
         net.minecraft.server.world.ServerWorld sw = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
         BlockPos playerBlock = arena.gridToBlockPos(arena.getPlayerGridPos());
@@ -849,7 +904,7 @@ public class ItemUseHandler {
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
-        stack.decrement(1);
+        consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, 4, DamageType.SPECIAL);
         // Set mob on fire visually for 3 seconds
         if (enemy.getMobEntity() != null) {
@@ -880,7 +935,7 @@ public class ItemUseHandler {
         // Otherwise: knock an enemy back — the original behaviour.
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
-        stack.decrement(1);
+        consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
 
         // Push the enemy up to 3 tiles directly away from the player. Stops
@@ -955,7 +1010,7 @@ public class ItemUseHandler {
 
         if (moved == 0) return "§fWind charge fizzles — no room to launch!";
 
-        stack.decrement(1);
+        consumeSpecialItem(player, stack);
         arena.setPlayerGridPos(landing);
         BlockPos bp = arena.gridToBlockPos(landing);
         player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
@@ -1346,7 +1401,7 @@ public class ItemUseHandler {
         String color = BannerEffects.colorIdForItem(stack.getItem());
         if (color == null) color = "white";
         int totalDef = BannerEffects.DEFENSE_BONUS + SpecialAffinity.potencyBonus(player);
-        stack.decrement(1);
+        consumeSpecialItem(player, stack);
         return TILE_EFFECT_PREFIX + "banner:" + targetTile.x() + ":" + targetTile.z()
             + ":" + color + ":" + totalDef
             + "|§5Banner planted! §7+" + totalDef + " DEF for player/allies within 2 tiles.";
@@ -1455,7 +1510,7 @@ public class ItemUseHandler {
 
         // Read potion contents before decrementing
         var potionContents = stack.get(net.minecraft.component.DataComponentTypes.POTION_CONTENTS);
-        stack.decrement(1);
+        consumeSpecialItem(player, stack);
 
         net.minecraft.server.world.ServerWorld sw = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
         BlockPos playerBlock = arena.gridToBlockPos(arena.getPlayerGridPos());

@@ -34,6 +34,14 @@ public abstract class LevelDefinition {
         return java.util.List.of();
     }
 
+    /** World-aware overload — defaults to the no-arg version so existing
+     *  overrides keep working. Levels that need the registry (e.g. the ominous
+     *  trial's heavy-enchanted loot) override this to roll with world context. */
+    public java.util.List<net.minecraft.item.ItemStack> rollCompletionLoot(
+            net.minecraft.server.world.ServerWorld world) {
+        return rollCompletionLoot();
+    }
+
     public boolean isNightLevel() { return false; }
 
     /** Override to force a biome for schematic selection. Null = auto-detect */

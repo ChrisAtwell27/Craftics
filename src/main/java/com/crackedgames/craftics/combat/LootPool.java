@@ -74,6 +74,13 @@ public class LootPool {
                 share = 1 + RAND.nextInt(Math.max(1, remaining - (chosen.size() - i - 1)));
                 share = Math.min(share, remaining);
             }
+            // Cap to item's max stack size. Without this, an unstackable item
+            // (sword, axe, totem, etc.) that ends up in a loot pool would emit
+            // a stack of N — and the inventory then has to spill it into N
+            // separate slots. A single vindicator kill could fill the hotbar
+            // with iron axes that way.
+            int maxCount = new ItemStack(chosen.get(i).item).getMaxCount();
+            if (share > maxCount) share = maxCount;
             if (share > 0) {
                 result.add(new ItemStack(chosen.get(i).item, share));
                 remaining -= share;

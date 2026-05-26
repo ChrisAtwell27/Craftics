@@ -1,0 +1,13 @@
+{
+  "id": "craftics:dig_site_intro",
+  "speaker": "",
+  "group": "dig_site_intro",
+  "lines": [
+    "The ground has been disturbed. Something lies buried beneath.",
+    "Pull chance: 5%"
+  ],
+  "choices": [
+    { "label": "Keep brushing", "action": "dig:brush" },
+    { "label": "Attempt", "action": "dig:attempt" }
+  ]
+}

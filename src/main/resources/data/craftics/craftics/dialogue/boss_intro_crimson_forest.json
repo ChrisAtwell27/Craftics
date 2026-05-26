@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_crimson_forest",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Crimson nyliums pulse like a heartbeat.",
+    "An old archer steps from the trees, bow drawn."
+  ],
+  "choices": []
+}

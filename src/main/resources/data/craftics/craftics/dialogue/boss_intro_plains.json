@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_plains",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "The grass stops moving.",
+    "A bloated zombie staggers from the haystack."
+  ],
+  "choices": []
+}

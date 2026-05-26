@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_dragons_nest",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Wingbeats thunder above the obsidian pillars.",
+    "The Dragon descends."
+  ],
+  "choices": []
+}

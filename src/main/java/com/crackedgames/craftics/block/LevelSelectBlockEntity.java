@@ -27,7 +27,13 @@ public class LevelSelectBlockEntity extends BlockEntity
     @Override
     public ScreenHandler createMenu(int syncId, PlayerInventory playerInventory, PlayerEntity player) {
         CrafticsSavedData data = getData();
-        CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+        // Resolve to the party leader (or this player if solo) so every party
+        // member sees the SAME level / branch / discovered biomes on the level
+        // select block. Reading the visiting player's own data was making
+        // player 1 see Desert while player 2 sees Tundra — leader's data is
+        // the shared run state every member queues into.
+        java.util.UUID owner = data.getEffectiveWorldOwner(player.getUuid());
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(owner);
         pd.initBranchIfNeeded();
         data.markDirty();
         return new LevelSelectScreenHandler(syncId, playerInventory,
@@ -37,7 +43,8 @@ public class LevelSelectBlockEntity extends BlockEntity
     @Override
     public LevelSelectScreenHandler.LevelSelectData getScreenOpeningData(ServerPlayerEntity player) {
         CrafticsSavedData data = getData();
-        CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+        java.util.UUID owner = data.getEffectiveWorldOwner(player.getUuid());
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(owner);
         pd.initBranchIfNeeded();
         data.markDirty();
         return new LevelSelectScreenHandler.LevelSelectData(
