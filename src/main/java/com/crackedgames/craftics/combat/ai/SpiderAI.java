@@ -94,10 +94,13 @@ public class SpiderAI implements EnemyAI {
             // Direct web spray at the player — applies slow + stun
             return new EnemyAction.RangedAttack(1, "web_spray");
         } else {
-            // Web trap: place an obstacle on a tile adjacent to the player
+            // Web trap: place a cobweb on a tile adjacent to the player. Goes
+            // through the arena's web-overlay system (cobweb at floor+1, floor
+            // stays, pathfinding slows instead of fully blocking) — CreateTerrain
+            // with OBSTACLE would replace the floor with stone, not place a web.
             GridPos webTile = findWebTrapTile(arena, myPos, playerPos);
             if (webTile != null) {
-                return new EnemyAction.CreateTerrain(List.of(webTile), TileType.OBSTACLE, 2);
+                return new EnemyAction.PlaceWeb(List.of(webTile), 2);
             }
             // Fallback to direct spray
             return new EnemyAction.RangedAttack(1, "web_spray");

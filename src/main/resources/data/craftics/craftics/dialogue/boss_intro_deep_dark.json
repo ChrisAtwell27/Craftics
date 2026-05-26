@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_deep_dark",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Silence. Not even your breath.",
+    "The Warden listens."
+  ],
+  "choices": []
+}

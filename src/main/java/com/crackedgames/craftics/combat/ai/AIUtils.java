@@ -146,6 +146,14 @@ public class AIUtils {
      */
     public static EnemyAction seekOrWander(CombatEntity self, GridArena arena, GridPos playerPos) {
         int size = self.getSize();
+        // Already adjacent? Attack instead of wandering — the path search below
+        // returns empty when the only reachable best tile IS the current tile
+        // (e.g. blocked in by other party members), and the wander fallback
+        // would otherwise make the mob sit there or shuffle off uselessly while
+        // the player stands next to it.
+        if (CombatEntity.minDistanceFromSizedEntity(self.getGridPos(), size, playerPos) <= 1) {
+            return new EnemyAction.Attack(self.getAttackPower());
+        }
         // Try to find the closest reachable tile to the player
         GridPos closest = Pathfinding.findClosestReachableTo(
             arena, self.getGridPos(), playerPos, self.getMoveSpeed(), self, size);

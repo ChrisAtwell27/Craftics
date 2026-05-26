@@ -1,0 +1,14 @@
+{
+  "id": "craftics:enchanter_intro",
+  "speaker": "minecraft:villager",
+  "group": "enchanter_intro",
+  "lines": [
+    "\"I can enhance your gear, traveler.\"",
+    "\"Show me a weapon, or a piece of armor.\""
+  ],
+  "choices": [
+    { "label": "Enchant a weapon", "action": "enchanter:weapons" },
+    { "label": "Enhance armor", "action": "enchanter:armor" },
+    { "label": "Decline", "action": "enchanter:decline" }
+  ]
+}

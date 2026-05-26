@@ -317,6 +317,10 @@ public class CombatState {
     private static int movePointsRemaining = 0;
     private static int playerHp = 20;
     private static int playerMaxHp = 20;
+    /** Local client's player HP — distinct from {@link #playerHp} which carries
+     *  the current turn-holder's HP in party combat. Used as the basis for the
+     *  damage/heal visual effects so they don't retrigger on turn rotation. */
+    private static int localPlayerHp = 20;
     private static int turnNumber = 1;
     private static int maxAp = 3;
     private static int maxSpeed = 3;
@@ -491,8 +495,13 @@ public class CombatState {
                                        String playerEffects, int killStreak,
                                        String partyHpData, String turnOrderData,
                                        String playerStatsData) {
-        // Save old HP before overwriting so we can detect damage/heal
-        int oldHp = CombatState.playerHp;
+        // Save old HP before overwriting so we can detect damage/heal.
+        // In party combat the {@code playerHp} field carries the CURRENT TURN
+        // PLAYER's HP (same value for every recipient), so naively comparing
+        // it across syncs flashes "damage"/"heal" on every turn rotation. Pull
+        // the local player's actual HP out of partyHpData below and compare on
+        // that instead. Solo falls through to the playerHp field.
+        int oldLocalHp = CombatState.localPlayerHp;
 
         CombatState.phase = phase;
         CombatState.apRemaining = ap;
@@ -501,15 +510,35 @@ public class CombatState {
         CombatState.playerMaxHp = playerMaxHp;
         CombatState.turnNumber = turnNumber;
 
-        // Detect player damage/heal for visual effects
-        if (playerHp < oldHp && oldHp > 0) {
-            int dmg = oldHp - playerHp;
+        // Resolve THIS client's player HP from partyHpData (per-UUID) before
+        // running damage/heal detection. Falls back to the broadcast playerHp
+        // field when solo (partyHpData is empty in that case).
+        int newLocalHp = playerHp;
+        if (partyHpData != null && !partyHpData.isEmpty()) {
+            net.minecraft.client.MinecraftClient mcDetect =
+                net.minecraft.client.MinecraftClient.getInstance();
+            String myUuidDetect = mcDetect.getSession().getUuidOrNull() != null
+                ? mcDetect.getSession().getUuidOrNull().toString() : "";
+            for (String entry : partyHpData.split("\\|")) {
+                String[] parts = entry.split(",");
+                if (parts.length < 5) continue;
+                if (parts[0].equals(myUuidDetect)) {
+                    try { newLocalHp = Integer.parseInt(parts[2]); } catch (NumberFormatException ignored) {}
+                    break;
+                }
+            }
+        }
+        CombatState.localPlayerHp = newLocalHp;
+
+        // Detect player damage/heal for visual effects (local player only)
+        if (newLocalHp < oldLocalHp && oldLocalHp > 0) {
+            int dmg = oldLocalHp - newLocalHp;
             CombatVisualEffects.spawnDamageNumber(dmg, true);
             CombatVisualEffects.flashDamage();
             // Shake harder when player takes damage (more alarming)
             float shakeAmount = Math.min(1.0f, dmg / 6.0f) * 0.8f + 0.2f;
             CombatVisualEffects.triggerShake(shakeAmount);
-        } else if (playerHp > oldHp && oldHp > 0) {
+        } else if (newLocalHp > oldLocalHp && oldLocalHp > 0) {
             CombatVisualEffects.flashHeal();
         }
 
@@ -518,9 +547,9 @@ public class CombatState {
         CombatState.playerEffects = playerEffects;
         CombatState.killStreak = killStreak;
 
-        // Track combat stats
-        if (playerHp < oldHp && oldHp > 0) {
-            totalDamageTaken += (oldHp - playerHp);
+        // Track combat stats (local player damage only)
+        if (newLocalHp < oldLocalHp && oldLocalHp > 0) {
+            totalDamageTaken += (oldLocalHp - newLocalHp);
         }
         if (turnNumber > turnsPlayed) {
             turnsPlayed = turnNumber;
@@ -573,6 +602,20 @@ public class CombatState {
                 PartyMemberHp member = new PartyMemberHp(uuid, name, hp, mHp, dead);
                 if (uuid.equals(myUuid)) {
                     self = member;
+                    // Override the broadcast `playerHp` / `playerMaxHp` / `playerEffects`
+                    // fields with our OWN values from partyHpData. The server
+                    // sets those broadcast fields from this.player on the host
+                    // CM, so after a death handoff they reflect the new
+                    // turn-holder's stats — making a dead player's HUD show
+                    // their teammate's HP / effects ("player 1 took player 2's
+                    // health"). Reading from partyHpData (per-UUID) keeps each
+                    // client's HUD locked to their own state.
+                    CombatState.playerHp = hp;
+                    CombatState.playerMaxHp = mHp;
+                    if (parts.length >= 6) {
+                        String myEffects = parts[5].replace("/", " | ").replace(";", ",");
+                        CombatState.playerEffects = myEffects;
+                    }
                 } else {
                     others.add(member);
                 }

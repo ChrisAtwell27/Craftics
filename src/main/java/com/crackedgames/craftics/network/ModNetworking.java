@@ -22,7 +22,6 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(TraderDonePayload.ID, TraderDonePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(StatChoicePayload.ID, StatChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(AffinityChoicePayload.ID, AffinityChoicePayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(EventChoicePayload.ID, EventChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(RespecPayload.ID, RespecPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(AffinityRespecPayload.ID, AffinityRespecPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(MoveSlotShiftPayload.ID, MoveSlotShiftPayload.CODEC);
@@ -42,7 +41,6 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(PlayerStatsSyncPayload.ID, PlayerStatsSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TileSetPayload.ID, TileSetPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TeammateHoverPayload.ID, TeammateHoverPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(EventRoomPayload.ID, EventRoomPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(DialoguePayload.ID, DialoguePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(EnterEventCinematicPayload.ID, EnterEventCinematicPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(ExitEventCinematicPayload.ID, ExitEventCinematicPayload.CODEC);
@@ -338,12 +336,6 @@ public class ModNetworking {
                     ));
                 }
             }
-        });
-
-        // Handle event room choice (shrine/traveler/vault)
-        ServerPlayNetworking.registerGlobalReceiver(EventChoicePayload.ID, (payload, context) -> {
-            CombatManager.getActiveCombat(context.player().getUuid())
-                .handleEventChoice(context.player(), payload.choiceIndex());
         });
 
         // Handle respec — refund and reallocate stat points (costs XP levels)

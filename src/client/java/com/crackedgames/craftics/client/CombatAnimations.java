@@ -27,6 +27,15 @@ public class CombatAnimations {
     // WeakHashMap: survives respawns, gets GC'd with the player
     private static java.util.WeakHashMap<AbstractClientPlayerEntity, ModifierLayer<IAnimation>> layerMap = new java.util.WeakHashMap<>();
 
+    // Identity of the local player entity we last ticked against. When the
+    // client respawns (void death, /kill, dimension change) Minecraft swaps
+    // in a fresh AbstractClientPlayerEntity. Without detecting that swap
+    // here, the static animation flags below (wasAnimating, currentLayer,
+    // attackAnimTimer, lastCinX/Z) stay pinned to the previous entity and
+    // walk / attack animations stop firing for the new entity from the
+    // local player's POV.
+    private static AbstractClientPlayerEntity lastTickPlayer = null;
+
     public static void register() {
         PlayerAnimationAccess.REGISTER_ANIMATION_EVENT.register((player, stack) -> {
             var layer = new ModifierLayer<IAnimation>();
@@ -61,7 +70,26 @@ public class CombatAnimations {
     public static void tick() {
         if (com.crackedgames.craftics.client.vfx.HitPauseState.isFrozen()) return;
         MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null) return;
+        if (client.player == null) {
+            lastTickPlayer = null;
+            return;
+        }
+
+        // Reset all per-player animation state when the local entity changes
+        // (respawn after void / kill, dimension travel, etc). Without this
+        // the stuck wasAnimating / currentLayer / attackAnimTimer from the
+        // dead entity make startWalking/stopWalking no-op against the new
+        // entity, breaking the host's combat walk + attack animations
+        // entirely from their own POV until a full client restart.
+        if (client.player != lastTickPlayer) {
+            wasAnimating = false;
+            wasCinematicWalking = false;
+            attackAnimTimer = 0;
+            currentLayer = null;
+            lastCinX = Double.NaN;
+            lastCinZ = Double.NaN;
+            lastTickPlayer = client.player;
+        }
 
         if (!CombatState.isInCombat()) {
             if (wasAnimating) { stopAll(); wasAnimating = false; }
@@ -91,7 +119,25 @@ public class CombatAnimations {
         }
 
         int phase = CombatState.getPhase();
-        boolean isAnimating = (phase == 2);
+        // Phase 2 = combat move animation, broadcast to ALL party clients. Only
+        // play the local-player walking anim when the local player is the one
+        // actually moving — otherwise every party member's avatar walks in
+        // place whenever any one teammate moves. In solo (empty turn order)
+        // the local player is always the actor.
+        boolean isMyTurn = true;
+        var turnOrder = CombatState.getTurnOrderList();
+        if (!turnOrder.isEmpty()) {
+            String myUuid = client.getSession().getUuidOrNull() != null
+                ? client.getSession().getUuidOrNull().toString() : "";
+            isMyTurn = false;
+            for (var entry : turnOrder) {
+                if (entry.isCurrent() && entry.uuid().equals(myUuid)) {
+                    isMyTurn = true;
+                    break;
+                }
+            }
+        }
+        boolean isAnimating = (phase == 2) && isMyTurn;
 
         if (isAnimating && !wasAnimating) startWalking(client.player);
         else if (!isAnimating && wasAnimating) stopWalking(client.player);

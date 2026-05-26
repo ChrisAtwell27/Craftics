@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_cave",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Water drips somewhere ahead.",
+    "A massive shape lurches from the dark."
+  ],
+  "choices": []
+}

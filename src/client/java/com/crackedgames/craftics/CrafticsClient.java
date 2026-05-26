@@ -284,19 +284,6 @@ public class CrafticsClient implements ClientModInitializer {
             }
         );
 
-        ClientPlayNetworking.registerGlobalReceiver(
-            com.crackedgames.craftics.network.EventRoomPayload.ID, (payload, context) -> {
-                context.client().execute(() -> {
-                    // Restore first-person + cursor lock now that the event screen is ready
-                    context.client().options.setPerspective(Perspective.FIRST_PERSON);
-                    context.client().mouse.lockCursor();
-                    context.client().setScreen(new com.crackedgames.craftics.client.EventRoomScreen(
-                        payload.eventType(), payload.eventData()
-                    ));
-                });
-            }
-        );
-
         // NPC dialogue box (intro / shopping prompts during event cinematics).
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.DialoguePayload.ID, (payload, context) -> {
@@ -307,6 +294,11 @@ public class CrafticsClient implements ClientModInitializer {
                         com.crackedgames.craftics.network.DialoguePayload.decodeChoiceLabels(payload.choices());
                     java.util.List<String> actions =
                         com.crackedgames.craftics.network.DialoguePayload.decodeChoiceActions(payload.choices());
+                    // If a transition fade is still holding from the last screen
+                    // (e.g. the Continue button on the post-battle screen), reveal
+                    // the dialogue. Otherwise events like the trial intro sit
+                    // behind a black overlay and the player can't see them.
+                    TransitionOverlay.startFadeOut();
                     context.client().setScreen(new com.crackedgames.craftics.client.DialogueScreen(
                         payload.speaker(), lines, labels, actions));
                 });
