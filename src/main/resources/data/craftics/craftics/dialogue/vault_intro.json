@@ -1,0 +1,13 @@
+{
+  "id": "craftics:vault_intro",
+  "speaker": "",
+  "group": "vault_intro",
+  "lines": [
+    "A hidden vault gleams in the lantern light.",
+    "Riches lie within. No guards. No traps."
+  ],
+  "choices": [
+    { "label": "Open the vault", "action": "vault:open" },
+    { "label": "Walk away", "action": "vault:leave" }
+  ]
+}

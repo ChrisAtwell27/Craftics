@@ -14,8 +14,8 @@ import com.crackedgames.craftics.combat.DamageType;
 import com.crackedgames.craftics.combat.TrimEffects;
 
 /**
- * Registers Craftics' built-in armor sets, trim patterns, trim materials, events, and
- * enchantment hooks into their respective registries. Called once from
+ * Registers Craftics' built-in armor sets, trim patterns, trim materials, events,
+ * enchantment hooks, and dialogue into their respective registries. Called once from
  * {@code CrafticsMod.onInitialize()}, before addon {@code onCrafticsInit()} callbacks.
  *
  * <p>This class is internal to Craftics. Addons should not call it directly; use
@@ -32,6 +32,7 @@ public final class VanillaContent {
         registerTrimMaterials();
         registerEvents();
         registerEnchantments();
+        VanillaDialogue.register();
     }
 
     private static void registerArmorSets() {
@@ -182,10 +183,5 @@ public final class VanillaContent {
         EventRegistry.register(new EventEntry("craftics:treasure_vault", "Treasure Vault", 0.04f, 0, true, null));
         EventRegistry.register(new EventEntry("craftics:dig_site", "Dig Site", 0.06f, 0, true, null));
         EventRegistry.register(new EventEntry("craftics:trader", "Trader", traderChance, 0, true, null));
-        // NOTE: Crafting Station is a built-in, dispatched directly in
-        // CombatManager.rollEvent. Do NOT register it as an addon entry — that
-        // would surface a "craftics:crafting_station" entry in /craftics
-        // force_event tab completion that routes through the addon path with
-        // a null handler and silently fails.
     }
 }

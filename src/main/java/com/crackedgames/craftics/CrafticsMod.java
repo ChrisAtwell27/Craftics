@@ -86,43 +86,6 @@ public class CrafticsMod implements ModInitializer {
         // neighbors and hijacked clicks on any adjacent block (a chest placed
         // next to the level-select opened the level-select screen instead).
 
-        // Dig site event: intercept right-clicks on suspicious blocks
-        net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
-            if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) return net.minecraft.util.ActionResult.PASS;
-            net.minecraft.block.Block clickedBlock = world.getBlockState(hitResult.getBlockPos()).getBlock();
-            if (clickedBlock != net.minecraft.block.Blocks.SUSPICIOUS_SAND
-                && clickedBlock != net.minecraft.block.Blocks.SUSPICIOUS_GRAVEL) {
-                return net.minecraft.util.ActionResult.PASS;
-            }
-            if (player instanceof net.minecraft.server.network.ServerPlayerEntity sp) {
-                var cm = com.crackedgames.craftics.combat.CombatManager.get(sp);
-                if (cm.isDigSitePending()) {
-                    cm.handleDigSiteInteraction(sp);
-                    return net.minecraft.util.ActionResult.SUCCESS;
-                }
-            }
-            return net.minecraft.util.ActionResult.PASS;
-        });
-
-        // Crafting Station exit: ringing the placed bell signals "done" for that
-        // player. PASS-through so vanilla still rings the bell — the player
-        // gets the satisfying sound on top of the event-end transition.
-        net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
-            if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) return net.minecraft.util.ActionResult.PASS;
-            if (world.getBlockState(hitResult.getBlockPos()).getBlock() != net.minecraft.block.Blocks.BELL) {
-                return net.minecraft.util.ActionResult.PASS;
-            }
-            if (player instanceof net.minecraft.server.network.ServerPlayerEntity sp) {
-                var cm = com.crackedgames.craftics.combat.CombatManager.getActiveCombat(sp.getUuid());
-                if (cm.isCraftingStationActive()
-                    && cm.getCraftingStationBellPos() != null
-                    && cm.getCraftingStationBellPos().equals(hitResult.getBlockPos())) {
-                    cm.handleCraftingStationDone(sp);
-                }
-            }
-            return net.minecraft.util.ActionResult.PASS;
-        });
-
         // Battle party: Shift+Right-Click (empty main hand) any passive or neutral
         // mob on your island to add it to — or remove it from — your battle party.
         net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
@@ -143,7 +106,7 @@ public class CrafticsMod implements ModInitializer {
         // chamber (or ominous trial chamber) on the next level transition.
         // Consumes one key per use. Outside combat the keys do nothing.
         //? if <=1.21.1 {
-        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+        /*net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
                 return net.minecraft.util.TypedActionResult.pass(player.getStackInHand(hand));
             }
@@ -187,8 +150,8 @@ public class CrafticsMod implements ModInitializer {
             }
             return net.minecraft.util.TypedActionResult.pass(stack);
         });
-        //?} else {
-        /*net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+        *///?} else {
+        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
                 return net.minecraft.util.ActionResult.PASS;
             }
@@ -232,7 +195,7 @@ public class CrafticsMod implements ModInitializer {
             }
             return net.minecraft.util.ActionResult.PASS;
         });
-        *///?}
+        //?}
 
         // Clear static combat state between world loads (prevents leaking across saves in singleplayer)
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -1049,7 +1012,7 @@ public class CrafticsMod implements ModInitializer {
             // CombatManager.rollEvent compares against. Must match the
             // {@code forced.equals("...")} arms over there exactly.
             java.util.List<String> eventNames = new java.util.ArrayList<>(java.util.List.of(
-                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "crafting_station", "none"
+                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "none"
             ));
             // Add addon-registered events from EventRegistry
             for (var entry : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
@@ -1073,6 +1036,25 @@ public class CrafticsMod implements ModInitializer {
                 }));
             }
             root.then(forceEventNode);
+
+            // /craftics build_arena <shape> [radius] — terraform a flat polygon
+            // arena around the caster and drop ArenaCornerBlock markers at each
+            // vertex. The polygon shape ships in ArenaShapes; the radius
+            // defaults to 8 (a 17×17 bounding box). Wipes blocks inside the
+            // polygon up to 6 above floor level so existing terrain doesn't
+            // poke into the playspace. Caster's Y becomes the arena floor.
+            var buildArenaNode = CommandManager.literal("build_arena")
+                .requires(src -> src.hasPermissionLevel(2));
+            for (String preset : com.crackedgames.craftics.level.ArenaShapes.PRESET_NAMES) {
+                var presetNode = CommandManager.literal(preset);
+                presetNode.executes(ctx -> buildArenaCommand(ctx.getSource(), preset, 8));
+                presetNode.then(CommandManager.argument("radius",
+                        com.mojang.brigadier.arguments.IntegerArgumentType.integer(2, 64))
+                    .executes(ctx -> buildArenaCommand(ctx.getSource(), preset,
+                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "radius"))));
+                buildArenaNode.then(presetNode);
+            }
+            root.then(buildArenaNode);
 
             registerPartyCommands(root);
             registerWorldCommands(root);
@@ -1154,9 +1136,19 @@ public class CrafticsMod implements ModInitializer {
                     return 0;
                 }
 
-                // Handle party combat: gracefully remove this player instead of ending for everyone
+                // /home is an escape hatch out of combat, which trivializes
+                // a tough fight — block it mid-combat for non-ops. Ops can
+                // still teleport home for debugging / world maintenance.
                 CombatManager playerCm = CombatManager.get(player);
                 CombatManager activeCm = CombatManager.getActiveCombat(player.getUuid());
+                boolean inCombat = (activeCm != null && activeCm.isActive()) || playerCm.isActive();
+                if (inCombat && !ctx.getSource().hasPermissionLevel(2)) {
+                    ctx.getSource().sendError(Text.literal(
+                        "§cYou can't use §e/home§c during combat."));
+                    return 0;
+                }
+
+                // Handle party combat: gracefully remove this player instead of ending for everyone
                 if (activeCm != null && activeCm.isActive()) {
                     // Player is in party combat — remove them gracefully
                     activeCm.leavePartyCombat(player);
@@ -1290,8 +1282,17 @@ public class CrafticsMod implements ModInitializer {
                 return 0;
             }
 
-            // End combat if active
+            // Block mid-combat hub teleport for non-ops (matches /home shortcut).
             CombatManager cm = CombatManager.get(player);
+            CombatManager activeCm = CombatManager.getActiveCombat(player.getUuid());
+            boolean inCombat = (activeCm != null && activeCm.isActive()) || cm.isActive();
+            if (inCombat && !ctx.getSource().hasPermissionLevel(2)) {
+                ctx.getSource().sendError(Text.literal(
+                    "\u00a7cYou can't teleport home during combat."));
+                return 0;
+            }
+
+            // End combat if active
             if (cm.isActive()) cm.endCombat();
 
             net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(player.getUuid());
@@ -1351,6 +1352,130 @@ public class CrafticsMod implements ModInitializer {
         root.then(worldNode);
     }
 
+    /** Implementation for {@code /craftics build_arena <shape> [radius]}.
+     *  Centers a polygon preset from {@link com.crackedgames.craftics.level.ArenaShapes}
+     *  on the caster's tile, clears blocks inside the polygon up to 6 above
+     *  floor level, paints a stone floor on every interior tile, and drops
+     *  {@code ArenaCornerBlock} markers at each vertex. The next time an arena
+     *  is built from this area, ArenaBuilder picks up the corners and serves
+     *  the shape as the in-bounds polygon mask. */
+    private static int buildArenaCommand(net.minecraft.server.command.ServerCommandSource src,
+                                         String preset, int radius) {
+        ServerPlayerEntity caster = src.getPlayer();
+        if (caster == null) {
+            src.sendError(Text.literal("§cMust be a player."));
+            return 0;
+        }
+        java.util.List<com.crackedgames.craftics.level.ArenaShapes.Offset> offsets =
+            com.crackedgames.craftics.level.ArenaShapes.get(preset, radius);
+        if (offsets == null || offsets.isEmpty()) {
+            src.sendError(Text.literal("§cUnknown shape: " + preset));
+            return 0;
+        }
+        net.minecraft.server.world.ServerWorld world =
+            (net.minecraft.server.world.ServerWorld) caster.getEntityWorld();
+        net.minecraft.util.math.BlockPos centerBlock = caster.getBlockPos();
+        int floorY = centerBlock.getY() - 1;
+        int cx = centerBlock.getX();
+        int cz = centerBlock.getZ();
+
+        // Bounding box from offsets (offsets are vertex positions OUTSIDE the
+        // playable interior, so the interior is one tile inset on each side).
+        int minDx = Integer.MAX_VALUE, maxDx = Integer.MIN_VALUE;
+        int minDz = Integer.MAX_VALUE, maxDz = Integer.MIN_VALUE;
+        for (var o : offsets) {
+            minDx = Math.min(minDx, o.dx());
+            maxDx = Math.max(maxDx, o.dx());
+            minDz = Math.min(minDz, o.dz());
+            maxDz = Math.max(maxDz, o.dz());
+        }
+        int gridMinX = cx + minDx + 1;
+        int gridMaxX = cx + maxDx - 1;
+        int gridMinZ = cz + minDz + 1;
+        int gridMaxZ = cz + maxDz - 1;
+
+        // Sort vertices by angle around centroid (same algorithm ArenaBuilder
+        // uses) so consecutive vertices form a closed loop for the point-in-
+        // polygon test below.
+        double centroidX = 0, centroidZ = 0;
+        for (var o : offsets) { centroidX += o.dx(); centroidZ += o.dz(); }
+        centroidX /= offsets.size();
+        centroidZ /= offsets.size();
+        final double finalCx = centroidX, finalCz = centroidZ;
+        java.util.List<com.crackedgames.craftics.level.ArenaShapes.Offset> sortedOffsets =
+            new java.util.ArrayList<>(offsets);
+        sortedOffsets.sort((a, b) -> {
+            double angA = Math.atan2(a.dz() - finalCz, a.dx() - finalCx);
+            double angB = Math.atan2(b.dz() - finalCz, b.dx() - finalCx);
+            return Double.compare(angA, angB);
+        });
+
+        int placedFloor = 0;
+        int clearedAir = 0;
+        int n = sortedOffsets.size();
+
+        // Paint floor + clear air column for every tile inside the polygon.
+        for (int wx = gridMinX; wx <= gridMaxX; wx++) {
+            for (int wz = gridMinZ; wz <= gridMaxZ; wz++) {
+                double px = wx + 0.5;
+                double pz = wz + 0.5;
+                boolean inside = false;
+                for (int i = 0, j = n - 1; i < n; j = i++) {
+                    double xi = cx + sortedOffsets.get(i).dx() + 0.5;
+                    double zi = cz + sortedOffsets.get(i).dz() + 0.5;
+                    double xj = cx + sortedOffsets.get(j).dx() + 0.5;
+                    double zj = cz + sortedOffsets.get(j).dz() + 0.5;
+                    boolean intersects = ((zi > pz) != (zj > pz))
+                        && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
+                    if (intersects) inside = !inside;
+                }
+                if (!inside) continue;
+                net.minecraft.util.math.BlockPos floorPos =
+                    new net.minecraft.util.math.BlockPos(wx, floorY, wz);
+                world.setBlockState(floorPos, net.minecraft.block.Blocks.STONE.getDefaultState(), 3);
+                placedFloor++;
+                // Clear 6 blocks of air above floor so existing terrain (trees,
+                // hills, schematic decoration) doesn't poke into the arena.
+                for (int dy = 1; dy <= 6; dy++) {
+                    net.minecraft.util.math.BlockPos clearPos =
+                        new net.minecraft.util.math.BlockPos(wx, floorY + dy, wz);
+                    if (!world.getBlockState(clearPos).isAir()) {
+                        world.setBlockState(clearPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+                        clearedAir++;
+                    }
+                }
+            }
+        }
+
+        // Drop ArenaCornerBlock at each vertex (one above floor level so they
+        // sit at standing height and are easy to see).
+        for (var o : sortedOffsets) {
+            int wx = cx + o.dx();
+            int wz = cz + o.dz();
+            net.minecraft.util.math.BlockPos cornerPos =
+                new net.minecraft.util.math.BlockPos(wx, floorY + 1, wz);
+            world.setBlockState(cornerPos,
+                com.crackedgames.craftics.block.ModBlocks.ARENA_CORNER_BLOCK.getDefaultState(), 3);
+            // Stone pedestal under each corner so the marker has something to
+            // stand on when the polygon vertex sits on a cleared/floored tile.
+            net.minecraft.util.math.BlockPos pedestalPos =
+                new net.minecraft.util.math.BlockPos(wx, floorY, wz);
+            if (world.getBlockState(pedestalPos).isAir()) {
+                world.setBlockState(pedestalPos, net.minecraft.block.Blocks.STONE.getDefaultState(), 3);
+            }
+        }
+
+        final int floorCount = placedFloor;
+        final int clearCount = clearedAir;
+        final int cornerCount = n;
+        src.sendFeedback(() -> Text.literal(
+            "§aBuilt " + preset + " arena (radius " + radius + "): "
+            + cornerCount + " corner markers, "
+            + floorCount + " floor tiles, "
+            + clearCount + " air clears."), true);
+        return 1;
+    }
+
     private void registerPartyCommands(com.mojang.brigadier.builder.LiteralArgumentBuilder<ServerCommandSource> root) {
         var partyNode = CommandManager.literal("party");
 
@@ -1400,7 +1525,7 @@ public class CrafticsMod implements ModInitializer {
                     data.addPartyInvite(party.getPartyId(), target.getUuid());
                     ctx.getSource().sendFeedback(() -> Text.literal("§aInvited " + target.getName().getString() + " to the party."), false);
                     //? if <=1.21.4 {
-                    net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
+                    /*net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
                         .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent(
                             net.minecraft.text.ClickEvent.Action.RUN_COMMAND, "/craftics party accept"))
                             .withHoverEvent(new net.minecraft.text.HoverEvent(
@@ -1410,14 +1535,14 @@ public class CrafticsMod implements ModInitializer {
                             net.minecraft.text.ClickEvent.Action.RUN_COMMAND, "/craftics party decline"))
                             .withHoverEvent(new net.minecraft.text.HoverEvent(
                                 net.minecraft.text.HoverEvent.Action.SHOW_TEXT, Text.literal("Click to decline"))));
-                    //?} else {
-                    /*net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
+                    *///?} else {
+                    net.minecraft.text.MutableText acceptText = Text.literal("§a[ACCEPT]")
                         .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent.RunCommand("/craftics party accept"))
                             .withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(Text.literal("Click to accept"))));
                     net.minecraft.text.MutableText declineText = Text.literal("§c[DECLINE]")
                         .styled(s -> s.withClickEvent(new net.minecraft.text.ClickEvent.RunCommand("/craftics party decline"))
                             .withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(Text.literal("Click to decline"))));
-                    *///?}
+                    //?}
                     target.sendMessage(Text.literal("§e" + player.getName().getString() + " invited you to their party! ")
                         .append(acceptText).append(Text.literal(" ")).append(declineText), false);
                     return 1;
@@ -1739,12 +1864,12 @@ public class CrafticsMod implements ModInitializer {
         }
         if (player.getServerWorld() != overworld) {
             //? if <=1.21.1 {
-            player.teleport(overworld, x, y, z,
-                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
-            //?} else {
             /*player.teleport(overworld, x, y, z,
+                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
+            *///?} else {
+            player.teleport(overworld, x, y, z,
                 java.util.Collections.emptySet(), player.getYaw(), player.getPitch(), true);
-            *///?}
+            //?}
         } else {
             player.requestTeleport(x, y, z);
         }

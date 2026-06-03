@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_nether_wastes",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Heat rolls in waves from the netherrack.",
+    "A massive Magma Cube bounces into view."
+  ],
+  "choices": []
+}

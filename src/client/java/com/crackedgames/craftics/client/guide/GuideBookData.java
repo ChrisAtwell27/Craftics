@@ -858,7 +858,14 @@ public class GuideBookData {
                 "~13% chance between levels.\n\n" +
                 "A wandering trader appears in a biome-themed bazaar.\n" +
                 "Trader types: Weaponsmith, Armorer, Alchemist, and more.\n\n" +
-                "Trades scale with biome tier. Spend emeralds for gear!")
+                "Trades scale with biome tier. Spend emeralds for gear!"),
+            new Page("Meeting the Trader",
+                "Your party walks up to the trader together, then they\n" +
+                "greet you with a few lines of dialogue (each trader type\n" +
+                "has its own greeting). Click to skip ahead.\n\n" +
+                "Pick \"Let's trade\" to open the shop. When you close it,\n" +
+                "the trader asks if you're done — choose \"No\" to keep\n" +
+                "shopping. The run continues once everyone is finished.")
         )));
         events.add(new Entry("Trial Chamber", "minecraft:trial_key", List.of(
             new Page("Optional Challenge",

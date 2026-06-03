@@ -1,0 +1,12 @@
+{
+  "id": "craftics:shrine_intro",
+  "speaker": "",
+  "group": "shrine_intro",
+  "lines": ["A shrine of fortune hums before you.", "Make an offering and test your luck."],
+  "choices": [
+    { "label": "Small Offering (2 emeralds)", "action": "shrine:small" },
+    { "label": "Medium Offering (5 emeralds)", "action": "shrine:medium" },
+    { "label": "Large Offering (10 emeralds)", "action": "shrine:large" },
+    { "label": "Walk away", "action": "shrine:leave" }
+  ]
+}

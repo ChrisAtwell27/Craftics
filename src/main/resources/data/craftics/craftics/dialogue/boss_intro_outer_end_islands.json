@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_outer_end_islands",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "The void hangs close on all sides.",
+    "An Enderman teleports onto your tile."
+  ],
+  "choices": []
+}

@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_soul_sand_valley",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Ghost-blue fires brighten. Souls drift higher.",
+    "A Ghast wails overhead, fireballs already kindling."
+  ],
+  "choices": []
+}

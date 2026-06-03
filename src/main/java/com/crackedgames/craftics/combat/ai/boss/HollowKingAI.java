@@ -51,7 +51,10 @@ public class HollowKingAI extends BossAI {
             setCooldown(CD_CAVEIN, 1);
             EnemyAction caveIn = new EnemyAction.CompositeAction(List.of(
                 new EnemyAction.AreaAttack(playerPos, 1, 5, "cave_in"),
-                new EnemyAction.CreateTerrain(caveInTiles, TileType.NORMAL, 0)
+                // Rubble obstacles (temp, 3 turns) — the warning telegraph
+                // lets the player step out before the stones drop. NORMAL
+                // here was a no-op; OBSTACLE is what sells "cave-in".
+                new EnemyAction.CreateTerrain(caveInTiles, TileType.OBSTACLE, 3)
             ));
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
@@ -85,7 +88,9 @@ public class HollowKingAI extends BossAI {
             setCooldown(CD_CAVEIN, 3);
             EnemyAction caveIn = new EnemyAction.CompositeAction(List.of(
                 new EnemyAction.AreaAttack(playerPos, 1, 5, "cave_in"),
-                new EnemyAction.CreateTerrain(caveInTiles, TileType.NORMAL, 0)
+                // Rubble obstacles (temp, 3 turns) — the warning telegraph
+                // lets the player step out before the stones drop.
+                new EnemyAction.CreateTerrain(caveInTiles, TileType.OBSTACLE, 3)
             ));
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,

@@ -14,6 +14,13 @@ public class GridArena {
     private final int levelNumber;
     private final GridPos playerStart;
 
+    /** Optional polygon mask for non-rectangular arenas. {@code null} means the
+     *  full {@code width × height} rectangle is playable (legacy behavior).
+     *  When non-null, {@code insideMask[x][z] == true} marks a tile as inside
+     *  the polygon. Every {@link #isInBounds(int, int)} caller transparently
+     *  inherits the polygon — pathfinding, AI, VFX, occupancy all gate on it. */
+    private final boolean[][] insideMask;
+
     private final Map<GridPos, CombatEntity> occupants = new HashMap<>();
     private GridPos playerGridPos;
     private final Map<GridPos, Integer> webOverlays = new HashMap<>();
@@ -40,6 +47,14 @@ public class GridArena {
 
     public GridArena(int width, int height, GridTile[][] tiles, BlockPos origin,
                      int levelNumber, GridPos playerStart) {
+        this(width, height, tiles, origin, levelNumber, playerStart, null);
+    }
+
+    /** Polygon-aware constructor. Pass a {@code width × height} boolean array
+     *  marking which tiles are inside the polygon, or {@code null} to use the
+     *  legacy full-rectangle behavior. */
+    public GridArena(int width, int height, GridTile[][] tiles, BlockPos origin,
+                     int levelNumber, GridPos playerStart, boolean[][] insideMask) {
         this.width = width;
         this.height = height;
         this.tiles = tiles;
@@ -47,7 +62,11 @@ public class GridArena {
         this.levelNumber = levelNumber;
         this.playerStart = playerStart;
         this.playerGridPos = playerStart;
+        this.insideMask = insideMask;
     }
+
+    /** Whether this arena uses a non-rectangular polygon mask. */
+    public boolean hasPolygonMask() { return insideMask != null; }
 
     public int getWidth() { return width; }
     public int getHeight() { return height; }
@@ -72,7 +91,14 @@ public class GridArena {
     }
 
     public boolean isInBounds(int x, int z) {
-        return x >= 0 && x < width && z >= 0 && z < height;
+        if (x < 0 || x >= width || z < 0 || z >= height) return false;
+        // Polygon arenas: the rectangle bounds-check is necessary but not
+        // sufficient — tile must also be inside the polygon mask. This single
+        // gate is consulted by every pathfinding / AI / VFX / occupancy call
+        // site in the codebase, so the polygon shape propagates everywhere
+        // without each caller needing to know about it.
+        if (insideMask != null) return insideMask[x][z];
+        return true;
     }
 
     public boolean isInBounds(GridPos pos) {
@@ -142,6 +168,11 @@ public class GridArena {
 
     // --- Web overlay tracking (Broodmother) ---
 
+    /** Sentinel duration meaning "this web never ticks down" — used for cobwebs
+     *  baked into the arena's schematic or jungle-biome decoration. They only
+     *  go away when a player walks through them. */
+    public static final int PERMANENT_WEB = Integer.MAX_VALUE;
+
     public boolean hasWebOverlay(GridPos pos) {
         return webOverlays.containsKey(pos);
     }
@@ -154,12 +185,15 @@ public class GridArena {
         webOverlays.remove(pos);
     }
 
-    /** Tick all web overlays. Returns positions where webs expired this tick. */
+    /** Tick all web overlays. Returns positions where webs expired this tick.
+     *  Webs registered with {@link #PERMANENT_WEB} are skipped — they only
+     *  clear when a player walks through them. */
     public java.util.List<GridPos> tickWebOverlays() {
         java.util.List<GridPos> expired = new java.util.ArrayList<>();
         var it = webOverlays.entrySet().iterator();
         while (it.hasNext()) {
             var entry = it.next();
+            if (entry.getValue() == PERMANENT_WEB) continue;
             int remaining = entry.getValue() - 1;
             if (remaining <= 0) {
                 expired.add(entry.getKey());
@@ -273,12 +307,24 @@ public class GridArena {
         if (tile != null) {
             TileType t = tile.getType();
             if (flying) {
-                if (t == TileType.OBSTACLE) return baseY + 1;
+                if (t == TileType.OBSTACLE || t == TileType.ELEVATED) return baseY + 1;
+                if (t == TileType.STAIR) return baseY + 0.5;
                 return baseY;
             }
-            if (t == TileType.WATER || t == TileType.DEEP_WATER || t == TileType.LOW_GROUND || t == TileType.POWDER_SNOW) {
+            if (t == TileType.WATER || t == TileType.DEEP_WATER || t == TileType.LOW_GROUND
+                    || t == TileType.POWDER_SNOW || t == TileType.LAVA) {
+                // Lava sinks the entity by 1 the same way water does — the lava
+                // block fills floor→floor+1, so an entity at baseY (floor+1)
+                // would float on the surface instead of being immersed in it.
+                // Knocked-back mobs in particular looked perched on top of the
+                // lava with no contact, which doesn't sell the hazard.
                 return baseY - 1;
             }
+            // Stair = half-step landing (Y+0.5). Elevated = full upper-floor
+            // landing (Y+1). The lerp in CombatManager.tickAnimation handles
+            // the smooth ramp transition between floor → stair → elevated.
+            if (t == TileType.STAIR) return baseY + 0.5;
+            if (t == TileType.ELEVATED) return baseY + 1;
         }
         return baseY;
     }

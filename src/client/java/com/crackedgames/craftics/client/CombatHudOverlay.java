@@ -114,16 +114,16 @@ public class CombatHudOverlay implements HudRenderCallback {
         // the hat overlay at (40,8)-(48,16). Both are 8×8 pixels.
         // Draw face base layer
         //? if <=1.21.1 {
-        ctx.drawTexture(skinTex, x, y, size, size, 8.0f, 8.0f, 8, 8, 64, 64);
-        //?} else {
-        /*ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 8.0f, 8.0f, size, size, 8, 8, 64, 64);
-        *///?}
+        /*ctx.drawTexture(skinTex, x, y, size, size, 8.0f, 8.0f, 8, 8, 64, 64);
+        *///?} else {
+        ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 8.0f, 8.0f, size, size, 8, 8, 64, 64);
+        //?}
         // Draw hat overlay on top (semi-transparent second layer on most skins)
         //? if <=1.21.1 {
-        ctx.drawTexture(skinTex, x, y, size, size, 40.0f, 8.0f, 8, 8, 64, 64);
-        //?} else {
-        /*ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 40.0f, 8.0f, size, size, 8, 8, 64, 64);
-        *///?}
+        /*ctx.drawTexture(skinTex, x, y, size, size, 40.0f, 8.0f, 8, 8, 64, 64);
+        *///?} else {
+        ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 40.0f, 8.0f, size, size, 8, 8, 64, 64);
+        //?}
     }
 
     /**
@@ -1109,10 +1109,16 @@ public class CombatHudOverlay implements HudRenderCallback {
     // ─── 5. Resource Bar (Bottom-Right, Horizontal) ──────────────────────
 
     private void renderResourceBar(DrawContext ctx, MinecraftClient client, int screenW, int screenH) {
-        int ap = CombatState.getApRemaining();
         int maxAp = CombatState.getMaxAp();
-        int speed = CombatState.getMovePointsRemaining();
         int maxSpeed = CombatState.getMaxSpeed();
+        // The broadcast remaining-AP / move-points are the CURRENT turn-holder's
+        // live values (there is no per-UUID remaining-resource field). On a
+        // non-acting teammate's screen they'd show the active player's draining
+        // pips as if they were their own, so display full bars when it isn't the
+        // local player's turn — they'll spend from full when their turn comes.
+        boolean myTurn = CombatState.isLocalPlayersTurn();
+        int ap = myTurn ? CombatState.getApRemaining() : maxAp;
+        int speed = myTurn ? CombatState.getMovePointsRemaining() : maxSpeed;
 
         int pipSize = 10;
         int pipGap = 4; // between pips

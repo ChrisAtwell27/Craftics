@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_basalt_deltas",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "The basalt cracks. The air goes silent.",
+    "The Wither rises, three heads searching for prey."
+  ],
+  "choices": []
+}

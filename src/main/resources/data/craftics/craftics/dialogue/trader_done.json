@@ -1,0 +1,10 @@
+{
+  "id": "craftics:trader_done",
+  "speaker": "minecraft:wandering_trader",
+  "group": "trader_done",
+  "lines": ["Are you done shopping?"],
+  "choices": [
+    { "label": "Yes, I'm done", "action": "finish" },
+    { "label": "No, keep shopping", "action": "reopen_shop" }
+  ]
+}

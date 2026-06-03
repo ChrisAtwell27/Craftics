@@ -39,6 +39,17 @@ public final class LootDelivery {
         Potions.POISON, Potions.SLOWNESS, Potions.WEAKNESS, Potions.HARMING
     );
 
+    /** Pool for drinkable potions (curative / buff). */
+    private static final List<RegistryEntry<Potion>> DRINKABLE_POTIONS = List.of(
+        Potions.HEALING, Potions.REGENERATION, Potions.STRENGTH,
+        Potions.SWIFTNESS, Potions.FIRE_RESISTANCE
+    );
+
+    /** Pool for splash + lingering potions (offensive / debuff). */
+    private static final List<RegistryEntry<Potion>> THROWN_POTIONS = List.of(
+        Potions.HARMING, Potions.POISON, Potions.SLOWNESS, Potions.WEAKNESS
+    );
+
     private static final Random RANDOM = new Random();
 
     /**
@@ -54,6 +65,21 @@ public final class LootDelivery {
             return ItemStack.EMPTY;
         }
 
+        // Emeralds are the virtual currency tracked in PlayerData and spent at
+        // traders/shrines. Letting them land as inventory items breaks the
+        // economy — players hoard physical stacks instead of seeing them in
+        // their balance, and the trader's emerald-collection sweep then misses
+        // anything that wasn't given by the trader event itself. Route to the
+        // virtual balance and consume the item.
+        if (stack.getItem() == Items.EMERALD) {
+            if (player.getEntityWorld() instanceof net.minecraft.server.world.ServerWorld sw) {
+                var data = com.crackedgames.craftics.world.CrafticsSavedData.get(sw);
+                data.getPlayerData(player.getUuid()).addEmeralds(stack.getCount());
+                data.markDirty();
+            }
+            return ItemStack.EMPTY;
+        }
+
         // Loot tables build tipped arrows via `new ItemStack(Items.TIPPED_ARROW, n)`
         // which has no PotionContents component, so they render as grey arrows with
         // no effect when shot. Assign a random vanilla variant at delivery time so
@@ -64,6 +90,23 @@ public final class LootDelivery {
             if (existing == null || !existing.hasEffects()) {
                 RegistryEntry<Potion> pick = TIPPED_ARROW_POTIONS.get(
                     RANDOM.nextInt(TIPPED_ARROW_POTIONS.size()));
+                stack.set(DataComponentTypes.POTION_CONTENTS, new PotionContentsComponent(pick));
+            }
+        }
+
+        // Same pre-fill for bare potion items — loot tables that build
+        // `new ItemStack(Items.SPLASH_POTION, 1)` with no PotionContents
+        // otherwise render as "Uncraftable Potion" with no effect when used.
+        // Drinkable potions roll from the curative/buff pool; splash and
+        // lingering potions roll from the offensive/debuff pool so the
+        // item is contextually useful when delivered as combat loot.
+        if (stack.getItem() == Items.POTION || stack.getItem() == Items.SPLASH_POTION
+                || stack.getItem() == Items.LINGERING_POTION) {
+            PotionContentsComponent existing = stack.get(DataComponentTypes.POTION_CONTENTS);
+            if (existing == null || !existing.hasEffects()) {
+                List<RegistryEntry<Potion>> pool = (stack.getItem() == Items.POTION)
+                    ? DRINKABLE_POTIONS : THROWN_POTIONS;
+                RegistryEntry<Potion> pick = pool.get(RANDOM.nextInt(pool.size()));
                 stack.set(DataComponentTypes.POTION_CONTENTS, new PotionContentsComponent(pick));
             }
         }

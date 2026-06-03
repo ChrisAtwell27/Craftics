@@ -92,6 +92,13 @@ public sealed interface EnemyAction {
     /** Create or transform terrain tiles for a duration (0 = permanent). */
     record CreateTerrain(List<GridPos> tiles, TileType terrainType, int duration) implements EnemyAction {}
 
+    /** Place cobweb overlays on the listed tiles for {@code duration} turns.
+     *  Unlike {@link CreateTerrain}, the cobweb is placed at floor+1 (so the
+     *  floor stays intact underneath) and goes through the arena's web-overlay
+     *  tracking — pathfinding treats it as slowing terrain, not a hard block,
+     *  and a player on the tile can break the web by walking. */
+    record PlaceWeb(List<GridPos> tiles, int duration) implements EnemyAction {}
+
     /** Line attack from a start point in a direction, hitting all tiles in the line. */
     record LineAttack(GridPos start, int dx, int dz, int length, int damage) implements EnemyAction {}
 

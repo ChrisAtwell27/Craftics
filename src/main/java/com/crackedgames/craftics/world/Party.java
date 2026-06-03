@@ -4,8 +4,8 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.nbt.NbtString;
 //? if >=1.21.5 {
-/*import net.minecraft.util.Uuids;
-*///?}
+import net.minecraft.util.Uuids;
+//?}
 
 import java.util.*;
 
@@ -69,7 +69,7 @@ public class Party {
     }
 
     //? if <=1.21.4 {
-    public NbtCompound toNbt() {
+    /*public NbtCompound toNbt() {
         NbtCompound nbt = new NbtCompound();
         nbt.putUuid("partyId", partyId);
         nbt.putUuid("leaderUuid", leaderUuid);
@@ -98,8 +98,8 @@ public class Party {
         }
         return party;
     }
-    //?} else {
-    /*public NbtCompound toNbt() {
+    *///?} else {
+    public NbtCompound toNbt() {
         NbtCompound nbt = new NbtCompound();
         nbt.put("partyId", Uuids.INT_STREAM_CODEC, partyId);
         nbt.put("leaderUuid", Uuids.INT_STREAM_CODEC, leaderUuid);
@@ -126,5 +126,5 @@ public class Party {
         }
         return party;
     }
-    *///?}
+    //?}
 }

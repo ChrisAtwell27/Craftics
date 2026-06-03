@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_snowy",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Ice cracks across the frozen lake.",
+    "A Stray rises from a snowdrift, arrow nocked."
+  ],
+  "choices": []
+}

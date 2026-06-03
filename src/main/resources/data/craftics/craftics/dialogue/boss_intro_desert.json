@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_desert",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "The sand shifts beneath your feet.",
+    "A Sandstorm Pharaoh rises from the dunes."
+  ],
+  "choices": []
+}

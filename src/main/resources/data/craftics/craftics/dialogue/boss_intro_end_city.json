@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_end_city",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "The end city walls hum with violet light.",
+    "A Shulker peels open its shell."
+  ],
+  "choices": []
+}
