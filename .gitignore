@@ -5,6 +5,7 @@ out/
 classes/
 .claude/
 .docs/superpowers
+.superpowers/
 # eclipse
 *.launch
 
