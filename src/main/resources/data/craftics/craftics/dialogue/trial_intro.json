@@ -1,0 +1,14 @@
+{
+  "id": "craftics:trial_intro",
+  "speaker": "",
+  "group": "trial_intro",
+  "lines": [
+    "A mysterious trial chamber lies ahead.",
+    "Rare loot inside, but stronger foes.",
+    "Vote: enter together, or pass?"
+  ],
+  "choices": [
+    { "label": "Enter the trial", "action": "trial:enter" },
+    { "label": "Pass", "action": "trial:pass" }
+  ]
+}

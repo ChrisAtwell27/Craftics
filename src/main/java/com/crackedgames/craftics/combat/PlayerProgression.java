@@ -6,9 +6,9 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.PersistentState;
 //? if >=1.21.5 {
-/*import net.minecraft.world.PersistentStateType;
+import net.minecraft.world.PersistentStateType;
 import com.mojang.serialization.Codec;
-*///?}
+//?}
 
 import com.crackedgames.craftics.achievement.Achievement;
 
@@ -47,7 +47,7 @@ public class PlayerProgression extends PersistentState {
         BLUNT("Blunt", "\u00a78\u2B24", "+3 dmg, +3% stun chance"),
         RANGED("Ranged", "\u00a7b\u27B3", "+3 ranged dmg, +5% ricochet chain chance"),
         WATER("Water", "\u00a73\u2248", "+3 dmg, +3% knockback & Wet"),
-        SPECIAL("Special", "\u00a7d\u2728", "+3 dmg, +3% free AP on use"),
+        SPECIAL("Special", "\u00a7d\u2728", "+3 dmg, +3% free AP, +10% conserve consumable"),
         PET("Pet", "\u00a7a\uD83D\uDC3E", "+3 dmg, +3 HP to allies"),
         PHYSICAL("Physical", "\u00a77\u270A", "+3 dmg, +3% counterattack");
 
@@ -311,7 +311,7 @@ public class PlayerProgression extends PersistentState {
     private final transient Map<UUID, PlayerStats> cache = new HashMap<>();
 
     //? if <=1.21.4 {
-    public static PlayerProgression fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
+    /*public static PlayerProgression fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
         PlayerProgression pp = new PlayerProgression();
         NbtCompound players = nbt.getCompound("players");
         for (String key : players.getKeys()) {
@@ -332,8 +332,8 @@ public class PlayerProgression extends PersistentState {
 
     private static final PersistentState.Type<PlayerProgression> TYPE =
         new PersistentState.Type<>(PlayerProgression::new, PlayerProgression::fromNbt, null);
-    //?} else {
-    /*private static final Codec<PlayerProgression> CODEC = NbtCompound.CODEC.xmap(
+    *///?} else {
+    private static final Codec<PlayerProgression> CODEC = NbtCompound.CODEC.xmap(
         nbt -> {
             PlayerProgression pp = new PlayerProgression();
             NbtCompound players = nbt.getCompoundOrEmpty("players");
@@ -355,7 +355,7 @@ public class PlayerProgression extends PersistentState {
 
     private static final PersistentStateType<PlayerProgression> TYPE =
         new PersistentStateType<>("craftics_progression", PlayerProgression::new, CODEC, null);
-    *///?}
+    //?}
 
     public PlayerProgression() {}
 
@@ -409,13 +409,13 @@ public class PlayerProgression extends PersistentState {
     }
 
     //? if <=1.21.4 {
-    public static PlayerProgression get(ServerWorld world) {
+    /*public static PlayerProgression get(ServerWorld world) {
         // Always overworld so data persists across dimensions
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE, "craftics_progression");
     }
-    //?} else {
-    /*public static PlayerProgression get(ServerWorld world) {
+    *///?} else {
+    public static PlayerProgression get(ServerWorld world) {
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE);
     }
-    *///?}
+    //?}
 }

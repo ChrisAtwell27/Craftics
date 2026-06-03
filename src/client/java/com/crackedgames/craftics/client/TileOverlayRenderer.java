@@ -2,8 +2,8 @@ package com.crackedgames.craftics.client;
 
 import com.crackedgames.craftics.core.GridPos;
 //? if <=1.21.4 {
-import com.mojang.blaze3d.systems.RenderSystem;
-//?}
+/*import com.mojang.blaze3d.systems.RenderSystem;
+*///?}
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.render.*;
@@ -29,21 +29,53 @@ public class TileOverlayRenderer {
             if (net.minecraft.client.MinecraftClient.getInstance().options.hudHidden) return;
             frameCounter++;
             //? if <=1.21.4 {
-            render(context.matrixStack(), context.camera());
-            //?} else
-            /*renderV5(context);*/
+            /*render(context.matrixStack(), context.camera());
+            *///?} else
+            renderV5(context);
         });
     }
 
+    /**
+     * Compute the highlight Y for a single arena tile. Mirrors ArenaBuilder's
+     * tile classification at floor+1: a stair gives a Y+0.5 ramp, a full
+     * (solid) block gives a Y+1 platform (ELEVATED), anything else is the
+     * flat floor. Without this, highlights drawn at a flat originY+1.01 sink
+     * inside ELEVATED blocks and slip under STAIR slopes.
+     */
+    private static float tileRenderY(net.minecraft.client.world.ClientWorld world,
+                                      int originX, int originY, int originZ,
+                                      int tileX, int tileZ) {
+        if (world == null) return originY + 1.01f;
+        net.minecraft.util.math.BlockPos abovePos =
+            new net.minecraft.util.math.BlockPos(originX + tileX, originY + 1, originZ + tileZ);
+        net.minecraft.block.BlockState above = world.getBlockState(abovePos);
+        if (above.getBlock() instanceof net.minecraft.block.StairsBlock) {
+            return originY + 1.51f;
+        }
+        if (above.getBlock() instanceof net.minecraft.block.SlabBlock) {
+            net.minecraft.block.enums.SlabType slabType =
+                above.get(net.minecraft.block.SlabBlock.TYPE);
+            if (slabType == net.minecraft.block.enums.SlabType.BOTTOM) {
+                return originY + 1.51f;
+            }
+            // TOP / DOUBLE slab → walk on top at full +1 step
+            return originY + 2.01f;
+        }
+        if (!above.isAir() && above.isSolidBlock(world, abovePos)) {
+            return originY + 2.01f;
+        }
+        return originY + 1.01f;
+    }
+
     //? if <=1.21.4 {
-    private static void render(MatrixStack matrices, Camera camera) {
+    /*private static void render(MatrixStack matrices, Camera camera) {
         if (matrices == null || camera == null) return;
 
         Vec3d camPos = camera.getPos();
         int originX = CombatState.getArenaOriginX();
         int originY = CombatState.getArenaOriginY();
         int originZ = CombatState.getArenaOriginZ();
-        float renderY = originY + 1.01f;
+        net.minecraft.client.world.ClientWorld world = net.minecraft.client.MinecraftClient.getInstance().world;
 
         boolean colorblind = false;
         try {
@@ -58,10 +90,10 @@ public class TileOverlayRenderer {
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();
         //? if <=1.21.1 {
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        //?} else {
-        /*RenderSystem.setShader(net.minecraft.client.gl.ShaderProgramKeys.POSITION_COLOR);
-        *///?}
+        /^RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        ^///?} else {
+        RenderSystem.setShader(net.minecraft.client.gl.ShaderProgramKeys.POSITION_COLOR);
+        //?}
 
         Matrix4f matrix = matrices.peek().getPositionMatrix();
         Tessellator tessellator = Tessellator.getInstance();
@@ -71,7 +103,8 @@ public class TileOverlayRenderer {
             float r = colorblind ? 0.2f : 0.2f;
             float g = colorblind ? 0.9f : 0.6f;
             float b = colorblind ? 0.2f : 1.0f;
-            drawTileQuad(tessellator, matrix, originX + tile.x(), renderY, originZ + tile.z(), r, g, b, 0.35f);
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+            drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(), r, g, b, 0.35f);
         }
 
         // Draw attack tiles (red / yellow)
@@ -79,12 +112,14 @@ public class TileOverlayRenderer {
             float r = colorblind ? 0.9f : 1.0f;
             float g = colorblind ? 0.9f : 0.2f;
             float b = colorblind ? 0.2f : 0.2f;
-            drawTileQuad(tessellator, matrix, originX + tile.x(), renderY, originZ + tile.z(), r, g, b, 0.35f);
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+            drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(), r, g, b, 0.35f);
         }
 
         // Draw danger tiles (orange)
         for (GridPos tile : CombatState.getDangerTiles()) {
-            drawTileQuad(tessellator, matrix, originX + tile.x(), renderY, originZ + tile.z(), 1.0f, 0.6f, 0.1f, 0.25f);
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+            drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(), 1.0f, 0.6f, 0.1f, 0.25f);
         }
 
         // Blindness completely hides boss telegraphs and enemy movement patterns —
@@ -95,7 +130,8 @@ public class TileOverlayRenderer {
         if (!blind && !CombatState.getWarningTiles().isEmpty()) {
             float warningPulse = (float) (0.4 + 0.2 * Math.sin(frameCounter * 0.15));
             for (GridPos tile : CombatState.getWarningTiles()) {
-                drawTileQuad(tessellator, matrix, originX + tile.x(), renderY + 0.01f, originZ + tile.z(),
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.01f;
+                drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(),
                     1.0f, 0.1f, 0.1f, warningPulse);
             }
         }
@@ -106,7 +142,8 @@ public class TileOverlayRenderer {
                 float r = colorblind ? 0.9f : 0.7f;
                 float g = colorblind ? 0.5f : 0.3f;
                 float b = colorblind ? 0.9f : 0.9f;
-                drawTileQuad(tessellator, matrix, originX + tile.x(), renderY, originZ + tile.z(), r, g, b, 0.3f);
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+                drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(), r, g, b, 0.3f);
             }
         }
 
@@ -120,7 +157,8 @@ public class TileOverlayRenderer {
             float fadeAlpha = age > 500 ? 0.2f * (1.0f - (age - 500) / 500.0f) : 0.2f;
             if (fadeAlpha <= 0) continue;
             GridPos tile = entry.getValue();
-            drawTileQuad(tessellator, matrix, originX + tile.x(), renderY, originZ + tile.z(), 0.9f, 0.9f, 0.9f, fadeAlpha);
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+            drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(), 0.9f, 0.9f, 0.9f, fadeAlpha);
         }
 
         // Draw attack AoE preview for the hovered tile (amber = damage,
@@ -131,11 +169,13 @@ public class TileOverlayRenderer {
             AttackAoePreview.Preview ap =
                 AttackAoePreview.compute(net.minecraft.client.MinecraftClient.getInstance(), aoeHover);
             for (GridPos tile : ap.effectTiles()) {
-                drawTileQuad(tessellator, matrix, originX + tile.x(), renderY + 0.006f, originZ + tile.z(),
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.006f;
+                drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(),
                     0.2f, 0.7f, 1.0f, 0.25f);
             }
             for (GridPos tile : ap.damageTiles()) {
-                drawTileQuad(tessellator, matrix, originX + tile.x(), renderY + 0.007f, originZ + tile.z(),
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.007f;
+                drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(),
                     1.0f, 0.75f, 0.1f, 0.35f);
             }
         }
@@ -145,16 +185,17 @@ public class TileOverlayRenderer {
         if (hover != null) {
             float pulse = (float) (0.45 + 0.1 * Math.sin(frameCounter * 0.08));
             boolean isAttackTile = CombatState.getAttackTiles().contains(hover);
+            float y = tileRenderY(world, originX, originY, originZ, hover.x(), hover.z()) + 0.005f;
             if (isAttackTile) {
                 float r = colorblind ? 1.0f : 1.0f;
                 float g = colorblind ? 1.0f : 0.3f;
                 float b = colorblind ? 0.3f : 0.3f;
-                drawTileQuad(tessellator, matrix, originX + hover.x(), renderY + 0.005f, originZ + hover.z(), r, g, b, pulse);
+                drawTileQuad(tessellator, matrix, originX + hover.x(), y, originZ + hover.z(), r, g, b, pulse);
             } else {
                 float r = colorblind ? 0.3f : 0.3f;
                 float g = colorblind ? 1.0f : 0.9f;
                 float b = colorblind ? 0.3f : 1.0f;
-                drawTileQuad(tessellator, matrix, originX + hover.x(), renderY + 0.005f, originZ + hover.z(), r, g, b, pulse);
+                drawTileQuad(tessellator, matrix, originX + hover.x(), y, originZ + hover.z(), r, g, b, pulse);
             }
         }
 
@@ -183,8 +224,8 @@ public class TileOverlayRenderer {
         buffer.vertex(matrix, x1, y, z0).color(color);
         BufferRenderer.drawWithGlobalProgram(buffer.end());
     }
-    //?} else {
-    /*private static void renderV5(WorldRenderContext context) {
+    *///?} else {
+    private static void renderV5(WorldRenderContext context) {
         MatrixStack matrices = context.matrixStack();
         Camera camera = context.camera();
         if (matrices == null || camera == null) return;
@@ -193,7 +234,7 @@ public class TileOverlayRenderer {
         int originX = CombatState.getArenaOriginX();
         int originY = CombatState.getArenaOriginY();
         int originZ = CombatState.getArenaOriginZ();
-        float renderY = originY + 1.01f;
+        net.minecraft.client.world.ClientWorld world = net.minecraft.client.MinecraftClient.getInstance().world;
 
         boolean colorblind = false;
         try {
@@ -211,7 +252,8 @@ public class TileOverlayRenderer {
             float r = colorblind ? 0.2f : 0.2f;
             float g = colorblind ? 0.9f : 0.6f;
             float b = colorblind ? 0.2f : 1.0f;
-            drawTileQuadV5(vc, matrix, originX + tile.x(), renderY, originZ + tile.z(), r, g, b, 0.35f);
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+            drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(), r, g, b, 0.35f);
         }
 
         // Draw attack tiles (red / yellow)
@@ -219,12 +261,14 @@ public class TileOverlayRenderer {
             float r = colorblind ? 0.9f : 1.0f;
             float g = colorblind ? 0.9f : 0.2f;
             float b = colorblind ? 0.2f : 0.2f;
-            drawTileQuadV5(vc, matrix, originX + tile.x(), renderY, originZ + tile.z(), r, g, b, 0.35f);
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+            drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(), r, g, b, 0.35f);
         }
 
         // Draw danger tiles (orange)
         for (GridPos tile : CombatState.getDangerTiles()) {
-            drawTileQuadV5(vc, matrix, originX + tile.x(), renderY, originZ + tile.z(), 1.0f, 0.6f, 0.1f, 0.25f);
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+            drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(), 1.0f, 0.6f, 0.1f, 0.25f);
         }
 
         boolean blind = CombatState.hasBlindness();
@@ -233,7 +277,8 @@ public class TileOverlayRenderer {
         if (!blind && !CombatState.getWarningTiles().isEmpty()) {
             float warningPulse = (float) (0.4 + 0.2 * Math.sin(frameCounter * 0.15));
             for (GridPos tile : CombatState.getWarningTiles()) {
-                drawTileQuadV5(vc, matrix, originX + tile.x(), renderY + 0.01f, originZ + tile.z(),
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.01f;
+                drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(),
                     1.0f, 0.1f, 0.1f, warningPulse);
             }
         }
@@ -244,7 +289,8 @@ public class TileOverlayRenderer {
                 float r = colorblind ? 0.9f : 0.7f;
                 float g = colorblind ? 0.5f : 0.3f;
                 float b = colorblind ? 0.9f : 0.9f;
-                drawTileQuadV5(vc, matrix, originX + tile.x(), renderY, originZ + tile.z(), r, g, b, 0.3f);
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+                drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(), r, g, b, 0.3f);
             }
         }
 
@@ -258,7 +304,8 @@ public class TileOverlayRenderer {
             float fadeAlpha = age > 500 ? 0.2f * (1.0f - (age - 500) / 500.0f) : 0.2f;
             if (fadeAlpha <= 0) continue;
             GridPos tile = entry.getValue();
-            drawTileQuadV5(vc, matrix, originX + tile.x(), renderY, originZ + tile.z(), 0.9f, 0.9f, 0.9f, fadeAlpha);
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
+            drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(), 0.9f, 0.9f, 0.9f, fadeAlpha);
         }
 
         // Draw attack AoE preview (amber = damage, cyan = effect-only).
@@ -267,11 +314,13 @@ public class TileOverlayRenderer {
             AttackAoePreview.Preview ap =
                 AttackAoePreview.compute(net.minecraft.client.MinecraftClient.getInstance(), aoeHover);
             for (GridPos tile : ap.effectTiles()) {
-                drawTileQuadV5(vc, matrix, originX + tile.x(), renderY + 0.006f, originZ + tile.z(),
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.006f;
+                drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(),
                     0.2f, 0.7f, 1.0f, 0.25f);
             }
             for (GridPos tile : ap.damageTiles()) {
-                drawTileQuadV5(vc, matrix, originX + tile.x(), renderY + 0.007f, originZ + tile.z(),
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.007f;
+                drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(),
                     1.0f, 0.75f, 0.1f, 0.35f);
             }
         }
@@ -281,16 +330,17 @@ public class TileOverlayRenderer {
         if (hover != null) {
             float pulse = (float) (0.45 + 0.1 * Math.sin(frameCounter * 0.08));
             boolean isAttackTile = CombatState.getAttackTiles().contains(hover);
+            float y = tileRenderY(world, originX, originY, originZ, hover.x(), hover.z()) + 0.005f;
             if (isAttackTile) {
                 float r = colorblind ? 1.0f : 1.0f;
                 float g = colorblind ? 1.0f : 0.3f;
                 float b = colorblind ? 0.3f : 0.3f;
-                drawTileQuadV5(vc, matrix, originX + hover.x(), renderY + 0.005f, originZ + hover.z(), r, g, b, pulse);
+                drawTileQuadV5(vc, matrix, originX + hover.x(), y, originZ + hover.z(), r, g, b, pulse);
             } else {
                 float r = colorblind ? 0.3f : 0.3f;
                 float g = colorblind ? 1.0f : 0.9f;
                 float b = colorblind ? 0.3f : 1.0f;
-                drawTileQuadV5(vc, matrix, originX + hover.x(), renderY + 0.005f, originZ + hover.z(), r, g, b, pulse);
+                drawTileQuadV5(vc, matrix, originX + hover.x(), y, originZ + hover.z(), r, g, b, pulse);
             }
         }
 
@@ -311,5 +361,5 @@ public class TileOverlayRenderer {
         vc.vertex(matrix, x1, y, z1).color(r, g, b, a);
         vc.vertex(matrix, x1, y, z0).color(r, g, b, a);
     }
-    *///?}
+    //?}
 }

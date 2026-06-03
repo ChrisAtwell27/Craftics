@@ -1,0 +1,10 @@
+{
+  "id": "craftics:trader_intro_craftsman",
+  "speaker": "minecraft:wandering_trader",
+  "group": "trader_intro_craftsman",
+  "lines": ["Every adventurer needs the right tools.", "Workstations and more. Have a look?"],
+  "choices": [
+    { "label": "Let's trade", "action": "open_trade" },
+    { "label": "Maybe later", "action": "close" }
+  ]
+}

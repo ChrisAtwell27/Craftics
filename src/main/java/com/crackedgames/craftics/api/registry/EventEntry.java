@@ -2,6 +2,8 @@ package com.crackedgames.craftics.api.registry;
 
 import com.crackedgames.craftics.api.EventHandler;
 
+import java.util.List;
+
 /**
  * Immutable definition of a between-level event that Craftics can trigger during a run.
  *
@@ -14,9 +16,16 @@ import com.crackedgames.craftics.api.EventHandler;
  * CrafticsAPI.registerEvent(new EventEntry(
  *     "mymod:ancient_vault", "Ancient Vault",
  *     0.05f, 5, true,
+ *     List.of("A reinforced door rises from the dirt.",
+ *             "Something is humming behind it."),
  *     (participants, world, eventManager) -> { ... }
  * ));
  * }</pre>
+ *
+ * <p>The optional {@code introLines} produce a narrator dialogue that plays for every
+ * party member before the Accept/Decline screen opens (consistent with built-in events).
+ * Pass {@code List.of()} or use the legacy 6-arg constructor to opt out, in which case
+ * the event still works but only shows a single chat-line preface.
  *
  * @param id             unique event id, e.g. {@code "mymod:ancient_vault"}
  * @param displayName    name shown to players when the event triggers
@@ -27,6 +36,8 @@ import com.crackedgames.craftics.api.EventHandler;
  *                        {@code 0} means the event is available from the first biome
  * @param isChoiceEvent  whether this event presents a player choice rather than
  *                       triggering automatically
+ * @param introLines     optional narrator dialogue shown before the choice screen.
+ *                       Empty list = no intro dialogue (legacy behavior)
  * @param handler        logic executed when the event fires; may be {@code null} for
  *                       built-in events handled directly by {@code CombatManager}
  * @since 0.2.0
@@ -37,5 +48,18 @@ public record EventEntry(
     float probability,
     int minBiomeOrdinal,
     boolean isChoiceEvent,
+    List<String> introLines,
     EventHandler handler
-) {}
+) {
+    /** Legacy 6-arg constructor — kept so addons compiled against 0.2.0 still work.
+     *  Defaults {@code introLines} to an empty list (no narrator dialogue). */
+    public EventEntry(String id, String displayName, float probability, int minBiomeOrdinal,
+                      boolean isChoiceEvent, EventHandler handler) {
+        this(id, displayName, probability, minBiomeOrdinal, isChoiceEvent, List.of(), handler);
+    }
+
+    /** Defensive copy + null-safety for the intro lines list. */
+    public EventEntry {
+        introLines = introLines == null ? List.of() : List.copyOf(introLines);
+    }
+}

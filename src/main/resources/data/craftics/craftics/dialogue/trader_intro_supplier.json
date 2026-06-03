@@ -1,0 +1,10 @@
+{
+  "id": "craftics:trader_intro_supplier",
+  "speaker": "minecraft:wandering_trader",
+  "group": "trader_intro_supplier",
+  "lines": ["Need raw materials?", "Ingots, redstone, and more. Take a look."],
+  "choices": [
+    { "label": "Let's trade", "action": "open_trade" },
+    { "label": "Maybe later", "action": "close" }
+  ]
+}

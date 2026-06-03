@@ -1,0 +1,10 @@
+{
+  "id": "craftics:trader_intro_armorer",
+  "speaker": "minecraft:wandering_trader",
+  "group": "trader_intro_armorer",
+  "lines": ["Sturdy gear for sturdy travelers.", "Plate, mail, the works. Shall we trade?"],
+  "choices": [
+    { "label": "Let's trade", "action": "open_trade" },
+    { "label": "Maybe later", "action": "close" }
+  ]
+}

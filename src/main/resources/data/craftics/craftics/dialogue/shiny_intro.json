@@ -1,0 +1,13 @@
+{
+  "id": "craftics:shiny_intro",
+  "speaker": "",
+  "group": "shiny_intro",
+  "lines": [
+    "You see something shiny on the ground.",
+    "Approach it?"
+  ],
+  "choices": [
+    { "label": "Take it", "action": "shiny:take" },
+    { "label": "Leave it", "action": "shiny:leave" }
+  ]
+}

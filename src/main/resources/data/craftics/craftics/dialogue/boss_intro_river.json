@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_river",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "The current pulls back from your feet.",
+    "A Drowned breaks the surface, trident in hand."
+  ],
+  "choices": []
+}

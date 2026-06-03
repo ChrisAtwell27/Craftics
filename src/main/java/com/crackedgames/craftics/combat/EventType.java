@@ -12,7 +12,6 @@ public enum EventType {
     TREASURE_VAULT(0.04f, 0, true),
     DIG_SITE(0.06f, 0, true),
     TRADER(0.0f, 0, true),  // probability set from config at runtime
-    CRAFTING_STATION(0.05f, 0, false),
     NONE(0.0f, 0, false);   // remainder after other events
 
     public final float baseProbability;
@@ -36,7 +35,6 @@ public enum EventType {
             case "craftics:treasure_vault" -> TREASURE_VAULT;
             case "craftics:dig_site" -> DIG_SITE;
             case "craftics:trader" -> TRADER;
-            case "craftics:crafting_station" -> CRAFTING_STATION;
             default -> NONE;
         };
     }
@@ -51,7 +49,6 @@ public enum EventType {
             case TREASURE_VAULT -> "craftics:treasure_vault";
             case DIG_SITE -> "craftics:dig_site";
             case TRADER -> "craftics:trader";
-            case CRAFTING_STATION -> "craftics:crafting_station";
             case NONE -> "none";
         };
     }

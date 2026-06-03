@@ -1,0 +1,14 @@
+{
+  "id": "craftics:trial_ominous_intro",
+  "speaker": "",
+  "group": "trial_ominous_intro",
+  "lines": [
+    "A dark presence calls from the depths.",
+    "Legendary loot lies within. A Warden hunts.",
+    "Vote: accept the trial, or pass?"
+  ],
+  "choices": [
+    { "label": "Accept the Ominous Trial", "action": "trial:enter" },
+    { "label": "Not worth the risk", "action": "trial:pass" }
+  ]
+}

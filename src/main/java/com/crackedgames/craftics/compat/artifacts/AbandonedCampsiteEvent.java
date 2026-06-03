@@ -55,6 +55,9 @@ public final class AbandonedCampsiteEvent {
             0.06f,         // 6% — modest, since it has its own dedicated payoff
             0,             // available from the very first biome
             true,          // choice event — show accept/decline prompt
+            java.util.List.of(
+                "You find an abandoned campsite.",
+                "Embers still glow in the firepit. Something feels off."),
             HANDLER
         ));
     }

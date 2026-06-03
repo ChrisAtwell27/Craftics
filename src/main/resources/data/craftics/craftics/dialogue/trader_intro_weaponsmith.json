@@ -1,0 +1,10 @@
+{
+  "id": "craftics:trader_intro_weaponsmith",
+  "speaker": "minecraft:wandering_trader",
+  "group": "trader_intro_weaponsmith",
+  "lines": ["Steel and sweat, friend.", "Blades that'll outlast your foes. Care to look?"],
+  "choices": [
+    { "label": "Let's trade", "action": "open_trade" },
+    { "label": "Maybe later", "action": "close" }
+  ]
+}

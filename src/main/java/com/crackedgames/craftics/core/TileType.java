@@ -14,7 +14,17 @@ public enum TileType {
     // Occupants are visually hidden (INVISIBILITY effect) and mobs can't target them
     // except from an adjacent tile. Breakable by attacking the tile for 1 AP.
     TALL_GRASS(true, false, 0, true),
-    TALL_FERN(true, false, 0, true);
+    TALL_FERN(true, false, 0, true),
+    // Half-step at Y+0.5 — walkable, connects a floor tile to an adjacent
+    // ELEVATED tile so the player can climb a single block of height
+    // smoothly instead of teleporting up. Detected from any StairsBlock at
+    // the floor's Y+1 in ArenaBuilder's classification scan.
+    STAIR(true, false, 0, false),
+    // Full block one level above the arena floor (Y+1) that's adjacent to
+    // at least one STAIR tile — treated as the upper-floor landing of a
+    // stair ramp. Standing at Y+1 instead of Y. From here the player can
+    // walk down to the stair (Y+0.5) or drop straight to a base floor tile.
+    ELEVATED(true, false, 0, false);
 
     public final boolean walkable;
     public final boolean requiresBoat; // walkable only if player has a boat

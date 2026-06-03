@@ -5,8 +5,11 @@ import com.crackedgames.craftics.core.GridTile;
 import com.crackedgames.craftics.level.LevelDefinition;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.server.world.ServerWorld;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -214,6 +217,81 @@ public class TrialChamberEvent {
         };
     }
 
+    /** Items that can appear as the ominous-trial "hero" weapon. Real-material
+     *  weapons use the netherite tier; bow/crossbow/mace stay as their only tier. */
+    private static final Item[] OMINOUS_WEAPONS = {
+        Items.NETHERITE_SWORD, Items.NETHERITE_AXE,
+        Items.NETHERITE_SHOVEL, Items.NETHERITE_HOE,
+        Items.BOW, Items.CROSSBOW, Items.MACE
+    };
+
+    /** Any-tier armor piece, four slots × six materials. */
+    private static final Item[] OMINOUS_ARMOR = {
+        Items.LEATHER_HELMET, Items.LEATHER_CHESTPLATE, Items.LEATHER_LEGGINGS, Items.LEATHER_BOOTS,
+        Items.CHAINMAIL_HELMET, Items.CHAINMAIL_CHESTPLATE, Items.CHAINMAIL_LEGGINGS, Items.CHAINMAIL_BOOTS,
+        Items.IRON_HELMET, Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS, Items.IRON_BOOTS,
+        Items.GOLDEN_HELMET, Items.GOLDEN_CHESTPLATE, Items.GOLDEN_LEGGINGS, Items.GOLDEN_BOOTS,
+        Items.DIAMOND_HELMET, Items.DIAMOND_CHESTPLATE, Items.DIAMOND_LEGGINGS, Items.DIAMOND_BOOTS,
+        Items.NETHERITE_HELMET, Items.NETHERITE_CHESTPLATE, Items.NETHERITE_LEGGINGS, Items.NETHERITE_BOOTS,
+    };
+
+    /** Map an armor item to its equipment slot for the enchant pool lookup. */
+    private static EquipmentSlot armorSlotFor(Item item) {
+        String id = net.minecraft.registry.Registries.ITEM.getId(item).getPath();
+        if (id.endsWith("_helmet"))     return EquipmentSlot.HEAD;
+        if (id.endsWith("_chestplate")) return EquipmentSlot.CHEST;
+        if (id.endsWith("_leggings"))   return EquipmentSlot.LEGS;
+        if (id.endsWith("_boots"))      return EquipmentSlot.FEET;
+        return EquipmentSlot.CHEST;
+    }
+
+    /** Roll a single heavily enchanted armor piece — any material tier, any slot. */
+    private static ItemStack rollHeavyArmor(ServerWorld world, Random rng) {
+        Item item = OMINOUS_ARMOR[rng.nextInt(OMINOUS_ARMOR.length)];
+        ItemStack stack = new ItemStack(item, 1);
+        EquipmentSlot slot = armorSlotFor(item);
+        return CombatManager.heavilyEnchant(world, stack,
+            CombatManager.getValidArmorEnchants(slot), rng);
+    }
+
+    /** Roll a single heavily enchanted weapon — netherite tier (where applicable)
+     *  for swords/axes/shovels/hoes, plus bow/crossbow/mace. */
+    private static ItemStack rollHeavyWeapon(ServerWorld world, Random rng) {
+        Item item = OMINOUS_WEAPONS[rng.nextInt(OMINOUS_WEAPONS.length)];
+        ItemStack stack = new ItemStack(item, 1);
+        return CombatManager.heavilyEnchant(world, stack,
+            CombatManager.getValidWeaponEnchants(stack), rng);
+    }
+
+    /** Roll one supply item — high-tier consumables that complement the hero piece. */
+    private static ItemStack rollSupplyItem(Random rng) {
+        int roll = rng.nextInt(100);
+        if (roll < 15) {
+            // Rare top-shelf consumable
+            return new ItemStack(Items.ENCHANTED_GOLDEN_APPLE, 1);
+        } else if (roll < 40) {
+            return new ItemStack(Items.GOLDEN_APPLE, 1 + rng.nextInt(2));
+        } else if (roll < 70) {
+            return new ItemStack(Items.GOLDEN_CARROT, 3 + rng.nextInt(3));
+        } else if (roll < 85) {
+            return new ItemStack(Items.CAKE, 1);
+        }
+        return new ItemStack(Items.HONEY_BOTTLE, 2);
+    }
+
+    /** Per-player ominous trial reward: one heavily-enchanted gear piece (weapon
+     *  or armor, 50/50) plus 2-3 supply consumables. Called once per recipient
+     *  in CombatManager's loot loop. */
+    private static List<ItemStack> rollOminousLoot(ServerWorld world, Random rng) {
+        List<ItemStack> rewards = new ArrayList<>();
+        rewards.add(rng.nextBoolean() ? rollHeavyWeapon(world, rng) : rollHeavyArmor(world, rng));
+        int supplies = 2 + rng.nextInt(2); // 2 or 3
+        for (int i = 0; i < supplies; i++) {
+            rewards.add(rollSupplyItem(rng));
+        }
+        return rewards;
+    }
+
     /** Generate an ominous trial chamber — harder, with Warden + Breeze. */
     public static LevelDefinition generateOminous(int biomeOrdinal, int ngPlusLevel) {
         Random rng = new Random();
@@ -257,8 +335,11 @@ public class TrialChamberEvent {
         return new TrialChamberLevelDef(width, height, spawns, rng) {
             @Override public String getName() { return "Ominous Trial Chamber"; }
             @Override public Block getFloorBlock() { return Blocks.DEEPSLATE_BRICKS; }
-            @Override public List<ItemStack> rollCompletionLoot() {
-                return rollOminousRewards(new Random());
+            @Override public List<ItemStack> rollCompletionLoot(ServerWorld world) {
+                // Per-player: 1 heavily-enchanted gear piece (weapon or armor, 50/50)
+                // plus 2-3 supply consumables. CombatManager's loot loop calls this
+                // once per recipient so each member gets their own fresh roll.
+                return rollOminousLoot(world, new Random());
             }
         };
     }
@@ -344,41 +425,6 @@ public class TrialChamberEvent {
         }
     }
 
-    /** Ominous trial loot — better than regular trial. */
-    private static List<ItemStack> rollOminousRewards(Random rng) {
-        List<ItemStack> rewards = new ArrayList<>();
-        int count = 2 + (rng.nextFloat() < 0.5f ? 1 : 0); // 2-3 items
-        for (int i = 0; i < count; i++) {
-            int roll = rng.nextInt(100);
-            if (roll < 25) {
-                rewards.add(switch (rng.nextInt(3)) {
-                    case 0 -> new ItemStack(Items.DIAMOND, 3);
-                    case 1 -> new ItemStack(Items.ENCHANTED_GOLDEN_APPLE, 1);
-                    default -> new ItemStack(Items.TOTEM_OF_UNDYING, 1);
-                });
-            } else if (roll < 50) {
-                rewards.add(switch (rng.nextInt(3)) {
-                    case 0 -> new ItemStack(Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE, 1);
-                    case 1 -> new ItemStack(Items.MACE, 1);
-                    default -> new ItemStack(Items.TRIDENT, 1);
-                });
-            } else if (roll < 75) {
-                rewards.add(switch (rng.nextInt(3)) {
-                    case 0 -> new ItemStack(Items.HEAVY_CORE, 1);
-                    case 1 -> new ItemStack(Items.OMINOUS_TRIAL_KEY, 1);
-                    default -> new ItemStack(Items.WIND_CHARGE, 8);
-                });
-            } else {
-                rewards.add(switch (rng.nextInt(3)) {
-                    case 0 -> new ItemStack(Items.NETHERITE_SWORD, 1);
-                    case 1 -> new ItemStack(Items.NETHERITE_CHESTPLATE, 1);
-                    default -> new ItemStack(Items.DIAMOND_BLOCK, 2);
-                });
-            }
-        }
-        return rewards;
-    }
-
     /** Inner level definition for trial chambers. */
     static class TrialChamberLevelDef extends LevelDefinition {
         private final int width, height;
@@ -418,23 +464,16 @@ public class TrialChamberEvent {
 
         @Override
         public GridTile[][] buildTiles() {
-            // Add some obstacles to make the trial chamber more interesting
-            GridTile[][] tiles = super.buildTiles();
-            Random tileRng = new Random();
-
-            // Scatter a few copper/tuff obstacles (trial chamber aesthetic)
-            int obstacleCount = 4 + tileRng.nextInt(5);
-            for (int i = 0; i < obstacleCount; i++) {
-                int ox = 1 + tileRng.nextInt(width - 2);
-                int oz = 1 + tileRng.nextInt(height - 2);
-                // Don't place on player start
-                if (ox == 1 && oz == 1) continue;
-                tiles[ox][oz] = new GridTile(
-                    com.crackedgames.craftics.core.TileType.OBSTACLE,
-                    Blocks.COPPER_BLOCK
-                );
-            }
-            return tiles;
+            // Trial chambers are now schematic-driven (preserveSchematicGround).
+            // The previous random copper-obstacle scatter set OBSTACLE tile
+            // types that never matched a real world block — those phantom
+            // obstacles blocked pathfinding line-of-sight (a stray's arrow
+            // would report "blocked by an obstacle" even on a visually clear
+            // shot) and pinned the player out of perfectly walkable tiles.
+            // The post-scan in ArenaBuilder.buildAt promotes NORMAL → OBSTACLE
+            // wherever the placed schematic actually has wall blocks, so the
+            // dev's design is the single source of truth.
+            return super.buildTiles();
         }
 
         @Override

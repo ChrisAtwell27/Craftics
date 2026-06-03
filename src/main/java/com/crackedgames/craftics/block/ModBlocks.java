@@ -20,12 +20,14 @@ public class ModBlocks {
         RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "level_select_block"));
     private static final RegistryKey<Block> LEVEL_SELECT_GHOST_BLOCK_KEY =
         RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "level_select_ghost_block"));
+    private static final RegistryKey<Block> ARENA_CORNER_BLOCK_KEY =
+        RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "arena_corner"));
 
     public static final Block LEVEL_SELECT_BLOCK = registerBlock("level_select_block",
         new LevelSelectBlock(AbstractBlock.Settings.create()
             //? if >=1.21.2 {
-            /*.registryKey(LEVEL_SELECT_BLOCK_KEY)
-            *///?}
+            .registryKey(LEVEL_SELECT_BLOCK_KEY)
+            //?}
             .mapColor(MapColor.OAK_TAN)
             .strength(2.0f, 3.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.WOOD)
@@ -42,8 +44,8 @@ public class ModBlocks {
     public static final Block LEVEL_SELECT_GHOST_BLOCK = registerBlockNoItem("level_select_ghost_block",
         new LevelSelectGhostBlock(AbstractBlock.Settings.create()
             //? if >=1.21.2 {
-            /*.registryKey(LEVEL_SELECT_GHOST_BLOCK_KEY)
-            *///?}
+            .registryKey(LEVEL_SELECT_GHOST_BLOCK_KEY)
+            //?}
             .strength(2.0f, 3.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.WOOD)
             .nonOpaque()
@@ -51,6 +53,22 @@ public class ModBlocks {
             .suffocates((state, world, pos) -> false)
             .blockVision((state, world, pos) -> false)
             .dropsNothing()
+        )
+    );
+
+    // Polygon corner marker for non-rectangular arenas. Drop ≥3 of these
+    // around a custom shape (the legacy DIAMOND/EMERALD pair still works for
+    // simple rectangles); ArenaBuilder picks them up and uses the polygon
+    // they form as the arena's in-bounds mask.
+    public static final Block ARENA_CORNER_BLOCK = registerBlock("arena_corner",
+        new ArenaCornerBlock(AbstractBlock.Settings.create()
+            //? if >=1.21.2 {
+            .registryKey(ARENA_CORNER_BLOCK_KEY)
+            //?}
+            .mapColor(MapColor.LAPIS_BLUE)
+            .strength(1.5f, 6.0f)
+            .sounds(net.minecraft.sound.BlockSoundGroup.STONE)
+            .luminance(state -> 9)
         )
     );
 
@@ -67,11 +85,11 @@ public class ModBlocks {
 
         // Register block item
         //? if <=1.21.1 {
-        Item.Settings itemSettings = new Item.Settings();
-        //?} else {
-        /*Item.Settings itemSettings = new Item.Settings()
+        /*Item.Settings itemSettings = new Item.Settings();
+        *///?} else {
+        Item.Settings itemSettings = new Item.Settings()
             .registryKey(RegistryKey.of(RegistryKeys.ITEM, id));
-        *///?}
+        //?}
         Registry.register(Registries.ITEM, id,
             new BlockItem(block, itemSettings));
 

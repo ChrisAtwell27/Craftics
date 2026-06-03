@@ -1,0 +1,6 @@
+[10:41:35] [Test worker/WARN]: Unknown dialogue action 'banana' — treating as close
+[10:41:35] [Test worker/WARN]: Unknown dialogue action '' — treating as close
+[10:41:36] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'id' — skipping
+[10:41:36] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x has no 'lines' — skipping
+[10:41:36] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'speaker' — skipping
+[10:41:36] [Test worker/WARN]: Dialogue craftics:dialogue/x has a choice missing label/action — skipping that choice

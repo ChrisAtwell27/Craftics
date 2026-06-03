@@ -101,8 +101,8 @@ public class AIRegistry {
         // Heart is a craftics-virtual entity, so its AI is registered on every version.
         register("craftics:creaking_heart", new CreakingHeartAI()); // stationary target, kill to destroy creaking
         //? if >=1.21.4 {
-        /*register("minecraft:creaking", new CreakingAI());           // invulnerable guardian, linked to heart
-        *///?}
+        register("minecraft:creaking", new CreakingAI());           // invulnerable guardian, linked to heart
+        //?}
         // palegardenbackport:creaking AI is registered by PaleGardenBackportCompat.init().
 
         // === End pests ===

@@ -1,0 +1,10 @@
+{
+  "id": "craftics:trader_intro_curiosity_dealer",
+  "speaker": "minecraft:wandering_trader",
+  "group": "trader_intro_curiosity_dealer",
+  "lines": ["Heh heh... curious, are we?", "Oddities and rarities, for the right price."],
+  "choices": [
+    { "label": "Let's trade", "action": "open_trade" },
+    { "label": "Maybe later", "action": "close" }
+  ]
+}

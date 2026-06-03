@@ -194,15 +194,15 @@ public class HubPetCollector {
                         // Try to set tamed state
                         if (mob instanceof TameableEntity tameable) {
                             //? if <=1.21.4 {
-                            tameable.setOwnerUuid(player.getUuid());
-                            //?} else
-                            /*tameable.setOwner(player);*/
+                            /*tameable.setOwnerUuid(player.getUuid());
+                            *///?} else
+                            tameable.setOwner(player);
                             tameable.setTamed(true, false);
                         } else if (mob instanceof AbstractHorseEntity horse) {
                             //? if <=1.21.4 {
-                            horse.setOwnerUuid(player.getUuid());
-                            //?} else
-                            /*horse.setOwner(player);*/
+                            /*horse.setOwnerUuid(player.getUuid());
+                            *///?} else
+                            horse.setOwner(player);
                             horse.bondWithPlayer(player);
                         }
                         world.spawnEntity(mob);

@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_forest",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Runes etched into the bark begin to glow.",
+    "An Evoker raises its hands. Fangs split the earth."
+  ],
+  "choices": []
+}

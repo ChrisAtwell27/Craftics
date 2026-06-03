@@ -22,13 +22,13 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(TraderDonePayload.ID, TraderDonePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(StatChoicePayload.ID, StatChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(AffinityChoicePayload.ID, AffinityChoicePayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(EventChoicePayload.ID, EventChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(RespecPayload.ID, RespecPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(AffinityRespecPayload.ID, AffinityRespecPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(MoveSlotShiftPayload.ID, MoveSlotShiftPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeadCommandPayload.ID, LeadCommandPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeadSelectPayload.ID, LeadSelectPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(ClearPartyPayload.ID, ClearPartyPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(DialogueChoicePayload.ID, DialogueChoicePayload.CODEC);
 
         // Register S2C payload types
         PayloadTypeRegistry.playS2C().register(EnterCombatPayload.ID, EnterCombatPayload.CODEC);
@@ -41,7 +41,9 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(PlayerStatsSyncPayload.ID, PlayerStatsSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TileSetPayload.ID, TileSetPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TeammateHoverPayload.ID, TeammateHoverPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(EventRoomPayload.ID, EventRoomPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(DialoguePayload.ID, DialoguePayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(EnterEventCinematicPayload.ID, EnterEventCinematicPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(ExitEventCinematicPayload.ID, ExitEventCinematicPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AchievementUnlockPayload.ID, AchievementUnlockPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(GuideBookSyncPayload.ID, GuideBookSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AddonBonusSyncPayload.ID, AddonBonusSyncPayload.CODEC);
@@ -219,6 +221,11 @@ public class ModNetworking {
                 }
             }
 
+            // Full roster is registered now — build the turn queue and push one
+            // authoritative party-wide sync so every member's HUD shows the real
+            // party HP / turn order immediately instead of stale defaults.
+            leaderCm.finishPartyJoin();
+
             CrafticsMod.LOGGER.info("Player {} started {} (biome {}, level {}, party size {})",
                 player.getName().getString(), levelDef.getName(), biome.biomeId, levelIndex + 1,
                 partyMembers.size());
@@ -246,6 +253,12 @@ public class ModNetworking {
         ServerPlayNetworking.registerGlobalReceiver(TraderDonePayload.ID, (payload, context) -> {
             CombatManager.getActiveCombat(context.player().getUuid())
                 .handleTraderDone(context.player());
+        });
+
+        // Handle dialogue choice — route to party leader's CombatManager
+        ServerPlayNetworking.registerGlobalReceiver(DialogueChoicePayload.ID, (payload, context) -> {
+            CombatManager.getActiveCombat(context.player().getUuid())
+                .handleDialogueChoice(context.player(), payload.action());
         });
 
         // Handle stat choice from level-up screen
@@ -328,12 +341,6 @@ public class ModNetworking {
                     ));
                 }
             }
-        });
-
-        // Handle event room choice (shrine/traveler/vault)
-        ServerPlayNetworking.registerGlobalReceiver(EventChoicePayload.ID, (payload, context) -> {
-            CombatManager.getActiveCombat(context.player().getUuid())
-                .handleEventChoice(context.player(), payload.choiceIndex());
         });
 
         // Handle respec — refund and reallocate stat points (costs XP levels)

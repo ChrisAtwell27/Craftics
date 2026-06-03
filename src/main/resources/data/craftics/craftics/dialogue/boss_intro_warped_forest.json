@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_warped_forest",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Warped spores swirl thick in the air.",
+    "An Enderman opens its jaws and screams."
+  ],
+  "choices": []
+}

@@ -38,7 +38,12 @@ public final class MoveSlotManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
 
-        boolean inCombat = com.crackedgames.craftics.combat.CombatManager.get(player).isActive();
+        // Non-leader party members share the leader's CombatManager; their own
+        // per-player instance stays inactive. Resolve through getActiveCombat so
+        // member.isActive() reports the leader's state and the Move item isn't
+        // stripped from non-leaders every tick.
+        boolean inCombat = com.crackedgames.craftics.combat.CombatManager
+            .getActiveCombat(player.getUuid()).isActive();
         PlayerInventory inv = player.getInventory();
 
         if (!inCombat) {

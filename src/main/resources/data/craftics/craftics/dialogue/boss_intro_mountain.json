@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_mountain",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "Boulders skitter loose from the cliffs.",
+    "A Vindicator charges down the scree, axe raised."
+  ],
+  "choices": []
+}

@@ -1,0 +1,12 @@
+{
+  "id": "craftics:traveler_intro",
+  "speaker": "minecraft:villager",
+  "group": "traveler_intro",
+  "lines": [
+    "\"Please... I haven't eaten in days...\"",
+    "The traveler eyes your pack hopefully."
+  ],
+  "choices": [
+    { "label": "Walk away", "action": "traveler:leave" }
+  ]
+}

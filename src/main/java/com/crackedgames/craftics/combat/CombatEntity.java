@@ -21,6 +21,10 @@ public class CombatEntity {
     private MobEntity mobEntity;
 
     private boolean damagedSinceLastTurn = false;
+    /** UUID of the party member who most recently dealt damage to this entity.
+     *  Used to attribute per-mob loot drops to the player who killed it instead
+     *  of splitting them across the whole party. */
+    private java.util.UUID lastDamagerUuid = null;
     private int fuseTimer = 0;
     private boolean selfExploded = false; // creeper self-detonation = no drops
     private int size;
@@ -575,6 +579,10 @@ public class CombatEntity {
         }
         return before - currentHp;
     }
+
+    /** Most-recent damager — used by per-mob loot drops to credit the killer. */
+    public java.util.UUID getLastDamagerUuid() { return lastDamagerUuid; }
+    public void setLastDamagerUuid(java.util.UUID uuid) { this.lastDamagerUuid = uuid; }
 
     public String getDisplayName() {
         if (bossDisplayName != null) return bossDisplayName;

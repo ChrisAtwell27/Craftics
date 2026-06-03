@@ -198,7 +198,7 @@ public class CrafticsConfig {
     public float trimDropChance = 0.35f;
 
     @RangeConstraint(min = 0.0, max = 1.0)
-    public float potterySherdDropChance = 0.02f;
+    public float potterySherdDropChance = 0.04f;
 
     @RangeConstraint(min = 0.0, max = 1.0)
     public float traderSpawnChance = 0.25f;

@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_chorus_grove",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "The chorus stalks sway without wind.",
+    "An Enderman blinks into your path."
+  ],
+  "choices": []
+}

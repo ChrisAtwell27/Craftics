@@ -1,0 +1,10 @@
+{
+  "id": "craftics:boss_intro_jungle",
+  "speaker": "",
+  "group": "boss_intro",
+  "lines": [
+    "The canopy goes still.",
+    "Eyes glitter above. The vines tremble."
+  ],
+  "choices": []
+}
