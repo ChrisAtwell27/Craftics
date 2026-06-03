@@ -221,6 +221,11 @@ public class ModNetworking {
                 }
             }
 
+            // Full roster is registered now — build the turn queue and push one
+            // authoritative party-wide sync so every member's HUD shows the real
+            // party HP / turn order immediately instead of stale defaults.
+            leaderCm.finishPartyJoin();
+
             CrafticsMod.LOGGER.info("Player {} started {} (biome {}, level {}, party size {})",
                 player.getName().getString(), levelDef.getName(), biome.biomeId, levelIndex + 1,
                 partyMembers.size());

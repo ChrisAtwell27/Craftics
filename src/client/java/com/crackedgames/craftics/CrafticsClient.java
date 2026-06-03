@@ -300,7 +300,7 @@ public class CrafticsClient implements ClientModInitializer {
                     // behind a black overlay and the player can't see them.
                     TransitionOverlay.startFadeOut();
                     context.client().setScreen(new com.crackedgames.craftics.client.DialogueScreen(
-                        payload.speaker(), lines, labels, actions));
+                        payload.speaker(), lines, labels, actions, payload.background()));
                 });
             }
         );

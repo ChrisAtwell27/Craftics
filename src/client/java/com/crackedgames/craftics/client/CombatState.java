@@ -354,6 +354,23 @@ public class CombatState {
     private static java.util.List<TurnOrderEntry> turnOrderList = new java.util.ArrayList<>();
     public static java.util.List<TurnOrderEntry> getTurnOrderList() { return turnOrderList; }
 
+    /**
+     * Whether the local client's player is the current turn-holder. Solo (empty
+     * turn order) is always true. Used to keep per-turn-player HUD (AP / move
+     * pips) and animations from showing the active player's state on a
+     * non-acting teammate's screen.
+     */
+    public static boolean isLocalPlayersTurn() {
+        if (turnOrderList.isEmpty()) return true;
+        net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+        String myUuid = mc.getSession().getUuidOrNull() != null
+            ? mc.getSession().getUuidOrNull().toString() : "";
+        for (TurnOrderEntry entry : turnOrderList) {
+            if (entry.isCurrent() && entry.uuid().equals(myUuid)) return true;
+        }
+        return false;
+    }
+
     // Hovered enemy inspection
     private static int hoveredEnemyId = -1;
     public static int getHoveredEnemyId() { return hoveredEnemyId; }
@@ -486,6 +503,12 @@ public class CombatState {
         playerEffects = "";
         partyHpList.clear();
         turnOrderList.clear();
+        // Reset to 0 (not the 20 default) so the first sync of the next combat
+        // sees oldLocalHp == 0 and skips the damage/heal flash + screen shake.
+        // Otherwise a player who ended the last combat at a different HP would
+        // get a spurious flash comparing the new combat's HP against the stale
+        // carried-over value (the oldLocalHp > 0 guards suppress it at 0).
+        localPlayerHp = 0;
     }
 
     public static void updateFromSync(int phase, int ap, int movePoints,

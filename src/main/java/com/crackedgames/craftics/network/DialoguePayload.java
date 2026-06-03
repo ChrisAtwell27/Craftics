@@ -14,8 +14,23 @@ import java.util.List;
  * S2C: open a dialogue on the client. {@code lines} and {@code choices} are encoded
  * as delimited strings (this repo uses no list packet codecs). {@code speaker} is an
  * entity-type id for the portrait + voice.
+ *
+ * <p>{@code background} tells the client which backdrop to paint behind the box.
+ * The client must NOT infer this from its combat/cinematic flags: a pre-level
+ * intro (boss intro, trial vote) fires during the transition out of the previous
+ * fight, before any ExitCombat packet clears {@code inCombat}, so the stale arena
+ * would blur through. The server knows the real context, so it declares it here.
+ * See {@link #BG_AUTO}/{@link #BG_SCENERY}/{@link #BG_SOLID}.
  */
-public record DialoguePayload(String speaker, String lines, String choices) implements CustomPayload {
+public record DialoguePayload(String speaker, String lines, String choices, int background)
+        implements CustomPayload {
+
+    /** Let the client decide from its combat/cinematic flags (legacy heuristic). */
+    public static final int BG_AUTO = 0;
+    /** Keep the world/arena visible behind the box (event-scene + mid-combat dialogues). */
+    public static final int BG_SCENERY = 1;
+    /** Paint solid black behind the box (pre-level intros with no live scene). */
+    public static final int BG_SOLID = 2;
 
     /** U+001F unit separator: between lines, and between a choice's label and action. */
     private static final String UNIT = "\u001F";
@@ -30,7 +45,13 @@ public record DialoguePayload(String speaker, String lines, String choices) impl
             PacketCodecs.STRING, DialoguePayload::speaker,
             PacketCodecs.STRING, DialoguePayload::lines,
             PacketCodecs.STRING, DialoguePayload::choices,
+            PacketCodecs.INTEGER, DialoguePayload::background,
             DialoguePayload::new);
+
+    /** Backwards-friendly constructor: defaults to {@link #BG_AUTO}. */
+    public DialoguePayload(String speaker, String lines, String choices) {
+        this(speaker, lines, choices, BG_AUTO);
+    }
 
     @Override public Id<? extends CustomPayload> getId() { return ID; }
 
