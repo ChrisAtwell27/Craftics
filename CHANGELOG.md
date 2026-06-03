@@ -4,50 +4,50 @@ Changelog
 
 Events and dialogue
 
-- Events now play out in third person: your whole party walks up to the trader together before trading begins, with the camera following each player
-- New dialogue system introduces the trader before you shop, with a unique greeting for each of the 8 trader types, text that types out one letter at a time with the speaker's voice, and a click to skip ahead
-- After you close the shop, the trader asks if you're done; choosing "No" reopens the shop so you can keep browsing, and the run continues once everyone in the party is finished
-- Dialogue is fully data-driven (JSON files under data/craftics/dialogue) and reusable for future NPCs and content
-- Shrine of Fortune migrated to the dialogue + cinematic flow: you walk up to the shrine on an approach path, the narrator opens a choiceless intro line (no portrait, no speaker name), and your offering choices come through dialogue buttons. Reward results read back as a narrator line you click to dismiss
-- Shrine area now extends an approach walkway out the entrance side and seals everything else with barriers
-- New NOTHING reward band on the shrine: small offerings have a 25% bust chance, medium 15%, large 8%. The narrator says "The offering vanishes... nothing remains." when it triggers
-- Insufficient emeralds now re-offer the full shrine menu with a narrator preamble instead of bouncing you back to a chat error
-- Wounded Traveler uses the same cinematic + dialogue flow as the trader, the villager waits at the back of the path while the party walks up to make their offer, each player sees their own list of foods sorted by quality with a walk-away option, and a narrator line confirms the gift before the run continues
-- Wandering Enchanter is now a two-step dialogue, first you pick between enchanting a weapon or enhancing armor, then you choose a specific item from the filtered list with a Back option to switch categories without leaving, and the enchanter no longer offers no-op enchantments on sticks, bamboo, blaze and breeze rods, or corals
-- Treasure Vault opens with a narrator dialogue, the party walks in and rings the lodestone centerpiece, choosing to open delivers loot to each player and narrates the count, walking away keeps everyone moving
-- Ambush encounters are now a party vote: the narrator says "You see something shiny on the ground" and every member chooses Take it or Leave it. A strict Take majority rolls 50/50 between a rare reward (handed to one random Yes voter, scaled to biome tier) and the ambush combat. A strict Leave majority walks past safely. A tie triggers the ambush
-- Removed the legacy event-room button screen, every event now flows through the same dialogue UI for a consistent feel
-- Dig Site is now a push-your-luck dialogue minigame: each player sees a Keep brushing / Attempt choice. Brushing has a 10% chance per click of breaking the relic (you're out, empty-handed), but each successful brush raises your Attempt pull chance from 5% by +15% up to 100% (at which point the Keep brushing button drops off and only Attempt remains). Sweet spot lands around 5-6 brushes for the best expected pottery-sherd payout. Replaces the suspicious-block right-click flow
-- Removed the Crafting Station event. The room never quite earned its slot in the cascade (it took a between-level turn to give you what a hub crafting table already provides), and its bell-exit mechanic was the only event that broke the dialogue-driven pattern. The probability it occupied is redistributed to the remaining events automatically, so no config edit is needed
-- Trial Chamber and Ominous Trial Chamber are now full party-vote dialogue events: every member sees the narrator with "Enter the trial" / "Pass" choices and a tie or strict-majority Enter takes the trial, while strict-majority Pass skips straight to the next level. Disconnects count as Pass. Replaces the previous leader-only Accept/Decline screen entirely; the choice no longer routes through the post-battle screen
-- Ominous Trial loot rebuilt to deliver on its "legendary" reputation: each surviving player rolls one heavily-enchanted hero piece (50/50 weapon or armor — netherite-tier sword/axe/shovel/hoe or bow/crossbow/mace for weapons; any material tier for armor, all four slots) carrying 3-5 vanilla-max enchantments from the slot-appropriate pool, plus 2-3 supply consumables (enchanted golden apple, golden apple, golden carrot, cake, or honey bottle). Replaces the previous mixed table that mostly dropped Diamonds, Wind Charges, and Trial Keys
-- While a trial or addon-event intro is waiting on the rest of the party, dismissers now see a "Waiting for party..." loading overlay instead of being dropped back into an empty arena
-- Addon events can declare optional narrator intro lines via the new EventEntry introLines field. When non-empty, the leader's Accept/Decline screen is gated behind an all-dismiss narrator dialogue, consistent with built-in events. When empty, the legacy chat-line preface still fires. The 6-arg EventEntry constructor remains so addons compiled against 0.2.0 keep loading unchanged
-- Abandoned Campsite (from the Artifacts compat layer) now opens with "You find an abandoned campsite. Embers still glow in the firepit. Something feels off." as a narrator dialogue, replacing its chat-msg preface
-- Fixed a soft-lock where the trial or addon-event intro would stall the whole party if the would-be leader disconnected between the narrator dismiss and the Accept/Decline screen. The dismiss gate now auto-declines on the party's behalf so everyone proceeds to the next level
-- Addon event probabilities now scale by the same pity-timer discount as built-in events, so addons no longer creep up to a disproportionate share of the cascade as the pity counter ramps
-- Boss fights now open with a narrator dialogue. All 18 vanilla biomes ship with unique flavor lines matched to their boss (Plains zombie, Dark Forest evoker, Scorching Desert pharaoh, Dense Jungle spider, Stony Peaks vindicator, Snowy Tundra stray, River Delta drowned, Underground Caverns hulk, Deep Dark warden, Nether Wastes magma cube, Crimson Forest archer, Warped Forest enderman, Soul Sand Valley ghast, Basalt Deltas wither, End City shulker, Dragon's Nest dragon, Outer End Islands enderman, Chorus Grove enderman). Every dismisser sees a "☠ Boss Approaching ☠" waiting overlay until the rest of the party clicks through, then the arena loads. Mod authors can register their own per-biome intro at id craftics:boss_intro_&lt;biomeId&gt; (or ship a JSON at data/&lt;modid&gt;/dialogue/boss_intro_&lt;biomeId&gt;.json); biomes without one skip the intro entirely rather than show a placeholder
+- Events now play out in third person: your party walks up to NPCs together with the camera following each player
+- New dialogue system introduces NPCs with unique greetings, letter-by-letter text with voice acting, and a click to skip
+- Post-transaction dialogue lets you reopen shops or move on
+- All dialogue is data-driven JSON and reusable for future NPCs
+- Shrine of Fortune uses the dialogue system: walk up via an approach path, choose offerings through dialogue buttons, get narrator results you click to dismiss
+- Shrine area now has an approach walkway and sealed barriers
+- New NOTHING reward band on the shrine: 25% bust on small, 15% on medium, 8% on large offerings
+- Insufficient emeralds now re-offer the shrine menu with a narrator note instead of a chat error
+- Wounded Traveler: villager waits at path's end, each player sees foods sorted by quality with a walk-away option, narrator confirms the gift before continuing
+- Wandering Enchanter: pick weapon enchant or armor enhance, then choose from filtered items. No longer offers no-op enchants on weak tools or corals
+- Treasure Vault: walk in and ring the lodestone to open for loot or walk away to continue
+- Ambush encounters: party votes Take it or Leave it on shiny items. Take majority rolls 50/50 between rare reward and combat. Leave majority walks past. Tie triggers combat
+- Removed the legacy event-room button screen. All events now use the same dialogue UI
+- Dig Site is now a push-your-luck minigame: brush successfully to raise your pull chance 5% up to 100%, or break the relic and lose. Sweet spot is around 5-6 brushes
+- Removed Crafting Station event (redistributed to other events automatically)
+- Trial Chambers are now full party votes: Enter majority takes the trial, Pass majority skips to the next level. Disconnects count as Pass
+- Ominous Trial loot now drops heavily-enchanted hero pieces (weapon or armor) with 3-5 vanilla-max enchantments plus supply consumables
+- Trial intros show "Waiting for party..." overlay instead of dropping to an empty arena
+- Addon events can declare optional narrator intros via the EventEntry introLines field
+- Abandoned Campsite now opens with narrator dialogue
+- Fixed soft-lock when trial intro leader disconnects between dismiss and Accept screen
+- Addon probabilities now scale with pity-timer like built-in events
+- Boss fights open with narrator dialogue: all 18 vanilla biomes have unique boss flavor lines. Mod authors can register per-biome intros at craftics:boss_intro_&lt;biomeId&gt;
 
 Arena creation
 
-- Arenas can now be non-rectangular: drop three or more of the new craftics:arena_corner blocks around any shape and ArenaBuilder picks them up as a polygon outline (legacy DIAMOND/EMERALD corner pairs still produce a rectangle, no schematic edits needed). The polygon mask propagates through the single isInBounds gate so pathfinding, enemy AI, VFX, and occupancy all respect the shape automatically
-- New /craftics build_arena <shape> [radius] dev command terraforms a flat polygon around the caster and drops the corner markers for you. Presets: square, diamond, octagon, hexagon, plus, cross, l_shape, t_shape. Default radius 8 (17x17 bbox); accepts 2-64. Clears 6 blocks of air above the floor inside the polygon so existing terrain doesn't poke into the playspace
+- Arenas can now be non-rectangular: drop craftics:arena_corner blocks around any shape for a polygon outline (legacy DIAMOND/EMERALD pairs still work). The polygon propagates through pathfinding, AI, VFX, and occupancy
+- New /craftics build_arena <shape> [radius] command terraforms a polygon and drops corner markers. Presets: square, diamond, octagon, hexagon, plus, cross, l_shape, t_shape. Default radius 8 (2-64 supported)
 
 Combat
 
 - Co-op feeding: holding a food item and clicking an adjacent party member feeds them instead of healing yourself
-- /home (and /craftics world home) are now blocked during combat for non-ops. Previously a player could chip away at a tough fight and bail out to the hub at full inventory whenever they were about to die, which trivialized any boss attempt. Ops still have access for debugging and world maintenance
-- Non-boss mob base damage is now capped per biome pair on a 3 + (biomeOrdinal / 2) curve: first two biomes cap at 3, next two at 4, next two at 5, and so on, so early-game enemies can't shred a fresh player with a near-one-shot hit while late-game still ramps up. Bosses bypass the cap on purpose
-- Bosses (and any mob) with Sharpness on their mainhand now get the enchant level subtracted from their base attack at spawn, so the on-hit total (base + Sharpness) stays close to the designed value instead of double-stacking into a one-shot
+- /home is now blocked during combat for non-ops (prevents trivializing boss fights via hub runs)
+- Non-boss base damage is capped per biome pair: 3 + (biomeOrdinal / 2), preventing early-game one-shots
+- Mobs with Sharpness have enchant level subtracted from base damage to prevent double-stacking
 
 Enemy AI
 
-- Fixed ghost rider mobs left behind by stack enemies: when a Zombie Stack / Skeleton Horseman / Slime Tower etc. was force-killed (counterattack, smite, sweep, ranged kill) or combat ended with one still alive, the cosmetic baby zombie / skeleton / second slime riding on top stayed in the world as an untracked "ghost mob" — visible but no longer participating in combat. killEnemy now clears stack passengers before the death-shrink animation, the dying-mob discard tick clears them as a safety net, and endCombat sweeps any craftics_stack_visual entity that somehow survived
-- Fixed melee mobs going idle while standing right next to you: the wander fallback now attacks when already adjacent instead of shuffling around or sitting still
-- Fixed enemy melee in MP playing the attack windup against a non-host party member, then silently dropping the hit because the range check measured to the host's tile instead of the target's. The mob now resolves the closest live party member as its melee target and the damage routes to that player (their armor / shield / dodge / absorb all apply), so attacks that look like they connected actually connect and the right player takes the damage
-- Mobs winding up an attack now turn to face the player they're actually swinging at, not just the host. In MP the swing animation lined up wrong when a mob walked over to a non-host teammate
-- The whole post-hit chain (bleed / burn / poison / knockback / smite extra hit / thorns / counterattack / death check) now resolves against the actual melee target in MP, not the host. The death handler also fires on the right player when their HP hits the clamp, fixing the "I'm at 0 HP but completely fine" leader-can't-die softlock that happened when the hit landed on a non-host
-- Desert boss (Sandstorm Pharaoh) no longer carries Sharpness II on its golden sword. With the base-attack tuning + Fire Aspect already on it, Sharpness on top was stacking into near-one-shots in an early biome. Replaced with Knockback I to keep the "blow you off the dune" feel without the damage spike
+- Fixed ghost rider mobs left behind by stack enemies (Zombie Stack, Skeleton Horseman, Slime Tower)
+- Fixed melee mobs going idle when standing next to you
+- Enemy melee in MP now targets the actual closest player instead of the host, and damage routes correctly
+- Mobs now turn to face the player they're actually attacking
+- Post-hit effects (bleed, burn, knockback, etc.) resolve against the correct target in MP
+- Desert boss (Sandstorm Pharaoh) no longer carries Sharpness II on its golden sword. With the base-attack tuning + Fire Aspect already on it, Sharpness on top was stacking into near-one-shots in an early biome. Replaced with Knockback I
 
 Loot
 
@@ -60,22 +60,34 @@ Inventory and economy
 
 Multiplayer fixes
 
-- Fixed event routing in MP so non-leader party members' shrine / trader / event UI choices reach the host's CombatManager instead of dropping into their own inactive instance and softlocking the room
-- Fixed the post-event return transition treating whoever dismissed the result last as the new combat leader: turn order, leaderUuid, partyPlayers, and PARTY_COMBAT_LEADER mapping now stay anchored on the original host so the wrong player no longer goes first and gets stuck unable to end their turn
-- Fixed the Move item being stripped from non-leader party members every server tick: MoveSlotManager now resolves combat state through getActiveCombat so non-leaders see the host's active flag
-- Fixed Vitality and Host trim HP bonuses only applying to the host: non-leader party members now get the same HEALTH_BOOST during combat start and level transitions, with HP ratio preserved across levels
-- Fixed every other party member's avatar playing the walking animation in place whenever any one teammate moved: CombatAnimations now only triggers the local walk anim when the local player is the current turn-holder
-- Added server-driven entity position broadcast for combat moves and cinematic walkers so the host's pawn (and any other walker) is seen traversing by every other observer's client
-- Fixed damage flash + screen shake retriggering on every turn rotation in MP: the local HP delta now reads from per-UUID partyHpData instead of the shared current-turn-player HP field
-- Fixed turn-end click being ignored after a shrine/trader/event when routing pointed at the wrong CombatManager
-- Removed the auto-teleport that snapped the surviving party leader onto the spot where a downed teammate fell. The next-in-line takes over the fight from their own current tile instead of jumping to the corpse
-- Status effects are now per-player: bleed, burn, poison, slowness, fire / soaked / freeze and the rest land on the player who was actually hit, tick on their turn, modify their speed, and show under their HP bar. Previously combat effects were stored in a single host-only slot so any hit on player 2 visually applied to player 1 and the wrong player took the DoT damage. Tooltip and HUD effect strips now display each player's own active effects in MP
-- Fixed creeper explosions checking distance only to the host's tile, so a creeper detonating next to player 2 with the host out of range did zero damage to anyone. Every party member in the blast radius now takes the hit (and knockback / blast effects) routed through their own armor / shield / dodge stats
-- HUD HP bar now reads from per-UUID partyHpData so after a player dies their screen keeps showing 0 instead of jumping to the new turn-holder's HP ("player 1 took player 2's health" no longer happens — that was the host CM's this.player swapping to the next alive member after a death handoff, which then flowed into the shared playerHp broadcast field)
-- Fixed the host's combat walk / attack / cinematic animations dying from their own POV after a void death or any respawn. The static animation state (wasAnimating, currentLayer, attack timer, cinematic walk tracking) now resets when the local client player entity changes, so the new respawn entity gets fresh animation handling instead of inheriting stuck flags from the dead entity
-- Fixed knockback launching the host across the arena when a mob hit them after a non-host teammate had just taken a turn. The knockback handler read the "from" tile out of arena.getPlayerGridPos() (which only tracks one position — whoever last took a player turn) so on the host's hit it computed knockback origin from player 2's tile and teleported the host to land next to where player 2 was standing. It now reads the actual target player's block position directly, so each knockback comes from where the player really is
-- Fixed ranged enemy attacks (skeleton, stray, pillager, blaze, ghast, witch, shulker, drowned-with-trident, breeze, llama, evoker fangs) routing damage to the wrong player in MP — same root cause as the melee fix but the ranged path was missed. Target resolution + post-hit chain (damage, sound, message, flame ignite, punch knockback, overwatch counter, death check) now swap this.player to the actual ranged target for the full chain, so the hit lands on the right player and any mid-chain death handoff doesn't bleed follow-on damage onto whoever the handler swapped this.player to. This was likely producing the "skeleton attacked twice in one turn" reports where player 2 died on the first shot and player 1 took follow-on damage that should have stayed on player 2
-- Level Select block now reads from the party leader's progression data (highest biome unlocked, branch choice, discovered biomes) instead of the visiting player's own data. In MP every member opening the level select saw their OWN run state — player 1 saw Desert while player 2 saw Tundra — even though only the leader can queue the match. Every party member now sees the same shared run state on the level select screen
+- Fixed event routing in MP: non-leader choices now reach the host's CombatManager instead of their own inactive instance
+- Fixed post-event transitions: turn order and leader mapping stay anchored on the original host
+- Fixed Move item being stripped from non-leaders every server tick
+- Fixed Vitality and Host trim HP bonuses only applying to the host
+- Fixed every teammate's avatar walking in place instead of only the turn-holder
+- Added server-driven position broadcast for all combat moves and cinematic walkers
+- Fixed damage flash retriggering on every turn rotation (now reads per-UUID HP)
+- Fixed turn-end clicks being ignored after events
+- Removed auto-teleport that snapped survivors to a downed teammate's corpse
+- Status effects are now per-player: each hit lands on the right player and ticks on their turn
+- Fixed creeper blasts checking distance only to the host's tile
+- HUD HP bar reads per-UUID data so dead players show 0 instead of next turn-holder's HP
+- Fixed host animations dying after void deaths and respawns
+- Fixed knockback reading the wrong player's tile and teleporting hosts
+- Fixed ranged enemy attacks (skeletons, pillagers, etc.) routing damage to the wrong player in MP
+- Level Select block now reads the leader's progression data instead of each player's own
+- Per-turn status effects now tick for every party member, not just the last actor
+- Boss area attacks now hit every party member in the blast radius
+- Boss single-target abilities now land on the actual targeted player
+- Boss push/pull now displaces the correct player from their own tile
+- Defensive bonuses now follow the player being hit (Ocean's Blessing is per-UUID)
+- Riptide, knockback, wind-charge, and blink teleports are now broadcast to all observers
+- Fixed teammates losing turns when a player disconnects mid-round
+- Fixed survivors getting a free extra action when a teammate dies
+- Party HUD shows correct HP and turn order the instant combat starts
+- AP and Speed pips now show full when it isn't your turn
+- "Hidden" stealth indicator now shows per-player based on their own tile
+- Fixed stray damage flash on re-entering combat at different HP
 
 0.2.1
 

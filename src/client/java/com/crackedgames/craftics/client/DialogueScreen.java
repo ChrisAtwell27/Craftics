@@ -1,6 +1,7 @@
 package com.crackedgames.craftics.client;
 
 import com.crackedgames.craftics.network.DialogueChoicePayload;
+import com.crackedgames.craftics.network.DialoguePayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -30,6 +31,8 @@ public class DialogueScreen extends Screen {
     private final List<String> lines;
     private final List<String> choiceLabels;
     private final List<String> choiceActions;
+    /** Server-declared backdrop mode (DialoguePayload.BG_*). */
+    private final int background;
 
     private int lineIndex = 0;
     private int charsShown = 0;
@@ -49,11 +52,19 @@ public class DialogueScreen extends Screen {
 
     public DialogueScreen(String speakerId, List<String> lines,
                           List<String> choiceLabels, List<String> choiceActions) {
+        this(speakerId, lines, choiceLabels, choiceActions,
+            DialoguePayload.BG_AUTO);
+    }
+
+    public DialogueScreen(String speakerId, List<String> lines,
+                          List<String> choiceLabels, List<String> choiceActions,
+                          int background) {
         super(Text.literal("Dialogue"));
         this.speakerId = speakerId;
         this.lines = lines;
         this.choiceLabels = choiceLabels;
         this.choiceActions = choiceActions;
+        this.background = background;
         // A dialogue with no lines is still "complete" so choices show immediately.
         if (lines.isEmpty()) {
             this.lineComplete = true;
@@ -173,10 +184,21 @@ public class DialogueScreen extends Screen {
      *        warnings) fire between levels with no cinematic and no active
      *        combat. The stale previous arena would blur behind the box if we
      *        let it show through, so we paint solid black for focus.</li>
-     *  </ul> */
+     *  </ul>
+     *  <p>The server declares the intended mode via {@code DialoguePayload.background}.
+     *  We honor that explicitly because the client's own combat/cinematic flags are
+     *  unreliable at the moment a pre-level intro opens: the boss intro is sent
+     *  during the transition out of the just-finished fight, BEFORE the ExitCombat
+     *  packet clears {@code inCombat}, so the old auto-only heuristic saw "still in
+     *  combat" and blurred the dead arena through. {@code BG_AUTO} keeps the legacy
+     *  heuristic for any caller that doesn't specify. */
     @Override
     public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
-        boolean keepScenery = CombatState.isCinematicActive() || CombatState.isInCombat();
+        boolean keepScenery = switch (background) {
+            case DialoguePayload.BG_SCENERY -> true;
+            case DialoguePayload.BG_SOLID -> false;
+            default -> CombatState.isCinematicActive() || CombatState.isInCombat();
+        };
         if (keepScenery) {
             super.renderBackground(ctx, mouseX, mouseY, delta);
         } else {

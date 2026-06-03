@@ -2,6 +2,8 @@
   "generator.craftics.craftics": "Craftics",
   "block.craftics.level_select_block": "Level Select Table",
   "item.craftics.level_select_block": "Level Select Table",
+  "block.craftics.arena_corner": "Arena Corner Marker",
+  "item.craftics.arena_corner": "Arena Corner Marker",
   "gui.craftics.level_select.title": "Level Select",
   "key.craftics.attack_mode": "Toggle Attack/Move Mode",
   "key.craftics.end_turn": "End Turn",

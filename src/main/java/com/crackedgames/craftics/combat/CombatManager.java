@@ -381,6 +381,95 @@ public class CombatManager {
      *  reassignment so the existing 32+ {@code combatEffects.X()} call sites
      *  automatically operate on the right player's state. No-op when
      *  {@code this.player == null}. */
+    /**
+     * Runs the player-side per-turn effects for whoever {@code this.player} currently is:
+     * trim REGEN, status DoT/regen, magma/soul-sand/tidal tile hazards, campfire heal, and
+     * poison-cloud breath. Callers swap {@code this.player} (and the arena grid pos) to each
+     * party member before invoking this so every member's own effects, trim scan, and tile
+     * are used. Returns {@code true} if a player death ended the whole combat (party wiped),
+     * in which case the caller should abort the current tick.
+     */
+    private boolean tickPlayerPerTurnEffects() {
+        if (player == null) return false;
+        // The player this pass is processing. handlePlayerDeathOrGameOver swaps
+        // this.player to the next-alive member on death, so we capture the member
+        // up front and stop processing them the moment they die (returning false
+        // unless the whole party wiped). Without this, post-death tile effects
+        // would run against the swapped-in survivor and double-process them.
+        ServerPlayerEntity member = this.player;
+
+        // Trim REGEN bonus: +1 HP per piece every 2 turns
+        int trimRegen = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.REGEN) : 0;
+        if (trimRegen > 0 && turnNumber % 2 == 0
+                && member.getHealth() < member.getMaxHealth()) {
+            member.setHealth(Math.min(member.getMaxHealth(), member.getHealth() + trimRegen));
+            sendMessage("§a♥ Trim regen healed " + trimRegen + " HP");
+        }
+
+        int hpChange = combatEffects.applyPerTurnEffects(SpecialAffinity.points(member));
+        if (hpChange != 0) {
+            float newHp = Math.max(1, Math.min(member.getMaxHealth(), member.getHealth() + hpChange));
+            member.setHealth(newHp);
+            if (hpChange > 0) {
+                sendMessage("§a♥ Regeneration healed " + hpChange + " HP");
+            } else {
+                StringBuilder dmgSources = new StringBuilder();
+                if (combatEffects.hasEffect(CombatEffects.EffectType.POISON)) dmgSources.append("Poison ");
+                if (combatEffects.hasEffect(CombatEffects.EffectType.WITHER)) dmgSources.append("Wither ");
+                if (combatEffects.hasEffect(CombatEffects.EffectType.BURNING)) dmgSources.append("Fire ");
+                sendMessage("§c☠ " + dmgSources.toString().trim() + " dealt " + (-hpChange) + " damage");
+            }
+            if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return partyPlayers.size() <= 1 || !active; }
+        }
+
+        GridPos playerPos = arena.getPlayerGridPos();
+        GridTile playerTile = arena.getTile(playerPos);
+        if (playerTile != null) {
+            net.minecraft.block.Block tileBlock = playerTile.getBlockType();
+            if (tileBlock == Blocks.MAGMA_BLOCK && !combatEffects.hasFireResistance()) {
+                int magmaDmg = damagePlayer(4);
+                sendMessage("§c🔥 Magma burns you for " + magmaDmg + " damage!");
+                if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return partyPlayers.size() <= 1 || !active; }
+            } else if (tileBlock == Blocks.SOUL_SAND || tileBlock == Blocks.SOUL_SOIL) {
+                movePointsRemaining = Math.max(1, movePointsRemaining - 1);
+                sendMessage("§7☁ Soul sand slows your movement (-1 Speed)");
+            }
+            // TIDAL set bonus: water tiles heal 1 HP/turn
+            if (playerTile.isWater() && activeTrimScan != null
+                    && activeTrimScan.setBonus() == TrimEffects.SetBonus.TIDAL
+                    && member.getHealth() < member.getMaxHealth()) {
+                member.setHealth(Math.min(member.getMaxHealth(), member.getHealth() + 1));
+                sendMessage("§b§l✦ Tidal! §r§3Water heals you for 1 HP");
+            }
+        }
+
+        // Campfire heal + poison-cloud breath are tile effects centered on the
+        // player's own position, so they belong in this per-member pass.
+        for (var entry : tileEffects.entrySet()) {
+            GridPos tPos = entry.getKey();
+            String effect = entry.getValue();
+            if ("campfire".equals(effect)) {
+                // 5x5 square around the campfire = Chebyshev distance <= 2.
+                int dx = Math.abs(playerPos.x() - tPos.x());
+                int dz = Math.abs(playerPos.z() - tPos.z());
+                if (Math.max(dx, dz) <= 2) {
+                    float healed = Math.min(member.getMaxHealth(), member.getHealth() + 2);
+                    if (healed > member.getHealth()) {
+                        member.setHealth(healed);
+                        sendMessage("§6Campfire heals 2 HP.");
+                    }
+                }
+            } else if ("poison_cloud".equals(effect)) {
+                if (playerPos.manhattanDistance(tPos) <= 1) {
+                    member.setHealth(Math.max(1, member.getHealth() - 1));
+                    sendMessage("§5You breathe in the poison cloud! -1 HP");
+                    if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return partyPlayers.size() <= 1 || !active; }
+                }
+            }
+        }
+        return false;
+    }
+
     private void retargetEffectsToCurrentPlayer() {
         if (this.player == null) return;
         java.util.UUID uuid = this.player.getUuid();
@@ -393,6 +482,16 @@ public class CombatManager {
         // could kill a teammate immediately after a death handoff. The
         // computeIfAbsent / `new` lambda guarantees a unique instance per UUID.
         this.combatEffects = playerCombatEffects.computeIfAbsent(uuid, k -> new CombatEffects());
+        // The defensive trim/set bonuses read by damagePlayer (AC, ETHEREAL
+        // dodge, FORTRESS reduction, OCEAN_BLESSING heal) come from
+        // activeTrimScan. When an enemy hit swaps this.player to a non-turn
+        // victim, the scan must follow the victim or they get the turn-holder's
+        // armor bonuses (e.g. a teammate full-healed by an Ocean's Blessing set
+        // they aren't wearing). Re-scan here so every this.player reassignment
+        // keeps activeTrimScan consistent with the player effects now apply to.
+        this.activeTrimScan = TrimEffects.scan(this.player);
+        this.activeCombatEffects = activeTrimScan.getCombatEffects();
+        if (effectContext != null) effectContext.update(player, arena, combatEffects, activeTrimScan);
     }
 
     private CombatAchievementTracker achievementTracker = new CombatAchievementTracker();
@@ -444,6 +543,23 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Called once after the full party roster has been registered (post member
+     * loop in the start-combat handler) to build the turn queue and push an
+     * authoritative party-wide sync. startCombat's own sendSync fires before any
+     * non-leader is added, so without this every member sat on stale/default HP
+     * and an empty party/turn HUD until the first action-driven sync. With the
+     * roster populated, this sync carries partyHpData/turnOrderData to everyone.
+     * No-op for solo play (the start sync already covered the lone player).
+     */
+    public void finishPartyJoin() {
+        if (!active || partyPlayers.size() <= 1) return;
+        rebuildTurnQueue();
+        // Keep the leader as the current turn-holder; rebuildTurnQueue resets the
+        // cursor to 0 and this.player is still the leader from startCombat.
+        sendSync();
+    }
+
     public void removePartyMember(java.util.UUID memberUuid) {
         // If the removed player currently holds the turn, `this.player` still
         // points at their (possibly disconnected) entity after the removal.
@@ -454,7 +570,19 @@ public class CombatManager {
         boolean wasCurrent = player != null && player.getUuid().equals(memberUuid);
         partyPlayers.removeIf(p -> p.getUuid().equals(memberUuid));
         PARTY_COMBAT_LEADER.remove(memberUuid);
+        // turnQueue.remove(Object) removes by value and shifts every later index
+        // down by one. If the leaver sat BEFORE the cursor, the cursor must shift
+        // down too — otherwise it points one player too far forward and that
+        // player silently loses their turn when the current player ends theirs.
+        // (When the leaver WAS the current holder, removedIdx == currentTurnIndex
+        // and we do NOT decrement: the cursor now correctly points at whoever
+        // shifted into that slot, and the wasCurrent -> switchToTurnPlayer below
+        // re-resolves this.player to it.)
+        int removedIdx = turnQueue.indexOf(memberUuid);
         turnQueue.remove(memberUuid);
+        if (removedIdx >= 0 && removedIdx < currentTurnIndex) {
+            currentTurnIndex--;
+        }
         if (currentTurnIndex >= turnQueue.size() && !turnQueue.isEmpty()) {
             currentTurnIndex = 0;
         }
@@ -465,6 +593,27 @@ public class CombatManager {
         // crafting station, finalize the event so the rest of the party isn't
         // stranded in a non-combat room with no way to advance.
         clearEventPendingForDisconnect(memberUuid);
+    }
+
+    /**
+     * Remove a now-dead player's UUID from the positional turn queue and fix the
+     * cursor, so turn rotation doesn't hand their (now-occupied) slot to a
+     * survivor for a free extra action that round. Turn rotation in handleEndTurn
+     * pre-increments currentTurnIndex then reads, so if the dead player sat at or
+     * before the cursor, removing them shifts later slots down one and the cursor
+     * must shift down too to still land on the correct successor. Mirrors the
+     * queue maintenance in removePartyMember.
+     */
+    private void pruneDeadFromTurnQueue(java.util.UUID deadUuid) {
+        int deadIdx = turnQueue.indexOf(deadUuid);
+        if (deadIdx < 0) return;
+        turnQueue.remove(deadIdx);
+        if (deadIdx <= currentTurnIndex && currentTurnIndex > 0) {
+            currentTurnIndex--;
+        }
+        if (currentTurnIndex >= turnQueue.size() && !turnQueue.isEmpty()) {
+            currentTurnIndex = 0;
+        }
     }
 
     /**
@@ -1342,9 +1491,13 @@ public class CombatManager {
         // The attack's resolved damage (rawDamage) doubles as the enemy's
         // effective attack value fed to the dodge formula.
         if (attacker != null) {
+            // Banner-aura defense must read the player actually being hit. In MP
+            // this.player is swapped to the real victim, but arena.getPlayerGridPos()
+            // still holds the last-acting player's tile, so gridPosOf(player) is
+            // used to anchor the aura lookup on the victim's true position.
             int ac = PlayerCombatStats.getArmorClass(player, combatEffects, activeTrimScan,
                 getProgDefenseBonus(),
-                BannerEffects.defenseBonusAt(arena.getPlayerGridPos(), tileEffects));
+                BannerEffects.defenseBonusAt(gridPosOf(player), tileEffects));
             DodgeRoll.DodgeResult dodge = DodgeRoll.roll(ac, rawDamage, combatRng);
             if (dodge.dodged()) {
                 playDodgeFeedback("§b§l✦ DODGED!",
@@ -1466,10 +1619,10 @@ public class CombatManager {
         achievementTracker.recordPlayerTookDamage();
 
         // OCEAN_BLESSING set bonus: full heal when dropping below 25% HP (once per combat)
-        if (!oceanBlessingUsed && activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.OCEAN_BLESSING) {
+        if (!oceanBlessingUsed.contains(player.getUuid()) && activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.OCEAN_BLESSING) {
             if (player.getHealth() <= player.getMaxHealth() * 0.25f && player.getHealth() > 1) {
                 player.setHealth(player.getMaxHealth());
-                oceanBlessingUsed = true;
+                oceanBlessingUsed.add(player.getUuid());
                 sendMessage("§b§l✦ Ocean's Blessing! §r§3Full heal at critical HP!");
                 player.getWorld().playSound(null, player.getBlockPos(),
                     net.minecraft.sound.SoundEvents.ITEM_TRIDENT_RETURN,
@@ -1718,7 +1871,7 @@ public class CombatManager {
         this.hybridLuckyStreak = 0;
         this.hybridLastWeapon = null;
         this.hybridEnemiesActed.clear();
-        this.oceanBlessingUsed = false;
+        this.oceanBlessingUsed.clear();
         this.warpDriveArmed = false;
         this.warpDriveUsed = false;
         clearAllRevenantSummonMarkers();
@@ -4639,6 +4792,10 @@ public class CombatManager {
         //?}
         player.setPosition(x, y, z);
         player.networkHandler.requestTeleport(x, y, z, riptideAnimYaw, 0f);
+        // The vanilla entity tracker doesn't broadcast server-driven position
+        // changes for player entities, so without this every OTHER party member
+        // sees the dashing player frozen on the origin tile until the next packet.
+        broadcastPlayerPositionToOthers(player);
 
         // Riptide VFX around the player — bubbles + splashes. Emitted every tick so the
         // whirl stays visually attached to the moving player.
@@ -7021,6 +7178,7 @@ public class CombatManager {
             arena.setPlayerGridPos(pos);
             BlockPos bp = arena.gridToBlockPos(pos);
             player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+            broadcastPlayerPositionToOthers(player);
         }
 
         @Override public void placeTileEffect(GridPos pos, String effectType) {
@@ -7323,7 +7481,11 @@ public class CombatManager {
                                 takeoverPos.getX() + 0.5,
                                 takeoverPos.getY(),
                                 takeoverPos.getZ() + 0.5);
+                            broadcastPlayerPositionToOthers(nextAlive);
                         }
+                        // Drop the fallen player from the turn queue so survivors
+                        // don't get a free double-turn this round.
+                        pruneDeadFromTurnQueue(player.getUuid());
                         this.player = nextAlive;
                         retargetEffectsToCurrentPlayer();
                     }
@@ -8085,49 +8247,45 @@ public class CombatManager {
                 fireEffectHook(h -> h.onEffectExpired(effectContext, expType));
             }
 
-            // Trim REGEN bonus: +1 HP per piece every 2 turns
-            int trimRegen = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.REGEN) : 0;
-            if (trimRegen > 0 && turnNumber % 2 == 0 && player != null
-                    && player.getHealth() < player.getMaxHealth()) {
-                player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + trimRegen));
-                sendMessage("§a♥ Trim regen healed " + trimRegen + " HP");
-            }
-
-            int hpChange = combatEffects.applyPerTurnEffects(SpecialAffinity.points(player));
-            if (hpChange != 0 && player != null) {
-                float newHp = Math.max(1, Math.min(player.getMaxHealth(), player.getHealth() + hpChange));
-                player.setHealth(newHp);
-                if (hpChange > 0) {
-                    sendMessage("§a♥ Regeneration healed " + hpChange + " HP");
-                } else {
-                    StringBuilder dmgSources = new StringBuilder();
-                    if (combatEffects.hasEffect(CombatEffects.EffectType.POISON)) dmgSources.append("Poison ");
-                    if (combatEffects.hasEffect(CombatEffects.EffectType.WITHER)) dmgSources.append("Wither ");
-                    if (combatEffects.hasEffect(CombatEffects.EffectType.BURNING)) dmgSources.append("Fire ");
-                    sendMessage("§c☠ " + dmgSources.toString().trim() + " dealt " + (-hpChange) + " damage");
+            // Player-side per-turn effects (trim regen, DoT, tile hazards, campfire
+            // heal, poison-cloud breath) run once PER PARTY MEMBER, not just for the
+            // single host/last-actor. Previously this block ran against this.player
+            // and arena.getPlayerGridPos() only, so in co-op every member except the
+            // last to act never had their poison/burn/wither tick (DoTs were
+            // cosmetic), and tile hazards/heals were evaluated against the wrong
+            // tile. Each member is swapped in via the this.player pattern so their
+            // own effects map, trim scan, and HP are used. mirrors the creeper
+            // blast loop. tickPlayerPerTurnEffects returns true if the whole game
+            // ended (party wiped), in which case we abort the tick.
+            {
+                ServerPlayerEntity savedTurnPlayer = this.player;
+                GridPos savedGrid = arena.getPlayerGridPos();
+                boolean gameOver = false;
+                java.util.List<ServerPlayerEntity> ptMembers = partyPlayers.size() > 1
+                    ? new java.util.ArrayList<>(partyPlayers)
+                    : java.util.List.of(player);
+                for (ServerPlayerEntity member : ptMembers) {
+                    if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                    if (deadPartyMembers.contains(member.getUuid())) continue;
+                    boolean swapped = member != savedTurnPlayer;
+                    if (swapped) {
+                        this.player = member;
+                        retargetEffectsToCurrentPlayer();
+                        arena.setPlayerGridPos(gridPosOf(member));
+                    }
+                    if (tickPlayerPerTurnEffects()) { gameOver = true; break; }
                 }
-                if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
-            }
-
-            GridPos playerPos = arena.getPlayerGridPos();
-            GridTile playerTile = arena.getTile(playerPos);
-            if (playerTile != null) {
-                net.minecraft.block.Block tileBlock = playerTile.getBlockType();
-                if (tileBlock == Blocks.MAGMA_BLOCK && !combatEffects.hasFireResistance()) {
-                    int magmaDmg = damagePlayer(4);
-                    sendMessage("§c🔥 Magma burns you for " + magmaDmg + " damage!");
-                    if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
-                } else if (tileBlock == Blocks.SOUL_SAND || tileBlock == Blocks.SOUL_SOIL) {
-                    movePointsRemaining = Math.max(1, movePointsRemaining - 1);
-                    sendMessage("§7☁ Soul sand slows your movement (-1 Speed)");
+                // Restore the original turn-holder ONLY if they survived. If the
+                // turn-holder died mid-pass, handlePlayerDeathOrGameOver already
+                // reassigned this.player to a survivor — leave it there rather than
+                // re-activating the dead player.
+                if (!gameOver && this.player != savedTurnPlayer
+                        && !deadPartyMembers.contains(savedTurnPlayer.getUuid())) {
+                    this.player = savedTurnPlayer;
+                    retargetEffectsToCurrentPlayer();
                 }
-                // TIDAL set bonus: water tiles heal 1 HP/turn
-                if (playerTile.isWater() && activeTrimScan != null
-                        && activeTrimScan.setBonus() == TrimEffects.SetBonus.TIDAL
-                        && player.getHealth() < player.getMaxHealth()) {
-                    player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 1));
-                    sendMessage("§b§l✦ Tidal! §r§3Water heals you for 1 HP");
-                }
+                arena.setPlayerGridPos(savedGrid);
+                if (gameOver) return;
             }
 
             for (var entry : tileEffects.entrySet()) {
@@ -8141,20 +8299,10 @@ public class CombatManager {
                         sendMessage("§6" + occupant.getDisplayName() + " burns in lava for 3 damage!");
                     }
                 }
-                if ("campfire".equals(effect)) {
-                    GridPos pPos = arena.getPlayerGridPos();
-                    // 5x5 square around the campfire = Chebyshev distance <= 2.
-                    int dx = Math.abs(pPos.x() - tPos.x());
-                    int dz = Math.abs(pPos.z() - tPos.z());
-                    if (Math.max(dx, dz) <= 2) {
-                        float healed = Math.min(player.getMaxHealth(), player.getHealth() + 2);
-                        if (healed > player.getHealth()) {
-                            player.setHealth(healed);
-                            sendMessage("§6Campfire heals 2 HP.");
-                        }
-                    }
-                }
                 if ("poison_cloud".equals(effect)) {
+                    // Enemy-side only: spawn the cloud and damage enemy occupants once.
+                    // The player-breath self-damage is handled per-member above in
+                    // tickPlayerPerTurnEffects so each member in the cloud takes it.
                     ProjectileSpawner.spawnLingeringCloud(
                         (ServerWorld) player.getEntityWorld(), arena.gridToBlockPos(tPos));
                     // 3x3 AoE around cloud center
@@ -8170,11 +8318,6 @@ public class CombatManager {
                         int dealt = applySpecialUtilityDamage(hit, 2);
                         sendMessage("§5" + hit.getDisplayName() + " chokes in poison cloud for " + dealt + " damage!");
                         checkAndHandleDeath(hit);
-                    }
-                    if (arena.getPlayerGridPos().manhattanDistance(tPos) <= 1) {
-                        player.setHealth(Math.max(1, player.getHealth() - 1));
-                        sendMessage("§5You breathe in the poison cloud! -1 HP");
-                        if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
                     }
                 }
                 if ("cactus".equals(effect)) {
@@ -9402,6 +9545,7 @@ public class CombatManager {
         arena.setPlayerGridPos(target);
         BlockPos arrBp = arena.gridToBlockPos(target);
         player.requestTeleport(arrBp.getX() + 0.5, arrBp.getY(), arrBp.getZ() + 0.5);
+        broadcastPlayerPositionToOthers(player);
 
         // Arrival burst
         world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
@@ -9498,14 +9642,28 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         switch (action) {
             case EnemyAction.Attack atk -> {
-                int actual = damagePlayer(atk.damage());
-                // Impact particles at player
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
-                    player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.3, 0.3, 0.3, 0.01);
-                world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
-                    player.getX(), player.getY() + 0.8, player.getZ(), 8, 0.4, 0.5, 0.4, 0.02);
-                sendMessage("§c  Hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+                // Swap this.player to the player the boss actually targeted (closest
+                // live member), not the last turn-holder. Without this, boss melee
+                // sub-actions landed on the wrong player in co-op.
+                ServerPlayerEntity savedBossPlayer = this.player;
+                ServerPlayerEntity bossTarget = currentEnemy != null
+                    ? findClosestPartyTarget(currentEnemy.getGridPos()) : this.player;
+                boolean bossSwapped = bossTarget != null && bossTarget != savedBossPlayer;
+                if (bossSwapped) { this.player = bossTarget; retargetEffectsToCurrentPlayer(); }
+                boolean targetDied = false;
+                try {
+                    int actual = damagePlayer(atk.damage());
+                    // Impact particles at the targeted player
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
+                        player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.3, 0.3, 0.3, 0.01);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                        player.getX(), player.getY() + 0.8, player.getZ(), 8, 0.4, 0.5, 0.4, 0.02);
+                    sendMessage("§c  Hit " + (bossSwapped ? bossTarget.getName().getString() : "you")
+                        + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                    if (getPlayerHp() <= 0) { targetDied = true; handlePlayerDeathOrGameOver(); }
+                } finally {
+                    if (bossSwapped && !targetDied) { this.player = savedBossPlayer; retargetEffectsToCurrentPlayer(); }
+                }
             }
             case EnemyAction.SummonMinions sm -> spawnBossMinions(sm);
             case EnemyAction.SpawnProjectile sp -> spawnProjectiles(sp);
@@ -9557,12 +9715,34 @@ public class CombatManager {
                             player.getX(), player.getY() + 1.0, player.getZ(), 5, 0.3, 0.3, 0.3, 0.01);
                     }
                     arena.moveEntity(currentEnemy, tpa.target());
-                    int actual = damagePlayer(tpa.damage(), currentEnemy);
-                    sendMessage("§c  Teleport strike for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                    if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+                    // Strike the player the boss teleported to (closest member), not
+                    // the last turn-holder.
+                    ServerPlayerEntity savedTpaPlayer = this.player;
+                    ServerPlayerEntity tpaTarget = findClosestPartyTarget(currentEnemy.getGridPos());
+                    boolean tpaSwapped = tpaTarget != null && tpaTarget != savedTpaPlayer;
+                    if (tpaSwapped) { this.player = tpaTarget; retargetEffectsToCurrentPlayer(); }
+                    boolean targetDied = false;
+                    try {
+                        int actual = damagePlayer(tpa.damage(), currentEnemy);
+                        sendMessage("§c  Teleport strike on " + (tpaSwapped ? tpaTarget.getName().getString() : "you")
+                            + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                        if (getPlayerHp() <= 0) { targetDied = true; handlePlayerDeathOrGameOver(); }
+                    } finally {
+                        if (tpaSwapped && !targetDied) { this.player = savedTpaPlayer; retargetEffectsToCurrentPlayer(); }
+                    }
                 }
             }
             case EnemyAction.RangedAttack ra -> {
+                // Swap this.player to the boss's actual ranged target (closest live
+                // member) so the hit, status effects, knockback, overwatch and death
+                // handling all land on the right player in co-op.
+                ServerPlayerEntity savedRaPlayer = this.player;
+                ServerPlayerEntity raTarget = currentEnemy != null
+                    ? findClosestPartyTarget(currentEnemy.getGridPos()) : this.player;
+                boolean raSwapped = raTarget != null && raTarget != savedRaPlayer;
+                if (raSwapped) { this.player = raTarget; retargetEffectsToCurrentPlayer(); }
+                boolean raTargetDied = false;
+                try {
                 // Aegis hybrid: a chance to dodge incoming ranged attacks outright.
                 if (activeHybridEffect() == HybridEffect.AEGIS
                         && Math.random() < HybridSetEffects.AEGIS_DODGE_CHANCE) {
@@ -9637,9 +9817,13 @@ public class CombatManager {
                             player.getX(), player.getY() + 1.0, player.getZ(), 8, 0.3, 0.5, 0.3, 0.02);
                     }
                 }
-                sendMessage("§c  Ranged hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                sendMessage("§c  Ranged hit " + (raSwapped ? raTarget.getName().getString() : "you")
+                    + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 checkOverwatchCounter(currentEnemy);
-                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+                if (getPlayerHp() <= 0) { raTargetDied = true; handlePlayerDeathOrGameOver(); }
+                } finally {
+                    if (raSwapped && !raTargetDied) { this.player = savedRaPlayer; retargetEffectsToCurrentPlayer(); }
+                }
             }
             case EnemyAction.CeilingDrop drop -> {
                 if (currentEnemy != null) {
@@ -10164,17 +10348,53 @@ public class CombatManager {
         double spread = Math.max(0.5, radius * 0.5);
         spawnAreaAttackParticles(world, aa.effectName(), cx, cy, cz, spread, radius);
 
-        // Check player
-        GridPos playerGridPos = arena.getPlayerGridPos();
-        if (Math.abs(playerGridPos.x() - center.x()) <= radius
-            && Math.abs(playerGridPos.z() - center.z()) <= radius) {
-            int actual = damagePlayer(damage);
-            sendMessage("§c  Area hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-            // Apply named effects
-            if (aa.effectName() != null) {
-                applyBossAreaEffect(aa.effectName());
+        // Hit EVERY party member inside the AoE box, not just the host. The boss
+        // AI centers the blast on the closest member, so in co-op the targeted
+        // teammate (if not the leader-tracked player) previously took zero damage
+        // while the wrong player got hit. Each member is routed via the this.player
+        // swap so their dodge/armor/effects/death handling apply. Mirrors the
+        // creeper Explode loop.
+        java.util.List<ServerPlayerEntity> areaVictims = new java.util.ArrayList<>();
+        if (partyPlayers.size() > 1) {
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                if (deadPartyMembers.contains(member.getUuid())) continue;
+                GridPos mPos = gridPosOf(member);
+                if (Math.abs(mPos.x() - center.x()) <= radius
+                    && Math.abs(mPos.z() - center.z()) <= radius) {
+                    areaVictims.add(member);
+                }
             }
-            if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
+        } else {
+            GridPos playerGridPos = arena.getPlayerGridPos();
+            if (Math.abs(playerGridPos.x() - center.x()) <= radius
+                && Math.abs(playerGridPos.z() - center.z()) <= radius) {
+                areaVictims.add(player);
+            }
+        }
+        boolean gameOverFromArea = false;
+        for (ServerPlayerEntity victim : areaVictims) {
+            ServerPlayerEntity savedAreaPlayer = this.player;
+            boolean areaSwapped = victim != savedAreaPlayer;
+            if (areaSwapped) { this.player = victim; retargetEffectsToCurrentPlayer(); }
+            boolean victimDied = false;
+            try {
+                int actual = damagePlayer(damage);
+                sendMessage("§c  Area hit " + (areaSwapped ? victim.getName().getString() : "you")
+                    + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                // Apply named effects to this victim
+                if (aa.effectName() != null) {
+                    applyBossAreaEffect(aa.effectName());
+                }
+                if (getPlayerHp() <= 0) {
+                    victimDied = true;
+                    handlePlayerDeathOrGameOver();
+                    gameOverFromArea = (partyPlayers.size() <= 1 || !active);
+                }
+            } finally {
+                if (!victimDied) { this.player = savedAreaPlayer; retargetEffectsToCurrentPlayer(); }
+            }
+            if (gameOverFromArea) return;
         }
 
         // Damage enemy mobs in the area (friendly fire for bosses)
@@ -10732,9 +10952,11 @@ public class CombatManager {
             }
         }
 
+        java.util.Set<GridPos> lineTiles = new java.util.HashSet<>();
         for (int i = 0; i < la.length(); i++) {
             GridPos tile = new GridPos(la.start().x() + la.dx() * i, la.start().z() + la.dz() * i);
             if (!arena.isInBounds(tile)) continue;
+            lineTiles.add(tile);
             if (tile.equals(playerGridPos)) hitPlayer = true;
 
             // Spawn line particles along each tile
@@ -10756,10 +10978,40 @@ public class CombatManager {
                 }
             }
         }
-        if (hitPlayer) {
-            int actual = damagePlayer(la.damage());
-            sendMessage("§c  Line attack hits for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-            if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+        // Damage EVERY party member standing on a line tile, not just the host.
+        // A non-leader teammate standing in the beam previously took no damage
+        // because the line was only tested against arena.getPlayerGridPos().
+        // Each hit routes through the this.player swap for correct per-victim
+        // dodge/armor/effects/death handling.
+        java.util.List<ServerPlayerEntity> lineVictims = new java.util.ArrayList<>();
+        if (partyPlayers.size() > 1) {
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                if (deadPartyMembers.contains(member.getUuid())) continue;
+                if (lineTiles.contains(gridPosOf(member))) lineVictims.add(member);
+            }
+        } else if (hitPlayer) {
+            lineVictims.add(player);
+        }
+        boolean gameOverFromLine = false;
+        for (ServerPlayerEntity victim : lineVictims) {
+            ServerPlayerEntity savedLinePlayer = this.player;
+            boolean lineSwapped = victim != savedLinePlayer;
+            if (lineSwapped) { this.player = victim; retargetEffectsToCurrentPlayer(); }
+            boolean victimDied = false;
+            try {
+                int actual = damagePlayer(la.damage());
+                sendMessage("§c  Line attack hits " + (lineSwapped ? victim.getName().getString() : "you")
+                    + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                if (getPlayerHp() <= 0) {
+                    victimDied = true;
+                    handlePlayerDeathOrGameOver();
+                    gameOverFromLine = (partyPlayers.size() <= 1 || !active);
+                }
+            } finally {
+                if (!victimDied) { this.player = savedLinePlayer; retargetEffectsToCurrentPlayer(); }
+            }
+            if (gameOverFromLine) return;
         }
     }
 
@@ -10964,6 +11216,24 @@ public class CombatManager {
     private void resolveForcedMovement(EnemyAction.ForcedMovement fm) {
         ServerWorld fmWorld = (ServerWorld) player.getEntityWorld();
         if (fm.targetEntityId() == -1) {
+            // Move the player the boss actually targeted (closest live member), not
+            // the last-acting member that arena.getPlayerGridPos()/this.player point
+            // at. The push direction was computed against that member, so the origin
+            // must be their tile or the wrong player gets displaced from the wrong
+            // spot (and void-fall damage hits the wrong player). Routed via the
+            // this.player swap so the void-fall + rift handling apply to them.
+            ServerPlayerEntity savedFmPlayer = this.player;
+            GridPos savedFmGrid = arena.getPlayerGridPos();
+            ServerPlayerEntity fmTarget = currentEnemy != null
+                ? findClosestPartyTarget(currentEnemy.getGridPos()) : this.player;
+            boolean fmSwapped = fmTarget != null && fmTarget != savedFmPlayer;
+            if (fmSwapped) {
+                this.player = fmTarget;
+                retargetEffectsToCurrentPlayer();
+                arena.setPlayerGridPos(gridPosOf(fmTarget));
+            }
+            boolean fmTargetDied = false;
+            try {
             // Move the player — spawn wind particles along push/pull path
             GridPos playerGridPos = arena.getPlayerGridPos();
             GridPos landingPos = playerGridPos;
@@ -10975,7 +11245,7 @@ public class CombatManager {
                     // Player pushed into void — take fall damage
                     int fallDmg = damagePlayer(5);
                     sendMessage("§c  Pushed into the void for " + fallDmg + " damage! (HP: " + getPlayerHp() + ")");
-                    if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
+                    if (getPlayerHp() <= 0) { fmTargetDied = true; handlePlayerDeathOrGameOver(); return; }
                     break;
                 }
                 if (tile == null || !tile.isWalkable()) break;
@@ -10993,6 +11263,7 @@ public class CombatManager {
                 arena.setPlayerGridPos(landingPos);
                 BlockPos bp = arena.gridToBlockPos(landingPos);
                 player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                broadcastPlayerPositionToOthers(player);
                 // Landing impact
                 fmWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
                     bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5,
@@ -11000,6 +11271,13 @@ public class CombatManager {
                 sendMessage("§e  Pushed " + playerGridPos.manhattanDistance(landingPos) + " tiles!");
                 // Void Walker: Void Pull may have dragged the player onto one of the boss's own rifts.
                 handleVoidRiftEntry(landingPos);
+            }
+            } finally {
+                if (fmSwapped && !fmTargetDied) {
+                    this.player = savedFmPlayer;
+                    retargetEffectsToCurrentPlayer();
+                    arena.setPlayerGridPos(savedFmGrid);
+                }
             }
         } else {
             // Move an enemy entity
@@ -11220,23 +11498,46 @@ public class CombatManager {
                     3, 0.2, 0.3, 0.2, 0.05);
             }
 
-            // Damage player if they're standing on any burned tile
-            GridPos playerGridPos = arena.getPlayerGridPos();
-            for (GridPos pos : burned) {
-                if (pos.equals(playerGridPos)) {
-                    int waveDmg = e.getAttackPower() + (dragonAi.isDragonPhaseTwo() ? 3 : 0);
+            // Damage EVERY party member standing on a burned tile, not just the host.
+            // Previously the wave only checked arena.getPlayerGridPos() so teammates
+            // walked through the fire wall unharmed. Each victim is routed via the
+            // this.player swap for correct per-victim dodge/armor/effects/death.
+            java.util.Set<GridPos> burnedSet = new java.util.HashSet<>(burned);
+            java.util.List<ServerPlayerEntity> waveVictims = new java.util.ArrayList<>();
+            if (partyPlayers.size() > 1) {
+                for (ServerPlayerEntity member : partyPlayers) {
+                    if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                    if (deadPartyMembers.contains(member.getUuid())) continue;
+                    if (burnedSet.contains(gridPosOf(member))) waveVictims.add(member);
+                }
+            } else if (burnedSet.contains(arena.getPlayerGridPos())) {
+                waveVictims.add(player);
+            }
+            int waveDmg = e.getAttackPower() + (dragonAi.isDragonPhaseTwo() ? 3 : 0);
+            boolean gameOverFromWave = false;
+            for (ServerPlayerEntity victim : waveVictims) {
+                ServerPlayerEntity savedWavePlayer = this.player;
+                boolean waveSwapped = victim != savedWavePlayer;
+                if (waveSwapped) { this.player = victim; retargetEffectsToCurrentPlayer(); }
+                boolean victimDied = false;
+                try {
                     int actual = damagePlayer(waveDmg);
-                    sendMessage("§5§l⌇ Dragon breath wave hits you for " + actual + " damage!");
+                    sendMessage("§5§l⌇ Dragon breath wave hits "
+                        + (waveSwapped ? victim.getName().getString() : "you") + " for " + actual + " damage!");
                     world.spawnParticles(net.minecraft.particle.ParticleTypes.DAMAGE_INDICATOR,
-                        player.getX(), player.getY() + 1.0, player.getZ(),
+                        victim.getX(), victim.getY() + 1.0, victim.getZ(),
                         5, 0.3, 0.3, 0.3, 0.01);
                     if (getPlayerHp() <= 0) {
+                        victimDied = true;
                         handlePlayerDeathOrGameOver();
+                        gameOverFromWave = (partyPlayers.size() <= 1 || !active);
                     }
-                    sendSync();
-                    break; // only damage once per wave tick
+                } finally {
+                    if (!victimDied) { this.player = savedWavePlayer; retargetEffectsToCurrentPlayer(); }
                 }
+                if (gameOverFromWave) { sendSync(); return; }
             }
+            if (!waveVictims.isEmpty()) sendSync();
 
             // Sound effect for the advancing wave
             world.playSound(null, player.getBlockPos(),
@@ -11550,14 +11851,45 @@ public class CombatManager {
             // untouched. Result: a "fatal" blast that never killed the
             // player's combat state, but later damage processed the queued
             // death only after a turn skip — the softlock the user hit.
-            GridPos playerPos = arena.getPlayerGridPos();
-            int playerDist = Math.abs(playerPos.x() - center.x()) + Math.abs(playerPos.z() - center.z());
-            if (playerDist <= 2) {
-                int selfDmgRaw = playerDist == 0 ? 6 : (playerDist == 1 ? 4 : 2);
-                int selfDmg = damagePlayer(selfDmgRaw);
-                sendMessage("§c  Blast hit " + enemiesHit + " enemies for " + totalDamage + " total! You took " + selfDmg + " blast damage!");
-                if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return; }
-            } else if (enemiesHit > 0) {
+            // Self-damage every party member in the 2-tile blast radius, not just
+            // the host. With per-victim distance tiers (6/4/2) and the this.player
+            // swap so each member's own dodge/armor/effects/death handling applies.
+            java.util.List<ServerPlayerEntity> tntVictims = new java.util.ArrayList<>();
+            if (partyPlayers.size() > 1) {
+                for (ServerPlayerEntity member : partyPlayers) {
+                    if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                    if (deadPartyMembers.contains(member.getUuid())) continue;
+                    if (center.manhattanDistance(gridPosOf(member)) <= 2) tntVictims.add(member);
+                }
+            } else {
+                GridPos playerPos = arena.getPlayerGridPos();
+                if (center.manhattanDistance(playerPos) <= 2) tntVictims.add(player);
+            }
+            boolean tntHitAnyone = false;
+            boolean gameOverFromTnt = false;
+            for (ServerPlayerEntity victim : tntVictims) {
+                tntHitAnyone = true;
+                ServerPlayerEntity savedTntPlayer = this.player;
+                boolean tntSwapped = victim != savedTntPlayer;
+                if (tntSwapped) { this.player = victim; retargetEffectsToCurrentPlayer(); }
+                boolean victimDied = false;
+                try {
+                    int victimDist = center.manhattanDistance(gridPosOf(victim));
+                    int selfDmgRaw = victimDist == 0 ? 6 : (victimDist == 1 ? 4 : 2);
+                    int selfDmg = damagePlayer(selfDmgRaw);
+                    sendMessage("§c  Blast hit " + enemiesHit + " enemies for " + totalDamage + " total! "
+                        + (tntSwapped ? victim.getName().getString() : "You") + " took " + selfDmg + " blast damage!");
+                    if (getPlayerHp() <= 0) {
+                        victimDied = true;
+                        handlePlayerDeathOrGameOver();
+                        gameOverFromTnt = (partyPlayers.size() <= 1 || !active);
+                    }
+                } finally {
+                    if (!victimDied) { this.player = savedTntPlayer; retargetEffectsToCurrentPlayer(); }
+                }
+                if (gameOverFromTnt) { sendSync(); return; }
+            }
+            if (!tntHitAnyone && enemiesHit > 0) {
                 sendMessage("§7  Hit " + enemiesHit + " enemies for " + totalDamage + " total damage!");
             }
         }
@@ -12693,7 +13025,28 @@ public class CombatManager {
                 if (!allyTarget.isAlive()) {
                     // Addon combat effects: ally kill notification
                     fireEffectHook(h -> h.onAllyKill(effectContext, fAlly, fAllyTarget));
-                    killEnemy(allyTarget);
+                    // Route through the full death pipeline (NOT killEnemy) so a
+                    // stacked target drops its next layer / rider instead of being
+                    // hard-killed outright. killEnemy skips transformStackLayer, so
+                    // an ally killing a Zombie Stack would vanish the whole stack
+                    // with the baby never dropping. checkAndHandleDeath transforms
+                    // the layer when one remains (target stays alive) and runs the
+                    // real death side effects only when the last layer falls.
+                    checkAndHandleDeath(allyTarget);
+                    // Only credit the kill / check victory if the target actually
+                    // died (a stack transform leaves it alive on the next layer).
+                    // checkAndHandleDeath doesn't itself do kill-streak or the
+                    // victory check, so mirror what killEnemy used to provide here.
+                    if (!allyTarget.isAlive()) {
+                        // killEnemy only counts non-ally deaths toward the streak;
+                        // preserve that guard in case an ally ever targets an ally.
+                        if (!allyTarget.isAlly()) {
+                            onEnemyKilled(allyTarget);
+                        }
+                        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+                            handleVictory();
+                        }
+                    }
                 }
                 // Bee allies pay the same sting recoil as enemy bees do.
                 if ("minecraft:bee".equals(currentEnemy.getEntityTypeId())) {
@@ -13062,8 +13415,10 @@ public class CombatManager {
             if (enemyHasFireAspect && !combatEffects.hasFireResistance()) {
                 int burnTurns = 2 + enemyFireAspect;
                 addEffectHooked(CombatEffects.EffectType.BURNING, burnTurns, enemyFireAspect - 1);
-                // Cone of flame: convert tiles in front of the player to fire (in the direction the enemy attacked from)
-                GridPos pPosFa = arena.getPlayerGridPos();
+                // Cone of flame: convert tiles in front of the player to fire (in the direction the enemy attacked from).
+                // Anchor on the actual victim (this.player after the MP target swap), not the
+                // last-acting player's arena tile, so the cone spawns around the player who was hit.
+                GridPos pPosFa = gridPosOf(player);
                 GridPos ePosFa = currentEnemy.getGridPos();
                 int faDx = Integer.signum(pPosFa.x() - ePosFa.x());
                 int faDz = Integer.signum(pPosFa.z() - ePosFa.z());
@@ -13420,6 +13775,7 @@ public class CombatManager {
             BlockPos bp = arena.gridToBlockPos(landingPos);
             double kbY = (activeBoat != null) ? bp.getY() : arena.getEntityY(landingPos);
             player.requestTeleport(bp.getX() + 0.5, kbY, bp.getZ() + 0.5);
+            broadcastPlayerPositionToOthers(player);
             sendMessage("§e  Knocked back " + playerGridPos.manhattanDistance(landingPos) + " tiles!");
 
             if (hitHazard) {
@@ -13489,6 +13845,7 @@ public class CombatManager {
             arena.setPlayerGridPos(playerLanding);
             BlockPos bp = arena.gridToBlockPos(playerLanding);
             player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+            broadcastPlayerPositionToOthers(player);
         }
 
         // Push every entity adjacent to the player's new position 2 tiles
@@ -14014,6 +14371,10 @@ public class CombatManager {
         // making the survivor jump onto where their teammate just died for no
         // gameplay benefit (it broke positioning in turn-based combat).
         sendMessage("§e" + nextAlive.getName().getString() + " takes over the fight!");
+        // Drop the dead player from the positional turn queue so the survivors
+        // don't get a free double-turn this round (the queue is rotated by index,
+        // and switchToTurnPlayer only skipped removed/disconnected, not dead).
+        pruneDeadFromTurnQueue(player.getUuid());
         this.player = nextAlive;
         retargetEffectsToCurrentPlayer();
 
@@ -17242,6 +17603,18 @@ public class CombatManager {
     /** Push a dialogue definition to one player as a {@code DialoguePayload}. No-op if null. */
     private void sendDialogue(ServerPlayerEntity player,
                               com.crackedgames.craftics.combat.dialogue.DialogueDefinition def) {
+        // Default: let the client pick the backdrop from its own state. Event-scene
+        // and mid-combat dialogues correctly resolve to "keep scenery" that way.
+        sendDialogue(player, def, com.crackedgames.craftics.network.DialoguePayload.BG_AUTO);
+    }
+
+    /** As {@link #sendDialogue(ServerPlayerEntity, DialogueDefinition)} but with an
+     *  explicit backdrop mode. Pre-level intros pass {@code BG_SOLID} because they
+     *  fire before the client's combat flag is cleared, so the auto heuristic would
+     *  wrongly show the stale arena blurred behind the box. */
+    private void sendDialogue(ServerPlayerEntity player,
+                              com.crackedgames.craftics.combat.dialogue.DialogueDefinition def,
+                              int background) {
         if (def == null) return;
         java.util.List<String> labels = new java.util.ArrayList<>();
         java.util.List<String> actions = new java.util.ArrayList<>();
@@ -17249,7 +17622,8 @@ public class CombatManager {
         ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.DialoguePayload(
             def.speaker(),
             com.crackedgames.craftics.network.DialoguePayload.encodeLines(def.lines()),
-            com.crackedgames.craftics.network.DialoguePayload.encodeChoices(labels, actions)));
+            com.crackedgames.craftics.network.DialoguePayload.encodeChoices(labels, actions),
+            background));
     }
 
     /** Resolve a dialogue choice action and drive the active event accordingly. */
@@ -17627,7 +18001,9 @@ public class CombatManager {
             return;
         }
         for (ServerPlayerEntity p : members) {
-            sendDialogue(p, def);
+            // Pre-level vote with no built scene — same transition timing as the
+            // boss intro, so force solid black instead of blurring the dead arena.
+            sendDialogue(p, def, com.crackedgames.craftics.network.DialoguePayload.BG_SOLID);
         }
     }
 
@@ -18300,7 +18676,11 @@ public class CombatManager {
             introPendingPlayers.add(p.getUuid());
         }
         for (ServerPlayerEntity p : members) {
-            sendDialogue(p, intro);
+            // Pre-level intros (boss intro, trial/addon-event vote) fire during the
+            // transition out of the just-finished fight, before the client's combat
+            // flag is cleared. Force a solid-black backdrop so the stale previous
+            // arena doesn't blur through behind the box.
+            sendDialogue(p, intro, com.crackedgames.craftics.network.DialoguePayload.BG_SOLID);
         }
     }
 
@@ -19702,6 +20082,14 @@ public class CombatManager {
                 int memberMaxHp = (int) member.getMaxHealth();
                 CombatEffects memberFx = playerCombatEffects.get(member.getUuid());
                 String memberEffects = memberFx != null ? memberFx.getDisplayString() : "";
+                // Per-player "Hidden": the client overrides the scalar effects strip
+                // with this per-UUID column in MP, which has no notion of stealth, so
+                // each member loses the indicator unless we add it here per their own
+                // tile (the scalar reflects only the leader's tile anyway).
+                if (arena != null && !isDead && StealthTiles.isStealthTile(
+                        arena, gridPosOf(member), member.getEntityWorld())) {
+                    memberEffects = memberEffects.isEmpty() ? "Hidden" : ("Hidden | " + memberEffects);
+                }
                 // Strip the field/row separators out of the effect string so the
                 // client can split this row reliably. " | " between effects is
                 // replaced with " / "; lone commas inside are replaced with ";".
@@ -19900,7 +20288,11 @@ public class CombatManager {
     private boolean moveBoatProtected = false;       // Water crossing with boat = no Soaked
     private int powderSnowTurns = 0;                 // Escalating freeze damage counter
     private net.minecraft.entity.vehicle.BoatEntity activeBoat = null; // Visual boat while in water
-    private boolean oceanBlessingUsed = false;        // OCEAN_BLESSING: once per combat
+    // OCEAN_BLESSING: once-per-combat heal, tracked per player UUID so each
+    // member's heal is independent. A single shared flag let the first player
+    // to trigger it lock everyone else out (and in MP the swapped victim, not
+    // the wearer, would consume it).
+    private final java.util.Set<java.util.UUID> oceanBlessingUsed = new java.util.HashSet<>();
 
     // === Artifacts compat: Warp Drive state ===
     /** Set by /craftics warp; the player's NEXT attack ignores range and teleports adjacent to the target. */
