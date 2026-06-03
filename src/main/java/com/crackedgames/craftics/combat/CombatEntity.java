@@ -359,6 +359,15 @@ public class CombatEntity {
     public NbtCompound getOriginalHubNbt() { return originalHubNbt; }
     public void setOriginalHubNbt(NbtCompound nbt) { this.originalHubNbt = nbt; }
 
+    /**
+     * True for allies summoned for the current battle only (e.g. spawn-egg summons),
+     * as opposed to recruited hub pets. Temporary allies are NOT saved/returned to the
+     * hub after combat — they exist solely for this fight.
+     */
+    private boolean temporaryAlly = false;
+    public boolean isTemporaryAlly() { return temporaryAlly; }
+    public void setTemporaryAlly(boolean v) { this.temporaryAlly = v; }
+
     private boolean mounted = false;
     public boolean isMounted() { return mounted; }
     public void setMounted(boolean m) { this.mounted = m; }
@@ -393,6 +402,20 @@ public class CombatEntity {
     public void setConfusionTurns(int t) { this.confusionTurns = t; }
     public int getConfusionAmplifier() { return confusionAmplifier; }
     public void setConfusionAmplifier(int a) { this.confusionAmplifier = a; }
+
+    // ── Marked status ──
+    // A marked entity takes extra damage from all attacks (2x normally, 1.5x for
+    // bosses). Reusable for any entity (player/ally/enemy); currently applied only by
+    // the player's spyglass. markedTurns counts down once per round.
+    private int markedTurns = 0;
+    public boolean isMarked() { return markedTurns > 0; }
+    public int getMarkedTurns() { return markedTurns; }
+    public void setMarkedTurns(int t) { this.markedTurns = t; }
+    /** The damage-taken multiplier while marked: 1.5x for bosses, 2x otherwise. 1.0 if unmarked. */
+    public double getMarkedDamageMultiplier() {
+        if (markedTurns <= 0) return 1.0;
+        return isBoss() ? 1.5 : 2.0;
+    }
     public int getSlownessTurns() { return slownessTurns; }
     public void setSlownessTurns(int t) { this.slownessTurns = t; }
     public int getSlownessPenalty() { return slownessPenalty; }
@@ -519,32 +542,42 @@ public class CombatEntity {
         int actual = Math.max(1, (int)(rawDamage * (1.0 - reduction)));
         // Note: bleed is its own DOT and is classified as Special damage,
         // so it does NOT add bonus damage to direct hits anymore.
-        applyDirectDamage(actual);
+        // applyDirectDamage applies the Marked multiplier and returns the amount
+        // actually subtracted, so the returned value (used for "hits for X") reflects it.
+        int applied = applyDirectDamage(actual);
         if (alive && mobEntity != null) {
             com.crackedgames.craftics.combat.animation.MobAnimations.set(
                 mobEntity,
                 com.crackedgames.craftics.combat.animation.AnimState.HIT);
         }
-        return actual;
+        return applied;
     }
 
     /**
      * Apply unmitigated damage directly to current HP, bypassing defense and bleed.
      * Used by DOT effects (bleed/burn ticks) where the source already computed final damage.
      */
-    public void applyDirectDamage(int amount) {
-        if (amount <= 0) return;
+    public int applyDirectDamage(int amount) {
+        if (amount <= 0) return 0;
+        // Marked: amplify every damage source to this entity (2x, or 1.5x for bosses).
+        // Centralised here so direct hits, AoE/ricochet, and DOT ticks all benefit.
+        double markedMult = getMarkedDamageMultiplier();
+        if (markedMult != 1.0) {
+            amount = Math.max(1, (int) Math.round(amount * markedMult));
+        }
         if (mirrorClone) {
             currentHp = 0;
             alive = false;
             damagedSinceLastTurn = true;
-            return;
+            return amount;
         }
+        int before = currentHp;
         currentHp = Math.max(0, currentHp - amount);
         damagedSinceLastTurn = true;
         if (currentHp == 0) {
             alive = false;
         }
+        return before - currentHp;
     }
 
     /** Most-recent damager — used by per-mob loot drops to credit the killer. */
