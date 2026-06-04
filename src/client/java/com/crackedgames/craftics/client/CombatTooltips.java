@@ -41,6 +41,17 @@ public class CombatTooltips implements ItemTooltipCallback {
             return; // skip all other tooltip handlers — artifacts only show our text
         }
 
+        // MoreTotems mod compat: strip the mod's totem tooltips and show the Craftics
+        // revive behavior instead. Keep the item name (lines.get(0)) and wipe the rest.
+        if (MoreTotemsTooltips.isMoreTotem(itemId)
+            && com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isMoreTotem(item)) {
+            if (lines.size() > 1) {
+                lines.subList(1, lines.size()).clear();
+            }
+            MoreTotemsTooltips.appendLines(itemId.getPath(), lines);
+            return;
+        }
+
         // Goat horn: scan existing tooltip lines for the variant name
         // (Minecraft adds the instrument name as a subtitle line like "Seek")
         if (item == Items.GOAT_HORN) {
