@@ -41,6 +41,7 @@
       <a href="items-and-effects.html">Items &amp; Effects</a>
       <a href="enemies.html">Enemies &amp; Allies</a>
       <a href="world.html" class="active">World</a>
+      <a href="campaigns.html">Campaigns</a>
       <a href="reference.html">Reference</a>
     </nav>
   </aside>
@@ -326,9 +327,9 @@ boolean exists = CrafticsAPI.hasEnvironmentStyle("mymod:aether");</code></pre>
     <p>
       Build a campaign with <code>Campaign.builder(id)</code> and its <code>CampaignRegion.builder(id)</code> regions, then pass the result to <code>CrafticsAPI.registerCampaign()</code>. Use <code>CampaignBranch.of(region, a, b)</code> for the single-biome swap convenience, or construct a <code>CampaignBranch</code> directly with two lists for a segment swap.
     </p>
-    <pre><code>import com.crackedgames.craftics.api.campaign.Campaign;
-import com.crackedgames.craftics.api.campaign.CampaignRegion;
-import com.crackedgames.craftics.api.campaign.CampaignBranch;
+    <pre><code>import com.crackedgames.craftics.level.campaign.Campaign;
+import com.crackedgames.craftics.level.campaign.CampaignRegion;
+import com.crackedgames.craftics.level.campaign.CampaignBranch;
 import java.util.List;
 
 // In your CrafticsAddon.onCrafticsInit():
