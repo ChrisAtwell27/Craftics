@@ -8558,6 +8558,13 @@ public class CombatManager {
             sendMessage("§d" + currentEnemy.getDisplayName() + " is confused but has no allies to hit!");
         }
 
+        if (currentEnemy.getBlindedTurns() > 0 && !currentEnemy.isAlly()) {
+            currentEnemy.setBlindedTurns(currentEnemy.getBlindedTurns() - 1);
+            sendMessage("§9" + currentEnemy.getDisplayName() + " is blinded and can't see to attack!");
+            startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+            return;
+        }
+
         if (currentEnemy.isAlly()) {
             handleAllyTurn(currentEnemy);
             return;
@@ -20106,6 +20113,7 @@ public class CombatManager {
             else if (e.getMobEntity() != null && e.getMobEntity().isOnFire()) efx.append(";Burning");
             if (e.getSoakedTurns() > 0) efx.append(";Soaked(" + e.getSoakedTurns() + "t)");
             if (e.getConfusionTurns() > 0) efx.append(";Confused(" + e.getConfusionTurns() + "t)");
+            if (e.getBlindedTurns() > 0) efx.append(";Blinded(" + e.getBlindedTurns() + "t)");
             if (e.getDefensePenaltyTurns() > 0) efx.append(";Exposed(-" + e.getDefensePenalty() + "DEF," + e.getDefensePenaltyTurns() + "t)");
             if (e.getBleedStacks() > 0) efx.append(";Bleeding(" + e.getBleedStacks() + " stacks)");
             for (java.util.Map.Entry<String, int[]> ce : e.getCustomEffects().entrySet()) {
