@@ -14291,21 +14291,27 @@ public class CombatManager {
      */
     private net.minecraft.item.ItemStack findTotemStack() {
         net.minecraft.item.ItemStack mainHand = player.getMainHandStack();
-        if (!mainHand.isEmpty() && mainHand.getItem() == Items.TOTEM_OF_UNDYING) {
+        if (!mainHand.isEmpty() && isAnyTotem(mainHand.getItem())) {
             return mainHand;
         }
         net.minecraft.item.ItemStack offHand = player.getOffHandStack();
-        if (!offHand.isEmpty() && offHand.getItem() == Items.TOTEM_OF_UNDYING) {
+        if (!offHand.isEmpty() && isAnyTotem(offHand.getItem())) {
             return offHand;
         }
         var inv = player.getInventory();
         for (int i = 0; i < inv.size(); i++) {
             net.minecraft.item.ItemStack stack = inv.getStack(i);
-            if (!stack.isEmpty() && stack.getItem() == Items.TOTEM_OF_UNDYING) {
+            if (!stack.isEmpty() && isAnyTotem(stack.getItem())) {
                 return stack;
             }
         }
         return null;
+    }
+
+    /** Vanilla Totem of Undying or any MoreTotems totem. */
+    private static boolean isAnyTotem(net.minecraft.item.Item item) {
+        return item == Items.TOTEM_OF_UNDYING
+            || com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isMoreTotem(item);
     }
 
     /**
