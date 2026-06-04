@@ -20,6 +20,7 @@ import java.util.Set;
 public final class MoreTotemsCompat {
 
     public static final String MOD_ID = "moretotems";
+    // MoreTotems registers its items under its own namespace, which equals MOD_ID here.
     public static final String NAMESPACE = "moretotems";
 
     public static final String EXPLOSIVE   = "explosive_totem_of_undying";
@@ -43,6 +44,7 @@ public final class MoreTotemsCompat {
 
     /** Early-phase init. Flags presence so the revive/tooltip paths know to look. */
     public static void init() {
+        if (loaded) return;
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
             CrafticsMod.LOGGER.debug("[Craftics × MoreTotems] mod not loaded — skipping");
             return;
@@ -60,6 +62,10 @@ public final class MoreTotemsCompat {
     /**
      * The totem's registry path (e.g. {@code "explosive_totem_of_undying"}), or
      * {@code null} if the item is not a MoreTotems totem.
+     *
+     * <p>Unlike {@link #isMoreTotem(Item)}, this does NOT short-circuit on the
+     * mod-loaded flag — it always consults the registry. Callers that want
+     * load-gating should use {@link #isMoreTotem(Item)} instead.
      */
     public static String totemPath(Item item) {
         if (item == null) return null;
