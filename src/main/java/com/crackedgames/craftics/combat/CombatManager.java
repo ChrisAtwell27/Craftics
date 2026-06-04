@@ -8558,6 +8558,14 @@ public class CombatManager {
             }
             currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
             sendMessage("§d" + currentEnemy.getDisplayName() + " is confused but has no allies to hit!");
+            // If the enemy is also blinded, end the turn now rather than falling through into
+            // the blinded block below — otherwise both debuffs would tick in the same round.
+            // (When not blinded, preserve the pre-existing fall-through to a normal turn.)
+            if (currentEnemy.getBlindedTurns() > 0) {
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                return;
+            }
         }
 
         if (currentEnemy.getBlindedTurns() > 0 && !currentEnemy.isAlly()) {
