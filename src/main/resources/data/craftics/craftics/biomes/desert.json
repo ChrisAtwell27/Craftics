@@ -1,7 +1,7 @@
 {
   "id": "desert",
   "name": "Scorching Desert",
-  "order": 6,
+  "order": 2,
   "levels": 5,
   "grid": {
     "base_width": 10,

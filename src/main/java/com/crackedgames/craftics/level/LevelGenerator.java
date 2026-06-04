@@ -120,8 +120,8 @@ public class LevelGenerator {
         GridTile[][] tiles = generateTiles(biome, width, height, biomeIndex, rand);
 
         // Compute scaling bonuses (mirrors generateEnemies logic)
-        java.util.List<String> fullPath = BiomePath.getFullPath(branchChoice);
-        int biomeOrdinal = Math.max(0, fullPath.indexOf(biome.biomeId));
+        int biomeOrdinal = Math.max(0, com.crackedgames.craftics.level.campaign.CampaignManager
+                .ordinalOf(biome.biomeId, Math.max(0, branchChoice)));
         int hpBonus = biomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
         int atkBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());
         if (scaleHpPerLevel) hpBonus += biomeIndex * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerLevel();
@@ -223,10 +223,9 @@ public class LevelGenerator {
                                                                    boolean scaleHpPerLevel, Random rand) {
         List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
 
-        // Use BiomePath position for difficulty scaling (not registry index)
-        java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-                .getFullPath(Math.max(0, branchChoice));
-        int biomeOrdinal = fullPath.indexOf(biome.biomeId);
+        // Use active-campaign position for difficulty scaling (not registry index)
+        int biomeOrdinal = com.crackedgames.craftics.level.campaign.CampaignManager
+                .ordinalOf(biome.biomeId, Math.max(0, branchChoice));
         if (biomeOrdinal < 0) {
             biomeOrdinal = BiomeRegistry.getAllBiomes().indexOf(biome);
         }

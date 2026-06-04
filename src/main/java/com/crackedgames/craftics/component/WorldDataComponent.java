@@ -72,11 +72,6 @@ public class WorldDataComponent implements Component {
         }
     }
 
-    public java.util.List<String> getPath() {
-        initBranchIfNeeded();
-        return com.crackedgames.craftics.level.BiomePath.getPath(branchChoice);
-    }
-
     public void startNewGamePlus() {
         ngPlusLevel++;
         highestBiomeUnlocked = 1;

@@ -48,14 +48,14 @@
   <!-- Content -->
   <main class="content">
     <h1>World</h1>
-    <p class="page-desc">How to add custom biomes, arena environment themes, biome progression paths, and between-level events to Craftics.</p>
+    <p class="page-desc">How to add custom biomes, arena environment themes, campaigns, and between-level events to Craftics.</p>
 
     <!-- ================================================================
          1. BIOMES
          ================================================================ -->
     <h2 id="biomes">Biomes</h2>
     <p>
-      Biomes are the arenas players fight through. Each biome has a grid size, floor and obstacle blocks, an environment theme, an enemy pool, and a loot table. Biomes slot into the progression sequence by their <code>order</code> value, so an addon biome with <code>"order": 50</code> is inserted after any built-in biome with a lower order and before any with a higher one.
+      Biomes are the arenas players fight through. Each biome has a grid size, floor and obstacle blocks, an environment theme, an enemy pool, and a loot table. The active <a href="#campaigns">campaign</a> determines the order biomes are played in. A biome's <code>order</code> value sequences biomes that are not placed by the active campaign and acts as a tiebreaker, so an addon biome with <code>"order": 50</code> sorts after any built-in biome with a lower order and before any with a higher one.
     </p>
     <p>
       Biomes can be added two ways: through a JSON datapack file (no code required) or programmatically through <code>CrafticsAPI.registerBiome()</code>. The JSON path is simpler for pure content; the code path is needed when you want to share a <code>BiomeTemplate</code> object built entirely in Java.
@@ -111,7 +111,7 @@
         <tbody>
           <tr><td><code>id</code></td><td>string</td><td>Yes</td><td>Unique biome identifier, e.g. <code>"mymod:cavern"</code>. Using the same id as a built-in biome overrides it.</td></tr>
           <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Display name shown in the HUD and level select.</td></tr>
-          <tr><td><code>order</code></td><td>int</td><td>Yes</td><td>Sort position in the progression sequence. Lower values appear earlier.</td></tr>
+          <tr><td><code>order</code></td><td>int</td><td>Yes</td><td>Sort position used to sequence biomes outside the active campaign, and as a tiebreaker. The active <a href="#campaigns">campaign</a> drives the play order. Lower values sort earlier.</td></tr>
           <tr><td><code>levels</code></td><td>int</td><td>Yes</td><td>Total number of levels in this biome. The last level is the boss fight.</td></tr>
           <tr><td><code>grid.base_width</code></td><td>int</td><td>Yes</td><td>Arena grid width on level 1.</td></tr>
           <tr><td><code>grid.base_height</code></td><td>int</td><td>Yes</td><td>Arena grid height on level 1.</td></tr>
@@ -222,82 +222,134 @@ boolean exists = CrafticsAPI.hasEnvironmentStyle("mymod:aether");</code></pre>
     </div>
 
     <!-- ================================================================
-         3. BIOME PATHS
+         3. CAMPAIGNS
          ================================================================ -->
-    <h2 id="biome-paths">Biome Paths</h2>
+    <h2 id="campaigns">Campaigns</h2>
     <p>
-      A biome path is a named, ordered group of biome ids that form a themed realm. Craftics ships three built-in paths (Overworld, Nether, End). Addon paths appear alongside them in the player's progression map.
+      A campaign is a full custom playthrough: an ordered list of <em>regions</em>, each holding an ordered list of biome <em>nodes</em>. The campaign is what actually drives the run, deciding which biomes the player fights through and in what order. Craftics ships a built-in <code>craftics:vanilla</code> campaign with three regions (Overworld, Nether, End).
     </p>
     <p>
-      A path is a grouping and metadata construct. Biomes slot into the global run sequence by their own <code>order</code> value regardless of path membership, so an addon biome is fully playable without belonging to any path. Paths are most useful when you want a named region that clearly groups several addon biomes together in the progression map.
+      Campaigns use <strong>full-replace</strong> semantics. A registered campaign replaces the vanilla progression entirely, rather than appending to it. Only one campaign is active per world: the most-recently-registered non-vanilla campaign wins, and vanilla is the default when no addon campaign is registered. This makes a campaign the right tool for a total-conversion playthrough, not for adding a few biomes alongside the base game.
+    </p>
+    <p>
+      The <strong>last node of the last region is the final boss</strong>. Beating it completes the campaign and triggers New Game+. This is count-agnostic, so a single-region campaign with one biome completes on that biome's boss, and a five-biome campaign completes on the fifth biome's boss.
     </p>
 
     <h3>JSON Datapack</h3>
     <p>
-      Place a JSON file at <code>data/&lt;namespace&gt;/craftics/paths/&lt;path_id&gt;.json</code>. Both <code>id</code> and <code>biomes</code> are required.
+      Place a JSON file at <code>data/&lt;namespace&gt;/craftics/campaigns/&lt;id&gt;.json</code>. Craftics discovers every file at that path on resource reload. The canonical worked example is the built-in vanilla campaign at <code>data/craftics/craftics/campaigns/vanilla.json</code>.
     </p>
     <pre><code>{
-  "id": "mymod:aether",
-  "display_name": "The Aether",
-  "biomes": [
-    "mymod:aether_meadow",
-    "mymod:aether_dungeon",
-    "mymod:aether_throne"
-  ]
+  "id": "mymod:descent",
+  "display_name": "The Descent",
+  "regions": [
+    {
+      "id": "surface",
+      "display_name": "Surface",
+      "color": "§a",
+      "icon": "☘",
+      "map_color": "FF6BBF59",
+      "nodes": [
+        { "biome": "mymod:village" },
+        { "biome": "mymod:wildwood", "label": "The Wildwood" }
+      ]
+    }
+  ],
+  "branch": {
+    "region": "surface",
+    "swap": ["mymod:village", "mymod:wildwood"]
+  }
 }</code></pre>
 
-    <h4>Field Reference</h4>
+    <h4>Top-level fields</h4>
     <div class="table-wrap">
       <table>
         <thead>
           <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
         </thead>
         <tbody>
-          <tr><td><code>id</code></td><td>string</td><td>Yes</td><td>Unique path id, e.g. <code>"mymod:aether"</code>.</td></tr>
-          <tr><td><code>display_name</code></td><td>string</td><td>No</td><td>Name shown to players in the progression map. Defaults to the id.</td></tr>
-          <tr><td><code>biomes</code></td><td>string[]</td><td>Yes</td><td>Ordered list of biome ids that make up this realm. The ids should match biomes registered from a <code>craftics/biomes/</code> datapack or via the API.</td></tr>
+          <tr><td><code>id</code></td><td>string</td><td>Yes</td><td>Unique campaign id, e.g. <code>"mymod:descent"</code>.</td></tr>
+          <tr><td><code>display_name</code></td><td>string</td><td>No</td><td>Campaign name shown to players. Defaults to the id.</td></tr>
+          <tr><td><code>regions</code></td><td>array</td><td>Yes</td><td>Ordered, non-empty list of region objects. Regions are played in order; the last node of the last region is the final boss.</td></tr>
+          <tr><td><code>branch</code></td><td>object</td><td>No</td><td>Optional branch definition (see below). Omit for a purely linear campaign.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Region fields</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>string</td><td>Yes</td><td>Region id, unique within the campaign. Referenced by <code>branch.region</code>.</td></tr>
+          <tr><td><code>display_name</code></td><td>string</td><td>No</td><td>Region name shown on its tab. Defaults to the id.</td></tr>
+          <tr><td><code>color</code></td><td>string</td><td>No</td><td>Chat color code for the region label/tab, e.g. <code>"§a"</code>. Default <code>"§f"</code> (white).</td></tr>
+          <tr><td><code>icon</code></td><td>string</td><td>No</td><td>Unicode glyph shown on the region tab, e.g. <code>"☘"</code>. Default <code>"?"</code>.</td></tr>
+          <tr><td><code>map_color</code></td><td>string</td><td>No</td><td>ARGB hex string for the region tint, e.g. <code>"FF6BBF59"</code>. An 8-digit value is <code>AARRGGBB</code>; a 6-digit value gets opaque alpha. Malformed values default to white (<code>FFFFFFFF</code>).</td></tr>
+          <tr><td><code>nodes</code></td><td>array</td><td>Yes</td><td>Ordered, non-empty list of node objects played in order within the region.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Node fields</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>biome</code></td><td>string</td><td>Yes</td><td>Biome id this node plays. Should match a biome registered from a <code>craftics/biomes/</code> datapack or via the API.</td></tr>
+          <tr><td><code>label</code></td><td>string</td><td>No</td><td>Optional override for the node's map label. Defaults to the biome's own display name.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Branch fields</h4>
+    <p>
+      The optional <code>branch</code> lets a single region present a choice. When the player picks branch choice 1, the two named biomes (or two named segments) are swapped. The two biomes or segments must be <strong>contiguous</strong> in the named region; an invalid swap falls back to a linear region and is logged.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>region</code></td><td>string</td><td>Yes</td><td>The id of the region this branch applies to.</td></tr>
+          <tr><td><code>swap</code></td><td>string[] or array[]</td><td>Yes</td><td>Two contiguous biomes to swap, as two strings (<code>["a", "b"]</code>), or two contiguous segments, as two arrays of strings (<code>[["a", "b", "c"], ["d", "e"]]</code>). Branch choice 1 plays them in swapped order.</td></tr>
         </tbody>
       </table>
     </div>
 
     <h3>Java API</h3>
     <p>
-      Use <code>BiomePathEntry.builder(id)</code> for a fluent build, then pass the result to <code>CrafticsAPI.registerBiomePath()</code>. Append biomes one at a time with <code>biome(id)</code> or in bulk with <code>biomes(Collection)</code>.
+      Build a campaign with <code>Campaign.builder(id)</code> and its <code>CampaignRegion.builder(id)</code> regions, then pass the result to <code>CrafticsAPI.registerCampaign()</code>. Use <code>CampaignBranch.of(region, a, b)</code> for the single-biome swap convenience, or construct a <code>CampaignBranch</code> directly with two lists for a segment swap.
     </p>
-    <pre><code>import com.crackedgames.craftics.api.BiomePathEntry;
+    <pre><code>import com.crackedgames.craftics.api.campaign.Campaign;
+import com.crackedgames.craftics.api.campaign.CampaignRegion;
+import com.crackedgames.craftics.api.campaign.CampaignBranch;
 import java.util.List;
 
 // In your CrafticsAddon.onCrafticsInit():
-CrafticsAPI.registerBiomePath(
-    BiomePathEntry.builder("mymod:aether")
-        .displayName("The Aether")
-        .biome("mymod:aether_meadow")
-        .biome("mymod:aether_dungeon")
-        .biome("mymod:aether_throne")
-        .build()
-);
-
-// Or add multiple biomes at once
-CrafticsAPI.registerBiomePath(
-    BiomePathEntry.builder("mymod:nether_extended")
-        .displayName("Extended Nether")
-        .biomes(List.of("mymod:soul_shore", "mymod:basalt_delta_deep"))
+CrafticsAPI.registerCampaign(
+    Campaign.builder("mymod:descent")
+        .displayName("The Descent")
+        .region(
+            CampaignRegion.builder("surface")
+                .displayName("Surface")
+                .color("§a")
+                .icon("☘")
+                .mapColor(0xFF6BBF59)
+                .node("mymod:village")
+                .node("mymod:wildwood", "The Wildwood")
+                .build()
+        )
+        // Single-biome swap convenience
+        .branch(CampaignBranch.of("surface", "mymod:village", "mymod:wildwood"))
+        // Segment swap: new CampaignBranch("surface", List.of("a", "b"), List.of("c", "d"))
         .build()
 );</code></pre>
-
-    <h4>BiomePathEntry builder methods</h4>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Method</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>displayName(String)</code></td><td>Name shown to players. Defaults to the path id.</td></tr>
-          <tr><td><code>biome(String)</code></td><td>Append one biome id to the end of the path.</td></tr>
-          <tr><td><code>biomes(Collection&lt;String&gt;)</code></td><td>Append all ids in the collection, in order.</td></tr>
-        </tbody>
-      </table>
-    </div>
 
     <!-- ================================================================
          4. EVENTS

@@ -5,6 +5,8 @@ import com.crackedgames.craftics.combat.ai.AIRegistry;
 import com.crackedgames.craftics.combat.ai.EnemyAI;
 import com.crackedgames.craftics.level.BiomeRegistry;
 import com.crackedgames.craftics.level.BiomeTemplate;
+import com.crackedgames.craftics.level.campaign.Campaign;
+import com.crackedgames.craftics.level.campaign.CampaignManager;
 import net.minecraft.item.Item;
 
 /**
@@ -148,16 +150,25 @@ public final class CrafticsAPI {
         EnvironmentRegistry.register(def);
     }
 
-    // === Biome Paths ===
+    // === Campaigns ===
 
     /**
-     * Register a custom biome progression path — a named, ordered sequence of biome
-     * ids forming a themed realm. Use {@link BiomePathEntry#builder(String)}.
+     * Register a custom campaign — an authored, ordered playthrough of biomes that drives
+     * difficulty scaling, dimension labeling, and completion detection. Use
+     * {@link Campaign#builder(String)} for a fluent API.
      *
-     * @param entry the path definition
+     * <p>The datapack route is {@code data/<your_mod_id>/craftics/campaigns/*.json}, read on
+     * server start and re-read on {@code /reload}.
+     *
+     * <p><strong>Full-replace semantics:</strong> a registered campaign REPLACES the built-in
+     * campaign path entirely. Exactly one campaign is active per world — the
+     * most-recently-registered non-vanilla campaign wins over Craftics' built-in
+     * {@code craftics:vanilla} campaign.
+     *
+     * @param campaign the campaign definition
      */
-    public static void registerBiomePath(BiomePathEntry entry) {
-        BiomePathRegistry.register(entry);
+    public static void registerCampaign(Campaign campaign) {
+        CampaignManager.register(campaign, RegistrationSource.CODE);
     }
 
     // === New: Equipment Scanners ===

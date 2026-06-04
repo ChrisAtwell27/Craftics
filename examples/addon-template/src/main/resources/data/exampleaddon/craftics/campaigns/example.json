@@ -1,0 +1,17 @@
+{
+	"_comment": "A campaign is a full custom playthrough: ordered regions of biome nodes. When this addon is loaded this campaign REPLACES Craftics' built-in vanilla campaign entirely (full-replace; one active campaign per world, the most-recently-registered non-vanilla campaign wins). The LAST node of the LAST region is the final boss; beating it triggers New Game+. This minimal example has one region with the addon's one real biome, exampleaddon:highlands, as its final boss. To grow it: add more nodes (each {\"biome\": \"<id>\"}) and more regions, referencing only biomes you actually register under craftics/biomes/. Optional per-region fields shown below: color (chat color code, default §f), icon (unicode glyph, default ?), map_color (ARGB hex string, default FFFFFFFF white). Optional per-node 'label' overrides the map label. OPTIONAL branch example (omit for a purely linear campaign): \"branch\": { \"region\": \"highlands\", \"swap\": [\"first_biome\", \"second_biome\"] } reverses two contiguous biomes when the player picks branch choice 1; segment form swaps two contiguous arrays: \"swap\": [[\"a\",\"b\"], [\"c\",\"d\"]]. See data/craftics/craftics/campaigns/vanilla.json in Craftics for the canonical worked example (3 regions: overworld/nether/end).",
+	"id": "exampleaddon:example",
+	"display_name": "The Highlands",
+	"regions": [
+		{
+			"id": "highlands",
+			"display_name": "The Highlands",
+			"color": "§a",
+			"icon": "☘",
+			"map_color": "FF6BBF59",
+			"nodes": [
+				{ "biome": "exampleaddon:highlands", "label": "Highland Peaks" }
+			]
+		}
+	]
+}
