@@ -35,7 +35,6 @@ public final class MoreTotemsEffects {
             for (GridPos e : enemies) {
                 nearest = Math.min(nearest, c.manhattanDistance(e));
             }
-            if (enemies.isEmpty()) nearest = Integer.MAX_VALUE;
             if (nearest > bestNearest) {
                 bestNearest = nearest;
                 best = c;
