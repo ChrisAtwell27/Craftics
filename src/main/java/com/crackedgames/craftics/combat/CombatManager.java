@@ -14447,6 +14447,7 @@ public class CombatManager {
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
         } catch (Exception ignored) {}
         // 4x4 block anchored so the player tile is the inner corner: dx,dz in -1..2.
+        outer:
         for (int dx = -1; dx <= 2; dx++) {
             for (int dz = -1; dz <= 2; dz++) {
                 GridPos pos = new GridPos(center.x() + dx, center.z() + dz);
@@ -14457,8 +14458,10 @@ public class CombatManager {
                 int actual = target.takeDamage(dmg);
                 sendMessage("\u00a7c\u2726 Explosion hits " + target.getDisplayName() + " for " + actual + "!");
                 checkAndHandleDeath(target);
+                if (!active) break outer; // last enemy died \u2014 combat already ended
             }
         }
+        refreshHighlights();
     }
 
     /** Skeletal totem: mark every living enemy for the given turns. */
@@ -14514,7 +14517,7 @@ public class CombatManager {
             if (e.isAlive() && !e.isAlly()) enemyPositions.add(e.getGridPos());
         }
         GridPos dest = MoreTotemsEffects.safestTile(candidates, enemyPositions);
-        if (dest == null) return; // no valid landing \u2014 stay put
+        if (dest == null || dest.equals(cur)) return; // no better tile \u2014 stay put
         arena.setPlayerGridPos(dest);
         BlockPos bp = arena.gridToBlockPos(dest);
         //? if <=1.21.1 {
