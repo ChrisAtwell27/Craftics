@@ -24,9 +24,9 @@ public final class MoreTotemsTooltips {
     public static void appendLines(String path, List<Text> lines) {
         List<String> body = describe(path);
         lines.add(Text.empty());
-        lines.add(Text.literal("§6§lCraftics Combat:"));
+        lines.add(Text.literal("\u00a76\u00a7lCraftics Combat:"));
         if (body.isEmpty()) {
-            lines.add(Text.literal("§8  (no Craftics effect)"));
+            lines.add(Text.literal("\u00a78  (no Craftics effect)"));
             return;
         }
         for (String line : body) {
@@ -71,6 +71,6 @@ public final class MoreTotemsTooltips {
         return out;
     }
 
-    private static String stat(String text)   { return "§a  + " + text; }
-    private static String active(String text) { return "§e  • " + text; }
+    private static String stat(String text)   { return "\u00a7a  + " + text; }
+    private static String active(String text) { return "\u00a7e  \u2022 " + text; }
 }
