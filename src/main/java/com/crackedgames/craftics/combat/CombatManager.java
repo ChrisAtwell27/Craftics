@@ -14330,6 +14330,11 @@ public class CombatManager {
         net.minecraft.item.ItemStack totem = findTotemStack();
         if (totem == null) return false;
 
+        String moddedPath = com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.totemPath(totem.getItem());
+        if (moddedPath != null) {
+            return consumeModdedTotem(totem, moddedPath);
+        }
+
         totem.decrement(1);
 
         // Vanilla parity: clear all status effects, then re-apply totem buffs.
@@ -14364,6 +14369,222 @@ public class CombatManager {
         achievementTracker.recordTotemProc();
         sendSync();
         return true;
+    }
+
+    /**
+     * Consume a MoreTotems totem and resurrect with a BARE revive (clear effects + 50% HP),
+     * then run the totem's unique Craftics effect. Decrement happens first so a render
+     * failure can never leave the player un-revived (matches the vanilla method's ordering).
+     */
+    private boolean consumeModdedTotem(net.minecraft.item.ItemStack totem, String path) {
+        totem.decrement(1);
+
+        // Bare revive: clear effects + zero absorption + 50% HP. No vanilla buff baseline.
+        player.clearStatusEffects();
+        player.setAbsorptionAmount(0f);
+        float halfMax = Math.max(1.0f, player.getMaxHealth() / 2.0f);
+        player.setHealth(halfMax);
+
+        String label;
+        switch (path) {
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.EXPLOSIVE -> {
+                label = "Explosive Totem";
+                totemExplosion();
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.SKELETAL -> {
+                label = "Skeletal Totem";
+                totemMarkAllEnemies(2);
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.TELEPORTING -> {
+                label = "Teleporting Totem";
+                totemTeleportToSafestTile();
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.GHASTLY -> {
+                label = "Ghastly Totem";
+                totemBurnAllEnemiesAndFireRes(5);
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.STINGING -> {
+                label = "Stinging Totem";
+                totemSummonAllies(net.minecraft.entity.EntityType.BEE, 5);
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.TENTACLED -> {
+                label = "Tentacled Totem";
+                totemBlindAllEnemies(2);
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.ROTTING -> {
+                label = "Rotting Totem";
+                totemSummonAllies(net.minecraft.entity.EntityType.ZOMBIE, 3);
+            }
+            default -> label = "Totem";
+        }
+
+        try {
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.TOTEM_OF_UNDYING,
+                player.getX(), player.getY() + 1.0, player.getZ(),
+                100, 0.6, 1.0, 0.6, 0.5);
+            world.playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ITEM_TOTEM_USE,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        } catch (Exception ignored) {
+        }
+
+        sendMessage("\u00a76\u00a7l\u2726 " + label.toUpperCase() + " ACTIVATES! \u2726 \u00a7rResurrected with half health!");
+        achievementTracker.recordTotemProc();
+        sendSync();
+        return true;
+    }
+
+    // \u2500\u2500 MoreTotems effect helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+    /** Explosive totem: 4x4 around the player, each enemy takes 50% max HP + biome ordinal. */
+    private void totemExplosion() {
+        GridPos center = arena.getPlayerGridPos();
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        try {
+            BlockPos bp = arena.gridToBlockPos(center);
+            sw.playSound(null, bp, net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        } catch (Exception ignored) {}
+        // 4x4 block anchored so the player tile is the inner corner: dx,dz in -1..2.
+        for (int dx = -1; dx <= 2; dx++) {
+            for (int dz = -1; dz <= 2; dz++) {
+                GridPos pos = new GridPos(center.x() + dx, center.z() + dz);
+                if (!arena.isInBounds(pos)) continue;
+                CombatEntity target = arena.getOccupant(pos);
+                if (target == null || !target.isAlive() || target.isAlly()) continue;
+                int dmg = MoreTotemsEffects.explosionDamage(target.getMaxHp(), currentBiomeOrdinal);
+                int actual = target.takeDamage(dmg);
+                sendMessage("\u00a7c\u2726 Explosion hits " + target.getDisplayName() + " for " + actual + "!");
+                checkAndHandleDeath(target);
+            }
+        }
+    }
+
+    /** Skeletal totem: mark every living enemy for the given turns. */
+    private void totemMarkAllEnemies(int turns) {
+        int n = 0;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            e.setMarkedTurns(Math.max(e.getMarkedTurns(), turns));
+            n++;
+        }
+        sendMessage("\u00a7e\u2726 " + n + " enemies are Marked for " + turns + " turns!");
+    }
+
+    /** Tentacled totem: blind every living enemy for the given turns. */
+    private void totemBlindAllEnemies(int turns) {
+        int n = 0;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            e.stackBlinded(turns);
+            n++;
+        }
+        sendMessage("\u00a79\u2726 " + n + " enemies are Blinded for " + turns + " turns!");
+    }
+
+    /** Ghastly totem: set every living enemy on fire, grant the player Fire Resistance. */
+    private void totemBurnAllEnemiesAndFireRes(int turns) {
+        int perTurn = 2;
+        int n = 0;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            e.stackBurning(turns, perTurn);
+            n++;
+        }
+        addEffectHooked(CombatEffects.EffectType.FIRE_RESISTANCE, turns, 0);
+        sendMessage("\u00a76\u2726 " + n + " enemies set ablaze for " + turns + " turns! You gain Fire Resistance.");
+    }
+
+    /** Teleporting totem: move the player to the tile farthest from the nearest enemy. */
+    private void totemTeleportToSafestTile() {
+        java.util.List<GridPos> candidates = new java.util.ArrayList<>();
+        GridPos cur = arena.getPlayerGridPos();
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos p = new GridPos(x, z);
+                if (arena.isOccupied(p) && !p.equals(cur)) continue;
+                GridTile t = arena.getTile(p);
+                if (t == null || !t.isSafeForSpawn()) continue;
+                candidates.add(p);
+            }
+        }
+        java.util.List<GridPos> enemyPositions = new java.util.ArrayList<>();
+        for (CombatEntity e : enemies) {
+            if (e.isAlive() && !e.isAlly()) enemyPositions.add(e.getGridPos());
+        }
+        GridPos dest = MoreTotemsEffects.safestTile(candidates, enemyPositions);
+        if (dest == null) return; // no valid landing \u2014 stay put
+        arena.setPlayerGridPos(dest);
+        BlockPos bp = arena.gridToBlockPos(dest);
+        //? if <=1.21.1 {
+        player.teleport((ServerWorld) player.getEntityWorld(),
+            bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
+            java.util.Collections.emptySet(), player.getYaw(), 0f);
+        //?} else {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
+            bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
+            java.util.Collections.emptySet(), player.getYaw(), 0f, true);
+        *///?}
+        sendMessage("\u00a7d\u2726 Teleported to safety!");
+    }
+
+    /**
+     * Summon {@code count} temporary allied mobs of the given type near the player. Bypasses
+     * AP and the party cap (this is a revive bonus, not a player action). Best-effort: any mob
+     * that can't be placed is skipped.
+     */
+    private void totemSummonAllies(net.minecraft.entity.EntityType<?> entityType, int count) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        String typeId = net.minecraft.registry.Registries.ENTITY_TYPE.getId(entityType).toString();
+        com.crackedgames.craftics.api.registry.AllyEntry entry =
+            com.crackedgames.craftics.api.registry.AllyRegistry.getOrNull(typeId);
+        int hp, atk, def, range;
+        if (entry != null) {
+            hp = entry.hp(); atk = entry.attack(); def = entry.defense(); range = entry.range();
+        } else {
+            hp = 8; atk = 2; def = 0; range = 1;
+        }
+
+        java.util.Set<GridPos> reserved = new java.util.HashSet<>();
+        for (CombatEntity e : enemies) {
+            if (e.isAlive()) reserved.add(e.getGridPos());
+        }
+        reserved.add(arena.getPlayerGridPos());
+
+        int spawned = 0;
+        for (int i = 0; i < count; i++) {
+            GridPos tile = findNearestWalkableUnreserved(arena, arena.getPlayerGridPos(), reserved);
+            if (tile == null) break;
+            reserved.add(tile);
+
+            BlockPos blockPos = arena.gridToBlockPos(tile);
+            net.minecraft.entity.Entity rawEntity = entityType.create(world, null, blockPos,
+                net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
+            if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) continue;
+            mob.refreshPositionAndAngles(
+                blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5, 0, 0);
+            mob.setPersistent();
+            mob.setAiDisabled(true);
+            mob.setInvulnerable(true);
+            mob.setNoGravity(true);
+            mob.noClip = true;
+            mob.setSilent(true);
+            mob.addCommandTag("craftics_arena");
+            world.spawnEntity(mob);
+
+            CombatEntity ce = new CombatEntity(mob.getId(), typeId, tile, hp, atk, def, range);
+            ce.setAlly(true);
+            ce.setTemporaryAlly(true);
+            ce.setOwnerUuid(player.getUuid());
+            ce.setMobEntity(mob);
+            ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(typeId));
+            enemies.add(ce);
+            arena.placeEntity(ce);
+            spawned++;
+        }
+        sendMessage("\u00a7a\u2726 " + spawned + " allies rise to defend you!");
+        refreshHighlights();
     }
 
     /**
