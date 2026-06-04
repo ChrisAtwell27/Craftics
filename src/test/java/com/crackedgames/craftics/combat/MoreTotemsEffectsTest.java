@@ -2,6 +2,8 @@ package com.crackedgames.craftics.combat;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import com.crackedgames.craftics.core.GridPos;
+import java.util.List;
 
 /** Pure-logic tests for {@link MoreTotemsEffects}. */
 class MoreTotemsEffectsTest {
@@ -25,39 +27,45 @@ class MoreTotemsEffectsTest {
     }
 
     @Test
+    void explosionDamage_negativeOrdinalClampedToZero() {
+        // 10 max HP, biome ordinal -5 -> max(0,-5) = 0 -> 5 + 0 = 5.
+        assertEquals(5, MoreTotemsEffects.explosionDamage(10, -5));
+    }
+
+    @Test
     void safestTile_picksFarthestFromNearestEnemy() {
-        java.util.List<com.crackedgames.craftics.core.GridPos> candidates = java.util.List.of(
-            new com.crackedgames.craftics.core.GridPos(0, 0),   // nearest enemy dist 1
-            new com.crackedgames.craftics.core.GridPos(9, 9));  // nearest enemy dist 18
-        java.util.List<com.crackedgames.craftics.core.GridPos> enemies = java.util.List.of(
-            new com.crackedgames.craftics.core.GridPos(1, 0));
-        assertEquals(new com.crackedgames.craftics.core.GridPos(9, 9),
+        List<GridPos> candidates = List.of(
+            new GridPos(0, 0),   // nearest enemy dist 1
+            new GridPos(9, 9));  // nearest enemy dist 18
+        List<GridPos> enemies = List.of(
+            new GridPos(1, 0));
+        assertEquals(new GridPos(9, 9),
             MoreTotemsEffects.safestTile(candidates, enemies));
     }
 
     @Test
     void safestTile_tieGoesToFirstCandidate() {
-        java.util.List<com.crackedgames.craftics.core.GridPos> candidates = java.util.List.of(
-            new com.crackedgames.craftics.core.GridPos(5, 0),
-            new com.crackedgames.craftics.core.GridPos(0, 5));  // both manhattan dist 5
-        java.util.List<com.crackedgames.craftics.core.GridPos> enemies = java.util.List.of(
-            new com.crackedgames.craftics.core.GridPos(0, 0));
-        assertEquals(new com.crackedgames.craftics.core.GridPos(5, 0),
+        List<GridPos> candidates = List.of(
+            new GridPos(5, 0),
+            new GridPos(0, 5));  // both manhattan dist 5
+        List<GridPos> enemies = List.of(
+            new GridPos(0, 0));
+        assertEquals(new GridPos(5, 0),
             MoreTotemsEffects.safestTile(candidates, enemies));
     }
 
     @Test
     void safestTile_noEnemiesReturnsFirstCandidate() {
-        java.util.List<com.crackedgames.craftics.core.GridPos> candidates = java.util.List.of(
-            new com.crackedgames.craftics.core.GridPos(2, 2),
-            new com.crackedgames.craftics.core.GridPos(3, 3));
-        assertEquals(new com.crackedgames.craftics.core.GridPos(2, 2),
-            MoreTotemsEffects.safestTile(candidates, java.util.List.of()));
+        List<GridPos> candidates = List.of(
+            new GridPos(2, 2),
+            new GridPos(3, 3));
+        assertEquals(new GridPos(2, 2),
+            MoreTotemsEffects.safestTile(candidates, List.of()));
     }
 
     @Test
     void safestTile_noCandidatesReturnsNull() {
-        assertNull(MoreTotemsEffects.safestTile(java.util.List.of(),
-            java.util.List.of(new com.crackedgames.craftics.core.GridPos(0, 0))));
+        assertNull(MoreTotemsEffects.safestTile(List.of(),
+            List.of(new GridPos(0, 0))));
     }
 }
