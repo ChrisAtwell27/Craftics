@@ -4,7 +4,9 @@ Changelog
 
 Mod compatibility
 
-- MoreTotems support: the mod's seven totems of undying now auto-revive you in combat at 50% health, each with its own Craftics effect (explosion, mark all enemies, teleport to safety, set enemies ablaze plus Fire Resistance, summon bees or zombies, or blind all enemies), with rewritten tooltips, and drop as rare rewards from bosses, trial chambers, vaults, and the Shrine of Fortune
+- MoreTotems support: the mod's seven totems of undying now auto-revive you in combat at 50% health, each with its own Craftics effect (explosion, mark all enemies, teleport to safety, set enemies ablaze plus Fire Resistance, summon bees or zombies, or blind all enemies), with rewritten tooltips, drop as rare rewards from bosses, trial chambers, vaults, and the Shrine of Fortune, and can be bought from the curiosity trader at high tiers
+- Multi Arrow Effects support: combined arrows now apply every recognized effect in combat instead of only the first, so a multi-effect mixed arrow lands all its debuffs from one shot
+- Basic Weapons support: all six new weapon types work in combat with fitting affinities, action-point costs, reach, and unique effects (dual-wield daggers strike twice, clubs slow, hammers knock back and stun, glaives cleave, spears and quarterstaves reach two tiles), each with its own attack animation, Craftics tooltips, the mod's Might enchantment boosting blunt-weapon damage and stun, stock in the weaponsmith trader, and Might offered by the enchanter
 
 0.2.2
 

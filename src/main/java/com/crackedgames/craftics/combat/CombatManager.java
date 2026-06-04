@@ -3526,10 +3526,10 @@ public class CombatManager {
 
         // Rocket crossbow shots spend a firework rocket (consumed by the crossbow
         // weapon ability), not an arrow — skip arrow/tipped-arrow consumption.
-        String tippedEffect = null;
+        java.util.List<String> tippedEffects = java.util.List.of();
         if ((PlayerCombatStats.isBow(player) || weapon == Items.CROSSBOW) && !crossbowRocket) {
             if (PlayerCombatStats.hasTippedArrows(player)) {
-                tippedEffect = PlayerCombatStats.findAndConsumeTippedArrow(player);
+                tippedEffects = PlayerCombatStats.findAndConsumeTippedArrow(player);
             } else if (!PlayerCombatStats.hasInfinity(player)) {
                 PlayerCombatStats.consumeArrow(player);
             }
@@ -3787,7 +3787,7 @@ public class CombatManager {
         final int fSharpnessBleed = (weapon != Items.BOW && weapon != Items.CROSSBOW)
             ? PlayerCombatStats.getSharpness(player) : 0;
         final boolean fLuckCrit = luckCrit;
-        final String fTippedEffect = tippedEffect;
+        final java.util.List<String> fTippedEffects = tippedEffects;
         final int fFireAspect = fireAspect;
         // Sweeping Edge level scales the Fire Aspect shape (cone -> wide cone
         // -> ring) when both enchants are present on a sword.
@@ -3982,9 +3982,9 @@ public class CombatManager {
                 sendMessage(coneMsg);
             }
 
-            // Tipped arrow effects
-            if (fTippedEffect != null) {
-                switch (fTippedEffect) {
+            // Tipped arrow effects — apply every recognized effect on a (possibly combined) arrow
+            for (String fx : fTippedEffects) {
+                switch (fx) {
                     case "poison" -> {
                         fTarget.stackPoison(3, 1);
                         sendMessage("\u00a75Poison arrow! Enemy poisoned for 3 turns.");
@@ -5685,6 +5685,14 @@ public class CombatManager {
         if (item instanceof net.minecraft.item.MaceItem) {
             return new String[]{"smite", "fire_aspect", "knockback", "unbreaking", "mending",
                 "density", "breach", "wind_burst"};
+        }
+        // Basic Weapons: offer Might on the blunt trio (club/hammer/quarterstaff). The pool holds
+        // the BARE PATH "might" — the enchanter resolver matches getValue().getPath(), so a
+        // namespaced id would never resolve. Only when the mod is loaded and the item is a
+        // registered blunt basicweapons weapon. Placed outside the version split above so it
+        // compiles on every shard.
+        if (com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isBlunt(item)) {
+            return new String[]{"might", "unbreaking", "mending"};
         }
         // Hoe / shovel / generic — only the universal enchants apply
         return new String[]{"unbreaking", "mending"};
