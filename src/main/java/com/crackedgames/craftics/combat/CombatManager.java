@@ -15214,6 +15214,20 @@ public class CombatManager {
             : 0;
         if (biomeOrdinal < 0) biomeOrdinal = 0;
         boolean isBoss = biomeTemplate != null && biomeTemplate.isBossLevel(arena.getLevelNumber());
+        // Rare MoreTotems totem drop — boss kills only (Luck boosts chance). No-op when the
+        // mod is absent (rollOne returns EMPTY).
+        if (isBoss) {
+            float totemChance = 0.15f + luckBonusItems * 0.02f;
+            if (Math.random() < totemChance) {
+                ItemStack totemDrop = com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne();
+                if (!totemDrop.isEmpty()) {
+                    for (ServerPlayerEntity recipient : rewardRecipients) {
+                        deliverLoot(recipient, totemDrop.copy(), lootOverflow);
+                    }
+                    sendMessage("§d§l✦ RARE DROP: " + totemDrop.getName().getString() + "!");
+                }
+            }
+        }
         // Resourceful stat: +1 emerald per point (uses leader's stat)
         PlayerProgression victoryProg = PlayerProgression.get(world);
         int resourcefulBonus = victoryProg.getStats(player).getPoints(PlayerProgression.Stat.RESOURCEFUL);
