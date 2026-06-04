@@ -49,7 +49,10 @@ public class RandomEvents {
             desc = "\u00a7bThe shrine glows brightly!";
         } else if (roll < 85) {
             // Great: rare items. ~1-in-3 yields a MoreTotems totem when the mod is installed.
-            ItemStack totem = rng.nextInt(3) == 0
+            // isLoaded() is checked first so we don't burn an rng step (shifting the fallback
+            // switch) when the mod is absent.
+            ItemStack totem = com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isLoaded()
+                    && rng.nextInt(3) == 0
                 ? com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne()
                 : ItemStack.EMPTY;
             if (!totem.isEmpty()) {
