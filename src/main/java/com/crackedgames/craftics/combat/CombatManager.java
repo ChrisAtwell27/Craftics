@@ -2533,6 +2533,8 @@ public class CombatManager {
             to.stackBleed(Math.max(0, from.getBleedStacks() - to.getBleedStacks()));
             any = true;
         }
+        // Note: blindedTurns is intentionally NOT spread by Contagion — it's a
+        // targeted totem debuff, not a contagious DOT.
         for (var entry : from.getCustomEffects().entrySet()) {
             int turns = entry.getValue()[0];
             int amp = entry.getValue()[1];
@@ -8559,9 +8561,12 @@ public class CombatManager {
         }
 
         if (currentEnemy.getBlindedTurns() > 0 && !currentEnemy.isAlly()) {
+            // Fumble the turn outright (no swing animation), like the stun path —
+            // a blinded enemy can't see to attack, so it just loses its turn.
             currentEnemy.setBlindedTurns(currentEnemy.getBlindedTurns() - 1);
             sendMessage("§9" + currentEnemy.getDisplayName() + " is blinded and can't see to attack!");
-            startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+            enemyTurnState = EnemyTurnState.DONE;
+            enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             return;
         }
 
