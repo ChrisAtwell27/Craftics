@@ -57,6 +57,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
         com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
         com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.init();
+        com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.init();
 
         // Addon entrypoint — invoked after all built-in content and compat modules are
         // registered, so addon registrations run last and win deterministically over
@@ -482,7 +483,10 @@ public class CrafticsMod implements ModInitializer {
         // main entrypoint has run by the time ours does — so finish the registration
         // on SERVER_STARTING, which fires after every mod's main-phase init.
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTING.register(
-            server -> com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred());
+            server -> {
+                com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
+                com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
+            });
 
         // Load biome definitions from JSON datapacks on server start
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {

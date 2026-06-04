@@ -510,9 +510,15 @@ public final class VanillaWeapons {
 
     // ===== Mace (BLUNT, range 1, apCost 2) =====
 
-    private static void registerMace() {
-        // Mace: stun + breach + density + base AoE + wind burst / default knockback
-        WeaponAbilityHandler maceHandler = (player, target, arena, baseDamage, stats, luckPoints) -> {
+    // Mace: stun + breach + density + base AoE + wind burst / default knockback.
+    // Extracted to a static method (mirroring swordAbility/waterProc) so the
+    // basicweapons hammer can reuse the exact same behavior.
+    public static WeaponAbility.AttackResult maceAbility(ServerPlayerEntity player,
+                                                  CombatEntity target,
+                                                  GridArena arena,
+                                                  int baseDamage,
+                                                  PlayerProgression.PlayerStats stats,
+                                                  int luckPoints) {
             double luckBonus = luckPoints * LUCK_BONUS_PER_POINT;
             List<String> messages = new ArrayList<>();
             List<CombatEntity> extraTargets = new ArrayList<>();
@@ -667,12 +673,13 @@ public final class VanillaWeapons {
             }
 
             return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
-        };
+    }
 
+    private static void registerMace() {
         WeaponRegistry.register(Items.MACE, WeaponEntry.builder(Items.MACE)
             .damageType(DamageType.BLUNT)
             .attackPower(CrafticsMod.CONFIG::dmgMace)
-            .apCost(2).range(1).ability(maceHandler)
+            .apCost(2).range(1).ability(VanillaWeapons::maceAbility)
             .build());
     }
 
