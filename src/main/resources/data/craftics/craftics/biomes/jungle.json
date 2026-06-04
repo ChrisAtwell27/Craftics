@@ -1,7 +1,7 @@
 {
   "id": "jungle",
   "name": "Dense Jungle",
-  "order": 7,
+  "order": 3,
   "levels": 5,
   "grid": {
     "base_width": 11,

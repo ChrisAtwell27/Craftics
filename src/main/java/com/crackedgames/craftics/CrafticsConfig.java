@@ -3,6 +3,7 @@ package com.crackedgames.craftics;
 import io.wispforest.owo.config.annotation.Config;
 import io.wispforest.owo.config.annotation.Modmenu;
 import io.wispforest.owo.config.annotation.RangeConstraint;
+import io.wispforest.owo.config.annotation.SectionHeader;
 
 @Modmenu(modId = "craftics")
 @Config(name = "craftics-config", wrapperName = "CrafticsConfigWrapper")
@@ -10,6 +11,7 @@ public class CrafticsConfig {
 
     // ===== Player Stats =====
 
+    @SectionHeader("playerStats")
     @RangeConstraint(min = 1, max = 10)
     public int baseAp = 3;
 
@@ -22,6 +24,7 @@ public class CrafticsConfig {
     // ===== Enemy Scaling (centralized — tweak these to adjust all mob difficulty) =====
 
     /** Global multiplier for all enemy damage dealt to the player. 1.0 = normal. */
+    @SectionHeader("enemyScaling")
     @RangeConstraint(min = 0.1, max = 5.0)
     public float enemyDamageMultiplier = 1.35f;
 
@@ -57,9 +60,13 @@ public class CrafticsConfig {
     // ===== Boss Scaling =====
 
     /** HP multiplier applied only to bosses (does not stack with enemyHpMultiplier). */
+    @SectionHeader("bossScaling")
     @RangeConstraint(min = 0.5, max = 5.0)
     public float bossHpMultiplier = 3.0f;
 
+    // ===== Gameplay Flags =====
+
+    @SectionHeader("gameplayFlags")
     public boolean friendlyFireEnabled = true;
 
     public boolean permadeathMode = false;
@@ -70,6 +77,7 @@ public class CrafticsConfig {
 
     // ===== Enemy Counts =====
 
+    @SectionHeader("enemyCounts")
     @RangeConstraint(min = 1, max = 15)
     public int maxEnemiesPerLevel = 7;
 
@@ -78,6 +86,7 @@ public class CrafticsConfig {
 
     // ===== Combat Tuning =====
 
+    @SectionHeader("combatTuning")
     @RangeConstraint(min = 1, max = 5)
     public int attackApCost = 2;
 
@@ -98,6 +107,7 @@ public class CrafticsConfig {
 
     // ===== Enemy Behavior =====
 
+    @SectionHeader("enemyBehavior")
     @RangeConstraint(min = 0.5, max = 3.0)
     public float enemyMoveSpeedMultiplier = 1.0f;
 
@@ -116,6 +126,7 @@ public class CrafticsConfig {
 
     // ===== Weapon Base Damage =====
 
+    @SectionHeader("weaponDamage")
     @RangeConstraint(min = 0, max = 20)
     public int dmgFist = 1;
     @RangeConstraint(min = 0, max = 30)
@@ -177,17 +188,16 @@ public class CrafticsConfig {
 
     // ===== Arena & Progression =====
 
+    @SectionHeader("arenaProgression")
     @RangeConstraint(min = 0, max = 10)
     public int arenaGridPadding = 0;
-
-    @RangeConstraint(min = 1, max = 10)
-    public int levelsPerBiome = 5;
 
     @RangeConstraint(min = 0.1, max = 5.0)
     public float lootQuantityMultiplier = 1.0f;
 
     // ===== Rewards =====
 
+    @SectionHeader("rewards")
     @RangeConstraint(min = 0, max = 20)
     public int emeraldBaseReward = 1;
 
@@ -206,6 +216,7 @@ public class CrafticsConfig {
     // ===== Event Chances (cumulative thresholds — each is the total chance up to that event) =====
 
     /** Chance of any event in early biomes (0-2). Set to 0 to disable events early. */
+    @SectionHeader("eventChances")
     @RangeConstraint(min = 0.0, max = 1.0)
     public float earlyBiomeEventChance = 0.75f;
 
@@ -239,16 +250,19 @@ public class CrafticsConfig {
 
     // ===== Party =====
 
+    @SectionHeader("party")
     @RangeConstraint(min = 2, max = 8)
     public int maxPartySize = 4;
 
     // ===== NG+ =====
 
+    @SectionHeader("ngPlus")
     @RangeConstraint(min = 0.0, max = 1.0)
     public float ngPlusScalingPerCycle = 0.25f;
 
     // ===== Quality of Life =====
 
+    @SectionHeader("qualityOfLife")
     public boolean skipEnemyAnimations = false;
 
     @RangeConstraint(min = 1, max = 20)
@@ -265,6 +279,7 @@ public class CrafticsConfig {
 
     // ===== Visual =====
 
+    @SectionHeader("visual")
     public boolean compactEnemyList = true;
     public boolean showEmeraldsInCombat = false;
     public boolean fadeTurnBanner = true;
@@ -279,6 +294,7 @@ public class CrafticsConfig {
 
     // ===== Accessibility =====
 
+    @SectionHeader("accessibility")
     public boolean colorblindMode = false;
     public boolean largerUI = false;
     public boolean disableCameraShake = false;
@@ -286,6 +302,7 @@ public class CrafticsConfig {
     // ===== Hints =====
 
     /** Master toggle for all in-game UX hints. */
+    @SectionHeader("hints")
     public boolean hintsEnabled = true;
 
     /** Multiplier on every hint's idle threshold (0.5 = hints fire twice as fast, 2.0 = half as fast). */

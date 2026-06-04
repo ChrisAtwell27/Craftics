@@ -1,0 +1,55 @@
+{
+  "id": "craftics:vanilla",
+  "display_name": "Vanilla",
+  "regions": [
+    {
+      "id": "overworld",
+      "display_name": "Overworld",
+      "color": "§a",
+      "icon": "☀",
+      "map_color": "AA55FF55",
+      "nodes": [
+        { "biome": "plains", "label": "Plains" },
+        { "biome": "desert", "label": "Scorching Desert" },
+        { "biome": "jungle", "label": "Dense Jungle" },
+        { "biome": "forest", "label": "Dark Forest" },
+        { "biome": "river", "label": "River Delta" },
+        { "biome": "snowy", "label": "Snowy Tundra" },
+        { "biome": "mountain", "label": "Stony Peaks" },
+        { "biome": "cave", "label": "Underground Caverns" },
+        { "biome": "deep_dark", "label": "The Deep Dark" }
+      ]
+    },
+    {
+      "id": "nether",
+      "display_name": "The Nether",
+      "color": "§c",
+      "icon": "♨",
+      "map_color": "AAFF5555",
+      "nodes": [
+        { "biome": "nether_wastes", "label": "Nether Wastes" },
+        { "biome": "soul_sand_valley", "label": "Soul Sand Valley" },
+        { "biome": "crimson_forest", "label": "Crimson Forest" },
+        { "biome": "warped_forest", "label": "Warped Forest" },
+        { "biome": "basalt_deltas", "label": "Basalt Deltas" }
+      ]
+    },
+    {
+      "id": "end",
+      "display_name": "The End",
+      "color": "§d",
+      "icon": "✦",
+      "map_color": "AACC88FF",
+      "nodes": [
+        { "biome": "outer_end_islands", "label": "Outer End Islands" },
+        { "biome": "end_city", "label": "End City" },
+        { "biome": "chorus_grove", "label": "Chorus Grove" },
+        { "biome": "dragons_nest", "label": "Dragon's Nest" }
+      ]
+    }
+  ],
+  "branch": {
+    "region": "overworld",
+    "swap": [["desert", "jungle", "forest"], ["snowy", "mountain"]]
+  }
+}

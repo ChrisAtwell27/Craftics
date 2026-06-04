@@ -1,6 +1,0 @@
-{
-	"_comment": "A biome path groups biomes into a named region, like Craftics' built-in Overworld, Nether, and End. Add more biome ids to 'biomes' to extend the region.",
-	"id": "exampleaddon:aether",
-	"display_name": "The Aether",
-	"biomes": ["exampleaddon:highlands"]
-}

@@ -1949,11 +1949,10 @@ public class CombatManager {
                 bossEntityTypeId = biome.boss.entityTypeId();
                 bossBiomeId = biome.biomeId;
             }
-            // Determine biome ordinal from BiomePath for enchant chance scaling
+            // Determine biome ordinal from the active campaign for enchant chance scaling
             CrafticsSavedData.PlayerData pdSpawn = ngData.getPlayerData(player.getUuid());
-            java.util.List<String> spawnPath = com.crackedgames.craftics.level.BiomePath
-                .getFullPath(Math.max(0, pdSpawn.branchChoice));
-            int idx = spawnPath.indexOf(biome.biomeId);
+            int idx = com.crackedgames.craftics.level.campaign.CampaignManager
+                .ordinalOf(biome.biomeId, Math.max(0, pdSpawn.branchChoice));
             if (idx >= 0) spawnBiomeOrdinal = idx;
         }
         final int finalBiomeOrdinal = spawnBiomeOrdinal;
@@ -14965,12 +14964,12 @@ public class CombatManager {
                 if (b.biomeId.equals(ld.activeBiomeId)) { biomeTemplate = b; break; }
             }
         }
-        // Use path order for biome progression (not registry order)
+        // Use active-campaign order for biome progression (not registry order)
         ld.initBranchIfNeeded();
-        java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-            .getFullPath(Math.max(0, ld.branchChoice));
         int biomeOrdinal = biomeTemplate != null
-            ? fullPath.indexOf(biomeTemplate.biomeId) : 0;
+            ? com.crackedgames.craftics.level.campaign.CampaignManager
+                .ordinalOf(biomeTemplate.biomeId, Math.max(0, ld.branchChoice))
+            : 0;
         if (biomeOrdinal < 0) biomeOrdinal = 0;
         boolean isBoss = biomeTemplate != null && biomeTemplate.isBossLevel(arena.getLevelNumber());
         // Resourceful stat: +1 emerald per point (uses leader's stat)
@@ -14994,14 +14993,13 @@ public class CombatManager {
 
         // Boss trim template drops (semi-rare: ~35% chance, Luck boosts)
         if (isBoss && Math.random() < CrafticsMod.CONFIG.trimDropChance() + luckBonusItems * 0.02) {
-            // Determine dimension from biome position
-            int overworldCount = com.crackedgames.craftics.level.BiomePath
-                .getPath(Math.max(0, ld.branchChoice)).size();
-            int netherCount = com.crackedgames.craftics.level.BiomePath.getNetherPath().size();
-            String dimension;
-            if (biomeOrdinal < overworldCount) dimension = "overworld";
-            else if (biomeOrdinal < overworldCount + netherCount) dimension = "nether";
-            else dimension = "end";
+            // Determine dimension from the active campaign's region for this biome
+            String dimension = "overworld"; // sensible default if region is unknown/null
+            if (biomeTemplate != null) {
+                com.crackedgames.craftics.level.campaign.CampaignRegion region =
+                    com.crackedgames.craftics.level.campaign.CampaignManager.regionOf(biomeTemplate.biomeId);
+                if (region != null) dimension = region.id();
+            }
 
             net.minecraft.item.Item[] trimPool = TrimEffects.getBossDropTrims(dimension);
             if (trimPool.length > 0) {
@@ -15105,23 +15103,35 @@ public class CombatManager {
                         pd.highestBiomeUnlocked = currentBiomeOrder + 1;
                     }
                 }
-                // Special messages when unlocking new dimensions
-                int overworldBiomeCount = com.crackedgames.craftics.level.BiomePath
-                    .getPath(Math.max(0, ld.branchChoice)).size();
-                int netherBiomeCount = com.crackedgames.craftics.level.BiomePath
-                    .getNetherPath().size();
-                if (currentBiomeOrder == overworldBiomeCount) {
-                    sendMessage("§c§l\u2620 THE NETHER HAS BEEN UNLOCKED! \u2620");
-                } else if (currentBiomeOrder == overworldBiomeCount + netherBiomeCount) {
-                    sendMessage("§5§l\u2726 THE END HAS BEEN UNLOCKED! \u2726");
+                // Region-boundary "unlocked" banner — campaign-driven. Resolve the
+                // just-cleared biome id, then announce the NEXT region (if any) when the
+                // next biome in flattened campaign order belongs to a different region.
+                int branch = Math.max(0, ld.branchChoice);
+                java.util.List<String> campaignOrder = com.crackedgames.craftics.level.campaign.CampaignManager
+                    .orderedBiomeIds(branch);
+                String justClearedBiomeId = biomeTemplate != null ? biomeTemplate.biomeId : ld.activeBiomeId;
+                if (justClearedBiomeId == null
+                        && biomeOrdinal >= 0 && biomeOrdinal < campaignOrder.size()) {
+                    justClearedBiomeId = campaignOrder.get(biomeOrdinal);
                 }
-                // Check if this was the final boss (Dragon's Nest) — trigger NG+
-                int endBiomeCount = com.crackedgames.craftics.level.BiomePath
-                    .getEndPath().size();
-                int totalBiomes = overworldBiomeCount + netherBiomeCount + endBiomeCount;
-                if (currentBiomeOrder == totalBiomes) {
+                String nextBiomeId = (biomeOrdinal + 1 < campaignOrder.size())
+                    ? campaignOrder.get(biomeOrdinal + 1) : null;
+                if (nextBiomeId != null) {
+                    com.crackedgames.craftics.level.campaign.CampaignRegion clearedRegion =
+                        com.crackedgames.craftics.level.campaign.CampaignManager.regionOf(justClearedBiomeId);
+                    com.crackedgames.craftics.level.campaign.CampaignRegion nextRegion =
+                        com.crackedgames.craftics.level.campaign.CampaignManager.regionOf(nextBiomeId);
+                    if (nextRegion != null && nextRegion != clearedRegion) {
+                        sendMessage(nextRegion.color() + "§l" + nextRegion.icon() + " "
+                            + nextRegion.displayName().toUpperCase() + " HAS BEEN UNLOCKED! "
+                            + nextRegion.icon());
+                    }
+                }
+                // Final node of the final region (any campaign, any size) - trigger NG+.
+                if (com.crackedgames.craftics.level.campaign.CampaignManager
+                        .isFinalBiome(justClearedBiomeId, branch)) {
                     ld.startNewGamePlus();
-                    sendMessage("§6§l\u2605 NEW GAME+ " + ld.ngPlusLevel + " UNLOCKED! \u2605");
+                    sendMessage("§6§l★ NEW GAME+ " + ld.ngPlusLevel + " UNLOCKED! ★");
                     sendMessage("§eAll biomes reset. Enemies are now stronger. Your stats carry over.");
                 }
             }
@@ -15463,10 +15473,9 @@ public class CombatManager {
                     java.util.Random eventRng = new java.util.Random();
                     float eventRoll = eventRng.nextFloat();
 
-                    // Calculate biome position for difficulty scaling (use path ordinal, not registry index)
-                    java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-                            .getFullPath(Math.max(0, branchChoice));
-                    int biomeOrdinal = fullPath.indexOf(biome.biomeId);
+                    // Calculate biome position for difficulty scaling (use active-campaign ordinal, not registry index)
+                    int biomeOrdinal = com.crackedgames.craftics.level.campaign.CampaignManager
+                            .ordinalOf(biome.biomeId, Math.max(0, branchChoice));
                     if (biomeOrdinal < 0) biomeOrdinal = 0;
 
                     // No events on the very first continue (level index 1 = just beat level 1)
@@ -20407,8 +20416,8 @@ public class CombatManager {
             .get((ServerWorld) player.getEntityWorld())
             .getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid());
         int branch = pdBranch != null ? Math.max(0, pdBranch.branchChoice) : 0;
-        java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath.getFullPath(branch);
-        int idx = fullPath.indexOf(biomeTemplate.biomeId);
+        int idx = com.crackedgames.craftics.level.campaign.CampaignManager
+            .ordinalOf(biomeTemplate.biomeId, branch);
         return Math.max(0, idx);
     }
 
