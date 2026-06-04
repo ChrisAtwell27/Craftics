@@ -14521,14 +14521,14 @@ public class CombatManager {
         arena.setPlayerGridPos(dest);
         BlockPos bp = arena.gridToBlockPos(dest);
         //? if <=1.21.1 {
-        player.teleport((ServerWorld) player.getEntityWorld(),
-            bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
-            java.util.Collections.emptySet(), player.getYaw(), 0f);
-        //?} else {
         /*player.teleport((ServerWorld) player.getEntityWorld(),
             bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
+            java.util.Collections.emptySet(), player.getYaw(), 0f);
+        *///?} else {
+        player.teleport((ServerWorld) player.getEntityWorld(),
+            bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
             java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-        *///?}
+        //?}
         sendMessage("\u00a7d\u2726 Teleported to safety!");
     }
 
