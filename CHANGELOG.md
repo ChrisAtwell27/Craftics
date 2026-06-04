@@ -1,18 +1,12 @@
 Changelog
 
-0.2.2
+0.2.3
 
 Mod compatibility
 
-- MoreTotems support: the mod's seven totems of undying now auto-revive you in combat at 50% health with a unique Craftics effect each, instead of their vanilla potion effects
-- Explosive Totem detonates a 4x4 blast dealing 50% of every nearby enemy's max health plus a biome-scaled bonus
-- Skeletal Totem marks every enemy for 2 turns (marked enemies take double damage)
-- Teleporting Totem warps you to the safest open tile, farthest from any enemy
-- Ghastly Totem sets all enemies on fire for 5 turns and grants you Fire Resistance
-- Stinging Totem summons 5 allied bees and Rotting Totem summons 3 allied zombies, both bypassing the party cap for the rest of the battle
-- Tentacled Totem blinds every enemy for 2 turns, making them fumble their attacks
-- Each totem's tooltip is rewritten to describe its Craftics combat effect
-- The totems also drop as rare rewards from boss kills, trial chambers, treasure vaults, and the Shrine of Fortune
+- MoreTotems support: the mod's seven totems of undying now auto-revive you in combat at 50% health, each with its own Craftics effect (explosion, mark all enemies, teleport to safety, set enemies ablaze plus Fire Resistance, summon bees or zombies, or blind all enemies), with rewritten tooltips, and drop as rare rewards from bosses, trial chambers, vaults, and the Shrine of Fortune
+
+0.2.2
 
 Events and dialogue
 
