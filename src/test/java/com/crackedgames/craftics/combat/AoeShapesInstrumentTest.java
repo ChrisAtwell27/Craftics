@@ -53,4 +53,11 @@ class AoeShapesInstrumentTest {
             assertFalse(arm.contains(new GridPos(0, 0)), "arms exclude center");
         }
     }
+
+    @Test
+    void degenerateRadiusZero() {
+        assertEquals(List.of(new GridPos(0, 0)), AoeShapes.filledDisc(new GridPos(0, 0), 0));
+        assertTrue(AoeShapes.diagonals(new GridPos(0, 0), 0).isEmpty());
+        assertTrue(AoeShapes.expandingRingTiers(new GridPos(0, 0), 0).isEmpty());
+    }
 }
