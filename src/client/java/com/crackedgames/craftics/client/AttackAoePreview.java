@@ -53,6 +53,27 @@ public final class AttackAoePreview {
 
         var item = held.getItem();
 
+        // --- Instruments: preview the performance shape, faced toward the hovered
+        // tile, using the SAME geometry the server resolves and the VFX draws.
+        // Attack instruments preview as damage (amber), support as effect (cyan).
+        // SCATTER is server-rolled randomly per cast, so it has no meaningful
+        // pre-cast preview and is skipped. ---
+        com.crackedgames.craftics.compat.instruments.InstrumentDef instr =
+            com.crackedgames.craftics.compat.instruments.InstrumentsCompat.defFor(item);
+        if (instr != null) {
+            if (instr.shape() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Shape.SCATTER) {
+                return Preview.empty();
+            }
+            List<GridPos> shape =
+                (instr.shape() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Shape.FULL_ARENA)
+                    ? allArenaTiles()
+                    : com.crackedgames.craftics.compat.instruments.InstrumentPerformance.shapeTiles(instr, player, hover, 0L);
+            Set<GridPos> dest = instr.role() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Role.ATTACK
+                ? damage : effect;
+            dest.addAll(shape);
+            return finish(damage, effect);
+        }
+
         // --- Mace: 3x3 slam (damage) + Density pull radius + Wind Burst ring
         // (both effect-only). All combine. ---
         if (item == Items.MACE) {
@@ -208,6 +229,17 @@ public final class AttackAoePreview {
 
     private static int arenaSpan() {
         return Math.max(CombatState.getArenaWidth(), CombatState.getArenaHeight());
+    }
+
+    /** Every tile in the arena bounds (FULL_ARENA instrument preview, e.g. Violin). */
+    private static List<GridPos> allArenaTiles() {
+        int w = CombatState.getArenaWidth();
+        int h = CombatState.getArenaHeight();
+        List<GridPos> out = new java.util.ArrayList<>(w * h);
+        for (int x = 0; x < w; x++)
+            for (int z = 0; z < h; z++)
+                out.add(new GridPos(x, z));
+        return out;
     }
 
     private static boolean isSword(net.minecraft.item.Item item) {

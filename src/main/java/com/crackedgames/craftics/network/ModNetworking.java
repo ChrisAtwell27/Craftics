@@ -40,6 +40,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(LevelUpPayload.ID, LevelUpPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(PlayerStatsSyncPayload.ID, PlayerStatsSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TileSetPayload.ID, TileSetPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(TileFlashPayload.ID, TileFlashPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TeammateHoverPayload.ID, TeammateHoverPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(DialoguePayload.ID, DialoguePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(EnterEventCinematicPayload.ID, EnterEventCinematicPayload.CODEC);

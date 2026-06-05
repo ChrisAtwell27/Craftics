@@ -15,6 +15,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * Otherwise wanders 1-2 blocks randomly like a farm animal.
  */
 public class RabbitAI implements EnemyAI {
+    /** Rabbits only flee and wander — never a threat to the player. */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return false;
+    }
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();

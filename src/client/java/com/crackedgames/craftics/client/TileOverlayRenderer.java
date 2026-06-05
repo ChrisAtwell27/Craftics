@@ -180,6 +180,33 @@ public class TileOverlayRenderer {
             }
         }
 
+        // Draw AoE tile flashes (server-sent on attack resolve): hold bright, then fade.
+        long flashNow = System.currentTimeMillis();
+        java.util.List<CombatState.TileFlash> flashes = CombatState.getTileFlashes();
+        flashes.removeIf(f -> flashNow - f.startMs() > f.durationMs());
+        for (CombatState.TileFlash f : flashes) {
+            long age = flashNow - f.startMs();
+            long dur = f.durationMs();
+            float fadeTail = 400f; // ms of fade-out at the end
+            float baseAlpha = 0.5f;
+            float alpha;
+            if (age >= dur) continue;
+            if (age > dur - fadeTail) {
+                alpha = baseAlpha * (1.0f - (age - (dur - fadeTail)) / fadeTail);
+            } else {
+                alpha = baseAlpha;
+            }
+            if (alpha <= 0.01f) continue;
+            int c = f.color();
+            float r = ((c >> 16) & 0xFF) / 255.0f;
+            float g = ((c >> 8) & 0xFF) / 255.0f;
+            float b = (c & 0xFF) / 255.0f;
+            for (com.crackedgames.craftics.core.GridPos tile : f.tiles()) {
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.008f;
+                drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(), r, g, b, alpha);
+            }
+        }
+
         // Draw hover tile (bright, pulsing) — LAST so it renders on top
         GridPos hover = CombatState.getHoveredTile();
         if (hover != null) {
@@ -322,6 +349,33 @@ public class TileOverlayRenderer {
                 float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.007f;
                 drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(),
                     1.0f, 0.75f, 0.1f, 0.35f);
+            }
+        }
+
+        // Draw AoE tile flashes (server-sent on attack resolve): hold bright, then fade.
+        long flashNow = System.currentTimeMillis();
+        java.util.List<CombatState.TileFlash> flashes = CombatState.getTileFlashes();
+        flashes.removeIf(f -> flashNow - f.startMs() > f.durationMs());
+        for (CombatState.TileFlash f : flashes) {
+            long age = flashNow - f.startMs();
+            long dur = f.durationMs();
+            float fadeTail = 400f; // ms of fade-out at the end
+            float baseAlpha = 0.5f;
+            float alpha;
+            if (age >= dur) continue;
+            if (age > dur - fadeTail) {
+                alpha = baseAlpha * (1.0f - (age - (dur - fadeTail)) / fadeTail);
+            } else {
+                alpha = baseAlpha;
+            }
+            if (alpha <= 0.01f) continue;
+            int c = f.color();
+            float r = ((c >> 16) & 0xFF) / 255.0f;
+            float g = ((c >> 8) & 0xFF) / 255.0f;
+            float b = (c & 0xFF) / 255.0f;
+            for (com.crackedgames.craftics.core.GridPos tile : f.tiles()) {
+                float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.008f;
+                drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(), r, g, b, alpha);
             }
         }
 

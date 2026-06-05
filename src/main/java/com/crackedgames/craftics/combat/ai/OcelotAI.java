@@ -15,6 +15,12 @@ import java.util.List;
  * - Targets the flank: prefers approaching from sides/behind
  */
 public class OcelotAI implements EnemyAI {
+    /** Ocelots only retaliate the turn after being hit — otherwise not a threat. */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return self.wasDamagedSinceLastTurn();
+    }
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();

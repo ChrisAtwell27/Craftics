@@ -144,6 +144,14 @@ public class HubPetCollector {
 
         int offset = 0;
         for (PetData pet : survivingPets) {
+            // Defensive guard: never resurrect a dead pet. Restoration reads the
+            // pre-combat NBT (full Health tag), so a fallen pet that slipped into
+            // this list would otherwise reappear at the hub alive and well. Every
+            // caller already filters on isAlive(); this is the last line of defense.
+            if (pet.hp() <= 0) {
+                CrafticsMod.LOGGER.info("Skipping hub restore of fallen pet: {}", pet.entityType());
+                continue;
+            }
             offset++;
             try {
                 if (pet.originalNbt() != null) {

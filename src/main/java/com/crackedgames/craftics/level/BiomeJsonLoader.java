@@ -128,17 +128,24 @@ public class BiomeJsonLoader {
                 : null;
 
             JsonArray lootArray = json.getAsJsonArray("loot");
-            Item[] lootItems = new Item[lootArray.size()];
-            int[] lootWeights = new int[lootArray.size()];
+            List<Item> lootItemList = new ArrayList<>(lootArray.size());
+            List<Integer> lootWeightList = new ArrayList<>(lootArray.size());
             for (int i = 0; i < lootArray.size(); i++) {
                 JsonObject lootEntry = lootArray.get(i).getAsJsonObject();
                 Identifier itemId = Identifier.of(lootEntry.get("item").getAsString());
+                // Skip unknown items — Registries.ITEM.get() returns AIR for an
+                // unregistered id, which would otherwise enter the loot pool and
+                // get handed to the player as an empty "air" reward.
                 if (!Registries.ITEM.containsId(itemId)) {
                     CrafticsMod.LOGGER.warn("Unknown item '{}' in biome {}, skipping loot entry", itemId, source);
+                    continue;
                 }
-                lootItems[i] = Registries.ITEM.get(itemId);
-                lootWeights[i] = lootEntry.has("weight") ? lootEntry.get("weight").getAsInt() : 5;
+                lootItemList.add(Registries.ITEM.get(itemId));
+                lootWeightList.add(lootEntry.has("weight") ? lootEntry.get("weight").getAsInt() : 5);
             }
+            Item[] lootItems = lootItemList.toArray(new Item[0]);
+            int[] lootWeights = new int[lootWeightList.size()];
+            for (int i = 0; i < lootWeights.length; i++) lootWeights[i] = lootWeightList.get(i);
 
             // Optional: restrict enchantment book drops to specific enchantments
             String[] enchantmentLootIds;

@@ -57,6 +57,14 @@ public class BroodmotherAI extends BossAI {
      */
     public List<GridPos> initEggSacs(GridArena arena) {
         int w = arena.getWidth(), h = arena.getHeight();
+        // Egg sacs count as enemies the player must destroy to clear the room, so
+        // every sac MUST be reachable. A sac walled off in a hole the player can't
+        // pathfind to (and can't melee/shoot) leaves the room permanently
+        // uncompletable. Reachability from the player's start tile is the gate:
+        // anything in the same connected region can be walked up to and attacked.
+        java.util.Set<GridPos> reachable = com.crackedgames.craftics.combat.Pathfinding
+            .getReachableTiles(arena, arena.getPlayerGridPos(), Integer.MAX_VALUE, true, false);
+
         List<GridPos> candidates = new ArrayList<>();
         candidates.add(new GridPos(1, 1));
         candidates.add(new GridPos(w - 2, 1));
@@ -65,15 +73,40 @@ public class BroodmotherAI extends BossAI {
         candidates.add(new GridPos(w / 2, 1));
         candidates.add(new GridPos(w / 2, h - 2));
         Collections.shuffle(candidates);
+
         List<GridPos> chosen = new ArrayList<>();
         for (GridPos pos : candidates) {
             if (chosen.size() >= 3) break;
-            if (arena.isInBounds(pos) && !arena.isOccupied(pos)) {
+            if (isValidEggSacTile(arena, reachable, pos)) {
                 eggSacs.add(pos);
                 chosen.add(pos);
             }
         }
+
+        // Fallback: if the fixed corner/edge spots are blocked or unreachable, scan
+        // the whole reachable region so the boss still gets up to three sacs and
+        // none of them strand the player.
+        if (chosen.size() < 3) {
+            List<GridPos> extra = new ArrayList<>(reachable);
+            Collections.shuffle(extra);
+            for (GridPos pos : extra) {
+                if (chosen.size() >= 3) break;
+                if (chosen.contains(pos)) continue;
+                if (isValidEggSacTile(arena, reachable, pos)) {
+                    eggSacs.add(pos);
+                    chosen.add(pos);
+                }
+            }
+        }
         return chosen;
+    }
+
+    /** A sac tile must be in bounds, unoccupied, safe to stand on, and reachable. */
+    private static boolean isValidEggSacTile(GridArena arena, java.util.Set<GridPos> reachable, GridPos pos) {
+        if (!arena.isInBounds(pos) || arena.isOccupied(pos)) return false;
+        var tile = arena.getTile(pos);
+        if (tile == null || !tile.isSafeForSpawn()) return false;
+        return reachable.contains(pos);
     }
 
     /**

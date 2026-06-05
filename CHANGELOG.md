@@ -2,12 +2,38 @@ Changelog
 
 0.2.3
 
+Bug fixes
+
+- Flint and steel now needs an adjacent target with line of sight instead of hitting any enemy anywhere on the map
+- Taming now needs an adjacent target with line of sight instead of taming from anywhere
+- Thrown items (pufferfish, snowball, egg, water throwables) now use a 4 tile range with line of sight like bows
+- Poison and other damage over time can no longer kill a Creaking that still has its heart, and the Creaking heart no longer lingers as an indestructible block across runs
+- Broodmother eggs now only spawn on safe tiles the player can reach, fixing the soft lock when an egg spawned behind a wall
+- Unknown loot item ids in biome configs are now skipped instead of being handed out as air rewards
+- Tamed pets no longer fail to follow to the next scene when the tiles around the player start are full
+- Pets no longer spawn inside cobwebs
+- A fallen pet can no longer rejoin the player alive
+- Water bucket now returns an empty bucket like milk, places a real water tile, and only pours onto open floor
+- Lava bucket now returns an empty bucket, places a real visible lava tile, and only pours onto open floor
+- Powder snow now sits on the ground instead of floating a block above it, and can be scooped back up with an empty bucket
+- Fishing is blocked when no enemies are present, ending the safe room fishing exploit
+- Melee weapons can hit and highlight all eight surrounding tiles including diagonals, and this now works on spiders and magma cubes too
+- Skeletons with no clear shot now fire anyway instead of walking in place
+- Slimes and magma cubes no longer move so their 2x2 body overlaps the player, fixing the clip into the mob
+- Attacks that cover more than one tile now flash those tiles during the attack so it is clear where an area attack is landing, both for instruments and for base-game area weapons, lit amber for damage and cyan for support
+
+Combat balance
+
+- Fights end automatically when only passive or unprovoked neutral mobs remain and no kills happen for four rounds, starting after the first five rounds, preventing infinite farming
+
 Mod compatibility
 
 - Golem Overhaul support: all nine golems are now built combat allies with distinct roles. Terracotta golem is a taunt tank that forces enemies to attack it, hay golem heals the lowest health nearby ally each round, candle golem fights at range and burns its target, kelp golem soaks its target on hit. Coal golem can be lit with flint and steel into a fast heavy hitter that burns on hit and dies after one attack. Honey golem holds station and summons a bee ally each round. Slime golem splits into two small slimes when it dies. Barrel golem rolls bonus loot from kills it lands. Each golem is healed in combat by the material it is built from. The golem behaviors plug into the core through generic ally hooks, so nothing changes when the mod is absent
 - MoreTotems support: the mod's seven totems of undying now auto-revive you in combat at 50% health, each with its own Craftics effect (explosion, mark all enemies, teleport to safety, set enemies ablaze plus Fire Resistance, summon bees or zombies, or blind all enemies), with rewritten tooltips, drop as rare rewards from bosses, trial chambers, vaults, and the Shrine of Fortune, and can be bought from the curiosity trader at high tiers
 - Multi Arrow Effects support: combined arrows now apply every recognized effect in combat instead of only the first, so a multi-effect mixed arrow lands all its debuffs from one shot
 - Basic Weapons support: all six new weapon types work in combat with fitting affinities, action-point costs, reach, and unique effects (dual-wield daggers strike twice, clubs slow, hammers knock back and stun, glaives cleave, spears and quarterstaves reach two tiles), each with its own attack animation, Craftics tooltips, the mod's Might enchantment boosting blunt-weapon damage and stun, stock in the weaponsmith trader, and Might offered by the enchanter
+- Genshin Instruments and Even More Instruments support: the fifteen held instruments become Special-affinity combat performances played by holding the instrument and clicking. Attack instruments deal Special damage plus a debuff across a player-centered shape (ring, cone, star, diagonals, scatter, expanding pulse, full burst, or the whole arena), while support instruments buff you, your allies, and any teammates standing in their shape. Directional shapes like the cone fan out toward the tile you click, and hovering a tile while holding an instrument previews exactly where the performance will land. Four signature instruments go further with knockback, a flat heal, an arena-wide heal, or a debuff cleanse. Each instrument plays its own note sounds, with the music-note particles bursting on the actual tiles being hit so the shape reads clearly, and the mods' tooltips are replaced with Craftics combat tooltips showing the shape, the damage or effect, and the action-point cost
+
 
 0.2.2
 

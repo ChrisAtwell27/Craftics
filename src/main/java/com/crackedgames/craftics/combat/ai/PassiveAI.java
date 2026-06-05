@@ -15,6 +15,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * If hit by the player, immediately flees 2 blocks away.
  */
 public class PassiveAI implements EnemyAI {
+    /** Farm animals never attack the player — never a threat. */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return false;
+    }
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         // Hit reaction: flee 2 blocks away from player immediately

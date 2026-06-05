@@ -14,6 +14,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * Bat AI: Wanders randomly 1-2 blocks. Flees 2 blocks when hit.
  */
 public class BatAI implements EnemyAI {
+    /** Bats only wander and flee — never a threat to the player. */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return false;
+    }
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         if (self.wasDamagedSinceLastTurn()) {

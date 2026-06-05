@@ -24,6 +24,17 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
 
+        // The splash center must be within throw range of the player and in a
+        // clear line of sight — matching bows/crossbows so the splash can't be
+        // dropped across the whole map or thrown through a wall.
+        GridPos playerPos = arena.getPlayerGridPos();
+        if (playerPos.manhattanDistance(targetTile) > THROWABLE_RANGE) {
+            return "§cToo far! Max throw range is " + THROWABLE_RANGE + " tiles.";
+        }
+        if (!Pathfinding.hasLineOfSight(arena, playerPos, targetTile)) {
+            return "§cLine of sight blocked by an obstacle!";
+        }
+
         // Determine tier and effect
         int radius = 1, waterDamage = 2, soakedLevel = 1, confusionLevel = 0, poisonLevel = 0;
         String name = stack.getName().getString();
@@ -40,9 +51,16 @@ public class ItemUseHandler {
         stack.decrement(1);
         int hitCount = 0;
         StringBuilder msg = new StringBuilder();
+        // Multi-tile entities appear once per occupied tile in getOccupants(); track
+        // which we've already splashed so a 2x2 mob isn't damaged multiple times.
+        java.util.Set<CombatEntity> splashed = new java.util.HashSet<>();
         for (CombatEntity enemy : arena.getOccupants().values()) {
             if (!enemy.isAlive() || enemy.isAlly()) continue;
-            if (enemy.getGridPos().manhattanDistance(targetTile) <= radius) {
+            if (!splashed.add(enemy)) continue;
+            // A Creaking with a living heart is invulnerable — the splash can't
+            // damage or status it; the heart must be destroyed instead.
+            if (CombatManager.isInvulnerableCreaking(enemy)) continue;
+            if (enemy.minDistanceTo(targetTile) <= radius) {
                 // Deal Water-type damage (assume Water type is handled in takeDamage or add a param if needed)
                 int dealt = enemy.takeDamage(waterDamage); // TODO: Pass Water type if needed
                 // Apply Soaked
@@ -681,6 +699,12 @@ public class ItemUseHandler {
 
     private static int applyTypedDamage(ServerPlayerEntity player, CombatEntity target, int baseDamage,
                                         DamageType type) {
+        // A Creaking with a living heart takes no damage from any item; the heart
+        // must be destroyed instead. Callers that want a player-facing message
+        // (e.g. flint &amp; steel) check isInvulnerableCreaking themselves first.
+        if (CombatManager.isInvulnerableCreaking(target)) {
+            return 0;
+        }
         CombatEffects effects = CombatManager.get(player).getCombatEffects();
         int rawDamage = baseDamage + getTypedDamageBonus(player, effects, type);
         int adjustedDamage = MobResistances.applyResistance(target.getEntityTypeId(), type, rawDamage);
@@ -701,11 +725,52 @@ public class ItemUseHandler {
         };
     }
 
+    /** Max tiles a thrown combat item (snowball, egg, pufferfish, water throwables) can reach. */
+    private static final int THROWABLE_RANGE = 4;
+
+    /**
+     * Validate that {@code enemy} can be hit by a thrown item: within
+     * {@link #THROWABLE_RANGE} tiles of the player and with a clear line of sight,
+     * matching bow/crossbow targeting so throwables can't reach across the whole
+     * map or hit through walls. Returns an error message to send back, or
+     * {@code null} when the throw is allowed.
+     */
+    private static String validateThrowReach(GridArena arena, CombatEntity enemy) {
+        GridPos playerPos = arena.getPlayerGridPos();
+        if (enemy.minDistanceTo(playerPos) > THROWABLE_RANGE) {
+            return "§cToo far! Max throw range is " + THROWABLE_RANGE + " tiles.";
+        }
+        if (!Pathfinding.hasLineOfSight(arena, playerPos, enemy.nearestTileTo(playerPos))) {
+            return "§cLine of sight blocked by an obstacle!";
+        }
+        return null;
+    }
+
+    /**
+     * Validate that {@code enemy} is adjacent to the player (within one tile,
+     * diagonals included) with a clear line of sight. Used by melee-style item
+     * interactions (flint &amp; steel, taming) that should require standing next
+     * to the target rather than reaching across the arena.
+     */
+    private static String validateAdjacentReach(GridArena arena, CombatEntity enemy) {
+        GridPos playerPos = arena.getPlayerGridPos();
+        GridPos nearest = enemy.nearestTileTo(playerPos);
+        int cheby = Math.max(Math.abs(playerPos.x() - nearest.x()),
+                             Math.abs(playerPos.z() - nearest.z()));
+        if (cheby > 1) return "§cToo far! Stand next to the target.";
+        if (!Pathfinding.hasLineOfSight(arena, playerPos, nearest)) {
+            return "§cLine of sight blocked by an obstacle!";
+        }
+        return null;
+    }
+
     private static String useSnowball(ServerPlayerEntity player, GridArena arena,
                                        GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        String reach = validateThrowReach(arena, enemy);
+        if (reach != null) return reach;
 
         consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, 1, DamageType.SPECIAL);
@@ -735,6 +800,8 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        String reach = validateThrowReach(arena, enemy);
+        if (reach != null) return reach;
 
         consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, damage, DamageType.SPECIAL);
@@ -1100,6 +1167,14 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        // Flint &amp; steel is a melee-range interaction — you have to stand next to
+        // the target. Without this you could ignite anything anywhere on the map.
+        String reach = validateAdjacentReach(arena, enemy);
+        if (reach != null) return reach;
+        // A Creaking with a living heart is invulnerable — destroy its heart instead.
+        if (CombatManager.isInvulnerableCreaking(enemy)) {
+            return "§c§lThe Creaking is invulnerable! §7Destroy its §4Creaking Heart§7 instead!";
+        }
 
         // Durability cost
         if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
@@ -1151,6 +1226,15 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a water tile!";
         GridTile tile = arena.getTile(targetTile);
         if (tile == null || !tile.isWater()) return "§cThat's not a water tile!";
+
+        // No fishing in a cleared/safe room. With no hostile enemies present the
+        // player can't be interrupted, so fishing a placed water tile turns into
+        // infinite free loot. Require at least one living enemy on the grid.
+        boolean hasLiveEnemy = false;
+        for (CombatEntity occupant : arena.getOccupants().values()) {
+            if (occupant.isAlive() && !occupant.isAlly()) { hasLiveEnemy = true; break; }
+        }
+        if (!hasLiveEnemy) return "§cNothing's biting — no danger, no catch. Fish during a fight!";
 
         // Must be adjacent (Manhattan distance 1)
         GridPos playerPos = arena.getPlayerGridPos();
@@ -1328,9 +1412,14 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        GridTile tile = arena.getTile(targetTile);
+        // Only pour onto a plain, walkable floor tile — not onto obstacles, hazards,
+        // or existing water/lava.
+        if (tile == null || !tile.isSafeForSpawn()) return "§cCan't place lava there!";
+        // Empties the bucket and returns the empty bucket, matching milk/water/powder snow.
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "lava:" + targetTile.x() + ":" + targetTile.z()
-            + "|§6Placed lava! Enemies on it take 3 fire damage per turn.";
+            + "|GIVE:bucket|§6Placed lava! Enemies on it take 3 fire damage per turn.";
     }
 
     // --- Scaffolding: place elevated tile — gives +1 range to ranged attacks from it (1 AP) ---
@@ -1452,9 +1541,18 @@ public class ItemUseHandler {
     private static String useWaterBucket(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        GridTile tile = arena.getTile(targetTile);
+        // Only pour onto a plain, walkable floor tile — not onto obstacles, hazards,
+        // or existing water.
+        if (tile == null || !tile.isSafeForSpawn() || tile.isWater()) {
+            return "§cCan't place water there!";
+        }
+        // Empties the water bucket and hands back the empty bucket, matching the
+        // milk bucket so the player keeps the container.
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "water:" + targetTile.x() + ":" + targetTile.z()
-            + "|§bPlaced water! Creates a fishable water tile.";
+            + "|GIVE:bucket|§bPlaced water! Creates a fishable water tile.";
     }
 
     // --- Empty Bucket: pick up water or lava from a tile ---
@@ -1470,6 +1568,10 @@ public class ItemUseHandler {
             stack.decrement(1);
             return TILE_EFFECT_PREFIX + "clear:" + targetTile.x() + ":" + targetTile.z()
                 + "|GIVE:lava_bucket|§6Scooped up lava!";
+        } else if (tile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW) {
+            stack.decrement(1);
+            return TILE_EFFECT_PREFIX + "clear:" + targetTile.x() + ":" + targetTile.z()
+                + "|GIVE:powder_snow_bucket|§fScooped up powder snow!";
         }
         return "§cThat tile has no liquid to pick up!";
     }
@@ -1756,6 +1858,11 @@ public class ItemUseHandler {
         CombatEntity occupant = arena.getOccupant(targetTile);
         if (occupant == null || !occupant.isAlive()) return "§cNo creature at target!";
         if (occupant.isAlly()) return "§cAlready tamed!";
+        // Taming is a hands-on interaction — you must be standing next to the
+        // animal. Without this you could tame mobs anywhere on the map and clear
+        // rooms instantly.
+        String reach = validateAdjacentReach(arena, occupant);
+        if (reach != null) return reach;
 
         String entityType = occupant.getEntityTypeId();
         Item item = stack.getItem();

@@ -797,6 +797,18 @@ public class CombatManager {
         return player != null ? List.of(player) : List.of();
     }
 
+    private static final int FLASH_DAMAGE_COLOR = 0xFFBF1A;   // amber (matches AoE preview damage)
+    private static final int FLASH_EFFECT_COLOR = 0x33B3FF;   // cyan  (matches AoE preview effect/support)
+
+    /** Flash a multi-tile footprint on all party clients. No-op for <=1 tile. */
+    private void sendTileFlash(java.util.Collection<GridPos> tiles, int color, int durationTicks) {
+        if (tiles == null || tiles.size() <= 1) return;
+        java.util.List<Integer> packed = new java.util.ArrayList<>(tiles.size() * 2);
+        for (GridPos t : tiles) { packed.add(t.x()); packed.add(t.z()); }
+        int[] arr = packed.stream().mapToInt(Integer::intValue).toArray();
+        sendToAllParty(new com.crackedgames.craftics.network.TileFlashPayload(arr, color, durationTicks));
+    }
+
     private void sendToAllParty(net.minecraft.network.packet.CustomPayload payload) {
         for (ServerPlayerEntity p : getAllParticipants()) {
             if (p == null) continue;
@@ -1720,11 +1732,29 @@ public class CombatManager {
      */
     private int applyStatusDot(CombatEntity target, int rawDamage) {
         if (rawDamage <= 0) return 0;
+        // A Creaking linked to a living heart is invulnerable to ALL damage,
+        // including damage-over-time. Direct attacks are blocked in handleAttack;
+        // this is the matching guard for poison/wither/burn/bleed ticks so DoT
+        // can't sidestep the "destroy the heart" rule and leave an orphaned,
+        // indestructible Creaking (and heart block) behind.
+        if (isInvulnerableCreaking(target)) return 0;
         int adjusted = MobResistances.applyResistance(
             target.getEntityTypeId(), DamageType.SPECIAL, rawDamage);
         if (adjusted <= 0) return 0;
         target.applyDirectDamage(adjusted);
         return adjusted;
+    }
+
+    /**
+     * True when {@code target} is a Creaking that still has a living Creaking Heart.
+     * Such a Creaking may not take damage from any source — it only dies when its
+     * heart is destroyed (see checkAndHandleDeath, where the heart force-kills it).
+     */
+    public static boolean isInvulnerableCreaking(CombatEntity target) {
+        return target != null
+            && com.crackedgames.craftics.compat.palegardenbackport
+                .PaleGardenBackportCompat.isCreakingEntity(target.getEntityTypeId())
+            && target.getLinkedHeartId() >= 0;
     }
 
     private float playerMoveYaw;
@@ -1844,6 +1874,9 @@ public class CombatManager {
         this.movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
         this.turnNumber = 1;
         this.active = true;
+        // Fresh fight — reset the anti-farming idle tracker.
+        this.antiFarmIdleRounds = 0;
+        this.killedThisRound = false;
 
         // Cache the biome ordinal so late-game tuning (boss waiting-turn skip,
         // etc.) doesn't have to recompute it on every enemy decision.
@@ -2670,9 +2703,15 @@ public class CombatManager {
 
         switch (action.actionType()) {
             case CombatActionPayload.ACTION_MOVE -> handleMove(new GridPos(action.targetX(), action.targetZ()));
-            case CombatActionPayload.ACTION_ATTACK -> handleAttack(action.targetEntityId(), new GridPos(action.targetX(), action.targetZ()));
+            case CombatActionPayload.ACTION_ATTACK -> {
+                if (tryHandleInstrument(new GridPos(action.targetX(), action.targetZ()))) break;
+                handleAttack(action.targetEntityId(), new GridPos(action.targetX(), action.targetZ()));
+            }
             case CombatActionPayload.ACTION_END_TURN -> handleEndTurn();
-            case CombatActionPayload.ACTION_USE_ITEM -> handleUseItem(new GridPos(action.targetX(), action.targetZ()));
+            case CombatActionPayload.ACTION_USE_ITEM -> {
+                if (tryHandleInstrument(new GridPos(action.targetX(), action.targetZ()))) break;
+                handleUseItem(new GridPos(action.targetX(), action.targetZ()));
+            }
             case CombatActionPayload.ACTION_MINE -> handleMine(new GridPos(action.targetX(), action.targetZ()));
         }
     }
@@ -3307,9 +3346,7 @@ public class CombatManager {
         }
 
         // Creaking immunity: can't damage the creaking directly, must kill its heart
-        if (com.crackedgames.craftics.compat.palegardenbackport
-                .PaleGardenBackportCompat.isCreakingEntity(target.getEntityTypeId())
-            && target.getLinkedHeartId() >= 0) {
+        if (isInvulnerableCreaking(target)) {
             sendMessage("\u00a7c\u00a7lThe Creaking is invulnerable! \u00a77Destroy its \u00a74Creaking Heart\u00a77 instead!");
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.ENTITY_ZOMBIE_ATTACK_IRON_DOOR,
@@ -3474,6 +3511,12 @@ public class CombatManager {
                     return;
                 }
             } else {
+                // Melee uses Chebyshev distance (8-direction, diagonals included);
+                // ranged uses Manhattan (projectiles travel orthogonally). The same
+                // metric is used for ALL entity sizes so spiders and magma cubes
+                // (2x2) can be hit from a diagonal just like 1x1 mobs, and the
+                // attack-tile highlight in refreshHighlights() uses the matching
+                // metric so what's shown is exactly what's hittable.
                 boolean isRanged = PlayerCombatStats.isBow(player);
                 int dist;
                 if (target.isBackgroundBoss()) {
@@ -3481,17 +3524,16 @@ public class CombatManager {
                     dist = Integer.MAX_VALUE;
                     for (var occEntry : arena.getOccupants().entrySet()) {
                         if (occEntry.getValue() == target) {
-                            int d = isRanged ? pPos.manhattanDistance(occEntry.getKey())
+                            int d = isRanged
+                                ? pPos.manhattanDistance(occEntry.getKey())
                                 : Math.max(Math.abs(pPos.x() - occEntry.getKey().x()),
                                            Math.abs(pPos.z() - occEntry.getKey().z()));
                             if (d < dist) dist = d;
                         }
                     }
-                } else if (target.getSize() > 1) {
-                    dist = target.minDistanceTo(pPos);
                 } else {
-                    dist = isRanged ? pPos.manhattanDistance(tPos)
-                        : Math.max(Math.abs(pPos.x() - tPos.x()), Math.abs(pPos.z() - tPos.z()));
+                    dist = isRanged ? target.minDistanceTo(pPos)
+                                    : target.minChebyshevDistanceTo(pPos);
                 }
                 if (dist > range) {
                     sendMessage("§cTarget out of range! (distance: " + dist + ", range: " + range + ")");
@@ -3509,6 +3551,16 @@ public class CombatManager {
         }
 
         // === IMMEDIATE: Face target, deduct AP, consume ammo, trigger client animation ===
+
+        // Flash the AoE footprint on all clients so a multi-tile attack clearly
+        // shows where it lands. Placed here (after AP/range/ammo validation and any
+        // Warp Drive reposition) so a rejected attack never flashes and the footprint
+        // matches the final origin. weaponFootprintTiles returns the damage+effect
+        // union, or a single tile for single-target weapons; sendTileFlash no-ops on
+        // <=1 tile, so plain single-target hits never flash.
+        sendTileFlash(
+            weaponFootprintTiles(weapon, player.getMainHandStack(), pPos, tPos),
+            FLASH_DAMAGE_COLOR, 16);
 
         // Face the target
         int dx = tPos.x() - pPos.x();
@@ -4530,6 +4582,10 @@ public class CombatManager {
         int weaponPower = CrafticsMod.CONFIG.dmgCrossbow();
         detonateRocketBlast(impactTile, weaponPower);
 
+        // Flash the blast footprint(s) so the rocket's area is clear. Accumulate
+        // the primary 3x3 plus any multishot 3x3s into one flash.
+        java.util.Set<GridPos> rocketFlash = new java.util.LinkedHashSet<>(AoeShapes.slam3x3(impactTile));
+
         // Multishot: two diagonal rockets that fly past the impact tile
         // and detonate where their line leaves the arena. Same visual fan
         // as the bolt multishot so the extra projectiles read clearly.
@@ -4568,9 +4624,11 @@ public class CombatManager {
                 sw.playSound(null, shotFrom, net.minecraft.sound.SoundEvents.ITEM_CROSSBOW_SHOOT,
                     net.minecraft.sound.SoundCategory.PLAYERS, 0.6f, 1.2f);
                 detonateRocketBlast(detonateAt, weaponPower);
+                rocketFlash.addAll(AoeShapes.slam3x3(detonateAt));
             }
         }
 
+        sendTileFlash(rocketFlash, FLASH_DAMAGE_COLOR, 16);
         sendSync();
         refreshHighlights();
         if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
@@ -5060,6 +5118,15 @@ public class CombatManager {
                 if (transformStackLayer(entity)) return;
             }
             entity.markDeathProcessed();
+
+            // Anti-farming: a real enemy death this round resets the idle timer.
+            // checkAndHandleDeath is the universal death sink (DoT ticks, sweeps,
+            // splash, falls), so flag it here as well as in killEnemy/onEnemyKilled
+            // — otherwise a kill via this path is missed and the fight wrongly
+            // counts the round as idle.
+            if (!entity.isAlly()) {
+                killedThisRound = true;
+            }
 
             // Creaking Heart death → destroy the heart block AND kill the linked Creaking
             if ("craftics:creaking_heart".equals(entity.getEntityTypeId())) {
@@ -6515,6 +6582,190 @@ public class CombatManager {
         }
     }
 
+    /** Apply a combat effect to a specific player's effect set by UUID (party-wide buffs). */
+    private void applyEffectToPlayerUuid(java.util.UUID playerUuid, CombatEffects.EffectType type, int turns, int amplifier) {
+        CombatEffects fx = playerCombatEffects.computeIfAbsent(playerUuid, k -> new CombatEffects());
+        fx.addEffect(type, turns, amplifier);
+    }
+
+    /** Remove all debuffs from an ally entity (Keyboard cleanse). */
+    private void cleanseAlly(CombatEntity target) {
+        if (target == null) return;
+        target.clearDebuffs();
+    }
+
+    /** True if the held item is an instrument and the performance was resolved (consumes the click). */
+    private boolean tryHandleInstrument(GridPos clicked) {
+        if (player == null) return false;
+        net.minecraft.item.Item held = player.getMainHandStack().getItem();
+        com.crackedgames.craftics.compat.instruments.InstrumentDef def =
+            com.crackedgames.craftics.compat.instruments.InstrumentsCompat.defFor(held);
+        if (def == null) return false;
+        int cost = def.apCost();
+        if (apRemaining < cost) {
+            sendMessage("§cNot enough AP to play the " + def.itemPath() + ".");
+            return true; // consume the click; not enough AP
+        }
+        apRemaining -= cost;
+
+        GridPos center = gridPosOf(player);
+        GridPos aim = clicked != null ? clicked : center;
+        java.util.List<GridPos> tiles =
+            (def.shape() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Shape.FULL_ARENA)
+                ? com.crackedgames.craftics.combat.AoeShapes.allTiles(arena)
+                : com.crackedgames.craftics.compat.instruments.InstrumentPerformance.shapeTiles(def, center, aim, combatRng.nextLong());
+
+        if (def.role() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Role.ATTACK) {
+            resolveInstrumentAttack(def, center, tiles);
+        } else {
+            resolveInstrumentSupport(def, center, tiles);
+        }
+
+        // VFX: spawn the instrument's note particles on the actual affected tiles.
+        playInstrumentVfx(def, center, tiles);
+
+        sendSync();
+        return true;
+    }
+
+    private static final int INSTRUMENT_FLAT_HEAL = 6;   // FLAT_HEAL signature (Vintage Lyre)
+    private static final int INSTRUMENT_ARENA_HEAL = 4;  // ARENA_HEAL signature (Violin)
+
+    private void resolveInstrumentAttack(com.crackedgames.craftics.compat.instruments.InstrumentDef def,
+                                         GridPos center, java.util.List<GridPos> tiles) {
+        java.util.List<CombatEntity> hit =
+            com.crackedgames.craftics.combat.AoeShapes.enemiesOn(arena, tiles, null);
+        for (CombatEntity e : hit) {
+            applySpecialUtilityDamage(e, def.baseDamage());
+            for (var fx : def.effects()) {
+                if (fx.type() != null) applyInstrumentEffect(e, fx.type(), fx.turns(), fx.amplifier());
+            }
+        }
+        if (def.signature() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Signature.KNOCKBACK) {
+            for (CombatEntity e : hit) {
+                if (!e.isAlive()) continue;
+                if (e.hasSlowFalling()) continue;
+                int dx = Integer.signum(e.getGridPos().x() - center.x());
+                int dz = Integer.signum(e.getGridPos().z() - center.z());
+                if (dx == 0 && dz == 0) dx = 1;
+                knockEnemyBack(e, dx, dz, 1);
+            }
+        }
+        for (CombatEntity e : hit) checkAndHandleDeath(e);
+        sendTileFlash(tiles, FLASH_DAMAGE_COLOR, 20);
+    }
+
+    private void resolveInstrumentSupport(com.crackedgames.craftics.compat.instruments.InstrumentDef def,
+                                          GridPos center, java.util.List<GridPos> tiles) {
+        // AI allies on the tiles
+        for (CombatEntity ally : com.crackedgames.craftics.combat.AoeShapes.alliesOn(arena, tiles)) {
+            applyInstrumentBuffsToAlly(def, ally);
+        }
+        // The casting player (always in a self-centered shape)
+        applyInstrumentBuffsToPlayerUuid(def, player.getUuid());
+        if (def.signature() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Signature.FLAT_HEAL
+            || def.signature() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Signature.ARENA_HEAL) {
+            int healAmt = def.signature() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Signature.FLAT_HEAL ? INSTRUMENT_FLAT_HEAL : INSTRUMENT_ARENA_HEAL;
+            player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + healAmt));
+        }
+        if (def.signature() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Signature.CLEANSE) {
+            combatEffects.clearDebuffs();
+        }
+        // Teammate players standing in the shape
+        java.util.Set<GridPos> tileSet = new java.util.HashSet<>(tiles);
+        for (net.minecraft.server.network.ServerPlayerEntity p : partyPlayers) {
+            if (p == player) continue;
+            GridPos pg = gridPosOf(p);
+            if (pg != null && tileSet.contains(pg)) applyInstrumentBuffsToPlayerUuid(def, p.getUuid());
+        }
+        sendTileFlash(tiles, FLASH_EFFECT_COLOR, 20);
+    }
+
+    private void applyInstrumentBuffsToAlly(com.crackedgames.craftics.compat.instruments.InstrumentDef def, CombatEntity ally) {
+        for (var fx : def.effects()) {
+            if (fx.type() != null) applyInstrumentEffect(ally, fx.type(), fx.turns(), fx.amplifier());
+        }
+        switch (def.signature()) {
+            case FLAT_HEAL -> ally.heal(INSTRUMENT_FLAT_HEAL);
+            case ARENA_HEAL -> ally.heal(INSTRUMENT_ARENA_HEAL);
+            case CLEANSE -> cleanseAlly(ally);
+            default -> {}
+        }
+    }
+
+    private void applyInstrumentBuffsToPlayerUuid(com.crackedgames.craftics.compat.instruments.InstrumentDef def, java.util.UUID uuid) {
+        for (var fx : def.effects()) {
+            if (fx.type() != null) applyEffectToPlayerUuid(uuid, fx.type(), fx.turns(), fx.amplifier());
+        }
+        // The player-side flat heal is applied to the caster in resolveInstrumentSupport; teammate heals:
+        if (!uuid.equals(player.getUuid())) {
+            switch (def.signature()) {
+                case FLAT_HEAL -> healPlayerByUuid(uuid, INSTRUMENT_FLAT_HEAL);
+                case ARENA_HEAL -> healPlayerByUuid(uuid, INSTRUMENT_ARENA_HEAL);
+                case CLEANSE -> {
+                    com.crackedgames.craftics.combat.CombatEffects fx = playerCombatEffects.get(uuid);
+                    if (fx != null) fx.clearDebuffs();
+                }
+                default -> {}
+            }
+        }
+    }
+
+    /** Heal a party player by UUID (no-op if not online in this combat). */
+    private void healPlayerByUuid(java.util.UUID uuid, int amount) {
+        for (net.minecraft.server.network.ServerPlayerEntity p : partyPlayers) {
+            if (p.getUuid().equals(uuid)) {
+                p.setHealth(Math.min(p.getMaxHealth(), p.getHealth() + amount));
+                return;
+            }
+        }
+    }
+
+    /**
+     * Apply a debuff/buff to a CombatEntity. Mirrors {@code UsableItemContextImpl.applyEffect}
+     * (CombatEffectContext does not expose a CombatEntity overload, so the switch is duplicated
+     * here so handleInstrument can route effects without going through the inner class).
+     */
+    private void applyInstrumentEffect(CombatEntity target, CombatEffects.EffectType type, int turns, int amplifier) {
+        switch (type) {
+            case POISON -> target.stackPoison(turns, amplifier);
+            case WITHER -> target.stackWither(turns, amplifier);
+            case BURNING -> target.stackBurning(turns, amplifier);
+            case SOAKED -> target.stackSoaked(turns, amplifier);
+            case SLOWNESS -> target.stackSlowness(turns, amplifier);
+            case CONFUSION -> target.stackConfusion(turns, amplifier);
+            case WEAKNESS -> {
+                target.setAttackPenalty(2 * (amplifier + 1));
+                target.setAttackPenaltyTurns(turns);
+            }
+            case BLEEDING -> target.stackBleed(amplifier + 1);
+            case REGENERATION -> target.applyRegeneration(turns, amplifier);
+            case ABSORPTION -> target.applyAbsorption(4 * (amplifier + 1), turns);
+            case SLOW_FALLING -> target.applySlowFalling(turns);
+            case STRENGTH -> target.applyAttackBuff(3 * (amplifier + 1), turns);
+            case SPEED -> target.applySpeedBuff(2 * (amplifier + 1), turns);
+            case RESISTANCE -> target.applyResistance(amplifier + 1, turns);
+            default -> { /* effect type not applicable to combat entities */ }
+        }
+    }
+
+    private void playInstrumentVfx(com.crackedgames.craftics.compat.instruments.InstrumentDef def,
+                                   GridPos center, java.util.List<GridPos> tiles) {
+        if (player == null) return;
+        try {
+            com.crackedgames.craftics.vfx.VfxDescriptor desc =
+                com.crackedgames.craftics.vfx.instruments.InstrumentVfx.describe(def, tiles);
+            net.minecraft.util.math.BlockPos origin = player.getBlockPos();
+            com.crackedgames.craftics.vfx.VfxContext ctx =
+                com.crackedgames.craftics.vfx.VfxContext.ofEntities(
+                    player.getId(), -1, origin, origin, 0f, false, arena);
+            com.crackedgames.craftics.vfx.Vfx.play(
+                (net.minecraft.server.world.ServerWorld) player.getEntityWorld(), desc, ctx);
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.debug("[Instruments] VFX failed for {}: {}", def.itemPath(), e.toString());
+        }
+    }
+
     private void handleUseItem(GridPos targetTile) {
         // Variable AP cost based on item type (stack-aware for goat horns)
         ItemStack heldStack = player.getMainHandStack();
@@ -6843,6 +7094,25 @@ public class CombatManager {
                     else if ("fire".equals(effectType)) effectTile.setType(TileType.FIRE);
                     else if ("powder_snow".equals(effectType)) effectTile.setType(TileType.POWDER_SNOW);
                 }
+
+                // Water/lava bucket: actually place the fluid block so the tile is
+                // visible. Without this the tile type flips to WATER/LAVA but the
+                // floor block never changes, so the player sees no fluid yet still
+                // "sinks" into the tile (and could fish an invisible pool).
+                // gridToBlockPos is Y+1 overlay space; the floor sits one block below.
+                net.minecraft.block.Block fluidBlock =
+                    "water".equals(effectType) ? Blocks.WATER
+                    : "lava".equals(effectType) ? Blocks.LAVA
+                    : null;
+                if (fluidBlock != null && effectTile != null) {
+                    BlockPos fluidBp = arena.gridToBlockPos(effectPos);
+                    BlockPos fluidFloorBp = fluidBp.down();
+                    ServerWorld fluidWorld = (ServerWorld) player.getEntityWorld();
+                    fluidWorld.setBlockState(fluidFloorBp, fluidBlock.getDefaultState(),
+                        net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                    fluidWorld.setBlockState(fluidBp, net.minecraft.block.Blocks.AIR.getDefaultState());
+                    effectTile.setBlockType(fluidBlock);
+                }
             }
             // Process message part - handle GIVE: prefix for item rewards
             if (parts.length > 1) {
@@ -6854,6 +7124,7 @@ public class CombatManager {
                     net.minecraft.item.Item giveItem = switch (itemId) {
                         case "water_bucket" -> Items.WATER_BUCKET;
                         case "lava_bucket" -> Items.LAVA_BUCKET;
+                        case "powder_snow_bucket" -> Items.POWDER_SNOW_BUCKET;
                         case "bucket" -> Items.BUCKET;
                         default -> null;
                     };
@@ -7238,6 +7509,12 @@ public class CombatManager {
                     target.setAttackPenaltyTurns(turns);
                 }
                 case BLEEDING -> target.stackBleed(amplifier + 1);
+                case REGENERATION -> target.applyRegeneration(turns, amplifier);
+                case ABSORPTION -> target.applyAbsorption(4 * (amplifier + 1), turns);
+                case SLOW_FALLING -> target.applySlowFalling(turns);
+                case STRENGTH -> target.applyAttackBuff(3 * (amplifier + 1), turns);
+                case SPEED -> target.applySpeedBuff(2 * (amplifier + 1), turns);
+                case RESISTANCE -> target.applyResistance(amplifier + 1, turns);
                 default -> { /* effect type not applicable to enemy combatants */ }
             }
         }
@@ -7275,6 +7552,14 @@ public class CombatManager {
             }
         }
         @Override public void teleportPlayer(GridPos pos) {
+            // Enforce the documented contract: never drop the player onto an
+            // occupied or non-walkable tile. isOccupied covers every footprint tile
+            // of a sized mob, so this also stops a teleport from landing the player
+            // inside a 2x2 magma cube / spider. Silently no-op on an invalid target
+            // rather than clipping the player into a mob or a wall.
+            if (!arena.isInBounds(pos) || arena.isOccupied(pos)) return;
+            var destTile = arena.getTile(pos);
+            if (destTile == null || !destTile.isWalkable()) return;
             arena.setPlayerGridPos(pos);
             BlockPos bp = arena.gridToBlockPos(pos);
             player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
@@ -7416,6 +7701,71 @@ public class CombatManager {
         refreshHighlights();
     }
 
+    /**
+     * Anti-farming guard, evaluated once per round at the player→enemy boundary.
+     * <p>
+     * If the arena still has living enemies but every one of them is currently
+     * non-threatening (passive animals, or neutral mobs the player hasn't
+     * provoked) AND the player scored no kill this round, count an "idle" round.
+     * After {@link #ANTI_FARM_IDLE_LIMIT} consecutive idle rounds the fight ends
+     * automatically so the player can't sit in a room full of harmless mobs
+     * farming fish, taming, or other free resources forever.
+     * <p>
+     * Any kill, any provoked/hostile mob, or an empty arena resets the counter.
+     *
+     * @return true if this method ended combat (caller must stop processing).
+     */
+    private boolean checkAntiFarmAutoEnd() {
+        boolean killedLastRound = killedThisRound;
+        killedThisRound = false;
+
+        if (enemies == null) return false;
+
+        // Grace period: don't even start counting idle rounds until enough rounds
+        // have passed, so the player has time to fight before the auto-end can
+        // trigger. killedThisRound is still consumed above each round.
+        if (turnNumber <= ANTI_FARM_GRACE_ROUNDS) {
+            antiFarmIdleRounds = 0;
+            return false;
+        }
+
+        boolean anyEnemyAlive = false;
+        boolean anyThreat = false;
+        GridPos playerPos = arena != null ? arena.getPlayerGridPos() : null;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            anyEnemyAlive = true;
+            EnemyAI ai = resolveAi(e);
+            // No AI resolved → treat as a threat (fail safe; never auto-end on it).
+            if (ai == null || playerPos == null || ai.isHostileThreat(e, arena, playerPos)) {
+                anyThreat = true;
+                break;
+            }
+        }
+
+        // Made progress, faced a real threat, or the room is already empty: not idle.
+        if (killedLastRound || anyThreat || !anyEnemyAlive) {
+            antiFarmIdleRounds = 0;
+            return false;
+        }
+
+        antiFarmIdleRounds++;
+        int remaining = ANTI_FARM_IDLE_LIMIT - antiFarmIdleRounds;
+        if (remaining > 0) {
+            sendMessage("§7The remaining creatures are harmless. Move on or this fight ends in "
+                + remaining + " turn" + (remaining == 1 ? "" : "s") + ".");
+            return false;
+        }
+
+        // Idle limit reached — finish the room. The harmless stragglers are simply
+        // left behind (they vanish with the arena on level transition); we don't
+        // force-kill them, which would hand out kill XP / loot for not fighting.
+        antiFarmIdleRounds = 0;
+        sendMessage("§e§lNothing left to fight — moving on!");
+        handleVictory();
+        return true;
+    }
+
     private void startEnemyTurn() {
         fireEffectHook(h -> h.onTurnEnd(effectContext));
         // Age timed summons exactly once per round, BEFORE any early-return guard,
@@ -7423,6 +7773,11 @@ public class CombatManager {
         // (e.g. the PHANTOM set bonus below). Round-effect hooks (bee summon, hay
         // heal) still run only on the normal path, via runAllyRoundHooks() later.
         ageTimedSummons();
+
+        // Anti-farming: end the fight if the room holds only harmless mobs and the
+        // player has made no progress for several rounds. Returns true when it took
+        // over and ended combat, so we stop here.
+        if (checkAntiFarmAutoEnd()) return;
         // PHANTOM set bonus: enemies don't act for the first 2 turns
         if (turnNumber <= 2 && activeTrimScan != null
                 && activeTrimScan.setBonus() == TrimEffects.SetBonus.PHANTOM) {
@@ -8294,6 +8649,11 @@ public class CombatManager {
                 checkAndHandleDeath(e);
             }
 
+            // --- Positive buff ticks on allies (instrument support performances) ---
+            for (CombatEntity e : enemies) {
+                if (e.isAlive() && e.isAlly()) e.tickBuffs();
+            }
+
             if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
                 handleVictory();
                 return;
@@ -8639,8 +8999,11 @@ public class CombatManager {
             if (!teammates.isEmpty()) {
                 CombatEntity victim = teammates.get((int)(Math.random() * teammates.size()));
                 sendMessage("§d" + currentEnemy.getDisplayName() + " is confused and attacks " + victim.getDisplayName() + "!");
-                java.util.List<GridPos> path = Pathfinding.findPath(arena, currentEnemy.getGridPos(),
-                    victim.getGridPos(), currentEnemy.getMoveSpeed(), false);
+                // Size-aware path so a confused 2x2 mob (slime/magma cube/spider)
+                // doesn't route its footprint over the player while staggering to
+                // its target.
+                java.util.List<GridPos> path = Pathfinding.findPathSized(arena, currentEnemy.getGridPos(),
+                    victim.getGridPos(), currentEnemy.getMoveSpeed(), currentEnemy, currentEnemy.getSize());
                 pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.MoveAndAttackMob(
                     path, victim.getEntityId(), currentEnemy.getAttackPower());
                 currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
@@ -8816,15 +9179,24 @@ public class CombatManager {
             }
             case EnemyAction.Pounce pounce -> {
                 sendMessage("§6" + currentEnemy.getDisplayName() + " pounces!");
-                MobEntity mob = currentEnemy.getMobEntity();
-                if (mob != null) {
-                    double wx = arena.getOrigin().getX() + pounce.landingPos().x() + 0.5;
-                    double wz = arena.getOrigin().getZ() + pounce.landingPos().z() + 0.5;
-                    mob.requestTeleport(wx,
-                        arena.getEntityY(pounce.landingPos(), currentEnemy.isFlying()), wz);
+                // Footprint-vs-player safety net: a sized mob must not pounce onto a
+                // landing whose footprint covers the player tile (clipping into it).
+                // If the planned landing would overlap the player, stay put and just
+                // attack from here instead of teleporting on top of them.
+                boolean landingClipsPlayer = currentEnemy.getSize() > 1
+                    && CombatEntity.minDistanceFromSizedEntity(
+                        pounce.landingPos(), currentEnemy.getSize(), arena.getPlayerGridPos()) == 0;
+                if (!landingClipsPlayer) {
+                    MobEntity mob = currentEnemy.getMobEntity();
+                    if (mob != null) {
+                        double wx = arena.getOrigin().getX() + pounce.landingPos().x() + 0.5;
+                        double wz = arena.getOrigin().getZ() + pounce.landingPos().z() + 0.5;
+                        mob.requestTeleport(wx,
+                            arena.getEntityY(pounce.landingPos(), currentEnemy.isFlying()), wz);
+                    }
+                    arena.moveEntity(currentEnemy, pounce.landingPos());
+                    handleEnemyVoidRiftEntry(currentEnemy, pounce.landingPos());
                 }
-                arena.moveEntity(currentEnemy, pounce.landingPos());
-                handleEnemyVoidRiftEntry(currentEnemy, pounce.landingPos());
                 pendingAction = new EnemyAction.Attack(pounce.damage());
                 startAttackAnimation(2);
             }
@@ -11870,8 +12242,10 @@ public class CombatManager {
             case "slime"         -> { block = Blocks.SLIME_BLOCK;   obstacle = false; atFloorLevel = true;  }
             // Powder snow keeps the existing TileType.POWDER_SNOW behavior
             // (mobs sink into it / freeze) rather than becoming an OBSTACLE.
-            // The tile type is set by the caller's setType branch.
-            case "powder_snow"   -> { block = Blocks.POWDER_SNOW;   obstacle = false; atFloorLevel = false; }
+            // The tile type is set by the caller's setType branch. It sits at floor
+            // level (replacing the floor block) like honey/slime — placing it in the
+            // Y+1 overlay space left the snow floating one block above the ground.
+            case "powder_snow"   -> { block = Blocks.POWDER_SNOW;   obstacle = false; atFloorLevel = true; }
             default -> { return; } // not a utility-block effect
         }
         BlockPos bp = arena.gridToBlockPos(effectPos);
@@ -12477,6 +12851,21 @@ public class CombatManager {
                 }
                 sendMessage("§7" + currentEnemy.getDisplayName() + " is caught in cobwebs!");
                 break;
+            }
+        }
+        // Footprint-vs-player safety net: never let a sized mob step so that its
+        // footprint covers the player's tile. A 2x2 mob's anchor can be a tile away
+        // from the player yet still overlap them; size-blind AI planning could route
+        // there. Truncate to the last tile that keeps the mob off the player. This
+        // backstops every AI, including any that didn't use the sized pathfinder.
+        if (currentEnemy != null && currentEnemy.getSize() > 1) {
+            int sz = currentEnemy.getSize();
+            GridPos pPos = arena.getPlayerGridPos();
+            for (int i = 0; i < path.size(); i++) {
+                if (CombatEntity.minDistanceFromSizedEntity(path.get(i), sz, pPos) == 0) {
+                    path = new ArrayList<>(path.subList(0, i));
+                    break;
+                }
             }
         }
         enemyMovePath = path;
@@ -19715,6 +20104,34 @@ public class CombatManager {
         sendMessage("§a§l" + e.getDisplayName() + " mounted! +" + MOUNT_SPEED_BONUS + " Speed!");
     }
 
+    /**
+     * Find a tile to drop a carried-over pet onto, searching outward from the
+     * player start. Skips occupied tiles, non-walkable/hazard tiles, and cobweb
+     * overlays (cobwebs live in a separate overlay map, not the tile type, so a
+     * plain isWalkable() check would happily spawn a pet straight into a web).
+     * Searches a wide enough ring that pets don't get silently dropped just
+     * because the eight tiles touching the player start happen to be full.
+     * Returns null only if nothing in range is usable.
+     */
+    private GridPos findPetSpawnTile(GridPos playerStart) {
+        final int maxRadius = 5;
+        for (int r = 1; r <= maxRadius; r++) {
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    // Only the ring at exactly this radius (Chebyshev) — inner
+                    // rings were already checked on previous iterations.
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != r) continue;
+                    GridPos candidate = new GridPos(playerStart.x() + dx, playerStart.z() + dz);
+                    if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
+                    if (arena.hasWebOverlay(candidate)) continue;
+                    var tile = arena.getTile(candidate);
+                    if (tile != null && tile.isSafeForSpawn()) return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
     /** Spawn previously saved pets into the current arena near the player start. */
     private void spawnSavedPets() {
         // If no in-memory pets, check disk persistence (pets that survived a hub visit)
@@ -19743,19 +20160,13 @@ public class CombatManager {
         GridPos playerStart = arena.getPlayerGridPos();
 
         for (HubPetCollector.PetData pet : savedPets) {
-            // Find a walkable tile near the player start
-            GridPos spawnPos = null;
-            for (int dx = -1; dx <= 1 && spawnPos == null; dx++) {
-                for (int dz = -1; dz <= 1 && spawnPos == null; dz++) {
-                    if (dx == 0 && dz == 0) continue;
-                    GridPos candidate = new GridPos(playerStart.x() + dx, playerStart.z() + dz);
-                    if (arena.isInBounds(candidate) && !arena.isOccupied(candidate)) {
-                        var tile = arena.getTile(candidate);
-                        if (tile != null && tile.isWalkable()) spawnPos = candidate;
-                    }
-                }
+            // Find a safe tile near the player start (wide outward search so the
+            // pet isn't silently dropped when the adjacent tiles are taken).
+            GridPos spawnPos = findPetSpawnTile(playerStart);
+            if (spawnPos == null) {
+                CrafticsMod.LOGGER.warn("No valid spawn tile for saved pet {}", pet.entityType());
+                continue;
             }
-            if (spawnPos == null) continue;
 
             // Spawn the pet entity
             var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
@@ -19813,18 +20224,9 @@ public class CombatManager {
         GridPos playerStart = arena.getPlayerGridPos();
 
         for (HubPetCollector.TamedPetSnapshot snapshot : hubPetSnapshots) {
-            // Find a walkable tile near the player start
-            GridPos spawnPos = null;
-            for (int dx = -2; dx <= 2 && spawnPos == null; dx++) {
-                for (int dz = -2; dz <= 2 && spawnPos == null; dz++) {
-                    if (dx == 0 && dz == 0) continue;
-                    GridPos candidate = new GridPos(playerStart.x() + dx, playerStart.z() + dz);
-                    if (arena.isInBounds(candidate) && !arena.isOccupied(candidate)) {
-                        var tile = arena.getTile(candidate);
-                        if (tile != null && tile.isWalkable()) spawnPos = candidate;
-                    }
-                }
-            }
+            // Find a safe tile near the player start (skips occupied tiles, hazards,
+            // and cobweb overlays — see findPetSpawnTile).
+            GridPos spawnPos = findPetSpawnTile(playerStart);
             if (spawnPos == null) {
                 CrafticsMod.LOGGER.warn("No valid spawn tile for hub pet {}", snapshot.entityTypeId());
                 continue;
@@ -19900,6 +20302,11 @@ public class CombatManager {
         } else {
             // --- Build attack tiles ---
             int range = getEffectiveWeaponRange();
+            // Match handleAttack: melee reaches diagonally (Chebyshev), ranged is
+            // orthogonal (Manhattan). Keeping these in sync means the red highlight
+            // shows exactly the tiles the server will let you hit — including the
+            // diagonals around a melee weapon.
+            boolean isRanged = PlayerCombatStats.isBow(player);
             GridPos playerPos = arena.getPlayerGridPos();
             java.util.Set<CombatEntity> highlighted = new java.util.HashSet<>();
             for (var entry : arena.getOccupants().entrySet()) {
@@ -19913,7 +20320,10 @@ public class CombatManager {
                     for (var occEntry : arena.getOccupants().entrySet()) {
                         if (occEntry.getValue() == enemy) {
                             bossTiles.add(occEntry.getKey());
-                            int dist = playerPos.manhattanDistance(occEntry.getKey());
+                            int dist = isRanged
+                                ? playerPos.manhattanDistance(occEntry.getKey())
+                                : Math.max(Math.abs(playerPos.x() - occEntry.getKey().x()),
+                                           Math.abs(playerPos.z() - occEntry.getKey().z()));
                             if (dist <= range) inRange = true;
                             if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK
                                     && PlayerCombatStats.isInCrossbowLine(arena, playerPos, occEntry.getKey())) {
@@ -20923,6 +21333,19 @@ public class CombatManager {
     private int totalDamageDealt = 0;
     private int totalEnemiesKilled = 0;
 
+    // --- Anti-farming auto-end ---
+    // Number of consecutive rounds that ended with only non-threatening mobs
+    // (passive / not-yet-provoked neutral) left and no kill. After a grace period
+    // of ANTI_FARM_GRACE_ROUNDS, ANTI_FARM_IDLE_LIMIT consecutive idle rounds end
+    // the fight automatically so a room full of harmless animals can't be farmed
+    // forever (fishing, infinite taming, etc.).
+    private int antiFarmIdleRounds = 0;
+    private boolean killedThisRound = false;
+    // Don't start counting idle rounds until this many rounds have already passed,
+    // so the player gets time to fight before the auto-end can trigger.
+    private static final int ANTI_FARM_GRACE_ROUNDS = 5;
+    private static final int ANTI_FARM_IDLE_LIMIT = 4;
+
     // Trim set bonus state
     private boolean movedThisTurn = false;           // FORTRESS: track if player moved
     /** Hybrid: consumed by Ambush — the first attack of the combat is a guaranteed crit. */
@@ -21019,6 +21442,7 @@ public class CombatManager {
     private void onEnemyKilled(CombatEntity enemy) {
         killStreak++;
         killedThisTurn = true;
+        killedThisRound = true;
         totalEnemiesKilled++;
         if (killStreak >= 3) {
             int bonusEmeralds = killStreak - 2; // 3-streak = +1, 4-streak = +2, etc.

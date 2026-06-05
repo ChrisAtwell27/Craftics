@@ -354,6 +354,12 @@ public class CrafticsClient implements ClientModInitializer {
             });
 
         ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.TileFlashPayload.ID, (payload, context) -> {
+                context.client().execute(() ->
+                    CombatState.addTileFlash(payload.tiles(), payload.color(), payload.durationTicks()));
+            });
+
+        ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.TeammateHoverPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
                     CombatState.updateTeammateHover(payload.playerUuid(), payload.playerName(),
