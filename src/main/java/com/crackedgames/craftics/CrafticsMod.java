@@ -45,7 +45,10 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.api.VanillaAllies.registerAll();
         com.crackedgames.craftics.api.VanillaHybridSets.registerAll();
         com.crackedgames.craftics.api.VanillaEnvironments.registerAll();
-        com.crackedgames.craftics.api.VanillaBiomePaths.registerAll();
+        // Seed the built-in craftics:vanilla campaign from code (safety net mirroring
+        // data/craftics/craftics/campaigns/vanilla.json). Registered BEFORE the addon
+        // entrypoint loop so addon/datapack campaigns win over this built-in one.
+        com.crackedgames.craftics.level.campaign.VanillaCampaign.register();
 
         // Optional mod compatibility — each call no-ops if its target mod isn't loaded.
         com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.init();
@@ -53,6 +56,8 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.init();
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
         com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
+        com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.init();
+        com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.init();
         com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();
 
         // Addon entrypoint — invoked after all built-in content and compat modules are
@@ -479,7 +484,10 @@ public class CrafticsMod implements ModInitializer {
         // main entrypoint has run by the time ours does — so finish the registration
         // on SERVER_STARTING, which fires after every mod's main-phase init.
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTING.register(
-            server -> com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred());
+            server -> {
+                com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
+                com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
+            });
 
         // Load biome definitions from JSON datapacks on server start
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
@@ -611,7 +619,7 @@ public class CrafticsMod implements ModInitializer {
                 CrafticsSavedData data = CrafticsSavedData.get(overworld);
                 CrafticsSavedData.PlayerData pd = data.getPlayerData(cmdPlayer.getUuid());
                 pd.initBranchIfNeeded();
-                int totalBiomes = com.crackedgames.craftics.level.BiomePath.getFullPath(pd.branchChoice).size();
+                int totalBiomes = com.crackedgames.craftics.level.campaign.CampaignManager.totalBiomes();
                 pd.highestBiomeUnlocked = totalBiomes;
                 data.markDirty();
                 updateWorldIcon(src.getServer(), pd);
@@ -1884,8 +1892,9 @@ public class CrafticsMod implements ModInitializer {
         if (!(server.getOverworld().getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator)) return;
         try {
             pd.initBranchIfNeeded();
-            java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-                .getFullPath(Math.max(0, pd.branchChoice));
+            java.util.List<String> fullPath = com.crackedgames.craftics.level.campaign.CampaignManager
+                .orderedBiomeIds(Math.max(0, pd.branchChoice));
+            if (fullPath.isEmpty()) return; // no active campaign — nothing to index
             int idx = Math.max(0, Math.min(pd.highestBiomeUnlocked - 1, fullPath.size() - 1));
             String biomeId = fullPath.get(idx);
             String resourcePath = "/assets/craftics/textures/gui/biomes/" + biomeId + ".png";

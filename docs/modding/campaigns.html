@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics - Campaigns Modding</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     TOP NAVIGATION
+     ============================================================ -->
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo"><img src="https://media.forgecdn.net/avatars/thumbnails/1730/614/64/64/639101389968942522.png" alt="Craftics Logo" style="height:32px;width:32px;vertical-align:middle;border-radius:6px;margin-right:10px;">Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="../index.html">Home</a></li>
+      <li><a href="../combat.html">Combat</a></li>
+      <li><a href="../enemies.html">Enemies</a></li>
+      <li><a href="../biomes.html">Biomes</a></li>
+      <li><a href="../progression.html">Progression</a></li>
+      <li><a href="../modding.html" class="active">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ============================================================
+     PAGE LAYOUT
+     ============================================================ -->
+<div class="page-layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Modding Guide</div>
+    <nav class="sidebar-nav">
+      <a href="../modding.html">Introduction</a>
+      <a href="gear.html">Gear</a>
+      <a href="items-and-effects.html">Items &amp; Effects</a>
+      <a href="enemies.html">Enemies &amp; Allies</a>
+      <a href="world.html">World</a>
+      <a href="campaigns.html" class="active">Campaigns</a>
+      <a href="reference.html">Reference</a>
+    </nav>
+  </aside>
+
+  <!-- Content -->
+  <main class="content">
+    <h1>Campaigns</h1>
+    <p class="page-desc">Build your own ordered playthrough of biomes that replaces the vanilla progression, drives difficulty scaling, and decides when New Game Plus begins.</p>
+
+    <!-- ================================================================
+         1. OVERVIEW
+         ================================================================ -->
+    <h2 id="overview">What is a campaign</h2>
+    <p>
+      A campaign is an authored, ordered run through a set of biomes. You group those biomes into <em>regions</em>, and each region holds an ordered list of <em>nodes</em>. A node is just a pointer to one biome plus an optional map label. The flattened run order across every region is the path your players walk, and that order drives difficulty scaling, the level select, dimension labeling, and completion detection.
+    </p>
+    <p>
+      Three rules shape everything below.
+    </p>
+    <ul>
+      <li><strong>Full replace.</strong> A registered campaign replaces the built-in path entirely. Campaigns do not merge. You author the whole run, start to finish.</li>
+      <li><strong>One active per world.</strong> The most recently registered non-vanilla campaign wins. If nothing else is registered, Craftics falls back to its built-in <code>craftics:vanilla</code> campaign.</li>
+      <li><strong>Last node of the last region is the final boss.</strong> Beating it triggers New Game Plus. This is purely positional. It does not matter how many regions or nodes you have.</li>
+    </ul>
+    <p>
+      This page is a how-to walkthrough. For the exhaustive field tables see the <a href="world.html#campaigns">World page campaign schema</a>.
+    </p>
+
+    <!-- ================================================================
+         2. PREREQUISITES
+         ================================================================ -->
+    <h2 id="prerequisites">Before you start</h2>
+    <p>
+      A campaign only references biomes by id. It never defines a biome itself. So before a campaign is playable you need the biomes it points at. Biomes are data driven and live at <code>data/&lt;namespace&gt;/craftics/biomes/&lt;biome_id&gt;.json</code>.
+    </p>
+    <p>
+      If a node references a biome that is not registered, the campaign still loads but that node is <strong>unreachable</strong> because there is nothing to play. The campaign loader does not check biome existence, so this is on you to get right. Register every biome a node names.
+    </p>
+    <p>
+      Here is the minimal biome JSON a node needs. Drop this at <code>data/mymod/craftics/biomes/wildwood.json</code>.
+    </p>
+    <pre><code>{
+  "id": "mymod:wildwood",
+  "name": "Wildwood",
+  "order": 10,
+  "levels": 5,
+  "grid": { "base_width": 8, "base_height": 8 },
+  "floor_blocks": ["minecraft:grass_block", "minecraft:moss_block"],
+  "enemies": {
+    "hostile": [
+      { "type": "minecraft:zombie", "weight": 10, "hp": 12, "attack": 3 }
+    ],
+    "boss": { "type": "minecraft:zombie", "weight": 1, "hp": 40, "attack": 5 }
+  },
+  "loot": [
+    { "item": "minecraft:emerald", "weight": 5 }
+  ]
+}</code></pre>
+    <p>
+      The required fields are <code>id</code>, <code>name</code>, <code>order</code> (controls where the biome inserts into progression), <code>levels</code>, a <code>grid</code> with <code>base_width</code> and <code>base_height</code>, <code>floor_blocks</code>, an <code>enemies</code> object, and a <code>loot</code> array. Everything else is optional. For obstacles, environment themes, night, enchantment loot, and the enemy reference form see the full <a href="world.html#biomes">biome schema on the World page</a>.
+    </p>
+
+    <!-- ================================================================
+         3. DATAPACK
+         ================================================================ -->
+    <h2 id="datapack">Make a campaign with a datapack</h2>
+    <p>
+      This is the route most authors should use. A campaign is one JSON file at <code>data/&lt;namespace&gt;/craftics/campaigns/&lt;id&gt;.json</code>. It is read on server start and re-read on <code>/reload</code>.
+    </p>
+
+    <h3>Step 1: a one region linear campaign</h3>
+    <p>
+      Start small. Put this at <code>data/mymod/craftics/campaigns/descent.json</code>. It has one region and two nodes, each pointing at a biome you also defined under <code>craftics/biomes/</code>.
+    </p>
+    <pre><code>{
+  "id": "mymod:descent",
+  "display_name": "The Descent",
+  "regions": [
+    {
+      "id": "surface",
+      "display_name": "Surface",
+      "color": "§a",
+      "icon": "☘",
+      "map_color": "FF6BBF59",
+      "nodes": [
+        { "biome": "mymod:village", "label": "Quiet Village" },
+        { "biome": "mymod:wildwood", "label": "The Wildwood" }
+      ]
+    }
+  ]
+}</code></pre>
+    <p>
+      Field by field. <code>id</code> is required and must be non-blank. Use a namespaced id so it never collides with another addon. <code>display_name</code> is what players see and defaults to the id if you omit it. <code>regions</code> is a required non-empty array. Each region needs a non-blank <code>id</code> and a non-empty <code>nodes</code> array. Each node needs a non-blank <code>biome</code>. The <code>label</code> is optional and overrides the node's map label, falling back to the biome's own display name when absent.
+    </p>
+    <p>
+      The region presentation fields <code>color</code>, <code>icon</code>, and <code>map_color</code> are all optional. If you leave them out the region still works with sensible defaults. The next section covers what they drive.
+    </p>
+
+    <h3>Step 2: grow into multiple regions</h3>
+    <p>
+      Regions play in the order you list them. Add a second region and its nodes simply continue the run after the first region ends. The last node of the last region is the final boss.
+    </p>
+    <pre><code>{
+  "id": "mymod:descent",
+  "display_name": "The Descent",
+  "regions": [
+    {
+      "id": "surface",
+      "display_name": "Surface",
+      "color": "§a",
+      "icon": "☘",
+      "map_color": "FF6BBF59",
+      "nodes": [
+        { "biome": "mymod:village", "label": "Quiet Village" },
+        { "biome": "mymod:wildwood", "label": "The Wildwood" }
+      ]
+    },
+    {
+      "id": "depths",
+      "display_name": "The Depths",
+      "color": "§b",
+      "icon": "❄",
+      "map_color": "FF4488CC",
+      "nodes": [
+        { "biome": "mymod:frozen_cavern", "label": "Frozen Cavern" },
+        { "biome": "mymod:abyss", "label": "The Abyss" }
+      ]
+    }
+  ]
+}</code></pre>
+    <p>
+      Here the flattened run order is <code>village</code>, <code>wildwood</code>, <code>frozen_cavern</code>, <code>abyss</code>. The <code>abyss</code> node is the final boss because it is the last node of the last region. For every field and validation rule, including exactly what makes the loader skip a file, see the <a href="world.html#campaigns">World page campaign schema</a>.
+    </p>
+
+    <!-- ================================================================
+         4. REGIONS
+         ================================================================ -->
+    <h2 id="regions">Regions and the level select</h2>
+    <p>
+      Each region becomes a tab in the level select. The presentation fields control how that tab and its map tint look.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Default</th><th>Drives</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>display_name</code></td><td>region id</td><td>The tab label.</td></tr>
+          <tr><td><code>color</code></td><td><code>§f</code> (white)</td><td>Minecraft chat color code used for the region accent.</td></tr>
+          <tr><td><code>icon</code></td><td><code>?</code></td><td>A single glyph shown on the tab.</td></tr>
+          <tr><td><code>map_color</code></td><td>opaque white</td><td>The map tint for the region, as a hex string.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      <code>map_color</code> is a hex string with an optional leading <code>#</code>. Eight hex digits are read as ARGB, so <code>"FF6BBF59"</code> is opaque green. Six hex digits are read as RGB and get an opaque alpha added, so <code>"6BBF59"</code> is the same green. An absent value is opaque white with no warning. A malformed or wrong-length value falls back to opaque white and logs a warning, so check your logs if a region looks white when you did not intend it.
+    </p>
+    <div class="callout">
+      <p><strong>Art is optional.</strong> A biome card looks for art at <code>textures/gui/biomes/&lt;id&gt;.png</code>. If that file is missing the card falls back to a colored panel using your <code>map_color</code> and <code>color</code>. You can ship a fully working campaign with no custom art at all and add it later.</p>
+    </div>
+
+    <!-- ================================================================
+         5. BRANCHES
+         ================================================================ -->
+    <h2 id="branches">Branches</h2>
+    <p>
+      A branch is an optional within-region swap. It lets one region present two play orders. When the run uses branch choice 1 the two named biomes or segments swap places. When the run uses choice 0 the region plays in its listed order. Both choices play <strong>all</strong> the biomes. Only the order changes.
+    </p>
+    <p>
+      The single-biome swap names two biomes as two strings.
+    </p>
+    <pre><code>"branch": {
+  "region": "surface",
+  "swap": ["mymod:village", "mymod:wildwood"]
+}</code></pre>
+    <p>
+      The segment swap names two contiguous runs of biomes as two arrays. Anything between the two segments stays put as a pivot, and the nodes around them stay in place.
+    </p>
+    <pre><code>"branch": {
+  "region": "surface",
+  "swap": [["mymod:desert", "mymod:jungle", "mymod:forest"], ["mymod:snowy", "mymod:mountain"]]
+}</code></pre>
+    <p>
+      A branch is only honored when it is valid. The named <code>region</code> must exist, and both segments must be contiguous, disjoint, and non-interleaving sublists of that region's node order. An invalid but well-formed branch never throws. It quietly falls back to the linear order and logs a warning once. So if a swap is not taking effect, check the logs and confirm both segments sit next to each other in the region.
+    </p>
+    <p>
+      The built-in vanilla campaign is the real-world example. Its overworld region defines a segment swap between a warm trio (<code>desert</code>, <code>jungle</code>, <code>forest</code>) and a cool pair (<code>snowy</code>, <code>mountain</code>).
+    </p>
+
+    <!-- ================================================================
+         6. COMPLETION
+         ================================================================ -->
+    <h2 id="completion">Completion and New Game Plus</h2>
+    <p>
+      The last node of the last region in the flattened run order is the final boss. Beating it triggers New Game Plus. This is count-agnostic. It works the same whether your campaign has one region with one node or five regions with dozens of nodes.
+    </p>
+    <p>
+      A one region, one node campaign is completely valid. That single node is both the start and the final boss, so clearing it rolls the run into NG+.
+    </p>
+
+    <!-- ================================================================
+         7. TESTING
+         ================================================================ -->
+    <h2 id="testing">Develop and test</h2>
+    <p>
+      Campaign and biome JSON are both hot-reloadable. Run <code>/reload</code> in-game and your edits to <code>craftics/campaigns/</code> and <code>craftics/biomes/</code> are picked up without a restart. This is your core dev loop: edit JSON, <code>/reload</code>, open the level select, look.
+    </p>
+    <p>
+      To confirm your campaign is active, open the level select and check that it shows <strong>your</strong> regions and not the default Overworld, Nether, and End. If you still see the vanilla regions, your campaign was not registered or another campaign won the resolution.
+    </p>
+    <p>
+      The first biome in your run order is the unlock gate. It should always be startable. If your first node is locked, the campaign did not resolve as active or its first biome is not registered.
+    </p>
+    <div class="callout callout-muted">
+      <p>The world saves the active campaign as a stamp (<code>activeCampaignId</code>). Switching a world's active campaign mid-run is not supported and logs a warning. Pick the campaign for a world before you start playing it.</p>
+    </div>
+    <h3>Common pitfalls</h3>
+    <ul>
+      <li><strong>Node biome not registered.</strong> The campaign loads but the node is unreachable. Make sure every node <code>biome</code> has a matching <code>craftics/biomes/&lt;id&gt;.json</code> or a <code>registerBiome(...)</code> call.</li>
+      <li><strong>Invalid map_color.</strong> Falls back to opaque white and logs a warning. Use 8-digit ARGB or 6-digit RGB hex.</li>
+      <li><strong>Invalid branch.</strong> Falls back to the linear order and logs a warning once. Confirm both segments are contiguous in the region.</li>
+      <li><strong>Forgetting full replace.</strong> Your campaign replaces vanilla entirely. There is no merging, so you must author the whole run including its final boss.</li>
+    </ul>
+
+    <!-- ================================================================
+         8. JAVA API
+         ================================================================ -->
+    <h2 id="java-api">The Java / addon route</h2>
+    <p>
+      If you ship a code addon you can register a campaign in Java instead of JSON. The two routes are equivalent. A code-registered campaign even survives <code>/reload</code> where datapack campaigns are dropped and re-loaded. Most authors should still prefer JSON. Reach for Java only when you are already writing an addon and want to build the campaign programmatically.
+    </p>
+    <p>
+      An addon implements <code>CrafticsAddon</code> and is declared in <code>fabric.mod.json</code> under the <code>"craftics"</code> entrypoint key.
+    </p>
+    <pre><code>"entrypoints": {
+  "craftics": [
+    "com.example.mymod.MyCrafticsAddon"
+  ]
+}</code></pre>
+    <p>
+      Craftics calls <code>onCrafticsInit()</code> once, after all of its own built-in content is registered, so your registrations run last and override same-keyed built-ins. Build the campaign with the fluent builders and hand it to <code>CrafticsAPI.registerCampaign(...)</code>.
+    </p>
+    <div class="callout">
+      <p><strong>Import note.</strong> The campaign classes live in <code>com.crackedgames.craftics.level.campaign</code>, not <code>...api.campaign</code>. Only <code>CrafticsAPI</code> and <code>CrafticsAddon</code> live under <code>...api</code>.</p>
+    </div>
+    <pre><code>import com.crackedgames.craftics.api.CrafticsAddon;
+import com.crackedgames.craftics.api.CrafticsAPI;
+import com.crackedgames.craftics.level.campaign.Campaign;
+import com.crackedgames.craftics.level.campaign.CampaignRegion;
+import com.crackedgames.craftics.level.campaign.CampaignBranch;
+import java.util.List;
+
+public final class MyCrafticsAddon implements CrafticsAddon {
+    @Override
+    public void onCrafticsInit() {
+        CrafticsAPI.registerCampaign(
+            Campaign.builder("mymod:descent")
+                .displayName("The Descent")
+                .region(
+                    CampaignRegion.builder("surface")
+                        .displayName("Surface")
+                        .color("§a")
+                        .icon("☘")
+                        .mapColor(0xFF6BBF59)
+                        .node("mymod:village", "Quiet Village")
+                        .node("mymod:wildwood", "The Wildwood")
+                        .build()
+                )
+                .region(
+                    CampaignRegion.builder("depths")
+                        .displayName("The Depths")
+                        .color("§b")
+                        .mapColor(0xFF4488CC)
+                        .node("mymod:frozen_cavern", "Frozen Cavern")
+                        .node("mymod:abyss", "The Abyss")
+                        .build()
+                )
+                // Single-biome swap convenience
+                .branch(CampaignBranch.of("surface", "mymod:village", "mymod:wildwood"))
+                .build()
+        );
+    }
+}</code></pre>
+    <p>
+      Note the builder uses a singular <code>region(...)</code> method called once per region. There is no plural <code>regions(...)</code>. For a multi-biome segment swap, build the branch with the canonical constructor instead of <code>of(...)</code>.
+    </p>
+    <pre><code>// Segment swap: two contiguous lists
+.branch(new CampaignBranch(
+    "surface",
+    List.of("mymod:desert", "mymod:jungle", "mymod:forest"),
+    List.of("mymod:snowy", "mymod:mountain")
+))</code></pre>
+    <p>
+      If you need biomes in code too, register them with <code>CrafticsAPI.registerBiome(...)</code>. Most addons define biomes as JSON and only use the Java route for the campaign itself. Pure JSON content needs no addon class at all because it is discovered automatically.
+    </p>
+
+    <!-- ================================================================
+         9. WORKED EXAMPLE
+         ================================================================ -->
+    <h2 id="example">Worked example</h2>
+    <p>
+      Two reference implementations ship with the project. Copy whichever fits your scope.
+    </p>
+    <ul>
+      <li><strong>The example addon.</strong> Under <code>examples/addon-template</code> you get a complete, minimal campaign at <code>data/exampleaddon/craftics/campaigns/example.json</code> with one region and one node, plus the biome it references at <code>data/exampleaddon/craftics/biomes/highlands.json</code>. That single node is both the start and the final boss, so it is the smallest legal campaign you can ship.</li>
+      <li><strong>The vanilla campaign.</strong> The built-in <code>craftics:vanilla</code> campaign at <code>data/craftics/craftics/campaigns/vanilla.json</code> is the full-scale reference. It has three regions (Overworld, Nether, End), per-region colors and icons, ARGB map colors with semi-transparent alpha, and a multi-biome segment branch in the overworld. Read it when you want to see every feature used together.</li>
+    </ul>
+    <p>
+      For the complete field tables and validation rules behind everything here, keep the <a href="world.html#campaigns">World page campaign schema</a> and the <a href="world.html#biomes">biome schema</a> open while you build. The <a href="reference.html">Reference page</a> covers related data such as arena maps and environment themes.
+    </p>
+
+  </main>
+</div>
+
+<footer>
+  <span>Craftics by Cracked Games LLC</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="../js/nav.js"></script>
+
+</body>
+</html>

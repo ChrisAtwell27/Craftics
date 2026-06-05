@@ -17,8 +17,9 @@ JSON datapacks, no code. Four files under
 - `environments/highlands.json` is a custom arena environment theme (floor, post, and
   light blocks).
 - `biomes/highlands.json` is a custom biome, "Highlands".
-- `paths/aether.json` is a biome path, "The Aether", that groups the biome into a
-  region.
+- `campaigns/example.json` is a custom campaign, "The Highlands", that plays the biome
+  as a full custom playthrough. A registered campaign replaces Craftics' built-in
+  vanilla campaign entirely.
 - `enemies/moa.json` adopts the Aether mod's Moa (`aether:moa`) as a Craftics enemy.
 
 Java API. Two files under `src/main/java/com/example/exampleaddon/`:

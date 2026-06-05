@@ -27,6 +27,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // hooks usually win this race, but if they didn't (e.g. resource pack reload
         // before a world is loaded), the first tooltip render finishes the job.
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
+        com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
 
         // Artifacts mod compat: replace the entire vanilla/Artifacts tooltip body with
         // Craftics-only lines so the player sees the in-Craftics behaviour, not the
@@ -39,6 +40,30 @@ public class CombatTooltips implements ItemTooltipCallback {
             }
             ArtifactsTooltips.appendLines(itemId.getPath(), lines);
             return; // skip all other tooltip handlers — artifacts only show our text
+        }
+
+        // MoreTotems mod compat: strip the mod's totem tooltips and show the Craftics
+        // revive behavior instead. Keep the item name (lines.get(0)) and wipe the rest.
+        if (MoreTotemsTooltips.isMoreTotem(itemId)
+            && com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isMoreTotem(item)) {
+            if (lines.size() > 1) {
+                lines.subList(1, lines.size()).clear();
+            }
+            MoreTotemsTooltips.appendLines(itemId.getPath(), lines);
+            return;
+        }
+
+        // Basic Weapons: strip the mod's tooltip, show the Craftics combat block. Gate on
+        // WeaponRegistry.isRegistered so bronze (unregistered) keeps the mod's default tooltip.
+        if (BasicWeaponsTooltips.isBasicWeapon(itemId)
+            && com.crackedgames.craftics.api.registry.WeaponRegistry.isRegistered(item)) {
+            if (lines.size() > 1) {
+                lines.subList(1, lines.size()).clear();
+            }
+            int might = com.crackedgames.craftics.combat.PlayerCombatStats
+                .getEnchantLevel(stack, "basicweapons:might");
+            BasicWeaponsTooltips.appendLines(item, itemId.getPath(), might, lines);
+            return;
         }
 
         // Goat horn: scan existing tooltip lines for the variant name

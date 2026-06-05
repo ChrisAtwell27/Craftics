@@ -178,7 +178,25 @@ public class CombatAnimations {
         IAnimation anim;
         int duration;
 
-        if (itemId.contains("bow") || itemId.contains("crossbow")) {
+        if (itemId.contains("dagger")) {
+            anim = new DaggerJabAnimation();
+            duration = 10;
+        } else if (itemId.contains("club")) {
+            anim = new ClubBashAnimation();
+            duration = 16;
+        } else if (itemId.contains("hammer")) {
+            anim = new MaceSlamAnimation();
+            duration = 22;
+        } else if (itemId.contains("spear")) {
+            anim = new SpearThrustAnimation();
+            duration = 14;
+        } else if (itemId.contains("quarterstaff")) {
+            anim = new QuarterstaffTwirlAnimation();
+            duration = 16;
+        } else if (itemId.contains("glaive")) {
+            anim = new GlaiveSweepAnimation();
+            duration = 18;
+        } else if (itemId.contains("bow") || itemId.contains("crossbow")) {
             anim = new BowDrawAnimation();
             duration = 16;
         } else if (itemId.contains("axe")) {
@@ -347,6 +365,116 @@ public class CombatAnimations {
                         return new Vec3f(v.getX(), v.getY() + headY, v.getZ());
                     }
                 }
+            }
+            return v;
+        }
+    }
+
+    // ===== Basic Weapons mod animations =====
+
+    // 10 ticks: jab1(0-3) → jab2(3-6) → recovery(6-10) — fast double thrust
+    private static class DaggerJabAnimation implements IAnimation {
+        private float tick = 0;
+        @Override public void tick() { tick += 1; }
+        @Override public boolean isActive() { return tick < 10; }
+        @Override public void setupAnim(float tickDelta) {}
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            if (type != TransformType.ROTATION) return v;
+            float t = tick + tickDelta;
+            float jab1 = easeOut(phase(t, 0, 3)) * (1 - phase(t, 3, 6));
+            float jab2 = easeOut(phase(t, 3, 6)) * (1 - phase(t, 6, 10));
+            float thrust = jab1 + jab2;
+            if ("rightArm".equals(modelPart)) return new Vec3f(v.getX() - thrust * 1.6f, v.getY(), v.getZ());
+            if ("body".equals(modelPart)) return new Vec3f(v.getX(), v.getY() + thrust * 0.2f, v.getZ());
+            return v;
+        }
+    }
+
+    // 16 ticks: windup(0-5) → swing(5-8) → recovery(8-16) — horizontal side bash
+    private static class ClubBashAnimation implements IAnimation {
+        private float tick = 0;
+        @Override public void tick() { tick += 1; }
+        @Override public boolean isActive() { return tick < 16; }
+        @Override public void setupAnim(float tickDelta) {}
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            if (type != TransformType.ROTATION) return v;
+            float t = tick + tickDelta;
+            float windup = easeIn(phase(t, 0, 5));
+            float swing = easeOut(phase(t, 5, 8));
+            float recovery = easeInOut(phase(t, 8, 16));
+            if ("rightArm".equals(modelPart)) {
+                float armZ = windup * 1.0f - swing * 2.2f + recovery * 1.2f;
+                return new Vec3f(v.getX() - swing * 1.5f, v.getY(), v.getZ() + armZ);
+            }
+            if ("body".equals(modelPart)) return new Vec3f(v.getX(), v.getY() + windup * 0.3f - swing * 0.5f + recovery * 0.2f, v.getZ());
+            return v;
+        }
+    }
+
+    // 14 ticks: coil(0-4) → lunge(4-7) → recovery(7-14) — long forward thrust
+    private static class SpearThrustAnimation implements IAnimation {
+        private float tick = 0;
+        @Override public void tick() { tick += 1; }
+        @Override public boolean isActive() { return tick < 14; }
+        @Override public void setupAnim(float tickDelta) {}
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            float t = tick + tickDelta;
+            float coil = easeIn(phase(t, 0, 4));
+            float lunge = easeOut(phase(t, 4, 7));
+            float recovery = easeInOut(phase(t, 7, 14));
+            if (type == TransformType.POSITION && "body".equals(modelPart)) {
+                return new Vec3f(v.getX(), v.getY(), v.getZ() + lunge * (1 - recovery) * 0.6f);
+            }
+            if (type != TransformType.ROTATION) return v;
+            float ext = coil * 0.8f - lunge * 2.4f + recovery * 1.6f;
+            if ("rightArm".equals(modelPart)) return new Vec3f(v.getX() + ext, v.getY(), v.getZ());
+            if ("leftArm".equals(modelPart)) return new Vec3f(v.getX() + ext * 0.5f, v.getY(), v.getZ());
+            return v;
+        }
+    }
+
+    // 16 ticks: spin around — staff twirl
+    private static class QuarterstaffTwirlAnimation implements IAnimation {
+        private float tick = 0;
+        @Override public void tick() { tick += 1; }
+        @Override public boolean isActive() { return tick < 16; }
+        @Override public void setupAnim(float tickDelta) {}
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            if (type != TransformType.ROTATION) return v;
+            float t = tick + tickDelta;
+            float spin = phase(t, 2, 12);
+            float wheel = (float) Math.sin(spin * Math.PI * 2) * (1 - phase(t, 12, 16));
+            if ("rightArm".equals(modelPart)) return new Vec3f(v.getX() + wheel * 2.0f, v.getY(), v.getZ());
+            if ("leftArm".equals(modelPart)) return new Vec3f(v.getX() - wheel * 2.0f, v.getY(), v.getZ());
+            if ("body".equals(modelPart)) return new Vec3f(v.getX(), v.getY() + wheel * 0.6f, v.getZ());
+            return v;
+        }
+    }
+
+    // 18 ticks: windup(0-6) → wide sweep(6-10) → recovery(10-18) — broad horizontal arc
+    private static class GlaiveSweepAnimation implements IAnimation {
+        private float tick = 0;
+        @Override public void tick() { tick += 1; }
+        @Override public boolean isActive() { return tick < 18; }
+        @Override public void setupAnim(float tickDelta) {}
+        @Override public @NotNull Vec3f get3DTransform(@NotNull String modelPart, @NotNull TransformType type,
+                                                       float tickDelta, @NotNull Vec3f v) {
+            if (type != TransformType.ROTATION) return v;
+            float t = tick + tickDelta;
+            float windup = easeIn(phase(t, 0, 6));
+            float sweep = easeOut(phase(t, 6, 10));
+            float recovery = easeInOut(phase(t, 10, 18));
+            if ("rightArm".equals(modelPart)) {
+                float armY = windup * 0.8f - sweep * 2.0f + recovery * 1.2f;
+                return new Vec3f(v.getX() - sweep * 1.2f, v.getY() + armY, v.getZ());
+            }
+            if ("body".equals(modelPart)) {
+                float twist = windup * 0.4f - sweep * 0.9f + recovery * 0.5f;
+                return new Vec3f(v.getX(), v.getY() + twist, v.getZ());
             }
             return v;
         }

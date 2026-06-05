@@ -138,6 +138,17 @@ public class TraderSystem {
         pool.add(trade(Items.WOODEN_PICKAXE, 1, 2, "Wooden Pickaxe"));
         if (tier >= 3) pool.add(trade(Items.IRON_PICKAXE, 1, 6, "Iron Pickaxe"));
         if (tier >= 6) pool.add(trade(Items.DIAMOND_PICKAXE, 1, 12, "§bDiamond Pickaxe"));
+
+        // Basic Weapons compat: a small tier-appropriate subset of the mod's weapons.
+        // No-ops when the mod is absent (forTier returns empty).
+        if (com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isLoaded()) {
+            for (Item item : com.crackedgames.craftics.compat.basicweapons.BasicWeaponsLootRoller.forTier(tier)) {
+                String type = com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat
+                    .weaponType(net.minecraft.registry.Registries.ITEM.getId(item).getPath());
+                int cost = com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.baseTraderCost(type);
+                pool.add(trade(item, 1, cost, "§e" + item.getName().getString()));
+            }
+        }
     }
 
     // ---- ARMORER ----
@@ -475,6 +486,16 @@ public class TraderSystem {
             pool.add(trade(Items.WITHER_SKELETON_SKULL, 1, 22, "§8Wither Skull §7(+1 Special)"));
             pool.add(trade(Items.TRIAL_KEY, 1, 10, "§eTrial Key"));
             pool.add(trade(Items.OMINOUS_TRIAL_KEY, 1, 20, "§4Ominous Trial Key"));
+        }
+
+        // MoreTotems compat: a random modded totem at high tier (matches vanilla Totem
+        // at tier 7, priced just above it). No-ops when the mod is absent (rollOne EMPTY).
+        if (com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isLoaded() && tier >= 7) {
+            net.minecraft.item.ItemStack totem =
+                com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne();
+            if (!totem.isEmpty()) {
+                pool.add(new Trade(totem, 20, "§d" + totem.getName().getString()));
+            }
         }
     }
 

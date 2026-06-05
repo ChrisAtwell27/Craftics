@@ -46,8 +46,8 @@ public final class CrafticsDataLoaders {
         register(new AllyJsonLoader());
         register(new HybridSetJsonLoader());
         register(new EnvironmentJsonLoader());
-        register(new BiomePathJsonLoader());
         register(new DialogueJsonLoader());
+        register(new CampaignJsonLoader());
 
         ServerLifecycleEvents.SERVER_STARTED.register(
             server -> loadAll(server.getResourceManager()));

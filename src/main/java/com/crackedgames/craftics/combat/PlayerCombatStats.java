@@ -243,35 +243,68 @@ public class PlayerCombatStats {
         return "copper".equals(getArmorSet(player));
     }
 
-    public static String findAndConsumeTippedArrow(ServerPlayerEntity player) {
+    /**
+     * Maps vanilla status-effect id paths (e.g. "poison", "instant_damage") to the
+     * Craftics combat effect names the tipped-arrow switch handles. Skips anything
+     * outside the 7-effect whitelist and de-dupes (a vanilla /give arrow can carry
+     * the same effect twice). Pure — no Minecraft registry, unit-testable with plain
+     * strings. Uses string matching on registry id for 1.21.1+ shard compatibility.
+     */
+    public static java.util.List<String> recognizedEffectNames(java.util.List<String> effectPaths) {
+        java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+        for (String path : effectPaths) {
+            String name = switch (path) {
+                case "poison" -> "poison";
+                case "slowness" -> "slowness";
+                case "weakness" -> "weakness";
+                case "instant_damage" -> "harming";
+                case "instant_health" -> "healing";
+                case "fire_resistance" -> "fire_resistance";
+                case "wither" -> "wither";
+                default -> null;
+            };
+            if (name != null) names.add(name);
+        }
+        return new java.util.ArrayList<>(names);
+    }
+
+    /**
+     * Reads each effect's vanilla id path off the potion component and delegates to
+     * the pure {@link #recognizedEffectNames(java.util.List)} mapping. Touches the
+     * registry only via the safe id-path read (no .value()), so it never throws on a
+     * malformed or modded component. Null component -> empty list.
+     */
+    public static java.util.List<String> recognizedEffectNames(
+            net.minecraft.component.type.PotionContentsComponent potionContents) {
+        if (potionContents == null) return java.util.List.of();
+        java.util.List<String> paths = new java.util.ArrayList<>();
+        for (var effect : potionContents.getEffects()) {
+            String path = effect.getEffectType().getKey()
+                .map(k -> k.getValue().getPath()).orElse("");
+            paths.add(path);
+        }
+        return recognizedEffectNames(paths);
+    }
+
+    /**
+     * Finds the first tipped arrow in the player's inventory, consumes one, and
+     * returns ALL recognized Craftics effect names it carries (empty list if none
+     * recognized, or if no tipped arrow exists). A combined "mixed" arrow yields
+     * multiple names; the caller applies each. Never returns null.
+     */
+    public static java.util.List<String> findAndConsumeTippedArrow(ServerPlayerEntity player) {
         for (int i = 0; i < player.getInventory().size(); i++) {
             var stack = player.getInventory().getStack(i);
             if (stack.getItem() == Items.TIPPED_ARROW) {
                 var potionContents = stack.get(net.minecraft.component.DataComponentTypes.POTION_CONTENTS);
-                if (potionContents != null) {
-                    for (var effect : potionContents.getEffects()) {
-                        var effectType = effect.getEffectType().value();
-                        String result = null;
-                        if (effectType == net.minecraft.entity.effect.StatusEffects.POISON.value()) result = "poison";
-                        else if (effectType == net.minecraft.entity.effect.StatusEffects.SLOWNESS.value()) result = "slowness";
-                        else if (effectType == net.minecraft.entity.effect.StatusEffects.WEAKNESS.value()) result = "weakness";
-                        else if (effectType == net.minecraft.entity.effect.StatusEffects.INSTANT_DAMAGE.value()) result = "harming";
-                        else if (effectType == net.minecraft.entity.effect.StatusEffects.INSTANT_HEALTH.value()) result = "healing";
-                        else if (effectType == net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE.value()) result = "fire_resistance";
-                        else if (effectType == net.minecraft.entity.effect.StatusEffects.WITHER.value()) result = "wither";
-                        if (result != null) {
-                            stack.decrement(1);
-                            return result;
-                        }
-                        // unrecognized effect, skip
-                    }
-                }
-                // no recognized effect, consume as normal arrow
+                java.util.List<String> names = recognizedEffectNames(potionContents);
+                // Consume one arrow regardless of how many effects were recognized
+                // (an unrecognized-only tipped arrow is still spent as a normal arrow).
                 stack.decrement(1);
-                return null;
+                return names;
             }
         }
-        return null;
+        return java.util.List.of();
     }
 
     public static boolean hasTippedArrows(ServerPlayerEntity player) {
@@ -347,6 +380,15 @@ public class PlayerCombatStats {
 
     public static int getSweepingEdge(ServerPlayerEntity player) {
         return getEnchantLevel(player.getMainHandStack(), "minecraft:sweeping_edge");
+    }
+
+    /**
+     * Basic Weapons "Might" enchant level (full namespaced id, since getEnchantLevel
+     * matches getValue().toString()). 0 when absent. Used by the basicweapons blunt
+     * weapon handlers for bonus damage and stun chance.
+     */
+    public static int getMight(ServerPlayerEntity player) {
+        return getEnchantLevel(player.getMainHandStack(), "basicweapons:might");
     }
 
     /** Each 2 protection levels = +1 defense. Stacks across all armor pieces. */

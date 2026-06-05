@@ -38,6 +38,12 @@ public class CrafticsSavedData extends PersistentState {
         public int highestBiomeUnlocked = 1;
         public int emeralds = 0;
         public String activeBiomeId = "";
+        /**
+         * Id of the campaign this player's run was last played on. Stamped on first
+         * world load (see {@link #checkCampaignStamp()}); a mismatch on a later load
+         * (the active campaign changed) is warned about but never silently remapped.
+         */
+        public String activeCampaignId = "";
         public int activeBiomeLevelIndex = 0;
         public int branchChoice = -1;
         public String discoveredBiomes = "";
@@ -194,11 +200,37 @@ public class CrafticsSavedData extends PersistentState {
             return 1.0f + ngPlusLevel * 0.25f;
         }
 
+        /** Guards {@link #checkCampaignStamp()} so it runs at most once per loaded instance. */
+        private transient boolean campaignStampChecked = false;
+
+        /**
+         * Compare this player's stamped {@code activeCampaignId} against the currently-active
+         * campaign on world load. A new/unstamped run (empty stamp, including pre-campaign
+         * saves) silently adopts the active campaign's id. A mismatch is logged once and the
+         * run state is left untouched — we never silently remap a run onto a different campaign.
+         * Runs at most once per loaded {@link PlayerData} instance.
+         */
+        public void checkCampaignStamp() {
+            if (campaignStampChecked) return;
+            campaignStampChecked = true;
+            String active = com.crackedgames.craftics.level.campaign.CampaignManager.active() != null
+                ? com.crackedgames.craftics.level.campaign.CampaignManager.active().id() : "";
+            if (activeCampaignId == null || activeCampaignId.isEmpty()) {
+                // New/unstamped world (or pre-campaign save) — stamp it now with the active campaign.
+                activeCampaignId = active;
+            } else if (!activeCampaignId.equals(active)) {
+                com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
+                    "World was last played on campaign '{}' but the active campaign is now '{}'. "
+                    + "Run state may be inconsistent; not remapping.", activeCampaignId, active);
+            }
+        }
+
         public NbtCompound toNbt() {
             NbtCompound nbt = new NbtCompound();
             nbt.putInt("highestBiomeUnlocked", highestBiomeUnlocked);
             nbt.putInt("emeralds", emeralds);
             nbt.putString("activeBiomeId", activeBiomeId);
+            nbt.putString("activeCampaignId", activeCampaignId);
             nbt.putInt("activeBiomeLevelIndex", activeBiomeLevelIndex);
             nbt.putInt("branchChoice", branchChoice);
             nbt.putString("discoveredBiomes", discoveredBiomes);
@@ -238,6 +270,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.highestBiomeUnlocked = nbt.getInt("highestBiomeUnlocked");
             pd.emeralds = nbt.getInt("emeralds");
             pd.activeBiomeId = nbt.getString("activeBiomeId");
+            pd.activeCampaignId = nbt.contains("activeCampaignId") ? nbt.getString("activeCampaignId") : "";
             pd.activeBiomeLevelIndex = nbt.getInt("activeBiomeLevelIndex");
             pd.branchChoice = nbt.contains("branchChoice") ? nbt.getInt("branchChoice") : -1;
             pd.discoveredBiomes = nbt.contains("discoveredBiomes") ? nbt.getString("discoveredBiomes") : "";
@@ -293,6 +326,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.highestBiomeUnlocked = nbt.getInt("highestBiomeUnlocked", 0);
             pd.emeralds = nbt.getInt("emeralds", 0);
             pd.activeBiomeId = nbt.getString("activeBiomeId", "");
+            pd.activeCampaignId = nbt.getString("activeCampaignId", "");
             pd.activeBiomeLevelIndex = nbt.getInt("activeBiomeLevelIndex", 0);
             pd.branchChoice = nbt.getInt("branchChoice", -1);
             pd.discoveredBiomes = nbt.getString("discoveredBiomes", "");
@@ -339,7 +373,12 @@ public class CrafticsSavedData extends PersistentState {
 
     /** Always call markDirty() after modifying */
     public PlayerData getPlayerData(UUID playerId) {
-        return players.computeIfAbsent(playerId, id -> new PlayerData());
+        PlayerData pd = players.computeIfAbsent(playerId, id -> new PlayerData());
+        // Verify the run's campaign stamp the first time this data is touched after load.
+        // Self-guarded: stamps a new/unstamped run with the active campaign, or warns once
+        // on a mismatch. No-op on every subsequent access for the same instance.
+        pd.checkCampaignStamp();
+        return pd;
     }
 
     public PlayerData getPlayerData(ServerPlayerEntity player) {

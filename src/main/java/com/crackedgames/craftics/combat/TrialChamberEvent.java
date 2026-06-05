@@ -144,7 +144,14 @@ public class TrialChamberEvent {
                 default -> new ItemStack(Items.TOTEM_OF_UNDYING, 1);
             };
         } else if (roll < 90) {
-            // Epic: trial exclusive items (20%)
+            // Epic: trial exclusive items (20%). ~1-in-3 of these is a MoreTotems totem when
+            // the mod is installed; otherwise the original epic pool. The isLoaded() check
+            // comes first so we don't burn an rng step (skewing the epic switch) when absent.
+            if (com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isLoaded()
+                    && rng.nextInt(3) == 0) {
+                ItemStack totem = com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne();
+                if (!totem.isEmpty()) return totem;
+            }
             return switch (rng.nextInt(4)) {
                 case 0 -> new ItemStack(Items.ENCHANTED_GOLDEN_APPLE, 1);
                 case 1 -> new ItemStack(Items.WIND_CHARGE, 4);
