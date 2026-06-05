@@ -333,4 +333,33 @@ public final class AoeShapes {
         }
         return out;
     }
+
+    /**
+     * Mirror of {@link #enemiesOn}: the distinct live ALLY entities standing on
+     * {@code tiles}. Does NOT include the player or other players (they are not
+     * arena occupants — the caller checks player/teammate tiles separately).
+     */
+    public static List<CombatEntity> alliesOn(GridArena arena, List<GridPos> tiles) {
+        List<CombatEntity> out = new ArrayList<>();
+        Set<CombatEntity> seen = new LinkedHashSet<>();
+        for (GridPos tile : tiles) {
+            if (!arena.isInBounds(tile)) continue;
+            CombatEntity occ = arena.getOccupant(tile);
+            if (occ == null || !occ.isAlive() || !occ.isAlly()) continue;
+            if (seen.add(occ)) out.add(occ);
+        }
+        return out;
+    }
+
+    /** Every in-bounds tile of the arena (Full arena shape — Violin). */
+    public static List<GridPos> allTiles(GridArena arena) {
+        List<GridPos> out = new ArrayList<>();
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos p = new GridPos(x, z);
+                if (arena.isInBounds(p)) out.add(p);
+            }
+        }
+        return out;
+    }
 }
