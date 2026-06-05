@@ -252,6 +252,70 @@ public final class AoeShapes {
     }
 
     /**
+     * Filled Chebyshev disc: every tile within {@code radius} of {@code center}
+     * (inclusive), including the center. radius 2 = a 5x5 square (25 tiles).
+     * Used by Full burst r2 instruments (Glorious Drum, Keyboard).
+     */
+    public static List<GridPos> filledDisc(GridPos center, int radius) {
+        List<GridPos> out = new ArrayList<>();
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                out.add(new GridPos(center.x() + dx, center.z() + dz));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The four diagonal arms out to {@code length} tiles, excluding the center.
+     * Used by the X / Diagonals shape (Shamisen).
+     */
+    public static List<GridPos> diagonals(GridPos center, int length) {
+        List<GridPos> out = new ArrayList<>(length * 4);
+        int[][] dirs = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+        for (int[] d : dirs) {
+            for (int i = 1; i <= length; i++) {
+                out.add(new GridPos(center.x() + d[0] * i, center.z() + d[1] * i));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The concentric rings r1, r2, ... up to {@code maxRadius}, each as its own
+     * list, in increasing-radius order. The caller fires them on successive VFX
+     * beats (Expanding pulse: Guitar, Koto). Reuses {@link #ring(GridPos, int)}.
+     */
+    public static List<List<GridPos>> expandingRingTiers(GridPos center, int maxRadius) {
+        List<List<GridPos>> out = new ArrayList<>(maxRadius);
+        for (int r = 1; r <= maxRadius; r++) {
+            out.add(ring(center, r));
+        }
+        return out;
+    }
+
+    /**
+     * Eight straight arms (4 cardinal + 4 diagonal) radiating from {@code center}
+     * out to {@code radius} tiles, each arm as its own list (for beat-by-beat
+     * firing). Center excluded. Used by the Star shape (Pipa).
+     */
+    public static List<List<GridPos>> starArms(GridPos center, int radius) {
+        int[][] dirs = {
+            {1, 0}, {1, 1}, {0, 1}, {-1, 1},
+            {-1, 0}, {-1, -1}, {0, -1}, {1, -1}
+        };
+        List<List<GridPos>> out = new ArrayList<>(8);
+        for (int[] d : dirs) {
+            List<GridPos> arm = new ArrayList<>(radius);
+            for (int i = 1; i <= radius; i++) {
+                arm.add(new GridPos(center.x() + d[0] * i, center.z() + d[1] * i));
+            }
+            out.add(arm);
+        }
+        return out;
+    }
+
+    /**
      * Resolve a shape's tiles into the distinct live, non-ally enemies standing
      * on them, excluding {@code exclude} (usually the primary target, already
      * damaged separately). Each entity is returned once even if it occupies
