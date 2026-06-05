@@ -17,6 +17,12 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class CatAI implements EnemyAI {
 
+    /** Cats are neutral — only a threat once provoked (enraged). */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return self.isEnraged();
+    }
+
     private static final Set<String> FISH_ITEMS = Set.of(
         "minecraft:cod", "minecraft:salmon", "minecraft:tropical_fish",
         "minecraft:cooked_cod", "minecraft:cooked_salmon"

@@ -23,4 +23,18 @@ public interface EnemyAI {
     default Set<GridPos> computeThreatTiles(CombatEntity self, GridArena arena) {
         return null;
     }
+
+    /**
+     * Whether this enemy is currently a threat to the player — i.e. it will try to
+     * attack. Defaults to {@code true} for ordinary hostile mobs.
+     * <p>
+     * Passive mobs (farm animals) override this to always return {@code false}, and
+     * neutral mobs (bees, wolves, etc.) return {@code false} until they are provoked.
+     * Used by the anti-farming auto-end: a fight that contains only non-threatening
+     * mobs and produces no kills for a few turns ends automatically so the player
+     * can't farm a room full of passive animals indefinitely.
+     */
+    default boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return true;
+    }
 }

@@ -805,6 +805,24 @@ public class CombatState {
     private static final java.util.Map<java.util.UUID, String> teammateNames = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Map<java.util.UUID, Long> teammateHoverTimestamps = new java.util.concurrent.ConcurrentHashMap<>();
 
+    // Active AoE tile flashes (server-sent on attack resolve). Held then faded by the renderer.
+    public record TileFlash(java.util.List<com.crackedgames.craftics.core.GridPos> tiles, int color, long startMs, long durationMs) {}
+    private static final java.util.List<TileFlash> tileFlashes = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** Add a flash from a server payload. tiles = packed alternating x,z; durationTicks at 20/s -> ms. */
+    public static void addTileFlash(int[] packed, int color, int durationTicks) {
+        java.util.List<com.crackedgames.craftics.core.GridPos> list = new java.util.ArrayList<>();
+        for (int i = 0; i + 1 < packed.length; i += 2)
+            list.add(new com.crackedgames.craftics.core.GridPos(packed[i], packed[i + 1]));
+        if (list.isEmpty()) return;
+        long durMs = Math.max(1L, durationTicks * 50L);
+        tileFlashes.add(new TileFlash(list, color, System.currentTimeMillis(), durMs));
+    }
+
+    /** Live flashes; the renderer removes expired ones as it reads. */
+    public static java.util.List<TileFlash> getTileFlashes() { return tileFlashes; }
+    public static void clearTileFlashes() { tileFlashes.clear(); }
+
     // Client-local hover (used directly by renderer, no server round-trip)
     private static com.crackedgames.craftics.core.GridPos hoveredTile = null;
 
@@ -874,6 +892,7 @@ public class CombatState {
         teammateHovers.clear();
         teammateNames.clear();
         teammateHoverTimestamps.clear();
+        tileFlashes.clear();
         hoveredTile = null;
         leadSelectedAllyId = null;
     }

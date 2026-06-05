@@ -33,15 +33,20 @@ public class MagmaCubeAI implements EnemyAI {
         GridPos bestLanding = null;
         int bestDist = Integer.MAX_VALUE;
 
+        int size = self.getSize();
         for (int dx = -bounceRange; dx <= bounceRange; dx++) {
             for (int dz = -bounceRange; dz <= bounceRange; dz++) {
                 if (Math.abs(dx) + Math.abs(dz) > bounceRange || (dx == 0 && dz == 0)) continue;
                 GridPos landing = new GridPos(myPos.x() + dx, myPos.z() + dz);
-                if (!arena.isInBounds(landing) || arena.isEnemyOccupied(landing)) continue;
-                var tile = arena.getTile(landing);
-                if (tile == null || !tile.isWalkable()) continue;
+                // Validate the WHOLE footprint, not just the anchor tile. A magma
+                // cube is 2x2, so an anchor-only check let one of its other three
+                // tiles land on the player or another mob (clipping into it).
+                if (!AIUtils.canPlaceFootprint(arena, landing, size)) continue;
 
-                int landDist = landing.manhattanDistance(playerPos);
+                // Distance from the cube's would-be footprint to the player, so a
+                // 2x2 cube correctly counts as "adjacent" (landDist 1) when any of
+                // its tiles touches the player rather than measuring from the corner.
+                int landDist = CombatEntity.minDistanceFromSizedEntity(landing, size, playerPos);
                 if (landDist < bestDist) {
                     bestDist = landDist;
                     bestLanding = landing;

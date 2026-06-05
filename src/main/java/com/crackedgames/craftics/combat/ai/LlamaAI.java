@@ -16,6 +16,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * Tries to maintain distance 2 for spitting — backs up if too close, approaches if too far.
  */
 public class LlamaAI implements EnemyAI {
+    /** Llamas are neutral — only a threat once provoked (enraged). */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return self.isEnraged();
+    }
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();

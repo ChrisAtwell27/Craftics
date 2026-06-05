@@ -16,6 +16,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * Otherwise wanders like a farm animal.
  */
 public class PolarBearAI implements EnemyAI {
+    /** Polar bears are neutral — only a threat once provoked (enraged). */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return self.isEnraged();
+    }
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();

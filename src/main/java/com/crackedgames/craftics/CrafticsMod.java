@@ -59,6 +59,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.init();
         com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.init();
         com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();
+        com.crackedgames.craftics.compat.instruments.InstrumentsCompat.init();
 
         // Addon entrypoint — invoked after all built-in content and compat modules are
         // registered, so addon registrations run last and win deterministically over
@@ -487,6 +488,7 @@ public class CrafticsMod implements ModInitializer {
             server -> {
                 com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
                 com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
+                com.crackedgames.craftics.compat.instruments.InstrumentsCompat.registerDeferred();
             });
 
         // Load biome definitions from JSON datapacks on server start

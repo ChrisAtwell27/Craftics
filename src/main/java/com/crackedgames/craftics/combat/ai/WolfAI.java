@@ -16,6 +16,12 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class WolfAI implements EnemyAI {
 
+    /** Wolves are neutral toward the player — only a threat once provoked. */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return self.isEnraged();
+    }
+
     private static final Set<String> PREY = Set.of(
         "minecraft:sheep", "minecraft:chicken", "minecraft:skeleton"
     );

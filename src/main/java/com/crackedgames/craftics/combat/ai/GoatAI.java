@@ -16,6 +16,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * and becomes permanently agro (enraged), charging in straight lines toward the player.
  */
 public class GoatAI implements EnemyAI {
+    /** Goats are neutral — only a threat once provoked (enraged). */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return self.isEnraged();
+    }
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();

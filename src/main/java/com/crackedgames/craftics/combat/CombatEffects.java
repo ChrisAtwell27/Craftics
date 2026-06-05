@@ -290,6 +290,20 @@ public class CombatEffects {
         effects.clear();
     }
 
+    /** Remove all negative (debuff) effects, leaving positive buffs intact. */
+    public void clearDebuffs() {
+        effects.keySet().removeIf(CombatEffects::isDebuff);
+    }
+
+    /** True if {@code type} is a harmful effect (removed by a cleanse). */
+    public static boolean isDebuff(EffectType type) {
+        return switch (type) {
+            case POISON, SLOWNESS, WEAKNESS, WITHER, BURNING, BLEEDING,
+                 BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS, SOAKED, CONFUSION -> true;
+            default -> false;
+        };
+    }
+
     public Map<EffectType, ActiveEffect> getAll() {
         return effects;
     }

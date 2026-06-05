@@ -16,6 +16,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * When a level spawns bees, all other passives should be replaced with bees.
  */
 public class BeeAI implements EnemyAI {
+    /** Bees are neutral — only a threat once provoked (enraged). */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return self.isEnraged();
+    }
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();

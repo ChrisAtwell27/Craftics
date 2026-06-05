@@ -108,7 +108,7 @@ public class CombatEntity {
     public int getMaxHp() { return maxHp; }
     public int getCurrentHp() { return currentHp; }
     public void heal(int amount) { currentHp = Math.min(getEffectiveMaxHp(), currentHp + amount); }
-    public int getAttackPower() { return Math.max(0, attackPower + attackBoost - attackPenalty); }
+    public int getAttackPower() { return Math.max(0, attackPower + attackBoost + getAttackBuffBonus() - attackPenalty); }
     public int getDefense() { return defense + defenseBoost; }
     public int getRange() { return rangeOverride >= 0 ? rangeOverride : range; }
     public int getAttackBoost() { return attackBoost; }
@@ -136,6 +136,27 @@ public class CombatEntity {
     /** Minimum manhattan distance from a point to any tile this entity occupies. */
     public int minDistanceTo(GridPos from) {
         return minDistanceFromSizedEntity(gridPos, size, from);
+    }
+
+    /**
+     * Minimum Chebyshev (king-move) distance from any tile of this entity to a
+     * point. Chebyshev counts a diagonal step as distance 1, so a melee range
+     * check using this lets the player hit from the 8 surrounding tiles, diagonals
+     * included. Used for melee reach on both the server and the attack highlight.
+     */
+    public int minChebyshevDistanceTo(GridPos from) {
+        if (size <= 1) {
+            return Math.max(Math.abs(from.x() - gridPos.x()), Math.abs(from.z() - gridPos.z()));
+        }
+        int min = Integer.MAX_VALUE;
+        for (int dx = 0; dx < size; dx++) {
+            for (int dz = 0; dz < size; dz++) {
+                int d = Math.max(Math.abs(from.x() - (gridPos.x() + dx)),
+                                 Math.abs(from.z() - (gridPos.z() + dz)));
+                if (d < min) min = d;
+            }
+        }
+        return min;
     }
 
     /** Returns the occupied tile of this entity closest to the given point. */
@@ -169,7 +190,7 @@ public class CombatEntity {
         // Frozen entities (Creaking under gaze) bypass the +1 floor entirely —
         // they truly can't move this turn.
         if (frozen) return 0;
-        int base = moveSpeed + speedBonus;
+        int base = moveSpeed + speedBonus + getSpeedBuffBonus();
         if (soakedTurns > 0) base -= 1;
         if (slownessTurns > 0) base -= slownessPenalty;
         float mult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyMoveSpeedMultiplier();
@@ -452,6 +473,19 @@ public class CombatEntity {
     public void setBlindedTurns(int t) { this.blindedTurns = t; }
     /** Apply/refresh blindness to the longer of the current and new duration. */
     public void stackBlinded(int turns) { this.blindedTurns = Math.max(this.blindedTurns, turns); }
+
+    // --- Positive buffs (instrument support performances). Ticked by tickBuffs(). ---
+    private int regenTurns = 0;
+    private int regenPerTurn = 0;       // HP per turn (2 * (amplifier + 1))
+    private int absorptionTurns = 0;
+    private int absorptionHp = 0;       // temporary extra HP, absorbed before real HP
+    private int slowFallingTurns = 0;   // > 0 = immune to knockback
+    private int attackBuffTurns = 0;
+    private int attackBuffBonus = 0;
+    private int speedBuffTurns = 0;
+    private int speedBuffBonus = 0;
+    private int resistanceTurns = 0;
+    private int resistanceLevel = 0;    // damage reduction per level
     public int getSlownessTurns() { return slownessTurns; }
     public void setSlownessTurns(int t) { this.slownessTurns = t; }
     public int getSlownessPenalty() { return slownessPenalty; }
@@ -549,6 +583,95 @@ public class CombatEntity {
      */
     public java.util.Map<String, int[]> getCustomEffects() { return customEffects; }
 
+    // --- Positive buff application (instrument support) ---------------------
+
+    /** Heal-over-time: {@code perTurnHp} HP at the start of each of {@code turns} ticks. */
+    public void applyRegeneration(int turns, int amplifier) {
+        this.regenTurns = Math.max(this.regenTurns, turns);
+        this.regenPerTurn = Math.max(this.regenPerTurn, 2 * (amplifier + 1));
+    }
+
+    /** Temporary extra HP that soaks damage before real HP (see takeDamage, wired in Task 4). */
+    public void applyAbsorption(int hp, int turns) {
+        this.absorptionHp = Math.max(this.absorptionHp, hp);
+        this.absorptionTurns = Math.max(this.absorptionTurns, turns);
+    }
+
+    /** Knockback immunity for {@code turns}. */
+    public void applySlowFalling(int turns) {
+        this.slowFallingTurns = Math.max(this.slowFallingTurns, turns);
+    }
+
+    /** Timed +attack buff (separate from the permanent setAttackBoost poke). */
+    public void applyAttackBuff(int bonus, int turns) {
+        this.attackBuffBonus = Math.max(this.attackBuffBonus, bonus);
+        this.attackBuffTurns = Math.max(this.attackBuffTurns, turns);
+    }
+
+    /** Timed +movement buff. */
+    public void applySpeedBuff(int bonus, int turns) {
+        this.speedBuffBonus = Math.max(this.speedBuffBonus, bonus);
+        this.speedBuffTurns = Math.max(this.speedBuffTurns, turns);
+    }
+
+    /** Timed damage reduction ({@code level} points). */
+    public void applyResistance(int level, int turns) {
+        this.resistanceLevel = Math.max(this.resistanceLevel, level);
+        this.resistanceTurns = Math.max(this.resistanceTurns, turns);
+    }
+
+    public int getAbsorption() { return absorptionHp; }
+    public boolean hasSlowFalling() { return slowFallingTurns > 0; }
+    public int getAttackBuffBonus() { return attackBuffTurns > 0 ? attackBuffBonus : 0; }
+    public int getSpeedBuffBonus() { return speedBuffTurns > 0 ? speedBuffBonus : 0; }
+    public int getResistanceLevel() { return resistanceTurns > 0 ? resistanceLevel : 0; }
+
+    /** Remove all positive buffs (used when combat ends; not a cleanse of debuffs). */
+    public void clearBuffs() {
+        regenTurns = regenPerTurn = 0;
+        absorptionTurns = absorptionHp = 0;
+        slowFallingTurns = 0;
+        attackBuffTurns = attackBuffBonus = 0;
+        speedBuffTurns = speedBuffBonus = 0;
+        resistanceTurns = resistanceLevel = 0;
+    }
+
+    /** Remove all active debuffs (instrument cleanse). Does not touch positive buffs. */
+    public void clearDebuffs() {
+        poisonTurns = poisonAmplifier = 0;
+        witherTurns = witherAmplifier = 0;
+        burningTurns = burningDamage = 0;
+        soakedTurns = soakedAmplifier = 0;
+        slownessTurns = slownessPenalty = 0;
+        confusionTurns = confusionAmplifier = 0;
+        bleedStacks = 0;
+        blindedTurns = 0;
+        attackPenalty = attackPenaltyTurns = 0;
+        defensePenalty = defensePenaltyTurns = 0;
+    }
+
+    /**
+     * Advance positive buffs by one turn: apply regen healing, then decrement all
+     * buff timers. Called by CombatManager each round alongside the debuff ticks (wired in Task 4).
+     */
+    public void tickBuffs() {
+        if (regenTurns > 0) {
+            heal(regenPerTurn);
+            if (--regenTurns == 0) regenPerTurn = 0;
+        }
+        if (absorptionTurns > 0 && --absorptionTurns == 0) absorptionHp = 0;
+        if (slowFallingTurns > 0) slowFallingTurns--;
+        if (attackBuffTurns > 0 && --attackBuffTurns == 0) attackBuffBonus = 0;
+        if (speedBuffTurns > 0 && --speedBuffTurns == 0) speedBuffBonus = 0;
+        if (resistanceTurns > 0 && --resistanceTurns == 0) resistanceLevel = 0;
+    }
+
+    /** Reduce the absorption pool by {@code amount}; clears the timer when depleted. */
+    public void consumeAbsorption(int amount) {
+        absorptionHp = Math.max(0, absorptionHp - amount);
+        if (absorptionHp == 0) absorptionTurns = 0;
+    }
+
     public int getEffectiveDefense() {
         return Math.max(0, defense - defensePenalty - permanentDefReduction);
     }
@@ -572,6 +695,17 @@ public class CombatEntity {
             damagedSinceLastTurn = true;
             return 0;
         }
+        // Timed resistance buff reduces incoming damage by its level (flat), before defense %.
+        if (getResistanceLevel() > 0) {
+            rawDamage = Math.max(0, rawDamage - getResistanceLevel());
+        }
+        // Absorption soaks damage before it reaches real HP.
+        if (getAbsorption() > 0 && rawDamage > 0) {
+            int soak = Math.min(getAbsorption(), rawDamage);
+            consumeAbsorption(soak);
+            rawDamage -= soak;
+        }
+        if (rawDamage <= 0) return 0;
         // Each DEF point = 5% reduction, capped at 60%
         int effectiveDef = getEffectiveDefense() + Math.max(0, bonusDefense);
         double reduction = Math.min(0.60, effectiveDef * 0.05);

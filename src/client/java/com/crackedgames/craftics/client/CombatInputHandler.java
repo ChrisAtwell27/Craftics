@@ -69,6 +69,8 @@ public class CombatInputHandler {
 
         if (held == com.crackedgames.craftics.item.ModItems.MOVE_ITEM) return ActionMode.MOVE;
         if (held == Items.LEAD) return ActionMode.LEAD;
+        if (com.crackedgames.craftics.compat.instruments.InstrumentsCompat.isInstrument(held))
+            return ActionMode.USE_ITEM;
         if (held == Items.BOW || held == Items.CROSSBOW || held == Items.TRIDENT) return ActionMode.RANGED_ATTACK;
         if (SWORDS.contains(held) || AXES.contains(held) || SPEARS.contains(held)
             || held == Items.MACE)

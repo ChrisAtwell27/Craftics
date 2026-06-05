@@ -15,6 +15,12 @@ import java.util.concurrent.ThreadLocalRandom;
  * Wanders randomly between water tiles, flees on water if hit.
  */
 public class CodAI implements EnemyAI {
+    /** Fish only wander and flee — never a threat to the player. */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return false;
+    }
+
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();

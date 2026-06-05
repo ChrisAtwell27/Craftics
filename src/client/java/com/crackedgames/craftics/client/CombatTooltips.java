@@ -66,6 +66,16 @@ public class CombatTooltips implements ItemTooltipCallback {
             return;
         }
 
+        // Instruments: strip the mod tooltip, show the Craftics performance block.
+        if (InstrumentsTooltips.isInstrument(itemId)
+            && com.crackedgames.craftics.compat.instruments.InstrumentsCompat.isInstrument(item)) {
+            if (lines.size() > 1) {
+                lines.subList(1, lines.size()).clear();
+            }
+            InstrumentsTooltips.appendLines(item, lines);
+            return;
+        }
+
         // Goat horn: scan existing tooltip lines for the variant name
         // (Minecraft adds the instrument name as a subtitle line like "Seek")
         if (item == Items.GOAT_HORN) {

@@ -39,11 +39,9 @@ public class SkeletonAI implements EnemyAI {
                     return new EnemyAction.Move(path);
                 }
             }
-            // Can't retreat at all — shoot at close range if possible
-            if (AIUtils.hasCardinalLOS(arena, myPos, playerPos, range)) {
-                return new EnemyAction.RangedAttack(self.getAttackPower(), "arrow");
-            }
-            return new EnemyAction.Attack(self.getAttackPower());
+            // Can't retreat at all — fire anyway. A cornered archer shoots rather
+            // than switching to a melee swing, even without a clean cardinal line.
+            return new EnemyAction.RangedAttack(self.getAttackPower(), "arrow");
         }
 
         // In range with LOS — shoot from current position
@@ -62,6 +60,13 @@ public class SkeletonAI implements EnemyAI {
                 }
                 return new EnemyAction.Move(path);
             }
+        }
+
+        // Last resort: if the player is within range, fire even without a clean
+        // cardinal line rather than wandering uselessly — a skeleton with no shot
+        // lined up in a cluttered arena should still threaten the player.
+        if (dist <= range) {
+            return new EnemyAction.RangedAttack(self.getAttackPower(), "arrow");
         }
 
         return AIUtils.seekOrWander(self, arena, playerPos);
