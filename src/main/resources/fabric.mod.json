@@ -50,6 +50,7 @@
 	"suggests": {
 		"player-animation-lib": "*",
 		"cardinal-components-api": "*",
-		"artifacts": "*"
+		"artifacts": "*",
+		"golemoverhaul": "*"
 	}
 }

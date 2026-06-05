@@ -53,6 +53,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.init();
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
         com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
+        com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();
 
         // Addon entrypoint — invoked after all built-in content and compat modules are
         // registered, so addon registrations run last and win deterministically over
