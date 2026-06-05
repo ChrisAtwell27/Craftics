@@ -86,6 +86,16 @@ public final class CrafticsHints {
             Hint.Priority.HIGH,
             Hint.Mode.ONE_SHOT_PERSISTENT
         ));
+
+        mgr.register(new Hint(
+            "combat.camera_controls",
+            ctx -> ctx.inCombat() && ctx.isPlayerTurn() && ctx.turnNumber() == 1,
+            6,
+            new HintPresenter.HudPopup(
+                Text.literal("Right-drag to orbit, middle-drag to pan, scroll to zoom the camera"), 300),
+            Hint.Priority.LOW,
+            Hint.Mode.ONE_SHOT_PERSISTENT
+        ));
     }
 
     /** Build a HintContext snapshot from the current client state. Called once per tick. */

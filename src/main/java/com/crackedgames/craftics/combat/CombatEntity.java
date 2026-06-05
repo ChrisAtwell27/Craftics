@@ -368,6 +368,16 @@ public class CombatEntity {
     public boolean isTemporaryAlly() { return temporaryAlly; }
     public void setTemporaryAlly(boolean v) { this.temporaryAlly = v; }
 
+    /**
+     * Rounds remaining before a timed summon auto-despawns. {@code -1} means
+     * permanent (the default for normal allies). Decremented once per round by
+     * the ally round-hook loop; on reaching {@code 0} the summon is removed
+     * without going through the kill/loot path. Used by the honey golem's bee.
+     */
+    private int summonLifespanRounds = -1;
+    public int getSummonLifespanRounds() { return summonLifespanRounds; }
+    public void setSummonLifespanRounds(int rounds) { this.summonLifespanRounds = rounds; }
+
     private boolean mounted = false;
     public boolean isMounted() { return mounted; }
     public void setMounted(boolean m) { this.mounted = m; }
@@ -385,6 +395,21 @@ public class CombatEntity {
     private int aggroAllyEntityId = -1; // pet that hit us, for aggro target selection
     public int getAggroAllyEntityId() { return aggroAllyEntityId; }
     public void setAggroAllyEntityId(int id) { this.aggroAllyEntityId = id; }
+
+    /** Terracotta golem taunt: while true, enemies are forced to target this ally. */
+    private boolean taunting = false;
+    public boolean isTaunting() { return taunting; }
+    public void setTaunting(boolean v) { this.taunting = v; }
+
+    /** Coal golem lit state: boosted, applies burn, and dies after its next attack. */
+    private boolean litOneShot = false;
+    public boolean isLitOneShot() { return litOneShot; }
+    public void setLitOneShot(boolean v) { this.litOneShot = v; }
+
+    /** Marks a victim for a bonus loot roll, e.g. by a barrel golem kill. */
+    private boolean bonusLootRoll = false;
+    public boolean isBonusLootRoll() { return bonusLootRoll; }
+    public void setBonusLootRoll(boolean v) { this.bonusLootRoll = v; }
 
     public int getDefensePenalty() { return defensePenalty; }
     public void setDefensePenalty(int p) { this.defensePenalty = p; }

@@ -34,9 +34,24 @@ public final class AllyAbilities {
         Map.entry("minecraft:bee", OnHitEffect.POISON)
     );
 
+    /** Runtime-registered on-hit effects for modded allies. See AllyArchetypes#register. */
+    private static final Map<String, OnHitEffect> REGISTERED = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Register an on-hit effect for an entity type at runtime (compat modules, mod init). */
+    public static void register(String entityTypeId, OnHitEffect effect) {
+        if (entityTypeId != null && effect != null) REGISTERED.put(entityTypeId, effect);
+    }
+
+    /** Test-only: clear all runtime registrations so tests don't leak state. Not for production use. */
+    public static void clearRegisteredForTest() {
+        REGISTERED.clear();
+    }
+
     /** The on-hit effect for a given ally type, or {@link OnHitEffect#NONE}. */
     public static OnHitEffect effectFor(String entityTypeId) {
         if (entityTypeId == null) return OnHitEffect.NONE;
+        OnHitEffect registered = REGISTERED.get(entityTypeId);
+        if (registered != null) return registered;
         return BY_TYPE.getOrDefault(entityTypeId, OnHitEffect.NONE);
     }
 

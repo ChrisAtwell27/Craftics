@@ -283,6 +283,10 @@ public class ItemUseHandler {
         ItemStack held = player.getMainHandStack();
         Item item = held.getItem();
 
+        // Flint & steel on an ignitable ally ignites it instead of any other use.
+        String litCoal = tryIgniteAlly(arena, targetTile, item);
+        if (litCoal != null) return litCoal;
+
         // Per-ally heal item (iron ingot → iron golem, snowball → snow golem, …)
         // takes priority over the item's normal combat use.
         String allyHeal = tryHealAlly(arena, targetTile, item, held);
@@ -1614,6 +1618,26 @@ public class ItemUseHandler {
         int healed = Math.min(entry.healAmount(), ally.getMaxHp() - ally.getCurrentHp());
         return ALLY_BUFF_PREFIX + "heal:" + ally.getEntityId() + ":" + healed
             + "|§a" + ally.getDisplayName() + " heals for " + healed + " HP!";
+    }
+
+    /**
+     * Flint &amp; steel on an ignitable ally ignites it: returns an ALLY_BUFF protocol
+     * string the CombatManager parses to flip the ally into its lit one-shot state.
+     * Returns null when not this interaction. Flint &amp; steel is the universal
+     * igniter trigger (a vanilla item) but is NOT consumed (it has durability); the
+     * effect is gated on the generic
+     * {@link com.crackedgames.craftics.combat.ai.ally.IgnitableAllyRegistry}, so a
+     * non-ignitable ally just falls through.
+     */
+    private static String tryIgniteAlly(GridArena arena, GridPos targetTile, Item item) {
+        if (item != Items.FLINT_AND_STEEL || targetTile == null) return null;
+        CombatEntity ally = arena.getOccupant(targetTile);
+        if (ally == null || !ally.isAlive() || !ally.isAlly()) return null;
+        if (!com.crackedgames.craftics.combat.ai.ally.IgnitableAllyRegistry.isIgnitable(ally.getEntityTypeId())) {
+            return "§cThat ally can't be ignited.";
+        }
+        if (ally.isLitOneShot()) return "§cThat ally is already lit!";
+        return ALLY_BUFF_PREFIX + "litcoal:" + ally.getEntityId() + "|§6✦ The ally ignites!";
     }
 
     // --- Hay Bale: throw to ally pet, heals 50% max HP (1 AP) ---

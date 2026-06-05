@@ -4961,6 +4961,58 @@ public class CombatManager {
         return distToPet < distToPlayer ? pet : null;
     }
 
+    /**
+     * Proactive taunt: a living taunter ally (e.g. a terracotta golem) forces
+     * enemies to target it. Returns the nearest taunting ally to the attacker, or
+     * null if none alive. Multiple taunters → nearest wins. Flags registered
+     * taunter types as taunting lazily the first time they're seen here so no
+     * recruit-path change is needed. Taunter types come from the generic
+     * {@link com.crackedgames.craftics.combat.ai.ally.AllyTauntRegistry} (populated
+     * by compat modules); with nothing registered no ally taunts.
+     * <p>Side effect: lazily stamps {@code setTaunting(true)} on any ally whose type is a
+     * registered taunter the first time it is seen here, so no recruit-path change is needed.
+     */
+    private CombatEntity resolveTauntTarget(CombatEntity attacker) {
+        CombatEntity nearest = null;
+        int best = Integer.MAX_VALUE;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || !e.isAlly()) continue;
+            // Lazily flag registered taunter types as taunting.
+            if (!e.isTaunting()
+                    && com.crackedgames.craftics.combat.ai.ally.AllyTauntRegistry.isTaunter(e.getEntityTypeId())) {
+                e.setTaunting(true);
+            }
+            if (!e.isTaunting()) continue;
+            int d = attacker.minDistanceTo(e.getGridPos());
+            if (d < best) { best = d; nearest = e; }
+        }
+        return nearest;
+    }
+
+    /**
+     * Ignite an ignitable ally: boost attack+speed, mark it to burn-on-hit and die
+     * after one attack. The per-type stat transform comes from the generic
+     * {@link com.crackedgames.craftics.combat.ai.ally.IgnitableAllyRegistry}
+     * (populated by compat modules); no-ops for a type that is not ignitable.
+     */
+    private void igniteAlly(CombatEntity ally) {
+        if (ally.isLitOneShot()) return;  // already ignited; guard against double-boost
+        com.crackedgames.craftics.combat.ai.ally.IgnitableAlly transform =
+            com.crackedgames.craftics.combat.ai.ally.IgnitableAllyRegistry.transformFor(ally.getEntityTypeId());
+        if (transform == null) return;  // not an ignitable ally
+        ally.setLitOneShot(true);
+        // CombatEntity has no setAttackPower; attack power is base + attackBoost - attackPenalty.
+        // Raise the persistent attackBoost so getAttackPower() reaches the lit value.
+        int targetAttack = transform.litAttack(ally.getAttackPower());
+        ally.setAttackBoost(ally.getAttackBoost() + (targetAttack - ally.getAttackPower()));
+        // Speed delta is computed from effective getMoveSpeed() but applied to the raw
+        // speedBonus field. Exact when enemyMoveSpeedMultiplier == 1.0 (default); a non-1.0
+        // server multiplier makes the lit speed an approximation, which is acceptable here.
+        int targetSpeed = transform.litSpeed(ally.getMoveSpeed());
+        ally.setSpeedBonus(ally.getSpeedBonus() + (targetSpeed - ally.getMoveSpeed()));
+        sendSync();
+    }
+
     public void checkAndHandleDeathPublic(CombatEntity entity) { checkAndHandleDeath(entity); }
 
     /**
@@ -5051,6 +5103,15 @@ public class CombatManager {
                 eggWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
                     eggBp.getX() + 0.5, eggBp.getY() + 0.5, eggBp.getZ() + 0.5,
                     5, 0.2, 0.2, 0.2, 0.01);
+            }
+
+            // Generic on-death ally hook (e.g. slime golem splitting into two small
+            // slime golems). Hooks come from the AllyDeathRegistry, populated by compat
+            // modules; with nothing registered this is a no-op.
+            if (entity.isAlly()) {
+                com.crackedgames.craftics.combat.ai.ally.AllyDeathHook deathHook =
+                    com.crackedgames.craftics.combat.ai.ally.AllyDeathRegistry.hookFor(entity.getEntityTypeId());
+                if (deathHook != null) deathHook.onDeath(entity, allyCombatContext());
             }
 
             // Notify bosses of minion death (crystals, turrets, chains, etc.)
@@ -5788,6 +5849,9 @@ public class CombatManager {
             // full set every kill.
             if (enemy.isBoss()) dropChance = 0.5;
 
+            // A victim marked for a bonus loot roll (e.g. a barrel golem kill) doubles the chance.
+            if (enemy.isBonusLootRoll()) dropChance = Math.min(1.0, dropChance * 2.0);
+
             if (Math.random() >= dropChance) continue;
 
             ItemStack dropCopy = equipped.copy();
@@ -5822,7 +5886,8 @@ public class CombatManager {
         List<ServerPlayerEntity> recipients = resolveKillerRecipients(enemy);
         if (recipients.isEmpty()) return;
 
-        if (Math.random() >= 0.01) return; // 1% drop rate
+        double headChance = enemy.isBonusLootRoll() ? 0.05 : 0.01;
+        if (Math.random() >= headChance) return;
 
         ItemStack head = new ItemStack(headItem, 1);
         for (ServerPlayerEntity recipient : recipients) {
@@ -6822,6 +6887,17 @@ public class CombatManager {
                     } catch (NumberFormatException ignored) {}
                 }
             }
+            if (buffData.startsWith("litcoal:")) {
+                try {
+                    int entityId = Integer.parseInt(buffData.substring("litcoal:".length()));
+                    for (CombatEntity e : enemies) {
+                        if (e.getEntityId() == entityId && e.isAlive() && e.isAlly()) {
+                            igniteAlly(e);
+                            break;
+                        }
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
             if (parts.length > 1) sendMessage(parts[1]);
         }
         // Fishing result — strip prefix, display the catch message
@@ -7342,6 +7418,11 @@ public class CombatManager {
 
     private void startEnemyTurn() {
         fireEffectHook(h -> h.onTurnEnd(effectContext));
+        // Age timed summons exactly once per round, BEFORE any early-return guard,
+        // so a summon's lifespan stays accurate even when the enemy turn is skipped
+        // (e.g. the PHANTOM set bonus below). Round-effect hooks (bee summon, hay
+        // heal) still run only on the normal path, via runAllyRoundHooks() later.
+        ageTimedSummons();
         // PHANTOM set bonus: enemies don't act for the first 2 turns
         if (turnNumber <= 2 && activeTrimScan != null
                 && activeTrimScan.setBonus() == TrimEffects.SetBonus.PHANTOM) {
@@ -7393,6 +7474,12 @@ public class CombatManager {
             }
             sendMessage("§e§l✦ Sandstorm! §r§eNearby enemies are slowed.");
         }
+
+        // Per-round ally effects (honey golem bee summon, hay golem heal, …).
+        // Hooks-only — timed-summon aging already ran above via ageTimedSummons().
+        // Runs once per round here — startEnemyTurn fires after all party players
+        // have acted, which is exactly one round.
+        runAllyRoundHooks();
 
         sendSync();
     }
@@ -8606,7 +8693,8 @@ public class CombatManager {
                 currentEnemy.getDisplayName(), currentEnemy.getAiKey(), ai.getClass().getSimpleName());
         }
         refreshAllPlayerGridPositions();
-        currentEnemyPetAggroTarget = resolveAggroPetTarget(currentEnemy);
+        CombatEntity tauntTarget = resolveTauntTarget(currentEnemy);
+        currentEnemyPetAggroTarget = tauntTarget != null ? tauntTarget : resolveAggroPetTarget(currentEnemy);
         GridPos aiTargetPos;
         if (currentEnemyPetAggroTarget != null) {
             aiTargetPos = currentEnemyPetAggroTarget.getGridPos();
@@ -13088,6 +13176,9 @@ public class CombatManager {
                 String abilityMsg = allyTarget.isAlive()
                     ? com.crackedgames.craftics.combat.ai.ally.AllyAbilities.applyOnHit(currentEnemy, allyTarget)
                     : "";
+                if (currentEnemy.isLitOneShot() && allyTarget.isAlive()) {
+                    allyTarget.stackBurning(3, 2);
+                }
                 sendMessage("§a" + currentEnemy.getDisplayName() + " attacks "
                     + allyTarget.getDisplayName() + " for " + dealt + " damage!" + abilityMsg);
                 // Addon combat effects: ally attack notification
@@ -13105,6 +13196,16 @@ public class CombatManager {
                     // with the baby never dropping. checkAndHandleDeath transforms
                     // the layer when one remains (target stays alive) and runs the
                     // real death side effects only when the last layer falls.
+                    // Credit the ally's OWNER (not the current-turn player) for the kill —
+                    // correct for party multiplayer loot/kill-streak attribution.
+                    if (currentEnemy.getOwnerUuid() != null) {
+                        allyTarget.setLastDamagerUuid(currentEnemy.getOwnerUuid());
+                    }
+                    // Generic on-kill ally hook (e.g. barrel golem bartering bonus loot).
+                    // Hooks come from the AllyKillRegistry, populated by compat modules.
+                    com.crackedgames.craftics.combat.ai.ally.AllyKillHook killHook =
+                        com.crackedgames.craftics.combat.ai.ally.AllyKillRegistry.hookFor(currentEnemy.getEntityTypeId());
+                    if (killHook != null) killHook.onKill(currentEnemy, allyTarget);
                     checkAndHandleDeath(allyTarget);
                     // Only credit the kill / check victory if the target actually
                     // died (a stack transform leaves it alive on the next layer).
@@ -13124,6 +13225,12 @@ public class CombatManager {
                 // Bee allies pay the same sting recoil as enemy bees do.
                 if ("minecraft:bee".equals(currentEnemy.getEntityTypeId())) {
                     applyBeeStingRecoil(currentEnemy);
+                }
+                // Lit coal golem burns out after its one attack.
+                if (currentEnemy.isLitOneShot()) {
+                    sendMessage("§7The lit " + currentEnemy.getDisplayName() + " burns out.");
+                    currentEnemy.takeDamage(currentEnemy.getCurrentHp() + currentEnemy.getDefense() + 9999);
+                    checkAndHandleDeath(currentEnemy);
                 }
             }
             sendSync();
@@ -20268,6 +20375,203 @@ public class CombatManager {
         sendSync();
         refreshHighlights();
         return true;
+    }
+
+    /**
+     * Spawn a combat ally for the current battle, mirroring {@link #handleSpawnEggSummon}'s
+     * mob setup but without the AP cost, party-cap check, or egg decrement. General-purpose:
+     * used by the honey golem's per-round bee summon and reused by the slime-golem split.
+     *
+     * <p>Stats come from {@link AllyRegistry} (8/2/0/1 fallback if unregistered), matching the
+     * spawn-egg path. The new ally is a temporary, owner-attached, AI-disabled arena mob.
+     *
+     * @param typeId         the mob to spawn, e.g. {@code minecraft:bee}
+     * @param tile           the grid tile to spawn on; must be free/walkable (no-op if {@code null})
+     * @param ownerUuid      the party member that owns the summon
+     * @param lifespanRounds rounds before auto-despawn, or {@code <= 0} for permanent
+     * @return the new {@link CombatEntity}, or {@code null} if it couldn't be spawned
+     */
+    private CombatEntity spawnSummonedAlly(String typeId, GridPos tile, java.util.UUID ownerUuid, int lifespanRounds) {
+        if (typeId == null || tile == null || arena == null || player == null) return null;
+        if (!arena.isInBounds(tile) || arena.isOccupied(tile)) return null;
+        GridTile gridTile = arena.getTile(tile);
+        if (gridTile == null || !gridTile.isWalkable()) return null;
+
+        EntityType<?> entityType = Registries.ENTITY_TYPE.get(Identifier.of(typeId));
+        if (entityType == null) return null;
+
+        AllyEntry entry = AllyRegistry.getOrNull(typeId);
+        int hp, atk, def, range;
+        if (entry != null) {
+            hp = entry.hp();
+            atk = entry.attack();
+            def = entry.defense();
+            range = entry.range();
+        } else {
+            hp = 8; atk = 2; def = 0; range = 1;
+        }
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos blockPos = arena.gridToBlockPos(tile);
+        net.minecraft.entity.Entity rawEntity = entityType.create(world, null, blockPos,
+            SpawnReason.MOB_SUMMONED, false, false);
+        if (!(rawEntity instanceof MobEntity mob)) return null;
+        mob.refreshPositionAndAngles(
+            blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5, 0, 0);
+        mob.setPersistent();
+        mob.setAiDisabled(true);
+        mob.setInvulnerable(true);
+        mob.setNoGravity(true);
+        mob.noClip = true;
+        mob.setSilent(true);
+        mob.addCommandTag("craftics_arena");
+        world.spawnEntity(mob);
+
+        CombatEntity ce = new CombatEntity(mob.getId(), typeId, tile, hp, atk, def, range);
+        ce.setAlly(true);
+        ce.setTemporaryAlly(true);
+        ce.setOwnerUuid(ownerUuid);
+        ce.setMobEntity(mob);
+        ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(typeId));
+        if (lifespanRounds > 0) ce.setSummonLifespanRounds(lifespanRounds);
+        enemies.add(ce);
+        arena.placeEntity(ce);
+        sendSync();
+        return ce;
+    }
+
+    /**
+     * First free, in-bounds, walkable orthogonal neighbour of {@code from}, or
+     * {@code null} if all four are blocked. Used to place per-round ally summons.
+     */
+    private GridPos adjacentFreeTile(GridPos from) {
+        if (from == null || arena == null) return null;
+        GridPos[] neighbours = {
+            new GridPos(from.x() + 1, from.z()),
+            new GridPos(from.x() - 1, from.z()),
+            new GridPos(from.x(), from.z() + 1),
+            new GridPos(from.x(), from.z() - 1)
+        };
+        for (GridPos n : neighbours) {
+            if (!arena.isInBounds(n) || arena.isOccupied(n)) continue;
+            GridTile t = arena.getTile(n);
+            if (t != null && t.isWalkable()) return n;
+        }
+        return null;
+    }
+
+    /**
+     * Remove a timed summon whose lifespan expired: pull it from the arena and the
+     * combat list and despawn its world mob. Deliberately does NOT route through the
+     * kill/loot/death path — an expired summon simply vanishes, dropping nothing.
+     */
+    private void despawnSummon(CombatEntity ally) {
+        if (ally == null) return;
+        if (arena != null) arena.removeEntity(ally);
+        enemies.remove(ally);
+        MobEntity mob = ally.getMobEntity();
+        if (mob != null && mob.isAlive()) {
+            mob.discard();
+        }
+        sendSync();
+    }
+
+    /**
+     * Shared manager-backed {@link com.crackedgames.craftics.combat.ai.ally.AllyCombatContext}
+     * reused by both the per-round ally hooks and the on-death ally hooks. Lazily
+     * created; stateless (it reads live manager fields), so one instance is safe to
+     * share across hook invocations.
+     */
+    private com.crackedgames.craftics.combat.ai.ally.AllyCombatContext allyCombatContext;
+
+    /** The shared ally-combat context, created on first use. */
+    private com.crackedgames.craftics.combat.ai.ally.AllyCombatContext allyCombatContext() {
+        if (allyCombatContext == null) allyCombatContext = new CombatContextImpl();
+        return allyCombatContext;
+    }
+
+    /** Manager-backed {@link AllyCombatContext} handed to ally round and death hooks. */
+    private final class CombatContextImpl
+            implements com.crackedgames.craftics.combat.ai.ally.AllyCombatContext {
+        @Override
+        public void summonAlly(String entityTypeId, CombatEntity near, int lifespanRounds) {
+            if (near == null) return;
+            GridPos tile = adjacentFreeTile(near.getGridPos());
+            if (tile == null) return; // no room this round
+            spawnSummonedAlly(entityTypeId, tile, near.getOwnerUuid(), lifespanRounds);
+        }
+
+        @Override
+        public void healAlly(CombatEntity target, int amount) {
+            if (target == null || amount <= 0) return;
+            target.heal(amount);
+            sendSync();
+        }
+
+        @Override
+        public List<CombatEntity> allies() {
+            List<CombatEntity> result = new ArrayList<>();
+            if (enemies != null) {
+                for (CombatEntity ce : enemies) {
+                    if (ce.isAlive() && ce.isAlly()) result.add(ce);
+                }
+            }
+            return result;
+        }
+
+        @Override
+        public void message(String msg) {
+            sendMessage(msg);
+        }
+    }
+
+    /**
+     * Age every timed summon once: decrement its remaining lifespan and despawn
+     * (without loot) any summon that reaches {@code 0}. Runs exactly once per
+     * round and is kept separate from {@link #runAllyRoundHooks()} so lifespans
+     * stay accurate even on rounds where the enemy turn is short-circuited (e.g.
+     * the PHANTOM set bonus skipping the first two enemy turns). No-ops when
+     * there is no arena.
+     */
+    private void ageTimedSummons() {
+        if (arena == null || enemies == null) return;
+        // Snapshot so despawn-driven removal from `enemies` doesn't disturb iteration.
+        List<CombatEntity> snapshot = new ArrayList<>(enemies);
+        for (CombatEntity ally : snapshot) {
+            if (!ally.isAlive() || !ally.isAlly()) continue;
+            if (ally.getSummonLifespanRounds() > 0) {
+                ally.setSummonLifespanRounds(ally.getSummonLifespanRounds() - 1);
+                if (ally.getSummonLifespanRounds() == 0) {
+                    despawnSummon(ally);
+                }
+            }
+        }
+    }
+
+    /**
+     * Run every living ally's per-round {@link AllyRoundHook} once. Called at the
+     * round boundary (start of the enemy turn, after all party players have acted)
+     * on the normal (non-PHANTOM) path.
+     *
+     * <p>Iterates a snapshot of {@code enemies} so a hook that summons a new ally
+     * doesn't immediately run the fresh ally's hook this same round. Timed-summon
+     * aging is handled separately by {@link #ageTimedSummons()} (called earlier in
+     * the round), so this method is hooks-only. A summon despawned by aging is
+     * skipped here via the {@code isAlive()}/{@code enemies.contains} re-check.
+     * No-ops when there is no arena.
+     */
+    private void runAllyRoundHooks() {
+        if (arena == null || enemies == null) return;
+        List<CombatEntity> snapshot = new ArrayList<>(enemies);
+        com.crackedgames.craftics.combat.ai.ally.AllyCombatContext ctx = allyCombatContext();
+        for (CombatEntity ally : snapshot) {
+            if (!ally.isAlive() || !ally.isAlly()) continue;
+            // A summon despawned by this round's aging is no longer in `enemies`.
+            if (!enemies.contains(ally)) continue;
+            AllyEntry entry = AllyRegistry.getOrNull(ally.getEntityTypeId());
+            if (entry == null || entry.roundHook() == null) continue;
+            entry.roundHook().onRound(ally, ctx);
+        }
     }
 
     /**
