@@ -2,7 +2,6 @@ package com.crackedgames.craftics.achievement;
 
 import com.crackedgames.craftics.CrafticsMod;
 import com.crackedgames.craftics.combat.*;
-import com.crackedgames.craftics.level.BiomePath;
 import com.crackedgames.craftics.network.AchievementUnlockPayload;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.advancement.AdvancementEntry;
@@ -278,36 +277,40 @@ public class AchievementManager {
         PlayerProgression.PlayerStats stats = PlayerProgression.get(
             (ServerWorld) player.getEntityWorld()).getStats(player);
 
-        // Overworld: check all overworld boss achievements
-        boolean allOverworld = true;
-        for (String biomeId : BiomePath.getFullPath(0)) {
-            if (NETHER_BIOMES.contains(biomeId) || END_BIOMES.contains(biomeId)) continue;
-            Achievement a = Achievement.getBossAchievementForBiome(biomeId);
-            if (a != null && !stats.hasAchievement(a)) { allOverworld = false; break; }
-        }
-        // Also check branch 1 biomes that might not be in branch 0
-        for (String biomeId : BiomePath.getFullPath(1)) {
-            if (NETHER_BIOMES.contains(biomeId) || END_BIOMES.contains(biomeId)) continue;
-            Achievement a = Achievement.getBossAchievementForBiome(biomeId);
-            if (a != null && !stats.hasAchievement(a)) { allOverworld = false; break; }
-        }
-        if (allOverworld) grant(player, Achievement.DIM_OVERWORLD);
+        // Each DIM_X achievement maps to a region id of the active campaign. For the vanilla
+        // campaign these are "overworld"/"nether"/"end". A custom campaign without one of these
+        // regions simply can't earn that achievement (region == null → skipped), which is correct
+        // (e.g. a custom campaign has no vanilla Nether).
+        //
+        // Iterating region.nodes() once covers every biome in the region regardless of branch:
+        // a branch only reorders biomes within a region, it never adds or removes them. (The old
+        // code iterated both getFullPath(0) and getFullPath(1) to catch branch-1-only biomes; that
+        // is no longer needed.)
+        grantIfRegionBossesBeaten(player, stats, "overworld", Achievement.DIM_OVERWORLD);
+        grantIfRegionBossesBeaten(player, stats, "nether", Achievement.DIM_NETHER);
+        grantIfRegionBossesBeaten(player, stats, "end", Achievement.DIM_END);
+    }
 
-        // Nether
-        boolean allNether = true;
-        for (String biomeId : BiomePath.getNetherPath()) {
-            Achievement a = Achievement.getBossAchievementForBiome(biomeId);
-            if (a != null && !stats.hasAchievement(a)) { allNether = false; break; }
+    /**
+     * Grants {@code dimAchievement} if every node of the active campaign's region {@code regionId}
+     * that has a boss achievement has had that boss achievement earned. No-ops if the active
+     * campaign lacks such a region.
+     */
+    private static void grantIfRegionBossesBeaten(ServerPlayerEntity player,
+                                                  PlayerProgression.PlayerStats stats,
+                                                  String regionId, Achievement dimAchievement) {
+        com.crackedgames.craftics.level.campaign.CampaignRegion region =
+            com.crackedgames.craftics.level.campaign.CampaignManager.regionById(regionId);
+        if (region == null) return; // custom campaign without this region — can't earn it
+        boolean anyBoss = false;
+        for (com.crackedgames.craftics.level.campaign.CampaignNode node : region.nodes()) {
+            Achievement a = Achievement.getBossAchievementForBiome(node.biomeId());
+            if (a == null) continue; // node has no boss achievement — ignore for completion
+            anyBoss = true;
+            if (!stats.hasAchievement(a)) return; // a boss is still unbeaten
         }
-        if (allNether) grant(player, Achievement.DIM_NETHER);
-
-        // End
-        boolean allEnd = true;
-        for (String biomeId : BiomePath.getEndPath()) {
-            Achievement a = Achievement.getBossAchievementForBiome(biomeId);
-            if (a != null && !stats.hasAchievement(a)) { allEnd = false; break; }
-        }
-        if (allEnd) grant(player, Achievement.DIM_END);
+        if (!anyBoss) return; // region has zero boss-achievement biomes — don't false-grant
+        grant(player, dimAchievement);
     }
 
     /**

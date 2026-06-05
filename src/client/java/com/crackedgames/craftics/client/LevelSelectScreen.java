@@ -1,19 +1,25 @@
 package com.crackedgames.craftics.client;
 
 import com.crackedgames.craftics.block.LevelSelectScreenHandler;
-import com.crackedgames.craftics.level.BiomePath;
+import com.crackedgames.craftics.level.campaign.CampaignManager;
+import com.crackedgames.craftics.level.campaign.CampaignNode;
+import com.crackedgames.craftics.level.campaign.CampaignRegion;
 import com.crackedgames.craftics.network.StartLevelPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.resource.ResourceManager;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -143,6 +149,14 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
     /** Tab hit-boxes (rebuilt each frame). Index matches {@link #pages}. */
     private final List<int[]> tabBounds = new ArrayList<>();
 
+    /**
+     * Per-texture "does this resource exist" cache. Custom-campaign biomes often
+     * ship no {@code textures/gui/biomes/<id>.png}; rather than hammer the resource
+     * manager every frame for every visible card, the answer is resolved once per
+     * Identifier and reused.
+     */
+    private final Map<Identifier, Boolean> textureExists = new HashMap<>();
+
     public LevelSelectScreen(LevelSelectScreenHandler handler,
                               PlayerInventory inventory, Text title) {
         super(handler, inventory, title);
@@ -164,7 +178,12 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                 discovered.add(id.trim());
             }
         }
-        discovered.add(BiomePath.PLAINS);
+        // Seed the starting biome (always discovered) — the first node of the
+        // active campaign in branch-adjusted run order.
+        List<String> ord = CampaignManager.orderedBiomeIds(Math.max(0, branchChoice));
+        if (!ord.isEmpty()) {
+            discovered.add(ord.get(0));
+        }
 
         this.pages = buildPages(branchChoice);
 
@@ -178,45 +197,48 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
     }
 
     /**
-     * Assemble the tab list. Built-in pages (Overworld / Nether / End) are
-     * always present — we render them as locked tabs when the player hasn't
-     * unlocked them yet, so the UI shape is stable across a run. Addon pages
-     * are appended.
+     * Assemble the tab list - one page per region of the <em>active campaign</em>
+     * (vanilla by default), in campaign order. Each page's biomes are listed in
+     * the branch-adjusted run order, and the GLOBAL {@code order} counter advances
+     * in that same flattened run order so it matches the server's
+     * {@code highestUnlocked} cursor (which counts biomes in campaign order across
+     * regions). Addon pages are appended afterwards.
+     *
+     * <p>Vanilla trace: overworld nodes get order 1-9, nether 10-14, end 15-18.
      */
     private List<DimensionPage> buildPages(int branchChoice) {
         List<DimensionPage> out = new ArrayList<>();
 
+        // Flattened node list in branch-adjusted run order across ALL regions.
+        // The branch only swaps segments WITHIN a single region, so each region's
+        // nodes stay a contiguous block here; iterating regions in order and
+        // filtering `flat` to the current region advances `order` in the correct
+        // global sequence (region 0 -> 1..k, region 1 -> k+1.., ...).
+        List<CampaignNode> flat = CampaignManager.orderedNodes(Math.max(0, branchChoice));
+
         int order = 1;
-
-        // Overworld — always unlocked (player starts here).
-        List<BiomeEntry> overworld = new ArrayList<>();
-        for (String id : BiomePath.getPath(Math.max(0, branchChoice))) {
-            BiomePath.NodeInfo info = BiomePath.getNodeInfo(id);
-            overworld.add(new BiomeEntry(id, info.displayName(), 0xFF55FF55,
-                Identifier.of("craftics", "textures/gui/biomes/" + id + ".png"), order++));
+        for (CampaignRegion region : CampaignManager.regions()) {
+            List<BiomeEntry> entries = new ArrayList<>();
+            int color = region.mapColor(); // region ARGB tint for tab + card border
+            for (CampaignNode node : flat) {
+                CampaignRegion r = CampaignManager.regionOf(node.biomeId());
+                if (r != null && region.id().equals(r.id())) {
+                    String label = node.labelOverride() != null ? node.labelOverride() : node.biomeId();
+                    Identifier tex = Identifier.of("craftics",
+                        "textures/gui/biomes/" + node.biomeId() + ".png");
+                    entries.add(new BiomeEntry(node.biomeId(), label, color, tex, order++));
+                }
+            }
+            String tabLabel = region.icon() + " " + region.displayName().toUpperCase();
+            out.add(new DimensionPage(region.id(), region.displayName(), tabLabel, color, entries));
         }
-        out.add(new DimensionPage("overworld", "Overworld",
-            "\u2600 OVERWORLD", 0xFF55FF55, overworld));
 
-        // Nether
-        List<BiomeEntry> nether = new ArrayList<>();
-        for (String id : BiomePath.getNetherPath()) {
-            BiomePath.NodeInfo info = BiomePath.getNetherNodeInfo(id);
-            nether.add(new BiomeEntry(id, info.displayName(), 0xFFFF5555,
-                Identifier.of("craftics", "textures/gui/biomes/" + id + ".png"), order++));
+        // Defensive: with no active campaign (shouldn't happen in-game) keep the
+        // screen non-empty so the render / rebuild paths never index an empty list.
+        if (out.isEmpty()) {
+            out.add(new DimensionPage("campaign", "Campaign", "CAMPAIGN",
+                0xFFFFFFFF, new ArrayList<>()));
         }
-        out.add(new DimensionPage("nether", "The Nether",
-            "\u2620 NETHER", 0xFFFF5555, nether));
-
-        // End
-        List<BiomeEntry> end = new ArrayList<>();
-        for (String id : BiomePath.getEndPath()) {
-            BiomePath.NodeInfo info = BiomePath.getEndNodeInfo(id);
-            end.add(new BiomeEntry(id, info.displayName(), 0xFFAA55CC,
-                Identifier.of("craftics", "textures/gui/biomes/" + id + ".png"), order++));
-        }
-        out.add(new DimensionPage("end", "The End",
-            "\u2726 THE END", 0xFFAA55CC, end));
 
         // Addon-contributed pages.
         out.addAll(EXTRA_PAGES);
@@ -382,10 +404,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         int spacing = imgSize * 3 / 2;
 
         // NG+ title
-        List<String> overworldPath = BiomePath.getPath(Math.max(0, handler.getBranchChoice()));
-        List<String> netherPath = BiomePath.getNetherPath();
-        List<String> endPath = BiomePath.getEndPath();
-        int totalBiomes = overworldPath.size() + netherPath.size() + endPath.size();
+        int totalBiomes = CampaignManager.totalBiomes();
         int ngPlus = totalBiomes > 0 ? Math.max(0, (highestUnlocked - 1) / totalBiomes) : 0;
         String title = ngPlus > 0
             ? "\u00a7l\u00a76\u2605 CRAFTICS \u2605 \u00a7c(NG+" + ngPlus + ")"
@@ -420,7 +439,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             int imgY = cy - imgSize / 2;
 
             if (unlocked) {
-                drawBiomeIcon(context, entry.texture, imgX, imgY, imgSize, imgSize);
+                drawBiomeIcon(context, entry.texture, imgX, imgY, imgSize, imgSize, entry.dimColor);
                 if (!isFocused) {
                     context.fill(imgX, imgY, imgX + imgSize, imgY + imgSize, 0xA0000000);
                 }
@@ -532,12 +551,51 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         }
     }
 
-    private void drawBiomeIcon(DrawContext context, Identifier texture, int x, int y, int w, int h) {
+    private void drawBiomeIcon(DrawContext context, Identifier texture, int x, int y, int w, int h, int fallbackColor) {
+        // Custom-campaign biomes often have no card art. Rather than render the
+        // missing-texture (purple/black checkerboard) placeholder, fall back to a
+        // solid colored panel tinted with the biome's region color.
+        if (!textureResourceExists(texture)) {
+            int fill = 0xFF000000 | (fallbackColor & 0x00FFFFFF); // force opaque
+            context.fill(x, y, x + w, y + h, fill);
+            // Subtle inner panel + darker border so the card still reads as a tile.
+            int inner = 0xFF000000 | (dim(fallbackColor, 0.65f) & 0x00FFFFFF);
+            context.fill(x + 2, y + 2, x + w - 2, y + h - 2, inner);
+            return;
+        }
         //? if <=1.21.1 {
         /*context.drawTexture(texture, x, y, 0f, 0f, w, h, w, h);
         *///?} else {
         context.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, texture, x, y, 0f, 0f, w, h, w, h);
         //?}
+    }
+
+    /**
+     * Whether {@code texture} resolves to an actual resource. Cached per Identifier
+     * (the answer is stable for the screen's lifetime) so the resource manager isn't
+     * queried every frame for every visible card.
+     */
+    private boolean textureResourceExists(Identifier texture) {
+        Boolean cached = textureExists.get(texture);
+        if (cached != null) return cached;
+        boolean exists = false;
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client != null) {
+            ResourceManager rm = client.getResourceManager();
+            if (rm != null) {
+                exists = rm.getResource(texture).isPresent();
+            }
+        }
+        textureExists.put(texture, exists);
+        return exists;
+    }
+
+    /** Scale each RGB channel of an ARGB color by {@code factor} (alpha untouched). */
+    private static int dim(int argb, float factor) {
+        int r = (int) (((argb >> 16) & 0xFF) * factor);
+        int g = (int) (((argb >> 8) & 0xFF) * factor);
+        int b = (int) ((argb & 0xFF) * factor);
+        return (argb & 0xFF000000) | (r << 16) | (g << 8) | b;
     }
 
     // ─────────────────────────────────────────────────────────────────────

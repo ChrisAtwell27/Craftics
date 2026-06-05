@@ -1949,11 +1949,10 @@ public class CombatManager {
                 bossEntityTypeId = biome.boss.entityTypeId();
                 bossBiomeId = biome.biomeId;
             }
-            // Determine biome ordinal from BiomePath for enchant chance scaling
+            // Determine biome ordinal from the active campaign for enchant chance scaling
             CrafticsSavedData.PlayerData pdSpawn = ngData.getPlayerData(player.getUuid());
-            java.util.List<String> spawnPath = com.crackedgames.craftics.level.BiomePath
-                .getFullPath(Math.max(0, pdSpawn.branchChoice));
-            int idx = spawnPath.indexOf(biome.biomeId);
+            int idx = com.crackedgames.craftics.level.campaign.CampaignManager
+                .ordinalOf(biome.biomeId, Math.max(0, pdSpawn.branchChoice));
             if (idx >= 0) spawnBiomeOrdinal = idx;
         }
         final int finalBiomeOrdinal = spawnBiomeOrdinal;
@@ -2534,6 +2533,8 @@ public class CombatManager {
             to.stackBleed(Math.max(0, from.getBleedStacks() - to.getBleedStacks()));
             any = true;
         }
+        // Note: blindedTurns is intentionally NOT spread by Contagion — it's a
+        // targeted totem debuff, not a contagious DOT.
         for (var entry : from.getCustomEffects().entrySet()) {
             int turns = entry.getValue()[0];
             int amp = entry.getValue()[1];
@@ -3525,10 +3526,10 @@ public class CombatManager {
 
         // Rocket crossbow shots spend a firework rocket (consumed by the crossbow
         // weapon ability), not an arrow — skip arrow/tipped-arrow consumption.
-        String tippedEffect = null;
+        java.util.List<String> tippedEffects = java.util.List.of();
         if ((PlayerCombatStats.isBow(player) || weapon == Items.CROSSBOW) && !crossbowRocket) {
             if (PlayerCombatStats.hasTippedArrows(player)) {
-                tippedEffect = PlayerCombatStats.findAndConsumeTippedArrow(player);
+                tippedEffects = PlayerCombatStats.findAndConsumeTippedArrow(player);
             } else if (!PlayerCombatStats.hasInfinity(player)) {
                 PlayerCombatStats.consumeArrow(player);
             }
@@ -3786,7 +3787,7 @@ public class CombatManager {
         final int fSharpnessBleed = (weapon != Items.BOW && weapon != Items.CROSSBOW)
             ? PlayerCombatStats.getSharpness(player) : 0;
         final boolean fLuckCrit = luckCrit;
-        final String fTippedEffect = tippedEffect;
+        final java.util.List<String> fTippedEffects = tippedEffects;
         final int fFireAspect = fireAspect;
         // Sweeping Edge level scales the Fire Aspect shape (cone -> wide cone
         // -> ring) when both enchants are present on a sword.
@@ -3981,9 +3982,9 @@ public class CombatManager {
                 sendMessage(coneMsg);
             }
 
-            // Tipped arrow effects
-            if (fTippedEffect != null) {
-                switch (fTippedEffect) {
+            // Tipped arrow effects — apply every recognized effect on a (possibly combined) arrow
+            for (String fx : fTippedEffects) {
+                switch (fx) {
                     case "poison" -> {
                         fTarget.stackPoison(3, 1);
                         sendMessage("\u00a75Poison arrow! Enemy poisoned for 3 turns.");
@@ -5684,6 +5685,14 @@ public class CombatManager {
         if (item instanceof net.minecraft.item.MaceItem) {
             return new String[]{"smite", "fire_aspect", "knockback", "unbreaking", "mending",
                 "density", "breach", "wind_burst"};
+        }
+        // Basic Weapons: offer Might on the blunt trio (club/hammer/quarterstaff). The pool holds
+        // the BARE PATH "might" — the enchanter resolver matches getValue().getPath(), so a
+        // namespaced id would never resolve. Only when the mod is loaded and the item is a
+        // registered blunt basicweapons weapon. Placed outside the version split above so it
+        // compiles on every shard.
+        if (com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isBlunt(item)) {
+            return new String[]{"might", "unbreaking", "mending"};
         }
         // Hoe / shovel / generic — only the universal enchants apply
         return new String[]{"unbreaking", "mending"};
@@ -8557,6 +8566,24 @@ public class CombatManager {
             }
             currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
             sendMessage("§d" + currentEnemy.getDisplayName() + " is confused but has no allies to hit!");
+            // If the enemy is also blinded, end the turn now rather than falling through into
+            // the blinded block below — otherwise both debuffs would tick in the same round.
+            // (When not blinded, preserve the pre-existing fall-through to a normal turn.)
+            if (currentEnemy.getBlindedTurns() > 0) {
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                return;
+            }
+        }
+
+        if (currentEnemy.getBlindedTurns() > 0 && !currentEnemy.isAlly()) {
+            // Fumble the turn outright (no swing animation), like the stun path —
+            // a blinded enemy can't see to attack, so it just loses its turn.
+            currentEnemy.setBlindedTurns(currentEnemy.getBlindedTurns() - 1);
+            sendMessage("§9" + currentEnemy.getDisplayName() + " is blinded and can't see to attack!");
+            enemyTurnState = EnemyTurnState.DONE;
+            enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            return;
         }
 
         if (currentEnemy.isAlly()) {
@@ -14280,21 +14307,27 @@ public class CombatManager {
      */
     private net.minecraft.item.ItemStack findTotemStack() {
         net.minecraft.item.ItemStack mainHand = player.getMainHandStack();
-        if (!mainHand.isEmpty() && mainHand.getItem() == Items.TOTEM_OF_UNDYING) {
+        if (!mainHand.isEmpty() && isAnyTotem(mainHand.getItem())) {
             return mainHand;
         }
         net.minecraft.item.ItemStack offHand = player.getOffHandStack();
-        if (!offHand.isEmpty() && offHand.getItem() == Items.TOTEM_OF_UNDYING) {
+        if (!offHand.isEmpty() && isAnyTotem(offHand.getItem())) {
             return offHand;
         }
         var inv = player.getInventory();
         for (int i = 0; i < inv.size(); i++) {
             net.minecraft.item.ItemStack stack = inv.getStack(i);
-            if (!stack.isEmpty() && stack.getItem() == Items.TOTEM_OF_UNDYING) {
+            if (!stack.isEmpty() && isAnyTotem(stack.getItem())) {
                 return stack;
             }
         }
         return null;
+    }
+
+    /** Vanilla Totem of Undying or any MoreTotems totem. */
+    private static boolean isAnyTotem(net.minecraft.item.Item item) {
+        return item == Items.TOTEM_OF_UNDYING
+            || com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isMoreTotem(item);
     }
 
     /**
@@ -14312,6 +14345,11 @@ public class CombatManager {
     private boolean tryConsumeTotemAndResurrect() {
         net.minecraft.item.ItemStack totem = findTotemStack();
         if (totem == null) return false;
+
+        String moddedPath = com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.totemPath(totem.getItem());
+        if (moddedPath != null) {
+            return consumeModdedTotem(totem, moddedPath);
+        }
 
         totem.decrement(1);
 
@@ -14347,6 +14385,225 @@ public class CombatManager {
         achievementTracker.recordTotemProc();
         sendSync();
         return true;
+    }
+
+    /**
+     * Consume a MoreTotems totem and resurrect with a BARE revive (clear effects + 50% HP),
+     * then run the totem's unique Craftics effect. Decrement happens first so a render
+     * failure can never leave the player un-revived (matches the vanilla method's ordering).
+     */
+    private boolean consumeModdedTotem(net.minecraft.item.ItemStack totem, String path) {
+        totem.decrement(1);
+
+        // Bare revive: clear effects + zero absorption + 50% HP. No vanilla buff baseline.
+        player.clearStatusEffects();
+        player.setAbsorptionAmount(0f);
+        float halfMax = Math.max(1.0f, player.getMaxHealth() / 2.0f);
+        player.setHealth(halfMax);
+
+        String label;
+        switch (path) {
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.EXPLOSIVE -> {
+                label = "Explosive Totem";
+                totemExplosion();
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.SKELETAL -> {
+                label = "Skeletal Totem";
+                totemMarkAllEnemies(2);
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.TELEPORTING -> {
+                label = "Teleporting Totem";
+                totemTeleportToSafestTile();
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.GHASTLY -> {
+                label = "Ghastly Totem";
+                totemBurnAllEnemiesAndFireRes(5);
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.STINGING -> {
+                label = "Stinging Totem";
+                totemSummonAllies(net.minecraft.entity.EntityType.BEE, 5);
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.TENTACLED -> {
+                label = "Tentacled Totem";
+                totemBlindAllEnemies(2);
+            }
+            case com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.ROTTING -> {
+                label = "Rotting Totem";
+                totemSummonAllies(net.minecraft.entity.EntityType.ZOMBIE, 3);
+            }
+            default -> label = "Totem";
+        }
+
+        try {
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.TOTEM_OF_UNDYING,
+                player.getX(), player.getY() + 1.0, player.getZ(),
+                100, 0.6, 1.0, 0.6, 0.5);
+            world.playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ITEM_TOTEM_USE,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        } catch (Exception ignored) {
+        }
+
+        sendMessage("\u00a76\u00a7l\u2726 " + label.toUpperCase() + " ACTIVATES! \u2726 \u00a7rResurrected with half health!");
+        achievementTracker.recordTotemProc();
+        sendSync();
+        return true;
+    }
+
+    // \u2500\u2500 MoreTotems effect helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+    /** Explosive totem: 4x4 around the player, each enemy takes 50% max HP + biome ordinal. */
+    private void totemExplosion() {
+        GridPos center = arena.getPlayerGridPos();
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        try {
+            BlockPos bp = arena.gridToBlockPos(center);
+            sw.playSound(null, bp, net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        } catch (Exception ignored) {}
+        // 4x4 block anchored so the player tile is the inner corner: dx,dz in -1..2.
+        outer:
+        for (int dx = -1; dx <= 2; dx++) {
+            for (int dz = -1; dz <= 2; dz++) {
+                GridPos pos = new GridPos(center.x() + dx, center.z() + dz);
+                if (!arena.isInBounds(pos)) continue;
+                CombatEntity target = arena.getOccupant(pos);
+                if (target == null || !target.isAlive() || target.isAlly()) continue;
+                int dmg = MoreTotemsEffects.explosionDamage(target.getMaxHp(), currentBiomeOrdinal);
+                int actual = target.takeDamage(dmg);
+                sendMessage("\u00a7c\u2726 Explosion hits " + target.getDisplayName() + " for " + actual + "!");
+                checkAndHandleDeath(target);
+                if (!active) break outer; // last enemy died \u2014 combat already ended
+            }
+        }
+        refreshHighlights();
+    }
+
+    /** Skeletal totem: mark every living enemy for the given turns. */
+    private void totemMarkAllEnemies(int turns) {
+        int n = 0;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            e.setMarkedTurns(Math.max(e.getMarkedTurns(), turns));
+            n++;
+        }
+        sendMessage("\u00a7e\u2726 " + n + " enemies are Marked for " + turns + " turns!");
+    }
+
+    /** Tentacled totem: blind every living enemy for the given turns. */
+    private void totemBlindAllEnemies(int turns) {
+        int n = 0;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            e.stackBlinded(turns);
+            n++;
+        }
+        sendMessage("\u00a79\u2726 " + n + " enemies are Blinded for " + turns + " turns!");
+    }
+
+    /** Ghastly totem: set every living enemy on fire, grant the player Fire Resistance. */
+    private void totemBurnAllEnemiesAndFireRes(int turns) {
+        int perTurn = 2;
+        int n = 0;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            e.stackBurning(turns, perTurn);
+            n++;
+        }
+        addEffectHooked(CombatEffects.EffectType.FIRE_RESISTANCE, turns, 0);
+        sendMessage("\u00a76\u2726 " + n + " enemies set ablaze for " + turns + " turns! You gain Fire Resistance.");
+    }
+
+    /** Teleporting totem: move the player to the tile farthest from the nearest enemy. */
+    private void totemTeleportToSafestTile() {
+        java.util.List<GridPos> candidates = new java.util.ArrayList<>();
+        GridPos cur = arena.getPlayerGridPos();
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos p = new GridPos(x, z);
+                if (arena.isOccupied(p) && !p.equals(cur)) continue;
+                GridTile t = arena.getTile(p);
+                if (t == null || !t.isSafeForSpawn()) continue;
+                candidates.add(p);
+            }
+        }
+        java.util.List<GridPos> enemyPositions = new java.util.ArrayList<>();
+        for (CombatEntity e : enemies) {
+            if (e.isAlive() && !e.isAlly()) enemyPositions.add(e.getGridPos());
+        }
+        GridPos dest = MoreTotemsEffects.safestTile(candidates, enemyPositions);
+        if (dest == null || dest.equals(cur)) return; // no better tile \u2014 stay put
+        arena.setPlayerGridPos(dest);
+        BlockPos bp = arena.gridToBlockPos(dest);
+        //? if <=1.21.1 {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
+            bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
+            java.util.Collections.emptySet(), player.getYaw(), 0f);
+        *///?} else {
+        player.teleport((ServerWorld) player.getEntityWorld(),
+            bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
+            java.util.Collections.emptySet(), player.getYaw(), 0f, true);
+        //?}
+        sendMessage("\u00a7d\u2726 Teleported to safety!");
+    }
+
+    /**
+     * Summon {@code count} temporary allied mobs of the given type near the player. Bypasses
+     * AP and the party cap (this is a revive bonus, not a player action). Best-effort: any mob
+     * that can't be placed is skipped.
+     */
+    private void totemSummonAllies(net.minecraft.entity.EntityType<?> entityType, int count) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        String typeId = net.minecraft.registry.Registries.ENTITY_TYPE.getId(entityType).toString();
+        com.crackedgames.craftics.api.registry.AllyEntry entry =
+            com.crackedgames.craftics.api.registry.AllyRegistry.getOrNull(typeId);
+        int hp, atk, def, range;
+        if (entry != null) {
+            hp = entry.hp(); atk = entry.attack(); def = entry.defense(); range = entry.range();
+        } else {
+            hp = 8; atk = 2; def = 0; range = 1;
+        }
+
+        java.util.Set<GridPos> reserved = new java.util.HashSet<>();
+        for (CombatEntity e : enemies) {
+            if (e.isAlive()) reserved.add(e.getGridPos());
+        }
+        reserved.add(arena.getPlayerGridPos());
+
+        int spawned = 0;
+        for (int i = 0; i < count; i++) {
+            GridPos tile = findNearestWalkableUnreserved(arena, arena.getPlayerGridPos(), reserved);
+            if (tile == null) break;
+            reserved.add(tile);
+
+            BlockPos blockPos = arena.gridToBlockPos(tile);
+            net.minecraft.entity.Entity rawEntity = entityType.create(world, null, blockPos,
+                net.minecraft.entity.SpawnReason.MOB_SUMMONED, false, false);
+            if (!(rawEntity instanceof net.minecraft.entity.mob.MobEntity mob)) continue;
+            mob.refreshPositionAndAngles(
+                blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5, 0, 0);
+            mob.setPersistent();
+            mob.setAiDisabled(true);
+            mob.setInvulnerable(true);
+            mob.setNoGravity(true);
+            mob.noClip = true;
+            mob.setSilent(true);
+            mob.addCommandTag("craftics_arena");
+            world.spawnEntity(mob);
+
+            CombatEntity ce = new CombatEntity(mob.getId(), typeId, tile, hp, atk, def, range);
+            ce.setAlly(true);
+            ce.setTemporaryAlly(true);
+            ce.setOwnerUuid(player.getUuid());
+            ce.setMobEntity(mob);
+            ce.setAllyAi(com.crackedgames.craftics.combat.ai.ally.AllyArchetypes.aiFor(typeId));
+            enemies.add(ce);
+            arena.placeEntity(ce);
+            spawned++;
+        }
+        sendMessage("\u00a7a\u2726 " + spawned + " allies rise to defend you!");
+        refreshHighlights();
     }
 
     /**
@@ -14965,14 +15222,28 @@ public class CombatManager {
                 if (b.biomeId.equals(ld.activeBiomeId)) { biomeTemplate = b; break; }
             }
         }
-        // Use path order for biome progression (not registry order)
+        // Use active-campaign order for biome progression (not registry order)
         ld.initBranchIfNeeded();
-        java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-            .getFullPath(Math.max(0, ld.branchChoice));
         int biomeOrdinal = biomeTemplate != null
-            ? fullPath.indexOf(biomeTemplate.biomeId) : 0;
+            ? com.crackedgames.craftics.level.campaign.CampaignManager
+                .ordinalOf(biomeTemplate.biomeId, Math.max(0, ld.branchChoice))
+            : 0;
         if (biomeOrdinal < 0) biomeOrdinal = 0;
         boolean isBoss = biomeTemplate != null && biomeTemplate.isBossLevel(arena.getLevelNumber());
+        // Rare MoreTotems totem drop — boss kills only (Luck boosts chance). No-op when the
+        // mod is absent (rollOne returns EMPTY).
+        if (isBoss) {
+            float totemChance = 0.15f + luckBonusItems * 0.02f;
+            if (Math.random() < totemChance) {
+                ItemStack totemDrop = com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne();
+                if (!totemDrop.isEmpty()) {
+                    for (ServerPlayerEntity recipient : rewardRecipients) {
+                        deliverLoot(recipient, totemDrop.copy(), lootOverflow);
+                    }
+                    sendMessage("§d§l✦ RARE DROP: " + totemDrop.getName().getString() + "!");
+                }
+            }
+        }
         // Resourceful stat: +1 emerald per point (uses leader's stat)
         PlayerProgression victoryProg = PlayerProgression.get(world);
         int resourcefulBonus = victoryProg.getStats(player).getPoints(PlayerProgression.Stat.RESOURCEFUL);
@@ -14994,14 +15265,13 @@ public class CombatManager {
 
         // Boss trim template drops (semi-rare: ~35% chance, Luck boosts)
         if (isBoss && Math.random() < CrafticsMod.CONFIG.trimDropChance() + luckBonusItems * 0.02) {
-            // Determine dimension from biome position
-            int overworldCount = com.crackedgames.craftics.level.BiomePath
-                .getPath(Math.max(0, ld.branchChoice)).size();
-            int netherCount = com.crackedgames.craftics.level.BiomePath.getNetherPath().size();
-            String dimension;
-            if (biomeOrdinal < overworldCount) dimension = "overworld";
-            else if (biomeOrdinal < overworldCount + netherCount) dimension = "nether";
-            else dimension = "end";
+            // Determine dimension from the active campaign's region for this biome
+            String dimension = "overworld"; // sensible default if region is unknown/null
+            if (biomeTemplate != null) {
+                com.crackedgames.craftics.level.campaign.CampaignRegion region =
+                    com.crackedgames.craftics.level.campaign.CampaignManager.regionOf(biomeTemplate.biomeId);
+                if (region != null) dimension = region.id();
+            }
 
             net.minecraft.item.Item[] trimPool = TrimEffects.getBossDropTrims(dimension);
             if (trimPool.length > 0) {
@@ -15105,23 +15375,35 @@ public class CombatManager {
                         pd.highestBiomeUnlocked = currentBiomeOrder + 1;
                     }
                 }
-                // Special messages when unlocking new dimensions
-                int overworldBiomeCount = com.crackedgames.craftics.level.BiomePath
-                    .getPath(Math.max(0, ld.branchChoice)).size();
-                int netherBiomeCount = com.crackedgames.craftics.level.BiomePath
-                    .getNetherPath().size();
-                if (currentBiomeOrder == overworldBiomeCount) {
-                    sendMessage("§c§l\u2620 THE NETHER HAS BEEN UNLOCKED! \u2620");
-                } else if (currentBiomeOrder == overworldBiomeCount + netherBiomeCount) {
-                    sendMessage("§5§l\u2726 THE END HAS BEEN UNLOCKED! \u2726");
+                // Region-boundary "unlocked" banner — campaign-driven. Resolve the
+                // just-cleared biome id, then announce the NEXT region (if any) when the
+                // next biome in flattened campaign order belongs to a different region.
+                int branch = Math.max(0, ld.branchChoice);
+                java.util.List<String> campaignOrder = com.crackedgames.craftics.level.campaign.CampaignManager
+                    .orderedBiomeIds(branch);
+                String justClearedBiomeId = biomeTemplate != null ? biomeTemplate.biomeId : ld.activeBiomeId;
+                if (justClearedBiomeId == null
+                        && biomeOrdinal >= 0 && biomeOrdinal < campaignOrder.size()) {
+                    justClearedBiomeId = campaignOrder.get(biomeOrdinal);
                 }
-                // Check if this was the final boss (Dragon's Nest) — trigger NG+
-                int endBiomeCount = com.crackedgames.craftics.level.BiomePath
-                    .getEndPath().size();
-                int totalBiomes = overworldBiomeCount + netherBiomeCount + endBiomeCount;
-                if (currentBiomeOrder == totalBiomes) {
+                String nextBiomeId = (biomeOrdinal + 1 < campaignOrder.size())
+                    ? campaignOrder.get(biomeOrdinal + 1) : null;
+                if (nextBiomeId != null) {
+                    com.crackedgames.craftics.level.campaign.CampaignRegion clearedRegion =
+                        com.crackedgames.craftics.level.campaign.CampaignManager.regionOf(justClearedBiomeId);
+                    com.crackedgames.craftics.level.campaign.CampaignRegion nextRegion =
+                        com.crackedgames.craftics.level.campaign.CampaignManager.regionOf(nextBiomeId);
+                    if (nextRegion != null && nextRegion != clearedRegion) {
+                        sendMessage(nextRegion.color() + "§l" + nextRegion.icon() + " "
+                            + nextRegion.displayName().toUpperCase() + " HAS BEEN UNLOCKED! "
+                            + nextRegion.icon());
+                    }
+                }
+                // Final node of the final region (any campaign, any size) - trigger NG+.
+                if (com.crackedgames.craftics.level.campaign.CampaignManager
+                        .isFinalBiome(justClearedBiomeId, branch)) {
                     ld.startNewGamePlus();
-                    sendMessage("§6§l\u2605 NEW GAME+ " + ld.ngPlusLevel + " UNLOCKED! \u2605");
+                    sendMessage("§6§l★ NEW GAME+ " + ld.ngPlusLevel + " UNLOCKED! ★");
                     sendMessage("§eAll biomes reset. Enemies are now stronger. Your stats carry over.");
                 }
             }
@@ -15463,10 +15745,9 @@ public class CombatManager {
                     java.util.Random eventRng = new java.util.Random();
                     float eventRoll = eventRng.nextFloat();
 
-                    // Calculate biome position for difficulty scaling (use path ordinal, not registry index)
-                    java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath
-                            .getFullPath(Math.max(0, branchChoice));
-                    int biomeOrdinal = fullPath.indexOf(biome.biomeId);
+                    // Calculate biome position for difficulty scaling (use active-campaign ordinal, not registry index)
+                    int biomeOrdinal = com.crackedgames.craftics.level.campaign.CampaignManager
+                            .ordinalOf(biome.biomeId, Math.max(0, branchChoice));
                     if (biomeOrdinal < 0) biomeOrdinal = 0;
 
                     // No events on the very first continue (level index 1 = just beat level 1)
@@ -20097,6 +20378,7 @@ public class CombatManager {
             else if (e.getMobEntity() != null && e.getMobEntity().isOnFire()) efx.append(";Burning");
             if (e.getSoakedTurns() > 0) efx.append(";Soaked(" + e.getSoakedTurns() + "t)");
             if (e.getConfusionTurns() > 0) efx.append(";Confused(" + e.getConfusionTurns() + "t)");
+            if (e.getBlindedTurns() > 0) efx.append(";Blinded(" + e.getBlindedTurns() + "t)");
             if (e.getDefensePenaltyTurns() > 0) efx.append(";Exposed(-" + e.getDefensePenalty() + "DEF," + e.getDefensePenaltyTurns() + "t)");
             if (e.getBleedStacks() > 0) efx.append(";Bleeding(" + e.getBleedStacks() + " stacks)");
             for (java.util.Map.Entry<String, int[]> ce : e.getCustomEffects().entrySet()) {
@@ -20407,8 +20689,8 @@ public class CombatManager {
             .get((ServerWorld) player.getEntityWorld())
             .getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid());
         int branch = pdBranch != null ? Math.max(0, pdBranch.branchChoice) : 0;
-        java.util.List<String> fullPath = com.crackedgames.craftics.level.BiomePath.getFullPath(branch);
-        int idx = fullPath.indexOf(biomeTemplate.biomeId);
+        int idx = com.crackedgames.craftics.level.campaign.CampaignManager
+            .ordinalOf(biomeTemplate.biomeId, branch);
         return Math.max(0, idx);
     }
 

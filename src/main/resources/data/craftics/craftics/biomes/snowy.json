@@ -1,7 +1,7 @@
 {
   "id": "snowy",
   "name": "Snowy Tundra",
-  "order": 3,
+  "order": 6,
   "levels": 5,
   "grid": {
     "base_width": 9,

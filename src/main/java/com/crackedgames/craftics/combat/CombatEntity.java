@@ -416,6 +416,17 @@ public class CombatEntity {
         if (markedTurns <= 0) return 1.0;
         return isBoss() ? 1.5 : 2.0;
     }
+
+    // ── Blinded status (enemy) ──
+    // A blinded enemy can't see to attack: it fumbles its turn (deals no damage)
+    // for the duration. Applied by the MoreTotems Tentacled totem. Counts down once
+    // per round, mirroring the confusion field.
+    private int blindedTurns = 0;
+    public boolean isBlinded() { return blindedTurns > 0; }
+    public int getBlindedTurns() { return blindedTurns; }
+    public void setBlindedTurns(int t) { this.blindedTurns = t; }
+    /** Apply/refresh blindness to the longer of the current and new duration. */
+    public void stackBlinded(int turns) { this.blindedTurns = Math.max(this.blindedTurns, turns); }
     public int getSlownessTurns() { return slownessTurns; }
     public void setSlownessTurns(int t) { this.slownessTurns = t; }
     public int getSlownessPenalty() { return slownessPenalty; }

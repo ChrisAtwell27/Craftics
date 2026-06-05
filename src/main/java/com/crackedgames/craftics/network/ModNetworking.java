@@ -106,10 +106,10 @@ public class ModNetworking {
                 return;
             }
 
-            // Check if this biome is unlocked (using path order, not registry order)
+            // Check if this biome is unlocked (using active-campaign order, not registry order)
             pd.initBranchIfNeeded();
-            java.util.List<String> fullPath = BiomePath.getFullPath(Math.max(0, pd.branchChoice));
-            int biomeOrder = fullPath.indexOf(biomeId) + 1; // 1-based
+            int biomeOrder = com.crackedgames.craftics.level.campaign.CampaignManager
+                .ordinalOf(biomeId, Math.max(0, pd.branchChoice)) + 1; // 1-based; 0 if absent from campaign
             if (biomeOrder <= 0 || biomeOrder > pd.highestBiomeUnlocked) {
                 CrafticsMod.LOGGER.warn("Player {} tried to start locked biome {} (unlocked={}, needed={})",
                     player.getName().getString(), biomeId, pd.highestBiomeUnlocked, biomeOrder);

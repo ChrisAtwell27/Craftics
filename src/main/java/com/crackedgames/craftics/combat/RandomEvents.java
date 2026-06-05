@@ -48,12 +48,22 @@ public class RandomEvents {
             };
             desc = "\u00a7bThe shrine glows brightly!";
         } else if (roll < 85) {
-            // Great: rare items
-            reward = switch (rng.nextInt(3)) {
-                case 0 -> new ItemStack(Items.DIAMOND_SWORD, 1);
-                case 1 -> new ItemStack(Items.DIAMOND_CHESTPLATE, 1);
-                default -> new ItemStack(Items.ENCHANTED_GOLDEN_APPLE, 1);
-            };
+            // Great: rare items. ~1-in-3 yields a MoreTotems totem when the mod is installed.
+            // isLoaded() is checked first so we don't burn an rng step (shifting the fallback
+            // switch) when the mod is absent.
+            ItemStack totem = com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isLoaded()
+                    && rng.nextInt(3) == 0
+                ? com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne()
+                : ItemStack.EMPTY;
+            if (!totem.isEmpty()) {
+                reward = totem;
+            } else {
+                reward = switch (rng.nextInt(3)) {
+                    case 0 -> new ItemStack(Items.DIAMOND_SWORD, 1);
+                    case 1 -> new ItemStack(Items.DIAMOND_CHESTPLATE, 1);
+                    default -> new ItemStack(Items.ENCHANTED_GOLDEN_APPLE, 1);
+                };
+            }
             desc = "\u00a7d\u00a7lThe shrine erupts with light!";
         } else {
             // Jackpot: refund + bonus

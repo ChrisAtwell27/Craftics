@@ -469,7 +469,10 @@ public class CrafticsClient implements ClientModInitializer {
         // CLIENT_STARTED fires after every mod's main entrypoint has run, so the
         // copperagebackport items are guaranteed to be in Registries.ITEM by now.
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STARTED.register(
-            client -> com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred());
+            client -> {
+                com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
+                com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
+            });
 
         // Resolve keybind conflicts at startup. CLIENT_STARTED runs after every
         // mod has registered its bindings and after options.txt has loaded, so
