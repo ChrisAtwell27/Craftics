@@ -28,6 +28,9 @@ bin/
 # fabric
 run/
 
+# per-shard runtime logs (build/run artifacts, not source)
+versions/*/logs/
+
 # java
 hs_err_*.log
 replay_*.log

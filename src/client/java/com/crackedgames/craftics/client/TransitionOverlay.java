@@ -129,6 +129,9 @@ public class TransitionOverlay {
         "Jukebox plays music for the whole arena. Every ally gets +3 Speed for the rest of the battle.",
         "Bell rings out at a placement tile and stuns every enemy within 2 tiles for 1 turn.",
         "Anvil drops from above the target enemy with a real falling-block animation, then crushes them for 15 Special damage.",
+        "Drag with the right mouse button to orbit the camera around the arena for a better angle.",
+        "Drag with the middle mouse button to pan the camera. Hold Shift while dragging to recenter it.",
+        "Scroll the mouse wheel to zoom the camera in and out during combat.",
     };
 
     private static final java.util.Random TIP_RNG = new java.util.Random();

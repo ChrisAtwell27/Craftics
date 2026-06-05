@@ -77,12 +77,35 @@ public final class AllyArchetypes {
     );
 
     /**
+     * Runtime-registered archetypes for modded allies (e.g. compat modules).
+     * Consulted by {@link #aiFor} before the built-in {@link #BY_TYPE} table and
+     * before the melee fallback, so compat code can assign archetypes without
+     * editing this core vanilla table. Populated once at mod init.
+     */
+    private static final Map<String, AllyAI> REGISTERED = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Register a combat archetype for an entity type at runtime. Last registration
+     * for a given id wins. Intended for compat modules called during mod init.
+     */
+    public static void register(String entityTypeId, AllyAI ai) {
+        if (entityTypeId != null && ai != null) REGISTERED.put(entityTypeId, ai);
+    }
+
+    /** Test-only: clear all runtime registrations so tests don't leak state. Not for production use. */
+    public static void clearRegisteredForTest() {
+        REGISTERED.clear();
+    }
+
+    /**
      * Resolve the combat AI for a party mob of the given entity type. Farm
      * animals share {@link FarmAnimalAllyAI}; unknown/exotic mobs default to the
      * melee fighter so any mob still pulls its weight in a fight.
      */
     public static AllyAI aiFor(String entityTypeId) {
         if (entityTypeId == null) return MELEE;
+        AllyAI registered = REGISTERED.get(entityTypeId);
+        if (registered != null) return registered;
         if (FARM_ANIMALS.contains(entityTypeId)) return FARM;
         AllyAI ai = BY_TYPE.get(entityTypeId);
         return ai != null ? ai : MELEE;
