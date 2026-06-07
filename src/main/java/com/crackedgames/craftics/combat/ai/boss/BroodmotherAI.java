@@ -186,6 +186,15 @@ public class BroodmotherAI extends BossAI {
                 state = State.HUNTING;
                 return;
             }
+            // No egg sacs left and no minions: there is nothing to nest around. In
+            // Phase 1 there's no way to refill eggSacs, and CD_BROOD can never be set
+            // (Spawn Brood needs a sac), so the cooldown-based exit below would never
+            // fire — the boss would sit passively in the nest forever. Go hunt instead.
+            // (Phase 2 can re-place sacs in nestingBehavior, so let it keep nesting.)
+            if (eggSacs.isEmpty() && !isPhaseTwo()) {
+                state = State.HUNTING;
+                return;
+            }
             // Switch to HUNTING if nothing left to do in nest
             if (isOnCooldown(CD_BROOD) && isOnCooldown(CD_WEB)) {
                 state = State.HUNTING;
@@ -251,7 +260,10 @@ public class BroodmotherAI extends BossAI {
             return meleeOrApproach(self, arena, nearestSac, 0);
         }
 
-        return new EnemyAction.Idle();
+        // Nothing to do in the nest (no sacs to tend, nothing castable). Never just
+        // idle — hunt the player instead. Without this, a Broodmother that loses all
+        // its egg sacs while everything is on cooldown would stand still indefinitely.
+        return meleeOrApproach(self, arena, playerPos, 0);
     }
 
     // =========================================================================

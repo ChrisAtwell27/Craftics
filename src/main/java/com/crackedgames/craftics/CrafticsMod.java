@@ -85,6 +85,7 @@ public class CrafticsMod implements ModInitializer {
         ModBlocks.register();
         com.crackedgames.craftics.item.ModItems.register();
         ModScreenHandlers.register();
+        com.crackedgames.craftics.sound.ModSounds.register();
         ModNetworking.registerServer();
 
         // Level-select phantom-half click routing is now handled by the

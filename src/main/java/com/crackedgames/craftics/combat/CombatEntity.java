@@ -322,18 +322,39 @@ public class CombatEntity {
     }
 
     /**
-     * Void Walker mirror image flag. If true, any incoming damage instantly kills this
-     * entity regardless of the damage amount, and zero HP loss is reported. The clone
-     * looks identical to the parent boss (same name, stats) until it is hit.
+     * Void Walker mirror image flag. Marks an entity as one of the boss's decoy
+     * clones: it wears the boss's name but is a weak decoy (low HP/ATK) that takes
+     * double damage (see {@link #damageTakenMultiplier}). The flag drives the
+     * no-loot/no-XP death path and the mass-dispel-on-real-boss-hit logic in
+     * CombatManager; it no longer changes how damage is applied.
      */
     private boolean mirrorClone = false;
     public boolean isMirrorClone() { return mirrorClone; }
     public void setMirrorClone(boolean v) { this.mirrorClone = v; }
 
+    /**
+     * Flat multiplier applied to all incoming damage at the single damage chokepoint
+     * ({@link #applyDirectDamage}). Defaults to {@code 1.0} (no-op) for every entity;
+     * Void Walker mirror clones set this to {@code 2.0} so they take double damage.
+     */
+    private double damageTakenMultiplier = 1.0;
+    public double getDamageTakenMultiplier() { return damageTakenMultiplier; }
+    public void setDamageTakenMultiplier(double m) { this.damageTakenMultiplier = m; }
+
     /** Entity ID of the boss this clone mirrors. -1 when not a clone. */
     private int cloneOfBossId = -1;
     public int getCloneOfBossId() { return cloneOfBossId; }
     public void setCloneOfBossId(int id) { this.cloneOfBossId = id; }
+
+    /**
+     * Sentinel flag: this entity exists only to occupy the netherite golem mount's
+     * 1×3 wall tiles in the arena occupant map (so enemies can't path through them).
+     * It is never added to the enemy/ally lists or a turn queue; consumers that walk
+     * the occupant map (client enemy sync, AoE collectors) must skip it.
+     */
+    private boolean mountWall = false;
+    public boolean isMountWall() { return mountWall; }
+    public void setMountWall(boolean v) { this.mountWall = v; }
 
     private String aiOverrideKey = null;
     public String getAiOverrideKey() { return aiOverrideKey; }
@@ -687,14 +708,6 @@ public class CombatEntity {
      * entity's static defense without each caller duplicating the 5%/cap formula.
      */
     public int takeDamage(int rawDamage, int bonusDefense) {
-        // Mirror images (Void Walker clones) vanish on any hit. No real HP loss
-        // is reported so the attack still feels like a "wasted swing" on an illusion.
-        if (mirrorClone) {
-            currentHp = 0;
-            alive = false;
-            damagedSinceLastTurn = true;
-            return 0;
-        }
         // Timed resistance buff reduces incoming damage by its level (flat), before defense %.
         if (getResistanceLevel() > 0) {
             rawDamage = Math.max(0, rawDamage - getResistanceLevel());
@@ -735,11 +748,9 @@ public class CombatEntity {
         if (markedMult != 1.0) {
             amount = Math.max(1, (int) Math.round(amount * markedMult));
         }
-        if (mirrorClone) {
-            currentHp = 0;
-            alive = false;
-            damagedSinceLastTurn = true;
-            return amount;
+        // Flat damage-taken multiplier (e.g. Void Walker clones take 2x). No-op at 1.0.
+        if (damageTakenMultiplier != 1.0) {
+            amount = Math.max(1, (int) Math.round(amount * damageTakenMultiplier));
         }
         int before = currentHp;
         currentHp = Math.max(0, currentHp - amount);

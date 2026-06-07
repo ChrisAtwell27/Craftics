@@ -26,30 +26,13 @@ public class TidecallerAI extends BossAI {
     private static final String CD_TRIDENT = "trident_storm";
     private static final String CD_RIPTIDE = "riptide_charge";
     private static final String CD_SUMMON = "call_deep";
-    private boolean delugeDone = false;
+    private boolean delugeCast = false;
 
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
-        // Flood half the arena — done once on transition
-        if (!delugeDone) {
-            delugeDone = true;
-            // Flood the bottom half (lower z values)
-            int floodRows = arena.getHeight() / 2;
-            List<GridPos> floodTiles = new ArrayList<>();
-            for (int z = 0; z < floodRows; z++) {
-                for (int x = 0; x < arena.getWidth(); x++) {
-                    GridPos pos = new GridPos(x, z);
-                    if (arena.getTile(pos) != null
-                            && arena.getTile(pos).getType() != TileType.OBSTACLE
-                            && arena.getTile(pos).getType() != TileType.VOID
-                            && pos.manhattanDistance(playerPos) > 1) { // Don't flood player's tile or adjacent
-                        floodTiles.add(pos);
-                    }
-                }
-            }
-            // This will be executed via a CompositeAction from the warning system
-        }
+        // The half-arena deluge is emitted exactly once from chooseAbility (an AI can
+        // only return terrain actions from there), guarded by the delugeCast one-shot.
     }
 
     @Override
@@ -59,20 +42,23 @@ public class TidecallerAI extends BossAI {
         boolean onWater = arena.getTile(myPos) != null
             && arena.getTile(myPos).getType() == TileType.WATER;
 
-        // Phase 2 first turn: flood the arena
-        if (isPhaseTwo() && delugeDone && getTurnCounter() == turnCounterAtPhase2()) {
+        // Phase 2: flood half the arena exactly once (one-shot via delugeCast,
+        // replacing the old tautological turn-equality gate).
+        if (isPhaseTwo() && !delugeCast) {
             int floodRows = arena.getHeight() / 2;
             List<GridPos> floodTiles = new ArrayList<>();
             for (int z = 0; z < floodRows; z++) {
                 for (int x = 0; x < arena.getWidth(); x++) {
                     GridPos pos = new GridPos(x, z);
                     if (arena.isInBounds(pos) && arena.getTile(pos) != null
-                            && arena.getTile(pos).getType() == TileType.NORMAL) {
+                            && arena.getTile(pos).getType() == TileType.NORMAL
+                            && pos.manhattanDistance(playerPos) > 1) { // spare player's tile + adjacent
                         floodTiles.add(pos);
                     }
                 }
             }
             if (!floodTiles.isEmpty()) {
+                delugeCast = true;
                 return new EnemyAction.CreateTerrain(floodTiles, TileType.WATER, 0);
             }
         }
@@ -155,11 +141,6 @@ public class TidecallerAI extends BossAI {
         }
 
         return meleeOrApproach(self, arena, playerPos, isPhaseTwo() ? 2 : 0);
-    }
-
-    private int turnCounterAtPhase2() {
-        // Return the turn counter when phase 2 was triggered (track via a field)
-        return turnCounter; // approximate — executes on same turn
     }
 
     private List<GridPos> getWaterTiles(GridArena arena) {

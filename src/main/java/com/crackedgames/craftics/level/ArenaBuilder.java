@@ -597,6 +597,22 @@ public class ArenaBuilder {
         List<Identifier> bundledCandidates = new ArrayList<>();
         net.minecraft.resource.ResourceManager resourceManager = world.getServer().getResourceManager();
 
+        // Sub-biome ids like "forest/pale_garden" map to a single bundled FILE
+        // (arenas/forest/pale_garden.schem), not a directory. The numbered/boss probes
+        // below treat the id as a directory (arenas/forest/pale_garden/<i>.schem) and
+        // would always miss, dropping the dedicated arena to the procedural fallback in
+        // packaged installs. Resolve the literal file here, mirroring the disk-path
+        // handling in searchSchemFiles.
+        if (biomeId.contains("/")) {
+            Identifier subId = Identifier.of("craftics", "arenas/" + biomeId + ".schem");
+            if (resourceManager.getResource(subId).isPresent()) {
+                boolean preserveGround = isBoss || biomeId.startsWith("trial_chamber");
+                CrafticsMod.LOGGER.info("Loading bundled sub-biome arena: {} (preserveGround={})",
+                    subId, preserveGround);
+                return loadAndPlaceBundledSchem(world, resourceManager, subId, ox, oy, oz, w, h, tiles, biomeId, preserveGround);
+            }
+        }
+
         if (isBoss) {
             Identifier bossId = Identifier.of("craftics", "arenas/" + biomeId + "/boss.schem");
             if (resourceManager.getResource(bossId).isPresent()) {

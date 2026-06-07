@@ -49,10 +49,21 @@ class BasicWeaponsCompatTest {
 
     @Test
     void tiersForTier_gatesByMaterial() {
-        // wooden/stone low, iron mid, diamond high, netherite top.
+        // wooden/stone low, iron+golden mid, diamond high, netherite top.
         assertEquals(java.util.List.of("wooden", "stone"), BasicWeaponsLootRoller.tiersForTier(1));
-        assertEquals(java.util.List.of("iron"), BasicWeaponsLootRoller.tiersForTier(4));
+        assertEquals(java.util.List.of("iron", "golden"), BasicWeaponsLootRoller.tiersForTier(4));
         assertTrue(BasicWeaponsLootRoller.tiersForTier(7).contains("diamond"));
         assertTrue(BasicWeaponsLootRoller.tiersForTier(9).contains("netherite"));
+    }
+
+    @Test
+    void tiersForTier_goldenIsReachable() {
+        // Regression: the golden material tier was previously never emitted at any
+        // trader tier, so golden basicweapons had no acquisition channel.
+        boolean goldenSomewhere = false;
+        for (int t = 1; t <= 9; t++) {
+            if (BasicWeaponsLootRoller.tiersForTier(t).contains("golden")) { goldenSomewhere = true; break; }
+        }
+        assertTrue(goldenSomewhere, "golden tier must be sellable at some trader tier");
     }
 }

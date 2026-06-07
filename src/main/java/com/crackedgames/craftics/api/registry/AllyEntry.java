@@ -10,8 +10,9 @@ import org.jetbrains.annotations.Nullable;
  * Immutable definition of a combat ally — a mob recruited from the player's hub
  * that fights alongside them in the arena.
  *
- * <p>Registered allies are referenced by {@link #entityTypeId() entityTypeId};
- * {@code HubPetCollector} recruits any matching mob from the hub yard. Build
+ * <p>Registered allies are referenced by {@link #entityTypeId() entityTypeId}.
+ * {@code HubPetCollector} collects the mobs the player has explicitly added to their
+ * battle party (Shift+Right-Click) — there is no automatic hub-yard scan. Build
  * entries with {@link #builder(String)}.
  *
  * @param entityTypeId        the mob this entry describes, e.g. {@code minecraft:wolf}
@@ -26,6 +27,7 @@ import org.jetbrains.annotations.Nullable;
  * @param roundHook           optional per-round effect, or {@code null}
  * @param healItem            optional item that heals this ally in combat, or {@code null}
  * @param healAmount          HP restored by {@code healItem}
+ * @param rideable            whether the player can mount this ally as a combat mount
  * @since 0.2.0
  */
 public record AllyEntry(
@@ -40,13 +42,19 @@ public record AllyEntry(
     boolean scalesWithOwnerGear,
     @Nullable AllyRoundHook roundHook,
     @Nullable Item healItem,
-    int healAmount
+    int healAmount,
+    boolean rideable
 ) {
     /** How a hub mob qualifies to be recruited into combat. */
     public enum RecruitMode {
         /** Must be tamed and owned by the hub's player (wolves, cats, horses, …). */
         TAMED,
-        /** Any mob of this type in the hub yard, no taming/ownership (golems). */
+        /**
+         * No taming/ownership required (golems). Recruited like any party mob — add it
+         * to your battle party manually (Shift+Right-Click it in the hub); it then joins
+         * the next battle and returns home afterward via the standard party-mob path.
+         * (There is no automatic hub-yard scan; this mode just waives the taming check.)
+         */
         BUILT,
         /**
          * Never recruited from the hub. Registered only so its combat stats are
@@ -76,6 +84,7 @@ public record AllyEntry(
         private AllyRoundHook roundHook = null;
         private Item healItem = null;
         private int healAmount = 0;
+        private boolean rideable = false;
 
         public Builder(String entityTypeId) {
             this.entityTypeId = entityTypeId;
@@ -115,12 +124,15 @@ public record AllyEntry(
             return this;
         }
 
+        /** Whether the player can mount this ally as a combat mount. Default {@code false}. */
+        public Builder rideable(boolean v) { this.rideable = v; return this; }
+
         public AllyEntry build() {
             if (entityTypeId == null || entityTypeId.isBlank()) {
                 throw new IllegalStateException("AllyEntry requires a non-blank entityTypeId");
             }
             return new AllyEntry(entityTypeId, hp, attack, defense, range, speed,
-                recruitMode, ai, scalesWithOwnerGear, roundHook, healItem, healAmount);
+                recruitMode, ai, scalesWithOwnerGear, roundHook, healItem, healAmount, rideable);
         }
     }
 }

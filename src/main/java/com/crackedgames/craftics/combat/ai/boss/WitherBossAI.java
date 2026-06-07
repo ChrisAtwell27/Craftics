@@ -12,18 +12,18 @@ import java.util.List;
 /**
  * Basalt Deltas Boss — "The Wither"
  * Entity: Wither | 65HP / 8ATK / 5DEF / Range 5 / Speed 2 | Size 2×2
+ * Defense: resists ranged attacks (0.5x) in BOTH phases via MobResistances (RANGED) — not a full immunity.
  *
  * Abilities:
  * - Wither Skull Barrage: Spawns 3 (P2: 5) Wither Skull projectile entities that travel
  *   2 tiles/turn in a straight line. Skulls are 3HP — killable by the player.
  *   Deal 5 dmg + Wither on player contact. No AOE.
- * - Decay Aura: Passive — tiles within 2 (P2: 3) of the Wither become FIRE (wither decay).
- *   Refreshed every turn.
+ * - Decay Aura: Passive — pulses an AreaAttack within 2 (P2: 3) of the Wither dealing
+ *   damage + refreshing Wither (bypasses Fire Resistance). Refreshed every turn.
  * - Summon Wither Skeletons: Spawns 2 (P2: 3) Wither Skeletons. Max 4 (P2: 6) alive.
  * - Charge: Dashes up to 4 tiles in a line, dealing ATK+3 damage. Leaves decay in P2.
  *
  * Phase 2 — "Wither Armor" (≤50% HP):
- * - Immune to ranged attacks (melee only) — handled by CombatManager via isPhaseTwo()
  * - Transition explosion: 8 damage to all within 3 tiles
  * - More skulls (5), more skeletons, larger decay aura
  */
@@ -125,9 +125,16 @@ public class WitherBossAI extends BossAI {
             if (!chargePath.isEmpty()) {
                 List<EnemyAction> chargeActions = new ArrayList<>();
                 chargeActions.add(new EnemyAction.Swoop(chargePath, self.getAttackPower() + 3));
-                // In Phase 2, charge leaves decay trail
-                if (isPhaseTwo()) {
-                    chargeActions.add(new EnemyAction.CreateTerrain(chargePath, TileType.FIRE, 3));
+                // In Phase 2, charge leaves a brief fire trail. Two fairness guards
+                // stop it from walling a low-mobility melee player out by attrition:
+                // (1) it lasts only 1 turn — it telegraphs danger, then clears before
+                // the player must re-engage; (2) the boss's landing tile (the last path
+                // tile) is excluded, so there is always a non-burning tile adjacent to
+                // the boss to melee from.
+                if (isPhaseTwo() && chargePath.size() > 1) {
+                    List<GridPos> fireTrail = new ArrayList<>(
+                        chargePath.subList(0, chargePath.size() - 1));
+                    chargeActions.add(new EnemyAction.CreateTerrain(fireTrail, TileType.FIRE, 1));
                 }
                 EnemyAction chargeComposite = chargeActions.size() == 1
                     ? chargeActions.get(0)
@@ -165,11 +172,4 @@ public class WitherBossAI extends BossAI {
         return new EnemyAction.CompositeAction(List.of(decay, approach));
     }
 
-    /**
-     * Check if the Wither is in Phase 2 (ranged immunity).
-     * Called by CombatManager to block ranged damage.
-     */
-    public boolean isRangedImmune() {
-        return isPhaseTwo();
-    }
 }

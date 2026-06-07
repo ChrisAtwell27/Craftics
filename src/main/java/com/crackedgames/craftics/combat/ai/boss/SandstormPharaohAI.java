@@ -14,7 +14,7 @@ import java.util.List;
  * Entity: Husk | 25HP / 6ATK / 1DEF / Speed 2 | Size 2×2
  *
  * Abilities:
- * - Plant Mine: Invisible mine on a tile, 6 dmg on contact. Max 4 active.
+ * - Plant Mine: Buried mine on a tile (subtle sand tell), 6 dmg + 1-turn stun on contact. Max 4 active.
  * - Sand Burial: 2×2 quicksand, stun 1 turn. P2: 3×3.
  * - Sandstorm: 3×3 AoE, 3 dmg, -1 accuracy 2 turns.
  * - Curse of the Sands: Mark player — tiles moved off become quicksand. 3 turns.
@@ -71,12 +71,23 @@ public class SandstormPharaohAI extends BossAI {
                 }
             }
             Collections.shuffle(candidates);
-            List<GridPos> mines = candidates.subList(0, Math.min(mineCount, candidates.size()));
+            // Respect the active-mine cap so we never plant more than MAX_MINES at once.
+            int slots = Math.min(mineCount, MAX_MINES - activeMines);
+            List<GridPos> mines = candidates.subList(0, Math.min(slots, candidates.size()));
             if (!mines.isEmpty()) {
                 setCooldown(CD_MINE, 2);
                 activeMines += mines.size();
-                // Mines are placed as a special AreaAttack with minimal warning
-                return new EnemyAction.AreaAttack(mines.get(0), 0, 0, "plant_mine");
+                // Each mine is a persistent step-trigger trap registered CombatManager-side
+                // from this AreaAttack's "plant_mine" effect. One AreaAttack per tile so all
+                // chosen tiles (Phase 2 plants 2) get registered.
+                if (mines.size() == 1) {
+                    return new EnemyAction.AreaAttack(mines.get(0), 0, 0, "plant_mine");
+                }
+                List<EnemyAction> mineActions = new ArrayList<>();
+                for (GridPos m : mines) {
+                    mineActions.add(new EnemyAction.AreaAttack(m, 0, 0, "plant_mine"));
+                }
+                return new EnemyAction.CompositeAction(mineActions);
             }
         }
 

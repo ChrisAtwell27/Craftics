@@ -22,8 +22,9 @@ import net.minecraft.item.Items;
  * Overhaul</a> mod — the basis of the Craftics "pet class" expansion.
  *
  * <p>Every golem the mod adds is registered as a {@link AllyEntry.RecruitMode#BUILT}
- * combat ally: build one in the hub yard and it joins the next battle, like the
- * vanilla iron/snow golems already do. Each is healed in combat by the material it
+ * combat ally (no taming required): build one in the hub, then add it to your battle
+ * party (Shift+Right-Click it) so it joins the next battle and returns home afterward,
+ * exactly like the vanilla iron/snow golems. Each is healed in combat by the material it
  * is built from (a lump of coal patches a coal golem, a honey bottle a honey golem).
  *
  * <p>Like {@code CreeperOverhaulCompat}, entries are registered whether or not the
@@ -81,7 +82,14 @@ public final class GolemOverhaulCompat {
         // Basic attacker; flint & steel "lit" transform handled in the coal-golem phase.
         golem("coal_golem",        8,  3, 0, 2, 1, Items.COAL,           4);
         // Mount. Low base speed by design — only the player's SPD stat raises it (additive).
-        golem("netherite_golem",  30,  8, 5, 1, 1, Items.NETHERITE_SCRAP, 8);
+        // rideable(true) marks it a combat mount the player can ride (PartyMobs/CombatManager).
+        AllyRegistry.register(AllyEntry.builder(id("netherite_golem"))
+            .hp(30).attack(8).defense(5).speed(1).range(1)
+            .recruitMode(AllyEntry.RecruitMode.BUILT)
+            .scalesWithOwnerGear(true)
+            .rideable(true)
+            .healItem(Items.NETHERITE_SCRAP, 8)
+            .build());
         // Honey: support summoner — spawns one bee ally each round (bee lives ~2 rounds).
         // Holds station via the SUPPORT archetype; the speed(0) below is declarative only
         // (ally spawning derives move speed from defaults today), full immobility is a later phase.
@@ -160,6 +168,18 @@ public final class GolemOverhaulCompat {
         AllyArchetypes.register(id("hay_golem"),        new SupportAllyAI());
         AllyArchetypes.register(id("honey_golem"),      new SupportAllyAI());
         AllyArchetypes.register(id("candle_golem"),     new RangedAllyAI());
+
+        // Honey-golem bee: engage the NEAREST enemy on its spawn round. The default
+        // FlyerAllyAI dives on the globally weakest enemy, so a bee spawned at the
+        // immobile honey golem's backline trots toward a distant straggler instead of
+        // stinging the nearest threat. MeleeAllyAI scores nearest-first and move-and-
+        // attacks in one turn (the bee's move speed 4 closes most gaps), so it aggros
+        // immediately. NOTE: AllyArchetypes is a global per-type map, so this overrides
+        // the AI for EVERY bee ally (including a bee the player manually party-adds), not
+        // only the honey-golem summon — acceptable since nearest-first targeting suits any
+        // combat bee.
+        AllyArchetypes.register("minecraft:bee",
+            new com.crackedgames.craftics.combat.ai.ally.MeleeAllyAI());
 
         AllyAbilities.register(id("kelp_golem"),   AllyAbilities.OnHitEffect.SOAK);
         AllyAbilities.register(id("candle_golem"), AllyAbilities.OnHitEffect.BURN);

@@ -488,6 +488,17 @@ public class TraderSystem {
             pool.add(trade(Items.OMINOUS_TRIAL_KEY, 1, 20, "§4Ominous Trial Key"));
         }
 
+        // Instruments compat: a few random performance instruments at mid/high tier. These
+        // are Special-affinity combat weapons whose craft materials the void hub can't
+        // reliably supply, so the Curiosity Dealer is their acquisition channel. The trader
+        // shuffles its whole pool and shows 3-5, so adding a few here surfaces different
+        // instruments across visits; over time all are reachable. No-ops if no instrument mod.
+        if (tier >= 5) {
+            for (Item inst : com.crackedgames.craftics.compat.instruments.InstrumentsLootRoller.rollSome(3)) {
+                pool.add(trade(inst, 1, 9, "§5" + inst.getName().getString() + " §7(performance)"));
+            }
+        }
+
         // MoreTotems compat: a random modded totem at high tier (matches vanilla Totem
         // at tier 7, priced just above it). No-ops when the mod is absent (rollOne EMPTY).
         if (com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isLoaded() && tier >= 7) {

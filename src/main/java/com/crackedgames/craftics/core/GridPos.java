@@ -24,4 +24,16 @@ public record GridPos(int x, int z) {
     public int manhattanDistance(GridPos other) {
         return Math.abs(this.x - other.x) + Math.abs(this.z - other.z);
     }
+
+    /**
+     * The two cardinal-perpendicular neighbours of this tile for a forward direction
+     * {@code (faceDx, faceDz)} (each component -1/0/1). For a forward of (0,1) this
+     * returns the tiles to the left and right (x-1, x+1) — used to build the netherite
+     * golem mount's 1×3 facing-relative wall (this tile plus these two).
+     */
+    public java.util.List<GridPos> perpendicularTiles(int faceDx, int faceDz) {
+        return java.util.List.of(
+            new GridPos(x + faceDz, z - faceDx),
+            new GridPos(x - faceDz, z + faceDx));
+    }
 }

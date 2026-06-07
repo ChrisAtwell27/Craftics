@@ -17,4 +17,18 @@ public interface IgnitableAlly {
 
     /** Lit speed derived from the ally's base speed. */
     int litSpeed(int baseSpeed);
+
+    /**
+     * Flip the mod-specific "lit" visual state on the ally's live world mob, if the
+     * source mod has one. Default is a no-op; a compat module overrides this to
+     * switch the mob to its ignited texture/model (e.g. Golem Overhaul's
+     * {@code CoalGolem#setLit}, which drives a synced data-tracker the renderer reads
+     * to pick {@code coal_golem_lit.png}). The vanilla fire overlay alone can't do
+     * this — fire-immune golems don't even render it — so the mod's own lit flag is
+     * the only way to show the ignited texture. Called server-side right after an
+     * ally is ignited; the data-tracker change syncs to clients.
+     *
+     * @param mob the ally's live {@link net.minecraft.entity.mob.MobEntity}, or {@code null}
+     */
+    default void applyLitVisual(net.minecraft.entity.mob.MobEntity mob) { }
 }
