@@ -103,9 +103,12 @@ public class VoidWalkerAI extends BossAI {
             int count = isPhaseTwo() ? 3 : 2;
             List<GridPos> clonePositions = findSummonPositionsNear(arena, effectivePos, 4, count);
             if (!clonePositions.isEmpty()) {
+                // Clones are WEAK decoys (8 HP / 3 ATK / 0 DEF) that take double damage
+                // (the 2x multiplier is applied in CombatManager.spawnBossMinions). They
+                // are NOT scaled to the boss's live stats.
                 return new EnemyAction.SummonMinions(
                     "minecraft:enderman", clonePositions.size(), clonePositions,
-                    self.getMaxHp(), self.getAttackPower(), self.getDefense());
+                    8, 3, 0);
             }
         }
 

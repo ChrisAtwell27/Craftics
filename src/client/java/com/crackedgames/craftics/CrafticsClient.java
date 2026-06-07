@@ -39,6 +39,7 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding moveSlotLeftKey;
     private static KeyBinding moveSlotRightKey;
     private static KeyBinding clearPartyKey;
+    private static KeyBinding mountAbilityKey;
 
     /** The "hide/reveal inventory UI" keybind — read by {@code HandledScreenKeyMixin}. */
     public static KeyBinding getToggleUiKey() { return toggleUiKey; }
@@ -349,7 +350,8 @@ public class CrafticsClient implements ClientModInitializer {
             com.crackedgames.craftics.network.TileSetPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
                     CombatState.updateTileSets(payload.moveTiles(), payload.attackTiles(),
-                        payload.dangerTiles(), payload.warningTiles(), payload.enemyMap(), payload.enemyTypes());
+                        payload.dangerTiles(), payload.warningTiles(), payload.enemyMap(), payload.enemyTypes(),
+                        payload.mountTiles());
                 });
             });
 
@@ -415,6 +417,12 @@ public class CrafticsClient implements ClientModInitializer {
             KEYBIND_CATEGORY
         ));
 
+        mountAbilityKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.mount_ability",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_M,
+            KEYBIND_CATEGORY
+        ));
+
         CombatAnimations.register();
 
         ClientPlayNetworking.registerGlobalReceiver(
@@ -462,9 +470,17 @@ public class CrafticsClient implements ClientModInitializer {
         com.crackedgames.craftics.client.hints.CrafticsHints.registerAll(
             com.crackedgames.craftics.client.hints.HintManager.get());
 
+        // Dynamic music: server picks the track (biome / boss / event); the client
+        // cross-fades to it and pops a bottom-left "now playing" toast.
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.MusicSyncPayload.ID, (payload, context) ->
+                context.client().execute(() ->
+                    com.crackedgames.craftics.client.music.MusicManager.request(payload.trackKey())));
+
         HudRenderCallback.EVENT.register(new CombatHudOverlay());
         HudRenderCallback.EVENT.register(TransitionOverlay::render);
         HudRenderCallback.EVENT.register(new AchievementToast());
+        HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.music.MusicToast());
         HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.hints.HintHudRenderer());
         CombatTooltips.register();
         TileOverlayRenderer.register();
@@ -497,6 +513,8 @@ public class CrafticsClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             boolean wasInCombat = CombatState.isInCombat();
             CombatState.resetAll();
+            // Hard-stop the soundtrack so it never bleeds onto the title screen.
+            com.crackedgames.craftics.client.music.MusicManager.stopAll();
             CombatVisualEffects.resetOverlays();
             com.crackedgames.craftics.client.guide.GuideBookData.resetToDefaults();
             com.crackedgames.craftics.client.PartyLabelRenderer.clear();
@@ -532,6 +550,7 @@ public class CrafticsClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             AchievementToast.tick();
+            com.crackedgames.craftics.client.music.MusicToast.tick();
 
             // Lead-command ally glow is server-driven via LeadSelectPayload —
             // the server toggles glowing on the picked mob so the data tracker
@@ -587,6 +606,15 @@ public class CrafticsClient implements ClientModInitializer {
                 if (client.currentScreen == null) {
                     net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
                         new com.crackedgames.craftics.network.MoveSlotShiftPayload(1));
+                }
+            }
+
+            while (mountAbilityKey.wasPressed()) {
+                // Use the current mount's ability (netherite golem summons coal golems).
+                // The server re-checks that the player is in combat and actually mounted.
+                if (CombatState.isInCombat() && client.currentScreen == null) {
+                    net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
+                        new com.crackedgames.craftics.network.MountAbilityPayload());
                 }
             }
 

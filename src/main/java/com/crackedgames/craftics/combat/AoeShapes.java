@@ -346,6 +346,11 @@ public final class AoeShapes {
             if (!arena.isInBounds(tile)) continue;
             CombatEntity occ = arena.getOccupant(tile);
             if (occ == null || !occ.isAlive() || !occ.isAlly()) continue;
+            // The netherite mount's 1x3 wall sentinel is flagged isAlly() so it blocks
+            // enemies, but it is not a real ally — it has no world mob and must never be
+            // a buff/heal target (a support AoE touching it would otherwise NPE on its
+            // null mob entity).
+            if (occ.isMountWall()) continue;
             if (seen.add(occ)) out.add(occ);
         }
         return out;

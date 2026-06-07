@@ -596,14 +596,6 @@ public class ItemUseHandler {
         return null;
     }
 
-    private static boolean isBuffEffect(CombatEffects.EffectType type) {
-        return switch (type) {
-            case SPEED, STRENGTH, RESISTANCE, REGENERATION, FIRE_RESISTANCE,
-                 INVISIBILITY, ABSORPTION, LUCK, SLOW_FALLING, HASTE, WATER_BREATHING -> true;
-            default -> false;
-        };
-    }
-
     private static int getTurnsForPotion(CombatEffects.EffectType type, int vanillaDurationTicks) {
         int baseTurns = switch (type) {
             case SPEED, STRENGTH, RESISTANCE, ABSORPTION -> 5;
@@ -944,7 +936,9 @@ public class ItemUseHandler {
                     hitCount++;
                 }
 
-                // === Apply buffs to player if in range ===
+                // === Apply effects to the player if caught in the blast ===
+                // Both buffs AND debuffs land on a self-targeted splash, matching vanilla
+                // (a weakness potion thrown at your own feet now actually weakens you).
                 if (playerInRange) {
                     CombatEffects.EffectType combatType = mapStatusEffect(effectType);
                     if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
@@ -952,13 +946,19 @@ public class ItemUseHandler {
                         player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + heal));
                         msg.append("§a+").append(heal).append("HP ");
                         hitCount++;
-                    } else if (combatType != null && isBuffEffect(combatType)) {
+                    } else if (combatType != null) {
+                        boolean debuff = CombatEffects.isDebuff(combatType);
+                        // Buffs keep the player's potion-potency scaling; a self-inflicted
+                        // debuff uses the raw potion level so brewing mastery doesn't make
+                        // the player punish themselves harder.
+                        int selfAmp = debuff ? amp : scaledAmp;
                         int turns = getScaledPotionTurns(player, combatType, sei.getDuration());
-                        effects.addEffect(combatType, turns, scaledAmp);
+                        effects.addEffect(combatType, turns, selfAmp);
                         player.addStatusEffect(new StatusEffectInstance(
-                            sei.getEffectType(), -1, scaledAmp, false, true));
-                        msg.append("§d").append(combatType.displayName)
-                            .append(formatPotionLevel(scaledAmp)).append(" ");
+                            sei.getEffectType(), -1, selfAmp, false, true));
+                        msg.append(debuff ? "§c" : "§d").append("You: ")
+                            .append(combatType.displayName)
+                            .append(formatPotionLevel(selfAmp)).append(" ");
                         hitCount++;
                     }
                 }

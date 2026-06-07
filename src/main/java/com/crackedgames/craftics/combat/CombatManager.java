@@ -497,6 +497,9 @@ public class CombatManager {
     private CombatAchievementTracker achievementTracker = new CombatAchievementTracker();
 
     private EventManager eventManager;
+    // Server handle retained across endCombat() so music can be routed to the run's
+    // players during event interludes (when `player`/party tracking are cleared).
+    private net.minecraft.server.MinecraftServer server;
     private java.util.UUID worldOwnerUuid;
     private java.util.UUID leaderUuid;
 
@@ -540,6 +543,11 @@ public class CombatManager {
         }
         if (player != null && !member.getUuid().equals(player.getUuid())) {
             PARTY_COMBAT_LEADER.put(member.getUuid(), player.getUuid());
+        }
+        // A member joining an in-progress run needs the current track right away —
+        // the shared refresh only broadcasts on change, which already happened.
+        if (!lastSentMusicKey.isEmpty()) {
+            sendMusicTo(member);
         }
     }
 
@@ -826,6 +834,70 @@ public class CombatManager {
                     "Failed to send {} to {}: {}",
                     payload.getId(), p.getName().getString(), t.toString(), t);
             }
+        }
+    }
+
+    // ─── Dynamic music ──────────────────────────────────────────────────────
+    // Last soundtrack key broadcast to the party ("" = stopped). refreshMusic()
+    // recomputes the desired track from current combat/event/trader state and only
+    // sends a MusicSyncPayload when it actually changes — so it's safe to call every
+    // tick. The client cross-fades to whatever key it receives.
+    private String lastSentMusicKey = "";
+
+    /**
+     * Recipients for music packets. During active combat this is the party roster; during
+     * an event interlude {@code endCombat()} has cleared {@code player}/party tracking, so we
+     * fall back to the surviving {@link EventManager}'s online participants (which is how the
+     * event code itself reaches players). Without this fallback, event music reached nobody.
+     */
+    private List<ServerPlayerEntity> musicRecipients() {
+        List<ServerPlayerEntity> all = getAllParticipants();
+        if (!all.isEmpty()) return all;
+        if (eventManager != null && server != null) {
+            return eventManager.getOnlineParticipants(server.getOverworld());
+        }
+        return List.of();
+    }
+
+    /** Recompute the desired soundtrack from current state and broadcast it on change. */
+    public void refreshMusic() {
+        String biomeId = null;
+        boolean bossLevel = false;
+        if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld
+                && gld.getBiomeTemplate() != null) {
+            biomeId = gld.getBiomeTemplate().biomeId;
+            bossLevel = gld.getBiomeTemplate().isBossLevel(gld.getLevelNumber());
+        }
+        TraderSystem.TraderType traderType =
+            activeTraderOffer != null ? activeTraderOffer.type() : null;
+        com.crackedgames.craftics.sound.MusicTracks track =
+            com.crackedgames.craftics.sound.MusicDirector.select(
+                active, biomeId, bossLevel, eventRoomType, traderType, trialIsOminous);
+        String key = (track == null) ? "" : track.key;
+        if (key.equals(lastSentMusicKey)) return;
+        lastSentMusicKey = key;
+        com.crackedgames.craftics.network.MusicSyncPayload payload =
+            new com.crackedgames.craftics.network.MusicSyncPayload(key);
+        for (ServerPlayerEntity p : musicRecipients()) {
+            if (p == null || p.isRemoved() || p.isDisconnected() || p.networkHandler == null) continue;
+            try {
+                ServerPlayNetworking.send(p, payload);
+            } catch (Throwable t) {
+                CrafticsMod.LOGGER.error("Failed to send music to {}: {}",
+                    p.getName().getString(), t.toString(), t);
+            }
+        }
+    }
+
+    /** Push the current music key to one member (e.g. a player who just joined the run). */
+    public void sendMusicTo(ServerPlayerEntity p) {
+        if (p == null || p.isRemoved() || p.isDisconnected() || p.networkHandler == null) return;
+        try {
+            ServerPlayNetworking.send(p,
+                new com.crackedgames.craftics.network.MusicSyncPayload(lastSentMusicKey));
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.error("Failed to send music to {}: {}",
+                p.getName().getString(), t.toString(), t);
         }
     }
 
@@ -1145,8 +1217,9 @@ public class CombatManager {
      *  combat leader, regardless of who currently holds the turn. Falls back to
      *  {@code fallback} if the owner is offline or can't be resolved. */
     private ServerPlayerEntity resolveCmOwnerPlayer(ServerPlayerEntity fallback) {
-        if (fallback == null) return null;
-        net.minecraft.server.MinecraftServer srv = fallback.getServer();
+        // Resolve the server from the fallback, or from the retained handle (survives
+        // endCombat) so this still works when called with a null fallback between levels.
+        net.minecraft.server.MinecraftServer srv = (fallback != null) ? fallback.getServer() : this.server;
         if (srv == null) return fallback;
         for (var entry : INSTANCES.entrySet()) {
             if (entry.getValue() == this) {
@@ -1166,15 +1239,61 @@ public class CombatManager {
         ServerPlayerEntity leader = eventReturnLeader;
         eventReturnLeader = null;
         if (leader == null || leader.isRemoved() || leader.isDisconnected()) {
-            leader = firstOnlinePartyMember();
+            // partyPlayers was emptied by endCombat -> cleanupPartyTracking at the start of
+            // the interlude, so firstOnlinePartyMember() can return null. Resolve from durable
+            // state first: this CM's owner (its INSTANCES key), then any party member.
+            leader = resolveCmOwnerPlayer(null);
+            if (leader == null) leader = firstOnlinePartyMember();
         }
-        if (leader == null || pendingNextLevelDef == null || pendingBiome == null) return;
-        ServerWorld world = (ServerWorld) leader.getEntityWorld();
-        GridArena nextArena = buildArena(world, pendingNextLevelDef);
-        transitionPartyToArena(leader, nextArena, pendingNextLevelDef);
-        pendingNextLevelDef = null;
-        pendingBiome = null;
-        pendingEventBiomeOrdinal = 0;
+        if (leader == null || pendingNextLevelDef == null || pendingBiome == null) {
+            CrafticsMod.LOGGER.error(
+                "fireEventReturnTransition aborted (leader={}, pendingDef={}, pendingBiome={}); "
+                + "{} saved pet(s) at risk — rescuing to hub so they aren't lost",
+                leader, pendingNextLevelDef, pendingBiome, savedPets.size());
+            rescueSavedPetsToHubFallback(leader);
+            pendingNextLevelDef = null;
+            pendingBiome = null;
+            pendingEventBiomeOrdinal = 0;
+            return;
+        }
+        try {
+            ServerWorld world = (ServerWorld) leader.getEntityWorld();
+            GridArena nextArena = buildArena(world, pendingNextLevelDef);
+            CrafticsMod.LOGGER.info("Event return: entering next level with {} saved pet(s).",
+                savedPets.size());
+            transitionPartyToArena(leader, nextArena, pendingNextLevelDef);
+        } catch (Throwable t) {
+            // The deferred transition runs under tickAll()'s blanket catch, which would
+            // otherwise SWALLOW this after endCombat already discarded the live ally/mount
+            // mobs — silently losing the party. Log it and rescue the captured pets to the
+            // hub instead of dropping them.
+            CrafticsMod.LOGGER.error("fireEventReturnTransition failed; rescuing pets to hub", t);
+            rescueSavedPetsToHubFallback(leader);
+            try { teleportToHub(leader); } catch (Throwable ignored) {}
+            try { ServerPlayNetworking.send(leader, new ExitCombatPayload(false)); } catch (Throwable ignored) {}
+        } finally {
+            pendingNextLevelDef = null;
+            pendingBiome = null;
+            pendingEventBiomeOrdinal = 0;
+        }
+    }
+
+    /** Last resort when the event-return transition can't build the next arena: push the
+     *  in-memory saved pets back to the hub so the golems/mount aren't lost forever (they
+     *  were removed from the hub world when the run began, and are never persisted to disk). */
+    private void rescueSavedPetsToHubFallback(ServerPlayerEntity leader) {
+        if (savedPets.isEmpty()) return;
+        ServerPlayerEntity owner = (leader != null) ? leader : resolveCmOwnerPlayer(null);
+        if (owner == null) return;
+        try {
+            ServerWorld w = (ServerWorld) owner.getEntityWorld();
+            CrafticsSavedData d = CrafticsSavedData.get(w);
+            HubPetCollector.restorePetsToHub(w, owner, savedPets, d);
+            savedPets.clear();
+            CrafticsMod.LOGGER.info("Rescued saved pets to the hub after a failed event return.");
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.warn("rescueSavedPetsToHubFallback failed: {}", t.getMessage());
+        }
     }
 
     private GridArena buildArena(ServerWorld world, LevelDefinition def) {
@@ -1270,7 +1389,17 @@ public class CombatManager {
         // requestTeleport silently keeps the player bound to the vehicle
         // and snaps them back, leaving them stuck inside the arena.
         if (p.hasVehicle()) {
+            net.minecraft.entity.Entity vehicle = p.getVehicle();
             p.stopRiding();
+            // A Craftics combat mount is frozen server-side (CombatMountMixin), so a
+            // plain stopRiding can leave the CLIENT's rider link intact — it then
+            // rubber-bands the player back onto the (in-arena) mount and ignores the
+            // teleport below. Discarding the mount entity forces the client to drop the
+            // link so the teleport sticks. Going home restores the mount to the hub from
+            // saved NBT, so removing the live combat entity here loses nothing.
+            if (vehicle != null && vehicle.getCommandTags().contains("craftics_arena_mount")) {
+                vehicle.discard();
+            }
         }
         // Scan for a safe landing spot so stale/fallback hub Y values don't drop
         // the player into air, water, or inside a block.
@@ -1344,7 +1473,25 @@ public class CombatManager {
 
     private boolean playerMounted = false;
     private MobEntity mountMob = null;
+    /** Ally type id of the current mount (e.g. golemoverhaul:netherite_golem), or null. */
+    private String mountTypeId = null;
     private static final int MOUNT_SPEED_BONUS = 3;
+    /**
+     * Ticks remaining that the netherite golem mount's furnace glow ("charged" state)
+     * stays lit. Set by {@link #chargeMountFurnace} when the mount moves, summons, or
+     * fires its lava bonus; counted down (and re-asserted) each tick in {@link #tick()}
+     * so the mod's own AI can't snuff it mid-action. 0 = furnace off.
+     */
+    private int mountFurnaceTicks = 0;
+
+    // Netherite golem mount 1×3 wall: a sentinel occupant placed on the two tiles
+    // perpendicular to the rider's facing so enemies can't path through or stand beside
+    // the mount. Built at the start of the enemy turn and cleared on the player's turn
+    // (so it never blocks the rider's own movement) and on dismount/combat end.
+    private CombatEntity mountWallEntity = null;
+    private java.util.List<GridPos> mountWallTiles = java.util.List.of();
+    /** Last committed cardinal facing of the rider (forward unit), default south. */
+    private int mountFaceDx = 0, mountFaceDz = 1;
 
     // ── Lead-command state ───────────────────────────────────────────────────
     /** The ally currently glowing because the player picked it with a Lead. */
@@ -1387,6 +1534,25 @@ public class CombatManager {
         }
     }
     private final List<VoidRift> activeVoidRifts = new ArrayList<>();
+
+    // === Sandstorm Pharaoh sand mines =====================================
+    // A persistent, lightly telegraphed step-trigger trap, modeled on VoidRift:
+    // registered when "plant_mine" resolves, a subtle sand tell is emitted each
+    // tick, it detonates when the player steps onto the tile (6 damage + 1-turn
+    // stun), and it expires after a finite lifetime. Both trigger and expiry
+    // notify the SandstormPharaoh AI so its activeMines counter (and MAX_MINES
+    // cap) stays accurate and the ability never permanently self-disables.
+    private static final class SandMine {
+        final GridPos pos;
+        int turnsRemaining;
+        boolean armedThisTurn; // freshly planted — does not trigger until the next player turn
+        SandMine(GridPos pos, int turnsRemaining) {
+            this.pos = pos; this.turnsRemaining = turnsRemaining; this.armedThisTurn = true;
+        }
+    }
+    private static final int SAND_MINE_DAMAGE = 6;
+    private static final int SAND_MINE_LIFETIME = 4;
+    private final List<SandMine> activeSandMines = new ArrayList<>();
 
     // Placed this turn, detonate start of next round
     private static final class PendingTnt {
@@ -1435,7 +1601,13 @@ public class CombatManager {
         Items.AXOLOTL_SPAWN_EGG, Items.FROG_SPAWN_EGG, Items.ALLAY_SPAWN_EGG,
         Items.BEE_SPAWN_EGG, Items.GOAT_SPAWN_EGG, Items.PANDA_SPAWN_EGG,
         Items.TURTLE_SPAWN_EGG, Items.SNIFFER_SPAWN_EGG,
-        Items.ZOMBIE_SPAWN_EGG, Items.SKELETON_SPAWN_EGG, Items.SPIDER_SPAWN_EGG
+        Items.ZOMBIE_SPAWN_EGG, Items.SKELETON_SPAWN_EGG, Items.SPIDER_SPAWN_EGG,
+        // Rideable mount mobs — these are registered TAMED combat allies, but the void hub
+        // has no wild spawns, so their spawn eggs are the only way to get the mob onto your
+        // island to tame, saddle, and recruit it (or to summon as a temporary combat ally).
+        Items.HORSE_SPAWN_EGG, Items.DONKEY_SPAWN_EGG, Items.MULE_SPAWN_EGG,
+        Items.SKELETON_HORSE_SPAWN_EGG, Items.ZOMBIE_HORSE_SPAWN_EGG,
+        Items.CAMEL_SPAWN_EGG, Items.LLAMA_SPAWN_EGG
     };
 
     private TrimEffects.TrimScan activeTrimScan = null;
@@ -1470,6 +1642,17 @@ public class CombatManager {
     /** RNG for the incoming-damage AC dodge roll. */
     private final java.util.Random combatRng = new java.util.Random();
 
+    /**
+     * True when the most recent {@link #damagePlayer} call was FULLY avoided — an AC
+     * dodge, Ethereal phase, shield block, or Gilded Guard negate. Callers read this
+     * immediately after damaging the player to skip on-hit side effects (knockback,
+     * weapon debuffs, thorns, counters): a fully-avoided attack must apply none of them.
+     * Set false at the top of every damagePlayer call.
+     */
+    private boolean lastHitAvoided = false;
+    /** True if the last enemy hit on the player was fully avoided (dodge/block/negate). */
+    public boolean wasLastHitAvoided() { return lastHitAvoided; }
+
     private int getPlayerHp() {
         if (player == null) return 0;
         int hp = (int) player.getHealth();
@@ -1498,6 +1681,7 @@ public class CombatManager {
     }
 
     private int damagePlayer(int rawDamage, CombatEntity attacker) {
+        lastHitAvoided = false; // set true below only if the hit is fully avoided
         // AC dodge roll — only enemy attacks roll. Environmental/self damage
         // (attacker == null) and DoT ticks bypass the roll and apply directly.
         // The attack's resolved damage (rawDamage) doubles as the enemy's
@@ -1516,6 +1700,7 @@ public class CombatManager {
                     "§b§l✦ Dodged!§r §7You slipped past the " + attacker.getDisplayName() + "'s attack.");
                 fireEffectHook(h -> h.onDodge(effectContext, attacker));
                 hybridSentinelRiposte(attacker);
+                lastHitAvoided = true;
                 return 0;
             }
         }
@@ -1527,6 +1712,7 @@ public class CombatManager {
                     "§b§l✦ Ethereal!§r §7The attack phased through you!");
                 fireEffectHook(h -> h.onDodge(effectContext, attacker));
                 hybridSentinelRiposte(attacker);
+                lastHitAvoided = true;
                 return 0;
             }
         }
@@ -1541,6 +1727,7 @@ public class CombatManager {
             if (!shieldStack.isEmpty()) {
                 shieldStack.damage(1, player, net.minecraft.entity.EquipmentSlot.OFFHAND);
             }
+            lastHitAvoided = true;
             return 0;
         }
 
@@ -1550,6 +1737,7 @@ public class CombatManager {
             playDodgeFeedback("§6§l✦ GILDED GUARD!",
                 "§6§l✦ Gilded Guard!§r §7The " + attacker.getDisplayName() + "'s hit glanced off your gilding.");
             fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
+            lastHitAvoided = true;
             return 0;
         }
 
@@ -1828,7 +2016,11 @@ public class CombatManager {
     public void adminKillAllEnemies() {
         if (!active || enemies == null) return;
         for (CombatEntity e : enemies) {
-            if (e.isAlive()) {
+            // Only kill actual enemies — never the player's own allies or mount. Without
+            // the !isAlly() guard, /craftics skip_level and /craftics kill_enemies slew the
+            // player's golems/mount too, so savePets() then found them dead and the party
+            // failed to carry over / return home.
+            if (e.isAlive() && !e.isAlly()) {
                 e.takeDamage(e.getCurrentHp() + e.getDefense() + 9999);
                 MobEntity mob = e.getMobEntity();
                 if (mob != null && mob.isAlive()) {
@@ -1847,6 +2039,10 @@ public class CombatManager {
 
     public void startCombat(ServerPlayerEntity player, GridArena arena, LevelDefinition levelDef) {
         this.player = player;
+        // Retained for music routing during event interludes: endCombat() nulls `player`
+        // between levels, but the soundtrack still needs to reach the run's players while
+        // a trader/shrine/vault/etc. event is up. The server handle survives endCombat().
+        this.server = player.getServer();
         // Reset and seed the per-player status-effect map for this combat —
         // wipe any stale entries from prior fights, then attach a fresh
         // CombatEffects to the leader's UUID. retargetEffectsToCurrentPlayer
@@ -1899,6 +2095,12 @@ public class CombatManager {
 
         this.playerMounted = false;
         this.mountMob = null;
+        this.mountTypeId = null;
+        this.mountFurnaceTicks = 0;
+        this.mountWallEntity = null;
+        this.mountWallTiles = java.util.List.of();
+        this.mountFaceDx = 0;
+        this.mountFaceDz = 1;
         this.movedThisTurn = false;
         this.hybridFirstAttackUsed = false;
         this.hybridLuckyStreak = 0;
@@ -2340,10 +2542,18 @@ public class CombatManager {
                     ce.setAiOverrideKey("boss:" + bossBiomeId);
                     ce.setBossDisplayName(getBossName(bossBiomeId));
                     ce.setHazardImmune(true);
-                    // Molten King needs a fresh per-entity AI instance so state doesn't leak
-                    // between the original boss and split copies.
+                    // Bosses that carry per-fight mutable state need a fresh per-entity AI
+                    // instance so it can't leak across fights or between concurrent co-op
+                    // parties (AIRegistry otherwise hands back a shared singleton).
                     if ("nether_wastes".equals(bossBiomeId)) {
+                        // Molten King: also keeps split copies independent of the original.
                         ce.setAiInstance(new MoltenKingAI(0));
+                    } else if ("desert".equals(bossBiomeId)) {
+                        // Sandstorm Pharaoh: activeMines + guardsSpawned must reset each fight.
+                        ce.setAiInstance(new com.crackedgames.craftics.combat.ai.boss.SandstormPharaohAI());
+                    } else if ("river".equals(bossBiomeId)) {
+                        // Tidecaller: the one-shot deluge flag (delugeCast) must reset each fight.
+                        ce.setAiInstance(new com.crackedgames.craftics.combat.ai.boss.TidecallerAI());
                     }
                     CrafticsMod.LOGGER.info("[BOSS DEBUG] Spawned boss entity='{}' aiOverrideKey='boss:{}' entityId={}",
                         spawn.entityTypeId(), bossBiomeId, ce.getEntityId());
@@ -2601,9 +2811,21 @@ public class CombatManager {
             + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus;
         baseDamage = (int)(baseDamage
             * com.crackedgames.craftics.CrafticsMod.CONFIG.playerDamageMultiplier());
-        // Weakness reduces the player's outgoing damage (matches the main attack path).
-        baseDamage -= combatEffects.getWeaknessPenalty();
-        return Math.max(1, baseDamage);
+        // Weakness reduces the player's outgoing damage (matches the main attack path):
+        // a weakened physical hit can be ground all the way down to 0.
+        return applyWeaknessFloor(baseDamage, combatEffects.getWeaknessPenalty());
+    }
+
+    /**
+     * Applies the Weakness penalty to an assembled physical-damage value. The base is
+     * floored to 1 first (any hit always lands for at least 1), then Weakness is
+     * subtracted and the result floored to 0 — so a weakened bare fist (1 base, −2 from
+     * Weakness I) deals nothing, while an unweakened weapon never drops below 1. Single
+     * source of truth shared by the live attack, the Counterpuncher riposte, and the
+     * inspect readout so all three agree on what a weakened player actually deals.
+     */
+    private static int applyWeaknessFloor(int baseDamage, int weaknessPenalty) {
+        return Math.max(0, Math.max(1, baseDamage) - weaknessPenalty);
     }
 
     /**
@@ -2755,6 +2977,234 @@ public class CombatManager {
      *       as far as their speed budget allows.
      * </ul>
      */
+    /**
+     * Netherite golem mount ability — fired by the client mount-ability keybind while
+     * the player rides the netherite golem. Spends 3 AP to summon up to 2 coal golem
+     * allies on free tiles beside the player (combat-only summons, not returned home).
+     */
+    public void handleMountAbility(java.util.UUID senderUuid) {
+        if (!active || phase != CombatPhase.PLAYER_TURN || player == null || arena == null) return;
+        if (!playerMounted || !"golemoverhaul:netherite_golem".equals(mountTypeId)) {
+            sendMessage("§7Mount ability: you must be riding the Netherite Golem.");
+            return;
+        }
+        final int cost = 3;
+        if (apRemaining < cost) {
+            sendMessage("§cNot enough AP for the mount ability (need " + cost + ").");
+            return;
+        }
+        GridPos origin = arena.getPlayerGridPos();
+        int summoned = 0;
+        java.util.List<GridPos> summonedTiles = new java.util.ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            GridPos tile = adjacentFreeTile(origin);
+            if (tile == null) break; // no free neighbour left
+            CombatEntity ally = spawnSummonedAlly("golemoverhaul:coal_golem", tile, player.getUuid(), -1);
+            if (ally != null) {
+                // Spawn them already lit: a lit coal golem hits hard with fire and burns
+                // out (dies) right after its one attack — a fitting one-shot AP payoff.
+                igniteAlly(ally);
+                summoned++;
+                summonedTiles.add(tile);
+            }
+        }
+        if (summoned == 0) {
+            sendMessage("§cNo room to summon coal golems beside you!");
+            return;
+        }
+        apRemaining -= cost;
+        sendMessage("§6§l🔥 Netherite Golem roars! §rSummoned " + summoned
+            + " lit coal golem" + (summoned == 1 ? "" : "s") + "! (-" + cost + " AP)");
+
+        // === Summon VFX — the golem flares its furnace and roars out the coal golems. ===
+        chargeMountFurnace(40); // furnace chest stays lit through the summon
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        BlockPos golemBp = arena.gridToBlockPos(origin);
+        sw.playSound(null, golemBp, net.minecraft.sound.SoundEvents.ENTITY_RAVAGER_ROAR,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.9f, 1.4f);
+        sw.playSound(null, golemBp, net.minecraft.sound.SoundEvents.ENTITY_BLAZE_SHOOT,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.6f);
+        sw.playSound(null, golemBp, net.minecraft.sound.SoundEvents.ENTITY_IRON_GOLEM_REPAIR,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 0.8f);
+        // Shockwave ring of embers around the golem.
+        ProjectileSpawner.spawnExpandingRing(sw, golemBp, 1.4, net.minecraft.particle.ParticleTypes.FLAME, 16);
+        ProjectileSpawner.spawnExpandingRing(sw, golemBp, 1.8, net.minecraft.particle.ParticleTypes.LARGE_SMOKE, 12);
+        // Fire burst where each lit coal golem lands.
+        for (GridPos t : summonedTiles) {
+            BlockPos bp = arena.gridToBlockPos(t);
+            ProjectileSpawner.spawnImpact(sw, bp, "explosion");
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME,
+                bp.getX() + 0.5, bp.getY() + 0.6, bp.getZ() + 0.5, 16, 0.3, 0.5, 0.3, 0.06);
+        }
+
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * Netherite golem mount ability: lay a straight 3-tile lava line (3 turns) from
+     * {@code from} toward {@code toward}, stopping at the first wall. Used while the
+     * player rides the netherite golem and attacks. The player's own tile is excluded
+     * (the line starts one tile out), and a positive duration means the central
+     * boss-terrain decay guard leaves it as a normal temporary lava patch.
+     */
+    private void eruptMountLavaLine(GridPos from, GridPos toward) {
+        if (from == null || toward == null || arena == null) return;
+        int dx = Integer.signum(toward.x() - from.x());
+        int dz = Integer.signum(toward.z() - from.z());
+        if (dx == 0 && dz == 0) dz = 1; // target on our tile — default forward
+        // Collapse a diagonal aim to the dominant cardinal so the line reads as a beam.
+        if (dx != 0 && dz != 0) {
+            if (Math.abs(toward.x() - from.x()) >= Math.abs(toward.z() - from.z())) dz = 0; else dx = 0;
+        }
+        java.util.List<GridPos> lavaTiles = new java.util.ArrayList<>();
+        for (int i = 1; i <= 3; i++) {
+            GridPos t = new GridPos(from.x() + dx * i, from.z() + dz * i);
+            if (!arena.isInBounds(t)) break;
+            GridTile gt = arena.getTile(t);
+            if (gt == null || !gt.isWalkable()) break; // stop the beam at a wall
+            // Never drop lava under a friendly unit (allied summon / teammate).
+            CombatEntity occ = arena.getOccupant(t);
+            if (occ != null && occ.isAlive() && occ.isAlly()) continue;
+            lavaTiles.add(t);
+        }
+        if (lavaTiles.isEmpty()) return;
+        resolveCreateTerrain(new EnemyAction.CreateTerrain(lavaTiles, TileType.LAVA, 3));
+        sendMessage("§6🔥 The Netherite Golem erupts a lava line!");
+
+        // === Eruption VFX — make the golem visibly fire the bonus, not just spawn lava. ===
+        chargeMountFurnace(30); // furnace chest flares open during the eruption
+        ServerWorld vfxWorld = (ServerWorld) player.getEntityWorld();
+        BlockPos golemBp = arena.gridToBlockPos(from);
+        GridPos endTile = lavaTiles.get(lavaTiles.size() - 1);
+        BlockPos endBp = arena.gridToBlockPos(endTile);
+        // A molten bolt launches from the golem's furnace down the line.
+        ProjectileSpawner.spawnProjectile(vfxWorld, golemBp, endBp, "fireball");
+        ProjectileSpawner.spawnSpellTrail(vfxWorld, golemBp, endBp,
+            net.minecraft.particle.ParticleTypes.FLAME,
+            net.minecraft.particle.ParticleTypes.LARGE_SMOKE, 12, 0.5);
+        // Erupting geysers burst up from each lava tile.
+        for (GridPos t : lavaTiles) {
+            BlockPos bp = arena.gridToBlockPos(t);
+            double cx = bp.getX() + 0.5, cy = bp.getY() + 1.0, cz = bp.getZ() + 0.5;
+            ProjectileSpawner.spawnImpact(vfxWorld, bp, "explosion");
+            vfxWorld.spawnParticles(net.minecraft.particle.ParticleTypes.LAVA, cx, cy, cz, 10, 0.25, 0.4, 0.25, 0.0);
+            vfxWorld.spawnParticles(net.minecraft.particle.ParticleTypes.FLAME, cx, cy + 0.2, cz, 18, 0.2, 0.6, 0.2, 0.08);
+            vfxWorld.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE, cx, cy + 0.5, cz, 8, 0.2, 0.5, 0.2, 0.03);
+        }
+        // Furnace whoosh + a deep eruption thud, with a fire crackle at the far end.
+        vfxWorld.playSound(null, golemBp, net.minecraft.sound.SoundEvents.ENTITY_BLAZE_SHOOT,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.2f, 0.6f);
+        vfxWorld.playSound(null, golemBp, net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.5f, 0.7f);
+        vfxWorld.playSound(null, endBp, net.minecraft.sound.SoundEvents.ENTITY_BLAZE_AMBIENT,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.9f, 0.7f);
+        sendTileFlash(lavaTiles, FLASH_DAMAGE_COLOR, 18);
+
+        // Immediate eruption: any enemy caught in the new lava takes the full lava
+        // step-damage (10) right away, on top of the lingering tile. Deduped so a
+        // multi-tile enemy is only burned once.
+        java.util.Set<Integer> burned = new java.util.HashSet<>();
+        for (GridPos t : lavaTiles) {
+            CombatEntity occ = arena.getOccupant(t);
+            if (occ == null || !occ.isAlive() || occ.isAlly()) continue;
+            if (!burned.add(occ.getEntityId())) continue;
+            int dealt = occ.takeDamage(10);
+            notifyBossOfDamage(occ, dealt);
+            sendMessage("§6  Lava engulfs " + occ.getDisplayName() + " for " + dealt + "!");
+            checkAndHandleDeath(occ);
+        }
+    }
+
+    /** True while the player is riding the netherite golem (its speed-lock + abilities apply). */
+    private boolean isNetheriteMount() {
+        return playerMounted && "golemoverhaul:netherite_golem".equals(mountTypeId);
+    }
+
+    /**
+     * Light the netherite mount's furnace glow ("charged" state) for at least {@code ticks}
+     * ticks. Called when the mount moves, summons coal golems, or erupts its lava bonus so
+     * the golem visibly powers up. The glow is re-asserted and decayed each tick in
+     * {@link #tick()}. No-op unless riding the netherite golem.
+     */
+    private void chargeMountFurnace(int ticks) {
+        if (!isNetheriteMount() || mountMob == null) return;
+        mountFurnaceTicks = Math.max(mountFurnaceTicks, ticks);
+        com.crackedgames.craftics.compat.golemoverhaul.NetheriteMountState.setCharged(mountMob, true);
+    }
+
+    /**
+     * Base movement-stat contribution for the current turn. While riding the netherite
+     * golem the base is hard-locked to 1 (the golem's slow pace) regardless of the
+     * player's SPEED stat — callers still add the player's speed modifiers (set/trim/
+     * effect) on top, so the rider ends up at "1 + speed bonuses". Other mounts add the
+     * flat MOUNT_SPEED_BONUS; on foot it is just the SPEED stat.
+     */
+    private int baseSpeedStat(PlayerProgression.PlayerStats stats) {
+        if (isNetheriteMount()) return 1;
+        return stats.getEffective(PlayerProgression.Stat.SPEED) + (playerMounted ? MOUNT_SPEED_BONUS : 0);
+    }
+
+    /**
+     * Track the rider's cardinal facing for the netherite mount's 1×3 wall. Called
+     * whenever the mounted player faces a direction (move step / attack). Collapses a
+     * diagonal to the dominant cardinal; ignores a zero direction (keeps last facing).
+     */
+    private void updateMountFacing(int dx, int dz) {
+        if (!isNetheriteMount()) return;
+        dx = Integer.signum(dx);
+        dz = Integer.signum(dz);
+        if (dx == 0 && dz == 0) return;
+        if (dx != 0 && dz != 0) {
+            if (Math.abs(dx) >= Math.abs(dz)) dz = 0; else dx = 0; // already units; pick a cardinal
+        }
+        mountFaceDx = dx;
+        mountFaceDz = dz;
+    }
+
+    /**
+     * Rebuild the netherite mount's 1×3 wall: a sentinel occupant on the two tiles
+     * perpendicular to the rider's facing so enemies can't path through or stand
+     * beside the mount. Clears any prior wall first; no-op unless riding the netherite
+     * golem. Kept up persistently and rebuilt whenever the rider moves, turns, mounts,
+     * or a turn starts — it follows the rider and reorients to facing. The sentinel
+     * never blocks the rider's own pathing (see {@link Pathfinding#isBlockedBy}: a
+     * mount-wall occupant is passable when {@code self == null}), only enemies. The
+     * side tiles are surfaced to the client via {@code mountWallTiles} in the tile sync.
+     */
+    private void refreshMountWall() {
+        clearMountWall();
+        if (arena == null || !isNetheriteMount()) return;
+        int fdx = mountFaceDx, fdz = mountFaceDz;
+        if (fdx == 0 && fdz == 0) fdz = 1;
+        GridPos center = arena.getPlayerGridPos();
+        if (mountWallEntity == null) {
+            mountWallEntity = new CombatEntity(-1, "craftics:mount_wall", center, 1, 0, 0, 1);
+            mountWallEntity.setAlly(true);      // friendly: enemies are blocked, the rider passes through
+            mountWallEntity.setMountWall(true); // excluded from client sync / AoE / targeting
+        }
+        java.util.List<GridPos> wall = new java.util.ArrayList<>();
+        for (GridPos t : center.perpendicularTiles(fdx, fdz)) {
+            if (t.equals(center) || !arena.isInBounds(t)) continue;
+            GridTile gt = arena.getTile(t);
+            if (gt == null || !gt.isWalkable()) continue;        // don't wall into walls / out of the polygon
+            CombatEntity occ = arena.getOccupant(t);
+            if (occ != null && occ != mountWallEntity) continue; // don't stomp a real occupant
+            arena.getOccupants().put(t, mountWallEntity);
+            wall.add(t);
+        }
+        mountWallTiles = wall;
+    }
+
+    /** Remove the netherite mount's wall sentinel from the occupant map. Idempotent. */
+    private void clearMountWall() {
+        if (mountWallEntity != null && arena != null) {
+            final CombatEntity wall = mountWallEntity;
+            arena.getOccupants().values().removeIf(e -> e == wall);
+        }
+        mountWallTiles = java.util.List.of();
+    }
+
     public void handleLeadCommand(int allyEntityId, int targetX, int targetZ, int targetEntityId) {
         if (!active) return;
         if (phase != CombatPhase.PLAYER_TURN) return;
@@ -3007,7 +3457,10 @@ public class CombatManager {
         }
 
         // If entering water: already in a boat = stay protected, otherwise try to consume one
-        if (activeBoat != null) {
+        if (playerMounted) {
+            // Mounted: the player rides above water — no Soaked, and don't waste a boat.
+            moveBoatProtected = false;
+        } else if (activeBoat != null) {
             moveBoatProtected = true;
         } else {
             moveBoatProtected = false;
@@ -3355,8 +3808,8 @@ public class CombatManager {
         }
 
         // Void Walker: attacking the real boss instantly destroys every active mirror
-        // image. Attacking a clone is handled inside CombatEntity.takeDamage (vanishes
-        // without consuming HP), so we only need to dispel clones when the real one is hit.
+        // image. Clones are weak decoys that take normal (doubled) damage via the standard
+        // hit path, so we only need to mass-dispel the rest when the real boss is hit.
         if (target.isBoss() && "boss:warped_forest".equals(target.getAiKey())) {
             dispelVoidWalkerClones(target.getEntityId());
         }
@@ -3562,10 +4015,19 @@ public class CombatManager {
             weaponFootprintTiles(weapon, player.getMainHandStack(), pPos, tPos),
             FLASH_DAMAGE_COLOR, 16);
 
+        // Netherite golem mount: a confirmed attack ALSO erupts a lava line toward the
+        // struck tile as a bonus (the player's normal weapon attack still resolves
+        // below). Placed after range/LOS/AP validation so a rejected click can't flood
+        // the arena with free lava.
+        if (playerMounted && "golemoverhaul:netherite_golem".equals(mountTypeId)) {
+            eruptMountLavaLine(pPos, tPos);
+        }
+
         // Face the target
         int dx = tPos.x() - pPos.x();
         int dz = tPos.z() - pPos.z();
         float attackYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        updateMountFacing(dx, dz); // netherite mount: wall reorients toward the struck tile
         //? if <=1.21.1 {
         /*player.teleport((ServerWorld) player.getEntityWorld(),
             player.getX(), player.getY(), player.getZ(),
@@ -3692,8 +4154,9 @@ public class CombatManager {
             }
         }
         // Weakness reduces the player's outgoing damage (flat, applied to the final
-        // assembled base damage; floored to 1 so a weakened player still chips).
-        baseDamage = Math.max(1, baseDamage - combatEffects.getWeaknessPenalty());
+        // assembled base damage). The base is floored to 1 first, then Weakness can
+        // grind a physical hit down to 0 — a weakened bare fist deals nothing.
+        baseDamage = applyWeaknessFloor(baseDamage, combatEffects.getWeaknessPenalty());
         int luckPoints = PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player)
             .getPoints(PlayerProgression.Stat.LUCK);
         int trimLuck = activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.LUCK) : 0;
@@ -5068,6 +5531,17 @@ public class CombatManager {
         // server multiplier makes the lit speed an approximation, which is acceptable here.
         int targetSpeed = transform.litSpeed(ally.getMoveSpeed());
         ally.setSpeedBonus(ally.getSpeedBonus() + (targetSpeed - ally.getMoveSpeed()));
+        // Light it visibly on fire immediately; the per-tick loop refreshes the fire
+        // overlay for as long as it stays lit (isLitOneShot).
+        if (ally.getMobEntity() != null) {
+            ally.getMobEntity().setFireTicks(40);
+            // Flip the source mod's own "lit" texture flag (e.g. Golem Overhaul's coal
+            // golem -> coal_golem_lit.png). The vanilla fire overlay can't show this:
+            // coal golems are fire-immune so the overlay never renders, leaving the
+            // plain texture. transform.applyLitVisual is a no-op for allies whose mod
+            // has no lit state.
+            transform.applyLitVisual(ally.getMobEntity());
+        }
         sendSync();
     }
 
@@ -7412,7 +7886,9 @@ public class CombatManager {
                 }
             }
             case SINGLE_ALLY -> {
-                if (occupant == null || !occupant.isAlive() || !occupant.isAlly()) {
+                // isMountWall excluded: the netherite mount's wall sentinel is flagged
+                // isAlly() to block enemies but is not a real ally target.
+                if (occupant == null || !occupant.isAlive() || !occupant.isAlly() || occupant.isMountWall()) {
                     return "§cThat item needs an allied target.";
                 }
             }
@@ -7651,9 +8127,8 @@ public class CombatManager {
             + PlayerCombatStats.getSetApBonus(player)
             + combatEffects.getHasteBonus()            // Haste: +1 AP per level
             - combatEffects.getMiningFatiguePenalty()); // Mining Fatigue: -1 AP per level
-        movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
+        movePointsRemaining = baseSpeedStat(turnStats)
             + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
-            + (playerMounted ? MOUNT_SPEED_BONUS : 0)
             + PlayerCombatStats.getSetSpeedBonus(player)
             - combatEffects.getLevitationPenalty();    // Levitation: -1 movement per level
         if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
@@ -7671,10 +8146,17 @@ public class CombatManager {
         sendMessage("§e" + player.getName().getString() + "'s turn! §aAP: " + apRemaining + " | SPD: " + movePointsRemaining);
         fireEffectHook(h -> h.onTurnStart(effectContext));
 
-        // Hazard tile damage at turn start
+        // Rebuild the netherite mount's 1×3 wall for the new player turn so it stays
+        // visible and keeps following the rider. It no longer blocks the rider's own
+        // movement (Pathfinding treats the mount-wall sentinel as passable for self==null),
+        // so it can persist through the player's turn instead of being cleared.
+        refreshMountWall();
+
+        // Hazard tile damage at turn start. While mounted the player rides above the
+        // tile, so lava and powder snow can't reach them (see mount immunity).
         GridTile turnTile = arena.getTile(arena.getPlayerGridPos());
         if (turnTile != null) {
-            if (turnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+            if (turnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted) {
                 int lavaDmg = damagePlayer(10);
                 sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
@@ -7686,14 +8168,14 @@ public class CombatManager {
             }
 
             if (turnTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
-                    && !hasLeatherBoots()) {
+                    && !hasLeatherBoots() && !playerMounted) {
                 powderSnowTurns++;
                 int freezeDmg = (int) Math.pow(2, powderSnowTurns - 1); // 1, 2, 4, 8, 16...
                 int actual = damagePlayer(freezeDmg);
                 sendMessage("§b  Freezing! " + actual + " damage! (Turn " + powderSnowTurns + " in snow)");
                 if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
-            } else if (turnTile.getType() != com.crackedgames.craftics.core.TileType.POWDER_SNOW) {
-                powderSnowTurns = 0; // reset when not on powder snow
+            } else {
+                powderSnowTurns = 0; // reset off snow, with boots, or while mounted
             }
         }
 
@@ -7818,6 +8300,11 @@ public class CombatManager {
         pendingAction = null;
         currentEnemy = null;
 
+        // Netherite golem mount: raise the 1×3 wall now so enemies path around it this
+        // turn. It's cleared again at the start of the player's turn so it never blocks
+        // the rider's own movement.
+        refreshMountWall();
+
         // SANDSTORM set bonus: enemies within 2 tiles of player lose 1 Speed this turn
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.SANDSTORM) {
             GridPos pPos = arena.getPlayerGridPos();
@@ -7854,8 +8341,19 @@ public class CombatManager {
             eventReturnTicks--;
             if (eventReturnTicks == 0) {
                 fireEventReturnTransition();
+                // The transition just started the next combat (active=true) and spawned the
+                // carried-over pets. Return so the rest of the combat body doesn't run on
+                // this same tick — matching the normal level transition, which starts combat
+                // from the payload handler and only processes it on the NEXT tick. Running it
+                // here on the freshly-started arena was an event-only divergence.
+                return;
             }
         }
+
+        // Keep the soundtrack in sync with combat/event/trader state. Runs before the
+        // !active guard so trader and between-level events (which live outside active
+        // combat) still get music. Only emits a packet when the chosen track changes.
+        refreshMusic();
 
         if (!active) return;
 
@@ -7865,6 +8363,19 @@ public class CombatManager {
         }
 
         tickCounter++;
+
+        // Netherite mount furnace glow: while charged, re-assert the "charged" state each
+        // tick (the mod's AI may try to reset it) and decay the timer; turn it off on the
+        // final tick. Cheap — setCharged only re-sends when the value actually changes.
+        if (mountFurnaceTicks > 0) {
+            mountFurnaceTicks--;
+            if (isNetheriteMount() && mountMob != null) {
+                com.crackedgames.craftics.compat.golemoverhaul.NetheriteMountState
+                    .setCharged(mountMob, mountFurnaceTicks > 0);
+            } else {
+                mountFurnaceTicks = 0;
+            }
+        }
 
         // Keep the hidden fire-resistance baseline alive. Other effect sources
         // (potions, sherds, totem revival) can override the icon-hidden ambient
@@ -7908,6 +8419,9 @@ public class CombatManager {
             if (mountMob.isRemoved() || !mountMob.isAlive()) {
                 playerMounted = false;
                 mountMob = null;
+                mountTypeId = null;
+                mountFurnaceTicks = 0; // mount gone — stop the furnace glow timer
+                clearMountWall(); // mount died mid-combat — drop its wall
             } else if (player != null && !player.hasVehicle()) {
                 player.startRiding(mountMob, true);
             }
@@ -7990,6 +8504,7 @@ public class CombatManager {
         tickBossAmbientParticles();
         tickDragonPositionEnforcer();
         tickVoidRiftParticles();
+        tickSandMineParticles();
 
         // Damage synced to animation impact frame
         if (pendingAttackDelay > 0) {
@@ -8081,7 +8596,12 @@ public class CombatManager {
                     continue;
                 }
 
-                if (mob.isOnFire()) {
+                if (e.isLitOneShot()) {
+                    // A lit coal golem is literally on fire — keep the burning overlay
+                    // visible by refreshing its fire ticks each tick (otherwise the
+                    // stray-fire suppression below would extinguish it instantly).
+                    mob.setFireTicks(Math.max(mob.getFireTicks(), 40));
+                } else if (mob.isOnFire()) {
                     mob.setFireTicks(0);
                 }
 
@@ -8187,6 +8707,15 @@ public class CombatManager {
             if (handleVoidRiftEntry(walkedPos)) {
                 walkedPos = arena.getPlayerGridPos();
             }
+            // Sandstorm Pharaoh: detonate a buried sand mine if we stepped on one.
+            // A lethal mine is resolved here (mirrors the lava/fire step-damage guards
+            // below) so the move-finish block doesn't run on a dying player.
+            triggerSandMine(walkedPos);
+            if (getPlayerHp() <= 0) {
+                sendSync();
+                handlePlayerDeathOrGameOver();
+                return;
+            }
             final GridPos finalPos = walkedPos;
 
             // Addon combat effects: player moved
@@ -8246,7 +8775,7 @@ public class CombatManager {
             GridTile landingTile = arena.getTile(finalPos);
             boolean onWaterNow = landingTile != null
                 && landingTile.getType() == com.crackedgames.craftics.core.TileType.WATER;
-            if (onWaterNow) {
+            if (onWaterNow && !playerMounted) {
                 if (moveBoatProtected) {
                     // Spawn a visual boat if we don't have one
                     if (activeBoat == null && player.getWorld() instanceof ServerWorld sw) {
@@ -8285,7 +8814,8 @@ public class CombatManager {
             }
 
             // Lava damage on move — 10 damage when stepping onto lava
-            if (landingTile != null && landingTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+            if (landingTile != null && landingTile.getType() == com.crackedgames.craftics.core.TileType.LAVA
+                    && !playerMounted) {
                 int lavaDmg = damagePlayer(10);
                 sendMessage("§6  Stepped in lava for " + lavaDmg + " damage!");
                 if (getPlayerHp() <= 0) {
@@ -8331,6 +8861,10 @@ public class CombatManager {
             int dx = next.x() - prev.x();
             int dz = next.z() - prev.z();
             playerMoveYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+            updateMountFacing(dx, dz); // netherite mount: wall reorients to travel direction
+            // Fire up the golem's furnace while it walks (refreshed each step, so it stays
+            // lit through a multi-tile move and fades shortly after stopping).
+            chargeMountFurnace(getMoveTicks() + 8);
         }
 
         moveTickCounter++;
@@ -8410,6 +8944,9 @@ public class CombatManager {
 
         if (moveTickCounter >= getMoveTicks()) {
             arena.setPlayerGridPos(next);
+            // Netherite mount: the 1×3 wall follows the rider, so rebuild it on the new
+            // tile (facing was already updated for this step at lerp init).
+            refreshMountWall();
             if (player != null) {
                 player.getWorld().playSound(null, player.getBlockPos(),
                     net.minecraft.sound.SoundEvents.BLOCK_STONE_STEP,
@@ -8927,9 +9464,8 @@ public class CombatManager {
             if (activeTrimScan != null) apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
             apRemaining += combatEffects.getHasteBonus();              // Haste: +1 AP per level
             apRemaining = Math.max(0, apRemaining - combatEffects.getMiningFatiguePenalty());
-            movePointsRemaining = turnStats.getEffective(PlayerProgression.Stat.SPEED)
-                + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
-                + (playerMounted ? MOUNT_SPEED_BONUS : 0);
+            movePointsRemaining = baseSpeedStat(turnStats)
+                + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty();
             movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
             if (activeTrimScan != null) movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
             movePointsRemaining -= combatEffects.getLevitationPenalty(); // Levitation: -1 movement per level
@@ -8948,22 +9484,26 @@ public class CombatManager {
             }
             fireEffectHook(h -> h.onTurnStart(effectContext));
 
+            // Rebuild the netherite mount's 1×3 wall for the rider's turn so it persists
+            // and follows the rider (it no longer blocks the rider's own movement).
+            refreshMountWall();
+
             // Hazard tile damage at turn start (must match startPlayerTurn logic)
             GridTile qTurnTile = arena.getTile(arena.getPlayerGridPos());
             if (qTurnTile != null) {
-                if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted) {
                     int lavaDmg = damagePlayer(10);
                     sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
                 }
                 if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW
-                        && !hasLeatherBoots()) {
+                        && !hasLeatherBoots() && !playerMounted) {
                     powderSnowTurns++;
                     int freezeDmg = (int) Math.pow(2, powderSnowTurns - 1);
                     int actual = damagePlayer(freezeDmg);
                     sendMessage("§b  Freezing! " + actual + " damage! (Turn " + powderSnowTurns + " in snow)");
                     if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
-                } else if (qTurnTile.getType() != com.crackedgames.craftics.core.TileType.POWDER_SNOW) {
+                } else {
                     powderSnowTurns = 0;
                 }
             }
@@ -9944,6 +10484,121 @@ public class CombatManager {
         }
     }
 
+    // === Sandstorm Pharaoh sand mines =====================================
+
+    /** Register a persistent sand mine on the given tile when "plant_mine" resolves. */
+    private void registerSandMine(GridPos pos) {
+        if (pos == null || !arena.isInBounds(pos)) return;
+        GridTile gt = arena.getTile(pos);
+        if (gt == null || !gt.isWalkable()) return;
+        // Don't stack two mines on the same tile.
+        for (SandMine m : activeSandMines) {
+            if (m.pos.equals(pos)) return;
+        }
+        activeSandMines.add(new SandMine(pos, SAND_MINE_LIFETIME));
+        if (player != null) {
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            BlockPos bp = arena.gridToBlockPos(pos);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH,
+                bp.getX() + 0.5, bp.getY() + 0.2, bp.getZ() + 0.5, 12, 0.25, 0.1, 0.25, 0.02);
+            world.playSound(null, bp,
+                net.minecraft.sound.SoundEvents.BLOCK_SAND_PLACE,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.7f, 0.8f);
+        }
+        sendMessage("§6A sand mine settles into the ground! §7Watch your step §8("
+            + SAND_MINE_LIFETIME + " turns)");
+    }
+
+    /** Per-tick subtle marker so an observant player can spot a buried mine. */
+    private void tickSandMineParticles() {
+        if (activeSandMines.isEmpty() || player == null) return;
+        if (tickCounter % 4 != 0) return;
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        for (SandMine m : activeSandMines) {
+            if (!arena.isInBounds(m.pos)) continue;
+            BlockPos bp = arena.gridToBlockPos(m.pos);
+            double cx = bp.getX() + 0.5, cy = bp.getY() + 0.05, cz = bp.getZ() + 0.5;
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.ASH,
+                cx, cy, cz, 2, 0.25, 0.05, 0.25, 0.0);
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                cx, cy + 0.15, cz, 1, 0.2, 0.05, 0.2, 0.0);
+        }
+    }
+
+    /**
+     * Detonate any armed sand mine on the tile the player just stepped onto: deals
+     * {@link #SAND_MINE_DAMAGE} and a 1-turn stun, removes the mine, and notifies the
+     * SandstormPharaoh AI so its active-mine count decrements. Returns true if a mine
+     * detonated. Mirrors handleVoidRiftEntry's step-trigger model.
+     */
+    private boolean triggerSandMine(GridPos destination) {
+        if (activeSandMines.isEmpty() || player == null || destination == null) return false;
+        SandMine hit = null;
+        for (SandMine m : activeSandMines) {
+            if (m.armedThisTurn) continue; // freshly planted — not live yet
+            if (m.pos.equals(destination)) { hit = m; break; }
+        }
+        if (hit == null) return false;
+        activeSandMines.remove(hit);
+        notifySandMineRemoved();
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos bp = arena.gridToBlockPos(destination);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION,
+            bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 1, 0.0, 0.0, 0.0, 0.0);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.ASH,
+            bp.getX() + 0.5, bp.getY() + 0.3, bp.getZ() + 0.5, 30, 0.5, 0.6, 0.5, 0.05);
+        world.playSound(null, bp,
+            net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+            net.minecraft.sound.SoundCategory.HOSTILE, 0.8f, 1.3f);
+
+        int dealt = damagePlayer(SAND_MINE_DAMAGE);
+        sendMessage("§6A buried sand mine erupts beneath you for " + dealt
+            + " damage! §7(HP: " + getPlayerHp() + ")");
+        if (getPlayerHp() <= 0) {
+            // Lethal — leave death resolution to the caller, exactly like the lava/fire
+            // step-damage paths. Handling it here AND returning to the move-finish block
+            // would clobber the dying phase and revive the player at 1 HP.
+            return true;
+        }
+        // Brief stun (same MINING_FATIGUE amp-9 pattern as the web/burial stuns).
+        addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
+        sendMessage("§7  The blast staggers you! §8(stunned 1 turn)");
+        return true;
+    }
+
+    /** Tick sand-mine lifetimes at end of player turn; arm fresh mines and expire old ones. */
+    private void tickSandMines() {
+        if (activeSandMines.isEmpty()) return;
+        ServerWorld world = player != null ? (ServerWorld) player.getEntityWorld() : null;
+        var it = activeSandMines.iterator();
+        while (it.hasNext()) {
+            SandMine m = it.next();
+            m.armedThisTurn = false; // becomes live after the turn it was planted
+            m.turnsRemaining--;
+            if (m.turnsRemaining <= 0) {
+                it.remove();
+                notifySandMineRemoved();
+                if (world != null && arena.isInBounds(m.pos)) {
+                    BlockPos bp = arena.gridToBlockPos(m.pos);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
+                        bp.getX() + 0.5, bp.getY() + 0.3, bp.getZ() + 0.5, 8, 0.25, 0.2, 0.25, 0.01);
+                }
+            }
+        }
+    }
+
+    /** Tell the SandstormPharaoh AI a mine is gone so its active-mine count heals. */
+    private void notifySandMineRemoved() {
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || !e.isBoss()) continue;
+            EnemyAI ai = resolveAi(e);
+            if (ai instanceof com.crackedgames.craftics.combat.ai.boss.SandstormPharaohAI pharaoh) {
+                pharaoh.notifyMineDestroyed();
+            }
+        }
+    }
+
     /**
      * Called every combat tick — emit persistent column particles for each active rift
      * so the player always sees exactly where they are.
@@ -10133,6 +10788,8 @@ public class CombatManager {
 
     private void clearVoidRifts() {
         activeVoidRifts.clear();
+        // Sand mines share the same combat-teardown lifecycle as rifts.
+        activeSandMines.clear();
     }
 
     /**
@@ -10154,8 +10811,9 @@ public class CombatManager {
                 bp.getX() + 0.5, bp.getY() + 0.6, bp.getZ() + 0.5, 15, 0.3, 0.4, 0.3, 0.3);
             world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
                 bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.02);
-            // Mirror clones honour vanishOnHit — any damage amount kills them.
-            e.applyDirectDamage(1);
+            // Striking the real boss instantly shatters every clone regardless of
+            // their remaining HP (clones no longer vanish on a single hit).
+            e.applyDirectDamage(e.getCurrentHp());
             checkAndHandleDeath(e);
             shattered++;
         }
@@ -10286,6 +10944,10 @@ public class CombatManager {
                     break;
                 }
                 int actual = damagePlayer(ra.damage(), currentEnemy);
+                // A fully avoided ranged hit (dodge / Ethereal / shield block / Gilded
+                // Guard) applies no impact effects, knockback, or hit message — only the
+                // avoid feedback already shown inside damagePlayer.
+                if (!lastHitAvoided) {
                 // Ranged impact particles based on attack type
                 String rangedType = ra.effectName() != null ? ra.effectName() : "";
                 switch (rangedType) {
@@ -10351,6 +11013,7 @@ public class CombatManager {
                 }
                 sendMessage("§c  Ranged hit " + (raSwapped ? raTarget.getName().getString() : "you")
                     + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                } // end ranged on-hit effects (skipped on a fully avoided attack)
                 checkOverwatchCounter(currentEnemy);
                 if (getPlayerHp() <= 0) { raTargetDied = true; handlePlayerDeathOrGameOver(); }
                 } finally {
@@ -10489,13 +11152,15 @@ public class CombatManager {
                 );
                 ce.setMobEntity(mob);
                 // Void Walker Mirror Image: any enderman summon from the Void Walker
-                // is a vanish-on-hit illusion that wears the boss's name and stats and
-                // runs its own VoidWalkerAI (flagged as clone) so it can use most of
-                // the boss's attack kit. Rifts and further cloning are gated off.
+                // is a weak decoy (low HP/ATK from sm.hp()/sm.atk()) that TAKES DOUBLE
+                // DAMAGE, wears the boss's name, and runs its own VoidWalkerAI (flagged as
+                // clone) so it can use most of the boss's attack kit. Rifts and further
+                // cloning are gated off.
                 if (currentEnemy != null
                         && "boss:warped_forest".equals(currentEnemy.getAiKey())
                         && "minecraft:enderman".equals(sm.entityTypeId())) {
                     ce.setMirrorClone(true);
+                    ce.setDamageTakenMultiplier(2.0);
                     ce.setCloneOfBossId(currentEnemy.getEntityId());
                     ce.setBossDisplayName(currentEnemy.getDisplayName());
                     ce.setAiOverrideKey("boss:warped_forest");
@@ -10879,6 +11544,14 @@ public class CombatManager {
         double cx = centerBlock.getX() + 0.5, cy = centerBlock.getY() + 1.0, cz = centerBlock.getZ() + 0.5;
         double spread = Math.max(0.5, radius * 0.5);
         spawnAreaAttackParticles(world, aa.effectName(), cx, cy, cz, spread, radius);
+
+        // Sandstorm Pharaoh: "plant_mine" is not an instant AoE — it drops a
+        // persistent, lightly-telegraphed step-trigger trap on the tile. Register it
+        // and return before the (radius-0, damage-0) victim loop runs.
+        if ("plant_mine".equals(aa.effectName())) {
+            registerSandMine(center);
+            return;
+        }
 
         // Hit EVERY party member inside the AoE box, not just the host. The boss
         // AI centers the blast on the closest member, so in co-op the targeted
@@ -11372,14 +12045,33 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Maximum lifetime (in turns) for blocking / floor-destroying terrain a boss
+     * tries to create permanently. Long enough to stay tactically threatening,
+     * short enough that the arena always recovers and can never be permanently
+     * flooded or partitioned into an unreachable layout.
+     */
+    private static final int BOSS_BLOCKING_TERRAIN_DURATION = 6;
+
     private void resolveCreateTerrain(EnemyAction.CreateTerrain ct) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         int duration = ct.duration();
-        if (currentEnemy != null && currentEnemy.isBoss()
-                && (ct.terrainType() == TileType.FIRE || ct.terrainType() == TileType.LAVA)
-                && duration <= 0) {
-            // Prevent permanent trap patterns from boss lava/magma; always decay.
-            duration = 3;
+        if (currentEnemy != null && currentEnemy.isBoss() && duration <= 0) {
+            TileType tt = ct.terrainType();
+            if (tt == TileType.FIRE || tt == TileType.LAVA) {
+                // Prevent permanent trap patterns from boss lava/magma; always decay.
+                duration = 3;
+            } else if (tt == TileType.OBSTACLE || tt == TileType.VOID
+                    || tt == TileType.DEEP_WATER) {
+                // Same safeguard for blocking / floor-destroying terrain: a boss must
+                // never PERMANENTLY wall off the arena or delete the floor. Left
+                // permanent, Chorus plants, Rockbreaker boulders, and Void Herald
+                // collapses accumulate every turn and can isolate the player on an
+                // island or seal the boss out of melee reach — an unrecoverable
+                // softlock. Force a finite lifetime so the arena always heals back to
+                // a navigable state while the terrain stays threatening while active.
+                duration = BOSS_BLOCKING_TERRAIN_DURATION;
+            }
         }
         // Get biome-appropriate floor block for NORMAL terrain
         net.minecraft.block.Block biomeFloorBlock = null;
@@ -11414,7 +12106,10 @@ public class CombatManager {
                 3, 0.3, 0.3, 0.3, 0.01);
             changed++;
         }
-        if (changed > 0) {
+        // Only the enemy path announces the reshape. Player-initiated terrain (e.g. the
+        // netherite mount's lava line) runs with currentEnemy null and sends its own
+        // message, so skip here to avoid an NPE and a duplicate line.
+        if (changed > 0 && currentEnemy != null) {
             String terrainName = ct.terrainType().name().toLowerCase();
             sendMessage("§e  " + currentEnemy.getDisplayName() + " reshapes " + changed
                 + " tiles to " + terrainName + "!");
@@ -12536,6 +13231,8 @@ public class CombatManager {
         }
         // Also tick Void Walker rift lifetimes.
         tickVoidRifts();
+        // Tick Sandstorm Pharaoh sand-mine lifetimes (arm fresh mines, expire old ones).
+        tickSandMines();
     }
 
     /**
@@ -13759,6 +14456,8 @@ public class CombatManager {
                         net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
                 }
 
+                // On-hit effects only land if the shot connected (dodge/block negates them).
+                if (!lastHitAvoided) {
                 sendMessage("§c" + currentEnemy.getDisplayName() + " hits "
                     + (raSwapped ? rangedTargetPlayer.getName().getString() : "you")
                     + " for " + raActual + "!");
@@ -13774,6 +14473,7 @@ public class CombatManager {
                     applyPlayerKnockback(currentEnemy.getGridPos(), rangedPunchLevel + 1, currentEnemy);
                     sendMessage("§e  Punch arrow knocks you back!");
                 }
+                } // end ranged on-hit effects (skipped on a fully avoided shot)
                 checkOverwatchCounter(currentEnemy);
 
                 if (getPlayerHp() <= 0) {
@@ -13834,6 +14534,7 @@ public class CombatManager {
                     boolean mamTargetDied = false;
                     try {
                         int actual = damagePlayer(damage, currentEnemy);
+                        if (!lastHitAvoided) {
                         player.getWorld().playSound(null, player.getBlockPos(),
                             net.minecraft.sound.SoundEvents.ENTITY_PLAYER_HURT,
                             net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
@@ -13841,6 +14542,7 @@ public class CombatManager {
                             + (mamSwapped ? mamTargetPlayer.getName().getString() : "you")
                             + " for " + actual + "!");
                         applyEnemyHitEffect(currentEnemy.getEntityTypeId());
+                        } // end on-hit effects (skipped on a fully avoided attack)
                         if (getPlayerHp() <= 0) {
                             sendSync();
                             mamTargetDied = true;
@@ -13963,6 +14665,11 @@ public class CombatManager {
             try {
             int actual = damagePlayer(damage, currentEnemy);
 
+            // On-hit side effects only fire if the attack actually connected. A fully
+            // avoided hit (AC dodge / Ethereal / shield block / Gilded Guard) applies
+            // NO hit sound, damage message, weapon debuffs, knockback, thorns, or
+            // counters — the avoid feedback was already shown inside damagePlayer.
+            if (!lastHitAvoided) {
             // Combat sound at the actual target's position
             player.getWorld().playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.ENTITY_PLAYER_HURT,
@@ -14117,6 +14824,8 @@ public class CombatManager {
                     killEnemy(currentEnemy);
                 }
             }
+
+            } // end on-hit side effects (skipped entirely on a fully avoided attack)
 
             if (getPlayerHp() <= 0) {
                 sendSync();
@@ -15429,6 +16138,30 @@ public class CombatManager {
         sendMessage("§7Returning to hub... Your biome run has ended.");
         sendMessage("§7Remaining emeralds: " + ld.emeralds);
 
+        // Death = the run failed; the party mobs (and the mount) brought into it are
+        // lost along with the dropped items — they do NOT return to the hub. Mark
+        // petsRescued so endCombat()'s safety-net doesn't "rescue" the survivors back
+        // home (the reported bug: "when you die in battle, the mounts come home when
+        // they shouldn't"). endCombat() then discards the transient combat mobs.
+        petsRescued = true;
+        // Clear the lost party so the party HUD / next run don't reference ghost mobs.
+        // Party-add enforces partyCap (PartyMobs), so the whole party is always brought
+        // into the run — every entry here was just lost. (We clear rather than probe
+        // world.getEntity(): at death the player is in the arena with the hub chunks
+        // unloaded, so a lookup would false-null and is the wrong tool anyway.)
+        try {
+            java.util.UUID partyOwner = leaderUuid != null ? leaderUuid : player.getUuid();
+            CrafticsSavedData.PlayerData ownerPd = data.getPlayerData(partyOwner);
+            if (!ownerPd.getPartyMobs().isEmpty()) {
+                ownerPd.getPartyMobs().clear();
+                data.markDirty();
+                ServerPlayerEntity ownerPlayer = world.getServer().getPlayerManager().getPlayer(partyOwner);
+                if (ownerPlayer != null) com.crackedgames.craftics.network.PartyMobSync.sync(ownerPlayer);
+            }
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.warn("handleGameOver: party-mob clear failed: {}", e.getMessage());
+        }
+
         // Teleport all party members home, restore daytime
         world.setTimeOfDay(6000);
         for (ServerPlayerEntity p : getAllParticipants()) {
@@ -15440,8 +16173,12 @@ public class CombatManager {
 
     private void killEnemy(CombatEntity enemy) {
         enemy.takeDamage(9999);
-        // Roll equipment drops on direct kills too (DOTs are handled by checkAndHandleDeath)
-        if (!enemy.isAlly() && !enemy.isDeathProcessed() && enemy.getMobEntity() != null) {
+        // Roll equipment drops on direct kills too (DOTs are handled by checkAndHandleDeath).
+        // Mirror clones (Void Walker decoys) never drop loot — they now have real HP, so a
+        // hazard-knockback kill routes through killEnemy instead of the dispel path; mirror
+        // checkAndHandleDeath's clone guard here so they grant no loot/XP/streak.
+        if (!enemy.isAlly() && !enemy.isMirrorClone() && !enemy.isDeathProcessed()
+                && enemy.getMobEntity() != null) {
             rollMobEquipmentDrops(enemy);
         }
         // Ally died: drop from the persistent battle-party list right now so
@@ -15469,7 +16206,8 @@ public class CombatManager {
         // Only real enemy kills count toward streaks / rewards. A dying ally
         // (killed by an enemy) routes through here too, but it must not award
         // kill-streak emeralds, Symbiote heals, AP refunds, or loot procs.
-        if (!enemy.isAlly()) {
+        // Mirror clones are excluded for the same reason — they are decoys, not kills.
+        if (!enemy.isAlly() && !enemy.isMirrorClone()) {
             onEnemyKilled(enemy); // track kill streak
         }
         // Clean up visual projectile entity
@@ -15666,6 +16404,7 @@ public class CombatManager {
                     loot.add(stack.isOf(Items.ENCHANTED_BOOK) ? randomEnchantedBook(lootWorld, stack.getCount(), finalLootBiome) : stack);
                 }
                 for (ItemStack item : loot) {
+                    if (item.isEmpty() || item.getCount() <= 0) continue; // skip empty/air rolls
                     if (luckBonusItems > 0 && Math.random() < (luckBonusItems * 0.20)) {
                         item.setCount(item.getCount() + 1);
                     }
@@ -15675,6 +16414,7 @@ public class CombatManager {
             // Show a representative loot message
             List<ItemStack> displayLoot = levelDef.rollCompletionLoot(lootWorld);
             for (ItemStack item : displayLoot) {
+                if (item.isEmpty() || item.getCount() <= 0) continue; // never show "0x Air"
                 sendMessage("§e+ " + item.getCount() + "x " + item.getName().getString());
             }
         }
@@ -16137,10 +16877,19 @@ public class CombatManager {
         if (lastFightWasTrial && pendingNextLevelDef != null && !goHome) {
             lastFightWasTrial = false;
             ServerWorld world2 = (ServerWorld) choicePlayer.getEntityWorld();
-            // Restore allies and pets before continuing
-            spawnSavedPets();
+            // Capture allies that survived the trial/ambush (including the player's
+            // mount) BEFORE endCombat(). The old code called spawnSavedPets() here,
+            // but savedPets was already drained when the trial was entered (see
+            // finalizeTrialEvent), so it was a no-op — and because savePets()/
+            // petsRescued were never set, endCombat()'s safety-net "rescued" the live
+            // trial allies straight back to the hub, making mounts and pets vanish
+            // from the run after every trial/ambush ("they never return").
+            savePets();
+            petsRescued = true;
             endCombat();
             GridArena nextArena = buildArena(world2, pendingNextLevelDef);
+            // transitionPartyToArena -> startCombat -> spawnSavedPets re-spawns and
+            // re-mounts the carried-over allies in the new arena.
             transitionPartyToArena(choicePlayer, nextArena, pendingNextLevelDef);
             pendingNextLevelDef = null;
             pendingBiome = null;
@@ -19784,6 +20533,9 @@ public class CombatManager {
         // These must happen before any world operations that could throw during
         // disconnect, otherwise inCombat stays true and corrupts the save.
         active = false;
+        // Fade the soundtrack out now that the run is over. The per-tick refresh
+        // won't fire once this instance goes inactive, so push the stop explicitly.
+        refreshMusic();
         for (ServerPlayerEntity p : getAllParticipants()) {
             if (p != null) {
                 try {
@@ -19898,6 +20650,9 @@ public class CombatManager {
             playerMounted = false;
             mountMob = null;
         }
+        mountTypeId = null;
+        mountFurnaceTicks = 0;
+        clearMountWall(); // drop the mount wall sentinel on combat end
 
         // Discard remaining arena mobs (and any cosmetic stack passengers
         // riding them — otherwise a stack base discarded here leaves the
@@ -20075,6 +20830,7 @@ public class CombatManager {
     private void mountPlayerOn(CombatEntity e) {
         e.setMounted(true);
         playerMounted = true;
+        mountTypeId = e.getEntityTypeId();
         mountMob = e.getMobEntity();
         if (mountMob != null) {
             mountMob.setGlowing(false);
@@ -20100,8 +20856,24 @@ public class CombatManager {
         // on the player's tile so any later position-aware logic reads a
         // sensible value.
         e.setGridPos(arena.getPlayerGridPos());
-        movePointsRemaining += MOUNT_SPEED_BONUS;
-        sendMessage("§a§l" + e.getDisplayName() + " mounted! +" + MOUNT_SPEED_BONUS + " Speed!");
+        if (isNetheriteMount()) {
+            // Speed-locked mount: movement is forced to 1 + the player's speed modifiers
+            // right now (and recomputed each turn start via baseSpeedStat), regardless of
+            // their SPEED stat. Mirrors the turn-start movement formula.
+            int locked = baseSpeedStat(PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player))
+                + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
+                + PlayerCombatStats.getSetSpeedBonus(player)
+                - combatEffects.getLevitationPenalty();
+            if (activeTrimScan != null) locked += activeTrimScan.get(TrimEffects.Bonus.SPEED);
+            movePointsRemaining = Math.max(1, locked);
+            sendMessage("§a§l" + e.getDisplayName() + " mounted! §rSpeed locked to the golem's pace (1 + your speed bonuses).");
+        } else {
+            movePointsRemaining += MOUNT_SPEED_BONUS;
+            sendMessage("§a§l" + e.getDisplayName() + " mounted! +" + MOUNT_SPEED_BONUS + " Speed!");
+        }
+        // Raise the netherite mount's 1×3 wall immediately on mount so the footprint
+        // exists (and is visible) the moment the player mounts, mid-turn included.
+        refreshMountWall();
     }
 
     /**
@@ -20155,11 +20927,24 @@ public class CombatManager {
             if (!savedPets.isEmpty()) saveData.markDirty();
         }
 
-        if (savedPets.isEmpty() || arena == null || player == null) return;
+        if (savedPets.isEmpty()) return;
+        // If pets are waiting but the arena/player isn't ready, KEEP them (do not clear) so a
+        // later, properly-initialized spawn can place them. If this logs, the carry-over
+        // reached spawn time but couldn't place — which would explain "pets didn't transfer".
+        if (arena == null || player == null) {
+            CrafticsMod.LOGGER.warn(
+                "spawnSavedPets: {} saved pet(s) pending but arena/player not ready (arena={}, playerSet={}) - preserving them",
+                savedPets.size(), arena, (player != null));
+            return;
+        }
+        CrafticsMod.LOGGER.info("Re-spawning {} carried-over pet(s) into the arena.", savedPets.size());
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         GridPos playerStart = arena.getPlayerGridPos();
 
         for (HubPetCollector.PetData pet : savedPets) {
+            // Spawn each pet independently — a failure on one (e.g. a mount re-mount that
+            // throws) must not abort the rest, or the whole party would vanish for the level.
+            try {
             // Find a safe tile near the player start (wide outward search so the
             // pet isn't silently dropped when the adjacent tiles are taken).
             GridPos spawnPos = findPetSpawnTile(playerStart);
@@ -20208,6 +20993,10 @@ public class CombatManager {
                 mountPlayerOn(ce);
             } else {
                 sendMessage("\u00a7a" + ce.getDisplayName() + " rejoins the fight!");
+            }
+            } catch (Throwable t) {
+                CrafticsMod.LOGGER.error("Failed to re-spawn carried-over pet {} - skipping it",
+                    pet.entityType(), t);
             }
         }
         savedPets.clear();
@@ -20282,6 +21071,11 @@ public class CombatManager {
     public void refreshHighlights() {
         if (!active || player == null || phase != CombatPhase.PLAYER_TURN) return;
 
+        // Keep the netherite mount's 1×3 wall current (position + facing) on the player's
+        // turn and populate mountWallTiles for the client tile sync below. Idempotent and
+        // a no-op unless riding the netherite golem.
+        refreshMountWall();
+
         // --- Build move tiles ---
         var held = player.getMainHandStack().getItem();
         boolean isMoveMode = (held == com.crackedgames.craftics.item.ModItems.MOVE_ITEM);
@@ -20311,7 +21105,7 @@ public class CombatManager {
             java.util.Set<CombatEntity> highlighted = new java.util.HashSet<>();
             for (var entry : arena.getOccupants().entrySet()) {
                 CombatEntity enemy = entry.getValue();
-                if (!enemy.isAlive() || highlighted.contains(enemy)) continue;
+                if (!enemy.isAlive() || enemy.isMountWall() || highlighted.contains(enemy)) continue;
 
                 if (enemy.isBackgroundBoss()) {
                     // Background boss: check range to any of its registered tiles
@@ -20410,7 +21204,9 @@ public class CombatManager {
         java.util.Set<CombatEntity> seen = new java.util.HashSet<>();
         for (var entry : arena.getOccupants().entrySet()) {
             CombatEntity enemy = entry.getValue();
-            if (!enemy.isAlive() || seen.contains(enemy)) continue;
+            // Skip the netherite mount's wall sentinel — it blocks tiles but is not an
+            // enemy and must never be sent to the client as one.
+            if (!enemy.isAlive() || enemy.isMountWall() || seen.contains(enemy)) continue;
             seen.add(enemy);
 
             if (enemy.isBackgroundBoss()) {
@@ -20463,8 +21259,17 @@ public class CombatManager {
         int[] warningArr = warningList.stream().mapToInt(Integer::intValue).toArray();
         int[] enemyMapArr = enemyMapList.stream().mapToInt(Integer::intValue).toArray();
 
+        // Netherite mount 1×3 footprint side tiles — surfaced in a dedicated field so the
+        // client can render them as the golem's body (they stay excluded from enemyMap/
+        // attack tiles so they're never treated as enemies or attack targets).
+        int[] mountArr = new int[mountWallTiles.size() * 2];
+        for (int i = 0; i < mountWallTiles.size(); i++) {
+            mountArr[i * 2] = mountWallTiles.get(i).x();
+            mountArr[i * 2 + 1] = mountWallTiles.get(i).z();
+        }
+
         sendToAllParty(new TileSetPayload(
-            moveArr, attackArr, dangerArr, warningArr, enemyMapArr, enemyTypesBuilder.toString()
+            moveArr, attackArr, dangerArr, warningArr, enemyMapArr, enemyTypesBuilder.toString(), mountArr
         ));
 
         // Auto-end turn when AP is depleted (configurable)
@@ -20561,7 +21366,7 @@ public class CombatManager {
 
     private void clearHighlights() {
         sendToAllParty(new TileSetPayload(
-            new int[0], new int[0], new int[0], new int[0], new int[0], ""
+            new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0]
         ));
     }
 
@@ -21116,9 +21921,8 @@ public class CombatManager {
         PlayerProgression.PlayerStats syncStats = syncProg.getStats(player);
         int maxAp = syncStats.getEffective(PlayerProgression.Stat.AP)
             + PlayerCombatStats.getSetApBonus(player);
-        int maxSpeed = syncStats.getEffective(PlayerProgression.Stat.SPEED)
-            + PlayerCombatStats.getSetSpeedBonus(player)
-            + (playerMounted ? MOUNT_SPEED_BONUS : 0);
+        int maxSpeed = baseSpeedStat(syncStats)
+            + PlayerCombatStats.getSetSpeedBonus(player);
 
         // Build party HP data: "uuid,name,hp,maxHp,dead,effects|..." (empty when solo).
         // Per-player effects column was added so each client can show its OWN
@@ -21232,9 +22036,9 @@ public class CombatManager {
             baseDamage += 3;
         }
         // Weakness lowers the readout too (current player only — fx is null for others),
-        // so the inspect ATK matches the damage a weakened player actually deals.
-        if (fx != null) baseDamage -= fx.getWeaknessPenalty();
-        return Math.max(1, baseDamage);
+        // so the inspect ATK matches the damage a weakened player actually deals (can be 0).
+        int weakness = fx != null ? fx.getWeaknessPenalty() : 0;
+        return applyWeaknessFloor(baseDamage, weakness);
     }
 
     /**

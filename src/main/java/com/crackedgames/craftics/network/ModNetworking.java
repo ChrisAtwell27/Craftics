@@ -28,6 +28,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(LeadCommandPayload.ID, LeadCommandPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(LeadSelectPayload.ID, LeadSelectPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(ClearPartyPayload.ID, ClearPartyPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(MountAbilityPayload.ID, MountAbilityPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(DialogueChoicePayload.ID, DialogueChoicePayload.CODEC);
 
         // Register S2C payload types
@@ -52,6 +53,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(ScoreboardSyncPayload.ID, ScoreboardSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(VfxClientPayload.ID, VfxClientPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(PartyMobsSyncPayload.ID, PartyMobsSyncPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(MusicSyncPayload.ID, MusicSyncPayload.CODEC);
 
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);
@@ -433,6 +435,18 @@ public class ModNetworking {
             ServerPlayerEntity p = context.player();
             context.player().getServer().execute(() ->
                 com.crackedgames.craftics.combat.PartyMobs.clearParty(p));
+        });
+
+        // Mount ability: player presses the mount-ability key while riding a combat mount.
+        ServerPlayNetworking.registerGlobalReceiver(MountAbilityPayload.ID, (payload, context) -> {
+            ServerPlayerEntity p = context.player();
+            context.player().getServer().execute(() -> {
+                com.crackedgames.craftics.combat.CombatManager cm =
+                    com.crackedgames.craftics.combat.CombatManager.get(p);
+                if (cm != null && cm.isActive()) {
+                    cm.handleMountAbility(p.getUuid());
+                }
+            });
         });
 
         // Lead command: player commands an ally to move/attack using a Lead.

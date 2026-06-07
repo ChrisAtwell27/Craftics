@@ -29,6 +29,7 @@ public class RevenantAI extends BossAI {
     private static final String CD_RAISE = "raise_dead";
     private static final String CD_CHARGE = "death_charge";
     private static final String CD_GRAVEFIRE_GRID = "gravefire_grid";
+    private static final String CD_BASH = "shield_bash";
 
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
@@ -86,12 +87,15 @@ public class RevenantAI extends BossAI {
             }
         }
 
-        // Priority 5: Shield Bash if player is adjacent
-        if (dist <= 1) {
+        // Priority 5: Shield Bash if player is adjacent (no-damage shove). Gated by a
+        // cooldown so it does not pre-empt melee every adjacent turn — on cooldown
+        // turns the boss falls through to Priority 6 and deals real contact damage.
+        if (dist <= 1 && !isOnCooldown(CD_BASH)) {
             GridPos myPos = self.getGridPos();
             int kdx = Integer.signum(playerPos.x() - myPos.x());
             int kdz = Integer.signum(playerPos.z() - myPos.z());
             if (kdx == 0 && kdz == 0) kdx = 1; // fallback
+            setCooldown(CD_BASH, 2);
             return new EnemyAction.ForcedMovement(-1, kdx, kdz, 2);
         }
 

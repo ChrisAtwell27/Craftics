@@ -21,18 +21,57 @@ Bug fixes
 - Skeletons with no clear shot now fire anyway instead of walking in place
 - Slimes and magma cubes no longer move so their 2x2 body overlaps the player, fixing the clip into the mob
 - Attacks that cover more than one tile now flash those tiles during the attack so it is clear where an area attack is landing, both for instruments and for base-game area weapons, lit amber for damage and cyan for support
+- Weakness now reduces physical (melee) damage all the way to 0 — a weakened bare fist deals nothing instead of always chipping 1, so punching is no longer a free weakness-proof attack
+- Splash potions now also apply their debuffs to you when you are caught in the blast (for example throwing a Weakness potion at your own feet), matching vanilla; previously only positive effects landed on yourself
+- Enemy on-hit effects (knockback, weapon debuffs, thorns, and the rest) no longer apply when you fully dodge, block, or negate an attack
+- "0x Air" no longer appears in victory rewards — empty and unknown loot entries are filtered out of loot pools and the reward list
+- Bosses can no longer permanently wall off the arena or delete its floor: Chorus Mind plants, Rockbreaker boulders, and Void Herald floor-collapse now decay back to normal, fixing an unrecoverable soft lock
+- The Broodmother no longer freezes in place forever if it loses all its egg sacs in phase one; it returns to hunting instead of idling
+- The Pale Garden level now loads its dedicated arena from the packaged build instead of falling back to a generic one (the sub-biome schematic lookup treated "forest/pale_garden" as a folder and missed the file)
+- Sandstorm Pharaoh, Tidecaller, and Void Walker bosses now use a fresh AI instance each fight, so leftover state (planted mines, the flood, the phase) no longer carries into later fights or between co-op parties
+- Void Walker mirror images shoved into a wall, the void, or lava no longer pay out loot, XP, or kill-streak credit
+- A lethal Sandstorm Pharaoh sand mine now actually downs you instead of reviving you at 1 health
+- Lit coal golems (flint-and-steel or the Netherite mount's summon) now switch to their proper ignited texture instead of staying the plain golem — they are fire-immune, so the vanilla flame overlay never showed; Craftics now flips Golem Overhaul's own lit state
+- Mounts and party pets no longer get sent home mid-run after a Trial Chamber or Ambush victory — surviving allies (including the mount you are riding) are now carried into the next level instead of being "rescued" back to the hub and lost
+- Hardened the return-to-battle transition after any interactive event (Shrine, Wounded Traveler, Treasure Vault, Dig Site, Enchanter, Wandering Trader): each carried-over golem/mount now respawns independently so one failure can't drop the whole party, the transition is wrapped so an error can no longer silently lose your pets (they fall back to the hub instead), and it no longer runs the new battle's first tick prematurely
+- Dying in battle no longer sends your mounts and party mobs back home — a failed run now loses the golems and pets you brought into it, the same as the items you drop on death
+- The /craftics skip_level and /craftics kill_enemies debug commands no longer kill your own golems and mount along with the enemies, so a skipped fight's party correctly carries over to the next level and returns to the hub
 
 Combat balance
 
 - Fights end automatically when only passive or unprovoked neutral mobs remain and no kills happen for four rounds, starting after the first five rounds, preventing infinite farming
+- Revenant Shield Bash now has a cooldown, so the boss alternates the no-damage shove with real melee hits instead of only ever pushing you away
+- Void Walker mirror images are now weak decoys (8 health, 3 attack) that take double damage, instead of full-strength copies of the boss
+- Sandstorm Pharaoh's Plant Mine is now a real, lightly telegraphed buried trap that deals 6 damage and a one-turn stun on contact, instead of doing nothing and disabling itself after four casts
+- Wither Boss's phase-two charge fire trail is now short-lived and never covers the boss's own tile, so a melee fighter can always reach it without being walled out by fire
+- Tidecaller's phase-two arena flood now happens exactly once and spares the tile you are standing on
 
 Mod compatibility
 
+- Content-accessibility pass: audited every addon item, ally, weapon, and armor to confirm it can be obtained somewhere (loot, drops, traders, events, or hub crafting), since the personal world is a void with no wild spawns or world-gen. Three real gaps were closed (below); copper gear, basic weapons, totems, artifacts, and the golems were already reachable via their craft recipes + grantable materials
+- Basic Weapons support: the weaponsmith now stocks all six weapon types (was only ever offering daggers and clubs) and the gold material tier is now sold (it previously had no acquisition channel at all), so every Basic Weapons type and tier is obtainable
+- Instruments support: the 15 Genshin/Even More instruments are now sold by the Curiosity Dealer at mid-to-high tiers — they are combat weapons whose craft materials the void hub can't reliably supply, so they previously had no way to be obtained
+- Vanilla mounts: horse, donkey, mule, skeleton horse, zombie horse, camel, and llama spawn eggs now drop from combat, so these mount allies (which can't spawn in the void hub) can finally be brought to your island, tamed, and recruited
 - Golem Overhaul support: all nine golems are now built combat allies with distinct roles. Terracotta golem is a taunt tank that forces enemies to attack it, hay golem heals the lowest health nearby ally each round, candle golem fights at range and burns its target, kelp golem soaks its target on hit. Coal golem can be lit with flint and steel into a fast heavy hitter that burns on hit and dies after one attack. Honey golem holds station and summons a bee ally each round. Slime golem splits into two small slimes when it dies. Barrel golem rolls bonus loot from kills it lands. Each golem is healed in combat by the material it is built from. The golem behaviors plug into the core through generic ally hooks, so nothing changes when the mod is absent
+- Golem Overhaul: the Netherite golem is now a rideable combat mount — add it to your battle party and it carries you into the fight. Riding it locks your movement to the golem's slow pace (1 plus your speed bonuses, regardless of your Speed stat); it occupies a 1x3 wall (its tile plus the two tiles to either side of the way it faces) that enemies cannot path through or stand beside — the two side tiles are now shown as steel-blue highlights and follow you, reorienting as you turn, so the footprint is visible at all times and no longer looks like a single tile; you are immune to lava, water, and powder-snow tile effects while mounted (you ride above the ground); each of your normal weapon attacks also erupts a lava line toward the target as a bonus — now a proper spectacle: the golem's furnace chest flares open, a molten bolt launches down the line, and each tile bursts with a lava/flame geyser, explosion sound, and amber flash, immediately burning any enemy it covers and leaving lingering lava; the furnace chest also glows open while the golem walks and while it roars out its summoned coal golems (which now erupt in fire as they land); and a new Mount Ability key (default M, 3 action points) has it summon two coal golems that spawn already lit, so they land a heavy fire hit and then burn out
+- Golem Overhaul: honey golem bees now charge the nearest enemy on the round they are summoned, instead of drifting toward a distant low-health straggler
+- Golem Overhaul: clarified that golems join a battle (and return home afterward) by adding them to your party with Shift+Right-Click, the same as vanilla iron and snow golems — there is no automatic hub-yard scan
 - MoreTotems support: the mod's seven totems of undying now auto-revive you in combat at 50% health, each with its own Craftics effect (explosion, mark all enemies, teleport to safety, set enemies ablaze plus Fire Resistance, summon bees or zombies, or blind all enemies), with rewritten tooltips, drop as rare rewards from bosses, trial chambers, vaults, and the Shrine of Fortune, and can be bought from the curiosity trader at high tiers
 - Multi Arrow Effects support: combined arrows now apply every recognized effect in combat instead of only the first, so a multi-effect mixed arrow lands all its debuffs from one shot
 - Basic Weapons support: all six new weapon types work in combat with fitting affinities, action-point costs, reach, and unique effects (dual-wield daggers strike twice, clubs slow, hammers knock back and stun, glaives cleave, spears and quarterstaves reach two tiles), each with its own attack animation, Craftics tooltips, the mod's Might enchantment boosting blunt-weapon damage and stun, stock in the weaponsmith trader, and Might offered by the enchanter
 - Genshin Instruments and Even More Instruments support: the fifteen held instruments become Special-affinity combat performances played by holding the instrument and clicking. Attack instruments deal Special damage plus a debuff across a player-centered shape (ring, cone, star, diagonals, scatter, expanding pulse, full burst, or the whole arena), while support instruments buff you, your allies, and any teammates standing in their shape. Directional shapes like the cone fan out toward the tile you click, and hovering a tile while holding an instrument previews exactly where the performance will land. Four signature instruments go further with knockback, a flat heal, an arena-wide heal, or a debuff cleanse. Each instrument plays its own note sounds, with the music-note particles bursting on the actual tiles being hit so the shape reads clearly, and the mods' tooltips are replaced with Craftics combat tooltips showing the shape, the damage or effect, and the action-point cost
+
+Music
+
+- Music changes based on the biome, boss fight, or event you are in
+- Each biome has its own battle track and a separate track for its boss level
+- Wandering trader, trial chamber, ambush, treasure vault, and wounded traveler events each have their own track
+- Trader music depends on the trader type
+- Tracks loop and cross-fade between transitions
+- A "Now Playing" popup in the bottom-left shows the song name and source when a track starts
+- Vanilla Minecraft music no longer plays
+- Craftics music uses the Jukebox and Note Blocks volume slider
+- Music is synced across co-op parties and stops when a run ends
 
 
 0.2.2

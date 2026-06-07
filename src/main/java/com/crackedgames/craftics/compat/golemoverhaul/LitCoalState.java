@@ -22,7 +22,34 @@ public final class LitCoalState {
     public static final IgnitableAlly IGNITABLE = new IgnitableAlly() {
         @Override public int litAttack(int baseAttack) { return LitCoalState.litAttack(baseAttack); }
         @Override public int litSpeed(int baseSpeed)   { return LitCoalState.litSpeed(baseSpeed);   }
+        @Override public void applyLitVisual(net.minecraft.entity.mob.MobEntity mob) {
+            LitCoalState.setModLit(mob, true);
+        }
     };
+
+    // Resolved CoalGolem#setLit(boolean), cached after first lookup. Craftics has no
+    // compile dependency on Golem Overhaul, so the mod's lit texture flag is flipped
+    // reflectively — the renderer reads the synced ID_LIT data-tracker setLit() writes.
+    private static volatile java.lang.reflect.Method setLitMethod;
+
+    /**
+     * Flip Golem Overhaul's {@code CoalGolem} ignited texture/flag on the live mob.
+     * Best-effort and cosmetic: if the mod is absent or the method shape differs
+     * (other version), it silently does nothing rather than breaking combat.
+     */
+    static void setModLit(net.minecraft.entity.mob.MobEntity mob, boolean lit) {
+        if (mob == null) return;
+        try {
+            java.lang.reflect.Method m = setLitMethod;
+            if (m == null || !m.getDeclaringClass().isInstance(mob)) {
+                m = mob.getClass().getMethod("setLit", boolean.class);
+                setLitMethod = m;
+            }
+            m.invoke(mob, lit);
+        } catch (ReflectiveOperationException e) {
+            // CoalGolem#setLit not present (mod missing or different build) — skip.
+        }
+    }
 
     /** Lit attack: heavy fire-aspect strike. */
     public static int litAttack(int baseAttack) {

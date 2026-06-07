@@ -16,6 +16,7 @@
     "InputAccessor",
     "MouseUnlockMixin",
     "MovementDisableMixin",
+    "MusicTrackerMixin",
     "InventoryStatsMixin",
     "OverlayMessageMixin",
     "PlayerNameTagMixin",

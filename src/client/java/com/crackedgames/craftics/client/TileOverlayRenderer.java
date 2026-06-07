@@ -122,6 +122,13 @@ public class TileOverlayRenderer {
             drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(), 1.0f, 0.6f, 0.1f, 0.25f);
         }
 
+        // Draw the netherite mount's 1×3 footprint side tiles (steely blue-grey — reads
+        // as "the golem's body"). Persistent so the player can see the 3-tile footprint.
+        for (GridPos tile : CombatState.getMountTiles()) {
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.004f;
+            drawTileQuad(tessellator, matrix, originX + tile.x(), y, originZ + tile.z(), 0.5f, 0.55f, 0.78f, 0.55f);
+        }
+
         // Blindness completely hides boss telegraphs and enemy movement patterns —
         // the player literally can't read the battlefield while blinded.
         boolean blind = CombatState.hasBlindness();
@@ -296,6 +303,14 @@ public class TileOverlayRenderer {
         for (GridPos tile : CombatState.getDangerTiles()) {
             float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z());
             drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(), 1.0f, 0.6f, 0.1f, 0.25f);
+        }
+
+        // Draw the netherite mount's 1×3 footprint side tiles (steely blue-grey — reads
+        // as "the golem's body," distinct from move/attack/danger highlights). Persistent
+        // so the player can see the mount occupies 3 tiles; enemies can't enter these.
+        for (GridPos tile : CombatState.getMountTiles()) {
+            float y = tileRenderY(world, originX, originY, originZ, tile.x(), tile.z()) + 0.004f;
+            drawTileQuadV5(vc, matrix, originX + tile.x(), y, originZ + tile.z(), 0.5f, 0.55f, 0.78f, 0.55f);
         }
 
         boolean blind = CombatState.hasBlindness();

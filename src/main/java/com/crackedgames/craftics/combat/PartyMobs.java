@@ -95,9 +95,19 @@ public final class PartyMobs {
         return !ALWAYS_HOSTILE.contains(typeId(mob));
     }
 
-    /** Whether this mob is a rideable type (horse family, pig, strider, camel). */
+    /** Whether a registered ally entry flags this mob type as a rideable combat mount. */
+    private static boolean isRegisteredRideable(MobEntity mob) {
+        AllyEntry e = AllyRegistry.getOrNull(typeId(mob));
+        return e != null && e.rideable();
+    }
+
+    /**
+     * Whether this mob is a rideable type — either a vanilla rideable (horse family,
+     * pig, strider, camel) or a registered ally flagged {@code rideable} (e.g. the
+     * netherite golem).
+     */
     public static boolean isRideable(MobEntity mob) {
-        return RIDEABLE_TYPES.contains(typeId(mob));
+        return RIDEABLE_TYPES.contains(typeId(mob)) || isRegisteredRideable(mob);
     }
 
     /** Whether a rideable mob currently has a saddle — required for it to mount the player. */
@@ -113,8 +123,13 @@ public final class PartyMobs {
         //?}
     }
 
-    /** A rideable mob that has a saddle on — it will auto-mount the player in battle. */
+    /**
+     * A rideable mob that will auto-mount the player in battle. Vanilla rideable types
+     * need a saddle equipped; a registered-rideable ally (e.g. the netherite golem)
+     * auto-mounts without one, since golems can't wear a saddle.
+     */
     public static boolean isSaddledMount(MobEntity mob) {
+        if (isRegisteredRideable(mob)) return true;
         return isRideable(mob) && isSaddled(mob);
     }
 

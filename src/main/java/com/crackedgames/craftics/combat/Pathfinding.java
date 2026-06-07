@@ -216,6 +216,12 @@ public class Pathfinding {
         if (occupant == null) return false;
         // Don't block on our own tile
         if (self != null && occupant == self) return false;
+        // The netherite mount's 1x3 wall sentinel never blocks the rider's own pathing.
+        // Player movement pathfinds with self == null; the sentinel is the rider's own
+        // footprint, so the rider may traverse AND stop on its side tiles (and they stay
+        // in the move-range highlight). Enemies pass a non-null hostile self and fall
+        // through to the ally block below, so the wall still blocks them.
+        if (occupant.isMountWall() && self == null) return false;
         // Boss entities can walk through passable entities (e.g., egg sacs)
         if (self != null && self.isBoss() && occupant.isPassableForBoss()) return false;
         // Allies are passable for the player and other allies during traversal,

@@ -19,6 +19,13 @@ public class LootPool {
     private int totalWeight = 0;
 
     public LootPool add(Item item, int weight) {
+        // Never pool AIR (an unregistered/unknown loot id resolves to Items.AIR) or a
+        // non-positive weight — otherwise roll() emits an empty "0x Air" reward that
+        // shows up on the victory screen. Skip silently; the source already warns on
+        // unknown ids where it can.
+        if (item == null || item == net.minecraft.item.Items.AIR || weight <= 0) {
+            return this;
+        }
         entries.add(new Entry(item, weight));
         totalWeight += weight;
         return this;
