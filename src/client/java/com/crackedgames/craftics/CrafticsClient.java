@@ -86,6 +86,9 @@ public class CrafticsClient implements ClientModInitializer {
                         CombatState.setCombatYaw(225.0f);
                     }
                 }
+                // Polygon mask updates every level so the cursor tracks each arena's
+                // actual shape (empty = rectangular = whole bbox valid).
+                CombatState.setPolygonMask(payload.polygonMask(), payload.width(), payload.height());
                 previousBobView = context.client().options.getBobView().getValue();
                 context.client().options.getBobView().setValue(false);
                 // Shrink chat so it doesn't cover the arena

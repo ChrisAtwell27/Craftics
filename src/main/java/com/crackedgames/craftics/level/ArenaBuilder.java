@@ -27,11 +27,18 @@ import java.util.Random;
 /**
  * Builds combat arenas from .schem or .nbt structures with marker block detection.
  *
- * Marker blocks (must be on the same Y level):
- *   DIAMOND_BLOCK  = camera corner (outside the playable grid)
+ * Rectangular arenas (markers at floor level — they ARE the inside corner tiles):
+ *   DIAMOND_BLOCK  = camera corner
  *   EMERALD_BLOCK  = opposite corner
- *   Playable area is the rectangle one block inside those markers.
- *   Border ring gets replaced with biome-themed concrete at runtime.
+ *   Playable area is the rectangle bounded by those two tiles; the biome-themed
+ *   concrete border ring sits one tile further out.
+ *
+ * Polygon (non-rectangular) arenas:
+ *   3+ ARENA_CORNER_BLOCK markers at the vertices outline the shape; the playable
+ *   floor is that outline eroded one tile inward, so the markers form the border
+ *   ring just outside the floor. An optional DIAMOND_BLOCK placed at one vertex is
+ *   the camera-corner vertex — it joins the outline AND aims the camera from there
+ *   toward the centroid (without one, the first sorted corner is used).
  *
  * Optional spawn markers (inside the playable area):
  *   GOLD_BLOCK / IRON_BLOCK / COPPER_BLOCK / COAL_BLOCK = P1..P4
@@ -55,6 +62,17 @@ public class ArenaBuilder {
     public static float consumePendingCameraYaw() {
         float yaw = pendingCameraYaw;
         pendingCameraYaw = -1;
+        return yaw;
+    }
+
+    /** Isometric camera yaw (degrees) looking from (fromX,fromZ) toward (toX,toZ).
+     *  Shared by the rectangular (DIAMOND corner) and polygon (DIAMOND vertex /
+     *  first-corner) camera-side derivations. */
+    private static float yawFromTo(double fromX, double fromZ, double toX, double toZ) {
+        double dx = fromX - toX;
+        double dz = fromZ - toZ;
+        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz)) + 180f;
+        if (yaw < 0f) yaw += 360f;
         return yaw;
     }
 
@@ -320,7 +338,7 @@ public class ArenaBuilder {
         // wants, and the procedural posts were the choppy "fences just
         // outside the arena" you could see in the screenshot.
         if (!biomeId.startsWith("trial_chamber")) {
-            placeLighting(world, floorX, floorY, floorZ, finalW, finalH, env);
+            placeLighting(world, floorX, floorY, floorZ, finalW, finalH, env, structureInsideMask);
         }
 
         // FORCE_STATE can leave stale light — recheck arena bounds
@@ -761,10 +779,13 @@ public class ArenaBuilder {
         // border placement reuse the same code as the rectangle path. The
         // polygon mask is stored in structureInsideMask and handed to GridArena
         // at construction.
-        if (polygonCorners.size() >= 3) {
+        // Polygon path: 3+ corner markers, OR 2+ corners plus a DIAMOND that
+        // completes the outline as the camera-corner vertex. (Rectangular arenas use
+        // DIAMOND+EMERALD with zero corner blocks, so they never enter here.)
+        if (polygonCorners.size() >= 3 || (polygonCorners.size() >= 2 && diamondPos != null)) {
             return processPolygonStructure(world, placeX, placeY, placeZ, sizeX, sizeY, sizeZ,
                 tiles, sourceName, biomeId, preserveSchematicGround,
-                polygonCorners, goldCandidates, ironCandidates, copperCandidates, coalCandidates);
+                polygonCorners, diamondPos, goldCandidates, ironCandidates, copperCandidates, coalCandidates);
         }
 
         if (diamondPos == null || emeraldPos == null) {
@@ -839,11 +860,7 @@ public class ArenaBuilder {
 
         double centerX = (gridMinX + gridMaxX) / 2.0;
         double centerZ = (gridMinZ + gridMaxZ) / 2.0;
-        double dx = diamondPos.getX() - centerX;
-        double dz = diamondPos.getZ() - centerZ;
-        float cameraYaw = (float) Math.toDegrees(Math.atan2(-dx, dz)) + 180f;
-        if (cameraYaw < 0f) cameraYaw += 360f;
-        pendingCameraYaw = cameraYaw;
+        pendingCameraYaw = yawFromTo(diamondPos.getX(), diamondPos.getZ(), centerX, centerZ);
 
         Block floorBlock = tiles[0][0].getBlockType();
         Block borderConcrete = getBorderConcreteForBiome(biomeId, tiles);
@@ -982,9 +999,15 @@ public class ArenaBuilder {
             int placeX, int placeY, int placeZ, int sizeX, int sizeY, int sizeZ,
             GridTile[][] tiles, String sourceName, String biomeId,
             boolean preserveSchematicGround,
-            List<BlockPos> corners,
+            List<BlockPos> corners, BlockPos diamondPos,
             List<BlockPos> goldCandidates, List<BlockPos> ironCandidates,
             List<BlockPos> copperCandidates, List<BlockPos> coalCandidates) {
+
+        // A DIAMOND_BLOCK among the corner markers is the camera-corner vertex: it
+        // joins the polygon outline AND aims the camera (see yaw derivation below).
+        // Folding it into the corner list makes it a real vertex and gets it cleaned
+        // up with the other markers, instead of being left as a stray diamond block.
+        if (diamondPos != null) corners.add(diamondPos);
 
         // Polygon floor = highest corner Y (matches the diamond/emerald rule —
         // floor is whatever the player actually stands on, stray low markers
@@ -992,9 +1015,9 @@ public class ArenaBuilder {
         int arenaFloorY = corners.get(0).getY();
         for (BlockPos c : corners) arenaFloorY = Math.max(arenaFloorY, c.getY());
 
-        // Bounding box from all corners (one block inset on each side — the
-        // markers sit OUTSIDE the playable grid, same convention as the legacy
-        // DIAMOND/EMERALD pair).
+        // Bounding box from all corners. The corner markers ARE the outer ring; the
+        // playable floor is the polygon interior eroded one tile inward (below), so
+        // the grid spans the full corner bbox with no inset.
         int borderMinX = Integer.MAX_VALUE, borderMaxX = Integer.MIN_VALUE;
         int borderMinZ = Integer.MAX_VALUE, borderMaxZ = Integer.MIN_VALUE;
         for (BlockPos c : corners) {
@@ -1003,10 +1026,15 @@ public class ArenaBuilder {
             borderMinZ = Math.min(borderMinZ, c.getZ());
             borderMaxZ = Math.max(borderMaxZ, c.getZ());
         }
-        int gridMinX = borderMinX + 1;
-        int gridMinZ = borderMinZ + 1;
-        int gridMaxX = borderMaxX - 1;
-        int gridMaxZ = borderMaxZ - 1;
+        // The grid spans the FULL marker bbox; the playable floor is the polygon
+        // interior eroded one tile inward (see mask build below), so the corner
+        // markers on the outer ring always sit one tile outside the floor — convex
+        // tips and concave armpits alike. (Not a bbox inset, which only trimmed the
+        // outer ring and left concave-vertex markers sitting on floor tiles.)
+        int gridMinX = borderMinX;
+        int gridMinZ = borderMinZ;
+        int gridMaxX = borderMaxX;
+        int gridMaxZ = borderMaxZ;
         int gridW = gridMaxX - gridMinX + 1;
         int gridH = gridMaxZ - gridMinZ + 1;
         structureHeight = sizeY;
@@ -1038,8 +1066,9 @@ public class ArenaBuilder {
         // horizontal ray from each tile center to +∞ on X; count edge crossings.
         // Tile-center coords are gridMinX + tx + 0.5, gridMinZ + tz + 0.5 so we
         // never sit exactly on a vertex.
-        boolean[][] mask = new boolean[gridW][gridH];
-        int insideCount = 0;
+        // Outer mask: point-in-polygon over the full marker bbox (the outline,
+        // including its boundary ring).
+        boolean[][] outer = new boolean[gridW][gridH];
         int polyN = sorted.size();
         for (int tx = 0; tx < gridW; tx++) {
             for (int tz = 0; tz < gridH; tz++) {
@@ -1055,8 +1084,36 @@ public class ArenaBuilder {
                         && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
                     if (intersects) inside = !inside;
                 }
-                mask[tx][tz] = inside;
-                if (inside) insideCount++;
+                outer[tx][tz] = inside;
+            }
+        }
+        // Erode one tile inward (4-neighbour): a tile is playable floor only if it
+        // and all four orthogonal neighbours are inside the outer polygon (grid-edge
+        // neighbours count as outside). This recedes the floor uniformly so every
+        // corner marker on the outer ring sits one tile outside the playable area.
+        boolean[][] mask = new boolean[gridW][gridH];
+        int insideCount = 0;
+        for (int tx = 0; tx < gridW; tx++) {
+            for (int tz = 0; tz < gridH; tz++) {
+                if (!outer[tx][tz]) continue;
+                boolean keep = tx > 0 && tx < gridW - 1 && tz > 0 && tz < gridH - 1
+                    && outer[tx - 1][tz] && outer[tx + 1][tz]
+                    && outer[tx][tz - 1] && outer[tx][tz + 1];
+                mask[tx][tz] = keep;
+                if (keep) insideCount++;
+            }
+        }
+        // Markers are the border ring, never playable floor. Clear any mask tile that
+        // coincides with a corner marker — this enforces "markers sit outside the
+        // floor" and also corrects the half-open rasterization asymmetry where a
+        // single concave-armpit vertex could otherwise survive the 4-neighbour
+        // erosion and lopside an otherwise-symmetric shape (e.g. plus / cross).
+        for (BlockPos c : corners) {
+            int ctx = c.getX() - gridMinX;
+            int ctz = c.getZ() - gridMinZ;
+            if (ctx >= 0 && ctx < gridW && ctz >= 0 && ctz < gridH && mask[ctx][ctz]) {
+                mask[ctx][ctz] = false;
+                insideCount--;
             }
         }
         if (insideCount == 0) {
@@ -1066,14 +1123,12 @@ public class ArenaBuilder {
             return true;
         }
 
-        // Camera yaw: face the polygon centroid from the first corner (good
-        // default; dev can rotate by re-ordering corners).
-        BlockPos firstCorner = sorted.get(0);
-        double dxCam = firstCorner.getX() + 0.5 - (gridMinX + gridW / 2.0);
-        double dzCam = firstCorner.getZ() + 0.5 - (gridMinZ + gridH / 2.0);
-        float cameraYaw = (float) Math.toDegrees(Math.atan2(-dxCam, dzCam)) + 180f;
-        if (cameraYaw < 0f) cameraYaw += 360f;
-        pendingCameraYaw = cameraYaw;
+        // Camera yaw: face the polygon centroid from the camera anchor. A
+        // DIAMOND_BLOCK marks the chosen camera-corner vertex; without one, fall back
+        // to the first sorted corner (dev can rotate by re-ordering corners).
+        BlockPos camAnchor = diamondPos != null ? diamondPos : sorted.get(0);
+        pendingCameraYaw = yawFromTo(camAnchor.getX() + 0.5, camAnchor.getZ() + 0.5,
+            gridMinX + gridW / 2.0, gridMinZ + gridH / 2.0);
 
         Block floorBlock = tiles[0][0].getBlockType();
         Block borderConcrete = getBorderConcreteForBiome(biomeId, tiles);
@@ -1122,30 +1177,24 @@ public class ArenaBuilder {
                 }
             }
 
-            // Border ring along the polygon outline — every tile that's inside
-            // the mask AND has at least one out-of-mask 4-neighbor (or is on
-            // the bounding-box edge) gets a wall block above the floor. This
-            // gives a visible perimeter without us having to rasterize each
-            // polygon edge by hand.
+            // Flat themed border: the 1-tile ring just inside the outline (tiles in
+            // the polygon but eroded out of the playable mask — this is exactly where
+            // the corner markers sit) is painted with the biome's border concrete at
+            // FLOOR level. A clear boundary that matches the rectangular arenas' flat
+            // border, doesn't raise a wall, and doesn't turn outer tiles into
+            // obstacles. Any block directly above is cleared so the edge stays flush.
             for (int x = 0; x < gridW; x++) {
                 for (int z = 0; z < gridH; z++) {
-                    if (!mask[x][z]) continue;
-                    boolean borderTile = false;
-                    int[][] dirs = {{1,0},{-1,0},{0,1},{0,-1}};
-                    for (int[] d : dirs) {
-                        int nx = x + d[0], nz = z + d[1];
-                        if (nx < 0 || nx >= gridW || nz < 0 || nz >= gridH || !mask[nx][nz]) {
-                            borderTile = true;
-                            break;
-                        }
+                    if (!outer[x][z] || mask[x][z]) continue;
+                    int worldX = gridMinX + x;
+                    int worldZ = gridMinZ + z;
+                    BlockPos borderPos = new BlockPos(worldX, arenaFloorY, worldZ);
+                    if (world.getBlockState(borderPos).getFluidState().isEmpty()) {
+                        world.setBlockState(borderPos, borderConcrete.getDefaultState(), SET_FLAGS);
                     }
-                    if (borderTile) {
-                        int worldX = gridMinX + x;
-                        int worldZ = gridMinZ + z;
-                        BlockPos wallPos = new BlockPos(worldX, arenaFloorY + 1, worldZ);
-                        if (world.getBlockState(wallPos).isAir()) {
-                            world.setBlockState(wallPos, borderConcrete.getDefaultState(), SET_FLAGS);
-                        }
+                    BlockPos abovePos = new BlockPos(worldX, arenaFloorY + 1, worldZ);
+                    if (!world.getBlockState(abovePos).isAir()) {
+                        world.setBlockState(abovePos, Blocks.AIR.getDefaultState(), SET_FLAGS);
                     }
                 }
             }
@@ -1583,11 +1632,34 @@ public class ArenaBuilder {
         }
     }
 
-    // Light posts around the arena border, themed per biome
+    // Light posts themed per biome. Rectangular arenas ring the bbox; polygon
+    // arenas hug the actual outline (spaced) so the lights follow the shape rather
+    // than a misleading square. Posts sit on the local terrain surface so they
+    // don't embed when the surrounding ground rises above the arena floor.
     private static void placeLighting(ServerWorld world, int ox, int oy, int oz,
-                                       int w, int h, com.crackedgames.craftics.api.EnvironmentDef env) {
+                                       int w, int h, com.crackedgames.craftics.api.EnvironmentDef env,
+                                       boolean[][] insideMask) {
         Block postBlock = env.postBlock();
         Block lightBlock = env.lightBlock();
+
+        if (insideMask != null) {
+            // Polygon: a post on each border tile (just outside the playable mask,
+            // adjacent to it), spaced ~every 3rd so the outline reads clearly.
+            for (int x = 0; x < w; x++) {
+                for (int z = 0; z < h; z++) {
+                    if (insideMask[x][z]) continue;
+                    boolean adjacent = (x > 0 && insideMask[x - 1][z])
+                        || (x < w - 1 && insideMask[x + 1][z])
+                        || (z > 0 && insideMask[x][z - 1])
+                        || (z < h - 1 && insideMask[x][z + 1]);
+                    if (!adjacent) continue;
+                    int px = ox + x, pz = oz + z;
+                    if (((px + pz) % 3) != 0) continue;
+                    placeLightPost(world, px, pz, oy, postBlock, lightBlock);
+                }
+            }
+            return;
+        }
 
         List<int[]> posts = new ArrayList<>();
         posts.add(new int[]{-1, -1});
@@ -1612,10 +1684,23 @@ public class ArenaBuilder {
             // Check the nearest arena tile(s) adjacent to this post.
             // If all neighbouring arena tiles are air/void, skip — it's a cliff edge.
             if (!hasAdjacentSolidTile(world, px, oy, pz, ox, oz, w, h)) continue;
-            setIf(world, px, oy, pz, Blocks.STONE);   // ensure solid base
-            set(world, px, oy + 1, pz, postBlock);
-            set(world, px, oy + 2, pz, lightBlock);
+            placeLightPost(world, px, pz, oy, postBlock, lightBlock);
         }
+    }
+
+    /** Place a base + post + light column sitting on the local terrain surface
+     *  (highest solid block near the arena floor) so it doesn't embed when the
+     *  surrounding ground is higher than the arena floor. */
+    private static void placeLightPost(ServerWorld world, int px, int pz, int oy,
+                                        Block postBlock, Block lightBlock) {
+        int sy = oy;
+        for (int y = oy + 5; y >= oy - 2; y--) {
+            BlockState s = world.getBlockState(new BlockPos(px, y, pz));
+            if (!isAirLike(s) && s.getFluidState().isEmpty()) { sy = y; break; }
+        }
+        setIf(world, px, sy, pz, Blocks.STONE);   // ensure solid base
+        set(world, px, sy + 1, pz, postBlock);
+        set(world, px, sy + 2, pz, lightBlock);
     }
 
     /** Check if a border position has at least one adjacent solid arena tile at floor level. */

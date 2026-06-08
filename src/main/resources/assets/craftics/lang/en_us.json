@@ -204,6 +204,8 @@
   "text.config.craftics-config.option.skipEnemyAnimations.tooltip": "Whether enemy turn animations are skipped.",
   "text.config.craftics-config.option.enemyTurnDelay": "Enemy Turn Delay",
   "text.config.craftics-config.option.enemyTurnDelay.tooltip": "Delay (ticks) between enemy actions during their turn.",
+  "text.config.craftics-config.option.cinematicEnemyTurns": "Cinematic Enemy Turns",
+  "text.config.craftics-config.option.cinematicEnemyTurns.tooltip": "Slow enemy/ally turns so the camera follows each acting unit, then returns to your framing when your turn starts.",
   "text.config.craftics-config.option.autoEndTurn": "Auto End Turn",
   "text.config.craftics-config.option.autoEndTurn.tooltip": "Whether the turn ends automatically when no actions remain.",
   "text.config.craftics-config.option.showEnemyRangeHints": "Show Enemy Range Hints",

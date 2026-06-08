@@ -199,6 +199,13 @@ public class CombatState {
 
     /** Focus on a grid tile position. */
     public static void focusOnTile(int gridX, int gridZ) {
+        // Auto-focus only while allies/enemies take their turn. During the player's
+        // own turn, combat events (the player's own moves/attacks) would otherwise
+        // yank the camera off the framing the player set. Phase is global, so in a
+        // party, spectators won't follow a teammate during that teammate's
+        // PLAYER_TURN — an acceptable v1 tradeoff. The damage numbers / hit-flash /
+        // shake in the event handlers still run; only this focus call no-ops.
+        if (!isInCombat() || !isEnemyTurn()) return;
         focusOn(arenaOriginX + gridX + 0.5, arenaOriginZ + gridZ + 0.5);
     }
 
@@ -526,8 +533,15 @@ public class CombatState {
         // the local player's actual HP out of partyHpData below and compare on
         // that instead. Solo falls through to the playerHp field.
         int oldLocalHp = CombatState.localPlayerHp;
+        int oldPhase = CombatState.phase;
 
         CombatState.phase = phase;
+        // Enemy/ally turn just ended — ease the camera back to the player's framing
+        // the instant control returns, rather than leaving it parked on the last
+        // actor. Fires only on the transition into PLAYER_TURN (ordinal 0).
+        if (oldPhase != 0 && phase == 0) {
+            endFocusWithReturn();
+        }
         CombatState.apRemaining = ap;
         CombatState.movePointsRemaining = movePoints;
         CombatState.playerHp = playerHp;
@@ -691,6 +705,30 @@ public class CombatState {
 
     public static boolean isPlayerTurn() { return phase == 0; } // CombatPhase.PLAYER_TURN ordinal
     public static boolean isEnemyTurn() { return phase == 1; }  // CombatPhase.ENEMY_TURN ordinal
+
+    // --- Polygon mask (non-rectangular arenas) ---
+    // Packed row-major bits over polygonMaskW × polygonMaskH (bit index x*H + z),
+    // sent in EnterCombatPayload. Null = rectangular arena (whole bbox is valid).
+    private static byte[] polygonMask = null;
+    private static int polygonMaskW = 0, polygonMaskH = 0;
+
+    public static void setPolygonMask(byte[] mask, int w, int h) {
+        polygonMask = (mask == null || mask.length == 0) ? null : mask;
+        polygonMaskW = w;
+        polygonMaskH = h;
+    }
+
+    /** True if the grid tile is inside the playable polygon. Rectangular arenas
+     *  (no mask) treat the whole bbox as valid. Keeps the cursor/hover from
+     *  targeting tiles outside an irregular arena's shape. */
+    public static boolean isInPolygon(int gx, int gz) {
+        if (polygonMask == null) return true;
+        if (gx < 0 || gz < 0 || gx >= polygonMaskW || gz >= polygonMaskH) return false;
+        int idx = gx * polygonMaskH + gz;
+        int byteIdx = idx >> 3;
+        if (byteIdx < 0 || byteIdx >= polygonMask.length) return false;
+        return (polygonMask[byteIdx] & (1 << (idx & 7))) != 0;
+    }
 
     // Emerald currency (persisted on server, synced to client for HUD display)
     private static int emeralds = 0;
