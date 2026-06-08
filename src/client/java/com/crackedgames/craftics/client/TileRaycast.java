@@ -96,7 +96,8 @@ public class TileRaycast {
                 // Only honor block hits inside the arena footprint and at or
                 // above the floor (skip ceiling clips from above-arena debris).
                 if (gx >= 0 && gx < arenaW && gz >= 0 && gz < arenaH
-                        && bp.getY() >= originY + 1 && bp.getY() <= originY + 4) {
+                        && bp.getY() >= originY + 1 && bp.getY() <= originY + 4
+                        && CombatState.isInPolygon(gx, gz)) {
                     lastDebugPos = new GridPos(gx, gz);
                     return new GridPos(gx, gz);
                 }
@@ -129,7 +130,8 @@ public class TileRaycast {
         lastDebugPos = new GridPos(gridX, gridZ);
 
         if (gridX < 0 || gridX >= CombatState.getArenaWidth()
-            || gridZ < 0 || gridZ >= CombatState.getArenaHeight()) {
+            || gridZ < 0 || gridZ >= CombatState.getArenaHeight()
+            || !CombatState.isInPolygon(gridX, gridZ)) {
             return null;
         }
 

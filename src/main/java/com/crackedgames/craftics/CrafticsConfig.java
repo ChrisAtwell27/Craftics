@@ -268,6 +268,10 @@ public class CrafticsConfig {
     @RangeConstraint(min = 1, max = 20)
     public int enemyTurnDelay = 5;
 
+    /** Stretch enemy/ally turns so the camera can pan onto each acting unit and
+     *  linger, then return to your framing when your turn starts. */
+    public boolean cinematicEnemyTurns = true;
+
     public boolean autoEndTurn = false;
 
     public boolean showEnemyRangeHints = false;

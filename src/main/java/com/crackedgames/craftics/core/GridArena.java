@@ -68,6 +68,11 @@ public class GridArena {
     /** Whether this arena uses a non-rectangular polygon mask. */
     public boolean hasPolygonMask() { return insideMask != null; }
 
+    /** The {@code width × height} polygon mask, or {@code null} for a rectangular
+     *  arena. Used to pack the shape into {@code EnterCombatPayload} so the client
+     *  can restrict the cursor to the playable polygon. */
+    public boolean[][] getInsideMask() { return insideMask; }
+
     public int getWidth() { return width; }
     public int getHeight() { return height; }
     public BlockPos getOrigin() { return origin; }

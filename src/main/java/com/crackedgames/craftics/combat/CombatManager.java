@@ -1965,6 +1965,9 @@ public class CombatManager {
     private enum EnemyTurnState { DECIDING, MOVING, ANIMATING, ATTACKING, TANTRUM_HOPPING, DONE }
     private int enemyTurnIndex;
     private int enemyTurnDelay;
+    /** Guards {@link #tickEnemyTurn} so a freshly-armed {@code enemyTurnDelay} is
+     *  stretched at most once for cinematic pacing, not re-multiplied every tick. */
+    private boolean enemyTurnDelayScaled = false;
     private EnemyTurnState enemyTurnState;
     private EnemyAction pendingAction;
     private CombatEntity currentEnemy;
@@ -8296,6 +8299,7 @@ public class CombatManager {
         phase = CombatPhase.ENEMY_TURN;
         enemyTurnIndex = 0;
         enemyTurnDelay = 10;
+        enemyTurnDelayScaled = false;
         enemyTurnState = EnemyTurnState.DECIDING;
         pendingAction = null;
         currentEnemy = null;
@@ -8983,7 +8987,19 @@ public class CombatManager {
     }
 
     private void tickEnemyTurn() {
+        // Cinematic pacing: stretch each freshly-armed action delay (~1.8x, clamped)
+        // so the camera has time to pan onto the acting unit and linger before
+        // returning. enemyTurnDelay is written in ~60 places but read only here, so
+        // this single site scales them all once per arming. Respects the toggle and
+        // skipEnemyAnimations; leaves deliberate instant chains (delay 0) untouched.
+        if (!enemyTurnDelayScaled && enemyTurnDelay > 0
+                && CrafticsMod.CONFIG.cinematicEnemyTurns()
+                && !CrafticsMod.CONFIG.skipEnemyAnimations()) {
+            enemyTurnDelay = Math.min(60, Math.round(enemyTurnDelay * 1.8f));
+            enemyTurnDelayScaled = true;
+        }
         if (enemyTurnDelay > 0) { enemyTurnDelay--; return; }
+        enemyTurnDelayScaled = false; // consumed — the next arming re-scales
 
         switch (enemyTurnState) {
             case DECIDING -> tickEnemyDeciding();
@@ -20289,10 +20305,24 @@ public class CombatManager {
     private static EnterCombatPayload makeEnterPayload(GridArena arena) {
         BlockPos origin = arena.getOrigin();
         float yaw = com.crackedgames.craftics.level.ArenaBuilder.consumePendingCameraYaw();
+        int w = arena.getWidth(), h = arena.getHeight();
+        // Pack the polygon mask (row-major bits, index x*h + z) so the client can
+        // restrict the cursor to the playable shape. Empty = rectangular arena.
+        byte[] mask = new byte[0];
+        boolean[][] inside = arena.getInsideMask();
+        if (inside != null) {
+            mask = new byte[(w * h + 7) / 8];
+            for (int x = 0; x < w; x++) {
+                for (int z = 0; z < h; z++) {
+                    if (inside[x][z]) {
+                        int idx = x * h + z;
+                        mask[idx >> 3] |= (byte) (1 << (idx & 7));
+                    }
+                }
+            }
+        }
         return new EnterCombatPayload(
-            origin.getX(), origin.getY(), origin.getZ(),
-            arena.getWidth(), arena.getHeight(), yaw
-        );
+            origin.getX(), origin.getY(), origin.getZ(), w, h, yaw, mask);
     }
 
     private String serializeTrades(TraderSystem.TraderOffer offer) {

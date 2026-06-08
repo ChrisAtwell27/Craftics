@@ -1391,8 +1391,10 @@ public class CrafticsMod implements ModInitializer {
         int cx = centerBlock.getX();
         int cz = centerBlock.getZ();
 
-        // Bounding box from offsets (offsets are vertex positions OUTSIDE the
-        // playable interior, so the interior is one tile inset on each side).
+        // Bounding box from offsets. Offsets are the vertex positions (the outer
+        // border ring); the playable interior is the outline eroded one tile inward
+        // (below), matching ArenaBuilder's loader, so the markers end up just outside
+        // the floor at every vertex — convex tips and concave armpits alike.
         int minDx = Integer.MAX_VALUE, maxDx = Integer.MIN_VALUE;
         int minDz = Integer.MAX_VALUE, maxDz = Integer.MIN_VALUE;
         for (var o : offsets) {
@@ -1401,10 +1403,10 @@ public class CrafticsMod implements ModInitializer {
             minDz = Math.min(minDz, o.dz());
             maxDz = Math.max(maxDz, o.dz());
         }
-        int gridMinX = cx + minDx + 1;
-        int gridMaxX = cx + maxDx - 1;
-        int gridMinZ = cz + minDz + 1;
-        int gridMaxZ = cz + maxDz - 1;
+        int gridMinX = cx + minDx;
+        int gridMaxX = cx + maxDx;
+        int gridMinZ = cz + minDz;
+        int gridMaxZ = cz + maxDz;
 
         // Sort vertices by angle around centroid (same algorithm ArenaBuilder
         // uses) so consecutive vertices form a closed loop for the point-in-
@@ -1425,12 +1427,24 @@ public class CrafticsMod implements ModInitializer {
         int placedFloor = 0;
         int clearedAir = 0;
         int n = sortedOffsets.size();
+        int gw = gridMaxX - gridMinX + 1;
+        int gh = gridMaxZ - gridMinZ + 1;
 
-        // Paint floor + clear air column for every tile inside the polygon.
-        for (int wx = gridMinX; wx <= gridMaxX; wx++) {
-            for (int wz = gridMinZ; wz <= gridMaxZ; wz++) {
-                double px = wx + 0.5;
-                double pz = wz + 0.5;
+        // Vertex tiles get a corner marker (below), never painted floor — mirroring
+        // the loader, which clears marker tiles from the playable mask. Keeps markers
+        // off the floor (incl. a concave armpit vertex that survives erosion) and
+        // stops placedFloor over-counting tiles a marker would overwrite.
+        java.util.Set<Long> vertexKeys = new java.util.HashSet<>();
+        for (var o : sortedOffsets) {
+            vertexKeys.add(net.minecraft.util.math.BlockPos.asLong(cx + o.dx(), floorY, cz + o.dz()));
+        }
+
+        // Outer mask over the full vertex bbox (point-in-polygon).
+        boolean[][] outer = new boolean[gw][gh];
+        for (int tx = 0; tx < gw; tx++) {
+            for (int tz = 0; tz < gh; tz++) {
+                double px = gridMinX + tx + 0.5;
+                double pz = gridMinZ + tz + 0.5;
                 boolean inside = false;
                 for (int i = 0, j = n - 1; i < n; j = i++) {
                     double xi = cx + sortedOffsets.get(i).dx() + 0.5;
@@ -1441,7 +1455,24 @@ public class CrafticsMod implements ModInitializer {
                         && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
                     if (intersects) inside = !inside;
                 }
-                if (!inside) continue;
+                outer[tx][tz] = inside;
+            }
+        }
+        // Paint floor + clear air on the eroded interior (one tile inside the
+        // outline; 4-neighbour erosion), matching ArenaBuilder's loader so the
+        // corner markers placed at the vertices sit one tile outside the floor.
+        for (int tx = 0; tx < gw; tx++) {
+            for (int tz = 0; tz < gh; tz++) {
+                if (!outer[tx][tz]) continue;
+                boolean playable = tx > 0 && tx < gw - 1 && tz > 0 && tz < gh - 1
+                    && outer[tx - 1][tz] && outer[tx + 1][tz]
+                    && outer[tx][tz - 1] && outer[tx][tz + 1];
+                if (!playable) continue;
+                int wx = gridMinX + tx;
+                int wz = gridMinZ + tz;
+                // A vertex marker owns this tile (loader treats it as border) — don't
+                // paint floor under it, so build and reload agree and the count is honest.
+                if (vertexKeys.contains(net.minecraft.util.math.BlockPos.asLong(wx, floorY, wz))) continue;
                 net.minecraft.util.math.BlockPos floorPos =
                     new net.minecraft.util.math.BlockPos(wx, floorY, wz);
                 world.setBlockState(floorPos, net.minecraft.block.Blocks.STONE.getDefaultState(), 3);
@@ -1459,21 +1490,21 @@ public class CrafticsMod implements ModInitializer {
             }
         }
 
-        // Drop ArenaCornerBlock at each vertex (one above floor level so they
-        // sit at standing height and are easy to see).
+        // Drop ArenaCornerBlock at each vertex AT floor level — markers double as
+        // floor-plane border tiles, matching the DIAMOND/EMERALD convention and what
+        // the loader expects (arenaFloorY = max marker Y). A stone block underneath
+        // keeps the marker from floating over a cleared tile.
         for (var o : sortedOffsets) {
             int wx = cx + o.dx();
             int wz = cz + o.dz();
             net.minecraft.util.math.BlockPos cornerPos =
-                new net.minecraft.util.math.BlockPos(wx, floorY + 1, wz);
+                new net.minecraft.util.math.BlockPos(wx, floorY, wz);
             world.setBlockState(cornerPos,
                 com.crackedgames.craftics.block.ModBlocks.ARENA_CORNER_BLOCK.getDefaultState(), 3);
-            // Stone pedestal under each corner so the marker has something to
-            // stand on when the polygon vertex sits on a cleared/floored tile.
-            net.minecraft.util.math.BlockPos pedestalPos =
-                new net.minecraft.util.math.BlockPos(wx, floorY, wz);
-            if (world.getBlockState(pedestalPos).isAir()) {
-                world.setBlockState(pedestalPos, net.minecraft.block.Blocks.STONE.getDefaultState(), 3);
+            net.minecraft.util.math.BlockPos supportPos =
+                new net.minecraft.util.math.BlockPos(wx, floorY - 1, wz);
+            if (world.getBlockState(supportPos).isAir()) {
+                world.setBlockState(supportPos, net.minecraft.block.Blocks.STONE.getDefaultState(), 3);
             }
         }
 
