@@ -1,0 +1,9 @@
+{
+  "id": "craftics:piglin_barter_relic_trader",
+  "speaker": "minecraft:piglin",
+  "group": "piglin_barter_relic_trader",
+  "lines": [
+    "The piglin hoards a heap of strange trinkets.",
+    "\"Rare things. Fire and relics. Offer me gold.\""
+  ]
+}

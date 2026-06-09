@@ -1,0 +1,9 @@
+{
+  "id": "craftics:piglin_barter_hoarder",
+  "speaker": "minecraft:piglin",
+  "group": "piglin_barter_hoarder",
+  "lines": [
+    "The piglin guards a glittering pile of gems.",
+    "\"Gold for jewels. A fair trade. Offer me gold.\""
+  ]
+}

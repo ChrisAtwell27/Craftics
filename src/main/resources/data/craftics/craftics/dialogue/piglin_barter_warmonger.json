@@ -1,0 +1,9 @@
+{
+  "id": "craftics:piglin_barter_warmonger",
+  "speaker": "minecraft:piglin",
+  "group": "piglin_barter_warmonger",
+  "lines": [
+    "The piglin bares its tusks at the gold in your hand.",
+    "\"Shiny buys steel. Offer me gold.\""
+  ]
+}

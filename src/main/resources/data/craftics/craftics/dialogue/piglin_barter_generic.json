@@ -1,0 +1,9 @@
+{
+  "id": "craftics:piglin_barter_generic",
+  "speaker": "minecraft:piglin",
+  "group": "piglin_barter",
+  "lines": [
+    "The piglin grunts and eyes the gold in your hand.",
+    "\"Offer me gold. We will see what you get.\""
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "craftics:piglin_barter_flesh_dealer",
+  "speaker": "minecraft:piglin",
+  "group": "piglin_barter_flesh_dealer",
+  "lines": [
+    "The piglin stands over a smoking heap of meat and bottles.",
+    "\"Food and brews for the road. Offer me gold.\""
+  ]
+}
