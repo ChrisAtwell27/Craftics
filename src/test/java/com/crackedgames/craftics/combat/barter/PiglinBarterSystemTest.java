@@ -48,4 +48,38 @@ class PiglinBarterSystemTest {
         // Cap holds for huge surplus.
         assertTrue(PiglinBarterSystem.overpayBonusChance(10_000) <= 1.0);
     }
+
+    @Test
+    void pickWeightedIndex_selectsBucketByCumulativeWeight() {
+        int[] weights = {2, 3, 5}; // cumulative: [0,2) -> 0, [2,5) -> 1, [5,10) -> 2
+        assertEquals(0, PiglinBarterSystem.pickWeightedIndex(weights, 0));
+        assertEquals(0, PiglinBarterSystem.pickWeightedIndex(weights, 1));
+        assertEquals(1, PiglinBarterSystem.pickWeightedIndex(weights, 2));
+        assertEquals(1, PiglinBarterSystem.pickWeightedIndex(weights, 4));
+        assertEquals(2, PiglinBarterSystem.pickWeightedIndex(weights, 5));
+        assertEquals(2, PiglinBarterSystem.pickWeightedIndex(weights, 9));
+    }
+
+    @Test
+    void pickWeightedIndex_clampsOutOfRangeRollToLastBucket() {
+        int[] weights = {1, 1};
+        assertEquals(1, PiglinBarterSystem.pickWeightedIndex(weights, 2));
+        assertEquals(1, PiglinBarterSystem.pickWeightedIndex(weights, 100));
+    }
+
+    @Test
+    void rollCount_staysWithinInclusiveRange() {
+        Random r = new Random(7L);
+        for (int i = 0; i < 1000; i++) {
+            int c = PiglinBarterSystem.rollCount(6, 12, r);
+            assertTrue(c >= 6 && c <= 12, "count in [6,12]: " + c);
+        }
+        assertEquals(5, PiglinBarterSystem.rollCount(5, 5, new Random(1L)));
+        assertTrue(PiglinBarterSystem.rollCount(0, 0, new Random(1L)) >= 1);
+    }
+
+    @Test
+    void junkItemCount_isStableAndNonEmpty() {
+        assertTrue(PiglinBarterSystem.JUNK_ITEM_COUNT >= 5, "junk pool should have several options");
+    }
 }
