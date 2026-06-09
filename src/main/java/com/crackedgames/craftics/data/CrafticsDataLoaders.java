@@ -47,6 +47,7 @@ public final class CrafticsDataLoaders {
         register(new HybridSetJsonLoader());
         register(new EnvironmentJsonLoader());
         register(new DialogueJsonLoader());
+        register(new BarterJsonLoader());
         register(new CampaignJsonLoader());
 
         ServerLifecycleEvents.SERVER_STARTED.register(
