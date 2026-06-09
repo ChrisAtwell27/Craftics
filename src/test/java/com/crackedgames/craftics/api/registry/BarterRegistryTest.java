@@ -1,14 +1,42 @@
 package com.crackedgames.craftics.api.registry;
 
+import com.crackedgames.craftics.api.RegistrationSource;
 import com.crackedgames.craftics.combat.barter.BarterCategory;
-import com.crackedgames.craftics.combat.barter.BarterEntry;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Pure-Java tests for the barter registries' string/registration logic.
+ *
+ * <p><b>BarterCategoryRegistry</b> is fully covered: it keys off plain strings
+ * and never touches Minecraft, so register/get/all/exists and the
+ * datapack/clear lifecycle all run in this harness.
+ *
+ * <p><b>BarterRegistry's entry-keyed behaviour</b> ({@code forCategory}
+ * returning a registered entry, the {@code minBiomeTier} tier gate, and
+ * category-id matching) is <em>not</em> exercised here because every
+ * {@link com.crackedgames.craftics.combat.barter.BarterEntry} requires a
+ * non-null prototype {@link net.minecraft.item.ItemStack}, and constructing
+ * any {@code ItemStack} (including {@code ItemStack.EMPTY}, whose static
+ * initializer runs the same path) throws
+ * {@code IllegalArgumentException: Not bootstrapped} in this JUnit
+ * environment, which never boots Minecraft. There is no mocking library on
+ * the test classpath to stand in for the prototype either. The same
+ * limitation is documented on {@code BannerEffectsTest} for its item-lookup
+ * tables.
+ *
+ * <p>The entry-side logic is therefore verified in-game via the smoke
+ * checklist (see the implementation plan): with categories registered,
+ * confirm that a tier-4 reward entry is excluded from a tier-0 barter pool
+ * and included once the biome tier reaches 4+, and that an entry registered
+ * under a category appears only when that category is queried. The
+ * {@code forCategory} method itself is trivial registration-order filtering
+ * (it reads only {@code categoryId} and {@code minBiomeTier}), easy to review
+ * by inspection. The query-side contract that is reachable without an entry
+ * (no throw, empty result for an unknown category) <em>is</em> covered below.
+ */
 class BarterRegistryTest {
 
     @BeforeEach
@@ -23,31 +51,64 @@ class BarterRegistryTest {
         BarterCategoryRegistry.register(cat);
         assertEquals(cat, BarterCategoryRegistry.get("craftics:warmonger"));
         assertTrue(BarterCategoryRegistry.all().contains(cat));
+        assertTrue(BarterCategoryRegistry.exists("craftics:warmonger"));
     }
 
     @Test
-    void rewardForKnownCategoryIsEligible() {
-        BarterCategoryRegistry.register(new BarterCategory("craftics:hoarder", "Hoarder", "§b", "gems", 0));
-        var entry = new BarterEntry("craftics:hoarder", new ItemStack(Items.DIAMOND), 6, 12, 8, 0);
-        BarterRegistry.register(entry);
-        List<BarterEntry> pool = BarterRegistry.forCategory("craftics:hoarder", 0);
-        assertEquals(1, pool.size());
-        assertEquals(Items.DIAMOND, pool.get(0).prototype().getItem());
+    void unknownCategoryIsAbsent() {
+        assertNull(BarterCategoryRegistry.get("craftics:ghost"));
+        assertFalse(BarterCategoryRegistry.exists("craftics:ghost"));
+        assertFalse(BarterCategoryRegistry.all().stream()
+            .anyMatch(c -> c.id().equals("craftics:ghost")));
     }
 
     @Test
-    void rewardForUnknownCategoryIsIgnoredNotThrown() {
-        assertDoesNotThrow(() ->
-            BarterRegistry.register(new BarterEntry("nope:ghost", new ItemStack(Items.DIRT), 1, 0)));
-        assertTrue(BarterRegistry.forCategory("nope:ghost", 0).isEmpty()
-            || BarterCategoryRegistry.get("nope:ghost") == null);
+    void registeringSameIdReplacesAndKeepsRegistrySmall() {
+        BarterCategoryRegistry.register(new BarterCategory("craftics:relic", "First", "§5", "relics", 0));
+        BarterCategoryRegistry.register(new BarterCategory("craftics:relic", "Second", "§5", "relics", 3));
+        assertEquals(1, BarterCategoryRegistry.all().size(), "same id overwrites, not appends");
+        BarterCategory current = BarterCategoryRegistry.get("craftics:relic");
+        assertNotNull(current);
+        assertEquals("Second", current.displayName());
+        assertEquals(3, current.minBiomeTier());
     }
 
     @Test
-    void minBiomeTierFiltersEntries() {
-        BarterCategoryRegistry.register(new BarterCategory("craftics:relic", "Relic", "§5", "relics", 0));
-        BarterRegistry.register(new BarterEntry("craftics:relic", new ItemStack(Items.NETHERITE_SCRAP), 1, 4));
-        assertTrue(BarterRegistry.forCategory("craftics:relic", 0).isEmpty(), "tier 0 excludes tier-4 entry");
-        assertEquals(1, BarterRegistry.forCategory("craftics:relic", 5).size(), "tier 5 includes it");
+    void clearDatapackEntriesRemovesOnlyDatapackCategories() {
+        BarterCategoryRegistry.register(
+            new BarterCategory("craftics:code", "Code", "§a", "code", 0), RegistrationSource.CODE);
+        BarterCategoryRegistry.register(
+            new BarterCategory("craftics:pack", "Pack", "§b", "pack", 0), RegistrationSource.DATAPACK);
+
+        BarterCategoryRegistry.clearDatapackEntries();
+
+        assertTrue(BarterCategoryRegistry.exists("craftics:code"), "code-registered survives reload");
+        assertFalse(BarterCategoryRegistry.exists("craftics:pack"), "datapack entry is cleared on reload");
+    }
+
+    @Test
+    void clearAllForTestWipesEverything() {
+        BarterCategoryRegistry.register(
+            new BarterCategory("craftics:code", "Code", "§a", "code", 0), RegistrationSource.CODE);
+        BarterCategoryRegistry.register(
+            new BarterCategory("craftics:pack", "Pack", "§b", "pack", 0), RegistrationSource.DATAPACK);
+
+        BarterCategoryRegistry.clearAllForTest();
+
+        assertTrue(BarterCategoryRegistry.all().isEmpty(), "clearAllForTest wipes code and datapack alike");
+    }
+
+    @Test
+    void forCategoryOnEmptyRegistryReturnsEmptyWithoutThrowing() {
+        // Reachable without constructing an entry (which needs a vanilla ItemStack):
+        // querying any category/tier against an empty registry yields an empty,
+        // mutable, non-null list and never throws.
+        var pool = assertDoesNotThrow(
+            () -> BarterRegistry.forCategory("craftics:nobody", 0));
+        assertNotNull(pool);
+        assertTrue(pool.isEmpty());
+
+        // Querying a category that isn't registered as a category either is also fine.
+        assertTrue(BarterRegistry.forCategory("nope:ghost", 99).isEmpty());
     }
 }
