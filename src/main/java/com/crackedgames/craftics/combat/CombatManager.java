@@ -701,11 +701,12 @@ public class CombatManager {
             ServerPlayerEntity ref = firstOnlinePartyMember();
             if (ref != null) {
                 switch (eventRoomType) {
-                    case "shrine"    -> finalizeShrineEvent(ref);
-                    case "traveler"  -> finalizeTravelerEvent(ref);
-                    case "enchanter" -> finalizeEnchanterEvent(ref);
-                    case "vault"     -> finalizeVaultEvent(ref);
-                    default          -> { /* shiny/trial finalize themselves above */ }
+                    case "shrine"        -> finalizeShrineEvent(ref);
+                    case "traveler"      -> finalizeTravelerEvent(ref);
+                    case "enchanter"     -> finalizeEnchanterEvent(ref);
+                    case "vault"         -> finalizeVaultEvent(ref);
+                    case "piglin_barter" -> finalizeBarterEvent(ref);
+                    default              -> { /* shiny/trial finalize themselves above */ }
                 }
             }
         }
@@ -7062,7 +7063,70 @@ public class CombatManager {
     /** Apply a combat effect to a specific player's effect set by UUID (party-wide buffs). */
     private void applyEffectToPlayerUuid(java.util.UUID playerUuid, CombatEffects.EffectType type, int turns, int amplifier) {
         CombatEffects fx = playerCombatEffects.computeIfAbsent(playerUuid, k -> new CombatEffects());
+        applyPlayerEffectLive(fx, playerUuid, type, turns, amplifier);
+    }
+
+    /**
+     * Apply an effect to a player's effect set and, if it is that player's turn
+     * right now, fold a freshly-granted SPEED/HASTE bonus into the LIVE budget
+     * immediately instead of waiting for the next turn-start recompute.
+     *
+     * <p>{@code apRemaining} and {@code movePointsRemaining} are snapshotted at
+     * turn start, so a buff applied mid-turn (an instrument, a quaffed potion,
+     * etc.) otherwise wouldn't help until next turn. We top up by the DELTA the
+     * effect adds ({@code bonus after - bonus before}), so re-applying the same
+     * level adds nothing and a level-up adds only the difference. Only the
+     * current acting player on their PLAYER_TURN is topped up; other players'
+     * buffs correctly fold in at their own next turn.
+     */
+    private void applyPlayerEffectLive(CombatEffects fx, java.util.UUID playerUuid,
+                                       CombatEffects.EffectType type, int turns, int amplifier) {
+        boolean liveActor = phase == CombatPhase.PLAYER_TURN
+            && player != null && player.getUuid().equals(playerUuid);
+
+        int hasteBefore = liveActor ? fx.getHasteBonus() : 0;
+        int speedBefore = liveActor ? fx.getSpeedBonus() : 0;
+
         fx.addEffect(type, turns, amplifier);
+
+        if (liveActor) {
+            if (type == CombatEffects.EffectType.HASTE) {
+                apRemaining += Math.max(0, fx.getHasteBonus() - hasteBefore);
+            } else if (type == CombatEffects.EffectType.SPEED) {
+                movePointsRemaining += Math.max(0, fx.getSpeedBonus() - speedBefore);
+            }
+        }
+    }
+
+    /**
+     * Public entry for non-CombatManager code (potions, goat horns, pottery sherd
+     * spells, addon item handlers) to apply a buff/effect to the CURRENT player
+     * with the same live AP/movement top-up the internal paths use. Prefer this
+     * over {@code getCombatEffects().addEffect(...)} for player-side SPEED/HASTE
+     * so the buff takes effect this turn, not next. No-op-safe if combat has no
+     * active player.
+     */
+    public void applyPlayerEffectLive(CombatEffects.EffectType type, int turns, int amplifier) {
+        applyPlayerEffectLive(combatEffects, player != null ? player.getUuid() : null, type, turns, amplifier);
+    }
+
+    /**
+     * Run {@code buffApplication} (which may apply SPEED/HASTE to the current
+     * player's {@code combatEffects}) and top up the live AP/movement budget by
+     * whatever bonus it newly granted. For external buff helpers (goat horns,
+     * pottery sherd spells) that apply to {@code combatEffects} directly and
+     * don't return the effect type/level, so we measure the delta around the call.
+     * Only tops up on the player's own turn.
+     */
+    private void rebudgetAroundBuff(Runnable buffApplication) {
+        boolean liveActor = phase == CombatPhase.PLAYER_TURN && player != null;
+        int hasteBefore = liveActor ? combatEffects.getHasteBonus() : 0;
+        int speedBefore = liveActor ? combatEffects.getSpeedBonus() : 0;
+        buffApplication.run();
+        if (liveActor) {
+            apRemaining += Math.max(0, combatEffects.getHasteBonus() - hasteBefore);
+            movePointsRemaining += Math.max(0, combatEffects.getSpeedBonus() - speedBefore);
+        }
     }
 
     /** Remove all debuffs from an ally entity (Keyboard cleanse). */
@@ -7683,10 +7747,12 @@ public class CombatManager {
             // Apply the actual effect, scaled by the player's Special-class affinity
             int hornDurationBonus = SpecialAffinity.durationBonus(player);
             int hornPotencyBonus  = SpecialAffinity.potencyBonus(player);
-            String effectMsg = GoatHornEffects.useHorn(hornId, combatEffects, enemies,
-                hornDurationBonus, hornPotencyBonus);
-            if (effectMsg != null && !effectMsg.isEmpty()) {
-                sendMessage(effectMsg);
+            String[] hornMsg = new String[1];
+            // Top up live AP/movement so the Feel horn's SPEED applies this turn.
+            rebudgetAroundBuff(() -> hornMsg[0] = GoatHornEffects.useHorn(hornId, combatEffects, enemies,
+                hornDurationBonus, hornPotencyBonus));
+            if (hornMsg[0] != null && !hornMsg[0].isEmpty()) {
+                sendMessage(hornMsg[0]);
             }
         }
 
@@ -7724,8 +7790,12 @@ public class CombatManager {
 
         apRemaining -= apCost;
 
-        // Cast the spell (consumes the sherd, applies damage/effects, spawns particles)
-        String result = PotterySherdSpells.useSherd(player, arena, effectiveTarget, enemies, combatEffects);
+        // Cast the spell (consumes the sherd, applies damage/effects, spawns particles).
+        // Wrapped so a self-buff sherd (e.g. War Cry's SPEED) tops up live AP/movement this turn.
+        String[] resultBox = new String[1];
+        rebudgetAroundBuff(() -> resultBox[0] =
+            PotterySherdSpells.useSherd(player, arena, effectiveTarget, enemies, combatEffects));
+        String result = resultBox[0];
         if (result == null) {
             sendMessage("§cFailed to cast spell!");
             sendSync();
@@ -7972,7 +8042,7 @@ public class CombatManager {
         }
 
         @Override public void applyPlayerEffect(CombatEffects.EffectType type, int turns, int amplifier) {
-            combatEffects.addEffect(type, turns, amplifier);
+            applyPlayerEffectLive(combatEffects, player != null ? player.getUuid() : null, type, turns, amplifier);
         }
         @Override public void applyEffect(CombatEntity target, CombatEffects.EffectType type,
                                           int turns, int amplifier) {
@@ -17054,6 +17124,11 @@ public class CombatManager {
                     float cEnchanter = cDigSite + 0.06f * (1f - pityDiscount); // 6% enchanter chance
                     float cTrader = cEnchanter + CrafticsMod.CONFIG.traderSpawnChance() * (1f - pityDiscount);
 
+                    boolean isNetherRegion = "nether".equals(
+                        java.util.Optional.ofNullable(
+                            com.crackedgames.craftics.level.campaign.CampaignManager.regionOf(biome.biomeId))
+                        .map(r -> r.id()).orElse("overworld"));
+
                     if (skipEvents) {
                         // No event — go straight to next level. Boss levels get a
                         // narrator intro first; once all members dismiss it the
@@ -17146,13 +17221,17 @@ public class CombatManager {
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
                         offerEnchanter(savedPlayer);
-                    } else if (forced != null ? forced.equals("trader") : (eventRoll < cTrader)) {
-                        // Configurable chance: Wandering Trader
+                    } else if (forced != null ? (forced.equals("trader") || forced.equals("piglin_barter")) : (eventRoll < cTrader)) {
+                        // Configurable chance: Wandering Trader (Overworld/End) or Piglin Barter (Nether)
                         ld.levelsSinceLastEvent = 0; // reset pity timer on event
                         data.markDirty();
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
-                        offerTrader(savedPlayer, biome, biomeOrdinal);
+                        if (isNetherRegion) {
+                            offerPiglinBarter(savedPlayer, biome, biomeOrdinal);
+                        } else {
+                            offerTrader(savedPlayer, biome, biomeOrdinal);
+                        }
                     } else {
                         // Check addon-registered events from EventRegistry
                         String addonEventId = null;
@@ -17348,6 +17427,18 @@ public class CombatManager {
     private String eventRoomType = null; // "shrine", "traveler", "vault", "enchanter", "shiny", "trial"
     private int pendingEventBiomeOrdinal = 0; // biome ordinal when the current event started
     private net.minecraft.entity.passive.VillagerEntity spawnedTraveler;
+
+    // ---- Piglin barter event ----
+    /** Per-player secret success threshold for the active piglin barter, keyed by UUID. */
+    private final java.util.Map<java.util.UUID, Integer> barterThresholds = new java.util.HashMap<>();
+    /** Players who still owe a barter decision in the active event. */
+    private final java.util.Set<java.util.UUID> barterPendingPlayers = new java.util.HashSet<>();
+    /** The shared category id for the active piglin barter. */
+    private String barterCategoryId = null;
+    /** The tier (biomeOrdinal + 1) of the active piglin barter, used for reward rolls (read in H3). */
+    private int barterTier = 0;
+    /** The piglin spawned for the active barter event; discarded when the event finalizes. */
+    private net.minecraft.entity.mob.PiglinEntity spawnedBarterPiglin;
 
     // Shiny event state. The event opens as a party vote ("take the shiny / leave
     // it") and resolves into one of three outcomes — a reward to one Yes voter,
@@ -17626,6 +17717,204 @@ public class CombatManager {
         digSitePendingPlayers.clear();
         digBrushCount.clear();
         scheduleEventReturnTransition(referencePlayer);
+    }
+
+    private void offerPiglinBarter(ServerPlayerEntity savedPlayer,
+            com.crackedgames.craftics.level.BiomeTemplate biome, int biomeOrdinal) {
+        List<ServerPlayerEntity> members = getOnlinePartyMembers(savedPlayer);
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new ExitCombatPayload(false));
+        }
+
+        ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
+        eventRoomPending = true;
+        eventRoomType = "piglin_barter";
+        pendingEventBiomeOrdinal = Math.max(0, biomeOrdinal);
+
+        int tier = biomeOrdinal + 1;
+        this.barterTier = tier;
+        barterThresholds.clear();
+        barterPendingPlayers.clear();
+        eventPendingPlayers.clear();
+
+        // Pick the shared category for this event from those unlocked at this tier.
+        java.util.Random rng = new java.util.Random();
+        java.util.List<com.crackedgames.craftics.combat.barter.BarterCategory> eligible =
+            new java.util.ArrayList<>();
+        for (com.crackedgames.craftics.combat.barter.BarterCategory c
+                : com.crackedgames.craftics.api.registry.BarterCategoryRegistry.all()) {
+            if (c.minBiomeTier() <= tier) eligible.add(c);
+        }
+        if (eligible.isEmpty()) {
+            // Defensive: no category available at this tier, fall back to the trader event.
+            eventRoomPending = false;
+            eventRoomType = null;
+            offerTrader(savedPlayer, biome, biomeOrdinal);
+            return;
+        }
+        com.crackedgames.craftics.combat.barter.BarterCategory picked =
+            eligible.get(rng.nextInt(eligible.size()));
+        barterCategoryId = picked.id();
+
+        // Track participating players and roll each one's secret success threshold.
+        for (ServerPlayerEntity p : members) {
+            barterPendingPlayers.add(p.getUuid());
+            eventPendingPlayers.add(p.getUuid());
+            barterThresholds.put(p.getUuid(),
+                com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollThreshold(rng));
+        }
+
+        // Use the Nether-themed trader area so the piglin stands in a biome-themed
+        // room (NETHER_BRICKS / CRIMSON_PLANKS / CRIMSON_STEM) instead of the plain
+        // traveler dirt path. Origin, area builder, force-load range, spawn position
+        // and walk-up tiles all mirror offerTrader.
+        BlockPos barterOrigin = getEventRoomOrigin(savedPlayer);
+        buildTraderArea(world, barterOrigin, biome);
+
+        // Force-load the trader area + walkway chunks so the spawned piglin + walk-up
+        // don't desync if a chunk unloads. Walkway extends to oz - WALKWAY_LEN - 1
+        // (low z); include it plus margin. Released in the event finalize path.
+        {
+            int margin = 32;
+            int minCX = (barterOrigin.getX() - margin) >> 4;
+            int maxCX = (barterOrigin.getX() + 9 + margin) >> 4;
+            int minCZ = (barterOrigin.getZ() - 8 - 1 - margin) >> 4;
+            int maxCZ = (barterOrigin.getZ() + 9 + margin) >> 4;
+            for (int cx = minCX; cx <= maxCX; cx++) {
+                for (int cz = minCZ; cz <= maxCZ; cz++) {
+                    world.setChunkForced(cx, cz, true);
+                    forcedChunks.add(new net.minecraft.util.math.ChunkPos(cx, cz));
+                }
+            }
+        }
+
+        // Spawn the piglin where the trader stands in the trader area (origin+6.5 x,
+        // origin+4.5 z, yaw -90 = facing -X toward the talk tiles). AI off,
+        // invulnerable, persistent. No merchant offers.
+        spawnedBarterPiglin = (net.minecraft.entity.mob.PiglinEntity)
+            net.minecraft.entity.EntityType.PIGLIN.spawn(world, barterOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
+        if (spawnedBarterPiglin != null) {
+            spawnedBarterPiglin.refreshPositionAndAngles(
+                barterOrigin.getX() + 6.5, barterOrigin.getY() + 1, barterOrigin.getZ() + 4.5,
+                -90f, 0f);
+            spawnedBarterPiglin.setAiDisabled(true);
+            spawnedBarterPiglin.setInvulnerable(true);
+            spawnedBarterPiglin.setPersistent(); // never despawn during the event
+            world.spawnEntity(spawnedBarterPiglin);
+        }
+
+        // Teleport players to the FAR END of the approach walkway (low-z), facing the
+        // piglin, so they walk up the path before dialogue. Matches offerTrader.
+        final int WALKWAY_LEN = 8;
+        for (ServerPlayerEntity p : members) {
+            p.requestTeleport(
+                barterOrigin.getX() + 4.5,
+                barterOrigin.getY() + 1,
+                barterOrigin.getZ() - WALKWAY_LEN + 0.5);
+            p.setYaw(0f);       // face +Z, toward the trader area
+            p.setHeadYaw(0f);
+        }
+
+        java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
+        for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
+
+        final ServerPlayerEntity ref = savedPlayer;
+        this.activeWalkers.clear();
+        this.activeCinematic = new EventCinematic(partyUuids,
+            () -> {
+                for (ServerPlayerEntity p : getOnlinePartyMembers(ref)) {
+                    sendBarterIntro(p);
+                }
+            },
+            () -> { /* all-finished handled via barterPendingPlayers/finalize path */ });
+
+        final double WALK_SPEED = 1.0 / getMoveTicks();
+        // Piglin stands where the trader does (origin+6.5 x, origin+4.5 z).
+        final double piglinX = barterOrigin.getX() + 6.5;
+        final double piglinZ = barterOrigin.getZ() + 4.5;
+        int idx = 0;
+        for (ServerPlayerEntity p : members) {
+            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
+            // Talk tiles in front of the piglin, fanned across the x=3..5 lane so
+            // multiple members stand side by side (matches offerTrader).
+            double tx = barterOrigin.getX() + 3.5 + (idx % 3);
+            double ty = barterOrigin.getY() + 1;
+            double tz = barterOrigin.getZ() + 4.5;
+            double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
+            int walkTicks = Math.max(1, (int) Math.round(walkDist / WALK_SPEED));
+            final ServerPlayerEntity fp = p;
+            EntityWalker.Mover mover = (x, y, z, yaw) -> {
+                fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
+                //? if <=1.21.4 {
+                /*fp.prevX = fp.getX();
+                fp.prevY = fp.getY();
+                fp.prevZ = fp.getZ();
+                *///?} else {
+                fp.lastX = fp.getX();
+                fp.lastY = fp.getY();
+                fp.lastZ = fp.getZ();
+                //?}
+                double dx = x - fp.getX(), dz = z - fp.getZ();
+                double len = Math.sqrt(dx * dx + dz * dz);
+                if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
+                fp.setPosition(x, y, z);
+                fp.networkHandler.requestTeleport(x, y, z, yaw, 0f);
+                broadcastPlayerPositionToOthers(fp);
+            };
+            final java.util.UUID fu = p.getUuid();
+            final double ftx = tx, ftz = tz;
+            activeWalkers.add(new EntityWalker(mover,
+                p.getX(), p.getY(), p.getZ(), tx, ty, tz, walkTicks,
+                () -> {
+                    float faceYaw = (float) Math.toDegrees(Math.atan2(-(piglinX - ftx), piglinZ - ftz));
+                    fp.setYaw(faceYaw); fp.setHeadYaw(faceYaw); fp.setBodyYaw(faceYaw);
+                    fp.networkHandler.requestTeleport(fp.getX(), fp.getY(), fp.getZ(), faceYaw, 0f);
+                    activeCinematic.markArrived(fu);
+                }));
+            idx++;
+        }
+    }
+
+    /** Send the category intro dialogue and the stepper context payload to one player. */
+    private void sendBarterIntro(ServerPlayerEntity p) {
+        var cat = com.crackedgames.craftics.api.registry.BarterCategoryRegistry.get(barterCategoryId);
+        String localId = cat != null ? cat.localId() : "generic";
+        var def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry.get(
+            "craftics:piglin_barter_" + localId);
+        if (def == null) {
+            def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry.pickFromGroup(
+                "piglin_barter", new java.util.Random());
+        }
+        if (def != null) sendDialogue(p, def);
+
+        int gold = countGold(p);
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p,
+            new com.crackedgames.craftics.network.BarterContextPayload(
+                true, gold, com.crackedgames.craftics.combat.barter.PiglinBarterSystem.MAX_THRESHOLD));
+    }
+
+    /** Count gold ingots across the player's whole inventory. */
+    private static int countGold(ServerPlayerEntity p) {
+        int total = 0;
+        for (int i = 0; i < p.getInventory().size(); i++) {
+            net.minecraft.item.ItemStack s = p.getInventory().getStack(i);
+            if (s.getItem() == net.minecraft.item.Items.GOLD_INGOT) total += s.getCount();
+        }
+        return total;
+    }
+
+    /** Remove exactly {@code amount} gold ingots from the player's inventory. */
+    @SuppressWarnings("unused")
+    private static void removeGold(ServerPlayerEntity p, int amount) {
+        int remaining = amount;
+        for (int i = 0; i < p.getInventory().size() && remaining > 0; i++) {
+            net.minecraft.item.ItemStack s = p.getInventory().getStack(i);
+            if (s.getItem() == net.minecraft.item.Items.GOLD_INGOT) {
+                int take = Math.min(remaining, s.getCount());
+                s.decrement(take);
+                remaining -= take;
+            }
+        }
     }
 
     private void offerTrader(ServerPlayerEntity savedPlayer, com.crackedgames.craftics.level.BiomeTemplate biome, int biomeOrdinal) {
@@ -19280,6 +19569,10 @@ public class CombatManager {
             handleVaultDialogueChoice(player, action);
             return;
         }
+        if (eventRoomPending && "piglin_barter".equals(eventRoomType)) {
+            handleBarterDialogueChoice(player, action);
+            return;
+        }
         if (com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_DISMISS.equals(action)) {
             // Choiceless dialogue clicked through — finish the trader session without
             // routing through DialogueActions.resolve (which would warn on the sentinel).
@@ -19429,6 +19722,127 @@ public class CombatManager {
         eventRoomType = null;
         this.activeCinematic = null;
         this.activeWalkers.clear();
+
+        if (!forcedChunks.isEmpty() && referencePlayer != null) {
+            ServerWorld cw = (ServerWorld) referencePlayer.getEntityWorld();
+            for (net.minecraft.util.math.ChunkPos cp : forcedChunks) {
+                cw.setChunkForced(cp.x, cp.z, false);
+            }
+            forcedChunks.clear();
+        }
+
+        scheduleEventReturnTransition(referencePlayer);
+    }
+
+    /** Drive the piglin barter off a dialogue/stepper action: {@code barter:offer:<n>},
+     *  {@code barter:leave}, or the DISMISS sentinel on a result line. */
+    private void handleBarterDialogueChoice(ServerPlayerEntity player, String action) {
+        if (com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_DISMISS.equals(action)) {
+            finishBarterPlayer(player);
+            return;
+        }
+        if (action == null) { finishBarterPlayer(player); return; }
+
+        if (action.equals("barter:leave")) {
+            var leave = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                "craftics:piglin_barter_leave", "minecraft:piglin", "piglin_barter_leave",
+                java.util.List.of("The piglin snorts and turns away."), java.util.List.of());
+            sendDialogue(player, leave);
+            return; // DISMISS on this result finishes the player
+        }
+        if (!action.startsWith("barter:offer:")) { finishBarterPlayer(player); return; }
+
+        int offer;
+        try { offer = Integer.parseInt(action.substring("barter:offer:".length())); }
+        catch (NumberFormatException ex) { finishBarterPlayer(player); return; }
+
+        int gold = countGold(player);
+        int max = Math.min(com.crackedgames.craftics.combat.barter.PiglinBarterSystem.MAX_THRESHOLD, gold);
+        // Re-validate; if the player no longer has the gold, re-send the intro with the new count.
+        if (offer < 1 || offer > max) {
+            sendBarterIntro(player);
+            return;
+        }
+
+        removeGold(player, offer); // the gamble is paid whether it wins or loses
+
+        java.util.Random rng = new java.util.Random();
+        int threshold = barterThresholds.getOrDefault(player.getUuid(),
+            com.crackedgames.craftics.combat.barter.PiglinBarterSystem.MAX_THRESHOLD);
+        double chance = com.crackedgames.craftics.combat.barter.PiglinBarterSystem.successChance(offer, threshold);
+        int tier = barterTier;
+
+        String resultLine;
+        if (rng.nextDouble() < chance) {
+            net.minecraft.item.ItemStack reward =
+                com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollGoodReward(barterCategoryId, tier, rng);
+            if (reward.isEmpty()) {
+                reward = com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollJunk(rng);
+            }
+            LootDelivery.deliver(player, reward);
+            resultLine = "The piglin nods and shoves over " + reward.getCount() + "x "
+                + reward.getName().getString() + ".";
+
+            int surplus = offer - threshold;
+            double bonusChance = com.crackedgames.craftics.combat.barter.PiglinBarterSystem.overpayBonusChance(surplus);
+            if (surplus > 0 && rng.nextDouble() < bonusChance) {
+                net.minecraft.item.ItemStack bonus =
+                    com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollGoodReward(barterCategoryId, tier, rng);
+                if (!bonus.isEmpty()) {
+                    LootDelivery.deliver(player, bonus);
+                    resultLine += " It tosses in " + bonus.getCount() + "x "
+                        + bonus.getName().getString() + " too!";
+                }
+            }
+        } else {
+            net.minecraft.item.ItemStack junk =
+                com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollJunk(rng);
+            LootDelivery.deliver(player, junk);
+            resultLine = "The piglin grumbles and flicks you " + junk.getCount() + "x "
+                + junk.getName().getString() + ".";
+        }
+
+        var resultDef = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+            "craftics:piglin_barter_result", "minecraft:piglin", "piglin_barter_result",
+            java.util.List.of(resultLine), java.util.List.of());
+        sendDialogue(player, resultDef);
+        // close the stepper UI client-side
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+            new com.crackedgames.craftics.network.BarterContextPayload(false, 0, 0));
+        // DISMISS on this result finishes the player (routes back to finishBarterPlayer)
+    }
+
+    /** Mark one player done with the piglin barter, exit their cinematic camera,
+     *  and finalize once everyone has dismissed their result. Mirrors
+     *  {@link #finishShrinePlayer}; the barter-specific part is clearing the
+     *  per-player barter maps. */
+    private void finishBarterPlayer(ServerPlayerEntity player) {
+        barterPendingPlayers.remove(player.getUuid());
+        barterThresholds.remove(player.getUuid());
+        eventPendingPlayers.remove(player.getUuid());
+        ServerPlayNetworking.send(player,
+            new com.crackedgames.craftics.network.ExitEventCinematicPayload());
+        if (!eventPendingPlayers.isEmpty()) return;
+        finalizeBarterEvent(player);
+    }
+
+    /** Tear down piglin-barter state, discard the spawned piglin, release the
+     *  force-loaded chunks, and start the loading-screen transition back into
+     *  battle. Mirrors {@link #finalizeTraderEvent}. */
+    private void finalizeBarterEvent(ServerPlayerEntity referencePlayer) {
+        if (spawnedBarterPiglin != null) {
+            spawnedBarterPiglin.discard();
+            spawnedBarterPiglin = null;
+        }
+        eventRoomPending = false;
+        eventRoomType = null;
+        this.activeCinematic = null;
+        this.activeWalkers.clear();
+
+        barterCategoryId = null;
+        barterTier = 0;
+        barterPendingPlayers.clear();
+        barterThresholds.clear();
 
         if (!forcedChunks.isEmpty() && referencePlayer != null) {
             ServerWorld cw = (ServerWorld) referencePlayer.getEntityWorld();
@@ -22358,7 +22772,10 @@ public class CombatManager {
         int hookedTurns = fireEffectHookChained(turns,
             (h, t) -> h.onEffectApplied(effectContext, effectType, t));
         if (hookedTurns > 0) {
-            combatEffects.addEffect(effectType, hookedTurns, amplifier);
+            // Routes through applyPlayerEffectLive so a SPEED/HASTE buff applied to
+            // the acting player takes effect THIS turn (live budget top-up), not next.
+            applyPlayerEffectLive(combatEffects, player != null ? player.getUuid() : null,
+                effectType, hookedTurns, amplifier);
             // Absorption grants extra HP as vanilla absorption hearts (4 HP per level),
             // which damagePlayer already consumes before real HP. Take the max so a
             // higher-level application tops up rather than reducing an existing shield.

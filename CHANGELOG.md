@@ -1,5 +1,19 @@
 Changelog
 
+0.2.4
+
+Nether
+
+- The Nether now has its own trader: a piglin bartering station replaces the wandering trader there. Offer gold ingots from your inventory with plus and minus buttons; the more you offer, the better your odds of a successful barter. A failed barter still costs the gold and returns bland junk like gravel, soul sand, or crying obsidian
+- Five piglin barter categories, hinted by the piglin but never showing the odds: Warmonger (combat gear), Hoarder (gems like diamonds, emeralds, and iron, never gold), Flesh Dealer (food, potions, and brewing items), Relic Trader (rare curiosities, fire charges, blaze rods, and supported addon curios), and Beast Tamer (Nether mob allies)
+- Overpaying past the hidden threshold can earn a bonus second item
+- Each player in co-op makes their own offer and gets their own outcome
+- Addon support: mods and datapacks can add new barter categories and contribute items to existing pools through the Craftics API or data/<namespace>/craftics/barter/*.json files
+
+Bug fixes
+
+- Speed and Haste buffs gained mid-turn now take effect the same turn instead of the next one, so a Speed boost from an instrument, potion, goat horn, or pottery sherd immediately adds the extra movement or action points you would expect
+
 0.2.3
 
 Bug fixes

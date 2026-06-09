@@ -54,6 +54,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(VfxClientPayload.ID, VfxClientPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(PartyMobsSyncPayload.ID, PartyMobsSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(MusicSyncPayload.ID, MusicSyncPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(BarterContextPayload.ID, BarterContextPayload.CODEC);
 
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);

@@ -40,6 +40,26 @@ public class DialogueScreen extends Screen {
     private int lastWordCount = 0;
     private boolean lineComplete = false;
 
+    // --- Piglin barter stepper state ---------------------------------------
+    // The barter intro narration arrives as a normal DialoguePayload (opening a
+    // DialogueScreen) while the +/- offer context arrives as a separate
+    // BarterContextPayload. Because either packet can land first, the context is
+    // parked in these static "pending" fields by the receiver; init() picks it up
+    // when the screen is (re)built. applyBarterContext(...) lets the receiver push
+    // fresh context onto an already-open screen and re-init it.
+    private static boolean pendingBarterActive = false;
+    private static int pendingBarterGold = 0;
+    private static int pendingBarterMaxOffer = 0;
+
+    private boolean barterActive = false;
+    private int barterGold = 0;
+    private int barterMaxOffer = 0;
+    private int barterOffer = 1;
+    private ButtonWidget barterMinusButton;
+    private ButtonWidget barterPlusButton;
+    private ButtonWidget barterOfferButton;
+    private ButtonWidget barterWalkButton;
+
     private static final int CHARS_PER_TICK_DIV = 1; // reveal one char per tick (~2x faster)
     private static final int BOX_H = 60;
     private static final int PORTRAIT = 48;
@@ -71,6 +91,20 @@ public class DialogueScreen extends Screen {
         }
     }
 
+    /** Park barter context from the S2C receiver so the next-built DialogueScreen adopts it. */
+    public static void setPendingBarterContext(int gold, int maxOffer) {
+        pendingBarterActive = true;
+        pendingBarterGold = gold;
+        pendingBarterMaxOffer = maxOffer;
+    }
+
+    /** Clear parked barter context (e.g. the offer resolved / stepper should not show). */
+    public static void clearPendingBarterContext() {
+        pendingBarterActive = false;
+        pendingBarterGold = 0;
+        pendingBarterMaxOffer = 0;
+    }
+
     private boolean onLastLine() { return lineIndex >= lines.size() - 1; }
 
     private String currentLine() {
@@ -80,11 +114,113 @@ public class DialogueScreen extends Screen {
 
     @Override
     protected void init() {
+        // Adopt any barter context that arrived (before or after the intro narration
+        // that opened this screen) from the BarterContextPayload receiver.
+        if (pendingBarterActive) {
+            this.barterActive = true;
+            this.barterGold = pendingBarterGold;
+            this.barterMaxOffer = pendingBarterMaxOffer;
+        }
         rebuildChoices();
+    }
+
+    /**
+     * Push fresh barter context onto an already-open DialogueScreen (e.g. the intro
+     * narration opened this screen first, then the BarterContextPayload landed). Stores
+     * the values and re-inits so the stepper widgets appear/update immediately.
+     */
+    public void applyBarterContext(boolean active, int gold, int maxOffer) {
+        this.barterActive = active;
+        this.barterGold = gold;
+        this.barterMaxOffer = maxOffer;
+        this.clearChildren();
+        this.init();
+    }
+
+    /** Effective upper bound on the offer: never above the player's gold or the server cap. */
+    private int barterCap() {
+        return Math.max(1, Math.min(barterMaxOffer, barterGold));
+    }
+
+    private void initBarterStepper() {
+        int cap = barterCap();
+        barterOffer = Math.max(1, Math.min(barterOffer, cap));
+
+        boolean hasGold = barterGold > 0;
+
+        // Lay the stepper out above the dialogue box. The box top is the same value
+        // rebuildChoices() uses; choice buttons (if any) stack upward from boxTop - 6,
+        // so we sit the stepper one row higher than the choice buttons would start.
+        int boxTop = this.height - BOX_BOTTOM_GAP - BOX_H;
+        int rowY = boxTop - 6 - 24; // a row above the box
+        int btnSize = 20;
+        int valueW = 60; // reserved space between - and + for the offer number
+        int gap = 6;
+        int offerBtnW = 90;
+        int walkBtnW = 90;
+
+        // Centered cluster:  [-] (value) [+]
+        int clusterW = btnSize + gap + valueW + gap + btnSize;
+        int clusterX = (this.width - clusterW) / 2;
+
+        int minusX = clusterX;
+        int plusX = clusterX + btnSize + gap + valueW + gap;
+
+        barterMinusButton = ButtonWidget.builder(Text.literal("-"), b -> adjustOffer(-1))
+            .dimensions(minusX, rowY, btnSize, btnSize).build();
+        barterPlusButton = ButtonWidget.builder(Text.literal("+"), b -> adjustOffer(1))
+            .dimensions(plusX, rowY, btnSize, btnSize).build();
+
+        // Action buttons one row below the stepper (still above the box).
+        int actionY = rowY + btnSize + gap;
+        int actionsW = offerBtnW + gap + walkBtnW;
+        int actionsX = (this.width - actionsW) / 2;
+        barterOfferButton = ButtonWidget.builder(Text.literal("Offer Gold"), b -> submitOffer())
+            .dimensions(actionsX, actionY, offerBtnW, btnSize).build();
+        barterWalkButton = ButtonWidget.builder(Text.literal("Walk away"), b -> choose("barter:leave"))
+            .dimensions(actionsX + offerBtnW + gap, actionY, walkBtnW, btnSize).build();
+
+        // With no gold the player can only walk away.
+        barterMinusButton.active = hasGold;
+        barterPlusButton.active = hasGold;
+        barterOfferButton.active = hasGold;
+
+        this.addDrawableChild(barterMinusButton);
+        this.addDrawableChild(barterPlusButton);
+        this.addDrawableChild(barterOfferButton);
+        this.addDrawableChild(barterWalkButton);
+    }
+
+    private void adjustOffer(int delta) {
+        int cap = barterCap();
+        barterOffer = Math.max(1, Math.min(barterOffer + delta, cap));
+    }
+
+    private void submitOffer() {
+        choose("barter:offer:" + barterOffer);
+    }
+
+    private boolean isOverBarterWidget(double mx, double my) {
+        return overWidget(barterMinusButton, mx, my)
+            || overWidget(barterPlusButton, mx, my)
+            || overWidget(barterOfferButton, mx, my)
+            || overWidget(barterWalkButton, mx, my);
+    }
+
+    private static boolean overWidget(ButtonWidget w, double mx, double my) {
+        return w != null
+            && mx >= w.getX() && mx < w.getX() + w.getWidth()
+            && my >= w.getY() && my < w.getY() + w.getHeight();
     }
 
     private void rebuildChoices() {
         this.clearChildren();
+        // The barter stepper is independent of the typewriter/choice state: it must
+        // survive every children rebuild (typewriter skip, line advance, last-line
+        // completion), so re-add it on each rebuild while a barter is active.
+        if (barterActive) {
+            initBarterStepper();
+        }
         if (!(onLastLine() && lineComplete) || choiceLabels.isEmpty()) return;
 
         int n = choiceLabels.size();
@@ -148,6 +284,12 @@ public class DialogueScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Give the barter stepper widgets first crack at the click so they work even
+        // while the intro line is still typing (a click on the box still skips the
+        // typewriter via the fall-through below).
+        if (barterActive && button == 0 && isOverBarterWidget(mouseX, mouseY)) {
+            return super.mouseClicked(mouseX, mouseY, button);
+        }
         if (button == 0) {
             if (!lineComplete) {
                 // First click: skip the typewriter to the end of this line.
@@ -163,7 +305,9 @@ public class DialogueScreen extends Screen {
                 lineComplete = false;
                 tickCounter = 0; // reset cadence for the new line
                 return true;
-            } else if (onLastLine() && choiceLabels.isEmpty()) {
+            } else if (onLastLine() && choiceLabels.isEmpty() && !barterActive) {
+                // In barter mode the stepper buttons drive submission/leaving, so a
+                // click on the finished last line must NOT auto-dismiss the screen.
                 ClientPlayNetworking.send(new DialogueChoicePayload(DialogueChoicePayload.ACTION_DISMISS));
                 this.close();
                 return true;
@@ -311,6 +455,35 @@ public class DialogueScreen extends Screen {
                 Text.literal("§8(click to continue)"),
                 boxX + boxW - 110, boxY + BOX_H - 12, 0xFF888888);
         }
+
+        if (barterActive) {
+            renderBarterStepper(ctx);
+        }
+    }
+
+    /** Labels + the current offer value for the barter stepper, aligned to its widgets. */
+    private void renderBarterStepper(DrawContext ctx) {
+        if (barterMinusButton == null) return;
+
+        // The stepper widgets were positioned in initBarterStepper(); derive the text
+        // anchors from them so label and value always line up with the buttons.
+        int rowY = barterMinusButton.getY();
+        int centerX = this.width / 2;
+
+        // "YOUR OFFER" heading sits just above the stepper row.
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            "§eYOUR OFFER", centerX, rowY - 11, 0xFFFFAA);
+
+        // Current offer value centered between the - and + buttons.
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            "§f" + barterOffer, centerX, rowY + 6, 0xFFFFFFFF);
+
+        // Player's gold count below the action buttons.
+        int goldY = barterWalkButton != null
+            ? barterWalkButton.getY() + barterWalkButton.getHeight() + 2
+            : rowY + 48;
+        ctx.drawCenteredTextWithShadow(this.textRenderer,
+            "§7you have " + barterGold + " gold", centerX, goldY, 0xFFAAAAAA);
     }
 
     /** Draw a 1px rectangular border using 4 fills (version-portable). */
