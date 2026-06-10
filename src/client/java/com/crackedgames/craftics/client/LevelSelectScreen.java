@@ -142,6 +142,11 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
     private float scrollOffset = 0;
     private float scrollTarget = 0;
 
+    /** Horizontal scroll of the tab strip in pixels, eased toward keeping the
+     *  active tab centered. Stays 0 while every tab fits on screen. */
+    private float tabScrollX = 0;
+    private float tabScrollTarget = 0;
+
     private ButtonWidget enterButton;
     private ButtonWidget leftArrow;
     private ButtonWidget rightArrow;
@@ -430,6 +435,15 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         int imgSize = getImageSize();
         int spacing = imgSize * 3 / 2;
 
+        // Focused-card swell amplitude (used for cardScale below). Kept subtle:
+        // the focused card grows imgSize*amp/2 past its base on each side, and
+        // the name label / progress dots sit at fixed offsets below the card's
+        // BASE bottom edge, so a large swell would let the enlarged card creep
+        // over them. 5% keeps the card clear of the name without a proportional
+        // layout push (which would otherwise collide with the fixed-gap Enter
+        // button on tall windows).
+        float focusAmp = 0.05f;
+
         // NG+ title
         int totalBiomes = CampaignManager.totalBiomes();
         int ngPlus = totalBiomes > 0 ? Math.max(0, (highestUnlocked - 1) / totalBiomes) : 0;
@@ -441,7 +455,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         // Tab bar
         int tabY = 20;
         int tabH = 16;
-        renderTabBar(context, tabY, tabH, mouseX, mouseY);
+        renderTabBar(context, tabY, tabH, mouseX, mouseY, delta);
 
         // Render biome cards for current page (visible range around scroll position)
         List<BiomeEntry> biomes = currentBiomes();
@@ -466,9 +480,25 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             int imgX = cardCenterX - imgSize / 2;
             int imgY = cy - imgSize / 2;
 
-            cardBounds.add(new int[] { imgX, imgY, imgX + imgSize, imgY + imgSize, i });
-            boolean hovered = mouseX >= imgX && mouseX < imgX + imgSize
-                && mouseY >= imgY && mouseY < imgY + imgSize;
+            // Cards swell as they approach the focus slot. Driven by the eased
+            // scrollOffset, so the size change slides with the carousel instead
+            // of popping when the selection changes.
+            float focusT = Math.max(0f, 1f - Math.abs(relPos));
+            float cardScale = 1.0f + focusAmp * focusT * focusT;
+            boolean cardScaled = cardScale > 1.001f;
+
+            // Hit-box matches the scaled visual.
+            int half = (int) (imgSize * cardScale / 2);
+            cardBounds.add(new int[] { cardCenterX - half, cy - half, cardCenterX + half, cy + half, i });
+            boolean hovered = mouseX >= cardCenterX - half && mouseX < cardCenterX + half
+                && mouseY >= cy - half && mouseY < cy + half;
+
+            if (cardScaled) {
+                context.getMatrices().push();
+                context.getMatrices().translate((float) cardCenterX, (float) cy, 0f);
+                context.getMatrices().scale(cardScale, cardScale, 1f);
+                context.getMatrices().translate((float) -cardCenterX, (float) -cy, 0f);
+            }
 
             if (unlocked) {
                 drawBiomeIcon(context, entry.texture, imgX, imgY, imgSize, imgSize, entry.dimColor);
@@ -503,6 +533,13 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                 context.fill(imgX + imgSize, imgY, imgX + imgSize + 1, imgY + imgSize, hoverColor);
             }
 
+            if (cardScaled) {
+                context.getMatrices().pop();
+            }
+
+            // Name label is drawn AFTER the scale pop so the focused card's
+            // swell never displaces it — it keeps a fixed gap above the
+            // progress dots regardless of cardScale.
             if (isFocused) {
                 // Undiscovered locked biomes keep their mystery as "???".
                 String name = (unlocked || isDiscovered) ? entry.displayName : "???";
@@ -514,12 +551,13 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         }
 
         // Progress dots \u2014 one per biome on this page (cleared / next / locked),
-        // clickable to jump.
+        // clickable to jump. Fixed offset below the card's base bottom edge; the
+        // focused card's subtle swell stays clear of this row.
         renderProgressDots(context, biomes, cx, cy + imgSize / 2 + 18, mouseX, mouseY);
 
         // Footer hint
         context.drawCenteredTextWithShadow(this.textRenderer,
-            "\u00a78Q / E: dimension  \u00b7  \u2190 \u2192: browse  \u00b7  click card: select  \u00b7  Enter: play",
+            "\u00a78\u2191 \u2193 / Q / E: dimension  \u00b7  \u2190 \u2192: browse  \u00b7  click card: select  \u00b7  Enter: play",
             cx, this.height - 14, 0x555555);
 
         // Tab progress tooltip (drawn last so it overlays everything).
@@ -593,7 +631,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
      * dimension's label centered inside. The active tab sits slightly lower
      * with a bright outline; locked tabs render muted with a padlock glyph.
      */
-    private void renderTabBar(DrawContext context, int tabY, int tabH, int mouseX, int mouseY) {
+    private void renderTabBar(DrawContext context, int tabY, int tabH, int mouseX, int mouseY, float delta) {
         tabBounds.clear();
         hoveredTabIndex = -1;
 
@@ -610,7 +648,30 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         }
         totalW += gap * Math.max(0, pages.size() - 1);
 
-        int startX = (this.width - totalW) / 2;
+        // When every tab fits, center the strip as before. With enough regions
+        // / addon pages to overflow, the strip becomes a scrolling viewport
+        // that keeps the active tab centered; chevrons mark hidden tabs.
+        int viewX = 14;
+        int viewW = this.width - viewX * 2;
+        boolean overflowing = totalW > viewW;
+        int startX;
+        if (!overflowing) {
+            tabScrollX = tabScrollTarget = 0;
+            startX = (this.width - totalW) / 2;
+        } else {
+            int activeCenter = 0;
+            int ax = 0;
+            for (int i = 0; i < pages.size(); i++) {
+                if (i == currentPageIndex) { activeCenter = ax + widths[i] / 2; break; }
+                ax += widths[i] + gap;
+            }
+            tabScrollTarget = Math.max(0, Math.min(totalW - viewW, activeCenter - viewW / 2f));
+            tabScrollX += (tabScrollTarget - tabScrollX) * Math.min(1.0f, 8.0f * delta);
+            if (Math.abs(tabScrollTarget - tabScrollX) < 0.5f) tabScrollX = tabScrollTarget;
+            startX = viewX - (int) tabScrollX;
+            context.enableScissor(viewX, tabY - 1, viewX + viewW, tabY + tabH + 1);
+        }
+
         int x = startX;
 
         for (int i = 0; i < pages.size(); i++) {
@@ -618,7 +679,11 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             int w = widths[i];
             boolean unlocked = isPageUnlocked(page);
             boolean active = i == currentPageIndex;
-            boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= tabY && mouseY < tabY + tabH;
+            // Hover / click regions clamp to the viewport when scrolling, so a
+            // tab clipped by the scissor can't be hit through the chevrons.
+            int hitX1 = overflowing ? Math.max(x, viewX) : x;
+            int hitX2 = overflowing ? Math.min(x + w, viewX + viewW) : x + w;
+            boolean hovered = mouseX >= hitX1 && mouseX < hitX2 && mouseY >= tabY && mouseY < tabY + tabH;
             if (hovered) hoveredTabIndex = i;
 
             // Background
@@ -659,8 +724,20 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             context.drawTextWithShadow(this.textRenderer, label,
                 x + (w - labelW) / 2, tabY + (tabH - 8) / 2 + 1, labelColor);
 
-            tabBounds.add(new int[] { x, tabY, x + w, tabY + tabH });
+            tabBounds.add(new int[] { hitX1, tabY, hitX2, tabY + tabH });
             x += w + gap;
+        }
+
+        if (overflowing) {
+            context.disableScissor();
+            // Edge chevrons hint at tabs scrolled out of view on either side.
+            int chevY = tabY + (tabH - 8) / 2 + 1;
+            if (tabScrollX > 1) {
+                context.drawTextWithShadow(this.textRenderer, "◀", viewX - 11, chevY, 0xFF8888AA);
+            }
+            if (tabScrollX < totalW - viewW - 1) {
+                context.drawTextWithShadow(this.textRenderer, "▶", viewX + viewW + 3, chevY, 0xFF8888AA);
+            }
         }
     }
 
@@ -763,18 +840,18 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         // Left/Right arrows: biome navigation within current page
-        // Q/E: dimension tab switching, Enter: play the focused biome
-        // 263 = LEFT, 262 = RIGHT, 81 = Q, 69 = E, 257 = ENTER, 335 = KP_ENTER
+        // Up/Down arrows + Q/E: dimension row switching, Enter: play the focused biome
+        // 263 = LEFT, 262 = RIGHT, 265 = UP, 264 = DOWN, 81 = Q, 69 = E, 257 = ENTER, 335 = KP_ENTER
         if (keyCode == 263) {
             scrollBiome(-1);
             return true;
         } else if (keyCode == 262) {
             scrollBiome(1);
             return true;
-        } else if (keyCode == 81) {
+        } else if (keyCode == 81 || keyCode == 265) {
             cyclePage(-1);
             return true;
-        } else if (keyCode == 69) {
+        } else if (keyCode == 69 || keyCode == 264) {
             cyclePage(1);
             return true;
         } else if (keyCode == 257 || keyCode == 335) {

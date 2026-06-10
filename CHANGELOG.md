@@ -7,11 +7,13 @@ Turn banner fade was dead code (alpha computed then overwritten) and its timer r
 AP/SPD pips lied: a fixed 3-slot layout meant spending from 5→4→3 AP changed nothing on screen. Now one pip per point with adaptive sizing.
 "+N more" enemy collapse double-counted the boss and could duplicate a head in the mini list.
 Client/server walkability mismatch: tall grass, ferns, cobwebs and stairs are walkable server-side but the client previews treated them as obstacles.
+The client move preview also treated deep (2-block) water as walkable when server-side it is an instant-kill tile, and now refuses it. The hover cursor no longer flickers when the mouse rides a tile boundary.
 Headline UX additions:
 
-Combat HUD: a clickable End Turn button (shows the live keybind, pulses when you're out of resources — previously ending a turn required knowing the R key existed), smooth HP bars with damage-ghost drain on every bar, attack AP cost on the mode pill, and an "N SPD" cost tag at the cursor when hovering a move tile.
-Grid: crisp perimeter outlines on move/attack/AoE regions, a proper hover cursor ring, and a movement path preview (breadcrumbs along the BFS route). The renderer was also de-duplicated so both Stonecutter branches share one quad-building core.
-Level select: cards are now clickable (click side card to select, focused card to enter) with hover feedback, clickable progress dots (cleared/next/locked), Enter-to-play, tab tooltips with region progress, and "???" on undiscovered locked biomes.
+Combat HUD: a clickable End Turn button (shows the live keybind, pulses when you're out of resources — previously ending a turn required knowing the R key existed), smooth HP bars with damage-ghost drain on every bar, attack AP cost on the mode pill, an "N SPD" cost tag at the cursor when hovering a move tile, an act-order strip of mob portraits during the enemy phase that highlights the unit acting right now, a theme hint on the inspect panel showing what a water, jungle, or cold enemy's hit will inflict, HP numbers only on damaged enemies, and a pulsing red screen edge below 30% HP.
+Grid: crisp perimeter outlines on move/attack/AoE regions, a proper hover cursor ring, and a movement path preview (breadcrumbs along the BFS route). Occluded highlights and breadcrumbs now ghost faintly through walls, and the preview threads through allies the way the server allows. The renderer was also de-duplicated so both Stonecutter branches share one quad-building core.
+Threat overlay: press Y in combat to see every tile enemies could reach and strike this turn, drawn under your own highlights and hidden while Blinded.
+Level select: cards are now clickable (click side card to select, focused card to enter) with hover feedback, clickable progress dots (cleared/next/locked), Enter-to-play, tab tooltips with region progress, "???" on undiscovered locked biomes, a focused card that swells as the carousel slides, a dimension tab bar that scrolls when addon pages overflow it, and Up/Down to cycle dimensions alongside Q/E.
 
 
 Nether

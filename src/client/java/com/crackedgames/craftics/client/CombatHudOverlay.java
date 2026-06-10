@@ -42,6 +42,9 @@ public class CombatHudOverlay implements HudRenderCallback {
     /** Right edge X of the enemy roster (or inspect panel) so the tile tooltip
      *  aligns with the same right margin even when its width differs. */
     private static int enemyRosterRightX = -1;
+    /** Bottom Y of the party turn-order panel this frame so the enemy
+     *  act-order strip can stack below it instead of overlapping. */
+    private static int turnOrderBottomY = 20;
 
     @Override
     public void onHudRender(DrawContext ctx, RenderTickCounter tickCounter) {
@@ -85,6 +88,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         renderAllyRoster(ctx, client, screenW);
         renderTurnBanner(ctx, client, screenW);
         renderTurnOrder(ctx, client, screenW);
+        renderActOrderStrip(ctx, client, screenW);
         renderEnemyRoster(ctx, client, screenW);
         renderTileTooltip(ctx, client, screenW, screenH);
         renderModePill(ctx, client, screenW, screenH);
@@ -605,6 +609,7 @@ public class CombatHudOverlay implements HudRenderCallback {
      * in queue order with the active player highlighted.
      */
     private void renderTurnOrder(DrawContext ctx, MinecraftClient client, int screenW) {
+        turnOrderBottomY = 20; // below the banner; pushed down when the panel draws
         java.util.List<CombatState.TurnOrderEntry> order = CombatState.getTurnOrderList();
         if (order.isEmpty()) return; // solo play — nothing to show
 
@@ -622,6 +627,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         int panelH = panelPad + order.size() * entryH + panelPad - 2;
         int panelX = screenW / 2 - panelW / 2;
         int panelY = 22; // below the turn banner
+        turnOrderBottomY = panelY + panelH + 2;
 
         drawPanel(ctx, panelX, panelY, panelW, panelH);
 
@@ -646,6 +652,81 @@ public class CombatHudOverlay implements HudRenderCallback {
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal(entry.name()), afterIndicator + headSz + headGp, y + 1, nameColor);
             y += entryH;
+        }
+    }
+
+    // ─── Enemy Act-Order Strip ───────────────────────────────────────────
+
+    /**
+     * During the enemy phase, a centered strip of unit portraits in the order
+     * they will act (server sync order, mirrored by CombatState). The unit
+     * currently taking its action — learned from the attack-anim event, so
+     * best-effort — gets a gold frame; the underline below each portrait
+     * reads friend (green) vs foe (red) at a glance.
+     */
+    private void renderActOrderStrip(DrawContext ctx, MinecraftClient client, int screenW) {
+        if (!CombatState.isEnemyTurn()) return;
+        java.util.List<Integer> order = CombatState.getUnitActOrder();
+        if (order.isEmpty()) return;
+
+        Map<Integer, int[]> enemies = CombatState.getEnemyHpMap();
+        Map<Integer, int[]> allies = CombatState.getAllyHpMap();
+        Map<Integer, String> enemyTypes = CombatState.getEnemyTypeMap();
+        Map<Integer, String> allyTypes = CombatState.getAllyTypeMap();
+
+        // Only units still present in a roster (the dead drop out on sync).
+        List<Integer> ids = new ArrayList<>();
+        for (int id : order) {
+            if (enemies.containsKey(id) || allies.containsKey(id)) ids.add(id);
+        }
+        if (ids.isEmpty()) return;
+
+        int headSz = 12;
+        int gap = 3;
+        int maxShown = 10;
+        int shown = Math.min(ids.size(), maxShown);
+        int overflow = ids.size() - shown;
+        String moreLabel = overflow > 0 ? "+" + overflow : null;
+        int moreW = moreLabel == null ? 0 : client.textRenderer.getWidth(moreLabel) + 3;
+
+        int pad = 4;
+        int stripW = pad + shown * (headSz + gap) - gap + moreW + pad;
+        int stripH = pad + headSz + 3 + pad; // portrait + friend/foe underline
+        int stripX = screenW / 2 - stripW / 2;
+        int stripY = turnOrderBottomY + 2;
+
+        drawPanel(ctx, stripX, stripY, stripW, stripH);
+
+        int actingId = CombatState.getActingEnemyId();
+        int x = stripX + pad;
+        int y = stripY + pad;
+        for (int i = 0; i < shown; i++) {
+            int id = ids.get(i);
+            boolean isAlly = allies.containsKey(id);
+            String typeFull = (isAlly ? allyTypes : enemyTypes).getOrDefault(id, "minecraft:zombie");
+            String typeId = typeFull.contains(";") ? typeFull.substring(0, typeFull.indexOf(';')) : typeFull;
+            boolean acting = id == actingId;
+
+            if (acting) {
+                ctx.fill(x - 2, y - 2, x + headSz + 2, y + headSz + 5, 0xFFFFDD55);
+                ctx.fill(x - 1, y - 1, x + headSz + 1, y + headSz + 4, 0xFF221A00);
+            }
+            Identifier tex = MobHeadTextures.get(typeId);
+            if (tex != null) {
+                MobHeadTextures.drawMobHead(ctx, tex, x, y, headSz);
+            } else {
+                ctx.fill(x, y, x + headSz, y + headSz, MobHeadTextures.getMobColor(typeId));
+                ctx.drawCenteredTextWithShadow(client.textRenderer,
+                    Text.literal(MobHeadTextures.getDisplayInitial(typeId)),
+                    x + headSz / 2, y + 2, 0xFFFFFFFF);
+            }
+            ctx.fill(x, y + headSz + 1, x + headSz, y + headSz + 3,
+                isAlly ? 0xFF55CC55 : acting ? 0xFFFFDD55 : 0xFFCC4444);
+            x += headSz + gap;
+        }
+        if (moreLabel != null) {
+            ctx.drawTextWithShadow(client.textRenderer, Text.literal(moreLabel),
+                x + 1, y + 3, 0xFF888888);
         }
     }
 
@@ -976,9 +1057,13 @@ public class CombatHudOverlay implements HudRenderCallback {
             ctx.fill(barX - 1, barY - 1, barX + barW + 1, barY + barH + 1, 0x88000000);
             drawHpBar(ctx, "en:" + entityId, barX, barY, barW, barH,
                 ePct, hpColor(ePct), 0x00000000);
-            ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal("\u00a77" + eHp + "/" + eMaxHp),
-                barX + barW + 3, barY - 1, 0xFFAAAAAA);
+            // HP numbers only once damaged \u2014 a full bar already says "full",
+            // and dropping the text keeps the untouched roster quieter.
+            if (eHp < eMaxHp) {
+                ctx.drawTextWithShadow(client.textRenderer,
+                    Text.literal("\u00a77" + eHp + "/" + eMaxHp),
+                    barX + barW + 3, barY - 1, 0xFFAAAAAA);
+            }
 
             y += entryH;
             drawn++;
@@ -1086,8 +1171,29 @@ public class CombatHudOverlay implements HudRenderCallback {
             displayName = rawId.substring(0, 1).toUpperCase() + rawId.substring(1).replace('_', ' ');
         }
 
+        // Theme tag (water/jungle/cold) — tells the player what a hit from this
+        // unit will inflict before they eat one. Reads the same MobThemeTags
+        // registry the server resolves on-hit effects from, so the two can't drift.
+        String themeLine = null;
+        int themeColor = 0;
+        if (!isAlly) {
+            if (com.crackedgames.craftics.combat.MobThemeTags.isWater(typeId)) {
+                themeLine = "§b◆ Hit: Soaked "
+                    + com.crackedgames.craftics.combat.MobThemeTags.SOAK_TURNS + "t";
+                themeColor = 0xFF55CCFF;
+            } else if (com.crackedgames.craftics.combat.MobThemeTags.isJungle(typeId)) {
+                themeLine = "§a◆ Hit: Poison "
+                    + com.crackedgames.craftics.combat.MobThemeTags.POISON_TURNS + "t";
+                themeColor = 0xFF66DD66;
+            } else if (com.crackedgames.craftics.combat.MobThemeTags.isCold(typeId)) {
+                themeLine = "§f◆ Hit: Weakness "
+                    + com.crackedgames.craftics.combat.MobThemeTags.WEAKNESS_TURNS + "t";
+                themeColor = 0xFFCCEEFF;
+            }
+        }
+
         int panelW = bossName != null ? 140 : 120;
-        int panelH = 100 + enemyEffects.size() * 10 + (enemyEnchants.isEmpty() ? 0 : (enemyEnchants.size() * 10 + 4));
+        int panelH = 100 + (themeLine != null ? 10 : 0) + enemyEffects.size() * 10 + (enemyEnchants.isEmpty() ? 0 : (enemyEnchants.size() * 10 + 4));
         int panelX = screenW - panelW - 8;
         int panelY = 4;
 
@@ -1134,6 +1240,12 @@ public class CombatHudOverlay implements HudRenderCallback {
             Text.literal("\u00a7b\u2B06 SPD " + spd + "  \u00a7e\u27B3 RNG " + range),
             panelX + 4, y, 0xFFCCCCCC);
         y += 11;
+
+        if (themeLine != null) {
+            ctx.drawTextWithShadow(client.textRenderer,
+                Text.literal(themeLine), panelX + 4, y, themeColor);
+            y += 10;
+        }
 
         if (!enemyEffects.isEmpty()) {
             for (String eff : enemyEffects) {
