@@ -183,7 +183,13 @@ public final class VanillaContent {
         EventRegistry.register(new EventEntry("craftics:treasure_vault", "Treasure Vault", 0.04f, 0, true, null));
         EventRegistry.register(new EventEntry("craftics:dig_site", "Dig Site", 0.06f, 0, true, null));
         EventRegistry.register(new EventEntry("craftics:trader", "Trader", traderChance, 0, true, null));
-        EventRegistry.register(new EventEntry("craftics:piglin_barter", "Piglin Barter", traderChance, 0, true, null));
+        // Piglin Barter is NOT registered as an EventRegistry event: it is an inline
+        // built-in handled directly in the post-level cascade (like the trader), gated
+        // to the Nether. Registering it here (with a null handler) would (a) let the
+        // addon-roll path select it and hit the null-handler skip, and (b) only expose
+        // the full id "craftics:piglin_barter" to force_event, which the cascade's bare
+        // "piglin_barter" token never matches. The bare token lives in the force_event
+        // list in CrafticsMod instead. We only register its categories/pools here.
         com.crackedgames.craftics.combat.barter.VanillaBarterContent.register();
     }
 }

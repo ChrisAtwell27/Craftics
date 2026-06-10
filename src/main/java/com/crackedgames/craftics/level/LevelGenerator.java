@@ -51,12 +51,21 @@ public class LevelGenerator {
             com.crackedgames.craftics.CrafticsMod.CONFIG.scaleHpPerLevel());
     }
 
+    public static LevelDefinition generate(int levelNumber, int branchChoice, boolean scaleHpPerLevel) {
+        // Default bossBeaten=false for callers without player context (the enemy count
+        // then follows the normal per-biome ramp rather than the post-boss max).
+        return generate(levelNumber, branchChoice, scaleHpPerLevel, false);
+    }
+
     /**
      * Full signature — {@code scaleHpPerLevel} comes from the island owner's
      * {@code PlayerData.scaleHpPerLevelEnabled} so each island can independently
-     * disable the per-level HP ramp within a biome.
+     * disable the per-level HP ramp within a biome. {@code bossBeaten} is whether the
+     * island owner has already defeated this biome's boss; once true, every level in the
+     * biome spawns the biome's peak enemy count instead of the ramped count.
      */
-    public static LevelDefinition generate(int levelNumber, int branchChoice, boolean scaleHpPerLevel) {
+    public static LevelDefinition generate(int levelNumber, int branchChoice, boolean scaleHpPerLevel,
+                                           boolean bossBeaten) {
         BiomeTemplate biome = BiomeRegistry.getForLevel(levelNumber);
         if (biome == null) {
             throw new IllegalStateException("No biome registered for level " + levelNumber
@@ -84,12 +93,17 @@ public class LevelGenerator {
         GridPos playerStart = new GridPos(width / 2, 0);
         GridTile[][] tiles = generateTiles(biome, width, height, biomeIndex, rand);
         LevelDefinition.EnemySpawn[] enemies = generateEnemies(
-            biome, tiles, width, height, biomeIndex, levelNumber, isBoss, branchChoice, scaleHpPerLevel, rand);
+            biome, tiles, width, height, biomeIndex, levelNumber, isBoss, branchChoice, scaleHpPerLevel,
+            bossBeaten, rand);
+        // Completion loot scales with how many enemies this level actually has, so an
+        // early (few-enemy) level pays less than a late (full) one. Boss levels keep
+        // their own loot footprint and are not scaled down by their small add-crew.
+        float lootMult = com.crackedgames.craftics.CrafticsMod.CONFIG.lootQuantityMultiplier();
+        double enemyRewardMult = isBoss ? 1.0 : BiomeDifficulty.rewardMultiplier(enemies.length);
         int lootMinTypes = 1 + biomeIndex / 2;
         int lootMaxTypes = 2 + biomeIndex / 2;
-        int lootMinTotal = 2 + biomeIndex;
-        int lootMaxTotal = 4 + biomeIndex * 2;
-        float lootMult = com.crackedgames.craftics.CrafticsMod.CONFIG.lootQuantityMultiplier();
+        int lootMinTotal = (int) Math.round((2 + biomeIndex) * enemyRewardMult);
+        int lootMaxTotal = (int) Math.round((4 + biomeIndex * 2) * enemyRewardMult);
         List<ItemStack> loot = biome.buildLootPool().roll(
             Math.min(lootMinTypes, 3), Math.min(lootMaxTypes, 3),
             (int)(Math.min(lootMinTotal, 8) * lootMult), (int)(Math.min(lootMaxTotal, 10) * lootMult)
@@ -220,7 +234,8 @@ public class LevelGenerator {
                                                                    int w, int h,
                                                                    int biomeIndex, int globalLevel,
                                                                    boolean isBoss, int branchChoice,
-                                                                   boolean scaleHpPerLevel, Random rand) {
+                                                                   boolean scaleHpPerLevel, boolean bossBeaten,
+                                                                   Random rand) {
         List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
 
         // Use active-campaign position for difficulty scaling (not registry index)
@@ -239,7 +254,11 @@ public class LevelGenerator {
         final int TILES_PER_ENEMY = 18;
         int arenaCap = Math.max(2, (w * h) / TILES_PER_ENEMY);
         int hardCap = Math.min(biomeCap, arenaCap);
-        int count = 2 + biomeIndex / 2 + Math.min(biomeOrdinal, 6);
+        // Enemy count ramps within the biome and resets each biome: first level = 3,
+        // +1 per level. Once the biome's boss is beaten, every level spawns the biome's
+        // peak count. biomeOrdinal no longer drives the count (later biomes stay harder
+        // via enemy stat/HP scaling instead). Still clamped by arena size + config max.
+        int count = BiomeDifficulty.enemyCount(biomeIndex, biome.levelCount, bossBeaten);
         count = Math.min(count, hardCap);
         // Boss rounds: keep the add crew small and thematic. The boss itself is
         // the main threat; extra random biome trash dilutes the fight.
