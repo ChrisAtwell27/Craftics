@@ -11,6 +11,8 @@ public record RawMarker(Kind kind, int x, int y, int z, float yaw, String occupa
         /** The scene spawn / camera vantage marker. {@code occupant} is unused. */
         SPAWN,
         /** A booth marker. {@code occupant} is the dedicated merchant id or an overflow wildcard. */
-        STAND
+        STAND,
+        /** Where the booth's NPC stands. {@code occupant} is unused; paired to the nearest STAND. */
+        NPC
     }
 }

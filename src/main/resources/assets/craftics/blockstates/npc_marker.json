@@ -1,0 +1,9 @@
+{
+  "comment": "NPC marker keeps a FACING property (read by the scanner) and is replaced by the most common neighbor block on scan, so every facing maps to the shared marker model.",
+  "variants": {
+    "facing=north": { "model": "craftics:block/scene_marker" },
+    "facing=south": { "model": "craftics:block/scene_marker" },
+    "facing=east":  { "model": "craftics:block/scene_marker" },
+    "facing=west":  { "model": "craftics:block/scene_marker" }
+  }
+}

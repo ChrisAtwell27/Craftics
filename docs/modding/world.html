@@ -436,14 +436,14 @@ CrafticsAPI.forceNextEvent(player, null);</code></pre>
          ================================================================ -->
     <h2 id="scenes">Village &amp; Bartering Station scenes</h2>
     <p>
-      The Village and Bartering Station are walk-around hub scenes the player teleports into from the level select. A scene is built from a schematic, just like an arena, but instead of fight-grid markers it uses two <strong>scene marker blocks</strong>: one that sets where the player appears, and one for each merchant booth ("stand"). You build the layout in-world or in a schematic editor, drop the <code>.schem</code> in the scenes folder, and Craftics scans the markers when the scene loads.
+      The Village and Bartering Station are walk-around hub scenes the player teleports into from the level select. A scene is built from a schematic, just like an arena, using three <strong>scene marker blocks</strong>: one that sets where the player appears, a pair that marks the clickable area of each merchant booth ("stand"), and one that places the booth's NPC. You build the layout in-world or in a schematic editor, drop the <code>.schem</code> in the scenes folder, and Craftics scans the markers when the scene loads.
     </p>
 
     <div class="callout">
-      <p><strong>Marker blocks are dev tools.</strong> <code>craftics:scene_spawn</code> and <code>craftics:stand_marker</code> are placement markers, not decoration. The scanner reads their position and facing, then the scene runtime treats the surrounding schematic as the visible scene. Give yourself the blocks in creative with <code>/give @s craftics:scene_spawn</code> and <code>/give @s craftics:stand_marker</code>.</p>
+      <p><strong>Marker blocks are invisible in the finished scene.</strong> <code>craftics:scene_spawn</code>, <code>craftics:stand_marker</code>, and <code>craftics:npc_marker</code> are placement markers, not decoration. When the scene is scanned, each marker is <strong>replaced with the most common block touching it</strong>, so it blends into the surrounding floor and the player never sees a marker block (the same way arena corner markers disappear). Give yourself the blocks in creative with <code>/give @s craftics:scene_spawn</code>, <code>/give @s craftics:stand_marker</code>, and <code>/give @s craftics:npc_marker</code>.</p>
     </div>
 
-    <h3>The two marker blocks</h3>
+    <h3>The marker blocks</h3>
     <div class="table-wrap">
       <table>
         <thead>
@@ -451,7 +451,8 @@ CrafticsAPI.forceNextEvent(player, null);</code></pre>
         </thead>
         <tbody>
           <tr><td><code>craftics:scene_spawn</code></td><td>Exactly one</td><td>Where the player materializes when they enter the scene, and the direction the third-person camera faces. Place it looking toward the booths: the block stores the way you were facing when you placed it, and the camera aims along that facing. If a scene has no spawn marker the scanner reports it as an authoring error and the scene will not open.</td></tr>
-          <tr><td><code>craftics:stand_marker</code></td><td>One per booth</td><td>Marks a booth the player can click to walk up to. Its position is the spot the player lerp-walks to; its facing is the direction the player faces when stood there (place it looking the way the player should face, i.e. toward the merchant). Each stand marker carries an <em>occupant</em> assigned after the scene is built (see below).</td></tr>
+          <tr><td><code>craftics:stand_marker</code></td><td>Two per booth</td><td>Corner markers, placed in pairs. The two markers mark the opposite corners of a rectangle, and clicking anywhere inside that rectangle counts as clicking the booth. Corner markers hold no data of their own; the booth is identified by the NPC marker inside the rectangle.</td></tr>
+          <tr><td><code>craftics:npc_marker</code></td><td>One per booth, inside the corner rectangle</td><td>Sits inside the booth's two-corner rectangle and is the booth's identity: it places the NPC (its position and facing) and carries the <em>occupant</em> id. The player walks up one tile in front of the NPC, facing it. Every booth needs exactly one NPC marker inside its corners; that is also how the scanner knows which two corners form which booth.</td></tr>
         </tbody>
       </table>
     </div>
@@ -460,18 +461,23 @@ CrafticsAPI.forceNextEvent(player, null);</code></pre>
     <ol>
       <li>Build the booth structures and walkways however you like, using any blocks. This is the visible scene.</li>
       <li>Place one <code>craftics:scene_spawn</code> on the floor where the player should appear, facing the booths.</li>
-      <li>Place one <code>craftics:stand_marker</code> at each booth, on the tile the player should stand on, facing the merchant.</li>
+      <li>At each booth, place two <code>craftics:stand_marker</code> blocks at opposite corners of the area you want to be clickable for that booth.</li>
+      <li>Place one <code>craftics:npc_marker</code> inside that rectangle, where the NPC should stand, facing the player's approach. This both positions the NPC and ties the two corners together into one booth.</li>
       <li>Select the whole build (including the markers) and export it as a Sponge <code>.schem</code> (WorldEdit / Litematica / FAWE all produce this format, the same one arenas use).</li>
       <li>Drop the file at <code>data/craftics/scenes/village.schem</code> or <code>data/craftics/scenes/barter_station.schem</code> in a datapack, or override it on disk by placing it in a <code>craftics_scenes/</code> folder next to the server run directory. The disk copy wins if both exist, so you can iterate without rebuilding the jar.</li>
     </ol>
 
     <div class="callout">
-      <p><strong>The village is for villager merchants; the bartering station is for piglins.</strong> The two scenes are authored identically. The only difference is which occupant ids you give their stands (villager professions vs. piglin barter categories) and which schematic file name you save under.</p>
+      <p><strong>How booths are paired.</strong> For each NPC marker, the scanner finds the tight pair of stand corners whose rectangle contains it (and no other corner). Those two corners plus the NPC marker form one booth, and the rectangle is its clickable area. If an NPC marker has no clean containing pair around it (or the layout is ambiguous), that booth is skipped with a warning in the log and the rest of the scene still loads.</p>
+    </div>
+
+    <div class="callout">
+      <p><strong>The village is for villager merchants; the bartering station is for piglins.</strong> The two scenes are authored identically. The only difference is which occupant ids you give their NPC markers (villager professions vs. piglin barter categories) and which schematic file name you save under.</p>
     </div>
 
     <h3>Assigning booth occupants</h3>
     <p>
-      A booth's <em>occupant</em> decides which merchant stands there. Occupants are <strong>not baked into the schematic</strong>: schematic export saves block states but not the marker's stored data, so a stand marker loaded from a <code>.schem</code> always comes in blank. Instead, the scene assigns occupants when it is built, keyed by stand index (the deterministic order the scanner produces, sorted by X, then Z, then Y). This keeps "where the booths are" (the schematic) separate from "who staffs them" (live progression), so a booth can show its merchant for one player and sit empty for another who has not met them yet.
+      A booth's <em>occupant</em> decides which merchant stands there, and it lives on the booth's <code>npc_marker</code>. Occupants are <strong>not baked into the schematic</strong>: schematic export saves block states but not a marker's stored data, so an NPC marker loaded from a <code>.schem</code> comes in blank. Instead the scene assigns occupants when it is built, keyed by booth index (the deterministic order the scanner produces, sorted by the rectangle's corner). This keeps "where the booths are" (the schematic) separate from "who staffs them" (live progression), so a booth can show its merchant for one player and sit empty for another who has not met them yet.
     </p>
     <p>
       An occupant id is one of:
@@ -490,9 +496,9 @@ CrafticsAPI.forceNextEvent(player, null);</code></pre>
     </div>
 
     <div class="callout">
-      <p><strong>Testing a single marker in-world.</strong> While iterating you can set a stand marker's occupant directly with a command, then re-scan the live world (rather than re-exporting):</p>
+      <p><strong>Testing a booth in-world.</strong> While iterating you can set an NPC marker's occupant directly with a command, then re-scan the live world (rather than re-exporting):</p>
       <pre><code>/data merge block ~ ~ ~ {Occupant:"craftics:weaponsmith"}</code></pre>
-      <p>Confirm it stuck with <code>/data get block ~ ~ ~ Occupant</code>. This is for ad-hoc testing only; the real scene populates occupants by stand index when it builds.</p>
+      <p>Target the <code>npc_marker</code> and confirm it stuck with <code>/data get block ~ ~ ~ Occupant</code>. This is for ad-hoc testing only; the real scene populates occupants by booth index when it builds.</p>
     </div>
 
     <h3>Reusing a scene as an addon</h3>

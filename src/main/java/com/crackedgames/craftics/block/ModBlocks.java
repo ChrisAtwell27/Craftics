@@ -126,11 +126,11 @@ public class ModBlocks {
             FabricBlockEntityTypeBuilder.create(LevelSelectBlockEntity::new, LEVEL_SELECT_BLOCK).build()
         );
 
-    public static final BlockEntityType<StandMarkerBlockEntity> STAND_MARKER_BLOCK_ENTITY =
+    public static final BlockEntityType<NpcMarkerBlockEntity> NPC_MARKER_BLOCK_ENTITY =
         Registry.register(
             Registries.BLOCK_ENTITY_TYPE,
-            Identifier.of(CrafticsMod.MOD_ID, "stand_marker_block_entity"),
-            FabricBlockEntityTypeBuilder.create(StandMarkerBlockEntity::new, STAND_MARKER_BLOCK).build()
+            Identifier.of(CrafticsMod.MOD_ID, "npc_marker_block_entity"),
+            FabricBlockEntityTypeBuilder.create(NpcMarkerBlockEntity::new, NPC_MARKER_BLOCK).build()
         );
 
     private static Block registerBlock(String name, Block block) {

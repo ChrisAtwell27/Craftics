@@ -2,7 +2,9 @@ package com.crackedgames.craftics.block;
 
 import com.mojang.serialization.MapCodec;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockEntityProvider;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.item.ItemPlacementContext;
 import net.minecraft.state.StateManager;
 //? if <=1.21.1 {
@@ -11,15 +13,19 @@ import net.minecraft.state.StateManager;
 import net.minecraft.state.property.EnumProperty;
 //?}
 import net.minecraft.state.property.Properties;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 
 /**
- * Marker block placed in a scene schematic to define where a booth's NPC stands
- * and which way it faces. {@link com.crackedgames.craftics.scene.SceneScanner}
- * reads its position and {@code FACING}; {@link com.crackedgames.craftics.scene.SceneLayoutResolver}
- * pairs each NPC marker to the nearest stand. Pure marker, no behavior.
+ * Marker block placed inside a booth's stand-corner rectangle to define where the
+ * booth's NPC stands and which way it faces, and to identify the booth: its
+ * {@link NpcMarkerBlockEntity} stores the occupant id. {@code FACING} records the
+ * NPC's facing; the player walks up one tile in front of the NPC facing it.
+ * {@link com.crackedgames.craftics.scene.SceneScanner} reads position, FACING, and
+ * occupant during a scan, then replaces the marker with the most common neighboring
+ * block so it is invisible in the built scene.
  */
-public class NpcMarkerBlock extends Block {
+public class NpcMarkerBlock extends Block implements BlockEntityProvider {
 
     public static final MapCodec<NpcMarkerBlock> CODEC = createCodec(NpcMarkerBlock::new);
     //? if <=1.21.1 {
@@ -46,5 +52,10 @@ public class NpcMarkerBlock extends Block {
     @Override
     public BlockState getPlacementState(ItemPlacementContext ctx) {
         return this.getDefaultState().with(FACING, ctx.getHorizontalPlayerFacing().getOpposite());
+    }
+
+    @Override
+    public BlockEntity createBlockEntity(BlockPos pos, BlockState state) {
+        return new NpcMarkerBlockEntity(pos, state);
     }
 }
