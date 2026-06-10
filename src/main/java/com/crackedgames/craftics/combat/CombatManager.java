@@ -16569,7 +16569,16 @@ public class CombatManager {
         // Resourceful stat: +1 emerald per point (uses leader's stat)
         PlayerProgression victoryProg = PlayerProgression.get(world);
         int resourcefulBonus = victoryProg.getStats(player).getPoints(PlayerProgression.Stat.RESOURCEFUL);
-        int emeraldsEarned = com.crackedgames.craftics.CrafticsMod.CONFIG.emeraldBaseReward() + biomeOrdinal / 3 + (isBoss ? 3 : 0) + resourcefulBonus;
+        // The base emerald reward scales with how many enemies this level had, so a few-enemy
+        // early level pays less than a full late one. Boss levels keep their flat reward (their
+        // small add-crew shouldn't shrink the payout). Resourceful is a flat player bonus on top.
+        int baseEmeralds = com.crackedgames.craftics.CrafticsMod.CONFIG.emeraldBaseReward() + biomeOrdinal / 3;
+        if (!isBoss && levelDef != null) {
+            double emeraldMult = com.crackedgames.craftics.level.BiomeDifficulty.rewardMultiplier(
+                levelDef.getEnemySpawns().length);
+            baseEmeralds = Math.max(1, (int) Math.round(baseEmeralds * emeraldMult));
+        }
+        int emeraldsEarned = baseEmeralds + (isBoss ? 3 : 0) + resourcefulBonus;
         // FORTUNE_PEAK set bonus: double emerald rewards
         if (activeTrimScan != null && activeTrimScan.setBonus() == TrimEffects.SetBonus.FORTUNE_PEAK) {
             emeraldsEarned *= 2;
@@ -17070,8 +17079,13 @@ public class CombatManager {
                     ? worldOwnerUuid
                     : (leaderUuid != null ? leaderUuid : savedPlayer.getUuid());
                 boolean islandHpScale = data.getPlayerData(hpScaleOwnerId).scaleHpPerLevelEnabled;
+                // Once the island owner has beaten this biome's boss, every level in the
+                // biome spawns the biome's peak enemy count instead of the normal ramp.
+                boolean ownerBeatBiomeBoss = PlayerProgression.get(world)
+                    .getStats(hpScaleOwnerId).getBossKills(biomeId) >= 1;
                 com.crackedgames.craftics.level.LevelDefinition nextLevelDef =
-                    com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, branchChoice, islandHpScale);
+                    com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, branchChoice,
+                        islandHpScale, ownerBeatBiomeBoss);
                 if (nextLevelDef != null) {
                     java.util.Random eventRng = new java.util.Random();
                     float eventRoll = eventRng.nextFloat();

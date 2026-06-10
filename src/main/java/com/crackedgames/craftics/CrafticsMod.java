@@ -1024,7 +1024,7 @@ public class CrafticsMod implements ModInitializer {
             // CombatManager.rollEvent compares against. Must match the
             // {@code forced.equals("...")} arms over there exactly.
             java.util.List<String> eventNames = new java.util.ArrayList<>(java.util.List.of(
-                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "none"
+                "ambush", "trial", "ominous_trial", "shrine", "traveler", "vault", "dig_site", "enchanter", "trader", "piglin_barter", "none"
             ));
             // Add addon-registered events from EventRegistry
             for (var entry : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {

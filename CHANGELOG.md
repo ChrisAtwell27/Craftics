@@ -10,6 +10,12 @@ Nether
 - Each player in co-op makes their own offer and gets their own outcome
 - Addon support: mods and datapacks can add new barter categories and contribute items to existing pools through the Craftics API or data/<namespace>/craftics/barter/*.json files
 
+Combat balance
+
+- Enemy count now ramps up within a biome instead of being driven by how deep you are in the campaign. Every biome starts at 3 enemies on its first level and adds 1 per level, then resets to 3 at the start of the next biome. Later biomes still get harder through enemy stats, not by piling on bodies from the very first level
+- Level completion rewards now scale with how many enemies you fought, so an early few-enemy level pays less loot and emeralds than a later full one
+- Once you have beaten a biome's boss, every level in that biome spawns the biome's peak enemy count, so replays stay full strength (and pay full rewards)
+
 Bug fixes
 
 - Speed and Haste buffs gained mid-turn now take effect the same turn instead of the next one, so a Speed boost from an instrument, potion, goat horn, or pottery sherd immediately adds the extra movement or action points you would expect
