@@ -74,7 +74,7 @@ public final class SceneScanner {
         return (be instanceof StandMarkerBlockEntity sm) ? sm.getOccupant() : "";
     }
 
-    /** Bundled resource first (data/craftics/scenes/<name>.schem), then a disk override. */
+    /** Disk override first (craftics_scenes/<name>.schem), then the bundled resource (data/craftics/scenes/<name>.schem). */
     private static SchemLoader.SchemData loadScene(ServerWorld world, String sceneName) {
         // Disk override: craftics_scenes/<name>.schem next to the run dir.
         Path disk = Path.of("").toAbsolutePath().resolve("craftics_scenes").resolve(sceneName + ".schem");
