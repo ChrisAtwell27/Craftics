@@ -26,6 +26,8 @@ public class ModBlocks {
         RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "scene_spawn"));
     private static final RegistryKey<Block> STAND_MARKER_BLOCK_KEY =
         RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "stand_marker"));
+    private static final RegistryKey<Block> NPC_MARKER_BLOCK_KEY =
+        RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "npc_marker"));
 
     public static final Block LEVEL_SELECT_BLOCK = registerBlock("level_select_block",
         new LevelSelectBlock(AbstractBlock.Settings.create()
@@ -83,6 +85,20 @@ public class ModBlocks {
             .registryKey(SCENE_SPAWN_BLOCK_KEY)
             //?}
             .mapColor(MapColor.EMERALD_GREEN)
+            .strength(1.5f, 6.0f)
+            .sounds(net.minecraft.sound.BlockSoundGroup.STONE)
+            .luminance(state -> 9)
+        )
+    );
+
+    // NPC position marker for village & bartering-station scenes; defines where
+    // the booth's NPC stands and which way it faces. Pure marker, no block entity.
+    public static final Block NPC_MARKER_BLOCK = registerBlock("npc_marker",
+        new NpcMarkerBlock(AbstractBlock.Settings.create()
+            //? if >=1.21.2 {
+            .registryKey(NPC_MARKER_BLOCK_KEY)
+            //?}
+            .mapColor(MapColor.LIGHT_BLUE)
             .strength(1.5f, 6.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.STONE)
             .luminance(state -> 9)

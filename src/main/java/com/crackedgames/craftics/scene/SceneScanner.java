@@ -2,6 +2,7 @@ package com.crackedgames.craftics.scene;
 
 import com.crackedgames.craftics.CrafticsMod;
 import com.crackedgames.craftics.block.ModBlocks;
+import com.crackedgames.craftics.block.NpcMarkerBlock;
 import com.crackedgames.craftics.block.SceneSpawnBlock;
 import com.crackedgames.craftics.block.StandMarkerBlock;
 import com.crackedgames.craftics.block.StandMarkerBlockEntity;
@@ -59,6 +60,10 @@ public final class SceneScanner {
                         markers.add(new RawMarker(RawMarker.Kind.STAND,
                             pos.getX(), pos.getY(), pos.getZ(),
                             state.get(StandMarkerBlock.FACING).asRotation(), occupantAt(world, pos)));
+                    } else if (state.isOf(ModBlocks.NPC_MARKER_BLOCK)) {
+                        markers.add(new RawMarker(RawMarker.Kind.NPC,
+                            pos.getX(), pos.getY(), pos.getZ(),
+                            state.get(NpcMarkerBlock.FACING).asRotation(), ""));
                     }
                 }
             }
