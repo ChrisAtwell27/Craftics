@@ -9,25 +9,32 @@ import java.util.List;
 
 /**
  * Pillager AI: Tactical crossbow raider.
- * - CROSSBOW VOLLEY: fires at range 4 (any direction, not just cardinal)
+ * - CROSSBOW VOLLEY: fires at its configured range (any direction, not just cardinal)
  * - REPOSITION: moves then shoots in same turn — never wastes a turn
- * - RETREAT AND FIRE: if player gets within 2, backs up and shoots
- * - Smart positioning — tries to maintain range 3-4
+ * - RETREAT AND FIRE: backs up when any threat (player or ally pet) closes
+ *   to within 2 tiles, snapping off a shot if the target stays in range
+ * - Smart positioning — tries to keep its target near max range and stays
+ *   off hazard tiles
  */
 public class PillagerAI implements EnemyAI {
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
+        // Honor the per-biome range from the enemy entry instead of a
+        // hardcoded 4 — forest pillagers are registered at range 3.
+        int range = Math.max(1, self.getRange());
 
-        // RETREAT AND FIRE: if too close, back up
-        if (dist <= 2) {
-            GridPos fleeTarget = AIUtils.getFleeTarget(arena, myPos, playerPos, self.getMoveSpeed());
+        List<GridPos> threats = AIUtils.threatPositions(arena, playerPos);
+
+        // RETREAT AND FIRE: if anything is too close, back up
+        if (AIUtils.minThreatDistance(myPos, threats) <= 2) {
+            GridPos fleeTarget = AIUtils.bestRetreatTile(self, arena, threats);
             if (fleeTarget != null) {
                 List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, self.getMoveSpeed(), self);
                 if (!path.isEmpty()) {
                     GridPos endPos = path.get(path.size() - 1);
-                    if (endPos.manhattanDistance(playerPos) <= 4) {
+                    if (endPos.manhattanDistance(playerPos) <= range) {
                         return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                     }
                     return new EnemyAction.Move(path);
@@ -38,17 +45,17 @@ public class PillagerAI implements EnemyAI {
         }
 
         // In range — fire crossbow
-        if (dist <= 4) {
+        if (dist <= range) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "crossbow");
         }
 
-        // Out of range — move to get within 3-4 tiles
-        GridPos shotPos = findShotPosition(self, arena, playerPos);
+        // Out of range — move to a firing position
+        GridPos shotPos = findShotPosition(self, arena, playerPos, threats, range);
         if (shotPos != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, shotPos, self.getMoveSpeed(), self);
             if (!path.isEmpty()) {
                 GridPos endPos = path.get(path.size() - 1);
-                if (endPos.manhattanDistance(playerPos) <= 4) {
+                if (endPos.manhattanDistance(playerPos) <= range) {
                     return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                 }
                 return new EnemyAction.Move(path);
@@ -58,29 +65,25 @@ public class PillagerAI implements EnemyAI {
         return AIUtils.seekOrWander(self, arena, playerPos);
     }
 
-    private GridPos findShotPosition(CombatEntity self, GridArena arena, GridPos playerPos) {
+    private GridPos findShotPosition(CombatEntity self, GridArena arena, GridPos playerPos,
+                                     List<GridPos> threats, int range) {
         GridPos myPos = self.getGridPos();
         GridPos best = null;
         int bestScore = Integer.MIN_VALUE;
 
-        for (int dx = -self.getMoveSpeed(); dx <= self.getMoveSpeed(); dx++) {
-            for (int dz = -self.getMoveSpeed(); dz <= self.getMoveSpeed(); dz++) {
-                if (Math.abs(dx) + Math.abs(dz) > self.getMoveSpeed()) continue;
-                if (dx == 0 && dz == 0) continue;
-                GridPos candidate = new GridPos(myPos.x() + dx, myPos.z() + dz);
-                if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
-                var tile = arena.getTile(candidate);
-                if (tile == null || !tile.isWalkable()) continue;
+        for (GridPos candidate : Pathfinding.getReachableTiles(
+                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+            if (candidate.equals(myPos)) continue;
 
-                int distToPlayer = candidate.manhattanDistance(playerPos);
-                if (distToPlayer > 4) continue;
-                // Prefer range 3-4
-                int score = distToPlayer >= 3 ? 20 : distToPlayer * 3;
-                if (distToPlayer <= 1) score -= 15;
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = candidate;
-                }
+            int distToPlayer = candidate.manhattanDistance(playerPos);
+            if (distToPlayer > range) continue;
+            // Prefer firing from near max range, well clear of every threat
+            int score = distToPlayer >= range - 1 ? 20 : distToPlayer * 3;
+            if (AIUtils.minThreatDistance(candidate, threats) <= 1) score -= 15;
+            if (AIUtils.isHazardTile(arena, candidate)) score -= 25;
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
             }
         }
         return best;

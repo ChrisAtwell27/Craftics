@@ -32,21 +32,22 @@ public class LlamaAI implements EnemyAI {
             self.setEnraged(true);
         }
 
-        // AGRO: spit from range 2
+        // AGRO: spit from its registered range (2 for vanilla llamas)
+        int range = Math.max(1, self.getRange());
         if (self.isEnraged()) {
             // In range with LOS — spit!
-            if (dist <= 2 && AIUtils.hasCardinalLOS(arena, myPos, playerPos, 2)) {
+            if (dist <= range && AIUtils.hasCardinalLOS(arena, myPos, playerPos, range)) {
                 return new EnemyAction.RangedAttack(self.getAttackPower(), "llama_spit");
             }
 
-            // Too close — back up to range 2 and spit
+            // Too close — back up to spitting range
             if (dist <= 1) {
-                GridPos retreatPos = findSpitPosition(self, arena, playerPos);
+                GridPos retreatPos = findSpitPosition(self, arena, playerPos, range);
                 if (retreatPos != null) {
                     List<GridPos> path = Pathfinding.findPath(arena, myPos, retreatPos, self.getMoveSpeed(), self);
                     if (!path.isEmpty()) {
                         GridPos endPos = path.get(path.size() - 1);
-                        if (AIUtils.hasCardinalLOS(arena, endPos, playerPos, 2)) {
+                        if (AIUtils.hasCardinalLOS(arena, endPos, playerPos, range)) {
                             return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                         }
                         return new EnemyAction.Move(path);
@@ -57,12 +58,12 @@ public class LlamaAI implements EnemyAI {
             }
 
             // Too far — approach to spit range
-            GridPos spitPos = findSpitPosition(self, arena, playerPos);
+            GridPos spitPos = findSpitPosition(self, arena, playerPos, range);
             if (spitPos != null) {
                 List<GridPos> path = Pathfinding.findPath(arena, myPos, spitPos, self.getMoveSpeed(), self);
                 if (!path.isEmpty()) {
                     GridPos endPos = path.get(path.size() - 1);
-                    if (AIUtils.hasCardinalLOS(arena, endPos, playerPos, 2)) {
+                    if (AIUtils.hasCardinalLOS(arena, endPos, playerPos, range)) {
                         return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                     }
                     return new EnemyAction.Move(path);
@@ -78,29 +79,27 @@ public class LlamaAI implements EnemyAI {
         return new EnemyAction.Idle();
     }
 
-    /** Find a tile at distance 2 from player with cardinal LOS for spitting. */
-    private GridPos findSpitPosition(CombatEntity self, GridArena arena, GridPos playerPos) {
+    /** Find a reachable tile within spitting range that has cardinal LOS on the player. */
+    private GridPos findSpitPosition(CombatEntity self, GridArena arena, GridPos playerPos, int range) {
         GridPos myPos = self.getGridPos();
         GridPos best = null;
-        int bestDist = Integer.MAX_VALUE;
+        int bestScore = Integer.MIN_VALUE;
 
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                if (Math.abs(dx) + Math.abs(dz) > self.getMoveSpeed()) continue;
-                GridPos candidate = new GridPos(myPos.x() + dx, myPos.z() + dz);
-                if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
-                var tile = arena.getTile(candidate);
-                if (tile == null || !tile.isWalkable()) continue;
+        for (GridPos candidate : Pathfinding.getReachableTiles(
+                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+            if (candidate.equals(myPos)) continue;
 
-                int distToPlayer = candidate.manhattanDistance(playerPos);
-                if (distToPlayer < 1 || distToPlayer > 2) continue;
-                if (!AIUtils.hasCardinalLOS(arena, candidate, playerPos, 2)) continue;
+            int distToPlayer = candidate.manhattanDistance(playerPos);
+            if (distToPlayer < 1 || distToPlayer > range) continue;
+            if (!AIUtils.hasCardinalLOS(arena, candidate, playerPos, range)) continue;
 
-                int moveDist = myPos.manhattanDistance(candidate);
-                if (moveDist < bestDist) {
-                    bestDist = moveDist;
-                    best = candidate;
-                }
+            // Prefer max distance within range (llamas keep their distance),
+            // then shorter walks; never end on a hazard
+            int score = distToPlayer * 10 - myPos.manhattanDistance(candidate);
+            if (AIUtils.isHazardTile(arena, candidate)) score -= 50;
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
             }
         }
         return best;

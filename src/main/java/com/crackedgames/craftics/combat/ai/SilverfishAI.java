@@ -10,6 +10,8 @@ import java.util.List;
 /**
  * Silverfish AI: Swarmer — fast, weak, flanks aggressively.
  * - SWARM: always tries to approach from the opposite side of other enemies
+ * - SWARM FURY: when any silverfish in the arena is hurt, ALL of them rile up
+ *   (+1 movement) — vanilla silverfish boil out of the walls when one is struck
  * - SPEED 3: very fast, can cross the arena quickly
  * - WEAK BITE: low damage but attacks immediately on reaching player
  * - FLANKING: prefers to approach from behind/sides rather than head-on
@@ -20,6 +22,12 @@ public class SilverfishAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
+        // Swarm fury: one hurt silverfish riles up every silverfish.
+        if (!self.isEnraged() && anySilverfishHurt(arena)) {
+            enrageAllSilverfish(arena);
+        }
+        int speed = self.getMoveSpeed() + (self.isEnraged() ? 1 : 0);
+
         // Adjacent — attack immediately (swarm behavior)
         if (dist == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
@@ -28,7 +36,7 @@ public class SilverfishAI implements EnemyAI {
         // Try to flank — approach from opposite side of other enemies
         GridPos flankTarget = findFlankPosition(arena, myPos, playerPos);
         if (flankTarget != null) {
-            List<GridPos> path = Pathfinding.findPath(arena, myPos, flankTarget, self.getMoveSpeed(), self);
+            List<GridPos> path = Pathfinding.findPath(arena, myPos, flankTarget, speed, self);
             if (!path.isEmpty()) {
                 GridPos endPos = path.get(path.size() - 1);
                 if (endPos.manhattanDistance(playerPos) == 1) {
@@ -39,10 +47,10 @@ public class SilverfishAI implements EnemyAI {
         }
 
         // Fallback: rush directly at the player
-        GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed());
+        GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, speed);
         if (target == null) target = playerPos;
 
-        List<GridPos> path = Pathfinding.findPath(arena, myPos, target, self.getMoveSpeed(), self);
+        List<GridPos> path = Pathfinding.findPath(arena, myPos, target, speed, self);
         if (path.isEmpty()) return AIUtils.seekOrWander(self, arena, playerPos);
 
         GridPos endPos = path.get(path.size() - 1);
@@ -50,6 +58,26 @@ public class SilverfishAI implements EnemyAI {
             return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
         }
         return new EnemyAction.Move(path);
+    }
+
+    private boolean anySilverfishHurt(GridArena arena) {
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            if ("minecraft:silverfish".equals(e.getEntityTypeId())
+                    && (e.wasDamagedSinceLastTurn() || e.getCurrentHp() < e.getMaxHp())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void enrageAllSilverfish(GridArena arena) {
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            if ("minecraft:silverfish".equals(e.getEntityTypeId())) {
+                e.setEnraged(true);
+            }
+        }
     }
 
     /** Find an adjacent-to-player tile that's on the opposite side from our current position. */

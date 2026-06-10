@@ -10,8 +10,9 @@ import java.util.List;
 
 /**
  * Ravager AI: Aggressive beast with bull rush and ground stomp.
+ * - GROUND STOMP: when surrounded (2+ attackers in melee contact), slams the
+ *   ground — an AoE around its body instead of a single tusk swipe
  * - BULL RUSH: charges up to 3 tiles in a straight line, deals damage + knockback 2
- * - GROUND STOMP: if can't charge, damages all adjacent tiles (AoE around self)
  * - Speed 2, 2x2 size, always aggressive
  */
 public class RavagerAI implements EnemyAI {
@@ -19,6 +20,12 @@ public class RavagerAI implements EnemyAI {
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
+
+        // GROUND STOMP: surrounded by two or more attackers — hit everyone at
+        // once. (The old implementation documented this but never did it.)
+        if (dist == 1 && adjacentThreats(self, arena, playerPos) >= 2) {
+            return new EnemyAction.AreaAttack(myPos, 2, self.getAttackPower(), "ground_stomp");
+        }
 
         // Adjacent — knockback attack (tusks)
         if (dist == 1) {
@@ -55,6 +62,15 @@ public class RavagerAI implements EnemyAI {
         }
 
         return AIUtils.seekOrWander(self, arena, playerPos);
+    }
+
+    /** Count player-side combatants (players + ally pets) in melee contact with our footprint. */
+    private int adjacentThreats(CombatEntity self, GridArena arena, GridPos playerPos) {
+        int count = 0;
+        for (GridPos threat : AIUtils.threatPositions(arena, playerPos)) {
+            if (self.minDistanceTo(threat) <= 1) count++;
+        }
+        return count;
     }
 
     private List<GridPos> buildChargePath(GridArena arena, GridPos start, int dx, int dz, int maxLen) {

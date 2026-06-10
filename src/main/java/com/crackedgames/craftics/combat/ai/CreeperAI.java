@@ -10,11 +10,13 @@ import java.util.List;
 /**
  * Creeper AI: Suicidal bomber with charged variant.
  * - Move + Prime in the SAME turn (no wasted StartFuse turn)
- * - Explodes next turn if still adjacent (radius 2, damages ALL entities including allies)
- * - CHARGED: if hit by player's ranged attack while fuse is NOT active, becomes charged
- *   (explosion radius doubles to 4, damage doubles). Visual: lightning particles.
- * - If player escapes blast range, fuse resets and creeper chases again
- * - Explosion deals 2x (or 4x if charged) attack power in AoE
+ * - Explodes next turn if a victim (player or ally pet) is still inside the
+ *   blast radius. If everyone escaped, the fuse RESETS and the creeper chases
+ *   again — it no longer wastes itself on an empty tile. A creeper about to
+ *   die (≤25% HP) blows regardless rather than dying for nothing.
+ * - CHARGED: if hit by player's ranged attack while fuse is NOT active, becomes
+ *   charged (explosion radius and damage scale up). Visual: glow.
+ * - Explosion damages ALL entities in the radius, its own side included.
  */
 public class CreeperAI implements EnemyAI {
     @Override
@@ -32,9 +34,19 @@ public class CreeperAI implements EnemyAI {
             ? self.getAttackPower() * 2
             : self.getAttackPower() + 3;
 
-        // Fuse active from last turn — creeper ALWAYS explodes, no movement allowed
+        // Fuse active from last turn — explode if it would catch a victim, or
+        // if we're about to die anyway. Otherwise defuse and resume the chase:
+        // a creeper hissing at an empty tile helps nobody.
         if (self.getFuseTimer() > 0) {
-            return new EnemyAction.Explode(explosionDamage, explosionRadius);
+            boolean aboutToDie = self.getCurrentHp() * 4 <= self.getMaxHp();
+            if (aboutToDie || victimInBlast(arena, myPos, playerPos, explosionRadius)) {
+                return new EnemyAction.Explode(explosionDamage, explosionRadius);
+            }
+            self.setFuseTimer(0);
+            if (self.getMobEntity() != null) {
+                self.getMobEntity().setGlowing(false); // undo the fuse glow
+            }
+            // fall through to the chase below
         }
 
         // Adjacent — prime fuse (explodes NEXT turn)
@@ -58,5 +70,13 @@ public class CreeperAI implements EnemyAI {
         }
 
         return new EnemyAction.Move(path);
+    }
+
+    /** True if the blast centered on {@code center} would catch the player or an ally pet. */
+    private boolean victimInBlast(GridArena arena, GridPos center, GridPos playerPos, int radius) {
+        for (GridPos threat : AIUtils.threatPositions(arena, playerPos)) {
+            if (center.manhattanDistance(threat) <= radius) return true;
+        }
+        return false;
     }
 }

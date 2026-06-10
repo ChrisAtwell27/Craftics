@@ -26,26 +26,12 @@ public class RabbitAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = myPos.manhattanDistance(playerPos);
 
-        // Always flee if player is within 2 blocks
-        if (dist <= 2) {
-            GridPos fleeTarget = AIUtils.getFleeTarget(arena, myPos, playerPos, 2);
-            if (fleeTarget != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, 2, self);
-                if (!path.isEmpty()) {
-                    return new EnemyAction.Flee(path);
-                }
-            }
-        }
-
-        // Also flee if hit (in case player used ranged attack from > 2 blocks)
-        if (self.wasDamagedSinceLastTurn()) {
-            GridPos fleeTarget = AIUtils.getFleeTarget(arena, myPos, playerPos, 2);
-            if (fleeTarget != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, 2, self);
-                if (!path.isEmpty()) {
-                    return new EnemyAction.Flee(path);
-                }
-            }
+        // Always flee if player is within 2 blocks, or if hit from farther away.
+        // Path-validated: the rabbit bolts around corners instead of freezing
+        // when the straight-line escape happens to be blocked.
+        if (dist <= 2 || self.wasDamagedSinceLastTurn()) {
+            EnemyAction flee = AIUtils.fleeReachable(self, arena, playerPos, 2);
+            if (flee != null) return flee;
         }
 
         // Configurable wander chance

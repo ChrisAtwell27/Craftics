@@ -30,20 +30,38 @@ public class RangedAllyAI implements AllyAI {
         boolean lowHp = AllyTargeting.lowHp(self, 0.25f);
 
         // Wounded, or an enemy has closed to melee — kite away from the threat.
+        // The kite tile is scored over everything reachable this turn: gain as
+        // much distance as possible, and (unless fleeing for our life) prefer
+        // tiles that keep the target inside firing range for the parting shot.
         if (lowHp || dist <= 1) {
             GridPos targetAnchor = AllyTargeting.nearestTileOnTarget(target, arena, pos);
-            int dx = Integer.signum(pos.x() - targetAnchor.x());
-            int dz = Integer.signum(pos.z() - targetAnchor.z());
-            GridPos retreat = new GridPos(pos.x() + dx * 2, pos.z() + dz * 2);
-            List<GridPos> path = AllyTargeting.pathTo(self, arena, retreat);
-            if (path != null && !path.isEmpty()) {
-                GridPos end = path.get(path.size() - 1);
-                // Parting shot if the target stays in range and we aren't fleeing for our life.
-                if (!lowHp && AllyTargeting.distanceToTarget(target, arena, end) <= range) {
-                    return new EnemyAction.MoveAndAttackMob(
-                        path, target.getEntityId(), self.getAttackPower());
+            GridPos retreat = null;
+            int bestScore = Integer.MIN_VALUE;
+            int currentDist = pos.manhattanDistance(targetAnchor);
+            for (GridPos candidate : Pathfinding.getReachableTiles(
+                    arena, pos, self.getMoveSpeed(), self.getSize(), self)) {
+                int d = candidate.manhattanDistance(targetAnchor);
+                if (d <= currentDist) continue;
+                int score = d * 10;
+                if (!lowHp && AllyTargeting.distanceToTarget(target, arena, candidate) <= range) {
+                    score += 15; // keep the parting shot lined up
                 }
-                return new EnemyAction.Flee(path);
+                if (score > bestScore) {
+                    bestScore = score;
+                    retreat = candidate;
+                }
+            }
+            if (retreat != null) {
+                List<GridPos> path = AllyTargeting.pathTo(self, arena, retreat);
+                if (path != null && !path.isEmpty()) {
+                    GridPos end = path.get(path.size() - 1);
+                    // Parting shot if the target stays in range and we aren't fleeing for our life.
+                    if (!lowHp && AllyTargeting.distanceToTarget(target, arena, end) <= range) {
+                        return new EnemyAction.MoveAndAttackMob(
+                            path, target.getEntityId(), self.getAttackPower());
+                    }
+                    return new EnemyAction.Flee(path);
+                }
             }
             // Cornered — bite back.
             return new EnemyAction.MoveAndAttackMob(

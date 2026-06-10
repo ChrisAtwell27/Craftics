@@ -6,30 +6,29 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 
 import java.util.List;
-import java.util.Random;
 
 /**
  * Drowned AI: Aquatic fighter with 50% trident variant.
- * - 50% of drowned spawn with tridents (determined by entity instance)
+ * - 50% of drowned spawn with tridents — rolled once per drowned, stored on
+ *   the entity (the old instance field was shared by every drowned, so the
+ *   first roll ever made decided the loadout for all of them, forever)
  * - TRIDENT THROW: only fires DIAGONALLY at range ≤3 for tactical variety
  * - WATER SPEED: double speed on water tiles
  * - Non-trident drowned are pure melee rushers (Husk-like stats)
  * - Falls back to melee if no trident or no diagonal LOS
  */
 public class DrownedAI implements EnemyAI {
-    private static final Random RNG = new Random();
-
-    /** Each drowned instance gets a 50/50 roll for trident on first decision. */
-    private Boolean hasTrident = null;
+    private static final String TRIDENT_DECIDED = "drowned_trident_decided";
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
-        // Determine trident on first call (50% chance per drowned instance)
-        if (hasTrident == null) {
-            hasTrident = RNG.nextDouble() < 0.5;
-            // Store this flag on the combat entity so CombatManager can check it
-            self.setDrownedWithTrident(hasTrident);
+        // Determine trident on first decision (50% chance per drowned)
+        if (!self.hasAiMemory(TRIDENT_DECIDED)) {
+            self.setAiMemory(TRIDENT_DECIDED, 1);
+            // Store the flag on the combat entity so CombatManager can check it
+            self.setDrownedWithTrident(java.util.concurrent.ThreadLocalRandom.current().nextDouble() < 0.5);
         }
+        boolean hasTrident = self.isDrownedWithTrident();
 
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);

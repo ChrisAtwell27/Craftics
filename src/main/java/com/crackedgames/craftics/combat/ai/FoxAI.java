@@ -12,6 +12,8 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Fox AI: Predator — hunts sheep and chickens.
  * If attacked by the player, becomes permanently agro (enraged) and untamable.
+ * Fights like the skirmisher it is: darts in, nips, and springs back out with
+ * whatever movement it has left rather than standing in sword range.
  * When not hunting or agro, wanders like a farm animal.
  */
 public class FoxAI implements EnemyAI {
@@ -61,7 +63,9 @@ public class FoxAI implements EnemyAI {
         int speed = self.getMoveSpeed();
 
         if (dist <= 1) {
-            return new EnemyAction.Attack(self.getAttackPower());
+            // Nip, then dart back out of reach
+            EnemyAction combo = AIUtils.hitAndRun(self, arena, playerPos, List.of(), self.getAttackPower());
+            return combo != null ? combo : new EnemyAction.Attack(self.getAttackPower());
         }
 
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, speed);
@@ -70,7 +74,8 @@ public class FoxAI implements EnemyAI {
             if (!path.isEmpty()) {
                 GridPos endPos = path.get(path.size() - 1);
                 if (endPos.manhattanDistance(playerPos) <= 1) {
-                    return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
+                    EnemyAction combo = AIUtils.hitAndRun(self, arena, playerPos, path, self.getAttackPower());
+                    return combo != null ? combo : new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                 }
                 return new EnemyAction.Move(path);
             }

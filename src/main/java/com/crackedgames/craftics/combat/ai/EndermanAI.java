@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Enderman AI: Aggressive phase-shifting teleporter.
@@ -15,34 +16,41 @@ import java.util.List;
  * enters a frenzy and never retreats. Varied attack patterns keep the player guessing.
  *
  * Behavior:
- * - ASSAULT PHASE (strikesRemaining > 0): teleport adjacent → attack → repeat.
+ * - ASSAULT PHASE (strikes remaining > 0): teleport adjacent → attack → repeat.
  *   Each cycle is 2–3 strikes before retreating.
  * - RETREAT: blinks away after exhausting strikes, resets for next assault.
  * - STALK: when far away, teleports to within 2 tiles (visible threat) before striking.
  * - FRENZY (≤50% HP): never retreats. Teleport-strike every turn. Attacks with +50% damage.
  * - REACTIVE DODGE: 60% chance to blink 1 tile sideways when hit (not full escape).
+ * - Never teleports onto water — endermen hate it.
+ *
+ * Assault-cycle state lives in the entity's AI memory (one AI instance is shared
+ * by every enderman, so instance fields would leak strikes/frenzy across mobs
+ * and across fights).
  */
 public class EndermanAI implements EnemyAI {
-    private int strikesRemaining = 0;
-    private boolean frenzy = false;
+    private static final String STRIKES = "enderman_strikes";
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
         int atk = self.getAttackPower();
+        int strikesRemaining = self.getAiMemory(STRIKES, 0);
 
-        // Frenzy check: below 50% HP, never retreat
+        // Frenzy check: below 50% HP, never retreat. The enraged flag doubles
+        // as the per-entity frenzy marker (and drives the client's rage tint).
+        boolean frenzy = self.isEnraged();
         if (!frenzy && self.getCurrentHp() <= self.getMaxHp() / 2) {
             frenzy = true;
             self.setEnraged(true);
         }
-        int damage = frenzy ? (int)(atk * 1.5) : atk;
+        int damage = frenzy ? (int) (atk * 1.5) : atk;
 
         // REACTIVE DODGE: when hit, short blink sideways (not full escape)
         if (self.wasDamagedSinceLastTurn() && !frenzy) {
             GridPos dodge = findDodgeTile(arena, myPos, playerPos);
-            if (dodge != null && Math.random() < 0.6) {
+            if (dodge != null && ThreadLocalRandom.current().nextDouble() < 0.6) {
                 return new EnemyAction.Teleport(dodge);
             }
         }
@@ -66,6 +74,7 @@ public class EndermanAI implements EnemyAI {
         // ASSAULT PHASE: chain strikes
         if (strikesRemaining > 0) {
             strikesRemaining--;
+            self.setAiMemory(STRIKES, strikesRemaining);
             if (dist == 1) {
                 return new EnemyAction.Attack(damage);
             }
@@ -77,7 +86,7 @@ public class EndermanAI implements EnemyAI {
 
         // RETREAT after assault — blink away, reset strikes for next cycle
         if (strikesRemaining == 0 && dist <= 2) {
-            strikesRemaining = 2 + (Math.random() < 0.5 ? 1 : 0); // 2-3 next cycle
+            self.setAiMemory(STRIKES, nextCycleStrikes());
             GridPos escapeTile = findTeleportAway(arena, myPos, playerPos, 4);
             if (escapeTile != null) {
                 return new EnemyAction.Teleport(escapeTile);
@@ -86,7 +95,7 @@ public class EndermanAI implements EnemyAI {
 
         // STALK: approach to within 2 tiles before starting an assault
         if (strikesRemaining == 0) {
-            strikesRemaining = 2 + (Math.random() < 0.5 ? 1 : 0);
+            self.setAiMemory(STRIKES, nextCycleStrikes());
         }
         if (dist > 2) {
             // Teleport to a menacing position 2 tiles from the player
@@ -104,11 +113,22 @@ public class EndermanAI implements EnemyAI {
         // Teleport strike if in range
         GridPos target = findTeleportAdjacent(arena, myPos, playerPos);
         if (target != null) {
-            strikesRemaining = Math.max(0, strikesRemaining - 1);
+            self.setAiMemory(STRIKES, Math.max(0, self.getAiMemory(STRIKES, 0) - 1));
             return new EnemyAction.TeleportAndAttack(target, damage);
         }
 
         return AIUtils.seekOrWander(self, arena, playerPos);
+    }
+
+    private static int nextCycleStrikes() {
+        return 2 + (ThreadLocalRandom.current().nextDouble() < 0.5 ? 1 : 0); // 2-3 per cycle
+    }
+
+    /** A teleport destination must be in bounds, free, walkable, and dry. */
+    private boolean canBlinkTo(GridArena arena, GridPos c) {
+        if (!arena.isInBounds(c) || arena.isOccupied(c)) return false;
+        var tile = arena.getTile(c);
+        return tile != null && tile.isWalkable() && !tile.isWater();
     }
 
     /** Find any tile adjacent to the player that we can teleport to (within range 5). */
@@ -125,18 +145,15 @@ public class EndermanAI implements EnemyAI {
         };
 
         // Shuffle flanks for unpredictability
-        if (Math.random() < 0.5) {
+        if (ThreadLocalRandom.current().nextDouble() < 0.5) {
             GridPos temp = candidates[1];
             candidates[1] = candidates[2];
             candidates[2] = temp;
         }
 
         for (GridPos c : candidates) {
-            if (arena.isInBounds(c) && !arena.isOccupied(c)) {
-                var tile = arena.getTile(c);
-                if (tile != null && tile.isWalkable() && self.manhattanDistance(c) <= 5) {
-                    return c;
-                }
+            if (canBlinkTo(arena, c) && self.manhattanDistance(c) <= 5) {
+                return c;
             }
         }
         return null;
@@ -159,10 +176,7 @@ public class EndermanAI implements EnemyAI {
         };
 
         for (GridPos c : candidates) {
-            if (arena.isInBounds(c) && !arena.isOccupied(c)) {
-                var tile = arena.getTile(c);
-                if (tile != null && tile.isWalkable()) return c;
-            }
+            if (canBlinkTo(arena, c)) return c;
         }
         return null;
     }
@@ -174,9 +188,7 @@ public class EndermanAI implements EnemyAI {
             for (int dz = -2; dz <= 2; dz++) {
                 if (Math.abs(dx) + Math.abs(dz) != 2) continue;
                 GridPos c = new GridPos(playerPos.x() + dx, playerPos.z() + dz);
-                if (!arena.isInBounds(c) || arena.isOccupied(c)) continue;
-                var tile = arena.getTile(c);
-                if (tile == null || !tile.isWalkable()) continue;
+                if (!canBlinkTo(arena, c)) continue;
                 if (self.manhattanDistance(c) <= 5) {
                     candidates.add(c);
                 }
@@ -194,9 +206,7 @@ public class EndermanAI implements EnemyAI {
             for (int dz = -range; dz <= range; dz++) {
                 if (Math.abs(dx) + Math.abs(dz) > range) continue;
                 GridPos candidate = new GridPos(self.x() + dx, self.z() + dz);
-                if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
-                var tile = arena.getTile(candidate);
-                if (tile == null || !tile.isWalkable()) continue;
+                if (!canBlinkTo(arena, candidate)) continue;
                 int distFromThreat = candidate.manhattanDistance(threat);
                 if (distFromThreat > bestDist) {
                     bestDist = distFromThreat;
@@ -214,9 +224,7 @@ public class EndermanAI implements EnemyAI {
             for (int dz = -range; dz <= range; dz++) {
                 if (Math.abs(dx) + Math.abs(dz) > range) continue;
                 GridPos candidate = new GridPos(self.x() + dx, self.z() + dz);
-                if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
-                var tile = arena.getTile(candidate);
-                if (tile == null || !tile.isWalkable()) continue;
+                if (!canBlinkTo(arena, candidate)) continue;
                 int dist = candidate.manhattanDistance(playerPos);
                 if (dist < bestDist && dist >= 1) {
                     bestDist = dist;

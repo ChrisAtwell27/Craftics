@@ -18,6 +18,8 @@ import java.util.List;
  * - WEB SHOT: shoot a cobweb near the player (blocks a tile for 2 turns OR applies slow+stun)
  *
  * When too far to reach, ascends to the ceiling and drops near the player next turn.
+ * When badly wounded (≤25% HP) it also breaks off to the ceiling to reset the
+ * ambush rather than trading hits to the death.
  */
 public class SpiderAI implements EnemyAI {
     @Override
@@ -35,14 +37,23 @@ public class SpiderAI implements EnemyAI {
         int dist = self.minDistanceTo(playerPos);
         int size = self.getSize();
 
+        // Badly wounded — break off and reset on the ceiling. The ambusher
+        // re-enters the fight with a drop instead of trading hits to the death.
+        if (self.getCurrentHp() * 4 <= self.getMaxHp() && dist > 1) {
+            return new EnemyAction.CeilingAscend();
+        }
+
         // Adjacent — always bite
         if (dist == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
 
-        // In combat range (2-3 tiles): choose between attack or web
+        // In combat range (2-3 tiles): choose between attack or web.
+        // Don't waste a turn webbing a player who's already boxed in by one —
+        // if a web overlay is sitting next to them, capitalize with a pounce.
         if (dist <= 3) {
-            boolean shootWeb = Math.random() < 0.45;
+            boolean shootWeb = java.util.concurrent.ThreadLocalRandom.current().nextDouble() < 0.45
+                && !webAdjacentTo(arena, playerPos);
 
             if (shootWeb) {
                 // WEB SHOT: shoot a cobweb at a tile adjacent to the player
@@ -89,8 +100,18 @@ public class SpiderAI implements EnemyAI {
      * - Direct web spray: ranged attack that slows + stuns the player
      * - Web trap: places an obstacle tile adjacent to the player, cutting off escape
      */
+    /** True when any tile adjacent to {@code pos} already carries a web overlay. */
+    private boolean webAdjacentTo(GridArena arena, GridPos pos) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (arena.hasWebOverlay(new GridPos(pos.x() + dx, pos.z() + dz))) return true;
+            }
+        }
+        return false;
+    }
+
     private EnemyAction tryWebShot(GridArena arena, GridPos myPos, GridPos playerPos) {
-        if (Math.random() < 0.5) {
+        if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() < 0.5) {
             // Direct web spray at the player — applies slow + stun
             return new EnemyAction.RangedAttack(1, "web_spray");
         } else {
@@ -124,7 +145,7 @@ public class SpiderAI implements EnemyAI {
         };
 
         for (GridPos c : candidates) {
-            if (arena.isInBounds(c) && !arena.isOccupied(c)) {
+            if (arena.isInBounds(c) && !arena.isOccupied(c) && !arena.hasWebOverlay(c)) {
                 var tile = arena.getTile(c);
                 if (tile != null && tile.isWalkable() && tile.getType() == TileType.NORMAL) {
                     return c;

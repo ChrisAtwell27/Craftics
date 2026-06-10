@@ -1,5 +1,34 @@
 Changelog
 
+Unreleased
+
+Overworld AI improvements
+
+Smarter enemies:
+
+- Archers and casters (skeleton, stray, pillager, witch, evoker) now kite away from your pets too, not just from you — a wolf in their face triggers the retreat. Their retreats and firing positions are picked from tiles they can actually walk to this turn, and none of them will back into lava to dodge a sword
+- Creepers finally defuse: if everyone leaves the blast radius while the fuse is hissing, the creeper stops, stops glowing, and resumes the chase instead of detonating an empty tile. A creeper about to die blows anyway. The blast check also counts your pets, so it will happily trade itself for your iron golem
+- Ravager ground stomp implemented (it was documented but never coded): surrounded by two or more of you, it slams an AoE around its body instead of tusking one target
+- Vindicators no longer rook-dash through lava or fire
+- Spiders break off to the ceiling to reset their ambush when badly hurt, and stop wasting turns webbing a player who already has a web next to them; cave spiders bite and scuttle back out of reach so the poison does the work
+- Husks now benefit from the undead horde bonus like their zombie cousins (they never did); wounded zombie villagers panic — +1 attack and +1 movement below half HP; the horde bonus no longer counts the mover's own old tile or your own undead allies
+- Silverfish swarm: hurt one and the whole group speeds up; bee swarms now enrage even when the stung bee was killed in one hit
+- Endermen never teleport onto water, and goats lined up with you deliver a true ram — extra damage the longer the run-up
+- Polar bears use their full 2x2 bulk for reach (you could previously stand inside their melee range without triggering them) and their maul knocks you back a tile; enraged wolves get +1 damage per packmate already biting the same victim; foxes, ocelots and angry cats all strike and spring back out with leftover movement (the ocelot's reposition was documented but never implemented)
+- The witch's self-heal is real now — she used to just walk away and call it healing — and each witch rotates her own brews
+- Fixed a class of state-sharing bugs: one AI object serves every mob of a type, but the evoker, enderman, drowned and witch kept per-fight state on it. After your first fight, no evoker ever summoned a vex again; one frenzied enderman made all future endermen frenzy; the first drowned's trident roll decided every drowned's loadout forever. Per-mob state now lives on the mob
+- Pillagers were firing at range 4 while their stat block says 3 — they now respect their stats. Llamas likewise honor their registered spit range
+- Evokers summon a second vex when first wounded below half HP
+
+Smarter allies:
+
+- Tanks (iron golem, turtle, goat) interpose: when the biggest threat is too far to strike this turn, they plant themselves between it and you instead of sprinting across the arena and leaving you open
+- Supports (axolotl, frog, villager) hold the player-adjacent tile farthest from the nearest enemy — your healer-adjacent pets stop standing in the charge lane
+- Melee allies stop walking past a kill they could secure: target scoring now favors enemies they can reach this turn and enemies they can finish outright
+- Flyers (parrot, bee, allay) dive the weakest enemy they can actually reach and kill this turn before chasing the globally weakest
+- Ranged allies (llama, snow golem) pick their kiting tile properly — gain the most distance while keeping the parting shot lined up — instead of hopping two tiles straight back
+- Every ally that flees now finds the around-the-corner escape when the straight line away is blocked, and skittish farm animals do the same instead of freezing
+
 0.2.4
 
 Cursor picking ignored entities — at the combat camera's angle, clicking a tall mob's body selected the tile behind it. The ray now tests mob hitboxes first (with wall occlusion, and skipping invisible mobs so stealth isn't leaked).

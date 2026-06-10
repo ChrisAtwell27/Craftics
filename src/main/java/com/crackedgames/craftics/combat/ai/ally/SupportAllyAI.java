@@ -11,7 +11,9 @@ import java.util.List;
 /**
  * Support ally AI — a cautious bodyguard (axolotl, frog, villager, sniffer).
  * Sticks close to the player and only strikes enemies that wander into its
- * range; otherwise it repositions to the player's side. Retreats when wounded.
+ * range; otherwise it repositions to the player's side — preferring the side
+ * AWAY from the nearest enemy, so the squishy support isn't the first thing a
+ * charge runs into. Retreats when wounded.
  *
  * @since 0.3.0
  */
@@ -35,16 +37,41 @@ public class SupportAllyAI implements AllyAI {
                 List.of(), threat.getEntityId(), self.getAttackPower());
         }
 
-        // Otherwise hold station next to the player.
+        // Otherwise hold station next to the player, on the sheltered side.
         GridPos playerPos = arena.getPlayerGridPos();
         if (pos.manhattanDistance(playerPos) > 1) {
-            GridPos beside = AIUtils.findBestAdjacentTarget(
-                arena, pos, playerPos, self.getMoveSpeed(), self.getSize());
+            GridPos beside = findShelteredSide(self, arena, playerPos, threat);
+            if (beside == null) {
+                beside = AIUtils.findBestAdjacentTarget(
+                    arena, pos, playerPos, self.getMoveSpeed(), self.getSize());
+            }
             if (beside != null && !beside.equals(pos)) {
                 List<GridPos> path = AllyTargeting.pathTo(self, arena, beside);
                 if (path != null && !path.isEmpty()) return new EnemyAction.Move(path);
             }
         }
         return new EnemyAction.Idle();
+    }
+
+    /** The player-adjacent tile farthest from the nearest enemy — hide behind the player. */
+    private GridPos findShelteredSide(CombatEntity self, GridArena arena,
+                                      GridPos playerPos, CombatEntity threat) {
+        if (threat == null) return null;
+        GridPos threatPos = threat.getGridPos();
+        GridPos best = null;
+        int bestDist = Integer.MIN_VALUE;
+        for (GridPos beside : AIUtils.getAdjacentTiles(arena, playerPos)) {
+            if (!AIUtils.canPlaceFootprint(arena, beside, self.getSize())) continue;
+            // Only consider tiles we can actually walk to this turn.
+            List<GridPos> path = AllyTargeting.pathTo(self, arena, beside);
+            if (path == null || path.isEmpty()) continue;
+            if (path.size() > self.getMoveSpeed()) continue;
+            int d = beside.manhattanDistance(threatPos);
+            if (d > bestDist) {
+                bestDist = d;
+                best = beside;
+            }
+        }
+        return best;
     }
 }

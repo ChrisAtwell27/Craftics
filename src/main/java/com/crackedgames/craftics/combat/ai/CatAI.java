@@ -38,10 +38,11 @@ public class CatAI implements EnemyAI {
             self.setEnraged(true);
         }
 
-        // AGRO: attack player
+        // AGRO: attack player — claw and slink back out with leftover movement
         if (self.isEnraged()) {
             if (dist <= 1) {
-                return new EnemyAction.Attack(self.getAttackPower());
+                EnemyAction combo = AIUtils.hitAndRun(self, arena, playerPos, List.of(), self.getAttackPower());
+                return combo != null ? combo : new EnemyAction.Attack(self.getAttackPower());
             }
             GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed());
             if (target != null) {
@@ -49,7 +50,8 @@ public class CatAI implements EnemyAI {
                 if (!path.isEmpty()) {
                     GridPos endPos = path.get(path.size() - 1);
                     if (endPos.manhattanDistance(playerPos) <= 1) {
-                        return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
+                        EnemyAction combo = AIUtils.hitAndRun(self, arena, playerPos, path, self.getAttackPower());
+                        return combo != null ? combo : new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                     }
                     return new EnemyAction.Move(path);
                 }
@@ -74,13 +76,11 @@ public class CatAI implements EnemyAI {
             return new EnemyAction.Idle();
         }
 
-        // Not holding fish — flee if player is within 3 blocks
+        // Not holding fish — flee if player is within 3 blocks (path-validated,
+        // so the cat takes the around-the-corner escape instead of freezing)
         if (dist <= 3) {
-            GridPos fleeTarget = AIUtils.getFleeTarget(arena, myPos, playerPos, 2);
-            if (fleeTarget != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, 2, self);
-                if (!path.isEmpty()) return new EnemyAction.Flee(path);
-            }
+            EnemyAction flee = AIUtils.fleeReachable(self, arena, playerPos, 2);
+            if (flee != null) return flee;
         }
 
         // Otherwise wander (configurable chance)

@@ -12,6 +12,10 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Wolf AI: Predator — hunts sheep, chickens, and skeletons.
  * If attacked by the player, becomes permanently agro (enraged) and untamable.
+ * - PACK TACTICS: +1 damage per other enraged wolf already in melee contact
+ *   with the target — a riled pack tears harder than the sum of its bites
+ * - HIT AND RUN: bites the player then circles back out with leftover movement
+ * - Prey is simply lunged at (no retreat) — dinner doesn't fight back
  * When not hunting or agro, wanders like a farm animal.
  */
 public class WolfAI implements EnemyAI {
@@ -28,8 +32,6 @@ public class WolfAI implements EnemyAI {
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
-        GridPos myPos = self.getGridPos();
-
         // If hit by player, become permanently agro
         if (self.wasDamagedSinceLastTurn() && !self.isEnraged()) {
             self.setEnraged(true);
@@ -59,11 +61,12 @@ public class WolfAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = myPos.manhattanDistance(playerPos);
         int speed = self.getMoveSpeed();
+        int damage = self.getAttackPower() + packBonus(self, arena, playerPos);
 
         if (dist <= 1) {
             // Already adjacent: bite, then reposition if possible.
-            EnemyAction combo = buildHitAndRun(self, arena, playerPos, List.of());
-            return combo != null ? combo : new EnemyAction.Attack(self.getAttackPower());
+            EnemyAction combo = AIUtils.hitAndRun(self, arena, playerPos, List.of(), damage);
+            return combo != null ? combo : new EnemyAction.Attack(damage);
         }
 
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, speed);
@@ -72,13 +75,28 @@ public class WolfAI implements EnemyAI {
             if (!path.isEmpty()) {
                 GridPos endPos = path.get(path.size() - 1);
                 if (endPos.manhattanDistance(playerPos) <= 1) {
-                    EnemyAction combo = buildHitAndRun(self, arena, playerPos, path);
-                    return combo != null ? combo : new EnemyAction.MoveAndAttack(path, self.getAttackPower());
+                    EnemyAction combo = AIUtils.hitAndRun(self, arena, playerPos, path, damage);
+                    return combo != null ? combo : new EnemyAction.MoveAndAttack(path, damage);
                 }
                 return new EnemyAction.Move(path);
             }
         }
         return AIUtils.seekOrWander(self, arena, playerPos);
+    }
+
+    /** +1 damage per OTHER enraged wolf already in melee contact with the victim. */
+    private int packBonus(CombatEntity self, GridArena arena, GridPos victimPos) {
+        int bonus = 0;
+        java.util.Set<CombatEntity> seen = new java.util.HashSet<>();
+        for (CombatEntity other : arena.getOccupants().values()) {
+            if (!other.isAlive() || other == self || other.isAlly()) continue;
+            if (!seen.add(other)) continue;
+            if ("minecraft:wolf".equals(other.getEntityTypeId()) && other.isEnraged()
+                    && other.getGridPos().manhattanDistance(victimPos) == 1) {
+                bonus++;
+            }
+        }
+        return bonus;
     }
 
     private EnemyAction huntPrey(CombatEntity self, GridArena arena, CombatEntity prey) {
@@ -87,10 +105,10 @@ public class WolfAI implements EnemyAI {
         int dist = myPos.manhattanDistance(preyPos);
         int speed = self.getMoveSpeed();
 
-        // Adjacent to prey — attack it
+        // Adjacent to prey — attack it. (AttackMob, not the hit-and-run combo:
+        // MoveAttackMove always resolves its bite against the player/aggro pet,
+        // so using it on prey made the wolf bite the wrong victim.)
         if (dist <= 1) {
-            EnemyAction combo = buildHitAndRun(self, arena, preyPos, List.of());
-            if (combo != null) return combo;
             return new EnemyAction.AttackMob(prey.getEntityId(), self.getAttackPower());
         }
 
@@ -101,45 +119,12 @@ public class WolfAI implements EnemyAI {
             if (!path.isEmpty()) {
                 GridPos endPos = path.get(path.size() - 1);
                 if (endPos.manhattanDistance(preyPos) <= 1) {
-                    EnemyAction combo = buildHitAndRun(self, arena, preyPos, path);
-                    if (combo != null) return combo;
                     return new EnemyAction.MoveAndAttackMob(path, prey.getEntityId(), self.getAttackPower());
                 }
                 return new EnemyAction.Move(path);
             }
         }
         return new EnemyAction.Idle();
-    }
-
-    /**
-     * Build a wolf hit-and-run action: move in, attack, then reposition with remaining movement.
-     * Returns null when no retreat is possible.
-     */
-    private EnemyAction buildHitAndRun(CombatEntity self, GridArena arena, GridPos focusTarget,
-                                       List<GridPos> approachPath) {
-        int speed = self.getMoveSpeed();
-        int approachSteps = approachPath != null ? approachPath.size() : 0;
-        int remaining = Math.max(0, speed - approachSteps);
-        if (remaining <= 0) return null;
-
-        GridPos attackPos = approachSteps > 0 ? approachPath.get(approachSteps - 1) : self.getGridPos();
-        java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, attackPos, remaining, 1, self);
-        if (reachable.isEmpty()) return null;
-
-        GridPos retreatTarget = null;
-        int bestDist = attackPos.manhattanDistance(focusTarget);
-        for (GridPos pos : reachable) {
-            int d = pos.manhattanDistance(focusTarget);
-            if (d > bestDist) {
-                bestDist = d;
-                retreatTarget = pos;
-            }
-        }
-        if (retreatTarget == null) return null;
-
-        List<GridPos> retreatPath = Pathfinding.findPath(arena, attackPos, retreatTarget, remaining, self);
-        if (retreatPath.isEmpty()) return null;
-        return new EnemyAction.MoveAttackMove(approachPath, self.getAttackPower(), retreatPath);
     }
 
     private CombatEntity findNearestPrey(CombatEntity self, GridArena arena) {

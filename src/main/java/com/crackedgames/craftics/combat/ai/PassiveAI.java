@@ -23,15 +23,12 @@ public class PassiveAI implements EnemyAI {
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
-        // Hit reaction: flee 2 blocks away from player immediately
+        // Hit reaction: flee 2 blocks away from player immediately. Path-validated,
+        // so the animal escapes around obstacles instead of idling when the
+        // straight line away happens to be blocked.
         if (self.wasDamagedSinceLastTurn()) {
-            GridPos fleeTarget = AIUtils.getFleeTarget(arena, self.getGridPos(), playerPos, 2);
-            if (fleeTarget != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, self.getGridPos(), fleeTarget, 2, self);
-                if (!path.isEmpty()) {
-                    return new EnemyAction.Flee(path);
-                }
-            }
+            EnemyAction flee = AIUtils.fleeReachable(self, arena, playerPos, 2);
+            if (flee != null) return flee;
             // Cornered — just idle
             return new EnemyAction.Idle();
         }

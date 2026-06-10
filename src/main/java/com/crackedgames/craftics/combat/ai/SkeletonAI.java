@@ -9,9 +9,12 @@ import java.util.List;
 
 /**
  * Skeleton AI: Tactical archer — kites the player.
- * - KITE: if player is within 2 tiles, backs up (priority) while trying to keep LOS
+ * - KITE: backs up when ANY threat (player or ally pet) is within 2 tiles,
+ *   while trying to keep LOS on its target — a wolf gnawing on its ankles
+ *   triggers the retreat just like the player would
  * - REPOSITION: moves to get cardinal LOS, then shoots in same turn
- * - Prefers to maintain distance 3+ for safe shooting
+ * - Prefers to maintain distance 3+ for safe shooting, won't end its move
+ *   on a hazard tile
  * - Speed 2 allows meaningful repositioning
  */
 public class SkeletonAI implements EnemyAI {
@@ -21,13 +24,16 @@ public class SkeletonAI implements EnemyAI {
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
-        int dist = self.minDistanceTo(playerPos);
         int range = self.getRange();
         int speed = self.getMoveSpeed();
 
-        // KITE: if player is too close (within 2 tiles), back up — prioritize distance
-        if (dist <= KITE_THRESHOLD) {
-            GridPos retreatPos = findRetreatPosition(self, arena, playerPos);
+        // Threats include ally pets, so the skeleton kites away from whatever
+        // is actually about to maul it, not just the player.
+        List<GridPos> threats = AIUtils.threatPositions(arena, playerPos);
+
+        // KITE: if anything is too close (within 2 tiles), back up — prioritize distance
+        if (AIUtils.minThreatDistance(myPos, threats) <= KITE_THRESHOLD) {
+            GridPos retreatPos = findRetreatPosition(self, arena, playerPos, threats);
             if (retreatPos != null) {
                 List<GridPos> path = Pathfinding.findPath(arena, myPos, retreatPos, speed, self);
                 if (!path.isEmpty()) {
@@ -44,13 +50,15 @@ public class SkeletonAI implements EnemyAI {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "arrow");
         }
 
+        int dist = self.minDistanceTo(playerPos);
+
         // In range with LOS — shoot from current position
         if (AIUtils.hasCardinalLOS(arena, myPos, playerPos, range)) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "arrow");
         }
 
         // REPOSITION: move to get LOS, shoot in same turn
-        GridPos shotPos = findBestShotPosition(self, arena, playerPos);
+        GridPos shotPos = findBestShotPosition(self, arena, playerPos, threats);
         if (shotPos != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, shotPos, speed, self);
             if (!path.isEmpty()) {
@@ -73,76 +81,70 @@ public class SkeletonAI implements EnemyAI {
     }
 
     /**
-     * Find the best retreat tile: prioritize maximizing distance from player,
-     * then secondarily prefer tiles that maintain cardinal LOS for a shot.
+     * Find the best retreat tile: prioritize maximizing distance from every
+     * threat (player AND ally pets), then secondarily prefer tiles that keep
+     * cardinal LOS for a shot. Avoids ending the retreat on a hazard tile.
      */
-    private GridPos findRetreatPosition(CombatEntity self, GridArena arena, GridPos playerPos) {
+    private GridPos findRetreatPosition(CombatEntity self, GridArena arena, GridPos playerPos,
+                                        List<GridPos> threats) {
         GridPos myPos = self.getGridPos();
         GridPos best = null;
         int bestScore = Integer.MIN_VALUE;
         int range = self.getRange();
-        int speed = self.getMoveSpeed();
+        int currentMin = AIUtils.minThreatDistance(myPos, threats);
 
-        for (int dx = -speed; dx <= speed; dx++) {
-            for (int dz = -speed; dz <= speed; dz++) {
-                if (Math.abs(dx) + Math.abs(dz) > speed) continue;
-                if (dx == 0 && dz == 0) continue;
-                GridPos candidate = new GridPos(myPos.x() + dx, myPos.z() + dz);
-                if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
-                var tile = arena.getTile(candidate);
-                if (tile == null || !tile.isWalkable()) continue;
+        for (GridPos candidate : Pathfinding.getReachableTiles(
+                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+            if (candidate.equals(myPos)) continue;
 
-                int distToPlayer = candidate.manhattanDistance(playerPos);
-                // Must actually increase distance — don't "retreat" closer
-                if (distToPlayer <= myPos.manhattanDistance(playerPos)) continue;
+            int minThreatDist = AIUtils.minThreatDistance(candidate, threats);
+            // Must actually increase distance — don't "retreat" closer
+            if (minThreatDist <= currentMin) continue;
 
-                // Primary: maximize distance from player (heavily weighted)
-                int score = distToPlayer * 10;
-                // Secondary: bonus for having LOS to shoot after retreating
-                if (AIUtils.hasCardinalLOS(arena, candidate, playerPos, range)) {
-                    score += 15;
-                }
-                // Small penalty for being on the same axis (predictable)
-                if (candidate.x() == playerPos.x() || candidate.z() == playerPos.z()) {
-                    score -= 2;
-                }
+            // Primary: maximize distance from the nearest threat (heavily weighted)
+            int score = minThreatDist * 10;
+            // Secondary: bonus for having LOS to shoot after retreating
+            if (AIUtils.hasCardinalLOS(arena, candidate, playerPos, range)) {
+                score += 15;
+            }
+            // Small penalty for being on the same axis (predictable)
+            if (candidate.x() == playerPos.x() || candidate.z() == playerPos.z()) {
+                score -= 2;
+            }
+            // Don't back into lava to dodge a sword
+            if (AIUtils.isHazardTile(arena, candidate)) {
+                score -= 25;
+            }
 
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = candidate;
-                }
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
             }
         }
         return best;
     }
 
-    private GridPos findBestShotPosition(CombatEntity self, GridArena arena, GridPos playerPos) {
+    private GridPos findBestShotPosition(CombatEntity self, GridArena arena, GridPos playerPos,
+                                         List<GridPos> threats) {
         GridPos myPos = self.getGridPos();
         GridPos best = null;
         int bestScore = Integer.MIN_VALUE;
         int range = self.getRange();
-        int speed = self.getMoveSpeed();
 
-        for (int dx = -speed; dx <= speed; dx++) {
-            for (int dz = -speed; dz <= speed; dz++) {
-                if (Math.abs(dx) + Math.abs(dz) > speed) continue;
-                if (dx == 0 && dz == 0) continue;
-                GridPos candidate = new GridPos(myPos.x() + dx, myPos.z() + dz);
-                if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
-                var tile = arena.getTile(candidate);
-                if (tile == null || !tile.isWalkable()) continue;
+        for (GridPos candidate : Pathfinding.getReachableTiles(
+                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+            if (candidate.equals(myPos)) continue;
+            if (!AIUtils.hasCardinalLOS(arena, candidate, playerPos, range)) continue;
 
-                if (!AIUtils.hasCardinalLOS(arena, candidate, playerPos, range)) continue;
-
-                int distToPlayer = candidate.manhattanDistance(playerPos);
-                // Prefer distance 3+ (safe range), heavily penalize close positions
-                int score = 20;
-                score += Math.min(distToPlayer, 4) * 5;
-                if (distToPlayer <= KITE_THRESHOLD) score -= 15;
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = candidate;
-                }
+            int minThreatDist = AIUtils.minThreatDistance(candidate, threats);
+            // Prefer distance 3+ (safe range), heavily penalize close positions
+            int score = 20;
+            score += Math.min(minThreatDist, 4) * 5;
+            if (minThreatDist <= KITE_THRESHOLD) score -= 15;
+            if (AIUtils.isHazardTile(arena, candidate)) score -= 25;
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
             }
         }
         return best;

@@ -133,6 +133,20 @@ public class CombatEntity {
     public EnemyAI getAiInstance() { return aiInstance; }
     public void setAiInstance(EnemyAI ai) { this.aiInstance = ai; }
 
+    /**
+     * Per-entity AI scratch state. AIRegistry hands out ONE shared AI instance per
+     * entity type, so any mutable field on an {@code EnemyAI} subclass is silently
+     * shared by every mob of that type across every fight (e.g. one evoker's
+     * "already summoned" flag muted all future evokers). Stateful AIs keep their
+     * counters/flags here instead — the map lives and dies with the entity.
+     */
+    private final java.util.Map<String, Integer> aiMemory = new java.util.HashMap<>();
+    public int getAiMemory(String key, int defaultValue) {
+        return aiMemory.getOrDefault(key, defaultValue);
+    }
+    public void setAiMemory(String key, int value) { aiMemory.put(key, value); }
+    public boolean hasAiMemory(String key) { return aiMemory.containsKey(key); }
+
     /** Minimum manhattan distance from a point to any tile this entity occupies. */
     public int minDistanceTo(GridPos from) {
         return minDistanceFromSizedEntity(gridPos, size, from);

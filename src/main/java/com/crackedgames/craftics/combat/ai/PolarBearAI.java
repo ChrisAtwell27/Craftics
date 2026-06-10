@@ -12,8 +12,8 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Polar Bear AI: Territorial — becomes permanently agro if player gets within 2 blocks.
- * Once agro, charges and attacks the player with powerful melee.
- * Otherwise wanders like a farm animal.
+ * Once agro, charges and mauls: a standing swat that knocks the target back a
+ * tile (it's a polar bear). Otherwise wanders like a farm animal.
  */
 public class PolarBearAI implements EnemyAI {
     /** Polar bears are neutral — only a threat once provoked (enraged). */
@@ -25,26 +25,30 @@ public class PolarBearAI implements EnemyAI {
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
-        int dist = myPos.manhattanDistance(playerPos);
+        // Size-aware: the bear is 2x2, so adjacency is measured from its whole
+        // footprint (the old anchor-only distance let players stand "inside"
+        // its melee reach without triggering the territorial agro).
+        int dist = self.minDistanceTo(playerPos);
+        int size = self.getSize();
 
         // Become agro if player is within 2 blocks OR if hit
         if (!self.isEnraged() && (dist <= 2 || self.wasDamagedSinceLastTurn())) {
             self.setEnraged(true);
         }
 
-        // AGRO: charge and maul
+        // AGRO: charge and maul — the swat sends the target sprawling a tile back
         if (self.isEnraged()) {
             if (dist <= 1) {
-                return new EnemyAction.Attack(self.getAttackPower());
+                return new EnemyAction.AttackWithKnockback(self.getAttackPower(), 1);
             }
 
-            GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed());
+            GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), size);
             if (target != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, target, self.getMoveSpeed(), self);
+                List<GridPos> path = Pathfinding.findPathSized(arena, myPos, target, self.getMoveSpeed(), self, size);
                 if (!path.isEmpty()) {
                     GridPos endPos = path.get(path.size() - 1);
-                    if (endPos.manhattanDistance(playerPos) <= 1) {
-                        return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
+                    if (CombatEntity.minDistanceFromSizedEntity(endPos, size, playerPos) <= 1) {
+                        return new EnemyAction.MoveAndAttackWithKnockback(path, self.getAttackPower(), 1);
                     }
                     return new EnemyAction.Move(path);
                 }

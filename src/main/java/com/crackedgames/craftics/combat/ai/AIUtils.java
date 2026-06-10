@@ -5,6 +5,7 @@ import com.crackedgames.craftics.combat.Pathfinding;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.GridTile;
+import com.crackedgames.craftics.core.TileType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -137,6 +138,138 @@ public class AIUtils {
         }
 
         return null; // stuck, can't flee
+    }
+
+    /**
+     * All positions that currently threaten an enemy in melee: every party
+     * player plus every live ally pet. Used by kiting AIs so an archer backs
+     * away from the wolf gnawing on it, not just from the player it happens
+     * to be targeting.
+     */
+    public static List<GridPos> threatPositions(GridArena arena, GridPos primaryTarget) {
+        List<GridPos> threats = new ArrayList<>(arena.getAllPlayerGridPositions());
+        if (threats.isEmpty()) threats.add(primaryTarget);
+        java.util.Set<CombatEntity> seen = new java.util.HashSet<>();
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (e.isAlly() && e.isAlive() && !e.isMountWall() && seen.add(e)) {
+                threats.add(e.getGridPos());
+            }
+        }
+        if (!threats.contains(primaryTarget)) threats.add(primaryTarget);
+        return threats;
+    }
+
+    /** Smallest manhattan distance from {@code pos} to any threat in the list. */
+    public static int minThreatDistance(GridPos pos, List<GridPos> threats) {
+        int min = Integer.MAX_VALUE;
+        for (GridPos t : threats) {
+            min = Math.min(min, pos.manhattanDistance(t));
+        }
+        return min;
+    }
+
+    /** True when stepping on (or ending on) this tile hurts — lava, fire, powder snow. */
+    public static boolean isHazardTile(GridArena arena, GridPos pos) {
+        GridTile tile = arena.getTile(pos);
+        return tile != null
+            && (tile.getType().damageOnStep > 0 || tile.getType() == TileType.POWDER_SNOW);
+    }
+
+    /**
+     * Pick the best retreat tile among the tiles actually reachable this turn:
+     * maximizes distance from every threat (player + ally pets), refuses tiles
+     * that don't gain ground on the nearest threat, and avoids ending on hazards.
+     * Unlike {@link #getFleeTarget} this is path-validated, so it finds the
+     * around-the-corner escape a straight-line flee misses.
+     */
+    public static GridPos bestRetreatTile(CombatEntity self, GridArena arena, List<GridPos> threats) {
+        GridPos myPos = self.getGridPos();
+        int currentMin = minThreatDistance(myPos, threats);
+        GridPos best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (GridPos candidate : Pathfinding.getReachableTiles(
+                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+            if (candidate.equals(myPos)) continue;
+            int minDist = minThreatDistance(candidate, threats);
+            if (minDist <= currentMin) continue; // must actually gain ground
+            int score = minDist * 10;
+            if (isHazardTile(arena, candidate)) score -= 25;
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Path-validated flee for skittish mobs: run to the reachable tile that
+     * maximizes distance from the threat. Falls back to the straight-line
+     * {@link #getFleeTarget} only when nothing reachable gains ground, so
+     * rabbits and farm animals stop pinning themselves in corners while an
+     * open diagonal escape exists.
+     */
+    public static EnemyAction fleeReachable(CombatEntity self, GridArena arena, GridPos threat, int maxSteps) {
+        GridPos myPos = self.getGridPos();
+        int currentDist = myPos.manhattanDistance(threat);
+        GridPos best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (GridPos candidate : Pathfinding.getReachableTiles(arena, myPos, maxSteps, self.getSize(), self)) {
+            if (candidate.equals(myPos)) continue;
+            int dist = candidate.manhattanDistance(threat);
+            if (dist <= currentDist) continue;
+            int score = dist * 10;
+            if (isHazardTile(arena, candidate)) score -= 25;
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+        if (best == null) {
+            best = getFleeTarget(arena, myPos, threat, maxSteps);
+        }
+        if (best != null) {
+            List<GridPos> path = Pathfinding.findPathSized(arena, myPos, best, maxSteps, self, self.getSize());
+            if (!path.isEmpty()) return new EnemyAction.Flee(path);
+        }
+        return null;
+    }
+
+    /**
+     * Hit-and-run combo: approach (optional), strike, then spend leftover
+     * movement backing away from the victim. Shared by the skirmisher mobs
+     * (wolf, fox, ocelot, cave spider, agro cat). Returns {@code null} when
+     * there's no movement left or nowhere better to stand — callers fall back
+     * to a plain attack.
+     */
+    public static EnemyAction hitAndRun(CombatEntity self, GridArena arena, GridPos victimPos,
+                                        List<GridPos> approachPath, int damage) {
+        int speed = self.getMoveSpeed();
+        int approachSteps = approachPath != null ? approachPath.size() : 0;
+        int remaining = Math.max(0, speed - approachSteps);
+        if (remaining <= 0) return null;
+
+        GridPos attackPos = approachSteps > 0 ? approachPath.get(approachSteps - 1) : self.getGridPos();
+        java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, attackPos, remaining, 1, self);
+        GridPos retreatTarget = null;
+        int bestScore = Integer.MIN_VALUE;
+        int currentDist = attackPos.manhattanDistance(victimPos);
+        for (GridPos pos : reachable) {
+            int d = pos.manhattanDistance(victimPos);
+            if (d <= currentDist) continue;
+            int score = d * 10;
+            if (isHazardTile(arena, pos)) score -= 25;
+            if (score > bestScore) {
+                bestScore = score;
+                retreatTarget = pos;
+            }
+        }
+        if (retreatTarget == null) return null;
+
+        List<GridPos> retreatPath = Pathfinding.findPath(arena, attackPos, retreatTarget, remaining, self);
+        if (retreatPath.isEmpty()) return null;
+        return new EnemyAction.MoveAttackMove(
+            approachPath != null ? approachPath : List.of(), damage, retreatPath);
     }
 
     /**

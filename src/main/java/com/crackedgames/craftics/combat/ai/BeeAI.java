@@ -63,11 +63,17 @@ public class BeeAI implements EnemyAI {
         return new EnemyAction.Idle();
     }
 
-    /** Check if any bee in the arena has been damaged this turn. */
+    /**
+     * Check if any bee in the arena has been hurt. Counts lasting wounds
+     * (current HP below max), not just the damaged-this-turn flag — a bee
+     * struck two turns ago still has the swarm riled, and a swarm whose
+     * sister was one-shot doesn't shrug it off.
+     */
     private boolean anyBeeHit(GridArena arena) {
         for (CombatEntity entity : arena.getOccupants().values()) {
             if (!entity.isAlive()) continue;
-            if ("minecraft:bee".equals(entity.getEntityTypeId()) && entity.wasDamagedSinceLastTurn()) {
+            if ("minecraft:bee".equals(entity.getEntityTypeId())
+                    && (entity.wasDamagedSinceLastTurn() || entity.getCurrentHp() < entity.getMaxHp())) {
                 return true;
             }
         }

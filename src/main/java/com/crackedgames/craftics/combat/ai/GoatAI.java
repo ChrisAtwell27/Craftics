@@ -61,18 +61,24 @@ public class GoatAI implements EnemyAI {
             return new EnemyAction.AttackWithKnockback(self.getAttackPower() + 2, com.crackedgames.craftics.CrafticsMod.CONFIG.knockbackDistance());
         }
 
-        // Try to charge in a straight line (same row or column as player)
+        // Aligned on a row/column — RAM: thunder down the straight line and, if
+        // the charge connects, hit with momentum (+1 damage per tile beyond 2).
         if (myPos.x() == playerPos.x() || myPos.z() == playerPos.z()) {
-            // Already aligned — charge straight
-            GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, speed);
-            if (target != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, target, speed, self);
-                if (!path.isEmpty()) {
-                    GridPos endPos = path.get(path.size() - 1);
-                    if (endPos.manhattanDistance(playerPos) <= 1) {
-                        return new EnemyAction.MoveAndAttackWithKnockback(path, self.getAttackPower() + 2, com.crackedgames.craftics.CrafticsMod.CONFIG.knockbackDistance());
+            List<GridPos> ramPath = buildRamPath(arena, myPos, playerPos, speed);
+            if (ramPath != null) {
+                int travelled = ramPath.size();
+                GridPos endPos = travelled > 0 ? ramPath.get(travelled - 1) : myPos;
+                if (endPos.manhattanDistance(playerPos) <= 1) {
+                    int ramDamage = self.getAttackPower() + 2 + Math.max(0, travelled - 2);
+                    if (travelled == 0) {
+                        return new EnemyAction.AttackWithKnockback(ramDamage,
+                            com.crackedgames.craftics.CrafticsMod.CONFIG.knockbackDistance());
                     }
-                    return new EnemyAction.Move(path);
+                    return new EnemyAction.MoveAndAttackWithKnockback(ramPath, ramDamage,
+                        com.crackedgames.craftics.CrafticsMod.CONFIG.knockbackDistance());
+                }
+                if (travelled > 0) {
+                    return new EnemyAction.Move(ramPath);
                 }
             }
         }
@@ -91,6 +97,30 @@ public class GoatAI implements EnemyAI {
         }
 
         return AIUtils.seekOrWander(self, arena, playerPos);
+    }
+
+    /**
+     * Straight cardinal dash toward an aligned target, stopping on the tile
+     * just before it. Returns {@code null} when the lane is blocked before any
+     * progress can be made; an empty list means "already adjacent".
+     */
+    private List<GridPos> buildRamPath(GridArena arena, GridPos from, GridPos target, int maxSteps) {
+        int dx = Integer.signum(target.x() - from.x());
+        int dz = Integer.signum(target.z() - from.z());
+        if (dx == 0 && dz == 0) return null;
+
+        List<GridPos> path = new ArrayList<>();
+        GridPos current = from;
+        for (int i = 0; i < maxSteps; i++) {
+            GridPos next = new GridPos(current.x() + dx, current.z() + dz);
+            if (next.equals(target)) return path; // stop adjacent, hooves first
+            if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
+            var tile = arena.getTile(next);
+            if (tile == null || !tile.isWalkable()) break;
+            path.add(next);
+            current = next;
+        }
+        return path.isEmpty() ? null : path;
     }
 
     private EnemyAction tryWander(CombatEntity self, GridArena arena) {

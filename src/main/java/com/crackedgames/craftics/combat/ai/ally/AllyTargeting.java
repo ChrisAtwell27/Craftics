@@ -130,14 +130,36 @@ final class AllyTargeting {
         return new EnemyAction.Idle();
     }
 
-    /** Flee two tiles directly away from {@code threat}; {@code null} if boxed in. */
+    /**
+     * Flee from {@code threat}: try two tiles directly away first, then fall
+     * back to the reachable tile that gains the most distance — so a wounded
+     * ally escapes around a corner instead of standing still because the
+     * straight line out happened to be blocked. {@code null} if truly boxed in.
+     */
     static EnemyAction fleeFrom(CombatEntity self, GridArena arena, CombatEntity threat) {
         GridPos pos = self.getGridPos();
-        int dx = Integer.signum(pos.x() - threat.getGridPos().x());
-        int dz = Integer.signum(pos.z() - threat.getGridPos().z());
+        GridPos threatPos = threat.getGridPos();
+        int dx = Integer.signum(pos.x() - threatPos.x());
+        int dz = Integer.signum(pos.z() - threatPos.z());
         GridPos retreat = new GridPos(pos.x() + dx * 2, pos.z() + dz * 2);
         List<GridPos> path = pathTo(self, arena, retreat);
         if (path != null && !path.isEmpty()) return new EnemyAction.Flee(path);
+
+        // Straight line blocked — take the best reachable escape instead.
+        GridPos best = null;
+        int bestDist = pos.manhattanDistance(threatPos);
+        for (GridPos candidate : Pathfinding.getReachableTiles(
+                arena, pos, self.getMoveSpeed(), self.getSize(), self)) {
+            int d = candidate.manhattanDistance(threatPos);
+            if (d > bestDist) {
+                bestDist = d;
+                best = candidate;
+            }
+        }
+        if (best != null) {
+            List<GridPos> escape = pathTo(self, arena, best);
+            if (escape != null && !escape.isEmpty()) return new EnemyAction.Flee(escape);
+        }
         return null;
     }
 }

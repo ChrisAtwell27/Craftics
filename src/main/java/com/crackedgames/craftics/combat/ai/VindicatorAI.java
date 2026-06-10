@@ -178,7 +178,8 @@ public class VindicatorAI implements EnemyAI {
 
     /**
      * Build a straight-line dash path from a position in a direction.
-     * Goes until hitting a wall, obstacle, or arena edge. Does NOT include occupied tiles.
+     * Goes until hitting a wall, obstacle, hazard tile (no axe is worth a lava
+     * bath), or arena edge. Does NOT include occupied tiles.
      */
     private List<GridPos> buildDashPath(GridArena arena, GridPos start, int dx, int dz) {
         List<GridPos> path = new ArrayList<>();
@@ -188,6 +189,7 @@ public class VindicatorAI implements EnemyAI {
             if (!arena.isInBounds(next)) break;
             var tile = arena.getTile(next);
             if (tile == null || !tile.isWalkable()) break;
+            if (AIUtils.isHazardTile(arena, next)) break;
             if (arena.isEnemyOccupied(next)) break;
             path.add(next);
             current = next;
