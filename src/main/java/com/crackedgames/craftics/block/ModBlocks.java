@@ -22,6 +22,10 @@ public class ModBlocks {
         RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "level_select_ghost_block"));
     private static final RegistryKey<Block> ARENA_CORNER_BLOCK_KEY =
         RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "arena_corner"));
+    private static final RegistryKey<Block> SCENE_SPAWN_BLOCK_KEY =
+        RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "scene_spawn"));
+    private static final RegistryKey<Block> STAND_MARKER_BLOCK_KEY =
+        RegistryKey.of(RegistryKeys.BLOCK, Identifier.of(CrafticsMod.MOD_ID, "stand_marker"));
 
     public static final Block LEVEL_SELECT_BLOCK = registerBlock("level_select_block",
         new LevelSelectBlock(AbstractBlock.Settings.create()
@@ -72,11 +76,45 @@ public class ModBlocks {
         )
     );
 
+    // Scene spawn / camera vantage marker for village & bartering-station scenes.
+    public static final Block SCENE_SPAWN_BLOCK = registerBlock("scene_spawn",
+        new SceneSpawnBlock(AbstractBlock.Settings.create()
+            //? if >=1.21.2 {
+            .registryKey(SCENE_SPAWN_BLOCK_KEY)
+            //?}
+            .mapColor(MapColor.EMERALD_GREEN)
+            .strength(1.5f, 6.0f)
+            .sounds(net.minecraft.sound.BlockSoundGroup.STONE)
+            .luminance(state -> 9)
+        )
+    );
+
+    // Booth marker for village & bartering-station scenes; its block entity
+    // stores which merchant (or addon wildcard) lives at this booth.
+    public static final Block STAND_MARKER_BLOCK = registerBlock("stand_marker",
+        new StandMarkerBlock(AbstractBlock.Settings.create()
+            //? if >=1.21.2 {
+            .registryKey(STAND_MARKER_BLOCK_KEY)
+            //?}
+            .mapColor(MapColor.GOLD)
+            .strength(1.5f, 6.0f)
+            .sounds(net.minecraft.sound.BlockSoundGroup.STONE)
+            .luminance(state -> 9)
+        )
+    );
+
     public static final BlockEntityType<LevelSelectBlockEntity> LEVEL_SELECT_BLOCK_ENTITY =
         Registry.register(
             Registries.BLOCK_ENTITY_TYPE,
             Identifier.of(CrafticsMod.MOD_ID, "level_select_block_entity"),
             FabricBlockEntityTypeBuilder.create(LevelSelectBlockEntity::new, LEVEL_SELECT_BLOCK).build()
+        );
+
+    public static final BlockEntityType<StandMarkerBlockEntity> STAND_MARKER_BLOCK_ENTITY =
+        Registry.register(
+            Registries.BLOCK_ENTITY_TYPE,
+            Identifier.of(CrafticsMod.MOD_ID, "stand_marker_block_entity"),
+            FabricBlockEntityTypeBuilder.create(StandMarkerBlockEntity::new, STAND_MARKER_BLOCK).build()
         );
 
     private static Block registerBlock(String name, Block block) {
