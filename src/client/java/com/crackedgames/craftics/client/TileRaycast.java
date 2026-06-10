@@ -89,7 +89,25 @@ public class TileRaycast {
                     net.minecraft.world.RaycastContext.ShapeType.COLLIDER,
                     net.minecraft.world.RaycastContext.FluidHandling.NONE,
                     client.player));
-            if (worldHit.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
+            boolean blockHitValid = worldHit.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK;
+            double blockHitDistSq = blockHitValid
+                ? camPos.squaredDistanceTo(worldHit.getPos()) : Double.MAX_VALUE;
+
+            // Entity raycast — pointing at a mob's visible body should target the
+            // tile it stands on, even when the cursor ray would otherwise land on
+            // the tile behind it (common at low camera angles on tall mobs).
+            // Invisible (stealthed) mobs are skipped so their hidden position
+            // can't be discovered by sweeping the cursor around. A block hit
+            // closer than the entity still wins so mobs can't be picked through
+            // walls.
+            GridPos entityTile = pickEntityTile(client, start, end, blockHitDistSq,
+                originX, originY, originZ, arenaW, arenaH);
+            if (entityTile != null) {
+                lastDebugPos = entityTile;
+                return entityTile;
+            }
+
+            if (blockHitValid) {
                 net.minecraft.util.math.BlockPos bp = worldHit.getBlockPos();
                 int gx = bp.getX() - originX;
                 int gz = bp.getZ() - originZ;
@@ -132,9 +150,80 @@ public class TileRaycast {
         if (gridX < 0 || gridX >= CombatState.getArenaWidth()
             || gridZ < 0 || gridZ >= CombatState.getArenaHeight()
             || !CombatState.isInPolygon(gridX, gridZ)) {
+            lastPlanePos = null;
             return null;
         }
 
-        return new GridPos(gridX, gridZ);
+        GridPos candidate = applyEdgeHysteresis(new GridPos(gridX, gridZ), hitX, hitZ);
+        lastPlanePos = candidate;
+        return candidate;
+    }
+
+    /** Previous plane-pick result, kept for edge hysteresis. */
+    private static GridPos lastPlanePos = null;
+
+    /** How far (in tile fractions) the cursor must travel INTO a neighboring
+     *  tile before the hover switches to it. Kills the per-pixel flicker when
+     *  the cursor rides a tile boundary. */
+    private static final double EDGE_HYSTERESIS = 0.08;
+
+    /**
+     * Keep the previously hovered tile while the hit point is still within the
+     * hysteresis band just inside an adjacent candidate tile. Applies only to
+     * floor-plane picks; entity/block picks snap hard (they're unambiguous).
+     */
+    private static GridPos applyEdgeHysteresis(GridPos candidate, double hitX, double hitZ) {
+        GridPos prev = lastPlanePos;
+        if (prev == null || candidate.equals(prev)) return candidate;
+        int dx = candidate.x() - prev.x();
+        int dz = candidate.z() - prev.z();
+        if (Math.abs(dx) + Math.abs(dz) != 1) return candidate; // only cardinal neighbors wobble
+        double fx = hitX - Math.floor(hitX);
+        double fz = hitZ - Math.floor(hitZ);
+        // Distance traveled into the candidate tile from the shared edge.
+        double into;
+        if (dx > 0) into = fx;
+        else if (dx < 0) into = 1.0 - fx;
+        else if (dz > 0) into = fz;
+        else into = 1.0 - fz;
+        return into < EDGE_HYSTERESIS ? prev : candidate;
+    }
+
+    /**
+     * Ray-test the bounding boxes of mobs and players inside the arena and
+     * return the grid tile of the nearest one hit, or {@code null}. Hits
+     * farther away than {@code maxDistSq} (the nearest block hit) are ignored
+     * so entities can't be picked through walls.
+     */
+    private static GridPos pickEntityTile(MinecraftClient client, Vec3d start, Vec3d end,
+                                          double maxDistSq, int originX, int originY, int originZ,
+                                          int arenaW, int arenaH) {
+        net.minecraft.util.math.Box arenaBox = new net.minecraft.util.math.Box(
+            originX - 1, originY, originZ - 1,
+            originX + arenaW + 1, originY + 5, originZ + arenaH + 1);
+
+        net.minecraft.entity.Entity best = null;
+        double bestDistSq = maxDistSq;
+        for (net.minecraft.entity.Entity e : client.world.getOtherEntities(client.player, arenaBox)) {
+            boolean pickable = e instanceof net.minecraft.entity.mob.MobEntity
+                || e instanceof net.minecraft.entity.player.PlayerEntity;
+            if (!pickable || !e.isAlive() || e.isInvisible()) continue;
+            var hit = e.getBoundingBox().expand(0.08).raycast(start, end);
+            if (hit.isEmpty()) continue;
+            double distSq = start.squaredDistanceTo(hit.get());
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                best = e;
+            }
+        }
+        if (best == null) return null;
+
+        int gx = (int) Math.floor(best.getX()) - originX;
+        int gz = (int) Math.floor(best.getZ()) - originZ;
+        if (gx < 0 || gx >= arenaW || gz < 0 || gz >= arenaH
+            || !CombatState.isInPolygon(gx, gz)) {
+            return null;
+        }
+        return new GridPos(gx, gz);
     }
 }

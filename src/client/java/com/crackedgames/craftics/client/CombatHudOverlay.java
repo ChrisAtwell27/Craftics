@@ -16,8 +16,23 @@ public class CombatHudOverlay implements HudRenderCallback {
     private static final int PANEL_BG = 0xBB111122;
     private static final int PANEL_BORDER = 0xFF333344;
 
-    private static int turnBannerAge = 0;
+    /** Wall-clock time of the last turn-phase change — drives the banner
+     *  entrance pop and the fade to the compact "Turn N" pill, independent
+     *  of frame rate (the old tick counter advanced per FRAME, so the fade
+     *  ran 2-4x too fast on high-refresh displays). */
+    private static long phaseChangeMs = 0;
     private static int lastTurnPhase = -1;
+
+    /** Displayed HP fraction per bar key, eased toward the real value each
+     *  frame so damage drains visibly instead of snapping. */
+    private static final Map<String, float[]> hpAnim = new java.util.HashMap<>();
+    private static long lastFrameMs = 0;
+    private static float frameDtSec = 0f;
+
+    /** On-screen End Turn button rect {x1,y1,x2,y2} in GUI coordinates
+     *  (uiScale already applied), or null while hidden. Hit-tested by
+     *  {@link #tryClickHudButtons} from the combat input handler. */
+    private static int[] endTurnBtnRect = null;
     /** Bottom Y of the enemy roster (or inspect panel) updated each render so the
      *  tile tooltip can position itself directly below it without overlap. */
     private static int enemyRosterBottomY = 4;
@@ -32,7 +47,14 @@ public class CombatHudOverlay implements HudRenderCallback {
     public void onHudRender(DrawContext ctx, RenderTickCounter tickCounter) {
         // F1 (vanilla "hide HUD") collapses all combat UI together with the rest.
         if (MinecraftClient.getInstance().options.hudHidden) return;
-        if (!CombatState.isInCombat()) return;
+        if (!CombatState.isInCombat()) {
+            // Drop per-fight animation state so the next battle starts clean
+            // (entity ids are reused across levels).
+            if (!hpAnim.isEmpty()) hpAnim.clear();
+            endTurnBtnRect = null;
+            lastFrameMs = 0;
+            return;
+        }
 
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return;
@@ -48,12 +70,16 @@ public class CombatHudOverlay implements HudRenderCallback {
         int screenW = (int)(client.getWindow().getScaledWidth() / uiScale);
         int screenH = (int)(client.getWindow().getScaledHeight() / uiScale);
 
+        long now = System.currentTimeMillis();
+        frameDtSec = lastFrameMs == 0 ? 0f : Math.min(0.1f, (now - lastFrameMs) / 1000.0f);
+        lastFrameMs = now;
+        endTurnBtnRect = null;
+
         int currentPhase = CombatState.isPlayerTurn() ? 1 : CombatState.isEnemyTurn() ? 2 : 0;
         if (currentPhase != lastTurnPhase) {
             lastTurnPhase = currentPhase;
-            turnBannerAge = 0;
+            phaseChangeMs = now;
         }
-        turnBannerAge++;
 
         renderPlayerStatusPanel(ctx, client, screenW);
         renderAllyRoster(ctx, client, screenW);
@@ -63,6 +89,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         renderTileTooltip(ctx, client, screenW, screenH);
         renderModePill(ctx, client, screenW, screenH);
         renderResourceBar(ctx, client, screenW, screenH);
+        renderEndTurnButton(ctx, client, screenW, screenH, uiScale);
+        renderMoveCostLabel(ctx, client, screenW, screenH, uiScale);
 
         boolean showEmeralds = false;
         try { showEmeralds = com.crackedgames.craftics.CrafticsMod.CONFIG.showEmeraldsInCombat(); } catch (Exception ignored) {}
@@ -89,6 +117,101 @@ public class CombatHudOverlay implements HudRenderCallback {
 
     private static void drawPill(DrawContext ctx, int x, int y, int w, int h, int color) {
         ctx.fill(x, y, x + w, y + h, color);
+    }
+
+    // ─── Smooth HP Bars ──────────────────────────────────────────────────
+
+    /**
+     * Advance and return the displayed HP fraction for {@code key}, easing
+     * toward {@code target} at a fixed wall-clock rate.
+     */
+    private static float smoothPct(String key, float target) {
+        float[] s = hpAnim.computeIfAbsent(key, k -> new float[]{target});
+        float cur = s[0];
+        float diff = target - cur;
+        if (Math.abs(diff) < 0.003f) {
+            cur = target;
+        } else {
+            cur += diff * Math.min(1f, frameDtSec * 6f);
+        }
+        s[0] = cur;
+        return cur;
+    }
+
+    /**
+     * HP bar with damage feedback: dark track, colored fill at the REAL value,
+     * and — while the eased display value catches up — a bright "ghost"
+     * segment over the chunk just lost, draining toward the fill. Heals sweep
+     * a lighter segment upward instead. Keys must be unique per on-screen bar
+     * (the same entity shown in two panels needs two keys, otherwise the
+     * easing advances twice per frame).
+     */
+    private static void drawHpBar(DrawContext ctx, String key, int x, int y, int w, int h,
+                                  float pct, int fillColor, int trackColor) {
+        pct = Math.max(0f, Math.min(1f, pct));
+        float shown = smoothPct(key, pct);
+        ctx.fill(x, y, x + w, y + h, trackColor);
+        int fillW = (int) (w * pct);
+        if (fillW > 0) {
+            ctx.fill(x, y, x + fillW, y + h, fillColor);
+        }
+        if (shown > pct) {
+            int ghostEnd = (int) (w * shown);
+            if (ghostEnd > fillW) {
+                ctx.fill(x + fillW, y, x + ghostEnd, y + h, 0xCCFFD9C9);
+            }
+        } else if (shown < pct) {
+            int sweepStart = (int) (w * shown);
+            if (fillW > sweepStart) {
+                ctx.fill(x + sweepStart, y, x + fillW, y + h, 0x66FFFFFF);
+            }
+        }
+    }
+
+    /** Standard HP fill color by remaining fraction. */
+    private static int hpColor(float pct) {
+        return pct > 0.5f ? 0xFF55FF55 : pct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
+    }
+
+    // ─── Mouse Mapping (HUD widgets) ─────────────────────────────────────
+
+    /**
+     * Cursor position in scaled-GUI coordinates (before any largerUI scale),
+     * or null without a window. Uses the same screen→framebuffer assumption
+     * as vanilla's Mouse handler.
+     */
+    private static double[] mouseGuiPos(MinecraftClient client) {
+        var window = client.getWindow();
+        if (window == null || window.getWidth() <= 0 || window.getHeight() <= 0) return null;
+        double fx = (double) window.getScaledWidth() / window.getWidth();
+        double fy = (double) window.getScaledHeight() / window.getHeight();
+        return new double[]{client.mouse.getX() * fx, client.mouse.getY() * fy};
+    }
+
+    private static boolean isMouseOver(MinecraftClient client, float uiScale,
+                                       int x, int y, int w, int h) {
+        double[] m = mouseGuiPos(client);
+        if (m == null) return false;
+        double mx = m[0] / uiScale;
+        double my = m[1] / uiScale;
+        return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
+
+    /**
+     * Handle a left-click on HUD widgets (currently the End Turn button).
+     * Called by {@code CombatInputHandler} BEFORE tile click handling; returns
+     * true when the click was consumed.
+     */
+    public static boolean tryClickHudButtons(MinecraftClient client) {
+        int[] r = endTurnBtnRect;
+        if (r == null || !CombatState.isLocalPlayersTurn()) return false;
+        double[] m = mouseGuiPos(client);
+        if (m == null) return false;
+        if (m[0] >= r[0] && m[0] < r[2] && m[1] >= r[1] && m[1] < r[3]) {
+            CombatInputHandler.sendEndTurn();
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -208,9 +331,7 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         int barX = headX + headSize + headGap;
         int barY = panelY + panelPad + (headSize - barH) / 2;
-        ctx.fill(barX, barY, barX + barW, barY + barH, 0xFF222222);
-        int hpColor = hpPct > 0.5f ? 0xFF55FF55 : hpPct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
-        ctx.fill(barX, barY, barX + (int)(barW * hpPct), barY + barH, hpColor);
+        drawHpBar(ctx, "self", barX, barY, barW, barH, hpPct, hpColor(hpPct), 0xFF222222);
         String hpText = hp + "/" + maxHp;
         int textW = client.textRenderer.getWidth(hpText);
         ctx.drawTextWithShadow(client.textRenderer,
@@ -291,9 +412,11 @@ public class CombatHudOverlay implements HudRenderCallback {
                 Text.literal(displayName), panelX + panelPad + headSz + headGp, y, nameColor);
 
             int barX = panelX + panelPad + headSz + headGp + nameW + 4;
-            ctx.fill(barX, y, barX + barW, y + barH, 0xFF222222);
-            if (!member.dead()) {
-                ctx.fill(barX, y, barX + (int)(barW * hpPct), y + barH, hpBarColor);
+            if (member.dead()) {
+                ctx.fill(barX, y, barX + barW, y + barH, 0xFF222222);
+            } else {
+                drawHpBar(ctx, "party:" + member.name(), barX, y, barW, barH,
+                    hpPct, hpBarColor, 0xFF222222);
             }
 
             String hpText = member.dead() ? "DEAD" : member.hp() + "/" + member.maxHp();
@@ -358,14 +481,28 @@ public class CombatHudOverlay implements HudRenderCallback {
             int barX = startX + headSize + padding;
             int barY = y + (headSize - barH) / 2;
             ctx.fill(barX - 1, barY - 1, barX + barW + 1, barY + barH + 1, 0x88000000);
-            int hpColor = ePct > 0.5f ? 0xFF55FF55 : ePct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
-            ctx.fill(barX, barY, barX + (int)(barW * ePct), barY + barH, hpColor);
+            drawHpBar(ctx, "ally:" + entry.getKey(), barX, barY, barW, barH,
+                ePct, hpColor(ePct), 0x00000000);
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal("\u00a77" + eHp + "/" + eMaxHp),
                 barX + barW + 2, barY - 2, 0xFFAAAAAA);
 
             y += entryH;
         }
+    }
+
+    /** Linear interpolation. */
+    private static float lerp(float a, float b, float t) {
+        return a + (b - a) * t;
+    }
+
+    /** Per-channel ARGB interpolation. */
+    private static int lerpColor(int from, int to, float t) {
+        int a = (int) lerp((from >>> 24) & 0xFF, (to >>> 24) & 0xFF, t);
+        int r = (int) lerp((from >> 16) & 0xFF, (to >> 16) & 0xFF, t);
+        int g = (int) lerp((from >> 8) & 0xFF, (to >> 8) & 0xFF, t);
+        int b = (int) lerp(from & 0xFF, to & 0xFF, t);
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     private void renderTurnBanner(DrawContext ctx, MinecraftClient client, int screenW) {
@@ -389,54 +526,77 @@ public class CombatHudOverlay implements HudRenderCallback {
             pillColor = 0xBB222222;
         }
 
-        // After 30 ticks, collapse "YOUR TURN" to just "Turn N"
-        boolean showFullBanner = !fadeBanner || turnBannerAge <= 30;
-        int turnNum = CombatState.getTurnNumber();
+        long age = System.currentTimeMillis() - phaseChangeMs;
 
-        StringBuilder banner = new StringBuilder();
-        if (showFullBanner) {
-            banner.append(turnText).append(" \u2014 ");
-        }
-        banner.append("Turn ").append(turnNum);
+        // 0\u20131500ms: full "YOUR TURN \u2014 Turn N". 1500\u20132100ms: crossfade and
+        // shrink into the compact "Turn N" pill that stays up for the rest
+        // of the phase.
+        float fadeP;
+        if (!fadeBanner || age <= 1500) fadeP = 0f;
+        else if (age >= 2100) fadeP = 1f;
+        else fadeP = (age - 1500) / 600f;
+        fadeP = fadeP * fadeP * (3 - 2 * fadeP); // smoothstep
+
+        int turnNum = CombatState.getTurnNumber();
+        String fullText = turnText + " \u2014 Turn " + turnNum;
+        String compactText = "Turn " + turnNum;
 
         int streak = CombatState.getKillStreak();
-        String streakBadge = "";
-        if (streak >= 2) {
-            streakBadge = "  " + streak + "x";
-        }
+        String streakBadge = streak >= 2 ? streak + "x" : "";
 
-        String fullText = banner.toString();
-        int textW = client.textRenderer.getWidth(fullText);
+        int fullTextW = client.textRenderer.getWidth(fullText);
+        int compactTextW = client.textRenderer.getWidth(compactText);
         int badgeW = streakBadge.isEmpty() ? 0 : client.textRenderer.getWidth(streakBadge) + 6;
-        int totalW = textW + badgeW;
-        int pillW = totalW + 12;
+        int badgeArea = badgeW == 0 ? 0 : badgeW + 5;
+
+        int contentW = Math.round(lerp(fullTextW, compactTextW, fadeP));
+        int pillW = contentW + 12 + badgeArea;
         int pillH = 14;
         int pillX = screenW / 2 - pillW / 2;
         int pillY = 4;
 
-        int alpha = 255;
-        if (fadeBanner && turnBannerAge > 30 && turnBannerAge <= 45) {
-            alpha = 255;
+        // Entrance pop: scale the pill up briefly whenever the phase flips so
+        // the turn change registers even when the player is watching the board.
+        float pop = age < 240 ? 1.0f + 0.18f * (1.0f - age / 240.0f) : 1.0f;
+        boolean scaled = pop > 1.001f;
+        if (scaled) {
+            float cx = screenW / 2.0f;
+            float cy = pillY + pillH / 2.0f;
+            ctx.getMatrices().push();
+            ctx.getMatrices().translate(cx, cy, 0);
+            ctx.getMatrices().scale(pop, pop, 1.0f);
+            ctx.getMatrices().translate(-cx, -cy, 0);
         }
 
         drawPill(ctx, pillX, pillY, pillW, pillH, pillColor);
 
-        int textX = pillX + 6;
+        int textCx = pillX + 6 + contentW / 2;
         int textY = pillY + 3;
 
-        if (showFullBanner) {
-            ctx.drawTextWithShadow(client.textRenderer, Text.literal(fullText), textX, textY, turnColor);
-        } else {
-            ctx.drawTextWithShadow(client.textRenderer, Text.literal(fullText), textX, textY, 0xFFCCCCCC);
+        // Crossfade the two layouts. Text alpha below ~10 renders fully opaque
+        // in MC's font renderer, so tiny alphas are skipped instead.
+        int fullAlpha = Math.round(255 * (1 - fadeP));
+        if (fullAlpha > 10) {
+            ctx.drawCenteredTextWithShadow(client.textRenderer, Text.literal(fullText),
+                textCx, textY, (turnColor & 0x00FFFFFF) | (fullAlpha << 24));
+        }
+        int compactAlpha = Math.round(255 * fadeP);
+        if (compactAlpha > 10) {
+            ctx.drawCenteredTextWithShadow(client.textRenderer, Text.literal(compactText),
+                textCx, textY, 0x00CCCCCC | (compactAlpha << 24));
         }
 
         if (!streakBadge.isEmpty()) {
             int streakColor = streak >= 5 ? 0xFFFF55FF : streak >= 3 ? 0xFFFFAA00 : 0xFFFFFF55;
             int badgeBg = streak >= 5 ? 0xCC442244 : streak >= 3 ? 0xCC443311 : 0xCC444411;
-            int badgeX = textX + textW + 3;
+            int badgeX = pillX + pillW - badgeW - 4;
             drawPill(ctx, badgeX, pillY + 2, badgeW, pillH - 4, badgeBg);
             ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal(streakBadge.trim()), badgeX + 3, textY, streakColor);
+                Text.literal(streakBadge), badgeX + 3, textY, streakColor);
+        }
+
+        if (scaled) {
+            ctx.getMatrices().pop();
         }
     }
 
@@ -693,13 +853,32 @@ public class CombatHudOverlay implements HudRenderCallback {
         int padding = 3;
         int entryH = headSize + 2;
 
-        // Check if there's a boss to render separately
-        boolean hasBoss = false;
-        for (String tRaw : types.values()) {
-            if (tRaw.contains(";boss=")) { hasBoss = true; break; }
+        // Identify the boss up front — it renders separately, and every count
+        // below (rows shown, "+N more") must exclude it or it gets counted
+        // twice: once as the boss bar, once as a phantom collapsed entry.
+        int bossEntityId = -1;
+        String bossDisplayName = null;
+        for (Map.Entry<Integer, String> tEntry : types.entrySet()) {
+            String tRaw = tEntry.getValue();
+            if (tRaw.contains(";boss=") && enemies.containsKey(tEntry.getKey())) {
+                bossEntityId = tEntry.getKey();
+                int bIdx = tRaw.indexOf(";boss=") + 6;
+                int bEnd = tRaw.indexOf(';', bIdx);
+                bossDisplayName = bEnd > 0 ? tRaw.substring(bIdx, bEnd) : tRaw.substring(bIdx);
+                break;
+            }
         }
+        boolean hasBoss = bossEntityId >= 0;
+
+        // Non-boss entries in map order — drives both the visible rows and the
+        // collapsed mini-head remainder.
+        List<Map.Entry<Integer, int[]>> nonBoss = new ArrayList<>();
+        for (Map.Entry<Integer, int[]> entry : enemies.entrySet()) {
+            if (entry.getKey() != bossEntityId) nonBoss.add(entry);
+        }
+
         int bossBarSection = hasBoss ? 24 : 0; // boss name + bar + padding
-        int nonBossCount = hasBoss ? enemies.size() - 1 : enemies.size();
+        int nonBossCount = nonBoss.size();
         int enemyCount = enemies.size();
         int showCount = (compact && nonBossCount > 4) ? 3 : nonBossCount;
         boolean collapsed = compact && nonBossCount > 4;
@@ -725,21 +904,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         int startX = panelX + panelPad;
         int y = panelY + headerH;
 
-        // First pass: find and render the boss with a special bar at the top
-        int bossEntityId = -1;
-        String bossDisplayName = null;
-        for (Map.Entry<Integer, String> tEntry : types.entrySet()) {
-            String tRaw = tEntry.getValue();
-            if (tRaw.contains(";boss=")) {
-                bossEntityId = tEntry.getKey();
-                int bIdx = tRaw.indexOf(";boss=") + 6;
-                int bEnd = tRaw.indexOf(';', bIdx);
-                bossDisplayName = bEnd > 0 ? tRaw.substring(bIdx, bEnd) : tRaw.substring(bIdx);
-                break;
-            }
-        }
-
-        if (bossEntityId >= 0 && enemies.containsKey(bossEntityId)) {
+        // First pass: render the boss with a special bar at the top
+        if (hasBoss) {
             int[] bossHp = enemies.get(bossEntityId);
             int bHp = bossHp[0];
             int bMaxHp = bossHp[1];
@@ -767,9 +933,9 @@ public class CombatHudOverlay implements HudRenderCallback {
             int bossBarW = panelContentW;
             int bossBarH = 8;
             ctx.fill(startX - 1, y - 1, startX + bossBarW + 1, y + bossBarH + 1, 0xFF440000);
-            ctx.fill(startX, y, startX + bossBarW, y + bossBarH, 0xFF220000);
             int bossColor = bPct > 0.5f ? 0xFFCC2222 : bPct > 0.25f ? 0xFFCC6600 : 0xFFFF0000;
-            ctx.fill(startX, y, startX + (int)(bossBarW * bPct), y + bossBarH, bossColor);
+            drawHpBar(ctx, "boss:" + bossEntityId, startX, y, bossBarW, bossBarH,
+                bPct, bossColor, 0xFF220000);
             // Compact HP text centered on the bar
             String bossHpText = "\u00a77" + bHp + "/" + bMaxHp;
             int bossHpTw = client.textRenderer.getWidth(bossHpText);
@@ -780,11 +946,10 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         // Second pass: render non-boss enemies
         int drawn = 0;
-        for (Map.Entry<Integer, int[]> entry : enemies.entrySet()) {
+        for (Map.Entry<Integer, int[]> entry : nonBoss) {
             if (drawn >= showCount) break;
 
             int entityId = entry.getKey();
-            if (entityId == bossEntityId) continue; // already rendered above
             int[] hpData = entry.getValue();
             int eHp = hpData[0];
             int eMaxHp = hpData[1];
@@ -809,8 +974,8 @@ public class CombatHudOverlay implements HudRenderCallback {
             int barX = startX + headSize + padding;
             int barY = y + (headSize - barH) / 2;
             ctx.fill(barX - 1, barY - 1, barX + barW + 1, barY + barH + 1, 0x88000000);
-            int eColor = ePct > 0.5f ? 0xFF55FF55 : ePct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
-            ctx.fill(barX, barY, barX + (int)(barW * ePct), barY + barH, eColor);
+            drawHpBar(ctx, "en:" + entityId, barX, barY, barW, barH,
+                ePct, hpColor(ePct), 0x00000000);
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal("\u00a77" + eHp + "/" + eMaxHp),
                 barX + barW + 3, barY - 1, 0xFFAAAAAA);
@@ -820,16 +985,14 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
 
         if (collapsed) {
-            int remaining = enemyCount - showCount;
+            int remaining = nonBossCount - showCount;
             int miniX = startX;
             int miniSize = 8;
             int miniDrawn = 0;
 
             List<String> remainingTypes = new ArrayList<>();
-            int skipped = 0;
-            for (Map.Entry<Integer, int[]> entry : enemies.entrySet()) {
-                if (skipped < showCount) { skipped++; continue; }
-                String tFull = types.getOrDefault(entry.getKey(), "minecraft:zombie");
+            for (int i = showCount; i < nonBoss.size(); i++) {
+                String tFull = types.getOrDefault(nonBoss.get(i).getKey(), "minecraft:zombie");
                 String tId = tFull.contains(";") ? tFull.substring(0, tFull.indexOf(';')) : tFull;
                 remainingTypes.add(tId);
             }
@@ -952,9 +1115,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         // HP bar
         int barW = panelW - 4;
         int barH = 8;
-        ctx.fill(panelX + 2, y, panelX + 2 + barW, y + barH, 0xFF333333);
-        int hpColor = ePct > 0.5f ? 0xFF55FF55 : ePct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
-        ctx.fill(panelX + 2, y, panelX + 2 + (int)(barW * ePct), y + barH, hpColor);
+        drawHpBar(ctx, "insp:" + entityId, panelX + 2, y, barW, barH,
+            ePct, hpColor(ePct), 0xFF333333);
         ctx.drawCenteredTextWithShadow(client.textRenderer,
             Text.literal(eHp + " / " + eMaxHp + " HP"), panelX + panelW / 2, y, 0xFFFFFFFF);
         y += barH + 5;
@@ -1047,9 +1209,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         int barW = panelW - 4;
         int barH = 8;
         float pct = ps.maxHp() > 0 ? (float) ps.hp() / ps.maxHp() : 0;
-        ctx.fill(panelX + 2, y, panelX + 2 + barW, y + barH, 0xFF333333);
-        int hpColor = pct > 0.5f ? 0xFF55FF55 : pct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
-        ctx.fill(panelX + 2, y, panelX + 2 + (int)(barW * pct), y + barH, hpColor);
+        drawHpBar(ctx, "pinsp:" + ps.uuid(), panelX + 2, y, barW, barH,
+            pct, hpColor(pct), 0xFF333333);
         ctx.drawCenteredTextWithShadow(client.textRenderer,
             Text.literal(ps.hp() + " / " + ps.maxHp() + " HP"), panelX + panelW / 2, y, 0xFFFFFFFF);
         y += barH + 5;
@@ -1095,6 +1256,15 @@ public class CombatHudOverlay implements HudRenderCallback {
             default -> { modeText = "MOVE"; modeColor = 0xFF55FF55; pillBg = 0xBB113311; }
         }
 
+        // Show the AP price on attack modes so planning a turn doesn't require
+        // memorizing costs.
+        if (mode == CombatInputHandler.ActionMode.MELEE_ATTACK
+            || mode == CombatInputHandler.ActionMode.RANGED_ATTACK) {
+            int cost = 2;
+            try { cost = com.crackedgames.craftics.CrafticsMod.CONFIG.attackApCost(); } catch (Exception ignored) {}
+            modeText = modeText + " · " + cost + " AP";
+        }
+
         int textW = client.textRenderer.getWidth(modeText);
         int pillW = textW + 12;
         int pillH = 14;
@@ -1104,6 +1274,96 @@ public class CombatHudOverlay implements HudRenderCallback {
         drawPill(ctx, pillX, pillY, pillW, pillH, pillBg);
         ctx.drawCenteredTextWithShadow(client.textRenderer,
             Text.literal(modeText), screenW / 2, pillY + 3, modeColor);
+    }
+
+    // ─── End Turn Button (Bottom-Center, above the mode pill) ───────────
+
+    /** Localized name of the end-turn keybind, for the button label. */
+    private static String endTurnKeyName() {
+        try {
+            var key = com.crackedgames.craftics.CrafticsClient.getEndTurnKey();
+            if (key != null) {
+                String name = key.getBoundKeyLocalizedText().getString();
+                if (!name.isEmpty()) return name.toUpperCase(java.util.Locale.ROOT);
+            }
+        } catch (Exception ignored) {}
+        return "R";
+    }
+
+    /**
+     * Clickable End Turn button. Before this the only way to end a turn was
+     * knowing the R keybind — invisible to new players. Shown only on the
+     * local player's turn; once AP and movement are both spent, the border
+     * pulses to nudge "you're done here."
+     */
+    private void renderEndTurnButton(DrawContext ctx, MinecraftClient client,
+                                     int screenW, int screenH, float uiScale) {
+        if (!CombatState.isLocalPlayersTurn()) return;
+
+        String label = "END TURN";
+        String keyLabel = "[" + endTurnKeyName() + "]";
+        int labelW = client.textRenderer.getWidth(label);
+        int keyW = client.textRenderer.getWidth(keyLabel);
+        int btnW = labelW + keyW + 17;
+        int btnH = 16;
+        int btnX = screenW / 2 - btnW / 2;
+        int btnY = screenH - 78;
+
+        boolean hovered = isMouseOver(client, uiScale, btnX, btnY, btnW, btnH);
+        boolean allSpent = CombatState.getApRemaining() <= 0
+            && CombatState.getMovePointsRemaining() <= 0;
+
+        int border = 0xFF2E7D4F;
+        if (allSpent) {
+            float pulse = (float) (0.5 + 0.5 * Math.sin(System.currentTimeMillis() * 0.006));
+            border = lerpColor(0xFF2E7D4F, 0xFF7FFFA0, pulse);
+        }
+        if (hovered) border = 0xFFAAFFC0;
+        int bg = hovered ? 0xEE1C4A2A : 0xCC10301C;
+
+        ctx.fill(btnX - 1, btnY - 1, btnX + btnW + 1, btnY + btnH + 1, border);
+        ctx.fill(btnX, btnY, btnX + btnW, btnY + btnH, bg);
+        ctx.drawTextWithShadow(client.textRenderer, Text.literal(label),
+            btnX + 6, btnY + 4, hovered ? 0xFFFFFFFF : 0xFF99FF99);
+        ctx.drawTextWithShadow(client.textRenderer, Text.literal(keyLabel),
+            btnX + btnW - keyW - 5, btnY + 4, 0xFF77AA77);
+
+        endTurnBtnRect = new int[]{
+            Math.round(btnX * uiScale), Math.round(btnY * uiScale),
+            Math.round((btnX + btnW) * uiScale), Math.round((btnY + btnH) * uiScale)};
+    }
+
+    // ─── Move Cost Cursor Label ──────────────────────────────────────────
+
+    /**
+     * Small "N SPD" tag beside the cursor while hovering a reachable move
+     * tile, fed by the path the overlay renderer previews — answers "how much
+     * of my movement does this step cost?" without leaving the cursor.
+     */
+    private void renderMoveCostLabel(DrawContext ctx, MinecraftClient client,
+                                     int screenW, int screenH, float uiScale) {
+        if (!CombatState.isLocalPlayersTurn()) return;
+        if (CombatInputHandler.getActionMode(client) != CombatInputHandler.ActionMode.MOVE) return;
+        com.crackedgames.craftics.core.GridPos hover = CombatState.getHoveredTile();
+        java.util.List<com.crackedgames.craftics.core.GridPos> path = TileOverlayRenderer.getActivePath();
+        if (hover == null || path == null || path.isEmpty()
+            || !hover.equals(TileOverlayRenderer.getActivePathTarget())) return;
+
+        double[] m = mouseGuiPos(client);
+        if (m == null) return;
+        int mx = (int) (m[0] / uiScale);
+        int my = (int) (m[1] / uiScale);
+
+        int cost = path.size();
+        int remaining = CombatState.getMovePointsRemaining();
+        String label = cost + " SPD";
+        int tw = client.textRenderer.getWidth(label);
+        int bx = Math.min(mx + 12, screenW - tw - 6);
+        int by = Math.min(my + 12, screenH - 14);
+
+        ctx.fill(bx - 3, by - 2, bx + tw + 3, by + 10, 0xB0101822);
+        int color = cost >= remaining ? 0xFFFFDD55 : 0xFF7FD7FF;
+        ctx.drawTextWithShadow(client.textRenderer, Text.literal(label), bx, by, color);
     }
 
     // ─── 5. Resource Bar (Bottom-Right, Horizontal) ──────────────────────
@@ -1120,15 +1380,17 @@ public class CombatHudOverlay implements HudRenderCallback {
         int ap = myTurn ? CombatState.getApRemaining() : maxAp;
         int speed = myTurn ? CombatState.getMovePointsRemaining() : maxSpeed;
 
-        int pipSize = 10;
-        int pipGap = 4; // between pips
+        // One pip per point, shrinking pip size as totals grow so the row always
+        // fits. The old layout fixed each section at 3 shared slots, which meant
+        // spending AP/SPD above the cap changed NOTHING on screen — the pips
+        // only started draining once you were already below 3.
+        int totalPips = Math.max(1, maxAp + maxSpeed);
+        int pipSize = totalPips <= 8 ? 10 : totalPips <= 12 ? 8 : totalPips <= 18 ? 6 : 5;
+        int pipGap = pipSize >= 8 ? 4 : 3; // between pips
         int sectionGap = 12; // between AP and SPD sections
 
-        // Each section shows 3 squares, but extras overflow into the other section's space.
-        // Total shared slots = 6. AP draws left-to-right, SPD draws right-to-left.
-        int baseSlots = 3;
-        int apDisplay = Math.min(maxAp, baseSlots + Math.max(0, baseSlots - maxSpeed));
-        int spdDisplay = Math.min(maxSpeed, baseSlots + Math.max(0, baseSlots - maxAp));
+        int apDisplay = maxAp;
+        int spdDisplay = maxSpeed;
 
         // Labels include current/max numeric values alongside the pip visuals
         String apLabel = "AP " + ap + "/" + maxAp;
@@ -1149,21 +1411,24 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.drawTextWithShadow(client.textRenderer, Text.literal(apLabel), startX, rowY, apLabelColor);
         int x = startX + apLabelW;
 
-        // AP pips (up to apDisplay slots)
+        // AP pips — one per point
+        int pipY = rowY + (10 - pipSize) / 2;
         for (int i = 0; i < apDisplay; i++) {
             if (i >= ap) {
-                ctx.fill(x, rowY, x + pipSize, rowY + pipSize, 0xFF444444);
-                ctx.fill(x + 1, rowY + 1, x + pipSize - 1, rowY + pipSize - 1, 0xFF333333);
+                ctx.fill(x, pipY, x + pipSize, pipY + pipSize, 0xFF444444);
+                ctx.fill(x + 1, pipY + 1, x + pipSize - 1, pipY + pipSize - 1, 0xFF333333);
             } else {
                 int outer, inner;
                 if (i < 3) { outer = 0xFFFF8800; inner = 0xFFFFAA22; }
                 else if (i < 5) { outer = 0xFFFFCC00; inner = 0xFFFFDD44; }
                 else if (i < 7) { outer = 0xFFFFDD33; inner = 0xFFFFEE77; }
                 else { outer = 0xFFFFEE88; inner = 0xFFFFFFC0; }
-                ctx.fill(x, rowY, x + pipSize, rowY + pipSize, outer);
-                ctx.fill(x + 1, rowY + 1, x + pipSize - 1, rowY + pipSize - 1, inner);
-                ctx.fill(x + 2, rowY + 1, x + pipSize - 2, rowY + 3,
-                    (inner & 0x00FFFFFF) | 0x66000000);
+                ctx.fill(x, pipY, x + pipSize, pipY + pipSize, outer);
+                ctx.fill(x + 1, pipY + 1, x + pipSize - 1, pipY + pipSize - 1, inner);
+                if (pipSize >= 7) {
+                    ctx.fill(x + 2, pipY + 1, x + pipSize - 2, pipY + 3,
+                        (inner & 0x00FFFFFF) | 0x66000000);
+                }
             }
             x += pipSize + pipGap;
         }
@@ -1175,11 +1440,11 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.drawTextWithShadow(client.textRenderer, Text.literal(spdLabel), x, rowY, spdLabelColor);
         x += spdLabelW;
 
-        // SPD pips (up to spdDisplay slots)
+        // SPD pips — one per point
         for (int i = 0; i < spdDisplay; i++) {
             if (i >= speed) {
-                ctx.fill(x, rowY, x + pipSize, rowY + pipSize, 0xFF444444);
-                ctx.fill(x + 1, rowY + 1, x + pipSize - 1, rowY + pipSize - 1, 0xFF333333);
+                ctx.fill(x, pipY, x + pipSize, pipY + pipSize, 0xFF444444);
+                ctx.fill(x + 1, pipY + 1, x + pipSize - 1, pipY + pipSize - 1, 0xFF333333);
             } else {
                 int outer, inner;
                 if (i < 3) { outer = 0xFF3388CC; inner = 0xFF55AAEE; }
@@ -1187,10 +1452,12 @@ public class CombatHudOverlay implements HudRenderCallback {
                 else if (i < 7) { outer = 0xFF55CCEE; inner = 0xFF88DDFF; }
                 else if (i < 9) { outer = 0xFF88DDFF; inner = 0xFFAAEEFF; }
                 else { outer = 0xFFAAEEFF; inner = 0xFFDDFFFF; }
-                ctx.fill(x, rowY, x + pipSize, rowY + pipSize, outer);
-                ctx.fill(x + 1, rowY + 1, x + pipSize - 1, rowY + pipSize - 1, inner);
-                ctx.fill(x + 2, rowY + 1, x + pipSize - 2, rowY + 3,
-                    (inner & 0x00FFFFFF) | 0x66000000);
+                ctx.fill(x, pipY, x + pipSize, pipY + pipSize, outer);
+                ctx.fill(x + 1, pipY + 1, x + pipSize - 1, pipY + pipSize - 1, inner);
+                if (pipSize >= 7) {
+                    ctx.fill(x + 2, pipY + 1, x + pipSize - 2, pipY + 3,
+                        (inner & 0x00FFFFFF) | 0x66000000);
+                }
             }
             x += pipSize + pipGap;
         }

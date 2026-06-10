@@ -2,6 +2,18 @@ Changelog
 
 0.2.4
 
+Cursor picking ignored entities — at the combat camera's angle, clicking a tall mob's body selected the tile behind it. The ray now tests mob hitboxes first (with wall occlusion, and skipping invisible mobs so stealth isn't leaked).
+Turn banner fade was dead code (alpha computed then overwritten) and its timer ran per-frame, so timing varied with FPS. Same FPS-dependence affected the warning-tile and hover pulses.
+AP/SPD pips lied: a fixed 3-slot layout meant spending from 5→4→3 AP changed nothing on screen. Now one pip per point with adaptive sizing.
+"+N more" enemy collapse double-counted the boss and could duplicate a head in the mini list.
+Client/server walkability mismatch: tall grass, ferns, cobwebs and stairs are walkable server-side but the client previews treated them as obstacles.
+Headline UX additions:
+
+Combat HUD: a clickable End Turn button (shows the live keybind, pulses when you're out of resources — previously ending a turn required knowing the R key existed), smooth HP bars with damage-ghost drain on every bar, attack AP cost on the mode pill, and an "N SPD" cost tag at the cursor when hovering a move tile.
+Grid: crisp perimeter outlines on move/attack/AoE regions, a proper hover cursor ring, and a movement path preview (breadcrumbs along the BFS route). The renderer was also de-duplicated so both Stonecutter branches share one quad-building core.
+Level select: cards are now clickable (click side card to select, focused card to enter) with hover feedback, clickable progress dots (cleared/next/locked), Enter-to-play, tab tooltips with region progress, and "???" on undiscovered locked biomes.
+
+
 Nether
 
 - The Nether now has its own trader: a piglin bartering station replaces the wandering trader there. Offer gold ingots from your inventory with plus and minus buttons; the more you offer, the better your odds of a successful barter. A failed barter still costs the gold and returns bland junk like gravel, soul sand, or crying obsidian

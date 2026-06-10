@@ -40,9 +40,13 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding moveSlotRightKey;
     private static KeyBinding clearPartyKey;
     private static KeyBinding mountAbilityKey;
+    private static KeyBinding threatOverlayKey;
 
     /** The "hide/reveal inventory UI" keybind — read by {@code HandledScreenKeyMixin}. */
     public static KeyBinding getToggleUiKey() { return toggleUiKey; }
+
+    /** The end-turn keybind — read by {@code CombatHudOverlay} for the End Turn button label. */
+    public static KeyBinding getEndTurnKey() { return endTurnKey; }
     private static boolean traderScreenOpened = false;
     private static boolean previousBobView = true;
     private static double previousChatScale = 1.0;
@@ -178,6 +182,9 @@ public class CrafticsClient implements ClientModInitializer {
                         if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
                             CombatState.focusOnTile(payload.targetX(), payload.targetZ());
                         }
+                        // Mark the attacker as "acting now" so the HUD act-order
+                        // strip can highlight it during the enemy phase.
+                        CombatState.noteActingEnemy(payload.entityId());
                         var entity = context.client().world != null
                             ? context.client().world.getEntityById(payload.entityId()) : null;
                         if (entity != null) {
@@ -449,6 +456,12 @@ public class CrafticsClient implements ClientModInitializer {
             KEYBIND_CATEGORY
         ));
 
+        threatOverlayKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key.craftics.threat_overlay",
+            InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_Y,
+            KEYBIND_CATEGORY
+        ));
+
         CombatAnimations.register();
 
         ClientPlayNetworking.registerGlobalReceiver(
@@ -644,6 +657,17 @@ public class CrafticsClient implements ClientModInitializer {
                 }
             }
 
+            while (threatOverlayKey.wasPressed()) {
+                // Toggle the client-side "danger zone" overlay: every tile an
+                // enemy could reach and attack this turn.
+                if (CombatState.isInCombat() && client.currentScreen == null) {
+                    boolean on = CombatState.toggleThreatOverlay();
+                    com.crackedgames.craftics.client.CombatLog.addMessage(on
+                        ? "§c⚠ Enemy threat ranges shown"
+                        : "§7Enemy threat ranges hidden");
+                }
+            }
+
             while (clearPartyKey.wasPressed()) {
                 // Hub-only: clear the whole battle party. Server re-checks the
                 // in-combat state, so this is only a convenience gate.
@@ -735,7 +759,7 @@ public class CrafticsClient implements ClientModInitializer {
      * every mod has registered and options.txt has loaded.
      */
     private static void resolveKeybindConflicts(net.minecraft.client.MinecraftClient client) {
-        KeyBinding[] ours = { guideBookKey, respecKey, endTurnKey, affinityRespecKey, toggleUiKey, moveSlotLeftKey, moveSlotRightKey };
+        KeyBinding[] ours = { guideBookKey, respecKey, endTurnKey, affinityRespecKey, toggleUiKey, moveSlotLeftKey, moveSlotRightKey, threatOverlayKey };
         java.util.Set<KeyBinding> oursSet = new java.util.HashSet<>(java.util.Arrays.asList(ours));
         int cleared = 0;
         for (KeyBinding mine : ours) {

@@ -19,6 +19,7 @@
   "key.craftics.move_slot_right": "Move Item: Shift Locked Slot Right",
   "key.craftics.clear_party": "Clear Battle Party (hub)",
   "key.craftics.mount_ability": "Mount Ability (in combat)",
+  "key.craftics.threat_overlay": "Toggle Enemy Threat Ranges",
 
   "text.config.craftics-config.title": "Craftics",
 

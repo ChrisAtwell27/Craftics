@@ -149,6 +149,15 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
     /** Tab hit-boxes (rebuilt each frame). Index matches {@link #pages}. */
     private final List<int[]> tabBounds = new ArrayList<>();
 
+    /** Biome-card hit-boxes from the last render pass: {x1, y1, x2, y2, biomeIndex}. */
+    private final List<int[]> cardBounds = new ArrayList<>();
+
+    /** Progress-dot hit-boxes from the last render pass: {x1, y1, x2, y2, biomeIndex}. */
+    private final List<int[]> dotBounds = new ArrayList<>();
+
+    /** Tab the cursor is over this frame (for the progress tooltip), or -1. */
+    private int hoveredTabIndex = -1;
+
     /**
      * Per-texture "does this resource exist" cache. Custom-campaign biomes often
      * ship no {@code textures/gui/biomes/<id>.png}; rather than hammer the resource
@@ -312,15 +321,8 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
 
         // Enter button
         String btnLabel = unlocked ? "\u00a7l\u2794 Enter " + focused.displayName : "\u00a78\u2716 Locked";
-        enterButton = ButtonWidget.builder(Text.literal(btnLabel), button -> {
-            if (focused.order <= highestUnlocked) {
-                this.close();
-                TransitionOverlay.startTransition(
-                    focused.displayName, "Entering the arena...",
-                    () -> ClientPlayNetworking.send(new StartLevelPayload(focused.biomeId))
-                );
-            }
-        }).dimensions(cx - 80, buttonY, 160, 20).build();
+        enterButton = ButtonWidget.builder(Text.literal(btnLabel), button -> activateFocusedBiome())
+            .dimensions(cx - 80, buttonY, 160, 20).build();
         enterButton.active = unlocked;
         this.addDrawableChild(enterButton);
 
@@ -342,6 +344,31 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         selectedIndex = Math.max(0, Math.min(selectedIndex + dir, biomes.size() - 1));
         scrollTarget = selectedIndex;
         rebuildWidgets();
+    }
+
+    /** Jump straight to a biome index on the current page (card / dot click). */
+    private void jumpToBiome(int index) {
+        List<BiomeEntry> biomes = currentBiomes();
+        if (biomes.isEmpty()) return;
+        selectedIndex = Math.max(0, Math.min(index, biomes.size() - 1));
+        scrollTarget = selectedIndex;
+        rebuildWidgets();
+    }
+
+    /**
+     * Enter the focused biome if it's unlocked — shared by the Enter button,
+     * clicking the focused card, and the Enter key.
+     */
+    private void activateFocusedBiome() {
+        List<BiomeEntry> biomes = currentBiomes();
+        if (biomes.isEmpty()) return;
+        BiomeEntry focused = biomes.get(Math.max(0, Math.min(selectedIndex, biomes.size() - 1)));
+        if (focused.order > highestUnlocked) return;
+        this.close();
+        TransitionOverlay.startTransition(
+            focused.displayName, "Entering the arena...",
+            () -> ClientPlayNetworking.send(new StartLevelPayload(focused.biomeId))
+        );
     }
 
     /** Switch to a different dimension tab. No-op if the page is locked. */
@@ -420,6 +447,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         List<BiomeEntry> biomes = currentBiomes();
         if (biomes.isEmpty()) return;
 
+        cardBounds.clear();
         int visibleSlots = (this.width / spacing) + 3;
         int minI = Math.max(0, (int) scrollOffset - visibleSlots / 2);
         int maxI = Math.min(biomes.size() - 1, (int) scrollOffset + visibleSlots / 2);
@@ -438,14 +466,21 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             int imgX = cardCenterX - imgSize / 2;
             int imgY = cy - imgSize / 2;
 
+            cardBounds.add(new int[] { imgX, imgY, imgX + imgSize, imgY + imgSize, i });
+            boolean hovered = mouseX >= imgX && mouseX < imgX + imgSize
+                && mouseY >= imgY && mouseY < imgY + imgSize;
+
             if (unlocked) {
                 drawBiomeIcon(context, entry.texture, imgX, imgY, imgSize, imgSize, entry.dimColor);
                 if (!isFocused) {
-                    context.fill(imgX, imgY, imgX + imgSize, imgY + imgSize, 0xA0000000);
+                    // Lift the dim slightly on hover so cards read as clickable.
+                    context.fill(imgX, imgY, imgX + imgSize, imgY + imgSize,
+                        hovered ? 0x60000000 : 0xA0000000);
                 }
             } else {
                 context.fill(imgX, imgY, imgX + imgSize, imgY + imgSize, 0xFF1A1A2A);
-                context.fill(imgX + 1, imgY + 1, imgX + imgSize - 1, imgY + imgSize - 1, 0xFF222233);
+                context.fill(imgX + 1, imgY + 1, imgX + imgSize - 1, imgY + imgSize - 1,
+                    hovered ? 0xFF2A2A3E : 0xFF222233);
 
                 String q = "?";
                 int qw = this.textRenderer.getWidth(q);
@@ -459,22 +494,98 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                 context.fill(imgX - 2, imgY + imgSize, imgX + imgSize + 2, imgY + imgSize + 2, borderColor);
                 context.fill(imgX - 2, imgY, imgX, imgY + imgSize, borderColor);
                 context.fill(imgX + imgSize, imgY, imgX + imgSize + 2, imgY + imgSize, borderColor);
+            } else if (hovered) {
+                // Thin hover outline on side cards.
+                int hoverColor = 0x88FFFFFF;
+                context.fill(imgX - 1, imgY - 1, imgX + imgSize + 1, imgY, hoverColor);
+                context.fill(imgX - 1, imgY + imgSize, imgX + imgSize + 1, imgY + imgSize + 1, hoverColor);
+                context.fill(imgX - 1, imgY, imgX, imgY + imgSize, hoverColor);
+                context.fill(imgX + imgSize, imgY, imgX + imgSize + 1, imgY + imgSize, hoverColor);
             }
 
-            if (isFocused && (unlocked || isDiscovered)) {
-                String name = entry.displayName;
+            if (isFocused) {
+                // Undiscovered locked biomes keep their mystery as "???".
+                String name = (unlocked || isDiscovered) ? entry.displayName : "???";
+                int nameColor = unlocked ? 0xFFFFFFFF : 0xFF8888AA;
                 int nameW = this.textRenderer.getWidth(name);
                 context.drawTextWithShadow(this.textRenderer, name,
-                    cardCenterX - nameW / 2, imgY + imgSize + 6, 0xFFFFFFFF);
+                    cardCenterX - nameW / 2, imgY + imgSize + 6, nameColor);
             }
         }
 
+        // Progress dots \u2014 one per biome on this page (cleared / next / locked),
+        // clickable to jump.
+        renderProgressDots(context, biomes, cx, cy + imgSize / 2 + 18, mouseX, mouseY);
+
         // Footer hint
         context.drawCenteredTextWithShadow(this.textRenderer,
-            "\u00a78Q / E: switch dimension  \u00b7  \u2190 \u2192: browse biomes",
+            "\u00a78Q / E: dimension  \u00b7  \u2190 \u2192: browse  \u00b7  click card: select  \u00b7  Enter: play",
             cx, this.height - 14, 0x555555);
 
+        // Tab progress tooltip (drawn last so it overlays everything).
+        if (hoveredTabIndex >= 0 && hoveredTabIndex < pages.size()) {
+            DimensionPage page = pages.get(hoveredTabIndex);
+            List<Text> tip = new ArrayList<>();
+            if (isPageUnlocked(page)) {
+                int cleared = 0;
+                for (BiomeEntry e : page.biomes) {
+                    if (e.order < highestUnlocked) cleared++;
+                }
+                tip.add(Text.literal(page.displayName));
+                if (!page.biomes.isEmpty()) {
+                    tip.add(Text.literal("\u00a77" + cleared + " / " + page.biomes.size() + " biomes cleared"));
+                }
+            } else {
+                tip.add(Text.literal("\u00a7c" + page.displayName + " \u2014 locked"));
+                tip.add(Text.literal("\u00a77Clear earlier biomes to unlock this region."));
+            }
+            context.drawTooltip(this.textRenderer, tip, mouseX, mouseY);
+        }
+
         this.drawMouseoverTooltip(context, mouseX, mouseY);
+    }
+
+    /**
+     * Row of small progress dots under the carousel: green = cleared,
+     * gold = the next biome to tackle, dark = still locked. The focused
+     * biome gets a white ring. Clicking a dot jumps to that biome.
+     */
+    private void renderProgressDots(DrawContext context, List<BiomeEntry> biomes,
+                                    int cx, int y, int mouseX, int mouseY) {
+        dotBounds.clear();
+        int n = biomes.size();
+        if (n <= 1) return;
+
+        int dot = 5;
+        int gap = 4;
+        int totalW = n * dot + (n - 1) * gap;
+        int maxW = this.width - 60;
+        if (totalW > maxW) {
+            dot = 3;
+            gap = 2;
+            totalW = n * dot + (n - 1) * gap;
+            if (totalW > maxW) return; // absurd biome count \u2014 drop the dots
+        }
+
+        int x = cx - totalW / 2;
+        for (int i = 0; i < n; i++) {
+            BiomeEntry e = biomes.get(i);
+            boolean cleared = e.order < highestUnlocked;
+            boolean current = e.order == highestUnlocked;
+            int color = cleared ? 0xFF55CC55 : current ? 0xFFFFCC33 : 0xFF333344;
+            boolean hovered = mouseX >= x - 2 && mouseX < x + dot + 2
+                && mouseY >= y - 2 && mouseY < y + dot + 2;
+
+            if (i == selectedIndex) {
+                context.fill(x - 1, y - 1, x + dot + 1, y + dot + 1, 0xFFFFFFFF);
+            } else if (hovered) {
+                context.fill(x - 1, y - 1, x + dot + 1, y + dot + 1, 0x88FFFFFF);
+            }
+            context.fill(x, y, x + dot, y + dot, color);
+
+            dotBounds.add(new int[] { x - 2, y - 2, x + dot + 2, y + dot + 2, i });
+            x += dot + gap;
+        }
     }
 
     /**
@@ -484,6 +595,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
      */
     private void renderTabBar(DrawContext context, int tabY, int tabH, int mouseX, int mouseY) {
         tabBounds.clear();
+        hoveredTabIndex = -1;
 
         // Measure each tab's width individually so labels of different lengths
         // don't get truncated. Minimum 64 so single-word labels still feel
@@ -507,6 +619,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             boolean unlocked = isPageUnlocked(page);
             boolean active = i == currentPageIndex;
             boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= tabY && mouseY < tabY + tabH;
+            if (hovered) hoveredTabIndex = i;
 
             // Background
             int bgColor;
@@ -604,12 +717,31 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Tab bar hit-test first (so vanilla button layer doesn't eat the click).
+        // Tab bar / dots / cards are hit-tested before super — HandledScreen
+        // consumes every click (cursor-stack handling), so anything after it
+        // never fires. Widgets (arrows, Enter) don't overlap these regions.
         if (button == 0) {
             for (int i = 0; i < tabBounds.size(); i++) {
                 int[] b = tabBounds.get(i);
                 if (mouseX >= b[0] && mouseX < b[2] && mouseY >= b[1] && mouseY < b[3]) {
                     switchToPage(i);
+                    return true;
+                }
+            }
+            for (int[] d : dotBounds) {
+                if (mouseX >= d[0] && mouseX < d[2] && mouseY >= d[1] && mouseY < d[3]) {
+                    jumpToBiome(d[4]);
+                    return true;
+                }
+            }
+            for (int[] c : cardBounds) {
+                if (mouseX >= c[0] && mouseX < c[2] && mouseY >= c[1] && mouseY < c[3]) {
+                    if (c[4] == selectedIndex) {
+                        // Clicking the focused card enters it (when unlocked).
+                        activateFocusedBiome();
+                    } else {
+                        jumpToBiome(c[4]);
+                    }
                     return true;
                 }
             }
@@ -631,8 +763,8 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         // Left/Right arrows: biome navigation within current page
-        // Q/E: dimension tab switching
-        // 263 = LEFT, 262 = RIGHT, 81 = Q, 69 = E
+        // Q/E: dimension tab switching, Enter: play the focused biome
+        // 263 = LEFT, 262 = RIGHT, 81 = Q, 69 = E, 257 = ENTER, 335 = KP_ENTER
         if (keyCode == 263) {
             scrollBiome(-1);
             return true;
@@ -644,6 +776,9 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             return true;
         } else if (keyCode == 69) {
             cyclePage(1);
+            return true;
+        } else if (keyCode == 257 || keyCode == 335) {
+            activateFocusedBiome();
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);

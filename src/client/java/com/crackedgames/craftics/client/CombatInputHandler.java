@@ -189,7 +189,11 @@ public class CombatInputHandler {
         }
 
         if (clicked) {
-            handleClick(client, getActionMode(client));
+            // HUD widgets (End Turn button) get first claim on the click; only
+            // unconsumed clicks fall through to tile targeting.
+            if (!CombatHudOverlay.tryClickHudButtons(client)) {
+                handleClick(client, getActionMode(client));
+            }
         }
     }
 

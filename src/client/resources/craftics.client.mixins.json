@@ -21,6 +21,8 @@
     "OverlayMessageMixin",
     "PlayerNameTagMixin",
     "PlayerListHudMixin",
+    "RenderLayerInvoker",
+    "RenderPhaseBuilderInvoker",
     "ScrollZoomMixin",
     "TitleScreenMixin",
     "WorldCreatorMixin"
