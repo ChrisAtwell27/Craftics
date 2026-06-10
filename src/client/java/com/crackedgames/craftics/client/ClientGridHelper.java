@@ -271,7 +271,7 @@ public class ClientGridHelper {
 
         // Check the block above the floor — solid blocks there are obstacles
         var blockState = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy + 1, wz));
-        if (!blockState.isAir()) return false;
+        if (!blockState.isAir() && !isPassableAtBodyHeight(blockState)) return false;
 
         // Floor-level check: void (air with nothing below) is not walkable,
         // but hazard blocks (magma, lava, fire) at floor level ARE walkable
@@ -281,7 +281,107 @@ public class ClientGridHelper {
             var belowState = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy - 1, wz));
             return !belowState.isAir() && belowState.getFluidState().isEmpty();
         }
+        // Deep water (2+ blocks) is DEEP_WATER server-side: not walkable, instant
+        // kill. Shallow water (solid below) stays walkable.
+        if (floorState.isOf(net.minecraft.block.Blocks.WATER)) {
+            var belowState = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy - 1, wz));
+            return belowState.getFluidState().isEmpty();
+        }
         return true;
+    }
+
+    /**
+     * Grid tiles occupied by ally-side mobs (entity ids present in the synced
+     * ally HP map). Used by the path preview to mirror the server rule that
+     * the player can move THROUGH allies but not stop on them.
+     */
+    private static Set<GridPos> getAllyGridPositions(MinecraftClient client) {
+        Set<GridPos> positions = new HashSet<>();
+        if (client.world == null) return positions;
+        int ox = CombatState.getArenaOriginX();
+        int oz = CombatState.getArenaOriginZ();
+        for (Integer id : CombatState.getAllyHpMap().keySet()) {
+            Entity e = client.world.getEntityById(id);
+            if (e == null || !e.isAlive()) continue;
+            positions.add(new GridPos(
+                (int) Math.floor(e.getX()) - ox,
+                (int) Math.floor(e.getZ()) - oz));
+        }
+        return positions;
+    }
+
+    /**
+     * Blocks at body height (floor + 1) that the server still classifies as
+     * walkable tiles — stealth plants ({@code TALL_GRASS}/{@code TALL_FERN}),
+     * cobweb traps, and stair ramps ({@code STAIR}). Mirrors ArenaBuilder's
+     * post-placement tile scan so client-side previews (enemy movement ranges,
+     * the player's path preview) agree with the server's pathfinding.
+     */
+    private static boolean isPassableAtBodyHeight(net.minecraft.block.BlockState state) {
+        if (state.isOf(net.minecraft.block.Blocks.TALL_GRASS)
+            || state.isOf(net.minecraft.block.Blocks.LARGE_FERN)
+            || state.isOf(net.minecraft.block.Blocks.COBWEB)) {
+            return true;
+        }
+        if (state.getBlock() instanceof net.minecraft.block.StairsBlock) return true;
+        return state.getBlock() instanceof net.minecraft.block.SlabBlock
+            && state.get(net.minecraft.block.SlabBlock.TYPE) == net.minecraft.block.enums.SlabType.BOTTOM;
+    }
+
+    /**
+     * BFS shortest path from {@code from} to {@code target} under the same rules
+     * as the server's player pathfinding: cardinal steps, obstacles block, enemy
+     * tiles block, ally tiles are passable for INTERMEDIATE steps but can't be
+     * the destination. Returns the tile sequence excluding {@code from} (so
+     * {@code size()} equals the step cost), or {@code null} when the target
+     * can't be reached within {@code maxSteps}. Drives the move-path preview.
+     */
+    public static List<GridPos> getPathTo(MinecraftClient client, GridPos from, GridPos target, int maxSteps) {
+        if (client == null || client.world == null || from == null || target == null) return null;
+        if (from.equals(target)) return List.of();
+        int w = CombatState.getArenaWidth();
+        int h = CombatState.getArenaHeight();
+        if (w <= 0 || h <= 0) return null;
+
+        Set<GridPos> blockers = getEnemyGridPositions(client);
+        Set<GridPos> allyTiles = getAllyGridPositions(client);
+        Map<GridPos, GridPos> cameFrom = new HashMap<>();
+        Map<GridPos, Integer> dist = new HashMap<>();
+        Queue<GridPos> queue = new ArrayDeque<>();
+        dist.put(from, 0);
+        queue.add(from);
+
+        while (!queue.isEmpty()) {
+            GridPos current = queue.poll();
+            int currentDist = dist.get(current);
+            if (current.equals(target)) {
+                List<GridPos> path = new ArrayList<>(currentDist);
+                for (GridPos p = current; !p.equals(from); p = cameFrom.get(p)) {
+                    path.add(p);
+                }
+                Collections.reverse(path);
+                return path;
+            }
+            if (currentDist >= maxSteps) continue;
+
+            for (GridPos dir : DIRECTIONS) {
+                GridPos neighbor = new GridPos(current.x() + dir.x(), current.z() + dir.z());
+                if (neighbor.x() < 0 || neighbor.x() >= w || neighbor.z() < 0 || neighbor.z() >= h) continue;
+                if (dist.containsKey(neighbor)) continue;
+                if (blockers.contains(neighbor)) {
+                    // Allies are pass-through (server: move through, never stop on).
+                    boolean passableAlly = allyTiles.contains(neighbor) && !neighbor.equals(target);
+                    if (!passableAlly) continue;
+                }
+                if (!CombatState.isInPolygon(neighbor.x(), neighbor.z())) continue;
+                if (!isTileWalkable(client, neighbor)) continue;
+
+                dist.put(neighbor, currentDist + 1);
+                cameFrom.put(neighbor, current);
+                queue.add(neighbor);
+            }
+        }
+        return null;
     }
 
     /**

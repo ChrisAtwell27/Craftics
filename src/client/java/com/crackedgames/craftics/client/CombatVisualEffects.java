@@ -267,6 +267,20 @@ public class CombatVisualEffects {
                     Math.min(230, 170 + burning * 16),
                     scaledDepth(0.34f, burning, 0.10f, 0.78f));
             }
+            // Low-HP warning — a pulsing red edge from 30% HP down, deepening
+            // as HP falls. Skipped at 0 HP: the death overlay owns that moment.
+            int hp = CombatState.getPlayerHp();
+            int maxHp = CombatState.getPlayerMaxHp();
+            if (hp > 0 && maxHp > 0) {
+                float frac = (float) hp / maxHp;
+                if (frac <= 0.3f) {
+                    float severity = 1f - frac / 0.3f; // 0 at 30% HP → 1 near death
+                    float pulse = 0.75f + 0.25f * (float) Math.sin(System.currentTimeMillis() * 0.004);
+                    int alpha = (int) ((70 + 120 * severity) * pulse);
+                    drawVignette(ctx, screenW, screenH, 0xAA0000,
+                        Math.min(230, alpha), 0.10f + 0.10f * severity);
+                }
+            }
         }
 
         if (screenFlashTicks > 0) {

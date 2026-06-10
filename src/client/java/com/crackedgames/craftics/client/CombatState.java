@@ -362,6 +362,33 @@ public class CombatState {
     public static java.util.List<TurnOrderEntry> getTurnOrderList() { return turnOrderList; }
 
     /**
+     * Entity ids of every synced unit (enemies AND allies) in server sync order,
+     * which mirrors the server's `enemies` list — the exact order units act in
+     * during the enemy phase. Drives the HUD act-order strip.
+     */
+    private static final java.util.List<Integer> unitActOrder = new java.util.ArrayList<>();
+    public static java.util.List<Integer> getUnitActOrder() { return unitActOrder; }
+
+    // The enemy currently taking its action, learned from the attack-animation
+    // event (movement-only turns don't announce themselves, so this is best
+    // effort). Highlighted in the act-order strip while fresh.
+    private static int actingEnemyId = -1;
+    private static long actingEnemyMs = 0;
+
+    public static void noteActingEnemy(int entityId) {
+        actingEnemyId = entityId;
+        actingEnemyMs = System.currentTimeMillis();
+    }
+
+    /** Entity id of the enemy acting right now, or -1 when unknown/stale. */
+    public static int getActingEnemyId() {
+        if (actingEnemyId == -1) return -1;
+        if (!isEnemyTurn()) return -1;
+        if (System.currentTimeMillis() - actingEnemyMs > 2500) return -1;
+        return actingEnemyId;
+    }
+
+    /**
      * Whether the local client's player is the current turn-holder. Solo (empty
      * turn order) is always true. Used to keep per-turn-player HUD (AP / move
      * pips) and animations from showing the active player's state on a
@@ -390,13 +417,21 @@ public class CombatState {
      * actual AI (rook dash for vindicators, blink for endermites, teleport for endermen, etc.).
      */
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getHoveredEnemyMoveTiles() {
-        java.util.Set<com.crackedgames.craftics.core.GridPos> result = new java.util.HashSet<>();
-        if (hoveredEnemyId == -1) return result;
+        if (hoveredEnemyId == -1) return new java.util.HashSet<>();
+        return computeMovePreviewTiles(hoveredEnemyId);
+    }
 
-        // Find the enemy's grid position (reverse lookup from enemyGridMap)
+    /**
+     * Movement-pattern preview for any unit by entity id — the per-style reach
+     * the hover preview shows, also unioned per enemy by the threat overlay.
+     */
+    private static java.util.Set<com.crackedgames.craftics.core.GridPos> computeMovePreviewTiles(int entityId) {
+        java.util.Set<com.crackedgames.craftics.core.GridPos> result = new java.util.HashSet<>();
+
+        // Find the unit's grid position (reverse lookup from enemyGridMap)
         com.crackedgames.craftics.core.GridPos enemyPos = null;
         for (var entry : enemyGridMap.entrySet()) {
-            if (entry.getValue() == hoveredEnemyId) {
+            if (entry.getValue() == entityId) {
                 enemyPos = entry.getKey();
                 break;
             }
@@ -404,10 +439,7 @@ public class CombatState {
         if (enemyPos == null) return result;
 
         // Parse speed and movement-style tags from enemy type metadata
-        String typeData = enemyTypeMap.getOrDefault(hoveredEnemyId, "");
-        if (typeData.isEmpty()) {
-            typeData = getEnemyTypeMap2().getOrDefault(hoveredEnemyId, "");
-        }
+        String typeData = enemyTypeMap.getOrDefault(entityId, "");
         int speed = 1;
         com.crackedgames.craftics.combat.MoveStyle style = com.crackedgames.craftics.combat.MoveStyle.WALK;
         for (String part : typeData.split(";")) {
@@ -426,7 +458,93 @@ public class CombatState {
         return ClientGridHelper.getMovePatternTiles(client, enemyPos, speed, style, playerPos);
     }
 
-    private static java.util.Map<Integer, String> getEnemyTypeMap2() { return enemyTypeMap; }
+    // ─── Threat overlay (danger zone) ─────────────────────────────────────
+    // Hotkey-toggled union of every enemy's movement reach plus the attack
+    // range it could strike from after moving — the classic tactics-game
+    // "danger zone". Computed client-side from the same per-style preview
+    // machinery the hover preview uses; cached briefly since it walks a BFS
+    // per enemy.
+
+    private static boolean threatOverlayEnabled = false;
+    private static long threatCacheMs = 0;
+    private static java.util.Set<com.crackedgames.craftics.core.GridPos> threatCache = java.util.Set.of();
+
+    public static boolean isThreatOverlayEnabled() { return threatOverlayEnabled; }
+
+    /** Toggle the threat overlay; returns the new state. */
+    public static boolean toggleThreatOverlay() {
+        threatOverlayEnabled = !threatOverlayEnabled;
+        threatCacheMs = 0;
+        return threatOverlayEnabled;
+    }
+
+    /**
+     * Tiles any enemy could reach AND attack this turn (movement reach expanded
+     * by each enemy's attack range — Chebyshev ring for melee, Manhattan diamond
+     * for ranged, matching the server's reach conventions). Empty when the
+     * overlay is off. Refreshed at most every 400 ms.
+     */
+    public static java.util.Set<com.crackedgames.craftics.core.GridPos> getThreatTiles() {
+        if (!threatOverlayEnabled) return java.util.Set.of();
+        long now = System.currentTimeMillis();
+        if (now - threatCacheMs < 400 && threatCache != null) return threatCache;
+        threatCacheMs = now;
+
+        java.util.Set<com.crackedgames.craftics.core.GridPos> threat = new java.util.HashSet<>();
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        com.crackedgames.craftics.core.GridPos playerPos = ClientGridHelper.getPlayerGridPos(client);
+
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        for (var entry : enemyGridMap.entrySet()) {
+            int id = entry.getValue();
+            if (!seen.add(id)) continue;          // multi-tile mobs map several tiles to one id
+            if (allyHpMap.containsKey(id)) continue; // allies don't threaten the player
+            if (!enemyHpMap.containsKey(id)) continue;
+
+            int range = 1;
+            String typeData = enemyTypeMap.getOrDefault(id, "");
+            for (String part : typeData.split(";")) {
+                if (part.startsWith("range=")) {
+                    try { range = Integer.parseInt(part.substring(6)); } catch (NumberFormatException ignored) {}
+                }
+            }
+
+            java.util.Set<com.crackedgames.craftics.core.GridPos> reach =
+                new java.util.HashSet<>(computeMovePreviewTiles(id));
+            reach.add(entry.getKey()); // attacking without moving
+            for (com.crackedgames.craftics.core.GridPos from : reach) {
+                threat.add(from);
+                if (range <= 1) {
+                    // Melee: the 8 surrounding tiles (Chebyshev 1).
+                    for (int dx = -1; dx <= 1; dx++) {
+                        for (int dz = -1; dz <= 1; dz++) {
+                            threat.add(new com.crackedgames.craftics.core.GridPos(from.x() + dx, from.z() + dz));
+                        }
+                    }
+                } else {
+                    // Ranged: Manhattan diamond.
+                    for (int dx = -range; dx <= range; dx++) {
+                        for (int dz = -range; dz <= range; dz++) {
+                            if (Math.abs(dx) + Math.abs(dz) > range) continue;
+                            threat.add(new com.crackedgames.craftics.core.GridPos(from.x() + dx, from.z() + dz));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Clip to the arena and drop the player's own tile (it's where you stand,
+        // not useful information — matches the server's danger-tile convention).
+        java.util.Set<com.crackedgames.craftics.core.GridPos> clipped = new java.util.HashSet<>();
+        for (com.crackedgames.craftics.core.GridPos t : threat) {
+            if (t.x() < 0 || t.x() >= arenaWidth || t.z() < 0 || t.z() >= arenaHeight) continue;
+            if (!isInPolygon(t.x(), t.z())) continue;
+            if (t.equals(playerPos)) continue;
+            clipped.add(t);
+        }
+        threatCache = clipped;
+        return clipped;
+    }
 
     // Combat stats tracking
     private static int totalDamageDealt = 0;
@@ -511,6 +629,11 @@ public class CombatState {
         playerEffects = "";
         partyHpList.clear();
         turnOrderList.clear();
+        unitActOrder.clear();
+        actingEnemyId = -1;
+        threatOverlayEnabled = false;
+        threatCacheMs = 0;
+        threatCache = java.util.Set.of();
         // Reset to 0 (not the 20 default) so the first sync of the next combat
         // sees oldLocalHp == 0 and skips the damage/heal flash + screen shake.
         // Otherwise a player who ended the last combat at a different HP would
@@ -604,10 +727,15 @@ public class CombatState {
         enemyTypeMap.clear();
         allyHpMap.clear();
         allyTypeMap.clear();
+        unitActOrder.clear();
         String[] typeIds = enemyTypeIds.isEmpty() ? new String[0] : enemyTypeIds.split("\\|");
         for (int i = 0; i + 2 < enemyData.length; i += 3) {
             int idx = i / 3;
             boolean isAlly = idx < typeIds.length && typeIds[idx].contains(";ally");
+            // Sync order mirrors the server's `enemies` list, which is also the
+            // order units act in during the enemy phase — preserved here for the
+            // HUD act-order strip.
+            unitActOrder.add(enemyData[i]);
             if (isAlly) {
                 allyHpMap.put(enemyData[i], new int[]{enemyData[i + 1], enemyData[i + 2]});
                 if (idx < typeIds.length) allyTypeMap.put(enemyData[i], typeIds[idx]);
@@ -695,6 +823,15 @@ public class CombatState {
     public static int getMovePointsRemaining() { return movePointsRemaining; }
     public static int getPlayerHp() { return playerHp; }
     public static int getPlayerMaxHp() { return playerMaxHp; }
+
+    /**
+     * The LOCAL player's HP fraction. In party combat {@code playerHp} is
+     * already overridden per-client from partyHpData during sync, so this is
+     * safe on every member's screen. Drives the low-HP warning vignette.
+     */
+    public static float getLocalHpFraction() {
+        return playerMaxHp > 0 ? (float) playerHp / playerMaxHp : 1.0f;
+    }
     public static int getTurnNumber() { return turnNumber; }
     public static int getMaxAp() { return maxAp; }
     public static int getMaxSpeed() { return maxSpeed; }
