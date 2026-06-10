@@ -183,5 +183,7 @@ public final class VanillaContent {
         EventRegistry.register(new EventEntry("craftics:treasure_vault", "Treasure Vault", 0.04f, 0, true, null));
         EventRegistry.register(new EventEntry("craftics:dig_site", "Dig Site", 0.06f, 0, true, null));
         EventRegistry.register(new EventEntry("craftics:trader", "Trader", traderChance, 0, true, null));
+        EventRegistry.register(new EventEntry("craftics:piglin_barter", "Piglin Barter", traderChance, 0, true, null));
+        com.crackedgames.craftics.combat.barter.VanillaBarterContent.register();
     }
 }

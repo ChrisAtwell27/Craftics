@@ -74,4 +74,13 @@ public final class ArtifactRoller {
         if (pool.isEmpty()) return ItemStack.EMPTY;
         return new ItemStack(pool.get(RNG.nextInt(pool.size())));
     }
+
+    /**
+     * Every Artifacts curio item present in the registry (the same pool {@link #rollOne()} draws
+     * from). Used by {@link ArtifactsCompat} to seed the Relic Trader barter pool. Returns an
+     * empty list if Artifacts isn't loaded or none of the known items resolve.
+     */
+    public static List<Item> allArtifacts() {
+        return getPool();
+    }
 }

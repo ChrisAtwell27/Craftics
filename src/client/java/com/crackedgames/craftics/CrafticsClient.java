@@ -309,6 +309,29 @@ public class CrafticsClient implements ClientModInitializer {
             }
         );
 
+        // Piglin barter +/- gold stepper context. The barter intro narration is sent as a
+        // separate DialoguePayload that opens (or already opened) a DialogueScreen; this
+        // packet supplies the player's gold and offer cap. Because either packet can arrive
+        // first, we both park the context (so a DialogueScreen built afterwards adopts it in
+        // its init()) AND, if a DialogueScreen is already showing, push it on directly so the
+        // stepper appears immediately. active=false clears the parked context (offer resolved).
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.BarterContextPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    if (payload.active()) {
+                        com.crackedgames.craftics.client.DialogueScreen.setPendingBarterContext(
+                            payload.gold(), payload.maxOffer());
+                        if (context.client().currentScreen
+                                instanceof com.crackedgames.craftics.client.DialogueScreen ds) {
+                            ds.applyBarterContext(true, payload.gold(), payload.maxOffer());
+                        }
+                    } else {
+                        com.crackedgames.craftics.client.DialogueScreen.clearPendingBarterContext();
+                    }
+                });
+            }
+        );
+
         // Enter the non-combat event cinematic: lock camera + movement, isometric
         // view + free cursor (mirrors the EnterCombatPayload perspective/cursor path).
         ClientPlayNetworking.registerGlobalReceiver(

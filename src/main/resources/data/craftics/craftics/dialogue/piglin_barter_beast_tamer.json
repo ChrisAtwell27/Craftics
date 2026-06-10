@@ -1,0 +1,9 @@
+{
+  "id": "craftics:piglin_barter_beast_tamer",
+  "speaker": "minecraft:piglin",
+  "group": "piglin_barter_beast_tamer",
+  "lines": [
+    "The piglin whistles and something snorts in the dark.",
+    "\"Beasts answer to gold. Offer me gold.\""
+  ]
+}

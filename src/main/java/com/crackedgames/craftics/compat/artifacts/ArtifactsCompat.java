@@ -41,11 +41,29 @@ public final class ArtifactsCompat {
         CrafticsAPI.registerEquipmentScanner(SCANNER_ID, new ArtifactsScanner());
         AbandonedCampsiteEvent.register();
         loaded = true;
+        registerBarterCurios();
         CrafticsMod.LOGGER.info("[Craftics × Artifacts] Artifact compatibility enabled.");
     }
 
     public static boolean isLoaded() {
         return loaded;
+    }
+
+    /**
+     * Adds every Artifacts curio to the built-in Relic Trader barter pool via the registry API, so
+     * the barter system stays free of any mod-detection branch. Runs from {@link #init()} during mod
+     * initialization, when the item registries are already populated; only when Artifacts is loaded.
+     */
+    private static void registerBarterCurios() {
+        int count = 0;
+        for (net.minecraft.item.Item curio : ArtifactRoller.allArtifacts()) {
+            com.crackedgames.craftics.api.registry.BarterRegistry.register(
+                new com.crackedgames.craftics.combat.barter.BarterEntry(
+                    com.crackedgames.craftics.combat.barter.VanillaBarterContent.RELIC_TRADER,
+                    new net.minecraft.item.ItemStack(curio), /*weight*/ 3, /*minBiomeTier*/ 1));
+            count++;
+        }
+        CrafticsMod.LOGGER.info("[Craftics × Artifacts] Registered {} curio(s) into the Relic Trader barter pool.", count);
     }
 
     /**

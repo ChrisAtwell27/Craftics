@@ -508,7 +508,6 @@ public class ItemUseHandler {
     }
 
     private static String useDrinkPotion(ServerPlayerEntity player, ItemStack stack) {
-        CombatEffects effects = CombatManager.get(player).getCombatEffects();
         // Read potion contents BEFORE decrementing (decrement destroys component data)
         var potionContents = stack.get(net.minecraft.component.DataComponentTypes.POTION_CONTENTS);
         if (!trySpecialConserve(player, stack)) {
@@ -544,7 +543,9 @@ public class ItemUseHandler {
                 if (combatType != null) {
                     int scaledAmplifier = getScaledPotionAmplifier(player, sei.getAmplifier());
                     int turns = getScaledPotionTurns(player, combatType, sei.getDuration());
-                    effects.addEffect(combatType, turns, scaledAmplifier);
+                    // Route through the live top-up so a SPEED/HASTE potion drunk on
+                    // your turn grants movement/AP this turn, not next.
+                    CombatManager.get(player).applyPlayerEffectLive(combatType, turns, scaledAmplifier);
                     // Apply vanilla effect for particles (infinite duration, removed when combat effect expires)
                     player.addStatusEffect(new StatusEffectInstance(
                         sei.getEffectType(), -1, scaledAmplifier, false, true));
@@ -953,7 +954,8 @@ public class ItemUseHandler {
                         // the player punish themselves harder.
                         int selfAmp = debuff ? amp : scaledAmp;
                         int turns = getScaledPotionTurns(player, combatType, sei.getDuration());
-                        effects.addEffect(combatType, turns, selfAmp);
+                        // Live top-up so a self-splashed SPEED/HASTE applies this turn.
+                        CombatManager.get(player).applyPlayerEffectLive(combatType, turns, selfAmp);
                         player.addStatusEffect(new StatusEffectInstance(
                             sei.getEffectType(), -1, selfAmp, false, true));
                         msg.append(debuff ? "§c" : "§d").append("You: ")

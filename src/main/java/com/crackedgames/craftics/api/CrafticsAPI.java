@@ -243,6 +243,30 @@ public final class CrafticsAPI {
         EventRegistry.register(entry);
     }
 
+    // === New: Piglin Bartering ===
+
+    /**
+     * Register a new piglin barter category (a piglin "type"). Categories are selected at random
+     * when a Nether barter event fires; each drives its own reward pool. Addon ids should be
+     * namespaced, e.g. {@code "mymod:warlord"}.
+     *
+     * @param category the category definition
+     */
+    public static void registerBarterCategory(com.crackedgames.craftics.combat.barter.BarterCategory category) {
+        com.crackedgames.craftics.api.registry.BarterCategoryRegistry.register(category);
+    }
+
+    /**
+     * Add a reward entry to a barter category's pool. The entry's {@code categoryId} may target a
+     * built-in category (e.g. {@code "craftics:relic_trader"}) or an addon-registered one. Entries
+     * targeting an unknown category are simply never rolled (no error).
+     *
+     * @param entry the reward entry
+     */
+    public static void registerBarterReward(com.crackedgames.craftics.combat.barter.BarterEntry entry) {
+        com.crackedgames.craftics.api.registry.BarterRegistry.register(entry);
+    }
+
     // === New: Enchantments ===
 
     /**
