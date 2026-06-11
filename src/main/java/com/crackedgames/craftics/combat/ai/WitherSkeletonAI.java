@@ -9,20 +9,25 @@ import java.util.List;
 
 /**
  * Wither Skeleton AI: Wither-striking patrol fighter.
- * - Patrols in straight lines (cardinal), reverses direction at walls
+ * - Patrols in straight lines (cardinal), reverses direction at walls.
+ *   Patrol heading lives in the entity's AI memory — the old instance fields
+ *   sat on the shared AI object, so every wither skeleton on the server
+ *   marched in lockstep and one reversal flipped them all.
  * - WITHER STRIKE: melee applies permanent -1 max HP per hit
  * - Below 50% HP: starts throwing wither skulls at range 2
  * - Speed 2, always aggressive when player is in range
  */
 public class WitherSkeletonAI implements EnemyAI {
-    // Patrol direction persists between turns
-    private int patrolDx = 1, patrolDz = 0;
+    private static final String PATROL_DX = "wsk_patrol_dx";
+    private static final String PATROL_DZ = "wsk_patrol_dz";
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
         int damage = self.getAttackPower(); // wither effect applied via hit effect system
+        int patrolDx = self.getAiMemory(PATROL_DX, 1);
+        int patrolDz = self.getAiMemory(PATROL_DZ, 0);
 
         // Adjacent — wither strike
         if (dist == 1) {
@@ -66,6 +71,8 @@ public class WitherSkeletonAI implements EnemyAI {
                 patrolTarget = new GridPos(myPos.x() + patrolDx, myPos.z() + patrolDz);
             }
         }
+        self.setAiMemory(PATROL_DX, patrolDx);
+        self.setAiMemory(PATROL_DZ, patrolDz);
 
         if (arena.isInBounds(patrolTarget) && !arena.isOccupied(patrolTarget)
                 && arena.getTile(patrolTarget) != null && arena.getTile(patrolTarget).isWalkable()) {

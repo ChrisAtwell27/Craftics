@@ -94,16 +94,35 @@ public class BlazeAI implements EnemyAI {
     }
 
     /**
-     * During CHARGE turns, try to keep distance from the player so the next shot has range.
-     * Returns null if no movement is needed/possible.
+     * During CHARGE turns, try to keep distance from every threat (player and
+     * ally pets — a wolf in melee interrupts the barrage rhythm just as badly)
+     * so the next shot has range. Returns null if no movement is needed/possible.
+     * No hazard penalty here: a blaze is perfectly happy hovering over fire.
      */
     private EnemyAction repositionForBarrage(CombatEntity self, GridArena arena, GridPos playerPos, int range) {
         GridPos myPos = self.getGridPos();
+        List<GridPos> threats = AIUtils.threatPositions(arena, playerPos);
         int dist = self.minDistanceTo(playerPos);
-        if (dist > 2 && dist <= range) return null; // already in a good firing window
-        GridPos fleeTarget = AIUtils.getFleeTarget(arena, myPos, playerPos, self.getMoveSpeed());
-        if (fleeTarget != null) {
-            List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, self.getMoveSpeed(), self);
+        if (AIUtils.minThreatDistance(myPos, threats) > 2 && dist <= range) {
+            return null; // already in a good firing window
+        }
+        GridPos best = null;
+        int bestScore = Integer.MIN_VALUE;
+        int currentMin = AIUtils.minThreatDistance(myPos, threats);
+        for (GridPos candidate : Pathfinding.getReachableTiles(
+                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+            if (candidate.equals(myPos)) continue;
+            int minThreat = AIUtils.minThreatDistance(candidate, threats);
+            if (minThreat <= currentMin) continue;
+            int score = minThreat * 10;
+            if (candidate.manhattanDistance(playerPos) <= range) score += 15; // keep the shot lined up
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+        if (best != null) {
+            List<GridPos> path = Pathfinding.findPath(arena, myPos, best, self.getMoveSpeed(), self);
             if (!path.isEmpty()) return new EnemyAction.Move(path);
         }
         return null;
@@ -115,23 +134,17 @@ public class BlazeAI implements EnemyAI {
         int bestScore = Integer.MIN_VALUE;
         int range = self.getRange();
 
-        for (int dx = -self.getMoveSpeed(); dx <= self.getMoveSpeed(); dx++) {
-            for (int dz = -self.getMoveSpeed(); dz <= self.getMoveSpeed(); dz++) {
-                if (Math.abs(dx) + Math.abs(dz) > self.getMoveSpeed()) continue;
-                if (dx == 0 && dz == 0) continue;
-                GridPos candidate = new GridPos(myPos.x() + dx, myPos.z() + dz);
-                if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
-                var tile = arena.getTile(candidate);
-                if (tile == null || !tile.isWalkable()) continue;
+        for (GridPos candidate : Pathfinding.getReachableTiles(
+                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+            if (candidate.equals(myPos)) continue;
 
-                int distToPlayer = candidate.manhattanDistance(playerPos);
-                if (distToPlayer > range) continue;
-                int score = Math.min(distToPlayer, 4) * 3;
-                if (distToPlayer <= 1) score -= 10;
-                if (score > bestScore) {
-                    bestScore = score;
-                    best = candidate;
-                }
+            int distToPlayer = candidate.manhattanDistance(playerPos);
+            if (distToPlayer > range) continue;
+            int score = Math.min(distToPlayer, 4) * 3;
+            if (distToPlayer <= 1) score -= 10;
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
             }
         }
         return best;

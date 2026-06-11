@@ -57,27 +57,30 @@ public class MagmaCubeAI implements EnemyAI {
         if (bestLanding != null) {
             // Build bounce path (straight line from current to landing for fire trail)
             List<GridPos> bouncePath = buildBouncePath(myPos, bestLanding);
-            // Leave fire on the tiles we bounce through
-            List<GridPos> fireTiles = new ArrayList<>(bouncePath);
-            fireTiles.remove(fireTiles.size() - 1); // don't fire the landing tile
-
-            if (bestDist == 1) {
-                // Landing adjacent to player — bounce + attack
-                // Use composite: create fire trail + move + attack
-                List<EnemyAction> actions = new ArrayList<>();
-                if (!fireTiles.isEmpty()) {
-                    actions.add(new EnemyAction.CreateTerrain(fireTiles, TileType.FIRE, 1));
+            // Leave fire on the tiles we bounce through — only where something
+            // can actually burn (plain walkable floor, not obstacles or water).
+            List<GridPos> fireTiles = new ArrayList<>();
+            for (int i = 0; i < bouncePath.size() - 1; i++) { // skip the landing tile
+                GridPos tile = bouncePath.get(i);
+                var gt = arena.getTile(tile);
+                if (gt != null && gt.isWalkable() && gt.getType() == TileType.NORMAL
+                        && !arena.isOccupied(tile)) {
+                    fireTiles.add(tile);
                 }
-                return new EnemyAction.Pounce(bestLanding, self.getAttackPower());
-            } else {
-                // Bounce closer but not adjacent
-                List<EnemyAction> actions = new ArrayList<>();
-                if (!fireTiles.isEmpty()) {
-                    actions.add(new EnemyAction.CreateTerrain(fireTiles, TileType.FIRE, 1));
-                }
-                actions.add(new EnemyAction.Move(bouncePath));
-                return actions.size() == 1 ? actions.get(0) : new EnemyAction.CompositeAction(actions);
             }
+
+            // The fire trail rides a CompositeAction alongside the bounce itself.
+            // (The old code dropped the trail on attack bounces and — because the
+            // composite dispatcher ignored Move sub-actions — dropped the MOVE on
+            // trail bounces, leaving the cube burning the floor without moving.)
+            EnemyAction bounce = bestDist == 1
+                ? new EnemyAction.Pounce(bestLanding, self.getAttackPower())
+                : new EnemyAction.Move(bouncePath);
+            if (fireTiles.isEmpty()) {
+                return bounce;
+            }
+            return new EnemyAction.CompositeAction(List.of(
+                new EnemyAction.CreateTerrain(fireTiles, TileType.FIRE, 1), bounce));
         }
 
         return AIUtils.seekOrWander(self, arena, playerPos);

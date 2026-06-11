@@ -35,11 +35,14 @@ public class GhastAI implements EnemyAI {
             }
         }
 
-        // PANIC: if player too close, flee desperately
-        if (dist <= 3) {
-            GridPos fleeTarget = AIUtils.getFleeTarget(arena, myPos, playerPos, 1);
+        // PANIC: if anything (player OR an ally pet) gets too close, drift away.
+        // Path-validated so the ghast takes the open diagonal instead of
+        // freezing when the straight line back is blocked.
+        List<GridPos> threats = AIUtils.threatPositions(arena, playerPos);
+        if (AIUtils.minThreatDistance(myPos, threats) <= 3) {
+            GridPos fleeTarget = AIUtils.bestRetreatTile(self, arena, threats);
             if (fleeTarget != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, 1, self);
+                List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, self.getMoveSpeed(), self);
                 if (!path.isEmpty()) {
                     return new EnemyAction.Move(path);
                 }

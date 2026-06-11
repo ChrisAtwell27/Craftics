@@ -9,42 +9,43 @@ import java.util.List;
 
 /**
  * Zombified Piglin AI: Neutral pack mob with mob mentality.
- * - NEUTRAL: wanders peacefully until ANY zombified piglin is hit
- * - PACK AGGRO: when one is hit, ALL zombified piglins permanently aggro
- * - MOB MENTALITY: +1 ATK per nearby aggro'd zombified piglin (radius 2)
+ * - NEUTRAL: wanders peacefully until ANY zombified piglin in the arena is hit
+ * - PACK AGGRO: when one is hit, ALL zombified piglins in the fight permanently
+ *   aggro. Tracked with per-entity enrage flags — the old implementation used a
+ *   static flag that was never reset, so one provoked piglin made every
+ *   zombified piglin in every later fight on the server spawn hostile.
+ * - MOB MENTALITY: +1 ATK per nearby aggro'd packmate (radius 2)
  * - Once aggro'd, relentless melee like zombie but with pack bonuses
  */
 public class ZombifiedPiglinAI implements EnemyAI {
-    /** Shared across all instances — once true, all piglins are hostile. */
-    private static boolean packAggro = false;
 
-    /** Called when any zombified piglin takes damage. */
-    public static void triggerPackAggro() { packAggro = true; }
-    public static void resetPackAggro() { packAggro = false; }
-    public static boolean isPackAggro() { return packAggro; }
+    /** Neutral until the pack is provoked. */
+    @Override
+    public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
+        return self.isEnraged();
+    }
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
-        // Check if this piglin was hit — trigger pack aggro
-        if (self.wasDamagedSinceLastTurn()) {
-            triggerPackAggro();
+        // One provoked piglin riles the whole pack — in THIS arena only.
+        if (!self.isEnraged() && anyPackmateProvoked(arena)) {
+            enragePack(arena);
         }
 
         GridPos myPos = self.getGridPos();
 
         // Not aggro — wander peacefully
-        if (!packAggro) {
+        if (!self.isEnraged()) {
             return AIUtils.wander(self, arena);
         }
 
         // Aggro! Calculate mob mentality bonus
-        int bonus = countNearbyAggroPiglins(arena, myPos);
-        int damage = self.getAttackPower() + bonus;
         int dist = self.minDistanceTo(playerPos);
 
         // Adjacent — attack with pack bonus
         if (dist == 1) {
-            return new EnemyAction.Attack(damage);
+            return new EnemyAction.Attack(
+                self.getAttackPower() + countNearbyAggroPiglins(arena, self, myPos));
         }
 
         // Rush toward player
@@ -56,19 +57,41 @@ public class ZombifiedPiglinAI implements EnemyAI {
 
         GridPos endPos = path.get(path.size() - 1);
         if (endPos.manhattanDistance(playerPos) == 1) {
-            int destBonus = countNearbyAggroPiglins(arena, endPos);
-            return new EnemyAction.MoveAndAttack(path, self.getAttackPower() + destBonus);
+            return new EnemyAction.MoveAndAttack(path,
+                self.getAttackPower() + countNearbyAggroPiglins(arena, self, endPos));
         }
         return new EnemyAction.Move(path);
     }
 
-    private int countNearbyAggroPiglins(GridArena arena, GridPos pos) {
+    /** True when any enemy-side zombified piglin has been hurt or already riled. */
+    private boolean anyPackmateProvoked(GridArena arena) {
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            if (!"minecraft:zombified_piglin".equals(e.getEntityTypeId())) continue;
+            if (e.isEnraged() || e.wasDamagedSinceLastTurn() || e.getCurrentHp() < e.getMaxHp()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void enragePack(GridArena arena) {
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            if ("minecraft:zombified_piglin".equals(e.getEntityTypeId())) {
+                e.setEnraged(true);
+            }
+        }
+    }
+
+    /** +1 ATK per OTHER aggro'd enemy-side packmate within 2 tiles of {@code pos}. */
+    private int countNearbyAggroPiglins(GridArena arena, CombatEntity self, GridPos pos) {
         int count = 0;
-        for (var entry : arena.getOccupants().entrySet()) {
-            CombatEntity other = entry.getValue();
-            if (!other.isAlive()) continue;
+        for (CombatEntity other : arena.getOccupants().values()) {
+            if (!other.isAlive() || other == self || other.isAlly()) continue;
             if (!other.getEntityTypeId().equals("minecraft:zombified_piglin")) continue;
-            if (pos.manhattanDistance(other.getGridPos()) <= 2 && !pos.equals(other.getGridPos())) {
+            if (!other.isEnraged()) continue;
+            if (pos.manhattanDistance(other.getGridPos()) <= 2) {
                 count++;
             }
         }

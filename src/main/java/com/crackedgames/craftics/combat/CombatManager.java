@@ -10386,12 +10386,57 @@ public class CombatManager {
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
             case EnemyAction.CompositeAction ca -> {
+                // Move/Pounce sub-actions drive the turn state machine themselves
+                // (movement lerp / attack animation), so they're dispatched through
+                // the main handlers and the DONE override below is skipped.
+                // dispatchBossSubAction ignores them — which used to mean a magma
+                // cube's fire-trail bounce burned the floor while the cube itself
+                // silently never moved.
+                boolean tookOverTurn = false;
                 for (EnemyAction subAction : ca.actions()) {
-                    dispatchBossSubAction(subAction);
+                    if (subAction instanceof EnemyAction.Move mv) {
+                        if (!mv.path().isEmpty()) {
+                            pendingAction = mv;
+                            startEnemyMove(mv.path());
+                            tookOverTurn = true;
+                        }
+                    } else if (subAction instanceof EnemyAction.MoveAndAttack maa) {
+                        if (!maa.path().isEmpty()) {
+                            // pendingAction must be the sub-action so the arrival
+                            // attack fires when the movement lerp completes.
+                            pendingAction = maa;
+                            startEnemyMove(maa.path());
+                            tookOverTurn = true;
+                        } else {
+                            dispatchBossSubAction(new EnemyAction.Attack(maa.damage()));
+                        }
+                    } else if (subAction instanceof EnemyAction.Pounce pounce) {
+                        boolean clipsPlayer = currentEnemy.getSize() > 1
+                            && CombatEntity.minDistanceFromSizedEntity(
+                                pounce.landingPos(), currentEnemy.getSize(), arena.getPlayerGridPos()) == 0;
+                        if (!clipsPlayer) {
+                            MobEntity pMob = currentEnemy.getMobEntity();
+                            if (pMob != null) {
+                                double wx = arena.getOrigin().getX() + pounce.landingPos().x() + 0.5;
+                                double wz = arena.getOrigin().getZ() + pounce.landingPos().z() + 0.5;
+                                pMob.requestTeleport(wx,
+                                    arena.getEntityY(pounce.landingPos(), currentEnemy.isFlying()), wz);
+                            }
+                            arena.moveEntity(currentEnemy, pounce.landingPos());
+                            handleEnemyVoidRiftEntry(currentEnemy, pounce.landingPos());
+                        }
+                        pendingAction = new EnemyAction.Attack(pounce.damage());
+                        startAttackAnimation(2);
+                        tookOverTurn = true;
+                    } else {
+                        dispatchBossSubAction(subAction);
+                    }
                 }
                 sendSync();
-                enemyTurnState = EnemyTurnState.DONE;
-                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay() + 2;
+                if (!tookOverTurn) {
+                    enemyTurnState = EnemyTurnState.DONE;
+                    enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay() + 2;
+                }
             }
 
             // === Projectile action types ===

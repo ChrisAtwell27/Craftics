@@ -1,8 +1,9 @@
-# Overworld AI improvements
+# AI improvements (overworld + Nether)
 
 A pass over every overworld combat AI — hostile mobs, neutral/passive mobs, and
-all six ally archetypes. Two systemic problems fixed across the board, plus
-per-mob behavior upgrades.
+all six ally archetypes — followed by the same treatment for the Nether roster
+(§5). Two systemic problems fixed across the board, plus per-mob behavior
+upgrades.
 
 All four Stonecutter shards compile and test clean after the changes
 (`1.21.1`, `1.21.3`, `1.21.4`, `1.21.5`, verified with `--rerun-tasks`).
@@ -100,7 +101,68 @@ per-entity instances; the memory map is the general fix.)
 
 ---
 
-## 5. Manual test notes
+## 5. Nether pass
+
+Same review applied to the Nether roster (nether wastes, crimson forest, soul
+sand valley, warped forest, basalt deltas). Two serious bugs and a round of
+behavior upgrades:
+
+### 5.1 Bugs
+
+- **Zombified piglin pack aggro was server-permanent.** The pack flag was a
+  `static boolean` that nothing ever reset: once any zombified piglin was hit,
+  every zombified piglin in every later fight (and other players' fights)
+  spawned already hostile. The pack now riles via per-entity enrage flags
+  scoped to the arena — one provoked piglin (hurt, or hurt-and-killed in one
+  shot) enrages all enemy-side packmates in *that* fight, exactly like the bee
+  swarm. The mob-mentality bonus now counts only enraged enemy-side packmates
+  (it used to count your own ally piglins toward the enemy's damage) and the
+  AI reports neutral to the anti-farming check until provoked.
+- **Magma cube fire-trail bounces never moved the cube.** Multi-tile bounces
+  returned `CompositeAction([CreateTerrain(fire), Move])`, but
+  `dispatchBossSubAction` silently ignores `Move` — the cube burned the floor
+  and stayed put; only its 1-tile bounces (no trail) actually moved. And the
+  attack-bounce branch built the fire-trail action then threw it away,
+  returning a bare `Pounce`. The composite dispatcher in
+  [CombatManager.java](../src/main/java/com/crackedgames/craftics/combat/CombatManager.java)
+  now routes `Move`/`MoveAndAttack`/`Pounce` sub-actions through the real
+  movement/attack state machine (this also un-drops boss composite follow-up
+  moves, which suffered the same fate), and the cube lays its trail on both
+  bounce types — only on plain floor tiles that can actually burn.
+- **Wither skeletons all patrolled in lockstep.** Patrol heading lived on the
+  shared AI instance, so every wither skeleton on the server marched the same
+  way and one reversal flipped them all. Per-entity now (AI memory).
+
+### 5.2 Behavior upgrades
+
+| Mob | Change |
+|-----|--------|
+| **Blaze** | Barrage repositioning is threat-aware (an adjacent wolf interrupts the rhythm like the player would) and picks path-validated tiles that keep the next shot in range. No hazard avoidance on purpose — blazes are happy hovering over fire. |
+| **Ghast** | Panics away from any threat (player or pet), with the path-validated retreat — it drifts to the open diagonal instead of freezing when the straight line back is blocked. |
+| **Hoglin** | Was a stale copy of the ravager that documented a ground stomp it never had. Now extends [RavagerAI](../src/main/java/com/crackedgames/craftics/combat/ai/RavagerAI.java) — bull rush, knockback tusks, and the (now real) surrounded-stomp, one implementation. |
+| **Piglin** | Unchanged by design — it delegates to PillagerAI/ZombieAI based on held weapon, so it inherited the round-1 kiting and horde-family improvements automatically. |
+| **Piglin brute** | Uses VindicatorAI — inherits the hazard-aware rook dash. |
+| **Endermite** | Blinks refuse water tiles, matching its enderman cousin. |
+| **Blaze tower / Wither skeleton skulls / Magma cube split** | Reviewed, no changes needed beyond the above (BlazeTowerAI is stateless; the split is CombatManager-driven). |
+
+### 5.3 Manual test notes (Nether)
+
+1. Start a nether wastes fight and don't attack: zombified piglins wander
+   peacefully. Hit one: all of them aggro. Finish the fight, start another:
+   the new piglins are peaceful again.
+2. Watch a magma cube bounce 3 tiles: the cube actually crosses the arena and
+   the tiles behind it burn for a turn; a bounce that lands on you still
+   leaves the trail.
+3. Two wither skeletons patrol independently; one hitting a wall doesn't turn
+   the other around.
+4. Put a wolf on a blaze during its charge turn: it backs off the wolf while
+   keeping you in fireball range.
+5. Walk a pet up to a ghast: it drifts away from the pet, not just from you.
+6. Surround a hoglin with player + pet: ground stomp.
+
+---
+
+## 6. Manual test notes (overworld)
 
 1. Fight two evokers back-to-back (or the same one twice): each summons a vex
    when you close in, and a second when dropped below half HP.

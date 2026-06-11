@@ -2,6 +2,15 @@ Changelog
 
 Unreleased
 
+Nether AI improvements
+
+- Zombified piglin pack aggro no longer outlives the fight: the old flag was global and never reset, so hitting one zombified piglin made every zombified piglin in every later fight on the server spawn already hostile. The pack now riles per fight — hit one and all its packmates in that arena turn on you, including when the victim died to the first hit — and your own allied piglins no longer feed the enemy pack's damage bonus
+- Magma cubes actually bounce now: a multi-tile bounce used to lay its fire trail and then silently never move the cube (only 1-tile hops worked). Both bounce types move correctly and leave the burning trail, and the fire only lands on plain floor that can burn. The same dispatcher fix restores follow-up moves that bosses queued behind a resolving telegraph
+- Wither skeletons patrol independently — they all shared one patrol heading, so the whole map marched in lockstep and one reversal turned every skeleton around
+- Hoglins gained the ground stomp their description always promised (shared with the ravager: surrounded by two or more attackers, they slam everything around them) and no longer charge through hazards
+- Blazes time their barrage around your pets too, backing off a wolf in their face while keeping you in fireball range; ghasts panic away from any nearby threat and find the around-the-corner drift instead of freezing
+- Endermites refuse to blink onto water, like their enderman cousins
+
 Boss improvements
 
 - Fixed a state leak affecting nearly every boss: one shared AI object served all fights, so a boss killed in phase two left the next boss of its kind starting in phase two with stale cooldowns. The Broodmother's nest cycle and egg sacs leaked between fights, and the Hollow King could start a rematch in permanent darkness. Every boss now gets a fresh brain per fight (previously only three did)

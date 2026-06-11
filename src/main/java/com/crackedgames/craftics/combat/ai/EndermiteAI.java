@@ -57,14 +57,17 @@ public class EndermiteAI implements EnemyAI {
         return new EnemyAction.Move(path);
     }
 
-    /** Find a walkable, unoccupied tile adjacent to the player to blink to. */
+    /**
+     * Find a walkable, unoccupied tile adjacent to the player to blink to.
+     * Like its enderman cousin, the endermite refuses to blink onto water.
+     */
     private GridPos findAdjacentLanding(GridArena arena, GridPos playerPos) {
         List<GridPos> candidates = new ArrayList<>();
         for (int[] d : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
             GridPos landing = new GridPos(playerPos.x() + d[0], playerPos.z() + d[1]);
             if (arena.isInBounds(landing) && !arena.isOccupied(landing)) {
                 var tile = arena.getTile(landing);
-                if (tile != null && tile.isWalkable()) {
+                if (tile != null && tile.isWalkable() && !tile.isWater()) {
                     candidates.add(landing);
                 }
             }
