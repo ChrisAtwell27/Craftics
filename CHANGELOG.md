@@ -2,6 +2,11 @@ Changelog
 
 Unreleased
 
+Battle HUD fixes
+
+- Enemy HP numbers are now genuinely hover-only: the always-visible top-right roster keeps its slim HP bars but no longer prints hp/max for every damaged enemy (the hover inspect panel is where the exact numbers live), and the panel got narrower with the text gone
+- The act-order strip's gold "acting now" highlight appears for every enemy and ally action, not just attacks — walks, teleports, ceiling hops and drops all announce themselves now, and the camera follows the mover
+
 Nether and End boss fixes
 
 - Chorus Mind's Resonance Cascade actually hits now — the old resolve struck the boss's own tile instead of the warned plant-adjacent tiles. Its phase-two plant spread grows real chorus obstacles (it used to grow an invisible bookkeeping list), the boss blinks beside plants instead of standing on them, and its abilities aim from where it lands rather than where it stood before teleporting

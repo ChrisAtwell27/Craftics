@@ -9820,6 +9820,10 @@ public class CombatManager {
                 arena.moveEntity(currentEnemy, tp.target());
                 // Rift chain: if the teleport landed on a portal, slingshot through it.
                 handleEnemyVoidRiftEntry(currentEnemy, tp.target());
+                // Movement-only turn — announce the actor for the act-order strip.
+                sendToAllParty(new CombatEventPayload(
+                    CombatEventPayload.EVENT_MOVED, currentEnemy.getEntityId(), 0, 0,
+                    tp.target().x(), tp.target().z()));
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -10277,6 +10281,9 @@ public class CombatManager {
                 arena.removeEntity(currentEnemy);
                 // Mark as "on ceiling" via a tag the AI can check
                 currentEnemy.setOnCeiling(true);
+                // Movement-only turn — announce the actor (no camera focus, it left the grid).
+                sendToAllParty(new CombatEventPayload(
+                    CombatEventPayload.EVENT_MOVED, currentEnemy.getEntityId(), 0, 0, -1, -1));
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -10297,6 +10304,9 @@ public class CombatManager {
                         dropBlock.getZ() + 0.5);
                 }
                 // Landing only — no attack this turn (drop is the action)
+                sendToAllParty(new CombatEventPayload(
+                    CombatEventPayload.EVENT_MOVED, currentEnemy.getEntityId(), 0, 0,
+                    drop.landingPos().x(), drop.landingPos().z()));
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -13785,6 +13795,13 @@ public class CombatManager {
         enemyLerpInitialized = false;
         enemyTurnState = EnemyTurnState.MOVING;
         sendMessage("§7" + currentEnemy.getDisplayName() + " moves...");
+        // Announce the mover so the HUD act-order strip can highlight the unit
+        // whose turn it is — previously only attacks announced themselves, so
+        // movement-only turns never lit up. Also lets the camera follow.
+        GridPos moveDest = path.isEmpty() ? currentEnemy.getGridPos() : path.get(path.size() - 1);
+        sendToAllParty(new CombatEventPayload(
+            CombatEventPayload.EVENT_MOVED, currentEnemy.getEntityId(), 0, 0,
+            moveDest.x(), moveDest.z()));
     }
 
     private void tickEnemyMoving() {

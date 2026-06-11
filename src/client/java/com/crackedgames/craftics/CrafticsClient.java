@@ -166,6 +166,9 @@ public class CrafticsClient implements ClientModInitializer {
                         if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
                             CombatState.focusOnTile(payload.targetX(), payload.targetZ());
                         }
+                        // Movement-only turns light up the act-order strip too —
+                        // previously only attacks marked the acting unit.
+                        CombatState.noteActingEnemy(payload.entityId());
                     }
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_DIED -> {
                         CombatVisualEffects.spawnDeathTextAtEntity(

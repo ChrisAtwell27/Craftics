@@ -964,7 +964,9 @@ public class CombatHudOverlay implements HudRenderCallback {
         int showCount = (compact && nonBossCount > 4) ? 3 : nonBossCount;
         boolean collapsed = compact && nonBossCount > 4;
 
-        int panelContentW = hasBoss ? 150 : headSize + padding + barW + 40;
+        // Width no longer reserves room for per-row hp/max text (numbers are
+        // hover-only now); the slack that remains fits the "+N more" footer.
+        int panelContentW = hasBoss ? 150 : headSize + padding + barW + 30;
         int headerH = 14;
         int panelContentH = headerH + bossBarSection + showCount * entryH + (collapsed ? 14 : 0);
         int panelPad = 4;
@@ -1067,13 +1069,10 @@ public class CombatHudOverlay implements HudRenderCallback {
             ctx.fill(barX - 1, barY - 1, barX + barW + 1, barY + barH + 1, 0x88000000);
             drawHpBar(ctx, "en:" + entityId, barX, barY, barW, barH,
                 ePct, hpColor(ePct), 0x00000000);
-            // HP numbers only once damaged \u2014 a full bar already says "full",
-            // and dropping the text keeps the untouched roster quieter.
-            if (eHp < eMaxHp) {
-                ctx.drawTextWithShadow(client.textRenderer,
-                    Text.literal("\u00a77" + eHp + "/" + eMaxHp),
-                    barX + barW + 3, barY - 1, 0xFFAAAAAA);
-            }
+            // No hp/max numbers on the roster rows: the bar carries the at-a-
+            // glance state, and exact numbers live on the hover inspect panel
+            // only. (They used to print for every damaged enemy, which made
+            // "numbers on hover" pointless \u2014 the panel showed them anyway.)
 
             y += entryH;
             drawn++;

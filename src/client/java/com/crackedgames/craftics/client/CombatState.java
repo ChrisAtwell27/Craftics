@@ -369,9 +369,10 @@ public class CombatState {
     private static final java.util.List<Integer> unitActOrder = new java.util.ArrayList<>();
     public static java.util.List<Integer> getUnitActOrder() { return unitActOrder; }
 
-    // The enemy currently taking its action, learned from the attack-animation
-    // event (movement-only turns don't announce themselves, so this is best
-    // effort). Highlighted in the act-order strip while fresh.
+    // The unit currently taking its action, learned from the attack-animation
+    // AND movement events (the server announces movement-only turns via
+    // EVENT_MOVED, so walks, teleports and ceiling hops light up too).
+    // Highlighted in the act-order strip while fresh.
     private static int actingEnemyId = -1;
     private static long actingEnemyMs = 0;
 
@@ -380,11 +381,13 @@ public class CombatState {
         actingEnemyMs = System.currentTimeMillis();
     }
 
-    /** Entity id of the enemy acting right now, or -1 when unknown/stale. */
+    /** Entity id of the unit acting right now, or -1 when unknown/stale. */
     public static int getActingEnemyId() {
         if (actingEnemyId == -1) return -1;
         if (!isEnemyTurn()) return -1;
-        if (System.currentTimeMillis() - actingEnemyMs > 2500) return -1;
+        // 4s window: the move note fires at walk START, and a long path's lerp
+        // can outlive a short window — the attack note (if any) refreshes it.
+        if (System.currentTimeMillis() - actingEnemyMs > 4000) return -1;
         return actingEnemyId;
     }
 
