@@ -272,12 +272,20 @@ public class TileOverlayRenderer {
             fillTile(out, world, ox, oy, oz, tile, 0.004f, 0.5f, 0.55f, 0.78f, 0.55f);
         }
 
-        // Boss attack warning tiles (pulsing bright red).
+        // Boss attack warning tiles (pulsing bright red). The crisp pulsing
+        // perimeter separates "the boss will strike HERE" from the softer
+        // danger/threat washes, and the xray ghost keeps the telegraph
+        // readable when terrain occludes it at low camera angles — a
+        // telegraph you can't see is a hit you can't dodge.
         if (!blind && !CombatState.getWarningTiles().isEmpty()) {
+            Set<GridPos> warningTiles = CombatState.getWarningTiles();
             float warningPulse = (float) (0.4 + 0.2 * Math.sin(time * 9.0));
-            for (GridPos tile : CombatState.getWarningTiles()) {
+            for (GridPos tile : warningTiles) {
                 fillTile(out, world, ox, oy, oz, tile, 0.01f, 1.0f, 0.1f, 0.1f, warningPulse);
+                fillTile(xray, world, ox, oy, oz, tile, 0.01f, 1.0f, 0.1f, 0.1f, 0.15f);
             }
+            outlineRegion(out, world, ox, oy, oz, warningTiles, 0.0118f,
+                1.0f, 0.45f, 0.2f, Math.min(1.0f, warningPulse + 0.35f));
         }
 
         // Hovered enemy's movement range (purple).

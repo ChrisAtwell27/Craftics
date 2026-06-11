@@ -2,6 +2,15 @@ Changelog
 
 Unreleased
 
+Boss improvements
+
+- Fixed a state leak affecting nearly every boss: one shared AI object served all fights, so a boss killed in phase two left the next boss of its kind starting in phase two with stale cooldowns. The Broodmother's nest cycle and egg sacs leaked between fights, and the Hollow King could start a rematch in permanent darkness. Every boss now gets a fresh brain per fight (previously only three did)
+- Phase two is now a moment: a combat-log callout, a "PHASE 2" banner for the whole party, a roar with a particle burst on the boss, and a camera shake with a dark-red screen flash. The boss HP bar keeps the news afterwards — its frame turns gold and a "II" badge appears
+- Killing a boss got its payoff: a golden defeat banner, explosion bloom with golden totem rain, a wither-death knell, and a celebratory screen shake and flash. The Molten King splitting into fragments no longer reads as a defeat — only the last fragment gets the fanfare
+- Boss intros now name the boss itself in the title card ("The Hollow King") instead of the level, with a heavier sound sting
+- Boss attack telegraphs are easier to read: the warned tiles get a crisp pulsing outline around the region and ghost faintly through walls, so a telegraph hidden behind terrain at a low camera angle can still be dodged
+- Boss minion summons no longer drop reinforcements straight into lava or fire when safe tiles exist
+
 Overworld AI improvements
 
 Smarter enemies:

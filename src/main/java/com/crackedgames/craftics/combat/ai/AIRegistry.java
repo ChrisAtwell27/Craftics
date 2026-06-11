@@ -7,6 +7,16 @@ import java.util.Map;
 
 public class AIRegistry {
     private static final Map<String, EnemyAI> STRATEGIES = new HashMap<>();
+    /**
+     * Factories for AIs that carry per-fight mutable state (all the boss AIs:
+     * phase flag, turn counter, cooldowns, pending warnings, minion lists).
+     * {@link #get} hands back ONE shared instance per key, which is fine for
+     * the stateless mob AIs but poison for bosses — a boss killed in phase two
+     * would leave the next boss of its kind starting in phase two with stale
+     * cooldowns. CombatManager calls {@link #createFresh} at boss spawn and
+     * pins the result on the entity via {@code setAiInstance}.
+     */
+    private static final Map<String, java.util.function.Supplier<EnemyAI>> BOSS_FACTORIES = new HashMap<>();
     private static final EnemyAI DEFAULT_AI = new PassiveAI();
 
     static {
@@ -117,25 +127,28 @@ public class AIRegistry {
         register("minecraft:ender_dragon", new DragonAI());         // final boss, phase-shifting swoop/charge
 
         // === Boss AIs (keyed by biome, used via CombatEntity.aiOverrideKey) ===
-        register("boss:plains", new RevenantAI());
-        register("boss:forest", new HexweaverAI());
-        register("boss:snowy", new FrostboundAI());
-        register("boss:mountain", new RockbreakerAI());
-        register("boss:river", new TidecallerAI());
-        register("boss:desert", new SandstormPharaohAI());
-        register("boss:jungle", new BroodmotherAI());
-        register("boss:cave", new HollowKingAI());
-        register("boss:deep_dark", new WardenAI());
-        register("boss:nether_wastes", new MoltenKingAI(0));
-        register("boss:nether_wastes_g1", new MoltenKingAI(1));
-        register("boss:soul_sand_valley", new WailingRevenantAI());
-        register("boss:crimson_forest", new BastionBruteAI());
-        register("boss:warped_forest", new VoidWalkerAI());
-        register("boss:basalt_deltas", new WitherBossAI());
-        register("boss:outer_end_islands", new VoidHeraldAI());
-        register("boss:end_city", new ShulkerArchitectAI());
-        register("boss:chorus_grove", new ChorusMindAI());
-        register("boss:dragons_nest", new DragonAI());
+        // Registered via factories: the shared instance backs stateless queries
+        // (getGridSize), while every spawned boss gets a fresh copy through
+        // createFresh() so its phase/cooldown/warning state is per-fight.
+        registerBoss("boss:plains", RevenantAI::new);
+        registerBoss("boss:forest", HexweaverAI::new);
+        registerBoss("boss:snowy", FrostboundAI::new);
+        registerBoss("boss:mountain", RockbreakerAI::new);
+        registerBoss("boss:river", TidecallerAI::new);
+        registerBoss("boss:desert", SandstormPharaohAI::new);
+        registerBoss("boss:jungle", BroodmotherAI::new);
+        registerBoss("boss:cave", HollowKingAI::new);
+        registerBoss("boss:deep_dark", WardenAI::new);
+        registerBoss("boss:nether_wastes", () -> new MoltenKingAI(0));
+        registerBoss("boss:nether_wastes_g1", () -> new MoltenKingAI(1));
+        registerBoss("boss:soul_sand_valley", WailingRevenantAI::new);
+        registerBoss("boss:crimson_forest", BastionBruteAI::new);
+        registerBoss("boss:warped_forest", VoidWalkerAI::new);
+        registerBoss("boss:basalt_deltas", WitherBossAI::new);
+        registerBoss("boss:outer_end_islands", VoidHeraldAI::new);
+        registerBoss("boss:end_city", ShulkerArchitectAI::new);
+        registerBoss("boss:chorus_grove", ChorusMindAI::new);
+        registerBoss("boss:dragons_nest", DragonAI::new);
 
         // === Structures (non-acting entities) ===
         register("craftics:egg_sac", passive);
@@ -145,7 +158,33 @@ public class AIRegistry {
         STRATEGIES.put(entityTypeId, ai);
     }
 
+    /** Register a stateful AI: a shared lookup instance plus a per-fight factory. */
+    public static void registerBoss(String key, java.util.function.Supplier<EnemyAI> factory) {
+        BOSS_FACTORIES.put(key, factory);
+        STRATEGIES.put(key, factory.get());
+    }
+
     public static EnemyAI get(String entityTypeId) {
         return STRATEGIES.getOrDefault(entityTypeId, DEFAULT_AI);
+    }
+
+    /**
+     * A fresh per-fight AI instance for a stateful (boss) key, or {@code null}
+     * when the key has no factory and no shared BossAI to copy. Compat/addon
+     * bosses registered through plain {@link #register} are covered by the
+     * reflective fallback as long as they expose a no-arg constructor.
+     */
+    public static EnemyAI createFresh(String key) {
+        var factory = BOSS_FACTORIES.get(key);
+        if (factory != null) return factory.get();
+        EnemyAI shared = STRATEGIES.get(key);
+        if (shared instanceof BossAI) {
+            try {
+                return shared.getClass().getDeclaredConstructor().newInstance();
+            } catch (ReflectiveOperationException ignored) {
+                // fall through — caller keeps the shared instance
+            }
+        }
+        return null;
     }
 }

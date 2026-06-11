@@ -1,28 +1,28 @@
-[19:33:03] [Test worker/WARN]: Unknown dialogue action 'banana' — treating as close
-[19:33:03] [Test worker/WARN]: Unknown dialogue action '' — treating as close
-[19:33:03] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'id' — skipping
-[19:33:03] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x has no 'lines' — skipping
-[19:33:03] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'speaker' — skipping
-[19:33:03] [Test worker/WARN]: Dialogue craftics:dialogue/x has a choice missing label/action — skipping that choice
-[19:33:03] [Test worker/WARN]: Campaign branch in region 'world' has overlapping/interleaving segments (segmentA at [1,2], segmentB at [2,3]); falling back to linear order
-[19:33:03] [Test worker/WARN]: Campaign branch in region 'surface' has segment(s) that are not a contiguous sublist (segmentA=[wildwood] found=true, segmentB=[NOTHERE] found=false); falling back to linear order
-[19:33:03] [Test worker/WARN]: Campaign branch in region 'world' has segment(s) that are not a contiguous sublist (segmentA=[w1, w2, w3] found=true, segmentB=[c1, MISSING] found=false); falling back to linear order
-[19:33:03] [Test worker/WARN]: Campaign branch in region 'world' has segment(s) that are not a contiguous sublist (segmentA=[w1, w3] found=false, segmentB=[c1, c2] found=true); falling back to linear order
-[19:33:03] [Test worker/WARN]: Campaign branch references unknown region 'noregion'; falling back to linear order
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' has an empty segment — ignoring branch (linear)
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' must be either two strings or two arrays of strings — ignoring branch (linear)
-[19:33:03] [Test worker/WARN]: Campaign JSON craftics:campaigns/x has empty 'regions' — skipping
-[19:33:03] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' — skipping
-[19:33:03] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' — skipping
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x branch missing 'swap' array — ignoring branch (linear)
-[19:33:03] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' — skipping
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has malformed 'map_color' "ZZZ" — defaulting to white
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x branch missing non-blank 'region' — ignoring branch (linear)
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' must have exactly 2 entries (had 1) — ignoring branch (linear)
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' missing 'nodes' array — skipping campaign
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has a node missing non-blank 'biome' — skipping campaign
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' segment has a non-string entry — ignoring branch (linear)
-[19:33:03] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing 'regions' array — skipping
-[19:33:03] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has empty 'nodes' — skipping campaign
-[19:33:03] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing 'regions' array — skipping
-[19:33:03] [Test worker/WARN]: Campaign branch in region 'surface' has segment(s) that are not a contiguous sublist (segmentA=[wildwood] found=true, segmentB=[marsh] found=false); falling back to linear order
+[20:08:59] [Test worker/WARN]: Unknown dialogue action 'banana' — treating as close
+[20:08:59] [Test worker/WARN]: Unknown dialogue action '' — treating as close
+[20:08:59] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'id' — skipping
+[20:08:59] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x has no 'lines' — skipping
+[20:08:59] [Test worker/WARN]: Dialogue JSON craftics:dialogue/x missing 'speaker' — skipping
+[20:08:59] [Test worker/WARN]: Dialogue craftics:dialogue/x has a choice missing label/action — skipping that choice
+[20:08:59] [Test worker/WARN]: Campaign branch in region 'world' has overlapping/interleaving segments (segmentA at [1,2], segmentB at [2,3]); falling back to linear order
+[20:08:59] [Test worker/WARN]: Campaign branch in region 'surface' has segment(s) that are not a contiguous sublist (segmentA=[wildwood] found=true, segmentB=[NOTHERE] found=false); falling back to linear order
+[20:08:59] [Test worker/WARN]: Campaign branch in region 'world' has segment(s) that are not a contiguous sublist (segmentA=[w1, w2, w3] found=true, segmentB=[c1, MISSING] found=false); falling back to linear order
+[20:08:59] [Test worker/WARN]: Campaign branch in region 'world' has segment(s) that are not a contiguous sublist (segmentA=[w1, w3] found=false, segmentB=[c1, c2] found=true); falling back to linear order
+[20:08:59] [Test worker/WARN]: Campaign branch references unknown region 'noregion'; falling back to linear order
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' has an empty segment — ignoring branch (linear)
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' must be either two strings or two arrays of strings — ignoring branch (linear)
+[20:08:59] [Test worker/WARN]: Campaign JSON craftics:campaigns/x has empty 'regions' — skipping
+[20:08:59] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' — skipping
+[20:08:59] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' — skipping
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x branch missing 'swap' array — ignoring branch (linear)
+[20:08:59] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing non-blank 'id' — skipping
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has malformed 'map_color' "ZZZ" — defaulting to white
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x branch missing non-blank 'region' — ignoring branch (linear)
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' must have exactly 2 entries (had 1) — ignoring branch (linear)
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' missing 'nodes' array — skipping campaign
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has a node missing non-blank 'biome' — skipping campaign
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x branch 'swap' segment has a non-string entry — ignoring branch (linear)
+[20:08:59] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing 'regions' array — skipping
+[20:08:59] [Test worker/WARN]: Campaign craftics:campaigns/x region 'surface' has empty 'nodes' — skipping campaign
+[20:08:59] [Test worker/WARN]: Campaign JSON craftics:campaigns/x missing 'regions' array — skipping
+[20:08:59] [Test worker/WARN]: Campaign branch in region 'surface' has segment(s) that are not a contiguous sublist (segmentA=[wildwood] found=true, segmentB=[marsh] found=false); falling back to linear order

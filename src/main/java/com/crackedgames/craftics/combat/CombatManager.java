@@ -2546,18 +2546,16 @@ public class CombatManager {
                     ce.setAiOverrideKey("boss:" + bossBiomeId);
                     ce.setBossDisplayName(getBossName(bossBiomeId));
                     ce.setHazardImmune(true);
-                    // Bosses that carry per-fight mutable state need a fresh per-entity AI
-                    // instance so it can't leak across fights or between concurrent co-op
-                    // parties (AIRegistry otherwise hands back a shared singleton).
-                    if ("nether_wastes".equals(bossBiomeId)) {
-                        // Molten King: also keeps split copies independent of the original.
-                        ce.setAiInstance(new MoltenKingAI(0));
-                    } else if ("desert".equals(bossBiomeId)) {
-                        // Sandstorm Pharaoh: activeMines + guardsSpawned must reset each fight.
-                        ce.setAiInstance(new com.crackedgames.craftics.combat.ai.boss.SandstormPharaohAI());
-                    } else if ("river".equals(bossBiomeId)) {
-                        // Tidecaller: the one-shot deluge flag (delugeCast) must reset each fight.
-                        ce.setAiInstance(new com.crackedgames.craftics.combat.ai.boss.TidecallerAI());
+                    // EVERY boss gets a fresh per-fight AI instance. The shared
+                    // AIRegistry singleton carries phase/turn/cooldown/warning and
+                    // per-boss state (Broodmother's nest machine, Hollow King's
+                    // permanent darkness, ...) that would otherwise leak across
+                    // fights and between concurrent co-op parties — the old code
+                    // only special-cased three bosses, so e.g. a Revenant killed
+                    // in phase two left the NEXT Revenant starting in phase two.
+                    EnemyAI freshBossAi = AIRegistry.createFresh("boss:" + bossBiomeId);
+                    if (freshBossAi != null) {
+                        ce.setAiInstance(freshBossAi);
                     }
                     CrafticsMod.LOGGER.info("[BOSS DEBUG] Spawned boss entity='{}' aiOverrideKey='boss:{}' entityId={}",
                         spawn.entityTypeId(), bossBiomeId, ce.getEntityId());
@@ -2632,11 +2630,22 @@ public class CombatManager {
         boolean isBossFight = levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld3
             && gld3.getBiomeTemplate() != null && gld3.getBiomeTemplate().isBossLevel(gld3.getLevelNumber());
         if (isBossFight) {
+            // Name the boss itself in the subtitle, not the level \u2014 "The Hollow
+            // King" lands harder than "Underground Caverns 5".
+            String bossIntroName = enemies.stream()
+                .filter(CombatEntity::isBoss)
+                .map(CombatEntity::getDisplayName)
+                .findFirst()
+                .orElse(levelDef.getName());
             player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(10, 60, 20));
             player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
                 Text.literal("\u00a74\u00a7l\u2620 BOSS FIGHT \u2620")));
             player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.SubtitleS2CPacket(
-                Text.literal("\u00a7c" + levelDef.getName())));
+                Text.literal("\u00a7c" + bossIntroName)));
+            // A heavier sting layered over the standard combat-start growl.
+            player.getWorld().playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_WITHER_SPAWN,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.35f, 1.4f);
         } else {
             player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 40, 15));
             player.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
@@ -5698,6 +5707,10 @@ public class CombatManager {
             // A fallen ally is a loss, not a victory: no "defeated!" line.
             if (entity.isAlly()) {
                 sendMessage("§c" + entity.getDisplayName() + " has fallen!");
+            } else if (entity.isBoss() && !entity.hasSplit()) {
+                // hasSplit: a gen-0 Molten King "dying" into its fragments is
+                // not the kill — the fragments carry the fight (and the moment).
+                sendMessage("§6§l☠ " + entity.getDisplayName() + " DEFEATED! ☠");
             } else {
                 sendMessage("§a" + entity.getDisplayName() + " defeated!");
             }
@@ -5718,6 +5731,26 @@ public class CombatManager {
             deathWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
                 deathBlock.getX() + 0.5, deathBlock.getY() + 0.5, deathBlock.getZ() + 0.5,
                 8, 0.3, 0.3, 0.3, 0.02);
+
+            // Boss kill: a real payoff moment — explosion bloom, golden rain,
+            // a wither-death knell, and a client shake/flash. The victory flow
+            // adds its own fanfare; this is the spectacle on the corpse itself.
+            if (entity.isBoss() && !entity.hasSplit()) {
+                deathWorld.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION_EMITTER,
+                    deathBlock.getX() + 0.5, deathBlock.getY() + 1.0, deathBlock.getZ() + 0.5,
+                    1, 0, 0, 0, 0);
+                deathWorld.spawnParticles(net.minecraft.particle.ParticleTypes.TOTEM_OF_UNDYING,
+                    deathBlock.getX() + 0.5, deathBlock.getY() + 1.2, deathBlock.getZ() + 0.5,
+                    50, 0.8, 1.0, 0.8, 0.35);
+                deathWorld.playSound(null, deathBlock,
+                    net.minecraft.sound.SoundEvents.ENTITY_WITHER_DEATH,
+                    net.minecraft.sound.SoundCategory.HOSTILE, 0.6f, 1.1f);
+                sendToAllParty(new CombatEventPayload(
+                    CombatEventPayload.EVENT_BOSS_MOMENT, entity.getEntityId(),
+                    CombatEventPayload.BOSS_MOMENT_DEFEATED, 0,
+                    deathPos.x(), deathPos.z()
+                ));
+            }
 
             // Grant XP to all participants on kill — only for real enemy
             // kills, never for a fallen ally.
@@ -9748,10 +9781,11 @@ public class CombatManager {
             pendingAction = gateMobTargetingThroughStealth(currentEnemy, pendingAction);
         }
 
-        // Addon combat effects: boss phase change notification
+        // Boss phase change: addon notification + the on-screen moment
         if (ai instanceof BossAI bai && bai.consumePhaseTransition()) {
             final CombatEntity fBoss = currentEnemy;
             fireEffectHook(h -> h.onBossPhaseChange(effectContext, fBoss, 2));
+            announceBossPhaseTwo(fBoss);
         }
 
         // Trim STEALTH_RANGE bonus: enemies beyond detection range skip their turn
@@ -13353,6 +13387,55 @@ public class CombatManager {
      * Called after a boss entity is spawned and placed on the arena.
      * Initializes boss-specific fight setup.
      */
+    /**
+     * The on-screen "it just got worse" beat when a boss crosses into phase two:
+     * combat-log line, a subtitle for every party member, a roar, a particle
+     * burst on the boss, and a client-side shake/flash via EVENT_BOSS_MOMENT.
+     * Server-driven so all co-op clients see the same moment.
+     */
+    private void announceBossPhaseTwo(CombatEntity boss) {
+        sendMessage("§4§l⚠ " + boss.getDisplayName() + " enters Phase 2!");
+
+        for (ServerPlayerEntity member : getAllParticipants()) {
+            if (member == null || member.isRemoved() || member.isDisconnected()
+                    || member.networkHandler == null) continue;
+            member.networkHandler.sendPacket(
+                new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 35, 15));
+            member.networkHandler.sendPacket(
+                new net.minecraft.network.packet.s2c.play.SubtitleS2CPacket(
+                    Text.literal("§4§l⚠ " + boss.getDisplayName() + " — PHASE 2 ⚠")));
+            // Empty title so the subtitle shows even when no title is queued.
+            member.networkHandler.sendPacket(
+                new net.minecraft.network.packet.s2c.play.TitleS2CPacket(Text.literal("")));
+        }
+
+        MobEntity bossMob = boss.getMobEntity();
+        if (player != null && player.getEntityWorld() instanceof ServerWorld sw) {
+            double bx, by, bz;
+            if (bossMob != null) {
+                bx = bossMob.getX(); by = bossMob.getY() + 1.0; bz = bossMob.getZ();
+            } else {
+                BlockPos bp = arena.gridToBlockPos(boss.getGridPos());
+                bx = bp.getX() + 0.5; by = bp.getY() + 1.0; bz = bp.getZ() + 0.5;
+            }
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.ANGRY_VILLAGER,
+                bx, by + 0.5, bz, 12, 0.6, 0.8, 0.6, 0.0);
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                bx, by, bz, 20, 0.5, 0.7, 0.5, 0.04);
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.FLASH,
+                bx, by, bz, 1, 0, 0, 0, 0);
+            sw.playSound(null, BlockPos.ofFloored(bx, by, bz),
+                net.minecraft.sound.SoundEvents.ENTITY_RAVAGER_ROAR,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.8f, 0.8f);
+        }
+
+        sendToAllParty(new CombatEventPayload(
+            CombatEventPayload.EVENT_BOSS_MOMENT, boss.getEntityId(),
+            CombatEventPayload.BOSS_MOMENT_PHASE_TWO, 0,
+            boss.getGridPos().x(), boss.getGridPos().z()
+        ));
+    }
+
     private void initBossSetup(CombatEntity bossEntity) {
         EnemyAI ai = resolveAi(bossEntity);
 
@@ -22321,6 +22404,10 @@ public class CombatManager {
             // Append boss metadata if this is a boss enemy
             if (e.isBoss()) {
                 typeIds.append(";boss=").append(e.getDisplayName());
+                // Phase badge for the boss bar — phase 2 is the visible escalation.
+                if (resolveAi(e) instanceof BossAI bba && bba.isInPhaseTwo()) {
+                    typeIds.append(";phase=2");
+                }
             } else if (e.getStackDisplayName() != null) {
                 // Stack mobs (Zombie Stack, Slime Tower etc.) override the
                 // species name in the hover panel using the same "name=" pair

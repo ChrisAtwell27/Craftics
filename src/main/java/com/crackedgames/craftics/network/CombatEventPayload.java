@@ -25,6 +25,15 @@ public record CombatEventPayload(int eventType, int entityId,
     public static final int EVENT_TILE_WARNING = 6;
     public static final int EVENT_MOB_ATTACK_ANIM = 7;
     public static final int EVENT_PLAYER_DOWNED = 8;
+    /**
+     * Boss spectacle beats. {@code valueA} selects the moment:
+     * 1 = phase-two transition, 2 = boss defeated. The client reacts with
+     * screen shake + a colored flash; all heavier feedback (titles, sounds,
+     * particles) is server-driven so it stays consistent across clients.
+     */
+    public static final int EVENT_BOSS_MOMENT = 9;
+    public static final int BOSS_MOMENT_PHASE_TWO = 1;
+    public static final int BOSS_MOMENT_DEFEATED = 2;
 
     public static final CustomPayload.Id<CombatEventPayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "combat_event"));

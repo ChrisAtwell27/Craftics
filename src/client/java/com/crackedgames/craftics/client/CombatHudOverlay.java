@@ -993,6 +993,7 @@ public class CombatHudOverlay implements HudRenderCallback {
             float bPct = bMaxHp > 0 ? (float) bHp / bMaxHp : 0;
             String bTypeFull = types.getOrDefault(bossEntityId, "");
             String bTypeId = bTypeFull.contains(";") ? bTypeFull.substring(0, bTypeFull.indexOf(';')) : bTypeFull;
+            boolean bossPhaseTwo = bTypeFull.contains(";phase=2");
 
             // Boss name label — truncate if too wide for the panel
             String bossLabel = "\u00a74\u00a7l\u2620 " + bossDisplayName;
@@ -1010,10 +1011,12 @@ public class CombatHudOverlay implements HudRenderCallback {
                 Text.literal(bossLabel), panelX + panelW / 2, y + 1, 0xFFFF5555);
             y += 12;
 
-            // Full-width boss HP bar with dark red background
+            // Full-width boss HP bar. The frame turns molten gold in phase two \u2014
+            // the bar itself tells you the fight escalated.
             int bossBarW = panelContentW;
             int bossBarH = 8;
-            ctx.fill(startX - 1, y - 1, startX + bossBarW + 1, y + bossBarH + 1, 0xFF440000);
+            int frameColor = bossPhaseTwo ? 0xFF885500 : 0xFF440000;
+            ctx.fill(startX - 1, y - 1, startX + bossBarW + 1, y + bossBarH + 1, frameColor);
             int bossColor = bPct > 0.5f ? 0xFFCC2222 : bPct > 0.25f ? 0xFFCC6600 : 0xFFFF0000;
             drawHpBar(ctx, "boss:" + bossEntityId, startX, y, bossBarW, bossBarH,
                 bPct, bossColor, 0xFF220000);
@@ -1022,6 +1025,13 @@ public class CombatHudOverlay implements HudRenderCallback {
             int bossHpTw = client.textRenderer.getWidth(bossHpText);
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal(bossHpText), startX + (bossBarW - bossHpTw) / 2, y, 0xFFAAAAAA);
+            // Phase badge at the bar's right edge
+            if (bossPhaseTwo) {
+                String phaseBadge = "\u00a76\u00a7lII";
+                int badgeW = client.textRenderer.getWidth(phaseBadge);
+                ctx.drawTextWithShadow(client.textRenderer,
+                    Text.literal(phaseBadge), startX + bossBarW - badgeW - 2, y, 0xFFFFAA00);
+            }
             y += bossBarH + 4;
         }
 

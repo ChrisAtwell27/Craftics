@@ -157,6 +157,11 @@ public abstract class BossAI implements EnemyAI {
         return phaseTwo;
     }
 
+    /** Public phase accessor for CombatManager (client sync, phase badge). */
+    public boolean isInPhaseTwo() {
+        return phaseTwo;
+    }
+
     /** Returns true if the boss just transitioned to Phase 2 this turn. Clears the flag after reading. */
     public boolean consumePhaseTransition() {
         if (justTransitionedToPhase2) {
@@ -189,7 +194,9 @@ public abstract class BossAI implements EnemyAI {
 
     /**
      * Find empty tiles in the arena for summoning minions.
-     * Returns up to 'count' random empty walkable tiles.
+     * Returns up to 'count' random empty walkable tiles, preferring tiles that
+     * don't hurt to stand on — minions stop spawning straight into lava or
+     * fire unless the arena offers nothing else (late Molten King floors).
      */
     protected List<GridPos> findSummonPositions(GridArena arena, int count) {
         List<GridPos> candidates = new ArrayList<>();
@@ -202,12 +209,12 @@ public abstract class BossAI implements EnemyAI {
                 }
             }
         }
-        Collections.shuffle(candidates);
-        return candidates.subList(0, Math.min(count, candidates.size()));
+        return pickPreferringSafeTiles(arena, candidates, count);
     }
 
     /**
      * Find empty tiles near a specific position for targeted summoning.
+     * Same safe-tile preference as {@link #findSummonPositions}.
      */
     protected List<GridPos> findSummonPositionsNear(GridArena arena, GridPos center, int radius, int count) {
         List<GridPos> candidates = new ArrayList<>();
@@ -220,7 +227,14 @@ public abstract class BossAI implements EnemyAI {
                 }
             }
         }
+        return pickPreferringSafeTiles(arena, candidates, count);
+    }
+
+    /** Shuffle, then stable-sort damaging tiles to the back, then take {@code count}. */
+    private static List<GridPos> pickPreferringSafeTiles(GridArena arena, List<GridPos> candidates, int count) {
         Collections.shuffle(candidates);
+        candidates.sort(Comparator.comparingInt(
+            pos -> arena.getTile(pos).getType().damageOnStep > 0 ? 1 : 0));
         return candidates.subList(0, Math.min(count, candidates.size()));
     }
 
@@ -379,10 +393,6 @@ public abstract class BossAI implements EnemyAI {
         if (dist <= 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
-        EnemyAction move = AIUtils.seekOrWander(self, arena, playerPos);
-        if (move instanceof EnemyAction.Idle) {
-            return move;
-        }
-        return move;
+        return AIUtils.seekOrWander(self, arena, playerPos);
     }
 }

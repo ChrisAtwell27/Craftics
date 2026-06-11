@@ -178,6 +178,19 @@ public class CrafticsClient implements ClientModInitializer {
                         CombatVisualEffects.flashDowned();
                         CombatVisualEffects.triggerShake(0.8f);
                     }
+                    case com.crackedgames.craftics.network.CombatEventPayload.EVENT_BOSS_MOMENT -> {
+                        // Boss spectacle beats — valueA: 1 = phase two, 2 = defeated.
+                        if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
+                            CombatState.focusOnTile(payload.targetX(), payload.targetZ());
+                        }
+                        if (payload.valueA() == com.crackedgames.craftics.network.CombatEventPayload.BOSS_MOMENT_PHASE_TWO) {
+                            CombatVisualEffects.triggerShakeTimed(0.55f, 12);
+                            CombatVisualEffects.flashWithColor(0x55AA0000, 14); // dark red surge
+                        } else if (payload.valueA() == com.crackedgames.craftics.network.CombatEventPayload.BOSS_MOMENT_DEFEATED) {
+                            CombatVisualEffects.triggerShakeTimed(0.7f, 16);
+                            CombatVisualEffects.flashWithColor(0x55FFAA00, 18); // golden payoff
+                        }
+                    }
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_MOB_ATTACK_ANIM -> {
                         if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
                             CombatState.focusOnTile(payload.targetX(), payload.targetZ());
