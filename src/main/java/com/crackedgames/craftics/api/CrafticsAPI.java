@@ -57,6 +57,24 @@ public final class CrafticsAPI {
         AIRegistry.register(entityTypeId, ai);
     }
 
+    /**
+     * Register the attack animation style for a mob type, so a custom mob
+     * lunges, pounces, slams, dashes, bounces, blinks, rams, jabs or channels
+     * when it attacks instead of using the generic lunge. Call during mod
+     * initialization; last registration for a type wins. Ranged attacks always
+     * play the draw-and-release lean unless the style is
+     * {@link com.crackedgames.craftics.combat.animation.MobAttackAnimations.Style#CAST}.
+     *
+     * @param entityTypeId Full entity type ID (e.g., "mymod:lava_crab")
+     * @param style        The attack-animation archetype
+     * @since 0.2.5
+     */
+    public static void registerAttackAnimation(
+            String entityTypeId,
+            com.crackedgames.craftics.combat.animation.MobAttackAnimations.Style style) {
+        com.crackedgames.craftics.combat.animation.MobAttackAnimations.register(entityTypeId, style);
+    }
+
     // === Existing: Biomes ===
 
     /**

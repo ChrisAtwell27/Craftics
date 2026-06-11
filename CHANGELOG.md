@@ -2,6 +2,12 @@ Changelog
 
 Unreleased
 
+Combat animations
+
+- Every mob type now picks its attack animation from a style registry: spiders pounce, golems and ravagers slam, wolves and cats dash low, slimes hop and crash, endermen flicker-blink, archers lean into the draw — plus three new styles: goats and camels back up and RAM with real reach, insects and small critters double-JAB, and witches/evokers CHANNEL their throws with raised arms instead of leaning like archers. Addon mods can give their own mobs any of these with one line: CrafticsAPI.registerAttackAnimation("mymod:lava_crab", Style.POUNCE) — unregistered mobs keep the classic lunge
+- Mob poses got their missing beats: the arm now snaps forward exactly on the hit (with the sweep flash) instead of staying cocked after the attack, and eases back to neutral afterwards; bosses visibly channel with raised arms during telegraph turns and rear back in a roar at phase two; stunned enemies slump and wobble through their skipped turn instead of silently doing nothing
+- Fixed a co-op animation bug: all player avatars shared one attack-animation timer, so a teammate's swing could cut yours short and their avatar could freeze mid-swing — each avatar now runs its own, and combat end cleans up every avatar, not just yours
+
 Battle HUD fixes
 
 - Enemy HP numbers are now genuinely hover-only: the always-visible top-right roster keeps its slim HP bars but no longer prints hp/max for every damaged enemy (the hover inspect panel is where the exact numbers live), and the panel got narrower with the text gone

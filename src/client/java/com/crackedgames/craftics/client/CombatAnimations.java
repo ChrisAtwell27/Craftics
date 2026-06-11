@@ -16,7 +16,15 @@ import org.jetbrains.annotations.NotNull;
 public class CombatAnimations {
 
     private static boolean wasAnimating = false;
-    private static int attackAnimTimer = 0;
+    /**
+     * Per-player attack-animation countdowns. Attack animations play on EVERY
+     * party member's avatar (the damage event names the attacker), so a single
+     * shared timer let one teammate's swing cut another's short — and the
+     * expiry always faded out the LOCAL player's layer, leaving remote avatars
+     * frozen at the final frame of their swing.
+     */
+    private static final java.util.WeakHashMap<AbstractClientPlayerEntity, Integer> attackTimers =
+        new java.util.WeakHashMap<>();
     private static ModifierLayer<IAnimation> currentLayer = null;
 
     // Cinematic walk tracking: drive the same WalkAnimation used in combat while the
@@ -84,11 +92,28 @@ public class CombatAnimations {
         if (client.player != lastTickPlayer) {
             wasAnimating = false;
             wasCinematicWalking = false;
-            attackAnimTimer = 0;
+            attackTimers.clear();
             currentLayer = null;
             lastCinX = Double.NaN;
             lastCinZ = Double.NaN;
             lastTickPlayer = client.player;
+        }
+
+        // Count down every avatar's attack animation and fade THAT avatar's
+        // layer out on expiry. Runs before the combat guard so a swing that
+        // outlives the fight still resolves cleanly.
+        if (!attackTimers.isEmpty()) {
+            var it = attackTimers.entrySet().iterator();
+            while (it.hasNext()) {
+                var entry = it.next();
+                int remaining = entry.getValue() - 1;
+                if (remaining <= 0) {
+                    stopAttack(entry.getKey());
+                    it.remove();
+                } else {
+                    entry.setValue(remaining);
+                }
+            }
         }
 
         if (!CombatState.isInCombat()) {
@@ -146,11 +171,6 @@ public class CombatAnimations {
         ModifierLayer<IAnimation> layer = getOrCreateLayer(client.player);
         if (layer != null && !layer.isActive() && CombatState.isInCombat()) {
             layer.setAnimation(new IdleBreathingAnimation());
-        }
-
-        if (attackAnimTimer > 0) {
-            attackAnimTimer--;
-            if (attackAnimTimer == 0) stopAttack(client.player);
         }
     }
 
@@ -214,21 +234,21 @@ public class CombatAnimations {
         }
 
         layer.replaceAnimationWithFade(AbstractFadeModifier.standardFadeIn(1, Ease.LINEAR), anim);
-        attackAnimTimer = duration;
+        attackTimers.put(player, duration);
     }
 
     public static void playUseItem(AbstractClientPlayerEntity player) {
         ModifierLayer<IAnimation> layer = getOrCreateLayer(player);
         if (layer == null) return;
         layer.replaceAnimationWithFade(AbstractFadeModifier.standardFadeIn(2, Ease.LINEAR), new EatAnimation());
-        attackAnimTimer = 12;
+        attackTimers.put(player, 12);
     }
 
     public static void playThrow(AbstractClientPlayerEntity player) {
         ModifierLayer<IAnimation> layer = getOrCreateLayer(player);
         if (layer == null) return;
         layer.replaceAnimationWithFade(AbstractFadeModifier.standardFadeIn(1, Ease.LINEAR), new ThrowAnimation());
-        attackAnimTimer = 10;
+        attackTimers.put(player, 10);
     }
 
     private static void stopAttack(AbstractClientPlayerEntity player) {
@@ -237,7 +257,12 @@ public class CombatAnimations {
         layer.replaceAnimationWithFade(AbstractFadeModifier.standardFadeIn(4, Ease.LINEAR), null);
     }
 
+    /** Hard-stop every tracked avatar's layer (combat end) — not just the local player's. */
     public static void stopAll() {
+        for (ModifierLayer<IAnimation> l : layerMap.values()) {
+            if (l != null) l.setAnimation(null);
+        }
+        attackTimers.clear();
         if (currentLayer != null) currentLayer.setAnimation(null);
     }
 

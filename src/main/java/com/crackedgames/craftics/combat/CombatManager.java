@@ -1989,14 +1989,7 @@ public class CombatManager {
     private double enemyLerpStartX, enemyLerpStartY, enemyLerpStartZ;
     private boolean enemyLerpInitialized;
 
-    private static final int ATTACK_ANIM_LUNGE_TICKS = 5;
-    private static final int ATTACK_ANIM_RETURN_TICKS = 4;
-    private static final int ATTACK_ANIM_TOTAL_TICKS = ATTACK_ANIM_LUNGE_TICKS + ATTACK_ANIM_RETURN_TICKS;
-    private static final double ATTACK_LUNGE_DISTANCE = 0.55;
-    private static final int RANGED_ANIM_DRAW_TICKS = 6;
-    private static final int RANGED_ANIM_RELEASE_TICKS = 3;
-    private static final int RANGED_ANIM_TOTAL_TICKS = RANGED_ANIM_DRAW_TICKS + RANGED_ANIM_RELEASE_TICKS;
-    private static final double RANGED_LEAN_DISTANCE = 0.35;
+    // Attack-animation curve constants live in MobAttackAnimations now.
     private int attackAnimTick;
     private double attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ;
     private double attackAnimLungeX, attackAnimLungeZ; // direction unit vector
@@ -9644,6 +9637,12 @@ public class CombatManager {
 
         if (currentEnemy.isStunned()) {
             sendMessage("§7" + currentEnemy.getDisplayName() + " is stunned!");
+            // Visible daze: head down, arms slack, wobble (auto-expires).
+            if (currentEnemy.getMobEntity() != null) {
+                com.crackedgames.craftics.combat.animation.MobAnimations.set(
+                    currentEnemy.getMobEntity(),
+                    com.crackedgames.craftics.combat.animation.AnimState.STUNNED);
+            }
             currentEnemy.setStunned(false);
             enemyTurnState = EnemyTurnState.DONE;
             enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -10366,6 +10365,13 @@ public class CombatManager {
                         ba.abilityName().replace('_', ' ') + "!");
                     // Store pending warning for resolution next turn
                     pendingBossWarnings.add(new PendingBossWarning(currentEnemy, ba));
+                    // The boss visibly channels while the telegraph charges —
+                    // arms raised, head up, converging enchant particles.
+                    if (currentEnemy.getMobEntity() != null) {
+                        com.crackedgames.craftics.combat.animation.MobAnimations.set(
+                            currentEnemy.getMobEntity(),
+                            com.crackedgames.craftics.combat.animation.AnimState.CAST);
+                    }
                     // Render warning particles on the telegraphed tiles
                     spawnBossAbilityTelegraphParticles(ba);
                     // Paint the red tile overlay on each warning tile so the player can
@@ -13479,9 +13485,12 @@ public class CombatManager {
                 bx, by, bz, 20, 0.5, 0.7, 0.5, 0.04);
             sw.spawnParticles(net.minecraft.particle.ParticleTypes.FLASH,
                 bx, by, bz, 1, 0, 0, 0, 0);
-            sw.playSound(null, BlockPos.ofFloored(bx, by, bz),
-                net.minecraft.sound.SoundEvents.ENTITY_RAVAGER_ROAR,
-                net.minecraft.sound.SoundCategory.HOSTILE, 0.8f, 0.8f);
+        }
+        // ROAR pose: head back, arms wide, plus the ring burst + roar sound
+        // that MobAnimations owns for this state.
+        if (bossMob != null) {
+            com.crackedgames.craftics.combat.animation.MobAnimations.set(bossMob,
+                com.crackedgames.craftics.combat.animation.AnimState.ROAR);
         }
 
         sendToAllParty(new CombatEventPayload(
@@ -14104,9 +14113,12 @@ public class CombatManager {
         enemyTurnState = EnemyTurnState.ANIMATING;
         enemyTurnDelay = delay;
         if (currentEnemy != null && currentEnemy.getMobEntity() != null) {
+            // Casters channel (arms raised) instead of cocking a melee windup.
+            var style = com.crackedgames.craftics.combat.animation.MobAttackAnimations
+                .styleFor(currentEnemy.getEntityTypeId(), false);
             com.crackedgames.craftics.combat.animation.MobAnimations.set(
                 currentEnemy.getMobEntity(),
-                com.crackedgames.craftics.combat.animation.AnimState.WINDUP);
+                com.crackedgames.craftics.combat.animation.MobAttackAnimations.windupPose(style));
         }
     }
 
@@ -14192,10 +14204,8 @@ public class CombatManager {
                 attackAnimLungeZ = 1;
             }
 
-            // Arm swing — only for melee mobs (ranged mobs don't swing)
-            if (!isRanged) {
-                mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-            }
+            // (The hand swing fires on each style's strike frame below, in sync
+            // with the impact — the old code also swung here at windup start.)
 
             // Send attack anim event to client for mob-specific particles
             int attackType = isRanged ? 2
@@ -14209,276 +14219,39 @@ public class CombatManager {
             ));
         }
 
-        if (isRanged) {
-            // === RANGED ANIMATION: lean back (draw), then snap forward (release) ===
-            int totalTicks = RANGED_ANIM_TOTAL_TICKS;
+        // === Style-driven attack animation ===
+        // The per-mob-type curves (and the addon registration point) live in
+        // MobAttackAnimations — this used to be a ~250-line hardcoded chain of
+        // isSpiderLike/isHeavyHitter/... branches that addons couldn't touch.
+        var style = com.crackedgames.craftics.combat.animation.MobAttackAnimations
+            .styleFor(entityType, isRanged);
+        var frame = com.crackedgames.craftics.combat.animation.MobAttackAnimations
+            .frameAt(style, attackAnimTick);
 
-            if (attackAnimTick <= RANGED_ANIM_DRAW_TICKS) {
-                // Draw phase — lean AWAY from the player (pull back to aim)
-                float progress = (float) attackAnimTick / RANGED_ANIM_DRAW_TICKS;
-                float eased = progress * progress; // ease-in for tension build
-                double offsetX = -attackAnimLungeX * RANGED_LEAN_DISTANCE * eased;
-                double offsetZ = -attackAnimLungeZ * RANGED_LEAN_DISTANCE * eased;
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
-            } else if (attackAnimTick <= totalTicks) {
-                // Release phase — snap forward past origin (recoil from shot)
-                int releaseTick = attackAnimTick - RANGED_ANIM_DRAW_TICKS;
-                float progress = (float) releaseTick / RANGED_ANIM_RELEASE_TICKS;
-                float eased = 1.0f - (1.0f - progress) * (1.0f - progress); // ease-out
-                // Go from full lean-back to slightly forward, then back to origin
-                double leanBack = RANGED_LEAN_DISTANCE * (1.0 - eased);
-                double offsetX = -attackAnimLungeX * leanBack;
-                double offsetZ = -attackAnimLungeZ * leanBack;
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
+        mob.requestTeleport(
+            attackAnimOriginX + attackAnimLungeX * frame.forward(),
+            attackAnimOriginY + frame.rise(),
+            attackAnimOriginZ + attackAnimLungeZ * frame.forward());
 
-                // Trigger arm swing on first release tick (the "fire" moment)
-                if (releaseTick == 1) {
-                    mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-                }
-            }
-
-            if (attackAnimTick >= totalTicks) {
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = 0;
-            }
-        } else if (isSpiderLike(entityType)) {
-            // === SPIDER ANIMATION: crouch down then spring forward ===
-            int crouchTicks = 4;
-            int springTicks = 3;
-            int returnTicks = 3;
-            int total = crouchTicks + springTicks + returnTicks;
-
-            if (attackAnimTick <= crouchTicks) {
-                // Crouch: lower Y position
-                float progress = (float) attackAnimTick / crouchTicks;
-                float eased = progress * progress;
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY - 0.2 * eased, attackAnimOriginZ);
-            } else if (attackAnimTick <= crouchTicks + springTicks) {
-                // Spring forward and up
-                int springTick = attackAnimTick - crouchTicks;
-                float progress = (float) springTick / springTicks;
-                float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
-                double offsetX = attackAnimLungeX * 0.7 * eased;
-                double offsetZ = attackAnimLungeZ * 0.7 * eased;
-                double offsetY = -0.2 + 0.35 * eased; // rise from crouch
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
-                if (springTick == 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-            } else if (attackAnimTick <= total) {
-                // Return
-                int retTick = attackAnimTick - crouchTicks - springTicks;
-                float progress = (float) retTick / returnTicks;
-                float eased = progress * progress;
-                double offsetX = attackAnimLungeX * 0.7 * (1.0 - eased);
-                double offsetZ = attackAnimLungeZ * 0.7 * (1.0 - eased);
-                double offsetY = 0.15 * (1.0 - eased);
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
-            }
-
-            if (attackAnimTick >= total) {
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = 0;
-            }
-        } else if (isHeavyHitter(entityType)) {
-            // === HEAVY ANIMATION: slow wind-up overhead slam (iron golem, ravager, warden) ===
-            int windupTicks = 6;
-            int slamTicks = 2;
-            int recoverTicks = 4;
-            int total = windupTicks + slamTicks + recoverTicks;
-
-            if (attackAnimTick <= windupTicks) {
-                // Wind up: rise slightly (raising arms)
-                float progress = (float) attackAnimTick / windupTicks;
-                float eased = progress * progress;
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY + 0.25 * eased, attackAnimOriginZ);
-            } else if (attackAnimTick <= windupTicks + slamTicks) {
-                // Slam down: fast lunge forward + drop
-                int slamTick = attackAnimTick - windupTicks;
-                float progress = (float) slamTick / slamTicks;
-                float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
-                double offsetX = attackAnimLungeX * 0.6 * eased;
-                double offsetZ = attackAnimLungeZ * 0.6 * eased;
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY + 0.25 * (1.0 - eased), attackAnimOriginZ + offsetZ);
-                if (slamTick == 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-            } else if (attackAnimTick <= total) {
-                // Recover: return to origin
-                int recTick = attackAnimTick - windupTicks - slamTicks;
-                float progress = (float) recTick / recoverTicks;
-                float eased = progress * progress;
-                double offsetX = attackAnimLungeX * 0.6 * (1.0 - eased);
-                double offsetZ = attackAnimLungeZ * 0.6 * (1.0 - eased);
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
-            }
-
-            if (attackAnimTick >= total) {
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = 0;
-            }
-        } else if (isSwiftPouncer(entityType)) {
-            // === SWIFT POUNCE: fast low dash forward (wolf, fox) ===
-            int dashTicks = 3;
-            int holdTicks = 2;
-            int returnTicks = 3;
-            int total = dashTicks + holdTicks + returnTicks;
-
-            if (attackAnimTick <= dashTicks) {
-                float progress = (float) attackAnimTick / dashTicks;
-                float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
-                double offsetX = attackAnimLungeX * 0.65 * eased;
-                double offsetZ = attackAnimLungeZ * 0.65 * eased;
-                double offsetY = -0.1 * eased; // low crouch during dash
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
-                if (attackAnimTick == 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-            } else if (attackAnimTick <= dashTicks + holdTicks) {
-                // Hold at strike position
-                mob.requestTeleport(
-                    attackAnimOriginX + attackAnimLungeX * 0.65, attackAnimOriginY - 0.1, attackAnimOriginZ + attackAnimLungeZ * 0.65);
-            } else if (attackAnimTick <= total) {
-                int retTick = attackAnimTick - dashTicks - holdTicks;
-                float progress = (float) retTick / returnTicks;
-                float eased = progress * progress;
-                double offsetX = attackAnimLungeX * 0.65 * (1.0 - eased);
-                double offsetZ = attackAnimLungeZ * 0.65 * (1.0 - eased);
-                double offsetY = -0.1 * (1.0 - eased);
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
-            }
-
-            if (attackAnimTick >= total) {
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = 0;
-            }
-        } else if (isBouncy(entityType)) {
-            // === BOUNCE SLAM: hop up then slam down (slime, magma cube) ===
-            int riseTicks = 4;
-            int slamTicks = 2;
-            int recoverTicks = 3;
-            int total = riseTicks + slamTicks + recoverTicks;
-
-            if (attackAnimTick <= riseTicks) {
-                float progress = (float) attackAnimTick / riseTicks;
-                float eased = (float) Math.sin(progress * Math.PI * 0.5); // smooth rise
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY + 0.6 * eased, attackAnimOriginZ);
-            } else if (attackAnimTick <= riseTicks + slamTicks) {
-                // Fast slam down toward player
-                int slamTick = attackAnimTick - riseTicks;
-                float progress = (float) slamTick / slamTicks;
-                float eased = progress * progress; // accelerate down
-                double offsetX = attackAnimLungeX * 0.5 * eased;
-                double offsetZ = attackAnimLungeZ * 0.5 * eased;
-                double offsetY = 0.6 * (1.0 - eased);
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY + offsetY, attackAnimOriginZ + offsetZ);
-                if (slamTick == 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-            } else if (attackAnimTick <= total) {
-                int recTick = attackAnimTick - riseTicks - slamTicks;
-                float progress = (float) recTick / recoverTicks;
-                float eased = progress * progress;
-                double offsetX = attackAnimLungeX * 0.5 * (1.0 - eased);
-                double offsetZ = attackAnimLungeZ * 0.5 * (1.0 - eased);
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
-            }
-
-            if (attackAnimTick >= total) {
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = 0;
-            }
-        } else if (entityType != null && entityType.equals("minecraft:enderman")) {
-            // === ENDERMAN: flicker-dash — brief vanish then appear right next to target ===
-            int flickerTicks = 3;
-            int strikeTicks = 2;
-            int returnTicks = 4;
-            int total = flickerTicks + strikeTicks + returnTicks;
-
-            if (attackAnimTick <= flickerTicks) {
-                // "Vanish" by sinking slightly (visual flicker effect via particles on client)
-                float progress = (float) attackAnimTick / flickerTicks;
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY - 0.3 * progress, attackAnimOriginZ);
-            } else if (attackAnimTick <= flickerTicks + strikeTicks) {
-                // Appear close to player and strike
-                double offsetX = attackAnimLungeX * 0.7;
-                double offsetZ = attackAnimLungeZ * 0.7;
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
-                if (attackAnimTick == flickerTicks + 1) mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
-            } else if (attackAnimTick <= total) {
-                // Return smoothly
-                int retTick = attackAnimTick - flickerTicks - strikeTicks;
-                float progress = (float) retTick / returnTicks;
-                float eased = progress * progress;
-                double offsetX = attackAnimLungeX * 0.7 * (1.0 - eased);
-                double offsetZ = attackAnimLungeZ * 0.7 * (1.0 - eased);
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
-            }
-
-            if (attackAnimTick >= total) {
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = 0;
-            }
-        } else {
-            // === DEFAULT MELEE: lunge forward then return ===
-            if (attackAnimTick <= ATTACK_ANIM_LUNGE_TICKS) {
-                float progress = (float) attackAnimTick / ATTACK_ANIM_LUNGE_TICKS;
-                float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
-                double offsetX = attackAnimLungeX * ATTACK_LUNGE_DISTANCE * eased;
-                double offsetZ = attackAnimLungeZ * ATTACK_LUNGE_DISTANCE * eased;
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
-            } else if (attackAnimTick <= ATTACK_ANIM_TOTAL_TICKS) {
-                int returnTick = attackAnimTick - ATTACK_ANIM_LUNGE_TICKS;
-                float progress = (float) returnTick / ATTACK_ANIM_RETURN_TICKS;
-                float eased = progress * progress;
-                double offsetX = attackAnimLungeX * ATTACK_LUNGE_DISTANCE * (1.0 - eased);
-                double offsetZ = attackAnimLungeZ * ATTACK_LUNGE_DISTANCE * (1.0 - eased);
-                mob.requestTeleport(
-                    attackAnimOriginX + offsetX, attackAnimOriginY, attackAnimOriginZ + offsetZ);
-            }
-
-            if (attackAnimTick >= ATTACK_ANIM_TOTAL_TICKS) {
-                mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
-                enemyTurnState = EnemyTurnState.ATTACKING;
-                enemyTurnDelay = 0;
+        if (frame.strike()) {
+            mob.swingHand(net.minecraft.util.Hand.MAIN_HAND);
+            // Melee strikes flash the ATTACK pose (biped arm snap + sweep FX);
+            // ranged releases and caster lobs keep their own silhouette.
+            if (com.crackedgames.craftics.combat.animation.MobAttackAnimations.strikeUsesAttackPose(style)) {
+                com.crackedgames.craftics.combat.animation.MobAnimations.set(mob,
+                    com.crackedgames.craftics.combat.animation.AnimState.ATTACK);
             }
         }
-    }
 
-    private static boolean isSpiderLike(String entityTypeId) {
-        return entityTypeId != null && (entityTypeId.equals("minecraft:spider")
-            || entityTypeId.equals("minecraft:cave_spider"));
-    }
-
-    private static boolean isHeavyHitter(String entityTypeId) {
-        return entityTypeId != null && (entityTypeId.equals("minecraft:iron_golem")
-            || entityTypeId.equals("minecraft:ravager")
-            || entityTypeId.equals("minecraft:warden")
-            || entityTypeId.equals("minecraft:hoglin")
-            || entityTypeId.equals("minecraft:zoglin"));
-    }
-
-    private static boolean isSwiftPouncer(String entityTypeId) {
-        return entityTypeId != null && (entityTypeId.equals("minecraft:wolf")
-            || entityTypeId.equals("minecraft:fox")
-            || entityTypeId.equals("minecraft:ocelot")
-            || entityTypeId.equals("minecraft:cat"));
-    }
-
-    private static boolean isBouncy(String entityTypeId) {
-        return entityTypeId != null && (entityTypeId.equals("minecraft:slime")
-            || entityTypeId.equals("minecraft:magma_cube"));
+        if (frame.done()) {
+            mob.requestTeleport(attackAnimOriginX, attackAnimOriginY, attackAnimOriginZ);
+            // Ease the pose back to neutral instead of freezing mid-swing (the
+            // old flow left WINDUP active until the safety tick expired it).
+            com.crackedgames.craftics.combat.animation.MobAnimations.set(mob,
+                com.crackedgames.craftics.combat.animation.AnimState.RECOIL);
+            enemyTurnState = EnemyTurnState.ATTACKING;
+            enemyTurnDelay = 0;
+        }
     }
 
     private void tickEnemyAttacking() {
