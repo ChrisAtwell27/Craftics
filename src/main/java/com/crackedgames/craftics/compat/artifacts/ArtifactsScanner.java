@@ -42,8 +42,8 @@ public final class ArtifactsScanner implements EquipmentScanner {
         return mods;
     }
 
-    /** Toggle via {@code /craftics force_event artifacts:abandoned_campsite} cycle — off after testing. */
-    private static final boolean DEBUG_LOG_SCAN_RESULT = true;
+    /** Dev-only scan logging — runs every player turn, so keep OFF in releases. */
+    private static final boolean DEBUG_LOG_SCAN_RESULT = false;
 
     /** Stat bonuses + combat effect handler for one equipped artifact id (e.g. "cowboy_hat"). */
     private static void applyArtifact(StatModifiers mods, String id) {

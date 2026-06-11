@@ -48,7 +48,11 @@ public final class AbandonedCampsiteEvent {
 
     /** Register both the AI mapping and the event entry. Idempotent. */
     public static void register() {
-        AIRegistry.register(MIMIC_ENTITY, new MimicAI());
+        // Stateful registration: MimicAI keeps a per-fight tantrum/dash
+        // alternation, so every spawned mimic must get its own instance via
+        // AIRegistry.createFresh — the old plain register() shared one MimicAI
+        // (and its cadence state) across every campsite fight on the server.
+        AIRegistry.registerStateful(MIMIC_ENTITY, MimicAI::createInstance);
         CrafticsAPI.registerEvent(new EventEntry(
             EVENT_ID,
             "Abandoned Campsite",

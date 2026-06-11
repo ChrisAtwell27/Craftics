@@ -250,7 +250,8 @@ public class AIUtils {
         if (remaining <= 0) return null;
 
         GridPos attackPos = approachSteps > 0 ? approachPath.get(approachSteps - 1) : self.getGridPos();
-        java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, attackPos, remaining, 1, self);
+        java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(
+            arena, attackPos, remaining, self.getSize(), self);
         GridPos retreatTarget = null;
         int bestScore = Integer.MIN_VALUE;
         int currentDist = attackPos.manhattanDistance(victimPos);

@@ -97,7 +97,9 @@ public class AIRegistry {
         register("minecraft:hoglin", new HoglinAI());                    // bull rush charge + knockback
         register("minecraft:piglin", new PiglinAI());                    // melee or ranged based on weapon
         register("minecraft:piglin_brute", new VindicatorAI());          // rook-dash charger
-        register("minecraft:blaze", new BlazeAI());                      // medium-range fire attacker
+        // Blaze keeps a per-entity barrage phase machine — stateful factory so
+        // every spawned blaze gets its own copy via createFresh at spawn.
+        registerStateful("minecraft:blaze", BlazeAI::new);               // medium-range fire attacker
         register("minecraft:wither_skeleton", new WitherSkeletonAI());   // wither-strike, patrol, skull throw
 
         // === Trial Chamber mobs ===
@@ -158,10 +160,20 @@ public class AIRegistry {
         STRATEGIES.put(entityTypeId, ai);
     }
 
-    /** Register a stateful AI: a shared lookup instance plus a per-fight factory. */
-    public static void registerBoss(String key, java.util.function.Supplier<EnemyAI> factory) {
+    /**
+     * Register a stateful AI: a shared lookup instance plus a per-fight factory.
+     * Use for ANY AI with mutable per-fight fields (bosses, the artifacts mimic,
+     * blazes) — the spawn path pins a fresh copy on each entity via
+     * {@link #createFresh}, so instance state can't leak across mobs or fights.
+     */
+    public static void registerStateful(String key, java.util.function.Supplier<EnemyAI> factory) {
         BOSS_FACTORIES.put(key, factory);
         STRATEGIES.put(key, factory.get());
+    }
+
+    /** Alias of {@link #registerStateful} kept for the boss-flavored call sites. */
+    public static void registerBoss(String key, java.util.function.Supplier<EnemyAI> factory) {
+        registerStateful(key, factory);
     }
 
     public static EnemyAI get(String entityTypeId) {

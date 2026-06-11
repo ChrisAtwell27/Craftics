@@ -1164,6 +1164,7 @@ public class CombatHudOverlay implements HudRenderCallback {
                 }
             }
             else if (parts[i].startsWith("mv=")) { /* movement style — not a status effect */ }
+            else if (parts[i].startsWith("phase=")) { /* boss phase badge — not a status effect */ }
             else if (parts[i].equals("ally")) { /* ally tag — not a status effect */ }
             else enemyEffects.add(parts[i]);
         }

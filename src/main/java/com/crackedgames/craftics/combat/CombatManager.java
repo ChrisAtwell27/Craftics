@@ -2527,11 +2527,15 @@ public class CombatManager {
                 if (equipSpeedBonus > 0) {
                     ce.setSpeedBonus(equipSpeedBonus);
                 }
-                // Per-entity AI instances for mobs that need turn-to-turn state.
-                // Keyed on entity type (appearance), not aiKey — an EnemyEntry that
-                // pairs a blaze body with a divergent AI is not handled by this path.
-                if ("minecraft:blaze".equals(spawn.entityTypeId())) {
-                    ce.setAiInstance(new com.crackedgames.craftics.combat.ai.BlazeAI());
+                // Per-entity AI instances for mobs whose AI keeps turn-to-turn
+                // state (blaze barrage phases, the artifacts mimic's tantrum/dash
+                // alternation, ...). Generic: any AI registered through
+                // AIRegistry.registerStateful gets a fresh copy per entity here —
+                // the old code special-cased only the blaze, so other stateful
+                // non-boss AIs shared one instance across mobs AND fights.
+                EnemyAI freshStatefulAi = AIRegistry.createFresh(ce.getAiKey());
+                if (freshStatefulAi != null) {
+                    ce.setAiInstance(freshStatefulAi);
                 }
                 // Boss setup: flag as boss and assign biome-specific AI
                 if (isBoss && bossBiomeId != null) {
@@ -10410,6 +10414,19 @@ public class CombatManager {
                 // silently never moved.
                 boolean tookOverTurn = false;
                 for (EnemyAction subAction : ca.actions()) {
+                    // Only ONE movement-driven sub-action may own the turn state
+                    // machine; a second would reset enemyMovePath mid-flight and
+                    // silently discard the first. No current AI builds such a
+                    // composite — this guards the day one does.
+                    boolean isMovementSub = subAction instanceof EnemyAction.Move
+                        || subAction instanceof EnemyAction.MoveAndAttack
+                        || subAction instanceof EnemyAction.Pounce;
+                    if (tookOverTurn && isMovementSub) {
+                        CrafticsMod.LOGGER.warn(
+                            "CompositeAction with multiple movement sub-actions — dropping extra {}",
+                            subAction.getClass().getSimpleName());
+                        continue;
+                    }
                     if (subAction instanceof EnemyAction.Move mv) {
                         if (!mv.path().isEmpty()) {
                             pendingAction = mv;

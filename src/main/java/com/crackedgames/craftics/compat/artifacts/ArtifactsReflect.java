@@ -75,13 +75,29 @@ public final class ArtifactsReflect {
      *
      * @return true if the setDormant call succeeded
      */
-    public static boolean trySetDormant(net.minecraft.entity.Entity entity, boolean dormant) {
-        if (entity == null) return false;
+    // Resolved once — trySetDormant runs for EVERY spawned enemy at combat
+    // start, and the old per-call Class.forName forced a (failing, when
+    // Artifacts is absent) classload attempt on each of them.
+    private static final Class<?> MIMIC_CLASS;
+    private static final Method MIMIC_SET_DORMANT;
+    static {
+        Class<?> cls = null;
+        Method m = null;
         try {
-            Class<?> mimicCls = Class.forName("artifacts.entity.MimicEntity");
-            if (!mimicCls.isInstance(entity)) return false;
-            Method setDormant = mimicCls.getMethod("setDormant", boolean.class);
-            setDormant.invoke(entity, dormant);
+            cls = Class.forName("artifacts.entity.MimicEntity");
+            m = cls.getMethod("setDormant", boolean.class);
+        } catch (Throwable ignored) {
+            // Artifacts absent (or its API changed) — trySetDormant stays a no-op.
+        }
+        MIMIC_CLASS = cls;
+        MIMIC_SET_DORMANT = m;
+    }
+
+    public static boolean trySetDormant(net.minecraft.entity.Entity entity, boolean dormant) {
+        if (entity == null || MIMIC_CLASS == null || MIMIC_SET_DORMANT == null) return false;
+        if (!MIMIC_CLASS.isInstance(entity)) return false;
+        try {
+            MIMIC_SET_DORMANT.invoke(entity, dormant);
             return true;
         } catch (Throwable t) {
             CrafticsMod.LOGGER.debug("[Craftics × Artifacts] setDormant failed: {}", t.toString());

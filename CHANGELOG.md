@@ -2,6 +2,15 @@ Changelog
 
 Unreleased
 
+Bug sweep (core + mod support)
+
+- The Artifacts mimic now keeps its own attack rhythm per fight — all mimics on a server shared one tantrum/dash alternation, so two simultaneous campsite events fed each other's cadence. The fix generalizes the per-fight AI mechanism (AIRegistry.registerStateful), which also covers blazes and any future stateful addon AI
+- Hovering a phase-two boss no longer shows a bogus "phase=2" status effect in the inspect panel
+- Turned off a leftover Artifacts debug log that printed every player's equipped-artifact scan on every single turn, and cached the mimic reflection lookup that previously attempted a class load for every spawned enemy when Artifacts isn't installed
+- The composite-action dispatcher now refuses a second movement sub-action in one composite instead of silently discarding the first move mid-flight (latent footgun, no current ability triggers it)
+- fabric.mod.json now suggests all twelve mods Craftics has integrations for (Creeper Overhaul, Variants & Ventures, Basic Weapons, Copper Age, Pale Garden Backport, More Totems, and both instrument mods were missing), so modpack tools can discover the compat surface
+- The shared hit-and-run helper is size-aware for its retreat scan (defensive; all current users are 1x1)
+
 Combat animations
 
 - Every mob type now picks its attack animation from a style registry: spiders pounce, golems and ravagers slam, wolves and cats dash low, slimes hop and crash, endermen flicker-blink, archers lean into the draw — plus three new styles: goats and camels back up and RAM with real reach, insects and small critters double-JAB, and witches/evokers CHANNEL their throws with raised arms instead of leaning like archers. Addon mods can give their own mobs any of these with one line: CrafticsAPI.registerAttackAnimation("mymod:lava_crab", Style.POUNCE) — unregistered mobs keep the classic lunge

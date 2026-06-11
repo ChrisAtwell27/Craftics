@@ -51,6 +51,14 @@
 		"player-animation-lib": "*",
 		"cardinal-components-api": "*",
 		"artifacts": "*",
-		"golemoverhaul": "*"
+		"golemoverhaul": "*",
+		"creeperoverhaul": "*",
+		"variantsandventures": "*",
+		"basicweapons": "*",
+		"copperagebackport": "*",
+		"palegardenbackport": "*",
+		"moretotems": "*",
+		"genshinstrument": "*",
+		"evenmoreinstruments": "*"
 	}
 }
