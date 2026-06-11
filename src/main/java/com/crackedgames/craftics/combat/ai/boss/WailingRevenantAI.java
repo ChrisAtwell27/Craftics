@@ -81,15 +81,17 @@ public class WailingRevenantAI extends BossAI {
             }
         }
 
-        return new EnemyAction.Idle();
+        // Every slot is cooling or capped — spit a plain fireball at the player
+        // rather than wailing into the void. An artillery boss never just idles.
+        return new EnemyAction.RangedAttack(Math.max(3, self.getAttackPower() / 2), "fire");
     }
 
     private EnemyAction tryBarrage(CombatEntity self, GridArena arena, int maxFireballs) {
         if (isOnCooldown(CD_BARRAGE) || getAliveProjectileCount() >= maxFireballs) return null;
-        setCooldown(CD_BARRAGE, isPhaseTwo() ? 1 : 2);
         int count = isPhaseTwo() ? 5 : 3;
         List<GridPos> spawnPositions = getFireballSpawnPositions(arena, count);
         if (spawnPositions.isEmpty()) return null;
+        setCooldown(CD_BARRAGE, isPhaseTwo() ? 1 : 2); // pay only on success
         List<int[]> directions = new ArrayList<>();
         for (int i = 0; i < spawnPositions.size(); i++) {
             directions.add(new int[]{0, 1}); // fly +Z into the arena
@@ -105,11 +107,11 @@ public class WailingRevenantAI extends BossAI {
 
     private EnemyAction tryRain(CombatEntity self, GridArena arena) {
         if (isOnCooldown(CD_RAIN)) return null;
-        setCooldown(CD_RAIN, isPhaseTwo() ? 2 : 3);
         int playableArea = arena.getWidth() * (arena.getHeight() - 1);
         int tileCount = Math.max(1, playableArea / 2);
         List<GridPos> rainTargets = getRandomPlayableTiles(arena, tileCount);
         if (rainTargets.isEmpty()) return null;
+        setCooldown(CD_RAIN, isPhaseTwo() ? 2 : 3);
         List<EnemyAction> strikes = new ArrayList<>();
         for (GridPos tile : rainTargets) {
             strikes.add(new EnemyAction.AreaAttack(tile, 0, isPhaseTwo() ? 7 : 5, "raining_fireball"));
@@ -123,10 +125,10 @@ public class WailingRevenantAI extends BossAI {
 
     private EnemyAction tryMagma(CombatEntity self, GridArena arena) {
         if (isOnCooldown(CD_MAGMA)) return null;
-        setCooldown(CD_MAGMA, isPhaseTwo() ? 2 : 3);
         int rowCount = isPhaseTwo() ? 3 : 1;
         List<GridPos> magmaTiles = getRandomRows(arena, rowCount);
         if (magmaTiles.isEmpty()) return null;
+        setCooldown(CD_MAGMA, isPhaseTwo() ? 2 : 3);
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
             magmaTiles, 1, new EnemyAction.CreateTerrain(magmaTiles, TileType.FIRE, 2), 0xFFFF6600
@@ -136,10 +138,10 @@ public class WailingRevenantAI extends BossAI {
 
     private EnemyAction trySummon(CombatEntity self, GridArena arena, int maxSkeletons) {
         if (isOnCooldown(CD_SUMMON) || getAliveMinionCount() >= maxSkeletons) return null;
-        setCooldown(CD_SUMMON, isPhaseTwo() ? 3 : 4);
         int count = isPhaseTwo() ? 3 : 2;
         List<GridPos> spawnPositions = findSummonPositions(arena, count);
         if (spawnPositions.isEmpty()) return null;
+        setCooldown(CD_SUMMON, isPhaseTwo() ? 3 : 4);
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
             spawnPositions, 1,

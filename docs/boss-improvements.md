@@ -76,7 +76,85 @@ tiles as valid spawn tiles (they're "walkable"). Minion summons now prefer
 tiles with no step damage and only fall back to hazards when the arena offers
 nothing else (e.g. a late-fight Molten King floor).
 
-## 6. Manual test notes
+## 6. Nether & End boss pass (round 2)
+
+A per-boss audit of the Nether and End bosses plus the remaining End mobs,
+fixing concrete logic bugs:
+
+### 6.1 Telegraphs and abilities that didn't do what they claimed
+
+- **Chorus Mind Resonance Cascade hit nothing.** The warning marked every
+  plant-adjacent tile, but the resolve was a radius-0 strike on the *boss's
+  own tile*. The resolve now pulses exactly the warned tiles. Also: phase-2
+  auto-spread plants only ever grew the AI's private list — invisible,
+  unhittable bookkeeping — and now grow as real chorus obstacle tiles; the
+  plant ledger re-validates against the arena each turn; the free teleport
+  lands on a footprint-valid tile *beside* a plant (not on the obstacle), and
+  abilities are now ranged from the post-teleport position (they used the
+  stale pre-teleport tile).
+- **Shulker Architect's Bullet Storm bullet count was flavor text.** It built
+  the 4 (P2: 6) target list, threw it away, and fired one instant
+  untelegraphed AoE. Now a telegraphed volley: marked tiles resolve next turn
+  as one bullet each, with a half-power plink while it charges. Teleport Link
+  also teleported the 2×2 boss squarely onto its own still-living turret —
+  it now lands footprint-validated beside the farthest turret.
+- **Void Herald's phase-2 auto-collapse silently never happened** whenever
+  another telegraph fired the same turn: it set its warning and fell through,
+  and the later ability overwrote `pendingWarning`. It now returns (advancing
+  while the cracks spread). Blink Assault re-rolled its landing between
+  checking and using it, and ignored the boss's 2×2 footprint — both fixed.
+- **Molten King's eruption could teleport onto the player.** When no landing
+  tile validated (anchor-only checks that ignored the 4×4/2×2 footprint), the
+  fallback was the player's own tile. Landings are now footprint-validated,
+  exclude the player, and a failed leap no longer burns the cooldown.
+- **Wither's decay-aura cooldown was dead code** (set every turn, never
+  checked — the aura is genuinely passive and now documented as such). Its
+  pulse-and-approach composite also only works now that composite Move
+  sub-actions execute (round-1 dispatcher fix).
+
+### 6.2 Cooldowns charged for nothing
+
+Bastion Brute (summon, charge), Wailing Revenant (all four ability slots),
+Void Walker (mirror image, phase strike, rift), Void Herald (endermites,
+collapse), Shulker Architect (turret, link) and the Wither (skulls, summon,
+charge) all paid their cooldown *before* checking whether the ability could
+actually fire — a full-arena or blocked-lane failure locked the ability out
+for its whole cooldown anyway. All of them now pay on success only.
+
+### 6.3 Other fixes
+
+- **Bastion Brute's gore charge** stopped only at OBSTACLE/VOID, so it could
+  plow into deep water and end on a tile it can't stand on; it now stops at
+  anything unwalkable (fire/lava remain charge-through).
+- **Wailing Revenant never idles**: when every slot is cooling or capped, the
+  stationary artillery boss spits a plain half-power fireball instead of
+  wailing at nothing.
+- **Phantom** (End roster): its stacking miss-streak lived on the shared AI
+  instance — every phantom on the server pooled one streak across fights.
+  Per-entity now; its circling reposition also no longer lands on the
+  player's or an ally's tile.
+- **DragonAI** audited clean — one misleading field renamed
+  (`lastSwoopHorizontal` → `lastWaveHorizontal`; it alternates breath-wave
+  orientation, unrelated to the swoop axis). Shulker turret and End Crystal
+  AIs are stateless and were already correct.
+
+### 6.4 Manual test notes (round 2)
+
+1. Chorus Mind with 3+ plants: the cascade warning tiles take damage on
+   resolve; in phase two, new chorus obstacles visibly grow each turn and the
+   boss blinks beside them, never onto them.
+2. Shulker Architect: bullet storm marks 4 (P2: 6) tiles that each get struck
+   next turn; melee the boss next to a turret network — it blinks beside its
+   farthest turret, never on top of one.
+3. Void Herald phase two: platforms keep collapsing every other turn even
+   while gales/lightning telegraphs are active.
+4. Molten King at any size: eruptions never land it overlapping a wall, a mob,
+   or you.
+5. Box a Wailing Revenant's abilities (kill its skeletons, eat the rain):
+   it still throws a weak fireball every turn rather than idling.
+6. Two phantoms circling: each builds its own speed streak.
+
+## 7. Manual test notes
 
 1. Fight the same boss twice (die or win, then rematch): the second fight
    starts in phase one with fresh cooldowns; the Broodmother lays fresh egg

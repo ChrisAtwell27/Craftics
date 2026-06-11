@@ -44,7 +44,8 @@ public class DragonAI extends BossAI {
     private State state = State.ATTACKING;
     private int attackTurns = 0;
     private int perchTurnsUsed = 0;
-    private boolean lastSwoopHorizontal = false;
+    /** Alternates breath-WAVE orientation (independent of the swoop's turn-parity axis). */
+    private boolean lastWaveHorizontal = false;
 
     public State getState() { return state; }
     public boolean isDragonPhaseTwo() { return isPhaseTwo(); }
@@ -200,8 +201,8 @@ public class DragonAI extends BossAI {
         int fireDuration = isPhaseTwo() ? 5 : 3;
 
         // Alternate horizontal and vertical waves
-        boolean horizontal = !lastSwoopHorizontal;
-        lastSwoopHorizontal = horizontal;
+        boolean horizontal = !lastWaveHorizontal;
+        lastWaveHorizontal = horizontal;
 
         int baseOffset, startPos, direction;
         if (horizontal) {

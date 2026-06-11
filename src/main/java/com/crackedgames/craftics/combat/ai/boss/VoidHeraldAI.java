@@ -41,25 +41,29 @@ public class VoidHeraldAI extends BossAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Phase 2: Auto platform collapse every 2 turns
+        // Phase 2: Auto platform collapse every 2 turns. This MUST return after
+        // setting its warning — the old code fell through to the next ability,
+        // and whichever telegraph fired afterwards overwrote pendingWarning, so
+        // the collapse silently never resolved. Advance while the cracks spread
+        // so the telegraph turn isn't a free turn for the player.
         if (isPhaseTwo() && getTurnCounter() % 2 == 0 && !isOnCooldown(CD_COLLAPSE)) {
-            setCooldown(CD_COLLAPSE, 1);
             List<GridPos> collapseTiles = findCollapseTiles(arena, playerPos);
             if (!collapseTiles.isEmpty()) {
+                setCooldown(CD_COLLAPSE, 1);
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
                     collapseTiles, 1,
                     new EnemyAction.CreateTerrain(collapseTiles, TileType.VOID, 0),
                     0xFF440088);
-                // Continue with another action via composite
+                return advanceWhileCharging(self, arena, playerPos);
             }
         }
 
         // Phase 2: Summon Endermites every 3 turns
         if (isPhaseTwo() && !isOnCooldown(CD_MITES) && getTurnCounter() % 3 == 0) {
-            setCooldown(CD_MITES, 2);
             List<GridPos> mitePositions = findSummonPositionsNear(arena, playerPos, 1, 2);
             if (!mitePositions.isEmpty()) {
+                setCooldown(CD_MITES, 2);
                 return new EnemyAction.SummonMinions(
                     "minecraft:endermite", mitePositions.size(), mitePositions, 2, 2, 0);
             }
@@ -109,9 +113,9 @@ public class VoidHeraldAI extends BossAI {
 
         // Platform Collapse — destroy floor
         if (!isOnCooldown(CD_COLLAPSE)) {
-            setCooldown(CD_COLLAPSE, 4);
             List<GridPos> collapseTiles = findCollapseTiles(arena, playerPos);
             if (!collapseTiles.isEmpty()) {
+                setCooldown(CD_COLLAPSE, 4);
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
                     collapseTiles, 1,
@@ -121,19 +125,15 @@ public class VoidHeraldAI extends BossAI {
             }
         }
 
-        // Blink Assault — teleport + triple attack
+        // Blink Assault — teleport beside the player and slam the area. The
+        // landing must fit the boss's whole 2×2 footprint and not cover the
+        // player; the old code validated single tiles only, and its second
+        // (re-shuffled) position lookup could land somewhere it never checked.
         if (!isOnCooldown(CD_BLINK) && dist >= 2) {
+            GridPos landNear = findBlinkLanding(arena, playerPos, self);
             setCooldown(CD_BLINK, 2);
-            List<GridPos> targets = new ArrayList<>();
-            targets.add(playerPos);
-            for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
-                GridPos adj = new GridPos(playerPos.x() + d[0], playerPos.z() + d[1]);
-                if (arena.isInBounds(adj) && targets.size() < 3) targets.add(adj);
-            }
-            GridPos landNear = findSummonPositionsNear(arena, playerPos, 1, 1).isEmpty()
-                ? myPos : findSummonPositionsNear(arena, playerPos, 1, 1).get(0);
             return new EnemyAction.CompositeAction(List.of(
-                new EnemyAction.Teleport(landNear),
+                new EnemyAction.Teleport(landNear != null ? landNear : myPos),
                 new EnemyAction.AreaAttack(playerPos, 1, self.getAttackPower(), "blink_assault")
             ));
         }
@@ -143,6 +143,23 @@ public class VoidHeraldAI extends BossAI {
         }
 
         return meleeOrApproach(self, arena, playerPos, 0);
+    }
+
+    /** A blink anchor within 2 tiles of the player whose 2×2 footprint fits and doesn't cover the player. */
+    private GridPos findBlinkLanding(GridArena arena, GridPos playerPos, CombatEntity self) {
+        int size = self.getSize();
+        List<GridPos> candidates = new ArrayList<>();
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                GridPos p = new GridPos(playerPos.x() + dx, playerPos.z() + dz);
+                if (!com.crackedgames.craftics.combat.ai.AIUtils.canPlaceFootprint(arena, p, size)) continue;
+                if (CombatEntity.minDistanceFromSizedEntity(p, size, playerPos) != 1) continue;
+                candidates.add(p);
+            }
+        }
+        if (candidates.isEmpty()) return null;
+        Collections.shuffle(candidates);
+        return candidates.get(0);
     }
 
     private List<GridPos> findCollapseTiles(GridArena arena, GridPos nearPlayer) {

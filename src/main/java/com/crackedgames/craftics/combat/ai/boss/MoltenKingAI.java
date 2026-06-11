@@ -105,13 +105,15 @@ public class MoltenKingAI extends BossAI {
             }
         }
 
-        // Magma Eruption — leap to a valid tile near player and explode
+        // Magma Eruption — leap to a valid tile near player and explode.
+        // The landing must fit the boss's whole footprint (gen 0 is 4×4); if no
+        // legal landing exists the ability is skipped WITHOUT burning the
+        // cooldown — the old code paid the cooldown up front and, worse, fell
+        // back to teleporting straight onto the player's tile.
         if (!isOnCooldown(CD_ERUPTION) && dist >= 2) {
+            GridPos landingPos = findEruptionLanding(arena, playerPos, self);
+            if (landingPos != null) {
             setCooldown(CD_ERUPTION, isPhaseTwo() ? 2 : 3);
-            GridPos landingPos = findEruptionLanding(arena, playerPos, myPos);
-            if (landingPos == null) {
-                landingPos = playerPos;
-            }
             List<GridPos> aoeArea = getAreaTiles(arena, landingPos, 1);
             // Fire ring = tiles at radius 2 (outer ring of 5×5 minus inner 3×3)
             List<GridPos> fireRing = new ArrayList<>();
@@ -132,6 +134,7 @@ public class MoltenKingAI extends BossAI {
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                 aoeArea, 1, eruption, 0xFFFF4400);
             return new EnemyAction.Idle();
+            }
         }
 
         // Melee attack if adjacent — molten slam hits hard and pushes the player
@@ -158,25 +161,29 @@ public class MoltenKingAI extends BossAI {
         return tiles;
     }
 
-    private GridPos findEruptionLanding(GridArena arena, GridPos playerPos, GridPos fallback) {
+    /**
+     * A landing anchor near the player whose ENTIRE boss footprint is in
+     * bounds, walkable and unoccupied — the old anchor-only check let a 4×4
+     * gen-0 king clip three quarters of its body into walls and mobs. The
+     * landing must also not cover the player's tile. Returns null when no
+     * legal landing exists (caller skips the eruption).
+     */
+    private GridPos findEruptionLanding(GridArena arena, GridPos playerPos, CombatEntity self) {
+        int size = self.getSize();
         List<GridPos> candidates = new ArrayList<>();
-        for (int radius = 1; radius <= 2; radius++) {
+        for (int radius = 1; radius <= 2 + size; radius++) {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
                     GridPos p = new GridPos(playerPos.x() + dx, playerPos.z() + dz);
-                    if (!arena.isInBounds(p)) continue;
-                    if (arena.isOccupied(p)) continue;
-                    if (arena.getTile(p) == null || !arena.getTile(p).isWalkable()) continue;
+                    if (!com.crackedgames.craftics.combat.ai.AIUtils.canPlaceFootprint(arena, p, size)) continue;
+                    if (CombatEntity.minDistanceFromSizedEntity(p, size, playerPos) == 0) continue;
                     candidates.add(p);
                 }
             }
             if (!candidates.isEmpty()) break;
         }
-        if (candidates.isEmpty()) {
-            if (arena.isInBounds(fallback) && !arena.isOccupied(fallback)) return fallback;
-            return null;
-        }
+        if (candidates.isEmpty()) return null;
         java.util.Collections.shuffle(candidates);
         return candidates.get(0);
     }

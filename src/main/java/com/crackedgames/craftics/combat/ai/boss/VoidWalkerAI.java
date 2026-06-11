@@ -99,10 +99,10 @@ public class VoidWalkerAI extends BossAI {
         // a fresh set of decoys. High priority so it actually happens (was buried at
         // the bottom previously and almost never triggered).
         if (!isClone && !isOnCooldown(CD_MIRROR) && getAliveMinionCount() == 0) {
-            setCooldown(CD_MIRROR, 5);
             int count = isPhaseTwo() ? 3 : 2;
             List<GridPos> clonePositions = findSummonPositionsNear(arena, effectivePos, 4, count);
             if (!clonePositions.isEmpty()) {
+                setCooldown(CD_MIRROR, 5); // pay only on a successful summon
                 // Clones are WEAK decoys (8 HP / 3 ATK / 0 DEF) that take double damage
                 // (the 2x multiplier is applied in CombatManager.spawnBossMinions). They
                 // are NOT scaled to the boss's live stats.
@@ -154,9 +154,9 @@ public class VoidWalkerAI extends BossAI {
         // Phase Strike — teleport behind and attack. Now gated so it does NOT fire every
         // cycle; the beam/burst will eat most of the open slots.
         if (!isOnCooldown(CD_STRIKE) && dist >= 2) {
-            setCooldown(CD_STRIKE, 3);
             GridPos behind = findTileBehindPlayer(arena, playerPos, effectivePos);
             if (behind != null) {
+                setCooldown(CD_STRIKE, 3);
                 if (isPhaseTwo()) {
                     // Double phase strike
                     GridPos secondPos = findTileBehindPlayer(arena, playerPos, behind);
@@ -184,10 +184,10 @@ public class VoidWalkerAI extends BossAI {
         // to them, and the other gives a meaningful reposition if they step through.
         // Clones cannot place rifts — that's a real-boss-only ability.
         if (!isClone && !isOnCooldown(CD_RIFT)) {
-            setCooldown(CD_RIFT, 3);
             GridPos near = findRiftTileNear(arena, playerPos, effectivePos, 1, 3);
             GridPos far = findRiftTileFar(arena, playerPos, effectivePos, near, 5);
             if (near != null && far != null) {
+                setCooldown(CD_RIFT, 3);
                 return new EnemyAction.BossAbility("void_rift",
                     new EnemyAction.Idle(), // Rifts are registered by CombatManager on warning resolve
                     List.of(near, far));

@@ -13,10 +13,11 @@ import java.util.List;
  * Entity: Shulker | 50HP / 9ATK / 4DEF / Range 5 / Speed 1 | Size 2×2
  *
  * Abilities:
- * - Bullet Storm: 4 (P2: 6) homing bullets, 3 dmg each + Levitation (random 1-tile move).
+ * - Bullet Storm: telegraphed volley — 4 (P2: 6) marked tiles around the player,
+ *   3 dmg each on resolve, with a half-power plink while it charges.
  * - Deploy Turret: Stationary shulker turret (6HP, 1 bullet/turn range 4, 2 dmg). Max 3 (P2: 5).
  * - Fortify Shell: 80% damage reduction 1 turn. P2: also reflects 50% damage.
- * - Teleport Link: Teleport to active turret position (destroys that turret).
+ * - Teleport Link: Blink to a tile beside the turret farthest from the player.
  *
  * Phase 2 — "Defense Protocol": 6 bullets, turret levitation bullets, reflect shell,
  * turret limit 5, auto-deploy every 3 turns.
@@ -62,12 +63,13 @@ public class ShulkerArchitectAI extends BossAI {
         }
         wasHitLastTurn = false;
 
-        // Teleport Link — escape melee range
+        // Teleport Link — escape melee range by blinking to the network. The
+        // boss lands BESIDE the turret farthest from the player (footprint-
+        // validated for its 2×2 body) — the old code teleported squarely onto
+        // the still-living turret's tile, clipping into its own minion.
         if (!isOnCooldown(CD_LINK) && dist <= 2 && !turretPositions.isEmpty()) {
-            setCooldown(CD_LINK, 2);
-            // Find farthest turret from player
             GridPos farthest = null;
-            int maxDist = 0;
+            int maxDist = -1;
             for (GridPos tp : turretPositions) {
                 int d = tp.manhattanDistance(playerPos);
                 if (d > maxDist) {
@@ -75,35 +77,47 @@ public class ShulkerArchitectAI extends BossAI {
                     farthest = tp;
                 }
             }
-            if (farthest != null) {
-                turretPositions.remove(farthest);
-                return new EnemyAction.Teleport(farthest);
+            GridPos landing = farthest != null ? findLandingNear(arena, farthest, self) : null;
+            if (landing != null) {
+                setCooldown(CD_LINK, 2);
+                return new EnemyAction.Teleport(landing);
             }
         }
 
         // Deploy Turret
         if (!isOnCooldown(CD_TURRET) && turretPositions.size() < turretCap) {
-            setCooldown(CD_TURRET, 2);
             List<GridPos> pos = findSummonPositions(arena, 1);
             if (!pos.isEmpty()) {
+                setCooldown(CD_TURRET, 2);
                 turretPositions.add(pos.get(0));
                 return new EnemyAction.SummonMinions(
                     "minecraft:shulker", 1, pos, 6, 2, 0);
             }
         }
 
-        // Bullet Storm — main ranged attack
+        // Bullet Storm — a telegraphed volley: one bullet per marked tile
+        // (player's tile + surrounding spread, 4 in P1 / 6 in P2), resolving
+        // next turn. The old version built the target list, threw it away, and
+        // fired an instant untelegraphed AoE — the bullet count did nothing
+        // and phase two's extra bullets were pure flavor text.
         if (!isOnCooldown(CD_BULLET) && dist <= 5) {
             setCooldown(CD_BULLET, 2);
             int bulletCount = isPhaseTwo() ? 6 : 4;
-            // Target player + nearby tiles
             List<GridPos> targets = new ArrayList<>();
             targets.add(playerPos);
             for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1},{1,1},{-1,-1}}) {
                 GridPos p = new GridPos(playerPos.x() + d[0], playerPos.z() + d[1]);
                 if (arena.isInBounds(p) && targets.size() < bulletCount) targets.add(p);
             }
-            return new EnemyAction.AreaAttack(playerPos, 1, 3, "bullet_storm");
+            List<EnemyAction> bullets = new ArrayList<>();
+            for (GridPos t : targets) {
+                bullets.add(new EnemyAction.AreaAttack(t, 0, 3, "bullet_storm"));
+            }
+            pendingWarning = new BossWarning(
+                self.getEntityId(), BossWarning.WarningType.GATHERING_PARTICLES,
+                targets, 1, new EnemyAction.CompositeAction(bullets), 0xFFCC88FF);
+            // Plink a normal bullet while the volley charges — no free turn.
+            return new EnemyAction.RangedAttack(Math.max(2, self.getAttackPower() / 2), "shulker_bullet");
         }
 
         // Ranged attack if in range
@@ -112,6 +126,20 @@ public class ShulkerArchitectAI extends BossAI {
         }
 
         return meleeOrApproach(self, arena, playerPos, 0);
+    }
+
+    /** A footprint-valid anchor adjacent to {@code turret} for the 2×2 boss; null if none. */
+    private GridPos findLandingNear(GridArena arena, GridPos turret, CombatEntity self) {
+        int size = self.getSize();
+        for (int dx = -size; dx <= 1; dx++) {
+            for (int dz = -size; dz <= 1; dz++) {
+                GridPos p = new GridPos(turret.x() + dx, turret.z() + dz);
+                if (com.crackedgames.craftics.combat.ai.AIUtils.canPlaceFootprint(arena, p, size)) {
+                    return p;
+                }
+            }
+        }
+        return null;
     }
 
     /** Called by CombatManager when the boss takes damage — primes Fortify Shell */

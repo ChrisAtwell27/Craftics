@@ -41,11 +41,13 @@ public class BastionBruteAI extends BossAI {
         int dist = self.minDistanceTo(playerPos);
         int atk = self.getAttackPower() + (isPhaseTwo() ? 4 : 0);
 
-        // Summon Pack — repeatable on cooldown, only when no minions alive
+        // Summon Pack — repeatable on cooldown, only when no minions alive.
+        // The cooldown is paid only on a successful summon so a briefly-full
+        // arena doesn't lock the ability out for 4 turns over nothing.
         if (!isOnCooldown(CD_SUMMON) && getAliveMinionCount() == 0 && dist >= 2) {
-            setCooldown(CD_SUMMON, 4);
             List<GridPos> spawnPositions = findSummonPositions(arena, 2);
             if (!spawnPositions.isEmpty()) {
+                setCooldown(CD_SUMMON, 4);
                 return new EnemyAction.SummonMinions(
                     "minecraft:piglin", spawnPositions.size(), spawnPositions, 8, 4, 0);
             }
@@ -55,7 +57,6 @@ public class BastionBruteAI extends BossAI {
         // Uses Swoop to physically move the boss along the path.
         // In multiplayer, chains through multiple players.
         if (!isOnCooldown(CD_CHARGE) && dist >= 3) {
-            setCooldown(CD_CHARGE, 3);
             List<GridPos> allPlayers = arena.getAllPlayerGridPositions();
             List<GridPos> chargePath;
             if (allPlayers.size() > 1) {
@@ -65,6 +66,7 @@ public class BastionBruteAI extends BossAI {
                 chargePath = buildChargePath(arena, myPos, dir[0], dir[1], dist - 1);
             }
             if (!chargePath.isEmpty()) {
+                setCooldown(CD_CHARGE, 3);
                 EnemyAction chargeAction;
                 if (isPhaseTwo()) {
                     // Gore Charge + fire trail in Phase 2
@@ -86,7 +88,6 @@ public class BastionBruteAI extends BossAI {
         if (!isOnCooldown(CD_RAMPAGE) && dist <= (isPhaseTwo() ? 2 : 1)) {
             setCooldown(CD_RAMPAGE, 2);
             int radius = isPhaseTwo() ? 2 : 1;
-            List<GridPos> rampageTiles = getAreaTiles(arena, myPos, radius);
             return new EnemyAction.AreaAttack(myPos, radius, atk, "rampage");
         }
 
@@ -165,8 +166,11 @@ public class BastionBruteAI extends BossAI {
             GridPos next = new GridPos(current.x() + dx, current.z() + dz);
             if (!arena.isInBounds(next)) break;
             var tile = arena.getTile(next);
-            if (tile != null && tile.getType() == TileType.OBSTACLE) break;
-            if (tile != null && tile.getType() == TileType.VOID) break;
+            // Stop at anything un-walkable — the old OBSTACLE/VOID-only check
+            // let the charge plow into deep water and end the boss on a tile
+            // it can't stand on. (FIRE/LAVA are walkable, so charging through
+            // flames still works — it's hazard-immune anyway.)
+            if (tile == null || !tile.isWalkable()) break;
             path.add(next);
             current = next;
         }

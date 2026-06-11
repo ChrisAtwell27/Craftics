@@ -2,6 +2,16 @@ Changelog
 
 Unreleased
 
+Nether and End boss fixes
+
+- Chorus Mind's Resonance Cascade actually hits now — the old resolve struck the boss's own tile instead of the warned plant-adjacent tiles. Its phase-two plant spread grows real chorus obstacles (it used to grow an invisible bookkeeping list), the boss blinks beside plants instead of standing on them, and its abilities aim from where it lands rather than where it stood before teleporting
+- Shulker Architect's Bullet Storm is a real telegraphed volley — the advertised bullet count used to be discarded in favor of one untelegraphed blast — and its Teleport Link no longer drops the boss on top of its own turret
+- The Void Herald's phase-two platform collapses were silently cancelled whenever another telegraph fired the same turn; they resolve reliably now, and its blink assault respects its 2x2 body
+- The Molten King can no longer teleport-erupt directly onto your tile (or clip its 4x4 body into walls) when the arena is crowded, and a blocked leap no longer wastes the ability's cooldown
+- Across seven bosses, abilities no longer burn their cooldown when they fail to find room to fire — a crowded arena used to lock summons, charges, rifts and collapses out for the full cooldown with nothing to show for it
+- The Bastion Brute's gore charge stops at deep water instead of ending its run somewhere it can't stand; the Wailing Revenant throws a weak fireball instead of idling when everything is on cooldown; the Wither's dead decay-aura cooldown bookkeeping is gone (the aura is genuinely passive)
+- Phantoms each build their own dive-speed streak — all phantoms on the server used to share one — and no longer park themselves on top of you or your pets while circling
+
 Nether AI improvements
 
 - Zombified piglin pack aggro no longer outlives the fight: the old flag was global and never reset, so hitting one zombified piglin made every zombified piglin in every later fight on the server spawn already hostile. The pack now riles per fight — hit one and all its packmates in that arena turn on you, including when the victim died to the first hit — and your own allied piglins no longer feed the enemy pack's damage bonus

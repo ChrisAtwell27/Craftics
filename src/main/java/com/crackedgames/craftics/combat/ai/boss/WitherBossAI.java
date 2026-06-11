@@ -33,7 +33,6 @@ public class WitherBossAI extends BossAI {
     private static final String CD_SKULLS = "skull_barrage";
     private static final String CD_SUMMON = "summon_skeletons";
     private static final String CD_CHARGE = "charge";
-    private static final String CD_DECAY = "decay_aura";
 
     private static final int MAX_SKULLS_P1 = 6;
     private static final int MAX_SKULLS_P2 = 10;
@@ -63,19 +62,18 @@ public class WitherBossAI extends BossAI {
         int maxSkulls = isPhaseTwo() ? MAX_SKULLS_P2 : MAX_SKULLS_P1;
         int maxSkeletons = isPhaseTwo() ? MAX_SKELETONS_P2 : MAX_SKELETONS_P1;
 
-        // === Decay Aura (passive, every turn) ===
-        if (!isOnCooldown(CD_DECAY)) {
-            setCooldown(CD_DECAY, 1); // refreshes every turn
-        }
+        // (Decay Aura is truly passive — it fires unconditionally at the bottom
+        // of this method every turn. It used to set a cooldown here that nothing
+        // ever checked; that dead code is gone.)
 
         // === Wither Skull Barrage (every 2 turns) — spawn projectile entities ===
         if (!isOnCooldown(CD_SKULLS) && getAliveProjectileCount() < maxSkulls) {
-            setCooldown(CD_SKULLS, 2);
             int skullCount = isPhaseTwo() ? 5 : 3;
             int[] dir = getDirectionToward(myPos, playerPos);
             List<GridPos> skullSpawnPositions = getProjectileSpawnPositions(arena, myPos, getGridSize(), playerPos, skullCount);
 
             if (!skullSpawnPositions.isEmpty()) {
+                setCooldown(CD_SKULLS, 2); // pay only on a successful barrage
                 List<int[]> directions = new ArrayList<>();
                 for (int i = 0; i < skullSpawnPositions.size(); i++) {
                     directions.add(new int[]{dir[0], dir[1]});
@@ -101,10 +99,10 @@ public class WitherBossAI extends BossAI {
 
         // === Summon Wither Skeletons (every 4 turns) ===
         if (!isOnCooldown(CD_SUMMON) && getAliveMinionCount() < maxSkeletons) {
-            setCooldown(CD_SUMMON, 4);
             int summonCount = isPhaseTwo() ? 3 : 2;
             List<GridPos> summonPositions = findSummonPositions(arena, summonCount);
             if (!summonPositions.isEmpty()) {
+                setCooldown(CD_SUMMON, 4);
                 EnemyAction summon = new EnemyAction.SummonMinions(
                     "minecraft:wither_skeleton", summonPositions.size(), summonPositions,
                     10, 5, 1
@@ -119,10 +117,10 @@ public class WitherBossAI extends BossAI {
 
         // === Charge (when player is at range 3+) ===
         if (!isOnCooldown(CD_CHARGE) && dist >= 3) {
-            setCooldown(CD_CHARGE, 3);
             int[] dir = getDirectionToward(myPos, playerPos);
             List<GridPos> chargePath = getChargePath(arena, myPos, dir[0], dir[1], 4);
             if (!chargePath.isEmpty()) {
+                setCooldown(CD_CHARGE, 3);
                 List<EnemyAction> chargeActions = new ArrayList<>();
                 chargeActions.add(new EnemyAction.Swoop(chargePath, self.getAttackPower() + 3));
                 // In Phase 2, charge leaves a brief fire trail. Two fairness guards

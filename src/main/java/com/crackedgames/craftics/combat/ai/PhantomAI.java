@@ -11,29 +11,31 @@ import java.util.List;
  * Phantom AI: Aerial dive bomber with stacking speed.
  * - SWOOP: flies in a straight line, damages player if in path, flies over obstacles
  * - CIRCLING: if can't line up a swoop, repositions to align (never wanders aimlessly)
- * - STACKING SPEED: +1 speed each turn it doesn't hit the player (resets on hit)
- *   This makes phantoms increasingly dangerous the longer they circle
+ * - STACKING SPEED: +1 speed each turn it doesn't hit the player (resets on hit).
+ *   The streak lives in the entity's AI memory — the old instance field sat on
+ *   the shared AI object, so every phantom on the server pooled one streak.
  * - Base speed 4
  */
 public class PhantomAI implements EnemyAI {
-    private int missStreak = 0; // turns without hitting — adds to swoop range
+    private static final String MISS_STREAK = "phantom_miss_streak";
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
+        int missStreak = self.getAiMemory(MISS_STREAK, 0);
         int swoopRange = self.getMoveSpeed() + missStreak; // stacking speed
 
         // Try to swoop through the player
         for (int[] dir : new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
             List<GridPos> swoopPath = buildSwoopPath(arena, myPos, dir[0], dir[1], swoopRange);
             if (swoopPathHitsPlayer(swoopPath, playerPos) && !swoopPath.isEmpty()) {
-                missStreak = 0; // reset on hit
+                self.setAiMemory(MISS_STREAK, 0); // reset on hit
                 return new EnemyAction.Swoop(swoopPath, self.getAttackPower());
             }
         }
 
         // Missed — increment speed stack
-        missStreak++;
+        self.setAiMemory(MISS_STREAK, missStreak + 1);
 
         // Can't hit player from here — reposition to align for next swoop
         GridPos alignTarget = findAlignmentTarget(arena, myPos, playerPos, swoopRange);
@@ -76,7 +78,9 @@ public class PhantomAI implements EnemyAI {
                 if (dx == 0 && dz == 0) continue;
 
                 GridPos candidate = new GridPos(self.x() + dx, self.z() + dz);
-                if (!arena.isInBounds(candidate) || arena.isEnemyOccupied(candidate)) continue;
+                // isOccupied, not isEnemyOccupied — the old check let the
+                // phantom park itself on the player's or an ally's tile.
+                if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
 
                 // Check if this position can swoop through the player
                 boolean canSwoop = (candidate.x() == playerPos.x() || candidate.z() == playerPos.z());

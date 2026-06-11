@@ -1,6 +1,7 @@
 package com.crackedgames.craftics.combat.ai.boss;
 
 import com.crackedgames.craftics.combat.CombatEntity;
+import com.crackedgames.craftics.combat.ai.AIUtils;
 import com.crackedgames.craftics.combat.ai.EnemyAction;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
@@ -15,15 +16,23 @@ import java.util.List;
  * Entity: Enderman | 60HP / 12ATK / 3DEF / Speed 2 (+ chorus teleport) | Size 2×2
  *
  * Abilities:
- * - Chorus Bloom: Grow chorus plant obstacles on 4-5 tiles. Boss teleports to any plant as free action.
- *   Plants: 4HP, destructible. P2: plants auto-spread 1/turn.
+ * - Chorus Bloom: Grow chorus plant obstacles on 4-5 tiles. The boss teleports
+ *   beside its plants as a free action (footprint-validated — it doesn't stand
+ *   ON the obstacle).
  * - Entangle: 2×2 (P2: 3×3) root area. Immobilize 1 turn + 4 dmg.
  * - Chorus Bomb: Range 4, 2×2 AoE 5 dmg + random teleport on hit. P2: teleport toward boss.
- * - Resonance Cascade: Every plant pulses 3 dmg to all adjacent tiles. More plants = more damage.
+ * - Resonance Cascade: every tile beside a plant takes a 3 dmg pulse — the
+ *   resolve strikes exactly the tiles the warning marked.
  *   P2: auto every 2 turns.
  *
- * Phase 2 — "Overgrowth": Auto-spread plants, auto resonance every 2 turns,
- * entangle 3×3, boss teleports to random plant every turn start, chorus bomb pulls toward boss.
+ * Phase 2 — "Overgrowth": plants auto-spread (REAL obstacle tiles now — the old
+ * spread only grew the AI's private list, invisible and unhittable), auto
+ * resonance every 2 turns, entangle 3×3, plant-side teleport every turn start,
+ * chorus bomb pulls toward boss.
+ *
+ * The plant ledger re-validates against the arena every turn (a "plant" only
+ * counts while its tile is still an obstacle), since CombatManager has no hook
+ * to report destroyed or overwritten terrain back to this AI.
  */
 public class ChorusMindAI extends BossAI {
     private static final String CD_BLOOM = "chorus_bloom";
@@ -41,9 +50,17 @@ public class ChorusMindAI extends BossAI {
     @Override
     protected EnemyAction chooseAbility(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
-        int dist = self.minDistanceTo(playerPos);
 
-        // Phase 2: Auto-spread plants
+        // Keep the ledger honest: a plant only counts while its tile is still
+        // an obstacle.
+        chorusPlants.removeIf(p -> {
+            var tile = arena.getTile(p);
+            return tile == null || tile.getType() != TileType.OBSTACLE;
+        });
+
+        List<EnemyAction> turnActions = new ArrayList<>();
+
+        // Phase 2: Auto-spread plants — as real obstacle terrain.
         if (isPhaseTwo()) {
             List<GridPos> newPlants = new ArrayList<>();
             for (GridPos plant : new ArrayList<>(chorusPlants)) {
@@ -64,33 +81,45 @@ public class ChorusMindAI extends BossAI {
                     newPlants = newPlants.subList(0, 3);
                 }
                 chorusPlants.addAll(newPlants);
+                turnActions.add(new EnemyAction.CreateTerrain(newPlants, TileType.OBSTACLE, 0));
             }
         }
 
-        // Phase 2: Teleport to random plant at turn start
+        // Phase 2: Teleport beside a random plant at turn start. The landing is
+        // footprint-validated next to the plant — the old code dropped the 2×2
+        // boss directly onto the obstacle tile itself.
+        GridPos effectivePos = myPos;
         if (isPhaseTwo() && !chorusPlants.isEmpty()) {
-            Collections.shuffle(chorusPlants);
-            for (GridPos plant : chorusPlants) {
-                if (!arena.isOccupied(plant)) {
-                    // Teleport then pick ability
-                    EnemyAction ability = chooseOffensiveAbility(self, arena, playerPos);
-                    return new EnemyAction.CompositeAction(List.of(
-                        new EnemyAction.Teleport(plant),
-                        ability != null ? ability : new EnemyAction.Idle()
-                    ));
-                }
+            GridPos landing = findPlantSideLanding(arena, self);
+            if (landing != null && !landing.equals(myPos)) {
+                turnActions.add(new EnemyAction.Teleport(landing));
+                effectivePos = landing;
             }
         }
 
-        EnemyAction action = chooseOffensiveAbility(self, arena, playerPos);
-        return action != null ? action : meleeOrApproach(self, arena, playerPos, 0);
+        // Pick the ability FROM the post-teleport position — range gates used
+        // to be computed from the pre-teleport tile, so the boss regularly
+        // "bombed" from a distance it no longer stood at.
+        EnemyAction ability = chooseOffensiveAbility(self, arena, playerPos, effectivePos);
+
+        if (turnActions.isEmpty()) {
+            return ability != null ? ability : meleeOrApproach(self, arena, playerPos, 0);
+        }
+        // With a teleport in flight, a walk-based fallback would path from the
+        // stale tile — prefer the ability, else just complete the reposition.
+        turnActions.add(ability != null ? ability : new EnemyAction.Idle());
+        return turnActions.size() == 1
+            ? turnActions.get(0)
+            : new EnemyAction.CompositeAction(turnActions);
     }
 
-    private EnemyAction chooseOffensiveAbility(CombatEntity self, GridArena arena, GridPos playerPos) {
-        GridPos myPos = self.getGridPos();
-        int dist = myPos.manhattanDistance(playerPos);
+    private EnemyAction chooseOffensiveAbility(CombatEntity self, GridArena arena,
+                                               GridPos playerPos, GridPos effectivePos) {
+        int dist = CombatEntity.minDistanceFromSizedEntity(effectivePos, self.getSize(), playerPos);
 
-        // Resonance Cascade — needs plants on field
+        // Resonance Cascade — needs plants on field. The resolve pulses every
+        // warned tile (the old resolve was a radius-0 strike on the boss's own
+        // tile: a cascade that could never hit anyone).
         boolean autoCascade = isPhaseTwo() && getTurnCounter() % 2 == 0;
         if ((!isOnCooldown(CD_CASCADE) || autoCascade) && chorusPlants.size() >= 3) {
             setCooldown(CD_CASCADE, 3);
@@ -103,21 +132,27 @@ public class ChorusMindAI extends BossAI {
                     }
                 }
             }
+            List<EnemyAction> pulses = new ArrayList<>();
+            for (GridPos t : cascadeTiles) {
+                pulses.add(new EnemyAction.AreaAttack(t, 0, 3, "resonance_cascade"));
+            }
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.ENTITY_GLOW,
                 cascadeTiles, 1,
-                new EnemyAction.AreaAttack(myPos, 0, 3, "resonance_cascade"),
+                new EnemyAction.CompositeAction(pulses),
                 0xFFFF00FF);
             return new EnemyAction.Idle();
         }
 
         // Chorus Bloom — plant more chorus
         if (!isOnCooldown(CD_BLOOM)) {
-            setCooldown(CD_BLOOM, 3);
             int count = isPhaseTwo() ? 5 : 4;
             List<GridPos> bloomTiles = findSummonPositions(arena, count);
-            chorusPlants.addAll(bloomTiles);
-            return new EnemyAction.CreateTerrain(bloomTiles, TileType.OBSTACLE, 0);
+            if (!bloomTiles.isEmpty()) {
+                setCooldown(CD_BLOOM, 3);
+                chorusPlants.addAll(bloomTiles);
+                return new EnemyAction.CreateTerrain(bloomTiles, TileType.OBSTACLE, 0);
+            }
         }
 
         // Entangle — root area
@@ -156,6 +191,24 @@ public class ChorusMindAI extends BossAI {
             return new EnemyAction.Attack(self.getAttackPower());
         }
 
+        return null;
+    }
+
+    /** A footprint-valid anchor beside a random living plant; null if none fits. */
+    private GridPos findPlantSideLanding(GridArena arena, CombatEntity self) {
+        int size = self.getSize();
+        List<GridPos> plants = new ArrayList<>(chorusPlants);
+        Collections.shuffle(plants);
+        for (GridPos plant : plants) {
+            for (int dx = -size; dx <= 1; dx++) {
+                for (int dz = -size; dz <= 1; dz++) {
+                    GridPos anchor = new GridPos(plant.x() + dx, plant.z() + dz);
+                    if (AIUtils.canPlaceFootprint(arena, anchor, size)) {
+                        return anchor;
+                    }
+                }
+            }
+        }
         return null;
     }
 
