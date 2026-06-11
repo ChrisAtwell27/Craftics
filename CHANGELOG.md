@@ -4,98 +4,101 @@ Unreleased
 
 Bug sweep (core + mod support)
 
-- The Artifacts mimic now keeps its own attack rhythm per fight — all mimics on a server shared one tantrum/dash alternation, so two simultaneous campsite events fed each other's cadence. The fix generalizes the per-fight AI mechanism (AIRegistry.registerStateful), which also covers blazes and any future stateful addon AI
-- Hovering a phase-two boss no longer shows a bogus "phase=2" status effect in the inspect panel
-- Turned off a leftover Artifacts debug log that printed every player's equipped-artifact scan on every single turn, and cached the mimic reflection lookup that previously attempted a class load for every spawned enemy when Artifacts isn't installed
-- The composite-action dispatcher now refuses a second movement sub-action in one composite instead of silently discarding the first move mid-flight (latent footgun, no current ability triggers it)
-- fabric.mod.json now suggests all twelve mods Craftics has integrations for (Creeper Overhaul, Variants & Ventures, Basic Weapons, Copper Age, Pale Garden Backport, More Totems, and both instrument mods were missing), so modpack tools can discover the compat surface
-- The shared hit-and-run helper is size-aware for its retreat scan (defensive; all current users are 1x1)
+- Artifacts mimics track their attack rhythm per fight instead of sharing one across the server, so simultaneous campsite events no longer desync. The per-fight AI mechanism is generalized and also covers blazes
+- Hovering a phase-two boss no longer shows a bogus phase=2 status effect in the inspect panel
+- Removed a leftover Artifacts debug log that printed every turn, and cached the mimic reflection lookup that retried a class load per spawn when Artifacts is absent
+- The composite-action dispatcher rejects a second movement sub-action in one composite instead of silently dropping the first move
+- fabric.mod.json now lists all twelve mods Craftics integrates with, so modpack tools can discover the compat surface
+- The shared hit-and-run helper is now size-aware for its retreat scan
 
 Combat animations
 
-- Every mob type now picks its attack animation from a style registry: spiders pounce, golems and ravagers slam, wolves and cats dash low, slimes hop and crash, endermen flicker-blink, archers lean into the draw — plus three new styles: goats and camels back up and RAM with real reach, insects and small critters double-JAB, and witches/evokers CHANNEL their throws with raised arms instead of leaning like archers. Addon mods can give their own mobs any of these with one line: CrafticsAPI.registerAttackAnimation("mymod:lava_crab", Style.POUNCE) — unregistered mobs keep the classic lunge
-- Mob poses got their missing beats: the arm now snaps forward exactly on the hit (with the sweep flash) instead of staying cocked after the attack, and eases back to neutral afterwards; bosses visibly channel with raised arms during telegraph turns and rear back in a roar at phase two; stunned enemies slump and wobble through their skipped turn instead of silently doing nothing
-- Fixed a co-op animation bug: all player avatars shared one attack-animation timer, so a teammate's swing could cut yours short and their avatar could freeze mid-swing — each avatar now runs its own, and combat end cleans up every avatar, not just yours
+- Every mob type picks its attack animation from a style registry: spiders pounce, golems and ravagers slam, wolves and cats dash, slimes hop and crash, endermen blink, archers draw. Three new styles add ram (goats, camels), jab (insects, small critters), and channel (witches, evokers). Addon mobs can register any style via CrafticsAPI.registerAttackAnimation, and unregistered mobs keep the classic lunge
+- Mob poses got their missing beats: arms snap forward on the hit and ease back to neutral instead of staying cocked, bosses channel with raised arms during telegraphs and roar at phase two, and stunned enemies slump and wobble through their skipped turn
+- Co-op avatars no longer share one attack-animation timer, so a teammate's swing can't cut yours short or freeze their avatar, and combat end cleans up every avatar
 
 Battle HUD fixes
 
-- Enemy HP numbers are now genuinely hover-only: the always-visible top-right roster keeps its slim HP bars but no longer prints hp/max for every damaged enemy (the hover inspect panel is where the exact numbers live), and the panel got narrower with the text gone
-- The act-order strip's gold "acting now" highlight appears for every enemy and ally action, not just attacks — walks, teleports, ceiling hops and drops all announce themselves now, and the camera follows the mover
+- Enemy HP numbers are now hover-only: the top-right roster keeps its HP bars but drops the hp/max text and is narrower for it. Exact numbers live in the hover inspect panel
+- The act-order strip's gold acting-now highlight appears for every action, not just attacks: walks, teleports, and ceiling hops all show, and the camera follows the mover
 
 Nether and End boss fixes
 
-- Chorus Mind's Resonance Cascade actually hits now — the old resolve struck the boss's own tile instead of the warned plant-adjacent tiles. Its phase-two plant spread grows real chorus obstacles (it used to grow an invisible bookkeeping list), the boss blinks beside plants instead of standing on them, and its abilities aim from where it lands rather than where it stood before teleporting
-- Shulker Architect's Bullet Storm is a real telegraphed volley — the advertised bullet count used to be discarded in favor of one untelegraphed blast — and its Teleport Link no longer drops the boss on top of its own turret
-- The Void Herald's phase-two platform collapses were silently cancelled whenever another telegraph fired the same turn; they resolve reliably now, and its blink assault respects its 2x2 body
-- The Molten King can no longer teleport-erupt directly onto your tile (or clip its 4x4 body into walls) when the arena is crowded, and a blocked leap no longer wastes the ability's cooldown
-- Across seven bosses, abilities no longer burn their cooldown when they fail to find room to fire — a crowded arena used to lock summons, charges, rifts and collapses out for the full cooldown with nothing to show for it
-- The Bastion Brute's gore charge stops at deep water instead of ending its run somewhere it can't stand; the Wailing Revenant throws a weak fireball instead of idling when everything is on cooldown; the Wither's dead decay-aura cooldown bookkeeping is gone (the aura is genuinely passive)
-- Phantoms each build their own dive-speed streak — all phantoms on the server used to share one — and no longer park themselves on top of you or your pets while circling
+- Chorus Mind's Resonance Cascade now hits the warned tiles instead of the boss's own tile. Its phase-two spread grows real chorus obstacles, it blinks beside plants instead of onto them, and its abilities aim from where it lands
+- Shulker Architect's Bullet Storm is now a real telegraphed volley with the advertised bullet count, and Teleport Link no longer drops the boss onto its own turret
+- The Void Herald's phase-two platform collapses resolve reliably instead of being cancelled when another telegraph fires the same turn, and its blink assault respects its 2x2 body
+- The Molten King no longer teleport-erupts onto your tile or clips its 4x4 body into walls in a crowded arena, and a blocked leap no longer wastes the cooldown
+- Across seven bosses, abilities no longer burn their cooldown when they can't find room to fire, so a crowded arena no longer locks out summons, charges, and rifts
+- The Bastion Brute's gore charge stops at deep water, the Wailing Revenant throws a weak fireball instead of idling on full cooldown, and the Wither's decay aura is genuinely passive now
+- Phantoms each build their own dive-speed streak instead of sharing one, and no longer park on top of you or your pets while circling
 
 Nether AI improvements
 
-- Zombified piglin pack aggro no longer outlives the fight: the old flag was global and never reset, so hitting one zombified piglin made every zombified piglin in every later fight on the server spawn already hostile. The pack now riles per fight — hit one and all its packmates in that arena turn on you, including when the victim died to the first hit — and your own allied piglins no longer feed the enemy pack's damage bonus
-- Magma cubes actually bounce now: a multi-tile bounce used to lay its fire trail and then silently never move the cube (only 1-tile hops worked). Both bounce types move correctly and leave the burning trail, and the fire only lands on plain floor that can burn. The same dispatcher fix restores follow-up moves that bosses queued behind a resolving telegraph
-- Wither skeletons patrol independently — they all shared one patrol heading, so the whole map marched in lockstep and one reversal turned every skeleton around
-- Hoglins gained the ground stomp their description always promised (shared with the ravager: surrounded by two or more attackers, they slam everything around them) and no longer charge through hazards
-- Blazes time their barrage around your pets too, backing off a wolf in their face while keeping you in fireball range; ghasts panic away from any nearby threat and find the around-the-corner drift instead of freezing
+- Zombified piglin pack aggro is now per fight instead of a global flag that never reset. Hit one and its arena packmates turn on you, even if the victim dies to the first hit, and your allied piglins no longer feed the enemy pack's damage bonus
+- Magma cubes complete multi-tile bounces instead of laying the fire trail without moving. Both bounce types move and leave the trail, and fire only lands on burnable floor. The same dispatcher fix restores follow-up moves bosses queued behind a telegraph
+- Wither skeletons patrol independently instead of sharing one heading, so they no longer march in lockstep
+- Hoglins gained the ground stomp their description promised: surrounded by two or more attackers they slam everything around them, and they no longer charge through hazards
+- Blazes time their barrage around your pets too, backing off a wolf in their face while keeping you in fireball range. Ghasts panic away from nearby threats and find the around-the-corner drift instead of freezing
 - Endermites refuse to blink onto water, like their enderman cousins
 
 Boss improvements
 
-- Fixed a state leak affecting nearly every boss: one shared AI object served all fights, so a boss killed in phase two left the next boss of its kind starting in phase two with stale cooldowns. The Broodmother's nest cycle and egg sacs leaked between fights, and the Hollow King could start a rematch in permanent darkness. Every boss now gets a fresh brain per fight (previously only three did)
-- Phase two is now a moment: a combat-log callout, a "PHASE 2" banner for the whole party, a roar with a particle burst on the boss, and a camera shake with a dark-red screen flash. The boss HP bar keeps the news afterwards — its frame turns gold and a "II" badge appears
-- Killing a boss got its payoff: a golden defeat banner, explosion bloom with golden totem rain, a wither-death knell, and a celebratory screen shake and flash. The Molten King splitting into fragments no longer reads as a defeat — only the last fragment gets the fanfare
-- Boss intros now name the boss itself in the title card ("The Hollow King") instead of the level, with a heavier sound sting
-- Boss attack telegraphs are easier to read: the warned tiles get a crisp pulsing outline around the region and ghost faintly through walls, so a telegraph hidden behind terrain at a low camera angle can still be dodged
-- Boss minion summons no longer drop reinforcements straight into lava or fire when safe tiles exist
+- Fixed a state leak in nearly every boss: one shared AI object served all fights, so a boss killed in phase two left the next one starting in phase two with stale cooldowns. The Broodmother's nest cycle and the Hollow King's darkness leaked between fights. Every boss now gets a fresh brain per fight
+- Phase two is now a moment: a combat-log callout, a PHASE 2 banner for the party, a roar with a particle burst, and a camera shake with a dark-red flash. The boss HP bar keeps the news with a gold frame and a II badge
+- Killing a boss got its payoff: a golden defeat banner, explosion bloom with totem rain, a wither-death knell, and a screen shake and flash. The Molten King's fragments no longer read as a defeat until the last one falls
+- Boss intros name the boss in the title card instead of the level, with a heavier sound sting
+- Boss telegraphs are easier to read: warned tiles get a pulsing outline and ghost through walls, so a telegraph hidden behind terrain can still be dodged
+- Boss minion summons no longer drop reinforcements into lava or fire when safe tiles exist
 
 Overworld AI improvements
 
 Smarter enemies:
 
-- Archers and casters (skeleton, stray, pillager, witch, evoker) now kite away from your pets too, not just from you — a wolf in their face triggers the retreat. Their retreats and firing positions are picked from tiles they can actually walk to this turn, and none of them will back into lava to dodge a sword
-- Creepers finally defuse: if everyone leaves the blast radius while the fuse is hissing, the creeper stops, stops glowing, and resumes the chase instead of detonating an empty tile. A creeper about to die blows anyway. The blast check also counts your pets, so it will happily trade itself for your iron golem
-- Ravager ground stomp implemented (it was documented but never coded): surrounded by two or more of you, it slams an AoE around its body instead of tusking one target
+- Archers and casters kite away from your pets too, not just you. Their retreats and firing spots use tiles they can actually reach this turn, and none back into lava to dodge a sword
+- Creepers defuse if everyone leaves the blast radius while the fuse hisses, resuming the chase instead of detonating an empty tile. A creeper about to die blows anyway, and the blast check counts your pets
+- Ravager ground stomp now works: surrounded by two or more attackers, it slams an AoE instead of tusking one target
 - Vindicators no longer rook-dash through lava or fire
-- Spiders break off to the ceiling to reset their ambush when badly hurt, and stop wasting turns webbing a player who already has a web next to them; cave spiders bite and scuttle back out of reach so the poison does the work
-- Husks now benefit from the undead horde bonus like their zombie cousins (they never did); wounded zombie villagers panic — +1 attack and +1 movement below half HP; the horde bonus no longer counts the mover's own old tile or your own undead allies
-- Silverfish swarm: hurt one and the whole group speeds up; bee swarms now enrage even when the stung bee was killed in one hit
-- Endermen never teleport onto water, and goats lined up with you deliver a true ram — extra damage the longer the run-up
-- Polar bears use their full 2x2 bulk for reach (you could previously stand inside their melee range without triggering them) and their maul knocks you back a tile; enraged wolves get +1 damage per packmate already biting the same victim; foxes, ocelots and angry cats all strike and spring back out with leftover movement (the ocelot's reposition was documented but never implemented)
-- The witch's self-heal is real now — she used to just walk away and call it healing — and each witch rotates her own brews
-- Fixed a class of state-sharing bugs: one AI object serves every mob of a type, but the evoker, enderman, drowned and witch kept per-fight state on it. After your first fight, no evoker ever summoned a vex again; one frenzied enderman made all future endermen frenzy; the first drowned's trident roll decided every drowned's loadout forever. Per-mob state now lives on the mob
-- Pillagers were firing at range 4 while their stat block says 3 — they now respect their stats. Llamas likewise honor their registered spit range
+- Spiders retreat to the ceiling to reset their ambush when badly hurt and stop webbing a player who already has a web. Cave spiders bite and scuttle out of reach so the poison does the work
+- Husks now get the undead horde bonus like zombies. Wounded zombie villagers panic with +1 attack and +1 movement below half HP. The horde bonus no longer counts the mover's own old tile or your undead allies
+- Silverfish swarm: hurt one and the group speeds up. Bee swarms enrage even when the stung bee dies in one hit
+- Endermen never teleport onto water, and goats lined up with you deal a true ram, more damage the longer the run-up
+- Polar bears use their full 2x2 bulk for reach and their maul knocks you back a tile. Enraged wolves get +1 damage per packmate biting the same victim. Foxes, ocelots, and angry cats strike and spring back out with leftover movement
+- The witch's self-heal actually heals now instead of just walking away, and each witch rotates her own brews
+- Fixed state-sharing bugs where the evoker, enderman, drowned, and witch kept per-fight state on their shared AI. Evokers stopped summoning vexes after one fight, one frenzied enderman frenzied all future ones, and the first drowned's trident roll fixed every drowned's loadout. Per-mob state now lives on the mob
+- Pillagers fire at their stated range 3 instead of 4, and llamas honor their registered spit range
 - Evokers summon a second vex when first wounded below half HP
 
 Smarter allies:
 
-- Tanks (iron golem, turtle, goat) interpose: when the biggest threat is too far to strike this turn, they plant themselves between it and you instead of sprinting across the arena and leaving you open
-- Supports (axolotl, frog, villager) hold the player-adjacent tile farthest from the nearest enemy — your healer-adjacent pets stop standing in the charge lane
-- Melee allies stop walking past a kill they could secure: target scoring now favors enemies they can reach this turn and enemies they can finish outright
-- Flyers (parrot, bee, allay) dive the weakest enemy they can actually reach and kill this turn before chasing the globally weakest
-- Ranged allies (llama, snow golem) pick their kiting tile properly — gain the most distance while keeping the parting shot lined up — instead of hopping two tiles straight back
-- Every ally that flees now finds the around-the-corner escape when the straight line away is blocked, and skittish farm animals do the same instead of freezing
+- Tanks (iron golem, turtle, goat) interpose: when the biggest threat is too far to strike, they plant themselves between it and you instead of leaving you open
+- Supports (axolotl, frog, villager) hold the player-adjacent tile farthest from the nearest enemy, out of the charge lane
+- Melee allies no longer walk past a kill they could secure: scoring favors enemies they can reach and finish this turn
+- Flyers (parrot, bee, allay) dive the weakest enemy they can reach and kill this turn, not the globally weakest
+- Ranged allies (llama, snow golem) pick a kiting tile that gains the most distance while keeping the shot lined up, instead of hopping two tiles straight back
+- Fleeing allies find the around-the-corner escape when the straight line is blocked, and skittish farm animals do the same instead of freezing
 
 0.2.4
 
-Cursor picking ignored entities — at the combat camera's angle, clicking a tall mob's body selected the tile behind it. The ray now tests mob hitboxes first (with wall occlusion, and skipping invisible mobs so stealth isn't leaked).
-Turn banner fade was dead code (alpha computed then overwritten) and its timer ran per-frame, so timing varied with FPS. Same FPS-dependence affected the warning-tile and hover pulses.
-AP/SPD pips lied: a fixed 3-slot layout meant spending from 5→4→3 AP changed nothing on screen. Now one pip per point with adaptive sizing.
-"+N more" enemy collapse double-counted the boss and could duplicate a head in the mini list.
-Client/server walkability mismatch: tall grass, ferns, cobwebs and stairs are walkable server-side but the client previews treated them as obstacles.
-The client move preview also treated deep (2-block) water as walkable when server-side it is an instant-kill tile, and now refuses it. The hover cursor no longer flickers when the mouse rides a tile boundary.
-Headline UX additions:
+Combat HUD and grid fixes
 
-Combat HUD: a clickable End Turn button (shows the live keybind, pulses when you're out of resources — previously ending a turn required knowing the R key existed), smooth HP bars with damage-ghost drain on every bar, attack AP cost on the mode pill, an "N SPD" cost tag at the cursor when hovering a move tile, an act-order strip of mob portraits during the enemy phase that highlights the unit acting right now, a theme hint on the inspect panel showing what a water, jungle, or cold enemy's hit will inflict, HP numbers only on damaged enemies, and a pulsing red screen edge below 30% HP.
-Grid: crisp perimeter outlines on move/attack/AoE regions, a proper hover cursor ring, and a movement path preview (breadcrumbs along the BFS route). Occluded highlights and breadcrumbs now ghost faintly through walls, and the preview threads through allies the way the server allows. The renderer was also de-duplicated so both Stonecutter branches share one quad-building core.
-Threat overlay: press Y in combat to see every tile enemies could reach and strike this turn, drawn under your own highlights and hidden while Blinded.
-Level select: cards are now clickable (click side card to select, focused card to enter) with hover feedback, clickable progress dots (cleared/next/locked), Enter-to-play, tab tooltips with region progress, "???" on undiscovered locked biomes, a focused card that swells as the carousel slides, a dimension tab bar that scrolls when addon pages overflow it, and Up/Down to cycle dimensions alongside Q/E.
+- Cursor picking now tests mob hitboxes first, so clicking a tall mob's body no longer selects the tile behind it. It honors wall occlusion and skips invisible mobs so stealth isn't leaked
+- Fixed the turn banner fade, which was dead code, and its per-frame timer that made the collapse vary with FPS. The same FPS dependence affected warning-tile and hover pulses
+- AP/SPD pips show one per point with adaptive sizing, instead of a fixed 3-slot layout that didn't drain until below 3
+- Fixed the +N more enemy collapse double-counting the boss and duplicating a head in the mini list
+- Tall grass, ferns, cobwebs, and stairs now read as walkable in client previews, matching the server
+- Deep water now reads as unwalkable in the move preview, matching its instant-kill server tile, and the hover cursor no longer flickers on tile boundaries
+
+Headline UX additions
+
+- Combat HUD: a clickable End Turn button showing the live keybind, smooth HP bars with damage-ghost drain, attack AP cost on the mode pill, an N SPD cost tag at the cursor, an act-order strip during the enemy phase, a theme hint in the inspect panel, HP numbers only on damaged enemies, and a red screen edge below 30% HP
+- Grid: perimeter outlines on move/attack/AoE regions, a hover cursor ring, and a movement path preview. Occluded highlights ghost through walls, the preview threads through allies, and the renderer is de-duplicated across both Stonecutter branches
+- Threat overlay: press Y to see every tile enemies can reach and strike this turn, drawn under your highlights and hidden while Blinded
+- Level select: clickable cards with hover feedback, clickable progress dots, Enter-to-play, tab tooltips, ??? on undiscovered locked biomes, a focused card that swells, a scrolling tab bar, and Up/Down to cycle dimensions
 
 
 Nether
 
-- The Nether now has its own trader: a piglin bartering station replaces the wandering trader there. Offer gold ingots from your inventory with plus and minus buttons; the more you offer, the better your odds of a successful barter. A failed barter still costs the gold and returns bland junk like gravel, soul sand, or crying obsidian
+- The Nether has its own trader: a piglin bartering station replaces the wandering trader. Offer gold ingots with plus and minus buttons, and the more you offer the better your odds. A failed barter still costs the gold and returns junk like gravel, soul sand, or crying obsidian
 - Five piglin barter categories, hinted by the piglin but never showing the odds: Warmonger (combat gear), Hoarder (gems like diamonds, emeralds, and iron, never gold), Flesh Dealer (food, potions, and brewing items), Relic Trader (rare curiosities, fire charges, blaze rods, and supported addon curios), and Beast Tamer (Nether mob allies)
 - Overpaying past the hidden threshold can earn a bonus second item
 - Each player in co-op makes their own offer and gets their own outcome
