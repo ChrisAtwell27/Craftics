@@ -1108,26 +1108,41 @@ public class ArenaBuilder {
         // the arena".
         List<BlockPos> sorted = orderOutline(corners);
 
-        // Build per-tile in/out mask via ray-casting point-in-polygon. Cast a
-        // horizontal ray from each tile center to +∞ on X; count edge crossings.
-        // Tile-center coords are gridMinX + tx + 0.5, gridMinZ + tz + 0.5 so we
-        // never sit exactly on a vertex.
-        // Outer mask: point-in-polygon over the full marker bbox (the outline,
-        // including its boundary ring).
-        boolean[][] outer = new boolean[gridW][gridH];
+        // Build per-tile in/out mask via ray-casting point-in-polygon. Tiles are
+        // sampled at their integer block coordinate (gridMinX + tx, gridMinZ + tz)
+        // and the outline is grown a hair OUTWARD from its centroid, so an
+        // axis-aligned edge never falls exactly on a sample point.
+        //
+        // The old test sampled tile CENTERS at +0.5 against vertices also at +0.5,
+        // which put every axis-aligned edge right on the sample row/column; the
+        // half-open even-odd rule then resolved those boundary hits asymmetrically
+        // and lopsided otherwise-symmetric shapes — one plus/cross/diamond inner
+        // corner filled while its mirror was not. Integer sampling keeps the mask
+        // symmetric about a centered polygon; the outward grow removes the on-edge
+        // degeneracy without shifting the shape.
         int polyN = sorted.size();
+        double polyCx = 0, polyCz = 0;
+        for (BlockPos c : sorted) { polyCx += c.getX(); polyCz += c.getZ(); }
+        polyCx /= polyN;
+        polyCz /= polyN;
+        final double GROW = 0.001;
+        double[] vx = new double[polyN];
+        double[] vz = new double[polyN];
+        for (int i = 0; i < polyN; i++) {
+            double x = sorted.get(i).getX();
+            double z = sorted.get(i).getZ();
+            vx[i] = x + (x - polyCx) * GROW;
+            vz[i] = z + (z - polyCz) * GROW;
+        }
+        boolean[][] outer = new boolean[gridW][gridH];
         for (int tx = 0; tx < gridW; tx++) {
             for (int tz = 0; tz < gridH; tz++) {
-                double px = gridMinX + tx + 0.5;
-                double pz = gridMinZ + tz + 0.5;
+                double px = gridMinX + tx;
+                double pz = gridMinZ + tz;
                 boolean inside = false;
                 for (int i = 0, j = polyN - 1; i < polyN; j = i++) {
-                    double xi = sorted.get(i).getX() + 0.5;
-                    double zi = sorted.get(i).getZ() + 0.5;
-                    double xj = sorted.get(j).getX() + 0.5;
-                    double zj = sorted.get(j).getZ() + 0.5;
-                    boolean intersects = ((zi > pz) != (zj > pz))
-                        && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
+                    boolean intersects = ((vz[i] > pz) != (vz[j] > pz))
+                        && (px < (vx[j] - vx[i]) * (pz - vz[i]) / (vz[j] - vz[i]) + vx[i]);
                     if (intersects) inside = !inside;
                 }
                 outer[tx][tz] = inside;

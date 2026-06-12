@@ -1439,20 +1439,29 @@ public class CrafticsMod implements ModInitializer {
             vertexKeys.add(net.minecraft.util.math.BlockPos.asLong(cx + o.dx(), floorY, cz + o.dz()));
         }
 
-        // Outer mask over the full vertex bbox (point-in-polygon).
+        // Outer mask over the full vertex bbox (point-in-polygon). Integer-grid
+        // sampling with the outline grown a hair outward from its centroid, so
+        // axis-aligned edges never sit on a sample point — this keeps symmetric
+        // shapes symmetric and matches ArenaBuilder's loader sampling exactly, so
+        // the previewed floor and the eventual playable mask agree.
+        final double GROW = 0.001;
+        double[] vx = new double[n];
+        double[] vz = new double[n];
+        for (int i = 0; i < n; i++) {
+            double x = cx + sortedOffsets.get(i).dx();
+            double z = cz + sortedOffsets.get(i).dz();
+            vx[i] = x + (x - (cx + finalCx)) * GROW;
+            vz[i] = z + (z - (cz + finalCz)) * GROW;
+        }
         boolean[][] outer = new boolean[gw][gh];
         for (int tx = 0; tx < gw; tx++) {
             for (int tz = 0; tz < gh; tz++) {
-                double px = gridMinX + tx + 0.5;
-                double pz = gridMinZ + tz + 0.5;
+                double px = gridMinX + tx;
+                double pz = gridMinZ + tz;
                 boolean inside = false;
                 for (int i = 0, j = n - 1; i < n; j = i++) {
-                    double xi = cx + sortedOffsets.get(i).dx() + 0.5;
-                    double zi = cz + sortedOffsets.get(i).dz() + 0.5;
-                    double xj = cx + sortedOffsets.get(j).dx() + 0.5;
-                    double zj = cz + sortedOffsets.get(j).dz() + 0.5;
-                    boolean intersects = ((zi > pz) != (zj > pz))
-                        && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
+                    boolean intersects = ((vz[i] > pz) != (vz[j] > pz))
+                        && (px < (vx[j] - vx[i]) * (pz - vz[i]) / (vz[j] - vz[i]) + vx[i]);
                     if (intersects) inside = !inside;
                 }
                 outer[tx][tz] = inside;

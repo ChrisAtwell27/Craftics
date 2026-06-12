@@ -206,6 +206,41 @@ public final class MobHeadTextures {
         }
     }
 
+    /**
+     * Draw a mob head tinted toward red by {@code redAmount} (0 = untouched,
+     * 1 = badly hurt). The head is drawn normally, then a translucent red film
+     * is laid over it whose opacity scales with the damage — so a glance down
+     * the enemy roster reads health by color without needing bars or numbers.
+     */
+    public static void drawMobHeadTinted(net.minecraft.client.gui.DrawContext ctx, Identifier texture,
+                                         int x, int y, int size, float redAmount) {
+        drawMobHead(ctx, texture, x, y, size);
+        redAmount = Math.max(0f, Math.min(1f, redAmount));
+        if (redAmount <= 0.02f) return;
+        // Up to ~0.66 alpha at death's door — enough to read clearly while the
+        // mob's face still shows through.
+        int alpha = (int) (redAmount * 168);
+        int color = (alpha << 24) | 0x00FF1810;
+        ctx.fill(x, y, x + size, y + size, color);
+    }
+
+    /**
+     * Blend an ARGB color toward red by {@code t} (0 = unchanged, 1 = full red).
+     * Used to redden the fallback colored square for mobs without a head texture,
+     * matching {@link #drawMobHeadTinted}'s damage cue.
+     */
+    public static int tintTowardRed(int argb, float t) {
+        t = Math.max(0f, Math.min(1f, t));
+        int a = (argb >>> 24) & 0xFF;
+        int r = (argb >> 16) & 0xFF;
+        int g = (argb >> 8) & 0xFF;
+        int b = argb & 0xFF;
+        r = (int) (r + (0xFF - r) * t);
+        g = (int) (g * (1f - t));
+        b = (int) (b * (1f - t));
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
     public static int getMobColor(String entityTypeId) {
         return switch (entityTypeId) {
             case "minecraft:zombie", "minecraft:husk", "minecraft:drowned" -> 0xFF55AA55;

@@ -925,13 +925,19 @@ public class CombatHudOverlay implements HudRenderCallback {
             return;
         }
 
-        int headSize = 16;
-        int headGap = 2;
-        int maxPerRow = 5;
+        // ── Vertical head roster ─────────────────────────────────────────────
+        // No outlining container: a single column of mob heads down the right
+        // edge, each reddening as its owner loses HP so the party's health reads
+        // at a glance. The boss (if any) keeps the roster's only persistent HP
+        // bar, floating above the column.
+        int headSize = 18;
+        int gap = 4;
+        int margin = 6;
+        int rightX = screenW - margin;        // heads/bar right-align to here
+        int headX = rightX - headSize;
 
-        // Identify the boss up front — it renders separately with the roster's
-        // only persistent HP bar. Regular enemies are heads-only: their bars
-        // and numbers live on the hover inspect panel.
+        // Identify the boss up front — it renders as a bar, not a head, so it
+        // must not also appear in the head column.
         int bossEntityId = -1;
         String bossDisplayName = null;
         for (Map.Entry<Integer, String> tEntry : types.entrySet()) {
@@ -946,119 +952,110 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
         boolean hasBoss = bossEntityId >= 0;
 
-        // Non-boss entries in map order — laid out as a wrapped grid of heads.
         List<Map.Entry<Integer, int[]>> nonBoss = new ArrayList<>();
         for (Map.Entry<Integer, int[]> entry : enemies.entrySet()) {
             if (entry.getKey() != bossEntityId) nonBoss.add(entry);
         }
 
-        int bossBarSection = hasBoss ? 24 : 0; // boss name + bar + padding
-        int nonBossCount = nonBoss.size();
-        int enemyCount = enemies.size();
-        int gridCols = Math.min(Math.max(1, nonBossCount), maxPerRow);
-        int gridRows = (nonBossCount + maxPerRow - 1) / maxPerRow;
+        int y = 4;
 
-        int headerW = client.textRenderer.getWidth("Enemies (" + enemyCount + ")") + 2;
-        int gridW = nonBossCount > 0 ? gridCols * (headSize + headGap) - headGap : 0;
-        int panelContentW = Math.max(hasBoss ? 150 : 0, Math.max(headerW, gridW));
-        int headerH = 14;
-        int panelContentH = headerH + bossBarSection + gridRows * (headSize + headGap);
-        int panelPad = 4;
-        int panelW = panelContentW + panelPad * 2;
-        int panelH = panelContentH + panelPad;
-        int panelX = screenW - panelW - 6;
-        int panelY = 4;
-        enemyRosterBottomY = panelY + panelH + 4;
-        enemyRosterPanelW = panelW;
-        enemyRosterRightX = panelX + panelW;
-
-        drawPanel(ctx, panelX, panelY, panelW, panelH);
-
-        ctx.drawTextWithShadow(client.textRenderer,
-            Text.literal("\u00a77Enemies (" + enemyCount + ")"),
-            panelX + panelPad, panelY + 3, 0xFFAAAAAA);
-
-        int startX = panelX + panelPad;
-        int y = panelY + headerH;
-
-        // First pass: render the boss with a special bar at the top
+        // Boss bar (kept distinct): a floating full-width HP bar with the name
+        // above it. Frame turns molten gold and a phase badge appears in phase
+        // two. No surrounding panel — just the bar's own dark track.
         if (hasBoss) {
             int[] bossHp = enemies.get(bossEntityId);
             int bHp = bossHp[0];
             int bMaxHp = bossHp[1];
             float bPct = bMaxHp > 0 ? (float) bHp / bMaxHp : 0;
             String bTypeFull = types.getOrDefault(bossEntityId, "");
-            String bTypeId = bTypeFull.contains(";") ? bTypeFull.substring(0, bTypeFull.indexOf(';')) : bTypeFull;
             boolean bossPhaseTwo = bTypeFull.contains(";phase=2");
 
-            // Boss name label — truncate if too wide for the panel
-            String bossLabel = "\u00a74\u00a7l\u2620 " + bossDisplayName;
-            int maxNameW = panelW - panelPad * 2;
-            if (client.textRenderer.getWidth(bossLabel + " \u2620") > maxNameW) {
-                // Trim the display name until it fits
-                while (bossLabel.length() > 6 && client.textRenderer.getWidth(bossLabel + ".. \u2620") > maxNameW) {
+            int bossBarW = 150;
+            int bossBarX = rightX - bossBarW;
+            int bossBarH = 8;
+
+            String bossLabel = "§4§l☠ " + bossDisplayName;
+            if (client.textRenderer.getWidth(bossLabel + " ☠") > bossBarW) {
+                while (bossLabel.length() > 6
+                        && client.textRenderer.getWidth(bossLabel + ".. ☠") > bossBarW) {
                     bossLabel = bossLabel.substring(0, bossLabel.length() - 1);
                 }
-                bossLabel = bossLabel + ".. \u2620";
+                bossLabel = bossLabel + ".. ☠";
             } else {
-                bossLabel = bossLabel + " \u2620";
+                bossLabel = bossLabel + " ☠";
             }
             ctx.drawCenteredTextWithShadow(client.textRenderer,
-                Text.literal(bossLabel), panelX + panelW / 2, y + 1, 0xFFFF5555);
-            y += 12;
+                Text.literal(bossLabel), bossBarX + bossBarW / 2, y, 0xFFFF5555);
+            y += 11;
 
-            // Full-width boss HP bar. The frame turns molten gold in phase two \u2014
-            // the bar itself tells you the fight escalated.
-            int bossBarW = panelContentW;
-            int bossBarH = 8;
             int frameColor = bossPhaseTwo ? 0xFF885500 : 0xFF440000;
-            ctx.fill(startX - 1, y - 1, startX + bossBarW + 1, y + bossBarH + 1, frameColor);
+            ctx.fill(bossBarX - 1, y - 1, bossBarX + bossBarW + 1, y + bossBarH + 1, frameColor);
             int bossColor = bPct > 0.5f ? 0xFFCC2222 : bPct > 0.25f ? 0xFFCC6600 : 0xFFFF0000;
-            drawHpBar(ctx, "boss:" + bossEntityId, startX, y, bossBarW, bossBarH,
+            drawHpBar(ctx, "boss:" + bossEntityId, bossBarX, y, bossBarW, bossBarH,
                 bPct, bossColor, 0xFF220000);
-            // Compact HP text centered on the bar
-            String bossHpText = "\u00a77" + bHp + "/" + bMaxHp;
+            String bossHpText = "§7" + bHp + "/" + bMaxHp;
             int bossHpTw = client.textRenderer.getWidth(bossHpText);
             ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal(bossHpText), startX + (bossBarW - bossHpTw) / 2, y, 0xFFAAAAAA);
-            // Phase badge at the bar's right edge
+                Text.literal(bossHpText), bossBarX + (bossBarW - bossHpTw) / 2, y, 0xFFEEEEEE);
             if (bossPhaseTwo) {
-                String phaseBadge = "\u00a76\u00a7lII";
+                String phaseBadge = "§6§lII";
                 int badgeW = client.textRenderer.getWidth(phaseBadge);
                 ctx.drawTextWithShadow(client.textRenderer,
-                    Text.literal(phaseBadge), startX + bossBarW - badgeW - 2, y, 0xFFFFAA00);
+                    Text.literal(phaseBadge), bossBarX + bossBarW - badgeW - 2, y, 0xFFFFAA00);
             }
-            y += bossBarH + 4;
+            y += bossBarH + 6;
         }
 
-        // Regular enemies: heads only, wrapped into rows. No per-enemy HP \u2014
-        // hover an enemy on the grid for its bar and numbers; the boss above
-        // keeps the lone persistent bar.
-        int col = 0;
+        // Regular enemies: a single vertical column of heads, reddening by damage.
+        // Hover an enemy for its exact HP bar and numbers on the inspect panel.
+        int maxHeads = 12;
+        int shown = 0;
         for (Map.Entry<Integer, int[]> entry : nonBoss) {
+            if (shown >= maxHeads) break;
+
+            int[] hpData = entry.getValue();
+            int eHp = hpData[0];
+            int eMaxHp = hpData[1];
+            float ePct = eMaxHp > 0 ? (float) eHp / eMaxHp : 0;
+            float redAmount = 1f - ePct;
+
             String typeIdFull = types.getOrDefault(entry.getKey(), "minecraft:zombie");
             String typeId = typeIdFull.contains(";") ? typeIdFull.substring(0, typeIdFull.indexOf(';')) : typeIdFull;
 
-            int hx = startX + col * (headSize + headGap);
+            // Per-head dark backing (not a list container) for legibility over
+            // bright terrain.
+            ctx.fill(headX - 1, y - 1, headX + headSize + 1, y + headSize + 1, 0x66000000);
+
             Identifier headTex = MobHeadTextures.get(typeId);
             if (headTex != null) {
-                MobHeadTextures.drawMobHead(ctx, headTex, hx, y, headSize);
+                MobHeadTextures.drawMobHeadTinted(ctx, headTex, headX, y, headSize, redAmount);
             } else {
-                int squareColor = MobHeadTextures.getMobColor(typeId);
-                ctx.fill(hx, y, hx + headSize, y + headSize, squareColor);
-                ctx.fill(hx + 1, y + 1, hx + headSize - 1, y + headSize - 1,
+                int squareColor = MobHeadTextures.tintTowardRed(MobHeadTextures.getMobColor(typeId), redAmount);
+                ctx.fill(headX, y, headX + headSize, y + headSize, squareColor);
+                ctx.fill(headX + 1, y + 1, headX + headSize - 1, y + headSize - 1,
                     (squareColor & 0x00FFFFFF) | 0xCC000000);
                 String initial = MobHeadTextures.getDisplayInitial(typeId);
                 ctx.drawCenteredTextWithShadow(client.textRenderer,
-                    Text.literal(initial), hx + headSize / 2, y + 4, 0xFFFFFFFF);
+                    Text.literal(initial), headX + headSize / 2, y + 5, 0xFFFFFFFF);
             }
 
-            col++;
-            if (col >= maxPerRow) {
-                col = 0;
-                y += headSize + headGap;
-            }
+            y += headSize + gap;
+            shown++;
         }
+
+        int remaining = nonBoss.size() - shown;
+        if (remaining > 0) {
+            String more = "§8+" + remaining;
+            int tw = client.textRenderer.getWidth(more);
+            ctx.drawTextWithShadow(client.textRenderer, Text.literal(more), rightX - tw, y, 0xFFAAAAAA);
+            y += 10;
+        }
+
+        // Expose geometry so the floor-tile tooltip can right-align beneath the
+        // head column instead of overlapping it.
+        enemyRosterRightX = rightX;
+        enemyRosterPanelW = 130;
+        enemyRosterBottomY = y + 2;
     }
 
     /** Convert a numeric string level to a Roman numeral for display (1..10 range). */
@@ -1631,23 +1628,4 @@ public class CombatHudOverlay implements HudRenderCallback {
         return switch (typeId) {
             case "minecraft:skeleton", "minecraft:stray" -> "Kites at range, retreats if close";
             case "minecraft:creeper" -> "Sneaks close, fuses, then explodes";
-            case "minecraft:spider" -> "Pounces over obstacles";
-            case "minecraft:enderman" -> "Teleports behind you";
-            case "minecraft:phantom" -> "Swoops in straight lines";
-            case "minecraft:witch" -> "Throws random potions";
-            case "minecraft:ghast" -> "Long range, flees melee";
-            case "minecraft:shulker" -> "Stationary turret";
-            case "minecraft:vindicator" -> "Rushes with axe, fast";
-            case "minecraft:pillager" -> "Crossbow, keeps distance";
-            case "minecraft:warden" -> "Phase shift at 50% HP";
-            case "minecraft:ender_dragon" -> "Swoops then breath attack";
-            case "minecraft:zombie", "minecraft:husk" -> "Charges straight at you";
-            case "minecraft:drowned" -> "Trident throw + melee";
-            case "minecraft:blaze" -> "Fireball at medium range";
-            case "minecraft:bee" -> "Swarm: all agro if one hit";
-            case "minecraft:wolf" -> "Hunts prey, agro if hit";
-            case "minecraft:goat" -> "Rams with knockback if hit";
-            default -> null;
-        };
-    }
-}
+            case "minecraft:spider" -> "Pounces over obstacles"

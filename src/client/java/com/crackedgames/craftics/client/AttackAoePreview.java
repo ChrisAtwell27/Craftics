@@ -238,7 +238,7 @@ public final class AttackAoePreview {
         List<GridPos> out = new java.util.ArrayList<>(w * h);
         for (int x = 0; x < w; x++)
             for (int z = 0; z < h; z++)
-                out.add(new GridPos(x, z));
+                if (CombatState.isInPolygon(x, z)) out.add(new GridPos(x, z));
         return out;
     }
 
@@ -262,7 +262,8 @@ public final class AttackAoePreview {
         int h = CombatState.getArenaHeight();
         Set<GridPos> out = new LinkedHashSet<>();
         for (GridPos t : tiles) {
-            if (t.x() >= 0 && t.x() < w && t.z() >= 0 && t.z() < h) out.add(t);
+            if (t.x() >= 0 && t.x() < w && t.z() >= 0 && t.z() < h
+                    && CombatState.isInPolygon(t.x(), t.z())) out.add(t);
         }
         return out;
     }

@@ -48,6 +48,7 @@ public class ClientGridHelper {
             for (GridPos dir : DIRECTIONS) {
                 GridPos neighbor = new GridPos(current.x() + dir.x(), current.z() + dir.z());
                 if (neighbor.x() < 0 || neighbor.x() >= w || neighbor.z() < 0 || neighbor.z() >= h) continue;
+                if (!CombatState.isInPolygon(neighbor.x(), neighbor.z())) continue;
                 if (dist.containsKey(neighbor)) continue;
                 if (enemyPositions.contains(neighbor)) continue;
 
@@ -231,6 +232,7 @@ public class ClientGridHelper {
             for (int z = 0; z < h; z++) {
                 GridPos tile = new GridPos(x, z);
                 if (from != null && tile.equals(from)) continue;
+                if (!CombatState.isInPolygon(x, z)) continue;
                 if (blockers.contains(tile)) continue;
                 if (!isTileWalkable(client, tile)) continue;
                 result.add(tile);
@@ -260,7 +262,11 @@ public class ClientGridHelper {
     private static boolean inArena(GridPos pos) {
         int w = CombatState.getArenaWidth();
         int h = CombatState.getArenaHeight();
-        return pos.x() >= 0 && pos.x() < w && pos.z() >= 0 && pos.z() < h;
+        if (pos.x() < 0 || pos.x() >= w || pos.z() < 0 || pos.z() >= h) return false;
+        // Polygon arenas: the rectangle check is necessary but not sufficient.
+        // Without this, dash/charge/bounce/blink/pounce previews would spill into
+        // the bbox corners that lie outside the actual shape.
+        return CombatState.isInPolygon(pos.x(), pos.z());
     }
 
     public static boolean isTileWalkable(MinecraftClient client, GridPos pos) {
@@ -440,6 +446,7 @@ public class ClientGridHelper {
             for (GridPos dir : DIRECTIONS) {
                 GridPos neighbor = new GridPos(current.x() + dir.x(), current.z() + dir.z());
                 if (neighbor.x() < 0 || neighbor.x() >= w || neighbor.z() < 0 || neighbor.z() >= h) continue;
+                if (!CombatState.isInPolygon(neighbor.x(), neighbor.z())) continue;
                 if (dist.containsKey(neighbor)) continue;
                 if (blockers.contains(neighbor)) continue;
                 if (!isTileWalkable(client, neighbor)) continue;
