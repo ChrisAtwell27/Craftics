@@ -52,7 +52,7 @@ public abstract class BipedAnimMixin {
     //?}
 
     /**
-     * Shared pose code — reads the bone fields inherited from AnimalModel via
+     * Shared pose code: reads the bone fields inherited from AnimalModel via
      * the BipedEntityModel cast and nudges them by the active state. Version-
      * neutral since rightArm/leftArm/body/head exist on every shard.
      */
@@ -78,7 +78,7 @@ public abstract class BipedAnimMixin {
                 model.body.pitch = -0.05f * p;
             }
             case HIT -> {
-                // Brief flinch — head and body jerk back
+                // Brief flinch: head and body jerk back
                 float p = 1f - Math.min(1f, t / 4f);
                 model.head.pitch -= 0.35f * p;
                 model.body.pitch -= 0.15f * p;

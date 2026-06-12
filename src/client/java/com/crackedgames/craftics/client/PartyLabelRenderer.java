@@ -35,7 +35,7 @@ public final class PartyLabelRenderer {
     private static final Text LABEL =
         Text.literal("Active In Party").formatted(Formatting.GREEN, Formatting.BOLD);
 
-    /** Replace the tracked party-mob UUID set — called from the sync receiver. */
+    /** Replace the tracked party-mob UUID set, called from the sync receiver. */
     public static void setPartyMobs(Set<UUID> uuids) {
         PARTY_MOBS.clear();
         PARTY_MOBS.addAll(uuids);

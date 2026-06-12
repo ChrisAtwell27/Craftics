@@ -39,7 +39,6 @@ public class TraderScreen extends Screen {
         // Clear existing buttons on re-init
         this.clearChildren();
 
-        // Trade buttons
         for (int i = 0; i < tradeEntries.length; i++) {
             String[] parts = tradeEntries[i].split("~", 4);
             if (parts.length < 4) continue;
@@ -63,7 +62,6 @@ public class TraderScreen extends Screen {
             this.addDrawableChild(btn);
         }
 
-        // Done button
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("§e✓ Done Trading"),
             btn -> {
@@ -80,15 +78,12 @@ public class TraderScreen extends Screen {
         int centerX = this.width / 2;
         int startY = this.height / 2 - 60;
 
-        // Title
         context.drawCenteredTextWithShadow(this.textRenderer,
             traderIcon + " §e§l" + traderName, centerX, startY - 10, 0xFFFFFF);
 
-        // Subtitle
         context.drawCenteredTextWithShadow(this.textRenderer,
             "§7A wandering trader offers their wares...", centerX, startY + 5, 0xAAAAAA);
 
-        // Emerald count
         context.drawCenteredTextWithShadow(this.textRenderer,
             "§aEmeralds: " + playerEmeralds, centerX, startY + 18, 0x55FF55);
 

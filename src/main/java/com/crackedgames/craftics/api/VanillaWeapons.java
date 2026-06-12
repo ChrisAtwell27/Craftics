@@ -94,9 +94,7 @@ public final class VanillaWeapons {
         registerShovels();
     }
 
-    // =========================================================================
     // Sword ability handler (shared by all 6 swords)
-    // =========================================================================
 
     /**
      * Full sword ability: bleed (Sharpness), smite AoE (Smite), poison+slow (Bane),
@@ -118,7 +116,7 @@ public final class VanillaWeapons {
         int sharpness = PlayerCombatStats.getSharpness(player);
         if (sharpness > 0) {
             target.stackBleed(sharpness);
-            messages.add("\u00a7c\u2726 Bleed! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
+            messages.add("\u00a7cBleed! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
         }
 
         // Smite: AoE radiant burst vs undead
@@ -134,7 +132,7 @@ public final class VanillaWeapons {
                     int burstDmg = enemy.takeDamage(smiteDmg);
                     extraTargets.add(enemy);
                     totalExtra += burstDmg;
-                    messages.add("\u00a7e\u2726 Holy Radiance! " + enemy.getDisplayName() + " takes " + burstDmg + " radiant damage!");
+                    messages.add("\u00a7eHoly Radiance! " + enemy.getDisplayName() + " takes " + burstDmg + " radiant damage.");
                 }
             }
         }
@@ -145,10 +143,10 @@ public final class VanillaWeapons {
             target.stackPoison(3, bane);
             int slowPenalty = bane <= 2 ? 1 : (bane <= 4 ? 2 : 3);
             target.stackSlowness(3, slowPenalty);
-            messages.add("\u00a72\u2726 Venom! " + target.getDisplayName() + " is poisoned (" + bane + "/turn) and slowed (-" + slowPenalty + " speed).");
+            messages.add("\u00a72Venom! " + target.getDisplayName() + " is poisoned (" + bane + "/turn) and slowed (-" + slowPenalty + " speed).");
         }
 
-        // Knockback: directional shockwave — push target + enemies behind in a line
+        // Knockback: directional shockwave - push target + enemies behind in a line
         int knockback = PlayerCombatStats.getKnockback(player);
         if (knockback > 0) {
             int pushDist = knockback + 1; // Lv1 = 2, Lv2 = 3
@@ -227,7 +225,7 @@ public final class VanillaWeapons {
                                 }
                                 case WATER -> {
                                     pushTarget.stackSoaked(2, 1);
-                                    messages.add("\u00a7b" + pushTarget.getDisplayName() + " splashes into water! Soaked!");
+                                    messages.add("\u00a7b" + pushTarget.getDisplayName() + " splashes into water and is soaked!");
                                 }
                                 default -> {}
                             }
@@ -239,18 +237,18 @@ public final class VanillaWeapons {
                     int cDmg = pushTarget.takeDamage(collisionDmg);
                     totalExtra += cDmg;
                     if (pushTarget != target) extraTargets.add(pushTarget);
-                    messages.add("\u00a76\ud83d\udca8 " + pushTarget.getDisplayName() + " slammed into obstacle for " + cDmg + " collision damage!");
+                    messages.add("\u00a76" + pushTarget.getDisplayName() + " slammed into obstacle for " + cDmg + " collision damage!");
                 } else if (!hitHazard && pushTarget != target) {
                     extraTargets.add(pushTarget);
-                    messages.add("\u00a76\ud83d\udca8 " + pushTarget.getDisplayName() + " pushed back " + pushDist + " tiles!");
+                    messages.add("\u00a76" + pushTarget.getDisplayName() + " pushed back " + pushDist + " tiles!");
                 }
             }
             if (!lineTargets.isEmpty()) {
-                messages.add("\u00a76\ud83d\udca8 Shockwave! Knocked back " + lineTargets.size() + " enemies!");
+                messages.add("\u00a76Shockwave! Knocked back " + lineTargets.size() + " enemies.");
             }
         }
 
-        // Sweeping Edge: the swing geometry scales with enchant level —
+        // Sweeping Edge: the swing geometry scales with enchant level:
         // Lv1 = 3-wide chop across the swing direction, Lv2 = 5-wide arc,
         // Lv3 = full 360 ring around the player (see AoeShapes.sweepingEdge).
         int sweepingEdge = PlayerCombatStats.getSweepingEdge(player);
@@ -264,7 +262,7 @@ public final class VanillaWeapons {
                 int sweepDmg = sweepTarget.takeDamage((int)(baseDamage * sweepDmgPct));
                 extraTargets.add(sweepTarget);
                 totalExtra += sweepDmg;
-                messages.add("\u00a7e\u2694 Whirlwind! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " damage!");
+                messages.add("\u00a7eWhirlwind! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " damage.");
                 // Lv3: knockback 1 tile
                 if (sweepKb > 0) {
                     GridPos pPos2 = target.getGridPos();
@@ -302,7 +300,7 @@ public final class VanillaWeapons {
                                         }
                                         case WATER -> {
                                             sweepTarget.stackSoaked(2, 1);
-                                            messages.add("\u00a7b" + sweepTarget.getDisplayName() + " splashes into water! Soaked!");
+                                            messages.add("\u00a7b" + sweepTarget.getDisplayName() + " splashes into water and is soaked!");
                                         }
                                         default -> {}
                                     }
@@ -322,7 +320,7 @@ public final class VanillaWeapons {
                     int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);
                     extraTargets.add(sweepTarget);
                     totalExtra += sweepDmg;
-                    messages.add("\u00a7e\u2694 Sweep! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " splash damage!");
+                    messages.add("\u00a7eSweep! " + sweepTarget.getDisplayName() + " takes " + sweepDmg + " splash damage.");
                 }
             }
         }
@@ -330,22 +328,18 @@ public final class VanillaWeapons {
         // Diamond Sword: 30% crit (double damage)
         Item weapon = player.getMainHandStack().getItem();
         if (weapon == Items.DIAMOND_SWORD && Math.random() < 0.3) {
-            messages.add("\u00a76\u2726 CRITICAL HIT! Double damage!");
+            messages.add("\u00a76CRITICAL HIT! Double damage.");
             return new WeaponAbility.AttackResult(baseDamage * 2 + totalExtra, messages, extraTargets);
         }
 
         // Netherite Sword: execute (triple damage if target below 30% HP)
         if (weapon == Items.NETHERITE_SWORD && target.getCurrentHp() < target.getMaxHp() * 0.3) {
-            messages.add("\u00a74\u2726 EXECUTE! Triple damage on wounded target!");
+            messages.add("\u00a74EXECUTE! Triple damage on wounded target.");
             return new WeaponAbility.AttackResult(baseDamage * 3 + totalExtra, messages, extraTargets);
         }
 
         return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
     }
-
-    // =========================================================================
-    // Water knockback + soaked handler (shared by trident and all corals)
-    // =========================================================================
 
     /**
      * Water affinity proc: chance-based knockback 1 tile + Soaked debuff.
@@ -383,16 +377,14 @@ public final class VanillaWeapons {
                     knockedBack = true;
                 }
             }
-            String kbMsg = knockedBack ? " + knocked back!" : "";
-            messages.add("\u00a73\u2726 SOAKED! " + target.getDisplayName() + " is drenched and slowed" + kbMsg);
+            String kbMsg = knockedBack ? " + knocked back." : "";
+            messages.add("\u00a73SOAKED! " + target.getDisplayName() + " is drenched and slowed" + kbMsg);
         }
 
         return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
     }
 
-    // =========================================================================
     // Dead coral weakness handler (shared by all dead corals and dead coral fans)
-    // =========================================================================
 
     private static WeaponAbility.AttackResult deadCoralAbility(ServerPlayerEntity player,
                                                                 CombatEntity target,
@@ -402,14 +394,12 @@ public final class VanillaWeapons {
                                                                 int luckPoints) {
         List<String> messages = new ArrayList<>();
         target.setAttackPenalty(Math.max(target.getAttackPenalty(), 2));
-        messages.add("\u00a77\u2716 Weakened! " + target.getDisplayName() + " loses 2 ATK for 1 turn!");
+        messages.add("\u00a77Weakened! " + target.getDisplayName() + " loses 2 ATK for 1 turn.");
         return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
     }
 
-    // =========================================================================
     // Coral fan AoE splash. Each live fan type has its own shape (see
     // AoeShapes). Full coral-fan damage to every enemy on the shape tiles.
-    // =========================================================================
 
     /** Damage every distinct enemy standing on {@code tiles} (minus the primary
      *  target, which the engine already damaged). Shared damage rule; the
@@ -425,7 +415,7 @@ public final class VanillaWeapons {
             int splashDmg = splash.takeDamage(baseDamage);
             extraTargets.add(splash);
             totalExtra += splashDmg;
-            messages.add("\u00a73\u2716 Splash! " + splash.getDisplayName() + " hit for " + splashDmg + "!");
+            messages.add("\u00a73Splash! " + splash.getDisplayName() + " hit for " + splashDmg + ".");
         }
         return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
     }

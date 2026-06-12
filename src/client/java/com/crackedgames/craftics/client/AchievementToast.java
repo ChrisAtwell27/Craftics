@@ -87,18 +87,15 @@ public class AchievementToast implements HudRenderCallback {
         // Star icon
         ctx.drawText(client.textRenderer, "\u2726", x + 6, y + 5, TITLE_COLOR, true);
 
-        // Title: "Achievement Unlocked!"
         ctx.drawText(client.textRenderer, "Achievement Unlocked!", x + 18, y + 5, TITLE_COLOR, true);
 
-        // Achievement name + description
         String name = current.displayName();
         String desc = current.description();
-        // Truncate if too long
-        if (client.textRenderer.getWidth(name + " — " + desc) > TOAST_WIDTH - 16) {
+        if (client.textRenderer.getWidth(name + " - " + desc) > TOAST_WIDTH - 16) {
             desc = desc.substring(0, Math.min(desc.length(), 28)) + "...";
         }
         ctx.drawText(client.textRenderer, name, x + 6, y + 20, 0xFFFFFFFF, true);
         int nameWidth = client.textRenderer.getWidth(name);
-        ctx.drawText(client.textRenderer, " — " + desc, x + 6 + nameWidth, y + 20, DESC_COLOR, false);
+        ctx.drawText(client.textRenderer, " - " + desc, x + 6 + nameWidth, y + 20, DESC_COLOR, false);
     }
 }

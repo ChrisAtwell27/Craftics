@@ -19,7 +19,7 @@ import net.minecraft.item.Items;
 
 /**
  * Compatibility module for the <a href="https://modrinth.com/mod/golem-overhaul">Golem
- * Overhaul</a> mod — the basis of the Craftics "pet class" expansion.
+ * Overhaul</a> mod, the basis of the Craftics "pet class" expansion.
  *
  * <p>Every golem the mod adds is registered as a {@link AllyEntry.RecruitMode#BUILT}
  * combat ally (no taming required): build one in the hub, then add it to your battle
@@ -28,29 +28,29 @@ import net.minecraft.item.Items;
  * is built from (a lump of coal patches a coal golem, a honey bottle a honey golem).
  *
  * <p>Like {@code CreeperOverhaulCompat}, entries are registered whether or not the
- * mod is present — a missing mod just means no hub golem ever matches, while any
+ * mod is present: a missing mod just means no hub golem ever matches, while any
  * datapack/addon referencing these ids by name still resolves. {@link #isLoaded()}
  * reports actual presence.
  *
- * <h2>Roadmap — bespoke mechanics layered on top of this foundation</h2>
+ * <h2>Roadmap: bespoke mechanics layered on top of this foundation</h2>
  * The stats below make every golem a functioning melee ally today. The signature
  * abilities are staged as follow-up phases (each touches CombatManager / a custom
  * {@code AllyAI} / the VFX layer):
  * <ul>
- *   <li><b>Netherite golem</b> — rideable mount (speed locked to 1 + player SPD stat,
+ *   <li><b>Netherite golem</b>: rideable mount (speed locked to 1 + player SPD stat,
  *       additive). While ridden: player attacks as normal and the golem erupts a
  *       straight lava-line ({@code TileType.LAVA}, 3 turns) ahead of it. Mount-ability
  *       keybind (3 AP) summons 2 coal golem allies.</li>
- *   <li><b>Honey golem</b> — immobile; spawns one bee ally each round that lives 2
+ *   <li><b>Honey golem</b>: immobile; spawns one bee ally each round that lives 2
  *       rounds (custom {@code AllyAI} + round summon hook).</li>
- *   <li><b>Coal golem</b> — basic attacker (speed 2); flint &amp; steel ignites it into a
+ *   <li><b>Coal golem</b>: basic attacker (speed 2); flint &amp; steel ignites it into a
  *       fire-aspect attacker (heavy burn, speed 4) that dies after one attack.</li>
- *   <li><b>Slime golem</b> — splits into two small slime golems on death.</li>
- *   <li><b>Terracotta golem</b> — armored taunt-tank that forces enemy targeting.</li>
- *   <li><b>Hay golem</b> — support healer; mends the lowest-HP ally each round.</li>
- *   <li><b>Kelp golem</b> — Soaks on hit; bonus on water tiles.</li>
- *   <li><b>Candle golem</b> — ranged caster; lobs a candle-flame that ignites a tile (3-turn FIRE).</li>
- *   <li><b>Barrel golem</b> — bruiser that "barters" a loot drop on a kill.</li>
+ *   <li><b>Slime golem</b>: splits into two small slime golems on death.</li>
+ *   <li><b>Terracotta golem</b>: armored taunt-tank that forces enemy targeting.</li>
+ *   <li><b>Hay golem</b>: support healer; mends the lowest-HP ally each round.</li>
+ *   <li><b>Kelp golem</b>: Soaks on hit; bonus on water tiles.</li>
+ *   <li><b>Candle golem</b>: ranged caster; lobs a candle-flame that ignites a tile (3-turn FIRE).</li>
+ *   <li><b>Barrel golem</b>: bruiser that "barters" a loot drop on a kill.</li>
  * </ul>
  * Each ability ships with an over-the-top VFX (projectile trails via
  * {@code ProjectileSpawner.spawnProjectile/spawnSpellTrail}, summon rings via
@@ -70,7 +70,7 @@ public final class GolemOverhaulCompat {
     private static String id(String path) { return MOD_ID + ":" + path; }
 
     /**
-     * Register every golem ally. Safe to call whether the mod is loaded or not —
+     * Register every golem ally. Safe to call whether the mod is loaded or not,
      * called once from {@code CrafticsMod.onInitialize()} after
      * {@code VanillaAllies.registerAll()}.
      */
@@ -78,10 +78,10 @@ public final class GolemOverhaulCompat {
         if (registered) return;
         registered = true;
 
-        // builder(id).hp.attack.defense.speed.range — BUILT (no taming) + build-material heal.
+        // builder(id).hp.attack.defense.speed.range: BUILT (no taming) + build-material heal.
         // Basic attacker; flint & steel "lit" transform handled in the coal-golem phase.
         golem("coal_golem",        8,  3, 0, 2, 1, Items.COAL,           4);
-        // Mount. Low base speed by design — only the player's SPD stat raises it (additive).
+        // Mount. Low base speed by design: only the player's SPD stat raises it (additive).
         // rideable(true) marks it a combat mount the player can ride (PartyMobs/CombatManager).
         AllyRegistry.register(AllyEntry.builder(id("netherite_golem"))
             .hp(30).attack(8).defense(5).speed(1).range(1)
@@ -90,7 +90,7 @@ public final class GolemOverhaulCompat {
             .rideable(true)
             .healItem(Items.NETHERITE_SCRAP, 8)
             .build());
-        // Honey: support summoner — spawns one bee ally each round (bee lives ~2 rounds).
+        // Honey: support summoner - spawns one bee ally each round (bee lives ~2 rounds).
         // Holds station via the SUPPORT archetype; the speed(0) below is declarative only
         // (ally spawning derives move speed from defaults today), full immobility is a later phase.
         AllyRegistry.register(AllyEntry.builder(id("honey_golem"))
@@ -100,14 +100,14 @@ public final class GolemOverhaulCompat {
             .healItem(Items.HONEY_BOTTLE, 5)
             .roundHook((self, ctx) -> {
                 ctx.summonAlly("minecraft:bee", self, 2);
-                ctx.message("§e✦ The honey golem releases a bee!");
+                ctx.message("§eThe honey golem releases a bee!");
             })
             .build());
-        // Splitter — spawns two small slime golems on death (phase).
+        // Splitter: spawns two small slime golems on death (phase).
         golem("slime_golem",      14,  3, 1, 2, 1, Items.SLIME_BALL,     5);
         // Armored taunt-tank.
         golem("terracotta_golem", 18,  3, 4, 2, 1, Items.TERRACOTTA,     5);
-        // Support healer — mends the lowest-HP injured ally each round.
+        // Support healer: mends the lowest-HP injured ally each round.
         AllyRegistry.register(AllyEntry.builder(id("hay_golem"))
             .hp(12).attack(2).defense(1).speed(2).range(1)
             .recruitMode(AllyEntry.RecruitMode.BUILT)
@@ -122,7 +122,7 @@ public final class GolemOverhaulCompat {
                 }
                 if (lowest != null) {
                     ctx.healAlly(lowest, 4);
-                    ctx.message("§a✦ The hay golem mends " + lowest.getDisplayName() + "!");
+                    ctx.message("§aThe hay golem mends " + lowest.getDisplayName() + "!");
                 }
             })
             .build());
@@ -133,7 +133,7 @@ public final class GolemOverhaulCompat {
         // Loot-bartering bruiser.
         golem("barrel_golem",     14,  3, 2, 2, 1, Items.OAK_PLANKS,     4);
 
-        // Register a weaker small slime spawned only by the slime-golem death split —
+        // Register a weaker small slime spawned only by the slime-golem death split,
         // never hub-recruited (IN_COMBAT_ONLY), only injected by checkAndHandleDeath.
         AllyRegistry.register(AllyEntry.builder(id("small_slime_golem"))
             .hp(5).attack(2).defense(0).speed(2).range(1)
@@ -147,10 +147,10 @@ public final class GolemOverhaulCompat {
         loaded = FabricLoader.getInstance().isModLoaded(MOD_ID);
         if (loaded) {
             CrafticsMod.LOGGER.info(
-                "[Craftics × Golem Overhaul] enabled — 9 hub golem allies + 1 combat-only small slime registered (pet-class expansion)");
+                "[Craftics × Golem Overhaul] enabled - 9 hub golem allies + 1 combat-only small slime registered (pet-class expansion)");
         } else {
             CrafticsMod.LOGGER.debug(
-                "[Craftics × Golem Overhaul] mod not loaded — golem ally entries registered for any future use");
+                "[Craftics × Golem Overhaul] mod not loaded - golem ally entries registered for any future use");
         }
     }
 
@@ -184,7 +184,7 @@ public final class GolemOverhaulCompat {
         AllyAbilities.register(id("kelp_golem"),   AllyAbilities.OnHitEffect.SOAK);
         AllyAbilities.register(id("candle_golem"), AllyAbilities.OnHitEffect.BURN);
 
-        // Generic core extension hooks — golem-specific behaviour lives here, not in
+        // Generic core extension hooks: golem-specific behaviour lives here, not in
         // the base combat code. Each mirrors the AllyArchetypes/on-hit pattern above.
 
         // Slime golem splits into two small slime golems on death. summonAlly places
@@ -193,7 +193,7 @@ public final class GolemOverhaulCompat {
         AllyDeathRegistry.register(id("slime_golem"), (self, ctx) -> {
             ctx.summonAlly(id("small_slime_golem"), self, -1);
             ctx.summonAlly(id("small_slime_golem"), self, -1);
-            ctx.message("§a❖ The slime golem splits!");
+            ctx.message("§aThe slime golem splits!");
         });
 
         // Barrel golem barters a bonus loot roll from any kill it lands.

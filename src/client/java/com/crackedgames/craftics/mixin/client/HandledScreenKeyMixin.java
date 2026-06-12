@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Lets the Craftics "hide/reveal inventory UI" keybind toggle the stats and
- * damage-affinity panels while the inventory screen is open — keybindings
+ * damage-affinity panels while the inventory screen is open - keybindings
  * otherwise don't fire while a screen is capturing input.
  */
 @Mixin(HandledScreen.class)

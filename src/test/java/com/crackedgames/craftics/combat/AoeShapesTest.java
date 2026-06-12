@@ -16,13 +16,11 @@ class AoeShapesTest {
         return tiles.stream().collect(Collectors.toSet());
     }
 
-    // ---- cardinalDir ----
-
     @Test
     void cardinalDir_dominantAxisWins() {
-        // Mostly east, slightly north → snaps to east.
+        // Mostly east, slightly north: snaps to east.
         assertArrayEquals(new int[]{1, 0}, AoeShapes.cardinalDir(new GridPos(0, 0), new GridPos(3, 1)));
-        // Mostly south → snaps to south (+z).
+        // Mostly south: snaps to south (+z).
         assertArrayEquals(new int[]{0, 1}, AoeShapes.cardinalDir(new GridPos(0, 0), new GridPos(1, 3)));
         // West.
         assertArrayEquals(new int[]{-1, 0}, AoeShapes.cardinalDir(new GridPos(5, 5), new GridPos(0, 5)));
@@ -33,8 +31,6 @@ class AoeShapesTest {
         assertArrayEquals(new int[]{0, 0}, AoeShapes.cardinalDir(new GridPos(2, 2), new GridPos(2, 2)));
     }
 
-    // ---- slam3x3 ----
-
     @Test
     void slam3x3_coversNineTiles() {
         List<GridPos> tiles = AoeShapes.slam3x3(new GridPos(5, 5));
@@ -43,8 +39,6 @@ class AoeShapesTest {
         assertTrue(tiles.contains(new GridPos(4, 4)));   // corner
         assertTrue(tiles.contains(new GridPos(6, 6)));   // opposite corner
     }
-
-    // ---- plus ----
 
     @Test
     void plus_centerAndFourCardinals() {
@@ -58,8 +52,6 @@ class AoeShapesTest {
         // No diagonals.
         assertFalse(tiles.contains(new GridPos(4, 4)));
     }
-
-    // ---- sweepingEdge ----
 
     @Test
     void sweepingEdge_lv1_isThreeWideChop() {
@@ -91,8 +83,6 @@ class AoeShapesTest {
         assertEquals(tiles, tiles2);
     }
 
-    // ---- cone ----
-
     @Test
     void cone_widensEachRow() {
         // Attacking east from (5,5), depth 2.
@@ -105,8 +95,6 @@ class AoeShapesTest {
         assertTrue(tiles.contains(new GridPos(7, 3)));   // row2 far edge
         assertTrue(tiles.contains(new GridPos(7, 7)));   // row2 far edge
     }
-
-    // ---- ring ----
 
     @Test
     void ring_radius1IsEightTiles() {
@@ -124,8 +112,6 @@ class AoeShapesTest {
         assertTrue(tiles.contains(new GridPos(5, 3)));   // edge midpoint
         assertFalse(tiles.contains(new GridPos(4, 4)));  // inner (radius 1) excluded
     }
-
-    // ---- fireAspectShape (scales with sweeping edge level) ----
 
     @Test
     void fireAspectShape_noSweep_isForwardCone() {
@@ -156,8 +142,6 @@ class AoeShapesTest {
         assertEquals(rings, rings2);
     }
 
-    // ---- lineBehind ----
-
     @Test
     void lineBehind_excludesTargetExtendsForward() {
         // East attack: target (6,5), should give (7,5),(8,5),(9,5) for length 3.
@@ -165,15 +149,11 @@ class AoeShapesTest {
         assertEquals(List.of(new GridPos(7, 5), new GridPos(8, 5), new GridPos(9, 5)), tiles);
     }
 
-    // ---- lineOutward ----
-
     @Test
     void lineOutward_includesTarget() {
         List<GridPos> tiles = AoeShapes.lineOutward(new GridPos(5, 5), new GridPos(6, 5), 3);
         assertEquals(List.of(new GridPos(6, 5), new GridPos(7, 5), new GridPos(8, 5)), tiles);
     }
-
-    // ---- pierceBehind ----
 
     @Test
     void pierceBehind_targetPlusOneBehind() {

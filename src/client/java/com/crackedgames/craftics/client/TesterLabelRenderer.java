@@ -14,13 +14,13 @@ import net.minecraft.util.Formatting;
 import net.minecraft.util.math.Vec3d;
 
 /**
- * Renders a floating cosmetic title (e.g. "✦ Founding Tester") above every
+ * Renders a floating cosmetic title (e.g. "Founding Tester") above every
  * registered {@link TesterRegistry} player, in that tester's signature color.
  * Purely cosmetic and always visible (in and out of combat); it sits just above
  * the vanilla name tag and never replaces it.
  *
  * <p>Modeled on {@link PartyLabelRenderer}. Because {@link TesterRegistry} is
- * identical on every client, no server sync is required — each client filters
+ * identical on every client, no server sync is required - each client filters
  * the players it is already rendering.
  */
 public final class TesterLabelRenderer {

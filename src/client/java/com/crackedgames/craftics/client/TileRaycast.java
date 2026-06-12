@@ -74,7 +74,7 @@ public class TileRaycast {
         double rayDirY = fwdY + ndcX * tanHalfFov * aspect * rightY + ndcY * tanHalfFov * upY;
         double rayDirZ = fwdZ + ndcX * tanHalfFov * aspect * rightZ + ndcY * tanHalfFov * upZ;
 
-        // World raycast first — catches elevated blocks (Creaking Heart and
+        // World raycast first: catches elevated blocks (Creaking Heart and
         // any other block-based enemy whose collider sits at floor+1) that the
         // flat plane intersection below would pass through. If the cursor ray
         // hits any block ABOVE the arena floor within the arena footprint, use
@@ -93,7 +93,7 @@ public class TileRaycast {
             double blockHitDistSq = blockHitValid
                 ? camPos.squaredDistanceTo(worldHit.getPos()) : Double.MAX_VALUE;
 
-            // Entity raycast — pointing at a mob's visible body should target the
+            // Entity raycast: pointing at a mob's visible body should target the
             // tile it stands on, even when the cursor ray would otherwise land on
             // the tile behind it (common at low camera angles on tall mobs).
             // Invisible (stealthed) mobs are skipped so their hidden position

@@ -28,10 +28,6 @@ public final class Abilities {
 
     private Abilities() {}
 
-    // -------------------------------------------------------------------------
-    // 1. bleed()
-    // -------------------------------------------------------------------------
-
     /**
      * Reads the Sharpness enchant level from the player's weapon.
      * If sharpness > 0, applies that many bleed stacks to the target.
@@ -42,16 +38,12 @@ public final class Abilities {
             int sharpness = PlayerCombatStats.getSharpness(player);
             if (sharpness > 0) {
                 target.stackBleed(sharpness);
-                messages.add("§c✦ Bleed! " + target.getDisplayName()
+                messages.add("§cBleed! " + target.getDisplayName()
                         + " has " + target.getBleedStacks() + " bleed stacks.");
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
         };
     }
-
-    // -------------------------------------------------------------------------
-    // 2. sweepAdjacent(baseChance, bonusPerPoint)
-    // -------------------------------------------------------------------------
 
     /**
      * Affinity-scaled chance to hit one adjacent enemy for half base damage.
@@ -68,21 +60,17 @@ public final class Abilities {
                 for (CombatEntity sweepTarget : adjacent) {
                     int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);
                     extraTargets.add(sweepTarget);
-                    messages.add("§e⚔ Sweep! " + sweepTarget.getDisplayName()
-                            + " takes " + sweepDmg + " splash damage!");
+                    messages.add("§eSweep! " + sweepTarget.getDisplayName()
+                            + " takes " + sweepDmg + " splash damage.");
                 }
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, extraTargets);
         };
     }
 
-    // -------------------------------------------------------------------------
-    // 3. armorIgnore(baseChance, bonusPerPoint)
-    // -------------------------------------------------------------------------
-
     /**
      * Affinity-scaled chance to PERMANENTLY destroy a portion of the target's defense.
-     * The destroyed defense is also dealt as bonus damage in the same swing — the axe
+     * The destroyed defense is also dealt as bonus damage in the same swing: the axe
      * doesn't just bypass armor, it shatters it for the rest of the fight.
      * Uses CLEAVING affinity.
      * Chance = baseChance + (CLEAVING affinity points * bonusPerPoint) + (luckPoints * 0.02).
@@ -102,19 +90,15 @@ public final class Abilities {
                     int bonusDmg = target.takeDamage(destroyed);
                     totalDamage += bonusDmg;
                     int remaining = target.getDefense();
-                    messages.add("§6✦ SHATTER ARMOR! §ePermanently destroyed " + destroyed
-                        + " DEF for +" + bonusDmg + " damage! §7(" + remaining + " DEF remaining)");
+                    messages.add("§6SHATTER ARMOR! §ePermanently destroyed " + destroyed
+                        + " DEF for +" + bonusDmg + " damage. §7(" + remaining + " DEF remaining)");
                 } else {
-                    messages.add("§6✦ SHATTER ARMOR! §7(target has no armor left)");
+                    messages.add("§6SHATTER ARMOR! §7(target has no armor left)");
                 }
             }
             return new WeaponAbility.AttackResult(totalDamage, messages, List.of());
         };
     }
-
-    // -------------------------------------------------------------------------
-    // 4. stun(baseChance, bonusPerPoint)
-    // -------------------------------------------------------------------------
 
     /**
      * Affinity-scaled chance to stun the target for one turn.
@@ -128,15 +112,11 @@ public final class Abilities {
             double chance = baseChance + (bluntPts * bonusPerPoint) + (luckPoints * 0.02);
             if (Math.random() < chance) {
                 target.setStunned(true);
-                messages.add("§8✦ STUNNED! " + target.getDisplayName() + " can't move next turn!");
+                messages.add("§8STUNNED! " + target.getDisplayName() + " can't move next turn.");
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
         };
     }
-
-    // -------------------------------------------------------------------------
-    // 5. knockbackDirection(distance)
-    // -------------------------------------------------------------------------
 
     /**
      * Pushes the target away from the player by up to {@code distance} tiles.
@@ -167,15 +147,11 @@ public final class Abilities {
                     var bp = arena.gridToBlockPos(kbPos);
                     target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
                 }
-                messages.add("§6💨 Knocked back " + target.getDisplayName() + " " + pushed + " tile(s)!");
+                messages.add("§6Knocked back " + target.getDisplayName() + " " + pushed + " tile(s)!");
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
         };
     }
-
-    // -------------------------------------------------------------------------
-    // 6. aoe(radius, damageMultiplier)
-    // -------------------------------------------------------------------------
 
     /**
      * Hits all non-ally, alive enemies within {@code radius} Manhattan distance of the target
@@ -192,16 +168,12 @@ public final class Abilities {
                 if (tPos.manhattanDistance(entity.getGridPos()) <= radius) {
                     int dmg = entity.takeDamage(aoeDmgBase);
                     extraTargets.add(entity);
-                    messages.add("§6💥 Shockwave hits " + entity.getDisplayName() + " for " + dmg + "!");
+                    messages.add("§6Shockwave hits " + entity.getDisplayName() + " for " + dmg + "!");
                 }
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, extraTargets);
         };
     }
-
-    // -------------------------------------------------------------------------
-    // 7. applyEffect(type, turns, amplifier)
-    // -------------------------------------------------------------------------
 
     /**
      * Applies a status effect to the target using the appropriate stacking method.
@@ -214,46 +186,42 @@ public final class Abilities {
             switch (type) {
                 case POISON ->  {
                     target.stackPoison(turns, amplifier);
-                    messages.add("§2✦ Poisoned! " + target.getDisplayName()
+                    messages.add("§2Poisoned! " + target.getDisplayName()
                             + " is poisoned for " + turns + " turn(s).");
                 }
                 case BURNING -> {
                     target.stackBurning(turns, amplifier);
-                    messages.add("§6✦ Burning! " + target.getDisplayName()
+                    messages.add("§6Burning! " + target.getDisplayName()
                             + " is on fire for " + turns + " turn(s).");
                 }
                 case SOAKED -> {
                     target.stackSoaked(turns, amplifier);
-                    messages.add("§3✦ Soaked! " + target.getDisplayName()
+                    messages.add("§3Soaked! " + target.getDisplayName()
                             + " is drenched and slowed.");
                 }
                 case SLOWNESS -> {
                     target.stackSlowness(turns, amplifier);
-                    messages.add("§7✦ Slowed! " + target.getDisplayName()
+                    messages.add("§7Slowed! " + target.getDisplayName()
                             + " is slowed for " + turns + " turn(s).");
                 }
                 case CONFUSION -> {
                     target.stackConfusion(turns, amplifier);
-                    messages.add("§d✦ Confused! " + target.getDisplayName()
+                    messages.add("§dConfused! " + target.getDisplayName()
                             + " is disoriented for " + turns + " turn(s).");
                 }
                 // TODO: WEAKNESS and other types that reduce attack require
                 //   target.stackDefensePenalty() or target.setAttackPenalty() which do not
-                //   match a generic EffectType cleanly — implement case-by-case as needed.
+                //   match a generic EffectType cleanly, implement case-by-case as needed.
                 default -> {
-                    // Effect type not yet supported via direct CombatEntity method — no-op.
+                    // Effect type not yet supported via direct CombatEntity method - no-op.
                 }
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
         };
     }
 
-    // -------------------------------------------------------------------------
-    // 8. pierce()
-    // -------------------------------------------------------------------------
-
     /**
-     * Hits the first enemy behind the target in the player→target direction.
+     * Hits the first enemy behind the target in the player-to-target direction.
      * Full base damage is dealt to the pierced entity.
      */
     public static WeaponAbilityHandler pierce() {
@@ -269,17 +237,13 @@ public final class Abilities {
                 if (pierced != null && pierced.isAlive() && !pierced.isAlly()) {
                     int pierceDmg = pierced.takeDamage(baseDamage);
                     extraTargets.add(pierced);
-                    messages.add("§b⚔ PIERCE! Hit " + pierced.getDisplayName()
-                            + " behind for " + pierceDmg + "!");
+                    messages.add("§bPIERCE! Hit " + pierced.getDisplayName()
+                            + " behind for " + pierceDmg + ".");
                 }
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, extraTargets);
         };
     }
-
-    // -------------------------------------------------------------------------
-    // 9. fireDamage(bonusDmg)
-    // -------------------------------------------------------------------------
 
     /**
      * Sets the target entity on fire (if it has a mob entity) and deals {@code bonusDmg}
@@ -293,15 +257,11 @@ public final class Abilities {
             }
             int actualFireDmg = target.takeDamage(bonusDmg);
             int totalDamage = baseDamage + actualFireDmg;
-            messages.add("§6✖ Blaze Rod scorches " + target.getDisplayName()
+            messages.add("§6Blaze Rod scorches " + target.getDisplayName()
                     + " for +" + actualFireDmg + " fire damage!");
             return new WeaponAbility.AttackResult(totalDamage, messages, List.of());
         };
     }
-
-    // -------------------------------------------------------------------------
-    // Utility
-    // -------------------------------------------------------------------------
 
     /**
      * Returns up to {@code maxTargets} alive, non-ally enemies occupying tiles adjacent

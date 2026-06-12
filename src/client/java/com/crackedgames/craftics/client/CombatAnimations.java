@@ -19,7 +19,7 @@ public class CombatAnimations {
     /**
      * Per-player attack-animation countdowns. Attack animations play on EVERY
      * party member's avatar (the damage event names the attacker), so a single
-     * shared timer let one teammate's swing cut another's short — and the
+     * shared timer let one teammate's swing cut another's short, and the
      * expiry always faded out the LOCAL player's layer, leaving remote avatars
      * frozen at the final frame of their swing.
      */
@@ -146,7 +146,7 @@ public class CombatAnimations {
         int phase = CombatState.getPhase();
         // Phase 2 = combat move animation, broadcast to ALL party clients. Only
         // play the local-player walking anim when the local player is the one
-        // actually moving — otherwise every party member's avatar walks in
+        // actually moving, otherwise every party member's avatar walks in
         // place whenever any one teammate moves. In solo (empty turn order)
         // the local player is always the actor.
         boolean isMyTurn = true;
@@ -257,7 +257,7 @@ public class CombatAnimations {
         layer.replaceAnimationWithFade(AbstractFadeModifier.standardFadeIn(4, Ease.LINEAR), null);
     }
 
-    /** Hard-stop every tracked avatar's layer (combat end) — not just the local player's. */
+    /** Hard-stop every tracked avatar's layer (combat end), not just the local player's. */
     public static void stopAll() {
         for (ModifierLayer<IAnimation> l : layerMap.values()) {
             if (l != null) l.setAnimation(null);
@@ -344,7 +344,7 @@ public class CombatAnimations {
         }
     }
 
-    // 14 ticks: windup(0-5) → strike(5-7) → follow-through(7-10) → recovery(10-14)
+    // 14 ticks: windup(0-5) -> strike(5-7) -> follow-through(7-10) -> recovery(10-14)
     private static class SwordSlashAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -395,9 +395,9 @@ public class CombatAnimations {
         }
     }
 
-    // ===== Basic Weapons mod animations =====
+    // Basic Weapons mod animations
 
-    // 10 ticks: jab1(0-3) → jab2(3-6) → recovery(6-10) — fast double thrust
+    // 10 ticks: jab1(0-3) -> jab2(3-6) -> recovery(6-10) - fast double thrust
     private static class DaggerJabAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -416,7 +416,7 @@ public class CombatAnimations {
         }
     }
 
-    // 16 ticks: windup(0-5) → swing(5-8) → recovery(8-16) — horizontal side bash
+    // 16 ticks: windup(0-5) -> swing(5-8) -> recovery(8-16) - horizontal side bash
     private static class ClubBashAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -438,7 +438,7 @@ public class CombatAnimations {
         }
     }
 
-    // 14 ticks: coil(0-4) → lunge(4-7) → recovery(7-14) — long forward thrust
+    // 14 ticks: coil(0-4) -> lunge(4-7) -> recovery(7-14) - long forward thrust
     private static class SpearThrustAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -461,7 +461,7 @@ public class CombatAnimations {
         }
     }
 
-    // 16 ticks: spin around — staff twirl
+    // 16 ticks: spin around - staff twirl
     private static class QuarterstaffTwirlAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -480,7 +480,7 @@ public class CombatAnimations {
         }
     }
 
-    // 18 ticks: windup(0-6) → wide sweep(6-10) → recovery(10-18) — broad horizontal arc
+    // 18 ticks: windup(0-6) -> wide sweep(6-10) -> recovery(10-18) - broad horizontal arc
     private static class GlaiveSweepAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -505,7 +505,7 @@ public class CombatAnimations {
         }
     }
 
-    // 16 ticks: stance(0-3) → raise(3-7) → hold(7-8) → slam(8-10) → impact(10-13) → recovery(13-16)
+    // 16 ticks: stance(0-3) -> raise(3-7) -> hold(7-8) -> slam(8-10) -> impact(10-13) -> recovery(13-16)
     private static class AxeOverheadAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -564,7 +564,7 @@ public class CombatAnimations {
         }
     }
 
-    // 22 ticks: crouch(0-3) → jump(3-8) → peak(8-10) → slam(10-12) → impact(12-16) → recovery(16-22)
+    // 22 ticks: crouch(0-3) -> jump(3-8) -> peak(8-10) -> slam(10-12) -> impact(12-16) -> recovery(16-22)
     private static class MaceSlamAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -631,7 +631,7 @@ public class CombatAnimations {
         }
     }
 
-    // 16 ticks: nock(0-3) → draw(3-9) → hold(9-10) → release(10-11) → recovery(11-16)
+    // 16 ticks: nock(0-3) -> draw(3-9) -> hold(9-10) -> release(10-11) -> recovery(11-16)
     private static class BowDrawAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -678,7 +678,7 @@ public class CombatAnimations {
         }
     }
 
-    // 14 ticks: coil(0-4) → stab(4-6) → hold(6-9) → recovery(9-14)
+    // 14 ticks: coil(0-4) -> stab(4-6) -> hold(6-9) -> recovery(9-14)
     private static class TridentThrustAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }
@@ -752,7 +752,7 @@ public class CombatAnimations {
         }
     }
 
-    // 10 ticks: windup(0-4) → release(4-6) → recovery(6-10)
+    // 10 ticks: windup(0-4) -> release(4-6) -> recovery(6-10)
     private static class ThrowAnimation implements IAnimation {
         private float tick = 0;
         @Override public void tick() { tick += 1; }

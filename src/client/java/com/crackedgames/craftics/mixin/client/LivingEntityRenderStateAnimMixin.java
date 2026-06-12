@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.Unique;
 /**
  * Stores the Craftics anim pose on {@code LivingEntityRenderState}. Only
  * applies on 1.21.3+ where model {@code setAngles} receives a render-state
- * snapshot — on 1.21.1 the entity is passed directly and this mixin is a no-op.
+ * snapshot; on 1.21.1 the entity is passed directly and this mixin is a no-op.
  */
 //? if >=1.21.3 {
 @Mixin(LivingEntityRenderState.class)
@@ -29,6 +29,6 @@ public abstract class LivingEntityRenderStateAnimMixin implements CrafticsAnimHo
 public abstract class LivingEntityRenderStateAnimMixin {
     // No-op on 1.21.1: anim state is read directly from the entity in BipedAnimMixin.
     // Targeting LivingEntity (which exists on every shard) keeps this class loadable
-    // without affecting behavior — no @Inject / @Redirect members are declared.
+    // without affecting behavior - no @Inject / @Redirect members are declared.
 }
 *///?}

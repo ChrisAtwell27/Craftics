@@ -18,7 +18,7 @@ public class InventoryStatsMixin {
 
     @Inject(method = "render", at = @At("TAIL"))
     private void craftics$renderStats(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
-        // Hidden by the "hide/reveal inventory UI" keybind — skips both this
+        // Hidden by the "hide/reveal inventory UI" keybind - skips both this
         // stats panel and the damage-affinity panel drawn below.
         if (!CombatState.isStatsOverlayVisible()) return;
 
@@ -31,21 +31,17 @@ public class InventoryStatsMixin {
         int panelY = (screenHeight / 2) - 80;
         int lineHeight = 12;
 
-        // Background panel
         context.fill(panelX - 4, panelY - 4, panelX + 120, panelY + 140, 0xCC000000);
         context.fill(panelX - 3, panelY - 3, panelX + 119, panelY + 139, 0xCC1A1A2E);
 
-        // Title
         context.drawTextWithShadow(net.minecraft.client.MinecraftClient.getInstance().textRenderer,
             "\u00a76\u00a7l\u2605 Stats", panelX, panelY, 0xFFFFAA00);
         panelY += lineHeight + 2;
 
-        // Level
         context.drawTextWithShadow(net.minecraft.client.MinecraftClient.getInstance().textRenderer,
             "\u00a7fLevel \u00a7e\u00a7l" + CombatState.getPlayerLevel(), panelX, panelY, 0xFFFFFFFF);
         panelY += lineHeight;
 
-        // Unspent points
         int unspent = CombatState.getUnspentPoints();
         if (unspent > 0) {
             context.drawTextWithShadow(net.minecraft.client.MinecraftClient.getInstance().textRenderer,
@@ -53,11 +49,9 @@ public class InventoryStatsMixin {
         }
         panelY += lineHeight + 2;
 
-        // Divider
         context.fill(panelX, panelY, panelX + 115, panelY + 1, 0xFF444444);
         panelY += 4;
 
-        // Each stat
         PlayerProgression.Stat[] stats = PlayerProgression.Stat.values();
         for (int i = 0; i < stats.length; i++) {
             PlayerProgression.Stat stat = stats[i];
@@ -73,12 +67,10 @@ public class InventoryStatsMixin {
             panelY += lineHeight;
         }
 
-        // Divider
         panelY += 2;
         context.fill(panelX, panelY, panelX + 115, panelY + 1, 0xFF444444);
         panelY += 4;
 
-        // Emeralds
         context.drawTextWithShadow(net.minecraft.client.MinecraftClient.getInstance().textRenderer,
             "\u00a7a\u00a7l\u2B22 \u00a7f" + CombatState.getEmeralds() + " Emeralds", panelX, panelY, 0xFF55FF55);
 

@@ -10,7 +10,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Dense Jungle Boss — "The Broodmother" (Spider Queen)
+ * Dense Jungle Boss - "The Broodmother" (Spider Queen)
  * Entity: Spider | 35HP / 6ATK / 2DEF / Speed 3 | Size 2×2
  *
  * State-based AI with two modes: HUNTING (aggressive) and NESTING (defensive).
@@ -19,8 +19,8 @@ import java.util.List;
  *   Hunting: Ceiling Ambush, Pounce, Venomous Bite
  *   Nesting: Spawn Brood, Web Spray
  *
- * Phase 2 — "Nest Awakening" (≤50% HP):
- *   +2 Speed, Ceiling Ambush → Hunting Dive (web rain + dive-bomb),
+ * Phase 2 - "Nest Awakening" (≤50% HP):
+ *   +2 Speed, Ceiling Ambush -> Hunting Dive (web rain + dive-bomb),
  *   Web Spray gains Poison, Pounce range +1, can place new egg sacs.
  *
  * Egg sacs are 1HP entities on the grid (turtle egg blocks).
@@ -29,25 +29,24 @@ import java.util.List;
 public class BroodmotherAI extends BossAI {
     @Override public int getGridSize() { return 2; }
 
-    // --- Cooldown keys ---
+    // Cooldown keys
     private static final String CD_CEILING = "ceiling";
     private static final String CD_POUNCE = "pounce";
     private static final String CD_WEB = "web_spray";
     private static final String CD_BROOD = "spawn_brood";
 
-    // --- State machine ---
+    // State machine
     public enum State { HUNTING, NESTING }
     private State state = State.HUNTING;
 
-    // --- Egg sac tracking (grid positions of living egg sac entities) ---
+    // Egg sac tracking (grid positions of living egg sac entities)
     private final List<GridPos> eggSacs = new ArrayList<>();
     private boolean eggSacDestroyedThisCycle = false;
 
-    // --- Ceiling mechanic ---
     // True when the boss has ascended but not yet set the dive warning (P2 web-rain turn).
     private boolean ceilingWebRainPending = false;
 
-    // --- Web rain (consumed by CombatManager after processing boss turn) ---
+    // Web rain (consumed by CombatManager after processing boss turn)
     private List<GridPos> pendingWebRain = null;
 
     /**
@@ -141,31 +140,25 @@ public class BroodmotherAI extends BossAI {
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
-        self.setSpeedBonus(2); // Speed 3 → 5
+        self.setSpeedBonus(2); // Speed 3 -> 5
     }
 
     @Override
     protected EnemyAction chooseAbility(CombatEntity self, GridArena arena, GridPos playerPos) {
-        // --- P2 Ceiling Sequence: web-rain turn while boss is on ceiling ---
-        // On the turn AFTER ascending (P2 only), we place webs and set the dive warning.
+        // P2 ceiling sequence: on the turn AFTER ascending (P2 only), we place
+        // webs and set the dive warning while the boss is still on the ceiling.
         if (ceilingWebRainPending) {
             return handleWebRainTurn(self, arena, playerPos);
         }
 
-        // --- State transitions ---
         updateState();
 
-        // --- Dispatch based on state ---
         if (state == State.HUNTING) {
             return huntingBehavior(self, arena, playerPos);
         } else {
             return nestingBehavior(self, arena, playerPos);
         }
     }
-
-    // =========================================================================
-    // State Transitions
-    // =========================================================================
 
     private void updateState() {
         if (state == State.HUNTING) {
@@ -180,7 +173,7 @@ public class BroodmotherAI extends BossAI {
                 state = State.NESTING;
             }
         } else { // NESTING
-            eggSacDestroyedThisCycle = false; // clear flag
+            eggSacDestroyedThisCycle = false;
             // Switch to HUNTING if we have minion cover
             if (getAliveMinionCount() > 0) {
                 state = State.HUNTING;
@@ -189,7 +182,7 @@ public class BroodmotherAI extends BossAI {
             // No egg sacs left and no minions: there is nothing to nest around. In
             // Phase 1 there's no way to refill eggSacs, and CD_BROOD can never be set
             // (Spawn Brood needs a sac), so the cooldown-based exit below would never
-            // fire — the boss would sit passively in the nest forever. Go hunt instead.
+            // fire - the boss would sit passively in the nest forever. Go hunt instead.
             // (Phase 2 can re-place sacs in nestingBehavior, so let it keep nesting.)
             if (eggSacs.isEmpty() && !isPhaseTwo()) {
                 state = State.HUNTING;
@@ -201,10 +194,6 @@ public class BroodmotherAI extends BossAI {
             }
         }
     }
-
-    // =========================================================================
-    // HUNTING State
-    // =========================================================================
 
     private EnemyAction huntingBehavior(CombatEntity self, GridArena arena, GridPos playerPos) {
         int dist = self.minDistanceTo(playerPos);
@@ -229,10 +218,6 @@ public class BroodmotherAI extends BossAI {
         // 4) Walk toward player
         return meleeOrApproach(self, arena, playerPos, 0);
     }
-
-    // =========================================================================
-    // NESTING State
-    // =========================================================================
 
     private EnemyAction nestingBehavior(CombatEntity self, GridArena arena, GridPos playerPos) {
         int dist = self.minDistanceTo(playerPos);
@@ -261,16 +246,12 @@ public class BroodmotherAI extends BossAI {
         }
 
         // Nothing to do in the nest (no sacs to tend, nothing castable). Never just
-        // idle — hunt the player instead. Without this, a Broodmother that loses all
+        // idle - hunt the player instead. Without this, a Broodmother that loses all
         // its egg sacs while everything is on cooldown would stand still indefinitely.
         return meleeOrApproach(self, arena, playerPos, 0);
     }
 
-    // =========================================================================
-    // Abilities
-    // =========================================================================
-
-    // --- Ceiling Ambush (P1) / Hunting Dive (P2) ---
+    // Ceiling Ambush (P1) / Hunting Dive (P2)
 
     private EnemyAction startCeilingSequence(CombatEntity self, GridArena arena, GridPos playerPos) {
         setCooldown(CD_CEILING, 4);
@@ -280,7 +261,7 @@ public class BroodmotherAI extends BossAI {
             // The dive itself resolves via pendingWarning auto-resolve on the turn after that.
             ceilingWebRainPending = true;
         } else {
-            // Ceiling Ambush: ascend this turn, set dive warning — auto-resolves next boss turn.
+            // Ceiling Ambush: ascend this turn, set dive warning - auto-resolves next boss turn.
             List<GridPos> diveTiles = getAreaTiles(arena, playerPos, 1);
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
@@ -307,7 +288,7 @@ public class BroodmotherAI extends BossAI {
         // Store web rain targets for CombatManager to place cobweb blocks
         pendingWebRain = getRandomWalkableTiles(arena, 5);
 
-        // Set dive warning targeting current player position — auto-resolves next boss turn
+        // Set dive warning targeting current player position - auto-resolves next boss turn
         List<GridPos> diveTiles = getAreaTiles(arena, playerPos, 1);
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
@@ -321,8 +302,6 @@ public class BroodmotherAI extends BossAI {
 
         return new EnemyAction.Idle(); // boss stays on ceiling; CombatManager places webs
     }
-
-    // --- Pounce ---
 
     private EnemyAction tryPounce(CombatEntity self, GridArena arena, GridPos playerPos) {
         // Find landing spot adjacent to player
@@ -354,8 +333,6 @@ public class BroodmotherAI extends BossAI {
         return new EnemyAction.Idle();
     }
 
-    // --- Web Spray ---
-
     private EnemyAction doWebSpray(CombatEntity self, GridArena arena, GridPos playerPos) {
         setCooldown(CD_WEB, 3);
         List<GridPos> webTiles = getAreaTiles(arena, playerPos, 1);
@@ -366,8 +343,6 @@ public class BroodmotherAI extends BossAI {
             webTiles, 1, webAction, 0xFFCCCCCC);
         return new EnemyAction.Idle();
     }
-
-    // --- Spawn Brood ---
 
     private EnemyAction trySpawnBrood(CombatEntity self, GridArena arena) {
         // Max alive spiders = number of living egg sacs
@@ -405,8 +380,6 @@ public class BroodmotherAI extends BossAI {
         return new EnemyAction.Idle();
     }
 
-    // --- Place Egg Sacs (Phase 2 only) ---
-
     private EnemyAction tryPlaceEggSacs(CombatEntity self, GridArena arena) {
         int needed = Math.min(2, 3 - eggSacs.size());
         if (needed <= 0) return null;
@@ -417,14 +390,10 @@ public class BroodmotherAI extends BossAI {
 
         if (candidates.isEmpty()) return null;
 
-        // SummonMinions with "craftics:egg_sac" type — CombatManager creates entities and registers them
+        // SummonMinions with "craftics:egg_sac" type - CombatManager creates entities and registers them
         return new EnemyAction.SummonMinions(
             "craftics:egg_sac", candidates.size(), candidates, 1, 0, 0);
     }
-
-    // =========================================================================
-    // Utility
-    // =========================================================================
 
     private GridPos findNearestEggSac(GridPos from) {
         GridPos nearest = null;

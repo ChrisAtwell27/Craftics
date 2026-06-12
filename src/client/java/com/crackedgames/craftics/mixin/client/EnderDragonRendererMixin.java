@@ -16,13 +16,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Skip rendering the Ender Dragon when it is parked far above the player during
- * Craftics combat (ATTACKING phase — dragon sits at Y+100 hidden; PERCHING phase
+ * Craftics combat (ATTACKING phase: dragon sits at Y+100 hidden; PERCHING phase
  * drops it back to Y+5).
  *
  * <p>On 1.21.1 the render method receives the live entity, so we can also read
  * its {@code isAiDisabled} flag as a secondary gate. On 1.21.2+ rendering was
  * refactored to pass a {@code EnderDragonEntityRenderState} snapshot instead,
- * which has no AI-disabled field — so on the newer shards we rely solely on the
+ * which has no AI-disabled field, so on the newer shards we rely solely on the
  * Y-distance check plus the Craftics combat state gate.
  */
 @Mixin(EnderDragonEntityRenderer.class)

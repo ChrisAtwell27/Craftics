@@ -22,10 +22,10 @@ import net.minecraft.util.Identifier;
  * Slots the mod's copper tier into Craftics combat:
  * <ul>
  *   <li>Copper sword/axe/shovel/hoe keep their natural affinity lanes
- *       (Slashing/Cleaving/Pet/Special) — copper is just a new metal tier,
+ *       (Slashing/Cleaving/Pet/Special) - copper is just a new metal tier,
  *       not a weapon-type rework. Stats slot between stone and iron.</li>
  *   <li>Copper armor is the Ranged-focused piece: wearing the full set
- *       grants <b>Marksman</b> — +2 Ranged damage and +1 Attack, making
+ *       grants <b>Marksman</b>: +2 Ranged damage and +1 Attack, making
  *       copper the canonical set for bow/crossbow builds.</li>
  * </ul>
  * <p>
@@ -49,14 +49,14 @@ public final class CopperAgeCompat {
     /**
      * Early-phase init. Flags {@link #loaded} based on the mod's presence so
      * other systems (e.g. armor-set detection) know to look for copper items,
-     * but does NOT touch {@link WeaponRegistry} — item registration order
+     * but does NOT touch {@link WeaponRegistry}: item registration order
      * between Fabric mods isn't guaranteed, and copper items may not be in
      * {@link Registries#ITEM} yet. {@link #registerDeferred()} finishes the job
      * later, after all mod main entrypoints have completed.
      */
     public static void init() {
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
-            CrafticsMod.LOGGER.debug("[Craftics × Copper Age] mod not loaded — skipping registration");
+            CrafticsMod.LOGGER.debug("[Craftics × Copper Age] mod not loaded - skipping registration");
             return;
         }
         loaded = true;
@@ -64,19 +64,19 @@ public final class CopperAgeCompat {
 
     /**
      * Late-phase registration. Safe to call from any lifecycle event that fires
-     * after all {@code main} entrypoints — e.g. {@code ServerLifecycleEvents.SERVER_STARTING}
+     * after all {@code main} entrypoints, e.g. {@code ServerLifecycleEvents.SERVER_STARTING}
      * on the server, {@code ClientLifecycleEvents.CLIENT_STARTED} on the client, or
      * lazily from the tooltip render path. Idempotent: the first successful run
      * flips the guard and subsequent calls no-op.
      */
     public static void registerDeferred() {
-        // Hot path — called from every tooltip render as a belt-and-suspenders
+        // Hot path: called from every tooltip render as a belt-and-suspenders
         // fallback. Both early-exits must stay silent or the log floods.
         if (registered || !loaded) return;
         boolean anyRegistered = registerWeapons() | registerArmorSet();
         if (anyRegistered) {
             registered = true;
-            CrafticsMod.LOGGER.info("[Craftics × Copper Age] enabled — copper tier registered (tools in native lanes, armor = Marksman)");
+            CrafticsMod.LOGGER.info("[Craftics × Copper Age] enabled - copper tier registered (tools in native lanes, armor = Marksman)");
         }
         // No retry log: if items aren't in the registry yet, the next tooltip
         // render will simply try again until they are.
@@ -108,11 +108,11 @@ public final class CopperAgeCompat {
         any |= registerWeapon("copper_sword",  DamageType.SLASHING, copperSwordDmg, 1, 1, false, 0.0, swordHandler);
         any |= registerWeapon("copper_axe",    DamageType.CLEAVING, copperAxeDmg,   2, 1, false, 0.0, axeHandler);
         // Shovels + hoes use fixed low damage in VanillaWeapons (no config), so pick a
-        // copper value that sits between stone and iron: shovel stone=3/iron=4 → 3,
-        // hoe stone=1/iron=2 → 2.
+        // copper value that sits between stone and iron: shovel stone=3/iron=4 -> 3,
+        // hoe stone=1/iron=2 -> 2.
         any |= registerWeapon("copper_shovel", DamageType.PET,      () -> 3, 1, 1, false, 0.0, null);
         any |= registerWeapon("copper_hoe",    DamageType.SPECIAL,  () -> 2, 1, 1, false, 0.0, null);
-        // copper_pickaxe intentionally skipped — vanilla pickaxes aren't combat weapons.
+        // copper_pickaxe intentionally skipped: vanilla pickaxes aren't combat weapons.
         return any;
     }
 
@@ -146,7 +146,7 @@ public final class CopperAgeCompat {
     /**
      * Register the copper armor set bonus. Identity is "Marksman":
      * <ul>
-     *   <li>{@value #RANGED_POWER_BONUS} Ranged Power type affinity (per-2-pieces) — matches
+     *   <li>{@value #RANGED_POWER_BONUS} Ranged Power type affinity (per-2-pieces) - matches
      *       the vanilla pattern (chainmail = +1 Slashing, iron = +1 Cleaving, etc.) so
      *       copper slots cleanly alongside the existing armor tiers as the Ranged set.</li>
      *   <li>A {@value #RICOCHET_CHANCE} chance on every ranged hit to ricochet
@@ -172,7 +172,7 @@ public final class CopperAgeCompat {
     }
 
     /**
-     * Register the 6 copper hybrid armor sets — copper paired with each standard
+     * Register the 6 copper hybrid armor sets: copper paired with each standard
      * material. Called from {@link #registerArmorSet()}, so these exist only when
      * Copper Age Backport is installed.
      */
@@ -198,7 +198,7 @@ public final class CopperAgeCompat {
     }
 
     /**
-     * Public getters for copper items — used by client tooltips and armor-set
+     * Public getters for copper items, used by client tooltips and armor-set
      * detection. Each getter does a live registry lookup: this sidesteps the
      * chicken-and-egg between our init and the backport mod's item registration,
      * and costs one hashmap probe per tooltip render (negligible).

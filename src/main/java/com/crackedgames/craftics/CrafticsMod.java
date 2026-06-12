@@ -50,7 +50,7 @@ public class CrafticsMod implements ModInitializer {
         // entrypoint loop so addon/datapack campaigns win over this built-in one.
         com.crackedgames.craftics.level.campaign.VanillaCampaign.register();
 
-        // Optional mod compatibility — each call no-ops if its target mod isn't loaded.
+        // Optional mod compatibility: each call no-ops if its target mod isn't loaded.
         com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.init();
         com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.init();
         com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.init();
@@ -61,7 +61,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();
         com.crackedgames.craftics.compat.instruments.InstrumentsCompat.init();
 
-        // Addon entrypoint — invoked after all built-in content and compat modules are
+        // Addon entrypoint: invoked after all built-in content and compat modules are
         // registered, so addon registrations run last and win deterministically over
         // any same-keyed built-in entry. Addons declare a "craftics" entrypoint in
         // their fabric.mod.json pointing at a CrafticsAddon implementation.
@@ -75,13 +75,11 @@ public class CrafticsMod implements ModInitializer {
             }
         }
 
-        // JSON datapack loaders — run on server start and after /reload.
+        // JSON datapack loaders: run on server start and after /reload.
         com.crackedgames.craftics.data.CrafticsDataLoaders.init();
 
-        // Register custom chunk generator codec
         Registry.register(Registries.CHUNK_GENERATOR, Identifier.of(MOD_ID, "void"), VoidChunkGenerator.CODEC);
 
-        // Register blocks, items, screen handlers, and networking
         ModBlocks.register();
         com.crackedgames.craftics.item.ModItems.register();
         ModScreenHandlers.register();
@@ -89,19 +87,19 @@ public class CrafticsMod implements ModInitializer {
         ModNetworking.registerServer();
 
         // Level-select phantom-half click routing is now handled by the
-        // LevelSelectGhostBlock placed alongside the real block — no global
+        // LevelSelectGhostBlock placed alongside the real block, no global
         // UseBlockCallback needed. The previous callback scanned all 4 horizontal
         // neighbors and hijacked clicks on any adjacent block (a chest placed
         // next to the level-select opened the level-select screen instead).
 
         // Battle party: Shift+Right-Click (empty main hand) any passive or neutral
-        // mob on your island to add it to — or remove it from — your battle party.
+        // mob on your island to add it to, or remove it from, your battle party.
         net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) return net.minecraft.util.ActionResult.PASS;
             if (!player.isSneaking() || !player.getMainHandStack().isEmpty()) return net.minecraft.util.ActionResult.PASS;
             if (!(entity instanceof net.minecraft.entity.mob.MobEntity mob)) return net.minecraft.util.ActionResult.PASS;
             if (!(player instanceof net.minecraft.server.network.ServerPlayerEntity sp)) return net.minecraft.util.ActionResult.PASS;
-            // A single right-click fires this callback twice — once for the
+            // A single right-click fires this callback twice: once for the
             // INTERACT_AT packet (hitResult != null) and once for INTERACT
             // (hitResult == null). Consume both so vanilla interaction is fully
             // blocked, but toggle the party only on the INTERACT pass so one
@@ -149,7 +147,7 @@ public class CrafticsMod implements ModInitializer {
                 cm.setForcedNextEvent(forced);
                 stack.decrement(1);
                 sp.sendMessage(net.minecraft.text.Text.literal(
-                    "\u00a7d\u00a7l\u2728 " + label + " queued! \u00a7r\u00a7dIt will appear after this fight."),
+                    "\u00a7d\u00a7l" + label + " queued! \u00a7r\u00a7dIt will appear after this fight."),
                     false);
                 sp.getWorld().playSound(null, sp.getBlockPos(),
                     net.minecraft.sound.SoundEvents.BLOCK_TRIAL_SPAWNER_OMINOUS_ACTIVATE,
@@ -194,7 +192,7 @@ public class CrafticsMod implements ModInitializer {
                 cm.setForcedNextEvent(forced);
                 stack.decrement(1);
                 sp.sendMessage(net.minecraft.text.Text.literal(
-                    "\u00a7d\u00a7l\u2728 " + label + " queued! \u00a7r\u00a7dIt will appear after this fight."),
+                    "\u00a7d\u00a7l" + label + " queued! \u00a7r\u00a7dIt will appear after this fight."),
                     false);
                 sp.getWorld().playSound(null, sp.getX(), sp.getY(), sp.getZ(),
                     net.minecraft.sound.SoundEvents.BLOCK_TRIAL_SPAWNER_OMINOUS_ACTIVATE,
@@ -317,10 +315,10 @@ public class CrafticsMod implements ModInitializer {
                     data.markDirty();
                 }
                 // If the player was in combat when they disconnected, don't try to
-                // restart the fight — just end the run cleanly and send them home.
+                // restart the fight, just end the run cleanly and send them home.
                 // Trying to rebuild arenas on rejoin is fragile and causes corruption.
                 if (pd.inCombat) {
-                    LOGGER.info("Player {} had stale inCombat flag — clearing and ending biome run",
+                    LOGGER.info("Player {} had stale inCombat flag, clearing and ending biome run",
                         player.getName().getString());
                     pd.inCombat = false;
                     pd.endBiomeRun();
@@ -330,7 +328,7 @@ public class CrafticsMod implements ModInitializer {
             }
         });
 
-        // Clean up combat on player disconnect — handle both leader and party member cases
+        // Clean up combat on player disconnect: handle both leader and party member cases
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             var playerUuid = handler.getPlayer().getUuid();
             String playerName = handler.getPlayer().getName().getString();
@@ -339,7 +337,7 @@ public class CrafticsMod implements ModInitializer {
             // Check if this player is in someone else's party combat (non-leader)
             CombatManager leaderCm = CombatManager.getActiveCombat(playerUuid);
             if (leaderCm != null && leaderCm.isActive() && !leaderCm.equals(CombatManager.get(playerUuid))) {
-                // Party member disconnected — remove from leader's combat, notify party
+                // Party member disconnected: remove from leader's combat, notify party
                 leaderCm.removePartyMember(playerUuid);
                 if (leaderCm.getEventManager() != null) {
                     leaderCm.getEventManager().removeParticipant(playerUuid);
@@ -353,7 +351,7 @@ public class CrafticsMod implements ModInitializer {
             // Clean up this player's own CombatManager
             CombatManager cm = CombatManager.get(playerUuid);
             if (cm.isActive()) {
-                LOGGER.info("Player {} disconnected during combat — cleaning up", playerName);
+                LOGGER.info("Player {} disconnected during combat, cleaning up", playerName);
 
                 // If leader disconnects, send all remaining party members home first
                 if (cm.getEventManager() != null) {
@@ -397,7 +395,7 @@ public class CrafticsMod implements ModInitializer {
                     net.minecraft.sound.SoundEvents.BLOCK_RESPAWN_ANCHOR_SET_SPAWN,
                     net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
             }
-            newPlayer.sendMessage(Text.literal("\u00a76\u00a7l\u2728 Recovery Compass \u00a7r\u00a76\u2014 Your inventory has been restored!"), false);
+            newPlayer.sendMessage(Text.literal("\u00a76\u00a7lRecovery Compass \u00a7r\u00a76- Your inventory has been restored!"), false);
         });
 
         // Tick ALL active combat instances each server tick
@@ -474,16 +472,16 @@ public class CrafticsMod implements ModInitializer {
                         && CombatManager.get(sp).isActive()) {
                     return false; // cancel block breaking for THIS player during combat
                 }
-                // Protect central lobby (floating island — prevent breaking the platform)
+                // Protect central lobby (floating island, prevent breaking the platform)
                 if (HubRoomBuilder.isLobbyProtected(pos)) return false;
-                // Personal worlds are fully modifiable — no shell protection
+                // Personal worlds are fully modifiable, no shell protection
                 return true;
             }
         );
 
         // Deferred copper-tier registration. WeaponRegistry needs the actual Item
         // instances from copperagebackport, but Fabric doesn't guarantee that mod's
-        // main entrypoint has run by the time ours does — so finish the registration
+        // main entrypoint has run by the time ours does, so finish the registration
         // on SERVER_STARTING, which fires after every mod's main-phase init.
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTING.register(
             server -> {
@@ -530,7 +528,7 @@ public class CrafticsMod implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             var root = CommandManager.literal("craftics");
 
-            // /craftics warp — Artifacts Warp Drive activator. Arms the next attack to
+            // /craftics warp: Artifacts Warp Drive activator. Arms the next attack to
             // ignore range/LOS and teleport adjacent to the target. Once per combat.
             root.then(CommandManager.literal("warp").executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
@@ -553,18 +551,18 @@ public class CrafticsMod implements ModInitializer {
                     return 0;
                 }
                 if (cm.isWarpDriveArmed()) {
-                    src.sendFeedback(() -> Text.literal("§dWarp Drive is already armed — your next attack will warp."), false);
+                    src.sendFeedback(() -> Text.literal("§dWarp Drive is already armed, your next attack will warp."), false);
                     return 1;
                 }
                 if (cm.armWarpDrive()) {
-                    src.sendFeedback(() -> Text.literal("§5§l✦ Warp Drive armed! §r§dYour next attack ignores range and warps you adjacent to the target."), false);
+                    src.sendFeedback(() -> Text.literal("§5§lWarp Drive armed! §r§dYour next attack ignores range and warps you adjacent to the target."), false);
                     return 1;
                 }
                 src.sendError(Text.literal("§cCould not arm Warp Drive."));
                 return 0;
             }));
 
-            // /craftics hp_per_level <on|off|status> — toggle per-level HP scaling
+            // /craftics hp_per_level <on|off|status>: toggle per-level HP scaling
             // for the caller's OWN island. Guests in someone else's world cannot
             // change this; the owner's setting applies to everyone in their party.
             var hpPerLevelNode = CommandManager.literal("hp_per_level");
@@ -614,7 +612,7 @@ public class CrafticsMod implements ModInitializer {
             }));
             root.then(hpPerLevelNode);
 
-            // /craftics unlock_all — unlock every biome (op only)
+            // /craftics unlock_all: unlock every biome (op only)
             root.then(CommandManager.literal("unlock_all").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
@@ -630,7 +628,7 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics reset_combat — force-clear corrupted combat state (inCombat, biome run)
+            // /craftics reset_combat: force-clear corrupted combat state (inCombat, biome run)
             root.then(CommandManager.literal("reset_combat").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
@@ -652,10 +650,10 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics rebuild_arenas [biome] — wipe and regenerate arena blocks,
+            // /craftics rebuild_arenas [biome]: wipe and regenerate arena blocks,
             // either all of them or just one biome's worth. Useful when a
             // schematic change or world-edit has left the pre-built arenas in a
-            // broken state — the next combat will otherwise still scan the bad
+            // broken state, since the next combat will otherwise still scan the bad
             // blocks. Corrupted arenas already auto-repair on fight entry, but
             // this command lets an admin force a full sweep without waiting.
             var rebuildArenasExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
@@ -720,7 +718,7 @@ public class CrafticsMod implements ModInitializer {
             }
             root.then(rebuildArenasNode);
 
-            // /craftics reset_biomes — reset current biome level progress back to level 1
+            // /craftics reset_biomes: reset current biome level progress back to level 1
             root.then(CommandManager.literal("reset_biomes").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
@@ -748,7 +746,7 @@ public class CrafticsMod implements ModInitializer {
                         return 1;
                     })));
 
-            // /craftics set_level <level> — set player progression level
+            // /craftics set_level <level>: set player progression level
             root.then(CommandManager.literal("set_level").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("level", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
                     .executes(ctx -> {
@@ -768,7 +766,7 @@ public class CrafticsMod implements ModInitializer {
                         return 1;
                     })));
 
-            // /craftics info — display current save state
+            // /craftics info: display current save state
             root.then(CommandManager.literal("info").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
@@ -786,7 +784,7 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics heal — fully heal the player
+            // /craftics heal: fully heal the player
             root.then(CommandManager.literal("heal").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity player = src.getPlayerOrThrow();
@@ -797,7 +795,7 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics kill_enemies — kill all enemies in current combat
+            // /craftics kill_enemies: kill all enemies in current combat
             root.then(CommandManager.literal("kill_enemies").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
@@ -810,7 +808,7 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics skip_level — win current combat instantly
+            // /craftics skip_level: win current combat instantly
             root.then(CommandManager.literal("skip_level").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
@@ -819,11 +817,11 @@ public class CrafticsMod implements ModInitializer {
                     return 0;
                 }
                 cm.adminWinCombat();
-                src.sendFeedback(() -> Text.literal("§aLevel skipped — victory triggered."), true);
+                src.sendFeedback(() -> Text.literal("§aLevel skipped, victory triggered."), true);
                 return 1;
             }));
 
-            // /craftics set_ap <amount> — set AP remaining during combat
+            // /craftics set_ap <amount>: set AP remaining during combat
             root.then(CommandManager.literal("set_ap").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(ctx -> {
@@ -839,7 +837,7 @@ public class CrafticsMod implements ModInitializer {
                         return 1;
                     })));
 
-            // /craftics set_speed <amount> — set move points remaining during combat
+            // /craftics set_speed <amount>: set move points remaining during combat
             root.then(CommandManager.literal("set_speed").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(ctx -> {
@@ -855,7 +853,7 @@ public class CrafticsMod implements ModInitializer {
                         return 1;
                     })));
 
-            // /craftics set_ngplus <level> — set NG+ cycle
+            // /craftics set_ngplus <level>: set NG+ cycle
             root.then(CommandManager.literal("set_ngplus").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("level", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                     .executes(ctx -> {
@@ -869,7 +867,7 @@ public class CrafticsMod implements ModInitializer {
                         return 1;
                     })));
 
-            // /craftics set_stat <stat> <value> — set a specific stat's allocated points
+            // /craftics set_stat <stat> <value>: set a specific stat's allocated points
             root.then(CommandManager.literal("set_stat").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("stat", com.mojang.brigadier.arguments.StringArgumentType.word())
                     .suggests((ctx, builder) -> {
@@ -902,7 +900,7 @@ public class CrafticsMod implements ModInitializer {
                             return 1;
                         }))));
 
-            // /craftics reset_stats — reset all player stats to defaults
+            // /craftics reset_stats: reset all player stats to defaults
             root.then(CommandManager.literal("reset_stats").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity player = src.getPlayerOrThrow();
@@ -922,7 +920,7 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics give <preset> — give a set of gear
+            // /craftics give <preset>: give a set of gear
             root.then(CommandManager.literal("give").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.literal("wood_gear").executes(ctx -> {
                     ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
@@ -981,7 +979,7 @@ public class CrafticsMod implements ModInitializer {
                     return 1;
                 })));
 
-            // /craftics combat_info — show detailed combat state
+            // /craftics combat_info: show detailed combat state
             root.then(CommandManager.literal("combat_info").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                 ServerCommandSource src = ctx.getSource();
                 ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
@@ -1018,9 +1016,9 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics force_event <event> — force the next between-level event
+            // /craftics force_event <event>: force the next between-level event
             var forceEventNode = CommandManager.literal("force_event");
-            // Built-in event names — bare strings that the dispatch in
+            // Built-in event names: bare strings that the dispatch in
             // CombatManager.rollEvent compares against. Must match the
             // {@code forced.equals("...")} arms over there exactly.
             java.util.List<String> eventNames = new java.util.ArrayList<>(java.util.List.of(
@@ -1049,7 +1047,7 @@ public class CrafticsMod implements ModInitializer {
             }
             root.then(forceEventNode);
 
-            // /craftics build_arena <shape> [radius] — terraform a flat polygon
+            // /craftics build_arena <shape> [radius]: terraform a flat polygon
             // arena around the caster and drop ArenaCornerBlock markers at each
             // vertex. The polygon shape ships in ArenaShapes; the radius
             // defaults to 8 (a 17×17 bounding box). Wipes blocks inside the
@@ -1073,9 +1071,9 @@ public class CrafticsMod implements ModInitializer {
 
             dispatcher.register(root);
 
-            // === Shortcut commands ===
+            // Shortcut commands
 
-            // /new and /craftics new — create a new personal island
+            // /new and /craftics new: create a new personal island
             var shortcutNewCmd = (com.mojang.brigadier.Command<ServerCommandSource>) (ctx -> {
                 ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                 ServerWorld overworld = player.getServerWorld();
@@ -1095,7 +1093,7 @@ public class CrafticsMod implements ModInitializer {
                 final ServerWorld finalOverworld = overworld;
 
                 // Island creation only builds the hub now. Arenas are created on
-                // demand the first time the player enters that level — see
+                // demand the first time the player enters that level; see
                 // ArenaPreGenerator.ensureArena called from CombatManager.buildArena.
                 // The old path pre-built every arena here synchronously, which froze
                 // lower-end servers for multiple seconds.
@@ -1115,12 +1113,12 @@ public class CrafticsMod implements ModInitializer {
                     // Flip the lazy-mode flag on (no actual arenas built).
                     com.crackedgames.craftics.level.ArenaPreGenerator.generateAll(finalOverworld, playerUuid);
 
-                    // Everything is ready — teleport and dismiss loading screen
+                    // Everything is ready: teleport and dismiss loading screen
                     var p = finalOverworld.getServer().getPlayerManager().getPlayer(playerUuid);
                     if (p != null) {
                         p.requestTeleport(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
                         p.sendMessage(Text.literal(
-                            "\u00a7a\u00a7l\u2726 Personal world created! \u00a7r\u00a7aUse \u00a7e/home\u00a7a to return anytime."), false);
+                            "\u00a7a\u00a7lPersonal world created! \u00a7r\u00a7aUse \u00a7e/home\u00a7a to return anytime."), false);
                         ServerPlayNetworking.send(p,
                             new com.crackedgames.craftics.network.LoadingScreenPayload(
                                 false, "", ""));
@@ -1133,10 +1131,10 @@ public class CrafticsMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("craftics").then(
                 CommandManager.literal("new").executes(shortcutNewCmd)));
 
-            // /home and /craftics home — teleport to personal hub
+            // /home and /craftics home: teleport to personal hub
             var shortcutHomeCmd = (com.mojang.brigadier.Command<ServerCommandSource>) (ctx -> {
                 ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-                // Always operate against the overworld — personal hubs only exist there.
+                // Always operate against the overworld; personal hubs only exist there.
                 ServerWorld overworld = player.getServer().getOverworld();
                 CrafticsSavedData data = CrafticsSavedData.get(overworld);
 
@@ -1149,7 +1147,7 @@ public class CrafticsMod implements ModInitializer {
                 }
 
                 // /home is an escape hatch out of combat, which trivializes
-                // a tough fight — block it mid-combat for non-ops. Ops can
+                // a tough fight, so block it mid-combat for non-ops. Ops can
                 // still teleport home for debugging / world maintenance.
                 CombatManager playerCm = CombatManager.get(player);
                 CombatManager activeCm = CombatManager.getActiveCombat(player.getUuid());
@@ -1162,10 +1160,10 @@ public class CrafticsMod implements ModInitializer {
 
                 // Handle party combat: gracefully remove this player instead of ending for everyone
                 if (activeCm != null && activeCm.isActive()) {
-                    // Player is in party combat — remove them gracefully
+                    // Player is in party combat, remove them gracefully
                     activeCm.leavePartyCombat(player);
                 } else if (playerCm.isActive()) {
-                    // Solo combat — end normally
+                    // Solo combat, end normally
                     playerCm.endCombat();
                     net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
                         new com.crackedgames.craftics.network.ExitCombatPayload(false));
@@ -1206,7 +1204,7 @@ public class CrafticsMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("craftics").then(
                 CommandManager.literal("home").executes(shortcutHomeCmd)));
 
-            // /craftics dev_arena — test arena with every obstacle type
+            // /craftics dev_arena: test arena with every obstacle type
             dispatcher.register(CommandManager.literal("craftics").then(
                 CommandManager.literal("dev_arena").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
                     ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
@@ -1231,7 +1229,7 @@ public class CrafticsMod implements ModInitializer {
                 })
             ));
 
-            // /lobby — shortcut to central lobby
+            // /lobby: shortcut to central lobby
             dispatcher.register(CommandManager.literal("lobby").executes(ctx -> {
                 ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                 CombatManager cm = CombatManager.get(player);
@@ -1248,7 +1246,7 @@ public class CrafticsMod implements ModInitializer {
     private void registerWorldCommands(com.mojang.brigadier.builder.LiteralArgumentBuilder<ServerCommandSource> root) {
         var worldNode = CommandManager.literal("world");
 
-        // /craftics world create — create a personal world
+        // /craftics world create: create a personal world
         worldNode.then(CommandManager.literal("create").executes(ctx -> {
             ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
             ServerWorld overworld = player.getServerWorld();
@@ -1262,7 +1260,6 @@ public class CrafticsMod implements ModInitializer {
             int slot = data.allocateWorldSlot(player.getUuid());
             net.minecraft.util.math.BlockPos hubCenter = data.getHubOrigin(player.getUuid());
 
-            // Build the personal hub
             net.minecraft.util.math.BlockPos spawnPos = HubRoomBuilder.build(overworld, hubCenter);
             CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
             pd.personalHubBuilt = true;
@@ -1272,7 +1269,6 @@ public class CrafticsMod implements ModInitializer {
             pd.hubSpawnZ = spawnPos.getZ();
             data.markDirty();
 
-            // Teleport player to their new hub
             player.requestTeleport(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
 
             ctx.getSource().sendFeedback(() -> Text.literal(
@@ -1282,7 +1278,7 @@ public class CrafticsMod implements ModInitializer {
             return 1;
         }));
 
-        // /craftics world home — teleport to personal hub
+        // /craftics world home: teleport to personal hub
         worldNode.then(CommandManager.literal("home").executes(ctx -> {
             ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
             ServerWorld overworld = player.getServer().getOverworld();
@@ -1304,7 +1300,6 @@ public class CrafticsMod implements ModInitializer {
                 return 0;
             }
 
-            // End combat if active
             if (cm.isActive()) cm.endCombat();
 
             net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(player.getUuid());
@@ -1314,7 +1309,7 @@ public class CrafticsMod implements ModInitializer {
             return 1;
         }));
 
-        // /craftics world lobby — teleport to central lobby
+        // /craftics world lobby: teleport to central lobby
         worldNode.then(CommandManager.literal("lobby").executes(ctx -> {
             ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
 
@@ -1327,7 +1322,7 @@ public class CrafticsMod implements ModInitializer {
             return 1;
         }));
 
-        // /craftics world visit <player> — visit another player's hub (party members only)
+        // /craftics world visit <player>: visit another player's hub (party members only)
         worldNode.then(CommandManager.literal("visit")
             .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                 .executes(ctx -> {
@@ -1342,7 +1337,6 @@ public class CrafticsMod implements ModInitializer {
                         return 0;
                     }
 
-                    // Check if they're in the same party
                     com.crackedgames.craftics.world.Party playerParty = data.getPlayerParty(player.getUuid());
                     if (playerParty == null || !playerParty.isMember(target.getUuid())) {
                         ctx.getSource().sendError(Text.literal(
@@ -1394,7 +1388,7 @@ public class CrafticsMod implements ModInitializer {
         // Bounding box from offsets. Offsets are the vertex positions (the outer
         // border ring); the playable interior is the outline eroded one tile inward
         // (below), matching ArenaBuilder's loader, so the markers end up just outside
-        // the floor at every vertex — convex tips and concave armpits alike.
+        // the floor at every vertex, convex tips and concave armpits alike.
         int minDx = Integer.MAX_VALUE, maxDx = Integer.MIN_VALUE;
         int minDz = Integer.MAX_VALUE, maxDz = Integer.MIN_VALUE;
         for (var o : offsets) {
@@ -1430,7 +1424,7 @@ public class CrafticsMod implements ModInitializer {
         int gw = gridMaxX - gridMinX + 1;
         int gh = gridMaxZ - gridMinZ + 1;
 
-        // Vertex tiles get a corner marker (below), never painted floor — mirroring
+        // Vertex tiles get a corner marker (below), never painted floor, mirroring
         // the loader, which clears marker tiles from the playable mask. Keeps markers
         // off the floor (incl. a concave armpit vertex that survives erosion) and
         // stops placedFloor over-counting tiles a marker would overwrite.
@@ -1441,7 +1435,7 @@ public class CrafticsMod implements ModInitializer {
 
         // Outer mask over the full vertex bbox (point-in-polygon). Integer-grid
         // sampling with the outline grown a hair outward from its centroid, so
-        // axis-aligned edges never sit on a sample point — this keeps symmetric
+        // axis-aligned edges never sit on a sample point; this keeps symmetric
         // shapes symmetric and matches ArenaBuilder's loader sampling exactly, so
         // the previewed floor and the eventual playable mask agree.
         final double GROW = 0.001;
@@ -1479,7 +1473,7 @@ public class CrafticsMod implements ModInitializer {
                 if (!playable) continue;
                 int wx = gridMinX + tx;
                 int wz = gridMinZ + tz;
-                // A vertex marker owns this tile (loader treats it as border) — don't
+                // A vertex marker owns this tile (loader treats it as border), so don't
                 // paint floor under it, so build and reload agree and the count is honest.
                 if (vertexKeys.contains(net.minecraft.util.math.BlockPos.asLong(wx, floorY, wz))) continue;
                 net.minecraft.util.math.BlockPos floorPos =
@@ -1499,7 +1493,7 @@ public class CrafticsMod implements ModInitializer {
             }
         }
 
-        // Drop ArenaCornerBlock at each vertex AT floor level — markers double as
+        // Drop ArenaCornerBlock at each vertex AT floor level: markers double as
         // floor-plane border tiles, matching the DIAMOND/EMERALD convention and what
         // the loader expects (arenaFloorY = max marker Y). A stone block underneath
         // keeps the marker from floating over a cleared tile.
@@ -1906,7 +1900,7 @@ public class CrafticsMod implements ModInitializer {
             }
         }
         if (!found) {
-            LOGGER.warn("No safe landing near hub {} for {} — sending to central lobby",
+            LOGGER.warn("No safe landing near hub {} for {}, sending to central lobby",
                 hub, player.getName().getString());
             player.sendMessage(Text.literal(
                 "\u00a7eYour home spawn point is blocked or missing — returning to the lobby."), false);
@@ -1937,7 +1931,7 @@ public class CrafticsMod implements ModInitializer {
             pd.initBranchIfNeeded();
             java.util.List<String> fullPath = com.crackedgames.craftics.level.campaign.CampaignManager
                 .orderedBiomeIds(Math.max(0, pd.branchChoice));
-            if (fullPath.isEmpty()) return; // no active campaign — nothing to index
+            if (fullPath.isEmpty()) return; // no active campaign, nothing to index
             int idx = Math.max(0, Math.min(pd.highestBiomeUnlocked - 1, fullPath.size() - 1));
             String biomeId = fullPath.get(idx);
             String resourcePath = "/assets/craftics/textures/gui/biomes/" + biomeId + ".png";

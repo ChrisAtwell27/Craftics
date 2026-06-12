@@ -82,7 +82,7 @@ public class PlayerNameTagMixin {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null) return;
 
-        // Render state has no UUID — match by username instead.
+        // Render state has no UUID - match by username instead.
         String stateName = state.name;
         if (stateName == null) return;
         // Don't modify self name tag

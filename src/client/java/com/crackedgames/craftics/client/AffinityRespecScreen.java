@@ -13,7 +13,7 @@ import net.minecraft.text.Text;
  * refund/reallocate already-allocated ones. The unspent pool is derived from the
  * player's level (one affinity per odd level above 1), so points earned from
  * force-given levels or older saves show up here too. Each refunded point costs
- * 1 XP level — the same rate as the stat respec.
+ * 1 XP level, the same rate as the stat respec.
  */
 public class AffinityRespecScreen extends Screen {
 
@@ -44,7 +44,7 @@ public class AffinityRespecScreen extends Screen {
             allocated += pts;
         }
         // Affinity points owed by level (odd levels 3, 5, 7, ...) minus what's
-        // already allocated — the pool the player can still spend.
+        // already allocated: the pool the player can still spend.
         int expected = Math.max(0, (CombatState.getPlayerLevel() - 1) / 2);
         this.originalUnspent = Math.max(0, expected - allocated);
         this.currentUnspent = originalUnspent;
@@ -71,7 +71,7 @@ public class AffinityRespecScreen extends Screen {
             int y = startY + i * (CARD_HEIGHT + CARD_GAP);
             final int idx = i;
 
-            // [-] refund button — refunds cost 1 XP level each
+            // [-] refund button: refunds cost 1 XP level each
             boolean canRefund = currentValues[i] > 0 && getTotalRefunded() < playerXpLevels;
             ButtonWidget minusBtn = ButtonWidget.builder(
                 Text.literal("§c[-]"),
@@ -86,7 +86,7 @@ public class AffinityRespecScreen extends Screen {
             minusBtn.active = canRefund;
             this.addDrawableChild(minusBtn);
 
-            // [+] allocate button — draws from the unspent pool
+            // [+] allocate button: draws from the unspent pool
             boolean canAllocate = currentUnspent > 0;
             ButtonWidget plusBtn = ButtonWidget.builder(
                 Text.literal("§a[+]"),
@@ -182,7 +182,7 @@ public class AffinityRespecScreen extends Screen {
         // Header
         int headerY = contentTop;
         context.drawCenteredTextWithShadow(this.textRenderer,
-            "§6§l✦ RESPEC AFFINITIES ✦", centerX, headerY, 0xFFAA00);
+            "§6§lRESPEC AFFINITIES", centerX, headerY, 0xFFAA00);
 
         int totalRefunded = getTotalRefunded();
         String costText = totalRefunded > 0

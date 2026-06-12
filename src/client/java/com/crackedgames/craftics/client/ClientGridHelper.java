@@ -243,7 +243,7 @@ public class ClientGridHelper {
 
     /**
      * Pounce (spider): the four tiles adjacent to the player that are walkable.
-     * The spider's own current tile is irrelevant — pounce range is essentially "land next to you".
+     * The spider's own current tile is irrelevant, pounce range is essentially "land next to you".
      */
     public static Set<GridPos> getPounceTilesFrom(MinecraftClient client, GridPos playerPos) {
         Set<GridPos> result = new HashSet<>();
@@ -275,7 +275,7 @@ public class ClientGridHelper {
         int wy = CombatState.getArenaOriginY();
         int wz = CombatState.getArenaOriginZ() + pos.z();
 
-        // Check the block above the floor — solid blocks there are obstacles
+        // Check the block above the floor: solid blocks there are obstacles
         var blockState = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy + 1, wz));
         if (!blockState.isAir() && !isPassableAtBodyHeight(blockState)) return false;
 
@@ -318,7 +318,7 @@ public class ClientGridHelper {
 
     /**
      * Blocks at body height (floor + 1) that the server still classifies as
-     * walkable tiles — stealth plants ({@code TALL_GRASS}/{@code TALL_FERN}),
+     * walkable tiles: stealth plants ({@code TALL_GRASS}/{@code TALL_FERN}),
      * cobweb traps, and stair ramps ({@code STAIR}). Mirrors ArenaBuilder's
      * post-placement tile scan so client-side previews (enemy movement ranges,
      * the player's path preview) agree with the server's pathfinding.
@@ -392,7 +392,7 @@ public class ClientGridHelper {
 
     /**
      * Dispatch the correct hover-preview pattern for an enemy based on its movement style.
-     * Each {@link com.crackedgames.craftics.combat.MoveStyle} draws a different shape — see
+     * Each {@link com.crackedgames.craftics.combat.MoveStyle} draws a different shape, see
      * each helper method below for details.
      */
     public static Set<GridPos> getMovePatternTiles(MinecraftClient client, GridPos from,

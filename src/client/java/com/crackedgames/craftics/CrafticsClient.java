@@ -42,10 +42,10 @@ public class CrafticsClient implements ClientModInitializer {
     private static KeyBinding mountAbilityKey;
     private static KeyBinding threatOverlayKey;
 
-    /** The "hide/reveal inventory UI" keybind — read by {@code HandledScreenKeyMixin}. */
+    /** The "hide/reveal inventory UI" keybind, read by {@code HandledScreenKeyMixin}. */
     public static KeyBinding getToggleUiKey() { return toggleUiKey; }
 
-    /** The end-turn keybind — read by {@code CombatHudOverlay} for the End Turn button label. */
+    /** The end-turn keybind, read by {@code CombatHudOverlay} for the End Turn button label. */
     public static KeyBinding getEndTurnKey() { return endTurnKey; }
     private static boolean traderScreenOpened = false;
     private static boolean previousBobView = true;
@@ -166,7 +166,7 @@ public class CrafticsClient implements ClientModInitializer {
                         if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
                             CombatState.focusOnTile(payload.targetX(), payload.targetZ());
                         }
-                        // Movement-only turns light up the act-order strip too —
+                        // Movement-only turns light up the act-order strip too;
                         // previously only attacks marked the acting unit.
                         CombatState.noteActingEnemy(payload.entityId());
                     }
@@ -182,7 +182,7 @@ public class CrafticsClient implements ClientModInitializer {
                         CombatVisualEffects.triggerShake(0.8f);
                     }
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_BOSS_MOMENT -> {
-                        // Boss spectacle beats — valueA: 1 = phase two, 2 = defeated.
+                        // Boss spectacle beats - valueA: 1 = phase two, 2 = defeated.
                         if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
                             CombatState.focusOnTile(payload.targetX(), payload.targetZ());
                         }
@@ -494,7 +494,7 @@ public class CrafticsClient implements ClientModInitializer {
             }
         );
 
-        // Battle-party membership → "Active In Party" floating labels
+        // Battle-party membership -> "Active In Party" floating labels
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.PartyMobsSyncPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
@@ -562,7 +562,7 @@ public class CrafticsClient implements ClientModInitializer {
             CrafticsClient::resolveKeybindConflicts);
 
         // Without this, leaving a world mid-battle leaves CombatState.inCombat
-        // stuck true — CameraLockMixin then overrides camera rotation/position
+        // stuck true, CameraLockMixin then overrides camera rotation/position
         // forever on the title screen and in every subsequent world, effectively
         // bricking the client until restart. The server sends ExitCombatPayload
         // on clean end-of-fight, but never gets the chance on abrupt disconnect.
@@ -608,7 +608,7 @@ public class CrafticsClient implements ClientModInitializer {
             AchievementToast.tick();
             com.crackedgames.craftics.client.music.MusicToast.tick();
 
-            // Lead-command ally glow is server-driven via LeadSelectPayload —
+            // Lead-command ally glow is server-driven via LeadSelectPayload:
             // the server toggles glowing on the picked mob so the data tracker
             // sync makes it visible to everyone in the party.
 
@@ -735,7 +735,7 @@ public class CrafticsClient implements ClientModInitializer {
                 for (net.minecraft.entity.player.PlayerEntity p : client.world.getPlayers()) {
                     if (p.getCommandTags().contains("craftics_arena") || p == client.player) {
                         p.setBodyYaw(p.getHeadYaw());
-                        // prev/last body yaw field renamed in 1.21.5 — set it too so the
+                        // prev/last body yaw field renamed in 1.21.5, set it too so the
                         // body doesn't interpolate from a stale angle for one frame.
                         //? if <=1.21.4 {
                         /*p.prevBodyYaw = p.getHeadYaw();
@@ -746,7 +746,7 @@ public class CrafticsClient implements ClientModInitializer {
                 }
             }
 
-            // Hint system tick — applies idle multiplier, evaluates sensors, ticks renderers.
+            // Hint system tick: applies idle multiplier, evaluates sensors, ticks renderers.
             try {
                 var cfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
                 var hintMgr = com.crackedgames.craftics.client.hints.HintManager.get();
@@ -786,7 +786,7 @@ public class CrafticsClient implements ClientModInitializer {
                 if (other == null || oursSet.contains(other) || other.isUnbound()) continue;
                 if (mineBoundKey.equals(other.getBoundKeyTranslationKey())) {
                     CrafticsMod.LOGGER.info(
-                        "Unbinding {} (was on {}) — conflicts with Craftics's {}",
+                        "Unbinding {} (was on {}) - conflicts with Craftics's {}",
                         other.getTranslationKey(),
                         other.getBoundKeyTranslationKey(),
                         mine.getTranslationKey());

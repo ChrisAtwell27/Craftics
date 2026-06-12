@@ -16,7 +16,7 @@ public class CombatHudOverlay implements HudRenderCallback {
     private static final int PANEL_BG = 0xBB111122;
     private static final int PANEL_BORDER = 0xFF333344;
 
-    /** Wall-clock time of the last turn-phase change — drives the banner
+    /** Wall-clock time of the last turn-phase change, drives the banner
      *  entrance pop and the fade to the compact "Turn N" pill, independent
      *  of frame rate (the old tick counter advanced per FRAME, so the fade
      *  ran 2-4x too fast on high-refresh displays). */
@@ -113,9 +113,7 @@ public class CombatHudOverlay implements HudRenderCallback {
     }
 
     private static void drawPanel(DrawContext ctx, int x, int y, int w, int h) {
-        // Border
         ctx.fill(x - 1, y - 1, x + w + 1, y + h + 1, PANEL_BORDER);
-        // Fill
         ctx.fill(x, y, x + w, y + h, PANEL_BG);
     }
 
@@ -123,7 +121,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.fill(x, y, x + w, y + h, color);
     }
 
-    // ─── Smooth HP Bars ──────────────────────────────────────────────────
+    // Smooth HP bars
 
     /**
      * Advance and return the displayed HP fraction for {@code key}, easing
@@ -144,7 +142,7 @@ public class CombatHudOverlay implements HudRenderCallback {
 
     /**
      * HP bar with damage feedback: dark track, colored fill at the REAL value,
-     * and — while the eased display value catches up — a bright "ghost"
+     * and, while the eased display value catches up, a bright "ghost"
      * segment over the chunk just lost, draining toward the fill. Heals sweep
      * a lighter segment upward instead. Keys must be unique per on-screen bar
      * (the same entity shown in two panels needs two keys, otherwise the
@@ -177,11 +175,11 @@ public class CombatHudOverlay implements HudRenderCallback {
         return pct > 0.5f ? 0xFF55FF55 : pct > 0.25f ? 0xFFFFFF55 : 0xFFFF5555;
     }
 
-    // ─── Mouse Mapping (HUD widgets) ─────────────────────────────────────
+    // Mouse mapping (HUD widgets)
 
     /**
      * Cursor position in scaled-GUI coordinates (before any largerUI scale),
-     * or null without a window. Uses the same screen→framebuffer assumption
+     * or null without a window. Uses the same screen->framebuffer assumption
      * as vanilla's Mouse handler.
      */
     private static double[] mouseGuiPos(MinecraftClient client) {
@@ -360,7 +358,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
     }
 
-    /** One pill in the effects row — precomputed width so we can wrap cleanly. */
+    /** One pill in the effects row, precomputed width so we can wrap cleanly. */
     private record EffectRowItem(EffectIcon icon, String label, int width) {}
 
     private void renderPartyHpList(DrawContext ctx, MinecraftClient client,
@@ -409,7 +407,6 @@ public class CombatHudOverlay implements HudRenderCallback {
                 displayName += "..";
             }
 
-            // Player head
             drawPlayerHead(ctx, client, member.name(), panelX + panelPad, y, headSz);
 
             ctx.drawTextWithShadow(client.textRenderer,

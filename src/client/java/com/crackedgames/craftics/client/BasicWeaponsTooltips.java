@@ -43,7 +43,6 @@ public final class BasicWeaponsTooltips {
         stat.append(ap).append(" AP §7| ").append(dt.color).append(dt.displayName);
         lines.add(Text.literal(stat.toString()));
 
-        // Effect line(s)
         for (String line : effectLines(type)) {
             lines.add(Text.literal("§e • " + line));
         }

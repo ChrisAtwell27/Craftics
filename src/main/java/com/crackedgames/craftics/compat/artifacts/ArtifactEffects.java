@@ -30,9 +30,7 @@ public final class ArtifactEffects {
 
     private ArtifactEffects() {}
 
-    // ======================================================================
     // Helpers
-    // ======================================================================
 
     private static UUID uid(CombatEffectContext ctx) {
         return ctx.getPlayer().getUuid();
@@ -85,9 +83,7 @@ public final class ArtifactEffects {
         return false;
     }
 
-    // ======================================================================
     // Head slot
-    // ======================================================================
 
     /** 30% chance for a bonus duplicate from the loot pool on level completion. */
     public static final class SuperstitiousHat implements CombatEffectHandler {
@@ -106,7 +102,7 @@ public final class ArtifactEffects {
         public CombatResult onEmeraldGain(CombatEffectContext ctx, int amount) {
             if (amount <= 0) return CombatResult.unchanged(amount);
             int bonus = Math.max(1, (int) Math.ceil(amount * 0.5));
-            return CombatResult.modify(amount + bonus, "§a🎩 Villager Hat: +" + bonus + " emeralds");
+            return CombatResult.modify(amount + bonus, "§aVillager Hat: +" + bonus + " emeralds");
         }
     }
 
@@ -137,7 +133,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onEffectApplied(CombatEffectContext ctx, CombatEffects.EffectType effect, int turns) {
             if (effect == CombatEffects.EffectType.SOAKED) {
-                return CombatResult.cancel("§b🤿 Snorkel blocks SOAKED");
+                return CombatResult.cancel("§bSnorkel blocks SOAKED");
             }
             return CombatResult.unchanged(turns);
         }
@@ -180,9 +176,7 @@ public final class ArtifactEffects {
         }
     }
 
-    // ======================================================================
     // Necklace slot
-    // ======================================================================
 
     /** After being hit, the next hit you take deals 50% less damage. Resets each turn. */
     public static final class CrossNecklace implements CombatEffectHandler {
@@ -196,7 +190,7 @@ public final class ArtifactEffects {
             if (s.crossShieldActive) {
                 int reduced = Math.max(1, damage / 2);
                 s.crossShieldActive = false;
-                return CombatResult.modify(reduced, "§c✟ Cross Necklace blocks " + (damage - reduced) + " damage");
+                return CombatResult.modify(reduced, "§cCross Necklace blocks " + (damage - reduced) + " damage");
             }
             // First hit primes the shield for the *next* incoming hit.
             s.crossShieldActive = true;
@@ -246,7 +240,7 @@ public final class ArtifactEffects {
             for (CombatEntity adj : adjacentEnemies(ctx.getArena(), target.getGridPos())) {
                 if (adj == target) continue;
                 adj.applyDirectDamage(3);
-                return new CombatResult(damage, List.of("§b⚡ Shock Pendant chains 3 to " + adj.getDisplayName()), false);
+                return new CombatResult(damage, List.of("§bShock Pendant chains 3 to " + adj.getDisplayName()), false);
             }
             return CombatResult.unchanged(damage);
         }
@@ -265,7 +259,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
             if (RNG.nextFloat() < 0.20f) {
-                return CombatResult.cancel("§7Charm of Shrinking — dodged!");
+                return CombatResult.cancel("§7Charm of Shrinking - dodged!");
             }
             return CombatResult.unchanged(damage);
         }
@@ -283,7 +277,7 @@ public final class ArtifactEffects {
             if (!s.scarfFirstAttackUsed) {
                 s.scarfFirstAttackUsed = true;
                 int doubled = damage * 2;
-                return CombatResult.modify(doubled, "§5🥷 Scarf of Invisibility — surprise strike! (×2)");
+                return CombatResult.modify(doubled, "§5Scarf of Invisibility - surprise strike! (×2)");
             }
             return CombatResult.unchanged(damage);
         }
@@ -294,7 +288,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onDealDamage(CombatEffectContext ctx, CombatEntity target, int damage) {
             if (RNG.nextFloat() < 0.15f) {
-                return CombatResult.modify(damage * 2, "§e🍀 Lucky Scarf crit!");
+                return CombatResult.modify(damage * 2, "§eLucky Scarf crit!");
             }
             return CombatResult.unchanged(damage);
         }
@@ -305,16 +299,14 @@ public final class ArtifactEffects {
         }
     }
 
-    // ======================================================================
     // Ring slot
-    // ======================================================================
 
     /** +2 emeralds per emerald payout. */
     public static final class GoldenHook implements CombatEffectHandler {
         @Override
         public CombatResult onEmeraldGain(CombatEffectContext ctx, int amount) {
             if (amount <= 0) return CombatResult.unchanged(amount);
-            return CombatResult.modify(amount + 2, "§6⚓ Golden Hook: +2 emeralds");
+            return CombatResult.modify(amount + 2, "§6Golden Hook: +2 emeralds");
         }
     }
 
@@ -343,11 +335,9 @@ public final class ArtifactEffects {
         }
     }
 
-    // ======================================================================
     // Hand slot
-    // ======================================================================
 
-    /** Ignore 50% of effective defense — adds the ignored portion as bonus damage. */
+    /** Ignore 50% of effective defense; adds the ignored portion as bonus damage. */
     public static final class DiggingClaws implements CombatEffectHandler {
         @Override
         public CombatResult onDealDamage(CombatEffectContext ctx, CombatEntity target, int damage) {
@@ -356,7 +346,7 @@ public final class ArtifactEffects {
             if (def <= 0) return CombatResult.unchanged(damage);
             // Each defense point ≈ 5% mitigation; halving defense recovers ~half of that.
             int bonus = Math.max(1, (int) Math.round(damage * (def * 0.05) * 0.5));
-            return CombatResult.modify(damage + bonus, "§7⛏ Digging Claws ignore " + bonus + " defense");
+            return CombatResult.modify(damage + bonus, "§7Digging Claws ignore " + bonus + " defense");
         }
     }
 
@@ -374,9 +364,9 @@ public final class ArtifactEffects {
             int before = cm.getApRemaining();
             cm.setApRemaining(before + 1);
             com.crackedgames.craftics.CrafticsMod.LOGGER.info(
-                "[Craftics × Artifacts] Feral Claws fired — AP {} → {}", before, before + 1);
+                "[Craftics × Artifacts] Feral Claws fired - AP {} -> {}", before, before + 1);
             ctx.getPlayer().sendMessage(
-                net.minecraft.text.Text.literal("§6🐾 Feral Claws: §e+1 AP refunded"), false);
+                net.minecraft.text.Text.literal("§6Feral Claws: §e+1 AP refunded"), false);
         }
     }
 
@@ -429,7 +419,7 @@ public final class ArtifactEffects {
             }
             if (collided) {
                 target.applyDirectDamage(3);
-                return new CombatResult(damage, List.of("§e🥊 Pocket Piston slam — +3 collision damage"), false);
+                return new CombatResult(damage, List.of("§ePocket Piston slam - +3 collision damage"), false);
             }
             return CombatResult.unchanged(damage);
         }
@@ -447,15 +437,13 @@ public final class ArtifactEffects {
         }
     }
 
-    // ======================================================================
     // Belt slot
-    // ======================================================================
 
     /** Immune to knockback. (Move-through-enemies portion isn't expressible via hooks.) */
     public static final class HeliumFlamingo implements CombatEffectHandler {
         @Override
         public CombatResult onKnockback(CombatEffectContext ctx, CombatEntity source, int distance) {
-            return CombatResult.cancel("§b🦩 Helium Flamingo ignores knockback");
+            return CombatResult.cancel("§bHelium Flamingo ignores knockback");
         }
     }
 
@@ -473,7 +461,7 @@ public final class ArtifactEffects {
             ServerPlayerEntity p = ctx.getPlayer();
             float restored = p.getMaxHealth() * 0.25f;
             p.setHealth(Math.max(1f, restored));
-            return CombatResult.cancel("§5✦ Chorus Totem — saved from death!");
+            return CombatResult.cancel("§5Chorus Totem - saved from death!");
         }
     }
 
@@ -482,7 +470,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onEffectApplied(CombatEffectContext ctx, CombatEffects.EffectType effect, int turns) {
             if (effect == CombatEffects.EffectType.BURNING) {
-                return CombatResult.cancel("§8💀 Obsidian Skull blocks BURNING");
+                return CombatResult.cancel("§8Obsidian Skull blocks BURNING");
             }
             return CombatResult.unchanged(turns);
         }
@@ -493,7 +481,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
             if (RNG.nextFloat() < 0.15f) {
-                return CombatResult.cancel("§b☁ Cloud in a Bottle — dodged!");
+                return CombatResult.cancel("§bCloud in a Bottle - dodged!");
             }
             return CombatResult.unchanged(damage);
         }
@@ -504,7 +492,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onEffectApplied(CombatEffectContext ctx, CombatEffects.EffectType effect, int turns) {
             if (effect == CombatEffects.EffectType.POISON || effect == CombatEffects.EffectType.CONFUSION) {
-                return CombatResult.cancel("§a🧪 Antidote Vessel blocks " + effect.displayName);
+                return CombatResult.cancel("§aAntidote Vessel blocks " + effect.displayName);
             }
             return CombatResult.unchanged(turns);
         }
@@ -530,9 +518,7 @@ public final class ArtifactEffects {
         }
     }
 
-    // ======================================================================
     // Misc slot
-    // ======================================================================
 
     /** Block first hit of combat completely; 10% block on incoming ranged hits. */
     public static final class Umbrella implements CombatEffectHandler {
@@ -545,25 +531,23 @@ public final class ArtifactEffects {
             ArtifactsState s = state(ctx);
             if (!s.umbrellaFirstHitUsed) {
                 s.umbrellaFirstHitUsed = true;
-                return CombatResult.cancel("§f☂ Umbrella blocks the first hit!");
+                return CombatResult.cancel("§fUmbrella blocks the first hit!");
             }
             if (attacker != null && attacker.getRange() > 1 && RNG.nextFloat() < 0.10f) {
-                return CombatResult.cancel("§f☂ Umbrella blocks the ranged shot!");
+                return CombatResult.cancel("§fUmbrella blocks the ranged shot!");
             }
             return CombatResult.unchanged(damage);
         }
     }
 
-    // ======================================================================
     // Feet slot
-    // ======================================================================
 
     /** 10% chance to dodge incoming attacks. */
     public static final class BunnyHoppers implements CombatEffectHandler {
         @Override
         public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
             if (RNG.nextFloat() < 0.10f) {
-                return CombatResult.cancel("§a🐰 Bunny Hoppers — dodged!");
+                return CombatResult.cancel("§aBunny Hoppers - dodged!");
             }
             return CombatResult.unchanged(damage);
         }
@@ -573,7 +557,7 @@ public final class ArtifactEffects {
     public static final class AquaDashers implements CombatEffectHandler {
         @Override
         public CombatResult onDealDamage(CombatEffectContext ctx, CombatEntity target, int damage) {
-            return CombatResult.modify(damage + 2, "§b🌊 Aqua Dashers +2 water");
+            return CombatResult.modify(damage + 2, "§bAqua Dashers +2 water");
         }
         @Override
         public void onMove(CombatEffectContext ctx, GridPos from, GridPos to, int distance) {
@@ -621,7 +605,7 @@ public final class ArtifactEffects {
     public static final class SteadfastSpikes implements CombatEffectHandler {
         @Override
         public CombatResult onKnockback(CombatEffectContext ctx, CombatEntity source, int distance) {
-            return CombatResult.cancel("§7⚙ Steadfast Spikes resist knockback");
+            return CombatResult.cancel("§7Steadfast Spikes resist knockback");
         }
         @Override
         public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
@@ -637,7 +621,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onDealDamage(CombatEffectContext ctx, CombatEntity target, int damage) {
             if (target != null && target.getSoakedTurns() > 0) {
-                return CombatResult.modify(damage + 3, "§b🐟 Flippers +3 vs. SOAKED");
+                return CombatResult.modify(damage + 3, "§bFlippers +3 vs. SOAKED");
             }
             return CombatResult.unchanged(damage);
         }
@@ -648,7 +632,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onEffectApplied(CombatEffectContext ctx, CombatEffects.EffectType effect, int turns) {
             if (effect == CombatEffects.EffectType.BURNING || effect == CombatEffects.EffectType.SLOWNESS) {
-                return CombatResult.cancel("§c👟 Strider Shoes block " + effect.displayName);
+                return CombatResult.cancel("§cStrider Shoes block " + effect.displayName);
             }
             return CombatResult.unchanged(turns);
         }

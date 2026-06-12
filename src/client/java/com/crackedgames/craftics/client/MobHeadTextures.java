@@ -22,9 +22,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *       so users can drop PNGs into a resource pack for modded enemies without any code:
  *       <ul>
  *         <li>{@code craftics:textures/mob_heads/{namespace}/{path}.png}
- *             — resource pack supplies a head for a modded mob under craftics' namespace.</li>
+ *             - resource pack supplies a head for a modded mob under craftics' namespace.</li>
  *         <li>{@code {namespace}:textures/mob_heads/{path}.png}
- *             — mod ships its own head texture in its own namespace.</li>
+ *             - mod ships its own head texture in its own namespace.</li>
  *       </ul>
  *   </li>
  * </ol>
@@ -169,11 +169,11 @@ public final class MobHeadTextures {
         String ns = colon >= 0 ? entityTypeId.substring(0, colon) : "minecraft";
         String path = colon >= 0 ? entityTypeId.substring(colon + 1) : entityTypeId;
 
-        // 1. craftics:textures/mob_heads/{ns}/{path}.png — resource pack override for modded mobs
+        // 1. craftics:textures/mob_heads/{ns}/{path}.png - resource pack override for modded mobs
         Identifier candidate = tryId("craftics", "textures/mob_heads/" + ns + "/" + path + ".png");
         if (candidate != null && rm.getResource(candidate).isPresent()) return candidate;
 
-        // 2. {ns}:textures/mob_heads/{path}.png — mod ships its own head texture
+        // 2. {ns}:textures/mob_heads/{path}.png - mod ships its own head texture
         if (!"minecraft".equals(ns) && !"craftics".equals(ns)) {
             candidate = tryId(ns, "textures/mob_heads/" + path + ".png");
             if (candidate != null && rm.getResource(candidate).isPresent()) return candidate;
@@ -209,7 +209,7 @@ public final class MobHeadTextures {
     /**
      * Draw a mob head tinted toward red by {@code redAmount} (0 = untouched,
      * 1 = badly hurt). The head is drawn normally, then a translucent red film
-     * is laid over it whose opacity scales with the damage — so a glance down
+     * is laid over it whose opacity scales with the damage, so a glance down
      * the enemy roster reads health by color without needing bars or numbers.
      */
     public static void drawMobHeadTinted(net.minecraft.client.gui.DrawContext ctx, Identifier texture,
@@ -217,7 +217,7 @@ public final class MobHeadTextures {
         drawMobHead(ctx, texture, x, y, size);
         redAmount = Math.max(0f, Math.min(1f, redAmount));
         if (redAmount <= 0.02f) return;
-        // Up to ~0.66 alpha at death's door — enough to read clearly while the
+        // Up to ~0.66 alpha at death's door, enough to read clearly while the
         // mob's face still shows through.
         int alpha = (int) (redAmount * 168);
         int color = (alpha << 24) | 0x00FF1810;

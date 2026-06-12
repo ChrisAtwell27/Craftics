@@ -95,7 +95,7 @@ public class RespecScreen extends Screen {
             this.addDrawableChild(plusBtn);
         }
 
-        // Bottom row: Confirm, Reset, Cancel — all in one row
+        // Bottom row: Confirm, Reset, Cancel, all in one row
         int bottomY = startY + totalHeight + 8;
         int btnWidth = 80;
         int gap = 4;
@@ -176,7 +176,7 @@ public class RespecScreen extends Screen {
         // Header
         int headerY = contentTop;
         context.drawCenteredTextWithShadow(this.textRenderer,
-            "\u00a76\u00a7l\u2728 RESPEC STATS \u2728", centerX, headerY, 0xFFAA00);
+            "\u00a76\u00a7lRESPEC STATS", centerX, headerY, 0xFFAA00);
 
         int totalRefunded = getTotalRefunded();
         String costText = totalRefunded > 0

@@ -50,15 +50,15 @@ public final class AbandonedCampsiteEvent {
     public static void register() {
         // Stateful registration: MimicAI keeps a per-fight tantrum/dash
         // alternation, so every spawned mimic must get its own instance via
-        // AIRegistry.createFresh — the old plain register() shared one MimicAI
+        // AIRegistry.createFresh: the old plain register() shared one MimicAI
         // (and its cadence state) across every campsite fight on the server.
         AIRegistry.registerStateful(MIMIC_ENTITY, MimicAI::createInstance);
         CrafticsAPI.registerEvent(new EventEntry(
             EVENT_ID,
             "Abandoned Campsite",
-            0.06f,         // 6% — modest, since it has its own dedicated payoff
+            0.06f,         // 6% - modest, since it has its own dedicated payoff
             0,             // available from the very first biome
-            true,          // choice event — show accept/decline prompt
+            true,          // choice event: show accept/decline prompt
             java.util.List.of(
                 "You find an abandoned campsite.",
                 "Embers still glow in the firepit. Something feels off."),
@@ -88,7 +88,7 @@ public final class AbandonedCampsiteEvent {
         return Math.max(15, hp);
     }
 
-    /** The actual event handler — runs after the player accepts the prompt. */
+    /** The actual event handler: runs after the player accepts the prompt. */
     private static final EventHandler HANDLER = (participants, world, eventManager) -> {
         if (participants == null || participants.isEmpty()) return;
         ServerPlayerEntity leader = participants.get(0);
@@ -98,12 +98,12 @@ public final class AbandonedCampsiteEvent {
             return;
         }
         BiomeTemplate biome = cm.getPendingBiome();
-        CrafticsMod.LOGGER.info("[Craftics × Artifacts] Campsite event fired — leader={}, biome={}",
+        CrafticsMod.LOGGER.info("[Craftics × Artifacts] Campsite event fired - leader={}, biome={}",
             leader.getName().getString(), biome != null ? biome.biomeId : "<null>");
 
         boolean lucky = RNG.nextBoolean();
         if (lucky) {
-            // Lucky path — give every participant a random artifact, then auto-continue.
+            // Lucky path: give every participant a random artifact, then auto-continue.
             CrafticsMod.LOGGER.info("[Craftics × Artifacts] Campsite event: LUCKY path");
             for (ServerPlayerEntity p : participants) {
                 ItemStack reward = ArtifactRoller.rollOne();
@@ -114,16 +114,16 @@ public final class AbandonedCampsiteEvent {
                 String name = reward.getName().getString();
                 LootDelivery.deliver(p, reward);
                 if (!reward.isEmpty()) p.dropItem(reward, false);
-                p.sendMessage(Text.literal("§a✦ You loot the campsite — found §e" + name + "§a!"), false);
+                p.sendMessage(Text.literal("§aYou loot the campsite - found §e" + name + "§a!"), false);
             }
             // Returning here lets handlePostLevelChoice's auto-continue kick in.
             return;
         }
 
-        // Trap path — spawn the mimic in a biome-themed arena and start combat.
+        // Trap path: spawn the mimic in a biome-themed arena and start combat.
         CrafticsMod.LOGGER.info("[Craftics × Artifacts] Campsite event: MIMIC TRAP path");
         for (ServerPlayerEntity p : participants) {
-            p.sendMessage(Text.literal("§c§l⚠ It's a trap! §r§cThe loot pile lunges at you — MIMIC!"), false);
+            p.sendMessage(Text.literal("§c§l⚠ It's a trap! §r§cThe loot pile lunges at you - MIMIC."), false);
         }
         LevelDefinition mimicDef = buildMimicLevel(biome, computeMimicHp(biome));
         // startCustomCombat will buildArena + transitionPartyToArena, using `leader` as the
@@ -138,7 +138,7 @@ public final class AbandonedCampsiteEvent {
         final int width = 9;
         final int height = 9;
         // Synthetic level number that's clearly outside the normal 1..100ish range.
-        // This is NOT used for world placement (see getOverrideOrigin below) — it's
+        // This is NOT used for world placement (see getOverrideOrigin below) - it's
         // just a stable id for CombatManager logging and metadata lookups.
         final int levelNumber = 9500 + RNG.nextInt(400);
         final List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
@@ -166,7 +166,7 @@ public final class AbandonedCampsiteEvent {
             /**
              * Use the player's dedicated event-arena scratch position instead of
              * letting CrafticsSavedData.getArenaOrigin multiply our synthetic
-             * level number by 300 — that would send us to a million-block-away
+             * level number by 300 - that would send us to a million-block-away
              * unloaded chunk and make the whole encounter invisible.
              */
             @Override

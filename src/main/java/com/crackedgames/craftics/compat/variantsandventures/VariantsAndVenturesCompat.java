@@ -13,10 +13,10 @@ import net.fabricmc.loader.api.FabricLoader;
  * <p>
  * Adds four new hostile mobs to the appropriate Craftics biomes:
  * <ul>
- *   <li><b>Gelid</b> — frozen zombie (ZombieAI fallback). Added to snowy and mountain.</li>
- *   <li><b>Thicket</b> — poison zombie (ZombieAI fallback). Added to jungle.</li>
- *   <li><b>Verdant</b> — jungle skeleton (SkeletonAI fallback). Added to jungle and forest.</li>
- *   <li><b>Murk</b> — river skeleton with shears (SkeletonAI fallback). Added to river.</li>
+ *   <li><b>Gelid</b>: frozen zombie (ZombieAI fallback). Added to snowy and mountain.</li>
+ *   <li><b>Thicket</b>: poison zombie (ZombieAI fallback). Added to jungle.</li>
+ *   <li><b>Verdant</b>: jungle skeleton (SkeletonAI fallback). Added to jungle and forest.</li>
+ *   <li><b>Murk</b>: river skeleton with shears (SkeletonAI fallback). Added to river.</li>
  * </ul>
  * <p>
  * Base stats mirror the vanilla mob the variant derives from so difficulty
@@ -40,7 +40,7 @@ public final class VariantsAndVenturesCompat {
 
     /**
      * Register AI fallbacks and mark loaded. Safe to call whether the mod is
-     * present or not — AI registry entries always go in so datapacks/addons
+     * present or not: AI registry entries always go in so datapacks/addons
      * referencing these ids by name have a reliable fallback.
      */
     public static void init() {
@@ -58,24 +58,24 @@ public final class VariantsAndVenturesCompat {
         AIRegistry.register(VERDANT, skeletonAi);
         AIRegistry.register(MURK,    skeletonAi);
 
-        // Theme tags — register regardless of whether the mod is loaded so
+        // Theme tags: register regardless of whether the mod is loaded so
         // the on-hit effect fires the moment a Gelid/Thicket/Murk actually
         // shows up in combat. MobThemeTags.applyOnHitEffect no-ops for
         // untagged attackers, so tagging an entity id that never spawns is
         // free.
-        MobThemeTags.addColdMob(GELID);       // frozen zombie → WEAKNESS
-        MobThemeTags.addJungleMob(THICKET);   // poison zombie → POISON
-        MobThemeTags.addJungleMob(VERDANT);   // jungle skeleton → POISON
-        MobThemeTags.addWaterMob(MURK);       // river skeleton → SOAKED
+        MobThemeTags.addColdMob(GELID);       // frozen zombie -> WEAKNESS
+        MobThemeTags.addJungleMob(THICKET);   // poison zombie -> POISON
+        MobThemeTags.addJungleMob(VERDANT);   // jungle skeleton -> POISON
+        MobThemeTags.addWaterMob(MURK);       // river skeleton -> SOAKED
 
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
             CrafticsMod.LOGGER.debug(
-                "[Craftics × Variants & Ventures] mod not loaded — AI entries registered for any future use");
+                "[Craftics × Variants & Ventures] mod not loaded - AI entries registered for any future use");
             return;
         }
         loaded = true;
         CrafticsMod.LOGGER.info(
-            "[Craftics × Variants & Ventures] enabled — registered 4 variant AI entries");
+            "[Craftics × Variants & Ventures] enabled - registered 4 variant AI entries");
     }
 
     public static boolean isLoaded() {
@@ -89,20 +89,20 @@ public final class VariantsAndVenturesCompat {
     public static void applyBiomeOverrides() {
         if (!loaded) return;
 
-        // Gelid — frozen zombie. Base stats match the vanilla zombie entry in
+        // Gelid: frozen zombie. Base stats match the vanilla zombie entry in
         // the snowy biome pool (hp 8, atk 2, def 0, range 1).
         BiomeCompatHelper.appendHostileMob("snowy",    GELID, 5, 8, 2, 0, 1);
         BiomeCompatHelper.appendHostileMob("mountain", GELID, 4, 8, 2, 0, 1);
 
-        // Thicket — poison zombie. Slightly higher base attack than regular zombie
+        // Thicket: poison zombie. Slightly higher base attack than regular zombie
         // to make room for the poison mechanic we'll add later.
         BiomeCompatHelper.appendHostileMob("jungle",   THICKET, 5, 8, 3, 0, 1);
 
-        // Verdant — jungle skeleton. Ranged kiter, range 3 like normal skeletons.
+        // Verdant: jungle skeleton. Ranged kiter, range 3 like normal skeletons.
         BiomeCompatHelper.appendHostileMob("jungle",   VERDANT, 4, 6, 2, 0, 3);
         BiomeCompatHelper.appendHostileMob("forest",   VERDANT, 4, 6, 2, 0, 3);
 
-        // Murk — river skeleton with shears. Hits harder in melee since it
+        // Murk: river skeleton with shears. Hits harder in melee since it
         // carries a short-range weapon.
         BiomeCompatHelper.appendHostileMob("river",    MURK,    5, 7, 3, 0, 2);
     }

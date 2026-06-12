@@ -15,16 +15,16 @@ import java.util.Map;
  *
  * <p>Three tiers ({@link Rank}):
  * <ul>
- *   <li>{@code CREATOR} — the fanciest treatment: an animated rainbow color and
+ *   <li>{@code CREATOR} - the fanciest treatment: an animated rainbow color and
  *       bold text. (There's just one: __Egg__.)</li>
- *   <li>{@code HELPER} — a special solid signature color.</li>
- *   <li>{@code TESTER} — a solid signature color.</li>
+ *   <li>{@code HELPER} - a special solid signature color.</li>
+ *   <li>{@code TESTER} - a solid signature color.</li>
  * </ul>
  *
  * <p>The list is hardcoded and identical on every client, so no server sync is
- * needed — each client looks up any player it renders by username. To add
+ * needed, each client looks up any player it renders by username. To add
  * someone, drop a {@link #register} line in the static block. All perks are
- * purely cosmetic — nothing here touches combat balance.
+ * purely cosmetic. Nothing here touches combat balance.
  */
 public final class TesterRegistry {
 
@@ -47,14 +47,17 @@ public final class TesterRegistry {
 
     static {
         // name (exact display case), floating title, signature color (0xAARRGGBB), rank
-        register("__Egg__",          "✦ Creator of Craftics ✦", 0xFFE8B637, Rank.CREATOR); // rainbow + bold
-        register("ChickenSizedKiwi", "✦ Pwincess ✦",        0xFF8A9A5B, Rank.HELPER);  // army green
-        register("Jpkrus",           "✦ Playtester",            TESTER_COLOR, Rank.TESTER);
-        register("Tintartie",        "✦ Playtester",            TESTER_COLOR, Rank.TESTER);
-        register("TripleExM",        "✦ Playtester",            TESTER_COLOR, Rank.TESTER);
-        
+        register("__Egg__",          "Creator of Craftics", 0xFFE8B637, Rank.CREATOR); // rainbow + bold
+        register("ChickenSizedKiwi", "Pwincess",        0xFF8A9A5B, Rank.HELPER);  // army green
+        register("Jpkrus",           "Playtester",            TESTER_COLOR, Rank.TESTER);
+        register("Tintartie",        "Playtester",            TESTER_COLOR, Rank.TESTER);
+        register("TripleExM",        "Playtester",            TESTER_COLOR, Rank.TESTER);
+        register("TheRedLamb",        "Playtester",            TESTER_COLOR, Rank.TESTER);
+        register("BrotherJax",        "Playtester",            TESTER_COLOR, Rank.TESTER);
+        register("GokentoPower",        "Playtester",            TESTER_COLOR, Rank.TESTER);
+
         // Add more here (all testers share TESTER_COLOR regardless of the value passed):
-        // register("SomeName", "✦ Playtester", TESTER_COLOR, Rank.TESTER);
+        // register("SomeName", "Playtester", TESTER_COLOR, Rank.TESTER);
     }
 
     private TesterRegistry() {}

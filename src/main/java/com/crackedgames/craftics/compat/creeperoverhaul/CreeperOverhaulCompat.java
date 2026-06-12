@@ -14,28 +14,28 @@ import net.fabricmc.loader.api.FabricLoader;
  * <p>
  * Adds 12 biome-matching creeper variants to the Craftics biome pools. Each
  * variant has unique mechanical behaviour driven by a shared
- * {@link VariantCreeperAI} config — blast effects, fuse length, camouflage,
- * extra speed, etc. — instead of individual AI subclasses.
+ * {@link VariantCreeperAI} config - blast effects, fuse length, camouflage,
+ * extra speed, etc. - instead of individual AI subclasses.
  * <p>
  * Variant-to-biome mapping (all 18 Craftics biomes considered):
  * <pre>
- *   desert       → desert_creeper      (short fuse, BLINDNESS on blast)
- *   jungle       → jungle_creeper      (camouflage + POISON tag)
- *   jungle       → bamboo_creeper      (camouflage + POISON tag, stacked)
- *   cave         → cave_creeper        (BLINDNESS + MINING_FATIGUE on blast)
- *   deep_dark    → cave_creeper        (same)
- *   cave         → dripstone_creeper   (piercing — +1 base damage)
- *   snowy        → snowy_creeper       (SLOWNESS on blast + WEAKNESS tag)
- *   mountain     → hills_creeper       (+1 speed, larger blast radius)
- *   forest       → dark_oak_creeper    (tanky +2 HP +1 DEF, vanilla behaviour)
- *   plains       → plains_creeper      (weaker starter variant)
- *   river        → beach_creeper       (3-tile knockback, SOAKED tag)
- *   river        → ocean_creeper       (underwater — larger blast, SOAKED tag)
- *   chorus_grove → mushroom_creeper    (fungal — POISON on blast)
+ *   desert       -> desert_creeper      (short fuse, BLINDNESS on blast)
+ *   jungle       -> jungle_creeper      (camouflage + POISON tag)
+ *   jungle       -> bamboo_creeper      (camouflage + POISON tag, stacked)
+ *   cave         -> cave_creeper        (BLINDNESS + MINING_FATIGUE on blast)
+ *   deep_dark    -> cave_creeper        (same)
+ *   cave         -> dripstone_creeper   (piercing, +1 base damage)
+ *   snowy        -> snowy_creeper       (SLOWNESS on blast + WEAKNESS tag)
+ *   mountain     -> hills_creeper       (+1 speed, larger blast radius)
+ *   forest       -> dark_oak_creeper    (tanky +2 HP +1 DEF, vanilla behaviour)
+ *   plains       -> plains_creeper      (weaker starter variant)
+ *   river        -> beach_creeper       (3-tile knockback, SOAKED tag)
+ *   river        -> ocean_creeper       (underwater, larger blast, SOAKED tag)
+ *   chorus_grove -> mushroom_creeper    (fungal, POISON on blast)
  * </pre>
  * <p>
  * Biomes not currently in Craftics (badlands, savannah, spruce, swamp) are
- * left out — their variants would have no biome home. Those four still get
+ * left out: their variants would have no biome home. Those four still get
  * their AI entries registered so any future datapack / custom biome that
  * references them will work without a crash.
  */
@@ -48,7 +48,7 @@ public final class CreeperOverhaulCompat {
 
     private CreeperOverhaulCompat() {}
 
-    // === Variant AI instances ===
+    // Variant AI instances.
     // Each Config captures the variant's entire behaviour profile. Declared as
     // static finals so they're shared by every spawn of that variant.
 
@@ -110,21 +110,21 @@ public final class CreeperOverhaulCompat {
             .radius(2, 2)
             .blast(CombatEffects.EffectType.POISON, 4));
 
-    /** Variants with no matching biome yet — fall back to vanilla CreeperAI. */
+    /** Variants with no matching biome yet: fall back to vanilla CreeperAI. */
     private static final String[] UNASSIGNED_VARIANTS = {
         "badlands_creeper", "birch_creeper", "savannah_creeper", "spruce_creeper", "swamp_creeper",
     };
 
     /**
      * Called from mod init to register variant AI entries. Safe to call whether
-     * the mod is loaded or not — registry entries always go in so addon code
+     * the mod is loaded or not: registry entries always go in so addon code
      * referencing these ids by name has a reliable fallback.
      */
     public static void init() {
         if (aiRegistered) return;
         aiRegistered = true;
 
-        // Biome-matched variants → per-variant AI
+        // Biome-matched variants -> per-variant AI
         AIRegistry.register(MOD_ID + ":desert_creeper",    DESERT_AI);
         AIRegistry.register(MOD_ID + ":jungle_creeper",    JUNGLE_AI);
         AIRegistry.register(MOD_ID + ":bamboo_creeper",    BAMBOO_AI);
@@ -138,7 +138,7 @@ public final class CreeperOverhaulCompat {
         AIRegistry.register(MOD_ID + ":ocean_creeper",     OCEAN_AI);
         AIRegistry.register(MOD_ID + ":mushroom_creeper",  MUSHROOM_AI);
 
-        // Unmatched variants → vanilla fallback so datapacks referencing them
+        // Unmatched variants -> vanilla fallback so datapacks referencing them
         // by name don't crash. They simply never appear in Craftics combats.
         CreeperAI fallback = new CreeperAI();
         for (String path : UNASSIGNED_VARIANTS) {
@@ -147,12 +147,12 @@ public final class CreeperOverhaulCompat {
 
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
             CrafticsMod.LOGGER.debug(
-                "[Craftics × Creeper Overhaul] mod not loaded — AI entries registered for any future use");
+                "[Craftics × Creeper Overhaul] mod not loaded - AI entries registered for any future use");
             return;
         }
         loaded = true;
         CrafticsMod.LOGGER.info(
-            "[Craftics × Creeper Overhaul] enabled — 12 biome-matched variants wired");
+            "[Craftics × Creeper Overhaul] enabled - 12 biome-matched variants wired");
     }
 
     public static boolean isLoaded() {
@@ -161,14 +161,14 @@ public final class CreeperOverhaulCompat {
 
     /**
      * Patch the biome pool. Must run after every
-     * {@code BiomeRegistry.loadFromDatapacks} — CrafticsMod calls this from
+     * {@code BiomeRegistry.loadFromDatapacks}: CrafticsMod calls this from
      * both the {@code SERVER_STARTED} hook and the
      * {@code END_DATA_PACK_RELOAD} hook.
      */
     public static void applyBiomeOverrides() {
         if (!loaded) return;
 
-        // Biomes that already have a vanilla creeper → swap for themed variant.
+        // Biomes that already have a vanilla creeper: swap it for the themed variant.
         // Preserves the original weight/stats, so difficulty stays consistent.
         BiomeCompatHelper.replaceHostileMob("desert",    "minecraft:creeper", MOD_ID + ":desert_creeper");
         BiomeCompatHelper.replaceHostileMob("jungle",    "minecraft:creeper", MOD_ID + ":jungle_creeper");
@@ -188,7 +188,7 @@ public final class CreeperOverhaulCompat {
         BiomeCompatHelper.appendHostileMob("river",      MOD_ID + ":ocean_creeper",     3, 8, 3, 0, 1);
         BiomeCompatHelper.appendHostileMob("chorus_grove", MOD_ID + ":mushroom_creeper",3, 8, 3, 0, 1);
 
-        // Theme tags — "water / jungle / cold" enemies automatically apply
+        // Theme tags: "water / jungle / cold" enemies automatically apply
         // SOAKED / POISON / WEAKNESS on hit via MobThemeTags.applyOnHitEffect
         // from CombatManager.damagePlayer. These stack with the explicit
         // blast effects in each variant's AI config.

@@ -21,7 +21,7 @@ import java.util.UUID;
 /**
  * Renders colored translucent quads on arena tiles for highlights.
  * Replaces the old TileHighlightManager carpet-block system.
- * All rendering is client-side — zero server round-trips.
+ * All rendering is client-side - zero server round-trips.
  *
  * <p>All highlight logic lives in {@link #buildQuads} (version-independent);
  * the per-version branches only flush the resulting quad list to the GPU.
@@ -50,7 +50,7 @@ public class TileOverlayRenderer {
     private static List<GridPos> cachedPath = null;
 
     /**
-     * The movement path currently previewed (player tile → hovered move tile,
+     * The movement path currently previewed (player tile -> hovered move tile,
      * excluding the start tile), or {@code null} when no preview is active.
      * Read by {@code CombatHudOverlay} for the move-cost cursor label.
      */
@@ -91,7 +91,7 @@ public class TileOverlayRenderer {
         net.minecraft.block.BlockState above = world.getBlockState(abovePos);
         // Snow layers (cold-biome arena decoration, plus snow golem trails) sit
         // on the floor at 0.125 per layer; without this the highlight draws at
-        // floor level and the snow buries it — telegraphs and the move grid
+        // floor level and the snow buries it: telegraphs and the move grid
         // disappeared on snowed-over tiles.
         if (above.getBlock() instanceof net.minecraft.block.SnowBlock) {
             int layers = above.get(net.minecraft.block.SnowBlock.LAYERS);
@@ -106,7 +106,7 @@ public class TileOverlayRenderer {
             if (slabType == net.minecraft.block.enums.SlabType.BOTTOM) {
                 return originY + 1.51f;
             }
-            // TOP / DOUBLE slab → walk on top at full +1 step
+            // TOP / DOUBLE slab -> walk on top at full +1 step
             return originY + 2.01f;
         }
         if (!above.isAir() && above.isSolidBlock(world, abovePos)) {
@@ -115,7 +115,7 @@ public class TileOverlayRenderer {
         return originY + 1.01f;
     }
 
-    // ─── Quad assembly (shared across versions) ──────────────────────────
+    // Quad assembly (shared across versions)
 
     /** Full-tile fill quad (inset by {@link #TILE_MARGIN}). */
     private static void fillTile(List<Quad> out, net.minecraft.client.world.ClientWorld world,
@@ -128,7 +128,7 @@ public class TileOverlayRenderer {
             wx + 1 - TILE_MARGIN, wz + 1 - TILE_MARGIN, y, r, g, b, a));
     }
 
-    /** Inner marker quad (path breadcrumbs) — a small centered square. */
+    /** Inner marker quad (path breadcrumbs): a small centered square. */
     private static void markTile(List<Quad> out, net.minecraft.client.world.ClientWorld world,
                                  int ox, int oy, int oz, GridPos tile, float yOff, float margin,
                                  float r, float g, float b, float a) {
@@ -203,7 +203,7 @@ public class TileOverlayRenderer {
      *
      * <p>{@code xray} receives a faint copy of the navigation-critical quads
      * (move/attack fills, path, hover). It's drawn with a GREATER depth test,
-     * so it only shows where terrain occludes the normal pass — keeping the
+     * so it only shows where terrain occludes the normal pass, keeping the
      * move region readable behind obstacles at low camera angles.
      */
     private static void buildQuads(MinecraftClient mc, List<Quad> out, List<Quad> xray) {
@@ -219,7 +219,7 @@ public class TileOverlayRenderer {
 
         float time = timeSeconds();
 
-        // Blindness completely hides boss telegraphs and enemy movement patterns —
+        // Blindness completely hides boss telegraphs and enemy movement patterns:
         // the player literally can't read the battlefield while blinded.
         boolean blind = CombatState.hasBlindness();
 
@@ -273,7 +273,7 @@ public class TileOverlayRenderer {
             fillTile(out, world, ox, oy, oz, tile, 0f, 1.0f, 0.6f, 0.1f, 0.25f);
         }
 
-        // The netherite mount's 1×3 footprint side tiles (steely blue-grey — reads
+        // The netherite mount's 1x3 footprint side tiles (steely blue-grey, reads
         // as "the golem's body," distinct from move/attack/danger highlights). Persistent
         // so the player can see the mount occupies 3 tiles; enemies can't enter these.
         for (GridPos tile : CombatState.getMountTiles()) {
@@ -283,7 +283,7 @@ public class TileOverlayRenderer {
         // Boss attack warning tiles (pulsing bright red). The crisp pulsing
         // perimeter separates "the boss will strike HERE" from the softer
         // danger/threat washes, and the xray ghost keeps the telegraph
-        // readable when terrain occludes it at low camera angles — a
+        // readable when terrain occludes it at low camera angles. A
         // telegraph you can't see is a hit you can't dodge.
         if (!blind && !CombatState.getWarningTiles().isEmpty()) {
             Set<GridPos> warningTiles = CombatState.getWarningTiles();
@@ -321,7 +321,7 @@ public class TileOverlayRenderer {
         // Attack AoE preview for the hovered tile (amber = damage, cyan =
         // effect-only like Density pull / Wind Burst). Reuses the server's
         // AoeShapes geometry so the preview matches the real hit. Damage tiles
-        // get an outline — they're also valid click targets (empty-tile AoE).
+        // get an outline - they're also valid click targets (empty-tile AoE).
         GridPos hover = CombatState.getHoveredTile();
         if (!blind && hover != null) {
             AttackAoePreview.Preview ap = AttackAoePreview.compute(mc, hover);
@@ -373,7 +373,7 @@ public class TileOverlayRenderer {
             }
         }
 
-        // Hover tile (bright pulsing fill + outline ring) — LAST so it renders on top.
+        // Hover tile (bright pulsing fill + outline ring) - LAST so it renders on top.
         if (hover != null) {
             float pulse = (float) (0.45 + 0.1 * Math.sin(time * 4.8));
             boolean isAttackTile = attackTiles.contains(hover);
@@ -421,9 +421,9 @@ public class TileOverlayRenderer {
         cachedPath = ClientGridHelper.getPathTo(mc, playerPos, hover, 64);
     }
 
-    // ─── Per-version GPU flush ───────────────────────────────────────────
+    // Per-version GPU flush.
     // The x-ray (ghost) pass draws the same navigation quads with a GREATER
-    // depth test — fragments render ONLY where world geometry occludes them,
+    // depth test: fragments render ONLY where world geometry occludes them,
     // so the faint copy appears exclusively behind obstacles and never doubles
     // up with the normal pass.
 

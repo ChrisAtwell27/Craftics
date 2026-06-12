@@ -53,11 +53,11 @@ public final class AttackAoePreview {
 
         var item = held.getItem();
 
-        // --- Instruments: preview the performance shape, faced toward the hovered
+        // Instruments: preview the performance shape, faced toward the hovered
         // tile, using the SAME geometry the server resolves and the VFX draws.
         // Attack instruments preview as damage (amber), support as effect (cyan).
         // SCATTER is server-rolled randomly per cast, so it has no meaningful
-        // pre-cast preview and is skipped. ---
+        // pre-cast preview and is skipped.
         com.crackedgames.craftics.compat.instruments.InstrumentDef instr =
             com.crackedgames.craftics.compat.instruments.InstrumentsCompat.defFor(item);
         if (instr != null) {
@@ -74,8 +74,8 @@ public final class AttackAoePreview {
             return finish(damage, effect);
         }
 
-        // --- Mace: 3x3 slam (damage) + Density pull radius + Wind Burst ring
-        // (both effect-only). All combine. ---
+        // Mace: 3x3 slam (damage) + Density pull radius + Wind Burst ring
+        // (both effect-only). All combine.
         if (item == Items.MACE) {
             damage.addAll(AoeShapes.slam3x3(hover));
             int density = PlayerCombatStats.getEnchantLevel(held, "minecraft:density");
@@ -94,7 +94,7 @@ public final class AttackAoePreview {
             return finish(damage, effect);
         }
 
-        // --- Crossbow: rocket blast, or pierce line + multishot diagonals ---
+        // Crossbow: rocket blast, or pierce line + multishot diagonals
         if (item == Items.CROSSBOW) {
             if (offhand != null && offhand.isOf(Items.FIREWORK_ROCKET)) {
                 // Rocket: 3x3 blast around the hovered tile.
@@ -113,10 +113,10 @@ public final class AttackAoePreview {
             return finish(damage, effect);
         }
 
-        // --- Swords: every geometry enchant COMBINES (server applies them all
+        // Swords: every geometry enchant COMBINES (server applies them all
         // independently on the same swing). Sweeping Edge sweep + Fire Aspect
         // cone + Knockback line all union together. The direct hit is always
-        // the hovered tile. ---
+        // the hovered tile.
         if (isSword(item)) {
             damage.add(hover); // direct hit
 
@@ -155,8 +155,8 @@ public final class AttackAoePreview {
             return finish(damage, effect);
         }
 
-        // --- Bow: Flame (3x3 burn) + Punch (8-ring knockback). Both are
-        // effect-only (no direct damage); the direct hit is the hovered tile. ---
+        // Bow: Flame (3x3 burn) + Punch (8-ring knockback). Both are
+        // effect-only (no direct damage); the direct hit is the hovered tile.
         if (item == Items.BOW) {
             damage.add(hover);
             if (PlayerCombatStats.getEnchantLevel(held, "minecraft:flame") > 0) {
@@ -173,7 +173,7 @@ public final class AttackAoePreview {
             return finish(damage, effect);
         }
 
-        // --- Live coral fans: per-type shape ---
+        // Live coral fans: per-type shape
         if (item == Items.TUBE_CORAL_FAN) {
             damage.addAll(AoeShapes.plus(hover));
             return finish(damage, effect);
@@ -195,7 +195,7 @@ public final class AttackAoePreview {
             return finish(damage, effect);
         }
 
-        // Everything else is single-target — nothing extra to preview beyond
+        // Everything else is single-target, nothing extra to preview beyond
         // the normal hover tile the renderer already draws.
         return Preview.empty();
     }

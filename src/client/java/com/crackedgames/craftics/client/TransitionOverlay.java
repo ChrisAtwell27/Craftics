@@ -7,7 +7,7 @@ import net.minecraft.text.Text;
 
 /**
  * Full-screen fade-to-black overlay for level transitions.
- * Fades in → holds at full black → action fires → fades out.
+ * Fades in -> holds at full black -> action fires -> fades out.
  */
 public class TransitionOverlay {
 
@@ -146,7 +146,7 @@ public class TransitionOverlay {
      * Start a transition. Screen fades to black, then fires the action callback.
      * Call startFadeOut() later (e.g. when a response payload arrives) to reveal the new scene.
      *
-     * @param text     Main text shown centered on black screen (e.g. "Plains — Level 1")
+     * @param text     Main text shown centered on black screen (e.g. "Plains - Level 1")
      * @param subtitle Smaller text below main (e.g. "Entering the arena..." or "")
      * @param action   Runs once the screen is fully black (send packet, etc.)
      */
@@ -231,7 +231,6 @@ public class TransitionOverlay {
         int a = (int) (alpha * 255);
         int color = (a << 24); // black with variable alpha
 
-        // Full-screen black fill
         context.fill(0, 0, screenW, screenH, color);
 
         // Draw text only when mostly opaque
@@ -258,13 +257,12 @@ public class TransitionOverlay {
                 );
             }
 
-            // Tip at the bottom of the screen
             if (!currentTip.isEmpty()) {
                 int tipColor = 0x888888 | (textAlpha << 24);
                 int labelColor = 0xFFAA00 | (textAlpha << 24);
                 context.drawCenteredTextWithShadow(
                     client.textRenderer,
-                    Text.literal("\u00a7l\u2B50 TIP: ").append(Text.literal(currentTip).styled(s -> s.withBold(false))),
+                    Text.literal("\u00a7lTIP: ").append(Text.literal(currentTip).styled(s -> s.withBold(false))),
                     screenW / 2, screenH - 30,
                     tipColor
                 );

@@ -48,7 +48,7 @@ public final class ArtifactsTooltips {
     private static List<String> describe(String path) {
         List<String> out = new ArrayList<>();
         switch (path) {
-            // ===== Head slot =====
+            // Head slot
             case "night_vision_goggles" -> {
                 out.add(stat("+1 Attack Range"));
             }
@@ -76,7 +76,7 @@ public final class ArtifactsTooltips {
                 out.add(sub("Strength / Speed / Resistance / Luck"));
             }
 
-            // ===== Necklace slot =====
+            // Necklace slot
             case "cross_necklace" -> {
                 out.add(active("After being hit, the next hit takes 50% less damage"));
                 out.add(sub("Shield resets at the start of each turn"));
@@ -110,7 +110,7 @@ public final class ArtifactsTooltips {
                 out.add(active("+1 bonus loot item"));
             }
 
-            // ===== Ring slot =====
+            // Ring slot
             case "onion_ring" -> {
                 out.add(stat("+1 HP Regen"));
                 out.add(stat("+1 Max HP"));
@@ -126,7 +126,7 @@ public final class ArtifactsTooltips {
                 out.add(active("On hit: reduce target max HP by 1 (Wither)"));
             }
 
-            // ===== Hand slot =====
+            // Hand slot
             case "digging_claws" -> {
                 out.add(active("On hit: ignore 50% of target effective defense"));
                 out.add(sub("Adds the ignored value as bonus damage"));
@@ -150,7 +150,7 @@ public final class ArtifactsTooltips {
                 out.add(active("Heal for 25% of damage dealt (min 1)"));
             }
 
-            // ===== Belt slot =====
+            // Belt slot
             case "crystal_heart" -> {
                 out.add(stat("+6 Max HP"));
             }
@@ -186,13 +186,13 @@ public final class ArtifactsTooltips {
                 out.add(sub("Costs 2 AP, heals 3 HP"));
             }
 
-            // ===== Misc slot =====
+            // Misc slot
             case "umbrella" -> {
                 out.add(active("Blocks the first hit of combat completely"));
                 out.add(active("10% chance to block ranged attacks"));
             }
 
-            // ===== Feet slot =====
+            // Feet slot
             case "bunny_hoppers" -> {
                 out.add(stat("+1 Speed"));
                 out.add(active("10% chance to dodge incoming attacks"));

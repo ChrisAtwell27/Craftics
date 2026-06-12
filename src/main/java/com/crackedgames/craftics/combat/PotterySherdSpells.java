@@ -15,14 +15,12 @@ import net.minecraft.util.math.BlockPos;
 import java.util.*;
 
 /**
- * Pottery Sherd Spells — ancient magic sealed within pottery sherds.
+ * Pottery Sherd Spells: ancient magic sealed within pottery sherds.
  * Single-use spell scrolls found through archaeology. All consumed on use.
  */
 public class PotterySherdSpells {
 
-    // ============================
-    // Delayed Spell Effect System
-    // ============================
+    // Delayed spell effect system
 
     /** Queued visual effects (particles/sounds) staged across ticks for dramatic flair. */
     public static final List<DelayedSpellEffect> PENDING_EFFECTS = new ArrayList<>();
@@ -93,23 +91,23 @@ public class PotterySherdSpells {
     }
 
     public static int getSherdApCost(Item item) {
-        // 2 AP — Quick casts
+        // 2 AP - Quick casts
         if (item == Items.EXPLORER_POTTERY_SHERD || item == Items.FRIEND_POTTERY_SHERD) return 2;
-        // 3 AP — Standard spells
+        // 3 AP - Standard spells
         if (item == Items.HEART_POTTERY_SHERD || item == Items.SCRAPE_POTTERY_SHERD
             || item == Items.ANGLER_POTTERY_SHERD || item == Items.HEARTBREAK_POTTERY_SHERD
             || item == Items.SHEAF_POTTERY_SHERD || item == Items.MINER_POTTERY_SHERD
             || item == Items.DANGER_POTTERY_SHERD) return 3;
-        // 4 AP — Strong spells
+        // 4 AP - Strong spells
         if (item == Items.BLADE_POTTERY_SHERD || item == Items.BURN_POTTERY_SHERD
             || item == Items.SNORT_POTTERY_SHERD || item == Items.SHELTER_POTTERY_SHERD
             || item == Items.FLOW_POTTERY_SHERD || item == Items.MOURNER_POTTERY_SHERD
             || item == Items.BREWER_POTTERY_SHERD || item == Items.PLENTY_POTTERY_SHERD
             || item == Items.GUSTER_POTTERY_SHERD) return 4;
-        // 5 AP — Powerful spells
+        // 5 AP - Powerful spells
         if (item == Items.ARCHER_POTTERY_SHERD || item == Items.HOWL_POTTERY_SHERD
             || item == Items.ARMS_UP_POTTERY_SHERD || item == Items.PRIZE_POTTERY_SHERD) return 5;
-        // 6 AP — Ultimate
+        // 6 AP - Ultimate
         if (item == Items.SKULL_POTTERY_SHERD) return 6;
         return 3; // fallback
     }
@@ -152,10 +150,8 @@ public class PotterySherdSpells {
         GridPos playerPos = arena.getPlayerGridPos();
         BlockPos playerBlock = arena.gridToBlockPos(playerPos);
 
-        // Consume the sherd
         player.getMainHandStack().decrement(1);
 
-        // Dispatch to specific spell
         if (item == Items.EXPLORER_POTTERY_SHERD) return useExplorerSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
         if (item == Items.FRIEND_POTTERY_SHERD) return useFriendSherd(player, world, playerBlock, enemies);
         if (item == Items.HEART_POTTERY_SHERD) return useHeartSherd(player, world, playerBlock, combatEffects);
@@ -221,15 +217,13 @@ public class PotterySherdSpells {
         return null;
     }
 
-    // ================================
-    // 2 AP — Quick Casts
-    // ================================
+    // 2 AP - Quick casts
 
-    /** Explorer Sherd — "Phase Step": Teleport to target tile, reveal enemy stats. */
+    /** Explorer Sherd - "Phase Step": Teleport to target tile, reveal enemy stats. */
     private static String useExplorerSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                             GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
                                             List<CombatEntity> enemies) {
-        // Phase 0 — Cast: power gathers at origin
+        // Phase 0 - Cast: power gathers at origin
         world.playSound(null, playerBlock, SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 1.0f, 1.0f);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.2, ParticleTypes.REVERSE_PORTAL, 12);
         world.spawnParticles(ParticleTypes.END_ROD, playerBlock.getX() + 0.5, playerBlock.getY() + 1.0,
@@ -240,14 +234,14 @@ public class PotterySherdSpells {
         BlockPos destBlock = arena.gridToBlockPos(targetTile);
         player.requestTeleport(destBlock.getX() + 0.5, destBlock.getY(), destBlock.getZ() + 0.5);
 
-        // Phase 1 (3 ticks) — Portal trail streaks from origin to destination
+        // Phase 1 (3 ticks) - Portal trail streaks from origin to destination
         final BlockPos fromBlock = playerBlock;
         queueEffect(3, () -> {
             ProjectileSpawner.spawnSpellTrail(world, fromBlock, destBlock, ParticleTypes.PORTAL, ParticleTypes.END_ROD, 14, 0.5);
             world.playSound(null, destBlock, SoundEvents.BLOCK_PORTAL_TRAVEL, SoundCategory.PLAYERS, 0.3f, 1.5f);
         });
 
-        // Phase 2 (6 ticks) — Arrival burst at destination
+        // Phase 2 (6 ticks) - Arrival burst at destination
         queueEffect(6, () -> {
             world.spawnParticles(ParticleTypes.END_ROD, destBlock.getX() + 0.5, destBlock.getY() + 1.0,
                 destBlock.getZ() + 0.5, 20, 0.5, 0.8, 0.5, 0.1);
@@ -257,7 +251,6 @@ public class PotterySherdSpells {
             world.playSound(null, destBlock, SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 0.6f, 1.3f);
         });
 
-        // Reveal enemy stats (build info string)
         StringBuilder reveal = new StringBuilder("§d§lPhase Step! §7Enemies revealed: ");
         for (CombatEntity e : enemies) {
             if (!e.isAlive() || e.isAlly()) continue;
@@ -271,10 +264,10 @@ public class PotterySherdSpells {
         return reveal.toString();
     }
 
-    /** Friend Sherd — "Guardian Spirit": Heal 8 HP, buff ally pet. */
+    /** Friend Sherd - "Guardian Spirit": Heal 8 HP, buff ally pet. */
     private static String useFriendSherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock,
                                           List<CombatEntity> enemies) {
-        // Phase 0 — Cast: warm gathering glow
+        // Phase 0 - Cast: warm gathering glow
         world.playSound(null, playerBlock, SoundEvents.ENTITY_CAT_PURR, SoundCategory.PLAYERS, 1.0f, 1.0f);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.0, ParticleTypes.HAPPY_VILLAGER, 8);
         world.spawnParticles(ParticleTypes.ENCHANT, playerBlock.getX() + 0.5, playerBlock.getY() + 1.0,
@@ -284,13 +277,12 @@ public class PotterySherdSpells {
         float maxHp = player.getMaxHealth();
         player.setHealth(Math.min(maxHp, player.getHealth() + 8));
 
-        // Find ally pet
         CombatEntity allyPet = null;
         for (CombatEntity e : enemies) {
             if (e.isAlive() && e.isAlly()) { allyPet = e; break; }
         }
 
-        // Phase 1 (3 ticks) — Healing burst on player + pet link
+        // Phase 1 (3 ticks) - Healing burst on player + pet link
         final CombatEntity pet = allyPet;
         queueEffect(3, () -> {
             world.playSound(null, playerBlock, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.PLAYERS, 0.5f, 1.2f);
@@ -308,7 +300,7 @@ public class PotterySherdSpells {
             allyPet.heal(8);
             allyPet.setAttackPenalty(allyPet.getAttackPenalty() - 5);
 
-            // Phase 2 (6 ticks) — Pet empowerment burst
+            // Phase 2 (6 ticks) - Pet empowerment burst
             if (allyPet.getMobEntity() != null) {
                 final BlockPos petBlock = allyPet.getMobEntity().getBlockPos();
                 queueEffect(6, () -> {
@@ -324,7 +316,7 @@ public class PotterySherdSpells {
             return "§a§lGuardian Spirit! §fHealed 8 HP. " + allyPet.getDisplayName() + " healed & empowered (+5 ATK for 2 turns)!";
         }
 
-        // Phase 2 (6 ticks) — Solo healing finisher
+        // Phase 2 (6 ticks) - Solo healing finisher
         queueEffect(6, () -> {
             world.spawnParticles(ParticleTypes.HAPPY_VILLAGER, playerBlock.getX() + 0.5, playerBlock.getY() + 1.0,
                 playerBlock.getZ() + 0.5, 8, 0.5, 0.5, 0.5, 0.05);
@@ -334,14 +326,12 @@ public class PotterySherdSpells {
         return "§a§lGuardian Spirit! §fHealed 8 HP.";
     }
 
-    // ================================
-    // 3 AP — Standard Spells
-    // ================================
+    // 3 AP - Standard spells
 
-    /** Heart Sherd — "Mending Light": Heal 15 HP + Regeneration II for 4 turns. */
+    /** Heart Sherd - "Mending Light": Heal 15 HP + Regeneration II for 4 turns. */
     private static String useHeartSherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock,
                                          CombatEffects combatEffects) {
-        // Phase 0 — Cast: warm light gathers
+        // Phase 0 - Cast: warm light gathers
         world.playSound(null, playerBlock, SoundEvents.ENTITY_PLAYER_LEVELUP, SoundCategory.PLAYERS, 1.0f, 1.0f);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.5, ParticleTypes.ENCHANT, 10);
 
@@ -350,7 +340,7 @@ public class PotterySherdSpells {
         player.setHealth(Math.min(maxHp, player.getHealth() + 15));
         combatEffects.addEffect(CombatEffects.EffectType.REGENERATION, 4, 1);
 
-        // Phase 1 (3 ticks) — Rising helix
+        // Phase 1 (3 ticks) - Rising helix
         double cx = playerBlock.getX() + 0.5, cy = playerBlock.getY() + 0.5, cz = playerBlock.getZ() + 0.5;
         queueEffect(3, () -> {
             for (int i = 0; i < 16; i++) {
@@ -363,7 +353,7 @@ public class PotterySherdSpells {
             world.playSound(null, playerBlock, SoundEvents.BLOCK_BEACON_ACTIVATE, SoundCategory.PLAYERS, 0.4f, 1.5f);
         });
 
-        // Phase 2 (7 ticks) — Heart burst + ring
+        // Phase 2 (7 ticks) - Heart burst + ring
         queueEffect(7, () -> {
             world.spawnParticles(ParticleTypes.HEART, cx, cy + 1.5, cz, 12, 0.6, 0.3, 0.6, 0.08);
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 1.0, ParticleTypes.ENCHANTED_HIT, 12);
@@ -373,13 +363,13 @@ public class PotterySherdSpells {
         return "§a§lMending Light! §fHealed 15 HP + Regeneration II (4 turns).";
     }
 
-    /** Scrape Sherd — "Corrode": 5 damage + reduce target defense by 7 for 3 turns. */
+    /** Scrape Sherd - "Corrode": 5 damage + reduce target defense by 7 for 3 turns. */
     private static String useScrapeSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                           GridPos targetTile, GridPos playerPos, BlockPos playerBlock) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: acid charging
+        // Phase 0 - Cast: acid charging
         world.playSound(null, playerBlock, SoundEvents.BLOCK_GRINDSTONE_USE, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.ITEM_SLIME, playerBlock.getX() + 0.5, playerBlock.getY() + 1.0,
             playerBlock.getZ() + 0.5, 6, 0.2, 0.3, 0.2, 0.05);
@@ -388,14 +378,14 @@ public class PotterySherdSpells {
         int dealt = target.takeDamage(5);
         target.stackDefensePenalty(3, 7);
 
-        // Phase 1 (4 ticks) — Acid trail
+        // Phase 1 (4 ticks) - Acid trail
         queueEffect(4, () -> {
             ProjectileSpawner.spawnSpellTrail(world, playerBlock, targetBlock,
                 ParticleTypes.ITEM_SLIME, ParticleTypes.FALLING_OBSIDIAN_TEAR, 12, 0.8);
             world.playSound(null, targetBlock, SoundEvents.ENTITY_SLIME_SQUISH, SoundCategory.PLAYERS, 0.5f, 0.8f);
         });
 
-        // Phase 2 (8 ticks) — Corroding impact
+        // Phase 2 (8 ticks) - Corroding impact
         queueEffect(8, () -> {
             world.spawnParticles(ParticleTypes.ITEM_SLIME, targetBlock.getX() + 0.5, targetBlock.getY() + 1.0,
                 targetBlock.getZ() + 0.5, 20, 0.5, 0.7, 0.5, 0.1);
@@ -409,18 +399,18 @@ public class PotterySherdSpells {
             + target.getCurrentHp() + "/" + target.getMaxHp() + " HP)";
     }
 
-    /** Angler Sherd — "Riptide Hook": Pull target 2 tiles toward player + 6 damage, +5 bonus if adjacent. */
+    /** Angler Sherd - "Riptide Hook": Pull target 2 tiles toward player + 6 damage, +5 bonus if adjacent. */
     private static String useAnglerSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                           GridPos targetTile, GridPos playerPos, BlockPos playerBlock) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: hook launch
+        // Phase 0 - Cast: hook launch
         world.playSound(null, playerBlock, SoundEvents.ENTITY_FISHING_BOBBER_THROW, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.SPLASH, playerBlock.getX() + 0.5, playerBlock.getY() + 1.0,
             playerBlock.getZ() + 0.5, 6, 0.2, 0.3, 0.2, 0.05);
 
-        // Pull target toward player (up to 2 tiles) — game state
+        // Pull target toward player (up to 2 tiles) - game state
         int dx = Integer.signum(playerPos.x() - target.getGridPos().x());
         int dz = Integer.signum(playerPos.z() - target.getGridPos().z());
         GridPos pullPos = target.getGridPos();
@@ -433,7 +423,6 @@ public class PotterySherdSpells {
             pullPos = candidate;
         }
 
-        // Move entity
         final BlockPos landingBlock;
         if (!pullPos.equals(target.getGridPos())) {
             BlockPos oldBlock = arena.gridToBlockPos(target.getGridPos());
@@ -443,7 +432,7 @@ public class PotterySherdSpells {
             if (target.getMobEntity() != null) {
                 target.getMobEntity().requestTeleport(newBlock.getX() + 0.5, newBlock.getY(), newBlock.getZ() + 0.5);
             }
-            // Phase 1 (3 ticks) — Hook trail + bubble pull trail
+            // Phase 1 (3 ticks) - Hook trail + bubble pull trail
             queueEffect(3, () -> {
                 ProjectileSpawner.spawnSpellTrail(world, playerBlock, targetBlock, ParticleTypes.CRIT, null, 10, 0.5);
                 ProjectileSpawner.spawnReversedTrail(world, oldBlock, newBlock, ParticleTypes.BUBBLE, 8);
@@ -463,7 +452,7 @@ public class PotterySherdSpells {
         if (adjacent) baseDmg += 5;
         int dealt = target.takeDamage(baseDmg);
 
-        // Phase 2 (7 ticks) — Impact splash
+        // Phase 2 (7 ticks) - Impact splash
         queueEffect(7, () -> {
             world.spawnParticles(ParticleTypes.SPLASH, landingBlock.getX() + 0.5, landingBlock.getY() + 1.0,
                 landingBlock.getZ() + 0.5, 15, 0.4, 0.4, 0.4, 0.12);
@@ -480,13 +469,13 @@ public class PotterySherdSpells {
             + " (" + target.getCurrentHp() + "/" + target.getMaxHp() + " HP)";
     }
 
-    /** Heartbreak Sherd — "Shatter Will": 5 damage + -5 attack, -4 speed for 2 turns. */
+    /** Heartbreak Sherd - "Shatter Will": 5 damage + -5 attack, -4 speed for 2 turns. */
     private static String useHeartbreakSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                               GridPos targetTile, GridPos playerPos, BlockPos playerBlock) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: dark energy gathering
+        // Phase 0 - Cast: dark energy gathering
         world.playSound(null, playerBlock, SoundEvents.BLOCK_GLASS_BREAK, SoundCategory.PLAYERS, 1.0f, 0.8f);
         world.spawnParticles(ParticleTypes.ENCHANTED_HIT, playerBlock.getX() + 0.5, playerBlock.getY() + 1.0,
             playerBlock.getZ() + 0.5, 8, 0.3, 0.4, 0.3, 0.08);
@@ -496,14 +485,14 @@ public class PotterySherdSpells {
         target.setAttackPenalty(target.getAttackPenalty() + 5);
         target.setSpeedBonus(target.getSpeedBonus() - 4);
 
-        // Phase 1 (4 ticks) — Shattering trail
+        // Phase 1 (4 ticks) - Shattering trail
         queueEffect(4, () -> {
             ProjectileSpawner.spawnSpellTrail(world, playerBlock, targetBlock,
                 ParticleTypes.ENCHANTED_HIT, ParticleTypes.LARGE_SMOKE, 10, 1.2);
             world.playSound(null, targetBlock, SoundEvents.BLOCK_ANVIL_DESTROY, SoundCategory.PLAYERS, 0.5f, 1.2f);
         });
 
-        // Phase 2 (8 ticks) — Shattered heart impact
+        // Phase 2 (8 ticks) - Shattered heart impact
         queueEffect(8, () -> {
             world.spawnParticles(ParticleTypes.ENCHANTED_HIT, targetBlock.getX() + 0.5, targetBlock.getY() + 1.0,
                 targetBlock.getZ() + 0.5, 15, 0.6, 0.6, 0.6, 0.18);
@@ -518,14 +507,14 @@ public class PotterySherdSpells {
             + target.getCurrentHp() + "/" + target.getMaxHp() + " HP)";
     }
 
-    /** Sheaf Sherd — "Entangle": Target stunned 1 turn, nearby enemies -5 speed for 2 turns. */
+    /** Sheaf Sherd - "Entangle": Target stunned 1 turn, nearby enemies -5 speed for 2 turns. */
     private static String useSheafSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                          GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
                                          List<CombatEntity> enemies) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: nature gathering
+        // Phase 0 - Cast: nature gathering
         world.playSound(null, playerBlock, SoundEvents.BLOCK_GRASS_BREAK, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.COMPOSTER, playerBlock.getX() + 0.5, playerBlock.getY() + 0.5,
             playerBlock.getZ() + 0.5, 6, 0.3, 0.2, 0.3, 0.05);
@@ -547,14 +536,14 @@ public class PotterySherdSpells {
             }
         }
 
-        // Phase 1 (4 ticks) — Vine trail to target
+        // Phase 1 (4 ticks) - Vine trail to target
         queueEffect(4, () -> {
             ProjectileSpawner.spawnSpellTrail(world, playerBlock, targetBlock,
                 ParticleTypes.COMPOSTER, ParticleTypes.HAPPY_VILLAGER, 12, 0.8);
             world.playSound(null, targetBlock, SoundEvents.BLOCK_VINE_PLACE, SoundCategory.PLAYERS, 0.8f, 0.8f);
         });
 
-        // Phase 2 (8 ticks) — Vines erupt at target + AoE
+        // Phase 2 (8 ticks) - Vines erupt at target + AoE
         final int slowedCount = slowed;
         queueEffect(8, () -> {
             world.spawnParticles(ParticleTypes.COMPOSTER, targetBlock.getX() + 0.5, targetBlock.getY() + 0.2,
@@ -574,13 +563,13 @@ public class PotterySherdSpells {
         return "§2§lEntangle! §f" + target.getDisplayName() + " stunned for 1 turn!" + aoeMsg;
     }
 
-    /** Miner Sherd — "Earthen Spike": 10 damage, +6 if adjacent to obstacle. */
+    /** Miner Sherd - "Earthen Spike": 10 damage, +6 if adjacent to obstacle. */
     private static String useMinerSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                          GridPos targetTile, GridPos playerPos, BlockPos playerBlock) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: earth rumble
+        // Phase 0 - Cast: earth rumble
         world.playSound(null, playerBlock, SoundEvents.BLOCK_STONE_BREAK, SoundCategory.PLAYERS, 1.0f, 0.8f);
         world.spawnParticles(ParticleTypes.DUST_PLUME, playerBlock.getX() + 0.5, playerBlock.getY() + 0.2,
             playerBlock.getZ() + 0.5, 8, 0.3, 0.1, 0.3, 0.08);
@@ -601,14 +590,14 @@ public class PotterySherdSpells {
         int baseDmg = nearObstacle ? 16 : 10; // buffed from 11/7
         int dealt = target.takeDamage(baseDmg);
 
-        // Phase 1 (4 ticks) — Ground trail + rumble
+        // Phase 1 (4 ticks) - Ground trail + rumble
         final boolean hasBonus = nearObstacle;
         queueEffect(4, () -> {
             ProjectileSpawner.spawnGroundTrail(world, playerBlock, targetBlock, ParticleTypes.DUST_PLUME, 10);
             world.playSound(null, targetBlock, SoundEvents.BLOCK_ANVIL_LAND, SoundCategory.PLAYERS, 0.5f, 1.0f);
         });
 
-        // Phase 2 (8 ticks) — Spike eruption impact
+        // Phase 2 (8 ticks) - Spike eruption impact
         queueEffect(8, () -> {
             int particleCount = hasBonus ? 50 : 30;
             world.spawnParticles(ParticleTypes.DUST_PLUME, targetBlock.getX() + 0.5, targetBlock.getY() + 0.5,
@@ -626,24 +615,24 @@ public class PotterySherdSpells {
             + " (" + target.getCurrentHp() + "/" + target.getMaxHp() + " HP)";
     }
 
-    /** Danger Sherd — "Hex Trap": Place invisible trap on empty tile. 12 dmg + stun on trigger. */
+    /** Danger Sherd - "Hex Trap": Place invisible trap on empty tile. 12 dmg + stun on trigger. */
     private static String useDangerSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                           GridPos targetTile, GridPos playerPos, BlockPos playerBlock) {
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: hex conjuring
+        // Phase 0 - Cast: hex conjuring
         world.playSound(null, playerBlock, SoundEvents.BLOCK_ENCHANTMENT_TABLE_USE, SoundCategory.PLAYERS, 0.5f, 1.0f);
         world.spawnParticles(ParticleTypes.WITCH, playerBlock.getX() + 0.5, playerBlock.getY() + 1.2,
             playerBlock.getZ() + 0.5, 6, 0.2, 0.3, 0.2, 0.05);
         ProjectileSpawner.spawnConverging(world, playerBlock, 0.8, ParticleTypes.ENCHANT, 6);
 
-        // Phase 1 (4 ticks) — Dark trail to tile
+        // Phase 1 (4 ticks) - Dark trail to tile
         queueEffect(4, () -> {
             ProjectileSpawner.spawnSpellTrail(world, playerBlock, targetBlock, ParticleTypes.WITCH, ParticleTypes.ENCHANT, 8, 0.5);
             world.playSound(null, targetBlock, SoundEvents.ENTITY_ILLUSIONER_CAST_SPELL, SoundCategory.PLAYERS, 0.4f, 0.8f);
         });
 
-        // Phase 2 (8 ticks) — Trap sinks into ground
+        // Phase 2 (8 ticks) - Trap sinks into ground
         queueEffect(8, () -> {
             world.spawnParticles(ParticleTypes.ENCHANT, targetBlock.getX() + 0.5, targetBlock.getY() + 1.5,
                 targetBlock.getZ() + 0.5, 15, 0.3, 0.8, 0.3, 0.0);
@@ -653,23 +642,21 @@ public class PotterySherdSpells {
             world.playSound(null, targetBlock, SoundEvents.BLOCK_RESPAWN_ANCHOR_DEPLETE.value(), SoundCategory.PLAYERS, 0.3f, 1.5f);
         });
 
-        // Return tile effect — CombatManager will register it (buffed from 8 to 12 dmg)
+        // Return tile effect - CombatManager will register it (buffed from 8 to 12 dmg)
         return HEX_TRAP_PREFIX + "hex_trap:" + targetTile.x() + ":" + targetTile.z()
             + "|§d§lHex Trap placed! §7Invisible trap set at (" + targetTile.x() + "," + targetTile.z() + "). 12 damage + stun on trigger.";
     }
 
-    // ================================
-    // 4 AP — Strong Spells
-    // ================================
+    // 4 AP - Strong spells
 
-    /** Blade Sherd — "Phantom Slash": 12 damage to adjacent target + 8 to random nearby enemy. */
+    /** Blade Sherd - "Phantom Slash": 12 damage to adjacent target + 8 to random nearby enemy. */
     private static String useBladeSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                          GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
                                          List<CombatEntity> enemies) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: blade conjuring
+        // Phase 0 - Cast: blade conjuring
         world.playSound(null, playerBlock, SoundEvents.ENTITY_PLAYER_ATTACK_SWEEP, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.ENCHANTED_HIT, playerBlock.getX() + 0.5, playerBlock.getY() + 1.2,
             playerBlock.getZ() + 0.5, 8, 0.2, 0.3, 0.2, 0.12);
@@ -679,7 +666,7 @@ public class PotterySherdSpells {
         int dealt = target.takeDamage(12); // buffed from 8
         StringBuilder msg = new StringBuilder("§d§lPhantom Slash! §f" + target.getDisplayName() + " takes " + dealt + " damage!");
 
-        // Cleave — find a random adjacent enemy (not the primary target)
+        // Cleave - find a random adjacent enemy (not the primary target)
         List<CombatEntity> cleaveTargets = new ArrayList<>();
         for (CombatEntity e : enemies) {
             if (!e.isAlive() || e.isAlly() || e == target) continue;
@@ -695,7 +682,7 @@ public class PotterySherdSpells {
             msg.append(" §dCleave! §f").append(cleaveTarget.getDisplayName()).append(" takes ").append(cleaveDmg).append(" damage!");
         }
 
-        // Phase 1 (3 ticks) — Slash arc
+        // Phase 1 (3 ticks) - Slash arc
         queueEffect(3, () -> {
             world.spawnParticles(ParticleTypes.SWEEP_ATTACK, targetBlock.getX() + 0.5, targetBlock.getY() + 1.0,
                 targetBlock.getZ() + 0.5, 3, 0.2, 0.1, 0.2, 0);
@@ -704,7 +691,7 @@ public class PotterySherdSpells {
             world.playSound(null, targetBlock, SoundEvents.ENTITY_PLAYER_ATTACK_CRIT, SoundCategory.PLAYERS, 0.9f, 1.2f);
         });
 
-        // Phase 2 (7 ticks) — Impact explosion + cleave hit
+        // Phase 2 (7 ticks) - Impact explosion + cleave hit
         final CombatEntity finalCleave = cleaveTarget;
         queueEffect(7, () -> {
             world.spawnParticles(ParticleTypes.CRIT, targetBlock.getX() + 0.5, targetBlock.getY() + 1.0,
@@ -724,14 +711,14 @@ public class PotterySherdSpells {
         return msg.toString();
     }
 
-    /** Burn Sherd — "Immolation": 9 fire damage + burning 3 turns (3/t) to target, 5 fire + burning 1 turn to AoE. */
+    /** Burn Sherd - "Immolation": 9 fire damage + burning 3 turns (3/t) to target, 5 fire + burning 1 turn to AoE. */
     private static String useBurnSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                         GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
                                         List<CombatEntity> enemies) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: fireball forming
+        // Phase 0 - Cast: fireball forming
         world.playSound(null, playerBlock, SoundEvents.ENTITY_BLAZE_SHOOT, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.FLAME, playerBlock.getX() + 0.5, playerBlock.getY() + 1.2,
             playerBlock.getZ() + 0.5, 10, 0.2, 0.3, 0.2, 0.08);
@@ -756,14 +743,14 @@ public class PotterySherdSpells {
             }
         }
 
-        // Phase 1 (4 ticks) — Fireball trail
+        // Phase 1 (4 ticks) - Fireball trail
         queueEffect(4, () -> {
             ProjectileSpawner.spawnSpellTrail(world, playerBlock, targetBlock,
                 ParticleTypes.FLAME, ParticleTypes.LARGE_SMOKE, 14, 1.8);
             world.playSound(null, targetBlock, SoundEvents.ENTITY_BLAZE_AMBIENT, SoundCategory.PLAYERS, 0.6f, 1.2f);
         });
 
-        // Phase 2 (8 ticks) — Massive detonation
+        // Phase 2 (8 ticks) - Massive detonation
         queueEffect(8, () -> {
             world.spawnParticles(ParticleTypes.LAVA, targetBlock.getX() + 0.5, targetBlock.getY() + 1.0,
                 targetBlock.getZ() + 0.5, 15, 0.4, 0.5, 0.4, 0.15);
@@ -782,13 +769,13 @@ public class PotterySherdSpells {
         return msg.toString();
     }
 
-    /** Snort Sherd — "Tectonic Charge": Knockback 3 tiles, 4 damage per tile, +9 + stun on wall collision. */
+    /** Snort Sherd - "Tectonic Charge": Knockback 3 tiles, 4 damage per tile, +9 + stun on wall collision. */
     private static String useSnortSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                          GridPos targetTile, GridPos playerPos, BlockPos playerBlock) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: earth tremor
+        // Phase 0 - Cast: earth tremor
         world.playSound(null, playerBlock, SoundEvents.ENTITY_RAVAGER_ROAR, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.DUST_PLUME, playerBlock.getX() + 0.5, playerBlock.getY() + 0.5,
             playerBlock.getZ() + 0.5, 10, 0.3, 0.2, 0.3, 0.12);
@@ -832,7 +819,7 @@ public class PotterySherdSpells {
         }
         int dealt = damage > 0 ? target.takeDamage(damage) : 0;
 
-        // Phase 1 (3 ticks) — Dust trail along push path
+        // Phase 1 (3 ticks) - Dust trail along push path
         final boolean wallSlam = hitWall;
         final GridPos finalLanding = landingPos;
         queueEffect(3, () -> {
@@ -843,7 +830,7 @@ public class PotterySherdSpells {
             world.playSound(null, arena.gridToBlockPos(finalLanding), SoundEvents.BLOCK_GRAVEL_BREAK, SoundCategory.PLAYERS, 0.8f, 0.9f);
         });
 
-        // Phase 2 (7 ticks) — Landing/wall slam impact
+        // Phase 2 (7 ticks) - Landing/wall slam impact
         queueEffect(7, () -> {
             BlockPos landBlock = arena.gridToBlockPos(finalLanding);
             if (wallSlam) {
@@ -868,10 +855,10 @@ public class PotterySherdSpells {
             + " (" + target.getCurrentHp() + "/" + target.getMaxHp() + " HP)";
     }
 
-    /** Shelter Sherd — "Stone Aegis": Resistance III for 5 turns + Absorption III for 4 turns. */
+    /** Shelter Sherd - "Stone Aegis": Resistance III for 5 turns + Absorption III for 4 turns. */
     private static String useShelterSherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock,
                                            CombatEffects combatEffects) {
-        // Phase 0 — Cast: stone gathering
+        // Phase 0 - Cast: stone gathering
         //? if <=1.21.4 {
         /*world.playSound(null, playerBlock, SoundEvents.ITEM_SHIELD_BLOCK, SoundCategory.PLAYERS, 1.0f, 1.0f);
         *///?} else
@@ -886,7 +873,7 @@ public class PotterySherdSpells {
 
         double cx = playerBlock.getX() + 0.5, cy = playerBlock.getY() + 0.5, cz = playerBlock.getZ() + 0.5;
 
-        // Phase 1 (4 ticks) — Stone dome forming
+        // Phase 1 (4 ticks) - Stone dome forming
         queueEffect(4, () -> {
             world.playSound(null, playerBlock, SoundEvents.ENTITY_IRON_GOLEM_REPAIR, SoundCategory.PLAYERS, 0.5f, 1.0f);
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 1.0, ParticleTypes.DUST_PLUME, 18);
@@ -899,7 +886,7 @@ public class PotterySherdSpells {
             }
         });
 
-        // Phase 2 (8 ticks) — Shield flash + solidify
+        // Phase 2 (8 ticks) - Shield flash + solidify
         queueEffect(8, () -> {
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 0.6, ParticleTypes.ENCHANTED_HIT, 10);
             world.spawnParticles(ParticleTypes.FIREWORK, cx, cy + 1.0, cz, 3, 0.1, 0.1, 0.1, 0.05);
@@ -911,10 +898,10 @@ public class PotterySherdSpells {
         return "§7§lStone Aegis! §fResistance III (5 turns) + Absorption III (4 turns). Nearly unkillable!";
     }
 
-    /** Flow Sherd — "Tidal Surge": 8 WATER damage + knockback 2 to all enemies within 2 tiles. */
+    /** Flow Sherd - "Tidal Surge": 8 WATER damage + knockback 2 to all enemies within 2 tiles. */
     private static String useFlowSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                         GridPos playerPos, BlockPos playerBlock, List<CombatEntity> enemies) {
-        // Phase 0 — Cast: water rising
+        // Phase 0 - Cast: water rising
         world.playSound(null, playerBlock, SoundEvents.ENTITY_GENERIC_SPLASH, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.BUBBLE, playerBlock.getX() + 0.5, playerBlock.getY() + 0.5,
             playerBlock.getZ() + 0.5, 12, 0.3, 0.3, 0.3, 0.06);
@@ -964,7 +951,7 @@ public class PotterySherdSpells {
             msg.append(e.getDisplayName()).append(" ").append(dealt).append(" dmg. ");
         }
 
-        // Phase 1 (4 ticks) — Expanding water rings
+        // Phase 1 (4 ticks) - Expanding water rings
         queueEffect(4, () -> {
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 1.0, ParticleTypes.SPLASH, 12);
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 2.0, ParticleTypes.SPLASH, 20);
@@ -974,7 +961,7 @@ public class PotterySherdSpells {
             }
         });
 
-        // Phase 2 (8 ticks) — Impact splashes + settle
+        // Phase 2 (8 ticks) - Impact splashes + settle
         queueEffect(8, () -> {
             for (BlockPos eBlock : hitBlocks) {
                 world.spawnParticles(ParticleTypes.SPLASH, eBlock.getX() + 0.5, eBlock.getY() + 1.0,
@@ -990,13 +977,13 @@ public class PotterySherdSpells {
         return msg.toString().trim();
     }
 
-    /** Mourner Sherd — "Soul Drain": 10 damage, heal player for amount dealt. */
+    /** Mourner Sherd - "Soul Drain": 10 damage, heal player for amount dealt. */
     private static String useMournerSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                            GridPos targetTile, GridPos playerPos, BlockPos playerBlock) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: soul gathering
+        // Phase 0 - Cast: soul gathering
         world.playSound(null, playerBlock, SoundEvents.ENTITY_VEX_AMBIENT, SoundCategory.PLAYERS, 0.8f, 0.6f);
         world.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, playerBlock.getX() + 0.5, playerBlock.getY() + 1.2,
             playerBlock.getZ() + 0.5, 10, 0.2, 0.3, 0.2, 0.06);
@@ -1008,14 +995,14 @@ public class PotterySherdSpells {
         float maxHp = player.getMaxHealth();
         player.setHealth(Math.min(maxHp, player.getHealth() + dealt));
 
-        // Phase 1 (4 ticks) — Soul fire trail to target
+        // Phase 1 (4 ticks) - Soul fire trail to target
         queueEffect(4, () -> {
             ProjectileSpawner.spawnSpellTrail(world, playerBlock, targetBlock,
                 ParticleTypes.SOUL_FIRE_FLAME, ParticleTypes.SOUL, 12, 1.0);
             world.playSound(null, targetBlock, SoundEvents.ENTITY_VEX_CHARGE, SoundCategory.PLAYERS, 0.6f, 0.7f);
         });
 
-        // Phase 2 (8 ticks) — Drain explosion + life stream back
+        // Phase 2 (8 ticks) - Drain explosion + life stream back
         queueEffect(8, () -> {
             // Drain impact
             world.spawnParticles(ParticleTypes.SOUL, targetBlock.getX() + 0.5, targetBlock.getY() + 1.0,
@@ -1037,10 +1024,10 @@ public class PotterySherdSpells {
             + target.getCurrentHp() + "/" + target.getMaxHp() + " HP)";
     }
 
-    /** Brewer Sherd — "Alchemist's Surge": Apply 4 random positive effects II for 4 turns. */
+    /** Brewer Sherd - "Alchemist's Surge": Apply 4 random positive effects II for 4 turns. */
     private static String useBrewerSherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock,
                                           CombatEffects combatEffects) {
-        // Phase 0 — Cast: brew bubbling
+        // Phase 0 - Cast: brew bubbling
         world.playSound(null, playerBlock, SoundEvents.BLOCK_BREWING_STAND_BREW, SoundCategory.PLAYERS, 1.0f, 1.0f);
         double cx = playerBlock.getX() + 0.5, cy = playerBlock.getY() + 1.0, cz = playerBlock.getZ() + 0.5;
         world.spawnParticles(ParticleTypes.WITCH, cx, cy, cz, 8, 0.2, 0.3, 0.2, 0.04);
@@ -1062,14 +1049,14 @@ public class PotterySherdSpells {
             applied.add(effect);
         }
 
-        // Phase 1 (4 ticks) — Potion splash
+        // Phase 1 (4 ticks) - Potion splash
         queueEffect(4, () -> {
             world.spawnParticles(ParticleTypes.SPLASH, cx, cy, cz, 18, 0.5, 0.4, 0.5, 0.12);
             world.spawnParticles(ParticleTypes.WITCH, cx, cy + 0.5, cz, 10, 0.4, 0.5, 0.4, 0.06);
             world.playSound(null, playerBlock, SoundEvents.ENTITY_SPLASH_POTION_BREAK, SoundCategory.PLAYERS, 0.8f, 1.0f);
         });
 
-        // Phase 2 (8 ticks) — Alchemical burst
+        // Phase 2 (8 ticks) - Alchemical burst
         queueEffect(8, () -> {
             world.spawnParticles(ParticleTypes.EFFECT, cx, cy, cz, 12, 0.4, 0.5, 0.4, 0.04);
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 0.8, ParticleTypes.WITCH, 8);
@@ -1086,9 +1073,9 @@ public class PotterySherdSpells {
         return "§d§lAlchemist's Surge! §fGained: " + effectNames + " (4 turns each)!";
     }
 
-    /** Plenty Sherd — "Bountiful Harvest": Restore +7 AP + heal 15 HP. */
+    /** Plenty Sherd - "Bountiful Harvest": Restore +7 AP + heal 15 HP. */
     private static String usePlentySherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock) {
-        // Phase 0 — Cast: nature gathering
+        // Phase 0 - Cast: nature gathering
         world.playSound(null, playerBlock, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.PLAYERS, 1.0f, 1.0f);
         double cx = playerBlock.getX() + 0.5, cy = playerBlock.getY() + 1.0, cz = playerBlock.getZ() + 0.5;
         world.spawnParticles(ParticleTypes.COMPOSTER, cx, cy, cz, 8, 0.4, 0.2, 0.4, 0.06);
@@ -1098,14 +1085,14 @@ public class PotterySherdSpells {
         float maxHp = player.getMaxHealth();
         player.setHealth(Math.min(maxHp, player.getHealth() + 15));
 
-        // Phase 1 (4 ticks) — Golden bloom
+        // Phase 1 (4 ticks) - Golden bloom
         queueEffect(4, () -> {
             world.playSound(null, playerBlock, SoundEvents.ENTITY_VILLAGER_YES, SoundCategory.PLAYERS, 0.5f, 1.2f);
             world.spawnParticles(ParticleTypes.ENCHANT, cx, cy + 0.5, cz, 15, 0.3, 1.2, 0.3, 0.0);
             world.spawnParticles(ParticleTypes.HAPPY_VILLAGER, cx, cy, cz, 10, 0.4, 0.4, 0.4, 0.06);
         });
 
-        // Phase 2 (8 ticks) — Harvest burst
+        // Phase 2 (8 ticks) - Harvest burst
         queueEffect(8, () -> {
             world.spawnParticles(ParticleTypes.HEART, cx, cy + 0.5, cz, 8, 0.4, 0.4, 0.4, 0.06);
             world.spawnParticles(ParticleTypes.COMPOSTER, cx, cy, cz, 12, 0.6, 0.3, 0.6, 0.08);
@@ -1113,28 +1100,26 @@ public class PotterySherdSpells {
             world.spawnParticles(ParticleTypes.FIREWORK, cx, cy + 1.0, cz, 2, 0.1, 0.1, 0.1, 0.05);
         });
 
-        // Return RESTORE_AP prefix — CombatManager adds the AP back (buffed from 5 to 7)
+        // Return RESTORE_AP prefix - CombatManager adds the AP back (buffed from 5 to 7)
         return RESTORE_AP_PREFIX + "7|§a§lBountiful Harvest! §fHealed 15 HP + restored 7 AP!";
     }
 
-    // ================================
-    // 5 AP — Powerful Spells
-    // ================================
+    // 5 AP - Powerful spells
 
-    /** Archer Sherd — "Spectral Volley": 11 damage to target + 7 to enemies within 1 tile. */
+    /** Archer Sherd - "Spectral Volley": 11 damage to target + 7 to enemies within 1 tile. */
     private static String useArcherSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                           GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
                                           List<CombatEntity> enemies) {
         CombatEntity target = arena.getOccupant(targetTile);
         BlockPos targetBlock = arena.gridToBlockPos(targetTile);
 
-        // Phase 0 — Cast: bow draw
+        // Phase 0 - Cast: bow draw
         world.playSound(null, playerBlock, SoundEvents.ENTITY_SKELETON_SHOOT, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.ENCHANTED_HIT, playerBlock.getX() + 0.5, playerBlock.getY() + 1.2,
             playerBlock.getZ() + 0.5, 6, 0.2, 0.3, 0.2, 0.12);
         ProjectileSpawner.spawnConverging(world, playerBlock, 0.5, ParticleTypes.ENCHANTED_HIT, 4);
 
-        // Damage immediately (game state) — buffed from 7/4
+        // Damage immediately (game state) - buffed from 7/4
         int dealt = target.takeDamage(11);
         StringBuilder msg = new StringBuilder("§b§lSpectral Volley! §f" + target.getDisplayName() + " takes "
             + dealt + " RANGED damage!");
@@ -1149,13 +1134,13 @@ public class PotterySherdSpells {
             }
         }
 
-        // Phase 1 (3 ticks) — Descending volley
+        // Phase 1 (3 ticks) - Descending volley
         queueEffect(3, () -> {
             ProjectileSpawner.spawnDescendingVolley(world, targetBlock, 5, 1.2);
             world.playSound(null, targetBlock, SoundEvents.ENTITY_ARROW_HIT, SoundCategory.PLAYERS, 1.0f, 1.0f);
         });
 
-        // Phase 2 (7 ticks) — Explosion impact + AoE
+        // Phase 2 (7 ticks) - Explosion impact + AoE
         queueEffect(7, () -> {
             world.spawnParticles(ParticleTypes.CRIT, targetBlock.getX() + 0.5, targetBlock.getY() + 1.0,
                 targetBlock.getZ() + 0.5, 18, 0.4, 0.4, 0.4, 0.18);
@@ -1176,10 +1161,10 @@ public class PotterySherdSpells {
         return msg.toString();
     }
 
-    /** Howl Sherd — "Dread Howl": 7 damage + stun to all enemies within 3 tiles. */
+    /** Howl Sherd - "Dread Howl": 7 damage + stun to all enemies within 3 tiles. */
     private static String useHowlSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                         GridPos playerPos, BlockPos playerBlock, List<CombatEntity> enemies) {
-        // Phase 0 — Cast: breath intake
+        // Phase 0 - Cast: breath intake
         //? if <=1.21.4 {
         /*world.playSound(null, playerBlock, SoundEvents.ENTITY_WOLF_HOWL, SoundCategory.PLAYERS, 2.0f, 0.8f);
         *///?} else
@@ -1188,7 +1173,7 @@ public class PotterySherdSpells {
         world.spawnParticles(ParticleTypes.SOUL, cx, cy, cz, 10, 0.2, 0.3, 0.2, 0.03);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.5, ParticleTypes.CLOUD, 8);
 
-        // Damage + stun immediately (game state) — buffed from 4
+        // Damage + stun immediately (game state) - buffed from 4
         List<BlockPos> hitBlocks = new ArrayList<>();
         int hit = 0;
         StringBuilder msg = new StringBuilder("§7§lDread Howl! §f");
@@ -1205,7 +1190,7 @@ public class PotterySherdSpells {
             msg.append(e.getDisplayName()).append(" ").append(dealt).append(" dmg + stunned! ");
         }
 
-        // Phase 1 (3 ticks) — Expanding shockwave rings
+        // Phase 1 (3 ticks) - Expanding shockwave rings
         queueEffect(3, () -> {
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 1.0, ParticleTypes.CLOUD, 10);
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 2.0, ParticleTypes.CLOUD, 16);
@@ -1215,7 +1200,7 @@ public class PotterySherdSpells {
             world.playSound(null, playerBlock, SoundEvents.ENTITY_WARDEN_ROAR, SoundCategory.PLAYERS, 1.0f, 1.2f);
         });
 
-        // Phase 2 (7 ticks) — Final ring + enemy impacts
+        // Phase 2 (7 ticks) - Final ring + enemy impacts
         queueEffect(7, () -> {
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 3.0, ParticleTypes.CLOUD, 22);
             for (BlockPos eBlock : hitBlocks) {
@@ -1234,10 +1219,10 @@ public class PotterySherdSpells {
         return msg.toString().trim();
     }
 
-    /** Arms Up Sherd — "War Cry": Strength IV for 4 turns + Speed III for 4 turns. */
+    /** Arms Up Sherd - "War Cry": Strength IV for 4 turns + Speed III for 4 turns. */
     private static String useArmsUpSherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock,
                                           CombatEffects combatEffects) {
-        // Phase 0 — Cast: power summoning
+        // Phase 0 - Cast: power summoning
         world.playSound(null, playerBlock, SoundEvents.ENTITY_ENDER_DRAGON_GROWL, SoundCategory.PLAYERS, 0.5f, 1.2f);
         double cx = playerBlock.getX() + 0.5, cy = playerBlock.getY() + 0.5, cz = playerBlock.getZ() + 0.5;
         world.spawnParticles(ParticleTypes.FLAME, cx, cy, cz, 10, 0.3, 0.1, 0.3, 0.06);
@@ -1247,7 +1232,7 @@ public class PotterySherdSpells {
         combatEffects.addEffect(CombatEffects.EffectType.STRENGTH, 4, 3);
         combatEffects.addEffect(CombatEffects.EffectType.SPEED, 4, 2);
 
-        // Phase 1 (4 ticks) — Fire eruption
+        // Phase 1 (4 ticks) - Fire eruption
         queueEffect(4, () -> {
             world.playSound(null, playerBlock, SoundEvents.EVENT_RAID_HORN.value(), SoundCategory.PLAYERS, 1.0f, 1.0f);
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 0.6, ParticleTypes.FLAME, 6);
@@ -1256,7 +1241,7 @@ public class PotterySherdSpells {
             world.spawnParticles(ParticleTypes.LAVA, cx, cy + 1.0, cz, 8, 0.5, 0.3, 0.5, 0.12);
         });
 
-        // Phase 2 (8 ticks) — Power ring + crit burst
+        // Phase 2 (8 ticks) - Power ring + crit burst
         queueEffect(8, () -> {
             for (int i = 0; i < 12; i++) {
                 double angle = 2 * Math.PI * i / 12;
@@ -1272,10 +1257,10 @@ public class PotterySherdSpells {
         return "§6§lWar Cry! §fStrength IV (+12 ATK) + Speed III (+6 SPD) for 4 turns!";
     }
 
-    /** Prize Sherd — "Fortune's Favor": Next attack deals triple damage + Luck II for 4 turns. */
+    /** Prize Sherd - "Fortune's Favor": Next attack deals triple damage + Luck II for 4 turns. */
     private static String usePrizeSherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock,
                                          CombatEffects combatEffects) {
-        // Phase 0 — Cast: fortune gathering
+        // Phase 0 - Cast: fortune gathering
         world.playSound(null, playerBlock, SoundEvents.BLOCK_NOTE_BLOCK_BELL.value(), SoundCategory.PLAYERS, 1.0f, 1.0f);
         double cx = playerBlock.getX() + 0.5, cy = playerBlock.getY() + 1.0, cz = playerBlock.getZ() + 0.5;
         world.spawnParticles(ParticleTypes.WAX_ON, cx, cy + 1.5, cz, 8, 0.3, 0.3, 0.3, 0.04);
@@ -1284,7 +1269,7 @@ public class PotterySherdSpells {
         // Luck II for 4 turns (buffed from 3)
         combatEffects.addEffect(CombatEffects.EffectType.LUCK, 4, 1);
 
-        // Phase 1 (4 ticks) — Enchant glyphs orbiting
+        // Phase 1 (4 ticks) - Enchant glyphs orbiting
         queueEffect(4, () -> {
             world.playSound(null, playerBlock, SoundEvents.BLOCK_ENCHANTMENT_TABLE_USE, SoundCategory.PLAYERS, 0.5f, 1.2f);
             for (int i = 0; i < 10; i++) {
@@ -1296,7 +1281,7 @@ public class PotterySherdSpells {
             ProjectileSpawner.spawnConverging(world, playerBlock, 0.5, ParticleTypes.WAX_ON, 6);
         });
 
-        // Phase 2 (8 ticks) — Weapon charge flash
+        // Phase 2 (8 ticks) - Weapon charge flash
         queueEffect(8, () -> {
             world.spawnParticles(ParticleTypes.ENCHANTED_HIT, cx, cy, cz, 15, 0.2, 0.3, 0.2, 0.12);
             world.spawnParticles(ParticleTypes.FIREWORK, cx, cy + 0.5, cz, 3, 0.1, 0.1, 0.1, 0.05);
@@ -1304,15 +1289,13 @@ public class PotterySherdSpells {
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 0.6, ParticleTypes.ENCHANTED_HIT, 8);
         });
 
-        // Return TRIPLE_NEXT prefix — CombatManager sets the flag
+        // Return TRIPLE_NEXT prefix - CombatManager sets the flag
         return TRIPLE_NEXT_PREFIX + "1|§6§lFortune's Favor! §fNext attack deals §6§lTRIPLE DAMAGE! §f+ Luck II (4 turns).";
     }
 
-    // ================================
-    // 6 AP — Ultimate Spell
-    // ================================
+    // 6 AP - Ultimate spell
 
-    /** Skull Sherd — "Death Mark": Execute below 40% HP, otherwise 5 damage + Wither III 3 turns. */
+    /** Skull Sherd - "Death Mark": Execute below 40% HP, otherwise 5 damage + Wither III 3 turns. */
     private static String useSkullSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                          GridPos targetTile, GridPos playerPos, BlockPos playerBlock) {
         CombatEntity target = arena.getOccupant(targetTile);
@@ -1321,15 +1304,15 @@ public class PotterySherdSpells {
         double tx = targetBlock.getX() + 0.5, ty = targetBlock.getY() + 1.0, tz = targetBlock.getZ() + 0.5;
         double cx = playerBlock.getX() + 0.5, cy = playerBlock.getY() + 1.2, cz = playerBlock.getZ() + 0.5;
 
-        // Phase 0 — Cast: dark energy gathering
+        // Phase 0 - Cast: dark energy gathering
         world.playSound(null, playerBlock, SoundEvents.ENTITY_WITHER_AMBIENT, SoundCategory.PLAYERS, 0.6f, 0.6f);
         world.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, cx, cy, cz, 10, 0.2, 0.3, 0.2, 0.05);
         world.spawnParticles(ParticleTypes.SOUL, cx, cy, cz, 8, 0.2, 0.3, 0.2, 0.05);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.5, ParticleTypes.SOUL, 8);
 
-        boolean execute = target.getCurrentHp() <= (target.getMaxHp() * 0.5); // buffed 40% → 50%
+        boolean execute = target.getCurrentHp() <= (target.getMaxHp() * 0.5); // buffed 40% -> 50%
 
-        // Phase 1 (4 ticks) — Menacing trail to target
+        // Phase 1 (4 ticks) - Menacing trail to target
         queueEffect(4, () -> {
             ProjectileSpawner.spawnSpellTrail(world, playerBlock, targetBlock,
                 ParticleTypes.SOUL_FIRE_FLAME, ParticleTypes.SOUL, 14, 2.0);
@@ -1337,10 +1320,10 @@ public class PotterySherdSpells {
         });
 
         if (execute) {
-            // Game state immediately — instant kill
+            // Game state immediately - instant kill
             target.takeDamage(9999);
 
-            // Phase 2 (8 ticks) — Massive execution explosion
+            // Phase 2 (8 ticks) - Massive execution explosion
             queueEffect(8, () -> {
                 world.playSound(null, targetBlock, SoundEvents.ENTITY_WITHER_SHOOT, SoundCategory.PLAYERS, 1.5f, 0.5f);
                 world.spawnParticles(ParticleTypes.EXPLOSION_EMITTER, tx, ty, tz, 1, 0, 0, 0, 0);
@@ -1350,13 +1333,13 @@ public class PotterySherdSpells {
                 ProjectileSpawner.spawnExpandingRing(world, targetBlock, 1.0, ParticleTypes.SOUL_FIRE_FLAME, 12);
             });
 
-            return "§4§l☠ DEATH MARK — EXECUTE! §f" + target.getDisplayName() + " obliterated!";
+            return "§4§l☠ DEATH MARK - EXECUTE! §f" + target.getDisplayName() + " obliterated!";
         } else {
-            // Game state immediately — 10 damage + real Wither IV for 4 turns
+            // Game state immediately - 10 damage + real Wither IV for 4 turns
             int dealt = target.takeDamage(10);
             target.stackWither(4, 3); // Wither IV (amp 3); damage = remainingTurns + 1 + amp + maxHpBonus
 
-            // Phase 2 (8 ticks) — Wither curse impact
+            // Phase 2 (8 ticks) - Wither curse impact
             queueEffect(8, () -> {
                 world.playSound(null, targetBlock, SoundEvents.ENTITY_WITHER_SHOOT, SoundCategory.PLAYERS, 1.0f, 0.8f);
                 world.spawnParticles(ParticleTypes.SOUL, tx, ty, tz, 15, 0.4, 0.6, 0.4, 0.1);
@@ -1371,14 +1354,14 @@ public class PotterySherdSpells {
         }
     }
 
-    /** Guster Sherd — "Chain Lightning": Bolt hits target, then arcs to nearby mobs within 2 tiles.
+    /** Guster Sherd - "Chain Lightning": Bolt hits target, then arcs to nearby mobs within 2 tiles.
      *  Soaked enemies take 2x damage. Each arc deals slightly less damage. */
     private static String useGusterSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                           GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
                                           List<CombatEntity> enemies) {
         CombatEntity target = arena.getOccupant(targetTile);
 
-        // Phase 0 — Cast: storm charging
+        // Phase 0 - Cast: storm charging
         world.playSound(null, playerBlock, SoundEvents.ENTITY_LIGHTNING_BOLT_THUNDER, SoundCategory.PLAYERS, 0.8f, 1.4f);
         world.spawnParticles(ParticleTypes.ELECTRIC_SPARK, playerBlock.getX() + 0.5, playerBlock.getY() + 1.5,
             playerBlock.getZ() + 0.5, 15, 0.3, 0.4, 0.3, 0.15);
@@ -1424,7 +1407,7 @@ public class PotterySherdSpells {
             chainBlocks.add(eBlock);
 
             String soakedTag = e.getSoakedTurns() > 0 ? " §3(2x Soaked!)" : "";
-            msg.append(" §e⚡ ").append(e.getDisplayName()).append(" -").append(dealt).append("HP").append(soakedTag);
+            msg.append(" §e").append(e.getDisplayName()).append(" -").append(dealt).append("HP").append(soakedTag);
 
             // Delayed arc particles per chain step
             final int delay = 3 + (chainIndex * 4);
@@ -1449,35 +1432,33 @@ public class PotterySherdSpells {
         return msg.toString();
     }
 
-    // ================================
-    // Tooltip Descriptions
-    // ================================
+    // Tooltip descriptions
 
     /** Get tooltip description for a pottery sherd spell. */
     public static String getSherdTooltip(Item item) {
-        if (item == Items.EXPLORER_POTTERY_SHERD) return "§d[2 AP] Phase Step §7— Teleport 4 tiles + reveal enemy stats";
-        if (item == Items.FRIEND_POTTERY_SHERD) return "§d[2 AP] Guardian Spirit §7— Heal 8 HP, buff ally pet (+5 ATK)";
-        if (item == Items.HEART_POTTERY_SHERD) return "§d[3 AP] Mending Light §7— Heal 15 HP + Regen II (4 turns)";
-        if (item == Items.SCRAPE_POTTERY_SHERD) return "§d[3 AP] Corrode §7— 5 dmg + reduce DEF by 7 (3 turns)";
-        if (item == Items.ANGLER_POTTERY_SHERD) return "§3[3 AP] Riptide Hook §7— Pull 2 tiles + 6 dmg (+5 if adjacent)";
-        if (item == Items.HEARTBREAK_POTTERY_SHERD) return "§d[3 AP] Shatter Will §7— 5 dmg + -5 ATK, -4 SPD (2 turns)";
-        if (item == Items.SHEAF_POTTERY_SHERD) return "§2[3 AP] Entangle §7— Stun target + slow nearby enemies (-5 SPD)";
-        if (item == Items.MINER_POTTERY_SHERD) return "§8[3 AP] Earthen Spike §7— 10 BLUNT dmg (+6 near obstacle)";
-        if (item == Items.DANGER_POTTERY_SHERD) return "§d[3 AP] Hex Trap §7— Invisible trap: 12 dmg + stun on trigger";
-        if (item == Items.BLADE_POTTERY_SHERD) return "§d[4 AP] Phantom Slash §7— 12 dmg + 8 cleave to adjacent enemy";
-        if (item == Items.BURN_POTTERY_SHERD) return "§6[4 AP] Immolation §7— 9 fire + burn 3/t (3t), splash 5 dmg + burn";
-        if (item == Items.SNORT_POTTERY_SHERD) return "§8[4 AP] Tectonic Charge §7— KB 3 tiles, 4 dmg/tile, wall slam +9";
-        if (item == Items.SHELTER_POTTERY_SHERD) return "§7[4 AP] Stone Aegis §7— Resistance III (5t) + Absorption III (4t)";
-        if (item == Items.FLOW_POTTERY_SHERD) return "§3[4 AP] Tidal Surge §7— 8 WATER dmg + KB 2 to all within 2 tiles";
-        if (item == Items.MOURNER_POTTERY_SHERD) return "§5[4 AP] Soul Drain §7— 10 dmg, heal for damage dealt";
-        if (item == Items.BREWER_POTTERY_SHERD) return "§d[4 AP] Alchemist's Surge §7— 4 random buffs II (4 turns each)";
-        if (item == Items.PLENTY_POTTERY_SHERD) return "§a[4 AP] Bountiful Harvest §7— Heal 15 HP + restore 7 AP";
-        if (item == Items.ARCHER_POTTERY_SHERD) return "§b[5 AP] Spectral Volley §7— 11 RANGED dmg + 7 AoE splash";
-        if (item == Items.HOWL_POTTERY_SHERD) return "§7[5 AP] Dread Howl §7— 7 dmg + stun all within 3 tiles";
-        if (item == Items.ARMS_UP_POTTERY_SHERD) return "§6[5 AP] War Cry §7— STR IV (+12 ATK) + SPD III (+6 SPD) (4 turns)";
-        if (item == Items.PRIZE_POTTERY_SHERD) return "§6[5 AP] Fortune's Favor §7— Next attack = TRIPLE damage + Luck II (4t)";
-        if (item == Items.SKULL_POTTERY_SHERD) return "§4[6 AP] Death Mark §7— Execute <50% HP or 10 dmg + Wither IV (4t)";
-        if (item == Items.GUSTER_POTTERY_SHERD) return "§e[4 AP] Chain Lightning §7— 8 dmg, chains to enemies within 2 tiles (2x on Soaked)";
+        if (item == Items.EXPLORER_POTTERY_SHERD) return "§d[2 AP] Phase Step §7- Teleport 4 tiles + reveal enemy stats";
+        if (item == Items.FRIEND_POTTERY_SHERD) return "§d[2 AP] Guardian Spirit §7- Heal 8 HP, buff ally pet (+5 ATK)";
+        if (item == Items.HEART_POTTERY_SHERD) return "§d[3 AP] Mending Light §7- Heal 15 HP + Regen II (4 turns)";
+        if (item == Items.SCRAPE_POTTERY_SHERD) return "§d[3 AP] Corrode §7- 5 dmg + reduce DEF by 7 (3 turns)";
+        if (item == Items.ANGLER_POTTERY_SHERD) return "§3[3 AP] Riptide Hook §7- Pull 2 tiles + 6 dmg (+5 if adjacent)";
+        if (item == Items.HEARTBREAK_POTTERY_SHERD) return "§d[3 AP] Shatter Will §7- 5 dmg + -5 ATK, -4 SPD (2 turns)";
+        if (item == Items.SHEAF_POTTERY_SHERD) return "§2[3 AP] Entangle §7- Stun target + slow nearby enemies (-5 SPD)";
+        if (item == Items.MINER_POTTERY_SHERD) return "§8[3 AP] Earthen Spike §7- 10 BLUNT dmg (+6 near obstacle)";
+        if (item == Items.DANGER_POTTERY_SHERD) return "§d[3 AP] Hex Trap §7- Invisible trap: 12 dmg + stun on trigger";
+        if (item == Items.BLADE_POTTERY_SHERD) return "§d[4 AP] Phantom Slash §7- 12 dmg + 8 cleave to adjacent enemy";
+        if (item == Items.BURN_POTTERY_SHERD) return "§6[4 AP] Immolation §7- 9 fire + burn 3/t (3t), splash 5 dmg + burn";
+        if (item == Items.SNORT_POTTERY_SHERD) return "§8[4 AP] Tectonic Charge §7- KB 3 tiles, 4 dmg/tile, wall slam +9";
+        if (item == Items.SHELTER_POTTERY_SHERD) return "§7[4 AP] Stone Aegis §7- Resistance III (5t) + Absorption III (4t)";
+        if (item == Items.FLOW_POTTERY_SHERD) return "§3[4 AP] Tidal Surge §7- 8 WATER dmg + KB 2 to all within 2 tiles";
+        if (item == Items.MOURNER_POTTERY_SHERD) return "§5[4 AP] Soul Drain §7- 10 dmg, heal for damage dealt";
+        if (item == Items.BREWER_POTTERY_SHERD) return "§d[4 AP] Alchemist's Surge §7- 4 random buffs II (4 turns each)";
+        if (item == Items.PLENTY_POTTERY_SHERD) return "§a[4 AP] Bountiful Harvest §7- Heal 15 HP + restore 7 AP";
+        if (item == Items.ARCHER_POTTERY_SHERD) return "§b[5 AP] Spectral Volley §7- 11 RANGED dmg + 7 AoE splash";
+        if (item == Items.HOWL_POTTERY_SHERD) return "§7[5 AP] Dread Howl §7- 7 dmg + stun all within 3 tiles";
+        if (item == Items.ARMS_UP_POTTERY_SHERD) return "§6[5 AP] War Cry §7- STR IV (+12 ATK) + SPD III (+6 SPD) (4 turns)";
+        if (item == Items.PRIZE_POTTERY_SHERD) return "§6[5 AP] Fortune's Favor §7- Next attack = TRIPLE damage + Luck II (4t)";
+        if (item == Items.SKULL_POTTERY_SHERD) return "§4[6 AP] Death Mark §7- Execute <50% HP or 10 dmg + Wither IV (4t)";
+        if (item == Items.GUSTER_POTTERY_SHERD) return "§e[4 AP] Chain Lightning §7- 8 dmg, chains to enemies within 2 tiles (2x on Soaked)";
         return null;
     }
 }
