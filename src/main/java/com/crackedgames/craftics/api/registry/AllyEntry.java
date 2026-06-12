@@ -58,7 +58,8 @@ public record AllyEntry(
         BUILT,
         /**
          * Never recruited from the hub. Registered only so its combat stats are
-         * defined — used when a mob of this type is tamed mid-battle.
+         * defined — used when a mob of this type is tamed mid-battle or summoned
+         * from a spawn egg.
          */
         IN_COMBAT_ONLY
     }

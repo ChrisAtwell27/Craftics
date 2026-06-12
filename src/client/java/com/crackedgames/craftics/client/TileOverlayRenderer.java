@@ -89,6 +89,14 @@ public class TileOverlayRenderer {
         net.minecraft.util.math.BlockPos abovePos =
             new net.minecraft.util.math.BlockPos(originX + tileX, originY + 1, originZ + tileZ);
         net.minecraft.block.BlockState above = world.getBlockState(abovePos);
+        // Snow layers (cold-biome arena decoration, plus snow golem trails) sit
+        // on the floor at 0.125 per layer; without this the highlight draws at
+        // floor level and the snow buries it — telegraphs and the move grid
+        // disappeared on snowed-over tiles.
+        if (above.getBlock() instanceof net.minecraft.block.SnowBlock) {
+            int layers = above.get(net.minecraft.block.SnowBlock.LAYERS);
+            return originY + 1.01f + layers * 0.125f;
+        }
         if (above.getBlock() instanceof net.minecraft.block.StairsBlock) {
             return originY + 1.51f;
         }

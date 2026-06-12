@@ -3470,7 +3470,7 @@ public class CombatManager {
         if (playerMounted) {
             // Mounted: the player rides above water — no Soaked, and don't waste a boat.
             moveBoatProtected = false;
-        } else if (activeBoat != null) {
+        } else if (boatOf(player) != null) {
             moveBoatProtected = true;
         } else {
             moveBoatProtected = false;
@@ -8507,15 +8507,53 @@ public class CombatManager {
 
         // Stealth tiles: re-apply vanilla invisibility to any player/mob standing
         // on a TALL_GRASS or TALL_FERN tile. AI targeting gate reads the tile
-        // directly elsewhere, so this is purely for the visual hide.
-        com.crackedgames.craftics.combat.StealthTiles.applyEach(arena, player, enemies);
+        // directly elsewhere, so this is purely for the visual hide. EVERY party
+        // member is ticked, not just the turn-holder — the hide is a rolling
+        // 30-tick buff, so ticking only the active player made a teammate's bush
+        // invisibility lapse about one turn after the turn rotated off them.
+        {
+            List<net.minecraft.entity.LivingEntity> stealthPlayers = new ArrayList<>();
+            List<GridPos> stealthPositions = new ArrayList<>();
+            for (ServerPlayerEntity member : allCombatPlayers()) {
+                if (member == null || member.isRemoved()
+                    || deadPartyMembers.contains(member.getUuid())) continue;
+                stealthPlayers.add(member);
+                stealthPositions.add(player != null && member.getUuid().equals(player.getUuid())
+                    ? arena.getPlayerGridPos() : gridPosOf(member));
+            }
+            com.crackedgames.craftics.combat.StealthTiles.applyEach(
+                arena, stealthPlayers, stealthPositions, enemies,
+                player != null ? player.getEntityWorld() : null);
+        }
 
-        // Keep player mounted in boat — vanilla dismounts on interact/damage/position changes
-        if (activeBoat != null && player != null && !player.hasVehicle()) {
-            if (activeBoat.isRemoved()) {
-                activeBoat = null;
-            } else {
-                player.startRiding(activeBoat, true);
+        // Keep boated players mounted — vanilla dismounts on interact/damage/
+        // position changes. Per player, so a teammate parked on water keeps
+        // THEIR boat between turns instead of the current turn-holder being
+        // pulled into it.
+        if (!activeBoats.isEmpty()) {
+            var boatIt = activeBoats.entrySet().iterator();
+            while (boatIt.hasNext()) {
+                var boatEntry = boatIt.next();
+                var boat = boatEntry.getValue();
+                if (boat == null || boat.isRemoved()) {
+                    boatIt.remove();
+                    continue;
+                }
+                ServerPlayerEntity owner = null;
+                for (ServerPlayerEntity m : allCombatPlayers()) {
+                    if (m != null && m.getUuid().equals(boatEntry.getKey())) {
+                        owner = m;
+                        break;
+                    }
+                }
+                if (owner == null || owner.isRemoved() || owner.isDisconnected()) {
+                    boat.discard();
+                    boatIt.remove();
+                    continue;
+                }
+                if (!owner.hasVehicle()) {
+                    owner.startRiding(boat, true);
+                }
             }
         }
         // Mount cleanup + re-attach safety net.
@@ -8586,6 +8624,40 @@ public class CombatManager {
                     }
                 }
                 return;
+            }
+
+            // Same rescue for NON-acting party members. Knockback or a shove can
+            // drop a teammate below the arena outside their own turn, where the
+            // turn-holder check above never sees them — they kept falling into
+            // the void and died through vanilla damage, outside the combat flow.
+            if (partyPlayers.size() > 1) {
+                boolean anyMemberFell = false;
+                for (ServerPlayerEntity member : partyPlayers) {
+                    if (member == null || member == player || member.isRemoved()
+                        || member.isDisconnected()
+                        || deadPartyMembers.contains(member.getUuid())) continue;
+                    if (member.getY() >= arenaFloorY - 2) continue;
+
+                    BlockPos safePos = getSafeArenaBlockPos(arena);
+                    if (safePos != null) {
+                        member.requestTeleport(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
+                        broadcastPlayerPositionToOthers(member);
+                    }
+                    member.setVelocity(0, 0, 0);
+                    member.velocityModified = true;
+                    member.fallDistance = 0;
+                    member.setFireTicks(0);
+                    member.setFrozenTicks(0);
+                    member.setHealth(1);
+                    deadPartyMembers.add(member.getUuid());
+                    member.changeGameMode(net.minecraft.world.GameMode.SPECTATOR);
+                    sendMessage("§c§l☠ " + member.getName().getString() + " has fallen!");
+                    pruneDeadFromTurnQueue(member.getUuid());
+                    anyMemberFell = true;
+                }
+                if (anyMemberFell) {
+                    sendSync();
+                }
             }
         }
         // Void safety
@@ -8881,40 +8953,42 @@ public class CombatManager {
                 && landingTile.getType() == com.crackedgames.craftics.core.TileType.WATER;
             if (onWaterNow && !playerMounted) {
                 if (moveBoatProtected) {
+                    net.minecraft.entity.vehicle.BoatEntity boat = boatOf(player);
                     // Spawn a visual boat if we don't have one
-                    if (activeBoat == null && player.getWorld() instanceof ServerWorld sw) {
+                    if (boat == null && player.getWorld() instanceof ServerWorld sw) {
                         BlockPos boatBlock = arena.gridToBlockPos(finalPos);
                         double boatY = boatBlock.getY(); // surface level, not lowered
                         //? if <=1.21.1 {
-                        /*activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
+                        /*boat = new net.minecraft.entity.vehicle.BoatEntity(
                             net.minecraft.entity.EntityType.BOAT, sw);
                         *///?} else {
-                        activeBoat = new net.minecraft.entity.vehicle.BoatEntity(
+                        boat = new net.minecraft.entity.vehicle.BoatEntity(
                             net.minecraft.entity.EntityType.OAK_BOAT, sw,
                             () -> net.minecraft.item.Items.OAK_BOAT);
                         //?}
-                        activeBoat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
-                        activeBoat.setYaw(player.getYaw() - 90f);
-                        activeBoat.setInvulnerable(true);
-                        activeBoat.setNoGravity(true);
-                        sw.spawnEntity(activeBoat);
+                        boat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
+                        boat.setYaw(player.getYaw() - 90f);
+                        boat.setInvulnerable(true);
+                        boat.setNoGravity(true);
+                        sw.spawnEntity(boat);
+                        activeBoats.put(player.getUuid(), boat);
                         // Teleport player to boat position THEN mount
                         player.requestTeleport(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
-                        player.startRiding(activeBoat, true);
-                    } else if (activeBoat != null) {
+                        player.startRiding(boat, true);
+                    } else if (boat != null) {
                         // Move existing boat with the player
                         BlockPos boatBlock = arena.gridToBlockPos(finalPos);
                         double boatY = boatBlock.getY();
-                        activeBoat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
-                        activeBoat.setYaw(player.getYaw() - 90f);
+                        boat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
+                        boat.setYaw(player.getYaw() - 90f);
                     }
                 } else {
                     addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
                     sendMessage("§b  Wading through water! Soaked for 2 turns.");
                 }
             } else {
-                // Left water — remove boat (despawnActiveBoat snaps position)
-                despawnActiveBoat();
+                // Left water — remove the mover's boat (despawn snaps their position)
+                despawnActiveBoat(player);
             }
 
             // Lava damage on move — 10 damage when stepping onto lava
@@ -8977,7 +9051,7 @@ public class CombatManager {
         double endX = endBlock.getX() + 0.5;
         // Boat on water = surface Y; leather boots on powder snow = surface Y; otherwise use tile Y
         GridTile nextTile = arena.getTile(next);
-        boolean stayOnSurface = (activeBoat != null || moveBoatProtected)
+        boolean stayOnSurface = (boatOf(player) != null || moveBoatProtected)
             || (nextTile != null && nextTile.getType() == com.crackedgames.craftics.core.TileType.POWDER_SNOW && hasLeatherBoots());
         double endY = stayOnSurface ? endBlock.getY() : arena.getEntityY(next);
         double endZ = endBlock.getZ() + 0.5;
@@ -9041,9 +9115,10 @@ public class CombatManager {
         }
 
         // Keep boat in sync with player during movement — boats face 90° offset from entity yaw
-        if (activeBoat != null) {
-            activeBoat.setPosition(x, y, z);
-            activeBoat.setYaw(playerMoveYaw - 90f);
+        net.minecraft.entity.vehicle.BoatEntity moveBoat = boatOf(player);
+        if (moveBoat != null) {
+            moveBoat.setPosition(x, y, z);
+            moveBoat.setYaw(playerMoveYaw - 90f);
         }
 
         if (moveTickCounter >= getMoveTicks()) {
@@ -15081,7 +15156,7 @@ public class CombatManager {
         if (!landingPos.equals(playerGridPos)) {
             arena.setPlayerGridPos(landingPos);
             BlockPos bp = arena.gridToBlockPos(landingPos);
-            double kbY = (activeBoat != null) ? bp.getY() : arena.getEntityY(landingPos);
+            double kbY = (boatOf(player) != null) ? bp.getY() : arena.getEntityY(landingPos);
             player.requestTeleport(bp.getX() + 0.5, kbY, bp.getZ() + 0.5);
             broadcastPlayerPositionToOthers(player);
             sendMessage("§e  Knocked back " + playerGridPos.manhattanDistance(landingPos) + " tiles!");
@@ -15363,23 +15438,36 @@ public class CombatManager {
         };
     }
 
-    private void despawnActiveBoat() {
-        if (activeBoat != null) {
-            if (player != null) {
-                player.stopRiding();
-            }
-            activeBoat.discard();
-            activeBoat = null;
-            // Snap player to correct grid position — vanilla dismount offsets X/Z
-            if (player != null && arena != null) {
-                BlockPos correct = arena.gridToBlockPos(arena.getPlayerGridPos());
-                double correctY = arena.getEntityY(arena.getPlayerGridPos());
-                player.setPosition(correct.getX() + 0.5, correctY, correct.getZ() + 0.5);
-                player.networkHandler.requestTeleport(
-                    correct.getX() + 0.5, correctY, correct.getZ() + 0.5,
-                    player.getYaw(), player.getPitch());
-            }
+    /** Remove {@code owner}'s water boat (if any) and snap them back onto their
+     *  grid tile — vanilla dismount offsets X/Z. */
+    private void despawnActiveBoat(ServerPlayerEntity owner) {
+        if (owner == null) return;
+        net.minecraft.entity.vehicle.BoatEntity boat = activeBoats.remove(owner.getUuid());
+        if (boat == null) return;
+        owner.stopRiding();
+        boat.discard();
+        if (arena != null && !owner.isRemoved() && !owner.isDisconnected()) {
+            GridPos ownerPos = (player != null && owner.getUuid().equals(player.getUuid()))
+                ? arena.getPlayerGridPos() : gridPosOf(owner);
+            BlockPos correct = arena.gridToBlockPos(ownerPos);
+            double correctY = arena.getEntityY(ownerPos);
+            owner.setPosition(correct.getX() + 0.5, correctY, correct.getZ() + 0.5);
+            owner.networkHandler.requestTeleport(
+                correct.getX() + 0.5, correctY, correct.getZ() + 0.5,
+                owner.getYaw(), owner.getPitch());
         }
+    }
+
+    /** Combat-end cleanup: remove every player's water boat. */
+    private void despawnAllBoats() {
+        for (ServerPlayerEntity member : new ArrayList<>(allCombatPlayers())) {
+            despawnActiveBoat(member);
+        }
+        // Boats whose owner already left the roster (disconnects) still need discarding.
+        for (var leftover : activeBoats.values()) {
+            if (leftover != null) leftover.discard();
+        }
+        activeBoats.clear();
     }
 
     /**
@@ -19315,6 +19403,16 @@ public class CombatManager {
         p.sendMessage(net.minecraft.text.Text.literal(msg), false);
     }
 
+    /** Every player in this combat: the party roster when populated (leader is
+     *  registered first in MP), falling back to the current turn-holder so solo
+     *  combats that never register a roster are still covered. Use for ambient
+     *  per-tick effects that must reach the whole party, not just whoever holds
+     *  the turn. */
+    private List<ServerPlayerEntity> allCombatPlayers() {
+        if (!partyPlayers.isEmpty()) return partyPlayers;
+        return player != null ? java.util.List.of(player) : java.util.List.of();
+    }
+
     /** Translate a party member's current world block pos into an arena grid pos.
      *  Returns {@code arena.getPlayerGridPos()} when the lookup can't run. */
     private GridPos gridPosOf(ServerPlayerEntity member) {
@@ -20910,7 +21008,7 @@ public class CombatManager {
             if (this.arena != null) this.arena.clearAllVfxObstacles(w);
         } catch (Throwable ignored) { /* defensive — combat cleanup must not fail */ }
         if (!active) return;
-        despawnActiveBoat();
+        despawnAllBoats();
 
         // Remove hidden fire resistance, restore freeze damage, and re-enable random ticks
         if (player != null) {
@@ -21966,6 +22064,21 @@ public class CombatManager {
         mob.noClip = true;
         mob.setSilent(true);
         mob.addCommandTag("craftics_arena");
+        // EntityType.create skips initialize/initEquipment, so armed mobs spawn
+        // bare-handed — a summoned skeleton visibly "refused to use its bow".
+        // Hand the iconic weapon over when the hand is empty.
+        if (mob.getMainHandStack().isEmpty()) {
+            net.minecraft.item.Item iconicWeapon = switch (typeId) {
+                case "minecraft:skeleton", "minecraft:stray", "minecraft:bogged" -> Items.BOW;
+                case "minecraft:pillager" -> Items.CROSSBOW;
+                case "minecraft:drowned" -> Items.TRIDENT;
+                case "minecraft:wither_skeleton" -> Items.STONE_SWORD;
+                default -> null;
+            };
+            if (iconicWeapon != null) {
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, new ItemStack(iconicWeapon));
+            }
+        }
         world.spawnEntity(mob);
 
         CombatEntity ce = new CombatEntity(mob.getId(), typeId, targetTile, hp, atk, def, range);
@@ -22559,7 +22672,17 @@ public class CombatManager {
     private final java.util.Set<Integer> hybridEnemiesActed = new java.util.HashSet<>();
     private boolean moveBoatProtected = false;       // Water crossing with boat = no Soaked
     private int powderSnowTurns = 0;                 // Escalating freeze damage counter
-    private net.minecraft.entity.vehicle.BoatEntity activeBoat = null; // Visual boat while in water
+    /** Visual boats while crossing water, keyed by rider UUID. Per player: a
+     *  single shared slot meant that when someone parked on water and the turn
+     *  rotated, the NEW turn-holder got stuffed into the parked player's boat
+     *  and the boat followed the wrong player's movement. */
+    private final java.util.Map<java.util.UUID, net.minecraft.entity.vehicle.BoatEntity> activeBoats =
+        new java.util.HashMap<>();
+
+    /** The given player's water boat, or null. */
+    private net.minecraft.entity.vehicle.BoatEntity boatOf(ServerPlayerEntity p) {
+        return p == null ? null : activeBoats.get(p.getUuid());
+    }
     // OCEAN_BLESSING: once-per-combat heal, tracked per player UUID so each
     // member's heal is independent. A single shared flag let the first player
     // to trigger it lock everyone else out (and in MP the swapped victim, not
@@ -22757,17 +22880,24 @@ public class CombatManager {
      * players into thinking they can stand on lava tiles for free.
      */
     private void enforceHiddenFireResistance() {
-        if (player == null) return;
+        // Every party member, not just the turn-holder: the baseline is what
+        // stops vanilla ambient fire/lava damage, and a teammate whose visible
+        // fire-resistance (potion, totem revival) expired off-turn would
+        // otherwise be left burning with no Craftics baseline underneath.
         var fireRes = net.minecraft.entity.effect.StatusEffects.FIRE_RESISTANCE;
-        var existing = player.getStatusEffect(fireRes);
-        if (existing != null && !existing.shouldShowIcon() && !existing.shouldShowParticles()) {
-            return; // already hidden — nothing to do
+        for (ServerPlayerEntity member : allCombatPlayers()) {
+            if (member == null || member.isRemoved()
+                || deadPartyMembers.contains(member.getUuid())) continue;
+            var existing = member.getStatusEffect(fireRes);
+            if (existing != null && !existing.shouldShowIcon() && !existing.shouldShowParticles()) {
+                continue; // already hidden — nothing to do
+            }
+            if (existing != null) {
+                member.removeStatusEffect(fireRes);
+            }
+            member.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+                fireRes, Integer.MAX_VALUE, 0, true, false, false));
         }
-        if (existing != null) {
-            player.removeStatusEffect(fireRes);
-        }
-        player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
-            fireRes, Integer.MAX_VALUE, 0, true, false, false));
     }
 
     /** Sync addon equipment scanner bonuses to the client for UI display. */

@@ -879,7 +879,12 @@ public class CombatTooltips implements ItemTooltipCallback {
         // ── Breeding/Taming Items ──
         if (item == Items.BONE) return "\u00a7a1 AP \u00a77- Use on wolf to tame\n\u00a77Tamed wolves fight alongside you!";
         if (item == Items.WHEAT) return "\u00a7a1 AP \u00a77- Feed to cow/sheep/goat\n\u00a77Passive mobs: befriend and send to hub";
-        if (item == Items.WHEAT_SEEDS) return "\u00a7a1 AP \u00a77- Feed to chicken/parrot\n\u00a77Passive mobs: befriend and send to hub";
+        if (item == Items.WHEAT_SEEDS || item == Items.MELON_SEEDS)
+            return "\u00a7a1 AP \u00a77- Feed to chicken/parrot\n\u00a77Passive mobs: befriend and send to hub";
+        if (item == Items.PUMPKIN_SEEDS || item == Items.BEETROOT_SEEDS)
+            return "\u00a7a1 AP \u00a77- Feed to chicken\n\u00a77Passive mobs: befriend and send to hub";
+        if (item == Items.TORCHFLOWER_SEEDS)
+            return "\u00a7a1 AP \u00a77- Feed to sniffer\n\u00a77Passive mobs: befriend and send to hub";
 
         // ── Arrows ──
         if (item == Items.ARROW) return "\u00a78Ammo for Bow and Crossbow\n\u00a77Consumed per shot (Infinity skips)";

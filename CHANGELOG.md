@@ -11,6 +11,31 @@ Bug sweep (core + mod support)
 - fabric.mod.json now lists all twelve mods Craftics integrates with, so modpack tools can discover the compat surface
 - The shared hit-and-run helper is now size-aware for its retreat scan
 
+Custom polygon arenas
+
+- Concave shapes work now. The corner sorter ordered markers by angle around their centroid, which self-intersects on shapes like an L (its concave vertex sits at the centroid), so the playable mask covered regions outside the drawn outline and mobs, floor, and hover targeting showed up out there. Rectilinear outlines (L, T, plus, U) are now reconstructed exactly from their edge structure, and convex outlines (diamond, octagon, hexagon) keep the angle sort, which is correct for them
+- Corner markers can be buried under a regular block on purpose. Each corner now resolves to the surface of whatever covers it, and the arena floor takes the most common corner surface instead of the raw highest marker. A hidden marker no longer drags the floor a block down, which was making the whole interior read as obstacles
+- The border ring paints one continuous band of border concrete at the corrected floor height, so it no longer eats blocks a level below the surface and no longer shows up speckled and inconsistent
+- Biome obstacle decoration is skipped for polygon arenas. The placers picked tiles across the whole bounding box with no idea of the mask, which scattered random boulders and hazards outside the outline
+- The clear-above sweep, tile classification, and player-start snap are bounded to the drawn shape, so terrain outside the outline is no longer wiped, classified, or chosen as a spawn
+- A polygon that fails to produce a playable mask now degrades to a plain rectangle over the marker bounding box with the ground preserved, instead of flattening the full level rectangle and laying a stone underlayer
+- Two corner markers placed side by side no longer leave a marker block behind when they blend out, and spawn markers (gold, iron, copper, coal) can be buried one block under the floor like the corners
+
+Multiplayer fixes
+
+- Bush invisibility no longer wears off after one turn for a player who stays in the bush. The hide is a rolling buff that needs constant refreshing, and only the current turn-holder was being ticked, so a teammate's stealth lapsed as soon as the turn rotated away. Every party member is refreshed now
+- The hidden fire-resistance baseline that blocks vanilla fire and lava damage is enforced for the whole party, so a teammate whose potion fire resistance expired off-turn is no longer left burning
+- A teammate knocked below the arena outside their own turn is now rescued and downed through the normal combat flow, instead of falling into the void and dying through vanilla damage
+- Water boats are tracked per player. With the old single shared boat, a player parked on water across a turn rotation had the next turn-holder pulled into their boat, and the boat then followed the wrong player's movement
+
+Playtest fixes
+
+- Pets returning to the hub now land on the same floor as the player. A pet's offset landing spot could previously resolve on top of a tree, or past the island edge it found no ground at all and left the pet in midair to fall into the void, which silently killed returning pets
+- Tile highlights now draw on top of snow layers, so boss telegraphs and the move grid stay visible on snowy arena tiles and under snow golem trails
+- Skeletons and other ranged mobs summoned from spawn eggs now fight as ranged kiters with proper range and their iconic weapon in hand (bow, crossbow, trident) instead of bare-hand melee
+- Arena schematics with unsupported sand or gravel are stabilized at build time, so terrain no longer collapses when a fight starts and snow resting on top no longer breaks
+- Chicken taming is now documented: any seeds work (wheat, melon, pumpkin, beetroot). Seed tooltips cover who they tame, and a new Taming Foods page in the guide book lists every taming item
+
 Combat animations
 
 - Every mob type picks its attack animation from a style registry: spiders pounce, golems and ravagers slam, wolves and cats dash, slimes hop and crash, endermen blink, archers draw. Three new styles add ram (goats, camels), jab (insects, small critters), and channel (witches, evokers). Addon mobs can register any style via CrafticsAPI.registerAttackAnimation, and unregistered mobs keep the classic lunge
@@ -19,7 +44,7 @@ Combat animations
 
 Battle HUD fixes
 
-- Enemy HP numbers are now hover-only: the top-right roster keeps its HP bars but drops the hp/max text and is narrower for it. Exact numbers live in the hover inspect panel
+- The enemy roster is now heads-only: a compact grid of mob portraits with no per-enemy HP bars. Hover an enemy for its bar and numbers in the inspect panel. The boss keeps the one always-visible HP bar at the top of the roster
 - The act-order strip's gold acting-now highlight appears for every action, not just attacks: walks, teleports, and ceiling hops all show, and the camera follows the mover
 
 Nether and End boss fixes

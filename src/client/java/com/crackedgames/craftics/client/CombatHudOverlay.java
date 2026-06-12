@@ -925,18 +925,13 @@ public class CombatHudOverlay implements HudRenderCallback {
             return;
         }
 
-        boolean compact = true;
-        try { compact = com.crackedgames.craftics.CrafticsMod.CONFIG.compactEnemyList(); } catch (Exception ignored) {}
-
         int headSize = 16;
-        int barW = 50;
-        int barH = 6;
-        int padding = 3;
-        int entryH = headSize + 2;
+        int headGap = 2;
+        int maxPerRow = 5;
 
-        // Identify the boss up front — it renders separately, and every count
-        // below (rows shown, "+N more") must exclude it or it gets counted
-        // twice: once as the boss bar, once as a phantom collapsed entry.
+        // Identify the boss up front — it renders separately with the roster's
+        // only persistent HP bar. Regular enemies are heads-only: their bars
+        // and numbers live on the hover inspect panel.
         int bossEntityId = -1;
         String bossDisplayName = null;
         for (Map.Entry<Integer, String> tEntry : types.entrySet()) {
@@ -951,8 +946,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
         boolean hasBoss = bossEntityId >= 0;
 
-        // Non-boss entries in map order — drives both the visible rows and the
-        // collapsed mini-head remainder.
+        // Non-boss entries in map order — laid out as a wrapped grid of heads.
         List<Map.Entry<Integer, int[]>> nonBoss = new ArrayList<>();
         for (Map.Entry<Integer, int[]> entry : enemies.entrySet()) {
             if (entry.getKey() != bossEntityId) nonBoss.add(entry);
@@ -961,14 +955,14 @@ public class CombatHudOverlay implements HudRenderCallback {
         int bossBarSection = hasBoss ? 24 : 0; // boss name + bar + padding
         int nonBossCount = nonBoss.size();
         int enemyCount = enemies.size();
-        int showCount = (compact && nonBossCount > 4) ? 3 : nonBossCount;
-        boolean collapsed = compact && nonBossCount > 4;
+        int gridCols = Math.min(Math.max(1, nonBossCount), maxPerRow);
+        int gridRows = (nonBossCount + maxPerRow - 1) / maxPerRow;
 
-        // Width no longer reserves room for per-row hp/max text (numbers are
-        // hover-only now); the slack that remains fits the "+N more" footer.
-        int panelContentW = hasBoss ? 150 : headSize + padding + barW + 30;
+        int headerW = client.textRenderer.getWidth("Enemies (" + enemyCount + ")") + 2;
+        int gridW = nonBossCount > 0 ? gridCols * (headSize + headGap) - headGap : 0;
+        int panelContentW = Math.max(hasBoss ? 150 : 0, Math.max(headerW, gridW));
         int headerH = 14;
-        int panelContentH = headerH + bossBarSection + showCount * entryH + (collapsed ? 14 : 0);
+        int panelContentH = headerH + bossBarSection + gridRows * (headSize + headGap);
         int panelPad = 4;
         int panelW = panelContentW + panelPad * 2;
         int panelH = panelContentH + panelPad;
@@ -1037,75 +1031,33 @@ public class CombatHudOverlay implements HudRenderCallback {
             y += bossBarH + 4;
         }
 
-        // Second pass: render non-boss enemies
-        int drawn = 0;
+        // Regular enemies: heads only, wrapped into rows. No per-enemy HP \u2014
+        // hover an enemy on the grid for its bar and numbers; the boss above
+        // keeps the lone persistent bar.
+        int col = 0;
         for (Map.Entry<Integer, int[]> entry : nonBoss) {
-            if (drawn >= showCount) break;
-
-            int entityId = entry.getKey();
-            int[] hpData = entry.getValue();
-            int eHp = hpData[0];
-            int eMaxHp = hpData[1];
-            float ePct = eMaxHp > 0 ? (float) eHp / eMaxHp : 0;
-
-            String typeIdFull = types.getOrDefault(entityId, "minecraft:zombie");
+            String typeIdFull = types.getOrDefault(entry.getKey(), "minecraft:zombie");
             String typeId = typeIdFull.contains(";") ? typeIdFull.substring(0, typeIdFull.indexOf(';')) : typeIdFull;
 
+            int hx = startX + col * (headSize + headGap);
             Identifier headTex = MobHeadTextures.get(typeId);
             if (headTex != null) {
-                MobHeadTextures.drawMobHead(ctx, headTex, startX, y, headSize);
+                MobHeadTextures.drawMobHead(ctx, headTex, hx, y, headSize);
             } else {
                 int squareColor = MobHeadTextures.getMobColor(typeId);
-                ctx.fill(startX, y, startX + headSize, y + headSize, squareColor);
-                ctx.fill(startX + 1, y + 1, startX + headSize - 1, y + headSize - 1,
+                ctx.fill(hx, y, hx + headSize, y + headSize, squareColor);
+                ctx.fill(hx + 1, y + 1, hx + headSize - 1, y + headSize - 1,
                     (squareColor & 0x00FFFFFF) | 0xCC000000);
                 String initial = MobHeadTextures.getDisplayInitial(typeId);
                 ctx.drawCenteredTextWithShadow(client.textRenderer,
-                    Text.literal(initial), startX + headSize / 2, y + 4, 0xFFFFFFFF);
+                    Text.literal(initial), hx + headSize / 2, y + 4, 0xFFFFFFFF);
             }
 
-            int barX = startX + headSize + padding;
-            int barY = y + (headSize - barH) / 2;
-            ctx.fill(barX - 1, barY - 1, barX + barW + 1, barY + barH + 1, 0x88000000);
-            drawHpBar(ctx, "en:" + entityId, barX, barY, barW, barH,
-                ePct, hpColor(ePct), 0x00000000);
-            // No hp/max numbers on the roster rows: the bar carries the at-a-
-            // glance state, and exact numbers live on the hover inspect panel
-            // only. (They used to print for every damaged enemy, which made
-            // "numbers on hover" pointless \u2014 the panel showed them anyway.)
-
-            y += entryH;
-            drawn++;
-        }
-
-        if (collapsed) {
-            int remaining = nonBossCount - showCount;
-            int miniX = startX;
-            int miniSize = 8;
-            int miniDrawn = 0;
-
-            List<String> remainingTypes = new ArrayList<>();
-            for (int i = showCount; i < nonBoss.size(); i++) {
-                String tFull = types.getOrDefault(nonBoss.get(i).getKey(), "minecraft:zombie");
-                String tId = tFull.contains(";") ? tFull.substring(0, tFull.indexOf(';')) : tFull;
-                remainingTypes.add(tId);
+            col++;
+            if (col >= maxPerRow) {
+                col = 0;
+                y += headSize + headGap;
             }
-
-            for (String rt : remainingTypes) {
-                if (miniDrawn >= 6) break; // max 6 mini heads
-                Identifier miniTex = MobHeadTextures.get(rt);
-                if (miniTex != null) {
-                    MobHeadTextures.drawMobHead(ctx, miniTex, miniX, y + 3, miniSize);
-                } else {
-                    ctx.fill(miniX, y + 3, miniX + miniSize, y + 3 + miniSize, MobHeadTextures.getMobColor(rt));
-                }
-                miniX += miniSize + 1;
-                miniDrawn++;
-            }
-
-            ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal("\u00a78+" + remaining + " more"),
-                miniX + 2, y + 3, 0xFF888888);
         }
     }
 

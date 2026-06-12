@@ -58,6 +58,18 @@ public final class AllyArchetypes {
         Map.entry("minecraft:llama", RANGED),
         Map.entry("minecraft:trader_llama", RANGED),
         Map.entry("minecraft:snow_golem", RANGED),
+        // Ranged hostiles — joinable only via spawn-egg loot drops. Without a
+        // mapping they fell through to the melee default, so a summoned
+        // skeleton walked up and punched instead of kiting with its bow.
+        Map.entry("minecraft:skeleton", RANGED),
+        Map.entry("minecraft:stray", RANGED),
+        Map.entry("minecraft:bogged", RANGED),
+        Map.entry("minecraft:pillager", RANGED),
+        Map.entry("minecraft:witch", RANGED),
+        Map.entry("minecraft:blaze", RANGED),
+        Map.entry("minecraft:drowned", RANGED),
+        Map.entry("minecraft:ghast", RANGED),
+        Map.entry("minecraft:shulker", RANGED),
         // Flyers — fast, fearless, dive on the weakest enemy.
         Map.entry("minecraft:parrot", FLYER),
         Map.entry("minecraft:bee", FLYER),

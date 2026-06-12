@@ -52,12 +52,25 @@ public final class StealthTiles {
      * have the invisibility actively stripped so visibility returns instantly
      * — without this an entity stays invisible for up to 1.5s after stepping
      * off, which makes the mechanic feel buggy.
+     *
+     * <p>Takes the FULL party, not just the turn-holder. The hide is a rolling
+     * 30-tick buff that must be refreshed continuously, so when only the
+     * active player was ticked, a teammate waiting in a bush turned visible
+     * roughly one turn after the turn rotated off them.
+     *
+     * @param players   every living party member; {@code positions.get(i)} is
+     *                  the arena tile of {@code players.get(i)}
      */
-    public static void applyEach(GridArena arena, LivingEntity player, List<CombatEntity> enemies) {
+    public static void applyEach(GridArena arena, List<? extends LivingEntity> players,
+                                 List<GridPos> positions, List<CombatEntity> enemies, World world) {
         if (arena == null) return;
-        World world = player != null ? player.getEntityWorld() : null;
-        if (player != null && !player.isRemoved()) {
-            applyToEntity(player, isStealthTile(arena, arena.getPlayerGridPos(), world));
+        if (players != null && positions != null) {
+            int n = Math.min(players.size(), positions.size());
+            for (int i = 0; i < n; i++) {
+                LivingEntity member = players.get(i);
+                if (member == null || member.isRemoved()) continue;
+                applyToEntity(member, isStealthTile(arena, positions.get(i), world));
+            }
         }
         if (enemies != null) {
             for (CombatEntity e : enemies) {

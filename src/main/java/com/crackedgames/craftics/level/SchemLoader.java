@@ -84,6 +84,38 @@ public class SchemLoader {
                     }
                 }
             }
+
+            // Pass 3: stabilize gravity blocks. A schematic can contain sand or
+            // gravel over a gap (overhangs, buried air pockets, snow layers
+            // below — snow counts as fall-through support). The paste keeps them
+            // frozen because SET_FLAGS skips neighbor updates, but the first
+            // block update in combat drops them as falling entities — and any
+            // snow layer sitting on TOP breaks when its support falls away.
+            // Fill straight down with the same material until something solid
+            // can hold the column, so nothing collapses mid-fight.
+            for (int y = 0; y < height; y++) {
+                for (int z = 0; z < length; z++) {
+                    for (int x = 0; x < width; x++) {
+                        int flat = ((y * length) + z) * width + x;
+                        int paletteId = paletteIds[flat];
+                        if (paletteId < 0 || paletteId >= palette.length) continue;
+                        BlockState state = palette[paletteId];
+                        if (state == null || !(state.getBlock() instanceof FallingBlock)) continue;
+                        BlockPos.Mutable below = new BlockPos.Mutable(
+                            placeX + x, placeY + y - 1, placeZ + z);
+                        while (below.getY() >= placeY && canFallThrough(world.getBlockState(below))) {
+                            world.setBlockState(below.toImmutable(), state, ArenaBuilder.SET_FLAGS);
+                            below.move(net.minecraft.util.math.Direction.DOWN);
+                        }
+                    }
+                }
+            }
+        }
+
+        /** Mirrors vanilla FallingBlock.canFallThrough: the supports a gravity block falls past. */
+        private static boolean canFallThrough(BlockState state) {
+            return state.isAir() || state.isReplaceable() || state.isLiquid()
+                || state.isIn(net.minecraft.registry.tag.BlockTags.FIRE);
         }
     }
 

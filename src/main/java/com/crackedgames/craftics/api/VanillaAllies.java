@@ -56,6 +56,22 @@ public final class VanillaAllies {
         registerInCombatOnly("minecraft:chicken",   4, 1, 0, 3, 1);
         registerInCombatOnly("minecraft:rabbit",    4, 1, 0, 3, 1);
 
+        // Spawn-egg summons — hostile mobs whose eggs drop as combat loot. Never
+        // hub-recruited and never tameable (taming is gated on the breeding-food
+        // map, which has no entries for these). Registered so an egg summon
+        // fights with its real range instead of the generic 8/2/0/range-1
+        // fallback that turned a summoned skeleton into a melee grunt.
+        // register(entityTypeId, hp, atk, def, speed, range)
+        registerInCombatOnly("minecraft:skeleton",  8, 3, 0, 2, 3);
+        registerInCombatOnly("minecraft:stray",     8, 3, 0, 2, 3);
+        registerInCombatOnly("minecraft:bogged",    8, 3, 0, 2, 3);
+        registerInCombatOnly("minecraft:pillager", 10, 3, 1, 2, 4);
+        registerInCombatOnly("minecraft:witch",    10, 3, 0, 2, 3);
+        registerInCombatOnly("minecraft:blaze",     8, 4, 0, 2, 4);
+        registerInCombatOnly("minecraft:drowned",  10, 3, 0, 2, 3);
+        registerInCombatOnly("minecraft:ghast",    10, 4, 0, 2, 6);
+        registerInCombatOnly("minecraft:shulker",  10, 3, 3, 1, 5);
+
         // Golems — built combat allies, each healed in battle by its build material:
         // an iron ingot patches up an iron golem, a snowball repacks a snow golem.
         AllyRegistry.register(AllyEntry.builder("minecraft:iron_golem")

@@ -56,6 +56,10 @@ public class ArenaBuilder {
     /** Polygon-mask shape for non-rectangular arenas, or null when the
      *  scanned structure used the legacy DIAMOND/EMERALD rectangle pair. */
     private static boolean[][] structureInsideMask = null;
+    /** Outer polygon (playable mask + its border ring), or null. Used to keep
+     *  bbox-wide passes (the clear-above sweep) off the terrain outside the
+     *  drawn outline. */
+    private static boolean[][] structureOuterMask = null;
     private static int structureHeight = -1;
 
     /** Get and clear the pending camera yaw from the last structure load */
@@ -193,8 +197,8 @@ public class ArenaBuilder {
             }
         }
 
-        // Snap player start to nearest walkable tile
-        GridPos finalPlayerStart = findNearestWalkableTile(tiles, playerStart);
+        // Snap player start to nearest walkable tile (rescan path — no polygon mask)
+        GridPos finalPlayerStart = findNearestWalkableTile(tiles, playerStart, null);
 
         CrafticsMod.LOGGER.info("Scanned pre-built arena. origin={}, size={}x{}, playerStart={}",
             gridOrigin, gridW, gridH, finalPlayerStart);
@@ -263,6 +267,7 @@ public class ArenaBuilder {
         structureGridH = -1;
         structureHeight = -1;
         structureInsideMask = null;
+        structureOuterMask = null;
 
         CrafticsMod.LOGGER.info("ArenaBuilder: resolved biomeId='{}' isBoss={} env={} levelDef={} (instanceof GLD: {})",
             biomeId, isBoss, env.id(), levelDef.getClass().getSimpleName(),
@@ -308,6 +313,14 @@ public class ArenaBuilder {
         int clearCeiling = floorY + Math.max(15, structureHeight > 0 ? structureHeight + 3 : 15);
         for (int x = 0; x < finalW; x++) {
             for (int z = 0; z < finalH; z++) {
+                // Polygon arenas: only sweep above the outline's own columns —
+                // the bounding box reaches over terrain outside the drawn shape,
+                // and that terrain is the author's to keep.
+                if (structureOuterMask != null
+                    && x < structureOuterMask.length && z < structureOuterMask[0].length
+                    && !structureOuterMask[x][z]) {
+                    continue;
+                }
                 for (int y = floorY + 2; y <= clearCeiling; y++) {
                     BlockPos bp = new BlockPos(floorX + x, y, floorZ + z);
                     net.minecraft.block.BlockState bs = world.getBlockState(bp);
@@ -321,14 +334,17 @@ public class ArenaBuilder {
         // Biome-themed random obstacles on the arena floor. Skipped for
         // trial chambers — they're dev-designed schematics where any extra
         // obstacles would clash with the hand-built layout and clutter the
-        // visible footprint.
-        if (!biomeId.startsWith("trial_chamber")) {
+        // visible footprint. Skipped for polygon (corner-marker) arenas for the
+        // same reason, plus a practical one: the placers pick tiles across the
+        // whole bounding box with no idea of the mask, which scattered random
+        // boulders and hazards outside the drawn outline.
+        if (!biomeId.startsWith("trial_chamber") && structureInsideMask == null) {
             placeBiomeObstacles(world, floorX, floorY, floorZ, finalW, finalH, env, rng);
         }
 
         //? if >=1.21.5 {
         // Spring to Life decorations: river gets a firefly bush on a grass border tile
-        if ("river".equals(env.id())) {
+        if ("river".equals(env.id()) && structureInsideMask == null) {
             placeRiverFireflyBush(world, floorX, floorY, floorZ, finalW, finalH, rng);
         }
         //?}
@@ -373,6 +389,15 @@ public class ArenaBuilder {
             for (int z = 0; z < finalH; z++) {
                 GridTile tile = finalTiles[x][z];
                 if (tile == null) continue;
+                // Out-of-polygon tiles are out of bounds (GridArena returns null
+                // for them) — don't classify them from the natural terrain out
+                // there, and don't let capLavaDepth mutate blocks outside the
+                // drawn shape.
+                if (structureInsideMask != null
+                    && x < structureInsideMask.length && z < structureInsideMask[0].length
+                    && !structureInsideMask[x][z]) {
+                    continue;
+                }
                 BlockPos floorPos = new BlockPos(floorX + x, floorY, floorZ + z);
                 BlockPos abovePos = new BlockPos(floorX + x, floorY + 1, floorZ + z);
                 BlockPos headPos = new BlockPos(floorX + x, floorY + 2, floorZ + z);
@@ -542,7 +567,8 @@ public class ArenaBuilder {
         }
 
         // Snap player start to nearest walkable tile after obstacle scan
-        GridPos finalPlayerStart = findNearestWalkableTile(finalTiles, requestedPlayerStart);
+        GridPos finalPlayerStart = findNearestWalkableTile(finalTiles, requestedPlayerStart,
+            structureInsideMask);
 
         CrafticsMod.LOGGER.info("Arena built. origin={}, size={}x{}, playerStart={}, polygon={}",
             finalOrigin, finalW, finalH, finalPlayerStart, structureInsideMask != null);
@@ -1009,11 +1035,36 @@ public class ArenaBuilder {
         // up with the other markers, instead of being left as a stray diamond block.
         if (diamondPos != null) corners.add(diamondPos);
 
-        // Polygon floor = highest corner Y (matches the diamond/emerald rule —
-        // floor is whatever the player actually stands on, stray low markers
-        // shouldn't drag the playfield down into the foundation).
+        // Polygon floor = the surface the player stands on. A corner marker may
+        // be deliberately buried under the floor block so it doesn't show in the
+        // arena — climb from each marker through any solid blocks stacked
+        // directly on it (capped at 2: that's a hidden marker, a taller column
+        // is a wall and shouldn't lift the floor) and use THAT as the corner's
+        // floor level. Exposed markers keep their own Y, matching the
+        // diamond/emerald rule. The arena floor is the most common corner
+        // surface (ties prefer the higher), so one odd corner — buried deeper,
+        // dropped on a step, tucked under a wall — can't shift the whole
+        // playfield the way the old raw max-Y did.
+        Map<Integer, Integer> surfaceVotes = new HashMap<>();
+        for (BlockPos c : corners) {
+            int surfaceY = c.getY();
+            for (int climb = 0; climb < 2; climb++) {
+                BlockPos above = new BlockPos(c.getX(), surfaceY + 1, c.getZ());
+                BlockState aboveState = world.getBlockState(above);
+                if (aboveState.isAir() || !aboveState.isSolidBlock(world, above)) break;
+                surfaceY++;
+            }
+            surfaceVotes.merge(surfaceY, 1, Integer::sum);
+        }
         int arenaFloorY = corners.get(0).getY();
-        for (BlockPos c : corners) arenaFloorY = Math.max(arenaFloorY, c.getY());
+        int bestVotes = -1;
+        for (Map.Entry<Integer, Integer> vote : surfaceVotes.entrySet()) {
+            if (vote.getValue() > bestVotes
+                || (vote.getValue() == bestVotes && vote.getKey() > arenaFloorY)) {
+                bestVotes = vote.getValue();
+                arenaFloorY = vote.getKey();
+            }
+        }
 
         // Bounding box from all corners. The corner markers ARE the outer ring; the
         // playable floor is the polygon interior eroded one tile inward (below), so
@@ -1046,21 +1097,16 @@ public class ArenaBuilder {
             return true;
         }
 
-        // Sort corners by angle around their centroid so consecutive vertices
-        // form a single closed loop (convex polygons resolve perfectly; concave
-        // shapes do too as long as the dev places corners in roughly the order
-        // they want them connected — same expectation as drawing the outline).
-        double cx = 0, cz = 0;
-        for (BlockPos c : corners) { cx += c.getX(); cz += c.getZ(); }
-        cx /= corners.size();
-        cz /= corners.size();
-        final double centerX = cx, centerZ = cz;
-        List<BlockPos> sorted = new ArrayList<>(corners);
-        sorted.sort((a, b) -> {
-            double angA = Math.atan2(a.getZ() - centerZ, a.getX() - centerX);
-            double angB = Math.atan2(b.getZ() - centerZ, b.getX() - centerX);
-            return Double.compare(angA, angB);
-        });
+        // Order the corners into one closed outline. Rectilinear outlines (the
+        // L / T / plus / U shapes authors actually draw) are reconstructed
+        // EXACTLY from their edge structure; everything else falls back to a
+        // centroid-angle sort, which is correct for convex rings (diamond,
+        // octagon, hexagon). The angle sort alone self-intersected on concave
+        // shapes — an L's concave vertex sits AT the centroid, where the angle
+        // is undefined — which made the ray-cast mask mark regions outside the
+        // drawn shape as playable: mobs, floor, and hover showing up "outside
+        // the arena".
+        List<BlockPos> sorted = orderOutline(corners);
 
         // Build per-tile in/out mask via ray-casting point-in-polygon. Cast a
         // horizontal ray from each tile center to +∞ on X; count edge crossings.
@@ -1117,9 +1163,27 @@ public class ArenaBuilder {
             }
         }
         if (insideCount == 0) {
-            CrafticsMod.LOGGER.warn("Polygon arena {} mask is empty (no tile inside the polygon). Falling back to default overlay.",
+            // Degrade to a plain rectangle over the marker bounding box with the
+            // ground preserved — the old fallback repainted the level
+            // definition's FULL rectangle (flattening terrain and laying a stone
+            // underlayer far outside the drawn shape) and left the marker
+            // blocks in the world because replacement hadn't run yet.
+            CrafticsMod.LOGGER.warn("Polygon arena {} mask is empty (no tile inside the polygon). "
+                + "Using the marker bounding box as a plain rectangle, ground preserved.",
                 sourceName);
-            overlayArenaTiles(world, borderMinX, arenaFloorY, borderMinZ, gridW, gridH, tiles);
+            for (BlockPos c : corners) {
+                Block replacement = getMostCommonTouchingBlock(world, c,
+                    getBorderConcreteForBiome(biomeId, tiles));
+                world.setBlockState(c, replacement.getDefaultState(), SET_FLAGS);
+            }
+            BlockPos camFallback = diamondPos != null ? diamondPos : corners.get(0);
+            pendingCameraYaw = yawFromTo(camFallback.getX() + 0.5, camFallback.getZ() + 0.5,
+                gridMinX + gridW / 2.0, gridMinZ + gridH / 2.0);
+            structureOrigin = new BlockPos(gridMinX, arenaFloorY, gridMinZ);
+            structureGridW = gridW;
+            structureGridH = gridH;
+            structureInsideMask = null;
+            structureOuterMask = null;
             return true;
         }
 
@@ -1142,7 +1206,10 @@ public class ArenaBuilder {
         if (!preserveSchematicGround) {
             // Tile overlay: only paint floor on tiles inside the polygon mask.
             // Outside-the-polygon tiles are left untouched so the world's
-            // natural terrain (or schematic decoration) shows through.
+            // natural terrain (or schematic decoration) shows through. Inside
+            // the mask the level definition's tile pattern paints every tile —
+            // that pattern IS the readable grid; arenas that want their ground
+            // kept verbatim use preserveSchematicGround.
             for (int x = 0; x < gridW; x++) {
                 for (int z = 0; z < gridH; z++) {
                     if (!mask[x][z]) continue;
@@ -1180,9 +1247,11 @@ public class ArenaBuilder {
             // Flat themed border: the 1-tile ring just inside the outline (tiles in
             // the polygon but eroded out of the playable mask — this is exactly where
             // the corner markers sit) is painted with the biome's border concrete at
-            // FLOOR level. A clear boundary that matches the rectangular arenas' flat
-            // border, doesn't raise a wall, and doesn't turn outer tiles into
-            // obstacles. Any block directly above is cleared so the edge stays flush.
+            // FLOOR level, every tile, so the boundary reads as one continuous band
+            // (gap-only patching left a speckled, inconsistent edge). Any block
+            // directly above is cleared so the edge stays flush — at the corrected
+            // floor height this only flattens the ring itself, not the author's
+            // surrounding terrain.
             for (int x = 0; x < gridW; x++) {
                 for (int z = 0; z < gridH; z++) {
                     if (!outer[x][z] || mask[x][z]) continue;
@@ -1204,15 +1273,18 @@ public class ArenaBuilder {
         structureGridW = gridW;
         structureGridH = gridH;
         structureInsideMask = mask;
+        structureOuterMask = outer;
 
-        // Spawn markers: only honor those at arena floor Y AND inside the
-        // polygon mask. Out-of-mask markers are ignored.
+        // Spawn markers: honor those inside the polygon mask within one block
+        // of the arena floor — like the corners, a spawn marker may be buried
+        // just under the floor so it doesn't show. Out-of-mask markers are
+        // ignored.
         @SuppressWarnings("unchecked")
         List<BlockPos>[] candidateLists = new List[]{goldCandidates, ironCandidates, copperCandidates, coalCandidates};
         BlockPos[] playerSpawns = new BlockPos[4];
         for (int i = 0; i < 4; i++) {
             for (BlockPos bp : candidateLists[i]) {
-                if (bp.getY() != arenaFloorY) continue;
+                if (Math.abs(bp.getY() - arenaFloorY) > 1) continue;
                 int tx = bp.getX() - gridMinX;
                 int tz = bp.getZ() - gridMinZ;
                 if (tx < 0 || tx >= gridW || tz < 0 || tz >= gridH) continue;
@@ -1224,7 +1296,14 @@ public class ArenaBuilder {
         String[] spawnNames = {"P1 (gold)", "P2 (iron)", "P3 (copper)", "P4 (coal)"};
         for (int i = 0; i < 4; i++) {
             if (playerSpawns[i] != null) {
-                world.setBlockState(playerSpawns[i], floorBlock.getDefaultState(), SET_FLAGS);
+                if (playerSpawns[i].getY() == arenaFloorY) {
+                    // Exposed marker doubles as a floor tile — blend it out.
+                    world.setBlockState(playerSpawns[i], floorBlock.getDefaultState(), SET_FLAGS);
+                } else {
+                    // Buried marker — swap for whatever surrounds it underground.
+                    Block rep = getMostCommonTouchingBlock(world, playerSpawns[i], Blocks.STONE);
+                    world.setBlockState(playerSpawns[i], rep.getDefaultState(), SET_FLAGS);
+                }
                 int gridX = playerSpawns[i].getX() - gridMinX;
                 int gridZ = playerSpawns[i].getZ() - gridMinZ;
                 CrafticsMod.LOGGER.info("  {} spawn (polygon): grid({}, {})", spawnNames[i], gridX, gridZ);
@@ -1254,6 +1333,103 @@ public class ArenaBuilder {
         CrafticsMod.LOGGER.info("Polygon arena {} built: {} corners, bbox {}x{}, {} tiles inside",
             sourceName, polyN, gridW, gridH, insideCount);
         return true;
+    }
+
+    /**
+     * Order polygon corner markers into a single closed outline (XZ only —
+     * corner Y is ignored).
+     *
+     * <p>Rectilinear vertex sets — every edge axis-aligned, which is what
+     * arena authors actually draw (L, T, plus, U) — are reconstructed exactly
+     * by {@link #tryRectilinearOutline}. Anything that doesn't form a single
+     * simple rectilinear ring (diamonds, octagons, hexagons — diagonal edges)
+     * falls back to a centroid-angle sort, which is correct for convex rings.
+     * Nearest-neighbor chaining was tried here and rejected: from a plus
+     * shape's concave vertex the closest unvisited corner is across the
+     * interior, not along the arm, so the chain cut through the shape.
+     */
+    private static List<BlockPos> orderOutline(List<BlockPos> corners) {
+        // Dedupe by column — two markers stacked in the same X/Z column would
+        // break both ordering strategies.
+        java.util.LinkedHashMap<Long, BlockPos> unique = new java.util.LinkedHashMap<>();
+        for (BlockPos c : corners) {
+            unique.putIfAbsent(((long) c.getX() << 32) ^ (c.getZ() & 0xFFFFFFFFL), c);
+        }
+        List<BlockPos> verts = new ArrayList<>(unique.values());
+
+        List<BlockPos> rectilinear = tryRectilinearOutline(verts);
+        if (rectilinear != null) return rectilinear;
+
+        double cx = 0, cz = 0;
+        for (BlockPos c : verts) { cx += c.getX(); cz += c.getZ(); }
+        final double centerX = cx / verts.size(), centerZ = cz / verts.size();
+        List<BlockPos> sorted = new ArrayList<>(verts);
+        sorted.sort((a, b) -> {
+            double angA = Math.atan2(a.getZ() - centerZ, a.getX() - centerX);
+            double angB = Math.atan2(b.getZ() - centerZ, b.getX() - centerX);
+            return Double.compare(angA, angB);
+        });
+        return sorted;
+    }
+
+    /**
+     * Exact outline reconstruction for rectilinear polygons. In a simple
+     * rectilinear ring every vertex joins exactly one vertical and one
+     * horizontal edge, and those edges are recovered uniquely by pairing
+     * consecutive vertices within each X column and each Z row. Returns the
+     * ring in walk order, or {@code null} when the vertex set isn't a single
+     * simple rectilinear ring (odd column/row counts, false pairings that
+     * close early, multiple loops) — callers then fall back to the angle sort.
+     */
+    private static List<BlockPos> tryRectilinearOutline(List<BlockPos> verts) {
+        int n = verts.size();
+        if (n < 4 || (n & 1) != 0) return null; // rectilinear rings have even vertex counts
+
+        Map<Integer, List<Integer>> byX = new HashMap<>();
+        Map<Integer, List<Integer>> byZ = new HashMap<>();
+        for (int i = 0; i < n; i++) {
+            byX.computeIfAbsent(verts.get(i).getX(), k -> new ArrayList<>()).add(i);
+            byZ.computeIfAbsent(verts.get(i).getZ(), k -> new ArrayList<>()).add(i);
+        }
+
+        int[] vPartner = new int[n];
+        int[] hPartner = new int[n];
+        java.util.Arrays.fill(vPartner, -1);
+        java.util.Arrays.fill(hPartner, -1);
+        for (List<Integer> column : byX.values()) {
+            if ((column.size() & 1) != 0) return null;
+            column.sort(java.util.Comparator.comparingInt(i -> verts.get(i).getZ()));
+            for (int k = 0; k + 1 < column.size(); k += 2) {
+                vPartner[column.get(k)] = column.get(k + 1);
+                vPartner[column.get(k + 1)] = column.get(k);
+            }
+        }
+        for (List<Integer> row : byZ.values()) {
+            if ((row.size() & 1) != 0) return null;
+            row.sort(java.util.Comparator.comparingInt(i -> verts.get(i).getX()));
+            for (int k = 0; k + 1 < row.size(); k += 2) {
+                hPartner[row.get(k)] = row.get(k + 1);
+                hPartner[row.get(k + 1)] = row.get(k);
+            }
+        }
+
+        // Walk the ring, alternating vertical and horizontal edges. A valid
+        // simple ring visits every vertex exactly once and closes at the start;
+        // false pairings (e.g. an octagon's columns pair up but join vertices
+        // that aren't really adjacent) close early and are rejected.
+        List<BlockPos> ring = new ArrayList<>(n);
+        boolean[] seen = new boolean[n];
+        int at = 0;
+        boolean vertical = true;
+        for (int step = 0; step < n; step++) {
+            if (seen[at]) return null;
+            seen[at] = true;
+            ring.add(verts.get(at));
+            at = vertical ? vPartner[at] : hPartner[at];
+            if (at < 0) return null;
+            vertical = !vertical;
+        }
+        return at == 0 ? ring : null;
     }
 
     /**
@@ -2220,7 +2396,8 @@ public class ArenaBuilder {
         return state.isAir() || block == Blocks.AIR || block == Blocks.CAVE_AIR || block == Blocks.VOID_AIR;
     }
 
-    private static GridPos findNearestWalkableTile(GridTile[][] tiles, GridPos requested) {
+    private static GridPos findNearestWalkableTile(GridTile[][] tiles, GridPos requested,
+                                                    boolean[][] insideMask) {
         int w = tiles.length;
         int h = w > 0 ? tiles[0].length : 0;
         if (w <= 0 || h <= 0) return new GridPos(0, 0);
@@ -2228,7 +2405,9 @@ public class ArenaBuilder {
         int rx = Math.max(0, Math.min(w - 1, requested.x()));
         int rz = Math.max(0, Math.min(h - 1, requested.z()));
         GridTile requestedTile = tiles[rx][rz];
-        if (requestedTile != null && requestedTile.isSafeForSpawn()) {
+        boolean requestedInMask = insideMask == null
+            || (rx < insideMask.length && rz < insideMask[0].length && insideMask[rx][rz]);
+        if (requestedTile != null && requestedTile.isSafeForSpawn() && requestedInMask) {
             return new GridPos(rx, rz);
         }
 
@@ -2238,6 +2417,11 @@ public class ArenaBuilder {
             for (int z = 0; z < h; z++) {
                 GridTile tile = tiles[x][z];
                 if (tile == null || !tile.isSafeForSpawn()) continue;
+                // Polygon arenas: the player must start inside the drawn shape.
+                if (insideMask != null
+                    && (x >= insideMask.length || z >= insideMask[0].length || !insideMask[x][z])) {
+                    continue;
+                }
                 int dist = Math.abs(x - rx) + Math.abs(z - rz);
                 if (dist < bestDist) {
                     bestDist = dist;
@@ -2259,6 +2443,10 @@ public class ArenaBuilder {
                 || neighbor == Blocks.COPPER_BLOCK || neighbor == Blocks.COAL_BLOCK) {
                 continue;
             }
+            // Never count a neighboring corner marker — when an outline places
+            // markers side by side, the not-yet-replaced neighbor would win the
+            // vote and the "replacement" left a corner block in the world.
+            if (neighbor == com.crackedgames.craftics.block.ModBlocks.ARENA_CORNER_BLOCK) continue;
             counts.merge(neighbor, 1, Integer::sum);
         }
 

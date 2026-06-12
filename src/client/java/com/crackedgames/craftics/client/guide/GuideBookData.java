@@ -188,14 +188,14 @@ public class GuideBookData {
         enemies.add(mob("Cow", "Speed: 2 | Passive\n\nHarmless farm animal. Drops beef on defeat."));
         enemies.add(mob("Pig", "Speed: 2 | Passive\n\nHarmless farm animal. Drops porkchop on defeat."));
         enemies.add(mob("Sheep", "Speed: 2 | Passive\n\nHarmless farm animal. Drops mutton on defeat."));
-        enemies.add(mob("Chicken", "Speed: 2 | Passive\n\nHarmless bird. Drops chicken on defeat."));
+        enemies.add(mob("Chicken", "Speed: 2 | Passive\n\nHarmless bird. Tame with any seeds (wheat, melon, pumpkin, beetroot). Drops chicken on defeat."));
         enemies.add(mob("Horse", "Speed: 2 | Passive\n\nCan be tamed with golden items + saddle for +3 Speed mount!"));
         enemies.add(mob("Wolf", "Speed: 3 | Passive until hit\n\nTame with bone to gain an ally! Weak to Special."));
         enemies.add(mob("Cat", "Speed: 2 | Passive\n\nTame with fish. Creepers avoid cats!"));
         enemies.add(mob("Fox", "Speed: 2 | Passive\n\nShy and quick. Will flee from you."));
         enemies.add(mob("Rabbit", "Speed: 2 | Passive\n\nTiny and fast. Harmless."));
         enemies.add(mob("Goat", "Speed: 2 | Passive\n\nCharges and rams! Weak to Slashing."));
-        enemies.add(mob("Parrot", "Speed: 2 | Passive\n\nColorful companion. Tame with seeds."));
+        enemies.add(mob("Parrot", "Speed: 2 | Passive\n\nColorful companion. Tame with wheat or melon seeds."));
         enemies.add(mob("Bee", "Speed: 2 | Passive until hit\n\nStings once then dies. Weak but annoying in groups."));
         enemies.add(mob("Cod", "Speed: 2 | Passive\n\nAquatic. Only found in water biomes."));
         enemies.add(mob("Llama", "Speed: 2 | Range: 2 | Passive until hit\n\nAttacking a llama makes it permanently aggressive. It backs up to keep distance 2 and spits at you. Found in Mountain biomes.\n\nWeak to: Slashing"));
@@ -701,12 +701,29 @@ public class GuideBookData {
                 "hub automatically."),
             new Page("Mid-Combat Taming",
                 "You can also tame a wild mob during a fight.\n\n" +
-                "Use the mob's breeding item on it (Bone for wolves,\n" +
-                "Fish for cats, Wheat for cows/sheep/goats, Carrot/Apple\n" +
-                "for horses, etc.).\n\n" +
+                "Use the mob's breeding item on it — see the Taming\n" +
+                "Foods page for the full list.\n\n" +
                 "Combat-capable mobs become an ally for the rest of\n" +
                 "that battle. Passive mobs (cow, sheep, pig, chicken) are\n" +
                 "sent home to your hub instead of fighting."),
+            new Page("Taming Foods",
+                "Wolf: Bone or Beef\n" +
+                "Cat / Ocelot: Cod or Salmon\n" +
+                "Chicken: any seeds (Wheat, Melon,\n" +
+                "  Pumpkin, Beetroot)\n" +
+                "Parrot: Wheat or Melon Seeds\n" +
+                "Cow / Sheep / Goat / Mooshroom: Wheat\n" +
+                "Pig: Carrot, Potato or Beetroot\n" +
+                "Rabbit: Carrot or Dandelion\n" +
+                "Horse / Donkey: Golden Apple/Carrot\n" +
+                "Llama: Hay Block\n" +
+                "Fox: Sweet or Glow Berries\n" +
+                "Bee: Dandelion, Poppy, Blue Orchid\n" +
+                "Turtle: Seagrass\n" +
+                "Axolotl: Tropical Fish Bucket\n" +
+                "Frog: Slime Ball\n" +
+                "Camel: Cactus\n" +
+                "Sniffer: Torchflower Seeds"),
             new Page("Ally AI",
                 "Tamed allies act on the enemy phase:\n" +
                 "- Pick a target based on archetype (melee charges nearest,\n" +

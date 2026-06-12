@@ -105,12 +105,13 @@ public class HubPetCollector {
     }
 
     /**
-     * Scan up then down from {@code hub.y} for a solid block with air above, so
-     * pets don't spawn below the hub island or inside a block. Matches the
-     * safe-landing logic used by CombatManager.teleportToHub / CrafticsMod.teleportToHub.
+     * Landing Y of the hub ANCHOR column (the spawn plate the player teleports
+     * to): scan up then down from {@code hub.y} for a solid block with air above.
+     * Matches the safe-landing logic in CrafticsMod.teleportToHub, so this is
+     * the same floor the returning player ends up on.
      */
-    private static int findSafeHubY(ServerWorld world, BlockPos hub, int dx, int dz) {
-        BlockPos.Mutable probe = new BlockPos.Mutable(hub.getX() + dx, hub.getY(), hub.getZ() + dz);
+    private static int findAnchorLandingY(ServerWorld world, BlockPos hub) {
+        BlockPos.Mutable probe = new BlockPos.Mutable(hub.getX(), hub.getY(), hub.getZ());
         for (int dy = 0; dy < 60; dy++) {
             probe.setY(hub.getY() + dy);
             var below = world.getBlockState(probe);
@@ -128,6 +129,31 @@ public class HubPetCollector {
             }
         }
         return hub.getY();
+    }
+
+    /**
+     * Landing spot {x, y, z} for a restored pet. Pets used to run the full
+     * 60-up/40-down anchor scan on their own OFFSET column, which had two ways
+     * to kill them: a tree canopy or roof over the offset column won the
+     * up-scan (pet placed high, walks off and falls), and a column past the
+     * island edge found nothing at all and silently returned hub.y — a midair
+     * spawn over the void. Now the anchor's landing is resolved first (the
+     * floor the player lands on), the pet's offset column is only accepted
+     * when it has a floor within a few blocks of that height, and a column
+     * with no such floor falls back to the anchor column itself.
+     */
+    private static double[] findPetLanding(ServerWorld world, BlockPos hub, int offset) {
+        int anchorY = findAnchorLandingY(world, hub);
+        BlockPos.Mutable probe = new BlockPos.Mutable(hub.getX() + offset, anchorY, hub.getZ());
+        for (int landY = anchorY + 6; landY >= anchorY - 6; landY--) {
+            probe.setY(landY - 1);
+            var floor = world.getBlockState(probe);
+            var at = world.getBlockState(probe.up());
+            if (!floor.isAir() && floor.isSolidBlock(world, probe) && at.isAir()) {
+                return new double[]{hub.getX() + offset + 0.5, landY, hub.getZ() + 0.5};
+            }
+        }
+        return new double[]{hub.getX() + 0.5, anchorY, hub.getZ() + 0.5};
     }
 
     /**
@@ -157,10 +183,11 @@ public class HubPetCollector {
                 if (pet.originalNbt() != null) {
                     // Restore from original NBT (preserves collar color, armor, name, variant, UUID)
                     NbtCompound nbt = pet.originalNbt().copy();
-                    // Override position to hub
-                    double px = hubPos.getX() + offset + 0.5;
-                    double py = findSafeHubY(world, hubPos, offset, 0);
-                    double pz = hubPos.getZ() + 0.5;
+                    // Override position to a verified landing near the hub anchor
+                    double[] landing = findPetLanding(world, hubPos, offset);
+                    double px = landing[0];
+                    double py = landing[1];
+                    double pz = landing[2];
 
                     // Strip combat-arena flags so the pet walks/breathes/takes damage at the hub.
                     // These get set by CombatManager when a mob enters the grid and would
@@ -192,9 +219,9 @@ public class HubPetCollector {
                 } else {
                     // Fallback: create a fresh entity (no NBT to restore)
                     var entityType = Registries.ENTITY_TYPE.get(Identifier.of(pet.entityType()));
-                    int fallbackY = findSafeHubY(world, hubPos, offset, 0);
+                    double[] landing = findPetLanding(world, hubPos, offset);
                     var rawEntity = entityType.create(world, null,
-                        BlockPos.ofFloored(hubPos.getX() + offset + 0.5, fallbackY, hubPos.getZ() + 0.5),
+                        BlockPos.ofFloored(landing[0], landing[1], landing[2]),
                         SpawnReason.MOB_SUMMONED, false, false);
                     if (rawEntity instanceof net.minecraft.entity.mob.MobEntity mob) {
                         mob.setPersistent();
