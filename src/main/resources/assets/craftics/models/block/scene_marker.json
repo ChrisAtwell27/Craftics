@@ -1,0 +1,7 @@
+{
+  "comment": "Shared placeholder model for all scene marker blocks (scene_spawn, stand_marker, npc_marker). Markers are removed and replaced by the surrounding block when a scene is scanned, so this only shows while authoring. Reuses the arena_corner texture to avoid a missing-texture look; no dedicated texture needed.",
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "craftics:block/arena_corner"
+  }
+}

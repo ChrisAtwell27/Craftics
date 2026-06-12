@@ -1,0 +1,6 @@
+{
+  "comment": "Stand corner marker (placed in pairs). Replaced by the most common neighbor block on scan, so the in-world look only matters while authoring.",
+  "variants": {
+    "": { "model": "craftics:block/scene_marker" }
+  }
+}
