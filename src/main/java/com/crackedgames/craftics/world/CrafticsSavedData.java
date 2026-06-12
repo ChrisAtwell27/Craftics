@@ -85,22 +85,78 @@ public class CrafticsSavedData extends PersistentState {
 
         public void storeArenaMetadata(int level, net.minecraft.util.math.BlockPos origin,
                                         int width, int height,
-                                        com.crackedgames.craftics.core.GridPos playerStart) {
-            preBuiltArenas.put(level, origin.getX() + "," + origin.getY() + "," + origin.getZ()
-                + "," + width + "," + height + "," + playerStart.x() + "," + playerStart.z());
+                                        com.crackedgames.craftics.core.GridPos playerStart,
+                                        boolean[][] insideMask) {
+            String base = origin.getX() + "," + origin.getY() + "," + origin.getZ()
+                + "," + width + "," + height + "," + playerStart.x() + "," + playerStart.z();
+            // Polygon arenas: pack the playable mask (row-major bits, idx = x*h + z)
+            // as a trailing hex field so scanExisting can restore the shape. Without
+            // it a pre-generated polygon arena reloads as a full rectangle, and mobs
+            // spawn / the cursor hovers outside the drawn outline.
+            if (insideMask != null) {
+                base += "," + packMask(insideMask, width, height);
+            }
+            preBuiltArenas.put(level, base);
         }
 
-        /** Returns int[]{originX, originY, originZ, width, height, playerX, playerZ} or null. */
+        private static String packMask(boolean[][] mask, int w, int h) {
+            byte[] bytes = new byte[(w * h + 7) / 8];
+            for (int x = 0; x < w && x < mask.length; x++) {
+                for (int z = 0; z < h && z < mask[x].length; z++) {
+                    if (mask[x][z]) {
+                        int idx = x * h + z;
+                        bytes[idx >> 3] |= (byte) (1 << (idx & 7));
+                    }
+                }
+            }
+            StringBuilder sb = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        }
+
+        /** Returns int[]{originX, originY, originZ, width, height, playerX, playerZ} or null.
+         *  Tolerates a trailing 8th polygon-mask field (see {@link #getArenaMask}). */
         public int[] getArenaMetadata(int level) {
             String raw = preBuiltArenas.get(level);
             if (raw == null) return null;
             String[] parts = raw.split(",");
-            if (parts.length != 7) return null;
+            if (parts.length < 7) return null;
             try {
                 int[] result = new int[7];
                 for (int i = 0; i < 7; i++) result[i] = Integer.parseInt(parts[i]);
                 return result;
             } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+
+        /** The stored polygon mask for a pre-built arena, or {@code null} for a
+         *  rectangular arena (or older metadata saved before masks were packed). */
+        public boolean[][] getArenaMask(int level, int w, int h) {
+            String raw = preBuiltArenas.get(level);
+            if (raw == null) return null;
+            String[] parts = raw.split(",");
+            if (parts.length < 8) return null;
+            String hex = parts[7];
+            if (hex.isEmpty() || w <= 0 || h <= 0) return null;
+            try {
+                byte[] bytes = new byte[hex.length() / 2];
+                for (int i = 0; i < bytes.length; i++) {
+                    bytes[i] = (byte) Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+                }
+                boolean[][] mask = new boolean[w][h];
+                for (int x = 0; x < w; x++) {
+                    for (int z = 0; z < h; z++) {
+                        int idx = x * h + z;
+                        int bi = idx >> 3;
+                        if (bi < bytes.length) mask[x][z] = (bytes[bi] & (1 << (idx & 7))) != 0;
+                    }
+                }
+                return mask;
+            } catch (Exception e) {
                 return null;
             }
         }

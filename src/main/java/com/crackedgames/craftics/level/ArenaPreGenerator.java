@@ -96,7 +96,7 @@ public class ArenaPreGenerator {
             if (arena == null) return null;
 
             pd.storeArenaMetadata(level, arena.getOrigin(),
-                arena.getWidth(), arena.getHeight(), arena.getPlayerStart());
+                arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask());
             pd.arenasPreGenerated = true;
             data.markDirty();
             CrafticsMod.LOGGER.debug(
@@ -154,7 +154,7 @@ public class ArenaPreGenerator {
                 GridArena arena = ArenaBuilder.buildAt(world, levelDef, origin);
                 if (arena != null) {
                     pd.storeArenaMetadata(level, arena.getOrigin(),
-                        arena.getWidth(), arena.getHeight(), arena.getPlayerStart());
+                        arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask());
                     rebuilt++;
                 }
                 CrafticsMod.LOGGER.debug("ArenaPreGenerator: rebuilt level {} ({}) at {}", level, biome.biomeId, origin);
@@ -191,7 +191,7 @@ public class ArenaPreGenerator {
             GridArena arena = ArenaBuilder.buildAt(world, levelDef, origin);
             if (arena != null) {
                 pd.storeArenaMetadata(level, arena.getOrigin(),
-                    arena.getWidth(), arena.getHeight(), arena.getPlayerStart());
+                    arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask());
                 data.markDirty();
                 CrafticsMod.LOGGER.info("ArenaPreGenerator: auto-repaired level {}", level);
                 return true;

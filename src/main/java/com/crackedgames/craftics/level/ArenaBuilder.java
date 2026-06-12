@@ -102,7 +102,8 @@ public class ArenaBuilder {
      * Chunks are force-loaded and resent to the client.
      */
     public static GridArena scanExisting(ServerWorld world, BlockPos gridOrigin,
-                                          int gridW, int gridH, GridPos playerStart, int level) {
+                                          int gridW, int gridH, GridPos playerStart, int level,
+                                          boolean[][] insideMask) {
         int floorX = gridOrigin.getX(), floorY = gridOrigin.getY(), floorZ = gridOrigin.getZ();
 
         // Load and resend chunks to client (not force-loaded — CombatManager handles that)
@@ -197,12 +198,13 @@ public class ArenaBuilder {
             }
         }
 
-        // Snap player start to nearest walkable tile (rescan path — no polygon mask)
-        GridPos finalPlayerStart = findNearestWalkableTile(tiles, playerStart, null);
+        // Snap player start to nearest walkable tile, restricted to the polygon
+        // mask when one was persisted at pre-gen (null = rectangular arena).
+        GridPos finalPlayerStart = findNearestWalkableTile(tiles, playerStart, insideMask);
 
-        CrafticsMod.LOGGER.info("Scanned pre-built arena. origin={}, size={}x{}, playerStart={}",
-            gridOrigin, gridW, gridH, finalPlayerStart);
-        return new GridArena(gridW, gridH, tiles, gridOrigin, level, finalPlayerStart);
+        CrafticsMod.LOGGER.info("Scanned pre-built arena. origin={}, size={}x{}, playerStart={}, polygon={}",
+            gridOrigin, gridW, gridH, finalPlayerStart, insideMask != null);
+        return new GridArena(gridW, gridH, tiles, gridOrigin, level, finalPlayerStart, insideMask);
     }
 
     public static GridArena buildAt(ServerWorld world, LevelDefinition levelDef, BlockPos origin) {

@@ -1372,8 +1372,9 @@ public class CombatManager {
 
                         com.crackedgames.craftics.core.GridPos playerStart =
                             new com.crackedgames.craftics.core.GridPos(meta[5], meta[6]);
+                        boolean[][] arenaMask = pd.getArenaMask(def.getLevelNumber(), gridW, gridH);
                         return com.crackedgames.craftics.level.ArenaBuilder.scanExisting(
-                            world, origin, gridW, gridH, playerStart, def.getLevelNumber());
+                            world, origin, gridW, gridH, playerStart, def.getLevelNumber(), arenaMask);
                     }
                 }
             }
