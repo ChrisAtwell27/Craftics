@@ -14555,9 +14555,13 @@ public class CombatManager {
 
                 // On-hit effects only land if the shot connected (dodge/block negates them).
                 if (!lastHitAvoided) {
-                sendMessage("§c" + currentEnemy.getDisplayName() + " hits "
-                    + (raSwapped ? rangedTargetPlayer.getName().getString() : "you")
-                    + " for " + raActual + "!");
+                // A pure-effect throw (e.g. the witch's poison potion) deals no impact
+                // damage — skip the "hits you for 0" line and let the effect speak.
+                if (raActual > 0) {
+                    sendMessage("§c" + currentEnemy.getDisplayName() + " hits "
+                        + (raSwapped ? rangedTargetPlayer.getName().getString() : "you")
+                        + " for " + raActual + "!");
+                }
                 applyEnemyHitEffect(raEntityType);
                 // Flame enchant on enemy bow ignites the player
                 if (rangedFlame && !combatEffects.hasFireResistance()) {

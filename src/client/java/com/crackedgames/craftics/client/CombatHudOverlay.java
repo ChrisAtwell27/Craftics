@@ -633,24 +633,34 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         int y = panelY + panelPad;
         for (CombatState.TurnOrderEntry entry : order) {
+            // Testers get a signature color: their name always renders in it, and
+            // their active-turn highlight uses a translucent version of it. The
+            // creator's color is an animated rainbow (TesterRegistry.colorOf) and bold.
+            TesterRegistry.Tester tester = TesterRegistry.get(entry.name());
+            int testerColor = tester != null ? TesterRegistry.colorOf(tester) : 0;
             int nameColor;
             String indicator;
             if (entry.isCurrent()) {
-                nameColor = 0xFF55FF55; // bright green for active turn
+                nameColor = tester != null ? testerColor : 0xFF55FF55; // bright green for active turn
                 indicator = "\u25B6"; // right-pointing triangle
                 // Highlight background for current player
-                ctx.fill(panelX + 1, y - 1, panelX + panelW - 1, y + entryH - 2, 0x44005500);
+                int hl = tester != null ? ((testerColor & 0x00FFFFFF) | 0x44000000) : 0x44005500;
+                ctx.fill(panelX + 1, y - 1, panelX + panelW - 1, y + entryH - 2, hl);
             } else {
-                nameColor = 0xFFAAAAAA; // gray for waiting
+                nameColor = tester != null ? testerColor : 0xFFAAAAAA; // gray for waiting
                 indicator = " ";
             }
+            int indicatorColor = tester != null ? testerColor : 0xFF55FF55;
             int contentX = panelX + panelPad;
             ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal(indicator), contentX, y + 1, 0xFF55FF55);
+                Text.literal(indicator), contentX, y + 1, indicatorColor);
             int afterIndicator = contentX + indicatorW + 2;
             drawPlayerHead(ctx, client, entry.name(), afterIndicator, y, headSz);
+            net.minecraft.text.Text nameText = TesterRegistry.isBold(tester)
+                ? Text.literal(entry.name()).formatted(net.minecraft.util.Formatting.BOLD)
+                : Text.literal(entry.name());
             ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal(entry.name()), afterIndicator + headSz + headGp, y + 1, nameColor);
+                nameText, afterIndicator + headSz + headGp, y + 1, nameColor);
             y += entryH;
         }
     }

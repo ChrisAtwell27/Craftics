@@ -56,8 +56,9 @@ public class WitchAI implements EnemyAI {
                     return new EnemyAction.Move(path);
                 }
             }
-            // Can't retreat — splash at point blank
-            return new EnemyAction.RangedAttack(self.getAttackPower(), currentBrew);
+            // Can't retreat — splash at point blank. Still respects the brew, so a
+            // poison flask does pure poison here too rather than a full-power hit.
+            return new EnemyAction.RangedAttack(brewDamage(self, currentBrew), currentBrew);
         }
 
         // In range (2-4) — throw the current rotating brew
@@ -82,9 +83,18 @@ public class WitchAI implements EnemyAI {
         return AIUtils.seekOrWander(self, arena, playerPos);
     }
 
-    /** Harming hits at full power; the debuff brews trade damage for the effect. */
+    /**
+     * Impact damage of a thrown brew. Harming is an instant-damage potion, so it
+     * lands at full power. Poison is just a thrown potion — it deals NO impact
+     * damage; the poison applied on hit (Witch case in applyEnemyHitEffect) is the
+     * whole point. The remaining debuff brews trade for half damage.
+     */
     private int brewDamage(CombatEntity self, String brew) {
-        return brew.equals("harming") ? self.getAttackPower() : self.getAttackPower() / 2;
+        return switch (brew) {
+            case "harming" -> self.getAttackPower();
+            case "poison" -> 0; // pure poison — no impact damage, it's just a potion
+            default -> self.getAttackPower() / 2;
+        };
     }
 
     /** A reachable throwing position at range 2-4 from the target, clear of threats and hazards. */

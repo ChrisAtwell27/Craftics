@@ -2,6 +2,7 @@ package com.crackedgames.craftics.level;
 
 import com.crackedgames.craftics.CrafticsMod;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockEntityProvider;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.FallingBlock;
@@ -18,11 +19,22 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /** Loads WorldEdit .schem files (Sponge Schematic v2/v3) and places them in the world */
 public class SchemLoader {
 
     public record SchemData(int width, int height, int length, BlockState[] palette, byte[] blockData) {
+
+        /**
+         * Vanilla blocks the post-place scans treat as functional markers
+         * (arena corners + spawns in {@code ArenaBuilder}, hub spawn podzol in
+         * {@code HubRoomBuilder}). Never culled, even when fully buried, so
+         * the scans always find them.
+         */
+        private static final Set<Block> MARKER_BLOCKS = Set.of(
+            Blocks.DIAMOND_BLOCK, Blocks.EMERALD_BLOCK, Blocks.GOLD_BLOCK,
+            Blocks.IRON_BLOCK, Blocks.COPPER_BLOCK, Blocks.COAL_BLOCK, Blocks.PODZOL);
 
         public void place(ServerWorld world, int placeX, int placeY, int placeZ) {
             int total = width * height * length;
@@ -47,69 +59,200 @@ public class SchemLoader {
                 }
             }
 
-            // Pass 1: non-gravity blocks first (supports must exist before sand/gravel)
+            // Classify the palette once instead of re-deciding per block
+            int palCount = palette.length;
+            boolean[] palAir = new boolean[palCount];
+            boolean[] palLiquid = new boolean[palCount];      // holds any fluid (water, lava, waterlogged)
+            boolean[] palGravity = new boolean[palCount];
+            boolean[] palHides = new boolean[palCount];       // opaque full cube: fully hides the face behind it
+            boolean[] palFallThrough = new boolean[palCount]; // a gravity block would fall through it
+            boolean[] palExempt = new boolean[palCount];      // never culled
+            for (int i = 0; i < palCount; i++) {
+                BlockState s = palette[i];
+                if (s == null) continue;
+                Block block = s.getBlock();
+                palAir[i] = s.isAir();
+                // Fluid-state check instead of isLiquid()/opacity: on some MC
+                // versions fluids report as opaque full cubes (their culling
+                // shape is a full cube so adjacent water faces cull each
+                // other), which made deep water hide its own floor. This also
+                // catches waterlogged blocks, kelp, seagrass etc.
+                palLiquid[i] = !s.getFluidState().isEmpty();
+                palGravity[i] = block instanceof FallingBlock;
+                // Liquids count as air for culling: water (and lava) never
+                // hides a face, so the floors and walls of rivers and other
+                // bodies of water are always kept.
+                palHides[i] = !palAir[i] && !palLiquid[i] && isOpaqueFullCube(s);
+                palFallThrough[i] = canFallThrough(s);
+                // Functional blocks must always be placed: marker blocks the
+                // post-place scans look for, block entities (chests, spawners,
+                // signs...) and anything modded (scene/corner markers etc.).
+                palExempt[i] = !palAir[i]
+                    && (MARKER_BLOCKS.contains(block)
+                        || block instanceof BlockEntityProvider
+                        || !"minecraft".equals(Registries.BLOCK.getId(block).getNamespace()));
+            }
+
+            // Visibility cull: only place blocks with at least one face that
+            // can actually be seen — bordering air or any non-opaque block
+            // (glass, stairs, water...) inside the volume, which also keeps
+            // interior rooms and caves intact, or sitting on the volume's
+            // outer boundary. Fully buried filler is skipped entirely; on
+            // terrain-style schematics that is the bulk of the blocks.
+            boolean[] keep = new boolean[total];
+            int nonAir = 0;
             for (int y = 0; y < height; y++) {
                 for (int z = 0; z < length; z++) {
                     for (int x = 0; x < width; x++) {
                         int flat = ((y * length) + z) * width + x;
-                        int paletteId = paletteIds[flat];
-                        if (paletteId >= 0 && paletteId < palette.length) {
-                            BlockState state = palette[paletteId];
-                            if (state != null && !(state.getBlock() instanceof FallingBlock)) {
-                                world.setBlockState(
-                                    new BlockPos(placeX + x, placeY + y, placeZ + z),
-                                    state, ArenaBuilder.SET_FLAGS
-                                );
-                            }
+                        int id = paletteIds[flat];
+                        if (id < 0 || id >= palCount || palette[id] == null || palAir[id]) continue;
+                        nonAir++;
+                        keep[flat] = palExempt[id] || isExposed(paletteIds, palHides, x, y, z);
+                    }
+                }
+            }
+
+            // Gravity supports: every kept gravity block must rest on
+            // something that is actually placed, or the first block update in
+            // combat drops it as a falling entity (and breaks any snow layer
+            // riding on top). If the schematic has a real block below,
+            // force-keep it even when buried. If there is a gap below (air,
+            // water, snow layers...), synthesize ONE matching solid block
+            // instead of the old same-material column fill: sand -> sandstone,
+            // red sand -> red sandstone, gravel -> stone, concrete powder ->
+            // its concrete. A solid block cannot fall, so a single one is
+            // always enough. Scan top-down so force-kept gravity chains
+            // cascade their own supports.
+            BlockState[] synthetic = new BlockState[total];
+            int supports = 0;
+            for (int y = height - 1; y >= 1; y--) {
+                for (int z = 0; z < length; z++) {
+                    for (int x = 0; x < width; x++) {
+                        int flat = ((y * length) + z) * width + x;
+                        int id = paletteIds[flat];
+                        if (id < 0 || id >= palCount || !palGravity[id] || !keep[flat]) continue;
+                        int belowFlat = (((y - 1) * length) + z) * width + x;
+                        int belowId = paletteIds[belowFlat];
+                        boolean realSupport = belowId >= 0 && belowId < palCount
+                            && palette[belowId] != null
+                            && (!palFallThrough[belowId] || palExempt[belowId]);
+                        if (realSupport) {
+                            keep[belowFlat] = true;
+                        } else if (synthetic[belowFlat] == null) {
+                            synthetic[belowFlat] = supportFor(palette[id]);
+                            supports++;
                         }
                     }
                 }
             }
 
-            // Pass 2: gravity blocks (sand, gravel, etc.)
+            int placed = 0;
+            // Pass 1: air (always placed so the region is cleared), synthetic
+            // supports, and kept non-gravity blocks — supports and surfaces
+            // must exist before sand/gravel lands on them.
             for (int y = 0; y < height; y++) {
                 for (int z = 0; z < length; z++) {
                     for (int x = 0; x < width; x++) {
                         int flat = ((y * length) + z) * width + x;
-                        int paletteId = paletteIds[flat];
-                        if (paletteId >= 0 && paletteId < palette.length) {
-                            BlockState state = palette[paletteId];
-                            if (state != null && (state.getBlock() instanceof FallingBlock)) {
-                                world.setBlockState(
-                                    new BlockPos(placeX + x, placeY + y, placeZ + z),
-                                    state, ArenaBuilder.SET_FLAGS
-                                );
-                            }
+                        if (synthetic[flat] != null) {
+                            world.setBlockState(
+                                new BlockPos(placeX + x, placeY + y, placeZ + z),
+                                synthetic[flat], ArenaBuilder.SET_FLAGS
+                            );
+                            placed++;
+                            continue;
+                        }
+                        int id = paletteIds[flat];
+                        if (id < 0 || id >= palCount) continue;
+                        BlockState state = palette[id];
+                        if (state == null) continue;
+                        if (palAir[id]) {
+                            world.setBlockState(
+                                new BlockPos(placeX + x, placeY + y, placeZ + z),
+                                state, ArenaBuilder.SET_FLAGS
+                            );
+                        } else if (!palGravity[id] && keep[flat]) {
+                            world.setBlockState(
+                                new BlockPos(placeX + x, placeY + y, placeZ + z),
+                                state, ArenaBuilder.SET_FLAGS
+                            );
+                            placed++;
                         }
                     }
                 }
             }
 
-            // Pass 3: stabilize gravity blocks. A schematic can contain sand or
-            // gravel over a gap (overhangs, buried air pockets, snow layers
-            // below — snow counts as fall-through support). The paste keeps them
-            // frozen because SET_FLAGS skips neighbor updates, but the first
-            // block update in combat drops them as falling entities — and any
-            // snow layer sitting on TOP breaks when its support falls away.
-            // Fill straight down with the same material until something solid
-            // can hold the column, so nothing collapses mid-fight.
+            // Pass 2: gravity blocks last so every support already exists
             for (int y = 0; y < height; y++) {
                 for (int z = 0; z < length; z++) {
                     for (int x = 0; x < width; x++) {
                         int flat = ((y * length) + z) * width + x;
-                        int paletteId = paletteIds[flat];
-                        if (paletteId < 0 || paletteId >= palette.length) continue;
-                        BlockState state = palette[paletteId];
-                        if (state == null || !(state.getBlock() instanceof FallingBlock)) continue;
-                        BlockPos.Mutable below = new BlockPos.Mutable(
-                            placeX + x, placeY + y - 1, placeZ + z);
-                        while (below.getY() >= placeY && canFallThrough(world.getBlockState(below))) {
-                            world.setBlockState(below.toImmutable(), state, ArenaBuilder.SET_FLAGS);
-                            below.move(net.minecraft.util.math.Direction.DOWN);
+                        int id = paletteIds[flat];
+                        if (id < 0 || id >= palCount) continue;
+                        BlockState state = palette[id];
+                        if (state != null && palGravity[id] && keep[flat] && synthetic[flat] == null) {
+                            world.setBlockState(
+                                new BlockPos(placeX + x, placeY + y, placeZ + z),
+                                state, ArenaBuilder.SET_FLAGS
+                            );
+                            placed++;
                         }
                     }
                 }
             }
+
+            CrafticsMod.LOGGER.info(
+                "Placed schematic: {} of {} solid blocks set ({} buried blocks culled, {} gravity supports added)",
+                placed, nonAir, nonAir - (placed - supports), supports);
+        }
+
+        /** True if any face of (x,y,z) borders something that doesn't fully hide it. */
+        private boolean isExposed(int[] paletteIds, boolean[] palHides, int x, int y, int z) {
+            return faceOpen(paletteIds, palHides, x + 1, y, z)
+                || faceOpen(paletteIds, palHides, x - 1, y, z)
+                || faceOpen(paletteIds, palHides, x, y, z + 1)
+                || faceOpen(paletteIds, palHides, x, y, z - 1)
+                || faceOpen(paletteIds, palHides, x, y + 1, z)
+                || faceOpen(paletteIds, palHides, x, y - 1, z);
+        }
+
+        /**
+         * Out of bounds counts as open: sides and sky, plus the underside so
+         * floating builds (home island) keep a correct bottom face.
+         */
+        private boolean faceOpen(int[] paletteIds, boolean[] palHides, int x, int y, int z) {
+            if (x < 0 || x >= width || y < 0 || y >= height || z < 0 || z >= length) return true;
+            int id = paletteIds[((y * length) + z) * width + x];
+            return id < 0 || id >= palHides.length || !palHides[id];
+        }
+
+        /**
+         * Solid support block placed under an unsupported gravity block:
+         * sand -> sandstone, red sand -> red sandstone, gravel -> stone,
+         * concrete powder -> matching concrete, anything else -> stone.
+         */
+        private static BlockState supportFor(BlockState gravityState) {
+            Block block = gravityState.getBlock();
+            if (block == Blocks.SAND || block == Blocks.SUSPICIOUS_SAND) return Blocks.SANDSTONE.getDefaultState();
+            if (block == Blocks.RED_SAND) return Blocks.RED_SANDSTONE.getDefaultState();
+            if (block == Blocks.GRAVEL || block == Blocks.SUSPICIOUS_GRAVEL) return Blocks.STONE.getDefaultState();
+            String path = Registries.BLOCK.getId(block).getPath();
+            if (path.endsWith("_concrete_powder")) {
+                Block concrete = Registries.BLOCK.get(Identifier.of("minecraft",
+                    path.substring(0, path.length() - "_powder".length())));
+                if (concrete != Blocks.AIR) return concrete.getDefaultState();
+            }
+            return Blocks.STONE.getDefaultState();
+        }
+
+        /** Version-split: the full-cube check signature differs between MC versions. */
+        private static boolean isOpaqueFullCube(BlockState state) {
+            //? if <=1.21.1 {
+            /*return state.isOpaqueFullCube(net.minecraft.world.EmptyBlockView.INSTANCE, net.minecraft.util.math.BlockPos.ORIGIN);
+            *///?} else {
+            return state.isOpaqueFullCube();
+            //?}
         }
 
         /** Mirrors vanilla FallingBlock.canFallThrough: the supports a gravity block falls past. */

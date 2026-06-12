@@ -3,6 +3,8 @@ package com.crackedgames.craftics.client.guide;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.fabricmc.loader.api.FabricLoader;
+
 /**
  * All guide book content. Categories contain entries, entries contain pages.
  * Bestiary entries carry structured MobStats so the screen can render stat
@@ -370,7 +372,7 @@ public class GuideBookData {
             "Phasing nuisance summoned by The Hexweaver. Dies to a stiff breeze, but stings every turn it's alive. Swat them with sweeping melee."));
         enemies.add(mob("Witch", "minecraft:witch_spawn_egg",
             st("Hostile", "12", "5", "2", "2", "3", null, "Slashing, Cleaving", "Special, Physical", "Water"),
-            "Throws harmful potions from range and channels with raised arms before big throws. Immune to Water damage — leave the trident at home."));
+            "Throws harmful potions from range and channels with raised arms before big throws. Her poison flask deals no impact damage — it's pure poison — while her harming flask hits for full. Immune to Water damage, so leave the trident at home."));
         enemies.add(mob("Phantom", "minecraft:phantom_spawn_egg",
             st("Hostile", "10-14", "5-7", "0-1", "4", "1-3", null, "Ranged", "Slashing", null),
             "Flying swooper. Dives from distance, hits, then retreats out of melee reach — each phantom builds its own dive-speed streak. Hard to pin down; ranged weapons preferred."));
@@ -421,6 +423,79 @@ public class GuideBookData {
         enemies.add(mob("End Crystal", "minecraft:end_crystal",
             st("Hazard", null, null, null, null, null, null, null, null, null),
             "Dragon's Nest hazard. Destructible — but it detonates when killed, damaging everything within 2 tiles. Pop it from range, or lure enemies next to it first."));
+        // --- Compatibility mobs (DYNAMIC: each block only adds entries when the
+        //     source mod is installed). Names must match entityTypeIdToMobName so
+        //     they auto-unlock on encounter via unlockBestiaryForCombat. Icons use
+        //     "moddedSpawnEgg|vanillaFallback" so they render with or without the
+        //     mod's items present. Base stats are taken from each mod's compat class. ---
+        FabricLoader loader = FabricLoader.getInstance();
+
+        // Creeper Overhaul — 12 biome-matched variants. They share the vanilla
+        // creeper's weakness/resistance profile; the variant identity is the blast.
+        if (loader.isModLoaded("creeperoverhaul")) {
+            String cWeak = "Ranged, Cleaving";
+            String cResist = "Slashing, Physical";
+            enemies.add(mob("Desert Creeper", "creeperoverhaul:desert_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "8", "3", "0", "2", null, null, cWeak, cResist, null),
+                "Desert creeper variant. Short fuse, detonates a turn sooner than normal. Blast inflicts Blindness. Replaces the creeper in Desert."));
+            enemies.add(mob("Jungle Creeper", "creeperoverhaul:jungle_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "8", "3", "0", "2", null, null, cWeak, cResist, null),
+                "Jungle creeper variant. Camouflages until within 3 tiles. Blast inflicts Poison. Replaces the creeper in Jungle."));
+            enemies.add(mob("Cave Creeper", "creeperoverhaul:cave_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "8", "3", "0", "2", null, null, cWeak, cResist, null),
+                "Underground creeper variant. Blast inflicts Blindness and Mining Fatigue. Replaces the creeper in Caverns and Deep Dark."));
+            enemies.add(mob("Bamboo Creeper", "creeperoverhaul:bamboo_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "8", "3", "0", "2", null, null, cWeak, cResist, null),
+                "Jungle creeper variant, arrives stacked on another mob. Camouflages until within 4 tiles. Blast inflicts Poison. Found in Jungle."));
+            enemies.add(mob("Dripstone Creeper", "creeperoverhaul:dripstone_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "9", "3", "0", "2", null, null, cWeak, cResist, null),
+                "Caverns creeper variant. Piercing blast hits harder than a normal creeper. 9 HP. Found in Caverns."));
+            enemies.add(mob("Snowy Creeper", "creeperoverhaul:snowy_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "8", "3", "0", "2", null, null, cWeak, cResist, null),
+                "Snowy creeper variant. Blast inflicts Slowness, applies Weakness on hit. Found in Snowy Tundra."));
+            enemies.add(mob("Hills Creeper", "creeperoverhaul:hills_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "8", "3", "0", "3", null, null, cWeak, cResist, null),
+                "Mountain creeper variant. +1 Speed and a larger blast radius. Applies Weakness on hit. Found in Mountains."));
+            enemies.add(mob("Dark Oak Creeper", "creeperoverhaul:dark_oak_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "10", "3", "1", "2", null, null, cWeak, cResist, null),
+                "Forest creeper variant. Tankiest creeper at 10 HP and 1 DEF. Otherwise behaves like a normal creeper. Found in Forest."));
+            enemies.add(mob("Plains Creeper", "creeperoverhaul:plains_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "7", "2", "0", "2", null, null, cWeak, cResist, null),
+                "Plains creeper variant. Weaker than a normal creeper with a smaller blast. Found in Plains."));
+            enemies.add(mob("Beach Creeper", "creeperoverhaul:beach_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "8", "3", "0", "2", null, null, cWeak, cResist, null),
+                "River creeper variant. Blast knocks you back 3 tiles and applies Soaked. Found in River."));
+            enemies.add(mob("Ocean Creeper", "creeperoverhaul:ocean_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "8", "3", "0", "2", null, null, cWeak, cResist, null),
+                "River creeper variant. Larger blast radius with heavy Soaked. Found in River."));
+            enemies.add(mob("Mushroom Creeper", "creeperoverhaul:mushroom_creeper_spawn_egg|minecraft:creeper_spawn_egg",
+                st("Hostile", "8", "3", "0", "2", null, null, cWeak, cResist, null),
+                "Chorus Grove creeper variant. Wide blast inflicts Poison. Found in Chorus Grove."));
+        }
+
+        // Variants & Ventures — 4 themed zombie/skeleton variants.
+        if (loader.isModLoaded("variantsandventures")) {
+            enemies.add(mob("Gelid", "variantsandventures:gelid_spawn_egg|minecraft:zombie_spawn_egg",
+                st("Hostile", "8", "2", "0", "1", "1", null, "Blunt, Cleaving", null, null),
+                "Frozen zombie variant. Slow melee walker like a zombie. Applies Weakness on hit. Found in Snowy Tundra and Mountains."));
+            enemies.add(mob("Thicket", "variantsandventures:thicket_spawn_egg|minecraft:zombie_spawn_egg",
+                st("Hostile", "8", "3", "0", "1", "1", null, "Blunt, Cleaving", null, null),
+                "Jungle zombie variant. Hits harder than a normal zombie and applies Poison on hit. Found in Jungle."));
+            enemies.add(mob("Verdant", "variantsandventures:verdant_spawn_egg|minecraft:skeleton_spawn_egg",
+                st("Hostile", "6", "2", "0", "2", "3", null, "Blunt", "Ranged, Physical", null),
+                "Jungle skeleton variant. Ranged kiter at range 3 with Poison arrows. Found in Jungle and Forest."));
+            enemies.add(mob("Murk", "variantsandventures:murk_spawn_egg|minecraft:skeleton_spawn_egg",
+                st("Hostile", "7", "3", "0", "2", "2", null, "Blunt", "Ranged, Physical", null),
+                "River skeleton variant armed with shears. Range 2, but hits harder up close and applies Soaked on hit. Found in River."));
+        }
+
+        // Artifacts — the Mimic ambush from the Abandoned Campsite event.
+        if (loader.isModLoaded("artifacts")) {
+            enemies.add(mob("Mimic", "artifacts:mimic_spawn_egg|minecraft:chest",
+                st("Ambush", "15+", "10", "2", null, null, null, null, null, null),
+                "Ambusher disguised as loot. Only appears in the Abandoned Campsite event between levels. HP scales to 75% of the biome boss, minimum 15. Each turn it alternates two attacks: Tantrum hops 4-6 times through nearby tiles and deals 10 damage if it lands on you; Dash charges in a straight line until it hits a wall for 10 damage, shoving anything in its path. Drops a random artifact on defeat."));
+        }
+
         // --- Bosses (named exactly as CombatManager.getBossName) ---
         // Boss HP gets a large multiplier on top of base + biome scaling.
         enemies.add(mob("The Revenant", "minecraft:zombie_head",
@@ -1182,12 +1257,12 @@ public class GuideBookData {
             new Page("Bait or Treasure?",
                 "~10% chance: something glints on the ground ahead.\n\n" +
                 "The party votes — Take it or Leave it.\n\n" +
-                "Take: 50/50 between a rare reward... or an AMBUSH — fast enemies surround you in a cramped arena.\n" +
+                "Take: 50/50 between a rare reward... or an AMBUSH in a cramped arena.\n" +
                 "Leave: you walk past. Nothing gained, nothing risked.\n\n" +
                 "Tied votes spring the ambush. Keep healing items ready before grabbing."),
             new Page("If It's an Ambush",
-                "2-3 fast enemies, tight quarters, you're surrounded.\n\n" +
-                "Win for a small emerald bonus. AoE weapons and a stun bell turn the tables fast.")
+                "2-3 enemies pulled from the CURRENT biome's pool — zombies in Plains, magma cubes in the Nether, and so on — scaled to the biome like a normal fight. They aren't faster or special, just sudden and close in a small arena.\n\n" +
+                "Win for a small emerald bonus. AoE weapons and a stun bell clear the crowd fast.")
         )));
         events.add(new Entry("Shrine of Fortune", "minecraft:gold_block", List.of(
             new Page("Emerald Gamble",
@@ -1204,9 +1279,10 @@ public class GuideBookData {
         )));
         events.add(new Entry("Dig Site", "minecraft:brush", List.of(
             new Page("Push Your Luck",
-                "~6% chance between levels.\n\n" +
-                "An excavation field of suspicious blocks. Brush them out one at a time — each brushed block may hold loot... or end the dig.\n\n" +
-                "Walk away with your haul anytime, or keep brushing for more. Greed is how museums lose archaeologists.")
+                "~6% chance between levels. Each player digs their own site.\n\n" +
+                "You start at a 5% pull chance. \"Keep brushing\" adds 15% to it, but every brush has a 10% chance to break the relic and end your dig empty-handed.\n\n" +
+                "\"Attempt\" at any time rolls your current pull chance: success digs out a random pottery sherd, failure gets nothing. The brush option disappears once the pull hits 100%.\n\n" +
+                "Stop early to play it safe, or keep brushing for better odds and risk the break. The sherd you pull feeds the Special \"Sherd Caster\" build.")
         )));
         events.add(new Entry("Wandering Enchanter", "minecraft:lapis_lazuli", List.of(
             new Page("Arcane Services",
@@ -1235,6 +1311,16 @@ public class GuideBookData {
         // === MULTIPLAYER ===
         List<Entry> coop = new ArrayList<>();
         coop.add(new Entry("Playing in a Party", "minecraft:player_head", List.of(
+            new Page("Making a Party",
+                "Parties are run with chat commands, all under §e/craftics party§r:\n\n" +
+                "create — start a party (you become leader)\n" +
+                "invite <player> — leader invites someone; they get a clickable [ACCEPT]/[DECLINE]\n" +
+                "accept / decline — answer an invite\n" +
+                "list — show members and who's online\n" +
+                "leave — leave your party\n" +
+                "kick <player> / disband — leader only\n" +
+                "name <text> — rename the party\n\n" +
+                "Up to 4 players (server-configurable). The leader starts and controls biome entry from the hub, and the whole party joins the run together."),
             new Page("Co-op Basics",
                 "Craftics is fully co-op. The party shares the campaign and fights together on the same grid.\n\n" +
                 "- Players take their turns in rotation before the enemy phase\n" +
@@ -1254,12 +1340,16 @@ public class GuideBookData {
         List<Entry> worldEntries = new ArrayList<>();
         worldEntries.add(new Entry("Your Hub", "minecraft:campfire", List.of(
             new Page("Home Base",
-                "Between runs you live at the hub — your island in the Craftics dimension.\n\n" +
-                "- Manage your battle party (Shift+Right-Click mobs)\n" +
-                "- Saddle mounts and equip pet armor\n" +
-                "- Apply armor trims at the Smithing Table\n" +
-                "- Heal up before the next level\n\n" +
-                "In multiplayer each player gets their own island. Pets you tame mid-run are waiting for you here after the fight.")
+                "The hub is your personal island in the Craftics dimension — where you start runs and return between fights. In multiplayer every player gets their own island.\n\n" +
+                "Right-click the Level Select block to open the biome/level picker and launch a run. After every fight, event, or defeat you return here — fully healed — for the next attempt.\n\n" +
+                "In a party, the leader picks the biome and starts the run from their hub; the whole party is pulled in together."),
+            new Page("What You Do Here",
+                "Everything you can't do mid-combat happens at the hub:\n\n" +
+                "- Battle party: Shift+Right-Click a tamed or rideable mob to toggle it in your party\n" +
+                "- Mounts & pets: equip a Saddle on a rideable party mob, and fit pet armor before taming\n" +
+                "- Armor trims: apply trim patterns and materials at a Smithing Table\n" +
+                "- Roster: pets you tame mid-run are waiting here after the fight\n\n" +
+                "Sort your loadout, party, and trims here before stepping into the next biome.")
         )));
         worldEntries.add(new Entry("The Campaign", "minecraft:filled_map", List.of(
             new Page("Biomes & Regions",
@@ -1311,9 +1401,22 @@ public class GuideBookData {
                 "All work like the vanilla totem: carry to auto-revive, or eat for the heal.")
         )));
         addons.add(new Entry("Basic Weapons", "minecraft:iron_sword", List.of(
-            new Page("New Weapon Types",
-                "§7Basic Weapons§r adds 6 weapon classes (daggers, hammers, spears and more), each mapped to a Craftics damage type, plus the Might enchantment.\n\n" +
-                "Tier-for-tier they trade between AP cost, damage and reach — more ways to fill every loadout.")
+            new Page("The Six Weapons",
+                "§7Basic Weapons§r adds six weapon types in every tier from wood to netherite (no bronze):\n\n" +
+                "Dagger — Slashing, 1 AP, range 1. Dual-wield two daggers to strike TWICE per turn for 1 AP.\n" +
+                "Spear — Slashing, 1 AP, range 2. A reach weapon, hits from 2 tiles.\n" +
+                "Quarterstaff — Blunt, 1 AP, range 2. Reach 2 plus a small sweep to adjacent foes.\n" +
+                "Club — Blunt, 2 AP, range 1. Chance to Slow on hit.\n" +
+                "Hammer — Blunt, 3 AP, range 1. Mace-style knockback, stun, and shockwave.\n" +
+                "Glaive — Cleaving, 3 AP, range 1. Full hit plus a half-damage wide cleave arc."),
+            new Page("Damage & Might",
+                "Damage tracks the vanilla weapons per tier:\n" +
+                "Dagger & Quarterstaff = Sword damage minus 1\n" +
+                "Spear = Sword damage\n" +
+                "Club = Axe damage\n" +
+                "Hammer & Glaive = Axe damage plus 1\n\n" +
+                "The §bMight§r enchantment goes on the Blunt weapons (Club, Hammer, Quarterstaff): +1 bonus damage and +5% stun chance per level.\n\n" +
+                "Daggers suit Slashing builds, Spears and Quarterstaffs give cheap reach, and the heavy Blunt and Cleaving weapons hit hardest for more AP.")
         )));
         addons.add(new Entry("Instruments", "minecraft:note_block", List.of(
             new Page("Battle Bards",
@@ -1332,5 +1435,12 @@ public class GuideBookData {
         )));
         CATEGORIES.add(new Category("Addon Mods", "minecraft:copper_ingot",
             "Supported mods and what they add. Entries apply only if the mod is installed.", addons));
+
+        // === HALL OF TESTERS ===
+        // Custom-rendered from TesterRegistry by GuideBookScreen (it draws each
+        // person's skin head and their live rank color), so no static entries
+        // are needed here — the category just provides the sidebar tab.
+        CATEGORIES.add(new Category("Hall of Testers", "minecraft:player_head",
+            "The people who built, tested, and debugged Craftics. Thank you.", List.of()));
     }
 }

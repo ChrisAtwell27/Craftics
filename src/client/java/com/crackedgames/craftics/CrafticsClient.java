@@ -540,6 +540,7 @@ public class CrafticsClient implements ClientModInitializer {
         CombatTooltips.register();
         TileOverlayRenderer.register();
         com.crackedgames.craftics.client.PartyLabelRenderer.register();
+        com.crackedgames.craftics.client.TesterLabelRenderer.register();
 
         // Client-side deferred copper-tier registration. The MP client never sees
         // ServerLifecycleEvents, but tooltips still need WeaponRegistry populated.

@@ -1,11 +1,16 @@
 package com.crackedgames.craftics.client.guide;
 
+import com.crackedgames.craftics.client.TesterRegistry;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.ProfileComponent;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 
@@ -13,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Guide book screen — polished parchment field manual.
@@ -57,11 +63,13 @@ public class GuideBookScreen extends Screen {
     private int selectedCategory = 0;
     private int selectedEntry = 0;
     private int currentPage = 0;
+    private int bestiaryPage = 0;   // current page of the bestiary grid
     private int sidebarScroll = 0;
     private int maxSidebarScroll = 0;
 
     // ── Click zones (rebuilt every frame) ────────────────────────────────────
-    private static final int Z_CAT = 0, Z_ENTRY = 1, Z_CELL = 2, Z_PREV = 3, Z_NEXT = 4, Z_BACK = 5;
+    private static final int Z_CAT = 0, Z_ENTRY = 1, Z_CELL = 2, Z_PREV = 3, Z_NEXT = 4, Z_BACK = 5,
+                             Z_BPREV = 6, Z_BNEXT = 7;
     private record Zone(int kind, int a, int x, int y, int w, int h) {
         boolean contains(double mx, double my) {
             return mx >= x && mx < x + w && my >= y && my < y + h;
@@ -79,12 +87,42 @@ public class GuideBookScreen extends Screen {
     private static ItemStack icon(String id) {
         if (id == null || id.isEmpty()) return ItemStack.EMPTY;
         return ICON_CACHE.computeIfAbsent(id, key -> {
-            try {
-                Item item = Registries.ITEM.get(Identifier.of(key));
-                return new ItemStack(item);
-            } catch (Exception e) {
-                return ItemStack.EMPTY;
+            // Support "preferredId|fallbackId|..." chains: used by compat bestiary
+            // entries so a modded spawn-egg icon (e.g. creeperoverhaul:desert_creeper_spawn_egg)
+            // falls back to a vanilla item when that mod's item isn't registered.
+            // Plain single ids (no '|') behave exactly as before.
+            for (String part : key.split("\\|")) {
+                if (part.isEmpty()) continue;
+                try {
+                    Identifier ident = Identifier.of(part);
+                    if (Registries.ITEM.containsId(ident)) {
+                        return new ItemStack(Registries.ITEM.get(ident));
+                    }
+                } catch (Exception ignored) {
+                    // malformed id — try the next fallback
+                }
             }
+            return ItemStack.EMPTY;
+        });
+    }
+
+    // Player-head ItemStack cache for the Hall of Testers — built once per name.
+    // Minecraft resolves and caches the skin for a profile player-head itself,
+    // so this works for offline names too (shows the default head until the skin
+    // finishes loading, then swaps in the real one).
+    private static final Map<String, ItemStack> HEAD_CACHE = new HashMap<>();
+
+    private static ItemStack testerHead(String name) {
+        return HEAD_CACHE.computeIfAbsent(name, n -> {
+            ItemStack head = new ItemStack(Items.PLAYER_HEAD);
+            try {
+                head.set(DataComponentTypes.PROFILE,
+                    new ProfileComponent(Optional.of(n), Optional.empty(),
+                        new com.mojang.authlib.properties.PropertyMap()));
+            } catch (Throwable ignored) {
+                // Fall back to a blank head rather than break the guide.
+            }
+            return head;
         });
     }
 
@@ -261,6 +299,11 @@ public class GuideBookScreen extends Screen {
             return;
         }
 
+        if (cat.name().equals("Hall of Testers")) {
+            drawTesterHall(ctx, cat);
+            return;
+        }
+
         if (selectedEntry < 0 || selectedEntry >= cat.entries().size()) {
             drawCategoryLanding(ctx, cat);
             return;
@@ -303,6 +346,54 @@ public class GuideBookScreen extends Screen {
             ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(line),
                 pageX + pageW / 2, cy + 26, INK_SOFT);
         }
+    }
+
+    /** Hall of Testers: each person's skin head + name/title in their live rank color, grouped by rank. */
+    private void drawTesterHall(DrawContext ctx, GuideBookData.Category cat) {
+        int y = pageY + 2;
+        ctx.drawText(textRenderer, Text.literal("§lHall of Testers"), pageX, y, INK, false);
+        y += LINE_HEIGHT + 4;
+        drawRule(ctx, pageX, y, pageW);
+        y += 6;
+        for (String line : wrapText("§o" + cat.description(), pageW)) {
+            ctx.drawText(textRenderer, Text.literal(line), pageX, y, INK_SOFT, false);
+            y += LINE_HEIGHT;
+        }
+        y += 4;
+
+        int bottom = pageY + pageH;
+        for (TesterRegistry.Rank rank : TesterRegistry.Rank.values()) {
+            List<TesterRegistry.Tester> group = new ArrayList<>();
+            for (TesterRegistry.Tester t : TesterRegistry.all()) {
+                if (t.rank() == rank) group.add(t);
+            }
+            if (group.isEmpty()) continue;
+            if (y + LINE_HEIGHT > bottom) return;
+            ctx.drawText(textRenderer, Text.literal("§l" + rankLabel(rank)), pageX, y, INK, false);
+            y += LINE_HEIGHT + 2;
+            for (TesterRegistry.Tester t : group) {
+                if (y + 18 > bottom) return;
+                ctx.drawItem(testerHead(t.name()), pageX + 2, y - 3);
+                int col = TesterRegistry.colorOf(t);
+                Text nameText = TesterRegistry.isBold(t)
+                    ? Text.literal(t.name()).formatted(Formatting.BOLD)
+                    : Text.literal(t.name());
+                int nameX = pageX + 22;
+                ctx.drawTextWithShadow(textRenderer, nameText, nameX, y, col);
+                int titleX = nameX + textRenderer.getWidth(nameText) + 6;
+                ctx.drawText(textRenderer, Text.literal(t.title()), titleX, y, INK_SOFT, false);
+                y += 19;
+            }
+            y += 3;
+        }
+    }
+
+    private static String rankLabel(TesterRegistry.Rank rank) {
+        return switch (rank) {
+            case CREATOR -> "Creator";
+            case HELPER -> "Special Helpers";
+            case TESTER -> "Testers";
+        };
     }
 
     /** Decorative horizontal rule with a center diamond. */
@@ -390,13 +481,23 @@ public class GuideBookScreen extends Screen {
             }
         }
 
-        // Grid
+        // Grid (paginated — reserves the bottom row for Prev/Next page nav)
         int cols = Math.max(4, (pageW + 2) / (CELL + 2));
+        int gridTop = y;
+        int gridBottom = bookY + bookH - 21;
+        int rows = Math.max(1, (gridBottom - gridTop + 2) / (CELL + 2));
+        int perPage = Math.max(1, rows * cols);
+        int totalEntries = cat.entries().size();
+        int totalPages = Math.max(1, (totalEntries + perPage - 1) / perPage);
+        bestiaryPage = MathHelper.clamp(bestiaryPage, 0, totalPages - 1);
+        int start = bestiaryPage * perPage;
+        int end = Math.min(totalEntries, start + perPage);
+
         String hoverName = null;
-        for (int i = 0; i < cat.entries().size(); i++) {
-            int cx = pageX + (i % cols) * (CELL + 2);
-            int cy = y + (i / cols) * (CELL + 2);
-            if (cy + CELL > pageY + pageH) break;
+        for (int i = start; i < end; i++) {
+            int slot = i - start;
+            int cx = pageX + (slot % cols) * (CELL + 2);
+            int cy = gridTop + (slot / cols) * (CELL + 2);
 
             GuideBookData.Entry entry = cat.entries().get(i);
             boolean unlocked = GuideBookData.isUnlocked(entry.name());
@@ -426,6 +527,29 @@ public class GuideBookScreen extends Screen {
         if (hoverName != null) {
             ctx.drawTooltip(textRenderer, Text.literal(hoverName), mouseX, mouseY);
         }
+
+        drawBestiaryNav(ctx, totalPages, mouseX, mouseY);
+    }
+
+    /** Grid page nav — mirrors drawPageNav exactly so the bestiary pages the same way. */
+    private void drawBestiaryNav(DrawContext ctx, int totalPages, int mouseX, int mouseY) {
+        if (totalPages <= 1) return;
+
+        int navY = bookY + bookH - 19;
+        int btnW = 44, btnH = 13;
+
+        if (bestiaryPage > 0) {
+            drawNavButton(ctx, pageX, navY, btnW, btnH, "◀ Prev", mouseX, mouseY);
+            zones.add(new Zone(Z_BPREV, 0, pageX, navY, btnW, btnH));
+        }
+        if (bestiaryPage < totalPages - 1) {
+            int nx = pageX + pageW - btnW;
+            drawNavButton(ctx, nx, navY, btnW, btnH, "Next ▶", mouseX, mouseY);
+            zones.add(new Zone(Z_BNEXT, 0, nx, navY, btnW, btnH));
+        }
+        ctx.drawCenteredTextWithShadow(textRenderer,
+            Text.literal((bestiaryPage + 1) + " / " + totalPages),
+            pageX + pageW / 2, navY + 3, INK_FAINT);
     }
 
     /** Detail view: name, role + stat badges, weak/resist lines, description. */
@@ -551,6 +675,7 @@ public class GuideBookScreen extends Screen {
                             selectedCategory = z.a();
                             selectedEntry = cats.get(z.a()).name().equals("Enemy Bestiary") ? -1 : 0;
                             currentPage = 0;
+                            bestiaryPage = 0;
                             sidebarScroll = 0;
                         } else if (cats.get(z.a()).name().equals("Enemy Bestiary")) {
                             selectedEntry = -1; // back to grid
@@ -567,6 +692,8 @@ public class GuideBookScreen extends Screen {
                     case Z_PREV -> { currentPage--; return true; }
                     case Z_NEXT -> { currentPage++; return true; }
                     case Z_BACK -> { selectedEntry = -1; currentPage = 0; return true; }
+                    case Z_BPREV -> { bestiaryPage--; return true; }
+                    case Z_BNEXT -> { bestiaryPage++; return true; }
                 }
             }
         }
@@ -587,6 +714,12 @@ public class GuideBookScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         // Arrow keys flip pages
         List<GuideBookData.Category> cats = GuideBookData.getCategories();
+        // Bestiary grid view: arrows flip grid pages (upper bound clamped in render)
+        if (selectedCategory < cats.size() && selectedEntry < 0
+                && cats.get(selectedCategory).name().equals("Enemy Bestiary")) {
+            if (keyCode == 263 && bestiaryPage > 0) { bestiaryPage--; return true; } // LEFT
+            if (keyCode == 262) { bestiaryPage++; return true; }                     // RIGHT
+        }
         if (selectedCategory < cats.size() && selectedEntry >= 0
                 && selectedEntry < cats.get(selectedCategory).entries().size()) {
             GuideBookData.Entry entry = cats.get(selectedCategory).entries().get(selectedEntry);
