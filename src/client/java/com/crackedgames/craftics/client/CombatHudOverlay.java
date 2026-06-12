@@ -1628,4 +1628,19 @@ public class CombatHudOverlay implements HudRenderCallback {
         return switch (typeId) {
             case "minecraft:skeleton", "minecraft:stray" -> "Kites at range, retreats if close";
             case "minecraft:creeper" -> "Sneaks close, fuses, then explodes";
-            case "minecraft:spider" -> "Pounces over obstacles"
+            case "minecraft:spider" -> "Pounces over obstacles";
+            case "minecraft:enderman" -> "Teleports across the arena";
+            case "minecraft:endermite", "minecraft:breeze" -> "Blinks a short distance";
+            case "minecraft:vindicator", "minecraft:piglin_brute" -> "Dashes in a straight line";
+            case "minecraft:hoglin", "minecraft:ravager" -> "Charges in a straight line";
+            case "minecraft:magma_cube", "minecraft:slime" -> "Bounces toward you, ignoring walls";
+            case "minecraft:phantom" -> "Swoops in over obstacles";
+            case "minecraft:ghast" -> "Attacks from long range";
+            case "minecraft:blaze" -> "Ranged fire attacks";
+            case "minecraft:witch" -> "Throws splash potions";
+            case "minecraft:warden" -> "Slow, but hits very hard";
+            case "minecraft:wither_skeleton" -> "Inflicts Wither on hit";
+            default -> "";
+        };
+    }
+}
