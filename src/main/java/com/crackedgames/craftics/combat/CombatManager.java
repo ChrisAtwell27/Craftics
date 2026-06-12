@@ -22599,8 +22599,18 @@ public class CombatManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
         boolean anyNew = false;
+        // Bosses unlock their display-name entry ("The Revenant"), not the base
+        // mob's ("Zombie") — guide book boss entries are keyed by getBossName.
+        String bossName = null;
+        if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
+            bossName = getBossName(gld.getBiomeTemplate().biomeId);
+        }
         for (CombatEntity e : enemies) {
             if (e.isAlly()) continue;
+            if (e.isBoss() && bossName != null && !bossName.equals("Boss")) {
+                if (pd.unlockGuideEntry(bossName)) anyNew = true;
+                continue;
+            }
             String mobName = entityTypeIdToMobName(e.getEntityTypeId());
             if (pd.unlockGuideEntry(mobName)) anyNew = true;
         }

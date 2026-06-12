@@ -2,387 +2,571 @@ package com.crackedgames.craftics.client.guide;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.MathHelper;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Guide book screen with vertical accordion sidebar.
- * Left side: category headers (click to expand) with entries listed below selected category.
- * Right side: page content for selected entry.
+ * Guide book screen — polished parchment field manual.
+ *
+ * Left: leather sidebar with an icon accordion (categories + entries).
+ * Right: parchment page with the selected entry's content.
+ * Bestiary renders as an icon grid with structured stat badges in the detail view.
+ *
+ * Everything is custom-drawn with fills / text / item icons (no textures,
+ * no ButtonWidgets) so it renders identically on every stonecutter shard.
  */
 public class GuideBookScreen extends Screen {
+    // UI version: 2026-06-12 parchment overhaul
 
-    private static final int BOOK_WIDTH = 380;
-    private static final int BOOK_HEIGHT = 250;
-    private static final int SIDEBAR_WIDTH = 120;
-    private static final int PADDING = 8;
+    // ── Palette ──────────────────────────────────────────────────────────────
+    private static final int COVER_EDGE   = 0xFF1F1209;
+    private static final int COVER        = 0xFF3D2817;
+    private static final int COVER_LIGHT  = 0xFF5A3D24;
+    private static final int SIDEBAR_BG   = 0xFF31200F;
+    private static final int SIDEBAR_ROW  = 0xFF3F2B16;
+    private static final int SIDEBAR_HOVER= 0xFF54391D;
+    private static final int SIDEBAR_SEL  = 0xFF6B4A24;
+    private static final int GOLD         = 0xFFE8B637;
+    private static final int GOLD_DIM     = 0xFFB78A2A;
+    private static final int PARCH        = 0xFFEADCB3;
+    private static final int PARCH_EDGE   = 0xFFD9C490;
+    private static final int PARCH_SHADE  = 0xFFC4AA72;
+    private static final int INK          = 0xFF3B2B12;
+    private static final int INK_SOFT     = 0xFF6E5A36;
+    private static final int INK_FAINT    = 0xFF9A8455;
+    private static final int RULE         = 0xFFB39A66;
+
     private static final int LINE_HEIGHT = 11;
-    private static final int CATEGORY_HEIGHT = 16;
-    private static final int ENTRY_HEIGHT = 14;
 
-    private int bookX, bookY;
+    // ── Layout (computed in init) ────────────────────────────────────────────
+    private int bookX, bookY, bookW, bookH;
+    private int sidebarW;
+    private int headerH = 18;
+    private int pageX, pageY, pageW, pageH; // parchment content area
+
+    // ── State ────────────────────────────────────────────────────────────────
     private int selectedCategory = 0;
     private int selectedEntry = 0;
     private int currentPage = 0;
     private int sidebarScroll = 0;
     private int maxSidebarScroll = 0;
 
+    // ── Click zones (rebuilt every frame) ────────────────────────────────────
+    private static final int Z_CAT = 0, Z_ENTRY = 1, Z_CELL = 2, Z_PREV = 3, Z_NEXT = 4, Z_BACK = 5;
+    private record Zone(int kind, int a, int x, int y, int w, int h) {
+        boolean contains(double mx, double my) {
+            return mx >= x && mx < x + w && my >= y && my < y + h;
+        }
+    }
+    private final List<Zone> zones = new ArrayList<>();
+
+    // Item icon cache: id string -> stack (AIR for unknown ids, drawn as nothing)
+    private static final Map<String, ItemStack> ICON_CACHE = new HashMap<>();
+
     public GuideBookScreen() {
         super(Text.literal("Craftics Field Manual"));
+    }
+
+    private static ItemStack icon(String id) {
+        if (id == null || id.isEmpty()) return ItemStack.EMPTY;
+        return ICON_CACHE.computeIfAbsent(id, key -> {
+            try {
+                Item item = Registries.ITEM.get(Identifier.of(key));
+                return new ItemStack(item);
+            } catch (Exception e) {
+                return ItemStack.EMPTY;
+            }
+        });
     }
 
     @Override
     protected void init() {
         super.init();
-        bookX = (width - BOOK_WIDTH) / 2;
-        bookY = (height - BOOK_HEIGHT) / 2;
-        rebuildButtons();
+        // Responsive book: grows with the window within sane bounds
+        bookW = MathHelper.clamp(width - 70, 360, 560);
+        bookH = MathHelper.clamp(height - 60, 240, 340);
+        bookX = (width - bookW) / 2;
+        bookY = (height - bookH) / 2;
+        sidebarW = bookW >= 500 ? 144 : 126;
+        pageX = bookX + sidebarW + 7;
+        pageY = bookY + headerH + 4;
+        pageW = bookX + bookW - 8 - pageX;
+        pageH = bookY + bookH - 8 - pageY;
     }
 
-    private void rebuildButtons() {
-        clearChildren();
-        List<GuideBookData.Category> cats = GuideBookData.getCategories();
-
-        // Calculate total sidebar content height for scrolling
-        int totalHeight = 0;
-        for (int i = 0; i < cats.size(); i++) {
-            totalHeight += CATEGORY_HEIGHT + 2;
-            if (i == selectedCategory) {
-                totalHeight += cats.get(i).entries().size() * (ENTRY_HEIGHT + 1);
-            }
-        }
-        int sidebarVisibleH = BOOK_HEIGHT - PADDING * 2;
-        maxSidebarScroll = Math.max(0, totalHeight - sidebarVisibleH);
-        sidebarScroll = Math.min(sidebarScroll, maxSidebarScroll);
-
-        // Build accordion: category headers + entries for selected category
-        int y = bookY + PADDING - sidebarScroll;
-        for (int catIdx = 0; catIdx < cats.size(); catIdx++) {
-            GuideBookData.Category cat = cats.get(catIdx);
-            final int ci = catIdx;
-            boolean isSelected = (catIdx == selectedCategory);
-
-            // Category header button
-            String catLabel = (isSelected ? "\u00a7e\u25bc " : "\u00a77\u25b6 ") + cat.name();
-            if (y + CATEGORY_HEIGHT > bookY && y < bookY + BOOK_HEIGHT) {
-                var catBtn = ButtonWidget.builder(
-                    Text.literal(catLabel),
-                    b -> {
-                        if (selectedCategory != ci) {
-                            selectedCategory = ci;
-                            // Bestiary starts with no entry selected so the grid shows first
-                            selectedEntry = cats.get(ci).name().equals("Enemy Bestiary") ? -1 : 0;
-                            currentPage = 0;
-                            sidebarScroll = 0;
-                        } else if (cats.get(ci).name().equals("Enemy Bestiary")) {
-                            // Re-clicking Bestiary category goes back to grid
-                            selectedEntry = -1;
-                        }
-                        rebuildButtons();
-                    }
-                ).dimensions(bookX + 2, y, SIDEBAR_WIDTH - 4, CATEGORY_HEIGHT).build();
-                addDrawableChild(catBtn);
-            }
-            y += CATEGORY_HEIGHT + 2;
-
-            // Entries for selected category (skip for Bestiary — uses grid in content area)
-            if (isSelected && !cat.name().equals("Enemy Bestiary")) {
-                for (int entIdx = 0; entIdx < cat.entries().size(); entIdx++) {
-                    GuideBookData.Entry entry = cat.entries().get(entIdx);
-                    boolean unlocked = GuideBookData.isUnlocked(entry.name());
-                    final int ei = entIdx;
-
-                    boolean isSelectedEntry = (entIdx == selectedEntry);
-                    String entLabel;
-                    if (!unlocked) entLabel = "  \u00a78???";
-                    else if (isSelectedEntry) entLabel = "  \u00a7e\u25b8 " + entry.name();
-                    else entLabel = "  " + entry.name();
-                    if (y + ENTRY_HEIGHT > bookY && y < bookY + BOOK_HEIGHT) {
-                        var entBtn = ButtonWidget.builder(
-                            Text.literal(entLabel),
-                            b -> {
-                                if (unlocked) {
-                                    selectedEntry = ei;
-                                    currentPage = 0;
-                                    rebuildButtons();
-                                }
-                            }
-                        ).dimensions(bookX + 6, y, SIDEBAR_WIDTH - 10, ENTRY_HEIGHT).build();
-                        entBtn.active = unlocked;
-                        addDrawableChild(entBtn);
-                    }
-                    y += ENTRY_HEIGHT + 1;
-                }
-            }
-        }
-
-        // Page navigation arrows
-        GuideBookData.Category currentCat = cats.get(selectedCategory);
-        if (selectedEntry >= 0 && selectedEntry < currentCat.entries().size()) {
-            GuideBookData.Entry entry = currentCat.entries().get(selectedEntry);
-            if (GuideBookData.isUnlocked(entry.name())) {
-                int navY = bookY + BOOK_HEIGHT - 24;
-                int contentX = bookX + SIDEBAR_WIDTH + PADDING;
-
-                if (currentPage > 0) {
-                    addDrawableChild(ButtonWidget.builder(
-                        Text.literal("< Prev"),
-                        b -> { currentPage--; rebuildButtons(); }
-                    ).dimensions(contentX, navY, 50, 18).build());
-                }
-                if (currentPage < entry.pages().size() - 1) {
-                    addDrawableChild(ButtonWidget.builder(
-                        Text.literal("Next >"),
-                        b -> { currentPage++; rebuildButtons(); }
-                    ).dimensions(bookX + BOOK_WIDTH - 58, navY, 50, 18).build());
-                }
-            }
-        }
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // Rendering
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
-        // Darkened background
-        ctx.fill(0, 0, width, height, 0xA0000000);
+        zones.clear();
 
-        // Book background
-        ctx.fill(bookX - 2, bookY - 2, bookX + BOOK_WIDTH + 2, bookY + BOOK_HEIGHT + 2, 0xFF3B2A1A);
-        ctx.fill(bookX, bookY, bookX + BOOK_WIDTH, bookY + BOOK_HEIGHT, 0xFF5C4033);
+        // Dim the world
+        ctx.fill(0, 0, width, height, 0xB0000000);
 
-        // Sidebar background
-        ctx.fill(bookX, bookY, bookX + SIDEBAR_WIDTH, bookY + BOOK_HEIGHT, 0xFF4A3528);
+        drawBookChrome(ctx);
+        drawSidebar(ctx, mouseX, mouseY);
+        drawContent(ctx, mouseX, mouseY);
+    }
 
-        // Sidebar divider line
-        ctx.fill(bookX + SIDEBAR_WIDTH, bookY, bookX + SIDEBAR_WIDTH + 1, bookY + BOOK_HEIGHT, 0xFF2A1A0E);
+    /** Leather cover, spine, header band, title, corner studs, parchment page. */
+    private void drawBookChrome(DrawContext ctx) {
+        // Cover with bevel
+        ctx.fill(bookX - 4, bookY - 4, bookX + bookW + 4, bookY + bookH + 4, COVER_EDGE);
+        ctx.fill(bookX - 2, bookY - 2, bookX + bookW + 2, bookY + bookH + 2, COVER);
+        ctx.fill(bookX - 2, bookY - 2, bookX + bookW + 2, bookY, COVER_LIGHT); // top bevel highlight
 
-        // Render sidebar buttons clipped to sidebar bounds
-        ctx.enableScissor(bookX, bookY, bookX + SIDEBAR_WIDTH, bookY + BOOK_HEIGHT);
-        super.render(ctx, mouseX, mouseY, delta);
-        ctx.disableScissor();
+        // Header band
+        ctx.fill(bookX, bookY, bookX + bookW, bookY + headerH, SIDEBAR_BG);
+        ctx.fill(bookX, bookY + headerH - 1, bookX + bookW, bookY + headerH, COVER_EDGE);
+        ctx.fill(bookX, bookY + headerH, bookX + bookW, bookY + headerH + 1, GOLD_DIM);
 
-        // Re-render content area buttons (page nav) outside scissor so they're visible
-        for (var child : children()) {
-            if (child instanceof ButtonWidget btn) {
-                if (btn.getX() >= bookX + SIDEBAR_WIDTH) {
-                    btn.render(ctx, mouseX, mouseY, delta);
+        // Title with flourishes
+        String flourish = "✦ ";
+        ctx.drawCenteredTextWithShadow(textRenderer,
+            Text.literal("§l" + flourish + title.getString() + " " + "✦"),
+            bookX + bookW / 2, bookY + 5, GOLD);
+
+        // Gold corner studs
+        int s = 3;
+        ctx.fill(bookX - 3, bookY - 3, bookX - 3 + s, bookY - 3 + s, GOLD_DIM);
+        ctx.fill(bookX + bookW + 3 - s, bookY - 3, bookX + bookW + 3, bookY - 3 + s, GOLD_DIM);
+        ctx.fill(bookX - 3, bookY + bookH + 3 - s, bookX - 3 + s, bookY + bookH + 3, GOLD_DIM);
+        ctx.fill(bookX + bookW + 3 - s, bookY + bookH + 3 - s, bookX + bookW + 3, bookY + bookH + 3, GOLD_DIM);
+
+        // Sidebar leather
+        ctx.fill(bookX, bookY + headerH + 1, bookX + sidebarW, bookY + bookH, SIDEBAR_BG);
+        // Spine shadow
+        ctx.fill(bookX + sidebarW, bookY + headerH + 1, bookX + sidebarW + 2, bookY + bookH, COVER_EDGE);
+        ctx.fill(bookX + sidebarW + 2, bookY + headerH + 1, bookX + sidebarW + 3, bookY + bookH, COVER_LIGHT);
+
+        // Parchment page with layered edge shading
+        int px0 = bookX + sidebarW + 3, py0 = bookY + headerH + 1;
+        int px1 = bookX + bookW, py1 = bookY + bookH;
+        ctx.fill(px0, py0, px1, py1, PARCH_SHADE);
+        ctx.fill(px0 + 1, py0 + 1, px1 - 1, py1 - 1, PARCH_EDGE);
+        ctx.fill(px0 + 3, py0 + 3, px1 - 3, py1 - 3, PARCH);
+    }
+
+    // ── Sidebar ──────────────────────────────────────────────────────────────
+
+    private static final int CAT_ROW_H = 20;
+    private static final int ENTRY_ROW_H = 17;
+
+    private void drawSidebar(DrawContext ctx, int mouseX, int mouseY) {
+        List<GuideBookData.Category> cats = GuideBookData.getCategories();
+
+        int viewTop = bookY + headerH + 3;
+        int viewBottom = bookY + bookH - 3;
+        int viewH = viewBottom - viewTop;
+
+        // Total height for scroll bounds
+        int totalH = 0;
+        for (int i = 0; i < cats.size(); i++) {
+            totalH += CAT_ROW_H + 1;
+            if (i == selectedCategory && !cats.get(i).name().equals("Enemy Bestiary")) {
+                totalH += cats.get(i).entries().size() * (ENTRY_ROW_H + 1);
+            }
+        }
+        maxSidebarScroll = Math.max(0, totalH - viewH);
+        sidebarScroll = MathHelper.clamp(sidebarScroll, 0, maxSidebarScroll);
+
+        ctx.enableScissor(bookX, viewTop, bookX + sidebarW, viewBottom);
+
+        int y = viewTop - sidebarScroll;
+        for (int ci = 0; ci < cats.size(); ci++) {
+            GuideBookData.Category cat = cats.get(ci);
+            boolean sel = ci == selectedCategory;
+
+            // Category row
+            int rx = bookX + 3, rw = sidebarW - 10;
+            if (y + CAT_ROW_H > viewTop && y < viewBottom) {
+                boolean hover = mouseX >= rx && mouseX < rx + rw && mouseY >= y && mouseY < y + CAT_ROW_H
+                    && mouseY >= viewTop && mouseY < viewBottom;
+                int bg = sel ? SIDEBAR_SEL : (hover ? SIDEBAR_HOVER : SIDEBAR_ROW);
+                ctx.fill(rx, y, rx + rw, y + CAT_ROW_H, bg);
+                if (sel) { // gold accent bar
+                    ctx.fill(rx, y, rx + 2, y + CAT_ROW_H, GOLD);
+                }
+                ctx.drawItem(icon(cat.iconItem()), rx + 4, y + 2);
+                String arrow = sel ? "▼ " : "▶ ";
+                int nameColor = sel ? GOLD : 0xFFE3D2A8;
+                ctx.drawTextWithShadow(textRenderer,
+                    Text.literal(trimToWidth(arrow + cat.name(), rw - 26)),
+                    rx + 23, y + 6, nameColor);
+            }
+            zones.add(new Zone(Z_CAT, ci, rx, y, rw, CAT_ROW_H));
+            y += CAT_ROW_H + 1;
+
+            // Entry rows (bestiary uses the grid instead)
+            if (sel && !cat.name().equals("Enemy Bestiary")) {
+                for (int ei = 0; ei < cat.entries().size(); ei++) {
+                    GuideBookData.Entry entry = cat.entries().get(ei);
+                    boolean unlocked = GuideBookData.isUnlocked(entry.name());
+                    int ex = bookX + 9, ew = sidebarW - 16;
+                    if (y + ENTRY_ROW_H > viewTop && y < viewBottom) {
+                        boolean hover = unlocked && mouseX >= ex && mouseX < ex + ew
+                            && mouseY >= y && mouseY < y + ENTRY_ROW_H
+                            && mouseY >= viewTop && mouseY < viewBottom;
+                        boolean selE = ei == selectedEntry;
+                        if (selE || hover) {
+                            ctx.fill(ex, y, ex + ew, y + ENTRY_ROW_H, selE ? SIDEBAR_SEL : SIDEBAR_HOVER);
+                        }
+                        if (unlocked) {
+                            ctx.drawItem(icon(entry.iconItem()), ex + 2, y);
+                            int color = selE ? GOLD : 0xFFCDBB92;
+                            String name = trimToWidth(stripBold(entry.name()), ew - 24);
+                            ctx.drawTextWithShadow(textRenderer, Text.literal(name), ex + 21, y + 4, color);
+                        } else {
+                            ctx.drawTextWithShadow(textRenderer, Text.literal("???"), ex + 21, y + 4, 0xFF6E5C40);
+                        }
+                    }
+                    if (unlocked) zones.add(new Zone(Z_ENTRY, ei, ex, y, ew, ENTRY_ROW_H));
+                    y += ENTRY_ROW_H + 1;
                 }
             }
         }
 
-        // Title
-        ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("\u00a76\u00a7l" + title.getString()),
-            bookX + BOOK_WIDTH / 2, bookY - 16, 0xFFFFAA00);
+        ctx.disableScissor();
 
-        // Scroll indicators
-        if (sidebarScroll > 0) {
-            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("\u00a77\u25b2"),
-                bookX + SIDEBAR_WIDTH / 2, bookY + 1, 0xFF888888);
+        // Scrollbar
+        if (maxSidebarScroll > 0) {
+            int trackX = bookX + sidebarW - 5;
+            ctx.fill(trackX, viewTop, trackX + 3, viewBottom, COVER_EDGE);
+            int thumbH = Math.max(12, viewH * viewH / (viewH + maxSidebarScroll));
+            int thumbY = viewTop + (viewH - thumbH) * sidebarScroll / maxSidebarScroll;
+            ctx.fill(trackX, thumbY, trackX + 3, thumbY + thumbH, GOLD_DIM);
         }
-        if (sidebarScroll < maxSidebarScroll) {
-            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("\u00a77\u25bc"),
-                bookX + SIDEBAR_WIDTH / 2, bookY + BOOK_HEIGHT - 10, 0xFF888888);
-        }
-
-        // Render page content
-        renderContent(ctx);
     }
 
-    private static final int GRID_CELL = 24;
-    private static final int GRID_COLS = 7;
+    // ── Content area ─────────────────────────────────────────────────────────
 
-    private void renderContent(DrawContext ctx) {
+    private void drawContent(DrawContext ctx, int mouseX, int mouseY) {
         List<GuideBookData.Category> cats = GuideBookData.getCategories();
         if (selectedCategory >= cats.size()) return;
         GuideBookData.Category cat = cats.get(selectedCategory);
 
-        // Bestiary uses special grid rendering
         if (cat.name().equals("Enemy Bestiary")) {
-            renderBestiaryGrid(ctx, cat);
+            drawBestiary(ctx, cat, mouseX, mouseY);
             return;
         }
 
-        if (selectedEntry < 0 || selectedEntry >= cat.entries().size()) return;
+        if (selectedEntry < 0 || selectedEntry >= cat.entries().size()) {
+            drawCategoryLanding(ctx, cat);
+            return;
+        }
         GuideBookData.Entry entry = cat.entries().get(selectedEntry);
         if (!GuideBookData.isUnlocked(entry.name())) {
-            int cx = bookX + SIDEBAR_WIDTH + (BOOK_WIDTH - SIDEBAR_WIDTH) / 2;
             String lockMsg = cat.name().equals("Armor Trims")
-                    ? "\u00a77\u00a7oAcquire an armor trim template to unlock..."
-                    : "\u00a77\u00a7oThis entry is locked.";
-            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(lockMsg),
-                cx, bookY + BOOK_HEIGHT / 2, 0xFF888888);
+                ? "Acquire an armor trim template to unlock..."
+                : "This entry is locked.";
+            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("§o" + lockMsg),
+                pageX + pageW / 2, pageY + pageH / 2, INK_FAINT);
             return;
         }
-
-        if (currentPage >= entry.pages().size()) return;
+        if (currentPage >= entry.pages().size()) currentPage = 0;
         GuideBookData.Page page = entry.pages().get(currentPage);
 
-        int contentX = bookX + SIDEBAR_WIDTH + PADDING + 4;
-        int contentW = BOOK_WIDTH - SIDEBAR_WIDTH - PADDING * 2 - 8;
-        int y = bookY + PADDING;
+        int y = pageY + 2;
+        // Title row: icon + title
+        ctx.drawItem(icon(entry.iconItem()), pageX, y - 2);
+        ctx.drawText(textRenderer, Text.literal("§l" + stripBold(page.title())),
+            pageX + 20, y + 1, INK, false);
+        y += LINE_HEIGHT + 5;
+        drawRule(ctx, pageX, y, pageW);
+        y += 7;
 
-        // Page title
-        ctx.drawTextWithShadow(textRenderer, Text.literal("\u00a7e\u00a7l" + page.title()),
-            contentX, y, 0xFFFFDD44);
-        y += LINE_HEIGHT + 4;
+        // Body
+        drawBody(ctx, page.text(), pageX, y, pageW, pageY + pageH - 16);
 
-        // Separator line
-        ctx.fill(contentX, y, contentX + contentW, y + 1, 0xFF8B7355);
-        y += 6;
+        drawPageNav(ctx, entry, mouseX, mouseY);
+    }
 
-        // Page text — word wrap
-        String[] lines = page.text().split("\n");
-        for (String line : lines) {
-            if (line.isEmpty()) {
-                y += LINE_HEIGHT / 2;
-                continue;
-            }
-            List<String> wrapped = wrapText(line, contentW);
-            for (String wl : wrapped) {
-                if (y + LINE_HEIGHT > bookY + BOOK_HEIGHT - 30) break;
-                ctx.drawTextWithShadow(textRenderer, Text.literal(wl), contentX, y, 0xFFDDCCBB);
-                y += LINE_HEIGHT;
-            }
-        }
-
-        // Page indicator
-        if (entry.pages().size() > 1) {
-            String pageStr = (currentPage + 1) + " / " + entry.pages().size();
-            int cx = bookX + SIDEBAR_WIDTH + (BOOK_WIDTH - SIDEBAR_WIDTH) / 2;
-            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("\u00a77" + pageStr),
-                cx, bookY + BOOK_HEIGHT - 12, 0xFF888888);
+    /** Landing panel when a category has no entry selected. */
+    private void drawCategoryLanding(DrawContext ctx, GuideBookData.Category cat) {
+        int cy = pageY + pageH / 2 - 16;
+        ctx.drawItem(icon(cat.iconItem()), pageX + pageW / 2 - 8, cy);
+        ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("§l" + cat.name()),
+            pageX + pageW / 2, cy + 22, INK);
+        for (String line : wrapText("§o" + cat.description(), pageW - 20)) {
+            cy += LINE_HEIGHT;
+            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal(line),
+                pageX + pageW / 2, cy + 26, INK_SOFT);
         }
     }
 
-    /** Render bestiary as a grid of cells. Locked = dark "???", unlocked = mob name + colored. */
-    private void renderBestiaryGrid(DrawContext ctx, GuideBookData.Category cat) {
-        int contentX = bookX + SIDEBAR_WIDTH + PADDING;
-        int contentW = BOOK_WIDTH - SIDEBAR_WIDTH - PADDING * 2;
-        int y = bookY + PADDING;
+    /** Decorative horizontal rule with a center diamond. */
+    private void drawRule(DrawContext ctx, int x, int y, int w) {
+        ctx.fill(x, y, x + w, y + 1, RULE);
+        int cx = x + w / 2;
+        ctx.fill(cx - 1, y - 1, cx + 1, y + 2, GOLD_DIM);
+    }
 
-        // Header with discovery count
-        String header = "\u00a76\u00a7lBestiary \u00a77(" + GuideBookData.getBestiaryUnlocked()
-            + "/" + GuideBookData.getBestiaryTotal() + " discovered)";
-        ctx.drawTextWithShadow(textRenderer, Text.literal(header), contentX, y, 0xFFFFAA00);
-        y += LINE_HEIGHT + 4;
-        ctx.fill(contentX, y, contentX + contentW, y + 1, 0xFF8B7355);
-        y += 4;
+    /** Word-wrapped body text in ink on parchment. Carries §-codes across wraps. */
+    private void drawBody(DrawContext ctx, String text, int x, int y, int w, int maxY) {
+        for (String raw : text.split("\n")) {
+            if (raw.isEmpty()) { y += LINE_HEIGHT / 2; continue; }
+            for (String line : wrapText(raw, w)) {
+                if (y + LINE_HEIGHT > maxY) return;
+                ctx.drawText(textRenderer, Text.literal(line), x, y, INK, false);
+                y += LINE_HEIGHT;
+            }
+        }
+    }
 
-        // If a specific mob is selected and unlocked, show its details
+    /** Prev / Next as drawn parchment buttons + page indicator. */
+    private void drawPageNav(DrawContext ctx, GuideBookData.Entry entry, int mouseX, int mouseY) {
+        int pages = entry.pages().size();
+        if (pages <= 1) return;
+
+        int navY = bookY + bookH - 19;
+        int btnW = 44, btnH = 13;
+
+        if (currentPage > 0) {
+            drawNavButton(ctx, pageX, navY, btnW, btnH, "◀ Prev", mouseX, mouseY);
+            zones.add(new Zone(Z_PREV, 0, pageX, navY, btnW, btnH));
+        }
+        if (currentPage < pages - 1) {
+            int nx = pageX + pageW - btnW;
+            drawNavButton(ctx, nx, navY, btnW, btnH, "Next ▶", mouseX, mouseY);
+            zones.add(new Zone(Z_NEXT, 0, nx, navY, btnW, btnH));
+        }
+        ctx.drawCenteredTextWithShadow(textRenderer,
+            Text.literal((currentPage + 1) + " / " + pages),
+            pageX + pageW / 2, navY + 3, INK_FAINT);
+    }
+
+    private void drawNavButton(DrawContext ctx, int x, int y, int w, int h, String label,
+                               int mouseX, int mouseY) {
+        boolean hover = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+        ctx.fill(x, y, x + w, y + h, hover ? PARCH_SHADE : PARCH_EDGE);
+        ctx.fill(x, y, x + w, y + 1, RULE);
+        ctx.fill(x, y + h - 1, x + w, y + h, RULE);
+        ctx.fill(x, y, x + 1, y + h, RULE);
+        ctx.fill(x + w - 1, y, x + w, y + h, RULE);
+        int tw = textRenderer.getWidth(label);
+        ctx.drawText(textRenderer, Text.literal(label), x + (w - tw) / 2, y + 3,
+            hover ? INK : INK_SOFT, false);
+    }
+
+    // ── Bestiary ─────────────────────────────────────────────────────────────
+
+    private static final int CELL = 24;
+
+    private void drawBestiary(DrawContext ctx, GuideBookData.Category cat, int mouseX, int mouseY) {
+        int y = pageY + 2;
+
+        // Header + discovery progress bar
+        int unlockedCount = GuideBookData.getBestiaryUnlocked();
+        int total = GuideBookData.getBestiaryTotal();
+        ctx.drawText(textRenderer, Text.literal("§lBestiary"), pageX, y, INK, false);
+        String prog = unlockedCount + " / " + total;
+        ctx.drawText(textRenderer, Text.literal(prog),
+            pageX + pageW - textRenderer.getWidth(prog), y, INK_SOFT, false);
+        y += LINE_HEIGHT + 2;
+        // progress bar
+        ctx.fill(pageX, y, pageX + pageW, y + 3, PARCH_SHADE);
+        if (total > 0) {
+            ctx.fill(pageX, y, pageX + pageW * unlockedCount / total, y + 3, GOLD_DIM);
+        }
+        y += 7;
+
+        // Detail view if a mob is selected & unlocked
         if (selectedEntry >= 0 && selectedEntry < cat.entries().size()) {
             GuideBookData.Entry entry = cat.entries().get(selectedEntry);
             if (GuideBookData.isUnlocked(entry.name())) {
-                renderBestiaryDetail(ctx, entry, contentX, y, contentW);
+                drawBestiaryDetail(ctx, entry, y, mouseX, mouseY);
                 return;
             }
         }
 
-        // Grid of mob cells
-        int cellW = (contentW - 4) / GRID_COLS;
-        int cellH = 18;
-        int rows = (cat.entries().size() + GRID_COLS - 1) / GRID_COLS;
-
+        // Grid
+        int cols = Math.max(4, (pageW + 2) / (CELL + 2));
+        String hoverName = null;
         for (int i = 0; i < cat.entries().size(); i++) {
-            int col = i % GRID_COLS;
-            int row = i / GRID_COLS;
-            int cx = contentX + col * cellW + 2;
-            int cy = y + row * (cellH + 2);
-
-            if (cy + cellH > bookY + BOOK_HEIGHT - 4) break;
+            int cx = pageX + (i % cols) * (CELL + 2);
+            int cy = y + (i / cols) * (CELL + 2);
+            if (cy + CELL > pageY + pageH) break;
 
             GuideBookData.Entry entry = cat.entries().get(i);
             boolean unlocked = GuideBookData.isUnlocked(entry.name());
+            boolean boss = entry.stats() != null && "Boss".equals(entry.stats().role());
+            boolean hover = mouseX >= cx && mouseX < cx + CELL && mouseY >= cy && mouseY < cy + CELL;
 
-            // Cell background
-            int bgColor = unlocked ? 0xFF3A5A3A : 0xFF2A2A2A;
-            if (i == selectedEntry && unlocked) bgColor = 0xFF4A6A3A;
-            ctx.fill(cx, cy, cx + cellW - 2, cy + cellH, bgColor);
-            // Border
-            int borderColor = unlocked ? 0xFF55AA55 : 0xFF444444;
-            ctx.fill(cx, cy, cx + cellW - 2, cy + 1, borderColor); // top
-            ctx.fill(cx, cy + cellH - 1, cx + cellW - 2, cy + cellH, borderColor); // bottom
-            ctx.fill(cx, cy, cx + 1, cy + cellH, borderColor); // left
-            ctx.fill(cx + cellW - 3, cy, cx + cellW - 2, cy + cellH, borderColor); // right
+            // Cell
+            int bg = unlocked ? (hover ? 0xFFDcc68f : PARCH_EDGE) : 0xFF554830;
+            ctx.fill(cx, cy, cx + CELL, cy + CELL, bg);
+            int border = unlocked ? (boss ? GOLD_DIM : RULE) : 0xFF453A26;
+            if (hover && unlocked) border = GOLD;
+            ctx.fill(cx, cy, cx + CELL, cy + 1, border);
+            ctx.fill(cx, cy + CELL - 1, cx + CELL, cy + CELL, border);
+            ctx.fill(cx, cy, cx + 1, cy + CELL, border);
+            ctx.fill(cx + CELL - 1, cy, cx + CELL, cy + CELL, border);
 
-            // Text
-            String label = unlocked ? entry.name() : "???";
-            int textColor = unlocked ? 0xFFCCFFCC : 0xFF666666;
-            // Truncate if too wide
-            String display = label;
-            while (textRenderer.getWidth(display) > cellW - 6 && display.length() > 2) {
-                display = display.substring(0, display.length() - 1);
+            if (unlocked) {
+                ctx.drawItem(icon(entry.iconItem()), cx + (CELL - 16) / 2, cy + (CELL - 16) / 2);
+                zones.add(new Zone(Z_CELL, i, cx, cy, CELL, CELL));
+                if (hover) hoverName = (boss ? "§6§l" : "") + entry.name();
+            } else {
+                ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("?"),
+                    cx + CELL / 2, cy + (CELL - 8) / 2, 0xFF8a7850);
+                if (hover) hoverName = "§8???";
             }
-            if (display.length() < label.length()) display += "..";
-            ctx.drawTextWithShadow(textRenderer, Text.literal(display),
-                cx + 3, cy + (cellH - 8) / 2, textColor);
+        }
+        if (hoverName != null) {
+            ctx.drawTooltip(textRenderer, Text.literal(hoverName), mouseX, mouseY);
         }
     }
 
-    /** Render detailed view of a selected bestiary mob. */
-    private void renderBestiaryDetail(DrawContext ctx, GuideBookData.Entry entry,
-                                       int contentX, int y, int contentW) {
-        // Back hint (clicking the Bestiary category header also returns to grid)
-        ctx.drawTextWithShadow(textRenderer, Text.literal("\u00a78[Click \u00a77Bestiary\u00a78 category or another mob to go back]"),
-            contentX, y, 0xFF666666);
+    /** Detail view: name, role + stat badges, weak/resist lines, description. */
+    private void drawBestiaryDetail(DrawContext ctx, GuideBookData.Entry entry, int y,
+                                    int mouseX, int mouseY) {
+        // Back link
+        String back = "◀ Back to grid";
+        boolean backHover = mouseX >= pageX && mouseX < pageX + textRenderer.getWidth(back)
+            && mouseY >= y && mouseY < y + 10;
+        ctx.drawText(textRenderer, Text.literal(back), pageX, y,
+            backHover ? INK : INK_FAINT, false);
+        zones.add(new Zone(Z_BACK, 0, pageX, y, textRenderer.getWidth(back) + 4, 11));
         y += LINE_HEIGHT + 2;
 
-        // Mob name
-        ctx.drawTextWithShadow(textRenderer, Text.literal("\u00a7a\u00a7l" + entry.name()),
-            contentX, y, 0xFF55FF55);
-        y += LINE_HEIGHT + 4;
+        GuideBookData.MobStats stats = entry.stats();
+        boolean boss = stats != null && "Boss".equals(stats.role());
 
-        ctx.fill(contentX, y, contentX + contentW, y + 1, 0xFF55AA55);
+        // Name + icon
+        ctx.drawItem(icon(entry.iconItem()), pageX, y - 2);
+        ctx.drawText(textRenderer,
+            Text.literal("§l" + entry.name()), pageX + 20, y + 1,
+            boss ? 0xFF8A5A00 : INK, false);
+        y += LINE_HEIGHT + 5;
+        drawRule(ctx, pageX, y, pageW);
         y += 6;
 
-        // Mob description from page text
-        if (!entry.pages().isEmpty()) {
-            String[] lines = entry.pages().get(0).text().split("\n");
-            for (String line : lines) {
-                if (line.isEmpty()) {
-                    y += LINE_HEIGHT / 2;
-                    continue;
-                }
-                // Color-code weakness/resistance lines
-                int color = 0xFFDDCCBB;
-                if (line.startsWith("Weak to:")) color = 0xFF55FF55;
-                else if (line.startsWith("Resist:")) color = 0xFFFF5555;
-                else if (line.startsWith("Immune:")) color = 0xFFFF4444;
+        // Badges
+        if (stats != null) {
+            int bx = pageX;
+            bx = drawBadge(ctx, bx, y, stats.role(), roleColor(stats.role()));
+            bx = drawBadge(ctx, bx, y, label("HP", stats.hp()), 0xFFA8392E);
+            bx = drawBadge(ctx, bx, y, label("ATK", stats.atk()), 0xFFB06A22);
+            bx = drawBadge(ctx, bx, y, label("DEF", stats.def()), 0xFF3D6593);
+            bx = drawBadge(ctx, bx, y, label("SPD", stats.spd()), 0xFF3F7D45);
+            bx = drawBadge(ctx, bx, y, label("RNG", stats.rng()), 0xFF6F4D96);
+            drawBadge(ctx, bx, y, stats.size(), 0xFF5F5F5F);
+            y += 15;
 
-                List<String> wrapped = wrapText(line, contentW);
-                for (String wl : wrapped) {
-                    if (y + LINE_HEIGHT > bookY + BOOK_HEIGHT - 8) return;
-                    ctx.drawTextWithShadow(textRenderer, Text.literal(wl), contentX, y, color);
-                    y += LINE_HEIGHT;
-                }
-            }
+            y = drawTypeLine(ctx, y, "Weak to: ", stats.weak(), 0xFF2E6B33);
+            y = drawTypeLine(ctx, y, "Resists: ", stats.resist(), 0xFF96342A);
+            y = drawTypeLine(ctx, y, "Immune: ", stats.immune(), 0xFF5A2D6B);
+            y += 3;
         }
+
+        // Description (current page of possibly several)
+        if (currentPage >= entry.pages().size()) currentPage = 0;
+        GuideBookData.Page page = entry.pages().get(currentPage);
+        drawBody(ctx, page.text(), pageX, y, pageW, pageY + pageH - 24);
+
+        // Scaling reminder
+        if (stats != null && stats.hp() != null) {
+            ctx.drawText(textRenderer,
+                Text.literal("§oBase stats — enemies scale with biome, level & party."),
+                pageX, bookY + bookH - 18, INK_FAINT, false);
+        }
+
+        drawPageNav(ctx, entry, mouseX, mouseY);
     }
+
+    private static String label(String name, String value) {
+        return value == null || value.isEmpty() ? null : name + " " + value;
+    }
+
+    private static int roleColor(String role) {
+        if (role == null) return 0xFF5F5F5F;
+        return switch (role) {
+            case "Boss" -> 0xFF9A6A00;
+            case "Mini-Boss" -> 0xFFA0561E;
+            case "Hostile" -> 0xFF7E2D24;
+            case "Neutral" -> 0xFF6E6426;
+            case "Passive" -> 0xFF3F7D45;
+            case "Summon" -> 0xFF6F4D96;
+            case "Hazard" -> 0xFF555555;
+            default -> 0xFF5F5F5F;
+        };
+    }
+
+    /** Draws a small colored chip. Returns next x. Skips null text. */
+    private int drawBadge(DrawContext ctx, int x, int y, String text, int color) {
+        if (text == null || text.isEmpty()) return x;
+        int w = textRenderer.getWidth(text) + 6;
+        if (x + w > pageX + pageW) return x; // out of row space — drop rather than overflow
+        ctx.fill(x, y, x + w, y + 12, color);
+        ctx.fill(x, y, x + w, y + 1, brighten(color));
+        ctx.drawTextWithShadow(textRenderer, Text.literal(text), x + 3, y + 2, 0xFFF5EBD0);
+        return x + w + 3;
+    }
+
+    private static int brighten(int argb) {
+        int r = Math.min(255, ((argb >> 16) & 0xFF) + 45);
+        int g = Math.min(255, ((argb >> 8) & 0xFF) + 45);
+        int b = Math.min(255, (argb & 0xFF) + 45);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
+    /** "Weak to: X, Y" line in a type color. Returns new y (unchanged if no data). */
+    private int drawTypeLine(DrawContext ctx, int y, String prefix, String types, int color) {
+        if (types == null || types.isEmpty()) return y;
+        for (String line : wrapText(prefix + types, pageW)) {
+            ctx.drawText(textRenderer, Text.literal(line), pageX, y, color, false);
+            y += LINE_HEIGHT;
+        }
+        return y;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Input
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Handle bestiary grid clicks
-        List<GuideBookData.Category> cats = GuideBookData.getCategories();
-        if (selectedCategory < cats.size() && cats.get(selectedCategory).name().equals("Enemy Bestiary")) {
-            GuideBookData.Category cat = cats.get(selectedCategory);
-            int contentX = bookX + SIDEBAR_WIDTH + PADDING;
-            int contentW = BOOK_WIDTH - SIDEBAR_WIDTH - PADDING * 2;
-            int cellW = (contentW - 4) / GRID_COLS;
-            int cellH = 18;
-            int gridY = bookY + PADDING + LINE_HEIGHT + 4 + 1 + 4; // matches renderBestiaryGrid layout
-
-            if (mouseX >= contentX && mouseX < contentX + contentW
-                    && mouseY >= gridY && mouseY < bookY + BOOK_HEIGHT) {
-                int col = (int)((mouseX - contentX - 2) / cellW);
-                int row = (int)((mouseY - gridY) / (cellH + 2));
-                int idx = row * GRID_COLS + col;
-                if (col >= 0 && col < GRID_COLS && idx >= 0 && idx < cat.entries().size()) {
-                    if (GuideBookData.isUnlocked(cat.entries().get(idx).name())) {
-                        selectedEntry = idx;
-                        currentPage = 0;
-                        rebuildButtons();
+        if (button == 0) {
+            // Sidebar clicks only count inside the sidebar viewport
+            boolean inSidebarView = mouseX >= bookX && mouseX < bookX + sidebarW
+                && mouseY >= bookY + headerH + 3 && mouseY < bookY + bookH - 3;
+            List<GuideBookData.Category> cats = GuideBookData.getCategories();
+            for (Zone z : zones) {
+                if (!z.contains(mouseX, mouseY)) continue;
+                switch (z.kind()) {
+                    case Z_CAT -> {
+                        if (!inSidebarView) continue;
+                        if (selectedCategory != z.a()) {
+                            selectedCategory = z.a();
+                            selectedEntry = cats.get(z.a()).name().equals("Enemy Bestiary") ? -1 : 0;
+                            currentPage = 0;
+                            sidebarScroll = 0;
+                        } else if (cats.get(z.a()).name().equals("Enemy Bestiary")) {
+                            selectedEntry = -1; // back to grid
+                        }
                         return true;
                     }
+                    case Z_ENTRY -> {
+                        if (!inSidebarView) continue;
+                        selectedEntry = z.a();
+                        currentPage = 0;
+                        return true;
+                    }
+                    case Z_CELL -> { selectedEntry = z.a(); currentPage = 0; return true; }
+                    case Z_PREV -> { currentPage--; return true; }
+                    case Z_NEXT -> { currentPage++; return true; }
+                    case Z_BACK -> { selectedEntry = -1; currentPage = 0; return true; }
                 }
             }
         }
@@ -391,32 +575,77 @@ public class GuideBookScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Scroll sidebar when mouse is over it
-        if (mouseX >= bookX && mouseX < bookX + SIDEBAR_WIDTH
-                && mouseY >= bookY && mouseY < bookY + BOOK_HEIGHT) {
-            sidebarScroll -= (int) (verticalAmount * 14);
-            sidebarScroll = Math.max(0, Math.min(sidebarScroll, maxSidebarScroll));
-            rebuildButtons();
+        if (mouseX >= bookX && mouseX < bookX + sidebarW
+                && mouseY >= bookY && mouseY < bookY + bookH) {
+            sidebarScroll = MathHelper.clamp(sidebarScroll - (int) (verticalAmount * 16), 0, maxSidebarScroll);
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
     }
 
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // Arrow keys flip pages
+        List<GuideBookData.Category> cats = GuideBookData.getCategories();
+        if (selectedCategory < cats.size() && selectedEntry >= 0
+                && selectedEntry < cats.get(selectedCategory).entries().size()) {
+            GuideBookData.Entry entry = cats.get(selectedCategory).entries().get(selectedEntry);
+            if (keyCode == 263 && currentPage > 0) { currentPage--; return true; }                       // LEFT
+            if (keyCode == 262 && currentPage < entry.pages().size() - 1) { currentPage++; return true; } // RIGHT
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Text helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Strip leading §l so we can re-apply our own bold/colors cleanly. */
+    private static String stripBold(String s) {
+        return s.replace("§l", "");
+    }
+
+    private String trimToWidth(String s, int maxW) {
+        if (textRenderer.getWidth(s) <= maxW) return s;
+        String out = s;
+        while (out.length() > 2 && textRenderer.getWidth(out + "..") > maxW) {
+            out = out.substring(0, out.length() - 1);
+        }
+        return out + "..";
+    }
+
+    /** Word wrap that carries the last §-code onto continuation lines. */
     private List<String> wrapText(String text, int maxWidth) {
-        List<String> result = new java.util.ArrayList<>();
+        List<String> result = new ArrayList<>();
         String[] words = text.split(" ");
         StringBuilder line = new StringBuilder();
+        String carry = "";
         for (String word : words) {
             String test = line.isEmpty() ? word : line + " " + word;
             if (textRenderer.getWidth(test) > maxWidth && !line.isEmpty()) {
                 result.add(line.toString());
-                line = new StringBuilder(word);
+                carry = lastFormatCode(line.toString(), carry);
+                line = new StringBuilder(carry + word);
             } else {
                 line = new StringBuilder(test);
             }
         }
         if (!line.isEmpty()) result.add(line.toString());
         return result;
+    }
+
+    /** Find the active §-code at the end of a line ("" if none / reset). */
+    private static String lastFormatCode(String line, String inherited) {
+        String code = inherited;
+        for (int i = 0; i < line.length() - 1; i++) {
+            if (line.charAt(i) == '§') {
+                char c = Character.toLowerCase(line.charAt(i + 1));
+                if (c == 'r') code = "";
+                else if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) code = "§" + c;
+                else code = code + "§" + c; // style codes stack on color
+            }
+        }
+        return code;
     }
 
     @Override
