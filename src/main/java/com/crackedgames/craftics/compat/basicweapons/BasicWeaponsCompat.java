@@ -41,9 +41,9 @@ public final class BasicWeaponsCompat {
     /** Off-hand dagger second hit fraction of the main hit (1.0 main + 0.75 off = 1.75x total). */
     public static final double DAGGER_OFFHAND_MULT = 0.75;
     /** Spear bonus added per tile walked before attacking this turn. */
-    public static final double SPEAR_MOVE_PER_TILE = 0.20;
+    public static final double SPEAR_MOVE_PER_TILE = 0.50;
     /** Hard cap on the spear movement multiplier. */
-    public static final double SPEAR_MOVE_CAP = 2.0;
+    public static final double SPEAR_MOVE_CAP = 10.0;
 
     private static boolean loaded = false;
     private static boolean registered = false;
@@ -174,14 +174,14 @@ public final class BasicWeaponsCompat {
 
     /**
      * Lazy per-tier damage supplier derived from existing config getters, nudged by damage class:
-     * dagger/quarterstaff = max(1, sword-1); spear = max(1, sword-2); club = axe; hammer/glaive = axe+1.
+     * dagger/quarterstaff = max(1, sword-1); spear = max(1, sword-3); club = axe; hammer/glaive = axe+1.
      * The spear sits below the sword on its own so its damage only catches up when the player
      * closes distance (see the per-tile movement scaling in CombatManager).
      */
     private static IntSupplier damageFor(String tier, String type) {
         return switch (type) {
             case "dagger", "quarterstaff" -> () -> Math.max(1, swordDmg(tier) - 1);
-            case "spear" -> () -> Math.max(1, swordDmg(tier) - 2);
+            case "spear" -> () -> Math.max(1, swordDmg(tier) - 3);
             case "club" -> () -> axeDmg(tier);
             case "hammer", "glaive" -> () -> axeDmg(tier) + 1;
             default -> () -> 1;

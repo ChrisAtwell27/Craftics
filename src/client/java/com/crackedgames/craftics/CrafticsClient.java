@@ -350,6 +350,14 @@ public class CrafticsClient implements ClientModInitializer {
                         }
                     } else {
                         com.crackedgames.craftics.client.DialogueScreen.clearPendingBarterContext();
+                        // Also drop the live screen out of barter mode so the result/leave
+                        // line behaves like any other choiceless dialogue: a click sends
+                        // ACTION_DISMISS and finalizes the event. Without this the stepper
+                        // stays "active" and the dismiss is suppressed, softlocking the event.
+                        if (context.client().currentScreen
+                                instanceof com.crackedgames.craftics.client.DialogueScreen ds) {
+                            ds.applyBarterContext(false, 0, 0);
+                        }
                     }
                 });
             }

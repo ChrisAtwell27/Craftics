@@ -113,7 +113,6 @@ public final class AbandonedCampsiteEvent {
                 }
                 String name = reward.getName().getString();
                 LootDelivery.deliver(p, reward);
-                if (!reward.isEmpty()) p.dropItem(reward, false);
                 p.sendMessage(Text.literal("§aYou loot the campsite - found §e" + name + "§a!"), false);
             }
             // Returning here lets handlePostLevelChoice's auto-continue kick in.

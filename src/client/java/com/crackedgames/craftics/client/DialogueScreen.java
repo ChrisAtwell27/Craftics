@@ -114,10 +114,14 @@ public class DialogueScreen extends Screen {
 
     @Override
     protected void init() {
-        // Adopt any barter context that arrived (before or after the intro narration
-        // that opened this screen) from the BarterContextPayload receiver.
+        // Adopt the barter context that arrived (before or after the intro narration
+        // that opened this screen) from the BarterContextPayload receiver. Mirror the
+        // parked active state in BOTH directions: a result/leave line clears the parked
+        // context, and rebuilding the screen for that line must drop out of barter mode
+        // so the choiceless dismiss can fire. Retaining a stale true here was half of the
+        // softlock that kept the event from ever finalizing.
+        this.barterActive = pendingBarterActive;
         if (pendingBarterActive) {
-            this.barterActive = true;
             this.barterGold = pendingBarterGold;
             this.barterMaxOffer = pendingBarterMaxOffer;
         }

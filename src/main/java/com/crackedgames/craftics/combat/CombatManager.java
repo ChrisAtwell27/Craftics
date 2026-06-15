@@ -4288,7 +4288,7 @@ public class CombatManager {
         }
         // Spear momentum: a spear rewards closing distance. Each tile walked before
         // attacking this turn adds SPEAR_MOVE_PER_TILE, capped at SPEAR_MOVE_CAP. A
-        // stationary spear (base sword-2) stays weaker than a sword on purpose, so the
+        // stationary spear (base sword-3) stays weaker than a sword on purpose, so the
         // payoff is charging in rather than poking from range.
         if (baseDamage > 0 && tilesMovedThisTurn > 0
                 && com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isSpear(weapon)) {
@@ -19981,9 +19981,14 @@ public class CombatManager {
             if (reward.isEmpty()) {
                 reward = com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollJunk(rng);
             }
+            // Snapshot count/name BEFORE delivery: LootDelivery.deliver mutates the stack
+            // (insertStack / decrement drain it to empty), so reading it afterward yields
+            // "0x Air" even though the item was handed over correctly.
+            int rewardCount = reward.getCount();
+            String rewardName = reward.getName().getString();
             LootDelivery.deliver(player, reward);
-            resultLine = "The piglin nods and shoves over " + reward.getCount() + "x "
-                + reward.getName().getString() + ".";
+            resultLine = "The piglin nods and shoves over " + rewardCount + "x "
+                + rewardName + ".";
 
             int surplus = offer - threshold;
             double bonusChance = com.crackedgames.craftics.combat.barter.PiglinBarterSystem.overpayBonusChance(surplus);
@@ -19991,17 +19996,21 @@ public class CombatManager {
                 net.minecraft.item.ItemStack bonus =
                     com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollGoodReward(barterCategoryId, tier, rng);
                 if (!bonus.isEmpty()) {
+                    int bonusCount = bonus.getCount();
+                    String bonusName = bonus.getName().getString();
                     LootDelivery.deliver(player, bonus);
-                    resultLine += " It tosses in " + bonus.getCount() + "x "
-                        + bonus.getName().getString() + " too!";
+                    resultLine += " It tosses in " + bonusCount + "x "
+                        + bonusName + " too!";
                 }
             }
         } else {
             net.minecraft.item.ItemStack junk =
                 com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollJunk(rng);
+            int junkCount = junk.getCount();
+            String junkName = junk.getName().getString();
             LootDelivery.deliver(player, junk);
-            resultLine = "The piglin grumbles and flicks you " + junk.getCount() + "x "
-                + junk.getName().getString() + ".";
+            resultLine = "The piglin grumbles and flicks you " + junkCount + "x "
+                + junkName + ".";
         }
 
         var resultDef = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
@@ -20289,10 +20298,15 @@ public class CombatManager {
             java.util.UUID winnerUuid = takers.get(rng.nextInt(takers.size()));
             ServerPlayerEntity winner = world.getServer().getPlayerManager().getPlayer(winnerUuid);
             ItemStack reward = getShinyRewardItem(world, Math.max(0, pendingEventBiomeOrdinal), rng);
-            String rewardName = reward.getName().getString();
-            String winnerName = winner != null ? winner.getName().getString() : "Someone";
-            if (winner != null) LootDelivery.deliver(winner, reward);
-            rewardLine = winnerName + " pockets " + rewardName + ".";
+            // Guard against an empty roll: delivering or naming an empty stack renders
+            // as "Air x0". Only deliver and name a real item; otherwise leave rewardLine
+            // null so the dialogue falls back to its generic "small fortune" flavor line.
+            if (reward != null && !reward.isEmpty() && reward.getCount() > 0) {
+                String rewardName = reward.getName().getString();
+                String winnerName = winner != null ? winner.getName().getString() : "Someone";
+                if (winner != null) LootDelivery.deliver(winner, reward);
+                rewardLine = winnerName + " pockets " + rewardName + ".";
+            }
         }
 
         // Re-arm the pending set: every member must dismiss the outcome line
