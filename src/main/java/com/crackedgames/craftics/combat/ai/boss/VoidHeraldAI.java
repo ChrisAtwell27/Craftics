@@ -11,7 +11,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Outer End Islands Boss — "The Void Herald" (Enderman)
+ * Outer End Islands Boss - "The Void Herald" (Enderman)
  * Entity: Enderman | 55HP / 10ATK / 3DEF / Speed 3 | Size 2×2
  *
  * Abilities:
@@ -20,7 +20,7 @@ import java.util.List;
  * - Platform Collapse: Permanently remove 2×2 floor → void. P2: auto every 2 turns.
  * - Blink Assault: Teleport + attack 3 tiles (player + 2 adjacent).
  *
- * Phase 2 — "Oblivion": Auto collapse every 2 turns, gale 3 tiles, 2 lightning marks,
+ * Phase 2 - "Oblivion": Auto collapse every 2 turns, gale 3 tiles, 2 lightning marks,
  * speed 4, summon 2 Endermites every 3 turns.
  */
 public class VoidHeraldAI extends BossAI {
@@ -42,7 +42,7 @@ public class VoidHeraldAI extends BossAI {
         int dist = self.minDistanceTo(playerPos);
 
         // Phase 2: Auto platform collapse every 2 turns. This MUST return after
-        // setting its warning — the old code fell through to the next ability,
+        // setting its warning - the old code fell through to the next ability,
         // and whichever telegraph fired afterwards overwrote pendingWarning, so
         // the collapse silently never resolved. Advance while the cracks spread
         // so the telegraph turn isn't a free turn for the player.
@@ -69,7 +69,7 @@ public class VoidHeraldAI extends BossAI {
             }
         }
 
-        // Void Gale — push everything toward void
+        // Void Gale - push everything toward void
         if (!isOnCooldown(CD_GALE)) {
             setCooldown(CD_GALE, 3);
             int[] pushDir = findVoidDirection(arena, playerPos);
@@ -111,7 +111,7 @@ public class VoidHeraldAI extends BossAI {
             return new EnemyAction.Idle();
         }
 
-        // Platform Collapse — destroy floor
+        // Platform Collapse - destroy floor
         if (!isOnCooldown(CD_COLLAPSE)) {
             List<GridPos> collapseTiles = findCollapseTiles(arena, playerPos);
             if (!collapseTiles.isEmpty()) {
@@ -125,7 +125,7 @@ public class VoidHeraldAI extends BossAI {
             }
         }
 
-        // Blink Assault — teleport beside the player and slam the area. The
+        // Blink Assault - teleport beside the player and slam the area. The
         // landing must fit the boss's whole 2×2 footprint and not cover the
         // player; the old code validated single tiles only, and its second
         // (re-shuffled) position lookup could land somewhere it never checked.

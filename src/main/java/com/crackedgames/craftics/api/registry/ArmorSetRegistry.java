@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ArmorSetRegistry {
     private static final Map<String, ArmorSetEntry> REGISTRY = new ConcurrentHashMap<>();
-    /** Set IDs whose current entry came from a JSON datapack — dropped on /reload. */
+    /** Set IDs whose current entry came from a JSON datapack - dropped on /reload. */
     private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private ArmorSetRegistry() {}

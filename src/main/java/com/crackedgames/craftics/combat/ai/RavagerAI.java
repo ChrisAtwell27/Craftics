@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * Ravager AI: Aggressive beast with bull rush and ground stomp.
  * - GROUND STOMP: when surrounded (2+ attackers in melee contact), slams the
- *   ground — an AoE around its body instead of a single tusk swipe
+ *   ground - an AoE around its body instead of a single tusk swipe
  * - BULL RUSH: charges up to 3 tiles in a straight line, deals damage + knockback 2
  * - Speed 2, 2x2 size, always aggressive
  */
@@ -21,18 +21,18 @@ public class RavagerAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // GROUND STOMP: surrounded by two or more attackers — hit everyone at
+        // GROUND STOMP: surrounded by two or more attackers - hit everyone at
         // once. (The old implementation documented this but never did it.)
         if (dist == 1 && adjacentThreats(self, arena, playerPos) >= 2) {
             return new EnemyAction.AreaAttack(myPos, 2, self.getAttackPower(), "ground_stomp");
         }
 
-        // Adjacent — knockback attack (tusks)
+        // Adjacent - knockback attack (tusks)
         if (dist == 1) {
             return new EnemyAction.AttackWithKnockback(self.getAttackPower(), 2);
         }
 
-        // Try bull rush — charge in cardinal directions up to 3 tiles
+        // Try bull rush - charge in cardinal directions up to 3 tiles
         int[][] directions = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (int[] dir : directions) {
             List<GridPos> chargePath = buildChargePath(arena, myPos, dir[0], dir[1], 3);
@@ -41,13 +41,13 @@ public class RavagerAI implements EnemyAI {
             // Check if player is at the end of or in the charge path
             GridPos chargeEnd = chargePath.get(chargePath.size() - 1);
             if (CombatEntity.minDistanceFromSizedEntity(chargeEnd, self.getSize(), playerPos) <= 1) {
-                // Charge ends adjacent to player — charge + attack with knockback
+                // Charge ends adjacent to player - charge + attack with knockback
                 return new EnemyAction.MoveAndAttackWithKnockback(
                     new ArrayList<>(chargePath), self.getAttackPower() + 1, 2);
             }
         }
 
-        // Can't charge into player — try to get closer (size-aware)
+        // Can't charge into player - try to get closer (size-aware)
         int size = self.getSize();
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), size);
         if (target == null) target = playerPos;

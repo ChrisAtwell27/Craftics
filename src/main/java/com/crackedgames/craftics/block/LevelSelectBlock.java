@@ -50,7 +50,7 @@ public class LevelSelectBlock extends BlockWithEntity {
     // i.e. phantom = realPos.offset(FACING.getOpposite()).
     // The outline still extends into the phantom column so hits from angles that
     // cross the real block's column still register, but vanilla raycast won't
-    // test this extended shape when the ray stays purely in the phantom column —
+    // test this extended shape when the ray stays purely in the phantom column -
     // that's why a LevelSelectGhostBlock is placed there too (see onPlaced).
     private static final VoxelShape OUTLINE_NORTH = VoxelShapes.cuboid(0.0, 0.0, 0.0, 1.0, 0.5, 2.0);
     private static final VoxelShape OUTLINE_SOUTH = VoxelShapes.cuboid(0.0, 0.0, -1.0, 1.0, 0.5, 1.0);
@@ -80,9 +80,9 @@ public class LevelSelectBlock extends BlockWithEntity {
 
     @Override
     public BlockState getPlacementState(ItemPlacementContext ctx) {
-        // Place sideways — model extends perpendicular to player facing
+        // Place sideways - model extends perpendicular to player facing
         Direction facing = ctx.getHorizontalPlayerFacing().rotateYClockwise();
-        // Reject placement if the phantom half's position isn't free — we need
+        // Reject placement if the phantom half's position isn't free - we need
         // to put a LevelSelectGhostBlock there so the other visual half is
         // clickable from perpendicular angles.
         if (!ctx.getWorld().getBlockState(phantomPos(ctx.getBlockPos(), facing)).canReplace(ctx)) {
@@ -111,7 +111,7 @@ public class LevelSelectBlock extends BlockWithEntity {
         if (!world.isClient()) {
             BlockPos ghostPos = phantomPos(pos, state.get(FACING));
             // Use setBlockState (not breakBlock) so the ghost's onBreak doesn't
-            // recurse back into this block — the real half has already dropped
+            // recurse back into this block - the real half has already dropped
             // its item, and the ghost has no drops of its own.
             if (world.getBlockState(ghostPos).getBlock() instanceof LevelSelectGhostBlock) {
                 world.setBlockState(ghostPos, Blocks.AIR.getDefaultState(), Block.NOTIFY_ALL);

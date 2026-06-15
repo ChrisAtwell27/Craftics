@@ -1,4 +1,4 @@
-# Broodmother Boss Rework — Design Spec
+﻿# Broodmother Boss Rework - Design Spec
 
 **Date:** 2026-04-02
 **Status:** Approved
@@ -8,14 +8,14 @@
 
 ## Problem
 
-The current Broodmother is a rigid priority cascade (Spawn Brood > Web Spray > Pounce > Bite > walk). Every fight plays out identically as spider spawning spam. Phase 2 adds minor stat bumps but no new behavior. Egg sacs exist but are non-interactive — the player has no way to destroy them or reason to engage with them.
+The current Broodmother is a rigid priority cascade (Spawn Brood > Web Spray > Pounce > Bite > walk). Every fight plays out identically as spider spawning spam. Phase 2 adds minor stat bumps but no new behavior. Egg sacs exist but are non-interactive - the player has no way to destroy them or reason to engage with them.
 
 ## Design Goals
 
-1. **Target prioritization** — Player must decide between damaging the boss, destroying egg sacs, or clearing webs.
-2. **Readable AI states** — Player can tell when the Broodmother is hunting vs nesting and plan accordingly.
-3. **Phase escalation** — Phase 2 introduces genuinely new mechanics (Hunting Dive, web terrain, egg sac replacement), not just stat bumps.
-4. **Minion control** — Spawns are tied to egg sac count, giving the player direct agency over spawn pressure.
+1. **Target prioritization** - Player must decide between damaging the boss, destroying egg sacs, or clearing webs.
+2. **Readable AI states** - Player can tell when the Broodmother is hunting vs nesting and plan accordingly.
+3. **Phase escalation** - Phase 2 introduces genuinely new mechanics (Hunting Dive, web terrain, egg sac replacement), not just stat bumps.
+4. **Minion control** - Spawns are tied to egg sac count, giving the player direct agency over spawn pressure.
 
 ---
 
@@ -23,9 +23,9 @@ The current Broodmother is a rigid priority cascade (Spawn Brood > Web Spray > P
 
 | Stat    | Phase 1 | Phase 2 (≤50% HP) |
 |---------|---------|--------------------|
-| HP      | 35      | —                  |
-| ATK     | 6       | —                  |
-| DEF     | 2       | —                  |
+| HP      | 35      | -                  |
+| ATK     | 6       | -                  |
+| DEF     | 2       | -                  |
 | Speed   | 3       | 5 (+2 bonus)       |
 | Size    | 2×2     | 2×2                |
 
@@ -37,9 +37,9 @@ Egg sacs are the central mechanic of the fight. They control spawn capacity and 
 
 - **3 placed at fight start** in arena corners/edges (same placement logic as current)
 - **Visual:** Turtle Egg blocks on the grid
-- **1 HP, 0 ATK, 0 DEF** — single hit to destroy
-- **Solid for all entities except the Broodmother** — she can walk through them; all other entities (player, minions) treat them as obstacles
-- **Max alive cave spiders = number of living egg sacs** — 0 sacs means no spawning is possible
+- **1 HP, 0 ATK, 0 DEF** - single hit to destroy
+- **Solid for all entities except the Broodmother** - she can walk through them; all other entities (player, minions) treat them as obstacles
+- **Max alive cave spiders = number of living egg sacs** - 0 sacs means no spawning is possible
 - **Phase 2:** Broodmother can place up to 2 new egg sacs when in Nesting state (if fewer than 3 remain). New sacs are placed near existing sac positions or boss position.
 
 ---
@@ -53,9 +53,9 @@ The Broodmother uses a state-based AI instead of a priority cascade. She is alwa
 The Broodmother is aggressive, chasing the player.
 
 **Ability priority:**
-1. **Ceiling Ambush** (P1) / **Hunting Dive** (P2) — if off cooldown
-2. **Pounce** — if in range and off cooldown
-3. **Venomous Bite** — if adjacent
+1. **Ceiling Ambush** (P1) / **Hunting Dive** (P2) - if off cooldown
+2. **Pounce** - if in range and off cooldown
+3. **Venomous Bite** - if adjacent
 4. Walk toward player
 
 **Transitions to Nesting when:**
@@ -67,9 +67,9 @@ The Broodmother is aggressive, chasing the player.
 The Broodmother retreats toward her egg sacs and rebuilds her brood.
 
 **Ability priority:**
-1. **Spawn Brood** — if off cooldown and egg sacs exist
-2. **Web Spray** — if player in range and off cooldown
-3. **Place New Egg Sacs** (Phase 2 only) — if fewer than 3 sacs remain
+1. **Spawn Brood** - if off cooldown and egg sacs exist
+2. **Web Spray** - if player in range and off cooldown
+3. **Place New Egg Sacs** (Phase 2 only) - if fewer than 3 sacs remain
 4. Move toward nearest egg sac cluster
 
 **Transitions to Hunting when:**
@@ -91,7 +91,7 @@ The Broodmother retreats toward her egg sacs and rebuilds her brood.
 | Warning      | TILE_HIGHLIGHT red (0xFFFF4444) on 3×3 zone, 1-turn telegraph |
 | Action       | Uses `CeilingAscend` on ascend turn, `AreaAttack` on landing |
 
-### Hunting Dive (Phase 2 upgrade — replaces Ceiling Ambush)
+### Hunting Dive (Phase 2 upgrade - replaces Ceiling Ambush)
 
 | Property     | Value                                      |
 |--------------|--------------------------------------------|
@@ -108,7 +108,7 @@ The Broodmother retreats toward her egg sacs and rebuilds her brood.
 | Property     | Value                                      |
 |--------------|--------------------------------------------|
 | Cooldown     | 2 turns                                    |
-| Range        | P1: 2–3 tiles. P2: 2–4 tiles.             |
+| Range        | P1: 2-3 tiles. P2: 2-4 tiles.             |
 | Behavior     | Leap to tile adjacent to player, 2×2 AoE landing |
 | Damage       | ATK + 2                                    |
 | Warning      | TILE_HIGHLIGHT red (0xFFFF4444) on 2×2 landing tiles, 1-turn telegraph |
@@ -120,7 +120,7 @@ The Broodmother retreats toward her egg sacs and rebuilds her brood.
 | Cooldown     | None                                       |
 | Range        | Melee (dist ≤ 1)                           |
 | Damage       | ATK                                        |
-| Effect       | Poison — 2 dmg/turn for 3 turns            |
+| Effect       | Poison - 2 dmg/turn for 3 turns            |
 
 ### Web Spray
 
@@ -155,7 +155,7 @@ The Broodmother retreats toward her egg sacs and rebuilds her brood.
 
 ---
 
-## Phase 2 — "Nest Awakening" (≤50% HP)
+## Phase 2 - "Nest Awakening" (≤50% HP)
 
 Triggered once when HP drops to or below 50%.
 
@@ -187,7 +187,7 @@ Webs placed by Hunting Dive are **not** tile type changes. They are physical cob
 **Phase 1:**
 1. Fight starts. 3 egg sacs in arena. Broodmother in Hunting state.
 2. She pounces toward player, bites when adjacent.
-3. After a few turns, she uses Ceiling Ambush — ascends, player sees red 3×3 warning, moves out of the way, she slams down.
+3. After a few turns, she uses Ceiling Ambush - ascends, player sees red 3×3 warning, moves out of the way, she slams down.
 4. Player decides to destroy an egg sac (costs attack action, but reduces future spawn pressure).
 5. Egg sac destroyed → Broodmother switches to Nesting, retreats toward remaining sacs.
 6. She spawns cave spiders (1 per remaining sac = 2), then uses Web Spray on the player.
@@ -195,7 +195,7 @@ Webs placed by Hunting Dive are **not** tile type changes. They are physical cob
 
 **Phase 2:**
 8. At 50% HP, Nest Awakening triggers. Speed increases, she becomes enraged.
-9. She uses Hunting Dive — ascends, rains 4-5 webs across the arena, then dive-bombs.
+9. She uses Hunting Dive - ascends, rains 4-5 webs across the arena, then dive-bombs.
 10. Player must break webs or navigate around them while dodging the dive.
 11. If egg sacs are destroyed, she enters Nesting and places 2 new ones.
 12. The fight becomes a tug-of-war: player destroying sacs, boss replacing them, webs limiting movement.
@@ -206,7 +206,7 @@ Webs placed by Hunting Dive are **not** tile type changes. They are physical cob
 
 | File | Changes |
 |------|---------|
-| `BroodmotherAI.java` | Full rewrite — state machine, new abilities, egg sac logic |
+| `BroodmotherAI.java` | Full rewrite - state machine, new abilities, egg sac logic |
 | `CombatManager.java` | Egg sac entity handling (solid for non-boss, 1HP destructible), web overlay placement/removal/breaking, Hunting Dive multi-turn ceiling sequence, turtle egg block visuals |
 | `EnemyAction.java` | May need a `PlaceEggSacs` action type or reuse `CreateTerrain`/`SummonMinions` |
 | `TileType.java` | No changes needed (webs are Y+1 blocks, not tile types) |
@@ -214,3 +214,4 @@ Webs placed by Hunting Dive are **not** tile type changes. They are physical cob
 | `CombatEffects.java` | Verify Slowness/Poison/Stun effects work as needed (likely no changes) |
 | `jungle.json` | Verify boss stats match (HP 35, ATK 6, DEF 2) |
 | `broodmother.html` | Update wiki documentation |
+

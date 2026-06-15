@@ -12,11 +12,11 @@ import java.util.List;
  *
  * <p>A segment is an ordered, non-empty list of biome ids. The common case of swapping two
  * single biomes is a pair of length-1 segments; use {@link #of(String, String, String)} for
- * that. The general form swaps two multi-biome contiguous segments — e.g. exchanging
+ * that. The general form swaps two multi-biome contiguous segments - e.g. exchanging
  * {@code [desert, jungle, forest]} with {@code [snowy, mountain]} while a pivot biome between
  * them stays put.
  *
- * <p>A branch is only honored when valid — its {@code regionId} must exist and BOTH segments
+ * <p>A branch is only honored when valid - its {@code regionId} must exist and BOTH segments
  * must appear as contiguous, disjoint, non-interleaving sublists of that region's node order
  * (see {@link Campaign#isBranchValid()}).
  *

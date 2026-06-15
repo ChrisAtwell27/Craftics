@@ -163,7 +163,7 @@ public class GoatHornEffects {
     public static String getTooltip(String hornId) {
         for (HornEffectDef def : HORN_DEFS) {
             if (def.hornId.equals(hornId)) {
-                return def.displayName + " — " + def.description + " §8(AP: " + def.apCost + ")";
+                return def.displayName + " - " + def.description + " §8(AP: " + def.apCost + ")";
             }
         }
         return "§7Unknown Horn";

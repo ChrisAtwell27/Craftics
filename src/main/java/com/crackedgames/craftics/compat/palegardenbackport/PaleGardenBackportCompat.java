@@ -23,14 +23,14 @@ import net.minecraft.util.Identifier;
  * <p>
  * Hooks consumed elsewhere:
  * <ul>
- *   <li>{@link com.crackedgames.craftics.combat.ai.AIRegistry} — registers
+ *   <li>{@link com.crackedgames.craftics.combat.ai.AIRegistry} - registers
  *       {@code palegardenbackport:creaking} pointing at {@link CreakingAI}
  *       (always, even when the mod isn't loaded, so the AI is ready if the
  *       entity ever appears).</li>
- *   <li>{@link com.crackedgames.craftics.level.LevelGenerator} — calls
+ *   <li>{@link com.crackedgames.craftics.level.LevelGenerator} - calls
  *       {@link #shouldSpawnPaleGarden()} / {@link #creakingEntityId()} /
  *       {@link #paleMossBlock()} when building the forest midpoint level.</li>
- *   <li>{@link com.crackedgames.craftics.combat.CombatManager} — calls
+ *   <li>{@link com.crackedgames.craftics.combat.CombatManager} - calls
  *       {@link #isCreakingEntity(String)} for invulnerability/freeze checks
  *       and {@link #creakingHeartBlock()} when placing the heart in-world.</li>
  * </ul>
@@ -60,11 +60,11 @@ public final class PaleGardenBackportCompat {
 
         boolean modLoaded = FabricLoader.getInstance().isModLoaded(MOD_ID);
         CrafticsMod.LOGGER.info(
-            "[Craftics × Pale Garden Backport] init() — FabricLoader.isModLoaded({}) = {}", MOD_ID, modLoaded);
+            "[Craftics × Pale Garden Backport] init() - FabricLoader.isModLoaded({}) = {}", MOD_ID, modLoaded);
         if (!modLoaded) return;
         loaded = true;
         CrafticsMod.LOGGER.info(
-            "[Craftics × Pale Garden Backport] enabled — pale garden uses modded creaking entity");
+            "[Craftics × Pale Garden Backport] enabled - pale garden uses modded creaking entity");
     }
 
     /** True when a creaking entity (vanilla or backport) is available to spawn. */
@@ -92,7 +92,7 @@ public final class PaleGardenBackportCompat {
             || "palegardenbackport:creaking".equals(entityTypeId);
     }
 
-    /** Pale moss block for the Pale Garden floor — falls back to moss block then podzol. */
+    /** Pale moss block for the Pale Garden floor - falls back to moss block then podzol. */
     public static Block paleMossBlock() {
         //? if >=1.21.4 {
         return Blocks.PALE_MOSS_BLOCK;
@@ -103,7 +103,7 @@ public final class PaleGardenBackportCompat {
         *///?}
     }
 
-    /** Block placed at the heart's world position (visual only — entity is the actual target). */
+    /** Block placed at the heart's world position (visual only - entity is the actual target). */
     public static Block creakingHeartBlock() {
         //? if >=1.21.4 {
         return Blocks.CREAKING_HEART;
@@ -146,7 +146,7 @@ public final class PaleGardenBackportCompat {
      * correctly on 1.21.1 with the backport mod.
      *
      * @param fullId block id like {@code "minecraft:pale_oak_log"} (may include
-     *               trailing {@code [props]} — those are handled by the caller)
+     *               trailing {@code [props]} - those are handled by the caller)
      * @return remapped id, or the original if no remap applies
      */
     public static String remapBlockId(String fullId) {

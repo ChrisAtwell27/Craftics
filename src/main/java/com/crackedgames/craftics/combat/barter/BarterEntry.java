@@ -5,7 +5,7 @@ import net.minecraft.item.ItemStack;
 /**
  * One reward in a barter pool, keyed to a {@link BarterCategory} id. The reward is stored as a
  * prototype {@link ItemStack}; {@code minCount}/{@code maxCount} let a single entry roll a
- * quantity range (e.g. Hoarder's 6–12 diamonds). {@code weight} biases random selection within a
+ * quantity range (e.g. Hoarder's 6-12 diamonds). {@code weight} biases random selection within a
  * category. {@code minBiomeTier} gates the entry to deeper Nether biomes.
  */
 public record BarterEntry(String categoryId, ItemStack prototype,

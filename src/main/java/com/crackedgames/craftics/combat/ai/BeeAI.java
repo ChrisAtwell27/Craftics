@@ -16,7 +16,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * When a level spawns bees, all other passives should be replaced with bees.
  */
 public class BeeAI implements EnemyAI {
-    /** Bees are neutral — only a threat once provoked (enraged). */
+    /** Bees are neutral - only a threat once provoked (enraged). */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return self.isEnraged();
@@ -27,7 +27,7 @@ public class BeeAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = myPos.manhattanDistance(playerPos);
 
-        // Check if any bee in the arena has been hit — if so, ALL bees agro
+        // Check if any bee in the arena has been hit - if so, ALL bees agro
         if (!self.isEnraged()) {
             if (self.wasDamagedSinceLastTurn() || anyBeeHit(arena)) {
                 // Enrage ALL bees
@@ -38,7 +38,7 @@ public class BeeAI implements EnemyAI {
         // AGRO SWARM: chase and sting
         if (self.isEnraged()) {
             if (dist <= 1) {
-                // Sting attack — poison effect handled by applyEnemyHitEffect in CombatManager
+                // Sting attack - poison effect handled by applyEnemyHitEffect in CombatManager
                 return new EnemyAction.Attack(self.getAttackPower());
             }
 
@@ -65,7 +65,7 @@ public class BeeAI implements EnemyAI {
 
     /**
      * Check if any bee in the arena has been hurt. Counts lasting wounds
-     * (current HP below max), not just the damaged-this-turn flag — a bee
+     * (current HP below max), not just the damaged-this-turn flag - a bee
      * struck two turns ago still has the swarm riled, and a swarm whose
      * sister was one-shot doesn't shrug it off.
      */

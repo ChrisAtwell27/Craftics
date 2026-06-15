@@ -8,7 +8,7 @@ import net.minecraft.util.Identifier;
 
 /**
  * C2S: Client asks the server to remove every mob from the player's battle
- * party (hub-only convenience keybind). Carries no data — the player is taken
+ * party (hub-only convenience keybind). Carries no data - the player is taken
  * from the packet context server-side.
  */
 public record ClearPartyPayload() implements CustomPayload {

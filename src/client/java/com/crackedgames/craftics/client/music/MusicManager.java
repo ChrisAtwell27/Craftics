@@ -35,10 +35,10 @@ public final class MusicManager {
         }
 
         MusicTracks track = MusicTracks.byKey(key);
-        if (track == null) return; // stop request — nothing to start
+        if (track == null) return; // stop request - nothing to start
 
         SoundEvent event = ModSounds.get(track);
-        if (event == null) return; // unregistered key — ignore defensively
+        if (event == null) return; // unregistered key - ignore defensively
 
         MinecraftClient mc = MinecraftClient.getInstance();
         SoundManager sm = mc.getSoundManager();
@@ -52,7 +52,7 @@ public final class MusicManager {
     }
 
     /**
-     * Hard-stop immediately with no fade — used when leaving a world so the soundtrack
+     * Hard-stop immediately with no fade - used when leaving a world so the soundtrack
      * never bleeds onto the title screen.
      */
     public static void stopAll() {

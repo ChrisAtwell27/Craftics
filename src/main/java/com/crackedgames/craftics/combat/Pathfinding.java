@@ -43,7 +43,7 @@ public class Pathfinding {
     /**
      * Player-facing pathfinding that treats hazard tiles (LAVA/FIRE) as cost 1
      * so the player can walk freely across magma and fire. Damage still applies
-     * at move-tick time — this only removes the path-disruption behavior.
+     * at move-tick time - this only removes the path-disruption behavior.
      * Enemy pathfinding retains the high hazard cost so AI avoids stepping into hazards.
      */
     public static List<GridPos> findPathPlayer(GridArena arena, GridPos from, GridPos to, int maxSteps, boolean hasBoat, boolean ignoreObstacles, boolean phaseThroughEnemies) {
@@ -99,7 +99,7 @@ public class Pathfinding {
     /**
      * A* pathfinding with the full option set including {@code phaseThroughEnemies}
      * (Helium Flamingo). When phaseThroughEnemies is true, occupant blocking is
-     * skipped for intermediate path tiles — the destination still cannot be
+     * skipped for intermediate path tiles - the destination still cannot be
      * occupied (can't stop on top of an enemy).
      */
     public static List<GridPos> findPathFull(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean aquatic, boolean phaseThroughEnemies) {
@@ -108,7 +108,7 @@ public class Pathfinding {
 
     /**
      * A* pathfinding with full options. When {@code ignoreHazardCost} is true,
-     * LAVA/FIRE tiles cost 1 to step through instead of 50 — used for player
+     * LAVA/FIRE tiles cost 1 to step through instead of 50 - used for player
      * movement so magma/fire behave like cobweb (damage on step but no path
      * disruption) while leaving AI pathfinding untouched so enemies still
      * naturally avoid hazards.
@@ -152,7 +152,7 @@ public class Pathfinding {
                 var neighborTile = arena.getTile(neighbor);
                 if (neighborTile == null || !neighborTile.isWalkableEx(hasBoat, ignoreObstacles, aquatic)) continue;
                 // Block enemy-occupied tiles (excluding self and the destination).
-                // Allies are passable for intermediate tiles — you can move through them but not stop on them.
+                // Allies are passable for intermediate tiles - you can move through them but not stop on them.
                 // Helium Flamingo: also pass through enemies on intermediate tiles.
                 if (!neighbor.equals(to)) {
                     if (!phaseThroughEnemies && isBlockedBy(arena, neighbor, self, false)) continue;
@@ -196,7 +196,7 @@ public class Pathfinding {
 
     /**
      * Check if a tile is blocked by an entity or the player (excluding 'self' if non-null).
-     * Defaults to treating the tile as a final destination — any occupant blocks.
+     * Defaults to treating the tile as a final destination - any occupant blocks.
      */
     private static boolean isBlockedBy(GridArena arena, GridPos pos, CombatEntity self) {
         return isBlockedBy(arena, pos, self, true);
@@ -204,7 +204,7 @@ public class Pathfinding {
 
     /**
      * Check if a tile is blocked. When {@code isFinalDestination} is false, allies (and the player,
-     * for ally-controlled selves) are passable — units can move through them but cannot stop on them.
+     * for ally-controlled selves) are passable - units can move through them but cannot stop on them.
      */
     private static boolean isBlockedBy(GridArena arena, GridPos pos, CombatEntity self, boolean isFinalDestination) {
         // Player tile: allies passing through (not stopping) may step onto it; everyone else blocks
@@ -350,7 +350,7 @@ public class Pathfinding {
 
     /**
      * Find the reachable tile within maxSteps that is closest to the target position.
-     * Used as an AI fallback — "get as close as possible to the player."
+     * Used as an AI fallback - "get as close as possible to the player."
      * Returns null if no tiles are reachable.
      */
     public static GridPos findClosestReachableTo(GridArena arena, GridPos from, GridPos target,
@@ -482,7 +482,7 @@ public class Pathfinding {
     /**
      * Checks line-of-sight between two grid positions using a Bresenham-style trace.
      * Returns false if any OBSTACLE tile lies between {@code from} and {@code to}
-     * (the endpoints themselves are not checked). Used for ranged attacks — projectiles
+     * (the endpoints themselves are not checked). Used for ranged attacks - projectiles
      * cannot fly over obstacles.
      */
     public static boolean hasLineOfSight(GridArena arena, GridPos from, GridPos to) {
@@ -504,7 +504,7 @@ public class Pathfinding {
             int e2 = 2 * err;
             if (e2 > -dz) { err -= dz; x += sx; }
             if (e2 < dx) { err += dx; z += sz; }
-            // Reached the target — no obstacle was in the way
+            // Reached the target - no obstacle was in the way
             if (x == x1 && z == z1) return true;
             // Inspect the intermediate tile
             GridPos step = new GridPos(x, z);

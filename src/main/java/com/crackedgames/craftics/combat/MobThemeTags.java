@@ -11,7 +11,7 @@ import java.util.Set;
  * for "this creature is water-themed / cold / jungle" so:
  * <ul>
  *   <li>Adding a new vanilla mob to a biome only requires one {@code add*}
- *       call — no AI code changes.</li>
+ *       call - no AI code changes.</li>
  *   <li>Mod compat modules (Creeper Overhaul, Variants & Ventures, etc.) can
  *       register their themed variants here and have the effect automatically
  *       apply without touching CombatManager.</li>
@@ -26,7 +26,7 @@ import java.util.Set;
  *   <li><b>COLD</b> → applies {@link CombatEffects.EffectType#WEAKNESS} for 2 turns</li>
  * </ul>
  * <p>
- * Invoked from {@code CombatManager.damagePlayer} — see
+ * Invoked from {@code CombatManager.damagePlayer} - see
  * {@link #applyOnHitEffect} for the entry point.
  */
 public final class MobThemeTags {
@@ -47,7 +47,7 @@ public final class MobThemeTags {
         addWaterMob("minecraft:elder_guardian");
         addWaterMob("minecraft:pufferfish");
 
-        // Vanilla jungle-themed mobs — the vanilla cave spider already applies
+        // Vanilla jungle-themed mobs - the vanilla cave spider already applies
         // its own poison via stackPoison during its attack resolution, so leave
         // it out of this set to avoid double-stacking.
         addJungleMob("minecraft:ocelot");

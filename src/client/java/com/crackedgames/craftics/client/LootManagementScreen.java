@@ -30,10 +30,10 @@ public class LootManagementScreen extends HandledScreen<LootManagementScreenHand
         super.init();
         // Buttons sit in the gap just above the chest panel.
         int btnY = this.y - 20;
-        // Take All — shift-move every loot slot into the inventory.
+        // Take All - shift-move every loot slot into the inventory.
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Take All"), b -> takeAll())
             .dimensions(this.x + 4, btnY, 80, 16).build());
-        // Continue — close, with a leftover-loot warning if anything remains.
+        // Continue - close, with a leftover-loot warning if anything remains.
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Continue"), b -> tryClose())
             .dimensions(this.x + this.backgroundWidth - 84, btnY, 80, 16).build());
     }
@@ -93,7 +93,7 @@ public class LootManagementScreen extends HandledScreen<LootManagementScreenHand
 
     @Override
     protected void drawBackground(DrawContext context, float delta, int mouseX, int mouseY) {
-        // Vanilla chest GUI texture: the loot rows on top, player inventory below —
+        // Vanilla chest GUI texture: the loot rows on top, player inventory below -
         // exactly how a small chest looks when opened.
         int rows = LootManagementScreenHandler.LOOT_ROWS;
         drawChestTexture(context, this.x, this.y, 0, 0, this.backgroundWidth, rows * 18 + 17);

@@ -24,7 +24,7 @@ public class LootManagementScreenHandler extends ScreenHandler {
 
     private final Inventory lootInventory;
 
-    /** Server constructor — {@code lootInventory} is pre-filled with the overflow. */
+    /** Server constructor - {@code lootInventory} is pre-filled with the overflow. */
     public LootManagementScreenHandler(int syncId, PlayerInventory playerInventory, Inventory lootInventory) {
         super(ModScreenHandlers.LOOT_MANAGEMENT_SCREEN_HANDLER, syncId);
         checkSize(lootInventory, LOOT_SLOTS);
@@ -50,12 +50,12 @@ public class LootManagementScreenHandler extends ScreenHandler {
         }
     }
 
-    /** Client constructor — the loot inventory starts empty and is filled by slot sync. */
+    /** Client constructor - the loot inventory starts empty and is filled by slot sync. */
     public LootManagementScreenHandler(int syncId, PlayerInventory playerInventory) {
         this(syncId, playerInventory, new SimpleInventory(LOOT_SLOTS));
     }
 
-    /** Number of loot slots still holding an item — used for the close confirmation. */
+    /** Number of loot slots still holding an item - used for the close confirmation. */
     public int remainingLootCount() {
         int n = 0;
         for (int i = 0; i < LOOT_SLOTS; i++) {
@@ -106,7 +106,7 @@ public class LootManagementScreenHandler extends ScreenHandler {
             setCursorStack(ItemStack.EMPTY);
         }
         super.onClosed(player);
-        // Loot still in the loot inventory is left behind — discarded with the
+        // Loot still in the loot inventory is left behind - discarded with the
         // transient inventory. Task 4 adds the combat-continuation notification here.
         if (player instanceof ServerPlayerEntity sp) {
             CombatManager cm = CombatManager.getActiveCombat(sp.getUuid());

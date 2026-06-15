@@ -5,7 +5,7 @@ import com.crackedgames.craftics.combat.CombatEntity;
 import java.util.Map;
 
 /**
- * Per-mob-type on-hit status effects — the "special abilities" some allies bring
+ * Per-mob-type on-hit status effects - the "special abilities" some allies bring
  * to a fight. Applied in {@code CombatManager} right after an ally's attack
  * damages its target, independent of the ally's AI archetype.
  *

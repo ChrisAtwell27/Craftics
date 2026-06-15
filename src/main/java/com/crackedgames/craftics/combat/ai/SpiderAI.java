@@ -37,19 +37,19 @@ public class SpiderAI implements EnemyAI {
         int dist = self.minDistanceTo(playerPos);
         int size = self.getSize();
 
-        // Badly wounded — break off and reset on the ceiling. The ambusher
+        // Badly wounded - break off and reset on the ceiling. The ambusher
         // re-enters the fight with a drop instead of trading hits to the death.
         if (self.getCurrentHp() * 4 <= self.getMaxHp() && dist > 1) {
             return new EnemyAction.CeilingAscend();
         }
 
-        // Adjacent — always bite
+        // Adjacent - always bite
         if (dist == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
 
         // In combat range (2-3 tiles): choose between attack or web.
-        // Don't waste a turn webbing a player who's already boxed in by one —
+        // Don't waste a turn webbing a player who's already boxed in by one -
         // if a web overlay is sitting next to them, capitalize with a pounce.
         if (dist <= 3) {
             boolean shootWeb = java.util.concurrent.ThreadLocalRandom.current().nextDouble() < 0.45
@@ -67,7 +67,7 @@ public class SpiderAI implements EnemyAI {
                 return new EnemyAction.Pounce(pounceTarget, self.getAttackPower());
             }
 
-            // Pounce failed — try web as fallback
+            // Pounce failed - try web as fallback
             if (!shootWeb) {
                 EnemyAction webAction = tryWebShot(arena, myPos, playerPos);
                 if (webAction != null) return webAction;
@@ -75,7 +75,7 @@ public class SpiderAI implements EnemyAI {
         }
 
         // Can walk to player this turn? Move + attack (size-aware).
-        // Spiders jump over obstacles — pathfinding ignores OBSTACLE tiles.
+        // Spiders jump over obstacles - pathfinding ignores OBSTACLE tiles.
         GridPos adjTarget = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), size);
         if (adjTarget != null) {
             List<GridPos> path = Pathfinding.findPathSized(arena, myPos, adjTarget,
@@ -91,7 +91,7 @@ public class SpiderAI implements EnemyAI {
             }
         }
 
-        // Too far to reach — ascend to ceiling
+        // Too far to reach - ascend to ceiling
         return new EnemyAction.CeilingAscend();
     }
 
@@ -112,12 +112,12 @@ public class SpiderAI implements EnemyAI {
 
     private EnemyAction tryWebShot(GridArena arena, GridPos myPos, GridPos playerPos) {
         if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() < 0.5) {
-            // Direct web spray at the player — applies slow + stun
+            // Direct web spray at the player - applies slow + stun
             return new EnemyAction.RangedAttack(1, "web_spray");
         } else {
             // Web trap: place a cobweb on a tile adjacent to the player. Goes
             // through the arena's web-overlay system (cobweb at floor+1, floor
-            // stays, pathfinding slows instead of fully blocking) — CreateTerrain
+            // stays, pathfinding slows instead of fully blocking) - CreateTerrain
             // with OBSTACLE would replace the floor with stone, not place a web.
             GridPos webTile = findWebTrapTile(arena, myPos, playerPos);
             if (webTile != null) {

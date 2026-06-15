@@ -5,7 +5,7 @@ import com.crackedgames.craftics.api.registry.HybridSetRegistry;
 import com.crackedgames.craftics.combat.HybridEffect;
 
 /**
- * Registers Craftics' built-in hybrid armor sets — the 15 standard material pairs.
+ * Registers Craftics' built-in hybrid armor sets - the 15 standard material pairs.
  * The 6 copper pairs are registered separately by the Copper Age compat module, so
  * they exist only when that mod is installed. Craftics dogfoods the hybrid API:
  * every pair is a normal {@link HybridSetRegistry} registration.

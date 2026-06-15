@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Shared brain for the undead horde family: relentless advance, attack on
- * arrival, never retreat — with a +1 attack HORDE BONUS per adjacent undead
+ * arrival, never retreat - with a +1 attack HORDE BONUS per adjacent undead
  * packmate. {@link ZombieAI}, {@link ZombieVillagerAI} and {@link HuskAI}
  * subclass this and tune damage/speed through the hooks instead of each
  * carrying its own copy of the march-and-bite loop.
@@ -22,7 +22,7 @@ public class UndeadHordeAI implements EnemyAI {
         int dist = self.minDistanceTo(playerPos);
         int speed = effectiveSpeed(self);
 
-        // Adjacent — attack with horde bonus
+        // Adjacent - attack with horde bonus
         if (dist <= 1) {
             return new EnemyAction.Attack(damageAt(self, arena, myPos));
         }

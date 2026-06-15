@@ -44,7 +44,7 @@ public class DevArenaDefinition extends LevelDefinition {
         int midX = width / 2;
         int midZ = height / 2;
         spawns.add(new EnemySpawn("minecraft:husk", new GridPos(midX - 2, midZ + 3), 15, 3, 0, 1));
-        // Stack-enemy showcase. Hp/atk/def/range are ignored for stacks — the
+        // Stack-enemy showcase. Hp/atk/def/range are ignored for stacks - the
         // values come from StackVariants. Use typeIdFor so the spawn loop's
         // isStackType check routes them to spawnStackedEnemy. Placed off to
         // the side so they don't sit on hazards.
@@ -107,7 +107,7 @@ public class DevArenaDefinition extends LevelDefinition {
         placeLava(world, arena, w - 2, midZ);
         placeLava(world, arena, w - 3, midZ);
 
-        // --- Void pits (L-shape, top area — offset from lava) ---
+        // --- Void pits (L-shape, top area - offset from lava) ---
         placePit(world, arena, midX + 1, 2);
         placePit(world, arena, midX + 2, 2);
         placePit(world, arena, midX + 2, 3);

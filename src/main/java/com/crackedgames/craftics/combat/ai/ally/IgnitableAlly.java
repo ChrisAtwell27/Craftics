@@ -2,7 +2,7 @@ package com.crackedgames.craftics.combat.ai.ally;
 
 /**
  * Stat transform for an ally that can be ignited (flint &amp; steel) into a
- * one-shot lit state — it hits harder, moves faster, burns on hit, and dies
+ * one-shot lit state - it hits harder, moves faster, burns on hit, and dies
  * after its next attack. The runtime "is lit" state lives on the
  * {@code CombatEntity} ({@code litOneShot}); this describes only the attack/speed
  * boost so compat modules can supply mod-specific numbers without the core
@@ -24,7 +24,7 @@ public interface IgnitableAlly {
      * switch the mob to its ignited texture/model (e.g. Golem Overhaul's
      * {@code CoalGolem#setLit}, which drives a synced data-tracker the renderer reads
      * to pick {@code coal_golem_lit.png}). The vanilla fire overlay alone can't do
-     * this — fire-immune golems don't even render it — so the mod's own lit flag is
+     * this - fire-immune golems don't even render it - so the mod's own lit flag is
      * the only way to show the ignited texture. Called server-side right after an
      * ally is ignited; the data-tracker change syncs to clients.
      *

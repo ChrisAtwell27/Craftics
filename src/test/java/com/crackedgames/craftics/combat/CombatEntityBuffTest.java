@@ -79,7 +79,7 @@ class CombatEntityBuffTest {
         CombatEntity e = ally(20);
         e.stackPoison(3, 1);
         e.stackSlowness(3, 1);
-        e.applyRegeneration(3, 0);     // a buff — must survive cleanse
+        e.applyRegeneration(3, 0);     // a buff - must survive cleanse
         e.clearDebuffs();
         assertEquals(0, e.getPoisonTurns(), "poison cleared");
         assertEquals(0, e.getSlownessTurns(), "slowness cleared");

@@ -1,6 +1,6 @@
-# Enchantment Overhaul Design Document
+﻿# Enchantment Overhaul Design Document
 
-Every enchantment should feel like it fundamentally changes how you play.
+Every enchantment should change how you play.
 Weapon enchants reshape your combat identity. Armor enchants create reactive
 playstyles. Utility enchants provide tactical options that reward smart play.
 
@@ -9,7 +9,7 @@ When implementing these changes, they do NOT need the extra name like "Inferno S
 
 ## WEAPON ENCHANTMENTS
 
-### Fire Aspect (Sword)  — INFERNO SWEEP
+### Fire Aspect (Sword)  - INFERNO SWEEP
 Swing sends a **cone of fire** (2 tiles deep, widening outward) in the attack
 direction. All enemies in the cone catch fire. Primary target still takes the
 full melee hit.
@@ -22,7 +22,7 @@ full melee hit.
 
 ---
 
-### Sharpness (Sword) — BLEEDING WOUNDS
+### Sharpness (Sword) - BLEEDING WOUNDS
 Attacks apply stacking **Bleed** debuffs instead of flat bonus damage. Each
 stack of bleed grants 1 extra damage when attacked again.
 
@@ -37,7 +37,7 @@ Sharpness should also have a flat +1 extra damage per level
 
 ---
 
-### Smite (Sword) — HOLY RADIANCE
+### Smite (Sword) - HOLY RADIANCE
 Hitting an undead enemy releases a burst of radiant light. All undead in the
 radius take 2 damage and lose 1 movement next turn (holy energy saps
 them). Non-undead enemies in radius are revealed if stealthed.
@@ -52,7 +52,7 @@ them). Non-undead enemies in radius are revealed if stealthed.
 
 ---
 
-### Bane of Arthropods (Sword) — VENOM INJECTION
+### Bane of Arthropods (Sword) - VENOM INJECTION
 Hitting an arthropod injects spreading venom: Poison + Slowness. If a
 poisoned arthropod dies, venom **chains** to all adjacent arthropods.
 
@@ -67,7 +67,7 @@ poisoned arthropod dies, venom **chains** to all adjacent arthropods.
 
 ---
 
-### Knockback (Sword) — SHOCKWAVE SLASH
+### Knockback (Sword) - SHOCKWAVE SLASH
 Creates a **directional shockwave** through the target. All enemies in a line
 behind the target get pushed back too. Enemies slammed into walls or other
 enemies take **collision damage**.
@@ -79,7 +79,7 @@ enemies take **collision damage**.
 
 ---
 
-### Sweeping Edge (Sword) — WHIRLWIND
+### Sweeping Edge (Sword) - WHIRLWIND
 Full 360-degree spin attack that hits **all** adjacent enemies with scaling
 damage. At max level, also pushes hit enemies 1 tile outward.
 
@@ -93,7 +93,7 @@ damage. At max level, also pushes hit enemies 1 tile outward.
 
 ---
 
-### Looting (Sword) — PLUNDER
+### Looting (Sword) - PLUNDER
 Kills have a chance to give extra loot drops from the enemy killed.
 
 | Level | Extra Drop Chance |
@@ -134,7 +134,7 @@ Arrows are never consumed. Only requires 1 arrow in inventory to fire unlimited 
 
 ---
 
-### Punch (Bow) — IMPACT SHOT
+### Punch (Bow) - IMPACT SHOT
 Arrows explode on impact, creating a **radial knockback burst**. Target and
 adjacent enemies are pushed outward. Enemies knocked into walls or each
 other take collision damage.
@@ -169,7 +169,7 @@ Each side bolt hits the first enemy in its path for 50% damage.
 
 ### Piercing (Crossbow)
 Bolts pierce through enemies in a line, hitting additional targets behind the
-first. Also inflicts Bleed (like Sharpness — 1 extra damage when attacked again
+first. Also inflicts Bleed (like Sharpness - 1 extra damage when attacked again
 per stack) and increases bolt damage.
 
 | Level | Extra Targets | Bonus Damage | Bleed Stacks |
@@ -183,7 +183,7 @@ per stack) and increases bolt damage.
 
 ## MACE ENCHANTMENTS
 
-### Density (Mace) — GRAVITY WELL
+### Density (Mace) - GRAVITY WELL
 Strike creates a **gravitational pull** at the impact point. Nearby enemies
 are dragged toward the target tile. Enemies already adjacent take bonus
 crushing damage from compression.
@@ -199,7 +199,7 @@ Sweeping Edge allies.
 
 ---
 
-### Breach (Mace) — ARMOR SHATTER
+### Breach (Mace) - ARMOR SHATTER
 Hits **permanently reduce** the target's defense for the rest of combat.
 Once defense reaches 0, further shatters apply **Vulnerable** (target takes
 25% bonus damage from all sources).
@@ -230,14 +230,14 @@ Mace hit.
 
 ## TRIDENT ENCHANTMENTS
 
-### Riptide (Trident) — 
+### Riptide (Trident) - 
 Do not change its current effect.
 
 
 
 ---
 
-### Channeling (Trident) — STORM CALLER
+### Channeling (Trident) - STORM CALLER
 On hit, call a **chain lightning bolt** that jumps between enemies.
 Prioritizes Soaked enemies and deals double damage to them.
 
@@ -263,7 +263,7 @@ before returning to your inventory.
 ---
 
 ### Impaling (Trident)
-Increases trident damage and inflicts Bleed (like Sharpness — 1 extra damage
+Increases trident damage and inflicts Bleed (like Sharpness - 1 extra damage
 when attacked again per stack).
 
 | Level | Bonus Damage | Bleed Stacks |
@@ -278,9 +278,9 @@ when attacked again per stack).
 
 ## ARMOR ENCHANTMENTS
 
-### Protection — GUARDIAN THRESHOLD
+### Protection - GUARDIAN THRESHOLD
 Defense bonus (unchanged: 2 levels = +1 defense). New effect: when total
-Protection across all armor reaches **8+**, gain **Last Stand** — the first
+Protection across all armor reaches **8+**, gain **Last Stand** - the first
 hit that would kill you instead leaves you at 1 HP (once per combat).
 
 ---
@@ -297,7 +297,7 @@ Reduces fire damage taken by a percentage. At max level, grants full immunity to
 
 ---
 
-### Blast Protection — BLAST ABSORPTION
+### Blast Protection - BLAST ABSORPTION
 Reduced AoE/explosion damage. The absorbed blast energy is stored and added
 as **bonus damage** to your next attack.
 
@@ -313,7 +313,7 @@ at a time (latest overwrites).
 
 ---
 
-### Projectile Protection — DEFLECTION FIELD
+### Projectile Protection - DEFLECTION FIELD
 Chance to **deflect ranged attacks** back at the shooter, dealing a portion
 of the original damage.
 
@@ -326,9 +326,9 @@ of the original damage.
 
 ---
 
-### Thorns — RETRIBUTION AURA
+### Thorns - RETRIBUTION AURA
 **Guaranteed** damage reflection on every melee hit received (no more random
-chance). Scales with damage taken — the harder they hit, the more it hurts
+chance). Scales with damage taken - the harder they hit, the more it hurts
 them back. At level 3+, also knocks the attacker back.
 
 | Level | Damage Reflected | Knockback |
@@ -339,15 +339,15 @@ them back. At level 3+, also knocks the attacker back.
 
 ---
 
-### Feather Falling — WIND WALKER
+### Feather Falling - WIND WALKER
 **Immune to knockback.** When an enemy attempts to knock you back, they are
 pushed 1 tile away instead (you stand firm, they recoil). At higher levels,
 gain bonus movement after being attacked.
 
 | Level | Knockback Immunity | Recoil | Bonus |
 |-------|-------------------|--------|-------|
-| 1     | Reduce by 2 tiles | No | — |
-| 2     | Full immunity | 1 tile recoil | — |
+| 1     | Reduce by 2 tiles | No | - |
+| 2     | Full immunity | 1 tile recoil | - |
 | 3     | Full immunity | 1 tile recoil | +1 movement next turn |
 | 4     | Full immunity | 2 tile recoil | +1 movement next turn |
 
@@ -368,20 +368,20 @@ Boosts water-based attack damage.
 
 ---
 
-### Respiration — SECOND WIND
+### Respiration - SECOND WIND
 Passive regeneration that scales with **missing HP**. The lower your health,
 the harder you breathe, the faster you recover. Clutch survival enchantment.
 
 | Level | Above 50% HP | Below 50% HP | Below 25% HP |
 |-------|-------------|-------------|-------------|
-| 1     | — | +1 HP/turn | +2 HP/turn |
+| 1     | - | +1 HP/turn | +2 HP/turn |
 | 2     | +1 HP/turn | +2 HP/turn | +3 HP/turn |
 | 3     | +1 HP/turn | +2 HP/turn | +4 HP/turn |
 
 
 ---
 
-### Depth Strider — PRESSURE WAVE
+### Depth Strider - PRESSURE WAVE
 Moving near enemies creates **crushing water pressure**. Enemies you walk
 past (within 1 tile of your movement path) take damage and get soaked.
 Turn movement itself into an attack.
@@ -406,7 +406,7 @@ Allows you to walk on water tiles without a boat, turning them to ice.
 
 ## MOVEMENT / UTILITY ARMOR ENCHANTMENTS
 
-### Soul Speed — SOUL HARVEST
+### Soul Speed - SOUL HARVEST
 Killing enemies grants stacking **speed boosts**. The more you kill, the
 faster you become. Snowball enchantment for aggressive players.
 
@@ -420,15 +420,15 @@ faster you become. Snowball enchantment for aggressive players.
 
 ---
 
-### Swift Sneak — SHADOW STEP
+### Swift Sneak - SHADOW STEP
 End your turn without attacking → become **partially invisible**. While
 invisible: enemies have reduced accuracy, and your first attack from
 stealth deals bonus damage.
 
 | Level | Enemy Miss Chance | Stealth Attack Bonus | AP Bonus |
 |-------|------------------|---------------------|---------|
-| 1     | 20% | +2 damage | — |
-| 2     | 30% | +3 damage | — |
+| 1     | 20% | +2 damage | - |
+| 2     | 30% | +3 damage | - |
 | 3     | 40% | +4 damage | +1 AP next turn |
 
 Invisibility breaks when you attack or take damage.
@@ -452,7 +452,7 @@ Reduces the AP cost of your equipped weapon.
 
 ---
 
-### Fortune — SPOILS OF WAR
+### Fortune - SPOILS OF WAR
 Kills have a chance to drop **consumable combat items** (instant health,
 splash potion, golden apple effect, etc.) in addition to regular rewards.
 
@@ -499,7 +499,7 @@ Chance to repair the item's durability on kill.
 
 ### Luck of the Sea
 Increases the chance of catching rare loot when fishing. Works similarly to
-vanilla — higher levels shift the loot table toward treasure and away from junk.
+vanilla - higher levels shift the loot table toward treasure and away from junk.
 
 | Level | Rare Loot Chance Increase |
 |-------|--------------------------|
@@ -514,6 +514,7 @@ Reduces the AP cost of fishing. Higher levels have a chance to cost no AP.
 
 | Level | AP Reduction | Free Cast Chance |
 |-------|-------------|-----------------|
-| 1     | -1 (min 1) | — |
+| 1     | -1 (min 1) | - |
 | 2     | -1 (min 1) | 15% |
 | 3     | -2 (min 1) | 30% |
+

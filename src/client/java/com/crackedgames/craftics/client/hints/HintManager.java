@@ -51,7 +51,7 @@ public final class HintManager {
     }
 
     public void notifyInput(long nowMs) {
-        // Don't clear sensorTrueSinceMs — instead use lastInputAtMs as a floor
+        // Don't clear sensorTrueSinceMs - instead use lastInputAtMs as a floor
         // when computing elapsed idle time. That way "reset" means "the idle
         // clock effectively restarts from the input moment", not "the next
         // sensor-true tick rearms," which would over-delay by one tick.
@@ -85,9 +85,9 @@ public final class HintManager {
         lastClearedAtMs.put(id, System.currentTimeMillis());
     }
 
-    /** Test entry point — production callers build the snapshot themselves and call this. */
+    /** Test entry point - production callers build the snapshot themselves and call this. */
     public void tickWith(HintContext ctx, long nowMs) {
-        // Any open GUI suppresses every hint — they reappear once the screen closes.
+        // Any open GUI suppresses every hint - they reappear once the screen closes.
         if (ctx.isAnyScreenOpen()) {
             if (activeHud != null) lastClearedAtMs.put(activeHud.id(), nowMs);
             for (String id : activeWorldHintIds) lastClearedAtMs.put(id, nowMs);

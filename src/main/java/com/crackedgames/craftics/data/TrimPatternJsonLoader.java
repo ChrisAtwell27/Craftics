@@ -46,7 +46,7 @@ public final class TrimPatternJsonLoader extends CrafticsDataLoader<TrimPatternE
             try {
                 perPieceStat = TrimEffects.Bonus.valueOf(name.toUpperCase());
             } catch (IllegalArgumentException e) {
-                CrafticsMod.LOGGER.warn("Unknown trim stat '{}' in {} — pattern gets no per-piece bonus",
+                CrafticsMod.LOGGER.warn("Unknown trim stat '{}' in {} - pattern gets no per-piece bonus",
                     name, fileId);
             }
         }
@@ -57,7 +57,7 @@ public final class TrimPatternJsonLoader extends CrafticsDataLoader<TrimPatternE
             try {
                 setBonus = TrimEffects.SetBonus.valueOf(name.toUpperCase());
             } catch (IllegalArgumentException e) {
-                CrafticsMod.LOGGER.warn("Unknown set bonus '{}' in {} — defaulting to NONE", name, fileId);
+                CrafticsMod.LOGGER.warn("Unknown set bonus '{}' in {} - defaulting to NONE", name, fileId);
             }
         }
 

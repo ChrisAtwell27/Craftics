@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Nether Wastes Boss — "The Molten King" (Magma Cube)
+ * Nether Wastes Boss - "The Molten King" (Magma Cube)
  *
  * Split mechanic: at 50% HP the original boss dies and splits cleanly into 2
  * smaller copies that retain all boss abilities. Each copy acts as an
@@ -25,7 +25,7 @@ import java.util.List;
  * - Absorb: Merge with a nearby minion to heal
  * - Lava Creep (Phase 2): Arena shrinks via fire rings
  *
- * Phase 2 — "Meltdown": Permanent fire tiles, arena shrink, faster cooldowns.
+ * Phase 2 - "Meltdown": Permanent fire tiles, arena shrink, faster cooldowns.
  */
 public class MoltenKingAI extends BossAI {
     private final int generation; // 0 = original, 1 = final split
@@ -74,7 +74,7 @@ public class MoltenKingAI extends BossAI {
             }
         }
 
-        // Lava Cage — deny escape routes around the player
+        // Lava Cage - deny escape routes around the player
         if (!isOnCooldown(CD_CAGE) && dist >= 2) {
             List<GridPos> cageTiles = getLavaCageTiles(arena, playerPos);
             if (!cageTiles.isEmpty()) {
@@ -105,10 +105,10 @@ public class MoltenKingAI extends BossAI {
             }
         }
 
-        // Magma Eruption — leap to a valid tile near player and explode.
+        // Magma Eruption - leap to a valid tile near player and explode.
         // The landing must fit the boss's whole footprint (gen 0 is 4×4); if no
         // legal landing exists the ability is skipped WITHOUT burning the
-        // cooldown — the old code paid the cooldown up front and, worse, fell
+        // cooldown - the old code paid the cooldown up front and, worse, fell
         // back to teleporting straight onto the player's tile.
         if (!isOnCooldown(CD_ERUPTION) && dist >= 2) {
             GridPos landingPos = findEruptionLanding(arena, playerPos, self);
@@ -137,7 +137,7 @@ public class MoltenKingAI extends BossAI {
             }
         }
 
-        // Melee attack if adjacent — molten slam hits hard and pushes the player
+        // Melee attack if adjacent - molten slam hits hard and pushes the player
         // into whatever burning terrain the boss just left behind.
         if (dist <= 1) {
             int meleeDmg = self.getAttackPower() + (isPhaseTwo() ? 3 : 2);
@@ -163,7 +163,7 @@ public class MoltenKingAI extends BossAI {
 
     /**
      * A landing anchor near the player whose ENTIRE boss footprint is in
-     * bounds, walkable and unoccupied — the old anchor-only check let a 4×4
+     * bounds, walkable and unoccupied - the old anchor-only check let a 4×4
      * gen-0 king clip three quarters of its body into walls and mobs. The
      * landing must also not cover the player's tile. Returns null when no
      * legal landing exists (caller skips the eruption).

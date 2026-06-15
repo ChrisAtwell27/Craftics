@@ -26,7 +26,7 @@ import net.minecraft.util.Identifier;
  *
  * <p>{@code entity} is required; {@code recruit_mode} accepts any
  * {@link AllyEntry.RecruitMode} name (default {@code TAMED}). Datapack allies use the
- * default melee AI and have no per-round hook — allies needing custom behavior must be
+ * default melee AI and have no per-round hook - allies needing custom behavior must be
  * registered through {@code CrafticsAPI.registerAlly}.
  *
  * @since 0.2.0
@@ -40,12 +40,12 @@ public final class AllyJsonLoader extends CrafticsDataLoader<AllyEntry> {
     @Override
     protected AllyEntry parse(Identifier fileId, JsonObject json) {
         if (!json.has("entity")) {
-            CrafticsMod.LOGGER.warn("Ally JSON {} missing required 'entity' — skipping", fileId);
+            CrafticsMod.LOGGER.warn("Ally JSON {} missing required 'entity' - skipping", fileId);
             return null;
         }
         String entity = json.get("entity").getAsString();
         if (!Registries.ENTITY_TYPE.containsId(Identifier.of(entity))) {
-            CrafticsMod.LOGGER.warn("Unknown entity type '{}' in ally JSON {} — skipping", entity, fileId);
+            CrafticsMod.LOGGER.warn("Unknown entity type '{}' in ally JSON {} - skipping", entity, fileId);
             return null;
         }
 
@@ -63,7 +63,7 @@ public final class AllyJsonLoader extends CrafticsDataLoader<AllyEntry> {
             try {
                 builder.recruitMode(AllyEntry.RecruitMode.valueOf(mode.toUpperCase()));
             } catch (IllegalArgumentException e) {
-                CrafticsMod.LOGGER.warn("Unknown recruit mode '{}' in ally JSON {} — using TAMED",
+                CrafticsMod.LOGGER.warn("Unknown recruit mode '{}' in ally JSON {} - using TAMED",
                     mode, fileId);
             }
         }
@@ -74,7 +74,7 @@ public final class AllyJsonLoader extends CrafticsDataLoader<AllyEntry> {
                 int amount = json.has("heal_amount") ? json.get("heal_amount").getAsInt() : 0;
                 builder.healItem(Registries.ITEM.get(healItemId), amount);
             } else {
-                CrafticsMod.LOGGER.warn("Unknown heal item '{}' in ally JSON {} — ignoring",
+                CrafticsMod.LOGGER.warn("Unknown heal item '{}' in ally JSON {} - ignoring",
                     healItemStr, fileId);
             }
         }

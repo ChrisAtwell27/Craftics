@@ -8,11 +8,11 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Stray AI: Ice skeleton — ranged kiter that applies Slowness on hit.
+ * Stray AI: Ice skeleton - ranged kiter that applies Slowness on hit.
  * - FROST ARROW: shoots at range, slows the player (-1 movement next turn)
  * - KITE: actively retreats when ANY threat (player or ally pet) gets within
  *   2 tiles, then shoots
- * - Prefers maximum distance — more cautious than regular skeleton — and
+ * - Prefers maximum distance - more cautious than regular skeleton - and
  *   never ends its move on a hazard tile
  * - Extremely annoying in groups (stacking slowness)
  */
@@ -38,18 +38,18 @@ public class StrayAI implements EnemyAI {
                     return new EnemyAction.Move(path);
                 }
             }
-            // Can't flee — shoot at close range
+            // Can't flee - shoot at close range
             if (dist <= range) {
                 return new EnemyAction.RangedAttack(self.getAttackPower(), "frost_arrow");
             }
         }
 
-        // In range — frost arrow
+        // In range - frost arrow
         if (dist <= range) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "frost_arrow");
         }
 
-        // Out of range — reposition
+        // Out of range - reposition
         GridPos shotPos = findKitePosition(self, arena, playerPos, threats);
         if (shotPos != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, shotPos, self.getMoveSpeed(), self);

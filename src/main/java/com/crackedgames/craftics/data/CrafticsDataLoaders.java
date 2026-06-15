@@ -33,7 +33,7 @@ public final class CrafticsDataLoaders {
         if (initialized) return;
         initialized = true;
 
-        // Built-in datapack loaders. An event loader is still pending — it depends
+        // Built-in datapack loaders. An event loader is still pending - it depends
         // on EventTemplates, which is not yet implemented.
         register(new WeaponJsonLoader());
         register(new ArmorSetJsonLoader());

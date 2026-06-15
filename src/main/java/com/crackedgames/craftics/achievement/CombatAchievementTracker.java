@@ -104,7 +104,7 @@ public class CombatAchievementTracker {
 
     public void recordWeaponUsed(Item weapon) {
         if (weapon == null || weapon == net.minecraft.item.Items.AIR) {
-            // Fist attack — don't add to weaponTypesUsed
+            // Fist attack - don't add to weaponTypesUsed
             return;
         }
         usedAnyWeapon = true;

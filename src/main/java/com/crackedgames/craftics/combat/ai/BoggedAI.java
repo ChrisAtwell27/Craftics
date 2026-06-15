@@ -8,11 +8,11 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Bogged AI: Swamp skeleton variant — poison arrow kiter.
+ * Bogged AI: Swamp skeleton variant - poison arrow kiter.
  * - POISON ARROW: ranged attack that applies poison (damage over time concept)
  * - KITE: retreats when player gets close, like StrayAI but more aggressive
  * - AMBUSH: if far away, advances to range 3 then starts shooting
- * - Less cautious than Stray — will hold ground at range 2 instead of fleeing
+ * - Less cautious than Stray - will hold ground at range 2 instead of fleeing
  */
 public class BoggedAI implements EnemyAI {
     @Override
@@ -21,7 +21,7 @@ public class BoggedAI implements EnemyAI {
         int dist = self.minDistanceTo(playerPos);
         int range = self.getRange();
 
-        // Adjacent — desperate melee + back away
+        // Adjacent - desperate melee + back away
         if (dist <= 1) {
             GridPos fleeTarget = AIUtils.getFleeTarget(arena, myPos, playerPos, self.getMoveSpeed());
             if (fleeTarget != null) {
@@ -34,16 +34,16 @@ public class BoggedAI implements EnemyAI {
                     return new EnemyAction.Move(path);
                 }
             }
-            // Can't flee — shoot at point blank
+            // Can't flee - shoot at point blank
             return new EnemyAction.RangedAttack(self.getAttackPower(), "poison_arrow");
         }
 
-        // In range — poison arrow (holds ground more aggressively than stray)
+        // In range - poison arrow (holds ground more aggressively than stray)
         if (dist <= range) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "poison_arrow");
         }
 
-        // Out of range — advance to shooting position
+        // Out of range - advance to shooting position
         GridPos shotPos = findShootPosition(self, arena, playerPos);
         if (shotPos != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, shotPos, self.getMoveSpeed(), self);

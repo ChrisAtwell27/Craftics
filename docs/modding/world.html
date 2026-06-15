@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -248,7 +248,7 @@ boolean exists = CrafticsAPI.hasEnvironmentStyle("mymod:aether");</code></pre>
       "id": "surface",
       "display_name": "Surface",
       "color": "§a",
-      "icon": "☘",
+      "icon": "",
       "map_color": "FF6BBF59",
       "nodes": [
         { "biome": "mymod:village" },
@@ -287,7 +287,7 @@ boolean exists = CrafticsAPI.hasEnvironmentStyle("mymod:aether");</code></pre>
           <tr><td><code>id</code></td><td>string</td><td>Yes</td><td>Region id, unique within the campaign. Referenced by <code>branch.region</code>.</td></tr>
           <tr><td><code>display_name</code></td><td>string</td><td>No</td><td>Region name shown on its tab. Defaults to the id.</td></tr>
           <tr><td><code>color</code></td><td>string</td><td>No</td><td>Chat color code for the region label/tab, e.g. <code>"§a"</code>. Default <code>"§f"</code> (white).</td></tr>
-          <tr><td><code>icon</code></td><td>string</td><td>No</td><td>Unicode glyph shown on the region tab, e.g. <code>"☘"</code>. Default <code>"?"</code>.</td></tr>
+          <tr><td><code>icon</code></td><td>string</td><td>No</td><td>Unicode glyph shown on the region tab, e.g. <code>""</code>. Default <code>"?"</code>.</td></tr>
           <tr><td><code>map_color</code></td><td>string</td><td>No</td><td>ARGB hex string for the region tint, e.g. <code>"FF6BBF59"</code>. An 8-digit value is <code>AARRGGBB</code>; a 6-digit value gets opaque alpha. Malformed values default to white (<code>FFFFFFFF</code>).</td></tr>
           <tr><td><code>nodes</code></td><td>array</td><td>Yes</td><td>Ordered, non-empty list of node objects played in order within the region.</td></tr>
         </tbody>
@@ -340,7 +340,7 @@ CrafticsAPI.registerCampaign(
             CampaignRegion.builder("surface")
                 .displayName("Surface")
                 .color("§a")
-                .icon("☘")
+                .icon("")
                 .mapColor(0xFF6BBF59)
                 .node("mymod:village")
                 .node("mymod:wildwood", "The Wildwood")
@@ -436,7 +436,7 @@ CrafticsAPI.forceNextEvent(player, null);</code></pre>
          ================================================================ -->
     <h2 id="scenes">Village &amp; Bartering Station scenes</h2>
     <p>
-      The Village and Bartering Station are walk-around hub scenes the player teleports into from the level select. A scene is built from a schematic, just like an arena, using three <strong>scene marker blocks</strong>: one that sets where the player appears, a pair that marks the clickable area of each merchant booth ("stand"), and one that places the booth's NPC. You build the layout in-world or in a schematic editor, drop the <code>.schem</code> in the scenes folder, and Craftics scans the markers when the scene loads.
+      The Village and Bartering Station are walk-around hub scenes the player teleports into from the level select. A scene is built from a schematic, like an arena, using three <strong>scene marker blocks</strong>: one that sets where the player appears, a pair that marks the clickable area of each merchant booth ("stand"), and one that places the booth's NPC. You build the layout in-world or in a schematic editor, drop the <code>.schem</code> in the scenes folder, and Craftics scans the markers when the scene loads.
     </p>
 
     <div class="callout">
@@ -523,3 +523,4 @@ CrafticsAPI.forceNextEvent(player, null);</code></pre>
 
 </body>
 </html>
+

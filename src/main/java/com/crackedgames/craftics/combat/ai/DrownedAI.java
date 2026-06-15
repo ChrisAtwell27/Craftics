@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Drowned AI: Aquatic fighter with 50% trident variant.
- * - 50% of drowned spawn with tridents — rolled once per drowned, stored on
+ * - 50% of drowned spawn with tridents - rolled once per drowned, stored on
  *   the entity (the old instance field was shared by every drowned, so the
  *   first roll ever made decided the loadout for all of them, forever)
  * - TRIDENT THROW: only fires DIAGONALLY at range ≤3 for tactical variety
@@ -33,14 +33,14 @@ public class DrownedAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Water speed boost — check if standing on water
+        // Water speed boost - check if standing on water
         int effectiveSpeed = self.getMoveSpeed();
         var currentTile = arena.getTile(myPos);
         if (currentTile != null && currentTile.isWater()) {
             effectiveSpeed *= 2;
         }
 
-        // Adjacent — melee attack
+        // Adjacent - melee attack
         if (dist == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
@@ -71,7 +71,7 @@ public class DrownedAI implements EnemyAI {
             }
         }
 
-        // No diagonal trident shot available — rush melee
+        // No diagonal trident shot available - rush melee
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, effectiveSpeed);
         if (target == null) target = playerPos;
 

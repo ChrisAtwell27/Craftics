@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Reflection shim over the Accessories mod API — the slot provider that the
+ * Reflection shim over the Accessories mod API - the slot provider that the
  * Artifacts mod uses for its head/necklace/ring/hand/belt/feet slots on Fabric.
  * Lets Craftics clear/drop accessories on death without a compile-time dependency;
  * all calls are cheap no-ops when Accessories isn't installed.
@@ -113,12 +113,59 @@ public final class AccessoriesReflect {
         }
     }
 
+    /**
+     * Probabilistically CLEARS (destroys, does not drop) each accessory + cosmetic slot,
+     * rolling {@code lossChance} per non-empty slot. Returns how many slots were cleared.
+     * Used by the Craftics defeat penalty, which deletes lost gear rather than scattering it
+     * across the temporary arena. No-op when Accessories isn't installed.
+     */
+    public static int clearAccessoriesChance(LivingEntity entity, double lossChance) {
+        if (!AVAILABLE || entity == null) return 0;
+        World world = entity.getWorld();
+        if (world == null || world.isClient) return 0;
+        int cleared = 0;
+        try {
+            Object capability = CAPABILITY_GET.invoke(null, entity);
+            if (capability == null) return 0;
+            Object containersObj = GET_CONTAINERS.invoke(capability);
+            if (!(containersObj instanceof Map<?, ?> containers)) return 0;
+            for (Object container : containers.values()) {
+                if (container == null) continue;
+                cleared += clearContainerSlotsChance(container, GET_ACCESSORIES, lossChance);
+                cleared += clearContainerSlotsChance(container, GET_COSMETIC_ACCESSORIES, lossChance);
+                try { MARK_CHANGED.invoke(container, true); } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.warn("[Craftics × Accessories] clearAccessoriesChance failed", t);
+        }
+        return cleared;
+    }
+
+    private static int clearContainerSlotsChance(Object container, Method getter, double lossChance) {
+        int cleared = 0;
+        try {
+            Object invObj = getter.invoke(container);
+            if (!(invObj instanceof Inventory inv)) return 0;
+            for (int i = 0; i < inv.size(); i++) {
+                ItemStack stack = inv.getStack(i);
+                if (stack == null || stack.isEmpty()) continue;
+                if (Math.random() < lossChance) {
+                    inv.setStack(i, ItemStack.EMPTY);
+                    cleared++;
+                }
+            }
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.debug("[Craftics × Accessories] clearContainerSlotsChance failed", t);
+        }
+        return cleared;
+    }
+
     /** A captured accessory stack together with the slot it came from. */
     public record AccessorySnapshot(String container, int kind, int slot, ItemStack stack) {}
 
     /**
      * Captures every non-empty accessory + cosmetic accessory stack on the entity.
-     * Pure read of the live containers — needs no registry lookup. Returns an empty
+     * Pure read of the live containers - needs no registry lookup. Returns an empty
      * list when Accessories isn't installed. Recovery-compass death protection uses
      * this so trinkets survive death exactly like the main inventory does.
      */

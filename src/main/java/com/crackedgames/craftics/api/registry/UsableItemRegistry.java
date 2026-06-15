@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class UsableItemRegistry {
 
     private static final Map<Item, UsableItemEntry> REGISTRY = new ConcurrentHashMap<>();
-    /** Items whose current entry came from a JSON datapack — dropped on /reload. */
+    /** Items whose current entry came from a JSON datapack - dropped on /reload. */
     private static final Set<Item> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private UsableItemRegistry() {}

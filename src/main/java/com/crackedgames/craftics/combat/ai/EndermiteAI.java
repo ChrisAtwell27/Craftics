@@ -14,7 +14,7 @@ import java.util.List;
  * - BLINK: teleports 2-3 tiles to get adjacent to the player
  * - SWARM: attacks immediately on adjacency, never idles
  * - ERRATIC: if can't blink to player, blinks to a random nearby tile then rushes
- * - Distinct from silverfish — no flanking, instead uses short teleports
+ * - Distinct from silverfish - no flanking, instead uses short teleports
  */
 public class EndermiteAI implements EnemyAI {
     @Override
@@ -22,12 +22,12 @@ public class EndermiteAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Adjacent — attack immediately
+        // Adjacent - attack immediately
         if (dist == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
 
-        // Within blink range (2-3) — teleport adjacent and attack
+        // Within blink range (2-3) - teleport adjacent and attack
         if (dist <= 3) {
             GridPos landing = findAdjacentLanding(arena, playerPos);
             if (landing != null) {
@@ -35,7 +35,7 @@ public class EndermiteAI implements EnemyAI {
             }
         }
 
-        // Too far for blink — walk toward the player, then try blink next turn
+        // Too far for blink - walk toward the player, then try blink next turn
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed());
         if (target == null) target = playerPos;
 

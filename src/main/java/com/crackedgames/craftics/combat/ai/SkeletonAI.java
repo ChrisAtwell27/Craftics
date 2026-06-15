@@ -8,9 +8,9 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Skeleton AI: Tactical archer — kites the player.
+ * Skeleton AI: Tactical archer - kites the player.
  * - KITE: backs up when ANY threat (player or ally pet) is within 2 tiles,
- *   while trying to keep LOS on its target — a wolf gnawing on its ankles
+ *   while trying to keep LOS on its target - a wolf gnawing on its ankles
  *   triggers the retreat just like the player would
  * - REPOSITION: moves to get cardinal LOS, then shoots in same turn
  * - Prefers to maintain distance 3+ for safe shooting, won't end its move
@@ -31,7 +31,7 @@ public class SkeletonAI implements EnemyAI {
         // is actually about to maul it, not just the player.
         List<GridPos> threats = AIUtils.threatPositions(arena, playerPos);
 
-        // KITE: if anything is too close (within 2 tiles), back up — prioritize distance
+        // KITE: if anything is too close (within 2 tiles), back up - prioritize distance
         if (AIUtils.minThreatDistance(myPos, threats) <= KITE_THRESHOLD) {
             GridPos retreatPos = findRetreatPosition(self, arena, playerPos, threats);
             if (retreatPos != null) {
@@ -41,18 +41,18 @@ public class SkeletonAI implements EnemyAI {
                     if (AIUtils.hasCardinalLOS(arena, endPos, playerPos, range)) {
                         return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                     }
-                    // Couldn't line up a shot, but still back up — survival first
+                    // Couldn't line up a shot, but still back up - survival first
                     return new EnemyAction.Move(path);
                 }
             }
-            // Can't retreat at all — fire anyway. A cornered archer shoots rather
+            // Can't retreat at all - fire anyway. A cornered archer shoots rather
             // than switching to a melee swing, even without a clean cardinal line.
             return new EnemyAction.RangedAttack(self.getAttackPower(), "arrow");
         }
 
         int dist = self.minDistanceTo(playerPos);
 
-        // In range with LOS — shoot from current position
+        // In range with LOS - shoot from current position
         if (AIUtils.hasCardinalLOS(arena, myPos, playerPos, range)) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "arrow");
         }
@@ -71,7 +71,7 @@ public class SkeletonAI implements EnemyAI {
         }
 
         // Last resort: if the player is within range, fire even without a clean
-        // cardinal line rather than wandering uselessly — a skeleton with no shot
+        // cardinal line rather than wandering uselessly - a skeleton with no shot
         // lined up in a cluttered arena should still threaten the player.
         if (dist <= range) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "arrow");
@@ -98,7 +98,7 @@ public class SkeletonAI implements EnemyAI {
             if (candidate.equals(myPos)) continue;
 
             int minThreatDist = AIUtils.minThreatDistance(candidate, threats);
-            // Must actually increase distance — don't "retreat" closer
+            // Must actually increase distance - don't "retreat" closer
             if (minThreatDist <= currentMin) continue;
 
             // Primary: maximize distance from the nearest threat (heavily weighted)

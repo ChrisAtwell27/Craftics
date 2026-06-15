@@ -8,10 +8,10 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Silverfish AI: Swarmer — fast, weak, flanks aggressively.
+ * Silverfish AI: Swarmer - fast, weak, flanks aggressively.
  * - SWARM: always tries to approach from the opposite side of other enemies
  * - SWARM FURY: when any silverfish in the arena is hurt, ALL of them rile up
- *   (+1 movement) — vanilla silverfish boil out of the walls when one is struck
+ *   (+1 movement) - vanilla silverfish boil out of the walls when one is struck
  * - SPEED 3: very fast, can cross the arena quickly
  * - WEAK BITE: low damage but attacks immediately on reaching player
  * - FLANKING: prefers to approach from behind/sides rather than head-on
@@ -28,12 +28,12 @@ public class SilverfishAI implements EnemyAI {
         }
         int speed = self.getMoveSpeed() + (self.isEnraged() ? 1 : 0);
 
-        // Adjacent — attack immediately (swarm behavior)
+        // Adjacent - attack immediately (swarm behavior)
         if (dist == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
 
-        // Try to flank — approach from opposite side of other enemies
+        // Try to flank - approach from opposite side of other enemies
         GridPos flankTarget = findFlankPosition(arena, myPos, playerPos);
         if (flankTarget != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, flankTarget, speed, self);

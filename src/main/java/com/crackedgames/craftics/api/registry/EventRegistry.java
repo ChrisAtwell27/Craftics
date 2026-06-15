@@ -20,7 +20,7 @@ import java.util.Set;
  */
 public final class EventRegistry {
     private static final List<EventEntry> EVENTS = new ArrayList<>();
-    /** Events loaded from JSON datapacks — dropped on /reload. */
+    /** Events loaded from JSON datapacks - dropped on /reload. */
     private static final Set<EventEntry> DATAPACK_EVENTS = new HashSet<>();
 
     private EventRegistry() {}

@@ -12,7 +12,7 @@ import java.util.Random;
 /**
  * Picks a random artifact item from the Artifacts mod registry.
  * <p>
- * The pool is the same set of items wired in {@link ArtifactsScanner} —
+ * The pool is the same set of items wired in {@link ArtifactsScanner} -
  * see {@code docs/artifact-abilities.md}. Computed once on first use and
  * cached, since the artifact registry doesn't change after mod load.
  */

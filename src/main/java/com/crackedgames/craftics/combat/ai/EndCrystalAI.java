@@ -5,7 +5,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 
 /**
- * End Crystal — stationary explosive hazard.
+ * End Crystal - stationary explosive hazard.
  *
  * Behavior:
  *  - Cannot move.

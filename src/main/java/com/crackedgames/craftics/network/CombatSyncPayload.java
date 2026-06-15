@@ -14,7 +14,7 @@ import net.minecraft.util.Identifier;
  *   (empty string when solo)
  * turnOrderData is a pipe-separated string of turn queue: "uuid,name,isCurrent|..." (empty when solo)
  * playerStatsData is a pipe-separated per-player combat readout for the hover panel:
- *   "uuid,name,hp,maxHp,dead,atk,ac,ap,speed|..." — always populated (one entry when solo).
+ *   "uuid,name,hp,maxHp,dead,atk,ac,ap,speed|..." - always populated (one entry when solo).
  */
 public record CombatSyncPayload(int phase, int ap, int movePoints,
                                  int playerHp, int playerMaxHp, int turnNumber,

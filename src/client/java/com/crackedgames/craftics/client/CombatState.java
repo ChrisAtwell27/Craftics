@@ -46,7 +46,7 @@ public class CombatState {
     private static int arenaWidth = 0;
     private static int arenaHeight = 0;
 
-    // Arena center — camera focuses here (with pan offset applied)
+    // Arena center - camera focuses here (with pan offset applied)
     private static double arenaCenterX = 0;
     private static double arenaCenterY = 100;
     private static double arenaCenterZ = 0;
@@ -85,7 +85,7 @@ public class CombatState {
             cameraPanX = 0;
             cameraPanZ = 0;
         } else {
-            // Transitioning between levels — keep camera orientation, just reset pan
+            // Transitioning between levels - keep camera orientation, just reset pan
             cameraPanX = 0;
             cameraPanZ = 0;
         }
@@ -109,7 +109,7 @@ public class CombatState {
     public static void pan(double dx, double dz) {
         cameraPanX = Math.max(-MAX_PAN, Math.min(MAX_PAN, cameraPanX + dx));
         cameraPanZ = Math.max(-MAX_PAN, Math.min(MAX_PAN, cameraPanZ + dz));
-        // Don't snap — let tickCameraFocus lerp to the new target
+        // Don't snap - let tickCameraFocus lerp to the new target
         arenaCenterX = arenaBaseCenterX + cameraPanX;
         arenaCenterZ = arenaBaseCenterZ + cameraPanZ;
         // Release any entity focus when user manually pans
@@ -203,7 +203,7 @@ public class CombatState {
         // own turn, combat events (the player's own moves/attacks) would otherwise
         // yank the camera off the framing the player set. Phase is global, so in a
         // party, spectators won't follow a teammate during that teammate's
-        // PLAYER_TURN — an acceptable v1 tradeoff. The damage numbers / hit-flash /
+        // PLAYER_TURN - an acceptable v1 tradeoff. The damage numbers / hit-flash /
         // shake in the event handlers still run; only this focus call no-ops.
         if (!isInCombat() || !isEnemyTurn()) return;
         focusOn(arenaOriginX + gridX + 0.5, arenaOriginZ + gridZ + 0.5);
@@ -211,7 +211,7 @@ public class CombatState {
 
     /**
      * Release focus back to the user's saved pan. Called from user-action paths
-     * ({@link #pan}, {@link #resetPan}) — no smooth return lerp needed because the
+     * ({@link #pan}, {@link #resetPan}) - no smooth return lerp needed because the
      * user just took manual control.
      */
     public static void releaseFocus() {
@@ -324,7 +324,7 @@ public class CombatState {
     private static int movePointsRemaining = 0;
     private static int playerHp = 20;
     private static int playerMaxHp = 20;
-    /** Local client's player HP — distinct from {@link #playerHp} which carries
+    /** Local client's player HP - distinct from {@link #playerHp} which carries
      *  the current turn-holder's HP in party combat. Used as the basis for the
      *  damage/heal visual effects so they don't retrigger on turn rotation. */
     private static int localPlayerHp = 20;
@@ -363,7 +363,7 @@ public class CombatState {
 
     /**
      * Entity ids of every synced unit (enemies AND allies) in server sync order,
-     * which mirrors the server's `enemies` list — the exact order units act in
+     * which mirrors the server's `enemies` list - the exact order units act in
      * during the enemy phase. Drives the HUD act-order strip.
      */
     private static final java.util.List<Integer> unitActOrder = new java.util.ArrayList<>();
@@ -386,7 +386,7 @@ public class CombatState {
         if (actingEnemyId == -1) return -1;
         if (!isEnemyTurn()) return -1;
         // 4s window: the move note fires at walk START, and a long path's lerp
-        // can outlive a short window — the attack note (if any) refreshes it.
+        // can outlive a short window - the attack note (if any) refreshes it.
         if (System.currentTimeMillis() - actingEnemyMs > 4000) return -1;
         return actingEnemyId;
     }
@@ -425,7 +425,7 @@ public class CombatState {
     }
 
     /**
-     * Movement-pattern preview for any unit by entity id — the per-style reach
+     * Movement-pattern preview for any unit by entity id - the per-style reach
      * the hover preview shows, also unioned per enemy by the threat overlay.
      */
     private static java.util.Set<com.crackedgames.craftics.core.GridPos> computeMovePreviewTiles(int entityId) {
@@ -463,7 +463,7 @@ public class CombatState {
 
     // ─── Threat overlay (danger zone) ─────────────────────────────────────
     // Hotkey-toggled union of every enemy's movement reach plus the attack
-    // range it could strike from after moving — the classic tactics-game
+    // range it could strike from after moving - the classic tactics-game
     // "danger zone". Computed client-side from the same per-style preview
     // machinery the hover preview uses; cached briefly since it walks a BFS
     // per enemy.
@@ -483,7 +483,7 @@ public class CombatState {
 
     /**
      * Tiles any enemy could reach AND attack this turn (movement reach expanded
-     * by each enemy's attack range — Chebyshev ring for melee, Manhattan diamond
+     * by each enemy's attack range - Chebyshev ring for melee, Manhattan diamond
      * for ranged, matching the server's reach conventions). Empty when the
      * overlay is off. Refreshed at most every 400 ms.
      */
@@ -537,7 +537,7 @@ public class CombatState {
         }
 
         // Clip to the arena and drop the player's own tile (it's where you stand,
-        // not useful information — matches the server's danger-tile convention).
+        // not useful information - matches the server's danger-tile convention).
         java.util.Set<com.crackedgames.craftics.core.GridPos> clipped = new java.util.HashSet<>();
         for (com.crackedgames.craftics.core.GridPos t : threat) {
             if (t.x() < 0 || t.x() >= arenaWidth || t.z() < 0 || t.z() >= arenaHeight) continue;
@@ -606,7 +606,7 @@ public class CombatState {
     /**
      * Returns true if the player currently has the Blindness combat effect active.
      * Used client-side to hide boss warning tiles, enemy movement previews and
-     * enemy stat tooltips — the player is literally blind.
+     * enemy stat tooltips - the player is literally blind.
      */
     public static boolean hasBlindness() { return hasCombatEffect("Blindness"); }
     public static boolean hasPoison() { return hasCombatEffect("Poison"); }
@@ -662,7 +662,7 @@ public class CombatState {
         int oldPhase = CombatState.phase;
 
         CombatState.phase = phase;
-        // Enemy/ally turn just ended — ease the camera back to the player's framing
+        // Enemy/ally turn just ended - ease the camera back to the player's framing
         // the instant control returns, rather than leaving it parked on the last
         // actor. Fires only on the transition into PLAYER_TURN (ordinal 0).
         if (oldPhase != 0 && phase == 0) {
@@ -736,7 +736,7 @@ public class CombatState {
             int idx = i / 3;
             boolean isAlly = idx < typeIds.length && typeIds[idx].contains(";ally");
             // Sync order mirrors the server's `enemies` list, which is also the
-            // order units act in during the enemy phase — preserved here for the
+            // order units act in during the enemy phase - preserved here for the
             // HUD act-order strip.
             unitActOrder.add(enemyData[i]);
             if (isAlly) {
@@ -752,7 +752,7 @@ public class CombatState {
             }
         }
 
-        // Parse party HP data — put self at top of the list
+        // Parse party HP data - put self at top of the list
         partyHpList.clear();
         if (partyHpData != null && !partyHpData.isEmpty()) {
             net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
@@ -775,7 +775,7 @@ public class CombatState {
                     // fields with our OWN values from partyHpData. The server
                     // sets those broadcast fields from this.player on the host
                     // CM, so after a death handoff they reflect the new
-                    // turn-holder's stats — making a dead player's HUD show
+                    // turn-holder's stats - making a dead player's HUD show
                     // their teammate's HP / effects ("player 1 took player 2's
                     // health"). Reading from partyHpData (per-UUID) keeps each
                     // client's HUD locked to their own state.
@@ -975,7 +975,7 @@ public class CombatState {
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedAttackTiles = new java.util.HashSet<>();
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedDangerTiles = new java.util.HashSet<>();
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedWarningTiles = new java.util.HashSet<>();
-    // Netherite mount 1×3 footprint side tiles — rendered as the golem's body.
+    // Netherite mount 1×3 footprint side tiles - rendered as the golem's body.
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedMountTiles = new java.util.HashSet<>();
     private static final java.util.Map<com.crackedgames.craftics.core.GridPos, Integer> enemyGridMap = new java.util.HashMap<>();
     private static final java.util.Map<com.crackedgames.craftics.core.GridPos, String> enemyGridTypeMap = new java.util.HashMap<>();
@@ -1087,7 +1087,7 @@ public class CombatState {
      * Wipe all client combat state. Called from the disconnect handler so that
      * leaving a world mid-battle (before the server can send ExitCombatPayload)
      * doesn't leave the camera permanently locked into isometric view on the
-     * title screen or in subsequent worlds — previously this bricked the client
+     * title screen or in subsequent worlds - previously this bricked the client
      * until a full restart.
      */
     public static void resetAll() {

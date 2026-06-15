@@ -40,7 +40,7 @@ public interface UsableItemContext {
     /** The {@link ItemStack} being used. */
     ItemStack stack();
 
-    /** Every combatant in the fight — enemies and allies alike. Treat as read-only. */
+    /** Every combatant in the fight - enemies and allies alike. Treat as read-only. */
     List<CombatEntity> combatants();
 
     // --- Damage & healing ----------------------------------------------------

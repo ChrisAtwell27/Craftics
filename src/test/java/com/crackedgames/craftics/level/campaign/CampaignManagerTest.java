@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests for {@link CampaignManager} — active resolution ("most-recently-registered
+ * Tests for {@link CampaignManager} - active resolution ("most-recently-registered
  * non-vanilla wins; else vanilla"), source tagging, datapack clearing, and the null-safe
  * query delegators. Pure logic: runs under plain JUnit with no Minecraft bootstrap.
  */
@@ -37,7 +37,7 @@ class CampaignManagerTest {
     void cleanup() {
         // CampaignManager is static global state. "Most-recently-registered non-vanilla wins"
         // means a leaked CODE entry could change another test's active campaign, and
-        // clearDatapackEntries cannot remove code entries — so do a full reset between tests.
+        // clearDatapackEntries cannot remove code entries - so do a full reset between tests.
         CampaignManager.clearAllForTest();
     }
 

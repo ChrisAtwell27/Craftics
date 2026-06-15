@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * (trySplitOnDeath for regular mobs, notifyBossOfDamage for the Molten King).
  * The dying-mob shrink animation calls {@code mob.setHealth(0)}, which causes
  * vanilla {@link SlimeEntity#remove} to spawn mini-slime children alongside the
- * Craftics copies — producing frozen ghost cubes that do nothing. This redirect
+ * Craftics copies - producing frozen ghost cubes that do nothing. This redirect
  * returns size 1 for arena-tagged slimes only during {@code remove}, so the
  * vanilla {@code size > 1} split check fails while leaving normal overworld
  * slimes unaffected.

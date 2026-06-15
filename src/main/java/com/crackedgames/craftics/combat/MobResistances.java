@@ -81,7 +81,7 @@ public class MobResistances {
         vuln("minecraft:piglin_brute",      DamageType.SPECIAL, DamageType.WATER);
         resist("minecraft:piglin_brute",    DamageType.BLUNT, DamageType.SLASHING, DamageType.PHYSICAL);
 
-        // strider: lava-walker, barely a combat mob — only fist-resistant.
+        // strider: lava-walker, barely a combat mob - only fist-resistant.
         resist("minecraft:strider",         DamageType.PHYSICAL);
 
         // zoglin: mirrors hoglin.
@@ -142,7 +142,7 @@ public class MobResistances {
         resist("minecraft:shulker",         DamageType.RANGED, DamageType.SLASHING, DamageType.PHYSICAL);
 
         // ── Animals / passives: no special resistances ──
-        // (cows, pigs, sheep, chickens — neutral to everything)
+        // (cows, pigs, sheep, chickens - neutral to everything)
 
         // ── Ocelot: weak to BLUNT ──
         vuln("minecraft:ocelot",            DamageType.BLUNT);

@@ -10,7 +10,7 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Fox AI: Predator — hunts sheep and chickens.
+ * Fox AI: Predator - hunts sheep and chickens.
  * If attacked by the player, becomes permanently agro (enraged) and untamable.
  * Fights like the skirmisher it is: darts in, nips, and springs back out with
  * whatever movement it has left rather than standing in sword range.
@@ -18,7 +18,7 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class FoxAI implements EnemyAI {
 
-    /** Foxes are neutral toward the player — only a threat once provoked. */
+    /** Foxes are neutral toward the player - only a threat once provoked. */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return self.isEnraged();
@@ -50,7 +50,7 @@ public class FoxAI implements EnemyAI {
             }
         }
 
-        // No prey, no agro — wander (configurable chance)
+        // No prey, no agro - wander (configurable chance)
         if (ThreadLocalRandom.current().nextFloat() < com.crackedgames.craftics.CrafticsMod.CONFIG.passiveMobWanderChance()) {
             return AIUtils.wander(self, arena);
         }

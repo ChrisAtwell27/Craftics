@@ -42,7 +42,7 @@ public final class ArtifactsScanner implements EquipmentScanner {
         return mods;
     }
 
-    /** Dev-only scan logging — runs every player turn, so keep OFF in releases. */
+    /** Dev-only scan logging - runs every player turn, so keep OFF in releases. */
     private static final boolean DEBUG_LOG_SCAN_RESULT = false;
 
     /** Stat bonuses + combat effect handler for one equipped artifact id (e.g. "cowboy_hat"). */
@@ -135,7 +135,7 @@ public final class ArtifactsScanner implements EquipmentScanner {
             case "universal_attractor" ->
                 mods.addCombatEffect("Universal Attractor", new ArtifactEffects.UniversalAttractor());
             case "warp_drive" -> {
-                // Warp Drive has no per-event combat handler — it's activated by the
+                // Warp Drive has no per-event combat handler - it's activated by the
                 // /craftics warp command, which calls CombatManager.armWarpDrive(). The
                 // command itself enforces "must be equipped" via ArtifactsCompat.playerHasArtifact.
                 // No-op here so the case is recognized rather than falling through to default.
@@ -177,7 +177,7 @@ public final class ArtifactsScanner implements EquipmentScanner {
                 mods.addCombatEffect("Whoopee Cushion", new ArtifactEffects.WhoopeeCushion());
 
             default -> {
-                // Unknown / unsupported artifact (e.g. mimic_spawn_egg) — ignore.
+                // Unknown / unsupported artifact (e.g. mimic_spawn_egg) - ignore.
             }
         }
     }

@@ -103,7 +103,7 @@ public final class CrafticsAPI {
     // === Usable Items ===
 
     /**
-     * Register an item the player can use during a Craftics turn — a consumable,
+     * Register an item the player can use during a Craftics turn - a consumable,
      * throwable, or special-effect item. Registered items are checked before
      * Craftics' built-in item handling, so an addon can add new usable items (or
      * override a vanilla one) without touching combat code.
@@ -132,7 +132,7 @@ public final class CrafticsAPI {
     // === Allies ===
 
     /**
-     * Register a combat ally — a mob recruited from the player's hub that fights
+     * Register a combat ally - a mob recruited from the player's hub that fights
      * alongside them. Use {@link AllyEntry#builder(String)} for a fluent API.
      *
      * @param entry the ally definition (stats, recruitment mode, and AI)
@@ -158,7 +158,7 @@ public final class CrafticsAPI {
     // === Environments ===
 
     /**
-     * Register a custom arena environment theme — floor, post, and light blocks plus a
+     * Register a custom arena environment theme - floor, post, and light blocks plus a
      * flavor-obstacle style. Biomes select an environment by id with their
      * {@code "environment"} field. Use {@link EnvironmentDef#builder(String)}.
      *
@@ -171,7 +171,7 @@ public final class CrafticsAPI {
     // === Campaigns ===
 
     /**
-     * Register a custom campaign — an authored, ordered playthrough of biomes that drives
+     * Register a custom campaign - an authored, ordered playthrough of biomes that drives
      * difficulty scaling, dimension labeling, and completion detection. Use
      * {@link Campaign#builder(String)} for a fluent API.
      *
@@ -179,7 +179,7 @@ public final class CrafticsAPI {
      * server start and re-read on {@code /reload}.
      *
      * <p><strong>Full-replace semantics:</strong> a registered campaign REPLACES the built-in
-     * campaign path entirely. Exactly one campaign is active per world — the
+     * campaign path entirely. Exactly one campaign is active per world - the
      * most-recently-registered non-vanilla campaign wins over Craftics' built-in
      * {@code craftics:vanilla} campaign.
      *
@@ -220,7 +220,7 @@ public final class CrafticsAPI {
     // === New: Hybrid Armor Sets ===
 
     /**
-     * Register a hybrid armor set — the subclass bonus a player gets from wearing
+     * Register a hybrid armor set - the subclass bonus a player gets from wearing
      * exactly two distinct armor materials. Keyed by the unordered material pair.
      *
      * @param entry The hybrid set data

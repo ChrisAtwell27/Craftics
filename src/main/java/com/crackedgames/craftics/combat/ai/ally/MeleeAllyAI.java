@@ -9,9 +9,9 @@ import java.util.List;
 
 /**
  * Default ally combat AI: a melee fighter. Retreats when badly wounded ({@code <=25%}
- * HP); otherwise scores every live enemy — closer is better, with bonuses for
+ * HP); otherwise scores every live enemy - closer is better, with bonuses for
  * threats near the player, for wounded enemies, for targets it can actually
- * reach this turn, and a big one for kills it can secure outright — then closes
+ * reach this turn, and a big one for kills it can secure outright - then closes
  * on the best target, moving and striking in the same turn when the approach
  * ends in range.
  *

@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Guide book screen — polished parchment field manual.
+ * Guide book screen - polished parchment field manual.
  *
  * Left: leather sidebar with an icon accordion (categories + entries).
  * Right: parchment page with the selected entry's content.
@@ -69,11 +69,18 @@ public class GuideBookScreen extends Screen {
 
     // ── Click zones (rebuilt every frame) ────────────────────────────────────
     private static final int Z_CAT = 0, Z_ENTRY = 1, Z_CELL = 2, Z_PREV = 3, Z_NEXT = 4, Z_BACK = 5,
-                             Z_BPREV = 6, Z_BNEXT = 7;
+                             Z_BPREV = 6, Z_BNEXT = 7, Z_TPREV = 8, Z_TNEXT = 9;
     private record Zone(int kind, int a, int x, int y, int w, int h) {
         boolean contains(double mx, double my) {
             return mx >= x && mx < x + w && my >= y && my < y + h;
         }
+    }
+
+    /** Render unit for the paginated Hall of Testers list. */
+    private record HallRow(int kind, TesterRegistry.Rank rank, TesterRegistry.Tester tester) {
+        static final int RANK = 0;
+        static final int TESTER = 1;
+        static final int GAP = 2;
     }
     private final List<Zone> zones = new ArrayList<>();
 
@@ -99,14 +106,14 @@ public class GuideBookScreen extends Screen {
                         return new ItemStack(Registries.ITEM.get(ident));
                     }
                 } catch (Exception ignored) {
-                    // malformed id — try the next fallback
+                    // malformed id - try the next fallback
                 }
             }
             return ItemStack.EMPTY;
         });
     }
 
-    // Player-head ItemStack cache for the Hall of Testers — built once per name.
+    // Player-head ItemStack cache for the Hall of Testers - built once per name.
     // Minecraft resolves and caches the skin for a profile player-head itself,
     // so this works for offline names too (shows the default head until the skin
     // finishes loading, then swaps in the real one).
@@ -170,9 +177,9 @@ public class GuideBookScreen extends Screen {
         ctx.fill(bookX, bookY + headerH, bookX + bookW, bookY + headerH + 1, GOLD_DIM);
 
         // Title with flourishes
-        String flourish = "✦ ";
+        String flourish = " ";
         ctx.drawCenteredTextWithShadow(textRenderer,
-            Text.literal("§l" + flourish + title.getString() + " " + "✦"),
+            Text.literal("§l" + flourish + title.getString() + " " + ""),
             bookX + bookW / 2, bookY + 5, GOLD);
 
         // Gold corner studs
@@ -361,31 +368,114 @@ public class GuideBookScreen extends Screen {
         }
         y += 4;
 
-        int bottom = pageY + pageH;
+        int navY = bookY + bookH - 19;
+        int listBottom = navY - 2;
+        int listHeight = Math.max(1, listBottom - y);
+
+        List<HallRow> rows = buildTesterHallRows();
+        List<Integer> pageStarts = paginateHallRows(rows, listHeight);
+        int totalPages = Math.max(1, pageStarts.size());
+        currentPage = MathHelper.clamp(currentPage, 0, totalPages - 1);
+
+        int start = pageStarts.get(currentPage);
+        int end = (currentPage + 1 < pageStarts.size()) ? pageStarts.get(currentPage + 1) : rows.size();
+        int drawY = y;
+        for (int i = start; i < end; i++) {
+            HallRow row = rows.get(i);
+            if (row.kind() == HallRow.RANK) {
+                ctx.drawText(textRenderer, Text.literal("§l" + rankLabel(row.rank())), pageX, drawY, INK, false);
+                drawY += LINE_HEIGHT + 2;
+            } else if (row.kind() == HallRow.TESTER) {
+                TesterRegistry.Tester t = row.tester();
+                ctx.drawItem(testerHead(t.name()), pageX + 2, drawY - 3);
+                int col = TesterRegistry.colorOf(t);
+                Text nameText = TesterRegistry.isBold(t)
+                    ? Text.literal(t.name()).formatted(Formatting.BOLD)
+                    : Text.literal(t.name());
+                int nameX = pageX + 22;
+                ctx.drawTextWithShadow(textRenderer, nameText, nameX, drawY, col);
+                int titleX = nameX + textRenderer.getWidth(nameText) + 6;
+                ctx.drawText(textRenderer, Text.literal(t.title()), titleX, drawY, INK_SOFT, false);
+                drawY += 19;
+            } else {
+                drawY += 3;
+            }
+        }
+
+        drawTesterHallNav(ctx, totalPages);
+    }
+
+    private List<HallRow> buildTesterHallRows() {
+        List<HallRow> rows = new ArrayList<>();
         for (TesterRegistry.Rank rank : TesterRegistry.Rank.values()) {
             List<TesterRegistry.Tester> group = new ArrayList<>();
             for (TesterRegistry.Tester t : TesterRegistry.all()) {
                 if (t.rank() == rank) group.add(t);
             }
             if (group.isEmpty()) continue;
-            if (y + LINE_HEIGHT > bottom) return;
-            ctx.drawText(textRenderer, Text.literal("§l" + rankLabel(rank)), pageX, y, INK, false);
-            y += LINE_HEIGHT + 2;
+            rows.add(new HallRow(HallRow.RANK, rank, null));
             for (TesterRegistry.Tester t : group) {
-                if (y + 18 > bottom) return;
-                ctx.drawItem(testerHead(t.name()), pageX + 2, y - 3);
-                int col = TesterRegistry.colorOf(t);
-                Text nameText = TesterRegistry.isBold(t)
-                    ? Text.literal(t.name()).formatted(Formatting.BOLD)
-                    : Text.literal(t.name());
-                int nameX = pageX + 22;
-                ctx.drawTextWithShadow(textRenderer, nameText, nameX, y, col);
-                int titleX = nameX + textRenderer.getWidth(nameText) + 6;
-                ctx.drawText(textRenderer, Text.literal(t.title()), titleX, y, INK_SOFT, false);
-                y += 19;
+                rows.add(new HallRow(HallRow.TESTER, null, t));
             }
-            y += 3;
+            rows.add(new HallRow(HallRow.GAP, null, null));
         }
+        if (!rows.isEmpty() && rows.get(rows.size() - 1).kind() == HallRow.GAP) {
+            rows.remove(rows.size() - 1);
+        }
+        return rows;
+    }
+
+    private List<Integer> paginateHallRows(List<HallRow> rows, int pageHeight) {
+        List<Integer> starts = new ArrayList<>();
+        starts.add(0);
+        int index = 0;
+        while (index < rows.size()) {
+            int remaining = pageHeight;
+            int used = 0;
+            while (index + used < rows.size()) {
+                int h = hallRowHeight(rows.get(index + used));
+                if (h > remaining && used > 0) break;
+                if (h > remaining) {
+                    used = 1; // force progress even on tiny windows
+                    break;
+                }
+                remaining -= h;
+                used++;
+            }
+            if (used <= 0) used = 1;
+            index += used;
+            if (index < rows.size()) starts.add(index);
+        }
+        return starts;
+    }
+
+    private int hallRowHeight(HallRow row) {
+        return switch (row.kind()) {
+            case HallRow.RANK -> LINE_HEIGHT + 2;
+            case HallRow.TESTER -> 19;
+            default -> 3;
+        };
+    }
+
+    /** Hall page nav - mirrors drawPageNav button style and position. */
+    private void drawTesterHallNav(DrawContext ctx, int totalPages) {
+        if (totalPages <= 1) return;
+
+        int navY = bookY + bookH - 19;
+        int btnW = 44, btnH = 13;
+
+        if (currentPage > 0) {
+            drawNavButton(ctx, pageX, navY, btnW, btnH, "◀ Prev", -1, -1);
+            zones.add(new Zone(Z_TPREV, 0, pageX, navY, btnW, btnH));
+        }
+        if (currentPage < totalPages - 1) {
+            int nx = pageX + pageW - btnW;
+            drawNavButton(ctx, nx, navY, btnW, btnH, "Next ▶", -1, -1);
+            zones.add(new Zone(Z_TNEXT, 0, nx, navY, btnW, btnH));
+        }
+        ctx.drawCenteredTextWithShadow(textRenderer,
+            Text.literal((currentPage + 1) + " / " + totalPages),
+            pageX + pageW / 2, navY + 3, INK_FAINT);
     }
 
     private static String rankLabel(TesterRegistry.Rank rank) {
@@ -481,7 +571,7 @@ public class GuideBookScreen extends Screen {
             }
         }
 
-        // Grid (paginated — reserves the bottom row for Prev/Next page nav)
+        // Grid (paginated - reserves the bottom row for Prev/Next page nav)
         int cols = Math.max(4, (pageW + 2) / (CELL + 2));
         int gridTop = y;
         int gridBottom = bookY + bookH - 21;
@@ -531,7 +621,7 @@ public class GuideBookScreen extends Screen {
         drawBestiaryNav(ctx, totalPages, mouseX, mouseY);
     }
 
-    /** Grid page nav — mirrors drawPageNav exactly so the bestiary pages the same way. */
+    /** Grid page nav - mirrors drawPageNav exactly so the bestiary pages the same way. */
     private void drawBestiaryNav(DrawContext ctx, int totalPages, int mouseX, int mouseY) {
         if (totalPages <= 1) return;
 
@@ -602,7 +692,7 @@ public class GuideBookScreen extends Screen {
         // Scaling reminder
         if (stats != null && stats.hp() != null) {
             ctx.drawText(textRenderer,
-                Text.literal("§oBase stats — enemies scale with biome, level & party."),
+                Text.literal("§oBase stats - enemies scale with biome, level & party."),
                 pageX, bookY + bookH - 18, INK_FAINT, false);
         }
 
@@ -631,7 +721,7 @@ public class GuideBookScreen extends Screen {
     private int drawBadge(DrawContext ctx, int x, int y, String text, int color) {
         if (text == null || text.isEmpty()) return x;
         int w = textRenderer.getWidth(text) + 6;
-        if (x + w > pageX + pageW) return x; // out of row space — drop rather than overflow
+        if (x + w > pageX + pageW) return x; // out of row space - drop rather than overflow
         ctx.fill(x, y, x + w, y + 12, color);
         ctx.fill(x, y, x + w, y + 1, brighten(color));
         ctx.drawTextWithShadow(textRenderer, Text.literal(text), x + 3, y + 2, 0xFFF5EBD0);
@@ -694,6 +784,8 @@ public class GuideBookScreen extends Screen {
                     case Z_BACK -> { selectedEntry = -1; currentPage = 0; return true; }
                     case Z_BPREV -> { bestiaryPage--; return true; }
                     case Z_BNEXT -> { bestiaryPage++; return true; }
+                    case Z_TPREV -> { currentPage--; return true; }
+                    case Z_TNEXT -> { currentPage++; return true; }
                 }
             }
         }
@@ -719,6 +811,11 @@ public class GuideBookScreen extends Screen {
                 && cats.get(selectedCategory).name().equals("Enemy Bestiary")) {
             if (keyCode == 263 && bestiaryPage > 0) { bestiaryPage--; return true; } // LEFT
             if (keyCode == 262) { bestiaryPage++; return true; }                     // RIGHT
+        }
+        // Hall of Testers: arrows flip tester pages.
+        if (selectedCategory < cats.size() && cats.get(selectedCategory).name().equals("Hall of Testers")) {
+            if (keyCode == 263 && currentPage > 0) { currentPage--; return true; } // LEFT
+            if (keyCode == 262) { currentPage++; return true; }                    // RIGHT (upper bound clamped in render)
         }
         if (selectedCategory < cats.size() && selectedEntry >= 0
                 && selectedEntry < cats.get(selectedCategory).entries().size()) {
@@ -787,3 +884,5 @@ public class GuideBookScreen extends Screen {
     @Override
     public boolean shouldCloseOnEsc() { return true; }
 }
+
+

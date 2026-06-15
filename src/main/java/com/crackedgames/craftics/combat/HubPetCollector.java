@@ -26,7 +26,7 @@ import java.util.UUID;
  * for a combat run, and restores the survivors to the hub afterwards.
  *
  * <p>A party is built explicitly: the player Shift+Right-Clicks mobs on their
- * island (see {@code PartyMobs}). Any passive or neutral mob qualifies — combat
+ * island (see {@code PartyMobs}). Any passive or neutral mob qualifies - combat
  * stats come from a hand-tuned {@link AllyEntry} when one exists, or are derived
  * from the mob's vanilla attributes otherwise.
  */
@@ -64,7 +64,7 @@ public class HubPetCollector {
         for (UUID mobUuid : party) {
             Entity entity = world.getEntity(mobUuid);
             if (!(entity instanceof MobEntity mob) || !mob.isAlive()) {
-                continue; // dead / despawned / unloaded — drop this party entry
+                continue; // dead / despawned / unloaded - drop this party entry
             }
             survivors.add(mobUuid);
             if (results.size() >= cap) continue;
@@ -136,7 +136,7 @@ public class HubPetCollector {
      * 60-up/40-down anchor scan on their own OFFSET column, which had two ways
      * to kill them: a tree canopy or roof over the offset column won the
      * up-scan (pet placed high, walks off and falls), and a column past the
-     * island edge found nothing at all and silently returned hub.y — a midair
+     * island edge found nothing at all and silently returned hub.y - a midair
      * spawn over the void. Now the anchor's landing is resolved first (the
      * floor the player lands on), the pet's offset column is only accepted
      * when it has a floor within a few blocks of that height, and a column
@@ -160,7 +160,7 @@ public class HubPetCollector {
      * Restore surviving pets to the hub world after a biome run ends.
      * Recreates entities from their original NBT snapshots with updated positions.
      * The original entity UUID is kept so the mob stays valid in the player's
-     * battle party — its hub copy was discarded when it was collected for combat,
+     * battle party - its hub copy was discarded when it was collected for combat,
      * so there is no duplicate to worry about.
      */
     public static void restorePetsToHub(ServerWorld world, ServerPlayerEntity player,
@@ -256,7 +256,7 @@ public class HubPetCollector {
      * Extended pet data record that includes original NBT for hub restoration.
      * Replaces the old PetData record in CombatManager.
      *
-     * @param mounted whether this pet was acting as the player's rideable mount —
+     * @param mounted whether this pet was acting as the player's rideable mount -
      *                so it can be re-mounted after a between-level transition.
      */
     public record PetData(String entityType, int hp, int maxHp, int atk, int def, int speed, int range,

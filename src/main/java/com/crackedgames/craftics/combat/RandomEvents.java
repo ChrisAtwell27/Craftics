@@ -52,7 +52,7 @@ public class RandomEvents {
             // isLoaded() is checked first so we don't burn an rng step (shifting the fallback
             // switch) when the mod is absent.
             ItemStack totem = com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isLoaded()
-                    && rng.nextInt(3) == 0
+                    && rng.nextInt(10) == 0
                 ? com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne()
                 : ItemStack.EMPTY;
             if (!totem.isEmpty()) {
@@ -152,7 +152,7 @@ public class RandomEvents {
                 + "\u00a7a\u00a7lYou uncover an ancient pottery sherd!\n"
                 + "\u00a77Received: \u00a7d" + sherdName;
         } else {
-            // 75% chance: consolation — flint or clay ball
+            // 75% chance: consolation - flint or clay ball
             ItemStack consolation = isSand
                 ? new ItemStack(Items.CLAY_BALL, 2)
                 : new ItemStack(Items.FLINT, 2);
@@ -160,13 +160,13 @@ public class RandomEvents {
             LootDelivery.deliver(player, consolation);
             return "\u00a76\u00a7l\u2726 " + blockName + "! \u2726\n"
                 + "\u00a77You carefully brush away the layers...\n"
-                + "\u00a77Nothing of value — just " + consolationName.toLowerCase() + ".\n"
+                + "\u00a77Nothing of value - just " + consolationName.toLowerCase() + ".\n"
                 + "\u00a77Received: \u00a7f" + consolationName;
         }
     }
 
     // ── Treasure Vault ──
-    // Generates a level definition with no enemies — just loot, scaled to biome tier
+    // Generates a level definition with no enemies - just loot, scaled to biome tier
     public static com.crackedgames.craftics.level.LevelDefinition generateTreasureVault(int biomeOrdinal) {
         return TrialChamberEvent.generateTreasureVault(biomeOrdinal);
     }

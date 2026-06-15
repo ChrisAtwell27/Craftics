@@ -28,7 +28,7 @@ public final class BasicWeaponsLootRoller {
      * Resolve the tier-appropriate basicweapons items. Returns empty when the mod is
      * absent or nothing resolves. Covers ALL six weapon types (dagger, spear, quarterstaff,
      * club, hammer, glaive) for each eligible material tier so every type/tier is reachable
-     * — the weaponsmith later shuffles its full pool and shows 3-5, so a large pool here
+     * - the weaponsmith later shuffles its full pool and shows 3-5, so a large pool here
      * just means more variety over visits, not a flooded screen. (The old loop stepped i+=3
      * and so only ever offered dagger + club, and never the golden tier.)
      */

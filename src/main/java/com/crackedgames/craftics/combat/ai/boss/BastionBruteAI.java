@@ -10,7 +10,7 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Crimson Forest Boss — "The Bastion Brute" (Skeleton warlord)
+ * Crimson Forest Boss - "The Bastion Brute" (Skeleton warlord)
  * Entity: Skeleton | 45HP / 8ATK / 3DEF / Speed 3 | Size 1×1
  *
  * Abilities:
@@ -20,7 +20,7 @@ import java.util.List;
  * - Rampage: All adjacent tiles (8), ATK damage each. P2: 2-tile radius.
  * - Summon Pack: 2 Piglins (8HP/4ATK/Range 3). Cooldown-based, repeatable.
  *
- * Phase 2 — "Blood Frenzy": +4 ATK, fire trail on charge, rampage 2-tile radius,
+ * Phase 2 - "Blood Frenzy": +4 ATK, fire trail on charge, rampage 2-tile radius,
  * speed 4.
  */
 public class BastionBruteAI extends BossAI {
@@ -41,7 +41,7 @@ public class BastionBruteAI extends BossAI {
         int dist = self.minDistanceTo(playerPos);
         int atk = self.getAttackPower() + (isPhaseTwo() ? 4 : 0);
 
-        // Summon Pack — repeatable on cooldown, only when no minions alive.
+        // Summon Pack - repeatable on cooldown, only when no minions alive.
         // The cooldown is paid only on a successful summon so a briefly-full
         // arena doesn't lock the ability out for 4 turns over nothing.
         if (!isOnCooldown(CD_SUMMON) && getAliveMinionCount() == 0 && dist >= 2) {
@@ -53,7 +53,7 @@ public class BastionBruteAI extends BossAI {
             }
         }
 
-        // Gore Charge — charge in a straight line toward the player (ignores speed)
+        // Gore Charge - charge in a straight line toward the player (ignores speed)
         // Uses Swoop to physically move the boss along the path.
         // In multiplayer, chains through multiple players.
         if (!isOnCooldown(CD_CHARGE) && dist >= 3) {
@@ -84,14 +84,14 @@ public class BastionBruteAI extends BossAI {
             }
         }
 
-        // Rampage — if adjacent or close
+        // Rampage - if adjacent or close
         if (!isOnCooldown(CD_RAMPAGE) && dist <= (isPhaseTwo() ? 2 : 1)) {
             setCooldown(CD_RAMPAGE, 2);
             int radius = isPhaseTwo() ? 2 : 1;
             return new EnemyAction.AreaAttack(myPos, radius, atk, "rampage");
         }
 
-        // Ground Slam — cross-pattern fire terrain around the boss
+        // Ground Slam - cross-pattern fire terrain around the boss
         if (!isOnCooldown(CD_SLAM) && dist <= 3) {
             setCooldown(CD_SLAM, 3);
             int slamRange = isPhaseTwo() ? 3 : 2;
@@ -166,10 +166,10 @@ public class BastionBruteAI extends BossAI {
             GridPos next = new GridPos(current.x() + dx, current.z() + dz);
             if (!arena.isInBounds(next)) break;
             var tile = arena.getTile(next);
-            // Stop at anything un-walkable — the old OBSTACLE/VOID-only check
+            // Stop at anything un-walkable - the old OBSTACLE/VOID-only check
             // let the charge plow into deep water and end the boss on a tile
             // it can't stand on. (FIRE/LAVA are walkable, so charging through
-            // flames still works — it's hazard-immune anyway.)
+            // flames still works - it's hazard-immune anyway.)
             if (tile == null || !tile.isWalkable()) break;
             path.add(next);
             current = next;

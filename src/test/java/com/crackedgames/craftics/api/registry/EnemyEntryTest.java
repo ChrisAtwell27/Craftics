@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Tests for the pure {@link EnemyEntry} builder — defaults, AI fallback, validation. */
+/** Tests for the pure {@link EnemyEntry} builder - defaults, AI fallback, validation. */
 class EnemyEntryTest {
 
     @Test

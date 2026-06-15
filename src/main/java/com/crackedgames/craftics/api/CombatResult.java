@@ -19,7 +19,7 @@ public record CombatResult(
     List<String> messages,
     boolean cancelled
 ) {
-    /** No change — pass through the original value. */
+    /** No change - pass through the original value. */
     public static CombatResult unchanged(int originalValue) {
         return new CombatResult(originalValue, List.of(), false);
     }

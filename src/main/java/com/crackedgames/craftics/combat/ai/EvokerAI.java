@@ -11,7 +11,7 @@ import java.util.List;
  * Evoker AI: Illager spellcaster with fang attacks.
  * - SUMMON VEX: summons a vex when the player first comes into range, and a
  *   second one when first wounded below 50% HP. Summon state lives in the
- *   entity's AI memory — the old instance flag was shared by every evoker,
+ *   entity's AI memory - the old instance flag was shared by every evoker,
  *   so after the first fight no evoker ever summoned again.
  * - FANG SNAP: ranged attack at 3-4 tiles (evoker fangs)
  * - RETREAT: kites backward when player closes in
@@ -57,7 +57,7 @@ public class EvokerAI implements EnemyAI {
 
         List<GridPos> threats = AIUtils.threatPositions(arena, playerPos);
 
-        // Too close — retreat and cast
+        // Too close - retreat and cast
         if (AIUtils.minThreatDistance(myPos, threats) <= 2) {
             GridPos fleeTarget = AIUtils.bestRetreatTile(self, arena, threats);
             if (fleeTarget != null) {
@@ -70,16 +70,16 @@ public class EvokerAI implements EnemyAI {
                     return new EnemyAction.Move(path);
                 }
             }
-            // Can't retreat — cast at point blank
+            // Can't retreat - cast at point blank
             return new EnemyAction.RangedAttack(self.getAttackPower(), "fangs");
         }
 
-        // In range — cast fangs
+        // In range - cast fangs
         if (dist <= self.getRange()) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "fangs");
         }
 
-        // Out of range — reposition to get within casting distance
+        // Out of range - reposition to get within casting distance
         GridPos best = null;
         int bestScore = Integer.MIN_VALUE;
         for (GridPos candidate : Pathfinding.getReachableTiles(

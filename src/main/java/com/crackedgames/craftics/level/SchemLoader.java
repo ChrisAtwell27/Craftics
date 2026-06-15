@@ -78,7 +78,10 @@ public class SchemLoader {
                 // other), which made deep water hide its own floor. This also
                 // catches waterlogged blocks, kelp, seagrass etc.
                 palLiquid[i] = !s.getFluidState().isEmpty();
-                palGravity[i] = block instanceof FallingBlock;
+                // Powder snow is not a FallingBlock, but arena generation still
+                // needs support injected under unsupported powder snow tiles so
+                // they don't pop when the arena is loaded.
+                palGravity[i] = block instanceof FallingBlock || block == Blocks.POWDER_SNOW;
                 // Liquids count as air for culling: water (and lava) never
                 // hides a face, so the floors and walls of rivers and other
                 // bodies of water are always kept.
@@ -94,7 +97,7 @@ public class SchemLoader {
             }
 
             // Visibility cull: only place blocks with at least one face that
-            // can actually be seen — bordering air or any non-opaque block
+            // can actually be seen - bordering air or any non-opaque block
             // (glass, stairs, water...) inside the volume, which also keeps
             // interior rooms and caves intact, or sitting on the volume's
             // outer boundary. Fully buried filler is skipped entirely; on
@@ -149,7 +152,7 @@ public class SchemLoader {
 
             int placed = 0;
             // Pass 1: air (always placed so the region is cleared), synthetic
-            // supports, and kept non-gravity blocks — supports and surfaces
+            // supports, and kept non-gravity blocks - supports and surfaces
             // must exist before sand/gravel lands on them.
             for (int y = 0; y < height; y++) {
                 for (int z = 0; z < length; z++) {
@@ -255,8 +258,13 @@ public class SchemLoader {
             //?}
         }
 
-        /** Mirrors vanilla FallingBlock.canFallThrough: the supports a gravity block falls past. */
+        /**
+         * Mirrors vanilla FallingBlock.canFallThrough, except powder snow is
+         * treated as a valid support for our synthetic-support pass so stacked
+         * powder doesn't get replaced by stone.
+         */
         private static boolean canFallThrough(BlockState state) {
+            if (state.getBlock() == Blocks.POWDER_SNOW) return false;
             return state.isAir() || state.isReplaceable() || state.isLiquid()
                 || state.isIn(net.minecraft.registry.tag.BlockTags.FIRE);
         }

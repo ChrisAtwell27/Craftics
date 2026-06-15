@@ -7,7 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import java.util.List;
 
 /**
- * Combat AI for a friendly ally — the ally-side parallel to {@code EnemyAI}.
+ * Combat AI for a friendly ally - the ally-side parallel to {@code EnemyAI}.
  *
  * <p>An {@code AllyAI} decides one ally's turn: given the ally, the arena, and
  * the current combatant list, it returns the {@link EnemyAction} the ally should
@@ -23,7 +23,7 @@ public interface AllyAI {
      *
      * <p>For an attack action, pass the ally's base {@code self.getAttackPower()}
      * as the damage. The combat executor adds owner-equipment bonuses on top for
-     * gear-scaling allies — implementations must not pre-apply those bonuses.
+     * gear-scaling allies - implementations must not pre-apply those bonuses.
      *
      * @param self       the ally taking its turn
      * @param arena      the combat arena

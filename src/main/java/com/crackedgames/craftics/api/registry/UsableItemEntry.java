@@ -5,7 +5,7 @@ import com.crackedgames.craftics.api.UsableItemHandler;
 import net.minecraft.item.Item;
 
 /**
- * Immutable definition of an item the player can use during a Craftics turn —
+ * Immutable definition of an item the player can use during a Craftics turn -
  * a consumable, a throwable, or a special-effect item.
  *
  * <p>Build entries with {@link #builder(Item)}:

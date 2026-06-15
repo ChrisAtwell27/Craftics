@@ -30,7 +30,7 @@ public enum Achievement {
     DIM_NETHER("Nether Conqueror", "Defeat all Nether bosses", Category.BOSS),
     DIM_END("Ender of Ends", "Defeat all End bosses", Category.BOSS),
 
-    // === Class Mastery — Weapon Restricted (8) ===
+    // === Class Mastery - Weapon Restricted (8) ===
     CLASS_SWORDMASTER("Swordmaster", "Defeat the Warden using only Slashing weapons", Category.CLASS),
     CLASS_LUMBERJACK("Lumberjack", "Defeat a Nether boss using only Cleaving weapons", Category.CLASS),
     CLASS_BONECRUSHER("Bonecrusher", "Defeat the Warden using only Blunt weapons", Category.CLASS),
@@ -40,7 +40,7 @@ public enum Achievement {
     CLASS_SHARPSHOOTER("Sharpshooter", "Defeat the Shulker Architect using only Ranged weapons", Category.CLASS),
     CLASS_BARE_KNUCKLE("Bare Knuckle", "Defeat an End boss with only your fists", Category.CLASS),
 
-    // === Class Mastery — Armor Restricted (7) ===
+    // === Class Mastery - Armor Restricted (7) ===
     ARMOR_BRAWLER("Brawler's Pride", "Defeat an End boss in full Leather armor", Category.CLASS),
     ARMOR_ROGUE("Rogue's Honor", "Defeat a Nether boss in full Chainmail armor", Category.CLASS),
     ARMOR_GUARD("Guard's Duty", "Defeat an End boss in full Iron armor", Category.CLASS),
@@ -49,7 +49,7 @@ public enum Achievement {
     ARMOR_JUGGERNAUT("Juggernaut", "Defeat the Dragon's Nest boss in full Netherite armor", Category.CLASS),
     ARMOR_AQUATIC("Aquatic Assault", "Defeat a Nether boss in full Turtle armor", Category.CLASS),
 
-    // === Combat Feats — Weapon Skills (12) ===
+    // === Combat Feats - Weapon Skills (12) ===
     FEAT_SKEWER("Skewer", "Hit 3+ enemies with a single Crossbow pierce shot", Category.COMBAT),
     FEAT_WHIRLWIND("Whirlwind", "Sweep 4+ enemies with a single sword swing", Category.COMBAT),
     FEAT_EXECUTION("Execution", "Kill an enemy with Netherite Sword's Execute ability", Category.COMBAT),
@@ -59,11 +59,11 @@ public enum Achievement {
     FEAT_CHAIN_STUN("Chain Stun", "Stun the same enemy 3 turns in a row", Category.COMBAT),
     FEAT_GLASS_CANNON("Glass Cannon", "Deal 20+ damage in a single hit", Category.COMBAT),
     FEAT_ARMOR_CRUSH("Armor Crush", "Ignore 5+ defense with a single Cleaving hit", Category.COMBAT),
-    // FEAT_SPEAR_WALL removed — Spears not in MC 1.21.1
+    // FEAT_SPEAR_WALL removed - Spears not in MC 1.21.1
     FEAT_COUNTER_KILL("Counter Kill", "Kill an enemy with a Physical counterattack", Category.COMBAT),
     FEAT_CRITICAL_STREAK("Critical Streak", "Land 3 critical hits in a row", Category.COMBAT),
 
-    // === Combat Feats — Items & Tactics (10) ===
+    // === Combat Feats - Items & Tactics (10) ===
     FEAT_UNDYING("Undying", "Survive lethal damage with a Totem of Undying", Category.COMBAT),
     FEAT_ZOOKEEPER("Zookeeper", "Have 3+ tamed allies alive at the same time", Category.COMBAT),
     FEAT_FISHERMAN("Fisherman's Luck", "Get a rare item from Fishing Rod", Category.COMBAT),
@@ -75,7 +75,7 @@ public enum Achievement {
     FEAT_MILK_SAVE("Milk Save", "Clear 3+ debuffs with a single Milk Bucket use", Category.COMBAT),
     FEAT_HORN_SECTION("Horn Section", "Use 4 different Goat Horns in a single combat", Category.COMBAT),
 
-    // === Combat Feats — Status Effects (5) ===
+    // === Combat Feats - Status Effects (5) ===
     FEAT_ALCHEMIST("Alchemist", "Have 5+ different buffs active simultaneously", Category.COMBAT),
     FEAT_PLAGUE_DOCTOR("Plague Doctor", "Kill an enemy with Poison tick damage", Category.COMBAT),
     FEAT_PYROMANIAC("Pyromaniac", "Kill an enemy with Burn tick damage", Category.COMBAT),

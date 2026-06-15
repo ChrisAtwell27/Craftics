@@ -1,4 +1,4 @@
-# CombatEffectHandler Implementation Plan
+﻿# CombatEffectHandler Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -18,7 +18,7 @@
 
 | File | Responsibility |
 |---|---|
-| `api/CombatResult.java` | Return type for modifying callbacks — carries modified value, messages, and cancellation flag |
+| `api/CombatResult.java` | Return type for modifying callbacks - carries modified value, messages, and cancellation flag |
 | `api/CombatEffectHandler.java` | Interface with 24 default no-op lifecycle callbacks |
 | `api/CombatEffectContext.java` | Context object providing player, arena, effects, allies, enemies to callbacks |
 | `api/NamedCombatEffect.java` | Record pairing a display name with a handler instance |
@@ -74,7 +74,7 @@ package com.crackedgames.craftics.api;
 public record NamedCombatEffect(String name, CombatEffectHandler handler) {}
 ```
 
-Note: This will have a compile error referencing `CombatEffectHandler` which doesn't exist yet. That's fine — it's created in Task 2.
+Note: This will have a compile error referencing `CombatEffectHandler` which doesn't exist yet. That's fine - it's created in Task 2.
 
 - [ ] **Step 3: Verify compilation**
 
@@ -162,7 +162,7 @@ public interface CombatEffectHandler {
 - [ ] **Step 2: Verify compilation**
 
 Run: `./gradlew compileJava 2>&1 | tail -10`
-Expected: BUILD SUCCESSFUL (CombatEffectContext doesn't exist yet but is only used as a parameter type in default methods — Java compiles the interface definition without resolving parameter types of unimplemented defaults until they're called. Actually, Java DOES need the type to compile. So Task 3 must be done before this compiles.)
+Expected: BUILD SUCCESSFUL (CombatEffectContext doesn't exist yet but is only used as a parameter type in default methods - Java compiles the interface definition without resolving parameter types of unimplemented defaults until they're called. Actually, Java DOES need the type to compile. So Task 3 must be done before this compiles.)
 
 ---
 
@@ -248,8 +248,8 @@ Expected: BUILD SUCCESSFUL
 
 Add to `StatModifiers.java`:
 - New field: `private final List<NamedCombatEffect> combatEffects = new ArrayList<>();`
-- New method: `public void addCombatEffect(String name, CombatEffectHandler handler)` — creates a `NamedCombatEffect` and adds to list
-- New method: `public List<NamedCombatEffect> getCombatEffects()` — returns the list
+- New method: `public void addCombatEffect(String name, CombatEffectHandler handler)` - creates a `NamedCombatEffect` and adds to list
+- New method: `public List<NamedCombatEffect> getCombatEffects()` - returns the list
 - Add imports for `NamedCombatEffect`, `CombatEffectHandler`, `ArrayList`, `List`
 
 - [ ] **Step 2: Add combatEffects field to TrimScan record**
@@ -321,7 +321,7 @@ Expected: BUILD SUCCESSFUL
 
 ---
 
-## Task 5: Wire hooks into CombatManager — storage + context + core lifecycle
+## Task 5: Wire hooks into CombatManager - storage + context + core lifecycle
 
 **Files:**
 - Modify: `src/main/java/com/crackedgames/craftics/combat/CombatManager.java`
@@ -384,12 +384,12 @@ fireEffectHook(h -> h.onCombatStart(effectContext));
 
 - [ ] **Step 4: Insert onTurnStart and onTurnEnd hooks**
 
-Find where the player turn begins — around line 3586 where `"'s turn!"` message is sent. After that message, add:
+Find where the player turn begins - around line 3586 where `"'s turn!"` message is sent. After that message, add:
 ```java
 fireEffectHook(h -> h.onTurnStart(effectContext));
 ```
 
-Find where the player turn ends — this is `startEnemyTurn()` (line 3591). At the top of `startEnemyTurn()`, before the PHANTOM check, add:
+Find where the player turn ends - this is `startEnemyTurn()` (line 3591). At the top of `startEnemyTurn()`, before the PHANTOM check, add:
 ```java
 fireEffectHook(h -> h.onTurnEnd(effectContext));
 ```
@@ -415,7 +415,7 @@ Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 1: Insert onDealDamage hook**
 
-Find where the player's attack damage is calculated and applied to the target. This is in the attack resolution code — search for where `WeaponAbility.applyAbility` is called (around line 2062). After the ability result is computed and before the damage is actually applied/reported, insert:
+Find where the player's attack damage is calculated and applied to the target. This is in the attack resolution code - search for where `WeaponAbility.applyAbility` is called (around line 2062). After the ability result is computed and before the damage is actually applied/reported, insert:
 
 ```java
 int hookedDamage = fireEffectHookChained(abilityResult.totalDamage(),
@@ -433,7 +433,7 @@ fireEffectHook(h -> h.onDealKillingBlow(effectContext, enemy));
 
 - [ ] **Step 3: Insert onCrit hook**
 
-Find where critical hits are detected — search for "CRITICAL" or "crit" in the attack code. After a crit is detected and bonus damage applied, add:
+Find where critical hits are detected - search for "CRITICAL" or "crit" in the attack code. After a crit is detected and bonus damage applied, add:
 ```java
 fireEffectHook(h -> h.onCrit(effectContext, target, critDamage));
 ```
@@ -445,7 +445,7 @@ Find where the ETHEREAL dodge check happens (line 604). After the dodge message,
 fireEffectHook(h -> h.onMiss(effectContext, null));
 ```
 
-Note: `onMiss` is for when the player misses. The ETHEREAL dodge is when an enemy misses the player — that's `onDodge`. Search for any player-attack-miss logic. If none exists (player attacks always hit), skip this hook insertion for now.
+Note: `onMiss` is for when the player misses. The ETHEREAL dodge is when an enemy misses the player - that's `onDodge`. Search for any player-attack-miss logic. If none exists (player attacks always hit), skip this hook insertion for now.
 
 - [ ] **Step 5: Verify compilation**
 
@@ -468,7 +468,7 @@ actual = fireEffectHookChained(actual, (h, dmg) -> h.onTakeDamage(effectContext,
 if (actual <= 0) return 0;
 ```
 
-Note: The `attacker` parameter is null here because `damagePlayer` doesn't receive the attacker. Search for callers of `damagePlayer` to see if the attacker can be threaded through. If not, null is acceptable — addon devs can check the context for enemy positions.
+Note: The `attacker` parameter is null here because `damagePlayer` doesn't receive the attacker. Search for callers of `damagePlayer` to see if the attacker can be threaded through. If not, null is acceptable - addon devs can check the context for enemy positions.
 
 - [ ] **Step 2: Insert onLethalDamage hook**
 
@@ -478,7 +478,7 @@ In `damagePlayer`, after the OCEAN_BLESSING check (around line 641), add a check
 if (player.getHealth() <= 1) {
     int lethalResult = fireEffectHookChained(actual, (h, dmg) -> h.onLethalDamage(effectContext, null, dmg));
     if (lethalResult == 0) {
-        // A handler cancelled the lethal damage — player survives
+        // A handler cancelled the lethal damage - player survives
         return 0;
     }
 }
@@ -514,7 +514,7 @@ Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 1: Insert onMove hook**
 
-Find where player movement is resolved — search for TERRAFORMER set bonus (line 3864) since that fires after movement. Near that location, after the player's grid position is updated, add:
+Find where player movement is resolved - search for TERRAFORMER set bonus (line 3864) since that fires after movement. Near that location, after the player's grid position is updated, add:
 
 ```java
 fireEffectHook(h -> h.onMove(effectContext, fromPos, toPos, distance));
@@ -522,7 +522,7 @@ fireEffectHook(h -> h.onMove(effectContext, fromPos, toPos, distance));
 
 - [ ] **Step 2: Insert onKnockback hook**
 
-Search for where the player gets knocked back (not enemy knockback — player knockback). If player knockback exists, insert:
+Search for where the player gets knocked back (not enemy knockback - player knockback). If player knockback exists, insert:
 ```java
 int kbDist = fireEffectHookChained(knockbackDistance, (h, d) -> h.onKnockback(effectContext, source, d));
 ```
@@ -551,7 +551,7 @@ fireEffectHook(h -> h.onAllyDeath(effectContext, deadAlly));
 
 - [ ] **Step 5: Insert onEffectApplied hook**
 
-In `CombatEffects.addEffect()` — this is in `CombatEffects.java`, not CombatManager. However, `CombatEffects` doesn't have access to the effect context. Instead, hook this in CombatManager where effects are applied to the player. Search for `combatEffects.addEffect` calls in CombatManager. Before each call, fire:
+In `CombatEffects.addEffect()` - this is in `CombatEffects.java`, not CombatManager. However, `CombatEffects` doesn't have access to the effect context. Instead, hook this in CombatManager where effects are applied to the player. Search for `combatEffects.addEffect` calls in CombatManager. Before each call, fire:
 ```java
 int hookedTurns = fireEffectHookChained(turns, (h, t) -> h.onEffectApplied(effectContext, effectType, t));
 ```
@@ -637,13 +637,13 @@ grep -n "addCombatEffect\|getCombatEffects\|activeCombatEffects\|fireEffectHook"
 
 After the Equipment Scanners section in `docs/modding.html`, add a new section documenting:
 
-1. **Overview** — what combat effects are and how they differ from flat stats
-2. **CombatEffectHandler interface** — list all 24 callbacks with descriptions
-3. **CombatResult** — the three factory methods (unchanged, modify, cancel)
-4. **CombatEffectContext** — available getters
-5. **Registration** — how to add combat effects via `StatModifiers.addCombatEffect()`
-6. **Statefulness** — handlers are per-combat instances, can have fields
-7. **Examples** — Thorns Ring, Death Save, Berserker Rage, Emerald Fortune
+1. **Overview** - what combat effects are and how they differ from flat stats
+2. **CombatEffectHandler interface** - list all 24 callbacks with descriptions
+3. **CombatResult** - the three factory methods (unchanged, modify, cancel)
+4. **CombatEffectContext** - available getters
+5. **Registration** - how to add combat effects via `StatModifiers.addCombatEffect()`
+6. **Statefulness** - handlers are per-combat instances, can have fields
+7. **Examples** - Thorns Ring, Death Save, Berserker Rage, Emerald Fortune
 
 Update the sidebar navigation to include the new section.
 
@@ -671,3 +671,4 @@ Open `docs/modding.html` in a browser.
 | 10 | GitHub Pages docs | Task 9 |
 
 **Parallelizable:** Tasks 6, 7, 8 can run in parallel (independent hook categories, different CombatManager locations). Tasks 1-3 should be done together (cross-dependencies).
+

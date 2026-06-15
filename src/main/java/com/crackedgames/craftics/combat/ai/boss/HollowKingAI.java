@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Underground Caverns Boss — "The Hollow King" (Corrupted Miner)
+ * Underground Caverns Boss - "The Hollow King" (Corrupted Miner)
  * Entity: Zombie | 40HP / 7ATK / 3DEF / Speed 2 | Size 2×2
  *
  * Abilities:
@@ -22,7 +22,7 @@ import java.util.List;
  * - Swarm Call: 3-4 Silverfish from arena edges.
  * - Lights Out: Tiles beyond 3 from player go dark, enemies +2 ATK.
  *
- * Phase 2 — "Total Collapse": Auto cave-in, permanent darkness, extra TNT pressure.
+ * Phase 2 - "Total Collapse": Auto cave-in, permanent darkness, extra TNT pressure.
  */
 public class HollowKingAI extends BossAI {
     private static final String CD_TNT = "demolition_cache";
@@ -37,7 +37,7 @@ public class HollowKingAI extends BossAI {
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
         lightsOutPermanent = true;
-        // Permanent darkness — handled by CombatManager checking lightsOutPermanent
+        // Permanent darkness - handled by CombatManager checking lightsOutPermanent
     }
 
     @Override
@@ -51,7 +51,7 @@ public class HollowKingAI extends BossAI {
             setCooldown(CD_CAVEIN, 1);
             EnemyAction caveIn = new EnemyAction.CompositeAction(List.of(
                 new EnemyAction.AreaAttack(playerPos, 1, 5, "cave_in"),
-                // Rubble obstacles (temp, 3 turns) — the warning telegraph
+                // Rubble obstacles (temp, 3 turns) - the warning telegraph
                 // lets the player step out before the stones drop. NORMAL
                 // here was a no-op; OBSTACLE is what sells "cave-in".
                 new EnemyAction.CreateTerrain(caveInTiles, TileType.OBSTACLE, 3)
@@ -74,7 +74,7 @@ public class HollowKingAI extends BossAI {
             if (toss != null) return toss;
         }
 
-        // Lights Out — blanket darkness
+        // Lights Out - blanket darkness
         if (!isOnCooldown(CD_LIGHTS) && !lightsOutPermanent) {
             setCooldown(CD_LIGHTS, isPhaseTwo() ? 2 : 4);
             return new EnemyAction.BossAbility("lights_out",
@@ -88,7 +88,7 @@ public class HollowKingAI extends BossAI {
             setCooldown(CD_CAVEIN, 3);
             EnemyAction caveIn = new EnemyAction.CompositeAction(List.of(
                 new EnemyAction.AreaAttack(playerPos, 1, 5, "cave_in"),
-                // Rubble obstacles (temp, 3 turns) — the warning telegraph
+                // Rubble obstacles (temp, 3 turns) - the warning telegraph
                 // lets the player step out before the stones drop.
                 new EnemyAction.CreateTerrain(caveInTiles, TileType.OBSTACLE, 3)
             ));
@@ -98,7 +98,7 @@ public class HollowKingAI extends BossAI {
             return advanceWhileCharging(self, arena, playerPos);
         }
 
-        // Swarm Call — silverfish from edges
+        // Swarm Call - silverfish from edges
         if (!isOnCooldown(CD_SWARM) && getAliveMinionCount() < 4) {
             setCooldown(CD_SWARM, 3);
             int count = isPhaseTwo() ? 4 : 3;
@@ -109,7 +109,7 @@ public class HollowKingAI extends BossAI {
             }
         }
 
-        // Miner's Fury — line charge that destroys obstacles
+        // Miner's Fury - line charge that destroys obstacles
         if (!isOnCooldown(CD_CHARGE) && dist >= 2 && dist <= 4) {
             setCooldown(CD_CHARGE, 2);
             int[] dir = getDirectionToward(myPos, playerPos);

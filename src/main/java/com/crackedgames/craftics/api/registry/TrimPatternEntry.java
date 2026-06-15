@@ -9,7 +9,7 @@ import com.crackedgames.craftics.combat.TrimEffects;
  * carrying that trim, up to four pieces) and a four-piece set bonus that activates when
  * all four worn pieces share the same pattern.
  *
- * <p>Built-in patterns (sentry, dune, coast, wild, ward, eye, …) are registered by
+ * <p>Built-in patterns (sentry, dune, coast, wild, ward, eye, ...) are registered by
  * {@code VanillaContent}; addons register their own through
  * {@code CrafticsAPI.registerTrimPattern}:
  *

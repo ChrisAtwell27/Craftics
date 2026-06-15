@@ -5,7 +5,7 @@ import java.util.Set;
 
 /**
  * Maps an entity type to its combat-ally behavior archetype. Every mob added to
- * a player's battle party fights with one of six behaviors — five distinct
+ * a player's battle party fights with one of six behaviors - five distinct
  * combat archetypes plus a single shared {@link FarmAnimalAllyAI} for farm
  * animals and the unsaddled mounts.
  *
@@ -28,7 +28,7 @@ public final class AllyArchetypes {
 
     /**
      * Farm animals and the unsaddled livestock mounts. These share one AI by
-     * design — the feature spec calls for unique AI "except for farm animals".
+     * design - the feature spec calls for unique AI "except for farm animals".
      */
     private static final Set<String> FARM_ANIMALS = Set.of(
         "minecraft:cow", "minecraft:mooshroom", "minecraft:sheep", "minecraft:pig",
@@ -39,7 +39,7 @@ public final class AllyArchetypes {
 
     /** Per-type archetype assignment. Farm animals are handled separately. */
     private static final Map<String, AllyAI> BY_TYPE = Map.ofEntries(
-        // Melee predators — chase, score targets, retreat when badly hurt.
+        // Melee predators - chase, score targets, retreat when badly hurt.
         Map.entry("minecraft:wolf", MELEE),
         Map.entry("minecraft:fox", MELEE),
         Map.entry("minecraft:ocelot", MELEE),
@@ -54,11 +54,11 @@ public final class AllyArchetypes {
         Map.entry("minecraft:enderman", MELEE),
         Map.entry("minecraft:spider", MELEE),
         Map.entry("minecraft:cave_spider", MELEE),
-        // Ranged kiters — fire from distance, back away from melee.
+        // Ranged kiters - fire from distance, back away from melee.
         Map.entry("minecraft:llama", RANGED),
         Map.entry("minecraft:trader_llama", RANGED),
         Map.entry("minecraft:snow_golem", RANGED),
-        // Ranged hostiles — joinable only via spawn-egg loot drops. Without a
+        // Ranged hostiles - joinable only via spawn-egg loot drops. Without a
         // mapping they fell through to the melee default, so a summoned
         // skeleton walked up and punched instead of kiting with its bow.
         Map.entry("minecraft:skeleton", RANGED),
@@ -70,17 +70,17 @@ public final class AllyArchetypes {
         Map.entry("minecraft:drowned", RANGED),
         Map.entry("minecraft:ghast", RANGED),
         Map.entry("minecraft:shulker", RANGED),
-        // Flyers — fast, fearless, dive on the weakest enemy.
+        // Flyers - fast, fearless, dive on the weakest enemy.
         Map.entry("minecraft:parrot", FLYER),
         Map.entry("minecraft:bee", FLYER),
         Map.entry("minecraft:bat", FLYER),
         Map.entry("minecraft:allay", FLYER),
-        // Tanks — body-block the enemy nearest the player, never flee.
+        // Tanks - body-block the enemy nearest the player, never flee.
         Map.entry("minecraft:iron_golem", TANK),
         Map.entry("minecraft:turtle", TANK),
         Map.entry("minecraft:goat", TANK),
         Map.entry("minecraft:armadillo", TANK),
-        // Support — hold station by the player, punish enemies that close in.
+        // Support - hold station by the player, punish enemies that close in.
         Map.entry("minecraft:axolotl", SUPPORT),
         Map.entry("minecraft:frog", SUPPORT),
         Map.entry("minecraft:villager", SUPPORT),

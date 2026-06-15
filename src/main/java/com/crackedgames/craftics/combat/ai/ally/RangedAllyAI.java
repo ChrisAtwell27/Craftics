@@ -9,7 +9,7 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Ranged ally AI — a kiter (llama spit, snow golem snowballs). Fires from its
+ * Ranged ally AI - a kiter (llama spit, snow golem snowballs). Fires from its
  * full attack range and backs away when an enemy closes to melee, snapping off
  * a parting shot while it retreats. Flees outright when badly wounded. When out
  * of range it closes the gap and fires in the same turn.
@@ -29,7 +29,7 @@ public class RangedAllyAI implements AllyAI {
         int dist = AllyTargeting.distanceToTarget(target, arena, pos);
         boolean lowHp = AllyTargeting.lowHp(self, 0.25f);
 
-        // Wounded, or an enemy has closed to melee — kite away from the threat.
+        // Wounded, or an enemy has closed to melee - kite away from the threat.
         // The kite tile is scored over everything reachable this turn: gain as
         // much distance as possible, and (unless fleeing for our life) prefer
         // tiles that keep the target inside firing range for the parting shot.
@@ -63,18 +63,18 @@ public class RangedAllyAI implements AllyAI {
                     return new EnemyAction.Flee(path);
                 }
             }
-            // Cornered — bite back.
+            // Cornered - bite back.
             return new EnemyAction.MoveAndAttackMob(
                 List.of(), target.getEntityId(), self.getAttackPower());
         }
 
-        // Already at a good firing distance — shoot without moving.
+        // Already at a good firing distance - shoot without moving.
         if (dist <= range) {
             return new EnemyAction.MoveAndAttackMob(
                 List.of(), target.getEntityId(), self.getAttackPower());
         }
 
-        // Out of range — close just enough to fire, moving and shooting in one turn.
+        // Out of range - close just enough to fire, moving and shooting in one turn.
         // pathTo(target.getGridPos()) returns empty (target's tile is "blocked"
         // by the target), so route to the closest reachable tile and fire if it
         // lands within range.

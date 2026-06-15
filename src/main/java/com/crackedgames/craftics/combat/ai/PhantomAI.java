@@ -12,7 +12,7 @@ import java.util.List;
  * - SWOOP: flies in a straight line, damages player if in path, flies over obstacles
  * - CIRCLING: if can't line up a swoop, repositions to align (never wanders aimlessly)
  * - STACKING SPEED: +1 speed each turn it doesn't hit the player (resets on hit).
- *   The streak lives in the entity's AI memory — the old instance field sat on
+ *   The streak lives in the entity's AI memory - the old instance field sat on
  *   the shared AI object, so every phantom on the server pooled one streak.
  * - Base speed 4
  */
@@ -34,10 +34,10 @@ public class PhantomAI implements EnemyAI {
             }
         }
 
-        // Missed — increment speed stack
+        // Missed - increment speed stack
         self.setAiMemory(MISS_STREAK, missStreak + 1);
 
-        // Can't hit player from here — reposition to align for next swoop
+        // Can't hit player from here - reposition to align for next swoop
         GridPos alignTarget = findAlignmentTarget(arena, myPos, playerPos, swoopRange);
         if (alignTarget != null) {
             List<GridPos> path = new ArrayList<>();
@@ -54,7 +54,7 @@ public class PhantomAI implements EnemyAI {
         for (int i = 0; i < maxLen; i++) {
             GridPos next = new GridPos(current.x() + dx, current.z() + dz);
             if (!arena.isInBounds(next)) break;
-            // Phantoms fly over everything — only need to be in bounds
+            // Phantoms fly over everything - only need to be in bounds
             path.add(next);
             current = next;
         }
@@ -78,7 +78,7 @@ public class PhantomAI implements EnemyAI {
                 if (dx == 0 && dz == 0) continue;
 
                 GridPos candidate = new GridPos(self.x() + dx, self.z() + dz);
-                // isOccupied, not isEnemyOccupied — the old check let the
+                // isOccupied, not isEnemyOccupied - the old check let the
                 // phantom park itself on the player's or an ally's tile.
                 if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
 

@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Immutable themed "realm" of a {@link Campaign} — an ordered list of {@link CampaignNode}s
+ * Immutable themed "realm" of a {@link Campaign} - an ordered list of {@link CampaignNode}s
  * plus presentation metadata (display name, chat color, glyph icon, map color).
  *
  * <p>Build entries with {@link #builder(String)}:

@@ -10,16 +10,16 @@ import net.minecraft.registry.Registries;
  * <p>Each armor material has a <b>base AC</b> ({@code B}); each worn piece
  * contributes independently per the per-slot formula:
  * <ul>
- *   <li>Leggings &mdash; {@code B}</li>
- *   <li>Chestplate &mdash; {@code B + 1}</li>
- *   <li>Helmet / Boots &mdash; {@code ⌈B / 2⌉}</li>
+ *   <li>Leggings - {@code B}</li>
+ *   <li>Chestplate - {@code B + 1}</li>
+ *   <li>Helmet / Boots - {@code ⌈B / 2⌉}</li>
  * </ul>
  * Full-set totals: leather 7, chainmail/gold 11, iron/copper 13, diamond 19,
  * netherite 23. See {@code docs/superpowers/specs/2026-05-10-armor-class-overhaul-design.md}.
  *
  * <p>The pure math ({@link #baseAC} / {@link #pieceAC}) is registry-free so it
  * can be unit-tested without a Minecraft bootstrap. {@link #getPieceAC(Item)}
- * resolves a live item by parsing its registry ID — which means Copper Age
+ * resolves a live item by parsing its registry ID - which means Copper Age
  * Backport armor (registered under the {@code minecraft:} namespace as
  * {@code copper_*}) is picked up automatically with no compat hook.
  */
@@ -32,8 +32,8 @@ public final class ArmorClassTable {
 
     /**
      * Base AC ({@code B}) for an armor material, keyed by the registry-ID prefix
-     * (e.g. {@code "iron"} from {@code iron_helmet}). Unknown materials &mdash;
-     * including modded armor that hasn't registered an AC &mdash; return 0.
+     * (e.g. {@code "iron"} from {@code iron_helmet}). Unknown materials -
+     * including modded armor that hasn't registered an AC - return 0.
      */
     public static int baseAC(String material) {
         return switch (material) {

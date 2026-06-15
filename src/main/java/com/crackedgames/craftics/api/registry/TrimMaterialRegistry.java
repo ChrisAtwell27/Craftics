@@ -21,7 +21,7 @@ public final class TrimMaterialRegistry {
     private TrimMaterialRegistry() {}
 
     private static final Map<String, TrimMaterialEntry> REGISTRY = new HashMap<>();
-    /** Material IDs whose current entry came from a JSON datapack — dropped on /reload. */
+    /** Material IDs whose current entry came from a JSON datapack - dropped on /reload. */
     private static final Set<String> DATAPACK_KEYS = new HashSet<>();
 
     /** Register a trim material from code (survives {@code /reload}). */

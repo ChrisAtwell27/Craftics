@@ -37,7 +37,7 @@ public final class EnemyJsonLoader extends CrafticsDataLoader<EnemyEntry> {
     @Override
     protected EnemyEntry parse(Identifier fileId, JsonObject json) {
         if (!json.has("id") || !json.has("entity")) {
-            CrafticsMod.LOGGER.warn("Enemy JSON {} missing required 'id' or 'entity' — skipping", fileId);
+            CrafticsMod.LOGGER.warn("Enemy JSON {} missing required 'id' or 'entity' - skipping", fileId);
             return null;
         }
         String id = json.get("id").getAsString();
@@ -45,12 +45,12 @@ public final class EnemyJsonLoader extends CrafticsDataLoader<EnemyEntry> {
 
         Identifier entityId = Identifier.of(entity);
         if (!Registries.ENTITY_TYPE.containsId(entityId)) {
-            CrafticsMod.LOGGER.warn("Unknown entity type '{}' in enemy JSON {} — skipping", entity, fileId);
+            CrafticsMod.LOGGER.warn("Unknown entity type '{}' in enemy JSON {} - skipping", entity, fileId);
             return null;
         }
 
         EnemyEntry.Builder builder = EnemyEntry.builder(id, entity);
-        // 'ai' is not validated here — AIRegistry resolves it at runtime and falls
+        // 'ai' is not validated here - AIRegistry resolves it at runtime and falls
         // back to its default strategy for an unknown key.
         if (json.has("ai")) builder.ai(json.get("ai").getAsString());
         if (json.has("hp")) builder.hp(json.get("hp").getAsInt());

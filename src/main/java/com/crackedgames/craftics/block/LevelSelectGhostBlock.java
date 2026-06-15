@@ -26,7 +26,7 @@ import net.minecraft.world.World;
 /**
  * Invisible second half of the level-select table. Placed automatically by
  * {@link LevelSelectBlock#onPlaced} at the phantom position so the other
- * visual half is raycast-clickable from perpendicular angles — vanilla's
+ * visual half is raycast-clickable from perpendicular angles - vanilla's
  * outline extension only registers a hit when the ray also passes through
  * the real block's column, so looking at the phantom side-on (ray stays in
  * the phantom's column) otherwise misses entirely.
@@ -70,7 +70,7 @@ public class LevelSelectGhostBlock extends Block {
         return SHAPE;
     }
 
-    // Keep BlockRenderType.MODEL (default) — the model uses a fully-transparent
+    // Keep BlockRenderType.MODEL (default) - the model uses a fully-transparent
     // texture on a slab-shaped cuboid so nothing shows in normal render, but the
     // faces exist so MC's block-breaking progress overlay has surfaces to draw
     // the crack texture onto. With INVISIBLE render type there are no faces,
@@ -98,7 +98,7 @@ public class LevelSelectGhostBlock extends Block {
             BlockPos realPos = pos.offset(state.get(FACING));
             // Drop the real half's item so the player recovers the block. The
             // real block's own onBreak then tears down this ghost via
-            // setBlockState(AIR) — no drop loop because setBlockState doesn't
+            // setBlockState(AIR) - no drop loop because setBlockState doesn't
             // route back through onBreak.
             if (world.getBlockState(realPos).getBlock() instanceof LevelSelectBlock) {
                 world.breakBlock(realPos, !player.isCreative(), player);

@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Per-play state passed to every phase. Anchors read from here at fire time.
  *
- * {@code originEntityId == -1} and {@code targetEntityId == -1} are valid — anchors
+ * {@code originEntityId == -1} and {@code targetEntityId == -1} are valid - anchors
  * fall back to the corresponding block position.
  */
 public record VfxContext(

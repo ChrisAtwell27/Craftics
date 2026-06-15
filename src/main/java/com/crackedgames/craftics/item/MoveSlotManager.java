@@ -47,7 +47,7 @@ public final class MoveSlotManager {
         PlayerInventory inv = player.getInventory();
 
         if (!inCombat) {
-            // Outside combat the Move item shouldn't exist at all — strip any
+            // Outside combat the Move item shouldn't exist at all - strip any
             // copies (including a player attempt to Q-drop and dupe).
             for (int i = 0; i < inv.size(); i++) {
                 if (isMoveStack(inv.getStack(i))) {
@@ -61,7 +61,7 @@ public final class MoveSlotManager {
         ItemStack lockedStack = inv.getStack(locked);
 
         if (isMoveStack(lockedStack)) {
-            // Nothing to do — and ensure any stray duplicates are merged out.
+            // Nothing to do - and ensure any stray duplicates are merged out.
             removeStrayDuplicates(inv, locked);
             return;
         }
@@ -76,7 +76,7 @@ public final class MoveSlotManager {
             return;
         }
 
-        // No Move item anywhere — create one. If the locked slot is occupied,
+        // No Move item anywhere - create one. If the locked slot is occupied,
         // push the displaced item into the first empty slot (or drop it as a
         // last resort so the Move always wins its slot).
         if (!lockedStack.isEmpty()) {
@@ -110,7 +110,7 @@ public final class MoveSlotManager {
         PlayerInventory inv = player.getInventory();
         ItemStack moveStack = inv.getStack(oldSlot);
         if (!isMoveStack(moveStack)) {
-            // Out of sync — re-enforce first, then retry the shift on a fresh tick.
+            // Out of sync - re-enforce first, then retry the shift on a fresh tick.
             enforce(player);
             return;
         }

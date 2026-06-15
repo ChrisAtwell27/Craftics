@@ -15,7 +15,7 @@ public class LevelRegistry {
     }
 
     /**
-     * Full signature — the caller supplies the island owner's per-level HP scaling toggle
+     * Full signature - the caller supplies the island owner's per-level HP scaling toggle
      * and whether the owner has beaten this biome's boss. Use this whenever the island
      * owner is known; the shorter overloads fall back to global config / not-beaten.
      */

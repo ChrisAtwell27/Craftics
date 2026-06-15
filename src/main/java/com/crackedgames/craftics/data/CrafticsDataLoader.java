@@ -31,7 +31,7 @@ import java.util.Map;
  */
 public abstract class CrafticsDataLoader<T> {
 
-    /** Shared Gson instance — datapack JSON needs no custom adapters. */
+    /** Shared Gson instance - datapack JSON needs no custom adapters. */
     protected static final Gson GSON = new Gson();
 
     private final String subPath;
@@ -48,7 +48,7 @@ public abstract class CrafticsDataLoader<T> {
 
     /**
      * Clear prior datapack entries, then scan, parse, and register every JSON file
-     * for this content type. Malformed files are logged and skipped — one bad file
+     * for this content type. Malformed files are logged and skipped - one bad file
      * never aborts the rest of the load.
      */
     public final void load(ResourceManager resourceManager) {
@@ -77,7 +77,7 @@ public abstract class CrafticsDataLoader<T> {
     }
 
     /**
-     * Parse one JSON file into an entry. Return {@code null} to skip the file —
+     * Parse one JSON file into an entry. Return {@code null} to skip the file -
      * log the reason first so the datapack author can fix it.
      *
      * @param fileId the resource {@link Identifier} of the JSON file, for diagnostics

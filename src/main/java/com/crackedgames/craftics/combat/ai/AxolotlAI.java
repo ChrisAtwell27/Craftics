@@ -17,7 +17,7 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class AxolotlAI implements EnemyAI {
 
-    // Passive mob type IDs — everything NOT in this set is considered hostile
+    // Passive mob type IDs - everything NOT in this set is considered hostile
     private static final Set<String> PASSIVE_MOBS = Set.of(
         "minecraft:cow", "minecraft:pig", "minecraft:sheep", "minecraft:chicken",
         "minecraft:rabbit", "minecraft:cod", "minecraft:salmon", "minecraft:parrot",

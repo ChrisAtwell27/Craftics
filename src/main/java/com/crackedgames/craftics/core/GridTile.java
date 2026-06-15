@@ -80,7 +80,7 @@ public class GridTile {
         return isWalkableEx(hasBoat, ignoreObstacles, false);
     }
 
-    /** Check walkability with aquatic flag — aquatic entities can traverse DEEP_WATER. */
+    /** Check walkability with aquatic flag - aquatic entities can traverse DEEP_WATER. */
     public boolean isWalkableEx(boolean hasBoat, boolean ignoreObstacles, boolean aquatic) {
         if (ignoreObstacles && type == TileType.OBSTACLE) return true;
         if (aquatic && (type == TileType.WATER || type == TileType.DEEP_WATER)) return true;
@@ -88,7 +88,7 @@ public class GridTile {
         return type.walkable;
     }
 
-    /** Walkable, not hazardous, and not water — safe for spawning non-aquatic entities. */
+    /** Walkable, not hazardous, and not water - safe for spawning non-aquatic entities. */
     public boolean isSafeForSpawn() {
         return type.walkable && type.damageOnStep <= 0
             && type != TileType.WATER && type != TileType.DEEP_WATER;
@@ -155,7 +155,7 @@ public class GridTile {
             case POWDER_SNOW -> Blocks.POWDER_SNOW;
             case TALL_GRASS -> Blocks.TALL_GRASS;
             case TALL_FERN -> Blocks.LARGE_FERN;
-            // Stair / elevated default blocks — only used if the GridTile is
+            // Stair / elevated default blocks - only used if the GridTile is
             // constructed without an explicit block. ArenaBuilder always
             // passes the real schematic block (e.g. the actual stair block,
             // or the elevated full-block) when it classifies, so these

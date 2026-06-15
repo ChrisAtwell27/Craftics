@@ -188,7 +188,7 @@ public class VictoryChoiceScreen extends Screen {
                 Text.literal("\u00a7cEnemies are tougher than normal."),
                 cx, cy - 6, 0xFF5555);
         } else {
-            // Generic addon event prompt — use the event's display name
+            // Generic addon event prompt - use the event's display name
             context.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("\u00a76\u00a7l\u2726 " + biomeName.toUpperCase() + " \u2726"),
                 cx, cy - 55, 0xFFAA00);
@@ -218,7 +218,7 @@ public class VictoryChoiceScreen extends Screen {
             cx, cy - 18, 0x55FF55);
 
         if (nextIsBoss) {
-            // Boss warning — big and red
+            // Boss warning - big and red
             context.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal("\u00a74\u00a7l\u2620 WARNING: NEXT LEVEL IS A BOSS FIGHT! \u2620"),
                 cx, cy + 4, 0xFF5555);

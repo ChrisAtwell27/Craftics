@@ -91,7 +91,7 @@ public class DamageTypePanel {
             ctx.drawTextWithShadow(tr, "§7Set: " + setName, panelX, panelY, 0xFFAAAAAA);
             panelY += 11;
         } else {
-            // Not a full set — show the hybrid subclass name if a two-material combo is worn.
+            // Not a full set - show the hybrid subclass name if a two-material combo is worn.
             HybridSetEntry hybrid = HybridSetRegistry.resolve(wornMaterials);
             if (hybrid != null) {
                 ctx.drawTextWithShadow(tr, "§7Hybrid: §d" + hybrid.className(),
@@ -148,7 +148,7 @@ public class DamageTypePanel {
 
     /**
      * Total affinity for a damage type, in <b>half-points</b> (each armor piece is
-     * worth 0.5 affinity = 1 half-point). Armor affinity is per-piece — every worn
+     * worth 0.5 affinity = 1 half-point). Armor affinity is per-piece - every worn
      * piece counts; every other source (trim, addon scan, level-up, mob head) is a
      * whole affinity point and is doubled into half-points so the units match.
      * Combat damage is the whole-point total × {@link DamageType#DAMAGE_PER_AFFINITY_POINT}.
@@ -158,7 +158,7 @@ public class DamageTypePanel {
         // Per-piece armor affinity, already in half-points.
         int halfPoints = DamageType.affinityFromCounts(armorCounts, type);
 
-        // Every other source is a whole affinity point — doubled into half-points.
+        // Every other source is a whole affinity point - doubled into half-points.
         int wholePoints = 0;
 
         String bonusKey = switch (type) {
@@ -224,7 +224,7 @@ public class DamageTypePanel {
         if (head == Items.NETHERITE_HELMET && chest == Items.NETHERITE_CHESTPLATE
             && legs == Items.NETHERITE_LEGGINGS && feet == Items.NETHERITE_BOOTS) return "netherite";
 
-        // Copper Age Backport — runtime-resolved items so we don't need a hard
+        // Copper Age Backport - runtime-resolved items so we don't need a hard
         // classpath dependency on the optional mod.
         Item copperHead  = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHelmet();
         Item copperChest = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperChestplate();

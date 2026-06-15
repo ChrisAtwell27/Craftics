@@ -1,5 +1,5 @@
 /* ============================================================
-   Craftics Documentation — Shared Styles
+  Craftics Documentation - Shared Styles
    Dark stone/deepslate theme with amber + emerald accents
    ============================================================ */
 
@@ -960,7 +960,7 @@ footer .sep { color: var(--border); margin: 0 4px; }
 }
 
 /* ================================================================
-   WIKI INFOBOX  (boss pages — floats right in content)
+  WIKI INFOBOX  (boss pages - floats right in content)
    ================================================================ */
 .infobox {
   float: right;
@@ -1101,7 +1101,7 @@ footer .sep { color: var(--border); margin: 0 4px; }
 .wiki-toc ol li a:hover { color: var(--amber); }
 
 /* ================================================================
-   BOSS PAGE — breadcrumb, phase-2 callout, prev/next nav
+  BOSS PAGE - breadcrumb, phase-2 callout, prev/next nav
    ================================================================ */
 .breadcrumb {
   font-size: 12px;

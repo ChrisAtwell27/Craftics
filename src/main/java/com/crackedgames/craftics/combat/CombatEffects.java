@@ -141,7 +141,7 @@ public class CombatEffects {
      *   <li>Poison  = (2 × level) + turnsRemaining + specialAffinity. Higher
      *       early, fades as the effect ticks down.
      *   <li>Wither  = (1 + level + specialAffinity) × (peakTurns - turnsRemaining + 1).
-     *       Opposite ramp — starts at 1× base and climbs to (peakTurns)× on
+     *       Opposite ramp - starts at 1× base and climbs to (peakTurns)× on
      *       the final tick. {@code peakTurns} updates when stacked higher.
      * </ul>
      */
@@ -185,7 +185,7 @@ public class CombatEffects {
         return hpChange;
     }
 
-    /** Backwards-compatible overload — assumes 0 special affinity. */
+    /** Backwards-compatible overload - assumes 0 special affinity. */
     public int applyPerTurnEffects() {
         return applyPerTurnEffects(0);
     }

@@ -9,7 +9,7 @@ import org.ladysnake.cca.api.v3.component.sync.AutoSyncedComponent;
 /**
  * Per-mob animation state used by the client-side anim mixins. Auto-syncs to
  * all clients tracking the entity so the pose is visible in multiplayer.
- * Attached to every {@link net.minecraft.entity.mob.MobEntity} — the mixin
+ * Attached to every {@link net.minecraft.entity.mob.MobEntity} - the mixin
  * gates further on the {@code craftics_arena} command tag.
  */
 public class CrafticsAnimComponent implements AutoSyncedComponent {

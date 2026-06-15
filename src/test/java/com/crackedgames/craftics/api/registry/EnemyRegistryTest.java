@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Tests for {@link EnemyRegistry} — register/get, source tagging, datapack clearing. */
+/** Tests for {@link EnemyRegistry} - register/get, source tagging, datapack clearing. */
 class EnemyRegistryTest {
 
     private static EnemyEntry entry(String id) {

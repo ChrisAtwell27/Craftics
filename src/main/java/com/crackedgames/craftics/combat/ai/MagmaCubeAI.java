@@ -22,7 +22,7 @@ public class MagmaCubeAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Adjacent — slam attack
+        // Adjacent - slam attack
         if (dist == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
@@ -57,7 +57,7 @@ public class MagmaCubeAI implements EnemyAI {
         if (bestLanding != null) {
             // Build bounce path (straight line from current to landing for fire trail)
             List<GridPos> bouncePath = buildBouncePath(myPos, bestLanding);
-            // Leave fire on the tiles we bounce through — only where something
+            // Leave fire on the tiles we bounce through - only where something
             // can actually burn (plain walkable floor, not obstacles or water).
             List<GridPos> fireTiles = new ArrayList<>();
             for (int i = 0; i < bouncePath.size() - 1; i++) { // skip the landing tile
@@ -70,8 +70,8 @@ public class MagmaCubeAI implements EnemyAI {
             }
 
             // The fire trail rides a CompositeAction alongside the bounce itself.
-            // (The old code dropped the trail on attack bounces and — because the
-            // composite dispatcher ignored Move sub-actions — dropped the MOVE on
+            // (The old code dropped the trail on attack bounces and - because the
+            // composite dispatcher ignored Move sub-actions - dropped the MOVE on
             // trail bounces, leaving the cube burning the floor without moving.)
             EnemyAction bounce = bestDist == 1
                 ? new EnemyAction.Pounce(bestLanding, self.getAttackPower())

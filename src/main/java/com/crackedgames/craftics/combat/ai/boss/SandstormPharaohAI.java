@@ -10,16 +10,16 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Scorching Desert Boss — "The Sandstorm Pharaoh"
+ * Scorching Desert Boss - "The Sandstorm Pharaoh"
  * Entity: Husk | 25HP / 6ATK / 1DEF / Speed 2 | Size 2×2
  *
  * Abilities:
  * - Plant Mine: Buried mine on a tile (subtle sand tell), 6 dmg + 1-turn stun on contact. Max 4 active.
  * - Sand Burial: 2×2 quicksand, stun 1 turn. P2: 3×3.
  * - Sandstorm: 3×3 AoE, 3 dmg, -1 accuracy 2 turns.
- * - Curse of the Sands: Mark player — tiles moved off become quicksand. 3 turns.
+ * - Curse of the Sands: Mark player - tiles moved off become quicksand. 3 turns.
  *
- * Phase 2 — "Tomb Wrath": 2 mines/turn, 3×3 burial, summon 2 Husks (once).
+ * Phase 2 - "Tomb Wrath": 2 mines/turn, 3×3 burial, summon 2 Husks (once).
  */
 public class SandstormPharaohAI extends BossAI {
     private static final String CD_MINE = "plant_mine";
@@ -49,7 +49,7 @@ public class SandstormPharaohAI extends BossAI {
             }
         }
 
-        // Curse of the Sands — apply to player every 6 turns
+        // Curse of the Sands - apply to player every 6 turns
         if (!isOnCooldown(CD_CURSE) && dist <= 4) {
             setCooldown(CD_CURSE, 6);
             // This is effectively a debuff applied as an AreaAttack with a special effect name

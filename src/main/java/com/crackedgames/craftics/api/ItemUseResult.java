@@ -19,14 +19,14 @@ public record ItemUseResult(boolean success, @Nullable String failureMessage) {
 
     private static final ItemUseResult OK = new ItemUseResult(true, null);
 
-    /** The item was used successfully — AP is spent and the item may be consumed. */
+    /** The item was used successfully - AP is spent and the item may be consumed. */
     public static ItemUseResult ok() {
         return OK;
     }
 
     /**
      * The item could not be used. {@code reason} is shown to the player and no AP is
-     * spent — typically used for an invalid target or an unmet precondition.
+     * spent - typically used for an invalid target or an unmet precondition.
      */
     public static ItemUseResult fail(String reason) {
         return new ItemUseResult(false, reason);

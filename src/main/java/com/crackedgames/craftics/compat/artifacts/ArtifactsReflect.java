@@ -50,7 +50,7 @@ public final class ArtifactsReflect {
     /**
      * Invokes {@code EquipmentHelper.iterateEquipment} with the given visitor.
      * The visitor is invoked for each ItemStack the player currently has equipped in any
-     * slot provider (vanilla armor, Trinkets, Accessories, or Curios — whichever is active).
+     * slot provider (vanilla armor, Trinkets, Accessories, or Curios - whichever is active).
      */
     static void iterateEquipment(LivingEntity entity, Consumer<ItemStack> visitor) {
         if (!AVAILABLE) return;
@@ -66,7 +66,7 @@ public final class ArtifactsReflect {
      * Force an {@code artifacts.entity.MimicEntity} into its dormant (chest-form)
      * state via reflection. The MimicEntity has a custom {@code tick()} override
      * that increments {@code ticksInAir} and drives its hop/attack logic even when
-     * {@code setAiDisabled(true)} — that flag only gates the vanilla
+     * {@code setAiDisabled(true)} - that flag only gates the vanilla
      * {@code GoalSelector}, not an entity's own tick. Forcing dormant = true
      * short-circuits the custom tick so Craftics' turn-based controller fully
      * owns the mimic's position and animation.
@@ -75,7 +75,7 @@ public final class ArtifactsReflect {
      *
      * @return true if the setDormant call succeeded
      */
-    // Resolved once — trySetDormant runs for EVERY spawned enemy at combat
+    // Resolved once - trySetDormant runs for EVERY spawned enemy at combat
     // start, and the old per-call Class.forName forced a (failing, when
     // Artifacts is absent) classload attempt on each of them.
     private static final Class<?> MIMIC_CLASS;
@@ -87,7 +87,7 @@ public final class ArtifactsReflect {
             cls = Class.forName("artifacts.entity.MimicEntity");
             m = cls.getMethod("setDormant", boolean.class);
         } catch (Throwable ignored) {
-            // Artifacts absent (or its API changed) — trySetDormant stays a no-op.
+            // Artifacts absent (or its API changed) - trySetDormant stays a no-op.
         }
         MIMIC_CLASS = cls;
         MIMIC_SET_DORMANT = m;

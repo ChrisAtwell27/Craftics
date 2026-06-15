@@ -1,4 +1,4 @@
-# Broodmother Rework Implementation Plan
+﻿# Broodmother Rework Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -20,12 +20,12 @@
 | `src/main/java/.../combat/Pathfinding.java` | Check `passableForBoss` in blocking logic |
 | `src/main/java/.../core/GridArena.java` | Web overlay tracking (map of pos→turns) |
 | `src/main/java/.../combat/ai/AIRegistry.java` | Register egg sac AI |
-| `src/main/java/.../combat/ai/boss/BroodmotherAI.java` | Full rewrite — state machine |
+| `src/main/java/.../combat/ai/boss/BroodmotherAI.java` | Full rewrite - state machine |
 | `src/main/java/.../combat/CombatManager.java` | Egg sac spawning, web placement/breaking, ceiling dive, death hooks, particles, effect cases |
 
 ---
 
-### Task 1: CombatEntity — Add passableForBoss flag
+### Task 1: CombatEntity - Add passableForBoss flag
 
 Egg sacs must block all entities except the Broodmother. We add a flag that pathfinding checks.
 
@@ -45,7 +45,7 @@ public void setPassableForBoss(boolean v) { this.passableForBoss = v; }
 
 ---
 
-### Task 2: Pathfinding — Respect passableForBoss
+### Task 2: Pathfinding - Respect passableForBoss
 
 **Files:**
 - Modify: `src/main/java/com/crackedgames/craftics/combat/Pathfinding.java`
@@ -83,7 +83,7 @@ private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int 
 }
 ```
 
-No change to `canPlaceSizedEntity` itself — it already delegates to `isBlockedBy`. Just verify the method body is unchanged. The `isBlockedBy` update handles it.
+No change to `canPlaceSizedEntity` itself - it already delegates to `isBlockedBy`. Just verify the method body is unchanged. The `isBlockedBy` update handles it.
 
 - [ ] **Step 3: Build to verify**
 
@@ -93,7 +93,7 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 3: GridArena — Web overlay tracking
+### Task 3: GridArena - Web overlay tracking
 
 **Files:**
 - Modify: `src/main/java/com/crackedgames/craftics/core/GridArena.java`
@@ -157,7 +157,7 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 4: AIRegistry — Register egg sac AI
+### Task 4: AIRegistry - Register egg sac AI
 
 Egg sacs are CombatEntity instances that never take actions. We need a simple AI that returns Idle.
 
@@ -177,7 +177,7 @@ This reuses the existing `PassiveAI` reference from line 9 (`EnemyAI passive = n
 
 ---
 
-### Task 5: BroodmotherAI — Full rewrite
+### Task 5: BroodmotherAI - Full rewrite
 
 This is the core task. Complete rewrite of the AI with state machine, all abilities, and ceiling mechanics.
 
@@ -201,7 +201,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Dense Jungle Boss — "The Broodmother" (Spider Queen)
+ * Dense Jungle Boss - "The Broodmother" (Spider Queen)
  * Entity: Spider | 35HP / 6ATK / 2DEF / Speed 3 | Size 2×2
  *
  * State-based AI with two modes: HUNTING (aggressive) and NESTING (defensive).
@@ -210,7 +210,7 @@ import java.util.List;
  *   Hunting: Ceiling Ambush, Pounce, Venomous Bite
  *   Nesting: Spawn Brood, Web Spray
  *
- * Phase 2 — "Nest Awakening" (≤50% HP):
+ * Phase 2 - "Nest Awakening" (≤50% HP):
  *   +2 Speed, Ceiling Ambush → Hunting Dive (web rain + dive-bomb),
  *   Web Spray gains Poison, Pounce range +1, can place new egg sacs.
  *
@@ -439,7 +439,7 @@ public class BroodmotherAI extends BossAI {
             // 2) Update dive target to current player position (tracks player)
             ceilingDiveTarget = playerPos;
 
-            // 3) Set warning for the dive next turn — resolve includes CeilingDrop
+            // 3) Set warning for the dive next turn - resolve includes CeilingDrop
             List<GridPos> diveTiles = getAreaTiles(arena, ceilingDiveTarget, 1);
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
@@ -607,7 +607,7 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 6: CombatManager — Egg sac entity spawning at fight start
+### Task 6: CombatManager - Egg sac entity spawning at fight start
 
 Replace the current `initEggSacs` call with proper entity creation using turtle egg blocks.
 
@@ -715,7 +715,7 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 7: CombatManager — Egg sac death handling
+### Task 7: CombatManager - Egg sac death handling
 
 When an egg sac entity dies, notify the Broodmother AI and remove the turtle egg block.
 
@@ -732,7 +732,7 @@ if (ai instanceof BroodmotherAI bm) {
     if ("craftics:egg_sac".equals(deadEntity.getEntityTypeId())) {
         GridPos sacPos = deadEntity.getGridPos();
         bm.onEggSacDestroyed(sacPos);
-        sendMessage("§a✦ Egg sac destroyed! Spawn capacity reduced.");
+        sendMessage("§a Egg sac destroyed! Spawn capacity reduced.");
         // Remove turtle egg block from world
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         BlockPos bp = arena.gridToBlockPos(sacPos);
@@ -776,9 +776,9 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 8: CombatManager — CeilingDrop in dispatchBossSubAction + web rain consumption
+### Task 8: CombatManager - CeilingDrop in dispatchBossSubAction + web rain consumption
 
-The ceiling dive resolve action is a `CompositeAction(CeilingDrop, AreaAttack)`. `dispatchBossSubAction` doesn't handle `CeilingDrop` — we need to add it. We also need to consume the Broodmother's pending web rain after processing her turn.
+The ceiling dive resolve action is a `CompositeAction(CeilingDrop, AreaAttack)`. `dispatchBossSubAction` doesn't handle `CeilingDrop` - we need to add it. We also need to consume the Broodmother's pending web rain after processing her turn.
 
 **Files:**
 - Modify: `src/main/java/com/crackedgames/craftics/combat/CombatManager.java`
@@ -832,7 +832,7 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 9: CombatManager — Web overlay placement and removal
+### Task 9: CombatManager - Web overlay placement and removal
 
 Handle cobweb block placement, tick duration, and vanilla physics counteraction.
 
@@ -864,7 +864,7 @@ private void placeWebOverlays(List<GridPos> positions, int turns) {
 }
 
 /**
- * Remove a web overlay at the given position — clears the cobweb block and arena tracking.
+ * Remove a web overlay at the given position - clears the cobweb block and arena tracking.
  */
 private void removeWebOverlay(GridPos pos) {
     arena.clearWebOverlay(pos);
@@ -887,7 +887,7 @@ for (GridPos pos : expiredWebs) {
 }
 ```
 
-Wait — `removeWebOverlay` already clears from arena. But `tickWebOverlays` already removed the entry. So just remove the blocks:
+Wait - `removeWebOverlay` already clears from arena. But `tickWebOverlays` already removed the entry. So just remove the blocks:
 
 ```java
 // Tick web overlay durations
@@ -935,7 +935,7 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 10: CombatManager — Player web breaking
+### Task 10: CombatManager - Player web breaking
 
 Allow the player to break webs by spending their attack action on an adjacent or current-tile web.
 
@@ -978,9 +978,9 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 11: CombatManager — Fix web_spray effect application
+### Task 11: CombatManager - Fix web_spray effect application
 
-Currently `web_spray` and `web_spray_poison` only spawn particles — they don't apply stun/slowness. Fix this.
+Currently `web_spray` and `web_spray_poison` only spawn particles - they don't apply stun/slowness. Fix this.
 
 **Files:**
 - Modify: `src/main/java/com/crackedgames/craftics/combat/CombatManager.java`
@@ -1007,7 +1007,7 @@ case "web_spray_poison" -> {
 }
 ```
 
-Note: The existing combat system may handle stun differently for the player vs enemies. Check how player stun works — it might set `apRemaining = 0` and `movePointsRemaining = 0` for the next turn, or use a dedicated `CombatEffects.EffectType.STUN`. Adapt accordingly.
+Note: The existing combat system may handle stun differently for the player vs enemies. Check how player stun works - it might set `apRemaining = 0` and `movePointsRemaining = 0` for the next turn, or use a dedicated `CombatEffects.EffectType.STUN`. Adapt accordingly.
 
 - [ ] **Step 2: Build to verify**
 
@@ -1017,7 +1017,7 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 12: CombatManager — Ceiling slam and Hunting Dive particles
+### Task 12: CombatManager - Ceiling slam and Hunting Dive particles
 
 Add particle effects for the new Broodmother abilities.
 
@@ -1055,7 +1055,7 @@ cd "d:/_My Projects/Craftics" && ./gradlew build
 
 ---
 
-### Task 13: CombatManager — Clean up webs on combat end
+### Task 13: CombatManager - Clean up webs on combat end
 
 When combat ends (victory or defeat), clear all web overlays and cobweb blocks.
 
@@ -1166,3 +1166,5 @@ Manual verification in-game.
 
 - [ ] **Step 6: Test combat cleanup**
 - All turtle eggs and cobwebs removed when fight ends
+
+

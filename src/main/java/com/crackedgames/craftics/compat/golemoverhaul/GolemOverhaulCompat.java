@@ -176,7 +176,7 @@ public final class GolemOverhaulCompat {
         // attacks in one turn (the bee's move speed 4 closes most gaps), so it aggros
         // immediately. NOTE: AllyArchetypes is a global per-type map, so this overrides
         // the AI for EVERY bee ally (including a bee the player manually party-adds), not
-        // only the honey-golem summon — acceptable since nearest-first targeting suits any
+        // only the honey-golem summon - acceptable since nearest-first targeting suits any
         // combat bee.
         AllyArchetypes.register("minecraft:bee",
             new com.crackedgames.craftics.combat.ai.ally.MeleeAllyAI());

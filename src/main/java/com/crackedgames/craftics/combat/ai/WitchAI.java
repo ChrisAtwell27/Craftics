@@ -11,7 +11,7 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Witch AI: Devious potion-lobbing caster with rotating brews.
  * - ROTATING BREW: cycles through poison, slowness, weakness, harming turn by
- *   turn (per witch — the rotation lives in the entity's AI memory)
+ *   turn (per witch - the rotation lives in the entity's AI memory)
  * - SELF-HEAL: below 40% HP, 25% chance per turn to drink a healing potion
  *   (a real heal for half her attack power, min 3) while falling back
  * - RETREAT: kites backward if any threat (player or ally pet) gets too close
@@ -26,7 +26,7 @@ public class WitchAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Rotate brew each turn (state on the entity — the AI instance is shared)
+        // Rotate brew each turn (state on the entity - the AI instance is shared)
         int brewIndex = self.getAiMemory(BREW_INDEX, 0);
         String currentBrew = OFFENSIVE_EFFECTS[brewIndex % OFFENSIVE_EFFECTS.length];
         self.setAiMemory(BREW_INDEX, brewIndex + 1);
@@ -34,7 +34,7 @@ public class WitchAI implements EnemyAI {
         List<GridPos> threats = AIUtils.threatPositions(arena, playerPos);
 
         // SELF-HEAL: when low HP, chance to drink a healing potion. This is a
-        // real heal (ModifySelf), not a wasted turn — but she still gives up
+        // real heal (ModifySelf), not a wasted turn - but she still gives up
         // her throw to do it, so it stays a gamble for her.
         if (self.getCurrentHp() < self.getMaxHp() * 0.4
                 && ThreadLocalRandom.current().nextFloat() < 0.25f) {
@@ -42,7 +42,7 @@ public class WitchAI implements EnemyAI {
             return new EnemyAction.ModifySelf("heal", healAmount, 0);
         }
 
-        // Too close — retreat and throw
+        // Too close - retreat and throw
         if (AIUtils.minThreatDistance(myPos, threats) <= 1) {
             GridPos retreatTarget = AIUtils.bestRetreatTile(self, arena, threats);
             if (retreatTarget != null) {
@@ -56,17 +56,17 @@ public class WitchAI implements EnemyAI {
                     return new EnemyAction.Move(path);
                 }
             }
-            // Can't retreat — splash at point blank. Still respects the brew, so a
+            // Can't retreat - splash at point blank. Still respects the brew, so a
             // poison flask does pure poison here too rather than a full-power hit.
             return new EnemyAction.RangedAttack(brewDamage(self, currentBrew), currentBrew);
         }
 
-        // In range (2-4) — throw the current rotating brew
+        // In range (2-4) - throw the current rotating brew
         if (dist >= 2 && dist <= 4) {
             return new EnemyAction.RangedAttack(brewDamage(self, currentBrew), currentBrew);
         }
 
-        // Out of range — move to get within throwing distance
+        // Out of range - move to get within throwing distance
         GridPos moveTarget = findRangeTile(self, arena, playerPos, threats);
         if (moveTarget != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, moveTarget, self.getMoveSpeed(), self);
@@ -85,14 +85,14 @@ public class WitchAI implements EnemyAI {
 
     /**
      * Impact damage of a thrown brew. Harming is an instant-damage potion, so it
-     * lands at full power. Poison is just a thrown potion — it deals NO impact
+     * lands at full power. Poison is just a thrown potion - it deals NO impact
      * damage; the poison applied on hit (Witch case in applyEnemyHitEffect) is the
      * whole point. The remaining debuff brews trade for half damage.
      */
     private int brewDamage(CombatEntity self, String brew) {
         return switch (brew) {
             case "harming" -> self.getAttackPower();
-            case "poison" -> 0; // pure poison — no impact damage, it's just a potion
+            case "poison" -> 0; // pure poison - no impact damage, it's just a potion
             default -> self.getAttackPower() / 2;
         };
     }

@@ -13,7 +13,7 @@ public final class HintHudRenderer implements HudRenderCallback {
     private static final int PANEL_BORDER = 0xFF6688CC;
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int PADDING = 8;
-    /** Vertical pixel offset from the top of the screen — sits just below the turn banner
+    /** Vertical pixel offset from the top of the screen - sits just below the turn banner
      *  (turn banner ends at y≈18; this leaves a 4px gap). */
     private static final int TOP_OFFSET = 22;
 

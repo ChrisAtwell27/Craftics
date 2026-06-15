@@ -6,7 +6,7 @@ import net.minecraft.util.math.BlockPos;
 
 /**
  * Spawns PARTICLE-ONLY projectile trails from source to target.
- * No real entities — purely cosmetic. Particles appear along the flight path
+ * No real entities - purely cosmetic. Particles appear along the flight path
  * and vanish at the destination. Safe, no vanilla side effects.
  */
 public class ProjectileSpawner {
@@ -39,7 +39,7 @@ public class ProjectileSpawner {
     }
 
     /**
-     * Spawn particles along a line from start to end — creates a trail effect.
+     * Spawn particles along a line from start to end - creates a trail effect.
      */
     private static void trailParticles(ServerWorld world,
                                          double sx, double sy, double sz,
@@ -56,7 +56,7 @@ public class ProjectileSpawner {
         world.spawnParticles(particle, ex, ey, ez, 3, 0.1, 0.1, 0.1, 0.05);
     }
 
-    /** Spawn impact particles at a position — for melee hits, AoE effects, etc. */
+    /** Spawn impact particles at a position - for melee hits, AoE effects, etc. */
     public static void spawnImpact(ServerWorld world, BlockPos pos, String type) {
         double x = pos.getX() + 0.5, y = pos.getY() + 1.0, z = pos.getZ() + 0.5;
         switch (type != null ? type : "") {
@@ -88,7 +88,7 @@ public class ProjectileSpawner {
     // ===== Potion Visuals =====
 
     /**
-     * Spawn a potion throw arc from player to target — purple/witch trail with a high arc.
+     * Spawn a potion throw arc from player to target - purple/witch trail with a high arc.
      */
     public static void spawnPotionThrow(ServerWorld world, BlockPos from, BlockPos to) {
         double sx = from.getX() + 0.5, sy = from.getY() + 1.5, sz = from.getZ() + 0.5;
@@ -106,7 +106,7 @@ public class ProjectileSpawner {
     }
 
     /**
-     * Spawn splash impact particles at target — big burst of colored swirls.
+     * Spawn splash impact particles at target - big burst of colored swirls.
      * @param isHealing true for pink/heart particles, false for purple/harmful
      */
     public static void spawnPotionSplash(ServerWorld world, BlockPos pos, boolean isHealing) {
@@ -130,7 +130,7 @@ public class ProjectileSpawner {
     }
 
     /**
-     * Spawn lingering cloud particles on a tile — called each turn the cloud exists.
+     * Spawn lingering cloud particles on a tile - called each turn the cloud exists.
      * Creates a swirling, low-hanging poison mist effect.
      */
     public static void spawnLingeringCloud(ServerWorld world, BlockPos pos) {
@@ -167,7 +167,7 @@ public class ProjectileSpawner {
     }
 
     /**
-     * Spawn an expanding ring of particles outward from center — for AoE shockwave propagation.
+     * Spawn an expanding ring of particles outward from center - for AoE shockwave propagation.
      */
     public static void spawnExpandingRing(ServerWorld world, BlockPos center, double radius,
                                            net.minecraft.particle.ParticleEffect particle, int count) {
@@ -181,7 +181,7 @@ public class ProjectileSpawner {
     }
 
     /**
-     * Spawn particles converging inward toward center — for self-buff gather animations.
+     * Spawn particles converging inward toward center - for self-buff gather animations.
      */
     public static void spawnConverging(ServerWorld world, BlockPos center, double radius,
                                         net.minecraft.particle.ParticleEffect particle, int count) {
@@ -198,7 +198,7 @@ public class ProjectileSpawner {
     }
 
     /**
-     * Spawn spectral arrows descending from high above onto target zone — for Archer volley.
+     * Spawn spectral arrows descending from high above onto target zone - for Archer volley.
      */
     public static void spawnDescendingVolley(ServerWorld world, BlockPos target, int arrowCount, double spread) {
         double ex = target.getX() + 0.5, ey = target.getY() + 1.0, ez = target.getZ() + 0.5;
@@ -217,7 +217,7 @@ public class ProjectileSpawner {
     }
 
     /**
-     * Spawn a reversed trail from target BACK to source — for life steal / pull effects.
+     * Spawn a reversed trail from target BACK to source - for life steal / pull effects.
      */
     public static void spawnReversedTrail(ServerWorld world, BlockPos from, BlockPos to,
                                            net.minecraft.particle.ParticleEffect particle, int count) {
@@ -235,7 +235,7 @@ public class ProjectileSpawner {
     }
 
     /**
-     * Spawn a ground-level trail (no arc) from source to target — for earth spells.
+     * Spawn a ground-level trail (no arc) from source to target - for earth spells.
      */
     public static void spawnGroundTrail(ServerWorld world, BlockPos from, BlockPos to,
                                          net.minecraft.particle.ParticleEffect particle, int count) {

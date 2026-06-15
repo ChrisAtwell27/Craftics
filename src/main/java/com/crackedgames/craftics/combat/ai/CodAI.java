@@ -11,11 +11,11 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Cod/Salmon AI: Fish — ALWAYS stays on water tiles.
+ * Cod/Salmon AI: Fish - ALWAYS stays on water tiles.
  * Wanders randomly between water tiles, flees on water if hit.
  */
 public class CodAI implements EnemyAI {
-    /** Fish only wander and flee — never a threat to the player. */
+    /** Fish only wander and flee - never a threat to the player. */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return false;

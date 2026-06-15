@@ -16,9 +16,12 @@ import java.util.*;
 
 /**
  * Pottery Sherd Spells: ancient magic sealed within pottery sherds.
- * Single-use spell scrolls found through archaeology. All consumed on use.
+ * Reusable spell foci found through archaeology. They can shatter on cast.
  */
 public class PotterySherdSpells {
+
+    /** Base shatter chance per cast, before Special-affinity reduction. */
+    private static final int SHERD_BREAK_BASE_PERCENT = 10;
 
     // Delayed spell effect system
 
@@ -150,33 +153,49 @@ public class PotterySherdSpells {
         GridPos playerPos = arena.getPlayerGridPos();
         BlockPos playerBlock = arena.gridToBlockPos(playerPos);
 
-        player.getMainHandStack().decrement(1);
+        String result;
+        if (item == Items.EXPLORER_POTTERY_SHERD) result = useExplorerSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
+        else if (item == Items.FRIEND_POTTERY_SHERD) result = useFriendSherd(player, world, playerBlock, enemies);
+        else if (item == Items.HEART_POTTERY_SHERD) result = useHeartSherd(player, world, playerBlock, combatEffects);
+        else if (item == Items.SCRAPE_POTTERY_SHERD) result = useScrapeSherd(player, arena, world, targetTile, playerPos, playerBlock);
+        else if (item == Items.ANGLER_POTTERY_SHERD) result = useAnglerSherd(player, arena, world, targetTile, playerPos, playerBlock);
+        else if (item == Items.HEARTBREAK_POTTERY_SHERD) result = useHeartbreakSherd(player, arena, world, targetTile, playerPos, playerBlock);
+        else if (item == Items.SHEAF_POTTERY_SHERD) result = useSheafSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
+        else if (item == Items.MINER_POTTERY_SHERD) result = useMinerSherd(player, arena, world, targetTile, playerPos, playerBlock);
+        else if (item == Items.DANGER_POTTERY_SHERD) result = useDangerSherd(player, arena, world, targetTile, playerPos, playerBlock);
+        else if (item == Items.BLADE_POTTERY_SHERD) result = useBladeSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
+        else if (item == Items.BURN_POTTERY_SHERD) result = useBurnSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
+        else if (item == Items.SNORT_POTTERY_SHERD) result = useSnortSherd(player, arena, world, targetTile, playerPos, playerBlock);
+        else if (item == Items.SHELTER_POTTERY_SHERD) result = useShelterSherd(player, world, playerBlock, combatEffects);
+        else if (item == Items.FLOW_POTTERY_SHERD) result = useFlowSherd(player, arena, world, playerPos, playerBlock, enemies);
+        else if (item == Items.MOURNER_POTTERY_SHERD) result = useMournerSherd(player, arena, world, targetTile, playerPos, playerBlock);
+        else if (item == Items.BREWER_POTTERY_SHERD) result = useBrewerSherd(player, world, playerBlock, combatEffects);
+        else if (item == Items.PLENTY_POTTERY_SHERD) result = usePlentySherd(player, world, playerBlock);
+        else if (item == Items.ARCHER_POTTERY_SHERD) result = useArcherSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
+        else if (item == Items.HOWL_POTTERY_SHERD) result = useHowlSherd(player, arena, world, playerPos, playerBlock, enemies);
+        else if (item == Items.ARMS_UP_POTTERY_SHERD) result = useArmsUpSherd(player, world, playerBlock, combatEffects);
+        else if (item == Items.PRIZE_POTTERY_SHERD) result = usePrizeSherd(player, world, playerBlock, combatEffects);
+        else if (item == Items.SKULL_POTTERY_SHERD) result = useSkullSherd(player, arena, world, targetTile, playerPos, playerBlock);
+        else if (item == Items.GUSTER_POTTERY_SHERD) result = useGusterSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
+        else return null;
 
-        if (item == Items.EXPLORER_POTTERY_SHERD) return useExplorerSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
-        if (item == Items.FRIEND_POTTERY_SHERD) return useFriendSherd(player, world, playerBlock, enemies);
-        if (item == Items.HEART_POTTERY_SHERD) return useHeartSherd(player, world, playerBlock, combatEffects);
-        if (item == Items.SCRAPE_POTTERY_SHERD) return useScrapeSherd(player, arena, world, targetTile, playerPos, playerBlock);
-        if (item == Items.ANGLER_POTTERY_SHERD) return useAnglerSherd(player, arena, world, targetTile, playerPos, playerBlock);
-        if (item == Items.HEARTBREAK_POTTERY_SHERD) return useHeartbreakSherd(player, arena, world, targetTile, playerPos, playerBlock);
-        if (item == Items.SHEAF_POTTERY_SHERD) return useSheafSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
-        if (item == Items.MINER_POTTERY_SHERD) return useMinerSherd(player, arena, world, targetTile, playerPos, playerBlock);
-        if (item == Items.DANGER_POTTERY_SHERD) return useDangerSherd(player, arena, world, targetTile, playerPos, playerBlock);
-        if (item == Items.BLADE_POTTERY_SHERD) return useBladeSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
-        if (item == Items.BURN_POTTERY_SHERD) return useBurnSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
-        if (item == Items.SNORT_POTTERY_SHERD) return useSnortSherd(player, arena, world, targetTile, playerPos, playerBlock);
-        if (item == Items.SHELTER_POTTERY_SHERD) return useShelterSherd(player, world, playerBlock, combatEffects);
-        if (item == Items.FLOW_POTTERY_SHERD) return useFlowSherd(player, arena, world, playerPos, playerBlock, enemies);
-        if (item == Items.MOURNER_POTTERY_SHERD) return useMournerSherd(player, arena, world, targetTile, playerPos, playerBlock);
-        if (item == Items.BREWER_POTTERY_SHERD) return useBrewerSherd(player, world, playerBlock, combatEffects);
-        if (item == Items.PLENTY_POTTERY_SHERD) return usePlentySherd(player, world, playerBlock);
-        if (item == Items.ARCHER_POTTERY_SHERD) return useArcherSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
-        if (item == Items.HOWL_POTTERY_SHERD) return useHowlSherd(player, arena, world, playerPos, playerBlock, enemies);
-        if (item == Items.ARMS_UP_POTTERY_SHERD) return useArmsUpSherd(player, world, playerBlock, combatEffects);
-        if (item == Items.PRIZE_POTTERY_SHERD) return usePrizeSherd(player, world, playerBlock, combatEffects);
-        if (item == Items.SKULL_POTTERY_SHERD) return useSkullSherd(player, arena, world, targetTile, playerPos, playerBlock);
-        if (item == Items.GUSTER_POTTERY_SHERD) return useGusterSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
+        if (rollSherdBreak(player)) {
+            player.getMainHandStack().decrement(1);
+            result += " §8(The sherd shattered.)";
+        }
+        return result;
+    }
 
-        return null;
+    /**
+     * Roll whether the sherd shatters on this cast.
+     * Base 10%, reduced by Special affinity points and potency bonus.
+     */
+    private static boolean rollSherdBreak(ServerPlayerEntity player) {
+        int reducedPercent = SHERD_BREAK_BASE_PERCENT
+            - SpecialAffinity.points(player)
+            - SpecialAffinity.potencyBonus(player);
+        int breakChancePercent = Math.max(0, reducedPercent);
+        return player.getRandom().nextInt(100) < breakChancePercent;
     }
 
     /**

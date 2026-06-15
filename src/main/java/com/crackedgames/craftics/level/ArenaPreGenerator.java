@@ -15,7 +15,7 @@ import java.util.UUID;
  * Manages on-demand arena generation in a player's personal world slot.
  *
  * <h2>Lazy generation</h2>
- * Arenas used to be built eagerly at island creation time — every level, every
+ * Arenas used to be built eagerly at island creation time - every level, every
  * biome, all placed into the world slot before the player could move. On
  * lower-end servers this froze the main thread for multiple seconds and
  * sometimes crashed the tick loop. The new flow:
@@ -44,10 +44,18 @@ public class ArenaPreGenerator {
 
     /** Fraction of arena floor tiles allowed to be void/air before we flag an arena as corrupted. */
     private static final double CORRUPTION_THRESHOLD = 0.25;
+    /** Extra horizontal padding added around both old and new arena footprints during rebuild wipes. */
+    private static final int REBUILD_WIPE_MARGIN = 64;
+    /** Minimum horizontal span to wipe per axis during rebuilds (keeps old mega-presets from surviving). */
+    private static final int REBUILD_WIPE_MIN_SPAN = 192;
+    /** Vertical clearance below the arena floor to wipe during rebuilds. */
+    private static final int REBUILD_WIPE_DOWN = 16;
+    /** Vertical clearance above the arena floor to wipe during rebuilds. */
+    private static final int REBUILD_WIPE_UP = 96;
 
     /**
      * Legacy entry point. Used to pre-build every arena at island creation.
-     * Now a no-op — arenas are built lazily on first combat entry via
+     * Now a no-op - arenas are built lazily on first combat entry via
      * {@link #ensureArena}. Kept so existing callers don't need to change.
      */
     public static void generateAll(ServerWorld world, UUID playerUuid) {
@@ -59,7 +67,7 @@ public class ArenaPreGenerator {
         pd.arenasPreGenerated = true;
         data.markDirty();
         CrafticsMod.LOGGER.info(
-            "ArenaPreGenerator: lazy mode — no arenas built at creation for slot {} (player {})",
+            "ArenaPreGenerator: lazy mode - no arenas built at creation for slot {} (player {})",
             pd.worldSlot, playerUuid);
     }
 
@@ -149,7 +157,11 @@ public class ArenaPreGenerator {
                 BlockPos origin = data.getArenaOrigin(playerUuid, level);
                 if (origin == null) continue;
 
-                wipeArenaFootprint(world, origin, levelDef);
+                int[] oldMeta = pd.getArenaMetadata(level);
+                int oldW = oldMeta != null ? oldMeta[3] : 0;
+                int oldH = oldMeta != null ? oldMeta[4] : 0;
+
+                wipeArenaFootprint(world, origin, levelDef, oldW, oldH);
 
                 GridArena arena = ArenaBuilder.buildAt(world, levelDef, origin);
                 if (arena != null) {
@@ -186,7 +198,11 @@ public class ArenaPreGenerator {
             BlockPos origin = data.getArenaOrigin(playerUuid, level);
             if (origin == null) return false;
 
-            wipeArenaFootprint(world, origin, levelDef);
+            int[] oldMeta = pd.getArenaMetadata(level);
+            int oldW = oldMeta != null ? oldMeta[3] : 0;
+            int oldH = oldMeta != null ? oldMeta[4] : 0;
+
+            wipeArenaFootprint(world, origin, levelDef, oldW, oldH);
 
             GridArena arena = ArenaBuilder.buildAt(world, levelDef, origin);
             if (arena != null) {
@@ -227,11 +243,11 @@ public class ArenaPreGenerator {
                 BlockPos floorPos = new BlockPos(ox + x, oy, oz + z);
                 BlockState floor = world.getBlockState(floorPos);
                 // Air at floor Y is a void tile. Fluid at floor Y (lava/water)
-                // is fine — it's a hazard, not a hole.
+                // is fine - it's a hazard, not a hole.
                 if (floor.isAir()) {
                     BlockPos belowPos = new BlockPos(ox + x, oy - 1, oz + z);
                     BlockState below = world.getBlockState(belowPos);
-                    // Count as void only if below is empty too — a shallow pit
+                    // Count as void only if below is empty too - a shallow pit
                     // (LOW_GROUND) with solid ground 1 block down is fine.
                     if (below.isAir() || !below.getFluidState().isEmpty()) {
                         voidTiles++;
@@ -242,7 +258,7 @@ public class ArenaPreGenerator {
 
         double ratio = (double) voidTiles / total;
         if (ratio >= CORRUPTION_THRESHOLD) {
-            CrafticsMod.LOGGER.warn("ArenaPreGenerator: level {} looks corrupted — {}/{} void tiles ({}%)",
+            CrafticsMod.LOGGER.warn("ArenaPreGenerator: level {} looks corrupted - {}/{} void tiles ({}%)",
                 level, voidTiles, total, (int)(ratio * 100));
             return true;
         }
@@ -251,21 +267,31 @@ public class ArenaPreGenerator {
 
     /**
      * Wipe a generous volume around an arena's footprint so the next build
-     * starts clean. Uses the bigger of the level definition's requested size
-     * and a 48x48 minimum — that way structure presets with larger footprints
-     * than the grid still get their decorations cleared.
+     * starts clean. Uses both the target level size and the previous persisted
+     * arena metadata size (if present), plus a large margin + minimum span so
+     * downsized/newly-shaped presets don't leave old terrain shells behind.
      */
-    private static void wipeArenaFootprint(ServerWorld world, BlockPos origin, LevelDefinition def) {
-        int w = Math.max(48, def.getWidth() + 16);
-        int h = Math.max(48, def.getHeight() + 16);
-        int ox = origin.getX() - 8;
-        int oz = origin.getZ() - 8;
-        int yMin = origin.getY() - 10;
-        int yMax = origin.getY() + 48;
+    private static void wipeArenaFootprint(ServerWorld world, BlockPos origin, LevelDefinition def,
+                                           int previousWidth, int previousHeight) {
+        int targetW = Math.max(def.getWidth(), previousWidth);
+        int targetH = Math.max(def.getHeight(), previousHeight);
+        int wipeW = Math.max(REBUILD_WIPE_MIN_SPAN, targetW + REBUILD_WIPE_MARGIN * 2);
+        int wipeH = Math.max(REBUILD_WIPE_MIN_SPAN, targetH + REBUILD_WIPE_MARGIN * 2);
+
+        // Keep origin near the center of the wipe volume so footprint shifts and
+        // edge decorations from older presets get cleared in every direction.
+        int ox = origin.getX() - (wipeW / 2);
+        int oz = origin.getZ() - (wipeH / 2);
+        int yMin = origin.getY() - REBUILD_WIPE_DOWN;
+        int yMax = origin.getY() + REBUILD_WIPE_UP;
+
+        CrafticsMod.LOGGER.info(
+            "ArenaPreGenerator: wiping large rebuild volume at {} size={}x{} y=[{},{}] (target={}x{}, previous={}x{})",
+            origin, wipeW, wipeH, yMin, yMax, def.getWidth(), def.getHeight(), previousWidth, previousHeight);
 
         net.minecraft.block.BlockState air = Blocks.AIR.getDefaultState();
-        for (int x = 0; x < w; x++) {
-            for (int z = 0; z < h; z++) {
+        for (int x = 0; x < wipeW; x++) {
+            for (int z = 0; z < wipeH; z++) {
                 for (int y = yMin; y <= yMax; y++) {
                     BlockPos bp = new BlockPos(ox + x, y, oz + z);
                     if (!world.getBlockState(bp).isAir()) {

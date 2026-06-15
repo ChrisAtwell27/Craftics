@@ -7,12 +7,12 @@ import net.minecraft.item.Item;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Immutable definition of a combat ally — a mob recruited from the player's hub
+ * Immutable definition of a combat ally - a mob recruited from the player's hub
  * that fights alongside them in the arena.
  *
  * <p>Registered allies are referenced by {@link #entityTypeId() entityTypeId}.
  * {@code HubPetCollector} collects the mobs the player has explicitly added to their
- * battle party (Shift+Right-Click) — there is no automatic hub-yard scan. Build
+ * battle party (Shift+Right-Click) - there is no automatic hub-yard scan. Build
  * entries with {@link #builder(String)}.
  *
  * @param entityTypeId        the mob this entry describes, e.g. {@code minecraft:wolf}
@@ -47,10 +47,10 @@ public record AllyEntry(
 ) {
     /** How a hub mob qualifies to be recruited into combat. */
     public enum RecruitMode {
-        /** Must be tamed and owned by the hub's player (wolves, cats, horses, …). */
+        /** Must be tamed and owned by the hub's player (wolves, cats, horses, ...). */
         TAMED,
         /**
-         * No taming/ownership required (golems). Recruited like any party mob — add it
+         * No taming/ownership required (golems). Recruited like any party mob - add it
          * to your battle party manually (Shift+Right-Click it in the hub); it then joins
          * the next battle and returns home afterward via the standard party-mob path.
          * (There is no automatic hub-yard scan; this mode just waives the taming check.)
@@ -58,7 +58,7 @@ public record AllyEntry(
         BUILT,
         /**
          * Never recruited from the hub. Registered only so its combat stats are
-         * defined — used when a mob of this type is tamed mid-battle or summoned
+         * defined - used when a mob of this type is tamed mid-battle or summoned
          * from a spawn egg.
          */
         IN_COMBAT_ONLY

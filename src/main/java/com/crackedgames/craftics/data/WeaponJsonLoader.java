@@ -52,7 +52,7 @@ public final class WeaponJsonLoader extends CrafticsDataLoader<WeaponEntry> {
         String itemStr = json.get("item").getAsString();
         Identifier itemId = Identifier.of(itemStr);
         if (!Registries.ITEM.containsId(itemId)) {
-            CrafticsMod.LOGGER.warn("Unknown item '{}' in weapon JSON {} — skipping", itemStr, fileId);
+            CrafticsMod.LOGGER.warn("Unknown item '{}' in weapon JSON {} - skipping", itemStr, fileId);
             return null;
         }
         Item item = Registries.ITEM.get(itemId);
@@ -98,7 +98,7 @@ public final class WeaponJsonLoader extends CrafticsDataLoader<WeaponEntry> {
                 CombatEffects.EffectType.valueOf(obj.get("effect").getAsString().toUpperCase()),
                 getInt(obj, "turns", 3), getInt(obj, "amplifier", 0));
             default -> {
-                CrafticsMod.LOGGER.warn("Unknown weapon ability kind '{}' in {} — skipping", kind, fileId);
+                CrafticsMod.LOGGER.warn("Unknown weapon ability kind '{}' in {} - skipping", kind, fileId);
                 yield null;
             }
         };

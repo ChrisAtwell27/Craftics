@@ -148,16 +148,16 @@ public class DialogueScreen extends Screen {
 
         boolean hasGold = barterGold > 0;
 
-        // Lay the stepper out above the dialogue box. The box top is the same value
-        // rebuildChoices() uses; choice buttons (if any) stack upward from boxTop - 6,
-        // so we sit the stepper one row higher than the choice buttons would start.
-        int boxTop = this.height - BOX_BOTTOM_GAP - BOX_H;
-        int rowY = boxTop - 6 - 24; // a row above the box
+        // Lay the stepper out fully above the dialogue box.
+        // Keep both rows clear of the box so labels/text never overlap buttons.
         int btnSize = 20;
         int valueW = 60; // reserved space between - and + for the offer number
         int gap = 6;
         int offerBtnW = 90;
         int walkBtnW = 90;
+        int boxTop = this.height - BOX_BOTTOM_GAP - BOX_H;
+        int actionY = boxTop - btnSize - 6;
+        int rowY = actionY - btnSize - gap;
 
         // Centered cluster:  [-] (value) [+]
         int clusterW = btnSize + gap + valueW + gap + btnSize;
@@ -172,7 +172,6 @@ public class DialogueScreen extends Screen {
             .dimensions(plusX, rowY, btnSize, btnSize).build();
 
         // Action buttons one row below the stepper (still above the box).
-        int actionY = rowY + btnSize + gap;
         int actionsW = offerBtnW + gap + walkBtnW;
         int actionsX = (this.width - actionsW) / 2;
         barterOfferButton = ButtonWidget.builder(Text.literal("Offer Gold"), b -> submitOffer())
@@ -320,10 +319,10 @@ public class DialogueScreen extends Screen {
     /** Background mode:
      *  <ul>
      *    <li>Event-area dialogues (trader, enchanter, traveler, vault, etc.)
-     *        run inside an event cinematic — the player was teleported into a
+     *        run inside an event cinematic - the player was teleported into a
      *        scene built for them and should still see it behind the box.</li>
      *    <li>Mid-combat dialogues should keep the arena visible for the same
-     *        reason — losing the battlefield is jarring.</li>
+     *        reason - losing the battlefield is jarring.</li>
      *    <li>Pre-level intros (boss intros, trial vote, shiny vote, ambush
      *        warnings) fire between levels with no cinematic and no active
      *        combat. The stale previous arena would blur behind the box if we

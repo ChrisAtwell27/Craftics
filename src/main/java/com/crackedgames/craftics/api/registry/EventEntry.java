@@ -9,7 +9,7 @@ import java.util.List;
  *
  * <p>After each level Craftics rolls a random float and walks the registered event list,
  * triggering the first event whose cumulative probability covers the roll. Built-in
- * events (ambush, shrine, trader, …) are registered by {@code VanillaContent}; addons
+ * events (ambush, shrine, trader, ...) are registered by {@code VanillaContent}; addons
  * register their own through {@code CrafticsAPI.registerEvent}:
  *
  * <pre>{@code
@@ -51,7 +51,7 @@ public record EventEntry(
     List<String> introLines,
     EventHandler handler
 ) {
-    /** Legacy 6-arg constructor — kept so addons compiled against 0.2.0 still work.
+    /** Legacy 6-arg constructor - kept so addons compiled against 0.2.0 still work.
      *  Defaults {@code introLines} to an empty list (no narrator dialogue). */
     public EventEntry(String id, String displayName, float probability, int minBiomeOrdinal,
                       boolean isChoiceEvent, EventHandler handler) {

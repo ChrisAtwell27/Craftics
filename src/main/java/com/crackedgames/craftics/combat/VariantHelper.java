@@ -60,7 +60,7 @@ public final class VariantHelper {
             drm.getOrThrow(net.minecraft.registry.RegistryKeys.CHICKEN_VARIANT)
                 .getEntry(key.getValue()).ifPresent(chicken::setVariant);
         } else if (mob instanceof net.minecraft.entity.passive.PigEntity pig) {
-            // PigEntity.setVariant is package-private/private — go through NBT.
+            // PigEntity.setVariant is package-private/private - go through NBT.
             net.minecraft.registry.RegistryKey<net.minecraft.entity.passive.PigVariant> key = switch (climate) {
                 case WARM -> net.minecraft.entity.passive.PigVariants.WARM;
                 case COLD -> net.minecraft.entity.passive.PigVariants.COLD;

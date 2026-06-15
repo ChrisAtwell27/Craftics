@@ -21,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * than each biome's JSON {@code order}/{@code startLevel}.
  *
  * <p>{@link BiomeTemplate}'s constructor only <em>stores</em> its {@code Block[]}/{@code Item[]}/
- * {@code MobPoolEntry[]} references — it never touches Minecraft registries or requires bootstrap
- * — and the rebuild logic reads only {@code biomeId}, {@code startLevel}, and {@code levelCount}.
+ * {@code MobPoolEntry[]} references - it never touches Minecraft registries or requires bootstrap
+ * - and the rebuild logic reads only {@code biomeId}, {@code startLevel}, and {@code levelCount}.
  * So these templates are constructed with {@code null} for the Minecraft-typed pools, keeping the
  * test runnable under plain JUnit (no Minecraft bootstrap). The campaign model
  * ({@link VanillaCampaign#build()}, {@link Campaign}) is likewise pure.

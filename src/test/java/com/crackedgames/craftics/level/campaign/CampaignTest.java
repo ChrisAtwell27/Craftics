@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 
 /**
- * Tests for the pure {@link Campaign} model — flatten order, ordinal/region/node
+ * Tests for the pure {@link Campaign} model - flatten order, ordinal/region/node
  * lookups, final detection, total count, and validation.
  */
 class CampaignTest {

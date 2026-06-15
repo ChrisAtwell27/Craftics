@@ -75,7 +75,7 @@ public class GuideBookData {
 
     /**
      * Local-only unlock for immediate UI feedback during combat.
-     * The server is authoritative — this just prevents a visual delay.
+     * The server is authoritative - this just prevents a visual delay.
      */
     public static void unlockLocal(String entryName) {
         unlockedEntries.add(entryName);
@@ -172,7 +172,7 @@ public class GuideBookData {
                 "- Attack if in range\n" +
                 "- Use special abilities\n" +
                 "- Flee if wounded\n\n" +
-                "Every mob type has its own attack animation style: spiders pounce, golems slam, wolves dash, endermen blink, witches channel. Learn the tells — telegraphed abilities show warning tiles one turn ahead.\n\n" +
+                "Every mob type has its own attack animation style: spiders pounce, golems slam, wolves dash, endermen blink, witches channel. Learn the tells - telegraphed abilities show warning tiles one turn ahead.\n\n" +
                 "Watch enemy behavior patterns to plan your strategy!"),
             new Page("Useful Keys",
                 "R - End turn\n" +
@@ -195,7 +195,7 @@ public class GuideBookData {
                 "Bosses get a large HP multiplier on top of their base.\n\n" +
                 "So a Plains zombie and a Cave zombie are very different fights. Use base stats to compare mobs, not to predict exact numbers."),
             new Page("Enemy Defense & Your Dodge",
-                "Enemy DEF reduces the damage they take per hit (capped — high DEF never makes them immune).\n\n" +
+                "Enemy DEF reduces the damage they take per hit (capped - high DEF never makes them immune).\n\n" +
                 "Your Armor Class (AC) instead gives a chance for enemies to MISS you entirely. The higher your AC compared to the attacker's strength, the more often they whiff.\n\n" +
                 "Hover any enemy to inspect its live stats in the panel.")
         )));
@@ -203,14 +203,14 @@ public class GuideBookData {
             new Page("Arena Tiles",
                 "Normal Tiles - Walk freely on grass, stone, sand, etc.\n\n" +
                 "Obstacles - Trees, rocks, and walls block movement. Some can be mined with a pickaxe.\n\n" +
-                "Water Tiles - Require a boat in your inventory to cross (consumed on entry), or a Turtle Helmet to walk on. Enemies cannot cross water unless aquatic (like Drowned — who move double speed on it)."),
+                "Water Tiles - Require a boat in your inventory to cross (consumed on entry), or a Turtle Helmet to walk on. Enemies cannot cross water unless aquatic (like Drowned - who move double speed on it)."),
             new Page("Bushes & Stealth",
                 "Tall grass and ferns are BUSH tiles: step in to become hidden.\n\n" +
                 "Hidden players can't be targeted by enemies unless the enemy is adjacent. Great for breaking line of sight, escaping ranged mobs, or setting up ambushes.\n\n" +
                 "Bushes can be broken for 1 AP. The Silence trim extends your stealth range. In co-op, every party member who stays in a bush stays hidden."),
             new Page("Building & Fire",
                 "Any plain full-cube block in your inventory can be PLACED as a temporary wall (lasts 4 turns). Funnel enemies, block charges, cover retreats.\n\n" +
-                "Fire spreads! Burning tiles ignite adjacent flammable obstacles each turn. Lava, fire cones and fire trails can turn a forest arena into a hazard zone — for both sides.")
+                "Fire spreads! Burning tiles ignite adjacent flammable obstacles each turn. Lava, fire cones and fire trails can turn a forest arena into a hazard zone - for both sides.")
         )));
         basics.add(new Entry("Weapons & AP", "minecraft:diamond_sword", List.of(
             new Page("Attack Costs (AP)",
@@ -227,7 +227,7 @@ public class GuideBookData {
                 "Axes (2 AP, Cleaving) - heavy hits.\n" +
                 "Wood 8 / Stone 11 / Iron 15 / Gold 24 / Diamond 21 / Netherite 27.\n" +
                 "Chance per hit to ignore enemy armor.\n\n" +
-                "Yes — GOLD weapons are top-tier in Craftics. Fragile, but ferocious."),
+                "Yes - GOLD weapons are top-tier in Craftics. Fragile, but ferocious."),
             new Page("Ranged Weapons",
                 "Bows (1 AP) - range 3, need arrows. Power adds damage AND range.\n\n" +
                 "Crossbows (4 AP) - fire in full straight lines across the whole arena (rook lines). Piercing, Multishot, Quick Charge all supported.\n\n" +
@@ -252,7 +252,7 @@ public class GuideBookData {
             new Page("Affinity",
                 "Each damage type has an AFFINITY track. Points come from odd-numbered level-ups and gear.\n\n" +
                 "Every affinity point adds +3 damage of that type, plus a per-type perk (see Affinities in Leveling & Stats).\n\n" +
-                "Armor contributes too: every armor piece grants half an affinity point of its material's type — even in mixed sets. Mob-head helmets grant a full point.")
+                "Armor contributes too: every armor piece grants half an affinity point of its material's type - even in mixed sets. Mob-head helmets grant a full point.")
         )));
         basics.add(new Entry("Stacked Enemies", "minecraft:slime_ball", List.of(
             new Page("Mobs Riding Mobs",
@@ -262,13 +262,13 @@ public class GuideBookData {
                 "Piglin Cavalry - piglin riding a hoglin\n" +
                 "Slime Tower - three slimes high\n" +
                 "Blaze Tower - spinning fire column\n\n" +
-                "Kill the bottom layer and the top keeps fighting from the ground. Towers attack harder while taller — topple them fast, or burst the rider first.")
+                "Kill the bottom layer and the top keeps fighting from the ground. Towers attack harder while taller - topple them fast, or burst the rider first.")
         )));
         basics.add(new Entry("Food & Eating", "minecraft:golden_carrot", List.of(
             new Page("Eating in Combat",
-                "Eating food costs 1 AP and heals based on the food's nourishment — from 2 HP for a berry up to a full heal from rich golden foods.\n\n" +
+                "Eating food costs 1 AP and heals based on the food's nourishment - from 2 HP for a berry up to a full heal from rich golden foods.\n\n" +
                 "Golden Carrot is special: it's FREE to eat (0 AP) and grants +1 AP this turn. Emergency fuel!\n\n" +
-                "Totem of Undying can be eaten for a full heal — or kept in inventory to auto-revive you at half HP when you'd die.\n\n" +
+                "Totem of Undying can be eaten for a full heal - or kept in inventory to auto-revive you at half HP when you'd die.\n\n" +
                 "In co-op you can feed an adjacent teammate. Cake placed on a tile gives 3 shared bites of 2 HP each.")
         )));
         CATEGORIES.add(new Category("Combat Basics", "minecraft:iron_sword",
@@ -276,7 +276,7 @@ public class GuideBookData {
 
         // === ENEMY BESTIARY ===
         // Names must match entityTypeIdToMobName / getBossName (see class javadoc).
-        // Stats shown are BASE values from biome data — they scale with biome, level and party size.
+        // Stats shown are BASE values from biome data - they scale with biome, level and party size.
         List<Entry> enemies = new ArrayList<>();
         // --- Passive & neutral mobs ---
         enemies.add(mob("Cow", "minecraft:cow_spawn_egg",
@@ -299,7 +299,7 @@ public class GuideBookData {
             "Passive until hit. Tame with a bone or beef to gain a loyal melee ally that dashes at enemies."));
         enemies.add(mob("Cat", "minecraft:cat_spawn_egg",
             st("Passive", "3", "1", "0", "2", null, null, null, null, null),
-            "Skittish — it flees from you unless you're holding a fish. Tame with cod or salmon for a quick flanking ally."));
+            "Skittish - it flees from you unless you're holding a fish. Tame with cod or salmon for a quick flanking ally."));
         enemies.add(mob("Fox", "minecraft:fox_spawn_egg",
             st("Passive", "3", "0", "0", "2", null, null, null, null, null),
             "A predator, not a coward: foxes hunt sheep and chickens in the arena with hit-and-run pounces, and they bite back if you attack them. Tame with sweet or glow berries."));
@@ -320,11 +320,11 @@ public class GuideBookData {
             "Aquatic. Only found in water biomes."));
         enemies.add(mob("Llama", "minecraft:llama_spawn_egg",
             st("Neutral", "8", "2", "1", "2", "1-2", null, null, null, null),
-            "Passive until hit — then permanently aggressive. It backs off to keep its distance and spits at you. Tame with a hay block for a solid ranged ally. Found in Mountain biomes."));
+            "Passive until hit - then permanently aggressive. It backs off to keep its distance and spits at you. Tame with a hay block for a solid ranged ally. Found in Mountain biomes."));
         // --- Hostile: Overworld ---
         enemies.add(mob("Zombie", "minecraft:zombie_spawn_egg",
             st("Hostile", "6-12", "2-3", "0-1", "1", "1", null, "Blunt, Cleaving", null, null),
-            "Basic melee grunt — slow but relentless. Gains +1 ATK per adjacent zombie, husk or drowned (horde bonus). Baby zombies are faster. Armed variants hit harder."));
+            "Basic melee grunt - slow but relentless. Gains +1 ATK per adjacent zombie, husk or drowned (horde bonus). Baby zombies are faster. Armed variants hit harder."));
         enemies.add(mob("Zombie Villager", "minecraft:zombie_villager_spawn_egg",
             st("Hostile", "6", "2", "0", "1", "1", null, "Blunt, Cleaving", null, null),
             "Zombified villager. Fights identically to a regular Zombie and shares its horde bonus. Spawns in Plains."));
@@ -342,10 +342,10 @@ public class GuideBookData {
             "Frozen skeleton variant. Slowness arrows!"));
         enemies.add(mob("Bogged", "minecraft:bogged_spawn_egg",
             st("Hostile", "10", "3", "0", "2", "3", null, "Blunt", "Special, Physical", null),
-            "Swamp skeleton found in Trial Chambers. Fires poison-tipped arrows — cleanse fast or outlast the ticks."));
+            "Swamp skeleton found in Trial Chambers. Fires poison-tipped arrows - cleanse fast or outlast the ticks."));
         enemies.add(mob("Creeper", "minecraft:creeper_spawn_egg",
             st("Hostile", "10-14", "4-6", "0-1", "2", null, null, "Ranged, Cleaving", "Slashing, Physical", null),
-            "Sneaks close then detonates! Massive AoE damage to everything nearby — including other enemies. Kill it at range or bait the blast into their lines."));
+            "Sneaks close then detonates! Massive AoE damage to everything nearby - including other enemies. Kill it at range or bait the blast into their lines."));
         enemies.add(mob("Spider", "minecraft:spider_spawn_egg",
             st("Hostile", "10-12", "3-4", "1-2", "3", "1", null, "Cleaving, Special", "Blunt, Physical", null),
             "Ambush predator that pounces from distance or drops from the ceiling. Chooses between attacking and shooting cobwebs to slow you or block escape routes."));
@@ -360,69 +360,69 @@ public class GuideBookData {
             "Crossbow-wielding raider. Fires from distance. Found in Forest and Mountain biomes."));
         enemies.add(mob("Vindicator", "minecraft:vindicator_spawn_egg",
             st("Hostile", "9-10", "4", "1", "3", "1", null, "Ranged", "Cleaving, Physical", null),
-            "Rook-movement axe berserker — it dashes in straight lines like a chess rook, and charge damage scales with distance traveled. When enraged (+50% ATK) its hits also knock you back."));
+            "Rook-movement axe berserker - it dashes in straight lines like a chess rook, and charge damage scales with distance traveled. When enraged (+50% ATK) its hits also knock you back."));
         enemies.add(mob("Ravager", "minecraft:ravager_spawn_egg",
             st("Hostile", "30", "6", "2", "3", "1", null, "Special", "Blunt, Ranged, Physical", null),
-            "Bull Rush: charges up to 3 tiles in a straight line for heavy damage + knockback 2. If it can't charge, it stomps every adjacent tile. Always aggressive, very tanky, and it RESISTS arrows — bring Special damage or heavy melee. Spawns in Forest."));
+            "Bull Rush: charges up to 3 tiles in a straight line for heavy damage + knockback 2. If it can't charge, it stomps every adjacent tile. Always aggressive, very tanky, and it RESISTS arrows - bring Special damage or heavy melee. Spawns in Forest."));
         enemies.add(mob("Evoker", "minecraft:evoker_spawn_egg",
             st("Hostile", "7", "3", "0", "2", "4", null, "Slashing, Cleaving", "Special, Physical", null),
-            "Fragile illager caster. Summons vex fangs in a line from distance. Low HP but devastating if ignored — prioritize it over front-line raiders."));
+            "Fragile illager caster. Summons vex fangs in a line from distance. Low HP but devastating if ignored - prioritize it over front-line raiders."));
         enemies.add(mob("Vex", "minecraft:vex_spawn_egg",
             st("Summon", "3", "2", "0", "3", "1", null, "Slashing", "Ranged, Physical", null),
             "Phasing nuisance summoned by The Hexweaver. Dies to a stiff breeze, but stings every turn it's alive. Swat them with sweeping melee."));
         enemies.add(mob("Witch", "minecraft:witch_spawn_egg",
             st("Hostile", "12", "5", "2", "2", "3", null, "Slashing, Cleaving", "Special, Physical", "Water"),
-            "Throws harmful potions from range and channels with raised arms before big throws. Her poison flask deals no impact damage — it's pure poison — while her harming flask hits for full. Immune to Water damage, so leave the trident at home."));
+            "Throws harmful potions from range and channels with raised arms before big throws. Her poison flask deals no impact damage - it's pure poison - while her harming flask hits for full. Immune to Water damage, so leave the trident at home."));
         enemies.add(mob("Phantom", "minecraft:phantom_spawn_egg",
             st("Hostile", "10-14", "5-7", "0-1", "4", "1-3", null, "Ranged", "Slashing", null),
-            "Flying swooper. Dives from distance, hits, then retreats out of melee reach — each phantom builds its own dive-speed streak. Hard to pin down; ranged weapons preferred."));
+            "Flying swooper. Dives from distance, hits, then retreats out of melee reach - each phantom builds its own dive-speed streak. Hard to pin down; ranged weapons preferred."));
         enemies.add(mob("Slime", "minecraft:slime_spawn_egg",
             st("Hostile", "8", "3", "0", "2", "1", null, "Water", "Blunt", null),
-            "Bouncy blob that hops and crashes. Arrives stacked as a Slime Tower — the tower hits harder while tall, and layers keep fighting when toppled."));
+            "Bouncy blob that hops and crashes. Arrives stacked as a Slime Tower - the tower hits harder while tall, and layers keep fighting when toppled."));
         enemies.add(mob("Creaking", "minecraft:creaking_spawn_egg",
             st("Hostile", "4+", null, null, "2", "1", null, null, null, null),
-            "Pale Garden horror. INVULNERABLE while its Creaking Heart stands — find and destroy the heart block, then the creaking crumbles. Until then, run."));
+            "Pale Garden horror. INVULNERABLE while its Creaking Heart stands - find and destroy the heart block, then the creaking crumbles. Until then, run."));
         // --- Hostile: Nether ---
         enemies.add(mob("Blaze", "minecraft:blaze_spawn_egg",
             st("Hostile", "14", "6", "0", "2", "4", null, "Water", "Special, Ranged, Physical", null),
-            "Hovering ranged attacker. Fireball deals area damage. Soak it or rush it — arrows bounce off."));
+            "Hovering ranged attacker. Fireball deals area damage. Soak it or rush it - arrows bounce off."));
         enemies.add(mob("Breeze", "minecraft:breeze_spawn_egg",
             st("Mini-Boss", "20", "5", "2", "3", "3", null, "Blunt", "Ranged", null),
             "Trial Chamber signature mob. Leaps around the arena firing wind bursts that shove you out of position. Pin it in a corner and crush it."));
         enemies.add(mob("Ghast", "minecraft:ghast_spawn_egg",
             st("Hostile", "12", "6", "0", "1", "5", "2x2", "Ranged, Slashing", "Special, Physical", null),
-            "Slow but extreme range. Fireball explosions! Its huge body can't dodge — punish it from afar."));
+            "Slow but extreme range. Fireball explosions! Its huge body can't dodge - punish it from afar."));
         enemies.add(mob("Magma Cube", "minecraft:magma_cube_spawn_egg",
             st("Hostile", "8", "3", "1", "3", "1", "2x2", "Water", "Blunt", null),
             "Bouncy lava slime. Splits on death!"));
         enemies.add(mob("Wither Skeleton", "minecraft:wither_skeleton_spawn_egg",
             st("Hostile", "16", "7", "0-1", "3", "1-2", null, "Blunt, Water", "Special, Physical", null),
-            "Relentless pursuer with a stone sword. Fast for its size — don't assume you can kite it."));
+            "Relentless pursuer with a stone sword. Fast for its size - don't assume you can kite it."));
         enemies.add(mob("Hoglin", "minecraft:hoglin_spawn_egg",
             st("Hostile", "14", "5", "2", "3", "1", "2x2", "Special", "Blunt, Physical", null),
             "Charging beast that rams like a goat twice its size. Hits hard!"));
         enemies.add(mob("Piglin", "minecraft:piglin_spawn_egg",
             st("Hostile", "10-12", "4-5", "1", "2", "4", null, "Special, Water", "Ranged, Physical", null),
-            "Fights with crossbow or golden sword depending on what it spawned holding. Outside combat, piglins still love gold — see the Piglin Barter event."));
+            "Fights with crossbow or golden sword depending on what it spawned holding. Outside combat, piglins still love gold - see the Piglin Barter event."));
         enemies.add(mob("Piglin Brute", "minecraft:piglin_brute_spawn_egg",
             st("Hostile", "20", "7", "3", "2", "1", null, "Special, Water", "Blunt, Slashing, Physical", null),
             "Elite piglin with a golden axe. Ignores gold, ignores fear, hits like a truck. Dramatically tougher than a regular Piglin. Spawns in Crimson Forest."));
         enemies.add(mob("Zombified Piglin", "minecraft:zombified_piglin_spawn_egg",
             st("Neutral", "8-10", "3-4", "1", "1", "1", null, "Blunt, Cleaving", "Special, Physical", null),
-            "Neutral until hit — then every zombified piglin nearby aggros on you too. Safe to pass through; suicidal to swing at first."));
+            "Neutral until hit - then every zombified piglin nearby aggros on you too. Safe to pass through; suicidal to swing at first."));
         // --- Hostile: End ---
         enemies.add(mob("Enderman", "minecraft:enderman_spawn_egg",
             st("Hostile", "16-22", "6-9", "1-3", "5", "1", null, "Water, Special", "Ranged, Physical", null),
             "Aggressive phase-shifting teleporter. Hunts in assault cycles of 2-3 rapid teleport-strikes before blinking away, and dodges sideways when hit. Below 50% HP it enters Frenzy: never retreats, +50% damage, relentless strikes every turn."));
         enemies.add(mob("Endermite", "minecraft:endermite_spawn_egg",
             st("Hostile", "8", "3", "0", "2", "1", null, "Cleaving, Water", "Ranged, Physical", null),
-            "Tiny void pest that blinks 2-3 tiles to reach you and attacks the instant it's adjacent. Never idles — if blocked, it blinks somewhere nearby and rushes in next turn. Spawns in the Warped Forest and with The Void Herald."));
+            "Tiny void pest that blinks 2-3 tiles to reach you and attacks the instant it's adjacent. Never idles - if blocked, it blinks somewhere nearby and rushes in next turn. Spawns in the Warped Forest and with The Void Herald."));
         enemies.add(mob("Shulker", "minecraft:shulker_spawn_egg",
             st("Hostile", "14-18", "6-8", "2", "1", "4-5", null, "Blunt", "Ranged, Slashing, Physical", null),
             "Stationary turret. Levitation projectiles! Close the gap and crack the shell with blunt force."));
         enemies.add(mob("End Crystal", "minecraft:end_crystal",
             st("Hazard", null, null, null, null, null, null, null, null, null),
-            "Dragon's Nest hazard. Destructible — but it detonates when killed, damaging everything within 2 tiles. Pop it from range, or lure enemies next to it first."));
+            "Dragon's Nest hazard. Destructible - but it detonates when killed, damaging everything within 2 tiles. Pop it from range, or lure enemies next to it first."));
         // --- Compatibility mobs (DYNAMIC: each block only adds entries when the
         //     source mod is installed). Names must match entityTypeIdToMobName so
         //     they auto-unlock on encounter via unlockBestiaryForCombat. Icons use
@@ -430,7 +430,7 @@ public class GuideBookData {
         //     mod's items present. Base stats are taken from each mod's compat class. ---
         FabricLoader loader = FabricLoader.getInstance();
 
-        // Creeper Overhaul — 12 biome-matched variants. They share the vanilla
+        // Creeper Overhaul - 12 biome-matched variants. They share the vanilla
         // creeper's weakness/resistance profile; the variant identity is the blast.
         if (loader.isModLoaded("creeperoverhaul")) {
             String cWeak = "Ranged, Cleaving";
@@ -473,7 +473,7 @@ public class GuideBookData {
                 "Chorus Grove creeper variant. Wide blast inflicts Poison. Found in Chorus Grove."));
         }
 
-        // Variants & Ventures — 4 themed zombie/skeleton variants.
+        // Variants & Ventures - 4 themed zombie/skeleton variants.
         if (loader.isModLoaded("variantsandventures")) {
             enemies.add(mob("Gelid", "variantsandventures:gelid_spawn_egg|minecraft:zombie_spawn_egg",
                 st("Hostile", "8", "2", "0", "1", "1", null, "Blunt, Cleaving", null, null),
@@ -489,7 +489,7 @@ public class GuideBookData {
                 "River skeleton variant armed with shears. Range 2, but hits harder up close and applies Soaked on hit. Found in River."));
         }
 
-        // Artifacts — the Mimic ambush from the Abandoned Campsite event.
+        // Artifacts - the Mimic ambush from the Abandoned Campsite event.
         if (loader.isModLoaded("artifacts")) {
             enemies.add(mob("Mimic", "artifacts:mimic_spawn_egg|minecraft:chest",
                 st("Ambush", "15+", "10", "2", null, null, null, null, null, null),
@@ -501,9 +501,9 @@ public class GuideBookData {
         enemies.add(mob("The Revenant", "minecraft:zombie_head",
             st("Boss", "30", "1", "1", "1", "1", null, "Blunt, Cleaving", null, null),
             new Page("The Revenant",
-                "Plains boss — an undead knight. Slow, but the arena fills up fast.\n\n" +
+                "Plains boss - an undead knight. Slow, but the arena fills up fast.\n\n" +
                 "Abilities:\n" +
-                "- Raise the Dead: plants grave markers that hatch Zombies — destroy the markers first!\n" +
+                "- Raise the Dead: plants grave markers that hatch Zombies - destroy the markers first!\n" +
                 "- Death Charge: 3-tile line charge, bonus ATK\n" +
                 "- Gravefire Grid: telegraphs a magma checker-grid for 1 turn\n" +
                 "- Shield Bash: half-damage hit, knockback 2 (on cooldown)\n\n" +
@@ -511,7 +511,7 @@ public class GuideBookData {
         enemies.add(mob("The Hexweaver", "minecraft:totem_of_undying",
             st("Boss", "35", "5", "1", "2", "4", null, "Slashing, Cleaving", "Special, Physical", null),
             new Page("The Hexweaver",
-                "Dark Forest boss — an evoker archmage.\n\n" +
+                "Dark Forest boss - an evoker archmage.\n\n" +
                 "Abilities:\n" +
                 "- Hex Snare: telegraphed curse + 2-tile pull\n" +
                 "- Runic Prison: cardinal runes erupt + brief cage\n" +
@@ -522,22 +522,32 @@ public class GuideBookData {
                 "Phase 2 - Arcane Fury: teleports away, full cross fangs, 3 Vexes per swarm (up to 6).")));
         enemies.add(mob("The Frostbound Huntsman", "minecraft:blue_ice",
             st("Boss", "40", "4", "2", "2", "3", null, "Blunt", "Ranged, Water, Physical", null),
-            new Page("The Frostbound Huntsman",
-                "Snowy Tundra boss — a stray sharpshooter.\n\n" +
-                "Abilities:\n" +
-                "- Harpoon Pull: telegraphed pull, drags you 2 tiles toward the boss\n" +
-                "- Whiteout Ring: ring burst around you with ONE safe gap\n" +
-                "- Blizzard: 3x3 AoE + Slowness (P2: center stuns!)\n" +
-                "- Ice Wall: 3 obstacle tiles blocking movement\n" +
-                "- Glacial Trap: 2x2 freeze zone, damage + stun\n" +
-                "- Frost Arrow: ranged ATK + Slowness\n\n" +
-                "Phase 2 - Permafrost: +1 Speed, frozen tiles spawn every 2 turns, all cooldowns reduced.")));
+            new Page("The Frostbound Huntsman (Phase 1)",
+                "Snowy Tundra boss - a stray sharpshooter that controls lanes and slows your team.\n\n" +
+                "Moveset:\n" +
+                "- Harpoon Pull: telegraphed forced-move. The warning paints a FULL row/column lane, then drags you 2 tiles toward the boss.\n" +
+                "- Whiteout Ring: burst around your tile with ONE safe gap.\n" +
+                "- Blizzard: 3x3 blast + Slowness.\n" +
+                "- Ice Wall: drops a 3-tile obstacle line to block paths.\n" +
+                "- Glacial Trap: 2x2 freeze zone, damage + stun pressure.\n" +
+                "- Frost Arrow: long-range shot that applies Slowness.\n\n" +
+                "Pattern notes: at long range it favors Frost Arrow pressure and uses walls/harpoon to deny easy kiting."),
+            new Page("The Frostbound Huntsman (Phase 2)",
+                "Permafrost phase turns the arena into a control puzzle.\n\n" +
+                "Phase 2 changes:\n" +
+                "- Speed increases (harder to pin down).\n" +
+                "- Passive Ice Wall every turn for constant lane denial.\n" +
+                "- Passive freeze tiles every 2 turns.\n" +
+                "- Blizzard center now stuns.\n" +
+                "- Cooldowns are reduced across the kit.\n" +
+                "- Expanding Frost Wave pressure can pulse while other attacks continue.\n\n" +
+                "Counterplay: break sightlines, keep escape lanes open, and respect full-lane harpoon warnings before ending your turn.")));
         enemies.add(mob("The Rockbreaker", "minecraft:iron_axe",
             st("Boss", "40", "5", "2", "2", "1", null, "Ranged", "Cleaving, Physical", null),
             new Page("The Rockbreaker",
-                "Stony Peaks boss — an aggressive melee brawler. Every attack knocks you around the arena.\n\n" +
+                "Stony Peaks boss - an aggressive melee brawler. Every attack knocks you around the arena.\n\n" +
                 "Abilities:\n" +
-                "- Ground Pound: instant 2x2 melee AoE + knockback 2 (no telegraph!)\n" +
+                "- Ground Pound: instant 2x2 melee AoE + knockback 2 (no telegraph)\n" +
                 "- Charge: dashes toward you, heavy damage + knockback 3\n" +
                 "- Seismic Slam: cross pattern + knockback 2\n" +
                 "- Boulder Toss: range 4, damage + knockback + creates an obstacle\n" +
@@ -546,18 +556,18 @@ public class GuideBookData {
         enemies.add(mob("The Tidecaller", "minecraft:trident",
             st("Boss", "45", "5", "2", "2", "1", null, "Blunt, Cleaving", "Water", null),
             new Page("The Tidecaller",
-                "River Delta boss — a drowned tide-priest.\n\n" +
+                "River Delta boss - a drowned tide-priest.\n\n" +
                 "Abilities:\n" +
                 "- Tidal Wave: 2-tile-wide flood column\n" +
                 "- Trident Storm: 3 tridents in a spread\n" +
                 "- Riptide Charge: water charge, knockback 2\n" +
                 "- Call of the Deep: summons Drowned onto water tiles\n\n" +
                 "Phase 2 - Deluge: floods half the arena once (your tile is spared), +2 ATK while on water.\n\n" +
-                "Bring boats or a Turtle Helmet — control of the water is control of the fight.")));
+                "Bring boats or a Turtle Helmet - control of the water is control of the fight.")));
         enemies.add(mob("The Sandstorm Pharaoh", "minecraft:sandstone",
             st("Boss", "45", "6", "2", "1", "1", null, "Blunt, Water", null, null),
             new Page("The Sandstorm Pharaoh",
-                "Desert boss — a husk king of the dunes.\n\n" +
+                "Desert boss - a husk king of the dunes.\n\n" +
                 "Abilities:\n" +
                 "- Plant Mine: invisible mine, 6 dmg + 1-turn stun on contact\n" +
                 "- Sand Burial: 2x2 quicksand stun\n" +
@@ -567,9 +577,9 @@ public class GuideBookData {
         enemies.add(mob("The Broodmother", "minecraft:cobweb",
             st("Boss", "50", "5", "2", "3", "1", "2x2", "Cleaving, Special", "Blunt, Physical", null),
             new Page("The Broodmother",
-                "Jungle boss — a monstrous spider matriarch. Alternates between HUNTING you and NESTING to lay egg sacs.\n\n" +
+                "Jungle boss - a monstrous spider matriarch. Alternates between HUNTING you and NESTING to lay egg sacs.\n\n" +
                 "Abilities:\n" +
-                "- Egg Sacs: 1-HP destructible eggs that hatch Cave Spiders (the brood is capped — smash eggs to starve it)\n" +
+                "- Egg Sacs: 1-HP destructible eggs that hatch Cave Spiders (the brood is capped - smash eggs to starve it)\n" +
                 "- Web Spray: 3x3 stun + slow\n" +
                 "- Venomous Bite: ATK + Poison\n" +
                 "- Pounce: leap 3 tiles, 2x2 AoE\n\n" +
@@ -577,31 +587,31 @@ public class GuideBookData {
         enemies.add(mob("The Hollow King", "minecraft:tnt",
             st("Boss", "55", "6", "3", "1", "1", null, "Blunt, Cleaving", null, null),
             new Page("The Hollow King",
-                "Caverns boss — a buried tyrant with a miner's arsenal.\n\n" +
+                "Caverns boss - a buried tyrant with a miner's arsenal.\n\n" +
                 "Abilities:\n" +
                 "- Demolition Cache: telegraphed TNT that detonates next round\n" +
                 "- Rubble Toss: mines an obstacle, throws it at a marked tile\n" +
                 "- Cave-In: boulders fall on telegraphed tiles\n" +
                 "- Miner's Fury: line charge that destroys obstacles\n" +
                 "- Swarm Call: 3-4 Silverfish from the rubble\n" +
-                "- Lights Out: casts darkness — enemies gain +2 ATK in the dark\n\n" +
+                "- Lights Out: casts darkness - enemies gain +2 ATK in the dark\n\n" +
                 "Phase 2 - Total Collapse: permanent darkness, automatic cave-ins, extra TNT pressure.\n\n" +
                 "COUNTERPLAY: bring Torches, Lanterns or Campfires to hold light zones.")));
         enemies.add(mob("The Warden", "minecraft:echo_shard",
             st("Boss", "60", "8", "4", "3", "1", null, "Ranged", "Blunt, Slashing, Physical", null),
             new Page("The Warden",
-                "Deep Dark boss. It is BLIND — it hunts by vibration.\n\n" +
+                "Deep Dark boss. It is BLIND - it hunts by vibration.\n\n" +
                 "Move 3+ tiles in a turn and it locks onto you. Creep short distances to stay off its senses, or THROW items at empty tiles to send it chasing echoes.\n\n" +
                 "Abilities:\n" +
                 "- Tremor Stomp: AoE shockwave around itself\n" +
                 "- Sculk Spread: corrupts floor tiles\n" +
-                "- Sculk Shriekers: alarm blocks that reveal you — destroy them\n" +
+                "- Sculk Shriekers: alarm blocks that reveal you - destroy them\n" +
                 "- Darkness Pulse: dims the arena\n\n" +
                 "Phase 2 - The Ancient Awakens: unlocks Sonic Boom, a straight-line blast that IGNORES defense.")));
         enemies.add(mob("The Molten King", "minecraft:magma_cream",
             st("Boss", "55", "6", "3", "2", "1", "4x4", "Water", "Blunt", null),
             new Page("The Molten King",
-                "Nether Wastes boss — a colossal magma cube monarch.\n\n" +
+                "Nether Wastes boss - a colossal magma cube monarch.\n\n" +
                 "SPLIT MECHANIC: at half HP the 4x4 king splits into two 2x2 copies that keep ALL boss abilities. They do not split again.\n\n" +
                 "Abilities:\n" +
                 "- Magma Eruption: teleport-leap + 3x3 blast + fire ring\n" +
@@ -612,7 +622,7 @@ public class GuideBookData {
         enemies.add(mob("The Wailing Revenant", "minecraft:ghast_tear",
             st("Boss", "90", "10", "3", "0", "6", "2x2", "Ranged, Slashing", "Special, Physical", null),
             new Page("The Wailing Revenant",
-                "Soul Sand Valley boss — a colossal ghast that hovers OUTSIDE the arena edge. Attack the front row of tiles to hit it.\n\n" +
+                "Soul Sand Valley boss - a colossal ghast that hovers OUTSIDE the arena edge. Attack the front row of tiles to hit it.\n\n" +
                 "No regular ghasts spawn here; only Wither Skeletons answer its call.\n\n" +
                 "Abilities:\n" +
                 "- Fireball Barrage: 3 fireballs fly across the arena\n" +
@@ -623,7 +633,7 @@ public class GuideBookData {
         enemies.add(mob("The Bastion Brute", "minecraft:golden_axe",
             st("Boss", "65", "8", "3", "3", "1", null, "Special, Water", "Blunt, Slashing, Physical", null),
             new Page("The Bastion Brute",
-                "Crimson Forest boss — a war-chief in piglin wargear.\n\n" +
+                "Crimson Forest boss - a war-chief in piglin wargear.\n\n" +
                 "Abilities:\n" +
                 "- Gore Charge: 4-tile charge, bonus ATK, knockback 3 (stops at deep water)\n" +
                 "- Ground Slam: cross-pattern slam that sets the floor on fire\n" +
@@ -633,9 +643,9 @@ public class GuideBookData {
         enemies.add(mob("The Void Walker", "minecraft:ender_pearl",
             st("Boss", "65", "9", "2", "3", "1", null, "Water, Special", "Ranged, Physical", null),
             new Page("The Void Walker",
-                "Warped Forest boss — an enderman that bends space.\n\n" +
+                "Warped Forest boss - an enderman that bends space.\n\n" +
                 "Abilities:\n" +
-                "- Void Rift: portal pairs — step on one, exit the other. First traversal each fight grants YOU Strength + Speed\n" +
+                "- Void Rift: portal pairs - step on one, exit the other. First traversal each fight grants YOU Strength + Speed\n" +
                 "- Mirror Image: 2 decoy clones (8 HP, take double damage)\n" +
                 "- Phase Strike: teleports behind you + attacks\n" +
                 "- Void Pull: drags you 2 tiles toward it\n" +
@@ -646,28 +656,28 @@ public class GuideBookData {
             new Page("The Wither",
                 "Basalt Deltas final boss.\n\n" +
                 "Abilities:\n" +
-                "- Wither Skull Barrage: 3 skull projectiles (P2: 5). Skulls have 6 HP and hit for 7 — shoot them down!\n" +
+                "- Wither Skull Barrage: 3 skull projectiles (P2: 5). Skulls have 6 HP and hit for 7 - shoot them down!\n" +
                 "- Decay Aura: passive radius-2 (P2: 3) damage + Wither, ramping each turn\n" +
                 "- Melee: applies Wither II for 4 turns\n" +
                 "- Summon Wither Skeletons: 2 every 4 turns (max 4)\n" +
                 "- Charge: 4-tile dash, bonus ATK (P2 leaves a fire trail)\n\n" +
                 "Phase 2 - Wither Armor: heavy ranged resist, an 8-damage transition blast, more skulls, larger aura.\n\n" +
-                "The Wither effect ramps with duration — cleanse fast or fight in short bursts. Water damage is its only soft spot.")));
+                "The Wither effect ramps with duration - cleanse fast or fight in short bursts. Water damage is its only soft spot.")));
         enemies.add(mob("The Void Herald", "minecraft:end_rod",
             st("Boss", "70", "10", "3", "3", "1", null, "Water, Special", "Ranged, Physical", null),
             new Page("The Void Herald",
-                "Outer End Islands boss — fight on floating platforms over the abyss.\n\n" +
+                "Outer End Islands boss - fight on floating platforms over the abyss.\n\n" +
                 "Abilities:\n" +
                 "- Void Gale: pushes everything toward the void edge\n" +
                 "- Lightning Strike: marks a tile, +-pattern blast next turn\n" +
                 "- Platform Collapse: permanently removes 2x2 of floor\n" +
                 "- Blink Assault: teleport + hit 3 tiles\n\n" +
                 "Phase 2 - Oblivion: automatic collapses, gale pushes 3 tiles, 2 lightning marks, Speed 4, summons Endermites every 3 turns.\n\n" +
-                "Watch your footing — the boss doesn't have to kill you if the void does.")));
+                "Watch your footing - the boss doesn't have to kill you if the void does.")));
         enemies.add(mob("The Shulker Architect", "minecraft:shulker_shell",
             st("Boss", "75", "9", "4", "1", "5", "2x2", "Blunt", "Ranged, Slashing, Physical", null),
             new Page("The Shulker Architect",
-                "End City boss — a master builder waging siege warfare.\n\n" +
+                "End City boss - a master builder waging siege warfare.\n\n" +
                 "Abilities:\n" +
                 "- Bullet Storm: telegraphed volley of 4 bullets (P2: 6) on marked tiles\n" +
                 "- Deploy Turret: stationary shulker turret (6 HP, range 4, max 3)\n" +
@@ -678,14 +688,14 @@ public class GuideBookData {
         enemies.add(mob("The Chorus Mind", "minecraft:chorus_fruit",
             st("Boss", "80", "12", "3", "2", "1", null, "Water, Special", "Ranged, Physical", null),
             new Page("The Chorus Mind",
-                "Chorus Grove boss — the grove itself is the weapon.\n\n" +
+                "Chorus Grove boss - the grove itself is the weapon.\n\n" +
                 "Abilities:\n" +
                 "- Chorus Bloom: grows obstacle plants; the boss can teleport beside any of them\n" +
                 "- Entangle: 2x2 root zone (P2: 3x3), immobilize + damage\n" +
                 "- Chorus Bomb: range-4 2x2 blast + random teleport on hit\n" +
                 "- Resonance Cascade: EVERY plant pulses AoE damage\n\n" +
                 "Phase 2 - Overgrowth: plants auto-spread, cascades fire automatically, boss teleports every turn.\n\n" +
-                "Cut the garden down — every plant you destroy is one less bomb.")));
+                "Cut the garden down - every plant you destroy is one less bomb.")));
         enemies.add(mob("The Ender Dragon", "minecraft:dragon_egg",
             st("Boss", "100", "11", "5", "4", null, null, "Ranged, Special", "Water, Physical", null),
             new Page("The Ender Dragon",
@@ -694,7 +704,7 @@ public class GuideBookData {
                 "- Breath Wave / Breath Cross: telegraphed dragon's breath patterns\n" +
                 "- Swoop: diving strike along a marked line\n\n" +
                 "Every few turns it PERCHES: it lands, becomes targetable, and defends itself with Wing Buffet and Tail Slam. That's your damage window.\n\n" +
-                "End Crystals on the field empower it — destroy them (carefully, they explode).\n\n" +
+                "End Crystals on the field empower it - destroy them (carefully, they explode).\n\n" +
                 "Burst it on the perch, survive the strafes, and the End is yours.")));
         CATEGORIES.add(new Category("Enemy Bestiary", "minecraft:zombie_head",
             "Know your foes. Entries unlock as you encounter them.", enemies));
@@ -706,7 +716,7 @@ public class GuideBookData {
                 "Defeat a Biome Boss (final level of each biome) to gain a Level Up.\n\n" +
                 "EVEN levels grant 1 Stat Point.\n" +
                 "ODD levels grant 1 Affinity Point.\n\n" +
-                "Re-killing the same biome's boss has diminishing returns — each biome needs more repeat kills for the next level (1st kill, then 3rd, 7th, 15th...). Push forward for steady growth.\n\n" +
+                "Re-killing the same biome's boss has diminishing returns - each biome needs more repeat kills for the next level (1st kill, then 3rd, 7th, 15th...). Push forward for steady growth.\n\n" +
                 "Respec anytime: H for stats, J for affinities."),
             new Page("Emeralds",
                 "Winning combat earns Emeralds. The reward scales with biome difficulty and enemy count.\n\n" +
@@ -722,7 +732,7 @@ public class GuideBookData {
                 "Ranged Power - +1 ranged damage/point."),
             new Page("Defensive & Utility",
                 "Vitality - +2 max HP/point.\n\n" +
-                "Defense - +1 Armor Class/point. AC gives enemies a chance to MISS you — the gap between your AC and their attack decides how often.\n\n" +
+                "Defense - +1 Armor Class/point. AC gives enemies a chance to MISS you - the gap between your AC and their attack decides how often.\n\n" +
                 "Luck - +5% crit chance/point, +2%/point to weapon procs and loot rolls.\n\n" +
                 "Resourceful - +1 emerald/level & trader discounts."),
             new Page("Stat Builds",
@@ -744,7 +754,7 @@ public class GuideBookData {
                 "Physical - 3% counter-attack chance per point\n\n" +
                 "Press J to respec affinities. Gear adds more: armor pieces give half a point of their material's type, mob heads a full point."),
             new Page("Picking a Lane",
-                "Affinity rewards commitment — +3 damage per point snowballs fast on cheap 1-AP weapons.\n\n" +
+                "Affinity rewards commitment - +3 damage per point snowballs fast on cheap 1-AP weapons.\n\n" +
                 "Match your affinity to your loadout (see the Loadout entries below), then pick armor, trims and a mob head that feed the same type.\n\n" +
                 "Splashing 1-2 points into Pet for the bigger battle party is always solid.")
         )));
@@ -772,7 +782,7 @@ public class GuideBookData {
         progression.add(new Entry("§6Cleaving Loadouts", "minecraft:diamond_axe", List.of(
             new Page("Armor Crusher",
                 "§6Armor Crusher. Punish heavy mobs.\n\n" +
-                "Weapon: Iron, Diamond, Netherite — or GOLDEN — Axe (2 AP).\n" +
+                "Weapon: Iron, Diamond, Netherite - or GOLDEN - Axe (2 AP).\n" +
                 "Chance per hit to ignore enemy armor entirely.\n\n" +
                 "Armor: Iron set (Guard). +2 Cleaving, +2 AC.\n" +
                 "Trim: Snout = +1 Cleaving per piece.\n\n" +
@@ -807,13 +817,13 @@ public class GuideBookData {
             new Page("Riptide Bruiser",
                 "§3Riptide Bruiser. Dash through enemies in a line.\n\n" +
                 "Weapon: Trident + Riptide II/III. Dash hits + KB everything in the line (1 + level tiles of KB).\n\n" +
-                "Armor: Turtle Helmet (walk on water!) + any survival set.\n" +
+                "Armor: Turtle Helmet (walk on water) + any survival set.\n" +
                 "Trim: Coast = +1 Water per piece.\n\n" +
                 "Best on tight arenas. Turn a row of mobs into pinballs."),
             new Page("Lightning Caller",
                 "§3Lightning Caller. Channeling + Soaked combo.\n\n" +
                 "Weapon: Trident + Channeling + Loyalty.\n" +
-                "Channeling deals 3/6/10 by level on throw, DOUBLES vs Soaked targets, and chains (Lv1: 1, Lv2: 3, Lv3: 5 extra targets at half damage — full vs Soaked).\n\n" +
+                "Channeling deals 3/6/10 by level on throw, DOUBLES vs Soaked targets, and chains (Lv1: 1, Lv2: 3, Lv3: 5 extra targets at half damage - full vs Soaked).\n\n" +
                 "Setup: Soak first with corals, pufferfish, nautilus shell, or just throw the trident into a water tile.\n\n" +
                 "Tip: Soaked also gives -1 enemy Speed, so they can't kite."),
             new Page("Coral Statuses",
@@ -883,7 +893,7 @@ public class GuideBookData {
                 "Mob head: Skeleton Skull = +1 Ranged affinity."),
             new Page("Crossbow Pierce",
                 "§bCrossbow Pierce. Snipe down whole ranks.\n\n" +
-                "Weapon: Crossbow (4 AP!) — fires full rook lines across the entire arena. Piercing punches through multiple targets (50% behind the first) and inflicts Bleed. Quick Charge cuts the AP cost.\n\n" +
+                "Weapon: Crossbow (4 AP) - fires full rook lines across the entire arena. Piercing punches through multiple targets (50% behind the first) and inflicts Bleed. Quick Charge cuts the AP cost.\n\n" +
                 "Best vs single-file enemy lines or stacked mobs.\n\n" +
                 "Trim: Sentry per piece. Mob head: Skeleton Skull."),
             new Page("Multishot Spread",
@@ -918,7 +928,7 @@ public class GuideBookData {
             new Page("Brawler Streaker",
                 "§7Brawler Streaker. Keep killing, keep buffing.\n\n" +
                 "Weapon: empty main hand (fists are Physical).\n\n" +
-                "Armor: Leather set (Brawler). +2 Physical AND a kill streak (+30% dmg per kill, max 3 stacks — resets on a turn without a kill).\n\n" +
+                "Armor: Leather set (Brawler). +2 Physical AND a kill streak (+30% dmg per kill, max 3 stacks - resets on a turn without a kill).\n\n" +
                 "Mob head: Zombie Head = +1 Physical affinity.\n" +
                 "Affinity perk: 3% counter chance per point.\n" +
                 "Best vs swarms. Chained kills keep your buff alive."),
@@ -973,7 +983,7 @@ public class GuideBookData {
                 "Gold+Diamond (Gladiator): crits deal +50% damage\n" +
                 "Gold+Netherite (Berserker): crit chance rises as HP drops\n" +
                 "Diamond+Netherite (Stonewall): incoming damage capped at 6\n\n" +
-                "Copper Age Backport adds six more — see Ranged Loadouts.")
+                "Copper Age Backport adds six more - see Ranged Loadouts.")
         )));
         equipment.add(new Entry("Shield", "minecraft:shield", List.of(
             new Page("Shield Mechanics",
@@ -990,19 +1000,19 @@ public class GuideBookData {
                 "Creeper Head: +1 Blunt\n" +
                 "Piglin Head: +1 Slashing\n" +
                 "Wither Skeleton Skull: +1 Special\n\n" +
-                "You give up the helmet's AC and set slot — pure offense, no defense.")
+                "You give up the helmet's AC and set slot - pure offense, no defense.")
         )));
         equipment.add(new Entry("Enchantments", "minecraft:enchanted_book", List.of(
             new Page("Sword Enchantments",
                 "Sharpness: +1 dmg/lvl + a Bleed stack per hit. Bleeding enemies take damage equal to their stacks every turn.\n\n" +
-                "Smite: radiant AoE burst vs undead — 2x level bonus damage in a radius that grows with level.\n\n" +
+                "Smite: radiant AoE burst vs undead - 2x level bonus damage in a radius that grows with level.\n\n" +
                 "Bane of Arthropods: injects venom into arthropods. Poison + Slowness.\n\n" +
                 "Fire Aspect: cone of fire in your swing direction. Burns all enemies in the cone (wider with Sweeping Edge)."),
             new Page("Sword Enchantments (2)",
                 "Knockback: directional shockwave. Pushes the target + enemies behind them (level+1 tiles). Wall collision = bonus damage.\n\n" +
-                "Sweeping Edge: Lv1 hits a 3-wide chop, Lv2 a 5-tile arc, Lv3 a full 360° spin — at 60/75/90% damage. Lv3 adds knockback."),
+                "Sweeping Edge: Lv1 hits a 3-wide chop, Lv2 a 5-tile arc, Lv3 a full 360° spin - at 60/75/90% damage. Lv3 adds knockback."),
             new Page("Bow & Crossbow Enchantments",
-                "Power: big scaling — 1/3/5/8/11 bonus damage and up to +3 range.\n\n" +
+                "Power: big scaling - 1/3/5/8/11 bonus damage and up to +3 range.\n\n" +
                 "Flame: burns target and all adjacent enemies.\n\n" +
                 "Infinity: never consume arrows (only need 1). Tipped arrows are still consumed.\n\n" +
                 "Punch: radial knockback burst on impact + collision damage.\n\n" +
@@ -1015,13 +1025,13 @@ public class GuideBookData {
                 "Wind Burst: shockwave knockback on all adjacent + buffs your next Mace hit (+2/+3/+4)."),
             new Page("Trident Enchantments",
                 "Impaling: 1/2/5/8/10 bonus damage + Bleed stacks (1/1/2/2/3).\n\n" +
-                "Channeling: lightning on throw hit — 3/6/10 damage, DOUBLED vs Soaked, chains to 1/3/5 extra targets at half damage (full vs Soaked).\n\n" +
+                "Channeling: lightning on throw hit - 3/6/10 damage, DOUBLED vs Soaked, chains to 1/3/5 extra targets at half damage (full vs Soaked).\n\n" +
                 "Loyalty: trident ricochets to 1 nearby enemy per level (50% damage) before returning.\n\n" +
-                "Riptide: dash through enemies instead of throwing — damage + knockback scale with level."),
+                "Riptide: dash through enemies instead of throwing - damage + knockback scale with level."),
             new Page("Armor Enchantments",
                 "Protection (incl. Blast/Projectile Prot.): +1 Armor Class per 2 total levels worn.\n\n" +
                 "Thorns: 15% chance per level (boosted by Luck) to reflect damage back at attackers.\n\n" +
-                "Other vanilla armor enchants have no special combat effect — pick AC and set bonuses first.")
+                "Other vanilla armor enchants have no special combat effect - pick AC and set bonuses first.")
         )));
         equipment.add(new Entry("Tipped Arrows", "minecraft:tipped_arrow", List.of(
             new Page("Arrow Effects",
@@ -1096,7 +1106,7 @@ public class GuideBookData {
                 "At combat start, every party mob spawns into the arena as your ally. After the fight, survivors return to the hub automatically."),
             new Page("Mid-Combat Taming",
                 "You can also tame a wild mob during a fight: stand ADJACENT with line of sight and use its taming food (see Taming Foods).\n\n" +
-                "The mob joins your side for the rest of that battle — yes, even cows, sheep, pigs and chickens will fight for you.\n\n" +
+                "The mob joins your side for the rest of that battle - yes, even cows, sheep, pigs and chickens will fight for you.\n\n" +
                 "Win the fight and tamed survivors can join your hub roster."),
             new Page("Taming Foods",
                 "Wolf: Bone or Beef (raw/cooked)\n" +
@@ -1125,7 +1135,7 @@ public class GuideBookData {
         pets.add(new Entry("Mounts", "minecraft:saddle", List.of(
             new Page("How Mounting Works",
                 "Mount setup happens at the hub, not in combat.\n\n" +
-                "Step 1: get a rideable mob — tame a Horse/Donkey/Camel with its food, or recruit Mules, Skeleton Horses and Zombie Horses directly with Shift+Right-Click (they have no taming food).\n" +
+                "Step 1: get a rideable mob - tame a Horse/Donkey/Camel with its food, or recruit Mules, Skeleton Horses and Zombie Horses directly with Shift+Right-Click (they have no taming food).\n" +
                 "Step 2: equip a Saddle on it (right-click while holding the saddle).\n" +
                 "Step 3: add it to your battle party.\n\n" +
                 "When combat starts, you auto-mount that party mob. Mounting grants +3 Speed and the mount's HP pool as a bonus shield."),
@@ -1155,19 +1165,19 @@ public class GuideBookData {
         List<Entry> items = new ArrayList<>();
         items.add(new Entry("Combat Items", "minecraft:anvil", List.of(
             new Page("Offensive Items",
-                "Anvil (1 AP): 15 Special DMG — drops on the enemy at the start of next round\n" +
-                "TNT (1 AP): detonates next round — 8/5/3 dmg by distance, radius 2. Hurts everyone, including you\n" +
+                "Anvil (1 AP): 15 Special DMG - drops on the enemy at the start of next round\n" +
+                "TNT (1 AP): detonates next round - 8/5/3 dmg by distance, radius 2. Hurts everyone, including you\n" +
                 "Bell (2 AP): stun all enemies within 2 tiles\n" +
                 "Crossbow item-throw (2 AP): 3 DMG, 4-tile range\n" +
                 "Trident: melee (1 AP) or throw (2 AP)\n" +
                 "Fire Charge (1 AP): 4 fire DMG\n" +
                 "Spore Blossom (1 AP): radius-3 AoE, -1 Speed to enemies"),
             new Page("Defensive & Utility",
-                "Totem (passive): auto-revive at half HP — or EAT it for a full heal\n" +
-                "Spyglass (2 AP): mark an enemy — it takes 2x damage (1.5x bosses) this turn and next, glows, and reveals its stats\n" +
+                "Totem (passive): auto-revive at half HP - or EAT it for a full heal\n" +
+                "Spyglass (2 AP): mark an enemy - it takes 2x damage (1.5x bosses) this turn and next, glows, and reveals its stats\n" +
                 "Compass (1 AP): reveal all positions\n" +
                 "Brush (1 AP): dig random loot from an adjacent tile\n" +
-                "Ender Pearl (1 AP): teleport — costs 2 HP on landing\n" +
+                "Ender Pearl (1 AP): teleport - costs 2 HP on landing\n" +
                 "Wind Charge (1 AP): shove an enemy up to 3 tiles, or self-launch 2 tiles (+50% momentum bonus on your next hit)"),
             new Page("Goat Horns",
                 "Each horn variant is a reusable battle-cry (Special-affinity scaled):\n\n" +
@@ -1179,9 +1189,9 @@ public class GuideBookData {
                 "Call (2 AP): -1 Speed on ALL enemies\n" +
                 "Dream (2 AP): fire resistance\n" +
                 "Yearn (3 AP): poison ALL enemies\n\n" +
-                "Horns don't break — one horn, every fight."),
+                "Horns don't break - one horn, every fight."),
             new Page("Potions & Sherds",
-                "Drinkable potions work in combat — durations convert to turns, and Special affinity strengthens them.\n\n" +
+                "Drinkable potions work in combat - durations convert to turns, and Special affinity strengthens them.\n\n" +
                 "Splash & Lingering potions can be thrown for AoE effects; lingering leaves a cloud on the tiles.\n\n" +
                 "Pottery Sherds cast one-shot spells: Heart (heal+regen), Skull (execute), Prize (3x next hit), Arms Up (war cry), Blade (phantom slash), Snort (tectonic shove) and more.")
         )));
@@ -1191,12 +1201,12 @@ public class GuideBookData {
                 "Lava Bucket: 3 fire DMG/turn to enemies (keeps the empty bucket)\n" +
                 "Campfire: 2 HP/turn to allies in the surrounding 5x5 + light radius 3\n" +
                 "Honey Block: enemies lose all movement on it\n" +
-                "Slime Block: bouncy wall — knocks attackers back\n" +
+                "Slime Block: bouncy wall - knocks attackers back\n" +
                 "Powder Snow Bucket: freeze zone\n" +
                 "Lightning Rod: 4 AoE DMG next turn (2x vs Soaked)\n" +
                 "Cactus: 1 DMG/turn to adjacent enemies + blocks movement"),
             new Page("Placed Items (2)",
-                "Banner: +2 DEF (Special-scaled) to allies within 2 tiles. Multiple banners don't stack — strongest wins\n" +
+                "Banner: +2 DEF (Special-scaled) to allies within 2 tiles. Multiple banners don't stack - strongest wins\n" +
                 "Cake: heals 2 HP per bite, 3 bites, shareable\n" +
                 "Jukebox (2 AP): +3 Speed to all allies\n" +
                 "Hay Bale: heal an adjacent ally\n" +
@@ -1206,15 +1216,15 @@ public class GuideBookData {
                 "Torch: light radius 2 (small, fast)\n" +
                 "Lantern: light radius 3 + enemy detection\n" +
                 "Campfire: light radius 3 + healing\n\n" +
-                "Essential against The Hollow King — in darkness his minions hit harder, and his Phase 2 darkness is permanent.")
+                "Essential against The Hollow King - in darkness his minions hit harder, and his Phase 2 darkness is permanent.")
         )));
         items.add(new Entry("Terrain Tools", "minecraft:iron_pickaxe", List.of(
             new Page("Modify the Arena",
-                "Water Bucket: place a water tile on clean floor (fishable! keeps the bucket)\n" +
-                "Sponge: absorb adjacent water — but the sponge block itself blocks the tile\n" +
+                "Water Bucket: place a water tile on clean floor (fishable, keeps the bucket)\n" +
+                "Sponge: absorb adjacent water - but the sponge block itself blocks the tile\n" +
                 "Pickaxe: break an ADJACENT obstacle, make it walkable (costs durability)\n" +
                 "Scaffolding: +1 attack range while standing on it\n" +
-                "Fishing Rod (3 AP): random loot — stand adjacent to water\n\n" +
+                "Fishing Rod (3 AP): random loot - stand adjacent to water\n\n" +
                 "Boats: cross water tiles (consumed on entry). Each co-op player needs their own.")
         )));
         CATEGORIES.add(new Category("Items & Abilities", "minecraft:anvil",
@@ -1227,7 +1237,7 @@ public class GuideBookData {
                 "After clearing a level, something may be waiting on the path to the next one.\n\n" +
                 "- No events on a biome's first level or right before its boss\n" +
                 "- Early biomes see fewer events\n" +
-                "- A pity timer builds while nothing happens — droughts make events likelier\n\n" +
+                "- A pity timer builds while nothing happens - droughts make events likelier\n\n" +
                 "In co-op, many events are decided by PARTY VOTE. Disconnected players count as a pass.")
         )));
         events.add(new Entry("Wandering Trader", "minecraft:emerald", List.of(
@@ -1238,36 +1248,36 @@ public class GuideBookData {
                 "In Nether regions the trader is replaced by Piglin Barter."),
             new Page("Meeting the Trader",
                 "Your party walks up to the trader together, then they greet you with a few lines of dialogue (each trader type has its own greeting). Click to skip ahead.\n\n" +
-                "Pick \"Let's trade\" to open the shop. When you close it, the trader asks if you're done — choose \"No\" to keep shopping. The run continues once everyone is finished.")
+                "Pick \"Let's trade\" to open the shop. When you close it, the trader asks if you're done - choose \"No\" to keep shopping. The run continues once everyone is finished.")
         )));
         events.add(new Entry("Piglin Barter", "minecraft:gold_ingot", List.of(
             new Page("Gold for Goods",
                 "The Nether's answer to the trader.\n\n" +
                 "Offer gold to a piglin merchant across 5 trade categories. Bigger gold offers improve your odds of the good stuff, and overpaying generously is remembered.\n\n" +
-                "Bring gold ingots into the Nether — they're worthless in your pocket and priceless in a snout's hands.")
+                "Bring gold ingots into the Nether - they're worthless in your pocket and priceless in a snout's hands.")
         )));
         events.add(new Entry("Trial Chamber", "minecraft:trial_key", List.of(
             new Page("Optional Challenge",
                 "~10% chance between levels.\n\n" +
-                "A compact tuff-brick arena stocked with trial mobs — Bogged, Stray, Husk, Cave Spiders, Silverfish — guarded by a BREEZE mini-boss.\n\n" +
+                "A compact tuff-brick arena stocked with trial mobs - Bogged, Stray, Husk, Cave Spiders, Silverfish - guarded by a BREEZE mini-boss.\n\n" +
                 "OPTIONAL: the party votes to enter or pass.\n" +
                 "Rewards: Trial Keys, Mace, Wind Charges, Breeze Rods!")
         )));
         events.add(new Entry("Something Shiny", "minecraft:raw_gold", List.of(
             new Page("Bait or Treasure?",
                 "~10% chance: something glints on the ground ahead.\n\n" +
-                "The party votes — Take it or Leave it.\n\n" +
+                "The party votes - Take it or Leave it.\n\n" +
                 "Take: 50/50 between a rare reward... or an AMBUSH in a cramped arena.\n" +
                 "Leave: you walk past. Nothing gained, nothing risked.\n\n" +
                 "Tied votes spring the ambush. Keep healing items ready before grabbing."),
             new Page("If It's an Ambush",
-                "2-3 enemies pulled from the CURRENT biome's pool — zombies in Plains, magma cubes in the Nether, and so on — scaled to the biome like a normal fight. They aren't faster or special, just sudden and close in a small arena.\n\n" +
+                "2-3 enemies pulled from the CURRENT biome's pool - zombies in Plains, magma cubes in the Nether, and so on - scaled to the biome like a normal fight. They aren't faster or special, just sudden and close in a small arena.\n\n" +
                 "Win for a small emerald bonus. AoE weapons and a stun bell clear the crowd fast.")
         )));
         events.add(new Entry("Shrine of Fortune", "minecraft:gold_block", List.of(
             new Page("Emerald Gamble",
                 "~7% chance between levels.\n\n" +
-                "A mysterious shrine accepts offerings of 2, 5, or 10 emeralds for a random reward. Bigger offerings roll better reward bands — but every tier has a bust chance (about 25% / 15% / 8%): pay and receive NOTHING.\n\n" +
+                "A mysterious shrine accepts offerings of 2, 5, or 10 emeralds for a random reward. Bigger offerings roll better reward bands - but every tier has a bust chance (about 25% / 15% / 8%): pay and receive NOTHING.\n\n" +
                 "Rewards range from consumables up to diamond gear and totems, scaling with biome tier.\n\n" +
                 "Feeling lucky?")
         )));
@@ -1296,14 +1306,14 @@ public class GuideBookData {
             new Page("Hidden Riches",
                 "~4% chance between levels.\n\n" +
                 "A vault with NO enemies. Ring the lodestone to open it and claim 3-5 random items from the trial loot pool.\n\n" +
-                "The vault floor is pure gold. Take your time — nothing in here bites.")
+                "The vault floor is pure gold. Take your time - nothing in here bites.")
         )));
         events.add(new Entry("Ominous Trial", "minecraft:ominous_trial_key", List.of(
             new Page("Ultimate Challenge",
                 "~5% chance, LATE GAME ONLY (biome 10+).\n\n" +
                 "An ominous trial with a WARDEN, a Breeze, and elite trial mobs on deepslate.\n\n" +
                 "OPTIONAL but EXTREMELY dangerous.\n" +
-                "Rewards: hero gear — pieces stacked with 3-5 max-level enchantments — plus ominous keys and supplies.")
+                "Rewards: hero gear - pieces stacked with 3-5 max-level enchantments - plus ominous keys and supplies.")
         )));
         CATEGORIES.add(new Category("Random Events", "minecraft:trial_key",
             "Events that appear between levels.", events));
@@ -1313,13 +1323,13 @@ public class GuideBookData {
         coop.add(new Entry("Playing in a Party", "minecraft:player_head", List.of(
             new Page("Making a Party",
                 "Parties are run with chat commands, all under §e/craftics party§r:\n\n" +
-                "create — start a party (you become leader)\n" +
-                "invite <player> — leader invites someone; they get a clickable [ACCEPT]/[DECLINE]\n" +
-                "accept / decline — answer an invite\n" +
-                "list — show members and who's online\n" +
-                "leave — leave your party\n" +
-                "kick <player> / disband — leader only\n" +
-                "name <text> — rename the party\n\n" +
+                "create - start a party (you become leader)\n" +
+                "invite <player> - leader invites someone; they get a clickable [ACCEPT]/[DECLINE]\n" +
+                "accept / decline - answer an invite\n" +
+                "list - show members and who's online\n" +
+                "leave - leave your party\n" +
+                "kick <player> / disband - leader only\n" +
+                "name <text> - rename the party\n\n" +
                 "Up to 4 players (server-configurable). The leader starts and controls biome entry from the hub, and the whole party joins the run together."),
             new Page("Co-op Basics",
                 "Craftics is fully co-op. The party shares the campaign and fights together on the same grid.\n\n" +
@@ -1329,8 +1339,8 @@ public class GuideBookData {
                 "- Each player needs their own boat for water\n" +
                 "- Events (trials, shiny finds) are decided by party vote"),
             new Page("Keeping Each Other Alive",
-                "Feed an ADJACENT teammate any food — same healing as eating it yourself.\n\n" +
-                "A teammate knocked below the arena or downed is rescued through the combat flow instead of dying to the void — pick them back up and keep fighting.\n\n" +
+                "Feed an ADJACENT teammate any food - same healing as eating it yourself.\n\n" +
+                "A teammate knocked below the arena or downed is rescued through the combat flow instead of dying to the void - pick them back up and keep fighting.\n\n" +
                 "Stealth, fire resistance and buffs are tracked per player, and bush stealth now holds for everyone hiding, not just whoever's turn it is.")
         )));
         CATEGORIES.add(new Category("Multiplayer", "minecraft:player_head",
@@ -1340,8 +1350,8 @@ public class GuideBookData {
         List<Entry> worldEntries = new ArrayList<>();
         worldEntries.add(new Entry("Your Hub", "minecraft:campfire", List.of(
             new Page("Home Base",
-                "The hub is your personal island in the Craftics dimension — where you start runs and return between fights. In multiplayer every player gets their own island.\n\n" +
-                "Right-click the Level Select block to open the biome/level picker and launch a run. After every fight, event, or defeat you return here — fully healed — for the next attempt.\n\n" +
+                "The hub is your personal island in the Craftics dimension - where you start runs and return between fights. In multiplayer every player gets their own island.\n\n" +
+                "Right-click the Level Select block to open the biome/level picker and launch a run. After every fight, event, or defeat you return here - fully healed - for the next attempt.\n\n" +
                 "In a party, the leader picks the biome and starts the run from their hub; the whole party is pulled in together."),
             new Page("What You Do Here",
                 "Everything you can't do mid-combat happens at the hub:\n\n" +
@@ -1353,9 +1363,9 @@ public class GuideBookData {
         )));
         worldEntries.add(new Entry("The Campaign", "minecraft:filled_map", List.of(
             new Page("Biomes & Regions",
-                "The campaign runs through Overworld, Nether and End regions — each biome is a string of levels capped by a boss.\n\n" +
+                "The campaign runs through Overworld, Nether and End regions - each biome is a string of levels capped by a boss.\n\n" +
                 "Arenas grow bigger and nastier the deeper you go. Night levels, hazard tiles and themed enemy crews keep each biome distinct.\n\n" +
-                "Mid-biome surprises exist too — the Forest hides a Pale Garden where Creakings stalk..."),
+                "Mid-biome surprises exist too - the Forest hides a Pale Garden where Creakings stalk..."),
             new Page("New Game Plus",
                 "Defeat The Ender Dragon at the Dragon's Nest to trigger NEW GAME PLUS.\n\n" +
                 "The campaign restarts with everything scaled up (+25% per cycle, stacking). You keep your levels, gear and party.\n\n" +
@@ -1364,7 +1374,7 @@ public class GuideBookData {
         worldEntries.add(new Entry("Achievements", "minecraft:gold_ingot", List.of(
             new Page("Bragging Rights",
                 "50+ achievements track your run: boss kills, class mastery, combat feats and more.\n\n" +
-                "Check your progress in the achievements screen — some are sneaky (win a fight without moving, anyone?).")
+                "Check your progress in the achievements screen - some are sneaky (win a fight without moving, anyone?).")
         )));
         CATEGORIES.add(new Category("World & Progression", "minecraft:filled_map",
             "The hub, the campaign, and what comes after.", worldEntries));
@@ -1375,11 +1385,11 @@ public class GuideBookData {
             new Page("Copper Gear",
                 "§6Copper Age Backport§r adds copper weapons + armor on versions before vanilla added them.\n\n" +
                 "Copper Sword, Axe, Pickaxe, Hoe, and Shovel slot in between stone and iron. Damage type matches the equivalent tool.\n\n" +
-                "Full Copper armor set: §6Marksman§r — +4 Ranged Power and ranged ricochet. Six Copper hybrid sets stack on top of the standard 15. See Ranged Loadouts for the full table.")
+                "Full Copper armor set: §6Marksman§r - +4 Ranged Power and ranged ricochet. Six Copper hybrid sets stack on top of the standard 15. See Ranged Loadouts for the full table.")
         )));
         addons.add(new Entry("Artifacts", "minecraft:amethyst_shard", List.of(
             new Page("Head & Necklace",
-                "§5Artifacts§r — wearable trinkets via the Accessories slot system.\n\n" +
+                "§5Artifacts§r - wearable trinkets via the Accessories slot system.\n\n" +
                 "Head: Night Vision Goggles +1 Range, Snorkel +1 Water + Soaked immune, Cowboy Hat pulls hits 1 tile closer, Villager Hat +50% emeralds.\n\n" +
                 "Necklace: Flame Pendant burns adjacent 2 dmg/turn, Thorn Pendant reflects 25%, Cross Necklace halves the next hit, Shock Pendant 30% chain 3 dmg on hit."),
             new Page("Hands & Belt",
@@ -1391,28 +1401,28 @@ public class GuideBookData {
         )));
         addons.add(new Entry("Golem Overhaul", "minecraft:carved_pumpkin", List.of(
             new Page("Golem Allies",
-                "§7Golem Overhaul§r adds 9 golem types as recruitable allies — from scrappy Cobblestone golems to the mighty Netherite Golem.\n\n" +
+                "§7Golem Overhaul§r adds 9 golem types as recruitable allies - from scrappy Cobblestone golems to the mighty Netherite Golem.\n\n" +
                 "The Netherite Golem is RIDEABLE: a 1x3 walking fortress with lava-line attacks. Press M while mounted for its special ability.\n\n" +
-                "Coal Golem: summon mid-fight for 3 AP — a disposable bodyguard on demand.")
+                "Coal Golem: summon mid-fight for 3 AP - a disposable bodyguard on demand.")
         )));
         addons.add(new Entry("More Totems", "minecraft:totem_of_undying", List.of(
             new Page("Totem Variants",
-                "§eMoreTotems§r adds 7 totem variants, each with its own revive twist — element resistances, buffs on trigger, and more.\n\n" +
+                "§eMoreTotems§r adds 7 totem variants, each with its own revive twist - element resistances, buffs on trigger, and more.\n\n" +
                 "All work like the vanilla totem: carry to auto-revive, or eat for the heal.")
         )));
         addons.add(new Entry("Basic Weapons", "minecraft:iron_sword", List.of(
             new Page("The Six Weapons",
                 "§7Basic Weapons§r adds six weapon types in every tier from wood to netherite (no bronze):\n\n" +
-                "Dagger — Slashing, 1 AP, range 1. Dual-wield two daggers to strike TWICE per turn for 1 AP.\n" +
-                "Spear — Slashing, 1 AP, range 2. A reach weapon, hits from 2 tiles.\n" +
-                "Quarterstaff — Blunt, 1 AP, range 2. Reach 2 plus a small sweep to adjacent foes.\n" +
-                "Club — Blunt, 2 AP, range 1. Chance to Slow on hit.\n" +
-                "Hammer — Blunt, 3 AP, range 1. Mace-style knockback, stun, and shockwave.\n" +
-                "Glaive — Cleaving, 3 AP, range 1. Full hit plus a half-damage wide cleave arc."),
+                "Dagger - Slashing, 1 AP, range 1. Dual-wield two daggers for a second hit at 75% damage, about 1.75x per turn for 1 AP.\n" +
+                "Spear - Slashing, 1 AP, range 2. Lower base damage that grows +20% per tile you walk before attacking, up to 2x.\n" +
+                "Quarterstaff - Blunt, 1 AP, range 2. Reach 2 plus a small sweep to adjacent foes.\n" +
+                "Club - Blunt, 2 AP, range 1. Chance to Slow on hit.\n" +
+                "Hammer - Blunt, 3 AP, range 1. Mace-style knockback, stun, and shockwave.\n" +
+                "Glaive - Cleaving, 3 AP, range 1. Full hit plus a half-damage wide cleave arc."),
             new Page("Damage & Might",
                 "Damage tracks the vanilla weapons per tier:\n" +
                 "Dagger & Quarterstaff = Sword damage minus 1\n" +
-                "Spear = Sword damage\n" +
+                "Spear = Sword damage minus 2 (before the movement bonus)\n" +
                 "Club = Axe damage\n" +
                 "Hammer & Glaive = Axe damage plus 1\n\n" +
                 "The §bMight§r enchantment goes on the Blunt weapons (Club, Hammer, Quarterstaff): +1 bonus damage and +5% stun chance per level.\n\n" +
@@ -1420,7 +1430,7 @@ public class GuideBookData {
         )));
         addons.add(new Entry("Instruments", "minecraft:note_block", List.of(
             new Page("Battle Bards",
-                "§dGenshin Instruments / Even More Instruments§r — 15 playable instruments double as Special-class performance weapons.\n\n" +
+                "§dGenshin Instruments / Even More Instruments§r - 15 playable instruments double as Special-class performance weapons.\n\n" +
                 "Yes, you can fight the Wither with a lyre. Special affinity scales the encore.")
         )));
         addons.add(new Entry("Mob Variant Mods", "minecraft:creeper_spawn_egg", List.of(
@@ -1429,7 +1439,7 @@ public class GuideBookData {
                 "Each variant inherits base Creeper combat AI but with biome-flavored explosions (Cave Creeper blinds, Snowy Creeper slows, etc.). Plan for the post-blast status effect."),
             new Page("Variants, Ventures & More",
                 "§3Variants & Ventures§r adds zombie, skeleton, and spider sub-variants with stat tweaks. Stats roll within the species' Craftics range, so existing loadouts handle them.\n\n" +
-                "§aSpring to Life§r adds variant cows, pigs, chickens — all taming + ally rules apply unchanged.\n\n" +
+                "§aSpring to Life§r adds variant cows, pigs, chickens - all taming + ally rules apply unchanged.\n\n" +
                 "§fPale Garden Backport§r brings the Creaking fight to older Minecraft versions.\n\n" +
                 "§bMulti Arrow Effects§r lets tipped arrows stack multiple effects per shot.")
         )));
@@ -1439,8 +1449,9 @@ public class GuideBookData {
         // === HALL OF TESTERS ===
         // Custom-rendered from TesterRegistry by GuideBookScreen (it draws each
         // person's skin head and their live rank color), so no static entries
-        // are needed here — the category just provides the sidebar tab.
+        // are needed here - the category just provides the sidebar tab.
         CATEGORIES.add(new Category("Hall of Testers", "minecraft:player_head",
             "The people who built, tested, and debugged Craftics. Thank you.", List.of()));
     }
 }
+

@@ -13,7 +13,7 @@ import java.util.List;
  * Cave Spider AI: Fast venomous ambush predator with ceiling drop.
  * - Speed 3 (faster than regular spider)
  * - Applies poison on hit
- * - HIT AND RUN: bites then scuttles away with leftover movement — the venom
+ * - HIT AND RUN: bites then scuttles away with leftover movement - the venom
  *   does the work, the spider doesn't stand in sword range while it ticks
  * - Same ceiling mechanic as SpiderAI but faster and more aggressive
  * - Pounce range 2 (shorter than regular spider's 3)
@@ -34,7 +34,7 @@ public class CaveSpiderAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Adjacent — venomous bite, then skitter out of reach if possible
+        // Adjacent - venomous bite, then skitter out of reach if possible
         if (dist == 1) {
             EnemyAction combo = AIUtils.hitAndRun(self, arena, playerPos, List.of(), self.getAttackPower());
             if (combo != null) return combo;
@@ -63,7 +63,7 @@ public class CaveSpiderAI implements EnemyAI {
             }
         }
 
-        // Too far — ascend to ceiling
+        // Too far - ascend to ceiling
         return new EnemyAction.CeilingAscend();
     }
 

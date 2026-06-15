@@ -35,7 +35,7 @@ public final class ArtifactsCompat {
         if (!ArtifactsReflect.isAvailable()) {
             CrafticsMod.LOGGER.warn(
                 "[Craftics × Artifacts] Artifacts mod is loaded but EquipmentHelper could not be resolved "
-                + "— artifact combat effects will be disabled.");
+                + "- artifact combat effects will be disabled.");
             return;
         }
         CrafticsAPI.registerEquipmentScanner(SCANNER_ID, new ArtifactsScanner());

@@ -11,11 +11,11 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Rabbit AI: Skittish — always flees if player is within 2 blocks.
+ * Rabbit AI: Skittish - always flees if player is within 2 blocks.
  * Otherwise wanders 1-2 blocks randomly like a farm animal.
  */
 public class RabbitAI implements EnemyAI {
-    /** Rabbits only flee and wander — never a threat to the player. */
+    /** Rabbits only flee and wander - never a threat to the player. */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return false;

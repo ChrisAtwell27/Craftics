@@ -70,12 +70,12 @@ final class AllyTargeting {
         return best;
     }
 
-    /** Live enemy closest to the player — the biggest threat to body-block. */
+    /** Live enemy closest to the player - the biggest threat to body-block. */
     static CombatEntity nearestEnemyToPlayer(GridArena arena, List<CombatEntity> combatants) {
         return nearestEnemy(arena.getPlayerGridPos(), combatants);
     }
 
-    /** Live enemy with the lowest current HP — a finisher's prey. */
+    /** Live enemy with the lowest current HP - a finisher's prey. */
     static CombatEntity weakestEnemy(List<CombatEntity> combatants) {
         CombatEntity best = null;
         int bestHp = Integer.MAX_VALUE;
@@ -132,7 +132,7 @@ final class AllyTargeting {
 
     /**
      * Flee from {@code threat}: try two tiles directly away first, then fall
-     * back to the reachable tile that gains the most distance — so a wounded
+     * back to the reachable tile that gains the most distance - so a wounded
      * ally escapes around a corner instead of standing still because the
      * straight line out happened to be blocked. {@code null} if truly boxed in.
      */
@@ -145,7 +145,7 @@ final class AllyTargeting {
         List<GridPos> path = pathTo(self, arena, retreat);
         if (path != null && !path.isEmpty()) return new EnemyAction.Flee(path);
 
-        // Straight line blocked — take the best reachable escape instead.
+        // Straight line blocked - take the best reachable escape instead.
         GridPos best = null;
         int bestDist = pos.manhattanDistance(threatPos);
         for (GridPos candidate : Pathfinding.getReachableTiles(

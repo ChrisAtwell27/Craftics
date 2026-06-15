@@ -47,7 +47,7 @@ public final class HintDismissalStore {
             JsonObject obj = JsonParser.parseString(body).getAsJsonObject();
             obj.getAsJsonArray("dismissed").forEach(e -> dismissed.add(e.getAsString()));
         } catch (Exception ignored) {
-            // Corrupt or unreadable — start fresh; do not delete the user's file.
+            // Corrupt or unreadable - start fresh; do not delete the user's file.
         }
     }
 
@@ -58,7 +58,7 @@ public final class HintDismissalStore {
             if (file.getParent() != null) Files.createDirectories(file.getParent());
             Files.writeString(file, obj.toString());
         } catch (IOException ignored) {
-            // Disk-full or permissions — silently drop; hints will simply re-fire next launch.
+            // Disk-full or permissions - silently drop; hints will simply re-fire next launch.
         }
     }
 }

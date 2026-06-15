@@ -1,15 +1,15 @@
-# Boss improvements
+﻿# Boss improvements
 
 A pass over the boss system: one systemic state bug fixed for all 18+ bosses,
 plus new spectacle around the three beats of every boss fight (intro, phase
 two, the kill) and clearer telegraph rendering.
 
-All four Stonecutter shards compile and test clean (`1.21.1`–`1.21.5`,
+All four Stonecutter shards compile and test clean (`1.21.1`-`1.21.5`,
 non-active shards verified with `--rerun-tasks`).
 
 ---
 
-## 1. The shared-instance state leak — fixed for every boss
+## 1. The shared-instance state leak - fixed for every boss
 
 `AIRegistry` hands back **one shared AI instance per key**, and `BossAI`
 carries a lot of per-fight state on that instance: `phaseTwo`, `turnCounter`,
@@ -19,7 +19,7 @@ been given fresh per-fight instances; the other fifteen shared theirs across
 every fight in the server's lifetime. Symptoms:
 
 - Any boss killed while in phase two left the **next** boss of its kind
-  starting in phase two — no transition, wrong cooldowns, stale turn counter.
+  starting in phase two - no transition, wrong cooldowns, stale turn counter.
 - The **Broodmother**'s entire nest state machine (`HUNTING`/`NESTING`, the
   egg-sac list, pending web rain) leaked between fights.
 - The **Hollow King**'s `lightsOutPermanent` flag persisted, so a rematch
@@ -27,7 +27,7 @@ every fight in the server's lifetime. Symptoms:
 - Stale minion ID lists could alias onto new entity IDs in later fights.
 
 Fix ([AIRegistry.java](../src/main/java/com/crackedgames/craftics/combat/ai/AIRegistry.java)):
-boss AIs are now registered through `registerBoss(key, factory)` — the shared
+boss AIs are now registered through `registerBoss(key, factory)` - the shared
 instance remains for stateless queries (`getGridSize`), and
 `AIRegistry.createFresh(key)` mints a per-fight copy that
 [CombatManager](../src/main/java/com/crackedgames/craftics/combat/CombatManager.java)
@@ -41,8 +41,8 @@ no-arg-constructor fallback. The Molten King's split copies keep their explicit
 | Beat | Before | Now |
 |------|--------|-----|
 | **Intro** | "BOSS FIGHT" title with the *level* name as subtitle; generic combat-start growl | Subtitle names the boss itself ("The Hollow King"), with a wither-spawn sting layered over the growl |
-| **Phase two** | A silent flag flip — only addons were notified; players inferred it from behavior | Combat-log line, a "⚠ <boss> — PHASE 2 ⚠" subtitle for every party member, ravager roar + smoke/flash burst on the boss, camera shake and a dark-red screen flash on all clients |
-| **Defeat** | Generic "X defeated!" line, small poof, orb-pickup ding | "☠ <boss> DEFEATED! ☠" gold line, explosion bloom + golden totem rain, wither-death knell, camera shake + golden screen flash. Skipped for a gen-0 Molten King splitting into fragments — that's not the kill |
+| **Phase two** | A silent flag flip - only addons were notified; players inferred it from behavior | Combat-log line, a " <boss> - PHASE 2 " subtitle for every party member, ravager roar + smoke/flash burst on the boss, camera shake and a dark-red screen flash on all clients |
+| **Defeat** | Generic "X defeated!" line, small poof, orb-pickup ding | " <boss> DEFEATED! " gold line, explosion bloom + golden totem rain, wither-death knell, camera shake + golden screen flash. Skipped for a gen-0 Molten King splitting into fragments - that's not the kill |
 
 Client reactions ride a new `EVENT_BOSS_MOMENT` combat event
 ([CombatEventPayload.java](../src/main/java/com/crackedgames/craftics/network/CombatEventPayload.java),
@@ -54,7 +54,7 @@ titles/sounds/particles are server-driven so all co-op clients see the same mome
 The sync payload now carries a `;phase=2` token for bosses in phase two
 (`BossAI.isInPhaseTwo()`); the boss HP bar in
 [CombatHudOverlay.java](../src/client/java/com/crackedgames/craftics/client/CombatHudOverlay.java)
-shows it permanently — the bar frame turns molten gold and a **II** badge sits
+shows it permanently - the bar frame turns molten gold and a **II** badge sits
 at the bar's right edge. The screen flash tells you the moment happened; the
 badge keeps telling you afterwards.
 
@@ -63,11 +63,11 @@ badge keeps telling you afterwards.
 Boss warning tiles ([TileOverlayRenderer.java](../src/client/java/com/crackedgames/craftics/client/TileOverlayRenderer.java))
 were a flat pulsing red fill. Now:
 
-- A **crisp pulsing perimeter outline** around the warned region — reads as
+- A **crisp pulsing perimeter outline** around the warned region - reads as
   "the strike lands exactly here", distinct from the softer danger/threat washes.
 - A **through-wall ghost pass** (same GREATER-depth xray as the move/attack
   highlights), so a telegraph behind a boulder at a low camera angle is still
-  visible — a telegraph you can't see is a hit you can't dodge.
+  visible - a telegraph you can't see is a hit you can't dodge.
 
 ## 5. Summons stop spawning in lava
 
@@ -86,8 +86,8 @@ fixing concrete logic bugs:
 - **Chorus Mind Resonance Cascade hit nothing.** The warning marked every
   plant-adjacent tile, but the resolve was a radius-0 strike on the *boss's
   own tile*. The resolve now pulses exactly the warned tiles. Also: phase-2
-  auto-spread plants only ever grew the AI's private list — invisible,
-  unhittable bookkeeping — and now grow as real chorus obstacle tiles; the
+  auto-spread plants only ever grew the AI's private list - invisible,
+  unhittable bookkeeping - and now grow as real chorus obstacle tiles; the
   plant ledger re-validates against the arena each turn; the free teleport
   lands on a footprint-valid tile *beside* a plant (not on the obstacle), and
   abilities are now ranged from the post-teleport position (they used the
@@ -96,19 +96,19 @@ fixing concrete logic bugs:
   the 4 (P2: 6) target list, threw it away, and fired one instant
   untelegraphed AoE. Now a telegraphed volley: marked tiles resolve next turn
   as one bullet each, with a half-power plink while it charges. Teleport Link
-  also teleported the 2×2 boss squarely onto its own still-living turret —
+  also teleported the 2×2 boss squarely onto its own still-living turret -
   it now lands footprint-validated beside the farthest turret.
 - **Void Herald's phase-2 auto-collapse silently never happened** whenever
   another telegraph fired the same turn: it set its warning and fell through,
   and the later ability overwrote `pendingWarning`. It now returns (advancing
   while the cracks spread). Blink Assault re-rolled its landing between
-  checking and using it, and ignored the boss's 2×2 footprint — both fixed.
+  checking and using it, and ignored the boss's 2×2 footprint - both fixed.
 - **Molten King's eruption could teleport onto the player.** When no landing
   tile validated (anchor-only checks that ignored the 4×4/2×2 footprint), the
   fallback was the player's own tile. Landings are now footprint-validated,
   exclude the player, and a failed leap no longer burns the cooldown.
 - **Wither's decay-aura cooldown was dead code** (set every turn, never
-  checked — the aura is genuinely passive and now documented as such). Its
+  checked - the aura is genuinely passive and now documented as such). Its
   pulse-and-approach composite also only works now that composite Move
   sub-actions execute (round-1 dispatcher fix).
 
@@ -118,7 +118,7 @@ Bastion Brute (summon, charge), Wailing Revenant (all four ability slots),
 Void Walker (mirror image, phase strike, rift), Void Herald (endermites,
 collapse), Shulker Architect (turret, link) and the Wither (skulls, summon,
 charge) all paid their cooldown *before* checking whether the ability could
-actually fire — a full-arena or blocked-lane failure locked the ability out
+actually fire - a full-arena or blocked-lane failure locked the ability out
 for its whole cooldown anyway. All of them now pay on success only.
 
 ### 6.3 Other fixes
@@ -130,10 +130,10 @@ for its whole cooldown anyway. All of them now pay on success only.
   stationary artillery boss spits a plain half-power fireball instead of
   wailing at nothing.
 - **Phantom** (End roster): its stacking miss-streak lived on the shared AI
-  instance — every phantom on the server pooled one streak across fights.
+  instance - every phantom on the server pooled one streak across fights.
   Per-entity now; its circling reposition also no longer lands on the
   player's or an ally's tile.
-- **DragonAI** audited clean — one misleading field renamed
+- **DragonAI** audited clean - one misleading field renamed
   (`lastSwoopHorizontal` → `lastWaveHorizontal`; it alternates breath-wave
   orientation, unrelated to the swoop axis). Shulker turret and End Crystal
   AIs are stateless and were already correct.
@@ -144,7 +144,7 @@ for its whole cooldown anyway. All of them now pay on success only.
    resolve; in phase two, new chorus obstacles visibly grow each turn and the
    boss blinks beside them, never onto them.
 2. Shulker Architect: bullet storm marks 4 (P2: 6) tiles that each get struck
-   next turn; melee the boss next to a turret network — it blinks beside its
+   next turn; melee the boss next to a turret network - it blinks beside its
    farthest turret, never on top of one.
 3. Void Herald phase two: platforms keep collapsing every other turn even
    while gales/lightning telegraphs are active.
@@ -168,3 +168,5 @@ for its whole cooldown anyway. All of them now pay on success only.
    through the wall, with a pulsing outline around the region.
 6. Revenant's Raise the Dead in a Gravefire-Grid arena: zombies appear on
    safe tiles, not in the fire (unless nothing safe remains).
+
+

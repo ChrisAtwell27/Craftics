@@ -4,7 +4,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Runtime registry of ally entity types that taunt — forcing enemies to target
+ * Runtime registry of ally entity types that taunt - forcing enemies to target
  * them while alive. Mirrors {@link AllyArchetypes}/{@link AllyAbilities}: a compat
  * module registers a taunter type at mod init (e.g. the terracotta golem), and
  * {@code CombatManager} lazily flags any matching ally as taunting. With nothing

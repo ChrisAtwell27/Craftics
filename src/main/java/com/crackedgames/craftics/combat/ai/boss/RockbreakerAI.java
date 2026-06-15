@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Stony Peaks Boss — "The Rockbreaker" (Mountain Warlord)
+ * Stony Peaks Boss - "The Rockbreaker" (Mountain Warlord)
  * Entity: Vindicator | 30HP / 6ATK / 3DEF / Speed 2 | Size 2×2
  *
  * Aggressive melee boss that relentlessly closes distance and punishes with knockback.
@@ -37,7 +37,7 @@ import java.util.List;
  * - Ground Pound (melee): When adjacent, 2×2 shockwave around boss, 5 dmg + knockback 2.
  *   Instant (no telegraph). P2: knockback 3.
  *
- * Phase 2 — "Unstoppable": +1 speed, all knockback distances increased,
+ * Phase 2 - "Unstoppable": +1 speed, all knockback distances increased,
  *           shorter cooldowns, destroys obstacles when charging through them.
  */
 public class RockbreakerAI extends BossAI {
@@ -99,7 +99,7 @@ public class RockbreakerAI extends BossAI {
 
     private EnemyAction castGroundPound(CombatEntity self, GridArena arena,
             GridPos myPos, GridPos playerPos, boolean p2, int extraDmg) {
-        // Instant shockwave — no telegraph, rewards staying close
+        // Instant shockwave - no telegraph, rewards staying close
         int kbDist = p2 ? 3 : 2;
         int[] pushDir = getDirectionToward(myPos, playerPos);
         return new EnemyAction.CompositeAction(List.of(

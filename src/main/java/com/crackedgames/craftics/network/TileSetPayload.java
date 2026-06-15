@@ -13,10 +13,10 @@ public record TileSetPayload(
     int[] moveTiles,     // flat: [x1, z1, x2, z2, ...]
     int[] attackTiles,   // flat: [x1, z1, x2, z2, ...]
     int[] dangerTiles,   // flat: [x1, z1, x2, z2, ...]
-    int[] warningTiles,  // flat: [x1, z1, x2, z2, ...] — boss attack telegraphs
+    int[] warningTiles,  // flat: [x1, z1, x2, z2, ...] - boss attack telegraphs
     int[] enemyMap,      // flat: [x, z, entityId, x, z, entityId, ...]
     String enemyTypes,   // pipe-separated entity type IDs parallel to enemyMap triplets
-    int[] mountTiles     // flat: [x1, z1, ...] — netherite mount 1×3 footprint side tiles
+    int[] mountTiles     // flat: [x1, z1, ...] - netherite mount 1×3 footprint side tiles
 ) implements CustomPayload {
 
     public static final Id<TileSetPayload> ID =

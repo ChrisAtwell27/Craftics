@@ -41,21 +41,21 @@ public class HubRoomBuilder {
     private static final int DIRT_DEPTH = 3; // 3 layers of dirt
     private static final int YARD_Y = 63; // ground level (1 below floor)
 
-    // Hub version for rebuild detection — bump to trigger rebuild
+    // Hub version for rebuild detection - bump to trigger rebuild
     public static final int HUB_VERSION = 3;
 
     // Offset applied to all block placements (set before building)
     private static int ox = 0, oz = 0;
 
-    /** Create an offset BlockPos — all hub block placements go through this. */
+    /** Create an offset BlockPos - all hub block placements go through this. */
     private static BlockPos bp(int x, int y, int z) {
         return new BlockPos(ox + x, y, oz + z);
     }
 
-    /** Lobby version — bump to trigger rebuild of the central lobby. */
+    /** Lobby version - bump to trigger rebuild of the central lobby. */
     public static final int LOBBY_VERSION = 2;
 
-    /** Build the central lobby — a floating island waiting room with barrier walls. */
+    /** Build the central lobby - a floating island waiting room with barrier walls. */
     public static void buildLobby(ServerWorld world) {
         CrafticsMod.LOGGER.info("Building central lobby...");
         BlockState stone = Blocks.SMOOTH_STONE.getDefaultState();
@@ -74,7 +74,7 @@ public class HubRoomBuilder {
         int spawnY = 65;  // player Y
         int wallHeight = 5; // barrier walls
 
-        // Build the floating island disc — circular platform
+        // Build the floating island disc - circular platform
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
                 double dist = Math.sqrt(x * x + z * z);
@@ -177,7 +177,7 @@ public class HubRoomBuilder {
         return dist <= 13; // radius 12 + 1 block margin
     }
 
-    /** Build the central lobby (legacy entry point — calls buildLobby). */
+    /** Build the central lobby (legacy entry point - calls buildLobby). */
     public static void build(ServerWorld world) {
         buildLobby(world);
     }
@@ -193,7 +193,7 @@ public class HubRoomBuilder {
         net.minecraft.util.Identifier schemId = net.minecraft.util.Identifier.of("craftics", "home.schem");
         var resource = world.getServer().getResourceManager().getResource(schemId);
         if (resource.isEmpty()) {
-            CrafticsMod.LOGGER.error("home.schem not found in resources — cannot build island");
+            CrafticsMod.LOGGER.error("home.schem not found in resources - cannot build island");
             return hubCenter;
         }
 
@@ -212,7 +212,7 @@ public class HubRoomBuilder {
         int placeZ = hubCenter.getZ() - schem.length() / 2;
         schem.place(world, placeX, placeY, placeZ);
 
-        // Scan for podzol — the marker block for the spawn point
+        // Scan for podzol - the marker block for the spawn point
         BlockPos spawnPos = hubCenter; // fallback
         for (int y = 0; y < schem.height(); y++) {
             for (int z = 0; z < schem.length(); z++) {
@@ -237,7 +237,7 @@ public class HubRoomBuilder {
     }
 
     /**
-     * Build a large outdoor area around the hub — grass surface, 3 dirt layers, bedrock floor.
+     * Build a large outdoor area around the hub - grass surface, 3 dirt layers, bedrock floor.
      * This gives players space for animals, farming, and general outdoor activity.
      * 60x60 block area centered roughly on the house.
      */
@@ -425,7 +425,7 @@ public class HubRoomBuilder {
             world.setBlockState(bp(MAIN_MIN_X, CEILING_Y, z), beamZ);
         }
 
-        // East wall (X = MAIN_MAX_X), runs along Z — but leave opening for bump-out
+        // East wall (X = MAIN_MAX_X), runs along Z - but leave opening for bump-out
         for (int z = MAIN_MIN_Z + 1; z < MAIN_MAX_Z; z++) {
             if (z >= BUMP_MIN_Z && z <= BUMP_MAX_Z) continue; // opening to bump-out
             world.setBlockState(bp(MAIN_MAX_X, INTERIOR_Y, z), wainscotZ);
@@ -514,7 +514,7 @@ public class HubRoomBuilder {
     private static void buildWindows(ServerWorld world) {
         BlockState glassPane = Blocks.GLASS_PANE.getDefaultState();
 
-        // North wall windows (Z = MAIN_MIN_Z) — two 2-wide windows at Y=66-67
+        // North wall windows (Z = MAIN_MIN_Z) - two 2-wide windows at Y=66-67
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
             // Left window
             world.setBlockState(bp(-3, y, MAIN_MIN_Z), glassPane);
@@ -524,7 +524,7 @@ public class HubRoomBuilder {
             world.setBlockState(bp(3, y, MAIN_MIN_Z), glassPane);
         }
 
-        // South wall windows (Z = MAIN_MAX_Z) — two windows, leaving center for door
+        // South wall windows (Z = MAIN_MAX_Z) - two windows, leaving center for door
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
             // Left window
             world.setBlockState(bp(-4, y, MAIN_MAX_Z), glassPane);
@@ -534,13 +534,13 @@ public class HubRoomBuilder {
             world.setBlockState(bp(4, y, MAIN_MAX_Z), glassPane);
         }
 
-        // West wall window (X = MAIN_MIN_X) — one 2-tall window
+        // West wall window (X = MAIN_MIN_X) - one 2-tall window
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
             world.setBlockState(bp(MAIN_MIN_X, y, -1), glassPane);
             world.setBlockState(bp(MAIN_MIN_X, y, 0), glassPane);
         }
 
-        // Bump-out east window (X = BUMP_MAX_X) — one 2-tall window
+        // Bump-out east window (X = BUMP_MAX_X) - one 2-tall window
         for (int y = INTERIOR_Y + 1; y <= INTERIOR_Y + 2; y++) {
             world.setBlockState(bp(BUMP_MAX_X, y, 0), glassPane);
         }
@@ -634,7 +634,7 @@ public class HubRoomBuilder {
         int roofMinX = MAIN_MIN_X - 1;
         int roofMaxX = MAIN_MAX_X + 1;
 
-        // Roof layers — north and south slopes rising to meet at ridge
+        // Roof layers - north and south slopes rising to meet at ridge
         // Y=68: eave overhang (already has ceiling inside)
         // North eave at Z = MAIN_MIN_Z - 1, South eave at Z = MAIN_MAX_Z + 1
         for (int x = roofMinX; x <= roofMaxX; x++) {
@@ -647,7 +647,7 @@ public class HubRoomBuilder {
             // Y=70
             world.setBlockState(bp(x, 70, MAIN_MIN_Z + 1), stairsN);
             world.setBlockState(bp(x, 70, MAIN_MAX_Z - 1), stairsS);
-            // Y=71 — ridge cap (slabs)
+            // Y=71 - ridge cap (slabs)
             world.setBlockState(bp(x, 71, MAIN_MIN_Z + 2), slab);
             world.setBlockState(bp(x, 71, MAIN_MAX_Z - 2), slab);
         }
@@ -750,21 +750,21 @@ public class HubRoomBuilder {
     }
 
     private static void placeFurniture(ServerWorld world) {
-        // Level select block — centered on north wall, shifted 1 right
+        // Level select block - centered on north wall, shifted 1 right
         world.setBlockState(bp(1, INTERIOR_Y, MAIN_MIN_Z + 1),
             ModBlocks.LEVEL_SELECT_BLOCK.getDefaultState()
                 .with(com.crackedgames.craftics.block.LevelSelectBlock.FACING, Direction.EAST));
 
-        // Furnace — against NW interior wall, facing into room
+        // Furnace - against NW interior wall, facing into room
         world.setBlockState(bp(MAIN_MIN_X + 1, INTERIOR_Y, MAIN_MIN_Z + 1),
             Blocks.FURNACE.getDefaultState()
                 .with(Properties.HORIZONTAL_FACING, Direction.EAST));
 
-        // Crafting table — between furnace and chest on west wall
+        // Crafting table - between furnace and chest on west wall
         world.setBlockState(bp(MAIN_MIN_X + 1, INTERIOR_Y, 0),
             Blocks.CRAFTING_TABLE.getDefaultState());
 
-        // Chest — against SW interior wall
+        // Chest - against SW interior wall
         world.setBlockState(bp(MAIN_MIN_X + 1, INTERIOR_Y, MAIN_MAX_Z - 1),
             Blocks.CHEST.getDefaultState()
                 .with(Properties.HORIZONTAL_FACING, Direction.EAST));
@@ -806,13 +806,13 @@ public class HubRoomBuilder {
     public static boolean isHubShell(BlockPos pos, BlockPos hubCenter) {
         int x = pos.getX() - hubCenter.getX(), y = pos.getY(), z = pos.getZ() - hubCenter.getZ();
 
-        // Foundation and below — always protected
+        // Foundation and below - always protected
         if (y <= FLOOR_Y && isWithinFootprint(x, z)) return true;
 
-        // Ceiling level — protected
+        // Ceiling level - protected
         if (y == CEILING_Y && isWithinFootprint(x, z)) return true;
 
-        // Roof (Y > CEILING_Y) — protected
+        // Roof (Y > CEILING_Y) - protected
         if (y > CEILING_Y && isWithinRoofprint(x, y, z)) return true;
 
         // Main room walls (Y = 65-67)

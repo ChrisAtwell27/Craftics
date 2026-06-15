@@ -8,7 +8,7 @@ import java.util.List;
  * Each preset returns a list of corner offsets {@code (dx, dz)} relative to a
  * center tile; the command applies those offsets at the caster's position and
  * drops {@code ArenaCornerBlock} markers at each one. Sizes are quoted in
- * "radius" — the half-width from the center to the polygon's outer edge — so
+ * "radius" - the half-width from the center to the polygon's outer edge - so
  * the playable interior is roughly {@code 2 × radius + 1} tiles across.
  *
  * <p>All corner lists are returned in a sensible walk order (corners adjacent
@@ -66,7 +66,7 @@ public final class ArenaShapes {
         return out;
     }
 
-    /** Regular octagon — square with chamfered corners. The "chamfer cut"
+    /** Regular octagon - square with chamfered corners. The "chamfer cut"
      *  is roughly {@code r/3} which keeps the shape readable at small radii. */
     private static List<Offset> octagon(int r) {
         int c = Math.max(1, r / 3);
@@ -119,7 +119,7 @@ public final class ArenaShapes {
         return out;
     }
 
-    /** L-shape — square minus the NE quadrant. 6 corners. */
+    /** L-shape - square minus the NE quadrant. 6 corners. */
     private static List<Offset> lShape(int r) {
         List<Offset> out = new ArrayList<>(6);
         out.add(new Offset(-r, -r));
@@ -131,7 +131,7 @@ public final class ArenaShapes {
         return out;
     }
 
-    /** T-shape — top horizontal bar with a vertical stem. 8 corners. */
+    /** T-shape - top horizontal bar with a vertical stem. 8 corners. */
     private static List<Offset> tShape(int r) {
         int stem = Math.max(1, r / 3);
         List<Offset> out = new ArrayList<>(8);

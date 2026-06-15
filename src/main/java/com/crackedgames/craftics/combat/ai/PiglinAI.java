@@ -20,7 +20,7 @@ import net.minecraft.item.Items;
  */
 public class PiglinAI implements EnemyAI {
 
-    // Delegates kept as singletons — both underlying AIs are stateless.
+    // Delegates kept as singletons - both underlying AIs are stateless.
     private static final PillagerAI RANGED = new PillagerAI();
     private static final ZombieAI MELEE = new ZombieAI();
 

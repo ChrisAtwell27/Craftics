@@ -23,7 +23,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Paged biome selector. The player browses one <em>dimension</em> at a time —
+ * Paged biome selector. The player browses one <em>dimension</em> at a time -
  * Overworld / Nether / End by default, plus any pages contributed by addons
  * via {@link #registerExtraPage(DimensionPage)}.
  * <p>
@@ -32,7 +32,7 @@ import java.util.Set;
  * via the Q / E hotkeys.
  * <p>
  * <b>Unlock model:</b> the handler still hands the client a single global
- * {@code highestUnlocked} number — biomes are indexed into that via their
+ * {@code highestUnlocked} number - biomes are indexed into that via their
  * {@code order} field, which reflects position in the full path. A whole
  * page is considered "unlocked" (tab clickable) as soon as any biome on it
  * is unlocked; otherwise the tab renders with a padlock and can't be opened.
@@ -123,7 +123,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
     // Instance state
     // ─────────────────────────────────────────────────────────────────────
 
-    /** All pages, in tab order. Always non-empty — at minimum contains Overworld. */
+    /** All pages, in tab order. Always non-empty - at minimum contains Overworld. */
     private List<DimensionPage> pages;
 
     /** Index into {@link #pages}. */
@@ -192,7 +192,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                 discovered.add(id.trim());
             }
         }
-        // Seed the starting biome (always discovered) — the first node of the
+        // Seed the starting biome (always discovered) - the first node of the
         // active campaign in branch-adjusted run order.
         List<String> ord = CampaignManager.orderedBiomeIds(Math.max(0, branchChoice));
         if (!ord.isEmpty()) {
@@ -361,7 +361,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
     }
 
     /**
-     * Enter the focused biome if it's unlocked — shared by the Enter button,
+     * Enter the focused biome if it's unlocked - shared by the Enter button,
      * clicking the focused card, and the Enter key.
      */
     private void activateFocusedBiome() {
@@ -538,7 +538,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             }
 
             // Name label is drawn AFTER the scale pop so the focused card's
-            // swell never displaces it — it keeps a fixed gap above the
+            // swell never displaces it - it keeps a fixed gap above the
             // progress dots regardless of cardScale.
             if (isFocused) {
                 // Undiscovered locked biomes keep their mystery as "???".
@@ -794,7 +794,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Tab bar / dots / cards are hit-tested before super — HandledScreen
+        // Tab bar / dots / cards are hit-tested before super - HandledScreen
         // consumes every click (cursor-stack handling), so anything after it
         // never fires. Widgets (arrows, Enter) don't overlap these regions.
         if (button == 0) {

@@ -1,10 +1,10 @@
-# Addon Extensibility API Implementation Plan
+﻿# Addon Extensibility API Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Convert every hardcoded combat system into registry-backed lookups and expose a public API so addon mods can register custom weapons, equipment effects, armor sets, trim effects, events, and enchantment bonuses.
 
-**Architecture:** Replace if/else chains and switch statements in `DamageType`, `PlayerCombatStats`, `WeaponAbility`, `TrimEffects`, `EventManager`, and `RandomEvents` with registry lookups. Craftics dogfoods its own API by registering vanilla content at init. New files live under `api/` and `api/registry/`. Existing enums (`DamageType`, `Affinity`, `SetBonus`, etc.) stay unchanged — addons map into existing types.
+**Architecture:** Replace if/else chains and switch statements in `DamageType`, `PlayerCombatStats`, `WeaponAbility`, `TrimEffects`, `EventManager`, and `RandomEvents` with registry lookups. Craftics dogfoods its own API by registering vanilla content at init. New files live under `api/` and `api/registry/`. Existing enums (`DamageType`, `Affinity`, `SetBonus`, etc.) stay unchanged - addons map into existing types.
 
 **Tech Stack:** Java 21, Fabric 1.21.1, Minecraft modding API
 
@@ -18,24 +18,24 @@
 
 | File | Responsibility |
 |---|---|
-| `api/registry/WeaponRegistry.java` | `Map<Item, WeaponEntry>` — register, get, fallback for unknown items |
+| `api/registry/WeaponRegistry.java` | `Map<Item, WeaponEntry>` - register, get, fallback for unknown items |
 | `api/registry/WeaponEntry.java` | Immutable weapon data record + Builder inner class |
 | `api/WeaponAbilityHandler.java` | `@FunctionalInterface` for custom weapon ability logic |
 | `api/Abilities.java` | Chainable building blocks: bleed, sweep, stun, knockback, aoe, etc. |
-| `api/registry/ArmorSetRegistry.java` | `Map<String, ArmorSetEntry>` — register, getBonus |
+| `api/registry/ArmorSetRegistry.java` | `Map<String, ArmorSetEntry>` - register, getBonus |
 | `api/registry/ArmorSetEntry.java` | Armor set bonus data record + Builder |
-| `api/registry/TrimPatternRegistry.java` | `Map<String, TrimPatternEntry>` — register, get |
+| `api/registry/TrimPatternRegistry.java` | `Map<String, TrimPatternEntry>` - register, get |
 | `api/registry/TrimPatternEntry.java` | Per-piece stat + set bonus data record |
-| `api/registry/TrimMaterialRegistry.java` | `Map<String, TrimMaterialEntry>` — register, get |
+| `api/registry/TrimMaterialRegistry.java` | `Map<String, TrimMaterialEntry>` - register, get |
 | `api/registry/TrimMaterialEntry.java` | Material stat bonus data record |
 | `api/EquipmentScanner.java` | `@FunctionalInterface` for addon equipment scanning |
 | `api/StatModifiers.java` | Mutable accumulator of `Bonus` → int + optional `SetBonus` |
-| `api/registry/EquipmentScannerRegistry.java` | `Map<String, EquipmentScanner>` — register, scanAll |
-| `api/registry/EventRegistry.java` | Ordered list of `EventEntry` — register, roll, getById |
+| `api/registry/EquipmentScannerRegistry.java` | `Map<String, EquipmentScanner>` - register, scanAll |
+| `api/registry/EventRegistry.java` | Ordered list of `EventEntry` - register, roll, getById |
 | `api/registry/EventEntry.java` | Event data record (id, displayName, probability, handler, etc.) |
 | `api/EventHandler.java` | `@FunctionalInterface` for custom event logic |
 | `api/EventTemplates.java` | Pre-built event handler factories: gamble, giveReward, ambush, trader |
-| `api/registry/EnchantmentRegistry.java` | `Map<String, EnchantmentEffectHandler>` — register, applyAll |
+| `api/registry/EnchantmentRegistry.java` | `Map<String, EnchantmentEffectHandler>` - register, applyAll |
 | `api/EnchantmentEffectHandler.java` | `@FunctionalInterface` for enchantment stat bonuses |
 | `api/EnchantmentContext.java` | Context passed to enchantment handlers (level, player, modifiers) |
 | `api/VanillaWeapons.java` | All vanilla weapon registrations (extracted from PlayerCombatStats/WeaponAbility) |
@@ -237,15 +237,15 @@ AP cost, range, break chance, and ability handlers.
 Extract the reusable combat patterns from `WeaponAbility.applyAbility()` into composable `WeaponAbilityHandler` factories. Each method returns a `WeaponAbilityHandler` that can be chained with `.and()`.
 
 Building blocks to extract:
-- `bleed()` — from sword logic (lines 68-73 of WeaponAbility.java): apply bleed stacks based on Sharpness level
-- `sweepAdjacent(baseChance, bonusPerPoint)` — from sword sweep logic (lines 191-203): chance to hit adjacent enemies for half damage
-- `armorIgnore(baseChance, bonusPerPoint)` — from axe logic (lines 221-236): chance to bypass defense
-- `stun(baseChance, bonusPerPoint)` — from blunt logic (lines 240-248): chance to stun target
-- `knockbackDirection(distance)` — from water/breeze rod logic: push target away from player
-- `aoe(radius, damageMultiplier)` — from mace shockwave logic (lines 358-370): splash to adjacent
-- `applyEffect(type, turns, amplifier)` — generic: inflict a CombatEffect on target
-- `pierce()` — from spear logic (lines 283-300): hit enemy behind target in line
-- `fireDamage(bonusDmg)` — from blaze rod logic (lines 437-443): set fire + bonus damage
+- `bleed()` - from sword logic (lines 68-73 of WeaponAbility.java): apply bleed stacks based on Sharpness level
+- `sweepAdjacent(baseChance, bonusPerPoint)` - from sword sweep logic (lines 191-203): chance to hit adjacent enemies for half damage
+- `armorIgnore(baseChance, bonusPerPoint)` - from axe logic (lines 221-236): chance to bypass defense
+- `stun(baseChance, bonusPerPoint)` - from blunt logic (lines 240-248): chance to stun target
+- `knockbackDirection(distance)` - from water/breeze rod logic: push target away from player
+- `aoe(radius, damageMultiplier)` - from mace shockwave logic (lines 358-370): splash to adjacent
+- `applyEffect(type, turns, amplifier)` - generic: inflict a CombatEffect on target
+- `pierce()` - from spear logic (lines 283-300): hit enemy behind target in line
+- `fireDamage(bonusDmg)` - from blaze rod logic (lines 437-443): set fire + bonus damage
 
 Each building block should accept the same `(player, target, arena, baseDamage, stats, luckPoints)` signature and return an `AttackResult`. Use the `findAdjacentEnemies` helper (copy from WeaponAbility since it's a static utility).
 
@@ -283,12 +283,12 @@ Register every vanilla weapon that currently appears in the if/else chains of `P
 
 For each weapon, use `WeaponEntry.builder()` with:
 - `damageType` from `DamageType.fromWeapon()` logic
-- `attackPower` from `PlayerCombatStats.getAttackPower()` — use `IntSupplier` referencing `CrafticsMod.CONFIG.dmgXxx()` for config-backed weapons, fixed int for non-config weapons (hoes, shovels)
+- `attackPower` from `PlayerCombatStats.getAttackPower()` - use `IntSupplier` referencing `CrafticsMod.CONFIG.dmgXxx()` for config-backed weapons, fixed int for non-config weapons (hoes, shovels)
 - `apCost` from `WeaponAbility.getAttackCost()`
-- `range` from `PlayerCombatStats.getWeaponRange()` — 1 for melee, specific values for bow/crossbow/trident
-- `isRanged` — true for bow, crossbow, trident
+- `range` from `PlayerCombatStats.getWeaponRange()` - 1 for melee, specific values for bow/crossbow/trident
+- `isRanged` - true for bow, crossbow, trident
 - `breakChance` from `WeaponAbility.getBreakChance()`
-- `ability` — for the initial registration, use `null` (abilities will be wired in Task 4 after Abilities class exists)
+- `ability` - for the initial registration, use `null` (abilities will be wired in Task 4 after Abilities class exists)
 
 This is a large file (~60+ weapon registrations). Group by weapon category with comments: swords, axes, mace, trident, bow, crossbow, blunt (stick/bamboo/blaze rod/breeze rod), corals (live/dead/fans), hoes, shovels.
 
@@ -344,7 +344,7 @@ public static int getWeaponRange(ServerPlayerEntity player) {
 }
 ```
 
-Note: The bow range currently adds `getBowPowerRange(player)` dynamically based on Power enchant level. This needs to stay dynamic. For the bow registration, set the base range to 3 and handle the Power bonus in `CombatManager` where range is consumed (it already calls `getWeaponRange()` then adds enchant bonuses). Alternatively, `WeaponEntry` could take an `IntSupplier` for range too — but simpler to just keep the enchant bonus addition in the caller for now.
+Note: The bow range currently adds `getBowPowerRange(player)` dynamically based on Power enchant level. This needs to stay dynamic. For the bow registration, set the base range to 3 and handle the Power bonus in `CombatManager` where range is consumed (it already calls `getWeaponRange()` then adds enchant bonuses). Alternatively, `WeaponEntry` could take an `IntSupplier` for range too - but simpler to just keep the enchant bonus addition in the caller for now.
 
 Actually, since bow range depends on the specific player's enchants, the cleanest approach: keep `getWeaponRange()` in `PlayerCombatStats` but have it read base range from registry and add enchant bonuses:
 ```java
@@ -377,7 +377,7 @@ public static boolean hasAbility(Item item) {
 }
 ```
 
-Remove the private helper methods `isSword()`, `isAxe()`, `isSpear()` from `WeaponAbility` — they're no longer needed once abilities are wired through the registry.
+Remove the private helper methods `isSword()`, `isAxe()`, `isSpear()` from `WeaponAbility` - they're no longer needed once abilities are wired through the registry.
 
 - [ ] **Step 7: Wire VanillaWeapons.registerAll() into CrafticsMod.onInitialize()**
 
@@ -418,7 +418,7 @@ For each weapon category, set the `.ability()` using either building blocks from
 
 **Axes:** Extract axe armor-ignore logic (lines 218-236) into a handler.
 
-**Mace:** Extract full mace logic (lines 302-434) — density, breach, wind burst, base shockwave, knockback.
+**Mace:** Extract full mace logic (lines 302-434) - density, breach, wind burst, base shockwave, knockback.
 
 **Blunt (stick/bamboo):** Stun chance handler.
 
@@ -428,7 +428,7 @@ For each weapon category, set the `.ability()` using either building blocks from
 
 **Trident:** Water knockback + soaked handler.
 
-**Corals:** Each coral type has unique effects — register individual abilities per coral item.
+**Corals:** Each coral type has unique effects - register individual abilities per coral item.
 
 **Crossbow:** Pierce-through + multishot + piercing bleed handler.
 
@@ -589,7 +589,7 @@ public final class ArmorSetRegistry {
 
 - [ ] **Step 3: Register vanilla armor sets in VanillaContent**
 
-Create `VanillaContent.java` (partially — armor sets first). Register:
+Create `VanillaContent.java` (partially - armor sets first). Register:
 - leather: PHYSICAL +2, speed +2, ap +1, description from `getSetBonusDescription`
 - chainmail: SLASHING +2, speed +1, apCostReduction 1
 - iron: CLEAVING +2, defense +2
@@ -621,7 +621,7 @@ public static int getSetApBonus(ServerPlayerEntity player) {
 // ... etc for defense, attack, apCostReduction, description
 ```
 
-Keep `getArmorSet()` method (armor detection logic) unchanged — it still derives the set name from equipped items. Keep `hasTurtleSet()`, `hasNetheriteSet()`, `hasGoldSet()` as convenience wrappers.
+Keep `getArmorSet()` method (armor detection logic) unchanged - it still derives the set name from equipped items. Keep `hasTurtleSet()`, `hasNetheriteSet()`, `hasGoldSet()` as convenience wrappers.
 
 - [ ] **Step 6: Wire VanillaContent into CrafticsMod.onInitialize()**
 
@@ -671,7 +671,7 @@ now delegate to ArmorSetRegistry.
 
 - [ ] **Step 3: Register vanilla trims in VanillaContent**
 
-Register all 17 patterns (sentry, dune, coast, wild, ward, eye, vex, tide, snout, rib, spire, wayfinder, shaper, silence, raiser, host, flow, bolt) with their per-piece stats, set bonuses, names, and descriptions — pulled directly from the current switch statements in `TrimEffects.java`.
+Register all 17 patterns (sentry, dune, coast, wild, ward, eye, vex, tide, snout, rib, spire, wayfinder, shaper, silence, raiser, host, flow, bolt) with their per-piece stats, set bonuses, names, and descriptions - pulled directly from the current switch statements in `TrimEffects.java`.
 
 Register all 11 materials (iron, copper, gold, lapis, emerald, diamond, netherite, redstone, amethyst, quartz, resin) with their stats, values, and descriptions.
 
@@ -848,19 +848,19 @@ public interface EventHandler {
 `EventEntry`: record with `id`, `displayName`, `probability` (float), `minBiomeOrdinal` (int), `isChoiceEvent` (boolean), `handler` (EventHandler).
 
 `EventRegistry`:
-- `List<EventEntry>` (ordered — built-in first, then addon)
-- `register(EventEntry)` — appends to list
-- `rollEvent(int biomeOrdinal, int levelIndex, boolean earlyBiome)` — reimplements the probability cascade from `EventManager.rollEvent()`, iterating all registered events, filtering by `minBiomeOrdinal`, rolling against cumulative probability. Includes probability overflow protection: if total probability > 0.90, log a warning and scale down proportionally.
-- `getById(String id)` — for forced events
-- `getAll()` — for debugging
+- `List<EventEntry>` (ordered - built-in first, then addon)
+- `register(EventEntry)` - appends to list
+- `rollEvent(int biomeOrdinal, int levelIndex, boolean earlyBiome)` - reimplements the probability cascade from `EventManager.rollEvent()`, iterating all registered events, filtering by `minBiomeOrdinal`, rolling against cumulative probability. Includes probability overflow protection: if total probability > 0.90, log a warning and scale down proportionally.
+- `getById(String id)` - for forced events
+- `getAll()` - for debugging
 
 - [ ] **Step 2: Create EventTemplates**
 
 Factory methods returning `EventHandler`:
-- `gamble(int baseCost, int costVariance, LootTable rewardTable)` — generic shrine-style: spend emeralds, roll reward
-- `giveReward(LootTable rewardTable)` — no cost, just give items
-- `ambush(List<String> enemyTypeIds)` — trigger combat with specific enemies
-- `spawnTrader(Supplier<TraderSystem.TraderOffer> offerGenerator)` — spawn trader with offers
+- `gamble(int baseCost, int costVariance, LootTable rewardTable)` - generic shrine-style: spend emeralds, roll reward
+- `giveReward(LootTable rewardTable)` - no cost, just give items
+- `ambush(List<String> enemyTypeIds)` - trigger combat with specific enemies
+- `spawnTrader(Supplier<TraderSystem.TraderOffer> offerGenerator)` - spawn trader with offers
 
 These extract the core patterns from `RandomEvents.handleShrine()`, `RandomEvents.handleWoundedTraveler()`, etc. Addon mods can use these as base patterns.
 
@@ -1005,7 +1005,7 @@ EnchantmentRegistry.register("minecraft:protection", ctx -> {
 // ... similarly for blast_protection, projectile_protection, etc.
 ```
 
-Note: Weapon-ability enchantments (sharpness, smite, bane, etc.) are handled by the `WeaponAbilityHandler` in the weapon registry — they read enchant levels directly via `PlayerCombatStats.getSharpness()` etc. Those helper methods in `PlayerCombatStats` stay unchanged.
+Note: Weapon-ability enchantments (sharpness, smite, bane, etc.) are handled by the `WeaponAbilityHandler` in the weapon registry - they read enchant levels directly via `PlayerCombatStats.getSharpness()` etc. Those helper methods in `PlayerCombatStats` stay unchanged.
 
 - [ ] **Step 3: Verify compilation**
 
@@ -1144,17 +1144,17 @@ in refactored files.
 
 Update the modding guide to document the full public API. Add sections for:
 
-1. **Overview** — what Craftics exposes for addon mods
-2. **Getting Started** — how to set up a compat mod (Fabric mod that depends on Craftics, call `CrafticsAPI` from `onInitialize()`)
-3. **Weapon Registration** — `CrafticsAPI.registerWeapon()` with builder examples, ability building blocks, custom ability interface
-4. **Equipment Scanners** — `CrafticsAPI.registerEquipmentScanner()` with Artifacts-style example
-5. **Armor Sets** — `CrafticsAPI.registerArmorSet()` with builder example
-6. **Trim Effects** — `CrafticsAPI.registerTrimPattern()` and `registerTrimMaterial()`
-7. **Events** — `CrafticsAPI.registerEvent()` with templates and custom handler examples
-8. **Enchantments** — `CrafticsAPI.registerEnchantment()` with stat modifier example
-9. **Biomes** (existing) — keep current JSON datapack docs
-10. **Enemy AI** (existing) — keep current AI registration docs
-11. **Complete Example** — a full compat mod skeleton showing Simply Swords integration
+1. **Overview** - what Craftics exposes for addon mods
+2. **Getting Started** - how to set up a compat mod (Fabric mod that depends on Craftics, call `CrafticsAPI` from `onInitialize()`)
+3. **Weapon Registration** - `CrafticsAPI.registerWeapon()` with builder examples, ability building blocks, custom ability interface
+4. **Equipment Scanners** - `CrafticsAPI.registerEquipmentScanner()` with Artifacts-style example
+5. **Armor Sets** - `CrafticsAPI.registerArmorSet()` with builder example
+6. **Trim Effects** - `CrafticsAPI.registerTrimPattern()` and `registerTrimMaterial()`
+7. **Events** - `CrafticsAPI.registerEvent()` with templates and custom handler examples
+8. **Enchantments** - `CrafticsAPI.registerEnchantment()` with stat modifier example
+9. **Biomes** (existing) - keep current JSON datapack docs
+10. **Enemy AI** (existing) - keep current AI registration docs
+11. **Complete Example** - a full compat mod skeleton showing Simply Swords integration
 
 Follow the existing HTML structure and CSS classes from the current `modding.html`.
 
@@ -1193,8 +1193,9 @@ examples, building blocks reference, and complete compat mod example.
 
 **Parallelizable groups:**
 - Group A: Tasks 1 → 2 → 3 → 4 (weapon pipeline)
-- Group B: Task 5 (armor sets — independent)
+- Group B: Task 5 (armor sets - independent)
 - Group C: Tasks 6 → 7 (trims + equipment scanners)
-- Group D: Task 8 (events — independent)
-- Group E: Task 9 (enchantments — needs StatModifiers from Task 7)
+- Group D: Task 8 (events - independent)
+- Group E: Task 9 (enchantments - needs StatModifiers from Task 7)
 - Final: Tasks 10 → 11 → 12 (integration + verification + docs)
+

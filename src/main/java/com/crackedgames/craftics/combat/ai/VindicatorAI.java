@@ -37,7 +37,7 @@ public class VindicatorAI implements EnemyAI {
         int baseDamage = enraged ? (int)(self.getAttackPower() * 1.5) : self.getAttackPower();
         int adjustRange = enraged ? 3 : 2;
 
-        // Adjacent — just attack (enraged gets knockback)
+        // Adjacent - just attack (enraged gets knockback)
         if (self.minDistanceTo(playerPos) == 1) {
             if (enraged) {
                 return new EnemyAction.AttackWithKnockback(baseDamage, 1);
@@ -63,7 +63,7 @@ public class VindicatorAI implements EnemyAI {
             }
 
             if (playerIndex >= 0) {
-                // Player is in the path — dash up to adjacent tile and attack
+                // Player is in the path - dash up to adjacent tile and attack
                 List<GridPos> pathToPlayer = dashPath.subList(0, playerIndex);
                 int dashDist = pathToPlayer.size();
                 // Charge bonus: +1 damage per tile traveled beyond 2
@@ -89,7 +89,7 @@ public class VindicatorAI implements EnemyAI {
             return bestDashAttack;
         }
 
-        // No dash hits the player — pick the best dash + adjustment combo
+        // No dash hits the player - pick the best dash + adjustment combo
         // Score each option by how close it gets to being lined up with the player
         GridPos bestDashEnd = null;
         List<GridPos> bestDashPath = null;
@@ -101,7 +101,7 @@ public class VindicatorAI implements EnemyAI {
 
             GridPos dashEnd = dashPath.get(dashPath.size() - 1);
 
-            // Check both axes — which is closer to aligning with the player?
+            // Check both axes - which is closer to aligning with the player?
             int rowDiff = Math.abs(dashEnd.z() - playerPos.z());
             int colDiff = Math.abs(dashEnd.x() - playerPos.x());
             int minAlign = Math.min(rowDiff, colDiff);
@@ -128,7 +128,7 @@ public class VindicatorAI implements EnemyAI {
                     List<GridPos> fullPath = new ArrayList<>(bestDashPath);
                     fullPath.addAll(adjustPath);
 
-                    // Check if after adjusting we're adjacent — attack too
+                    // Check if after adjusting we're adjacent - attack too
                     GridPos finalPos = fullPath.get(fullPath.size() - 1);
                     if (finalPos.manhattanDistance(playerPos) == 1) {
                         return enraged
@@ -139,11 +139,11 @@ public class VindicatorAI implements EnemyAI {
                 }
             }
 
-            // Just dash without adjustment — still better than nothing
+            // Just dash without adjustment - still better than nothing
             return new EnemyAction.Move(bestDashPath);
         }
 
-        // Fallback — use pathfinding to close distance aggressively
+        // Fallback - use pathfinding to close distance aggressively
         return AIUtils.seekOrWander(self, arena, playerPos);
     }
 

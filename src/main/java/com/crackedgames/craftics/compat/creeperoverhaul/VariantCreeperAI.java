@@ -79,7 +79,7 @@ public final class VariantCreeperAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Charge check — ranged hit while not fusing makes it a charged creeper
+        // Charge check - ranged hit while not fusing makes it a charged creeper
         if (self.wasDamagedSinceLastTurn() && !self.isEnraged() && self.getFuseTimer() == 0) {
             self.setEnraged(true);
         }
@@ -101,7 +101,7 @@ public final class VariantCreeperAI implements EnemyAI {
             return new EnemyAction.Idle();
         }
 
-        // Adjacent — prime fuse
+        // Adjacent - prime fuse
         if (dist <= 1) {
             if (cfg.fuseTurns <= 0) {
                 // Short fuse: detonate immediately instead of priming for next turn
@@ -122,7 +122,7 @@ public final class VariantCreeperAI implements EnemyAI {
         if (endPos.manhattanDistance(playerPos) <= 1) {
             if (cfg.fuseTurns <= 0) {
                 // Short-fuse creepers still need to move first this turn, then
-                // detonate next turn — the "instant detonate" branch only
+                // detonate next turn - the "instant detonate" branch only
                 // triggers when already adjacent. This matches the vanilla
                 // "move+prime" cadence so the player has a fair chance to
                 // disengage.

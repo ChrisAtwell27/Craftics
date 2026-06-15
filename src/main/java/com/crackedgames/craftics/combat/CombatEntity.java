@@ -40,7 +40,7 @@ public class CombatEntity {
     private int witherAmplifier = 0; // 0 = level I, 1 = level II, etc
     private boolean enraged = false;
     /**
-     * When set, the entity is fully immobilized this turn — used by the Creaking
+     * When set, the entity is fully immobilized this turn - used by the Creaking
      * gaze mechanic. Bypasses the {@link #getMoveSpeed} clamp (which floors at 1)
      * so a frozen Creaking truly can't move, and AI implementations check this
      * flag at the top of {@code decideAction} to skip attacks too.
@@ -138,7 +138,7 @@ public class CombatEntity {
      * entity type, so any mutable field on an {@code EnemyAI} subclass is silently
      * shared by every mob of that type across every fight (e.g. one evoker's
      * "already summoned" flag muted all future evokers). Stateful AIs keep their
-     * counters/flags here instead — the map lives and dies with the entity.
+     * counters/flags here instead - the map lives and dies with the entity.
      */
     private final java.util.Map<String, Integer> aiMemory = new java.util.HashMap<>();
     public int getAiMemory(String key, int defaultValue) {
@@ -201,14 +201,14 @@ public class CombatEntity {
         return min;
     }
     public int getMoveSpeed() {
-        // Frozen entities (Creaking under gaze) bypass the +1 floor entirely —
+        // Frozen entities (Creaking under gaze) bypass the +1 floor entirely -
         // they truly can't move this turn.
         if (frozen) return 0;
         int base = moveSpeed + speedBonus + getSpeedBuffBonus();
         if (soakedTurns > 0) base -= 1;
         if (slownessTurns > 0) base -= slownessPenalty;
         float mult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyMoveSpeedMultiplier();
-        // Allies always keep a usable move budget — never below 2 tiles/turn,
+        // Allies always keep a usable move budget - never below 2 tiles/turn,
         // even under the speed multiplier or Soaked/Slowness debuffs. Enemies
         // keep the standard floor of 1.
         return Math.max(ally ? 2 : 1, (int)(base * mult));
@@ -252,7 +252,7 @@ public class CombatEntity {
 
     /** Damage one tick of wither would deal at this moment. Returns 0 if not
      *  withered. Formula: {@code remainingTurns + 1 + amplifier + maxHpBonus}.
-     *  Damage tapers as the wither wears off — early ticks are heaviest. */
+     *  Damage tapers as the wither wears off - early ticks are heaviest. */
     public int getWitherTickDamage() {
         if (witherTurns <= 0) return 0;
         return witherTurns + 1 + witherAmplifier + getMaxHpDotBonus();
@@ -283,7 +283,7 @@ public class CombatEntity {
     public boolean isHazardImmune() { return hazardImmune; }
     public void setHazardImmune(boolean v) { this.hazardImmune = v; }
 
-    /** Spider ceiling mechanic — true when the spider is hanging from the ceiling (off-grid). */
+    /** Spider ceiling mechanic - true when the spider is hanging from the ceiling (off-grid). */
     private boolean onCeiling = false;
     public boolean isOnCeiling() { return onCeiling; }
     public void setOnCeiling(boolean v) { this.onCeiling = v; }
@@ -418,7 +418,7 @@ public class CombatEntity {
     /**
      * True for allies summoned for the current battle only (e.g. spawn-egg summons),
      * as opposed to recruited hub pets. Temporary allies are NOT saved/returned to the
-     * hub after combat — they exist solely for this fight.
+     * hub after combat - they exist solely for this fight.
      */
     private boolean temporaryAlly = false;
     public boolean isTemporaryAlly() { return temporaryAlly; }
@@ -613,7 +613,7 @@ public class CombatEntity {
     }
 
     /**
-     * Live custom-effect state — effect id to {@code [turnsRemaining, amplifier]}.
+     * Live custom-effect state - effect id to {@code [turnsRemaining, amplifier]}.
      * CombatManager ticks, applies, and expires these each round.
      */
     public java.util.Map<String, int[]> getCustomEffects() { return customEffects; }
@@ -775,7 +775,7 @@ public class CombatEntity {
         return before - currentHp;
     }
 
-    /** Most-recent damager — used by per-mob loot drops to credit the killer. */
+    /** Most-recent damager - used by per-mob loot drops to credit the killer. */
     public java.util.UUID getLastDamagerUuid() { return lastDamagerUuid; }
     public void setLastDamagerUuid(java.util.UUID uuid) { this.lastDamagerUuid = uuid; }
 

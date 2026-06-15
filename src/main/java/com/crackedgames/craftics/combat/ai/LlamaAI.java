@@ -13,10 +13,10 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Llama AI: Farm animal normally. When attacked, becomes permanently agro
  * and spits at the player from 2 blocks away (ranged).
- * Tries to maintain distance 2 for spitting — backs up if too close, approaches if too far.
+ * Tries to maintain distance 2 for spitting - backs up if too close, approaches if too far.
  */
 public class LlamaAI implements EnemyAI {
-    /** Llamas are neutral — only a threat once provoked (enraged). */
+    /** Llamas are neutral - only a threat once provoked (enraged). */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return self.isEnraged();
@@ -35,12 +35,12 @@ public class LlamaAI implements EnemyAI {
         // AGRO: spit from its registered range (2 for vanilla llamas)
         int range = Math.max(1, self.getRange());
         if (self.isEnraged()) {
-            // In range with LOS — spit!
+            // In range with LOS - spit!
             if (dist <= range && AIUtils.hasCardinalLOS(arena, myPos, playerPos, range)) {
                 return new EnemyAction.RangedAttack(self.getAttackPower(), "llama_spit");
             }
 
-            // Too close — back up to spitting range
+            // Too close - back up to spitting range
             if (dist <= 1) {
                 GridPos retreatPos = findSpitPosition(self, arena, playerPos, range);
                 if (retreatPos != null) {
@@ -53,11 +53,11 @@ public class LlamaAI implements EnemyAI {
                         return new EnemyAction.Move(path);
                     }
                 }
-                // Cornered at melee — just spit point blank
+                // Cornered at melee - just spit point blank
                 return new EnemyAction.Attack(self.getAttackPower());
             }
 
-            // Too far — approach to spit range
+            // Too far - approach to spit range
             GridPos spitPos = findSpitPosition(self, arena, playerPos, range);
             if (spitPos != null) {
                 List<GridPos> path = Pathfinding.findPath(arena, myPos, spitPos, self.getMoveSpeed(), self);

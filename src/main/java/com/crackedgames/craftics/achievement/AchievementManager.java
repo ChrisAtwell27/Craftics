@@ -155,7 +155,7 @@ public class AchievementManager {
 
         // Coral Crusader: Any boss with only coral weapons (subset of Water)
         // Check that ALL weapons used were Water AND no non-coral water weapons (like trident)
-        // We track this via weaponTypesUsed — if only WATER and the tracker can confirm coral-only
+        // We track this via weaponTypesUsed - if only WATER and the tracker can confirm coral-only
         // For simplicity: if only Water type used, grant it (trident is also Water, but close enough)
         if (singleType && weaponsUsed.contains(DamageType.WATER)) {
             grant(player, Achievement.CORAL_CRUSADER);
@@ -192,7 +192,7 @@ public class AchievementManager {
         }
 
         // Reef Dweller: Boss with Turtle armor + Coral weapon + Coast trim
-        // (Coast trim check would need trim scan — simplified to turtle + water weapon for now)
+        // (Coast trim check would need trim scan - simplified to turtle + water weapon for now)
         if ("turtle".equals(armorSet) && singleType && weaponsUsed.contains(DamageType.WATER)) {
             grant(player, Achievement.CORAL_REEF_DWELLER);
         }
@@ -242,7 +242,7 @@ public class AchievementManager {
         if (tracker.hasAnyThreeConsecutiveStuns()) grant(player, Achievement.FEAT_CHAIN_STUN);
         if (tracker.getHighestSingleHitDamage() >= 20) grant(player, Achievement.FEAT_GLASS_CANNON);
         if (tracker.getMaxArmorCrushDefense() >= 5) grant(player, Achievement.FEAT_ARMOR_CRUSH);
-        // FEAT_SPEAR_WALL removed — Spears not in MC 1.21.1
+        // FEAT_SPEAR_WALL removed - Spears not in MC 1.21.1
         if (tracker.hasCounterKill()) grant(player, Achievement.FEAT_COUNTER_KILL);
         if (tracker.getMaxConsecutiveCrits() >= 3) grant(player, Achievement.FEAT_CRITICAL_STREAK);
 
@@ -301,15 +301,15 @@ public class AchievementManager {
                                                   String regionId, Achievement dimAchievement) {
         com.crackedgames.craftics.level.campaign.CampaignRegion region =
             com.crackedgames.craftics.level.campaign.CampaignManager.regionById(regionId);
-        if (region == null) return; // custom campaign without this region — can't earn it
+        if (region == null) return; // custom campaign without this region - can't earn it
         boolean anyBoss = false;
         for (com.crackedgames.craftics.level.campaign.CampaignNode node : region.nodes()) {
             Achievement a = Achievement.getBossAchievementForBiome(node.biomeId());
-            if (a == null) continue; // node has no boss achievement — ignore for completion
+            if (a == null) continue; // node has no boss achievement - ignore for completion
             anyBoss = true;
             if (!stats.hasAchievement(a)) return; // a boss is still unbeaten
         }
-        if (!anyBoss) return; // region has zero boss-achievement biomes — don't false-grant
+        if (!anyBoss) return; // region has zero boss-achievement biomes - don't false-grant
         grant(player, dimAchievement);
     }
 

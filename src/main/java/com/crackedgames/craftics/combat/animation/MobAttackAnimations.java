@@ -41,7 +41,7 @@ public final class MobAttackAnimations {
         RAM,
         /** Two quick small pokes (insects and small critters). */
         JAB,
-        /** Stand and channel — arms raised ({@link AnimState#CAST}), bob, release (witches, evokers). */
+        /** Stand and channel - arms raised ({@link AnimState#CAST}), bob, release (witches, evokers). */
         CAST,
         /** Lean away to draw/aim, snap forward on release (all ranged attacks). */
         RANGED_DRAW
@@ -98,7 +98,7 @@ public final class MobAttackAnimations {
 
     /**
      * Resolve the style for an attack. Ranged attacks always read as a draw
-     * unless the mob is a registered caster — a witch lobbing a potion should
+     * unless the mob is a registered caster - a witch lobbing a potion should
      * channel, not nock an arrow.
      */
     public static Style styleFor(String entityTypeId, boolean isRanged) {
@@ -127,7 +127,7 @@ public final class MobAttackAnimations {
     public static Frame frameAt(Style style, int tick) {
         return switch (style) {
             case LUNGE -> phased(tick,
-                // forward 5, back 4 — strike at full extension
+                // forward 5, back 4 - strike at full extension
                 new Phase(5, p -> 0.55 * easeOut(p), p -> 0.0, 4),
                 new Phase(4, p -> 0.55 * (1 - easeIn(p)), p -> 0.0, -1));
             case POUNCE -> phased(tick,
@@ -165,8 +165,8 @@ public final class MobAttackAnimations {
                 new Phase(2, p -> 0.15 * easeOut(p), p -> 0.0, 1),            // release flick
                 new Phase(3, p -> 0.15 * (1 - p), p -> 0.0, -1));
             case RANGED_DRAW -> phased(tick,
-                new Phase(6, p -> -0.35 * easeIn(p), p -> 0.0, -1),           // draw — lean away
-                new Phase(3, p -> -0.35 * (1 - easeOut(p)), p -> 0.0, 1));    // release — snap back
+                new Phase(6, p -> -0.35 * easeIn(p), p -> 0.0, -1),           // draw - lean away
+                new Phase(3, p -> -0.35 * (1 - easeOut(p)), p -> 0.0, 1));    // release - snap back
         };
     }
 
@@ -189,7 +189,7 @@ public final class MobAttackAnimations {
             }
             t -= ph.ticks();
         }
-        // Past the end — hold origin, report done.
+        // Past the end - hold origin, report done.
         return new Frame(0, 0, false, true);
     }
 

@@ -25,7 +25,7 @@ import net.minecraft.util.Identifier;
  *
  * <p>{@code material_a}, {@code material_b}, and {@code effect} are required;
  * {@code effect} accepts any {@link HybridEffect} name. The material pair is unordered
- * — {iron, diamond} and {diamond, iron} are the same hybrid.
+ * - {iron, diamond} and {diamond, iron} are the same hybrid.
  *
  * @since 0.2.0
  */
@@ -39,7 +39,7 @@ public final class HybridSetJsonLoader extends CrafticsDataLoader<HybridSetEntry
     protected HybridSetEntry parse(Identifier fileId, JsonObject json) {
         if (!json.has("material_a") || !json.has("material_b") || !json.has("effect")) {
             CrafticsMod.LOGGER.warn(
-                "Hybrid set JSON {} missing required 'material_a', 'material_b', or 'effect' — skipping",
+                "Hybrid set JSON {} missing required 'material_a', 'material_b', or 'effect' - skipping",
                 fileId);
             return null;
         }
@@ -49,7 +49,7 @@ public final class HybridSetJsonLoader extends CrafticsDataLoader<HybridSetEntry
         try {
             effect = HybridEffect.valueOf(effectName.toUpperCase());
         } catch (IllegalArgumentException e) {
-            CrafticsMod.LOGGER.warn("Unknown hybrid effect '{}' in {} — skipping", effectName, fileId);
+            CrafticsMod.LOGGER.warn("Unknown hybrid effect '{}' in {} - skipping", effectName, fileId);
             return null;
         }
 

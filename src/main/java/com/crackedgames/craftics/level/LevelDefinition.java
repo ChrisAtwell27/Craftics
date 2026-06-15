@@ -34,7 +34,7 @@ public abstract class LevelDefinition {
         return java.util.List.of();
     }
 
-    /** World-aware overload — defaults to the no-arg version so existing
+    /** World-aware overload - defaults to the no-arg version so existing
      *  overrides keep working. Levels that need the registry (e.g. the ominous
      *  trial's heavy-enchanted loot) override this to roll with world context. */
     public java.util.List<net.minecraft.item.ItemStack> rollCompletionLoot(
@@ -51,7 +51,7 @@ public abstract class LevelDefinition {
      * Override to place this arena at a specific world origin instead of the
      * level-number-derived origin. Used by addon event levels (e.g. the
      * Artifacts abandoned-campsite mimic fight) that need to spawn an arena
-     * without corresponding to any real biome-registry level — passing a
+     * without corresponding to any real biome-registry level - passing a
      * synthetic level number would send the builder to a far-away unloaded
      * chunk because {@code CrafticsSavedData.getArenaOrigin} multiplies the
      * level number by 300 on the X axis.
@@ -66,7 +66,7 @@ public abstract class LevelDefinition {
     /**
      * One enemy to place when building a level.
      *
-     * <p>{@code aiKey} is the {@code AIRegistry} lookup key — normally equal to
+     * <p>{@code aiKey} is the {@code AIRegistry} lookup key - normally equal to
      * {@code entityTypeId}, differing only when an {@code EnemyEntry} pairs an
      * appearance with a non-matching AI strategy.
      *

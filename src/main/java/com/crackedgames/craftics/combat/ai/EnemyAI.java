@@ -14,7 +14,7 @@ public interface EnemyAI {
      * to fall back to the generic {@code speed + range} danger diamond in
      * CombatManager's danger tile builder.
      * <p>
-     * Override for enemies whose real attack reach doesn't match the generic formula —
+     * Override for enemies whose real attack reach doesn't match the generic formula -
      * e.g. the mimic whose tantrum hops 8-way for 6 steps and whose dash crosses the
      * entire arena in a straight line, neither of which is captured by
      * {@code speed + range}. Tiles returned here will be shown to the player as the
@@ -25,7 +25,7 @@ public interface EnemyAI {
     }
 
     /**
-     * Whether this enemy is currently a threat to the player — i.e. it will try to
+     * Whether this enemy is currently a threat to the player - i.e. it will try to
      * attack. Defaults to {@code true} for ordinary hostile mobs.
      * <p>
      * Passive mobs (farm animals) override this to always return {@code false}, and

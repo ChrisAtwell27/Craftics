@@ -41,7 +41,7 @@ public abstract class EnderDragonEntityMixin {
      * Client: override the {@code isAiDisabled()} check inside
      * {@code tickMovement()} to return {@code false}. This prevents the
      * vanilla early-return that skips the segment buffer update and position
-     * interpolation — both of which are required for the dragon to render
+     * interpolation - both of which are required for the dragon to render
      * and to reach the position the server sends via {@code requestTeleport}.
      */
     @Redirect(method = "tickMovement",

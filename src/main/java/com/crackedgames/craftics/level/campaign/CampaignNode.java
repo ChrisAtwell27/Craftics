@@ -1,7 +1,7 @@
 package com.crackedgames.craftics.level.campaign;
 
 /**
- * Immutable single step of a {@link CampaignRegion} — a reference to one biome by id,
+ * Immutable single step of a {@link CampaignRegion} - a reference to one biome by id,
  * plus an optional map label override.
  *
  * <p>{@code labelOverride} is the name to show on the campaign map for this node; when

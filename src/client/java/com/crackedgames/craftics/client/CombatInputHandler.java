@@ -75,7 +75,7 @@ public class CombatInputHandler {
         if (SWORDS.contains(held) || AXES.contains(held) || SPEARS.contains(held)
             || held == Items.MACE)
             return ActionMode.MELEE_ATTACK;
-        // Spawn eggs are use-items — clicking a tile summons an ally there.
+        // Spawn eggs are use-items - clicking a tile summons an ally there.
         if (held instanceof net.minecraft.item.SpawnEggItem) return ActionMode.USE_ITEM;
         // Eligible wall blocks place a 4-turn obstacle on click.
         if (com.crackedgames.craftics.combat.WallBlocks.isEligibleItem(held)) return ActionMode.USE_ITEM;
@@ -109,7 +109,7 @@ public class CombatInputHandler {
 
         if (middleDown) {
             if (middleMouseDown) {
-                // Dragging — compute delta and pan
+                // Dragging - compute delta and pan
                 double dx = (mouseX - panStartX) * 0.02;
                 double dz = (mouseY - panStartY) * 0.02;
                 // Convert screen delta to world-space pan (account for camera yaw)
@@ -149,7 +149,7 @@ public class CombatInputHandler {
             rightMouseDown = false;
         }
 
-        // Detect left click (rising edge) — only when NOT panning
+        // Detect left click (rising edge) - only when NOT panning
         boolean leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
         boolean clicked = leftDown && !lastLeftClick;
         lastLeftClick = leftDown;
@@ -163,12 +163,12 @@ public class CombatInputHandler {
             // hover info (name, HP, intended move) unless the player is on an
             // adjacent tile. Without this guard the enemy's identity would
             // leak through the inspect panel even though the in-world model is
-            // invisible — defeating the purpose of the stealth tile.
+            // invisible - defeating the purpose of the stealth tile.
             if (entityId != null && isHoverHiddenByStealth(client, hoverPos)) {
                 entityId = null;
             }
             CombatState.setHoveredEnemyId(entityId != null ? entityId : -1);
-            // Player hover — only when no enemy/ally occupies the tile.
+            // Player hover - only when no enemy/ally occupies the tile.
             CombatState.setHoveredPlayerUuid(
                 entityId == null ? playerUuidAtTile(client, hoverPos) : null);
         } else {
@@ -227,7 +227,7 @@ public class CombatInputHandler {
                     ));
                     hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ATTACKED);
                 } else if (client.world != null && isBreakableGrassAt(client, tilePos)) {
-                    // Tall grass / large fern — server resolves the break with AP cost.
+                    // Tall grass / large fern - server resolves the break with AP cost.
                     ClientPlayNetworking.send(new CombatActionPayload(
                         CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
                     ));
@@ -335,13 +335,13 @@ public class CombatInputHandler {
     }
 
     /**
-     * True when the player holds a pickaxe and clicks a tile outside the walkable move set —
+     * True when the player holds a pickaxe and clicks a tile outside the walkable move set -
      * most likely a VFX-placed obstacle. The server validates for real; this is a cheap
      * client-side check so normal movement isn't hijacked.
      */
     /**
      * True when the clicked tile has a tall-grass or large-fern block placed at
-     * arena floor + 1. Sampled from the client world — the server does the real
+     * arena floor + 1. Sampled from the client world - the server does the real
      * validation (adjacency, AP cost) when ACTION_ATTACK arrives.
      */
     private static boolean isBreakableGrassAt(MinecraftClient client, GridPos tilePos) {
@@ -370,7 +370,7 @@ public class CombatInputHandler {
 
     /**
      * True when the hovered tile contains a stealth plant (tall grass / large
-     * fern) AND the player is more than 1 tile away — matches the server's
+     * fern) AND the player is more than 1 tile away - matches the server's
      * {@code StealthTiles.isConcealedFrom} rule (Chebyshev > 1, but Manhattan
      * is a strict subset so it suffices for hover reveal). Used to hide enemy
      * names/HP/intended moves on the inspect panel from far away.
@@ -411,7 +411,7 @@ public class CombatInputHandler {
         String path = net.minecraft.registry.Registries.ITEM.getId(held).getPath();
         if (!path.endsWith("_pickaxe")) return false;
         // Walkable tiles (the move set) should continue to fire MOVE. Anything else is
-        // either out-of-range or an obstacle — let the server decide.
+        // either out-of-range or an obstacle - let the server decide.
         java.util.Set<GridPos> moveTiles = CombatState.getMoveTiles();
         return moveTiles == null || !moveTiles.contains(tilePos);
     }

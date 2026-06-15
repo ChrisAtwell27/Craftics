@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <h2>Active resolution</h2>
  * <p>Rule: <strong>the most-recently-registered non-vanilla campaign wins; else
- * {@code craftics:vanilla}</strong>. Full-replace semantics — a single addon/datapack
+ * {@code craftics:vanilla}</strong>. Full-replace semantics - a single addon/datapack
  * campaign replaces the built-in path entirely.
  * <ul>
  *   <li>If any campaign other than {@code "craftics:vanilla"} is registered, the active one
@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@link #REGISTRATION_SEQ}. {@link #active()} resolves <em>on demand</em>: it scans the
  * registry each call and returns the non-vanilla campaign with the highest sequence number
  * (or vanilla / the lone entry as the rule dictates). Resolution is therefore always current
- * — a datapack {@code register} after {@code clearDatapackEntries} is reflected on the very
+ * - a datapack {@code register} after {@code clearDatapackEntries} is reflected on the very
  * next {@link #active()} call with no caching to invalidate and no extra mod hook needed.
  * Registration is rare (init / reload only); a full scan per query is negligible.
  *
@@ -57,7 +57,7 @@ public final class CampaignManager {
     public static final String VANILLA_ID = "craftics:vanilla";
 
     private static final Map<String, Campaign> REGISTRY = new ConcurrentHashMap<>();
-    /** Ids whose current entry came from a JSON datapack — dropped on {@code /reload}. */
+    /** Ids whose current entry came from a JSON datapack - dropped on {@code /reload}. */
     private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
     /** Registration-order stamp per id; the ordering signal for "most recently registered". */
     private static final Map<String, Long> REGISTRATION_SEQ = new ConcurrentHashMap<>();

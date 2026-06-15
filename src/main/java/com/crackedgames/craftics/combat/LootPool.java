@@ -20,7 +20,7 @@ public class LootPool {
 
     public LootPool add(Item item, int weight) {
         // Never pool AIR (an unregistered/unknown loot id resolves to Items.AIR) or a
-        // non-positive weight — otherwise roll() emits an empty "0x Air" reward that
+        // non-positive weight - otherwise roll() emits an empty "0x Air" reward that
         // shows up on the victory screen. Skip silently; the source already warns on
         // unknown ids where it can.
         if (item == null || item == net.minecraft.item.Items.AIR || weight <= 0) {
@@ -83,7 +83,7 @@ public class LootPool {
             }
             // Cap to item's max stack size. Without this, an unstackable item
             // (sword, axe, totem, etc.) that ends up in a loot pool would emit
-            // a stack of N — and the inventory then has to spill it into N
+            // a stack of N - and the inventory then has to spill it into N
             // separate slots. A single vindicator kill could fill the hotbar
             // with iron axes that way.
             int maxCount = new ItemStack(chosen.get(i).item).getMaxCount();

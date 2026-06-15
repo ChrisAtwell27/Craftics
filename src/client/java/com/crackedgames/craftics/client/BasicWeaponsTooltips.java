@@ -56,10 +56,13 @@ public final class BasicWeaponsTooltips {
     private static String[] effectLines(String type) {
         return switch (type) {
             case "dagger" -> new String[]{
-                "§6Dual-wield two daggers: §eattack TWICE per turn for 1 AP",
-                "Effectively doubles your damage when paired"
+                "§6Dual-wield two daggers: §esecond hit at 75% for 1 AP",
+                "About 1.75x damage when paired"
             };
-            case "spear" -> new String[]{"Reach (2 tiles)"};
+            case "spear" -> new String[]{
+                "Reach (2 tiles), lower base damage",
+                "§e+20% damage per tile walked before attacking (up to 2x)"
+            };
             case "quarterstaff" -> new String[]{"Reach (2 tiles) + adjacent sweep"};
             case "club" -> new String[]{"Chance to slow on hit"};
             case "hammer" -> new String[]{"Knockback + stun + shockwave"};

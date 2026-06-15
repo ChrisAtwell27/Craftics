@@ -39,7 +39,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                 lines.subList(1, lines.size()).clear();
             }
             ArtifactsTooltips.appendLines(itemId.getPath(), lines);
-            return; // skip all other tooltip handlers — artifacts only show our text
+            return; // skip all other tooltip handlers - artifacts only show our text
         }
 
         // MoreTotems mod compat: strip the mod's totem tooltips and show the Craftics
@@ -136,7 +136,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // affinity, and the full-set bonus, so the generic one would be redundant.
         int armorAC = com.crackedgames.craftics.combat.ArmorClassTable.getPieceAC(item);
 
-        // Plain loot feathers should not get a tooltip — only the Move item does.
+        // Plain loot feathers should not get a tooltip - only the Move item does.
         String tip = (item == net.minecraft.item.Items.FEATHER) ? null : getTooltipFor(item);
         if (tip != null && armorAC <= 0) {
             lines.add(Text.empty());
@@ -183,7 +183,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                     if (bonuses[i] != firstVal) { allSame = false; break; }
                 }
                 if (allSame && firstVal > 0) {
-                    // netherite grants every type — show one combined line
+                    // netherite grants every type - show one combined line
                     lines.add(Text.literal("\u00a79  All damage types: +"
                         + com.crackedgames.craftics.combat.DamageType.formatAffinityHalfPoints(firstVal)
                         + " per piece"));
@@ -198,7 +198,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                     }
                 }
 
-                // Full-set bonus — shown only when the client player wears the full matching set.
+                // Full-set bonus - shown only when the client player wears the full matching set.
                 net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
                 if (mc.player != null) {
                     boolean fullSet = true;
@@ -645,7 +645,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // ── Copper Age Backport ── (modded items; resolved at runtime)
         Item copperSword = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperSword();
         if (copperSword != null) {
-            // Tools keep their natural affinities — copper is just a new tier,
+            // Tools keep their natural affinities - copper is just a new tier,
             // it's the armor set that carries the Ranged theme.
             if (item == copperSword)
                 return weaponStatLine(item) + "\n\u00a7e\u2694 Sweep: \u00a7710% chance to hit adjacent enemy";
@@ -655,7 +655,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                 return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Copper spade \u2014 boosted by Pet affinity";
             if (item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHoe())
                 return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Low damage, boosted by Special affinity";
-            // Copper armor — Marksman set: ricochet flavor + Ranged Power type affinity.
+            // Copper armor - Marksman set: ricochet flavor + Ranged Power type affinity.
             if (item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHelmet()
                 || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperChestplate()
                 || item == com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperLeggings()
@@ -694,7 +694,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.BLAZE_ROD) return weaponStatLine(item) + "\n\u00a76\u2716 Fire: \u00a77+1 fire dmg | \u00a78Stun: \u00a775% chance";
         if (item == Items.BREEZE_ROD) return weaponStatLine(item) + "\n\u00a7b\u2716 Knockback: \u00a77Push back 1 | \u00a78Stun: \u00a775% chance";
 
-        // Hoes — Special type (low damage, effects/utility)
+        // Hoes - Special type (low damage, effects/utility)
         if (item == Items.WOODEN_HOE) return weaponStatLine(item) + "\n\u00a77Weak but channels special energy";
         if (item == Items.STONE_HOE) return weaponStatLine(item) + "\n\u00a77Weak but channels special energy";
         if (item == Items.IRON_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Low damage, boosted by Special affinity";
@@ -702,7 +702,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.DIAMOND_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Strong special conduit";
         if (item == Items.NETHERITE_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Ultimate special conduit";
 
-        // Shovels — Pet type (boosted by Pet affinity)
+        // Shovels - Pet type (boosted by Pet affinity)
         if (item == Items.WOODEN_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Boosted by Pet affinity";
         if (item == Items.STONE_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Solid companion blade";
         if (item == Items.IRON_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Reliable pet synergy";
@@ -760,7 +760,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.PUFFERFISH) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 2)\n\u00a7c3 DMG \u00a77| Radius 2 | \u00a73Water\n\u00a73Soaked II \u00a77+ \u00a72Poison I";
 
         // ── Potions ──
-        // Potions handled dynamically in getTooltip — these are fallbacks for potions without POTION_CONTENTS
+        // Potions handled dynamically in getTooltip - these are fallbacks for potions without POTION_CONTENTS
         if (item == Items.POTION) return null;
         if (item == Items.SPLASH_POTION) return null;
         if (item == Items.LINGERING_POTION) return null;
@@ -918,7 +918,7 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         // ── Enchanting related ──
         // Enchanted books handled dynamically below
-        // if (item == Items.ENCHANTED_BOOK) — removed, uses per-enchant tooltips now
+        // if (item == Items.ENCHANTED_BOOK) - removed, uses per-enchant tooltips now
 
         // ── Emerald (currency) ──
         if (item == Items.EMERALD) return "\u00a72Craftics Currency\n\u00a77Spend at wandering traders between levels";
@@ -927,29 +927,10 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item.toString().contains("guide_book")) return "\u00a72Right-click or press G to open\n\u00a77Contains combat guides, enemy bestiary, tips";
 
         // ── Pottery Sherd Spells ──
-        if (item == Items.EXPLORER_POTTERY_SHERD) return "\u00a7d[2 AP] Phase Step \u00a77\u2014 Teleport 4 tiles + reveal enemy stats";
-        if (item == Items.FRIEND_POTTERY_SHERD) return "\u00a7d[2 AP] Guardian Spirit \u00a77\u2014 Heal 5 HP, buff ally pet (+3 ATK)";
-        if (item == Items.HEART_POTTERY_SHERD) return "\u00a7d[3 AP] Mending Light \u00a77\u2014 Heal 10 HP + Regen II (3 turns)";
-        if (item == Items.SCRAPE_POTTERY_SHERD) return "\u00a7d[3 AP] Corrode \u00a77\u2014 3 dmg + reduce DEF by 5 (3 turns)";
-        if (item == Items.ANGLER_POTTERY_SHERD) return "\u00a73[3 AP] Riptide Hook \u00a77\u2014 Pull 2 tiles + 4 dmg (+3 if adjacent)";
-        if (item == Items.HEARTBREAK_POTTERY_SHERD) return "\u00a7d[3 AP] Shatter Will \u00a77\u2014 3 dmg + -4 ATK, -3 SPD (2 turns)";
-        if (item == Items.SHEAF_POTTERY_SHERD) return "\u00a72[3 AP] Entangle \u00a77\u2014 Stun target + slow nearby enemies";
-        if (item == Items.MINER_POTTERY_SHERD) return "\u00a78[3 AP] Earthen Spike \u00a77\u2014 7 BLUNT dmg (+4 near obstacle)";
-        if (item == Items.DANGER_POTTERY_SHERD) return "\u00a7d[3 AP] Hex Trap \u00a77\u2014 Invisible trap: 8 dmg + stun on trigger";
-        if (item == Items.BLADE_POTTERY_SHERD) return "\u00a7d[4 AP] Phantom Slash \u00a77\u2014 8 dmg + 5 cleave to adjacent enemy";
-        if (item == Items.BURN_POTTERY_SHERD) return "\u00a76[4 AP] Immolation \u00a77\u2014 6 fire + burn (3t), splash 3 dmg + burn";
-        if (item == Items.SNORT_POTTERY_SHERD) return "\u00a78[4 AP] Tectonic Charge \u00a77\u2014 KB 3 tiles, 3 dmg/tile, wall slam +6";
-        if (item == Items.SHELTER_POTTERY_SHERD) return "\u00a77[4 AP] Stone Aegis \u00a77\u2014 Resistance II (4t) + Absorption II (3t)";
-        if (item == Items.FLOW_POTTERY_SHERD) return "\u00a73[4 AP] Tidal Surge \u00a77\u2014 5 WATER dmg + KB 2 to all within 2 tiles";
-        if (item == Items.MOURNER_POTTERY_SHERD) return "\u00a75[4 AP] Soul Drain \u00a77\u2014 7 dmg, heal for damage dealt";
-        if (item == Items.BREWER_POTTERY_SHERD) return "\u00a7d[4 AP] Alchemist's Surge \u00a77\u2014 4 random buffs (3 turns each)";
-        if (item == Items.PLENTY_POTTERY_SHERD) return "\u00a7a[4 AP] Bountiful Harvest \u00a77\u2014 Heal 10 HP + restore 5 AP";
-        if (item == Items.ARCHER_POTTERY_SHERD) return "\u00a7b[5 AP] Spectral Volley \u00a77\u2014 7 RANGED dmg + 4 AoE splash";
-        if (item == Items.HOWL_POTTERY_SHERD) return "\u00a77[5 AP] Dread Howl \u00a77\u2014 4 dmg + stun all within 3 tiles";
-        if (item == Items.ARMS_UP_POTTERY_SHERD) return "\u00a76[5 AP] War Cry \u00a77\u2014 STR III (+9 ATK) + SPD II (3 turns)";
-        if (item == Items.PRIZE_POTTERY_SHERD) return "\u00a76[5 AP] Fortune's Favor \u00a77\u2014 Next attack = TRIPLE damage + Luck II";
-        if (item == Items.SKULL_POTTERY_SHERD) return "\u00a74[6 AP] Death Mark \u00a77\u2014 Execute <40% HP or 5 dmg + Wither III";
-        if (item == Items.GUSTER_POTTERY_SHERD) return "\u00a7e[4 AP] Chain Lightning \u00a77\u2014 8 dmg, chains within 2 tiles (2x on Soaked)";
+        String sherdTooltip = com.crackedgames.craftics.combat.PotterySherdSpells.getSherdTooltip(item);
+        if (sherdTooltip != null) {
+            return sherdTooltip + "\n\u00a78Break chance: 10% base (reduced by Special affinity points + bonus)";
+        }
 
         // ── Mob skulls (equip as helmet for a +1 damage type affinity) ──
         if (item == Items.SKELETON_SKULL) return "\u00a7f\u2620 Wear: \u00a7b+1 Ranged \u00a77damage\n\u00a78Rare drop from skeletons, strays, bogged";

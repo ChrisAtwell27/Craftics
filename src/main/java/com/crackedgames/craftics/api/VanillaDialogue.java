@@ -39,7 +39,7 @@ public final class VanillaDialogue {
                     new DialogueChoice("Large Offering (10 emeralds)", "shrine:large"),
                     new DialogueChoice("Walk away", "shrine:leave"))));
 
-        // Wounded Traveler — base intro. Food choices are appended per-player at
+        // Wounded Traveler - base intro. Food choices are appended per-player at
         // runtime (since they depend on the player's inventory).
         DialogueRegistry.register(new DialogueDefinition(
             "craftics:traveler_intro", "minecraft:villager", "traveler_intro",
@@ -47,7 +47,7 @@ public final class VanillaDialogue {
                     "The traveler eyes your pack hopefully."),
             List.of(new DialogueChoice("Walk away", "traveler:leave"))));
 
-        // Shiny on the ground — narrator vote dialogue. Majority "Take it"
+        // Shiny on the ground - narrator vote dialogue. Majority "Take it"
         // triggers a 50/50 between a rare reward (to one Yes voter) and an
         // ambush. Majority "Leave it" walks past safely. A tie triggers the
         // ambush. Resolution narrator lines are built at runtime.
@@ -58,7 +58,7 @@ public final class VanillaDialogue {
             List.of(new DialogueChoice("Take it", "shiny:take"),
                     new DialogueChoice("Leave it", "shiny:leave"))));
 
-        // Wandering Enchanter — step 1 (category select). The weapon/armor lists
+        // Wandering Enchanter - step 1 (category select). The weapon/armor lists
         // are built per-player at runtime from the player's inventory.
         DialogueRegistry.register(new DialogueDefinition(
             "craftics:enchanter_intro", "minecraft:villager", "enchanter_intro",

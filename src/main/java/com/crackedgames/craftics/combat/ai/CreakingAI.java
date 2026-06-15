@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Creaking AI: A wooden guardian linked to a Creaking Heart.
- * The Creaking itself is invulnerable — it can only be killed by destroying
+ * The Creaking itself is invulnerable - it can only be killed by destroying
  * its linked Creaking Heart entity. Moves toward the player and attacks.
  */
 public class CreakingAI implements EnemyAI {
@@ -26,7 +26,7 @@ public class CreakingAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Adjacent — attack
+        // Adjacent - attack
         if (dist == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }

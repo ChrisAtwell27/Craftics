@@ -46,7 +46,7 @@ public class ModBlocks {
     );
 
     // Invisible second half of the level-select table. Auto-placed by LevelSelectBlock
-    // on placement and torn down on break — no BlockItem, no drops of its own.
+    // on placement and torn down on break - no BlockItem, no drops of its own.
     public static final Block LEVEL_SELECT_GHOST_BLOCK = registerBlockNoItem("level_select_ghost_block",
         new LevelSelectGhostBlock(AbstractBlock.Settings.create()
             //? if >=1.21.2 {

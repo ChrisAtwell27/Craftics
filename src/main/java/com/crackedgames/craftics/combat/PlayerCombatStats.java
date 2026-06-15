@@ -27,7 +27,7 @@ public class PlayerCombatStats {
     /**
      * Vanilla armor value. Retained for legacy callers that read raw armor
      * points; for incoming-damage mitigation use {@link #getArmorClass} instead
-     * — the AC overhaul replaced %-reduction with an AC-driven dodge roll.
+     * - the AC overhaul replaced %-reduction with an AC-driven dodge roll.
      */
     public static int getDefense(ServerPlayerEntity player) {
         return player.getArmor();
@@ -41,7 +41,7 @@ public class PlayerCombatStats {
      * per-piece AC of worn armor ({@link ArmorClassTable}) with every defense
      * bonus source: Protection enchants, armor-set bonus, Resistance, the
      * DEFENSE progression stat, trim defense, banner aura, and the shield
-     * passive. There is no soft-cap — the dodge formula's 40% cap bounds the
+     * passive. There is no soft-cap - the dodge formula's 40% cap bounds the
      * benefit of stacking AC. See {@code DodgeRoll} and the AC overhaul spec.
      *
      * @param combatEffects    active combat effects (may be null)
@@ -70,7 +70,7 @@ public class PlayerCombatStats {
         return Math.max(0, ac);
     }
 
-    /** Crossbow uses special rook pattern — return -1 to signal unlimited cardinal range. */
+    /** Crossbow uses special rook pattern - return -1 to signal unlimited cardinal range. */
     public static final int RANGE_CROSSBOW_ROOK = -1;
 
     /** Max throw range for trident (cardinal/diagonal line). */
@@ -83,7 +83,7 @@ public class PlayerCombatStats {
         if (weapon == Items.BOW && hasArrows(player)) {
             return baseRange + getBowPowerRange(player);
         }
-        // Crossbow needs ammo to fire — arrows, or a firework rocket in the
+        // Crossbow needs ammo to fire - arrows, or a firework rocket in the
         // offhand (the rocket-crossbow shot). Without either it falls to melee.
         if (weapon == Items.CROSSBOW && !hasArrows(player)
                 && !player.getOffHandStack().isOf(Items.FIREWORK_ROCKET)) {
@@ -159,7 +159,7 @@ public class PlayerCombatStats {
         Item legs = player.getEquippedStack(EquipmentSlot.LEGS).getItem();
         Item feet = player.getEquippedStack(EquipmentSlot.FEET).getItem();
 
-        // Turtle helmet is special — it's a "set" with any armor type
+        // Turtle helmet is special - it's a "set" with any armor type
         if (head == Items.TURTLE_HELMET) return "turtle";
 
         // Check full sets
@@ -176,7 +176,7 @@ public class PlayerCombatStats {
         if (head == Items.NETHERITE_HELMET && chest == Items.NETHERITE_CHESTPLATE
             && legs == Items.NETHERITE_LEGGINGS && feet == Items.NETHERITE_BOOTS) return "netherite";
 
-        // Copper Age Backport — items resolved at runtime so we can detect them
+        // Copper Age Backport - items resolved at runtime so we can detect them
         // without a hard reference to the optional mod's classes/items.
         Item copperHead  = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperHelmet();
         Item copperChest = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperChestplate();
@@ -247,7 +247,7 @@ public class PlayerCombatStats {
      * Maps vanilla status-effect id paths (e.g. "poison", "instant_damage") to the
      * Craftics combat effect names the tipped-arrow switch handles. Skips anything
      * outside the 7-effect whitelist and de-dupes (a vanilla /give arrow can carry
-     * the same effect twice). Pure — no Minecraft registry, unit-testable with plain
+     * the same effect twice). Pure - no Minecraft registry, unit-testable with plain
      * strings. Uses string matching on registry id for 1.21.1+ shard compatibility.
      */
     public static java.util.List<String> recognizedEffectNames(java.util.List<String> effectPaths) {
@@ -325,6 +325,41 @@ public class PlayerCombatStats {
             }
         }
         return 0;
+    }
+
+    /**
+     * Vanilla-style Mending for Craftics combat XP. Vanilla only repairs gear when a real XP
+     * orb is collected, but the arena grants XP through addExperience, which skips that path -
+     * so Mending never fired. This spends the awarded XP (2 durability per point) to repair a
+     * random damaged Mending item among the player's held and worn gear, looping until the XP
+     * runs out or nothing needs repair, then returns the leftover XP for the caller to add.
+     */
+    public static int applyMending(ServerPlayerEntity player, int xp) {
+        if (player == null || xp <= 0) return xp;
+        ItemStack[] gear = {
+            player.getMainHandStack(),
+            player.getOffHandStack(),
+            player.getEquippedStack(EquipmentSlot.HEAD),
+            player.getEquippedStack(EquipmentSlot.CHEST),
+            player.getEquippedStack(EquipmentSlot.LEGS),
+            player.getEquippedStack(EquipmentSlot.FEET),
+        };
+        java.util.Random rng = new java.util.Random();
+        while (xp > 0) {
+            java.util.List<ItemStack> repairable = new java.util.ArrayList<>();
+            for (ItemStack s : gear) {
+                if (!s.isEmpty() && s.isDamaged() && getEnchantLevel(s, "minecraft:mending") > 0) {
+                    repairable.add(s);
+                }
+            }
+            if (repairable.isEmpty()) break;
+            ItemStack target = repairable.get(rng.nextInt(repairable.size()));
+            int repair = Math.min(target.getDamage(), xp * 2); // 2 durability per XP point
+            if (repair <= 0) break;
+            target.setDamage(target.getDamage() - repair);
+            xp -= (repair + 1) / 2; // XP spent (rounded up)
+        }
+        return xp;
     }
 
     // Sharpness gives flat +1/level here; Smite/Bane are AoE/debuff in WeaponAbility

@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *   1. The vanilla method names for the drop helpers vary across yarn versions
  *      (mixins by name break on minor MC updates).
  *   2. Vanilla calls {@code Inventory.removeStack} BEFORE actually spawning the
- *      dropped item, so cancelling the spawn alone deletes the held stack —
+ *      dropped item, so cancelling the spawn alone deletes the held stack -
  *      cancelling the packet here prevents the inventory mutation entirely.
  */
 @Mixin(ServerPlayNetworkHandler.class)

@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * Narrow, controlled view of combat state handed to an {@link AllyRoundHook}.
  *
- * <p>Round hooks never touch the {@code CombatManager} directly — they go through
+ * <p>Round hooks never touch the {@code CombatManager} directly - they go through
  * this context, which exposes only the four operations a per-round ally effect
  * needs: summoning a temporary ally, healing an ally, listing the living allies,
  * and broadcasting a message to the party. The manager supplies the implementation
@@ -33,7 +33,7 @@ public interface AllyCombatContext {
     /** Restore {@code amount} HP to {@code target} (clamped to its max HP). */
     void healAlly(CombatEntity target, int amount);
 
-    /** The living allies currently in the arena (a stable copy — safe to iterate). */
+    /** The living allies currently in the arena (a stable copy - safe to iterate). */
     List<CombatEntity> allies();
 
     /** Broadcast a message to every party participant. */

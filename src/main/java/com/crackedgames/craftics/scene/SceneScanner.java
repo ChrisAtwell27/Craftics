@@ -30,7 +30,7 @@ import java.util.Map;
  * replaced with the most common neighboring block so the markers are invisible
  * in the built scene (same treatment {@code ArenaBuilder} gives arena corners).
  *
- * <p>World-touching glue — verified in-game (no unit test). The booth-pairing
+ * <p>World-touching glue - verified in-game (no unit test). The booth-pairing
  * logic it delegates to ({@link SceneLayoutResolver}) is unit-tested.
  */
 public final class SceneScanner {

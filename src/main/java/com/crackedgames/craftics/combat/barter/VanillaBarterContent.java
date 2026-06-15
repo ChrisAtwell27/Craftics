@@ -32,9 +32,9 @@ public final class VanillaBarterContent {
     private static void registerCategories() {
         BarterCategoryRegistry.register(new BarterCategory(WARMONGER,    "Warmonger",    "§c⚔", "weapons of war",        0));
         BarterCategoryRegistry.register(new BarterCategory(HOARDER,      "Hoarder",      "§b♦", "glittering treasures",  0));
-        BarterCategoryRegistry.register(new BarterCategory(FLESH_DEALER, "Flesh Dealer", "§a🍖", "food and foul brews",  0));
+        BarterCategoryRegistry.register(new BarterCategory(FLESH_DEALER, "Flesh Dealer", "§a⚘", "food and foul brews",  0));
         BarterCategoryRegistry.register(new BarterCategory(RELIC_TRADER, "Relic Trader", "§5✦", "rare curiosities",      0));
-        BarterCategoryRegistry.register(new BarterCategory(BEAST_TAMER,  "Beast Tamer",  "§6🐗", "beasts of the Nether", 0));
+        BarterCategoryRegistry.register(new BarterCategory(BEAST_TAMER,  "Beast Tamer",  "§6♞", "beasts of the Nether", 0));
     }
 
     private static void registerWarmonger() {

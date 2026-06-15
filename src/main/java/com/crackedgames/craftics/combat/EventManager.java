@@ -36,7 +36,7 @@ public class EventManager {
     private long voteStartTime = 0;
     private static final long VOTE_TIMEOUT_MS = 30_000;
 
-    // Completion tracking (for trader/dig site — wait for all players)
+    // Completion tracking (for trader/dig site - wait for all players)
     private final Set<UUID> completedPlayers = new HashSet<>();
 
     // Players who have finished their current fight (for post-level sync)

@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class AllyRegistry {
 
     private static final Map<String, AllyEntry> REGISTRY = new ConcurrentHashMap<>();
-    /** Entity types whose current entry came from a JSON datapack — dropped on /reload. */
+    /** Entity types whose current entry came from a JSON datapack - dropped on /reload. */
     private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private AllyRegistry() {}

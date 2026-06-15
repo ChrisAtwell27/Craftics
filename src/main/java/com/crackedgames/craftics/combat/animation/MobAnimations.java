@@ -14,7 +14,7 @@ import net.minecraft.sound.SoundEvents;
  * Helper for setting a mob's {@link AnimState} and firing the particle/sound
  * burst associated with that state. Server-side only.
  *
- * <p>This is the single entry point combat code uses — callers should not write
+ * <p>This is the single entry point combat code uses - callers should not write
  * directly to the component so we always emit the matching VFX in lockstep.
  */
 public final class MobAnimations {

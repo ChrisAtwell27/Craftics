@@ -31,7 +31,7 @@ public final class Vfx {
                         pos.x, pos.y, pos.z, s.text(), s.color(), s.lifetimeTicks()));
                 }
                 case VfxPrimitive.Vignette s -> out.add(new com.crackedgames.craftics.network.VfxClientPayload.ClientPrim.Vignette(s.type().ordinal(), s.level(), s.durationTicks()));
-                default -> { /* non-client primitive slipped in — ignore */ }
+                default -> { /* non-client primitive slipped in - ignore */ }
             }
         }
         if (out.isEmpty()) return;

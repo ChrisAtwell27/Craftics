@@ -12,11 +12,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Deep Dark Boss — "The Warden" (Enhanced with Vibration Sense)
+ * Deep Dark Boss - "The Warden" (Enhanced with Vibration Sense)
  * Entity: Warden | 50HP / 8ATK / 4DEF / Speed 3 | Size 2×2
  *
- * Core Mechanic — Vibration Sense:
- * - Blind — hunts by vibration, not sight.
+ * Core Mechanic - Vibration Sense:
+ * - Blind - hunts by vibration, not sight.
  * - Projectile distraction: player throws at empty tile → Warden chases that tile.
  * - Movement 3+ tiles in a turn causes lock-on (overrides distraction).
  * - Phase 2: distraction lasts 1 turn only, movement threshold drops to 2+.
@@ -29,7 +29,7 @@ import java.util.List;
  * - (Existing) Melee: devastating close-range attack
  * - (Existing) Sonic Boom (Phase 2): range 4, ignores LOS
  *
- * Phase 2 — "The Ancient Awakens":
+ * Phase 2 - "The Ancient Awakens":
  * - +3 bonus damage, Sonic Boom unlocked
  * - Sculk regen: 1 HP/turn per sculk tile on field
  * - Darkness Pulse every 2 turns instead of 4
@@ -117,7 +117,7 @@ public class WardenAI extends BossAI {
         // Determine effective target (vibration or player)
         GridPos effectiveTarget = (vibrationTarget != null) ? vibrationTarget : playerPos;
 
-        // If confused (reached distraction tile, found nothing) — Tremor Stomp or idle
+        // If confused (reached distraction tile, found nothing) - Tremor Stomp or idle
         if (isConfused) {
             isConfused = false;
             boolean doStomp = isPhaseTwo() || Math.random() < 0.5;
@@ -131,7 +131,7 @@ public class WardenAI extends BossAI {
             return new EnemyAction.Idle();
         }
 
-        // If chasing distraction target and we've arrived — become confused
+        // If chasing distraction target and we've arrived - become confused
         if (distractionActive && vibrationTarget != null) {
             int distToTarget = myPos.manhattanDistance(vibrationTarget);
             if (distToTarget <= 1) {
@@ -145,7 +145,7 @@ public class WardenAI extends BossAI {
         int distToTarget = self.minDistanceTo(effectiveTarget);
         int distToPlayer = self.minDistanceTo(playerPos);
 
-        // Darkness Pulse — AoE around the player that blinds them. Telegraphed so the
+        // Darkness Pulse - AoE around the player that blinds them. Telegraphed so the
         // player sees it coming and can reposition out of the warning tiles.
         int darknessCooldown = isPhaseTwo() ? 2 : 4;
         if (!isOnCooldown(CD_DARKNESS)) {
@@ -168,7 +168,7 @@ public class WardenAI extends BossAI {
             }
         }
 
-        // Adjacent to effective target — melee attack
+        // Adjacent to effective target - melee attack
         if (distToPlayer <= 1) {
             // Mark attacked tile as sculk
             sculkTiles.add(myPos);
@@ -176,7 +176,7 @@ public class WardenAI extends BossAI {
             return new EnemyAction.Attack(self.getAttackPower() + bonusDamage + sculkBonus);
         }
 
-        // Sonic Boom (Phase 2) — target highest-priority vibration source
+        // Sonic Boom (Phase 2) - target highest-priority vibration source
         if (isPhaseTwo() && distToTarget <= 4) {
             return new EnemyAction.RangedAttack(self.getAttackPower() + bonusDamage, "sonic_boom");
         }

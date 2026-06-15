@@ -9,7 +9,7 @@ import java.util.Map;
  *
  * Each style maps to a deterministic visualization in
  * {@code CombatState.getHoveredEnemyMoveTiles()}. When adding a new mob, register
- * its style here — defaults to {@link #WALK} if missing, which produces a normal
+ * its style here - defaults to {@link #WALK} if missing, which produces a normal
  * BFS using the mob's speed stat.
  */
 public enum MoveStyle {
@@ -25,11 +25,11 @@ public enum MoveStyle {
     BOUNCE_FREE,
     /** Short-range teleport into any walkable tile within blink range (endermite). */
     BLINK,
-    /** Long-range teleport — can appear anywhere unoccupied/walkable in the arena (enderman). */
+    /** Long-range teleport - can appear anywhere unoccupied/walkable in the arena (enderman). */
     TELEPORT,
     /** Pounce: lands adjacent to the player (spider, cave spider). */
     POUNCE,
-    /** Stationary — does not move (shulker, end crystal, egg sac, ghast turret-mode). */
+    /** Stationary - does not move (shulker, end crystal, egg sac, ghast turret-mode). */
     STATIONARY;
 
     private static final Map<String, MoveStyle> BY_TYPE = new HashMap<>();

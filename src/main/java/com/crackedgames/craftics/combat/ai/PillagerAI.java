@@ -10,10 +10,10 @@ import java.util.List;
 /**
  * Pillager AI: Tactical crossbow raider.
  * - CROSSBOW VOLLEY: fires at its configured range (any direction, not just cardinal)
- * - REPOSITION: moves then shoots in same turn — never wastes a turn
+ * - REPOSITION: moves then shoots in same turn - never wastes a turn
  * - RETREAT AND FIRE: backs up when any threat (player or ally pet) closes
  *   to within 2 tiles, snapping off a shot if the target stays in range
- * - Smart positioning — tries to keep its target near max range and stays
+ * - Smart positioning - tries to keep its target near max range and stays
  *   off hazard tiles
  */
 public class PillagerAI implements EnemyAI {
@@ -22,7 +22,7 @@ public class PillagerAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
         // Honor the per-biome range from the enemy entry instead of a
-        // hardcoded 4 — forest pillagers are registered at range 3.
+        // hardcoded 4 - forest pillagers are registered at range 3.
         int range = Math.max(1, self.getRange());
 
         List<GridPos> threats = AIUtils.threatPositions(arena, playerPos);
@@ -44,12 +44,12 @@ public class PillagerAI implements EnemyAI {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "crossbow");
         }
 
-        // In range — fire crossbow
+        // In range - fire crossbow
         if (dist <= range) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "crossbow");
         }
 
-        // Out of range — move to a firing position
+        // Out of range - move to a firing position
         GridPos shotPos = findShotPosition(self, arena, playerPos, threats, range);
         if (shotPos != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, shotPos, self.getMoveSpeed(), self);

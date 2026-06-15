@@ -680,7 +680,7 @@ public class CrafticsClient implements ClientModInitializer {
                 if (CombatState.isInCombat() && client.currentScreen == null) {
                     boolean on = CombatState.toggleThreatOverlay();
                     com.crackedgames.craftics.client.CombatLog.addMessage(on
-                        ? "§c⚠ Enemy threat ranges shown"
+                        ? "§cEnemy threat ranges shown"
                         : "§7Enemy threat ranges hidden");
                 }
             }

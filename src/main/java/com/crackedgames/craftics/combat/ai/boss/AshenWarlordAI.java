@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Basalt Deltas Boss — "The Ashen Warlord" (Wither Skeleton)
+ * Basalt Deltas Boss - "The Ashen Warlord" (Wither Skeleton)
  * Entity: Wither Skeleton | 55HP / 10ATK / 4DEF / Speed 3 | Size 2×2
  *
  * Abilities:
@@ -21,7 +21,7 @@ import java.util.List;
  * - Ash Brand: Marks the player's row and column, then scorches both lanes.
  * - Fire Pillar: Forward line strike. P2 adds mirrored reverse lane.
  *
- * Phase 2 — "Warlord's Command": Arc wither slash, wither skeletons, speed 4,
+ * Phase 2 - "Warlord's Command": Arc wither slash, wither skeletons, speed 4,
  * double wither stacking, X-pattern fire pillar.
  */
 public class AshenWarlordAI extends BossAI {
@@ -40,7 +40,7 @@ public class AshenWarlordAI extends BossAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Ash Brand — lane-control signature move.
+        // Ash Brand - lane-control signature move.
         if (!isOnCooldown(CD_BRAND) && dist <= 6) {
             setCooldown(CD_BRAND, isPhaseTwo() ? 2 : 3);
             List<GridPos> brandTiles = getBrandTiles(arena, playerPos);
@@ -97,10 +97,10 @@ public class AshenWarlordAI extends BossAI {
             return advanceWhileCharging(self, arena, playerPos);
         }
 
-        // Wither Slash — melee attack
+        // Wither Slash - melee attack
         if (dist <= 1) {
             if (isPhaseTwo()) {
-                // 180° arc — attack 3 tiles in front
+                // 180° arc - attack 3 tiles in front
                 int[] dir = getDirectionToward(myPos, playerPos);
                 List<GridPos> arcTiles = new ArrayList<>();
                 arcTiles.add(new GridPos(myPos.x() + dir[0], myPos.z() + dir[1]));

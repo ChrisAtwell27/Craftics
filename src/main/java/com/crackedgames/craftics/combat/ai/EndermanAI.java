@@ -12,17 +12,17 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Enderman AI: Aggressive phase-shifting teleporter.
  *
- * Hunts in cycles — teleports in for 2-3 strikes, then blinks out. Below 50% HP,
+ * Hunts in cycles - teleports in for 2-3 strikes, then blinks out. Below 50% HP,
  * enters a frenzy and never retreats. Varied attack patterns keep the player guessing.
  *
  * Behavior:
  * - ASSAULT PHASE (strikes remaining > 0): teleport adjacent → attack → repeat.
- *   Each cycle is 2–3 strikes before retreating.
+ *   Each cycle is 2-3 strikes before retreating.
  * - RETREAT: blinks away after exhausting strikes, resets for next assault.
  * - STALK: when far away, teleports to within 2 tiles (visible threat) before striking.
  * - FRENZY (≤50% HP): never retreats. Teleport-strike every turn. Attacks with +50% damage.
  * - REACTIVE DODGE: 60% chance to blink 1 tile sideways when hit (not full escape).
- * - Never teleports onto water — endermen hate it.
+ * - Never teleports onto water - endermen hate it.
  *
  * Assault-cycle state lives in the entity's AI memory (one AI instance is shared
  * by every enderman, so instance fields would leak strikes/frenzy across mobs
@@ -84,7 +84,7 @@ public class EndermanAI implements EnemyAI {
             }
         }
 
-        // RETREAT after assault — blink away, reset strikes for next cycle
+        // RETREAT after assault - blink away, reset strikes for next cycle
         if (strikesRemaining == 0 && dist <= 2) {
             self.setAiMemory(STRIKES, nextCycleStrikes());
             GridPos escapeTile = findTeleportAway(arena, myPos, playerPos, 4);
@@ -105,7 +105,7 @@ public class EndermanAI implements EnemyAI {
             }
         }
 
-        // Adjacent — attack directly
+        // Adjacent - attack directly
         if (dist == 1) {
             return new EnemyAction.Attack(damage);
         }
@@ -136,7 +136,7 @@ public class EndermanAI implements EnemyAI {
         int dx = Integer.signum(playerPos.x() - self.x());
         int dz = Integer.signum(playerPos.z() - self.z());
 
-        // Try behind, flanks, then front — varied approach angles
+        // Try behind, flanks, then front - varied approach angles
         GridPos[] candidates = {
             new GridPos(playerPos.x() + dx, playerPos.z() + dz),   // behind
             new GridPos(playerPos.x() + dz, playerPos.z() - dx),   // flank left

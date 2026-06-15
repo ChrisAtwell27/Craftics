@@ -17,7 +17,7 @@ class SizedEntityFootprintTest {
     @Test
     void size2Footprint_coversAllFourAnchorTiles() {
         GridPos anchor = new GridPos(4, 5);
-        // Footprint of a 2x2 at (4,5) is (4,5),(5,5),(4,6),(5,6) — distance 0 to each.
+        // Footprint of a 2x2 at (4,5) is (4,5),(5,5),(4,6),(5,6) - distance 0 to each.
         for (GridPos tile : new GridPos[]{
                 new GridPos(4, 5), new GridPos(5, 5), new GridPos(4, 6), new GridPos(5, 6)}) {
             assertEquals(0, CombatEntity.minDistanceFromSizedEntity(anchor, 2, tile),
@@ -41,7 +41,7 @@ class SizedEntityFootprintTest {
     void size2Footprint_adjacentWhenOneTileAway() {
         GridPos player = new GridPos(5, 5);
         // Anchor at (3,5): footprint (3,5),(4,5),(3,6),(4,6); nearest tile (4,5) is
-        // Manhattan distance 1 from the player — adjacent, not overlapping.
+        // Manhattan distance 1 from the player - adjacent, not overlapping.
         assertEquals(1, CombatEntity.minDistanceFromSizedEntity(new GridPos(3, 5), 2, player));
     }
 

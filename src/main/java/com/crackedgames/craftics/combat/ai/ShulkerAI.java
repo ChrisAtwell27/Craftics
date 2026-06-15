@@ -8,8 +8,8 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Shulker AI: Immobile turret — fires homing bullets at any range up to 5.
- * - HOMING BULLET: attacks at range 5 (any direction — ignores LOS)
+ * Shulker AI: Immobile turret - fires homing bullets at any range up to 5.
+ * - HOMING BULLET: attacks at range 5 (any direction - ignores LOS)
  * - LOCKDOWN: applies Slowness on hit (levitation effect = movement debuff)
  * - SHELL: very rarely moves (speed 1), high defense
  * - Only repositions if player is adjacent and threatens melee
@@ -30,16 +30,16 @@ public class ShulkerAI implements EnemyAI {
                     return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                 }
             }
-            // Can't flee — shoot at point blank
+            // Can't flee - shoot at point blank
             return new EnemyAction.RangedAttack(self.getAttackPower(), "shulker_bullet");
         }
 
-        // In range — fire homing bullet (ignores LOS — shulker bullets track)
+        // In range - fire homing bullet (ignores LOS - shulker bullets track)
         if (dist <= range) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "shulker_bullet");
         }
 
-        // Out of range — reluctantly reposition (speed 1)
+        // Out of range - reluctantly reposition (speed 1)
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, 1);
         if (target != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, target, 1, self);

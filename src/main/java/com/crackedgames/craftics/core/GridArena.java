@@ -18,7 +18,7 @@ public class GridArena {
      *  full {@code width × height} rectangle is playable (legacy behavior).
      *  When non-null, {@code insideMask[x][z] == true} marks a tile as inside
      *  the polygon. Every {@link #isInBounds(int, int)} caller transparently
-     *  inherits the polygon — pathfinding, AI, VFX, occupancy all gate on it. */
+     *  inherits the polygon - pathfinding, AI, VFX, occupancy all gate on it. */
     private final boolean[][] insideMask;
 
     private final Map<GridPos, CombatEntity> occupants = new HashMap<>();
@@ -98,7 +98,7 @@ public class GridArena {
     public boolean isInBounds(int x, int z) {
         if (x < 0 || x >= width || z < 0 || z >= height) return false;
         // Polygon arenas: the rectangle bounds-check is necessary but not
-        // sufficient — tile must also be inside the polygon mask. This single
+        // sufficient - tile must also be inside the polygon mask. This single
         // gate is consulted by every pathfinding / AI / VFX / occupancy call
         // site in the codebase, so the polygon shape propagates everywhere
         // without each caller needing to know about it.
@@ -118,7 +118,7 @@ public class GridArena {
             if (pos.equals(p)) return true;
         }
         var occupant = occupants.get(pos);
-        // Background bosses don't block movement — they're targetable but pass-through
+        // Background bosses don't block movement - they're targetable but pass-through
         return occupant != null && !occupant.isBackgroundBoss();
     }
 
@@ -173,7 +173,7 @@ public class GridArena {
 
     // --- Web overlay tracking (Broodmother) ---
 
-    /** Sentinel duration meaning "this web never ticks down" — used for cobwebs
+    /** Sentinel duration meaning "this web never ticks down" - used for cobwebs
      *  baked into the arena's schematic or jungle-biome decoration. They only
      *  go away when a player walks through them. */
     public static final int PERMANENT_WEB = Integer.MAX_VALUE;
@@ -191,7 +191,7 @@ public class GridArena {
     }
 
     /** Tick all web overlays. Returns positions where webs expired this tick.
-     *  Webs registered with {@link #PERMANENT_WEB} are skipped — they only
+     *  Webs registered with {@link #PERMANENT_WEB} are skipped - they only
      *  clear when a player walks through them. */
     public java.util.List<GridPos> tickWebOverlays() {
         java.util.List<GridPos> expired = new java.util.ArrayList<>();
@@ -235,7 +235,7 @@ public class GridArena {
         return vfxObstaclePriorType.containsKey(pos);
     }
 
-    /** Clear a single VFX obstacle — restores prior tile type and wipes the block in the world. */
+    /** Clear a single VFX obstacle - restores prior tile type and wipes the block in the world. */
     public void clearVfxObstacle(net.minecraft.server.world.ServerWorld world, GridPos pos) {
         TileType prior = vfxObstaclePriorType.remove(pos);
         placedWalls.remove(pos);
@@ -297,7 +297,7 @@ public class GridArena {
         return pos.toBlockPos(origin, 1);
     }
 
-    /** Get entity Y position for a tile — lowered by 1 for water and low ground tiles. */
+    /** Get entity Y position for a tile - lowered by 1 for water and low ground tiles. */
     public double getEntityY(GridPos pos) {
         return getEntityY(pos, false);
     }
@@ -318,7 +318,7 @@ public class GridArena {
             }
             if (t == TileType.WATER || t == TileType.DEEP_WATER || t == TileType.LOW_GROUND
                     || t == TileType.POWDER_SNOW || t == TileType.LAVA) {
-                // Lava sinks the entity by 1 the same way water does — the lava
+                // Lava sinks the entity by 1 the same way water does - the lava
                 // block fills floor→floor+1, so an entity at baseY (floor+1)
                 // would float on the surface instead of being immersed in it.
                 // Knocked-back mobs in particular looked perched on top of the
@@ -334,12 +334,12 @@ public class GridArena {
         return baseY;
     }
 
-    /** Get arena origin for singleplayer (Z=0 lane). Legacy — use world-slot variant. */
+    /** Get arena origin for singleplayer (Z=0 lane). Legacy - use world-slot variant. */
     public static BlockPos arenaOriginForLevel(int level) {
         return new BlockPos(level * 1000, 100, 0);
     }
 
-    /** Get arena origin for a specific player (unique Z lane based on UUID). Legacy — used by test range. */
+    /** Get arena origin for a specific player (unique Z lane based on UUID). Legacy - used by test range. */
     public static BlockPos arenaOriginForLevel(int level, java.util.UUID playerId) {
         int lane = Math.abs(playerId.hashCode() % 1000);
         return new BlockPos(level * 1000, 100, lane * 1000);

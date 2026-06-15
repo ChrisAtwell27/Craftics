@@ -25,7 +25,7 @@ public class ItemUseHandler {
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
 
         // The splash center must be within throw range of the player and in a
-        // clear line of sight — matching bows/crossbows so the splash can't be
+        // clear line of sight - matching bows/crossbows so the splash can't be
         // dropped across the whole map or thrown through a wall.
         GridPos playerPos = arena.getPlayerGridPos();
         if (playerPos.manhattanDistance(targetTile) > THROWABLE_RANGE) {
@@ -57,7 +57,7 @@ public class ItemUseHandler {
         for (CombatEntity enemy : arena.getOccupants().values()) {
             if (!enemy.isAlive() || enemy.isAlly()) continue;
             if (!splashed.add(enemy)) continue;
-            // A Creaking with a living heart is invulnerable — the splash can't
+            // A Creaking with a living heart is invulnerable - the splash can't
             // damage or status it; the heart must be destroyed instead.
             if (CombatManager.isInvulnerableCreaking(enemy)) continue;
             if (enemy.minDistanceTo(targetTile) <= radius) {
@@ -151,12 +151,12 @@ public class ItemUseHandler {
         String itemName = stack.getName().getString();
         String allyName = ally.getName().getString();
         stack.decrement(1);
-        return "§aFed " + itemName + " to " + allyName + " — healed " + healAmount
+        return "§aFed " + itemName + " to " + allyName + " - healed " + healAmount
             + " HP §7(" + (int) newHealth + "/" + (int) maxHealth + ")";
     }
 
     /**
-     * Eternal Steak / Everlasting Beef from the Artifacts mod — non-consuming food items.
+     * Eternal Steak / Everlasting Beef from the Artifacts mod - non-consuming food items.
      * Detected by registry id so this works without a compile-time dependency on Artifacts.
      */
     public static boolean isArtifactsNonConsumingFood(Item item) {
@@ -182,7 +182,7 @@ public class ItemUseHandler {
         return false;
     }
 
-    // Breeding/taming materials — maps mob entity type → item that tames them
+    // Breeding/taming materials - maps mob entity type → item that tames them
     private static final Map<String, Set<Item>> BREEDING_ITEMS = Map.ofEntries(
         Map.entry("minecraft:wolf", Set.of(Items.BONE, Items.BEEF, Items.COOKED_BEEF)),
         Map.entry("minecraft:cat", Set.of(Items.COD, Items.SALMON, Items.COOKED_COD, Items.COOKED_SALMON)),
@@ -305,7 +305,7 @@ public class ItemUseHandler {
         String litCoal = tryIgniteAlly(arena, targetTile, item);
         if (litCoal != null) return litCoal;
 
-        // Per-ally heal item (iron ingot → iron golem, snowball → snow golem, …)
+        // Per-ally heal item (iron ingot → iron golem, snowball → snow golem, ...)
         // takes priority over the item's normal combat use.
         String allyHeal = tryHealAlly(arena, targetTile, item, held);
         if (allyHeal != null) return allyHeal;
@@ -409,15 +409,15 @@ public class ItemUseHandler {
         return null;
     }
 
-    /** Prefix for fishing results — CombatManager deducts extra AP. */
+    /** Prefix for fishing results - CombatManager deducts extra AP. */
     public static final String FISHING_PREFIX = "§bFISH:";
     public static final int FISHING_AP_COST = 3;
 
-    /** Prefix for tile effects — CombatManager processes these. Format: TILE:type:x:z */
+    /** Prefix for tile effects - CombatManager processes these. Format: TILE:type:x:z */
     public static final String TILE_EFFECT_PREFIX = "§eTILE:";
     /** Anvil-drop signal: §8ANVIL:targetEntityId:damage. Server spawns the falling-anvil VFX. */
     public static final String ANVIL_DROP_PREFIX = "§8ANVIL:";
-    /** Prefix for ally buff — CombatManager processes this. */
+    /** Prefix for ally buff - CombatManager processes this. */
     public static final String ALLY_BUFF_PREFIX = "§dBUFF:";
 
     private static boolean isMoveFeather(ItemStack s) {
@@ -425,7 +425,7 @@ public class ItemUseHandler {
     }
 
     private static String useFood(ServerPlayerEntity player, ItemStack stack, Item food) {
-        // Eternal Steak / Everlasting Beef (Artifacts mod) — non-consuming food.
+        // Eternal Steak / Everlasting Beef (Artifacts mod) - non-consuming food.
         // Per the Craftics × Artifacts spec: 2 AP, heals 3 HP, doesn't decrement the stack.
         if (isArtifactsNonConsumingFood(food)) {
             float curMax = player.getMaxHealth();
@@ -434,7 +434,7 @@ public class ItemUseHandler {
             float newHp = Math.min(curMax, curHp + heal);
             player.setHealth(newHp);
             String displayName = stack.getName().getString();
-            return "§dAte " + displayName + " — healed " + heal + " HP §7(it's eternal!)";
+            return "§dAte " + displayName + " - healed " + heal + " HP §7(it's eternal!)";
         }
 
         int healAmount = FOOD_HEAL.getOrDefault(food, 1);
@@ -443,11 +443,11 @@ public class ItemUseHandler {
         player.setHealth(newHealth);
         stack.decrement(1);
 
-        // Risky foods — apply debuff effects via the hooked path so addon
+        // Risky foods - apply debuff effects via the hooked path so addon
         // immunities (e.g. Antidote Vessel) can intercept them.
         CombatManager cm = CombatManager.get(player);
         java.util.Random rng = java.util.concurrent.ThreadLocalRandom.current();
-        // These foods apply the CRAFTICS combat effect only — the vanilla
+        // These foods apply the CRAFTICS combat effect only - the vanilla
         // StatusEffect doubled up as real per-tick HP damage that bypasses the
         // turn-based combat system and kept ticking even outside combat. The
         // combat-effect handles the turn-based debuff on its own.
@@ -469,7 +469,7 @@ public class ItemUseHandler {
         }
 
         // Golden apple also gives absorption. Route the buffs through the combat
-        // effect system (addEffectHooked) so they actually function in combat — the
+        // effect system (addEffectHooked) so they actually function in combat - the
         // ABSORPTION hook grants the combat absorption shield, and RESISTANCE/
         // REGENERATION register as real combat effects. The vanilla addStatusEffect
         // calls are kept only for the vanilla HUD icons.
@@ -493,7 +493,7 @@ public class ItemUseHandler {
             int maxAp = gcStats.getEffective(PlayerProgression.Stat.AP)
                 + PlayerCombatStats.getSetApBonus(player);
             if (cm.getApRemaining() >= maxAp) {
-                // Refund the food — AP is already full, undo the heal + consumption
+                // Refund the food - AP is already full, undo the heal + consumption
                 player.setHealth(player.getHealth() - healAmount);
                 stack.increment(1);
                 return "§cAP is already full!";
@@ -642,19 +642,19 @@ public class ItemUseHandler {
         double saveChance = specialPts * 0.10;
         if (saveChance <= 0 || Math.random() >= saveChance) return false;
         CombatManager.get(player).sendMessage(
-            "§d✨ Conserved! Special focus preserves your "
+            "§dConserved! Special focus preserves your "
                 + stack.getName().getString() + ".");
         return true;
     }
 
     /**
      * Consume one of a Special-class consumable (banner, horn, fire/wind
-     * charge, snowball, egg, ender pearl, …). Wraps {@link #trySpecialConserve}
+     * charge, snowball, egg, ender pearl, ...). Wraps {@link #trySpecialConserve}
      * so simple call sites don't have to duplicate the if/decrement pattern.
      * Use {@code trySpecialConserve} directly when the consume site has extra
      * side effects to gate on the save (potions refund a glass bottle, etc.).
      *
-     * <p>Non-Special utility items (TNT, hay block, pickaxe durability, …)
+     * <p>Non-Special utility items (TNT, hay block, pickaxe durability, ...)
      * should keep plain {@code stack.decrement(1)} so this perk stays scoped
      * to the caster archetype.
      */
@@ -1013,7 +1013,7 @@ public class ItemUseHandler {
             return windChargeSelfLaunch(player, arena, stack, playerPos, ddx, ddz);
         }
 
-        // Otherwise: knock an enemy back — the original behaviour.
+        // Otherwise: knock an enemy back - the original behaviour.
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
         consumeSpecialItem(player, stack);
@@ -1071,7 +1071,7 @@ public class ItemUseHandler {
      * Wind Charge self-movement: launches the player up to 2 tiles in the
      * direction opposite the targeted (adjacent) tile, stopping early at walls,
      * obstacles, or occupants. Arms the wind-charge momentum bonus so an attack
-     * made immediately afterwards — with no move in between — deals 1.5x damage.
+     * made immediately afterwards - with no move in between - deals 1.5x damage.
      */
     private static String windChargeSelfLaunch(ServerPlayerEntity player, GridArena arena,
                                                 ItemStack stack, GridPos playerPos, int ddx, int ddz) {
@@ -1089,7 +1089,7 @@ public class ItemUseHandler {
             moved = i;
         }
 
-        if (moved == 0) return "§fWind charge fizzles — no room to launch!";
+        if (moved == 0) return "§fWind charge fizzles - no room to launch!";
 
         consumeSpecialItem(player, stack);
         arena.setPlayerGridPos(landing);
@@ -1109,7 +1109,7 @@ public class ItemUseHandler {
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
         }
         return "§fWind charge! Launched " + moved + " tile" + (moved == 1 ? "" : "s")
-            + " — strike an enemy now for 1.5x damage!";
+            + " - strike an enemy now for 1.5x damage!";
     }
 
     // --- Milk Bucket: clears all status effects (good and bad) ---
@@ -1133,7 +1133,7 @@ public class ItemUseHandler {
         net.minecraft.util.math.BlockPos bp = arena.gridToBlockPos(targetTile);
         world.setBlockState(bp, net.minecraft.block.Blocks.TNT.getDefaultState());
 
-        // Fuse particles — smoke rising from the placed TNT
+        // Fuse particles - smoke rising from the placed TNT
         world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
             bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
             8, 0.2, 0.3, 0.2, 0.01);
@@ -1169,11 +1169,11 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
-        // Flint &amp; steel is a melee-range interaction — you have to stand next to
+        // Flint &amp; steel is a melee-range interaction - you have to stand next to
         // the target. Without this you could ignite anything anywhere on the map.
         String reach = validateAdjacentReach(arena, enemy);
         if (reach != null) return reach;
-        // A Creaking with a living heart is invulnerable — destroy its heart instead.
+        // A Creaking with a living heart is invulnerable - destroy its heart instead.
         if (CombatManager.isInvulnerableCreaking(enemy)) {
             return "§c§lThe Creaking is invulnerable! §7Destroy its §4Creaking Heart§7 instead!";
         }
@@ -1236,7 +1236,7 @@ public class ItemUseHandler {
         for (CombatEntity occupant : arena.getOccupants().values()) {
             if (occupant.isAlive() && !occupant.isAlly()) { hasLiveEnemy = true; break; }
         }
-        if (!hasLiveEnemy) return "§cNothing's biting — no danger, no catch. Fish during a fight!";
+        if (!hasLiveEnemy) return "§cNothing's biting - no danger, no catch. Fish during a fight!";
 
         // Must be adjacent (Manhattan distance 1)
         GridPos playerPos = arena.getPlayerGridPos();
@@ -1334,13 +1334,13 @@ public class ItemUseHandler {
         return FISHING_PREFIX + rarity + "Caught: " + lootName + "!";
     }
 
-    /** Prefix returned when taming/befriending succeeds — CombatManager processes this. */
+    /** Prefix returned when taming/befriending succeeds - CombatManager processes this. */
     public static final String TAME_PREFIX = "§aTAME:";
     /** Prefix for passive mobs that get sent to the hub instead of becoming combat allies. */
     public static final String BEFRIEND_PREFIX = "§aBEFRIEND:";
     /** Prefix for mounting a tamed mob (horse/donkey/camel with saddle). */
     public static final String MOUNT_PREFIX = "§aMOUNT:";
-    /** Prefix for TNT placement — CombatManager tracks the tile for delayed detonation. */
+    /** Prefix for TNT placement - CombatManager tracks the tile for delayed detonation. */
     public static final String TNT_PREFIX = "§6TNT:";
 
     /** Mobs that can be mounted in combat (require a saddle). */
@@ -1352,7 +1352,7 @@ public class ItemUseHandler {
     // --- Spyglass: Mark an enemy (2 AP, no consume) ---
     // Marks the target so it takes extra damage (2x; 1.5x for bosses) for the rest of
     // this turn and the next, gives it the Glowing outline, and reveals its stats. Only
-    // one enemy can be marked at a time — marking a new target clears the previous mark.
+    // one enemy can be marked at a time - marking a new target clears the previous mark.
     private static String useSpyglass(GridArena arena, GridPos targetTile) {
         if (targetTile == null) return "§cNeed to target an enemy!";
         CombatEntity enemy = arena.getOccupant(targetTile);
@@ -1372,7 +1372,7 @@ public class ItemUseHandler {
         if (enemy.getMobEntity() != null) enemy.getMobEntity().setGlowing(true);
 
         return "§d✦ Marked §e" + enemy.getDisplayName() + "§d! §7(takes "
-            + (enemy.isBoss() ? "1.5x" : "2x") + " damage) §8— HP: " + enemy.getCurrentHp() + "/" + enemy.getMaxHp()
+            + (enemy.isBoss() ? "1.5x" : "2x") + " damage) §8- HP: " + enemy.getCurrentHp() + "/" + enemy.getMaxHp()
             + " | ATK: " + enemy.getAttackPower() + " | DEF: " + enemy.getDefense()
             + " | Range: " + enemy.getRange() + " | Speed: " + enemy.getMoveSpeed();
     }
@@ -1409,13 +1409,13 @@ public class ItemUseHandler {
             + "|§6Bell rings! " + stunned + " enemies stunned for 1 turn.";
     }
 
-    // --- Lava Bucket: place lava on tile — deals damage to enemies that step on it (1 AP) ---
+    // --- Lava Bucket: place lava on tile - deals damage to enemies that step on it (1 AP) ---
     private static String useLavaBucket(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         GridTile tile = arena.getTile(targetTile);
-        // Only pour onto a plain, walkable floor tile — not onto obstacles, hazards,
+        // Only pour onto a plain, walkable floor tile - not onto obstacles, hazards,
         // or existing water/lava.
         if (tile == null || !tile.isSafeForSpawn()) return "§cCan't place lava there!";
         // Empties the bucket and returns the empty bucket, matching milk/water/powder snow.
@@ -1424,7 +1424,7 @@ public class ItemUseHandler {
             + "|GIVE:bucket|§6Placed lava! Enemies on it take 3 fire damage per turn.";
     }
 
-    // --- Scaffolding: place elevated tile — gives +1 range to ranged attacks from it (1 AP) ---
+    // --- Scaffolding: place elevated tile - gives +1 range to ranged attacks from it (1 AP) ---
     private static String useScaffolding(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
@@ -1433,7 +1433,7 @@ public class ItemUseHandler {
             + "|§aPlaced scaffolding! +1 range for ranged attacks from this tile.";
     }
 
-    // --- Campfire: place healing zone — heals 1 HP per turn when adjacent (1 AP) + creates light zone ---
+    // --- Campfire: place healing zone - heals 1 HP per turn when adjacent (1 AP) + creates light zone ---
     private static String useCampfire(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
@@ -1442,10 +1442,10 @@ public class ItemUseHandler {
             + "|§6Placed campfire! Heals 2 HP per turn while you're inside the 5x5 area + creates light (negate darkness).";
     }
 
-    // --- Anvil: drop on enemy — falling-block animation, then 15 Special damage. ---
+    // --- Anvil: drop on enemy - falling-block animation, then 15 Special damage. ---
     // The actual damage is deferred to the moment the falling anvil "lands" so
     // the player sees it crash down on the target. Vanilla anvil gravity damage
-    // is disabled — only the Craftics base damage applies.
+    // is disabled - only the Craftics base damage applies.
     private static String useAnvil(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target an enemy!";
         CombatEntity enemy = arena.getOccupant(targetTile);
@@ -1455,7 +1455,7 @@ public class ItemUseHandler {
             + "|§8An anvil falls toward " + enemy.getDisplayName() + "!";
     }
 
-    // --- Honey Block: place sticky trap — enemies lose all movement when stepping on it (1 AP) ---
+    // --- Honey Block: place sticky trap - enemies lose all movement when stepping on it (1 AP) ---
     private static String useHoneyBlock(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
@@ -1473,7 +1473,7 @@ public class ItemUseHandler {
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "slime:" + targetTile.x() + ":" + targetTile.z()
-            + "|§aSlime block placed! Bouncy wall — pushes adjacent enemies back when they end their turn next to it.";
+            + "|§aSlime block placed! Bouncy wall - pushes adjacent enemies back when they end their turn next to it.";
     }
 
     // --- Powder Snow Bucket: place powder snow block on a tile. Enemies who
@@ -1498,7 +1498,7 @@ public class ItemUseHandler {
     }
 
     // --- Jukebox: place a jukebox block (full cube, obstacle) on a target tile.
-    //     Music plays — buffs all allies +1 speed for this battle. (2 AP)
+    //     Music plays - buffs all allies +1 speed for this battle. (2 AP)
     private static String useJukebox(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
@@ -1518,7 +1518,7 @@ public class ItemUseHandler {
             + "|§dMusic plays across the arena! " + buffed + " allies buffed (+3 speed for this battle).";
     }
 
-    // --- Banner: plant defense zone — +2 defense (scaled by Special affinity)
+    // --- Banner: plant defense zone - +2 defense (scaled by Special affinity)
     //     to player/allies within 2 tiles (1 AP) ---
     private static String useBanner(ServerPlayerEntity player, GridArena arena,
                                     GridPos targetTile, ItemStack stack) {
@@ -1545,7 +1545,7 @@ public class ItemUseHandler {
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
         GridTile tile = arena.getTile(targetTile);
-        // Only pour onto a plain, walkable floor tile — not onto obstacles, hazards,
+        // Only pour onto a plain, walkable floor tile - not onto obstacles, hazards,
         // or existing water.
         if (tile == null || !tile.isSafeForSpawn() || tile.isWater()) {
             return "§cCan't place water there!";
@@ -1665,11 +1665,11 @@ public class ItemUseHandler {
         net.minecraft.entity.AreaEffectCloudEntity cloud = new net.minecraft.entity.AreaEffectCloudEntity(
             sw, targetBlock.getX() + 0.5, targetBlock.getY(), targetBlock.getZ() + 0.5);
         cloud.setRadius(1.5f);
-        cloud.setDuration(999999); // effectively permanent — cleaned up when combat ends
-        cloud.setRadiusGrowth(0); // don't shrink — stays until combat ends
+        cloud.setDuration(999999); // effectively permanent - cleaned up when combat ends
+        cloud.setRadiusGrowth(0); // don't shrink - stays until combat ends
         cloud.setWaitTime(0);
         if (potionContents != null) {
-            // Set the full potion contents — handles color, effects, and particles automatically
+            // Set the full potion contents - handles color, effects, and particles automatically
             cloud.setPotionContents(potionContents);
         } else {
             // Default to poison cloud
@@ -1793,7 +1793,7 @@ public class ItemUseHandler {
             + "|§eLight zone created! Reveals hidden enemies within 3 tiles + negates darkness.";
     }
 
-    // --- Torch: place lightweight light source (1 AP) — creates light (radius 2, negates darkness) ---
+    // --- Torch: place lightweight light source (1 AP) - creates light (radius 2, negates darkness) ---
     private static String useTorch(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
@@ -1816,12 +1816,12 @@ public class ItemUseHandler {
             enemies.add(e);
         }
 
-        // The horn is not consumed — it's reusable, just costs AP
+        // The horn is not consumed - it's reusable, just costs AP
         // CombatManager will handle applying the effect via HORN_EFFECT_PREFIX
         return HORN_EFFECT_PREFIX + hornId + "|" + GoatHornEffects.getTooltip(hornId);
     }
 
-    /** Prefix for horn effects — CombatManager applies the actual buff/debuff. */
+    /** Prefix for horn effects - CombatManager applies the actual buff/debuff. */
     public static final String HORN_EFFECT_PREFIX = "§6HORN:";
 
     // --- Echo Shard: teleport back to your position at start of turn (1 AP) ---
@@ -1860,7 +1860,7 @@ public class ItemUseHandler {
         CombatEntity occupant = arena.getOccupant(targetTile);
         if (occupant == null || !occupant.isAlive()) return "§cNo creature at target!";
         if (occupant.isAlly()) return "§cAlready tamed!";
-        // Taming is a hands-on interaction — you must be standing next to the
+        // Taming is a hands-on interaction - you must be standing next to the
         // animal. Without this you could tame mobs anywhere on the map and clear
         // rooms instantly.
         String reach = validateAdjacentReach(arena, occupant);
@@ -1890,18 +1890,18 @@ public class ItemUseHandler {
         );
 
         if (combatTameable.contains(entityType)) {
-            // Mountable mobs require a saddle — player mounts them for bonus speed
+            // Mountable mobs require a saddle - player mounts them for bonus speed
             if (MOUNTABLE_MOBS.contains(entityType)) {
                 if (hasSaddle(player)) {
                     consumeSaddle(player);
                     return MOUNT_PREFIX + occupant.getEntityId();
                 }
-                // No saddle — tame as normal walking ally
+                // No saddle - tame as normal walking ally
             }
-            // Returns TAME_PREFIX — CombatManager converts to ally
+            // Returns TAME_PREFIX - CombatManager converts to ally
             return TAME_PREFIX + occupant.getEntityId();
         } else {
-            // Passive mobs (cow, sheep, pig, chicken, etc.) — show hearts, vanish, sent to hub
+            // Passive mobs (cow, sheep, pig, chicken, etc.) - show hearts, vanish, sent to hub
             return BEFRIEND_PREFIX + occupant.getEntityId() + ":" + entityType;
         }
     }

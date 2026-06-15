@@ -8,7 +8,7 @@ import com.crackedgames.craftics.combat.animation.AnimState;
  * since the state was set) onto the render-state snapshot, which is what the
  * model's {@code setAngles} gets on 1.21.3+.
  *
- * <p>Unused on 1.21.1 — that shard reads the CCA component directly from the
+ * <p>Unused on 1.21.1 - that shard reads the CCA component directly from the
  * entity inside the {@code BipedEntityModel#setAngles} mixin.
  */
 public interface CrafticsAnimHolder {

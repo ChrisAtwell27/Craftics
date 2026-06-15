@@ -5,7 +5,7 @@ import com.crackedgames.craftics.combat.CombatEntity;
 
 /**
  * Static factory methods that return composable {@link UsableItemHandler} building
- * blocks — the usable-item parallel of {@link Abilities}.
+ * blocks - the usable-item parallel of {@link Abilities}.
  *
  * <p>Chain blocks with {@link UsableItemHandler#and(UsableItemHandler)}:
  *

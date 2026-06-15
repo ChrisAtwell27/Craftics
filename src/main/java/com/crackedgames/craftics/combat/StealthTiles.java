@@ -50,7 +50,7 @@ public final class StealthTiles {
      * Refresh vanilla invisibility on every combatant currently on a stealth
      * tile. Called once per combat tick. Entities no longer on a stealth tile
      * have the invisibility actively stripped so visibility returns instantly
-     * — without this an entity stays invisible for up to 1.5s after stepping
+     * - without this an entity stays invisible for up to 1.5s after stepping
      * off, which makes the mechanic feel buggy.
      *
      * <p>Takes the FULL party, not just the turn-holder. The hide is a rolling
@@ -92,7 +92,7 @@ public final class StealthTiles {
             entity.addStatusEffect(new StatusEffectInstance(
                 StatusEffects.INVISIBILITY, 30, 0, false, false, true));
         } else {
-            // Off the tile — strip OUR invisibility instantly. Heuristic match
+            // Off the tile - strip OUR invisibility instantly. Heuristic match
             // (short duration, amplifier 0) avoids removing potion-of-
             // invisibility, which is much longer (3600+ ticks) at amplifier 0
             // but with showParticles=true, vs ours which is 30 ticks with

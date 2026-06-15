@@ -3,11 +3,11 @@ package com.crackedgames.craftics.combat.ai.ally;
 import com.crackedgames.craftics.combat.CombatEntity;
 
 /**
- * Optional on-death effect for an ally type — runs once when a living ally of a
+ * Optional on-death effect for an ally type - runs once when a living ally of a
  * registered type dies. Used by compat modules for split/spawn behaviours (e.g.
  * the slime golem splitting into two small slime golems on death).
  *
- * <p>Death hooks never touch the {@code CombatManager} directly — they go through
+ * <p>Death hooks never touch the {@code CombatManager} directly - they go through
  * the shared {@link AllyCombatContext}, the same controlled view handed to
  * {@link AllyRoundHook}s.
  *

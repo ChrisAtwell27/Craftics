@@ -9,7 +9,7 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Tank ally AI — a sturdy body-blocker (iron golem, turtle, goat). Charges the
+ * Tank ally AI - a sturdy body-blocker (iron golem, turtle, goat). Charges the
  * enemy closest to the player to soak hits meant for them, and never flees no
  * matter how low its HP runs. When the threat is too far to strike this turn,
  * it INTERPOSES instead of blindly walking at it: it plants itself on the line
@@ -28,12 +28,12 @@ public class TankAllyAI implements AllyAI {
         GridPos pos = self.getGridPos();
         int reach = self.getMoveSpeed() + Math.max(1, self.getRange());
 
-        // Close enough to hit (or get hit) this turn — fight.
+        // Close enough to hit (or get hit) this turn - fight.
         if (AllyTargeting.distanceToTarget(threat, arena, pos) <= reach) {
             return AllyTargeting.advance(self, arena, threat);
         }
 
-        // Threat is far out — take up a blocking position on the player-threat
+        // Threat is far out - take up a blocking position on the player-threat
         // line rather than chasing across the arena and leaving the player open.
         GridPos playerPos = arena.getPlayerGridPos();
         GridPos threatAnchor = AllyTargeting.nearestTileOnTarget(threat, arena, playerPos);
@@ -56,7 +56,7 @@ public class TankAllyAI implements AllyAI {
             List<GridPos> path = AllyTargeting.pathTo(self, arena, block);
             if (path != null && !path.isEmpty()) return new EnemyAction.Move(path);
         }
-        // Nowhere to stand guard — fall back to the straight charge.
+        // Nowhere to stand guard - fall back to the straight charge.
         return AllyTargeting.advance(self, arena, threat);
     }
 }

@@ -7,7 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import java.util.List;
 
 /**
- * Flying ally AI — a fast, fearless harasser (parrot, bee, bat, allay). Dives
+ * Flying ally AI - a fast, fearless harasser (parrot, bee, bat, allay). Dives
  * on the weakest enemy to pick off wounded targets and never retreats; its
  * strength is its high movement speed letting it reach the backline. Given the
  * choice, it takes a kill it can actually finish THIS turn over a marginally

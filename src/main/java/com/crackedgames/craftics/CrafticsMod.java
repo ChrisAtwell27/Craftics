@@ -683,7 +683,7 @@ public class CrafticsMod implements ModInitializer {
                     .regenerate(overworld, uid, filter);
                 final int finalCount = count;
                 src.sendFeedback(() -> Text.literal(
-                    "§a✓ Rebuilt §e" + finalCount + "§a arena" + (finalCount == 1 ? "" : "s") + "."), true);
+                    "§aRebuilt §e" + finalCount + "§a arena" + (finalCount == 1 ? "" : "s") + "."), true);
                 return 1;
             };
 
@@ -711,7 +711,7 @@ public class CrafticsMod implements ModInitializer {
                         .regenerate(overworld, uid, biome.biomeId);
                     final int finalCount = count;
                     src.sendFeedback(() -> Text.literal(
-                        "§a✓ Rebuilt §e" + finalCount + "§a " + biome.biomeId + " arena"
+                        "§aRebuilt §e" + finalCount + "§a " + biome.biomeId + " arena"
                             + (finalCount == 1 ? "" : "s") + "."), true);
                     return 1;
                 }));
@@ -1903,7 +1903,7 @@ public class CrafticsMod implements ModInitializer {
             LOGGER.warn("No safe landing near hub {} for {}, sending to central lobby",
                 hub, player.getName().getString());
             player.sendMessage(Text.literal(
-                "\u00a7eYour home spawn point is blocked or missing — returning to the lobby."), false);
+                "\u00a7eYour home spawn point is blocked or missing - returning to the lobby."), false);
             x = 0.5;
             y = 65;
             z = 0.5;

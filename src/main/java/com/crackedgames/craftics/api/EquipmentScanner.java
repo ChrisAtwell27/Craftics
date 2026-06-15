@@ -9,7 +9,7 @@ import net.minecraft.server.network.ServerPlayerEntity;
  *
  * <p>Craftics only inspects the four vanilla armor slots and the main-hand slot for
  * trim and weapon bonuses. Addons that add extra equipment slots (trinkets, baubles,
- * curios, rings, …) register an {@code EquipmentScanner} so their items can also
+ * curios, rings, ...) register an {@code EquipmentScanner} so their items can also
  * modify Craftics stats. The scanner runs alongside the built-in armor scan and its
  * result is merged into the player's combined {@link StatModifiers} for the fight.
  *

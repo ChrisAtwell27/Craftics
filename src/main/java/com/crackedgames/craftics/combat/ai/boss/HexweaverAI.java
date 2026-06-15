@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Dark Forest Boss — "The Hexweaver" (Woodland Witch)
+ * Dark Forest Boss - "The Hexweaver" (Woodland Witch)
  * Entity: Evoker | 28HP / 5ATK / 2DEF / Range 4 / Speed 2 | Size 2×2
  *
  * Abilities:
@@ -23,7 +23,7 @@ import java.util.List;
  * - Cursed Fog: 3×3 debuff cloud centered on player.
  * - Hex Bolt: Ranged ATK, 1-turn Slowness.
  *
- * Phase 2 — "Arcane Fury": Teleports when adjacent, cross fangs, stronger vex swarm.
+ * Phase 2 - "Arcane Fury": Teleports when adjacent, cross fangs, stronger vex swarm.
  */
 public class HexweaverAI extends BossAI {
     private static final String CD_VEX = "vex_swarm";

@@ -58,7 +58,7 @@ public final class ArmorSetJsonLoader extends CrafticsDataLoader<ArmorSetEntry> 
                 try {
                     type = DamageType.valueOf(typeName.toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    CrafticsMod.LOGGER.warn("Unknown damage type '{}' in armor set JSON {} — skipping bonus",
+                    CrafticsMod.LOGGER.warn("Unknown damage type '{}' in armor set JSON {} - skipping bonus",
                         typeName, fileId);
                     continue;
                 }

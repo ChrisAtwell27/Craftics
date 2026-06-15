@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class EnchantmentRegistry {
     private static final Map<String, EnchantmentEffectHandler> REGISTRY = new ConcurrentHashMap<>();
-    /** Enchantment IDs whose current handler came from a JSON datapack — dropped on /reload. */
+    /** Enchantment IDs whose current handler came from a JSON datapack - dropped on /reload. */
     private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private EnchantmentRegistry() {}
@@ -75,7 +75,7 @@ public final class EnchantmentRegistry {
     private static int findMaxEnchantLevel(ServerPlayerEntity player, String enchantId) {
         // Check weapon
         int level = PlayerCombatStats.getEnchantLevel(player.getMainHandStack(), enchantId);
-        // Check all armor slots — use max level found
+        // Check all armor slots - use max level found
         for (EquipmentSlot slot : new EquipmentSlot[]{
             EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
             level = Math.max(level, PlayerCombatStats.getEnchantLevel(player.getEquippedStack(slot), enchantId));

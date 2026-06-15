@@ -58,7 +58,7 @@ public class DeathProtectionComponent implements RespawnableComponent<DeathProte
     /**
      * The trinket snapshot captured at death. Accessories are kept in memory only
      * (not serialised), so this is read from the *dying* player's component on
-     * respawn — see {@code CrafticsMod}'s AFTER_RESPAWN handler.
+     * respawn - see {@code CrafticsMod}'s AFTER_RESPAWN handler.
      */
     public List<AccessoriesReflect.AccessorySnapshot> getSavedAccessories() {
         return savedAccessories;

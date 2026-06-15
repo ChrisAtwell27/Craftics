@@ -8,7 +8,7 @@ import net.minecraft.util.Identifier;
 
 /**
  * C2S: Client presses the mount-ability key while riding a combat mount. Carries no
- * data — the player (and thus their mount) is taken from the packet context
+ * data - the player (and thus their mount) is taken from the packet context
  * server-side. The netherite golem's ability spends AP to summon coal golem allies.
  */
 public record MountAbilityPayload() implements CustomPayload {

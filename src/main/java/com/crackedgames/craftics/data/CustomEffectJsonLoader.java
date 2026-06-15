@@ -22,7 +22,7 @@ import net.minecraft.util.Identifier;
  * }
  * }</pre>
  *
- * <p>Datapack effects are declarative — a flat per-turn HP change. Effects needing
+ * <p>Datapack effects are declarative - a flat per-turn HP change. Effects needing
  * scripted per-turn logic must be registered through {@code CrafticsAPI.registerEffect}
  * with a {@code CustomEffectTickHandler}.
  *

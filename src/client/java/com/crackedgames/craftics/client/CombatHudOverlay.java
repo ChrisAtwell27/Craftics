@@ -602,13 +602,13 @@ public class CombatHudOverlay implements HudRenderCallback {
     }
 
     /**
-     * Render the turn order display below the turn banner — shows each party member
+     * Render the turn order display below the turn banner - shows each party member
      * in queue order with the active player highlighted.
      */
     private void renderTurnOrder(DrawContext ctx, MinecraftClient client, int screenW) {
         turnOrderBottomY = 20; // below the banner; pushed down when the panel draws
         java.util.List<CombatState.TurnOrderEntry> order = CombatState.getTurnOrderList();
-        if (order.isEmpty()) return; // solo play — nothing to show
+        if (order.isEmpty()) return; // solo play - nothing to show
 
         int headSz = 10;
         int headGp = 2;
@@ -667,8 +667,8 @@ public class CombatHudOverlay implements HudRenderCallback {
     /**
      * During the enemy phase, a centered strip of unit portraits in the order
      * they will act (server sync order, mirrored by CombatState). The unit
-     * currently taking its action — learned from the attack-anim event, so
-     * best-effort — gets a gold frame; the underline below each portrait
+     * currently taking its action - learned from the attack-anim event, so
+     * best-effort - gets a gold frame; the underline below each portrait
      * reads friend (green) vs foe (red) at a glance.
      */
     private void renderActOrderStrip(DrawContext ctx, MinecraftClient client, int screenW) {
@@ -750,7 +750,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         net.minecraft.block.Block floor = world.getBlockState(floorPos).getBlock();
         net.minecraft.block.Block above = world.getBlockState(floorPos.up()).getBlock();
 
-        // Stealth plants — tall grass / large fern (2-block-tall).
+        // Stealth plants - tall grass / large fern (2-block-tall).
         if (above == net.minecraft.block.Blocks.TALL_GRASS) {
             return new TileTooltipInfo("\u00a7a\u00a7lTall Grass",
                 "\u00a7fEntities in tall grass are hidden.",
@@ -762,21 +762,21 @@ public class CombatHudOverlay implements HudRenderCallback {
                 "\u00a77Attack to break it (1 AP), or hit from adjacent.");
         }
 
-        // Cobweb — slow obstacle.
+        // Cobweb - slow obstacle.
         if (above == net.minecraft.block.Blocks.COBWEB) {
             return new TileTooltipInfo("\u00a7f\u00a7lCobweb",
                 "\u00a7fSlows movement.",
                 "\u00a77Walking through clears the web.");
         }
 
-        // Cactus — damaging obstacle.
+        // Cactus - damaging obstacle.
         if (above == net.minecraft.block.Blocks.CACTUS) {
             return new TileTooltipInfo("\u00a72\u00a7lCactus",
                 "\u00a7fBlocks movement and line of sight.",
                 "\u00a77Damages anything that touches it.");
         }
 
-        // Floor hazards — lava and magma.
+        // Floor hazards - lava and magma.
         if (floor == net.minecraft.block.Blocks.LAVA
             || floor == net.minecraft.block.Blocks.MAGMA_BLOCK) {
             return new TileTooltipInfo("\u00a7c\u00a7lLava",
@@ -784,14 +784,14 @@ public class CombatHudOverlay implements HudRenderCallback {
                 "\u00a77Avoid walking through.");
         }
 
-        // Powder snow — sinks and freezes.
+        // Powder snow - sinks and freezes.
         if (floor == net.minecraft.block.Blocks.POWDER_SNOW) {
             return new TileTooltipInfo("\u00a7b\u00a7lPowder Snow",
                 "\u00a7fSinks you in.",
                 "\u00a77Freeze damage unless wearing leather boots.");
         }
 
-        // Water — distinguish shallow (walkable) from deep (instant kill).
+        // Water - distinguish shallow (walkable) from deep (instant kill).
         if (floor == net.minecraft.block.Blocks.WATER) {
             net.minecraft.block.Block below = world.getBlockState(floorPos.down()).getBlock();
             if (below == net.minecraft.block.Blocks.WATER) {
@@ -804,7 +804,7 @@ public class CombatHudOverlay implements HudRenderCallback {
                 "\u00a77Soaked entities take more lightning damage.");
         }
 
-        // Air at the floor level — sunken pit (solid below) or void (nothing below).
+        // Air at the floor level - sunken pit (solid below) or void (nothing below).
         if (floor.getDefaultState().isAir()) {
             net.minecraft.block.Block below = world.getBlockState(floorPos.down()).getBlock();
             if (!below.getDefaultState().isAir()) {
@@ -817,10 +817,17 @@ public class CombatHudOverlay implements HudRenderCallback {
                 "\u00a77Mind your step.");
         }
 
-        // Generic obstacle — any solid block above the floor that we didn't
+        // Generic obstacle - any solid block above the floor that we didn't
         // already special-case. Covers logs (fallen trees), stems, stone
         // boulders, leaves, etc.
         net.minecraft.block.BlockState aboveState = world.getBlockState(floorPos.up());
+        // Decorative snow layers in snowy arenas are walkable floor dressing,
+        // not movement-blocking obstacles.
+        if (aboveState.getBlock() instanceof net.minecraft.block.SnowBlock) {
+            return new TileTooltipInfo("\u00a7f\u00a7lSnow Layer",
+                "\u00a7fWalkable decorative snow.",
+                "\u00a77Some boss attacks may still target this tile.");
+        }
         if (!aboveState.isAir()) {
             return new TileTooltipInfo("\u00a78\u00a7lObstacle",
                 "\u00a7fBlocks movement and line of sight.",
@@ -833,7 +840,7 @@ public class CombatHudOverlay implements HudRenderCallback {
     /**
      * Hover tooltip for any obstacle/hazard tile in the arena. Positioned just
      * below the enemy roster (top-right) so it never covers the play area.
-     * Skipped when the cursor is on an enemy — the inspect panel takes priority
+     * Skipped when the cursor is on an enemy - the inspect panel takes priority
      * there.
      */
     private void renderTileTooltip(DrawContext ctx, MinecraftClient client, int screenW, int screenH) {
@@ -917,7 +924,7 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         if (enemies.isEmpty()) return;
 
-        // Blindness hides enemy inspection entirely — no hover panel, no stat readout.
+        // Blindness hides enemy inspection entirely - no hover panel, no stat readout.
         // The standard enemy roster (to the side) still shows below.
         if (!CombatState.hasBlindness() && hoveredId != -1 && enemies.containsKey(hoveredId)) {
             String typeIdRaw = types.getOrDefault(hoveredId, "minecraft:zombie");
@@ -943,7 +950,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         int rightX = screenW - margin;        // heads/bar right-align to here
         int headX = rightX - headSize;
 
-        // Identify the boss up front — it renders as a bar, not a head, so it
+        // Identify the boss up front - it renders as a bar, not a head, so it
         // must not also appear in the head column.
         int bossEntityId = -1;
         String bossDisplayName = null;
@@ -968,7 +975,7 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         // Boss bar (kept distinct): a floating full-width HP bar with the name
         // above it. Frame turns molten gold and a phase badge appears in phase
-        // two. No surrounding panel — just the bar's own dark track.
+        // two. No surrounding panel - just the bar's own dark track.
         if (hasBoss) {
             int[] bossHp = enemies.get(bossEntityId);
             int bHp = bossHp[0];
@@ -1119,9 +1126,9 @@ public class CombatHudOverlay implements HudRenderCallback {
                     }
                 }
             }
-            else if (parts[i].startsWith("mv=")) { /* movement style — not a status effect */ }
-            else if (parts[i].startsWith("phase=")) { /* boss phase badge — not a status effect */ }
-            else if (parts[i].equals("ally")) { /* ally tag — not a status effect */ }
+            else if (parts[i].startsWith("mv=")) { /* movement style - not a status effect */ }
+            else if (parts[i].startsWith("phase=")) { /* boss phase badge - not a status effect */ }
+            else if (parts[i].equals("ally")) { /* ally tag - not a status effect */ }
             else enemyEffects.add(parts[i]);
         }
 
@@ -1137,7 +1144,7 @@ public class CombatHudOverlay implements HudRenderCallback {
             displayName = rawId.substring(0, 1).toUpperCase() + rawId.substring(1).replace('_', ' ');
         }
 
-        // Theme tag (water/jungle/cold) — tells the player what a hit from this
+        // Theme tag (water/jungle/cold) - tells the player what a hit from this
         // unit will inflict before they eat one. Reads the same MobThemeTags
         // registry the server resolves on-hit effects from, so the two can't drift.
         String themeLine = null;
@@ -1167,7 +1174,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         int bgColor = bossName != null ? 0xBB2A0A0A : PANEL_BG;
         ctx.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, PANEL_BORDER);
         ctx.fill(panelX, panelY, panelX + panelW, panelY + panelH, bgColor);
-        // Name header bar — green-tinted for allies so friend/foe reads at a glance.
+        // Name header bar - green-tinted for allies so friend/foe reads at a glance.
         int headerColor = bossName != null ? 0xBB8B0000 : isAlly ? 0xBB1B4A1B : 0xBB222244;
         ctx.fill(panelX, panelY, panelX + panelW, panelY + 14, headerColor);
 
@@ -1370,7 +1377,7 @@ public class CombatHudOverlay implements HudRenderCallback {
 
     /**
      * Clickable End Turn button. Before this the only way to end a turn was
-     * knowing the R keybind — invisible to new players. Shown only on the
+     * knowing the R keybind - invisible to new players. Shown only on the
      * local player's turn; once AP and movement are both spent, the border
      * pulses to nudge "you're done here."
      */
@@ -1415,7 +1422,7 @@ public class CombatHudOverlay implements HudRenderCallback {
 
     /**
      * Small "N SPD" tag beside the cursor while hovering a reachable move
-     * tile, fed by the path the overlay renderer previews — answers "how much
+     * tile, fed by the path the overlay renderer previews - answers "how much
      * of my movement does this step cost?" without leaving the cursor.
      */
     private void renderMoveCostLabel(DrawContext ctx, MinecraftClient client,
@@ -1453,14 +1460,14 @@ public class CombatHudOverlay implements HudRenderCallback {
         // live values (there is no per-UUID remaining-resource field). On a
         // non-acting teammate's screen they'd show the active player's draining
         // pips as if they were their own, so display full bars when it isn't the
-        // local player's turn — they'll spend from full when their turn comes.
+        // local player's turn - they'll spend from full when their turn comes.
         boolean myTurn = CombatState.isLocalPlayersTurn();
         int ap = myTurn ? CombatState.getApRemaining() : maxAp;
         int speed = myTurn ? CombatState.getMovePointsRemaining() : maxSpeed;
 
         // One pip per point, shrinking pip size as totals grow so the row always
         // fits. The old layout fixed each section at 3 shared slots, which meant
-        // spending AP/SPD above the cap changed NOTHING on screen — the pips
+        // spending AP/SPD above the cap changed NOTHING on screen - the pips
         // only started draining once you were already below 3.
         int totalPips = Math.max(1, maxAp + maxSpeed);
         int pipSize = totalPips <= 8 ? 10 : totalPips <= 12 ? 8 : totalPips <= 18 ? 6 : 5;
@@ -1489,7 +1496,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.drawTextWithShadow(client.textRenderer, Text.literal(apLabel), startX, rowY, apLabelColor);
         int x = startX + apLabelW;
 
-        // AP pips — one per point
+        // AP pips - one per point
         int pipY = rowY + (10 - pipSize) / 2;
         for (int i = 0; i < apDisplay; i++) {
             if (i >= ap) {
@@ -1518,7 +1525,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.drawTextWithShadow(client.textRenderer, Text.literal(spdLabel), x, rowY, spdLabelColor);
         x += spdLabelW;
 
-        // SPD pips — one per point
+        // SPD pips - one per point
         for (int i = 0; i < spdDisplay; i++) {
             if (i >= speed) {
                 ctx.fill(x, pipY, x + pipSize, pipY + pipSize, 0xFF444444);

@@ -11,7 +11,7 @@ public class AIRegistry {
      * Factories for AIs that carry per-fight mutable state (all the boss AIs:
      * phase flag, turn counter, cooldowns, pending warnings, minion lists).
      * {@link #get} hands back ONE shared instance per key, which is fine for
-     * the stateless mob AIs but poison for bosses — a boss killed in phase two
+     * the stateless mob AIs but poison for bosses - a boss killed in phase two
      * would leave the next boss of its kind starting in phase two with stale
      * cooldowns. CombatManager calls {@link #createFresh} at boss spawn and
      * pins the result on the entity via {@code setAiInstance}.
@@ -85,7 +85,7 @@ public class AIRegistry {
 
         // === Boss mobs (vanilla AI fallback when not boss-flagged) ===
         register("minecraft:warden", new WardenAI());  // Deep Dark boss, phase-shifting
-        register("minecraft:guardian", new StrayAI()); // reuses stray pattern — ranged kiter
+        register("minecraft:guardian", new StrayAI()); // reuses stray pattern - ranged kiter
 
         // === Mounted mobs (rider on mount, extra speed) ===
         register("minecraft:camel", new MountedAI());  // husk/parched riding camel
@@ -97,7 +97,7 @@ public class AIRegistry {
         register("minecraft:hoglin", new HoglinAI());                    // bull rush charge + knockback
         register("minecraft:piglin", new PiglinAI());                    // melee or ranged based on weapon
         register("minecraft:piglin_brute", new VindicatorAI());          // rook-dash charger
-        // Blaze keeps a per-entity barrage phase machine — stateful factory so
+        // Blaze keeps a per-entity barrage phase machine - stateful factory so
         // every spawned blaze gets its own copy via createFresh at spawn.
         registerStateful("minecraft:blaze", BlazeAI::new);               // medium-range fire attacker
         register("minecraft:wither_skeleton", new WitherSkeletonAI());   // wither-strike, patrol, skull throw
@@ -163,7 +163,7 @@ public class AIRegistry {
     /**
      * Register a stateful AI: a shared lookup instance plus a per-fight factory.
      * Use for ANY AI with mutable per-fight fields (bosses, the artifacts mimic,
-     * blazes) — the spawn path pins a fresh copy on each entity via
+     * blazes) - the spawn path pins a fresh copy on each entity via
      * {@link #createFresh}, so instance state can't leak across mobs or fights.
      */
     public static void registerStateful(String key, java.util.function.Supplier<EnemyAI> factory) {
@@ -194,7 +194,7 @@ public class AIRegistry {
             try {
                 return shared.getClass().getDeclaredConstructor().newInstance();
             } catch (ReflectiveOperationException ignored) {
-                // fall through — caller keeps the shared instance
+                // fall through - caller keeps the shared instance
             }
         }
         return null;

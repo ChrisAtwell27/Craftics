@@ -47,7 +47,7 @@ public final class HybridSetEffects {
     }
 
     /**
-     * Berserker: extra crit chance from missing HP — +1% per 2% of max HP missing
+     * Berserker: extra crit chance from missing HP - +1% per 2% of max HP missing
      * (a player at 0 HP reaches +50% crit chance). Returns 0 for a non-positive maxHp.
      */
     public static double berserkerCritChance(float currentHp, float maxHp) {

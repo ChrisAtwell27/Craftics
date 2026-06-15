@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -56,7 +56,7 @@
          ================================================================ -->
     <h2 id="overview">What is a campaign</h2>
     <p>
-      A campaign is an authored, ordered run through a set of biomes. You group those biomes into <em>regions</em>, and each region holds an ordered list of <em>nodes</em>. A node is just a pointer to one biome plus an optional map label. The flattened run order across every region is the path your players walk, and that order drives difficulty scaling, the level select, dimension labeling, and completion detection.
+      A campaign is an authored, ordered run through a set of biomes. You group those biomes into <em>regions</em>, and each region holds an ordered list of <em>nodes</em>. A node is a pointer to one biome plus an optional map label. The flattened run order across every region is the path your players walk, and that order drives difficulty scaling, the level select, dimension labeling, and completion detection.
     </p>
     <p>
       Three rules shape everything below.
@@ -124,7 +124,7 @@
       "id": "surface",
       "display_name": "Surface",
       "color": "§a",
-      "icon": "☘",
+      "icon": "",
       "map_color": "FF6BBF59",
       "nodes": [
         { "biome": "mymod:village", "label": "Quiet Village" },
@@ -142,7 +142,7 @@
 
     <h3>Step 2: grow into multiple regions</h3>
     <p>
-      Regions play in the order you list them. Add a second region and its nodes simply continue the run after the first region ends. The last node of the last region is the final boss.
+      Regions play in the order you list them. Add a second region and its nodes continue the run after the first region ends. The last node of the last region is the final boss.
     </p>
     <pre><code>{
   "id": "mymod:descent",
@@ -152,7 +152,7 @@
       "id": "surface",
       "display_name": "Surface",
       "color": "§a",
-      "icon": "☘",
+      "icon": "",
       "map_color": "FF6BBF59",
       "nodes": [
         { "biome": "mymod:village", "label": "Quiet Village" },
@@ -163,7 +163,7 @@
       "id": "depths",
       "display_name": "The Depths",
       "color": "§b",
-      "icon": "❄",
+      "icon": "",
       "map_color": "FF4488CC",
       "nodes": [
         { "biome": "mymod:frozen_cavern", "label": "Frozen Cavern" },
@@ -304,7 +304,7 @@ public final class MyCrafticsAddon implements CrafticsAddon {
                     CampaignRegion.builder("surface")
                         .displayName("Surface")
                         .color("§a")
-                        .icon("☘")
+                        .icon("")
                         .mapColor(0xFF6BBF59)
                         .node("mymod:village", "Quiet Village")
                         .node("mymod:wildwood", "The Wildwood")
@@ -370,3 +370,4 @@ public final class MyCrafticsAddon implements CrafticsAddon {
 
 </body>
 </html>
+

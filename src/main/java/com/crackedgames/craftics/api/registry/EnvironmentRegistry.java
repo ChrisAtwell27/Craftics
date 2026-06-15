@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class EnvironmentRegistry {
 
     private static final Map<String, EnvironmentDef> REGISTRY = new ConcurrentHashMap<>();
-    /** Ids whose current entry came from a JSON datapack — dropped on {@code /reload}. */
+    /** Ids whose current entry came from a JSON datapack - dropped on {@code /reload}. */
     private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     /** Plains-like fallback returned by {@link #get} for an unregistered id. */
@@ -47,7 +47,7 @@ public final class EnvironmentRegistry {
     }
 
     /**
-     * The environment for {@code id}, or a plains-like default if none is registered —
+     * The environment for {@code id}, or a plains-like default if none is registered -
      * never {@code null}, so arena/combat code can call it unconditionally.
      */
     public static EnvironmentDef get(String id) {

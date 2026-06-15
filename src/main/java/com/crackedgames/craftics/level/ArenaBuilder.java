@@ -27,7 +27,7 @@ import java.util.Random;
 /**
  * Builds combat arenas from .schem or .nbt structures with marker block detection.
  *
- * Rectangular arenas (markers at floor level — they ARE the inside corner tiles):
+ * Rectangular arenas (markers at floor level - they ARE the inside corner tiles):
  *   DIAMOND_BLOCK  = camera corner
  *   EMERALD_BLOCK  = opposite corner
  *   Playable area is the rectangle bounded by those two tiles; the biome-themed
@@ -37,7 +37,7 @@ import java.util.Random;
  *   3+ ARENA_CORNER_BLOCK markers at the vertices outline the shape; the playable
  *   floor is that outline eroded one tile inward, so the markers form the border
  *   ring just outside the floor. An optional DIAMOND_BLOCK placed at one vertex is
- *   the camera-corner vertex — it joins the outline AND aims the camera from there
+ *   the camera-corner vertex - it joins the outline AND aims the camera from there
  *   toward the centroid (without one, the first sorted corner is used).
  *
  * Optional spawn markers (inside the playable area):
@@ -46,7 +46,7 @@ import java.util.Random;
  */
 public class ArenaBuilder {
 
-    // FORCE_STATE skips per-block client updates — client gets full chunk data after build
+    // FORCE_STATE skips per-block client updates - client gets full chunk data after build
     static final int SET_FLAGS = Block.FORCE_STATE;
 
     private static float pendingCameraYaw = -1;
@@ -98,7 +98,7 @@ public class ArenaBuilder {
 
     /**
      * Create a GridArena from an already-placed (pre-generated) arena.
-     * Scans existing world blocks for obstacles/water/voids — no blocks are placed.
+     * Scans existing world blocks for obstacles/water/voids - no blocks are placed.
      * Chunks are force-loaded and resent to the client.
      */
     public static GridArena scanExisting(ServerWorld world, BlockPos gridOrigin,
@@ -106,7 +106,7 @@ public class ArenaBuilder {
                                           boolean[][] insideMask) {
         int floorX = gridOrigin.getX(), floorY = gridOrigin.getY(), floorZ = gridOrigin.getZ();
 
-        // Load and resend chunks to client (not force-loaded — CombatManager handles that)
+        // Load and resend chunks to client (not force-loaded - CombatManager handles that)
         int minCX = (floorX - 2) >> 4;
         int maxCX = (floorX + gridW + 2) >> 4;
         int minCZ = (floorZ - 2) >> 4;
@@ -136,7 +136,7 @@ public class ArenaBuilder {
 
                 Block floorBlock = floorState.getBlock();
 
-                // Water at floor level — check depth
+                // Water at floor level - check depth
                 if (!floorState.getFluidState().isEmpty() && floorBlock == Blocks.WATER) {
                     BlockPos belowWater = new BlockPos(floorX + x, floorY - 1, floorZ + z);
                     boolean isDeep = !world.getBlockState(belowWater).getFluidState().isEmpty();
@@ -148,7 +148,7 @@ public class ArenaBuilder {
 
                 // Lava at floor level = LAVA tile. Cap the depth so the
                 // player can't fall through a multi-block lava column to an
-                // instant death — fill any lava directly below with stone,
+                // instant death - fill any lava directly below with stone,
                 // turning a hidden pit into a fair single-tile hazard.
                 if (floorBlock == Blocks.LAVA || floorBlock == Blocks.MAGMA_BLOCK) {
                     capLavaDepth(world, floorX + x, floorY, floorZ + z);
@@ -162,7 +162,7 @@ public class ArenaBuilder {
                     continue;
                 }
 
-                // Air at floor level — check depth to distinguish shallow pit from void
+                // Air at floor level - check depth to distinguish shallow pit from void
                 if (floorState.isAir() || floorBlock == Blocks.VOID_AIR) {
                     BlockPos belowPos = new BlockPos(floorX + x, floorY - 1, floorZ + z);
                     net.minecraft.block.BlockState belowState = world.getBlockState(belowPos);
@@ -246,7 +246,7 @@ public class ArenaBuilder {
         // Trial chamber events need their own schematic folder. The Ominous
         // Trial Chamber gets a separate folder so it can use the dedicated
         // "trial_ominous" schematic instead of rolling from the regular trial
-        // chamber pool — different geometry / vibe for the warden fight.
+        // chamber pool - different geometry / vibe for the warden fight.
         String levelName = levelDef.getName();
         if (levelName != null && levelName.toLowerCase(java.util.Locale.ROOT).contains("trial chamber")) {
             biomeId = levelName.toLowerCase(java.util.Locale.ROOT).contains("ominous")
@@ -254,7 +254,7 @@ public class ArenaBuilder {
                 : "trial_chamber";
             isBoss = false;
             // Trial chambers don't extend GeneratedLevelDefinition so the
-            // biomeLevelIndex above stayed at its default 0 — that means the
+            // biomeLevelIndex above stayed at its default 0 - that means the
             // `chosen = candidates.get(biomeLevelIndex % candidates.size())`
             // pick at the bottom of tryLoadStructure always landed on 1.schem.
             // Roll a fresh random index here so all of 1/2/3.schem (or any
@@ -307,15 +307,15 @@ public class ArenaBuilder {
 
         // Clear stray blocks above the arena (Y+2 and higher).
         // Y+1 (chest-level obstacles, decorations) is intentionally preserved.
-        // Cobwebs at any Y level are also preserved — many schematics hang
+        // Cobwebs at any Y level are also preserved - many schematics hang
         // cobwebs from the ceiling at floor+2, and wiping them would silently
         // strip the trap (the player would see no web yet still get caught
-        // by the floor+1 overlay, or vice versa — visually confusing either
+        // by the floor+1 overlay, or vice versa - visually confusing either
         // way). The cobweb scan below picks them up regardless of height.
         int clearCeiling = floorY + Math.max(15, structureHeight > 0 ? structureHeight + 3 : 15);
         for (int x = 0; x < finalW; x++) {
             for (int z = 0; z < finalH; z++) {
-                // Polygon arenas: only sweep above the outline's own columns —
+                // Polygon arenas: only sweep above the outline's own columns -
                 // the bounding box reaches over terrain outside the drawn shape,
                 // and that terrain is the author's to keep.
                 if (structureOuterMask != null
@@ -334,7 +334,7 @@ public class ArenaBuilder {
         }
 
         // Biome-themed random obstacles on the arena floor. Skipped for
-        // trial chambers — they're dev-designed schematics where any extra
+        // trial chambers - they're dev-designed schematics where any extra
         // obstacles would clash with the hand-built layout and clutter the
         // visible footprint. Skipped for polygon (corner-marker) arenas for the
         // same reason, plus a practical one: the placers pick tiles across the
@@ -352,18 +352,18 @@ public class ArenaBuilder {
         //?}
 
         // Biome-themed light posts around the border. Skipped for trial
-        // chambers — the dev's schematic already provides any lighting it
+        // chambers - the dev's schematic already provides any lighting it
         // wants, and the procedural posts were the choppy "fences just
         // outside the arena" you could see in the screenshot.
         if (!biomeId.startsWith("trial_chamber")) {
             placeLighting(world, floorX, floorY, floorZ, finalW, finalH, env, structureInsideMask);
         }
 
-        // FORCE_STATE can leave stale light — recheck arena bounds
+        // FORCE_STATE can leave stale light - recheck arena bounds
         int relightTop = floorY + Math.max(12, structureHeight > 0 ? structureHeight + 3 : 12);
         relightArena(world, floorX, floorY - 3, floorZ, finalW, finalH, relightTop);
 
-        // Chunk bounds for biome painting and client resend (not force-loaded — CombatManager handles that)
+        // Chunk bounds for biome painting and client resend (not force-loaded - CombatManager handles that)
         int minCX = (finalOrigin.getX() - 2) >> 4;
         int maxCX = (finalOrigin.getX() + finalW + 2) >> 4;
         int minCZ = (finalOrigin.getZ() - 2) >> 4;
@@ -392,7 +392,7 @@ public class ArenaBuilder {
                 GridTile tile = finalTiles[x][z];
                 if (tile == null) continue;
                 // Out-of-polygon tiles are out of bounds (GridArena returns null
-                // for them) — don't classify them from the natural terrain out
+                // for them) - don't classify them from the natural terrain out
                 // there, and don't let capLavaDepth mutate blocks outside the
                 // drawn shape.
                 if (structureInsideMask != null
@@ -406,7 +406,7 @@ public class ArenaBuilder {
                 net.minecraft.block.BlockState aboveState = world.getBlockState(abovePos);
                 net.minecraft.block.BlockState headState = world.getBlockState(headPos);
 
-                // Cobwebs at Y+1 OR Y+2: walkable but trap — register as web
+                // Cobwebs at Y+1 OR Y+2: walkable but trap - register as web
                 // overlay. Schematics frequently hang webs from the ceiling
                 // (Y+2) instead of placing them at body level (Y+1), so we
                 // check both. The overlay is keyed by (x,z) so the trap
@@ -415,12 +415,12 @@ public class ArenaBuilder {
                 boolean webAtHead = headState.isOf(Blocks.COBWEB);
                 if (tile.isWalkable() && (webAtBody || webAtHead)) {
                     cobwebPositions.add(new GridPos(x, z));
-                    // Skip normal obstacle detection for this tile — cobwebs aren't solid
+                    // Skip normal obstacle detection for this tile - cobwebs aren't solid
                     continue;
                 }
 
                 // Tall grass / large fern at Y+1: walkable stealth tile. The upper half
-                // sits at Y+2 (headPos) — non-solid so it won't be flagged as obstacle.
+                // sits at Y+2 (headPos) - non-solid so it won't be flagged as obstacle.
                 if (tile.isWalkable() && aboveState.isOf(Blocks.TALL_GRASS)) {
                     finalTiles[x][z] = new GridTile(
                         com.crackedgames.craftics.core.TileType.TALL_GRASS, Blocks.TALL_GRASS);
@@ -446,7 +446,7 @@ public class ArenaBuilder {
                 // Slabs also act as half-step ramps. A BOTTOM slab at floor+1
                 // gives the same +0.5 step as a stair; a TOP slab sits at
                 // +1.5..+2.0 so walking on it is a full Y+1 step (ELEVATED).
-                // DOUBLE slabs are a full block — fall through to the obstacle
+                // DOUBLE slabs are a full block - fall through to the obstacle
                 // / ELEVATED-promotion path.
                 if (tile.isWalkable() && aboveState.getBlock() instanceof net.minecraft.block.SlabBlock) {
                     net.minecraft.block.enums.SlabType slabType =
@@ -485,7 +485,7 @@ public class ArenaBuilder {
                         headState.getBlock(), true);
                 }
 
-                // Water at floor level — check depth
+                // Water at floor level - check depth
                 net.minecraft.block.BlockState floorState = world.getBlockState(floorPos);
                 if (tile.isWalkable() && !floorState.getFluidState().isEmpty()
                     && floorState.getBlock() == Blocks.WATER) {
@@ -511,7 +511,7 @@ public class ArenaBuilder {
                         Blocks.LAVA);
                 }
 
-                // Air at floor level — check depth for shallow pit vs void
+                // Air at floor level - check depth for shallow pit vs void
                 if (finalTiles[x][z].isWalkable()) {
                     Block floorBlock = floorState.getBlock();
                     if (floorState.isAir() || floorBlock == Blocks.VOID_AIR) {
@@ -543,7 +543,7 @@ public class ArenaBuilder {
                 for (int z = 0; z < finalH; z++) {
                     GridTile tile = finalTiles[x][z];
                     if (tile == null || tile.getType() != com.crackedgames.craftics.core.TileType.OBSTACLE) continue;
-                    // Only promote if not a head-level (permanent) obstacle —
+                    // Only promote if not a head-level (permanent) obstacle -
                     // those are walls the player can't reasonably stand on top of.
                     if (tile.isPermanent()) continue;
                     boolean adjacentToLanding = false;
@@ -578,7 +578,7 @@ public class ArenaBuilder {
         GridArena arena = new GridArena(finalW, finalH, finalTiles, finalOrigin, level,
             finalPlayerStart, structureInsideMask);
 
-        // Register static cobwebs as permanent web overlays — schematic + jungle
+        // Register static cobwebs as permanent web overlays - schematic + jungle
         // decoration cobwebs only go away when a player walks through them, so
         // they must skip the turn-decrement that timed spider/broodmother webs use.
         for (GridPos webPos : cobwebPositions) {
@@ -626,7 +626,7 @@ public class ArenaBuilder {
             CrafticsMod.LOGGER.debug("Error while searching for .schem arenas: {}", e.getMessage());
         }
 
-        // Disk overrides win — distribute by biome level index to avoid repeats.
+        // Disk overrides win - distribute by biome level index to avoid repeats.
         // Trial chambers are also "preserve schematic ground" like bosses: the
         // schematics are hand-built per-room and we don't want the level def's
         // procedural overlay (random copper obstacles, tuff floor replacement)
@@ -755,7 +755,7 @@ public class ArenaBuilder {
             size.getX(), size.getY(), size.getZ(), ox, oy, oz, w, h, tiles, chosen.toString(), biomeId, isBoss);
     }
 
-    // Shared marker processing — diamond+emerald corners define the inner playable grid
+    // Shared marker processing - diamond+emerald corners define the inner playable grid
         private static boolean processPlacedStructure(ServerWorld world,
             int placeX, int placeY, int placeZ, int sizeX, int sizeY, int sizeZ,
             int ox, int oy, int oz, int w, int h, GridTile[][] tiles, String sourceName,
@@ -771,7 +771,7 @@ public class ArenaBuilder {
         List<BlockPos> coalCandidates = new ArrayList<>();
         // Polygon corner markers: 3+ ArenaCornerBlocks define a non-rectangular
         // arena outline. The mod's ARENA_CORNER_BLOCK is the only marker
-        // checked here — vanilla blocks stay rectangle-only so existing
+        // checked here - vanilla blocks stay rectangle-only so existing
         // schematics aren't affected.
         List<BlockPos> polygonCorners = new ArrayList<>();
 
@@ -823,7 +823,7 @@ public class ArenaBuilder {
             return true;
         }
 
-        // Tolerate small Y mismatches between the two corner markers — e.g. one
+        // Tolerate small Y mismatches between the two corner markers - e.g. one
         // accidentally placed on a recessed step or sunken corner. Use the
         // HIGHER of the two as the arena floor: the floor is whatever the
         // player actually stands on, and any stray marker that slipped a
@@ -846,7 +846,7 @@ public class ArenaBuilder {
 
         int arenaFloorY = Math.max(diamondY, emeraldY);
 
-        // DIAMOND/EMERALD now mark the INSIDE corners of the playable area —
+        // DIAMOND/EMERALD now mark the INSIDE corners of the playable area -
         // i.e. their positions are tiles the player can stand on. Previously
         // they sat one tile OUTSIDE the playable grid (border row) which
         // chopped 2 tiles off each axis and produced the "boundaries cut
@@ -933,7 +933,7 @@ public class ArenaBuilder {
                     // safe (air or a walkable solid). If the schematic has a
                     // hazard (lava / liquid) directly under an air gap in the
                     // playable area, treat it as an accidental hole and paint
-                    // the floor block there — otherwise the post-scan would
+                    // the floor block there - otherwise the post-scan would
                     // classify this tile as VOID and the player would fall
                     // through into whatever horrors live beneath the arena.
                     if (world.getBlockState(floorPos).isAir()) {
@@ -943,7 +943,7 @@ public class ArenaBuilder {
                             || belowState.isOf(Blocks.LAVA)
                             || belowState.isOf(Blocks.MAGMA_BLOCK);
                         if (!belowIsHazard) {
-                            continue; // genuine cliff/pit — leave it alone
+                            continue; // genuine cliff/pit - leave it alone
                         }
                         // Patch the hole so the tile scan doesn't see it as VOID
                         set(world, worldX, arenaFloorY - 1, worldZ, Blocks.STONE);
@@ -980,7 +980,7 @@ public class ArenaBuilder {
             }
         }
 
-        // Auto P1 spawn if no gold marker — center, one tile in from camera side
+        // Auto P1 spawn if no gold marker - center, one tile in from camera side
         if (structurePlayerStart == null) {
             int spawnX = Math.max(0, Math.min(gridW - 1, gridW / 2));
             int spawnZ = diamondPos.getZ() < centerZ ? 1 : gridH - 2;
@@ -1019,7 +1019,7 @@ public class ArenaBuilder {
      * shapes perfectly and most concave shapes that are drawn corner-by-corner
      * in order), then builds a per-tile in/out mask via ray-casting and hands
      * it to {@link GridArena} via {@link #structureInsideMask}. Tile overlay,
-     * border placement, and spawn-marker scanning all respect the polygon —
+     * border placement, and spawn-marker scanning all respect the polygon -
      * tiles outside the mask are left untouched so the surrounding terrain
      * shows through whatever shape the dev outlined.
      */
@@ -1039,13 +1039,13 @@ public class ArenaBuilder {
 
         // Polygon floor = the surface the player stands on. A corner marker may
         // be deliberately buried under the floor block so it doesn't show in the
-        // arena — climb from each marker through any solid blocks stacked
+        // arena - climb from each marker through any solid blocks stacked
         // directly on it (capped at 2: that's a hidden marker, a taller column
         // is a wall and shouldn't lift the floor) and use THAT as the corner's
         // floor level. Exposed markers keep their own Y, matching the
         // diamond/emerald rule. The arena floor is the most common corner
-        // surface (ties prefer the higher), so one odd corner — buried deeper,
-        // dropped on a step, tucked under a wall — can't shift the whole
+        // surface (ties prefer the higher), so one odd corner - buried deeper,
+        // dropped on a step, tucked under a wall - can't shift the whole
         // playfield the way the old raw max-Y did.
         Map<Integer, Integer> surfaceVotes = new HashMap<>();
         for (BlockPos c : corners) {
@@ -1081,7 +1081,7 @@ public class ArenaBuilder {
         }
         // The grid spans the FULL marker bbox; the playable floor is the polygon
         // interior eroded one tile inward (see mask build below), so the corner
-        // markers on the outer ring always sit one tile outside the floor — convex
+        // markers on the outer ring always sit one tile outside the floor - convex
         // tips and concave armpits alike. (Not a bbox inset, which only trimmed the
         // outer ring and left concave-vertex markers sitting on floor tiles.)
         int gridMinX = borderMinX;
@@ -1104,8 +1104,8 @@ public class ArenaBuilder {
         // EXACTLY from their edge structure; everything else falls back to a
         // centroid-angle sort, which is correct for convex rings (diamond,
         // octagon, hexagon). The angle sort alone self-intersected on concave
-        // shapes — an L's concave vertex sits AT the centroid, where the angle
-        // is undefined — which made the ray-cast mask mark regions outside the
+        // shapes - an L's concave vertex sits AT the centroid, where the angle
+        // is undefined - which made the ray-cast mask mark regions outside the
         // drawn shape as playable: mobs, floor, and hover showing up "outside
         // the arena".
         List<BlockPos> sorted = orderOutline(corners);
@@ -1118,7 +1118,7 @@ public class ArenaBuilder {
         // The old test sampled tile CENTERS at +0.5 against vertices also at +0.5,
         // which put every axis-aligned edge right on the sample row/column; the
         // half-open even-odd rule then resolved those boundary hits asymmetrically
-        // and lopsided otherwise-symmetric shapes — one plus/cross/diamond inner
+        // and lopsided otherwise-symmetric shapes - one plus/cross/diamond inner
         // corner filled while its mirror was not. Integer sampling keeps the mask
         // symmetric about a centered polygon; the outward grow removes the on-edge
         // degeneracy without shifting the shape.
@@ -1167,7 +1167,7 @@ public class ArenaBuilder {
             }
         }
         // Markers are the border ring, never playable floor. Clear any mask tile that
-        // coincides with a corner marker — this enforces "markers sit outside the
+        // coincides with a corner marker - this enforces "markers sit outside the
         // floor" and also corrects the half-open rasterization asymmetry where a
         // single concave-armpit vertex could otherwise survive the 4-neighbour
         // erosion and lopside an otherwise-symmetric shape (e.g. plus / cross).
@@ -1181,7 +1181,7 @@ public class ArenaBuilder {
         }
         if (insideCount == 0) {
             // Degrade to a plain rectangle over the marker bounding box with the
-            // ground preserved — the old fallback repainted the level
+            // ground preserved - the old fallback repainted the level
             // definition's FULL rectangle (flattening terrain and laying a stone
             // underlayer far outside the drawn shape) and left the marker
             // blocks in the world because replacement hadn't run yet.
@@ -1224,7 +1224,7 @@ public class ArenaBuilder {
             // Tile overlay: only paint floor on tiles inside the polygon mask.
             // Outside-the-polygon tiles are left untouched so the world's
             // natural terrain (or schematic decoration) shows through. Inside
-            // the mask the level definition's tile pattern paints every tile —
+            // the mask the level definition's tile pattern paints every tile -
             // that pattern IS the readable grid; arenas that want their ground
             // kept verbatim use preserveSchematicGround.
             for (int x = 0; x < gridW; x++) {
@@ -1262,11 +1262,11 @@ public class ArenaBuilder {
             }
 
             // Flat themed border: the 1-tile ring just inside the outline (tiles in
-            // the polygon but eroded out of the playable mask — this is exactly where
+            // the polygon but eroded out of the playable mask - this is exactly where
             // the corner markers sit) is painted with the biome's border concrete at
             // FLOOR level, every tile, so the boundary reads as one continuous band
             // (gap-only patching left a speckled, inconsistent edge). Any block
-            // directly above is cleared so the edge stays flush — at the corrected
+            // directly above is cleared so the edge stays flush - at the corrected
             // floor height this only flattens the ring itself, not the author's
             // surrounding terrain.
             for (int x = 0; x < gridW; x++) {
@@ -1293,7 +1293,7 @@ public class ArenaBuilder {
         structureOuterMask = outer;
 
         // Spawn markers: honor those inside the polygon mask within one block
-        // of the arena floor — like the corners, a spawn marker may be buried
+        // of the arena floor - like the corners, a spawn marker may be buried
         // just under the floor so it doesn't show. Out-of-mask markers are
         // ignored.
         @SuppressWarnings("unchecked")
@@ -1314,10 +1314,10 @@ public class ArenaBuilder {
         for (int i = 0; i < 4; i++) {
             if (playerSpawns[i] != null) {
                 if (playerSpawns[i].getY() == arenaFloorY) {
-                    // Exposed marker doubles as a floor tile — blend it out.
+                    // Exposed marker doubles as a floor tile - blend it out.
                     world.setBlockState(playerSpawns[i], floorBlock.getDefaultState(), SET_FLAGS);
                 } else {
-                    // Buried marker — swap for whatever surrounds it underground.
+                    // Buried marker - swap for whatever surrounds it underground.
                     Block rep = getMostCommonTouchingBlock(world, playerSpawns[i], Blocks.STONE);
                     world.setBlockState(playerSpawns[i], rep.getDefaultState(), SET_FLAGS);
                 }
@@ -1353,20 +1353,20 @@ public class ArenaBuilder {
     }
 
     /**
-     * Order polygon corner markers into a single closed outline (XZ only —
+     * Order polygon corner markers into a single closed outline (XZ only -
      * corner Y is ignored).
      *
-     * <p>Rectilinear vertex sets — every edge axis-aligned, which is what
-     * arena authors actually draw (L, T, plus, U) — are reconstructed exactly
+     * <p>Rectilinear vertex sets - every edge axis-aligned, which is what
+     * arena authors actually draw (L, T, plus, U) - are reconstructed exactly
      * by {@link #tryRectilinearOutline}. Anything that doesn't form a single
-     * simple rectilinear ring (diamonds, octagons, hexagons — diagonal edges)
+     * simple rectilinear ring (diamonds, octagons, hexagons - diagonal edges)
      * falls back to a centroid-angle sort, which is correct for convex rings.
      * Nearest-neighbor chaining was tried here and rejected: from a plus
      * shape's concave vertex the closest unvisited corner is across the
      * interior, not along the arm, so the chain cut through the shape.
      */
     private static List<BlockPos> orderOutline(List<BlockPos> corners) {
-        // Dedupe by column — two markers stacked in the same X/Z column would
+        // Dedupe by column - two markers stacked in the same X/Z column would
         // break both ordering strategies.
         java.util.LinkedHashMap<Long, BlockPos> unique = new java.util.LinkedHashMap<>();
         for (BlockPos c : corners) {
@@ -1396,7 +1396,7 @@ public class ArenaBuilder {
      * consecutive vertices within each X column and each Z row. Returns the
      * ring in walk order, or {@code null} when the vertex set isn't a single
      * simple rectilinear ring (odd column/row counts, false pairings that
-     * close early, multiple loops) — callers then fall back to the angle sort.
+     * close early, multiple loops) - callers then fall back to the angle sort.
      */
     private static List<BlockPos> tryRectilinearOutline(List<BlockPos> verts) {
         int n = verts.size();
@@ -1451,7 +1451,7 @@ public class ArenaBuilder {
 
     /**
      * When corner markers are missing or invalid, scan the placed schematic to
-     * find the Y level that looks like a floor — the first layer above
+     * find the Y level that looks like a floor - the first layer above
      * {@code placeY} where most columns in the arena footprint have a solid
      * block with open space above it. Falls back to {@code oy} if nothing
      * suitable is found so the caller's default behavior is unchanged.
@@ -1636,7 +1636,7 @@ public class ArenaBuilder {
                 }
             }
 
-            // Plain numbered files (1.schem) in the root are skipped — no biome association.
+            // Plain numbered files (1.schem) in the root are skipped - no biome association.
             // Use biome-prefixed (desert_1.schem) or subdirectory (desert/1.schem) instead.
 
             if (biomeDir == null) return;
@@ -1693,7 +1693,7 @@ public class ArenaBuilder {
 
         schem.place(world, placeX, placeY, placeZ);
         // Skip the edge taper for preserve-ground schematics (bosses + trial
-        // chambers) — the dev hand-built the arena and the stepped slope
+        // chambers) - the dev hand-built the arena and the stepped slope
         // carver would leave 1-block-thick walls 2-3 tiles in from the sloped
         // edge wherever their schematic's walls fit within the dist*2 height
         // envelope. The clearPad=3 air sweep already handles surrounding
@@ -1743,7 +1743,7 @@ public class ArenaBuilder {
             }
 
             schem.place(world, placeX, placeY, placeZ);
-            // Same preserveGround taper skip as the disk path — see loadAndPlaceSchem.
+            // Same preserveGround taper skip as the disk path - see loadAndPlaceSchem.
             if (!preserveSchematicGround) {
                 taperSchemEdges(world, placeX, placeY, placeZ, schem.width(), schem.height(), schem.length());
             }
@@ -1794,7 +1794,7 @@ public class ArenaBuilder {
         }
     }
 
-    // Barrier box around schematic — floor + walls, no ceiling
+    // Barrier box around schematic - floor + walls, no ceiling
     private static void buildBarrierContainmentShell(ServerWorld world,
                                                       int placeX, int placeY, int placeZ,
                                                       int sizeX, int sizeY, int sizeZ) {
@@ -1871,11 +1871,11 @@ public class ArenaBuilder {
             posts.add(new int[]{w, z});
         }
 
-        // Base + post + light — only place next to solid arena terrain
+        // Base + post + light - only place next to solid arena terrain
         for (int[] p : posts) {
             int px = ox + p[0], pz = oz + p[1];
             // Check the nearest arena tile(s) adjacent to this post.
-            // If all neighbouring arena tiles are air/void, skip — it's a cliff edge.
+            // If all neighbouring arena tiles are air/void, skip - it's a cliff edge.
             if (!hasAdjacentSolidTile(world, px, oy, pz, ox, oz, w, h)) continue;
             placeLightPost(world, px, pz, oy, postBlock, lightBlock);
         }
@@ -2112,7 +2112,7 @@ public class ArenaBuilder {
             BlockPos floorPos = new BlockPos(ox + c[0], oy, oz + c[1]);
             BlockState floorState = world.getBlockState(floorPos);
 
-            // Must be solid ground — no air, no liquid, no existing hazard
+            // Must be solid ground - no air, no liquid, no existing hazard
             if (isAirLike(floorState) || !floorState.getFluidState().isEmpty()) continue;
             if (floorState.getBlock() == Blocks.POWDER_SNOW || floorState.getBlock() == Blocks.LAVA) continue;
 
@@ -2141,7 +2141,7 @@ public class ArenaBuilder {
             BlockPos abovePos = new BlockPos(ox + c[0], oy + 1, oz + c[1]);
             BlockState floorState = world.getBlockState(floorPos);
 
-            // Must be solid ground — no air, no liquid
+            // Must be solid ground - no air, no liquid
             if (isAirLike(floorState) || !floorState.getFluidState().isEmpty()) continue;
             // Must have clearance above
             if (!world.getBlockState(abovePos).isAir()) continue;
@@ -2321,6 +2321,11 @@ public class ArenaBuilder {
 
         for (long packed : snowTiles) {
             int px = unpackX(packed), pz = unpackZ(packed);
+            BlockPos below = new BlockPos(ox + px, oy - 1, oz + pz);
+            BlockState belowState = world.getBlockState(below);
+            if (fallsThroughSupport(belowState)) {
+                world.setBlockState(below, Blocks.STONE.getDefaultState(), SET_FLAGS);
+            }
             world.setBlockState(new BlockPos(ox + px, oy, oz + pz),
                 Blocks.POWDER_SNOW.getDefaultState(), SET_FLAGS);
         }
@@ -2330,7 +2335,7 @@ public class ArenaBuilder {
     private static int unpackX(long packed) { return (int) (packed >> 32); }
     private static int unpackZ(long packed) { return (int) packed; }
 
-    // Border concrete color per biome — falls back to most common tile block
+    // Border concrete color per biome - falls back to most common tile block
     private static Block getBorderConcreteForBiome(String biomeId, GridTile[][] tiles) {
         return switch (biomeId) {
             case "plains" -> Blocks.LIME_CONCRETE;
@@ -2413,6 +2418,12 @@ public class ArenaBuilder {
         return state.isAir() || block == Blocks.AIR || block == Blocks.CAVE_AIR || block == Blocks.VOID_AIR;
     }
 
+    /** Support check for floor hazards that must not sit over air-like blocks. */
+    private static boolean fallsThroughSupport(BlockState state) {
+        return state.isAir() || state.isReplaceable() || state.isLiquid()
+            || state.isIn(net.minecraft.registry.tag.BlockTags.FIRE);
+    }
+
     private static GridPos findNearestWalkableTile(GridTile[][] tiles, GridPos requested,
                                                     boolean[][] insideMask) {
         int w = tiles.length;
@@ -2460,7 +2471,7 @@ public class ArenaBuilder {
                 || neighbor == Blocks.COPPER_BLOCK || neighbor == Blocks.COAL_BLOCK) {
                 continue;
             }
-            // Never count a neighboring corner marker — when an outline places
+            // Never count a neighboring corner marker - when an outline places
             // markers side by side, the not-yet-replaced neighbor would win the
             // vote and the "replacement" left a corner block in the world.
             if (neighbor == com.crackedgames.craftics.block.ModBlocks.ARENA_CORNER_BLOCK) continue;
@@ -2565,7 +2576,7 @@ public class ArenaBuilder {
     }
 
     private static Identifier toMinecraftBiomeId(String crafticsBiomeId) {
-        // Pale Garden sub-biome — resolves to vanilla 1.21.4+ biome or the
+        // Pale Garden sub-biome - resolves to vanilla 1.21.4+ biome or the
         // backport mod's biome on 1.21.1, depending on what's loaded.
         if ("forest/pale_garden".equals(crafticsBiomeId)) {
             return com.crackedgames.craftics.compat.palegardenbackport

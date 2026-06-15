@@ -12,7 +12,7 @@ import java.util.List;
  * - Spawns a fireball projectile entity (speed 2, straight line, 1-tile AOE on impact)
  * - FLEE: panics if player gets within 3 tiles, retreats
  * - Player can redirect fireballs by hitting them
- * - Fireballs have high HP (99) — designed to be deflected, not killed
+ * - Fireballs have high HP (99) - designed to be deflected, not killed
  * - Speed 1 = nearly stationary, but huge range compensates
  */
 public class GhastAI implements EnemyAI {
@@ -47,10 +47,10 @@ public class GhastAI implements EnemyAI {
                     return new EnemyAction.Move(path);
                 }
             }
-            // Can't flee — try to fire a fireball anyway
+            // Can't flee - try to fire a fireball anyway
         }
 
-        // In range — spawn a fireball projectile
+        // In range - spawn a fireball projectile
         if (dist <= range && liveFireballs < MAX_FIREBALLS) {
             GridPos spawnPos = findFireballSpawnPos(self, arena, playerPos);
             if (spawnPos != null) {
@@ -69,7 +69,7 @@ public class GhastAI implements EnemyAI {
             }
         }
 
-        // Out of range — slowly reposition
+        // Out of range - slowly reposition
         GridPos shotPos = findDistantShotPosition(self, arena, playerPos);
         if (shotPos != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, shotPos, 1, self);

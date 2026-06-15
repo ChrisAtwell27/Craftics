@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tests the CODE-built {@link VanillaCampaign#build()} — the safety-net mirror of the shipped
+ * Tests the CODE-built {@link VanillaCampaign#build()} - the safety-net mirror of the shipped
  * {@code data/craftics/craftics/campaigns/vanilla.json}. {@code build()} is pure (Minecraft-free),
  * so the structural assertions run under plain JUnit. A final parity test parses the same JSON
  * (inlined here) through {@link CampaignJsonLoader#parseCampaign} and asserts both branches produce
@@ -144,7 +144,7 @@ class VanillaCampaignTest {
 
     /**
      * JSON&harr;code parity: the inlined vanilla.json (kept byte-for-byte in sync with the shipped
-     * resource) parses to the same structure as {@link VanillaCampaign#build()} — same region ids,
+     * resource) parses to the same structure as {@link VanillaCampaign#build()} - same region ids,
      * sizes, and both branch orders. Guards against the JSON and the code registrar drifting.
      */
     @Test
@@ -215,7 +215,7 @@ class VanillaCampaignTest {
         Campaign fromCode = VanillaCampaign.build();
 
         // Full structural equality: id, displayName, regions (with node labels + region theme),
-        // and branch all match — the strongest parity guard.
+        // and branch all match - the strongest parity guard.
         assertEquals(fromCode, fromJson);
 
         // Belt-and-suspenders explicit ordering checks (independent of equals()).

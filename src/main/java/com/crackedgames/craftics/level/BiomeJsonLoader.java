@@ -111,7 +111,7 @@ public class BiomeJsonLoader {
                 ? json.get("environment").getAsString().toLowerCase()
                 : "plains";
             if (!com.crackedgames.craftics.api.registry.EnvironmentRegistry.isRegistered(environmentId)) {
-                CrafticsMod.LOGGER.warn("Unknown environment '{}' in {} — arena will use a default theme",
+                CrafticsMod.LOGGER.warn("Unknown environment '{}' in {} - arena will use a default theme",
                     environmentId, source);
             }
             boolean night = json.has("night") && json.get("night").getAsBoolean();
@@ -133,7 +133,7 @@ public class BiomeJsonLoader {
             for (int i = 0; i < lootArray.size(); i++) {
                 JsonObject lootEntry = lootArray.get(i).getAsJsonObject();
                 Identifier itemId = Identifier.of(lootEntry.get("item").getAsString());
-                // Skip unknown items — Registries.ITEM.get() returns AIR for an
+                // Skip unknown items - Registries.ITEM.get() returns AIR for an
                 // unregistered id, which would otherwise enter the loot pool and
                 // get handed to the player as an empty "air" reward.
                 if (!Registries.ITEM.containsId(itemId)) {
@@ -204,10 +204,10 @@ public class BiomeJsonLoader {
     /**
      * Parse one enemy entry. Two forms are accepted:
      * <ul>
-     *   <li><b>Reference</b> — {@code {"enemy": "<id>", "weight": N}} resolves a
+     *   <li><b>Reference</b> - {@code {"enemy": "<id>", "weight": N}} resolves a
      *       registered {@link EnemyEntry}. {@code weight} stays biome-local; the
      *       template supplies appearance, AI, and stats.</li>
-     *   <li><b>Inline</b> — {@code {"type": "<entity>", "hp": ..., ...}} defines the
+     *   <li><b>Inline</b> - {@code {"type": "<entity>", "hp": ..., ...}} defines the
      *       enemy fully in the biome JSON (the original form).</li>
      * </ul>
      * Returns {@code null} (logged) when an {@code "enemy"} reference is unknown.
@@ -218,7 +218,7 @@ public class BiomeJsonLoader {
             EnemyEntry entry = EnemyRegistry.getOrNull(ref);
             if (entry == null) {
                 CrafticsMod.LOGGER.warn(
-                    "Unknown enemy reference '{}' in biome JSON — skipping entry", ref);
+                    "Unknown enemy reference '{}' in biome JSON - skipping entry", ref);
                 return null;
             }
             int weight = obj.has("weight") ? obj.get("weight").getAsInt() : 1;

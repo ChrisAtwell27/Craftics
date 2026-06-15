@@ -11,7 +11,7 @@ import java.util.List;
  * Zombified Piglin AI: Neutral pack mob with mob mentality.
  * - NEUTRAL: wanders peacefully until ANY zombified piglin in the arena is hit
  * - PACK AGGRO: when one is hit, ALL zombified piglins in the fight permanently
- *   aggro. Tracked with per-entity enrage flags — the old implementation used a
+ *   aggro. Tracked with per-entity enrage flags - the old implementation used a
  *   static flag that was never reset, so one provoked piglin made every
  *   zombified piglin in every later fight on the server spawn hostile.
  * - MOB MENTALITY: +1 ATK per nearby aggro'd packmate (radius 2)
@@ -27,14 +27,14 @@ public class ZombifiedPiglinAI implements EnemyAI {
 
     @Override
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
-        // One provoked piglin riles the whole pack — in THIS arena only.
+        // One provoked piglin riles the whole pack - in THIS arena only.
         if (!self.isEnraged() && anyPackmateProvoked(arena)) {
             enragePack(arena);
         }
 
         GridPos myPos = self.getGridPos();
 
-        // Not aggro — wander peacefully
+        // Not aggro - wander peacefully
         if (!self.isEnraged()) {
             return AIUtils.wander(self, arena);
         }
@@ -42,7 +42,7 @@ public class ZombifiedPiglinAI implements EnemyAI {
         // Aggro! Calculate mob mentality bonus
         int dist = self.minDistanceTo(playerPos);
 
-        // Adjacent — attack with pack bonus
+        // Adjacent - attack with pack bonus
         if (dist == 1) {
             return new EnemyAction.Attack(
                 self.getAttackPower() + countNearbyAggroPiglins(arena, self, myPos));

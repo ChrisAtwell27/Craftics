@@ -54,7 +54,7 @@ public enum DamageType {
     /**
      * Per-piece armor affinity for a damage type, in <b>half-points</b>. Every worn
      * armor piece of a material contributes that material's per-piece affinity, so a
-     * single piece counts — affinity is no longer full-set-only. Returned in
+     * single piece counts - affinity is no longer full-set-only. Returned in
      * half-points: each piece is worth 0.5 affinity, so a full 4-piece set totals 4
      * half-points (= 2 whole affinity points). The half-point unit keeps the 0.5
      * per-piece granularity exact without floating-point math.
@@ -71,7 +71,7 @@ public enum DamageType {
     /**
      * Pure per-piece affinity math, in half-points: {@code Σ count × ArmorSetEntry value}.
      * The registered {@code ArmorSetEntry} value is the affinity per 2 pieces, which
-     * equals the half-point value of one piece — so multiplying by the worn count gives
+     * equals the half-point value of one piece - so multiplying by the worn count gives
      * that material's affinity total in half-points.
      */
     public static int affinityFromCounts(Map<String, Integer> materialCounts, DamageType type) {
@@ -129,7 +129,7 @@ public enum DamageType {
      * Per-point damage multiplier for every affinity source. Single source of truth:
      * 1 affinity "point" (from armor set, trim, mob head, effect, or level-up) always
      * contributes {@value} damage of its type. Change this constant once and every
-     * source scales together — no hidden per-source math.
+     * source scales together - no hidden per-source math.
      */
     public static final int DAMAGE_PER_AFFINITY_POINT = 3;
 
@@ -180,7 +180,7 @@ public enum DamageType {
     }
 
     /**
-     * Damage variant of {@link #getMobHeadAffinityPoints} — returns the actual
+     * Damage variant of {@link #getMobHeadAffinityPoints} - returns the actual
      * damage contribution (points × {@link #DAMAGE_PER_AFFINITY_POINT}). Used by
      * combat code that adds mob-head bonus alongside {@link #getTotalBonus}.
      */

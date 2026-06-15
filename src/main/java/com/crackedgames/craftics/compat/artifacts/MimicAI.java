@@ -24,15 +24,15 @@ import java.util.Set;
  * The mimic alternates between two compound actions each turn, regardless of
  * its HP:
  * <ul>
- *   <li><b>Tantrum</b> — a single attack where the mimic hops through 4–6
+ *   <li><b>Tantrum</b> - a single attack where the mimic hops through 4-6
  *       random adjacent tiles in sequence. If any hop lands on the player's
  *       tile, the player takes {@link #TANTRUM_DAMAGE} damage and the tantrum
  *       stops. Resolved by {@code EnemyAction.MimicTantrum} in CombatManager.</li>
- *   <li><b>Dash</b> — picks a cardinal direction and dashes in a straight line
+ *   <li><b>Dash</b> - picks a cardinal direction and dashes in a straight line
  *       until it hits a wall or obstacle, shoving and damaging anything in the
  *       path. Resolved by {@code EnemyAction.MimicDash} in CombatManager.</li>
  * </ul>
- * The alternation is state on the AI instance — each registered Mimic spawn
+ * The alternation is state on the AI instance - each registered Mimic spawn
  * uses its own instance (see {@link #createInstance()}) so the cadence isn't
  * shared between simultaneous mimic fights.
  */
@@ -63,7 +63,7 @@ public final class MimicAI implements EnemyAI {
     private Mode nextMode = Mode.TANTRUM;
 
     /**
-     * Factory — produces a fresh instance per spawn so two mimics in the same
+     * Factory - produces a fresh instance per spawn so two mimics in the same
      * arena don't share alternation state. Called from the AIRegistry binding
      * in AbandonedCampsiteEvent.
      */
@@ -74,11 +74,11 @@ public final class MimicAI implements EnemyAI {
     /**
      * Threat preview for the combat HUD's danger-tile overlay. Returns the union of:
      * <ul>
-     *   <li><b>Tantrum reach</b> — 8-way BFS flood from the mimic's current tile up to
+     *   <li><b>Tantrum reach</b> - 8-way BFS flood from the mimic's current tile up to
      *       {@code MAX_TANTRUM_HOPS}, respecting obstacles/void. This is a superset of
      *       any specific randomly-rolled tantrum path, so the player sees every tile
      *       the mimic could plausibly land on next turn.</li>
-     *   <li><b>Dash reach</b> — each of the 4 cardinal rays from the mimic up to the
+     *   <li><b>Dash reach</b> - each of the 4 cardinal rays from the mimic up to the
      *       first obstacle or out-of-bounds tile. Matches {@link #decideDashOrIdle}'s
      *       walk-until-blocked logic.</li>
      * </ul>
@@ -151,13 +151,13 @@ public final class MimicAI implements EnemyAI {
     }
 
     /**
-     * Build a tantrum hop list: 4–6 random adjacent steps from the mimic's
+     * Build a tantrum hop list: 4-6 random adjacent steps from the mimic's
      * current position. Each step is strictly adjacent to the previous one
-     * (8-way neighbourhood). The path INCLUDES the destination tiles only —
+     * (8-way neighbourhood). The path INCLUDES the destination tiles only -
      * the starting tile is implied from the mimic's current grid pos.
      * <p>
      * The loop stops as soon as a candidate step lands on the player's tile
-     * (that tile IS included in the path — CombatManager handles the collision
+     * (that tile IS included in the path - CombatManager handles the collision
      * when it visits it). Otherwise it keeps walking until it's built the
      * target number of hops or runs out of legal neighbours.
      */
@@ -176,7 +176,7 @@ public final class MimicAI implements EnemyAI {
                 GridPos cand = new GridPos(cursor.x() + d[0], cursor.z() + d[1]);
                 if (!arena.isInBounds(cand)) continue;
                 // Tiles occupied by other enemies block the hop. The player's
-                // tile IS allowed — that's how the tantrum scores a hit.
+                // tile IS allowed - that's how the tantrum scores a hit.
                 if (!cand.equals(playerPos) && arena.isOccupied(cand)) continue;
                 var tile = arena.getTile(cand);
                 if (tile == null) continue;
@@ -187,7 +187,7 @@ public final class MimicAI implements EnemyAI {
             }
 
             if (chosen == null) {
-                // No legal neighbour — stop building. Still ship whatever
+                // No legal neighbour - stop building. Still ship whatever
                 // hops we have (possibly zero) so the handler can decide.
                 break;
             }

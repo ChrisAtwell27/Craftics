@@ -12,9 +12,9 @@ import java.util.List;
  * <p>
  * Addon mods implement this interface to create fully custom combat behaviors
  * (damage reflection, death prevention, conditional buffs, etc.).
- * Override only the callbacks you need — all methods have default no-op implementations.
+ * Override only the callbacks you need - all methods have default no-op implementations.
  * <p>
- * Handlers are stateful per combat encounter — instance fields reset each fight
+ * Handlers are stateful per combat encounter - instance fields reset each fight
  * because the EquipmentScanner creates fresh instances at combat start.
  * <p>
  * Register via {@code StatModifiers.addCombatEffect(name, handler)} inside an

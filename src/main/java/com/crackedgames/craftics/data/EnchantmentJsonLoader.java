@@ -29,7 +29,7 @@ import java.util.List;
  *
  * <p>Each bonus grants {@code (enchantLevel / per_levels) * amount} of a
  * {@link TrimEffects.Bonus} stat. {@code per_levels} defaults to 1 (i.e. {@code amount}
- * per level). Enchantments that modify weapon abilities (Sharpness, Smite, …) are
+ * per level). Enchantments that modify weapon abilities (Sharpness, Smite, ...) are
  * handled by weapon ability handlers, not this loader.
  *
  * @since 0.2.0
@@ -59,7 +59,7 @@ public final class EnchantmentJsonLoader extends CrafticsDataLoader<EnchantmentJ
                 try {
                     stat = TrimEffects.Bonus.valueOf(statName.toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    CrafticsMod.LOGGER.warn("Unknown stat '{}' in enchantment JSON {} — skipping bonus",
+                    CrafticsMod.LOGGER.warn("Unknown stat '{}' in enchantment JSON {} - skipping bonus",
                         statName, fileId);
                     continue;
                 }

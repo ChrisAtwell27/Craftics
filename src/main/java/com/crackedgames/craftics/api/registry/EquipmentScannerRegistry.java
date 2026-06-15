@@ -23,7 +23,7 @@ import java.util.Set;
  */
 public final class EquipmentScannerRegistry {
     private static final Map<String, EquipmentScanner> SCANNERS = new LinkedHashMap<>();
-    /** Scanner IDs whose current entry came from a JSON datapack — dropped on /reload. */
+    /** Scanner IDs whose current entry came from a JSON datapack - dropped on /reload. */
     private static final Set<String> DATAPACK_KEYS = new HashSet<>();
 
     private EquipmentScannerRegistry() {}

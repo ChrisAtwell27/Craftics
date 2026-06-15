@@ -10,16 +10,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * River Delta Boss — "The Tidecaller"
+ * River Delta Boss - "The Tidecaller"
  * Entity: Drowned | 30HP / 5ATK / 2DEF / Speed 2 (3 on water) / Range 3 | Size 2×2
  *
  * Abilities:
  * - Tidal Wave: 2-tile-wide column floods with water, 3 turns. P2: 3-wide + permanent.
  * - Trident Storm: 3 tridents in spread, 4 dmg each. Target tiles shimmer blue.
  * - Riptide Charge: On water, charge 4 tiles, ATK+3, knockback 2.
- * - Call of the Deep: Summon 1–2 Drowned (9HP/3ATK) on water tiles. P2: 2–3 every 2 turns.
+ * - Call of the Deep: Summon 1-2 Drowned (9HP/3ATK) on water tiles. P2: 2-3 every 2 turns.
  *
- * Phase 2 — "Deluge": Half arena floods permanently, +2 ATK on water.
+ * Phase 2 - "Deluge": Half arena floods permanently, +2 ATK on water.
  */
 public class TidecallerAI extends BossAI {
     private static final String CD_WAVE = "tidal_wave";

@@ -1,7 +1,7 @@
 package com.crackedgames.craftics.api.registry;
 
 /**
- * Immutable definition of a reusable enemy template — combat stats, the entity
+ * Immutable definition of a reusable enemy template - combat stats, the entity
  * type rendered for it (its appearance), and which {@code AIRegistry} strategy
  * drives it.
  *
@@ -89,7 +89,7 @@ public record EnemyEntry(
         }
 
         /**
-         * Combat move speed in tiles per turn. Default {@code 0} — the enemy moves
+         * Combat move speed in tiles per turn. Default {@code 0} - the enemy moves
          * at the speed Craftics assigns its entity type. Set a positive value to
          * override that with a fixed speed.
          */

@@ -11,16 +11,16 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Soul Sand Valley Boss — "The Wailing Revenant" (Ghast)
+ * Soul Sand Valley Boss - "The Wailing Revenant" (Ghast)
  * Entity: Ghast | 90HP / 10ATK / 3DEF / Range 6 / Speed 0 (stationary) | Scale 2.0x
  *
  * UNIQUE BOSS MECHANIC: The ghast does NOT stand on the arena. It hovers outside the
  * arena's low-Z edge (back-right in the isometric SW camera view), scaled up to 2x size.
- * It never moves — it is a stationary artillery boss that rains attacks onto the arena.
+ * It never moves - it is a stationary artillery boss that rains attacks onto the arena.
  *
  * TARGETING: The entire front row (z=0) is registered as the ghast's hitbox. The player
  * can attack any tile along that row to damage the boss. These tiles remain walkable
- * (backgroundBoss flag) — the ghast doesn't block movement.
+ * (backgroundBoss flag) - the ghast doesn't block movement.
  *
  * SPAWNING: No regular ghasts spawn during this fight. Only wither skeletons appear
  * as minions alongside the boss.
@@ -35,7 +35,7 @@ import java.util.List;
  * - Magma Rows (P1: 3-turn CD, P2: 2-turn): 1 (P2: 3) rows turn to magma for 2 turns.
  * - Summon Wither Skeletons (P1: 4-turn CD, P2: 3-turn): 2 (P2: 3), max 4 (P2: 6).
  *
- * Phase 2 — "Requiem" (≤50% HP): Faster cooldowns, more fireballs, higher rain damage,
+ * Phase 2 - "Requiem" (≤50% HP): Faster cooldowns, more fireballs, higher rain damage,
  * more magma rows, more skeletons.
  */
 public class WailingRevenantAI extends BossAI {
@@ -81,7 +81,7 @@ public class WailingRevenantAI extends BossAI {
             }
         }
 
-        // Every slot is cooling or capped — spit a plain fireball at the player
+        // Every slot is cooling or capped - spit a plain fireball at the player
         // rather than wailing into the void. An artillery boss never just idles.
         return new EnemyAction.RangedAttack(Math.max(3, self.getAttackPower() / 2), "fire");
     }

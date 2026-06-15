@@ -20,7 +20,7 @@ import java.util.Set;
  * caller is responsible for clipping to arena bounds and checking walkability;
  * these methods may return tiles outside the arena.
  *
- * <p>Geometry only — damage rules (full / half / falloff) stay in the weapon
+ * <p>Geometry only - damage rules (full / half / falloff) stay in the weapon
  * handlers. Each shape has a paired use in {@code VanillaWeapons} /
  * {@code CombatManager}; keep them in sync.
  */
@@ -337,7 +337,7 @@ public final class AoeShapes {
     /**
      * Mirror of {@link #enemiesOn}: the distinct live ALLY entities standing on
      * {@code tiles}. Does NOT include the player or other players (they are not
-     * arena occupants — the caller checks player/teammate tiles separately).
+     * arena occupants - the caller checks player/teammate tiles separately).
      */
     public static List<CombatEntity> alliesOn(GridArena arena, List<GridPos> tiles) {
         List<CombatEntity> out = new ArrayList<>();
@@ -347,7 +347,7 @@ public final class AoeShapes {
             CombatEntity occ = arena.getOccupant(tile);
             if (occ == null || !occ.isAlive() || !occ.isAlly()) continue;
             // The netherite mount's 1x3 wall sentinel is flagged isAlly() so it blocks
-            // enemies, but it is not a real ally — it has no world mob and must never be
+            // enemies, but it is not a real ally - it has no world mob and must never be
             // a buff/heal target (a support AoE touching it would otherwise NPE on its
             // null mob entity).
             if (occ.isMountWall()) continue;
@@ -356,7 +356,7 @@ public final class AoeShapes {
         return out;
     }
 
-    /** Every in-bounds tile of the arena (Full arena shape — Violin). */
+    /** Every in-bounds tile of the arena (Full arena shape - Violin). */
     public static List<GridPos> allTiles(GridArena arena) {
         List<GridPos> out = new ArrayList<>();
         for (int x = 0; x < arena.getWidth(); x++) {

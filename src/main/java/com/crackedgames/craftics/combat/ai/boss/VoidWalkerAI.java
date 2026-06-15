@@ -10,14 +10,14 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Warped Forest Boss — "The Void Walker" (Enderman)
+ * Warped Forest Boss - "The Void Walker" (Enderman)
  * Entity: Enderman | 50HP / 9ATK / 2DEF / Speed 3 (+ free teleports) | Size 2×2
  *
  * Abilities:
  * - Void Rift: Opens a portal pair (one near the player, one far away). Stepping through
  *   teleports the player between the endpoints. First traversal of a pair also grants
  *   Strength + Speed for 2 turns. Phase 1 rifts last 4 turns, Phase 2 rifts are permanent.
- *   Rift state lives in CombatManager — this AI just telegraphs the placement.
+ *   Rift state lives in CombatManager - this AI just telegraphs the placement.
  * - Mirror Image: 2 clones (8HP/3ATK, take double damage). P2: 3 clones.
  * - Phase Strike: Teleport behind player + attack. Cannot be dodged.
  * - Void Pull: Pulls player 2 tiles toward boss. P2: 3 tiles. Can drag the player onto
@@ -27,9 +27,9 @@ import java.util.List;
  * - Null Burst: Telegraphed AreaAttack on a 3×3 region around the player's current tile.
  *   Deals ATK-1 damage. Rewards the player for moving between turns.
  * - Ender Roar: Short-range AreaAttack centered on the boss itself. Deals ATK-2 damage
- *   and applies Blindness — punishes melee camping.
+ *   and applies Blindness - punishes melee camping.
  *
- * Phase 2 — "Reality Shatter": Permanent rifts, 3 clones, double phase strike,
+ * Phase 2 - "Reality Shatter": Permanent rifts, 3 clones, double phase strike,
  * random blink start of turn, void pull range 3, Null Burst radius grows to 2.
  */
 public class VoidWalkerAI extends BossAI {
@@ -43,8 +43,8 @@ public class VoidWalkerAI extends BossAI {
 
     /**
      * Mirror image clones use a separate AI instance flagged with isClone = true.
-     * They retain almost the full boss kit — Phase Strike, Void Beam, Null Burst,
-     * Ender Roar, Void Pull, melee — so the player can't tell them apart from the
+     * They retain almost the full boss kit - Phase Strike, Void Beam, Null Burst,
+     * Ender Roar, Void Pull, melee - so the player can't tell them apart from the
      * real boss by behaviour. Only abilities that would duplicate boss-exclusive
      * state (summoning more clones, opening rifts, blinking at random) are gated.
      */
@@ -67,7 +67,7 @@ public class VoidWalkerAI extends BossAI {
     protected EnemyAction chooseAbility(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
 
-        // Phase 2: Random blink at start of every turn (real boss only — clones
+        // Phase 2: Random blink at start of every turn (real boss only - clones
         // never enter phase 2 but we guard explicitly so future refactors are safe).
         if (!isClone && isPhaseTwo() && getTurnCounter() > 1) {
             List<GridPos> blinkTargets = findSummonPositions(arena, 1);
@@ -95,7 +95,7 @@ public class VoidWalkerAI extends BossAI {
         int dist = effectivePos.manhattanDistance(playerPos);
         int atk = self.getAttackPower();
 
-        // Mirror Image — fires on a steady cadence so the player is regularly facing
+        // Mirror Image - fires on a steady cadence so the player is regularly facing
         // a fresh set of decoys. High priority so it actually happens (was buried at
         // the bottom previously and almost never triggered).
         if (!isClone && !isOnCooldown(CD_MIRROR) && getAliveMinionCount() == 0) {
@@ -112,7 +112,7 @@ public class VoidWalkerAI extends BossAI {
             }
         }
 
-        // Ender Roar — short-range get-off-me AoE. Priority when player is right next to us.
+        // Ender Roar - short-range get-off-me AoE. Priority when player is right next to us.
         if (!isOnCooldown(CD_ROAR) && dist <= 2) {
             setCooldown(CD_ROAR, 5);
             int roarRadius = 2;
@@ -122,7 +122,7 @@ public class VoidWalkerAI extends BossAI {
             return new EnemyAction.BossAbility("ender_roar", roar, roarTiles);
         }
 
-        // Void Beam — cardinal line from the boss through the player's row/column.
+        // Void Beam - cardinal line from the boss through the player's row/column.
         // Prefer this over phase strike when player is at range, so the boss is not
         // just "teleport into melee every turn".
         if (!isOnCooldown(CD_BEAM) && dist >= 2) {
@@ -140,7 +140,7 @@ public class VoidWalkerAI extends BossAI {
             }
         }
 
-        // Null Burst — AoE centered on the player's current tile. Player has to move
+        // Null Burst - AoE centered on the player's current tile. Player has to move
         // off the telegraphed square to avoid damage, creating positional pressure.
         if (!isOnCooldown(CD_BURST) && dist >= 2 && dist <= 6) {
             setCooldown(CD_BURST, 4);
@@ -151,7 +151,7 @@ public class VoidWalkerAI extends BossAI {
             return new EnemyAction.BossAbility("null_burst", burst, burstTiles);
         }
 
-        // Phase Strike — teleport behind and attack. Now gated so it does NOT fire every
+        // Phase Strike - teleport behind and attack. Now gated so it does NOT fire every
         // cycle; the beam/burst will eat most of the open slots.
         if (!isOnCooldown(CD_STRIKE) && dist >= 2) {
             GridPos behind = findTileBehindPlayer(arena, playerPos, effectivePos);
@@ -171,7 +171,7 @@ public class VoidWalkerAI extends BossAI {
             }
         }
 
-        // Void Pull — pull player toward boss
+        // Void Pull - pull player toward boss
         if (!isOnCooldown(CD_PULL) && dist >= 2 && dist <= 4) {
             setCooldown(CD_PULL, 2);
             int[] dir = getDirectionToward(playerPos, effectivePos);
@@ -179,10 +179,10 @@ public class VoidWalkerAI extends BossAI {
             return new EnemyAction.ForcedMovement(-1, dir[0], dir[1], pullDist);
         }
 
-        // Void Rift — place one endpoint near the player, the other far across the arena.
+        // Void Rift - place one endpoint near the player, the other far across the arena.
         // This makes the mechanic legible: the player can always see one portal right next
         // to them, and the other gives a meaningful reposition if they step through.
-        // Clones cannot place rifts — that's a real-boss-only ability.
+        // Clones cannot place rifts - that's a real-boss-only ability.
         if (!isClone && !isOnCooldown(CD_RIFT)) {
             GridPos near = findRiftTileNear(arena, playerPos, effectivePos, 1, 3);
             GridPos far = findRiftTileFar(arena, playerPos, effectivePos, near, 5);
@@ -255,7 +255,7 @@ public class VoidWalkerAI extends BossAI {
 
     /**
      * Find a walkable tile at least {@code minDistFromNear} tiles away from the near
-     * rift endpoint, and as far as possible from the boss — gives the player a
+     * rift endpoint, and as far as possible from the boss - gives the player a
      * meaningful "escape" target when they step through.
      */
     private GridPos findRiftTileFar(GridArena arena, GridPos playerPos, GridPos bossPos,

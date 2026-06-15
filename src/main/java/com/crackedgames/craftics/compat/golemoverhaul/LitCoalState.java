@@ -29,7 +29,7 @@ public final class LitCoalState {
 
     // Resolved CoalGolem#setLit(boolean), cached after first lookup. Craftics has no
     // compile dependency on Golem Overhaul, so the mod's lit texture flag is flipped
-    // reflectively — the renderer reads the synced ID_LIT data-tracker setLit() writes.
+    // reflectively - the renderer reads the synced ID_LIT data-tracker setLit() writes.
     private static volatile java.lang.reflect.Method setLitMethod;
 
     /**
@@ -47,7 +47,7 @@ public final class LitCoalState {
             }
             m.invoke(mob, lit);
         } catch (ReflectiveOperationException e) {
-            // CoalGolem#setLit not present (mod missing or different build) — skip.
+            // CoalGolem#setLit not present (mod missing or different build) - skip.
         }
     }
 

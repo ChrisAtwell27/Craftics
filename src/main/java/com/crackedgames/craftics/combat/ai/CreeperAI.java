@@ -12,7 +12,7 @@ import java.util.List;
  * - Move + Prime in the SAME turn (no wasted StartFuse turn)
  * - Explodes next turn if a victim (player or ally pet) is still inside the
  *   blast radius. If everyone escaped, the fuse RESETS and the creeper chases
- *   again — it no longer wastes itself on an empty tile. A creeper about to
+ *   again - it no longer wastes itself on an empty tile. A creeper about to
  *   die (≤25% HP) blows regardless rather than dying for nothing.
  * - CHARGED: if hit by player's ranged attack while fuse is NOT active, becomes
  *   charged (explosion radius and damage scale up). Visual: glow.
@@ -24,7 +24,7 @@ public class CreeperAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // Check if damaged by ranged — become charged (enraged flag = charged)
+        // Check if damaged by ranged - become charged (enraged flag = charged)
         if (self.wasDamagedSinceLastTurn() && !self.isEnraged() && self.getFuseTimer() == 0) {
             self.setEnraged(true); // charged creeper
         }
@@ -34,7 +34,7 @@ public class CreeperAI implements EnemyAI {
             ? self.getAttackPower() * 2
             : self.getAttackPower() + 3;
 
-        // Fuse active from last turn — explode if it would catch a victim, or
+        // Fuse active from last turn - explode if it would catch a victim, or
         // if we're about to die anyway. Otherwise defuse and resume the chase:
         // a creeper hissing at an empty tile helps nobody.
         if (self.getFuseTimer() > 0) {
@@ -49,13 +49,13 @@ public class CreeperAI implements EnemyAI {
             // fall through to the chase below
         }
 
-        // Adjacent — prime fuse (explodes NEXT turn)
+        // Adjacent - prime fuse (explodes NEXT turn)
         if (dist <= 1) {
             self.setFuseTimer(1);
             return new EnemyAction.StartFuse();
         }
 
-        // Rush toward player — if we reach adjacency, prime immediately
+        // Rush toward player - if we reach adjacency, prime immediately
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed());
         if (target == null) target = playerPos;
 
@@ -64,7 +64,7 @@ public class CreeperAI implements EnemyAI {
 
         GridPos endPos = path.get(path.size() - 1);
         if (endPos.manhattanDistance(playerPos) <= 1) {
-            // Arrive adjacent — move AND prime in same turn
+            // Arrive adjacent - move AND prime in same turn
             self.setFuseTimer(1);
             return new EnemyAction.Move(path);
         }

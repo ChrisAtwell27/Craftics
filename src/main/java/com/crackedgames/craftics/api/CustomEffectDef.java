@@ -8,7 +8,7 @@ import org.jetbrains.annotations.Nullable;
  * <p>Custom effects run alongside Craftics' 23 built-in effects but are keyed by a
  * string id rather than the fixed {@code CombatEffects.EffectType} enum, so addons can
  * add their own. They tick once per round on every combatant carrying them: the
- * {@link #hpChangePerTurn} is applied (scaled by the amplifier — negative damages,
+ * {@link #hpChangePerTurn} is applied (scaled by the amplifier - negative damages,
  * positive heals), then the optional {@link #tickHandler} runs.
  *
  * <p>Build with {@link #builder(String)}:

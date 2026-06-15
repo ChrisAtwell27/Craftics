@@ -8,11 +8,11 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Breeze AI: Trial Chamber signature mob — wind-based ranged attacker.
+ * Breeze AI: Trial Chamber signature mob - wind-based ranged attacker.
  * - WIND CHARGE: ranged attack at range 3, deals damage + knockback concept
  * - REPOSITION: after attacking, tries to teleport/dash to a new vantage point
  * - EVASIVE: if player gets adjacent, dashes away 2-3 tiles then shoots
- * - Never stays still — constantly repositioning for optimal angles
+ * - Never stays still - constantly repositioning for optimal angles
  */
 public class BreezeAI implements EnemyAI {
     @Override
@@ -31,16 +31,16 @@ public class BreezeAI implements EnemyAI {
                 }
                 return new EnemyAction.Move(path);
             }
-            // Cornered — melee attack
+            // Cornered - melee attack
             return new EnemyAction.Attack(self.getAttackPower());
         }
 
-        // In range with LOS — wind charge attack
+        // In range with LOS - wind charge attack
         if (dist <= range && AIUtils.hasCardinalLOS(arena, myPos, playerPos, range)) {
             return new EnemyAction.RangedAttack(self.getAttackPower(), "wind_charge");
         }
 
-        // In range but no LOS — reposition to get a clear shot
+        // In range but no LOS - reposition to get a clear shot
         if (dist <= range) {
             GridPos shotPos = findShotPosition(self, arena, playerPos);
             if (shotPos != null && !shotPos.equals(myPos)) {
@@ -56,7 +56,7 @@ public class BreezeAI implements EnemyAI {
             }
         }
 
-        // Out of range — move to a good shooting position
+        // Out of range - move to a good shooting position
         GridPos shotPos = findShotPosition(self, arena, playerPos);
         if (shotPos != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, shotPos, self.getMoveSpeed(), self);

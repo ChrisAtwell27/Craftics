@@ -38,13 +38,13 @@ public final class WallBlocks {
         if (!(item instanceof BlockItem blockItem)) return false;
         Block block = blockItem.getBlock();
         if (block == null) return false;
-        // Block entities (chests, beds, hoppers, signs, banners, brewing stands…)
+        // Block entities (chests, beds, hoppers, signs, banners, brewing stands...)
         if (block instanceof BlockEntityProvider) return false;
         // Doors, tall plants, trapdoors, fence gates, beds, two-tall flowers,
         // anything that occupies multiple tiles or has a hinged interaction.
         if (isTallOrHinged(block)) return false;
         BlockState state = block.getDefaultState();
-        // Full opaque cubes only — slabs, stairs, fences, panes, walls, carpets,
+        // Full opaque cubes only - slabs, stairs, fences, panes, walls, carpets,
         // saplings, sugar cane, etc. all fail this check. The full-cube check
         // signature differs between MC versions, so route through stonecutter.
         if (!isOpaqueFullCube(state)) return false;

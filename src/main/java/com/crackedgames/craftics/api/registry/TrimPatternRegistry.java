@@ -21,7 +21,7 @@ public final class TrimPatternRegistry {
     private TrimPatternRegistry() {}
 
     private static final Map<String, TrimPatternEntry> REGISTRY = new HashMap<>();
-    /** Pattern IDs whose current entry came from a JSON datapack — dropped on /reload. */
+    /** Pattern IDs whose current entry came from a JSON datapack - dropped on /reload. */
     private static final Set<String> DATAPACK_KEYS = new HashSet<>();
 
     /** Register a trim pattern from code (survives {@code /reload}). */

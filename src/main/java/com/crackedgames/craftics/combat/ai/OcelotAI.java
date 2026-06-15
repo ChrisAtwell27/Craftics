@@ -15,7 +15,7 @@ import java.util.List;
  * - Low HP but nearly impossible to pin down
  */
 public class OcelotAI implements EnemyAI {
-    /** Ocelots only retaliate the turn after being hit — otherwise not a threat. */
+    /** Ocelots only retaliate the turn after being hit - otherwise not a threat. */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return self.wasDamagedSinceLastTurn();
@@ -26,14 +26,14 @@ public class OcelotAI implements EnemyAI {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
 
-        // EVASION: if damaged, flee to safety first (path-validated — finds the
+        // EVASION: if damaged, flee to safety first (path-validated - finds the
         // around-the-corner escape, not just the straight line)
         if (self.wasDamagedSinceLastTurn()) {
             EnemyAction flee = AIUtils.fleeReachable(self, arena, playerPos, self.getMoveSpeed());
             if (flee != null) return flee;
         }
 
-        // Adjacent — strike and spring away
+        // Adjacent - strike and spring away
         if (dist == 1) {
             EnemyAction combo = AIUtils.hitAndRun(self, arena, playerPos, List.of(), self.getAttackPower());
             if (combo != null) return combo;

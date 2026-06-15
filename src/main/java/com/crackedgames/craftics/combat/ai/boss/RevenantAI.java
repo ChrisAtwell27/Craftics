@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Plains Boss — "The Revenant" (Undead Knight)
+ * Plains Boss - "The Revenant" (Undead Knight)
  * Entity: Zombie | 20HP / 4ATK / 2DEF / Speed 2 | Size 2×2
  *
  * Abilities:
@@ -19,8 +19,8 @@ import java.util.List;
  * - Gravefire Grid: Telegraphs a giant checker-grid of magma tiles for 1 turn.
  * - Shield Bash: Adjacent knockback 2 tiles, half ATK damage.
  *
- * Phase 2 (≤50% HP) — "Undying Rage":
- * - Gains Regeneration (1 HP/turn) — handled by CombatManager checking isEnraged
+ * Phase 2 (≤50% HP) - "Undying Rage":
+ * - Gains Regeneration (1 HP/turn) - handled by CombatManager checking isEnraged
  * - Raise the Dead every 2 turns instead of 3
  * - Death Charge ATK+4 + fire trail
  */
@@ -88,7 +88,7 @@ public class RevenantAI extends BossAI {
         }
 
         // Priority 5: Shield Bash if player is adjacent (no-damage shove). Gated by a
-        // cooldown so it does not pre-empt melee every adjacent turn — on cooldown
+        // cooldown so it does not pre-empt melee every adjacent turn - on cooldown
         // turns the boss falls through to Priority 6 and deals real contact damage.
         if (dist <= 1 && !isOnCooldown(CD_BASH)) {
             GridPos myPos = self.getGridPos();

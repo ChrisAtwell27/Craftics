@@ -10,7 +10,7 @@ import java.util.List;
  * <p>This is the code mirror of the shipped {@code data/craftics/craftics/campaigns/vanilla.json}.
  * Both describe the same 18-biome progression (the structure previously hardcoded in
  * {@code BiomePath}); the JSON is the authoring "source of truth" and this class is the safety
- * net that seeds the same campaign from code so it always exists even without the resource —
+ * net that seeds the same campaign from code so it always exists even without the resource -
  * mirroring how {@link com.crackedgames.craftics.api.VanillaDialogue} seeds built-in dialogue.
  *
  * <h2>Structure</h2>
@@ -47,15 +47,15 @@ public final class VanillaCampaign {
 
     private VanillaCampaign() {} // no instances
 
-    /** Overworld theme glyph — green sun (matches BiomePath plains icon). */
+    /** Overworld theme glyph - green sun (matches BiomePath plains icon). */
     private static final String OVERWORLD_ICON = "☀";
-    /** Nether theme glyph — hot springs (matches BiomePath nether_wastes icon). */
+    /** Nether theme glyph - hot springs (matches BiomePath nether_wastes icon). */
     private static final String NETHER_ICON = "♨";
-    /** End theme glyph — light-purple star (matches BiomePath outer_end_islands icon). */
+    /** End theme glyph - light-purple star (matches BiomePath outer_end_islands icon). */
     private static final String END_ICON = "✦";
 
     /**
-     * Build the built-in vanilla campaign. Pure: no Minecraft types, no static registry writes —
+     * Build the built-in vanilla campaign. Pure: no Minecraft types, no static registry writes -
      * safe to call from a unit test.
      *
      * @return the {@code craftics:vanilla} campaign, structurally identical to vanilla.json

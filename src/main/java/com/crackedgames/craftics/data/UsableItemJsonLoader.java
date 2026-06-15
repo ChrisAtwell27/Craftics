@@ -51,7 +51,7 @@ public final class UsableItemJsonLoader extends CrafticsDataLoader<UsableItemEnt
         String itemStr = json.get("item").getAsString();
         Identifier itemId = Identifier.of(itemStr);
         if (!Registries.ITEM.containsId(itemId)) {
-            CrafticsMod.LOGGER.warn("Unknown item '{}' in usable item JSON {} — skipping", itemStr, fileId);
+            CrafticsMod.LOGGER.warn("Unknown item '{}' in usable item JSON {} - skipping", itemStr, fileId);
             return null;
         }
         Item item = Registries.ITEM.get(itemId);
@@ -65,7 +65,7 @@ public final class UsableItemJsonLoader extends CrafticsDataLoader<UsableItemEnt
             try {
                 builder.targetType(TargetType.valueOf(target.toUpperCase()));
             } catch (IllegalArgumentException e) {
-                CrafticsMod.LOGGER.warn("Unknown target type '{}' in usable item JSON {} — defaulting to SELF",
+                CrafticsMod.LOGGER.warn("Unknown target type '{}' in usable item JSON {} - defaulting to SELF",
                     target, fileId);
             }
         }
@@ -79,7 +79,7 @@ public final class UsableItemJsonLoader extends CrafticsDataLoader<UsableItemEnt
             }
         }
         if (handler == null) {
-            CrafticsMod.LOGGER.warn("Usable item JSON {} has no valid effects — skipping", fileId);
+            CrafticsMod.LOGGER.warn("Usable item JSON {} has no valid effects - skipping", fileId);
             return null;
         }
         builder.handler(handler);
@@ -104,7 +104,7 @@ public final class UsableItemJsonLoader extends CrafticsDataLoader<UsableItemEnt
                 try {
                     type = CombatEffects.EffectType.valueOf(effectName.toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    CrafticsMod.LOGGER.warn("Unknown effect '{}' in usable item JSON {} — skipping effect",
+                    CrafticsMod.LOGGER.warn("Unknown effect '{}' in usable item JSON {} - skipping effect",
                         effectName, fileId);
                     yield null;
                 }
@@ -115,7 +115,7 @@ public final class UsableItemJsonLoader extends CrafticsDataLoader<UsableItemEnt
                     : ItemEffects.applyToTarget(type, turns, amplifier);
             }
             default -> {
-                CrafticsMod.LOGGER.warn("Unknown usable item effect kind '{}' in {} — skipping", kind, fileId);
+                CrafticsMod.LOGGER.warn("Unknown usable item effect kind '{}' in {} - skipping", kind, fileId);
                 yield null;
             }
         };

@@ -52,13 +52,13 @@ public final class InstrumentVfx {
         boolean attack = def.role() == InstrumentDef.Role.ATTACK;
         VfxDescriptor.Builder b = VfxDescriptor.builder();
 
-        // Phase 0 — windup: notes converge on the player as the instrument is played.
+        // Phase 0 - windup: notes converge on the player as the instrument is played.
         var p0 = b.phase(0)
             .converge(VfxAnchor.ORIGIN, 1.6, ParticleTypes.NOTE, 14);
         SoundEvent windup = sound(def, 0);
         if (windup != null) p0.sound(VfxAnchor.ORIGIN, windup, 0.8f, attack ? 0.8f : 1.0f);
 
-        // Phase 6 — the beat: burst notes on EACH affected tile so the shape reads
+        // Phase 6 - the beat: burst notes on EACH affected tile so the shape reads
         // clearly (a star looks like a star, a cone like a cone). Attack adds impact.
         var p1 = b.phase(6);
         int drawn = 0;
@@ -77,7 +77,7 @@ public final class InstrumentVfx {
             if (def.apCost() >= 3) p1.shake(0.9f, 8).hitPause(3);
         }
 
-        // Phase 12 — settle: a lighter note drift on each tile + an accent note.
+        // Phase 12 - settle: a lighter note drift on each tile + an accent note.
         var p2 = b.phase(12);
         drawn = 0;
         for (GridPos tile : tiles) {

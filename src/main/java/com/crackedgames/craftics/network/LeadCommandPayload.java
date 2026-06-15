@@ -14,7 +14,7 @@ import net.minecraft.util.Identifier;
  * <p>{@code allyEntityId} is the entity network id of the selected ally.
  * If {@code targetEntityId >= 0}, the ally attacks that enemy (which must be
  * within 1 tile of the ally). Otherwise the ally is moved to
- * {@code (targetX, targetZ)} — server validates walkability and occupancy.
+ * {@code (targetX, targetZ)} - server validates walkability and occupancy.
  */
 public record LeadCommandPayload(int allyEntityId, int targetX, int targetZ,
                                   int targetEntityId) implements CustomPayload {

@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Registry of custom (addon-registered) combat status effects.
  *
- * <p>Custom effects ride alongside Craftics' fixed 23-value built-in effect enum —
+ * <p>Custom effects ride alongside Craftics' fixed 23-value built-in effect enum -
  * they are keyed by string id and ticked on combatants each round. Apply them via
  * {@code UsableItemContext.applyCustomEffect(...)} or {@code CombatEntity.applyCustomEffect(...)}.
  *
@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CombatEffectRegistry {
 
     private static final Map<String, CustomEffectDef> REGISTRY = new ConcurrentHashMap<>();
-    /** Effect ids whose current definition came from a JSON datapack — dropped on /reload. */
+    /** Effect ids whose current definition came from a JSON datapack - dropped on /reload. */
     private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private CombatEffectRegistry() {}

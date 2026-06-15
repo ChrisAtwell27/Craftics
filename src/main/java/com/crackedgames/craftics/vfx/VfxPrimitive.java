@@ -28,7 +28,7 @@ public sealed interface VfxPrimitive {
     record Ring(VfxAnchor center, double radius,
                 ParticleEffect type, int count) implements VfxPrimitive {}
 
-    /** Particles converging inward toward the anchor — used for spell windups. */
+    /** Particles converging inward toward the anchor - used for spell windups. */
     record Converge(VfxAnchor center, double radius,
                     ParticleEffect type, int count) implements VfxPrimitive {}
 
@@ -41,12 +41,12 @@ public sealed interface VfxPrimitive {
     /** Spawns a FallingBlockEntity with velocity. If the entity lands inside an
      *  arena before {@code lifetimeTicks} elapse, vanilla places the block and
      *  VfxBlockTracker marks the tile as a VFX obstacle. If the lifetime expires
-     *  in the air first, the entity is discarded with a poof — no block placed. */
+     *  in the air first, the entity is discarded with a poof - no block placed. */
     record LaunchBlock(VfxAnchor origin, Vec3d velocity,
                        BlockState state, int lifetimeTicks) implements VfxPrimitive {}
 
     /** Like LaunchBlock but the block state is read from the world floor at the anchor
-     *  at fire time — debris matches the actual terrain the target is standing on. */
+     *  at fire time - debris matches the actual terrain the target is standing on. */
     record LaunchFloorBlock(VfxAnchor anchor, Vec3d velocity,
                              int lifetimeTicks) implements VfxPrimitive {}
 
@@ -56,7 +56,7 @@ public sealed interface VfxPrimitive {
 
     // ---------- Client-side feedback ----------
 
-    /** Camera shake for arena observers. Intensity 0.0–1.5. */
+    /** Camera shake for arena observers. Intensity 0.0-1.5. */
     record Shake(float intensity, int durationTicks) implements VfxPrimitive {}
 
     /** Full-screen flash overlay (ARGB) for the duration. */
@@ -69,7 +69,7 @@ public sealed interface VfxPrimitive {
     record FloatingText(VfxAnchor at, String text,
                         int color, int lifetimeTicks) implements VfxPrimitive {}
 
-    /** Vignette pulse — extends the existing poison/burning/blindness vignette slots. */
+    /** Vignette pulse - extends the existing poison/burning/blindness vignette slots. */
     record Vignette(VignetteType type, int level, int durationTicks) implements VfxPrimitive {}
 
     enum VignetteType { EXECUTE, POISON, BURNING, BLINDNESS, FROST }

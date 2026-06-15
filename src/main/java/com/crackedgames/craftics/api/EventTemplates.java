@@ -5,7 +5,7 @@ package com.crackedgames.craftics.api;
  *
  * <p>Planned templates (gamble, giveReward, ambush, spawnTrader) will wrap the most
  * frequent between-level event shapes so addon authors do not have to reimplement them.
- * This class is a placeholder — all factories are pending implementation.
+ * This class is a placeholder - all factories are pending implementation.
  *
  * @since 0.2.0
  */

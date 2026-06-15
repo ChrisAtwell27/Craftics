@@ -42,7 +42,7 @@ public final class VfxBlockTracker {
 
     /** entity UUID → last observed block position. Vanilla FallingBlockEntity places
      *  its block AND discards itself in the same tick that {@code onGround} becomes
-     *  true — and that entity tick runs before our END_SERVER_TICK pass. So when we
+     *  true - and that entity tick runs before our END_SERVER_TICK pass. So when we
      *  see the entity is gone, we use the position recorded on the prior tick to
      *  locate the placed block and mark its grid tile as a VFX obstacle. */
     private final Map<UUID, BlockPos> lastBlockPos = new HashMap<>();
@@ -57,7 +57,7 @@ public final class VfxBlockTracker {
     // Public API
     // -------------------------------------------------------------------------
 
-    /** Legacy overload — no arena obstacle tracking. */
+    /** Legacy overload - no arena obstacle tracking. */
     public void launchInto(ServerWorld world, Vec3d origin, Vec3d velocity,
                             BlockState state, int lifetimeTicks) {
         launchInto(world, origin, velocity, state, lifetimeTicks, null);
@@ -125,7 +125,7 @@ public final class VfxBlockTracker {
             boolean expired = now >= entry.getValue();
             boolean landed = fbe.isOnGround();
             if (expired && !landed) {
-                // Lifetime expired mid-air — discard with poof, no obstacle conversion
+                // Lifetime expired mid-air - discard with poof, no obstacle conversion
                 BlockState state = fbe.getBlockState();
                 Vec3d pos = fbe.getPos();
                 spawnPoof(world, pos, state);
@@ -142,7 +142,7 @@ public final class VfxBlockTracker {
                 forgetEntity(id);
                 it.remove();
             } else {
-                // Still in flight — remember where we last saw it so we can mark the
+                // Still in flight - remember where we last saw it so we can mark the
                 // obstacle on the next tick if vanilla places + discards atomically.
                 lastBlockPos.put(id, fbe.getBlockPos());
             }

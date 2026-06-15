@@ -118,7 +118,7 @@ public final class StackVariants {
         ));
 
         // Slime Tower: 3 medium slimes stacked. Attack scales with how many
-        // slimes remain on the tower — 8 with all 3, 6 with 2, 4 with the lone
+        // slimes remain on the tower - 8 with all 3, 6 with 2, 4 with the lone
         // medium slime. The final slime runs the usual split-on-death logic;
         // the mini slimes it splits into deal only 1 damage each (handled in
         // CombatManager.trySplitOnDeath). All layers are speed-1 beeline mobs.

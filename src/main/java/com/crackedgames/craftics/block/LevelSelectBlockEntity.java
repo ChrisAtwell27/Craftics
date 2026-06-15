@@ -30,7 +30,7 @@ public class LevelSelectBlockEntity extends BlockEntity
         // Resolve to the party leader (or this player if solo) so every party
         // member sees the SAME level / branch / discovered biomes on the level
         // select block. Reading the visiting player's own data was making
-        // player 1 see Desert while player 2 sees Tundra — leader's data is
+        // player 1 see Desert while player 2 sees Tundra - leader's data is
         // the shared run state every member queues into.
         java.util.UUID owner = data.getEffectiveWorldOwner(player.getUuid());
         CrafticsSavedData.PlayerData pd = data.getPlayerData(owner);
@@ -55,7 +55,7 @@ public class LevelSelectBlockEntity extends BlockEntity
         if (world instanceof ServerWorld serverWorld) {
             return CrafticsSavedData.get(serverWorld);
         }
-        // Fallback — shouldn't happen since this runs server-side
+        // Fallback - shouldn't happen since this runs server-side
         return new CrafticsSavedData();
     }
 }

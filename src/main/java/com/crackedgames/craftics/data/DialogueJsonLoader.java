@@ -22,7 +22,7 @@ public final class DialogueJsonLoader extends CrafticsDataLoader<DialogueDefinit
 
     public DialogueJsonLoader() { super("craftics/dialogue", "dialogue"); }
 
-    /** Exposed for unit tests — {@link #parse} is otherwise protected. */
+    /** Exposed for unit tests - {@link #parse} is otherwise protected. */
     public DialogueDefinition parseForTest(Identifier fileId, JsonObject json) {
         return parse(fileId, json);
     }
@@ -30,21 +30,21 @@ public final class DialogueJsonLoader extends CrafticsDataLoader<DialogueDefinit
     @Override
     protected DialogueDefinition parse(Identifier fileId, JsonObject json) {
         if (!json.has("id")) {
-            CrafticsMod.LOGGER.warn("Dialogue JSON {} missing 'id' — skipping", fileId);
+            CrafticsMod.LOGGER.warn("Dialogue JSON {} missing 'id' - skipping", fileId);
             return null;
         }
         if (!json.has("speaker")) {
-            CrafticsMod.LOGGER.warn("Dialogue JSON {} missing 'speaker' — skipping", fileId);
+            CrafticsMod.LOGGER.warn("Dialogue JSON {} missing 'speaker' - skipping", fileId);
             return null;
         }
         if (!json.has("lines")) {
-            CrafticsMod.LOGGER.warn("Dialogue JSON {} missing 'lines' — skipping", fileId);
+            CrafticsMod.LOGGER.warn("Dialogue JSON {} missing 'lines' - skipping", fileId);
             return null;
         }
         List<String> lines = new ArrayList<>();
         for (JsonElement e : json.getAsJsonArray("lines")) lines.add(e.getAsString());
         if (lines.isEmpty()) {
-            CrafticsMod.LOGGER.warn("Dialogue JSON {} has no 'lines' — skipping", fileId);
+            CrafticsMod.LOGGER.warn("Dialogue JSON {} has no 'lines' - skipping", fileId);
             return null;
         }
         String group = json.has("group") ? json.get("group").getAsString() : "";
@@ -55,7 +55,7 @@ public final class DialogueJsonLoader extends CrafticsDataLoader<DialogueDefinit
             for (JsonElement e : arr) {
                 JsonObject c = e.getAsJsonObject();
                 if (!c.has("label") || !c.has("action")) {
-                    CrafticsMod.LOGGER.warn("Dialogue {} has a choice missing label/action — skipping that choice", fileId);
+                    CrafticsMod.LOGGER.warn("Dialogue {} has a choice missing label/action - skipping that choice", fileId);
                     continue;
                 }
                 choices.add(new DialogueChoice(c.get("label").getAsString(), c.get("action").getAsString()));

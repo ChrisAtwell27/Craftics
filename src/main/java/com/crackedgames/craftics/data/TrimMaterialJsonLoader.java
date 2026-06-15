@@ -43,7 +43,7 @@ public final class TrimMaterialJsonLoader extends CrafticsDataLoader<TrimMateria
         try {
             stat = TrimEffects.Bonus.valueOf(statName.toUpperCase());
         } catch (IllegalArgumentException e) {
-            CrafticsMod.LOGGER.warn("Unknown trim stat '{}' in trim material JSON {} — skipping file",
+            CrafticsMod.LOGGER.warn("Unknown trim stat '{}' in trim material JSON {} - skipping file",
                 statName, fileId);
             return null;
         }

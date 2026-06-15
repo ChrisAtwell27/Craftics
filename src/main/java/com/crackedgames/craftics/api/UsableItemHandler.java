@@ -6,7 +6,7 @@ package com.crackedgames.craftics.api;
  *
  * <p>The handler receives a {@link UsableItemContext} exposing the player, the arena,
  * the targeted tile, and the operations an item may perform (deal damage, heal, apply
- * effects, knock back, place tile effects, …). It returns an {@link ItemUseResult} that
+ * effects, knock back, place tile effects, ...). It returns an {@link ItemUseResult} that
  * tells Craftics whether to spend AP and consume the item.
  *
  * <p>Build handlers from the composable factories in {@link ItemEffects}, or implement
@@ -26,7 +26,7 @@ public interface UsableItemHandler {
     ItemUseResult use(UsableItemContext ctx);
 
     /**
-     * Returns a handler that runs {@code this}, then {@code next} — but only if
+     * Returns a handler that runs {@code this}, then {@code next} - but only if
      * {@code this} succeeded. If {@code this} fails, {@code next} is skipped and the
      * failure is propagated.
      */

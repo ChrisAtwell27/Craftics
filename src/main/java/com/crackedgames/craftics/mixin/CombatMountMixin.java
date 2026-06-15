@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * don't fight {@link com.crackedgames.craftics.combat.CombatManager}'s
  * tile-by-tile control. With a player passenger, vanilla tickMovement
  * applies rider-input prediction, velocity decay, collision, and friction
- * each tick — those nudges add up on the client and slingshot the mount.
+ * each tick - those nudges add up on the client and slingshot the mount.
  *
  * <p>Cancelling {@code tickMovement} at HEAD for entities tagged
  * {@code craftics_arena_mount} freezes the mount's position entirely.

@@ -14,11 +14,11 @@ public class TraderSystem {
 
     public enum TraderType {
         WEAPONSMITH("Weaponsmith", "§c⚔"),
-        ARMORER("Armorer", "§9🛡"),
-        PROVISIONER("Provisioner", "§a🍖"),
+        ARMORER("Armorer", "§9⛨"),
+        PROVISIONER("Provisioner", "§a⚘"),
         ALCHEMIST("Alchemist", "§d⚗"),
-        SUPPLIER("Supplier", "§e📦"),
-        DECORATOR("Decorator", "§b🏠"),
+        SUPPLIER("Supplier", "§e⛏"),
+        DECORATOR("Decorator", "§b⌂"),
         CRAFTSMAN("Craftsman", "§6⚒"),
         CURIOSITY_DEALER("Curiosity Dealer", "§5✦");
 
@@ -58,7 +58,7 @@ public class TraderSystem {
             case CURIOSITY_DEALER -> buildCuriosityTrades(pool, tier);
         }
 
-        // Scale prices by tier — later biomes cost significantly more
+        // Scale prices by tier - later biomes cost significantly more
         double tierMult = 1.0 + (tier - 1) * 0.35; // tier 1=1.0x, tier 5=2.4x, tier 9=3.8x
         for (int i = 0; i < pool.size(); i++) {
             Trade t = pool.get(i);
@@ -105,11 +105,11 @@ public class TraderSystem {
 
         // Trident (water-type ranged + lightning channeling).
         if (tier >= 4) pool.add(trade(Items.TRIDENT, 1, 12, "§bTrident"));
-        // Mace (AoE blunt weapon — heavy core endgame). Very rare — endgame
+        // Mace (AoE blunt weapon - heavy core endgame). Very rare - endgame
         // tier only and at a prohibitive emerald cost so it stays a marquee
         // find rather than a routine purchase.
         if (tier >= 8) pool.add(trade(Items.MACE, 1, 45, "§d§lMace §7(very rare)"));
-        // Stick / Bamboo / Blaze Rod / Coral / Breeze Rod — special-type weapons.
+        // Stick / Bamboo / Blaze Rod / Coral / Breeze Rod - special-type weapons.
         pool.add(trade(Items.STICK, 4, 1, "Sticks (x4) §7(stun)"));
         if (tier >= 2) pool.add(trade(Items.BAMBOO, 4, 2, "Bamboo (x4) §7(stun)"));
         if (tier >= 4) pool.add(trade(Items.BLAZE_ROD, 1, 4, "§6Blaze Rod §7(fire weapon)"));
@@ -213,7 +213,7 @@ public class TraderSystem {
             pool.add(trade(Items.ENCHANTED_GOLDEN_APPLE, 1, 25, "§6Enchanted Golden Apple"));
         }
         pool.add(trade(Items.MILK_BUCKET, 1, 4, "Milk Bucket (clears effects)"));
-        // Other restorative foods — common across tiers.
+        // Other restorative foods - common across tiers.
         pool.add(trade(Items.MUSHROOM_STEW, 1, 3, "Mushroom Stew"));
         pool.add(trade(Items.BEETROOT_SOUP, 1, 3, "Beetroot Soup"));
         if (tier >= 2) pool.add(trade(Items.SUSPICIOUS_STEW, 1, 4, "Suspicious Stew"));
@@ -226,7 +226,7 @@ public class TraderSystem {
         if (tier >= 4) {
             pool.add(trade(Items.CHORUS_FRUIT, 2, 4, "Chorus Fruit (x2)"));
             pool.add(trade(Items.CAKE, 1, 5, "Cake §7(healing tile)"));
-            // Hay block — heals an ally pet.
+            // Hay block - heals an ally pet.
             pool.add(trade(Items.HAY_BLOCK, 1, 4, "Hay Block §7(heal ally pet)"));
         }
     }
@@ -259,7 +259,7 @@ public class TraderSystem {
             pool.add(potionTrade(Items.POTION, net.minecraft.potion.Potions.INVISIBILITY, 1, 7, "Potion of Invisibility"));
             pool.add(potionTrade(Items.SPLASH_POTION, net.minecraft.potion.Potions.WEAKNESS, 1, 8, "Splash Potion of Weakness"));
         }
-        // Brewing ingredients + craftable alchemy reagents — also covers some
+        // Brewing ingredients + craftable alchemy reagents - also covers some
         // niche combat items (spider eye for risky food, ghast tear for regen,
         // dragon's breath for lingering potions, glistering melon for healing).
         pool.add(trade(Items.NETHER_WART, 3, 2, "Nether Wart (x3)"));
@@ -332,7 +332,7 @@ public class TraderSystem {
         if (tier <= 2) {
             pool.add(trade(Items.OAK_FENCE, 3, 3, "Oak Fence (x3)"));
         }
-        // Decorator's florist line — every single-block flower in the game,
+        // Decorator's florist line - every single-block flower in the game,
         // each in a small bundle (3-7) so players can fill out a bed or stash.
         {
             int n = 3 + (tier % 5); // deterministic bundle size 3..7 per tier
@@ -387,15 +387,15 @@ public class TraderSystem {
         if (tier >= 6) {
             pool.add(trade(Items.ANVIL, 1, 10, "Anvil §7(drop attack)"));
         }
-        // Fishing rod — always available; cheap utility.
+        // Fishing rod - always available; cheap utility.
         pool.add(trade(Items.FISHING_ROD, 1, 4, "Fishing Rod §7(cast for loot)"));
-        // White banner — defense zone planter.
+        // White banner - defense zone planter.
         pool.add(trade(Items.WHITE_BANNER, 1, 4, "Banner §7(defense zone)"));
     }
 
     // ---- CRAFTSMAN ----
     private static void buildCraftsmanTrades(List<Trade> pool, int tier) {
-        // Basic workstations — always available
+        // Basic workstations - always available
         pool.add(trade(Items.CRAFTING_TABLE, 1, 2, "Crafting Table"));
         pool.add(trade(Items.FURNACE, 1, 3, "Furnace"));
         pool.add(trade(Items.CHEST, 1, 2, "Chest"));
@@ -434,17 +434,17 @@ public class TraderSystem {
         pool.add(trade(Items.NAME_TAG, 1, 4, "Name Tag"));
         pool.add(trade(Items.SNOWBALL, 3, 3, "Snowballs (x3)"));
         pool.add(trade(Items.EGG, 3, 3, "Eggs (x3)"));
-        // Lead — commands allies in combat. Available from tier 1 because
+        // Lead - commands allies in combat. Available from tier 1 because
         // it's a core utility tool and easy to miss otherwise.
         pool.add(trade(Items.LEAD, 1, 4, "Lead §7(ally command)"));
-        // Cobweb — single-target stun throwable.
+        // Cobweb - single-target stun throwable.
         pool.add(trade(Items.COBWEB, 2, 3, "Cobwebs (x2) §7(stun)"));
-        // Bundle — passive loot collector. Vanilla bundle item only exists on
+        // Bundle - passive loot collector. Vanilla bundle item only exists on
         // 1.21.2+, so skip the trade on shards that don't ship it.
         //? if >=1.21.2 {
         pool.add(trade(Items.BUNDLE, 1, 5, "Bundle §7(auto loot)"));
         //?}
-        // Flint & Steel — fire-and-forget ignite tool.
+        // Flint & Steel - fire-and-forget ignite tool.
         pool.add(trade(Items.FLINT_AND_STEEL, 1, 4, "Flint & Steel"));
 
         if (tier >= 3) {
@@ -452,11 +452,11 @@ public class TraderSystem {
             pool.add(trade(Items.COMPASS, 1, 3, "Compass"));
             pool.add(trade(Items.BRUSH, 1, 4, "Brush §7(excavate)"));
             pool.add(trade(Items.GOAT_HORN, 1, 6, "§eGoat Horn §7(random variant)"));
-            // Pottery sherds — random spell scrolls. Pool of common sherds.
+            // Pottery sherds - random spell scrolls. Pool of common sherds.
             pool.add(trade(Items.HEART_POTTERY_SHERD, 1, 6, "§dHeart Sherd §7(heal+regen)"));
             pool.add(trade(Items.FRIEND_POTTERY_SHERD, 1, 5, "§dFriend Sherd §7(buff ally)"));
             pool.add(trade(Items.SCRAPE_POTTERY_SHERD, 1, 5, "§dScrape Sherd §7(corrode)"));
-            // Heart of the Sea — water AoE.
+            // Heart of the Sea - water AoE.
             pool.add(trade(Items.NAUTILUS_SHELL, 2, 5, "Nautilus Shells (x2) §3(water AoE)"));
         }
         if (tier >= 5) {
@@ -471,11 +471,11 @@ public class TraderSystem {
         }
         if (tier >= 7) {
             pool.add(trade(Items.TOTEM_OF_UNDYING, 1, 18, "§6Totem of Undying"));
-            // Top-tier sherds — finishers and rare effects.
+            // Top-tier sherds - finishers and rare effects.
             pool.add(trade(Items.SKULL_POTTERY_SHERD, 1, 12, "§4Skull Sherd §7(execute/wither)"));
             pool.add(trade(Items.PRIZE_POTTERY_SHERD, 1, 12, "§6Prize Sherd §7(triple dmg)"));
             pool.add(trade(Items.BLADE_POTTERY_SHERD, 1, 12, "§dBlade Sherd §7(phantom slash)"));
-            // Mob skulls — equip for +1 damage type bonus.
+            // Mob skulls - equip for +1 damage type bonus.
             pool.add(trade(Items.SKELETON_SKULL, 1, 14, "§bSkeleton Skull §7(+1 Ranged)"));
             pool.add(trade(Items.ZOMBIE_HEAD, 1, 14, "§7Zombie Head §7(+1 Physical)"));
             pool.add(trade(Items.CREEPER_HEAD, 1, 14, "§2Creeper Head §7(+1 Blunt)"));

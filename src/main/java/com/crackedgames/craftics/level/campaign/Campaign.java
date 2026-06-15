@@ -10,7 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Immutable authored playthrough — an ordered list of {@link CampaignRegion}s (each an
+ * Immutable authored playthrough - an ordered list of {@link CampaignRegion}s (each an
  * ordered list of {@link CampaignNode}s) plus an optional {@link CampaignBranch}.
  *
  * <p>The flattened node order is the single source of the run "ordinal" that all
@@ -49,7 +49,7 @@ public final class Campaign {
     private final Cache cache;
 
     /**
-     * Canonical constructor — the single validation site (used directly by JSON
+     * Canonical constructor - the single validation site (used directly by JSON
      * deserialization, the builder, and tests). Defensively copies {@code regions} and
      * eagerly computes the derived cache.
      *
@@ -108,7 +108,7 @@ public final class Campaign {
     }
 
     /**
-     * The flattened node objects in run order — the same flatten as
+     * The flattened node objects in run order - the same flatten as
      * {@link #orderedBiomeIds(int)} with the identical branch swap applied, but returning
      * the {@link CampaignNode} objects (so callers can read per-ordinal data such as
      * {@code labelOverride} without an O(n) lookup). Unmodifiable.
@@ -232,7 +232,7 @@ public final class Campaign {
             }
         }
 
-        // Linear flatten (branchChoice 0) — node objects and their ids.
+        // Linear flatten (branchChoice 0) - node objects and their ids.
         List<CampaignNode> linearNodeList = new ArrayList<>(total);
         for (CampaignRegion region : regions) {
             linearNodeList.addAll(region.nodes());
@@ -302,8 +302,8 @@ public final class Campaign {
      *
      * <p>Within the branch region, the segment occupying the earlier index range is replaced by
      * the other segment's nodes (in their own order) and vice versa; everything outside both
-     * ranges — including any nodes BETWEEN the two segments (e.g. a pivot biome) and the nodes
-     * surrounding them — stays in place. Segments of different lengths are supported: the
+     * ranges - including any nodes BETWEEN the two segments (e.g. a pivot biome) and the nodes
+     * surrounding them - stays in place. Segments of different lengths are supported: the
      * in-between nodes simply shift index while remaining between the two swapped blocks.
      */
     private static List<CampaignNode> buildSwappedNodes(List<CampaignRegion> regions, CampaignBranch branch) {

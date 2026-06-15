@@ -1,7 +1,7 @@
 package com.crackedgames.craftics.compat.golemoverhaul;
 
 /**
- * Reflective bridge to Golem Overhaul's netherite golem "charged" state — the
+ * Reflective bridge to Golem Overhaul's netherite golem "charged" state - the
  * lit furnace-chest glow. Craftics has no compile dependency on the mod, so the
  * state is flipped reflectively, exactly like {@link LitCoalState#setModLit} does
  * for the coal golem.
@@ -35,7 +35,7 @@ public final class NetheriteMountState {
             }
             m.invoke(mob, charged);
         } catch (ReflectiveOperationException e) {
-            // NetheriteGolem#setCharged not present (mod missing or different build) — skip.
+            // NetheriteGolem#setCharged not present (mod missing or different build) - skip.
         }
     }
 }

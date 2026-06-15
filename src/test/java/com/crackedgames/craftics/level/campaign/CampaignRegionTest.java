@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 
 /**
- * Tests for the pure {@link CampaignRegion} model — presentation defaults (color, icon,
+ * Tests for the pure {@link CampaignRegion} model - presentation defaults (color, icon,
  * mapColor, displayName), value round-trips, and canonical-constructor validation.
  */
 class CampaignRegionTest {

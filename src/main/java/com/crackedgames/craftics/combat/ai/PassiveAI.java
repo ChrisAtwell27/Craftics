@@ -15,7 +15,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * If hit by the player, immediately flees 2 blocks away.
  */
 public class PassiveAI implements EnemyAI {
-    /** Farm animals never attack the player — never a threat. */
+    /** Farm animals never attack the player - never a threat. */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return false;
@@ -29,7 +29,7 @@ public class PassiveAI implements EnemyAI {
         if (self.wasDamagedSinceLastTurn()) {
             EnemyAction flee = AIUtils.fleeReachable(self, arena, playerPos, 2);
             if (flee != null) return flee;
-            // Cornered — just idle
+            // Cornered - just idle
             return new EnemyAction.Idle();
         }
 
@@ -68,7 +68,7 @@ public class PassiveAI implements EnemyAI {
             }
         }
 
-        // No valid wander — just idle
+        // No valid wander - just idle
         return new EnemyAction.Idle();
     }
 }

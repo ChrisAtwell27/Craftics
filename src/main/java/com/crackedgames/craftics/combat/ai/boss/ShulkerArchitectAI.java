@@ -9,17 +9,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * End City Boss — "The Shulker Architect"
+ * End City Boss - "The Shulker Architect"
  * Entity: Shulker | 50HP / 9ATK / 4DEF / Range 5 / Speed 1 | Size 2×2
  *
  * Abilities:
- * - Bullet Storm: telegraphed volley — 4 (P2: 6) marked tiles around the player,
+ * - Bullet Storm: telegraphed volley - 4 (P2: 6) marked tiles around the player,
  *   3 dmg each on resolve, with a half-power plink while it charges.
  * - Deploy Turret: Stationary shulker turret (6HP, 1 bullet/turn range 4, 2 dmg). Max 3 (P2: 5).
  * - Fortify Shell: 80% damage reduction 1 turn. P2: also reflects 50% damage.
  * - Teleport Link: Blink to a tile beside the turret farthest from the player.
  *
- * Phase 2 — "Defense Protocol": 6 bullets, turret levitation bullets, reflect shell,
+ * Phase 2 - "Defense Protocol": 6 bullets, turret levitation bullets, reflect shell,
  * turret limit 5, auto-deploy every 3 turns.
  */
 public class ShulkerArchitectAI extends BossAI {
@@ -52,7 +52,7 @@ public class ShulkerArchitectAI extends BossAI {
             }
         }
 
-        // Fortify Shell — reactive when hit
+        // Fortify Shell - reactive when hit
         if (wasHitLastTurn && !isOnCooldown(CD_SHELL)) {
             wasHitLastTurn = false;
             setCooldown(CD_SHELL, 3);
@@ -63,9 +63,9 @@ public class ShulkerArchitectAI extends BossAI {
         }
         wasHitLastTurn = false;
 
-        // Teleport Link — escape melee range by blinking to the network. The
+        // Teleport Link - escape melee range by blinking to the network. The
         // boss lands BESIDE the turret farthest from the player (footprint-
-        // validated for its 2×2 body) — the old code teleported squarely onto
+        // validated for its 2×2 body) - the old code teleported squarely onto
         // the still-living turret's tile, clipping into its own minion.
         if (!isOnCooldown(CD_LINK) && dist <= 2 && !turretPositions.isEmpty()) {
             GridPos farthest = null;
@@ -95,10 +95,10 @@ public class ShulkerArchitectAI extends BossAI {
             }
         }
 
-        // Bullet Storm — a telegraphed volley: one bullet per marked tile
+        // Bullet Storm - a telegraphed volley: one bullet per marked tile
         // (player's tile + surrounding spread, 4 in P1 / 6 in P2), resolving
         // next turn. The old version built the target list, threw it away, and
-        // fired an instant untelegraphed AoE — the bullet count did nothing
+        // fired an instant untelegraphed AoE - the bullet count did nothing
         // and phase two's extra bullets were pure flavor text.
         if (!isOnCooldown(CD_BULLET) && dist <= 5) {
             setCooldown(CD_BULLET, 2);
@@ -116,7 +116,7 @@ public class ShulkerArchitectAI extends BossAI {
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.GATHERING_PARTICLES,
                 targets, 1, new EnemyAction.CompositeAction(bullets), 0xFFCC88FF);
-            // Plink a normal bullet while the volley charges — no free turn.
+            // Plink a normal bullet while the volley charges - no free turn.
             return new EnemyAction.RangedAttack(Math.max(2, self.getAttackPower() / 2), "shulker_bullet");
         }
 
@@ -142,7 +142,7 @@ public class ShulkerArchitectAI extends BossAI {
         return null;
     }
 
-    /** Called by CombatManager when the boss takes damage — primes Fortify Shell */
+    /** Called by CombatManager when the boss takes damage - primes Fortify Shell */
     public void notifyDamaged() { wasHitLastTurn = true; }
 
     public void removeTurret(GridPos pos) { turretPositions.remove(pos); }

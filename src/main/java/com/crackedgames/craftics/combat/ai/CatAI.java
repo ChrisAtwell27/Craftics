@@ -17,7 +17,7 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class CatAI implements EnemyAI {
 
-    /** Cats are neutral — only a threat once provoked (enraged). */
+    /** Cats are neutral - only a threat once provoked (enraged). */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return self.isEnraged();
@@ -38,7 +38,7 @@ public class CatAI implements EnemyAI {
             self.setEnraged(true);
         }
 
-        // AGRO: attack player — claw and slink back out with leftover movement
+        // AGRO: attack player - claw and slink back out with leftover movement
         if (self.isEnraged()) {
             if (dist <= 1) {
                 EnemyAction combo = AIUtils.hitAndRun(self, arena, playerPos, List.of(), self.getAttackPower());
@@ -65,7 +65,7 @@ public class CatAI implements EnemyAI {
         if (holdingFish) {
             // Approach player (drawn to fish)
             if (dist <= 1) {
-                // Already adjacent — just sit and wait happily
+                // Already adjacent - just sit and wait happily
                 return new EnemyAction.Idle();
             }
             GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed());
@@ -76,7 +76,7 @@ public class CatAI implements EnemyAI {
             return new EnemyAction.Idle();
         }
 
-        // Not holding fish — flee if player is within 3 blocks (path-validated,
+        // Not holding fish - flee if player is within 3 blocks (path-validated,
         // so the cat takes the around-the-corner escape instead of freezing)
         if (dist <= 3) {
             EnemyAction flee = AIUtils.fleeReachable(self, arena, playerPos, 2);

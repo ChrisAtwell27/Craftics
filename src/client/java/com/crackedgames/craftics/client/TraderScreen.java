@@ -63,7 +63,7 @@ public class TraderScreen extends Screen {
         }
 
         this.addDrawableChild(ButtonWidget.builder(
-            Text.literal("§e✓ Done Trading"),
+            Text.literal("§eDone Trading"),
             btn -> {
                 ClientPlayNetworking.send(new TraderDonePayload());
                 this.close();

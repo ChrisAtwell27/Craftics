@@ -11,12 +11,12 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Polar Bear AI: Territorial — becomes permanently agro if player gets within 2 blocks.
+ * Polar Bear AI: Territorial - becomes permanently agro if player gets within 2 blocks.
  * Once agro, charges and mauls: a standing swat that knocks the target back a
  * tile (it's a polar bear). Otherwise wanders like a farm animal.
  */
 public class PolarBearAI implements EnemyAI {
-    /** Polar bears are neutral — only a threat once provoked (enraged). */
+    /** Polar bears are neutral - only a threat once provoked (enraged). */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return self.isEnraged();
@@ -36,7 +36,7 @@ public class PolarBearAI implements EnemyAI {
             self.setEnraged(true);
         }
 
-        // AGRO: charge and maul — the swat sends the target sprawling a tile back
+        // AGRO: charge and maul - the swat sends the target sprawling a tile back
         if (self.isEnraged()) {
             if (dist <= 1) {
                 return new EnemyAction.AttackWithKnockback(self.getAttackPower(), 1);

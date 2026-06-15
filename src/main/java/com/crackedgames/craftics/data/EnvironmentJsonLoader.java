@@ -26,7 +26,7 @@ import org.jetbrains.annotations.Nullable;
  * }</pre>
  *
  * <p>Only {@code id} is required; block fields fall back to plains defaults.
- * {@code decor_style} selects the arena flavor-obstacle style — a built-in environment
+ * {@code decor_style} selects the arena flavor-obstacle style - a built-in environment
  * id (e.g. {@code "forest"}) reuses that environment's decorations; it defaults to this
  * environment's own id (no flavor obstacles).
  *
@@ -58,7 +58,7 @@ public final class EnvironmentJsonLoader extends CrafticsDataLoader<EnvironmentD
         String blockStr = json.get(key).getAsString();
         Identifier blockId = Identifier.of(blockStr);
         if (!Registries.BLOCK.containsId(blockId)) {
-            CrafticsMod.LOGGER.warn("Unknown block '{}' for '{}' in environment JSON {} — using default",
+            CrafticsMod.LOGGER.warn("Unknown block '{}' for '{}' in environment JSON {} - using default",
                 blockStr, key, fileId);
             return null;
         }

@@ -37,6 +37,14 @@ public final class BasicWeaponsCompat {
     /** The six weapon-type suffixes. */
     static final String[] TYPES = {"dagger", "spear", "quarterstaff", "club", "hammer", "glaive"};
 
+    // === Craftics balance tuning (daggers and spears) ===
+    /** Off-hand dagger second hit fraction of the main hit (1.0 main + 0.75 off = 1.75x total). */
+    public static final double DAGGER_OFFHAND_MULT = 0.75;
+    /** Spear bonus added per tile walked before attacking this turn. */
+    public static final double SPEAR_MOVE_PER_TILE = 0.20;
+    /** Hard cap on the spear movement multiplier. */
+    public static final double SPEAR_MOVE_CAP = 2.0;
+
     private static boolean loaded = false;
     private static boolean registered = false;
 
@@ -84,7 +92,7 @@ public final class BasicWeaponsCompat {
     /** Flag mod presence; do NOT touch the registry yet (mod load order is unspecified). */
     public static void init() {
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
-            CrafticsMod.LOGGER.debug("[Craftics × Basic Weapons] mod not loaded — skipping registration");
+            CrafticsMod.LOGGER.debug("[Craftics × Basic Weapons] mod not loaded - skipping registration");
             return;
         }
         loaded = true;
@@ -104,7 +112,7 @@ public final class BasicWeaponsCompat {
         }
         if (any) {
             registered = true;
-            CrafticsMod.LOGGER.info("[Craftics × Basic Weapons] enabled — registered weapon types");
+            CrafticsMod.LOGGER.info("[Craftics × Basic Weapons] enabled - registered weapon types");
         }
     }
 
@@ -154,18 +162,26 @@ public final class BasicWeaponsCompat {
             && "dagger".equals(weaponType(Registries.ITEM.getId(item).getPath()));
     }
 
+    /** True if the item is a registered basicweapons spear. */
+    public static boolean isSpear(Item item) {
+        return isBasicWeapon(item)
+            && "spear".equals(weaponType(Registries.ITEM.getId(item).getPath()));
+    }
+
     // =========================================================================
     // Damage suppliers (lazy, derived from existing config getters)
     // =========================================================================
 
     /**
      * Lazy per-tier damage supplier derived from existing config getters, nudged by damage class:
-     * dagger/quarterstaff = max(1, sword-1); spear = sword; club = axe; hammer/glaive = axe+1.
+     * dagger/quarterstaff = max(1, sword-1); spear = max(1, sword-2); club = axe; hammer/glaive = axe+1.
+     * The spear sits below the sword on its own so its damage only catches up when the player
+     * closes distance (see the per-tile movement scaling in CombatManager).
      */
     private static IntSupplier damageFor(String tier, String type) {
         return switch (type) {
             case "dagger", "quarterstaff" -> () -> Math.max(1, swordDmg(tier) - 1);
-            case "spear" -> () -> swordDmg(tier);
+            case "spear" -> () -> Math.max(1, swordDmg(tier) - 2);
             case "club" -> () -> axeDmg(tier);
             case "hammer", "glaive" -> () -> axeDmg(tier) + 1;
             default -> () -> 1;
@@ -208,7 +224,7 @@ public final class BasicWeaponsCompat {
         return PlayerCombatStats.getMight(player) * 0.05;
     }
 
-    /** Dagger: dual-wield -> a second hit at the same computed baseDamage; else plain. */
+    /** Dagger: dual-wield -> a weaker second hit (DAGGER_OFFHAND_MULT of the main hit); else plain. */
     private static WeaponAbilityHandler daggerAbility() {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             Item main = player.getMainHandStack().getItem();
@@ -216,9 +232,10 @@ public final class BasicWeaponsCompat {
             if (!isDualDagger(main, off)) {
                 return new WeaponAbility.AttackResult(baseDamage, List.of(), List.of());
             }
-            int second = target.takeDamage(baseDamage);
+            int offHit = Math.max(1, (int) Math.round(baseDamage * DAGGER_OFFHAND_MULT));
+            int second = target.takeDamage(offHit);
             List<String> msgs = new ArrayList<>();
-            msgs.add("§c✦ Dual strike! " + target.getDisplayName() + " hit twice for " + second + "!");
+            msgs.add("§c✦ Dual strike " + target.getDisplayName() + " hit again for " + second);
             return new WeaponAbility.AttackResult(baseDamage + second, msgs, List.of());
         };
     }

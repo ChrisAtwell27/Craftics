@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests the static {@link CampaignJsonLoader#parse(Identifier, JsonObject)} parser in
- * isolation — Gson + Identifier only, no Minecraft bootstrap (mirrors
+ * isolation - Gson + Identifier only, no Minecraft bootstrap (mirrors
  * {@code DialogueJsonLoaderTest}).
  */
 class CampaignParserTest {

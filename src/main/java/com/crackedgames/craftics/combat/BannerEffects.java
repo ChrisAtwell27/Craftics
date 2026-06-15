@@ -14,7 +14,7 @@ import java.util.Map;
  *
  * <p>Mirrors the {@link HornVariants} pattern: anything that might need
  * Stonecutter version-drift handling for banners would land here, isolated
- * from the rest of the combat code. As of 1.21.1–1.21.5 banner block APIs
+ * from the rest of the combat code. As of 1.21.1-1.21.5 banner block APIs
  * are stable, so no Stonecutter blocks are needed today.
  *
  * <p>The {@code Items.*}/{@code Blocks.*}-keyed lookup tables live in nested
@@ -129,7 +129,7 @@ public final class BannerEffects {
 
     /** True iff the given tile-effect map value represents a banner. Accepts
      *  the legacy {@code "banner"}, color-tagged {@code "banner:<color>"},
-     *  and Special-scaled {@code "banner:<color>:<bonusDef>"} forms — old
+     *  and Special-scaled {@code "banner:<color>:<bonusDef>"} forms - old
      *  saves keep working. */
     public static boolean isBannerEffect(String tileEffectValue) {
         if (tileEffectValue == null || tileEffectValue.isEmpty()) return false;

@@ -46,11 +46,11 @@ public final class MoreTotemsCompat {
     public static void init() {
         if (loaded) return;
         if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) {
-            CrafticsMod.LOGGER.debug("[Craftics × MoreTotems] mod not loaded — skipping");
+            CrafticsMod.LOGGER.debug("[Craftics × MoreTotems] mod not loaded - skipping");
             return;
         }
         loaded = true;
-        CrafticsMod.LOGGER.info("[Craftics × MoreTotems] enabled — 7 totems mapped to combat effects");
+        CrafticsMod.LOGGER.info("[Craftics × MoreTotems] enabled - 7 totems mapped to combat effects");
     }
 
     /** True iff the item is one of the seven MoreTotems totems. */
@@ -64,7 +64,7 @@ public final class MoreTotemsCompat {
      * {@code null} if the item is not a MoreTotems totem.
      *
      * <p>Unlike {@link #isMoreTotem(Item)}, this does NOT short-circuit on the
-     * mod-loaded flag — it always consults the registry. Callers that want
+     * mod-loaded flag - it always consults the registry. Callers that want
      * load-gating should use {@link #isMoreTotem(Item)} instead.
      */
     public static String totemPath(Item item) {

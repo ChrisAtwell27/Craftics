@@ -59,7 +59,7 @@ public class ModNetworking {
         // Register C2S hover update
         PayloadTypeRegistry.playC2S().register(HoverUpdatePayload.ID, HoverUpdatePayload.CODEC);
 
-        // Handle "start level" — starts a biome run by biome ID
+        // Handle "start level" - starts a biome run by biome ID
         ServerPlayNetworking.registerGlobalReceiver(StartLevelPayload.ID, (payload, context) -> {
             ServerPlayerEntity player = context.player();
             ServerWorld world = (ServerWorld) player.getEntityWorld();
@@ -69,7 +69,7 @@ public class ModNetworking {
             data.claimLegacyData(player.getUuid());
             CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
 
-            // Only the party leader may start a biome run — otherwise two members
+            // Only the party leader may start a biome run - otherwise two members
             // racing the Enter button would spawn parallel CombatManager instances
             // and corrupt PARTY_COMBAT_LEADER routing.
             com.crackedgames.craftics.world.Party playerParty = data.getPlayerParty(player.getUuid());
@@ -124,10 +124,10 @@ public class ModNetworking {
             // Start or resume biome run
             int levelIndex;
             if (pd.isInBiomeRun() && pd.activeBiomeId.equals(biome.biomeId)) {
-                // Resuming — continue from where they left off
+                // Resuming - continue from where they left off
                 levelIndex = pd.activeBiomeLevelIndex;
             } else {
-                // New run — start from beginning
+                // New run - start from beginning
                 pd.startBiomeRun(biome.biomeId);
                 pd.discoverBiome(biome.biomeId);
                 data.markDirty();
@@ -225,7 +225,7 @@ public class ModNetworking {
                 }
             }
 
-            // Full roster is registered now — build the turn queue and push one
+            // Full roster is registered now - build the turn queue and push one
             // authoritative party-wide sync so every member's HUD shows the real
             // party HP / turn order immediately instead of stale defaults.
             leaderCm.finishPartyJoin();
@@ -235,31 +235,31 @@ public class ModNetworking {
                 partyMembers.size());
         });
 
-        // Handle combat actions — route to party leader's CombatManager with sender validation
+        // Handle combat actions - route to party leader's CombatManager with sender validation
         ServerPlayNetworking.registerGlobalReceiver(CombatActionPayload.ID, (payload, context) -> {
             CombatManager.getActiveCombat(context.player().getUuid())
                 .handleAction(payload, context.player().getUuid());
         });
 
-        // Handle post-level choice (Go Home vs Continue) — route to party leader
+        // Handle post-level choice (Go Home vs Continue) - route to party leader
         ServerPlayNetworking.registerGlobalReceiver(PostLevelChoicePayload.ID, (payload, context) -> {
             CombatManager.getActiveCombat(context.player().getUuid())
                 .handlePostLevelChoice(context.player(), payload.goHome());
         });
 
-        // Handle trader buy request — route to party leader
+        // Handle trader buy request - route to party leader
         ServerPlayNetworking.registerGlobalReceiver(TraderBuyPayload.ID, (payload, context) -> {
             CombatManager.getActiveCombat(context.player().getUuid())
                 .handleTraderBuy(context.player(), payload.tradeIndex());
         });
 
-        // Handle trader done — proceed to next level — route to party leader
+        // Handle trader done - proceed to next level - route to party leader
         ServerPlayNetworking.registerGlobalReceiver(TraderDonePayload.ID, (payload, context) -> {
             CombatManager.getActiveCombat(context.player().getUuid())
                 .handleTraderDone(context.player());
         });
 
-        // Handle dialogue choice — route to party leader's CombatManager
+        // Handle dialogue choice - route to party leader's CombatManager
         ServerPlayNetworking.registerGlobalReceiver(DialogueChoicePayload.ID, (payload, context) -> {
             CombatManager.getActiveCombat(context.player().getUuid())
                 .handleDialogueChoice(context.player(), payload.action());
@@ -347,7 +347,7 @@ public class ModNetworking {
             }
         });
 
-        // Handle respec — refund and reallocate stat points (costs XP levels)
+        // Handle respec - refund and reallocate stat points (costs XP levels)
         ServerPlayNetworking.registerGlobalReceiver(RespecPayload.ID, (payload, context) -> {
             ServerPlayerEntity player = context.player();
             ServerWorld overworld = (ServerWorld) player.getEntityWorld();
@@ -477,7 +477,7 @@ public class ModNetworking {
             });
         });
 
-        // Handle affinity respec — allocate unspent affinity points and/or refund
+        // Handle affinity respec - allocate unspent affinity points and/or refund
         // allocated ones. Refunds cost 1 XP level each; allocating from the
         // level-derived unspent pool is free. Mirrors the stat respec.
         ServerPlayNetworking.registerGlobalReceiver(AffinityRespecPayload.ID, (payload, context) -> {
@@ -512,7 +512,7 @@ public class ModNetworking {
 
             if (totalRefunded == 0 && totalAllocated == 0) return;
 
-            // Net new allocations draw from the level-derived unspent affinity pool —
+            // Net new allocations draw from the level-derived unspent affinity pool -
             // this is what lets force-given levels and older saves be spent here.
             int unspentAffinity = Math.max(0, ps.expectedAffinityPoints() - ps.getTotalAffinityPoints());
             int unspentNeeded = totalAllocated - totalRefunded;
@@ -542,7 +542,7 @@ public class ModNetworking {
                     : "")), false);
         });
 
-        // Handle hover updates — relay to party members
+        // Handle hover updates - relay to party members
         ServerPlayNetworking.registerGlobalReceiver(HoverUpdatePayload.ID, (payload, context) -> {
             ServerPlayerEntity hoverPlayer = context.player();
             ServerWorld world = (ServerWorld) hoverPlayer.getEntityWorld();
@@ -566,8 +566,8 @@ public class ModNetworking {
      * Builds the player's current progression stats (level, unspent points, stat
      * and affinity allocations, emeralds) and pushes them to their client. Call
      * after anything that changes a player's stats outside the normal level-up /
-     * respec flow — notably the admin {@code set_level}/{@code set_stat}/
-     * {@code reset_stats} commands — so the respec menus always show live data.
+     * respec flow - notably the admin {@code set_level}/{@code set_stat}/
+     * {@code reset_stats} commands - so the respec menus always show live data.
      */
     public static void syncPlayerStats(ServerPlayerEntity player) {
         ServerWorld overworld = player.getServer().getOverworld();

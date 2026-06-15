@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Tests for {@link AllyRegistry} — register/get/getAll. */
+/** Tests for {@link AllyRegistry} - register/get/getAll. */
 class AllyRegistryTest {
 
     private static AllyEntry entry(String id) {

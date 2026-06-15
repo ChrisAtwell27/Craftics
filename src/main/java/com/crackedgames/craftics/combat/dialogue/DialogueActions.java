@@ -18,7 +18,7 @@ public final class DialogueActions {
             case "finish":      return Outcome.FINISH;
             case "close":       return Outcome.CLOSE;
             default:
-                CrafticsMod.LOGGER.warn("Unknown dialogue action '{}' — treating as close", action);
+                CrafticsMod.LOGGER.warn("Unknown dialogue action '{}' - treating as close", action);
                 return Outcome.CLOSE;
         }
     }

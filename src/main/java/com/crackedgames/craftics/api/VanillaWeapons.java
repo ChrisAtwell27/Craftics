@@ -533,7 +533,7 @@ public final class VanillaWeapons {
                 messages.add("\u00a74Breach! Shattered " + breachLevel + " DEF. " + target.getDisplayName() + " has " + remaining + " DEF remaining.");
             }
 
-            // Density: gravity well — pull nearby enemies toward impact point
+            // Density: gravity well - pull nearby enemies toward impact point
             if (densityLevel > 0) {
                 int pullRadius = densityLevel <= 1 ? 2 : 3;
                 int pullDist = densityLevel <= 2 ? 1 : 2;
@@ -707,7 +707,7 @@ public final class VanillaWeapons {
             List<CombatEntity> extraTargets = new ArrayList<>();
             int totalExtra = 0;
 
-            // Rocket crossbow — a firework rocket held in the offhand turns the bolt
+            // Rocket crossbow - a firework rocket held in the offhand turns the bolt
             // into an explosive shell: a 3x3 blast around the impact tile, in place
             // of the usual Piercing / Multishot bolt logic. Mirrors vanilla's
             // firework-loaded crossbow.
@@ -743,7 +743,7 @@ public final class VanillaWeapons {
                 }
                 messages.add("§6✦ Explosive bolt!");
 
-                // Multishot — two extra rockets fly along the diagonal fan
+                // Multishot - two extra rockets fly along the diagonal fan
                 // lines, exploding wherever they leave the arena. Each blast
                 // damages any non-ally caught in its 3x3 footprint.
                 if (PlayerCombatStats.hasMultishot(player)) {
@@ -852,7 +852,7 @@ public final class VanillaWeapons {
                 check = new GridPos(check.x() + dx, check.z() + dz);
             }
 
-            // Multishot — 2 extra diagonal bolts
+            // Multishot - 2 extra diagonal bolts
             if (PlayerCombatStats.hasMultishot(player)) {
                 // Determine the two diagonal directions from the cardinal shot direction
                 int[][] diagonals;

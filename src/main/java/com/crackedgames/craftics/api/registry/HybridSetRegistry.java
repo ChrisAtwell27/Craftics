@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class HybridSetRegistry {
     private static final Map<String, HybridSetEntry> REGISTRY = new ConcurrentHashMap<>();
-    /** Pair keys whose current entry came from a JSON datapack — dropped on /reload. */
+    /** Pair keys whose current entry came from a JSON datapack - dropped on /reload. */
     private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private HybridSetRegistry() {}

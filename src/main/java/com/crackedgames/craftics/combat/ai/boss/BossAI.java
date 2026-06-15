@@ -27,10 +27,10 @@ public abstract class BossAI implements EnemyAI {
     protected final Map<String, Integer> cooldowns = new HashMap<>();
     protected BossWarning pendingWarning = null;
 
-    // Summoned minion tracking — boss AI can check how many are alive
+    // Summoned minion tracking - boss AI can check how many are alive
     protected final List<Integer> summonedMinionIds = new ArrayList<>();
 
-    // Projectile tracking — separate from minions
+    // Projectile tracking - separate from minions
     protected final List<Integer> projectileIds = new ArrayList<>();
 
     /**
@@ -53,7 +53,7 @@ public abstract class BossAI implements EnemyAI {
         // Tick cooldowns
         cooldowns.replaceAll((k, v) -> Math.max(0, v - 1));
 
-        // Clean up dead minions — check all occupants by entity ID
+        // Clean up dead minions - check all occupants by entity ID
         summonedMinionIds.removeIf(id -> {
             for (CombatEntity e : arena.getOccupants().values()) {
                 if (e.getEntityId() == id && e.isAlive()) return false;
@@ -195,7 +195,7 @@ public abstract class BossAI implements EnemyAI {
     /**
      * Find empty tiles in the arena for summoning minions.
      * Returns up to 'count' random empty walkable tiles, preferring tiles that
-     * don't hurt to stand on — minions stop spawning straight into lava or
+     * don't hurt to stand on - minions stop spawning straight into lava or
      * fire unless the arena offers nothing else (late Molten King floors).
      */
     protected List<GridPos> findSummonPositions(GridArena arena, int count) {

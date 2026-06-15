@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * Mounted AI: Cavalry charger (e.g., rider on Camel).
  * - LANCE CHARGE: bonus damage based on tiles traveled before hitting (+1 per tile moved)
- * - DISMOUNT: when below 50% HP, mount dies — speed drops from 4 to 2
+ * - DISMOUNT: when below 50% HP, mount dies - speed drops from 4 to 2
  * - Prefers straight-line charges for maximum lance damage
  * - Speed 4 mounted / 2 dismounted
  */

@@ -107,7 +107,7 @@ public final class BiomeCompatHelper {
         MobPoolEntry[] pool = biome.hostileMobs != null ? biome.hostileMobs : new MobPoolEntry[0];
         for (MobPoolEntry existing : pool) {
             if (existing != null && newEntry.entityTypeId().equals(existing.entityTypeId())) {
-                return false; // already present — don't double-add
+                return false; // already present - don't double-add
             }
         }
 
@@ -153,7 +153,7 @@ public final class BiomeCompatHelper {
         MobPoolEntry[] pool = biome.passiveMobs != null ? biome.passiveMobs : new MobPoolEntry[0];
         for (MobPoolEntry existing : pool) {
             if (existing != null && newEntry.entityTypeId().equals(existing.entityTypeId())) {
-                return false; // already present — don't double-add
+                return false; // already present - don't double-add
             }
         }
 

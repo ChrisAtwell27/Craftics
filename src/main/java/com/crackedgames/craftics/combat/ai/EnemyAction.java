@@ -66,7 +66,7 @@ public sealed interface EnemyAction {
      * lands on the player's tile, the player takes {@code damage}, the mimic
      * stops on the previous (safe) tile, and the rest of the list is discarded.
      * <p>
-     * The hop list is guaranteed to form a valid walk — each tile is adjacent
+     * The hop list is guaranteed to form a valid walk - each tile is adjacent
      * (cardinal or diagonal) to the previous one. Used by the Artifacts compat
      * mimic encounter.
      */
@@ -95,7 +95,7 @@ public sealed interface EnemyAction {
     /** Place cobweb overlays on the listed tiles for {@code duration} turns.
      *  Unlike {@link CreateTerrain}, the cobweb is placed at floor+1 (so the
      *  floor stays intact underneath) and goes through the arena's web-overlay
-     *  tracking — pathfinding treats it as slowing terrain, not a hard block,
+     *  tracking - pathfinding treats it as slowing terrain, not a hard block,
      *  and a player on the tile can break the web by walking. */
     record PlaceWeb(List<GridPos> tiles, int duration) implements EnemyAction {}
 
@@ -108,7 +108,7 @@ public sealed interface EnemyAction {
     /** Force-move a target entity in a direction. targetEntityId -1 = player. */
     record ForcedMovement(int targetEntityId, int dx, int dz, int tiles) implements EnemyAction {}
 
-    /** Boss telegraphs a warning — the actual ability resolves next turn.
+    /** Boss telegraphs a warning - the actual ability resolves next turn.
      *  The warningId is used to match the warning to its resolution in BossWarning. */
     record BossAbility(String abilityName, EnemyAction resolvedAction,
                        List<GridPos> warningTiles) implements EnemyAction {}

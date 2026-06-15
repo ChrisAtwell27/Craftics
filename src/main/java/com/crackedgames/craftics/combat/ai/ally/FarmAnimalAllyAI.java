@@ -27,16 +27,16 @@ public class FarmAnimalAllyAI implements AllyAI {
 
         if (threat != null) {
             int dist = threat.minDistanceTo(pos);
-            // Cornered and not panicking — a desperate kick at the attacker.
+            // Cornered and not panicking - a desperate kick at the attacker.
             if (dist <= 1 && !scared) {
                 return new EnemyAction.MoveAndAttackMob(
                     List.of(), threat.getEntityId(), self.getAttackPower());
             }
-            // A threat is close (or we're hurt) — bolt away from it.
+            // A threat is close (or we're hurt) - bolt away from it.
             if (scared || dist <= 2) {
                 EnemyAction flee = AllyTargeting.fleeFrom(self, arena, threat);
                 if (flee != null) return flee;
-                // Boxed in with a threat adjacent — kick rather than freeze.
+                // Boxed in with a threat adjacent - kick rather than freeze.
                 if (dist <= 1) {
                     return new EnemyAction.MoveAndAttackMob(
                         List.of(), threat.getEntityId(), self.getAttackPower());
@@ -44,7 +44,7 @@ public class FarmAnimalAllyAI implements AllyAI {
             }
         }
 
-        // No danger — trail along behind the player.
+        // No danger - trail along behind the player.
         GridPos playerPos = arena.getPlayerGridPos();
         if (pos.manhattanDistance(playerPos) > 1) {
             GridPos beside = AIUtils.findBestAdjacentTarget(

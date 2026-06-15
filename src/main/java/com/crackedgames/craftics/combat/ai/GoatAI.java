@@ -16,7 +16,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * and becomes permanently agro (enraged), charging in straight lines toward the player.
  */
 public class GoatAI implements EnemyAI {
-    /** Goats are neutral — only a threat once provoked (enraged). */
+    /** Goats are neutral - only a threat once provoked (enraged). */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return self.isEnraged();
@@ -36,7 +36,7 @@ public class GoatAI implements EnemyAI {
             }
         }
 
-        // ENRAGED: permanently agro — charge toward player in straight lines
+        // ENRAGED: permanently agro - charge toward player in straight lines
         if (self.isEnraged()) {
             return chargePlayer(self, arena, playerPos);
         }
@@ -61,7 +61,7 @@ public class GoatAI implements EnemyAI {
             return new EnemyAction.AttackWithKnockback(self.getAttackPower() + 2, com.crackedgames.craftics.CrafticsMod.CONFIG.knockbackDistance());
         }
 
-        // Aligned on a row/column — RAM: thunder down the straight line and, if
+        // Aligned on a row/column - RAM: thunder down the straight line and, if
         // the charge connects, hit with momentum (+1 damage per tile beyond 2).
         if (myPos.x() == playerPos.x() || myPos.z() == playerPos.z()) {
             List<GridPos> ramPath = buildRamPath(arena, myPos, playerPos, speed);
@@ -83,7 +83,7 @@ public class GoatAI implements EnemyAI {
             }
         }
 
-        // Not aligned — move toward player to set up a charge
+        // Not aligned - move toward player to set up a charge
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, speed);
         if (target != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, target, speed, self);

@@ -24,7 +24,7 @@ import java.util.Random;
  * handed to {@link PlayerInventory#insertStack(ItemStack)}, matching vanilla's
  * normal insertion fallback.
  *
- * <p>Unstackable items ({@code stack.getMaxCount() == 1} — swords, armor,
+ * <p>Unstackable items ({@code stack.getMaxCount() == 1} - swords, armor,
  * totems, goat horns, music discs, shulker boxes, etc.) always bypass bundles
  * and go straight to the inventory.
  */
@@ -57,7 +57,7 @@ public final class LootDelivery {
      * Call instead of {@code player.getInventory().insertStack(stack)} whenever
      * granting combat rewards, event rewards, or post-victory loot.
      *
-     * @return the portion of {@code stack} that did not fit anywhere — empty if
+     * @return the portion of {@code stack} that did not fit anywhere - empty if
      *         the loot was fully delivered.
      */
     public static ItemStack deliver(ServerPlayerEntity player, ItemStack stack) {
@@ -67,7 +67,7 @@ public final class LootDelivery {
 
         // Emeralds are the virtual currency tracked in PlayerData and spent at
         // traders/shrines. Letting them land as inventory items breaks the
-        // economy — players hoard physical stacks instead of seeing them in
+        // economy - players hoard physical stacks instead of seeing them in
         // their balance, and the trader's emerald-collection sweep then misses
         // anything that wasn't given by the trader event itself. Route to the
         // virtual balance and consume the item.
@@ -94,7 +94,7 @@ public final class LootDelivery {
             }
         }
 
-        // Same pre-fill for bare potion items — loot tables that build
+        // Same pre-fill for bare potion items - loot tables that build
         // `new ItemStack(Items.SPLASH_POTION, 1)` with no PotionContents
         // otherwise render as "Uncraftable Potion" with no effect when used.
         // Drinkable potions roll from the curative/buff pool; splash and

@@ -21,7 +21,7 @@ public class CrafticsConfig {
     @RangeConstraint(min = 0.1, max = 5.0)
     public float playerDamageMultiplier = 1.0f;
 
-    // ===== Enemy Scaling (centralized — tweak these to adjust all mob difficulty) =====
+    // ===== Enemy Scaling (centralized - tweak these to adjust all mob difficulty) =====
 
     /** Global multiplier for all enemy damage dealt to the player. 1.0 = normal. */
     @SectionHeader("enemyScaling")
@@ -207,13 +207,29 @@ public class CrafticsConfig {
     @RangeConstraint(min = 0.0, max = 1.0)
     public float trimDropChance = 0.35f;
 
+    /** Boss-kill chance to drop a MoreTotems totem (Luck adds a little on top). Kept low so
+     *  totems stay a rare prize instead of a stack you accumulate across a biome run. */
+    @RangeConstraint(min = 0.0, max = 1.0)
+    public float totemDropChance = 0.04f;
+
     @RangeConstraint(min = 0.0, max = 1.0)
     public float potterySherdDropChance = 0.04f;
 
     @RangeConstraint(min = 0.0, max = 1.0)
     public float traderSpawnChance = 0.25f;
 
-    // ===== Event Chances (cumulative thresholds — each is the total chance up to that event) =====
+    // ===== Death Penalty =====
+
+    /** On defeat past level 1, the chance each backpack (main inventory) item is lost. */
+    @SectionHeader("deathPenalty")
+    @RangeConstraint(min = 0.0, max = 1.0)
+    public float deathMainInventoryLossChance = 0.80f;
+
+    /** On defeat past level 1, the chance each hotbar, armor, offhand, or accessory item is lost. */
+    @RangeConstraint(min = 0.0, max = 1.0)
+    public float deathGearLossChance = 0.25f;
+
+    // ===== Event Chances (cumulative thresholds - each is the total chance up to that event) =====
 
     /** Chance of any event in early biomes (0-2). Set to 0 to disable events early. */
     @SectionHeader("eventChances")

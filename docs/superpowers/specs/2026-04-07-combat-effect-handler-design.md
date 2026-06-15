@@ -1,4 +1,4 @@
-# CombatEffectHandler API — Design Spec
+﻿# CombatEffectHandler API - Design Spec
 
 **Date:** 2026-04-07
 **Goal:** Allow addon mods to register fully custom combat effects with lifecycle callbacks, enabling equipment items to have unique behaviors beyond flat stat bonuses.
@@ -11,7 +11,7 @@
 | Handler interface | Single interface with 24 default no-op methods |
 | Effects per item | Multiple handlers per item allowed |
 | Statefulness | Stateful per combat encounter (fresh instances each fight) |
-| Registration point | Through existing `StatModifiers` via `addCombatEffect()` — no new API method |
+| Registration point | Through existing `StatModifiers` via `addCombatEffect()` - no new API method |
 | Handler ordering | Registration order, no priority system |
 
 ---
@@ -215,7 +215,7 @@ effectContext = new CombatEffectContext(player, arena, combatEffects, activeTrim
 
 ### Invocation pattern
 
-For `CombatResult`-returning callbacks — chain results, each handler receives previous handler's modified value:
+For `CombatResult`-returning callbacks - chain results, each handler receives previous handler's modified value:
 
 ```java
 int damage = rawDamage;
@@ -233,7 +233,7 @@ for (NamedCombatEffect effect : activeCombatEffects) {
 // Apply final damage, send messages
 ```
 
-For `void` callbacks — iterate and call:
+For `void` callbacks - iterate and call:
 
 ```java
 for (NamedCombatEffect effect : activeCombatEffects) {
@@ -304,7 +304,7 @@ CrafticsAPI.registerEquipmentScanner("mymod", player -> {
                 if (!used) {
                     used = true;
                     ctx.getPlayer().heal(10);
-                    return CombatResult.cancel("§d✦ Lucky Totem saves you from death!");
+                    return CombatResult.cancel("§d Lucky Totem saves you from death!");
                 }
                 return CombatResult.unchanged(damage);
             }
@@ -368,6 +368,8 @@ CrafticsAPI.registerEquipmentScanner("mymod", player -> {
 
 | File | Reason |
 |---|---|
-| `api/CrafticsAPI.java` | No new method — effects go through existing `registerEquipmentScanner()` |
-| `api/EquipmentScanner.java` | Interface unchanged — still returns `StatModifiers` |
+| `api/CrafticsAPI.java` | No new method - effects go through existing `registerEquipmentScanner()` |
+| `api/EquipmentScanner.java` | Interface unchanged - still returns `StatModifiers` |
 | All registry files | No changes needed |
+
+

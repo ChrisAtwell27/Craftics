@@ -39,8 +39,8 @@ public final class HornVariants {
     );
 
     /** Variant id -> index in vanilla {@code SoundEvents.GOAT_HORN_SOUNDS}.
-     *  Order matches vanilla {@code SoundEvents.registerGoatHornSounds()} —
-     *  ponder, sing, seek, feel, admire, call, yearn, dream — and has been
+     *  Order matches vanilla {@code SoundEvents.registerGoatHornSounds()} -
+     *  ponder, sing, seek, feel, admire, call, yearn, dream - and has been
      *  stable since goat horns were added. */
     private static final Map<String, Integer> VARIANT_TO_SOUND_INDEX = Map.of(
         "ponder", 0,
@@ -139,13 +139,13 @@ public final class HornVariants {
      * Look up the {@link net.minecraft.sound.SoundEvent} associated with the
      * stack's instrument variant. Uses the vanilla
      * {@code SoundEvents.GOAT_HORN_SOUNDS} list indexed by our known variant
-     * order — version-independent, doesn't need registry access.
+     * order - version-independent, doesn't need registry access.
      */
     public static java.util.Optional<net.minecraft.sound.SoundEvent> soundFor(net.minecraft.item.ItemStack stack) {
         return soundForVariant(readVariant(stack));
     }
 
-    /** Same as {@link #soundFor} but takes a variant id directly — useful at
+    /** Same as {@link #soundFor} but takes a variant id directly - useful at
      *  call sites that already resolved the variant and don't carry the stack. */
     public static java.util.Optional<net.minecraft.sound.SoundEvent> soundForVariant(String variantId) {
         if (variantId == null) return java.util.Optional.empty();

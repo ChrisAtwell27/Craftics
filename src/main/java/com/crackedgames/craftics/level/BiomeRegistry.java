@@ -20,10 +20,10 @@ import java.util.Map;
  * which is the single source of biome sequence. Biomes present in the active campaign are
  * numbered first, in campaign order, starting at level 1. Biomes that are NOT part of the
  * active campaign (full-replace semantics: they aren't part of the run) are excluded from the
- * playable sequence — they are sorted AFTER all in-campaign biomes (ordered among themselves
+ * playable sequence - they are sorted AFTER all in-campaign biomes (ordered among themselves
  * by their old {@code startLevel} for determinism) so they still exist in the registry (no
  * stray reference NPEs, {@code getAllBiomes} still returns them) but sit beyond the campaign's
- * level range. If there is no active campaign (empty order — defensive, shouldn't happen
+ * level range. If there is no active campaign (empty order - defensive, shouldn't happen
  * post-init), numbering falls back to the legacy {@code startLevel} sort.
  */
 public class BiomeRegistry {
@@ -55,7 +55,7 @@ public class BiomeRegistry {
         List<String> campaignOrder = CampaignManager.orderedBiomeIds(0);
 
         if (campaignOrder.isEmpty()) {
-            // Defensive fallback (no active campaign — shouldn't happen post-init): keep the
+            // Defensive fallback (no active campaign - shouldn't happen post-init): keep the
             // legacy behaviour of ordering by the JSON 'order' loaded into startLevel.
             BIOMES.sort(Comparator.comparingInt(b -> b.startLevel));
         } else {

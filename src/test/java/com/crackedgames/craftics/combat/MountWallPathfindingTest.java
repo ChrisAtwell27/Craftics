@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code CombatManager#refreshMountWall} and {@link Pathfinding#isBlockedBy}).
  * The sentinel is flagged {@code isAlly()} so it blocks enemies, but it must be
  * passable for the rider's own pathing ({@code self == null}) so a persistent
- * wall never traps the rider — that is the fix for the "mount only takes up 1x1"
+ * wall never traps the rider - that is the fix for the "mount only takes up 1x1"
  * report.
  */
 class MountWallPathfindingTest {

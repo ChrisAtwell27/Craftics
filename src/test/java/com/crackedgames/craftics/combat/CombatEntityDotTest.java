@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the per-tick DOT damage formulas on {@link CombatEntity} —
+ * Tests for the per-tick DOT damage formulas on {@link CombatEntity} -
  * poison, wither, and the {@code maxHp / 20} scaling shared between them.
  *
  * <p>Tick application itself is in {@code CombatManager.tickEnemyDeciding}

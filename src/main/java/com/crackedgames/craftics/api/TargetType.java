@@ -10,13 +10,13 @@ package com.crackedgames.craftics.api;
  * @since 0.2.0
  */
 public enum TargetType {
-    /** No target — the item acts on the player only (food, a self-buff, …). */
+    /** No target - the item acts on the player only (food, a self-buff, ...). */
     SELF,
     /** A single hostile combatant standing on the targeted tile. */
     SINGLE_ENEMY,
     /** A single allied combatant (pet, party member) standing on the targeted tile. */
     SINGLE_ALLY,
-    /** Any tile within range, occupied or not (placing a hazard, teleporting, …). */
+    /** Any tile within range, occupied or not (placing a hazard, teleporting, ...). */
     ANY_TILE,
     /** An area centered on the targeted tile. */
     AOE

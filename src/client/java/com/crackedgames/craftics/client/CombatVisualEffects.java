@@ -115,7 +115,7 @@ public class CombatVisualEffects {
 
     public static void triggerShakeTimed(float intensity, int durationTicks) {
         triggerShake(intensity);
-        // durationTicks is honoured by the exponential decay already in tick() — we retain
+        // durationTicks is honoured by the exponential decay already in tick() - we retain
         // the parameter in the signature so callers stay forward-compatible if we later add
         // a non-exponential duration model.
     }
@@ -144,7 +144,7 @@ public class CombatVisualEffects {
         deathOverlayDuration = durationTicks > 0 ? durationTicks : 60;
     }
 
-    // Party member downed (NOT dead) — amber flash, distinct from red death overlay
+    // Party member downed (NOT dead) - amber flash, distinct from red death overlay
     public static void flashDowned() {
         downedFlashTicks = 15;
         screenFlashTicks = 10;
@@ -176,7 +176,7 @@ public class CombatVisualEffects {
         delayedEffects.add(new DelayedEffect(delayTicks, entityId, damage));
     }
 
-    // Which tick the weapon animation actually "hits" — syncs damage VFX with strike
+    // Which tick the weapon animation actually "hits" - syncs damage VFX with strike
     public static int getWeaponImpactDelay() {
         var client = net.minecraft.client.MinecraftClient.getInstance();
         if (client.player == null) return 5;
@@ -235,7 +235,7 @@ public class CombatVisualEffects {
 
     public static void render(DrawContext ctx, MinecraftClient client, int screenW, int screenH) {
         // Status-effect vignettes. Rendered first so the flash/death overlays draw on top.
-        // These are purely client-side and only show for the player with the effect —
+        // These are purely client-side and only show for the player with the effect -
         // each client reads its own CombatState which reflects only that player's effects.
         // Depth scales with effect level so stacking the effect visibly encroaches further
         // into the screen.
@@ -267,7 +267,7 @@ public class CombatVisualEffects {
                     Math.min(230, 170 + burning * 16),
                     scaledDepth(0.34f, burning, 0.10f, 0.78f));
             }
-            // Low-HP warning — a pulsing red edge from 30% HP down, deepening
+            // Low-HP warning - a pulsing red edge from 30% HP down, deepening
             // as HP falls. Skipped at 0 HP: the death overlay owns that moment.
             int hp = CombatState.getPlayerHp();
             int maxHp = CombatState.getPlayerMaxHp();
@@ -362,9 +362,9 @@ public class CombatVisualEffects {
      * alpha falloff from the edges toward the centre. No texture required.
      *
      * @param rgb           The vignette colour as 0xRRGGBB.
-     * @param maxAlpha      Peak alpha at the outermost pixel (0–255).
+     * @param maxAlpha      Peak alpha at the outermost pixel (0-255).
      * @param depthFraction Fraction of the shortest screen side the vignette reaches
-     *                      before fully fading out. 0.35–0.6 looks natural.
+     *                      before fully fading out. 0.35-0.6 looks natural.
      */
     private static void drawVignette(DrawContext ctx, int screenW, int screenH,
                                      int rgb, int maxAlpha, float depthFraction) {

@@ -9,9 +9,9 @@ import com.crackedgames.craftics.core.GridPos;
 import java.util.List;
 
 /**
- * Support ally AI — a cautious bodyguard (axolotl, frog, villager, sniffer).
+ * Support ally AI - a cautious bodyguard (axolotl, frog, villager, sniffer).
  * Sticks close to the player and only strikes enemies that wander into its
- * range; otherwise it repositions to the player's side — preferring the side
+ * range; otherwise it repositions to the player's side - preferring the side
  * AWAY from the nearest enemy, so the squishy support isn't the first thing a
  * charge runs into. Retreats when wounded.
  *
@@ -25,13 +25,13 @@ public class SupportAllyAI implements AllyAI {
 
         CombatEntity threat = AllyTargeting.nearestEnemy(pos, combatants);
 
-        // Wounded — fall back toward safety.
+        // Wounded - fall back toward safety.
         if (threat != null && AllyTargeting.lowHp(self, 0.35f)) {
             EnemyAction flee = AllyTargeting.fleeFrom(self, arena, threat);
             if (flee != null) return flee;
         }
 
-        // An enemy strayed into range — punish it without chasing.
+        // An enemy strayed into range - punish it without chasing.
         if (threat != null && threat.minDistanceTo(pos) <= self.getRange()) {
             return new EnemyAction.MoveAndAttackMob(
                 List.of(), threat.getEntityId(), self.getAttackPower());
@@ -53,7 +53,7 @@ public class SupportAllyAI implements AllyAI {
         return new EnemyAction.Idle();
     }
 
-    /** The player-adjacent tile farthest from the nearest enemy — hide behind the player. */
+    /** The player-adjacent tile farthest from the nearest enemy - hide behind the player. */
     private GridPos findShelteredSide(CombatEntity self, GridArena arena,
                                       GridPos playerPos, CombatEntity threat) {
         if (threat == null) return null;

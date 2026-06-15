@@ -1,4 +1,4 @@
-# Craftics Addon Extensibility API — Design Spec
+﻿# Craftics Addon Extensibility API - Design Spec
 
 **Date:** 2026-04-07
 **Goal:** Make every core combat system extensible so addon/compat mods can register custom weapons, equipment effects, armor set bonuses, trim effects, events, and enchantment effects through a public Java API.
@@ -9,15 +9,15 @@
 |---|---|
 | Registration pattern | Addons call `CrafticsAPI.registerXxx()` from `onInitialize()` |
 | Weapon abilities | Building blocks + custom interface (both) |
-| Equipment effects | Scanner hook — addon scans its own inventory slots |
+| Equipment effects | Scanner hook - addon scans its own inventory slots |
 | Damage types / affinities | Map into existing 8 types, no custom types |
 | Events | Templates + custom handler interface (both) |
 | Data format | Code API only, no JSON required |
-| Architecture | Registry-first refactor — Craftics dogfoods its own API for vanilla content |
+| Architecture | Registry-first refactor - Craftics dogfoods its own API for vanilla content |
 
 ## Approach: Registry-First Refactor
 
-Convert every hardcoded system (weapon lookup, trim bonuses, armor set bonuses, enchantment effects, events) into internal registries. Craftics registers its own vanilla weapons/trims/events using the same API that addons use. Existing enums (`DamageType`, `Affinity`, `SetBonus`, etc.) stay as-is — addons map into existing types.
+Convert every hardcoded system (weapon lookup, trim bonuses, armor set bonuses, enchantment effects, events) into internal registries. Craftics registers its own vanilla weapons/trims/events using the same API that addons use. Existing enums (`DamageType`, `Affinity`, `SetBonus`, etc.) stay as-is - addons map into existing types.
 
 Existing `switch` statements and `if/else` chains become registry lookups. This makes the codebase simpler overall while guaranteeing addon parity.
 
@@ -52,7 +52,7 @@ public record WeaponEntry(
 }
 ```
 
-### WeaponAbilityHandler — functional interface for custom logic
+### WeaponAbilityHandler - functional interface for custom logic
 
 ```java
 @FunctionalInterface
@@ -76,13 +76,13 @@ WeaponEntry.builder(Items.DIAMOND_SWORD)
 
 ### Built-in building blocks (extracted from current WeaponAbility logic)
 
-- `Abilities.bleed()` — apply bleed stacks based on Sharpness enchant
-- `Abilities.sweepAdjacent(baseChance, bonusPerPoint)` — hit adjacent enemies
-- `Abilities.armorIgnore(baseChance, bonusPerPoint)` — bypass defense
-- `Abilities.stun(baseChance, bonusPerPoint)` — stun target
-- `Abilities.knockback(baseChance, bonusPerPoint)` — push + apply Soaked
-- `Abilities.aoe(radius, damageMultiplier)` — AoE splash
-- `Abilities.applyEffect(EffectType, turns, amplifier)` — inflict status
+- `Abilities.bleed()` - apply bleed stacks based on Sharpness enchant
+- `Abilities.sweepAdjacent(baseChance, bonusPerPoint)` - hit adjacent enemies
+- `Abilities.armorIgnore(baseChance, bonusPerPoint)` - bypass defense
+- `Abilities.stun(baseChance, bonusPerPoint)` - stun target
+- `Abilities.knockback(baseChance, bonusPerPoint)` - push + apply Soaked
+- `Abilities.aoe(radius, damageMultiplier)` - AoE splash
+- `Abilities.applyEffect(EffectType, turns, amplifier)` - inflict status
 
 ### Registration
 
@@ -193,7 +193,7 @@ Armor set detection (deriving the set name from equipped armor items) stays unch
 
 ### Problem
 
-Three switch statements in `TrimEffects` — `getPerPieceBonus()`, `getMaterialBonus()`, and `getSetBonus()` — are hardcoded to vanilla trim pattern/material IDs.
+Three switch statements in `TrimEffects` - `getPerPieceBonus()`, `getMaterialBonus()`, and `getSetBonus()` - are hardcoded to vanilla trim pattern/material IDs.
 
 ### Solution
 
@@ -223,7 +223,7 @@ public record TrimMaterialEntry(
 
 Vanilla patterns and materials are registered at init. Switch statements become `TrimPatternRegistry.get(patternId)` / `TrimMaterialRegistry.get(materialId)`. Unknown IDs return null (no bonus), same as current `default -> null`.
 
-Set bonus logic (requires 4 matching pattern pieces) stays unchanged — the registry just provides what bonus a given pattern gives.
+Set bonus logic (requires 4 matching pattern pieces) stays unchanged - the registry just provides what bonus a given pattern gives.
 
 ### Files affected
 
@@ -282,7 +282,7 @@ EventTemplates.ambush(enemyList)                    // Spawn combat
 
 Built-in events (SHRINE, AMBUSH, etc.) are registered at init with their current probabilities and their existing handler logic extracted from `RandomEvents` static methods.
 
-Forced events still work — `setForcedNextEvent("mymod:enchanted_forge")` checks the registry by ID.
+Forced events still work - `setForcedNextEvent("mymod:enchanted_forge")` checks the registry by ID.
 
 ### Files affected
 
@@ -295,7 +295,7 @@ Forced events still work — `setForcedNextEvent("mymod:enchanted_forge")` check
 
 ### Problem
 
-`PlayerCombatStats` has hardcoded enchantment lookups — Protection gives defense, Projectile Protection gives ranged defense, Power gives bow range, etc.
+`PlayerCombatStats` has hardcoded enchantment lookups - Protection gives defense, Projectile Protection gives ranged defense, Power gives bow range, etc.
 
 ### Solution
 
@@ -325,7 +325,7 @@ public class EnchantmentContext {
 
 This registry handles enchantments that give passive stat bonuses (Protection -> defense, Projectile Protection -> ranged defense, etc.).
 
-Enchantments that modify weapon abilities (Sharpness -> bleed stacks, Smite -> AoE undead damage) are handled through `WeaponAbilityHandler` in Section 1 — the ability handler reads enchantment levels from the player's weapon.
+Enchantments that modify weapon abilities (Sharpness -> bleed stacks, Smite -> AoE undead damage) are handled through `WeaponAbilityHandler` in Section 1 - the ability handler reads enchantment levels from the player's weapon.
 
 ### Files affected
 
@@ -344,23 +344,23 @@ public final class CrafticsAPI {
     public static void registerAI(String entityTypeId, EnemyAI ai);
     public static void registerBiome(BiomeTemplate template);
 
-    // New — Weapons
+    // New - Weapons
     public static void registerWeapon(Item item, WeaponEntry entry);
 
-    // New — Equipment scanners
+    // New - Equipment scanners
     public static void registerEquipmentScanner(String id, EquipmentScanner scanner);
 
-    // New — Armor sets
+    // New - Armor sets
     public static void registerArmorSet(ArmorSetEntry entry);
 
-    // New — Trim patterns & materials
+    // New - Trim patterns & materials
     public static void registerTrimPattern(TrimPatternEntry entry);
     public static void registerTrimMaterial(TrimMaterialEntry entry);
 
-    // New — Events
+    // New - Events
     public static void registerEvent(EventEntry entry);
 
-    // New — Enchantment effects
+    // New - Enchantment effects
     public static void registerEnchantment(String enchantmentId, EnchantmentEffectHandler handler);
 
     // Existing
@@ -419,15 +419,16 @@ All methods delegate to their respective registry classes. Addons call these fro
 
 | File | Change |
 |---|---|
-| `docs/modding.html` | Rewrite to document the full public API — all `CrafticsAPI.registerXxx()` methods, builder patterns, examples for each registry, and compat mod guide (Simply Swords, Artifacts examples) |
+| `docs/modding.html` | Rewrite to document the full public API - all `CrafticsAPI.registerXxx()` methods, builder patterns, examples for each registry, and compat mod guide (Simply Swords, Artifacts examples) |
 | `docs/index.html` | Update feature list to highlight addon/modding support |
 
 ### Unchanged
 
 | File | Reason |
 |---|---|
-| `EnemyAction.java` | Sealed interface — action types are part of the animation/rendering contract |
-| `CombatEffects.java` | EffectType enum stays — scanners can apply existing effects |
-| `PlayerProgression.java` | Stat/Affinity enums stay — addons map into existing types |
+| `EnemyAction.java` | Sealed interface - action types are part of the animation/rendering contract |
+| `CombatEffects.java` | EffectType enum stays - scanners can apply existing effects |
+| `PlayerProgression.java` | Stat/Affinity enums stay - addons map into existing types |
 | `BiomeRegistry.java` | Already extensible |
 | `AIRegistry.java` | Already extensible |
+

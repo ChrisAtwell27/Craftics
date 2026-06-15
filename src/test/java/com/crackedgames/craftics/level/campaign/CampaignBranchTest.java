@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.List;
 
 /**
- * Tests for the optional 2-way branch swap on {@link Campaign} — every biome always plays,
+ * Tests for the optional 2-way branch swap on {@link Campaign} - every biome always plays,
  * only order differs for {@code branchChoice == 1}; invalid swaps fall back to linear and
  * must not throw. Covers both the single-biome swap (length-1 segments via
  * {@link CampaignBranch#of}) and the general contiguous-segment swap.

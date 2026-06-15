@@ -13,21 +13,21 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * Dragon's Nest Boss — "The Ender Dragon" (backgroundBoss approach).
+ * Dragon's Nest Boss - "The Ender Dragon" (backgroundBoss approach).
  *
  * ─── Attack State (default) ────────────────────────────────────────────
  *  Dragon is off-stage. Each turn it telegraphs one attack:
- *   • Breath Wave — spawns a 3-wide wave of fire at one arena edge that
+ *   • Breath Wave - spawns a 3-wide wave of fire at one arena edge that
  *     advances 3 tiles per turn autonomously. Damages anyone it touches.
  *     Runs independently: the boss can keep attacking while waves move.
- *   • Breath Cross — highlights player's row AND column, resolves as fire.
- *   • Swoop — highlights a 3-wide corridor, resolves as area damage + fire.
+ *   • Breath Cross - highlights player's row AND column, resolves as fire.
+ *   • Swoop - highlights a 3-wide corridor, resolves as area damage + fire.
  *  After a cycle of attacks, dragon perches.
  *
  * ─── Perch State (2 turns P1, 3 turns P2) ─────────────────────────────
  *  Dragon visible + targetable on a cluster of centre tiles:
- *   • Wing Buffet (odd turns) — pushes player 3 tiles away.
- *   • Tail Slam (even turns) — telegraphed radius-3 AoE.
+ *   • Wing Buffet (odd turns) - pushes player 3 tiles away.
+ *   • Tail Slam (even turns) - telegraphed radius-3 AoE.
  */
 public class DragonAI extends BossAI {
     @Override public int getGridSize() { return 1; } // backgroundBoss, size managed manually
@@ -142,11 +142,11 @@ public class DragonAI extends BossAI {
 
             EnemyAction action;
             if (perchTurnsUsed % 2 == 1) {
-                // Wing Buffet — push player away
+                // Wing Buffet - push player away
                 int[] dir = getDirectionToward(self.getGridPos(), playerPos);
                 action = new EnemyAction.ForcedMovement(-1, -dir[0], -dir[1], 3);
             } else {
-                // Tail Slam — telegraphed radius-3 AoE
+                // Tail Slam - telegraphed radius-3 AoE
                 List<GridPos> slamTiles = getAreaTiles(arena, self.getGridPos(), 3);
                 EnemyAction slamResolve = new EnemyAction.AreaAttack(
                     self.getGridPos(), 3, self.getAttackPower() + 3, "tail_slam");
@@ -189,7 +189,7 @@ public class DragonAI extends BossAI {
     // ─── Attack builders ──────────────────────────────────────────────
 
     /**
-     * Spawn a breath wave — a 3-wide wall of fire that starts at the arena
+     * Spawn a breath wave - a 3-wide wall of fire that starts at the arena
      * edge nearest the player and advances 3 tiles per turn toward the opposite
      * edge. No telegraph: the wave IS the warning (the player sees fire tiles
      * marching toward them). The wave ticks independently via tickWaves().
@@ -230,7 +230,7 @@ public class DragonAI extends BossAI {
 
         activeWaves.add(new BreathWave(horizontal, baseOffset, direction, startPos, dmg, fireDuration));
 
-        // No Idle — the wave spawns and the boss still gets to act next turn.
+        // No Idle - the wave spawns and the boss still gets to act next turn.
         // Return a message-only action: the wave will be ticked by CombatManager.
         // We use an Idle here but the attack cycle counter already incremented,
         // so the next chooseAbility call picks the next attack in rotation.

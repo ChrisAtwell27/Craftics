@@ -33,7 +33,7 @@ public final class PartyMobs {
 
     private PartyMobs() {}
 
-    /** Party size with 0 Pet Affinity. Each Pet Affinity level adds one more — no hard cap. */
+    /** Party size with 0 Pet Affinity. Each Pet Affinity level adds one more - no hard cap. */
     public static final int BASE_PARTY = 1;
     /** Only one rideable mob may be in a party at a time. */
     public static final int MAX_RIDEABLE = 1;
@@ -58,7 +58,7 @@ public final class PartyMobs {
     //?}
 
     /**
-     * Vanilla mobs that attack on sight, unprovoked — never party-eligible. Every
+     * Vanilla mobs that attack on sight, unprovoked - never party-eligible. Every
      * other mob (passive animals, and neutral mobs like endermen/spiders that only
      * fight when provoked) can be added. Matched by registry id so version-only
      * mobs simply never match on shards that lack them.
@@ -75,7 +75,7 @@ public final class PartyMobs {
         "minecraft:ender_dragon", "minecraft:wither", "minecraft:giant"
     );
 
-    /** Mobs the player can ride — capped at {@link #MAX_RIDEABLE} per party. */
+    /** Mobs the player can ride - capped at {@link #MAX_RIDEABLE} per party. */
     private static final Set<String> RIDEABLE_TYPES = Set.of(
         "minecraft:horse", "minecraft:donkey", "minecraft:mule",
         "minecraft:skeleton_horse", "minecraft:zombie_horse", "minecraft:camel",
@@ -90,7 +90,7 @@ public final class PartyMobs {
     /** Whether this mob may be added to a battle party. */
     public static boolean isEligible(MobEntity mob) {
         if (mob == null || !mob.isAlive()) return false;
-        // An arena combatant — never a hub party candidate.
+        // An arena combatant - never a hub party candidate.
         if (mob.getCommandTags().contains("craftics_arena")) return false;
         return !ALWAYS_HOSTILE.contains(typeId(mob));
     }
@@ -102,7 +102,7 @@ public final class PartyMobs {
     }
 
     /**
-     * Whether this mob is a rideable type — either a vanilla rideable (horse family,
+     * Whether this mob is a rideable type - either a vanilla rideable (horse family,
      * pig, strider, camel) or a registered ally flagged {@code rideable} (e.g. the
      * netherite golem).
      */
@@ -110,7 +110,7 @@ public final class PartyMobs {
         return RIDEABLE_TYPES.contains(typeId(mob)) || isRegisteredRideable(mob);
     }
 
-    /** Whether a rideable mob currently has a saddle — required for it to mount the player. */
+    /** Whether a rideable mob currently has a saddle - required for it to mount the player. */
     public static boolean isSaddled(MobEntity mob) {
         //? if <=1.21.4 {
         /*if (mob instanceof net.minecraft.entity.passive.AbstractHorseEntity horse) return horse.isSaddled();
@@ -163,14 +163,14 @@ public final class PartyMobs {
     }
 
     /**
-     * Toggle {@code mob}'s membership in {@code player}'s battle party — the
+     * Toggle {@code mob}'s membership in {@code player}'s battle party - the
      * server-side handler for a Shift+Right-Click on a mob. Enforces the party
      * cap, the single-rideable cap, and combat lockout, and reports the result
      * on the player's action bar.
      *
      * @return {@link ActionResult#SUCCESS} when the interaction was consumed
      *         (always, for an eligible-or-not mob), so vanilla interaction
-     *         (mounting, breeding, …) does not also fire.
+     *         (mounting, breeding, ...) does not also fire.
      */
     public static ActionResult toggleParty(ServerPlayerEntity player, MobEntity mob) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
@@ -191,7 +191,7 @@ public final class PartyMobs {
         String name = mob.getName().getString();
         int cap = partyCap(player);
 
-        // Already in the party — Shift+Right-Click again removes it.
+        // Already in the party - Shift+Right-Click again removes it.
         if (party.contains(mobId)) {
             party.remove(mobId);
             data.markDirty();
@@ -200,7 +200,7 @@ public final class PartyMobs {
             return ActionResult.SUCCESS;
         }
 
-        // Adding — drop any dead/gone members first so their slots free up.
+        // Adding - drop any dead/gone members first so their slots free up.
         if (pruneDangling(world, party)) data.markDirty();
 
         if (party.size() >= cap) {
@@ -219,15 +219,15 @@ public final class PartyMobs {
         PartyMobSync.sync(player);
 
         String suffix = isSaddledMount(mob)
-            ? " §7(saddled — it will mount you in battle)"
-            : (isRideable(mob) ? " §7(no saddle — it will fight on foot)" : "");
-        actionBar(player, "§a" + name + " — §a§lActive In Party §r§7(" + party.size() + "/" + cap + ")" + suffix);
+            ? " §7(saddled - it will mount you in battle)"
+            : (isRideable(mob) ? " §7(no saddle - it will fight on foot)" : "");
+        actionBar(player, "§a" + name + " - §a§lActive In Party §r§7(" + party.size() + "/" + cap + ")" + suffix);
         return ActionResult.SUCCESS;
     }
 
     /**
      * Empty the player's entire battle party at once (hub-only convenience,
-     * triggered by a keybind). The mobs themselves stay in the hub world — only
+     * triggered by a keybind). The mobs themselves stay in the hub world - only
      * their party membership is dropped, so they simply won't be collected into
      * the next fight. No-op (with feedback) during combat or when already empty.
      */

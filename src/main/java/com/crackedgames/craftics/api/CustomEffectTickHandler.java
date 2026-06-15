@@ -7,7 +7,7 @@ import com.crackedgames.craftics.combat.CombatEntity;
  *
  * <p>Called once per round for each combatant carrying the effect, after the effect's
  * declarative {@link CustomEffectDef#hpChangePerTurn() hpChangePerTurn} has been applied.
- * Use it for behavior a flat HP change cannot express — spreading to neighbors, scaling
+ * Use it for behavior a flat HP change cannot express - spreading to neighbors, scaling
  * with the target's state, spawning particles, and so on.
  *
  * <p>Effects that only need a flat per-turn HP change do not need a handler at all.

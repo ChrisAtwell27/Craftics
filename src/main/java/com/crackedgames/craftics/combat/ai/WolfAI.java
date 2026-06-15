@@ -10,17 +10,17 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Wolf AI: Predator — hunts sheep, chickens, and skeletons.
+ * Wolf AI: Predator - hunts sheep, chickens, and skeletons.
  * If attacked by the player, becomes permanently agro (enraged) and untamable.
  * - PACK TACTICS: +1 damage per other enraged wolf already in melee contact
- *   with the target — a riled pack tears harder than the sum of its bites
+ *   with the target - a riled pack tears harder than the sum of its bites
  * - HIT AND RUN: bites the player then circles back out with leftover movement
- * - Prey is simply lunged at (no retreat) — dinner doesn't fight back
+ * - Prey is simply lunged at (no retreat) - dinner doesn't fight back
  * When not hunting or agro, wanders like a farm animal.
  */
 public class WolfAI implements EnemyAI {
 
-    /** Wolves are neutral toward the player — only a threat once provoked. */
+    /** Wolves are neutral toward the player - only a threat once provoked. */
     @Override
     public boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return self.isEnraged();
@@ -50,7 +50,7 @@ public class WolfAI implements EnemyAI {
             }
         }
 
-        // No prey, no agro — wander (configurable chance)
+        // No prey, no agro - wander (configurable chance)
         if (ThreadLocalRandom.current().nextFloat() < com.crackedgames.craftics.CrafticsMod.CONFIG.passiveMobWanderChance()) {
             return AIUtils.wander(self, arena); // wander aimlessly
         }
@@ -105,7 +105,7 @@ public class WolfAI implements EnemyAI {
         int dist = myPos.manhattanDistance(preyPos);
         int speed = self.getMoveSpeed();
 
-        // Adjacent to prey — attack it. (AttackMob, not the hit-and-run combo:
+        // Adjacent to prey - attack it. (AttackMob, not the hit-and-run combo:
         // MoveAttackMove always resolves its bite against the player/aggro pet,
         // so using it on prey made the wolf bite the wrong victim.)
         if (dist <= 1) {

@@ -123,7 +123,7 @@ public final class AbandonedCampsiteEvent {
         // Trap path: spawn the mimic in a biome-themed arena and start combat.
         CrafticsMod.LOGGER.info("[Craftics × Artifacts] Campsite event: MIMIC TRAP path");
         for (ServerPlayerEntity p : participants) {
-            p.sendMessage(Text.literal("§c§l⚠ It's a trap! §r§cThe loot pile lunges at you - MIMIC."), false);
+            p.sendMessage(Text.literal("§c§lIt's a trap! §r§cThe loot pile lunges at you - MIMIC."), false);
         }
         LevelDefinition mimicDef = buildMimicLevel(biome, computeMimicHp(biome));
         // startCustomCombat will buildArena + transitionPartyToArena, using `leader` as the

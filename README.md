@@ -4,7 +4,7 @@ https://legacy.curseforge.com/minecraft/mc-mods/craftics-a-tactical-rpg-mod
 
 **Turn-based tactical RPG combat in Minecraft.**
 
-Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight through 18 procedurally generated biome arenas across the Overworld, Nether, and End, using vanilla items, crafting, and potions, in a complete turn-based combat system with an isometric camera, grid movement, and 65+ unique enemy AI behaviors.
+Craftics is a Fabric mod that turns Minecraft into a tactical RPG. Fight through 18 procedurally generated biome arenas across the Overworld, Nether, and End, using vanilla items, crafting, and potions, in a turn-based combat system with an isometric camera, grid movement, and 65+ unique enemy AI behaviors.
 
 > **No new items. No new blocks.** (Except the Level Select.) Every item already in the game has a purpose in battle.
 
@@ -17,9 +17,9 @@ Craftics is a Fabric mod that transforms Minecraft into a tactical RPG. Fight th
 - **Author:** CrackedGames
 - **License:** All Rights Reserved
 
-### 📖 Documentation
+### Documentation
 
-Full documentation with in-depth guides:
+Full documentation and guides:
 
 | Page | Description |
 |------|-------------|
@@ -71,7 +71,7 @@ Full documentation with in-depth guides:
 
 ## Overview
 
-When you create a world with the **Craftics** world preset, Minecraft generates a void world with a decorative cottage hub at the origin. From the hub, you interact with a Level Select Block to enter procedurally generated grid arenas where combat plays out on a turn-based system.
+When you create a world with the Craftics world preset, Minecraft generates a void world with a decorative cottage hub at the origin. From the hub, you interact with a Level Select Block to enter procedurally generated grid arenas where combat plays out on a turn-based system.
 
 The camera locks to a fixed isometric angle (55° pitch, 225° yaw), the mouse cursor is freed for point-and-click interaction, and WASD movement is disabled. You click tiles to move, click enemies to attack, and manage a limited pool of Action Points each turn.
 
@@ -119,7 +119,7 @@ The compiled mod JAR is output to `build/libs/`.
 
 ### World Creation
 
-Select the **Craftics** world preset when creating a new world. This generates a void world with no terrain, no structures, no natural mob spawning. The hub is built automatically at the world origin and you are teleported there on first join.
+Select the Craftics world preset when creating a new world. This generates a void world with no terrain, no structures, no natural mob spawning. The hub is built automatically at the world origin and you are teleported there on first join.
 
 ### The Hub
 
@@ -153,11 +153,11 @@ When you enter an arena:
 5. WASD movement is disabled
 6. Combat begins on the player's turn
 
-Combat alternates between **Player Turn** and **Enemy Turn** until all enemies are defeated or the player dies.
+Combat alternates between Player Turn and Enemy Turn until all enemies are defeated or the player dies.
 
 ### Action Points
 
-The player gets **3 AP** per turn (modified by stats and potions).
+The player gets 3 AP per turn (modified by stats and potions).
 
 | Action | AP Cost | Description |
 |--------|---------|-------------|
@@ -175,7 +175,7 @@ rawDamage = Weapon Attack + Stat Bonuses + Damage Type Bonus + Enchantments
 actual damage = max(1, rawDamage * (1.0 - min(0.60, targetDefense * 0.05)))
 ```
 
-Defense is **percentage-based**: each point = 5% reduction, capped at 60%.
+Defense is percentage-based: each point = 5% reduction, capped at 60%.
 
 **Weapon Attack Power** (from equipped main hand):
 
@@ -193,11 +193,11 @@ Defense is **percentage-based**: each point = 5% reduction, capped at 60%.
 | Trident | 5 | 1 / 3 (thrown) | Water |
 | Mace | 7 | 1 | Blunt |
 
-**Weapon durability:** Each attack costs **10 durability**. Weapons break during combat.
+**Weapon durability:** Each attack costs 10 durability. Weapons break during combat.
 
 ### Damage Types
 
-There are **8 damage types**: Sword, Cleaving, Blunt, Water, Magic, Pet, Ranged, and Physical. Bonus damage from damage types stacks from three sources:
+There are 8 damage types: Sword, Cleaving, Blunt, Water, Magic, Pet, Ranged, and Physical. Bonus damage from damage types stacks from three sources:
 
 **Armor Set Classes** (full 4-piece set bonus):
 
@@ -234,7 +234,7 @@ There are **8 damage types**: Sword, Cleaving, Blunt, Water, Magic, Pet, Ranged,
 | Host | Max HP +1 |
 | Flow | Speed +1 |
 
-Wearing 4 pieces with the **same trim pattern** activates a **full-set bonus**:
+Wearing 4 pieces with the same trim pattern activates a full-set bonus:
 
 | Trim | Name | Full Set Bonus |
 |------|------|---------------|
@@ -341,14 +341,14 @@ The mod includes 65 unique AI strategies registered for 78+ mob types. Unregiste
 | **VindicatorAI** | Vindicator | Speed 2 aggressive melee rush |
 | **CreeperAI** | Creeper | Approaches → fuse when adjacent → explodes next turn (2× damage, radius 1). Fuse resets if player moves away |
 | **SpiderAI** | Spider | 2×2 body, speed 2, pounce attack over obstacles |
-| **WitchAI** | Witch | Potion throw (range 2–3), random debuffs, keeps distance |
+| **WitchAI** | Witch | Potion throw (range 2-3), random debuffs, keeps distance |
 | **EndermanAI** | Enderman | Teleports behind player to attack; teleports away when damaged |
 | **PhantomAI** | Phantom | Cardinal-line swoops (speed 4), damages all tiles in path |
 | **OcelotAI** | Ocelot | Speed 2 hit-and-run; strikes then flees |
 | **MountedAI** | Camel | Speed 3 charge; dismounts at 50% HP (speed drops to 1) |
-| **GhastAI** | Ghast | Long-range fireball (range 5–6), flees from close range |
-| **BlazeAI** | Blaze | Medium-range fire (range 3–4), applies burning, retreats from melee |
-| **ShulkerAI** | Shulker | Stationary turret, range 4–5, high defense, rarely moves |
+| **GhastAI** | Ghast | Long-range fireball (range 5-6), flees from close range |
+| **BlazeAI** | Blaze | Medium-range fire (range 3-4), applies burning, retreats from melee |
+| **ShulkerAI** | Shulker | Stationary turret, range 4-5, high defense, rarely moves |
 | **WardenAI** | Warden | Boss. Phase 1: slow (speed 1), massive melee. Phase 2 (<50% HP): speed 2, sonic boom (range 3) |
 | **DragonAI** | Ender Dragon | Final boss. Phase 1: arena swoops. Phase 2 (<50% HP): charge + AoE breath |
 
@@ -493,7 +493,7 @@ Each level within a biome is procedurally generated:
 | **Left Click** (bow/crossbow/trident) | Ranged attack on enemy in range |
 | **Left Click** (food/potion/throwable) | Use held item |
 | **R** | End turn |
-| **Scroll Wheel** | Zoom camera in/out (±1.5 per notch, range 8–30) |
+| **Scroll Wheel** | Zoom camera in/out (±1.5 per notch, range 8-30) |
 | **Middle Mouse Drag** | Pan camera (world-space, accounts for yaw) |
 | **Shift + Middle Click** | Reset camera pan |
 | **F6** | Toggle debug combat mode |
@@ -642,7 +642,7 @@ src/
 | **OverlayMessageMixin** | `InGameHud.setOverlayMessage` | Routes action bar messages to the combat log for persistent display |
 | **PlayerListHudMixin** | `PlayerListHud` | Customizes player list display |
 | **PlayerNameTagMixin** | `EntityRenderer` | Customizes player name tag rendering |
-| **ScrollZoomMixin** | `Mouse.onMouseScroll` | Intercepts scroll wheel for zoom control (range 8–30 blocks) |
+| **ScrollZoomMixin** | `Mouse.onMouseScroll` | Intercepts scroll wheel for zoom control (range 8-30 blocks) |
 | **TitleScreenMixin** | `TitleScreen` | Title screen modifications |
 | **WorldCreatorMixin** | `WorldCreator` | Defaults world preset to Craftics void world |
 
@@ -716,7 +716,7 @@ Build arena maps in Minecraft's Structure Block system and export them as `.nbt`
 ```
 data/craftics/structures/arenas/<biome_id>/<number>.nbt
 ```
-Mark the playable grid area with **Gold Block** (player start corner) and **Emerald Block** (opposite corner). Everything outside the markers becomes terrain/decoration. Multiple numbered presets per biome (1.nbt, 2.nbt, etc.) are picked randomly each fight.
+Mark the playable grid area with Gold Block (player start corner) and Emerald Block (opposite corner). Everything outside the markers becomes terrain/decoration. Multiple numbered presets per biome (1.nbt, 2.nbt, etc.) are picked randomly each fight.
 
 See [MODDING.md](MODDING.md) for the full custom maps guide with step-by-step instructions.
 
@@ -751,7 +751,7 @@ EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos);
 
 13 action types are available: Move, Attack, MoveAndAttack, Flee, Teleport, TeleportAndAttack, Pounce, Explode, RangedAttack, Swoop, StartFuse, Detonate, and Idle.
 
-See [MODDING.md](MODDING.md) for complete API documentation, or the [online Modding Guide](https://chrisatwell27.github.io/Craftics/modding.html) for the full reference with examples.
+See [MODDING.md](MODDING.md) for the API documentation, or the [online Modding Guide](https://chrisatwell27.github.io/Craftics/modding.html) for the full reference with examples.
 
 ---
 
@@ -769,7 +769,7 @@ See [MODDING.md](MODDING.md) for complete API documentation, or the [online Modd
 
 ## Addon Policy
 
-You're free to create **addons, datapacks, resource packs, and mods** that interact with Craftics through its API. You can also include Craftics in **modpacks** with credit.
+You're free to create addons, datapacks, resource packs, and mods that interact with Craftics through its API. You can also include Craftics in modpacks with credit.
 
 **Allowed:** Addons via API, datapacks with custom arenas/loot/biomes, resource packs, modpacks on CurseForge/Modrinth (with credit), videos/streams/reviews.
 

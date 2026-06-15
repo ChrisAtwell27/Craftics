@@ -21,12 +21,12 @@ public class PlayerProgression extends PersistentState {
     public enum Stat {
         SPEED("Speed", "§b⚡", "+1 movement per turn", 3),
         AP("Action Points", "§e⚡", "+1 action per turn", 3),
-        MELEE_POWER("Melee Power", "§c⚔", "+1 melee damage", 0),
-        RANGED_POWER("Ranged Power", "§d\uD83C\uDFF9", "+1 ranged damage", 0),
-        VITALITY("Vitality", "§a❤", "+2 max HP", 0),
-        DEFENSE("Defense", "§9\uD83D\uDEE1", "+1 Armor Class", 0),
-        LUCK("Luck", "§6✦", "+2% all combat procs & loot", 0),
-        RESOURCEFUL("Resourceful", "§2\uD83D\uDCB0", "+1 emerald/level & trader discount", 0);
+        MELEE_POWER("Melee Power", "§c⚔", "+2 melee damage", 0),
+        RANGED_POWER("Ranged Power", "§d\uD83C\uDFF9", "+2 ranged damage", 0),
+        VITALITY("Vitality", "§a❤", "+8 max HP", 0),
+        DEFENSE("Defense", "§9\uD83D\uDEE1", "+2 Armor Class", 0),
+        LUCK("Luck", "§6✦", "+8% crit, +2% loot per point", 0),
+        RESOURCEFUL("Resourceful", "§2\uD83D\uDCB0", "+2 emerald/level & trader discount", 0);
 
         public final String displayName;
         public final String icon;
@@ -208,7 +208,7 @@ public class PlayerProgression extends PersistentState {
         /**
          * Heals point counters after force-leveling (e.g. {@code /craftics set_level}),
          * version upgrades, or any path that bumped {@link #level} without granting the
-         * stat points it owes. Only ever adds unspent points — never removes them.
+         * stat points it owes. Only ever adds unspent points - never removes them.
          * Affinity entitlement is derived from {@link #level} directly, so it needs no
          * stored counter to reconcile.
          */

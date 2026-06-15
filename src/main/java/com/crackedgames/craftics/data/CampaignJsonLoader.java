@@ -49,8 +49,8 @@ import java.util.List;
  *
  * <p>One bad file never aborts the load: any reason to reject a file is logged via
  * {@link CrafticsMod#LOGGER} and {@link #parse} returns {@code null} (the base
- * {@code load} loop then skips it). Recoverable problems — a malformed
- * {@code map_color}, or a malformed {@code branch} — log a warning and fall back to a
+ * {@code load} loop then skips it). Recoverable problems - a malformed
+ * {@code map_color}, or a malformed {@code branch} - log a warning and fall back to a
  * sane default rather than rejecting the whole campaign.
  *
  * @since 0.2.2
@@ -61,7 +61,7 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
         super("craftics/campaigns", "campaign");
     }
 
-    /** Exposed for unit tests — {@link #parse} is otherwise protected. */
+    /** Exposed for unit tests - {@link #parse} is otherwise protected. */
     public Campaign parseForTest(Identifier fileId, JsonObject json) {
         return parse(fileId, json);
     }
@@ -86,23 +86,23 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
     public static Campaign parseCampaign(Identifier fileId, JsonObject json) {
         try {
             if (json == null) {
-                CrafticsMod.LOGGER.warn("Campaign JSON {} is empty — skipping", fileId);
+                CrafticsMod.LOGGER.warn("Campaign JSON {} is empty - skipping", fileId);
                 return null;
             }
 
             String id = optString(json, "id");
             if (id == null || id.isBlank()) {
-                CrafticsMod.LOGGER.warn("Campaign JSON {} missing non-blank 'id' — skipping", fileId);
+                CrafticsMod.LOGGER.warn("Campaign JSON {} missing non-blank 'id' - skipping", fileId);
                 return null;
             }
 
             if (!json.has("regions") || !json.get("regions").isJsonArray()) {
-                CrafticsMod.LOGGER.warn("Campaign JSON {} missing 'regions' array — skipping", fileId);
+                CrafticsMod.LOGGER.warn("Campaign JSON {} missing 'regions' array - skipping", fileId);
                 return null;
             }
             JsonArray regionsArr = json.getAsJsonArray("regions");
             if (regionsArr.isEmpty()) {
-                CrafticsMod.LOGGER.warn("Campaign JSON {} has empty 'regions' — skipping", fileId);
+                CrafticsMod.LOGGER.warn("Campaign JSON {} has empty 'regions' - skipping", fileId);
                 return null;
             }
 
@@ -111,7 +111,7 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
 
             for (JsonElement regionElement : regionsArr) {
                 if (!regionElement.isJsonObject()) {
-                    CrafticsMod.LOGGER.warn("Campaign {} has a non-object region — skipping campaign", fileId);
+                    CrafticsMod.LOGGER.warn("Campaign {} has a non-object region - skipping campaign", fileId);
                     return null;
                 }
                 CampaignRegion region = parseRegion(fileId, regionElement.getAsJsonObject());
@@ -128,14 +128,14 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
             try {
                 return builder.build();
             } catch (IllegalArgumentException e) {
-                CrafticsMod.LOGGER.warn("Campaign {} failed validation: {} — skipping", fileId, e.getMessage());
+                CrafticsMod.LOGGER.warn("Campaign {} failed validation: {} - skipping", fileId, e.getMessage());
                 return null;
             }
         } catch (RuntimeException e) {
             // Defense-in-depth: any unexpected exception (now or after future edits) becomes a
             // logged skip rather than escaping the parser. The specific paths above still give
             // precise messages; this is just the outer safety net.
-            CrafticsMod.LOGGER.warn("Campaign {} could not be parsed: {} — skipping", fileId, e.getMessage());
+            CrafticsMod.LOGGER.warn("Campaign {} could not be parsed: {} - skipping", fileId, e.getMessage());
             return null;
         }
     }
@@ -144,17 +144,17 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
     private static CampaignRegion parseRegion(Identifier fileId, JsonObject regionJson) {
         String id = optString(regionJson, "id");
         if (id == null || id.isBlank()) {
-            CrafticsMod.LOGGER.warn("Campaign {} has a region missing non-blank 'id' — skipping campaign", fileId);
+            CrafticsMod.LOGGER.warn("Campaign {} has a region missing non-blank 'id' - skipping campaign", fileId);
             return null;
         }
 
         if (!regionJson.has("nodes") || !regionJson.get("nodes").isJsonArray()) {
-            CrafticsMod.LOGGER.warn("Campaign {} region '{}' missing 'nodes' array — skipping campaign", fileId, id);
+            CrafticsMod.LOGGER.warn("Campaign {} region '{}' missing 'nodes' array - skipping campaign", fileId, id);
             return null;
         }
         JsonArray nodesArr = regionJson.getAsJsonArray("nodes");
         if (nodesArr.isEmpty()) {
-            CrafticsMod.LOGGER.warn("Campaign {} region '{}' has empty 'nodes' — skipping campaign", fileId, id);
+            CrafticsMod.LOGGER.warn("Campaign {} region '{}' has empty 'nodes' - skipping campaign", fileId, id);
             return null;
         }
 
@@ -173,7 +173,7 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
 
         for (JsonElement nodeElement : nodesArr) {
             if (!nodeElement.isJsonObject()) {
-                CrafticsMod.LOGGER.warn("Campaign {} region '{}' has a non-object node — skipping campaign", fileId, id);
+                CrafticsMod.LOGGER.warn("Campaign {} region '{}' has a non-object node - skipping campaign", fileId, id);
                 return null;
             }
             JsonObject nodeJson = nodeElement.getAsJsonObject();
@@ -181,7 +181,7 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
             if (biome == null || biome.isBlank()) {
                 // A node without a biome is meaningless; reject the whole campaign so the
                 // author notices, rather than silently dropping a step.
-                CrafticsMod.LOGGER.warn("Campaign {} region '{}' has a node missing non-blank 'biome' — skipping campaign",
+                CrafticsMod.LOGGER.warn("Campaign {} region '{}' has a node missing non-blank 'biome' - skipping campaign",
                     fileId, id);
                 return null;
             }
@@ -192,7 +192,7 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
         try {
             return region.build();
         } catch (IllegalArgumentException e) {
-            CrafticsMod.LOGGER.warn("Campaign {} region '{}' failed validation: {} — skipping campaign",
+            CrafticsMod.LOGGER.warn("Campaign {} region '{}' failed validation: {} - skipping campaign",
                 fileId, id, e.getMessage());
             return null;
         }
@@ -205,18 +205,18 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
      * <p>The {@code swap} array must have exactly two elements and accepts two forms:
      *
      * <ul>
-     *   <li><b>Single-biome swap</b> — both elements are strings:
+     *   <li><b>Single-biome swap</b> - both elements are strings:
      *       {@code "swap": ["wildwood", "marsh"]} -> segmentA={@code [wildwood]},
      *       segmentB={@code [marsh]} (each a length-1 segment). The original, backward-compatible
      *       form.</li>
-     *   <li><b>Segment swap</b> — both elements are arrays of strings:
+     *   <li><b>Segment swap</b> - both elements are arrays of strings:
      *       {@code "swap": [["desert","jungle","forest"], ["snowy","mountain"]]} ->
      *       segmentA={@code [desert,jungle,forest]}, segmentB={@code [snowy,mountain]}. Lets two
      *       contiguous multi-biome segments exchange positions.</li>
      * </ul>
      *
-     * <p>Anything else — not exactly two elements, a mix of a string and an array, a non-string
-     * element inside a segment array, or an empty segment array — is malformed and falls back to
+     * <p>Anything else - not exactly two elements, a mix of a string and an array, a non-string
+     * element inside a segment array, or an empty segment array - is malformed and falls back to
      * linear (warn).
      *
      * @return the branch, or {@code null} when absent or malformed
@@ -226,24 +226,24 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
             return null;
         }
         if (!json.get("branch").isJsonObject()) {
-            CrafticsMod.LOGGER.warn("Campaign {} 'branch' is not an object — ignoring branch (linear)", fileId);
+            CrafticsMod.LOGGER.warn("Campaign {} 'branch' is not an object - ignoring branch (linear)", fileId);
             return null;
         }
         JsonObject branchJson = json.getAsJsonObject("branch");
 
         String region = optString(branchJson, "region");
         if (region == null || region.isBlank()) {
-            CrafticsMod.LOGGER.warn("Campaign {} branch missing non-blank 'region' — ignoring branch (linear)", fileId);
+            CrafticsMod.LOGGER.warn("Campaign {} branch missing non-blank 'region' - ignoring branch (linear)", fileId);
             return null;
         }
 
         if (!branchJson.has("swap") || !branchJson.get("swap").isJsonArray()) {
-            CrafticsMod.LOGGER.warn("Campaign {} branch missing 'swap' array — ignoring branch (linear)", fileId);
+            CrafticsMod.LOGGER.warn("Campaign {} branch missing 'swap' array - ignoring branch (linear)", fileId);
             return null;
         }
         JsonArray swap = branchJson.getAsJsonArray("swap");
         if (swap.size() != 2) {
-            CrafticsMod.LOGGER.warn("Campaign {} branch 'swap' must have exactly 2 entries (had {}) — ignoring branch (linear)",
+            CrafticsMod.LOGGER.warn("Campaign {} branch 'swap' must have exactly 2 entries (had {}) - ignoring branch (linear)",
                 fileId, swap.size());
             return null;
         }
@@ -266,14 +266,14 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
             }
         } else {
             CrafticsMod.LOGGER.warn("Campaign {} branch 'swap' must be either two strings or two "
-                + "arrays of strings — ignoring branch (linear)", fileId);
+                + "arrays of strings - ignoring branch (linear)", fileId);
             return null;
         }
 
         try {
             return new CampaignBranch(region, segmentA, segmentB);
         } catch (RuntimeException e) {
-            CrafticsMod.LOGGER.warn("Campaign {} branch is malformed: {} — ignoring branch (linear)",
+            CrafticsMod.LOGGER.warn("Campaign {} branch is malformed: {} - ignoring branch (linear)",
                 fileId, e.getMessage());
             return null;
         }
@@ -290,13 +290,13 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
      */
     private static List<String> parseSegment(Identifier fileId, JsonArray segmentArr) {
         if (segmentArr.isEmpty()) {
-            CrafticsMod.LOGGER.warn("Campaign {} branch 'swap' has an empty segment — ignoring branch (linear)", fileId);
+            CrafticsMod.LOGGER.warn("Campaign {} branch 'swap' has an empty segment - ignoring branch (linear)", fileId);
             return null;
         }
         List<String> ids = new ArrayList<>(segmentArr.size());
         for (JsonElement element : segmentArr) {
             if (!isJsonString(element)) {
-                CrafticsMod.LOGGER.warn("Campaign {} branch 'swap' segment has a non-string entry — "
+                CrafticsMod.LOGGER.warn("Campaign {} branch 'swap' segment has a non-string entry - "
                     + "ignoring branch (linear)", fileId);
                 return null;
             }
@@ -316,7 +316,7 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
      */
     private static int parseMapColor(Identifier fileId, String regionId, String raw) {
         if (raw == null) {
-            // Absent is normal — let the region builder default to white, no warning.
+            // Absent is normal - let the region builder default to white, no warning.
             return 0xFFFFFFFF;
         }
         String hex = (raw.startsWith("#") ? raw.substring(1) : raw).trim();
@@ -330,12 +330,12 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
                 return (int) value;
             }
             CrafticsMod.LOGGER.warn(
-                "Campaign {} region '{}' has 'map_color' \"{}\" of unexpected length — defaulting to white",
+                "Campaign {} region '{}' has 'map_color' \"{}\" of unexpected length - defaulting to white",
                 fileId, regionId, raw);
             return 0xFFFFFFFF;
         } catch (NumberFormatException e) {
             CrafticsMod.LOGGER.warn(
-                "Campaign {} region '{}' has malformed 'map_color' \"{}\" — defaulting to white",
+                "Campaign {} region '{}' has malformed 'map_color' \"{}\" - defaulting to white",
                 fileId, regionId, raw);
             return 0xFFFFFFFF;
         }
@@ -356,7 +356,7 @@ public final class CampaignJsonLoader extends CrafticsDataLoader<Campaign> {
         }
         JsonElement value = json.get(key);
         if (!value.isJsonPrimitive()) {
-            // Arrays / objects are an author typo for a scalar field — treat as absent.
+            // Arrays / objects are an author typo for a scalar field - treat as absent.
             return null;
         }
         return value.getAsString();

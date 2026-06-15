@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Tests for the pure {@link AllyEntry} builder — defaults, validation, overrides. */
+/** Tests for the pure {@link AllyEntry} builder - defaults, validation, overrides. */
 class AllyEntryTest {
 
     @Test
@@ -38,8 +38,8 @@ class AllyEntryTest {
 
     @Test
     void builder_healItem_setsAmount() {
-        // healItem(Item, int) sets both fields atomically. A null Item is fine here —
-        // the builder does not validate it — so this stays a pure-logic test.
+        // healItem(Item, int) sets both fields atomically. A null Item is fine here -
+        // the builder does not validate it - so this stays a pure-logic test.
         AllyEntry e = AllyEntry.builder("minecraft:iron_golem")
             .healItem(null, 7)
             .build();

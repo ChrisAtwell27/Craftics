@@ -9,7 +9,7 @@ import org.ladysnake.cca.api.v3.world.WorldComponentFactoryRegistry;
 import org.ladysnake.cca.api.v3.world.WorldComponentInitializer;
 
 /**
- * CCA entrypoint — registers component factories for players and worlds.
+ * CCA entrypoint - registers component factories for players and worlds.
  */
 public class ComponentInit implements EntityComponentInitializer, WorldComponentInitializer {
 
@@ -28,7 +28,7 @@ public class ComponentInit implements EntityComponentInitializer, WorldComponent
             RespawnCopyStrategy.ALWAYS_COPY
         );
 
-        // Animation state for every mob — mixin gates on craftics_arena tag so
+        // Animation state for every mob - mixin gates on craftics_arena tag so
         // non-combat mobs never trigger pose overrides despite carrying the component.
         registry.registerFor(
             MobEntity.class,

@@ -6,7 +6,7 @@ import static com.crackedgames.craftics.combat.ArmorClassTable.Slot;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the pure AC math in {@link ArmorClassTable} — per-piece formula and
+ * Tests for the pure AC math in {@link ArmorClassTable} - per-piece formula and
  * full-set totals. The registry-backed {@code getPieceAC(Item)} path is covered
  * by the in-game smoke checklist (it needs a Minecraft bootstrap).
  */

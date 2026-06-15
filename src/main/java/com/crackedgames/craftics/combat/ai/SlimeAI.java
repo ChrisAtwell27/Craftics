@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * Slime AI: a simple, relentless beeline mob. It walks straight at the player
  * each turn (no pouncing, no kiting) and attacks the moment it's adjacent.
- * Individually weak and slow, but dangerous in numbers — a split slime swarm
+ * Individually weak and slow, but dangerous in numbers - a split slime swarm
  * can overwhelm by sheer count. Move speed comes from the entity's stats
  * (mediums move 1 tile/turn), so the threat is the swarm, not any single hop.
  */
@@ -19,13 +19,13 @@ public class SlimeAI implements EnemyAI {
     public EnemyAction decideAction(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
 
-        // Adjacent — slam attack.
+        // Adjacent - slam attack.
         if (self.minDistanceTo(playerPos) == 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
 
         // Otherwise close the gap in a straight line toward the player. Slimes are
-        // 2x2, so use the size-aware target picker and pathfinder — otherwise the
+        // 2x2, so use the size-aware target picker and pathfinder - otherwise the
         // slime's footprint can land on top of the player (clipping into it).
         int size = self.getSize();
         GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), size);

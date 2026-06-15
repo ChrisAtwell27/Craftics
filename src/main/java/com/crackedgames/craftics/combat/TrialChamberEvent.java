@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Trial Chamber random event — a harder optional combat encounter
+ * Trial Chamber random event - a harder optional combat encounter
  * with trial chamber themed enemies and loot.
  */
 public class TrialChamberEvent {
@@ -34,7 +34,7 @@ public class TrialChamberEvent {
         {"minecraft:cave_spider", "8",  "3", "0", "1"},
     };
 
-    /** Breeze is the trial chamber signature mob — appears as a mini-boss. */
+    /** Breeze is the trial chamber signature mob - appears as a mini-boss. */
     private static final String[] BREEZE = {"minecraft:breeze", "20", "5", "2", "3"};
 
     /** Generate a trial chamber level definition scaled to difficulty. */
@@ -148,7 +148,7 @@ public class TrialChamberEvent {
             // the mod is installed; otherwise the original epic pool. The isLoaded() check
             // comes first so we don't burn an rng step (skewing the epic switch) when absent.
             if (com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isLoaded()
-                    && rng.nextInt(3) == 0) {
+                    && rng.nextInt(10) == 0) {
                 ItemStack totem = com.crackedgames.craftics.compat.moretotems.MoreTotemsLootRoller.rollOne();
                 if (!totem.isEmpty()) return totem;
             }
@@ -168,11 +168,11 @@ public class TrialChamberEvent {
         }
     }
 
-    /** Generate a small quick ambush encounter — 2-3 fast enemies, tiny arena. */
+    /** Generate a small quick ambush encounter - 2-3 fast enemies, tiny arena. */
     public static LevelDefinition generateAmbush(String arenaBiomeId, int biomeOrdinal, int ngPlusLevel) {
         Random rng = new Random();
 
-        // Pull the biome's hostile pool so ambushes match where you are —
+        // Pull the biome's hostile pool so ambushes match where you are -
         // zombies in Plains, magma cubes in the Nether, enderman in the End.
         com.crackedgames.craftics.level.BiomeTemplate biome = null;
         if (arenaBiomeId != null && !arenaBiomeId.isBlank()) {
@@ -252,7 +252,7 @@ public class TrialChamberEvent {
         return EquipmentSlot.CHEST;
     }
 
-    /** Roll a single heavily enchanted armor piece — any material tier, any slot. */
+    /** Roll a single heavily enchanted armor piece - any material tier, any slot. */
     private static ItemStack rollHeavyArmor(ServerWorld world, Random rng) {
         Item item = OMINOUS_ARMOR[rng.nextInt(OMINOUS_ARMOR.length)];
         ItemStack stack = new ItemStack(item, 1);
@@ -261,7 +261,7 @@ public class TrialChamberEvent {
             CombatManager.getValidArmorEnchants(slot), rng);
     }
 
-    /** Roll a single heavily enchanted weapon — netherite tier (where applicable)
+    /** Roll a single heavily enchanted weapon - netherite tier (where applicable)
      *  for swords/axes/shovels/hoes, plus bow/crossbow/mace. */
     private static ItemStack rollHeavyWeapon(ServerWorld world, Random rng) {
         Item item = OMINOUS_WEAPONS[rng.nextInt(OMINOUS_WEAPONS.length)];
@@ -270,7 +270,7 @@ public class TrialChamberEvent {
             CombatManager.getValidWeaponEnchants(stack), rng);
     }
 
-    /** Roll one supply item — high-tier consumables that complement the hero piece. */
+    /** Roll one supply item - high-tier consumables that complement the hero piece. */
     private static ItemStack rollSupplyItem(Random rng) {
         int roll = rng.nextInt(100);
         if (roll < 15) {
@@ -299,7 +299,7 @@ public class TrialChamberEvent {
         return rewards;
     }
 
-    /** Generate an ominous trial chamber — harder, with Warden + Breeze. */
+    /** Generate an ominous trial chamber - harder, with Warden + Breeze. */
     public static LevelDefinition generateOminous(int biomeOrdinal, int ngPlusLevel) {
         Random rng = new Random();
         float diffMultiplier = 1.6f + (biomeOrdinal * 0.06f) + (ngPlusLevel * 0.2f);
@@ -351,10 +351,10 @@ public class TrialChamberEvent {
         };
     }
 
-    /** Treasure Vault — no enemies, just loot on the ground. Player gets 2-4 random items scaled to biome tier. */
+    /** Treasure Vault - no enemies, just loot on the ground. Player gets 2-4 random items scaled to biome tier. */
     public static LevelDefinition generateTreasureVault(int biomeOrdinal) {
         Random rng = new Random();
-        // No enemies — the "combat" will be won immediately
+        // No enemies - the "combat" will be won immediately
         return new TrialChamberLevelDef(5, 5, new ArrayList<>(), rng) {
             @Override public String getName() { return "Treasure Vault"; }
             @Override public GridPos getPlayerStart() { return new GridPos(2, 2); }
@@ -384,7 +384,7 @@ public class TrialChamberEvent {
         // Late biomes (7+): full loot table including epic/legendary
         int roll = rng.nextInt(100);
         if (biomeOrdinal <= 2) {
-            // Early: 50% common, 50% uncommon — no rare/epic/legendary
+            // Early: 50% common, 50% uncommon - no rare/epic/legendary
             if (roll < 50) {
                 return switch (rng.nextInt(5)) {
                     case 0 -> new ItemStack(Items.GOLDEN_APPLE, 1);
@@ -402,7 +402,7 @@ public class TrialChamberEvent {
                 };
             }
         } else if (biomeOrdinal <= 6) {
-            // Mid: 30% common, 40% uncommon, 30% rare — no epic/legendary
+            // Mid: 30% common, 40% uncommon, 30% rare - no epic/legendary
             if (roll < 30) {
                 return switch (rng.nextInt(4)) {
                     case 0 -> new ItemStack(Items.GOLDEN_APPLE, 1);
@@ -473,7 +473,7 @@ public class TrialChamberEvent {
         public GridTile[][] buildTiles() {
             // Trial chambers are now schematic-driven (preserveSchematicGround).
             // The previous random copper-obstacle scatter set OBSTACLE tile
-            // types that never matched a real world block — those phantom
+            // types that never matched a real world block - those phantom
             // obstacles blocked pathfinding line-of-sight (a stray's arrow
             // would report "blocked by an obstacle" even on a visually clear
             // shot) and pinned the player out of perfectly walkable tiles.

@@ -1,6 +1,6 @@
-# Selection System Fortification Design
+﻿# Selection System Fortification Design
 
-**Goal:** Replace the server-dependent carpet-block highlight system with a client-side overlay renderer for instant, accurate tile selection — and fix the "enemy not on tile" bug by using server-authoritative entity positions.
+**Goal:** Replace the server-dependent carpet-block highlight system with a client-side overlay renderer for instant, accurate tile selection - and fix the "enemy not on tile" bug by using server-authoritative entity positions.
 
 **Scope:** Client-side rendering, new tile set payload, hover flow overhaul, teammate hover sharing. Does NOT change combat logic, turn system, or action validation.
 
@@ -17,7 +17,7 @@
 
 ### Root causes
 - **Hover latency:** 20-50ms round-trip for every tile change means highlights lag behind crosshair or don't appear at all on busy servers
-- **Enemy mismatch:** Client scans world entities to detect who's on a tile (`findEnemyAtGridPos`), while server tracks positions in `arena.getEntityAt()`. Mob visual positions drift from logical grid positions due to entity interpolation, walk animations, and scale-attribute transforms — causing "enemy not on tile" false negatives
+- **Enemy mismatch:** Client scans world entities to detect who's on a tile (`findEnemyAtGridPos`), while server tracks positions in `arena.getEntityAt()`. Mob visual positions drift from logical grid positions due to entity interpolation, walk animations, and scale-attribute transforms - causing "enemy not on tile" false negatives
 - **Physical blocks as UI:** Carpet blocks are a world mutation for a UI concern. They interact with lighting, entity spawning, and block update propagation. Wrong abstraction layer.
 
 ---
@@ -44,7 +44,7 @@ Hooks into Minecraft's `WorldRenderEvents.AFTER_TRANSLUCENT` event. Draws colore
 - Renders only within arena bounds (check grid dimensions from `CombatState`)
 
 ### What gets deleted
-- `TileHighlightManager.java` — entire class removed
+- `TileHighlightManager.java` - entire class removed
 - All carpet-placement logic in `CombatManager.refreshHighlights()` and `clearHighlights()`
 - Carpet color constants and colorblind carpet mappings
 
@@ -68,12 +68,12 @@ TileSetPayload {
 - Player's turn starts (full tile set for current mode)
 - After player takes an action (move/attack changes available tiles)
 - Player switches held item (move mode vs attack mode)
-- Combat ends or turn ends (empty sets — clears all highlights)
+- Combat ends or turn ends (empty sets - clears all highlights)
 
 ### Server-side changes
 - `refreshHighlights()` stops placing carpet blocks. Instead, it builds the tile arrays from existing pathfinding/range computation and sends `TileSetPayload`
 - `clearHighlights()` sends an empty `TileSetPayload`
-- The pathfinding and range computation logic is unchanged — only the output format changes (arrays instead of block placement)
+- The pathfinding and range computation logic is unchanged - only the output format changes (arrays instead of block placement)
 
 ### Client-side caching
 - `CombatState` stores the latest tile sets: `Set<GridPos> moveTiles`, `Set<GridPos> attackTiles`, `Set<GridPos> dangerTiles`, `Map<GridPos, Integer> enemyGridMap` (pos → entityId), `Map<GridPos, String> enemyTypeMap` (pos → type ID)
@@ -86,21 +86,21 @@ TileSetPayload {
 
 ### New flow (zero latency)
 1. `TileRaycast` computes grid position every frame (unchanged)
-2. `CombatInputHandler` updates `CombatState.hoveredTile` locally — no packet sent to server
+2. `CombatInputHandler` updates `CombatState.hoveredTile` locally - no packet sent to server
 3. `TileOverlayRenderer` reads `CombatState.hoveredTile` and draws hover quad immediately
-4. Client checks `hoveredTile` against cached `attackTiles` and `enemyGridMap` to determine target — updates inspect panel instantly
-5. On click: client reads `entityId` from `enemyGridMap` for the hovered tile and sends `CombatActionPayload(ATTACK, x, z, entityId)` — server validates as before
+4. Client checks `hoveredTile` against cached `attackTiles` and `enemyGridMap` to determine target - updates inspect panel instantly
+5. On click: client reads `entityId` from `enemyGridMap` for the hovered tile and sends `CombatActionPayload(ATTACK, x, z, entityId)` - server validates as before
 
 ### What gets deleted
-- `ACTION_HOVER` constant in `CombatActionPayload` — no more hover packets for highlights
-- `handleHover()` method in `CombatManager` — server no longer processes hover
+- `ACTION_HOVER` constant in `CombatActionPayload` - no more hover packets for highlights
+- `handleHover()` method in `CombatManager` - server no longer processes hover
 - Hover darkening logic in `refreshHighlights()`
-- `findEnemyAtGridPos()` in `CombatInputHandler` — replaced by `enemyGridMap` lookup
+- `findEnemyAtGridPos()` in `CombatInputHandler` - replaced by `enemyGridMap` lookup
 
 ### What stays unchanged
-- `TileRaycast.java` — already works well
-- Click-to-action sends `CombatActionPayload(MOVE/ATTACK)` to server — server remains authoritative for all game actions
-- Server validates moves, attacks, AP costs, range — no client trust
+- `TileRaycast.java` - already works well
+- Click-to-action sends `CombatActionPayload(MOVE/ATTACK)` to server - server remains authoritative for all game actions
+- Server validates moves, attacks, AP costs, range - no client trust
 
 ### Enemy detection fix
 The "enemy not on tile" bug is completely eliminated. The client no longer scans world entities to figure out who's where. It reads `enemyGridMap` from the server's `TileSetPayload`. If the server says entity #42 is at (3,5), the client trusts that. Click on (3,5) → send attack with entityId=42 → server validates.
@@ -110,19 +110,19 @@ The "enemy not on tile" bug is completely eliminated. The client no longer scans
 ## 5. Teammate Hover Sharing
 
 ### New payloads
-- `HoverUpdatePayload(int gridX, int gridZ)` — C2S, sent by client at 4-5 Hz (every ~200ms) when hovered tile changes
-- `TeammateHoverPayload(UUID playerUuid, int gridX, int gridZ)` — S2C, relayed by server to party members only
+- `HoverUpdatePayload(int gridX, int gridZ)` - C2S, sent by client at 4-5 Hz (every ~200ms) when hovered tile changes
+- `TeammateHoverPayload(UUID playerUuid, int gridX, int gridZ)` - S2C, relayed by server to party members only
 
 ### Client sending
 - `CombatInputHandler` tracks a `lastHoverBroadcastTime` timestamp
 - Every 200ms, if `hoveredTile` has changed since last broadcast, send `HoverUpdatePayload`
-- Only sent when in a party (skip for solo players — no one to relay to)
+- Only sent when in a party (skip for solo players - no one to relay to)
 
 ### Server relay
 - `ModNetworking` handler for `HoverUpdatePayload`:
   - Look up player's party via `CrafticsSavedData.getPlayerParty(uuid)`
   - For each online party member (except sender), send `TeammateHoverPayload`
-  - No game logic, no validation — pure relay
+  - No game logic, no validation - pure relay
 
 ### Client rendering
 - `CombatState` stores `Map<UUID, GridPos> teammateHovers` and `Map<UUID, Long> teammateHoverTimestamps`
@@ -157,8 +157,9 @@ The "enemy not on tile" bug is completely eliminated. The client no longer scans
 
 ## 7. What This Does NOT Change
 
-- **Combat logic:** Turn system, AP costs, damage, pathfinding, enemy AI — all untouched
+- **Combat logic:** Turn system, AP costs, damage, pathfinding, enemy AI - all untouched
 - **Action validation:** Server still validates every move/attack. Client cannot cheat.
 - **TileRaycast.java:** Already works well. No changes needed.
 - **CombatSyncPayload:** Still used for HP, effects, phase changes. TileSetPayload is additive.
 - **Arena building:** Physical arena blocks (floor, obstacles) unchanged. Only the highlight layer moves to client rendering.
+

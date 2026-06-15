@@ -57,13 +57,13 @@ public class CrafticsSavedData extends PersistentState {
         public int personalHubVersion = 0;
         /**
          * Per-island toggle for "enemies gain +hpPerLevel HP per level within a biome".
-         * Defaults to OFF — enemies only get the biome-ordinal HP bonus, no per-level
+         * Defaults to OFF - enemies only get the biome-ordinal HP bonus, no per-level
          * ramp within a biome. Island owners can opt into the steeper per-level
          * scaling via {@code /craftics hp_per_level on}. Only read for the
-         * effective world owner — guests inherit whatever the owner has set.
+         * effective world owner - guests inherit whatever the owner has set.
          */
         public boolean scaleHpPerLevelEnabled = false;
-        /** Pity timer — resets when an event occurs */
+        /** Pity timer - resets when an event occurs */
         public int levelsSinceLastEvent = 0;
         /** Pets waiting at the hub to rejoin next fight */
         private final java.util.List<net.minecraft.nbt.NbtCompound> hubPets = new java.util.ArrayList<>();
@@ -71,7 +71,7 @@ public class CrafticsSavedData extends PersistentState {
          * Entity UUIDs of mobs the player explicitly added to their battle party
          * via Shift+Right-Click. Order-preserving; the effective cap scales with
          * the player's Pet Affinity (see {@code PartyMobs.partyCap}).
-         * These — and only these — are the mobs collected into combat.
+         * These - and only these - are the mobs collected into combat.
          */
         private final java.util.List<UUID> partyMobs = new java.util.ArrayList<>();
         /** Server-authoritative unlocked guide entries (bestiary mobs, trims) */
@@ -184,7 +184,7 @@ public class CrafticsSavedData extends PersistentState {
         }
 
         /**
-         * Live battle-party mob UUID list — mutable and order-preserving. The
+         * Live battle-party mob UUID list - mutable and order-preserving. The
          * effective cap is dynamic ({@code PartyMobs.partyCap}: 1 + the player's
          * Pet Affinity level). Always call {@code markDirty()} after changing it.
          */
@@ -263,7 +263,7 @@ public class CrafticsSavedData extends PersistentState {
          * Compare this player's stamped {@code activeCampaignId} against the currently-active
          * campaign on world load. A new/unstamped run (empty stamp, including pre-campaign
          * saves) silently adopts the active campaign's id. A mismatch is logged once and the
-         * run state is left untouched — we never silently remap a run onto a different campaign.
+         * run state is left untouched - we never silently remap a run onto a different campaign.
          * Runs at most once per loaded {@link PlayerData} instance.
          */
         public void checkCampaignStamp() {
@@ -272,7 +272,7 @@ public class CrafticsSavedData extends PersistentState {
             String active = com.crackedgames.craftics.level.campaign.CampaignManager.active() != null
                 ? com.crackedgames.craftics.level.campaign.CampaignManager.active().id() : "";
             if (activeCampaignId == null || activeCampaignId.isEmpty()) {
-                // New/unstamped world (or pre-campaign save) — stamp it now with the active campaign.
+                // New/unstamped world (or pre-campaign save) - stamp it now with the active campaign.
                 activeCampaignId = active;
             } else if (!activeCampaignId.equals(active)) {
                 com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
@@ -337,7 +337,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.lockedMoveSlot = nbt.contains("lockedMoveSlot") ? Math.max(0, Math.min(8, nbt.getInt("lockedMoveSlot"))) : 8;
             pd.personalHubBuilt = nbt.contains("personalHubBuilt") && nbt.getBoolean("personalHubBuilt");
             pd.personalHubVersion = nbt.contains("personalHubVersion") ? nbt.getInt("personalHubVersion") : 0;
-            // Default: true (matches global config default) — islands created before this
+            // Default: true (matches global config default) - islands created before this
             // field existed keep the old scaling behavior.
             pd.scaleHpPerLevelEnabled = !nbt.contains("scaleHpPerLevelEnabled") || nbt.getBoolean("scaleHpPerLevelEnabled");
             if (nbt.contains("hubPets")) {
@@ -468,7 +468,7 @@ public class CrafticsSavedData extends PersistentState {
             legacy.branchChoice = nbt.contains("branchChoice") ? nbt.getInt("branchChoice") : -1;
             legacy.discoveredBiomes = nbt.contains("discoveredBiomes") ? nbt.getString("discoveredBiomes") : "";
             legacy.ngPlusLevel = nbt.contains("ngPlusLevel") ? nbt.getInt("ngPlusLevel") : 0;
-            // Placeholder UUID — claimed by first player to join
+            // Placeholder UUID - claimed by first player to join
             data.players.put(new UUID(0, 0), legacy);
         }
 
@@ -706,7 +706,7 @@ public class CrafticsSavedData extends PersistentState {
         return new net.minecraft.util.math.BlockPos(HUB_X, 65, pd.worldSlot * LANE_SPACING_Z);
     }
 
-    /** Alias for getWorldOrigin — returns the center of the player's personal hub. */
+    /** Alias for getWorldOrigin - returns the center of the player's personal hub. */
     public net.minecraft.util.math.BlockPos getHubOrigin(UUID playerId) {
         return getWorldOrigin(playerId);
     }
@@ -723,7 +723,7 @@ public class CrafticsSavedData extends PersistentState {
         return getHubOrigin(playerId);
     }
 
-    /** Offset from hub center to first arena — well beyond render distance. */
+    /** Offset from hub center to first arena - well beyond render distance. */
     private static final int ARENA_OFFSET = 1000;
 
     /** Get the arena origin for a specific level within a player's world. */

@@ -12,20 +12,20 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Chorus Grove Boss — "The Chorus Mind" (Enderman)
+ * Chorus Grove Boss - "The Chorus Mind" (Enderman)
  * Entity: Enderman | 60HP / 12ATK / 3DEF / Speed 2 (+ chorus teleport) | Size 2×2
  *
  * Abilities:
  * - Chorus Bloom: Grow chorus plant obstacles on 4-5 tiles. The boss teleports
- *   beside its plants as a free action (footprint-validated — it doesn't stand
+ *   beside its plants as a free action (footprint-validated - it doesn't stand
  *   ON the obstacle).
  * - Entangle: 2×2 (P2: 3×3) root area. Immobilize 1 turn + 4 dmg.
  * - Chorus Bomb: Range 4, 2×2 AoE 5 dmg + random teleport on hit. P2: teleport toward boss.
- * - Resonance Cascade: every tile beside a plant takes a 3 dmg pulse — the
+ * - Resonance Cascade: every tile beside a plant takes a 3 dmg pulse - the
  *   resolve strikes exactly the tiles the warning marked.
  *   P2: auto every 2 turns.
  *
- * Phase 2 — "Overgrowth": plants auto-spread (REAL obstacle tiles now — the old
+ * Phase 2 - "Overgrowth": plants auto-spread (REAL obstacle tiles now - the old
  * spread only grew the AI's private list, invisible and unhittable), auto
  * resonance every 2 turns, entangle 3×3, plant-side teleport every turn start,
  * chorus bomb pulls toward boss.
@@ -44,7 +44,7 @@ public class ChorusMindAI extends BossAI {
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
         self.setEnraged(true);
-        // Auto-spread begins — handled in chooseAbility
+        // Auto-spread begins - handled in chooseAbility
     }
 
     @Override
@@ -60,7 +60,7 @@ public class ChorusMindAI extends BossAI {
 
         List<EnemyAction> turnActions = new ArrayList<>();
 
-        // Phase 2: Auto-spread plants — as real obstacle terrain.
+        // Phase 2: Auto-spread plants - as real obstacle terrain.
         if (isPhaseTwo()) {
             List<GridPos> newPlants = new ArrayList<>();
             for (GridPos plant : new ArrayList<>(chorusPlants)) {
@@ -86,7 +86,7 @@ public class ChorusMindAI extends BossAI {
         }
 
         // Phase 2: Teleport beside a random plant at turn start. The landing is
-        // footprint-validated next to the plant — the old code dropped the 2×2
+        // footprint-validated next to the plant - the old code dropped the 2×2
         // boss directly onto the obstacle tile itself.
         GridPos effectivePos = myPos;
         if (isPhaseTwo() && !chorusPlants.isEmpty()) {
@@ -97,7 +97,7 @@ public class ChorusMindAI extends BossAI {
             }
         }
 
-        // Pick the ability FROM the post-teleport position — range gates used
+        // Pick the ability FROM the post-teleport position - range gates used
         // to be computed from the pre-teleport tile, so the boss regularly
         // "bombed" from a distance it no longer stood at.
         EnemyAction ability = chooseOffensiveAbility(self, arena, playerPos, effectivePos);
@@ -106,7 +106,7 @@ public class ChorusMindAI extends BossAI {
             return ability != null ? ability : meleeOrApproach(self, arena, playerPos, 0);
         }
         // With a teleport in flight, a walk-based fallback would path from the
-        // stale tile — prefer the ability, else just complete the reposition.
+        // stale tile - prefer the ability, else just complete the reposition.
         turnActions.add(ability != null ? ability : new EnemyAction.Idle());
         return turnActions.size() == 1
             ? turnActions.get(0)
@@ -117,7 +117,7 @@ public class ChorusMindAI extends BossAI {
                                                GridPos playerPos, GridPos effectivePos) {
         int dist = CombatEntity.minDistanceFromSizedEntity(effectivePos, self.getSize(), playerPos);
 
-        // Resonance Cascade — needs plants on field. The resolve pulses every
+        // Resonance Cascade - needs plants on field. The resolve pulses every
         // warned tile (the old resolve was a radius-0 strike on the boss's own
         // tile: a cascade that could never hit anyone).
         boolean autoCascade = isPhaseTwo() && getTurnCounter() % 2 == 0;
@@ -144,7 +144,7 @@ public class ChorusMindAI extends BossAI {
             return new EnemyAction.Idle();
         }
 
-        // Chorus Bloom — plant more chorus
+        // Chorus Bloom - plant more chorus
         if (!isOnCooldown(CD_BLOOM)) {
             int count = isPhaseTwo() ? 5 : 4;
             List<GridPos> bloomTiles = findSummonPositions(arena, count);
@@ -155,7 +155,7 @@ public class ChorusMindAI extends BossAI {
             }
         }
 
-        // Entangle — root area
+        // Entangle - root area
         if (!isOnCooldown(CD_ENTANGLE) && dist <= 4) {
             setCooldown(CD_ENTANGLE, 3);
             int radius = isPhaseTwo() ? 1 : 0; // 3×3 or 2×2
@@ -179,7 +179,7 @@ public class ChorusMindAI extends BossAI {
             return new EnemyAction.Idle();
         }
 
-        // Chorus Bomb — ranged AoE
+        // Chorus Bomb - ranged AoE
         if (!isOnCooldown(CD_BOMB) && dist <= 4 && dist >= 2) {
             setCooldown(CD_BOMB, 2);
             String effect = isPhaseTwo() ? "chorus_bomb_pull" : "chorus_bomb";

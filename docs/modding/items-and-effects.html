@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -279,7 +279,7 @@ CrafticsAPI.registerUsableItem(MyItems.POISON_VIAL,
       Craftics has 23 built-in status effects keyed by the <code>CombatEffects.EffectType</code> enum. Custom effects extend that set with a string id instead of an enum constant, so addons can introduce their own debuffs and buffs without forking the mod. A custom effect ticks once per round for each combatant carrying it: the declarative <code>hpChangePerTurn</code> is applied first, then the optional <code>CustomEffectTickHandler</code> runs for scripted logic.
     </p>
     <p>
-      Call <code>CrafticsAPI.registerEffect(def)</code> from your addon's <code>onCrafticsInit()</code>. A registered effect ticks once per round on any combatant carrying it. Note that <code>UsableItemContext.applyCustomEffect</code>, the planned way for an item to place a custom effect on a combatant, is currently a no-op reserved for a future SDK phase.
+      Call <code>CrafticsAPI.registerEffect(def)</code> from your addon's <code>onCrafticsInit()</code>. A registered effect ticks once per round on any combatant carrying it. <code>UsableItemContext.applyCustomEffect</code>, the planned way for an item to place a custom effect on a combatant, is currently a no-op reserved for a future SDK phase.
     </p>
 
     <h3>API Method</h3>
@@ -540,7 +540,7 @@ ctx.getAllAllies()      // List&lt;CombatEntity&gt;, all living allies</code></p
         if (!used) {
             used = true;
             ctx.getPlayer().heal(10);
-            return CombatResult.cancel("§d❦ Lucky Charm saves you from death!");
+            return CombatResult.cancel("§d Lucky Charm saves you from death!");
         }
         return CombatResult.unchanged(damage);
     }
@@ -565,3 +565,4 @@ ctx.getAllAllies()      // List&lt;CombatEntity&gt;, all living allies</code></p
 <script src="../js/nav.js"></script>
 </body>
 </html>
+

@@ -12,7 +12,7 @@ import net.minecraft.util.math.random.Random;
  * envelope for fade in / out. Played under the {@code RECORD} category (the in-game
  * "Jukebox/Note Blocks" slider). Driven by {@link net.minecraft.client.sound.SoundSystem},
  * which calls {@link #tick()} every client tick and re-reads {@link #getVolume()} to update
- * the channel gain — so adjusting {@link #volume} here produces an audible fade.
+ * the channel gain - so adjusting {@link #volume} here produces an audible fade.
  */
 public class CrafticsMusicSound extends AbstractSoundInstance implements TickableSoundInstance {
 

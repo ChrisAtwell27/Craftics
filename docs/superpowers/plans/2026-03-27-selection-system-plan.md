@@ -1,4 +1,4 @@
-# Selection System Fortification Implementation Plan
+﻿# Selection System Fortification Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -196,7 +196,7 @@ private static final java.util.Map<java.util.UUID, com.crackedgames.craftics.cor
 private static final java.util.Map<java.util.UUID, String> teammateNames = new java.util.concurrent.ConcurrentHashMap<>();
 private static final java.util.Map<java.util.UUID, Long> teammateHoverTimestamps = new java.util.concurrent.ConcurrentHashMap<>();
 
-// Client-local hover (not sent to server for highlights — used directly by renderer)
+// Client-local hover (not sent to server for highlights - used directly by renderer)
 private static com.crackedgames.craftics.core.GridPos hoveredTile = null;
 ```
 
@@ -294,7 +294,7 @@ import java.util.UUID;
 /**
  * Renders colored translucent quads on arena tiles for highlights.
  * Replaces the old TileHighlightManager carpet-block system.
- * All rendering is client-side — zero server round-trips.
+ * All rendering is client-side - zero server round-trips.
  */
 public class TileOverlayRenderer {
 
@@ -361,7 +361,7 @@ public class TileOverlayRenderer {
             drawTileQuad(matrix, buffer, originX + tile.x(), renderY, originZ + tile.z(), 0.9f, 0.9f, 0.9f, fadeAlpha);
         }
 
-        // Draw hover tile (bright, pulsing) — LAST so it renders on top
+        // Draw hover tile (bright, pulsing) - LAST so it renders on top
         GridPos hover = CombatState.getHoveredTile();
         if (hover != null) {
             float pulse = (float) (0.45 + 0.1 * Math.sin(frameCounter * 0.08));
@@ -400,7 +400,7 @@ public class TileOverlayRenderer {
 }
 ```
 
-**Note:** The exact `VertexConsumer` API may need adjustment based on the Minecraft 1.21.1 rendering API. The vertex format for `RenderLayer.getTranslucentMovingBlock()` may require UV coordinates or light values. Check `net.minecraft.client.render.VertexConsumer` method signatures and adjust. If `getTranslucentMovingBlock` doesn't work, try `RenderLayer.getTranslucent()` or a custom `RenderLayer`. Also check if `CrafticsConfigClient` exists — if not, read colorblind mode from the server config sync or a client-side config.
+**Note:** The exact `VertexConsumer` API may need adjustment based on the Minecraft 1.21.1 rendering API. The vertex format for `RenderLayer.getTranslucentMovingBlock()` may require UV coordinates or light values. Check `net.minecraft.client.render.VertexConsumer` method signatures and adjust. If `getTranslucentMovingBlock` doesn't work, try `RenderLayer.getTranslucent()` or a custom `RenderLayer`. Also check if `CrafticsConfigClient` exists - if not, read colorblind mode from the server config sync or a client-side config.
 
 - [ ] **Step 2: Verify build (expect rendering API adjustments may be needed)**
 
@@ -593,7 +593,7 @@ public void refreshHighlights() {
 }
 ```
 
-**IMPORTANT:** The exact method for getting reachable tiles depends on what `arena.getReachableTiles()` is called (it may be named differently — check `GridArena.java`). Also check how `TileHighlightManager.showMoveHighlights` currently computes reachable tiles and replicate that logic. The attack range computation should match `TileHighlightManager.showAttackHighlights`. Read those methods and adapt.
+**IMPORTANT:** The exact method for getting reachable tiles depends on what `arena.getReachableTiles()` is called (it may be named differently - check `GridArena.java`). Also check how `TileHighlightManager.showMoveHighlights` currently computes reachable tiles and replicate that logic. The attack range computation should match `TileHighlightManager.showAttackHighlights`. Read those methods and adapt.
 
 - [ ] **Step 2: Update `clearHighlights()` (line ~4731)**
 
@@ -693,7 +693,7 @@ int targetEntityId = entityId != null ? entityId : -1;
 
 - [ ] **Step 6: Delete `findEnemyAtGridPos()` method entirely** (line ~197-235)
 
-No longer needed — replaced by `enemyGridMap` lookup.
+No longer needed - replaced by `enemyGridMap` lookup.
 
 - [ ] **Step 7: Commit**
 
@@ -715,7 +715,7 @@ Remove the entire file.
 
 - [ ] **Step 2: Remove all TileHighlightManager references in CombatManager**
 
-Search for `TileHighlightManager` in CombatManager and remove/replace all references. After Tasks 6-7, there should be few remaining — likely just some `trackHighlight()` calls that were part of the old hover system (already removed). Grep to confirm:
+Search for `TileHighlightManager` in CombatManager and remove/replace all references. After Tasks 6-7, there should be few remaining - likely just some `trackHighlight()` calls that were part of the old hover system (already removed). Grep to confirm:
 
 ```bash
 grep -n "TileHighlightManager" src/main/java/com/crackedgames/craftics/combat/CombatManager.java
@@ -732,7 +732,7 @@ cd "d:/_My Projects/Craftics" && ./gradlew compileJava
 - [ ] **Step 4: Commit**
 
 ```
-refactor: delete TileHighlightManager — carpet-block highlights fully replaced by client overlay
+refactor: delete TileHighlightManager - carpet-block highlights fully replaced by client overlay
 ```
 
 ---
@@ -760,7 +760,7 @@ Expected: zero matches.
 Launch the game and test:
 
 1. **Hover responsiveness:** Enter combat. Move crosshair across tiles. Verify highlight follows crosshair instantly with zero delay. Should feel like it's painted under your cursor.
-2. **Move highlights:** Hold Feather. Verify blue tiles appear showing reachable positions. Move — verify they update.
+2. **Move highlights:** Hold Feather. Verify blue tiles appear showing reachable positions. Move - verify they update.
 3. **Attack highlights:** Hold sword. Verify red tiles on enemies in range. Verify hover on enemy shows inspect panel.
 4. **Enemy targeting:** Click an enemy tile. Verify attack fires correctly with no "enemy not on tile" error.
 5. **Danger zones:** Enable enemy range hints in config. Verify orange tiles appear.
@@ -768,3 +768,4 @@ Launch the game and test:
 7. **Teammate hover (if testable):** With 2 players in a party, verify one player sees the other's hover position as a dim overlay.
 
 - [ ] **Step 4: Commit any fixes**
+

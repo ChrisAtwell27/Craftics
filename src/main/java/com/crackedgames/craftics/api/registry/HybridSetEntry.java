@@ -4,7 +4,7 @@ import com.crackedgames.craftics.combat.HybridEffect;
 import java.util.Objects;
 
 /**
- * One hybrid armor set — the subclass bonus a player gets from wearing exactly two
+ * One hybrid armor set - the subclass bonus a player gets from wearing exactly two
  * distinct armor materials.
  *
  * <p>{@code materialA} and {@code materialB} are the two armor-set material keys

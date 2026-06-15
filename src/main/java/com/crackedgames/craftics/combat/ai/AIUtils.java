@@ -168,7 +168,7 @@ public class AIUtils {
         return min;
     }
 
-    /** True when stepping on (or ending on) this tile hurts — lava, fire, powder snow. */
+    /** True when stepping on (or ending on) this tile hurts - lava, fire, powder snow. */
     public static boolean isHazardTile(GridArena arena, GridPos pos) {
         GridTile tile = arena.getTile(pos);
         return tile != null
@@ -239,7 +239,7 @@ public class AIUtils {
      * Hit-and-run combo: approach (optional), strike, then spend leftover
      * movement backing away from the victim. Shared by the skirmisher mobs
      * (wolf, fox, ocelot, cave spider, agro cat). Returns {@code null} when
-     * there's no movement left or nowhere better to stand — callers fall back
+     * there's no movement left or nowhere better to stand - callers fall back
      * to a plain attack.
      */
     public static EnemyAction hitAndRun(CombatEntity self, GridArena arena, GridPos victimPos,
@@ -280,7 +280,7 @@ public class AIUtils {
      */
     public static EnemyAction seekOrWander(CombatEntity self, GridArena arena, GridPos playerPos) {
         int size = self.getSize();
-        // Already adjacent? Attack instead of wandering — the path search below
+        // Already adjacent? Attack instead of wandering - the path search below
         // returns empty when the only reachable best tile IS the current tile
         // (e.g. blocked in by other party members), and the wander fallback
         // would otherwise make the mob sit there or shuffle off uselessly while
@@ -296,7 +296,7 @@ public class AIUtils {
             List<GridPos> path = Pathfinding.findPathSized(
                 arena, self.getGridPos(), closest, self.getMoveSpeed(), self, size);
             if (!path.isEmpty()) {
-                // Check if we end up adjacent — attack too
+                // Check if we end up adjacent - attack too
                 GridPos endPos = path.get(path.size() - 1);
                 if (CombatEntity.minDistanceFromSizedEntity(endPos, size, playerPos) <= 1) {
                     return new EnemyAction.MoveAndAttack(path, self.getAttackPower());

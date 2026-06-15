@@ -10,7 +10,7 @@ import java.util.UUID;
  * (gates {@code onAllArrived} once) and who has finished (gates {@code onAllFinished}
  * once). Disconnected players are removed so they never block the gates.
  *
- * Pure state machine — the live walking + dialogue dispatch is driven by the owner
+ * Pure state machine - the live walking + dialogue dispatch is driven by the owner
  * (CombatManager), which supplies the callbacks.
  */
 public final class EventCinematic {
@@ -38,7 +38,7 @@ public final class EventCinematic {
     /**
      * Mark a player finished. Counts as arrival too (adds to the arrived set), so
      * {@code onAllArrived} fires before {@code onAllFinished} even if {@code markArrived}
-     * was never called for this player. Do not remove the arrived-add — the finished
+     * was never called for this player. Do not remove the arrived-add - the finished
      * gate requires the arrived gate to have fired first.
      */
     public void markFinished(UUID player) {

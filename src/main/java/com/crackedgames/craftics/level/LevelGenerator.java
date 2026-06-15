@@ -17,7 +17,7 @@ public class LevelGenerator {
 
     /**
      * Whitelist of add types each boss level is allowed to spawn at the start
-     * of the fight. Each boss should only bring themed backup — e.g. the
+     * of the fight. Each boss should only bring themed backup - e.g. the
      * Molten King spawns with basic nether grunts (zombified piglins), not the
      * full biome hostile pool with blazes + ghasts + magma cubes.
      *
@@ -58,7 +58,7 @@ public class LevelGenerator {
     }
 
     /**
-     * Full signature — {@code scaleHpPerLevel} comes from the island owner's
+     * Full signature - {@code scaleHpPerLevel} comes from the island owner's
      * {@code PlayerData.scaleHpPerLevelEnabled} so each island can independently
      * disable the per-level HP ramp within a biome. {@code bossBeaten} is whether the
      * island owner has already defeated this biome's boss; once true, every level in the
@@ -69,7 +69,7 @@ public class LevelGenerator {
         BiomeTemplate biome = BiomeRegistry.getForLevel(levelNumber);
         if (biome == null) {
             throw new IllegalStateException("No biome registered for level " + levelNumber
-                + " — is the BiomeRegistry empty?");
+                + " - is the BiomeRegistry empty?");
         }
         int biomeIndex = biome.getBiomeLevelIndex(levelNumber); // 0-based within biome
         boolean isBoss = biome.isBossLevel(levelNumber);
@@ -157,7 +157,7 @@ public class LevelGenerator {
             spawns.add(new LevelDefinition.EnemySpawn(creakingId, creakingPos,
                 18 + hpBonus, 5 + atkBonus, 2, 1));
 
-            // Creaking Heart — placed nearby behind the creaking (away from player)
+            // Creaking Heart - placed nearby behind the creaking (away from player)
             GridPos heartPos = findOpenSpawn(tiles, width, height, used, rand);
             if (heartPos == null) continue;
             used.add(heartPos);
@@ -295,7 +295,7 @@ public class LevelGenerator {
 
         if (isBoss && biome.boss != null && !validPositions.isEmpty()) {
             GridPos bossPos = validPositions.remove(rand.nextInt(validPositions.size()));
-            // Bosses are 2x2 — reserve tiles around their footprint
+            // Bosses are 2x2 - reserve tiles around their footprint
             int bossSize = 2;
             validPositions.removeIf(p -> {
                 for (int dx = 0; dx < bossSize; dx++) {
@@ -332,7 +332,7 @@ public class LevelGenerator {
         }
 
         for (int i = 0; i < count && !validPositions.isEmpty(); i++) {
-            // Boss rounds spawn only themed hostile backup — no passives.
+            // Boss rounds spawn only themed hostile backup - no passives.
             boolean hostile = isBoss ? true : (rand.nextFloat() < hostileRatio);
             MobPoolEntry[] pool = hostile
                 ? (isBoss ? bossHostilePool : biome.hostileMobs)
@@ -396,7 +396,7 @@ public class LevelGenerator {
                 s.position(),
                 // HP/ATK/DEF/range/speed come from the stack's BASE layer at
                 // spawn time, looked up in CombatManager. Passing 1s here is
-                // intentional — these values are unused for stack types.
+                // intentional - these values are unused for stack types.
                 1, 1, 0, 1,
                 s.aiKey(), 0
             ));

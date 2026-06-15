@@ -71,7 +71,7 @@ public class ProjectileAI implements EnemyAI {
             current = next;
         }
 
-        // Can't move and no impact — idle
+        // Can't move and no impact - idle
         if (path.isEmpty() && !impacts) {
             return new EnemyAction.Idle();
         }

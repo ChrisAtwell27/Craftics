@@ -11,11 +11,11 @@ import java.util.List;
  * Blaze AI: Hovering fire artillery with a 3-shot fireball barrage.
  *
  * Each barrage cycle takes 5 turns:
- *   Turn 1: CHARGE — set fire ticks visually, idle/reposition
- *   Turn 2: SHOT 1 — fires a weaker fireball
- *   Turn 3: CHARGE — set fire ticks again, idle
- *   Turn 4: SHOT 2 — fires another fireball
- *   Turn 5: SHOT 3 — final fireball, then cooldown
+ *   Turn 1: CHARGE - set fire ticks visually, idle/reposition
+ *   Turn 2: SHOT 1 - fires a weaker fireball
+ *   Turn 3: CHARGE - set fire ticks again, idle
+ *   Turn 4: SHOT 2 - fires another fireball
+ *   Turn 5: SHOT 3 - final fireball, then cooldown
  *
  * Each blaze gets its own AI instance (via {@code setAiInstance}) so state is per-entity.
  */
@@ -41,7 +41,7 @@ public class BlazeAI implements EnemyAI {
         // CHARGE phases: don't shoot, set the mob on fire so the player sees it telegraphing.
         if (phase == Phase.CHARGE_1 || phase == Phase.CHARGE_2) {
             applyFireTelegraph(self);
-            // While charging, try to maintain a good range — back off if too close.
+            // While charging, try to maintain a good range - back off if too close.
             EnemyAction repositionAction = repositionForBarrage(self, arena, playerPos, range);
             // Advance phase regardless of whether we moved
             phase = (phase == Phase.CHARGE_1) ? Phase.SHOT_1 : Phase.SHOT_2;
@@ -56,7 +56,7 @@ public class BlazeAI implements EnemyAI {
             return shot;
         }
 
-        // Out of range — try to MoveAndAttack into range
+        // Out of range - try to MoveAndAttack into range
         GridPos shotPos = findShotPosition(self, arena, playerPos);
         if (shotPos != null) {
             List<GridPos> path = Pathfinding.findPath(arena, myPos, shotPos, self.getMoveSpeed(), self);
@@ -66,7 +66,7 @@ public class BlazeAI implements EnemyAI {
                     advanceShotPhase();
                     return new EnemyAction.MoveAndAttack(path, barrageDamage);
                 }
-                // Can't reach firing range this turn — close the gap and stay in this phase
+                // Can't reach firing range this turn - close the gap and stay in this phase
                 return new EnemyAction.Move(path);
             }
         }
@@ -95,7 +95,7 @@ public class BlazeAI implements EnemyAI {
 
     /**
      * During CHARGE turns, try to keep distance from every threat (player and
-     * ally pets — a wolf in melee interrupts the barrage rhythm just as badly)
+     * ally pets - a wolf in melee interrupts the barrage rhythm just as badly)
      * so the next shot has range. Returns null if no movement is needed/possible.
      * No hazard penalty here: a blaze is perfectly happy hovering over fire.
      */

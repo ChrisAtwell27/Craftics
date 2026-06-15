@@ -6,7 +6,7 @@ import com.crackedgames.craftics.core.GridPos;
 
 /**
  * Creaking Heart AI: Stationary block entity that must be destroyed to kill
- * its linked Creaking. Never moves, never attacks — purely a target.
+ * its linked Creaking. Never moves, never attacks - purely a target.
  */
 public class CreakingHeartAI implements EnemyAI {
     @Override

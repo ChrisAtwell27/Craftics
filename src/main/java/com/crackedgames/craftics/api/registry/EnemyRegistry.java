@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class EnemyRegistry {
 
     private static final Map<String, EnemyEntry> REGISTRY = new ConcurrentHashMap<>();
-    /** Ids whose current entry came from a JSON datapack — dropped on {@code /reload}. */
+    /** Ids whose current entry came from a JSON datapack - dropped on {@code /reload}. */
     private static final Set<String> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
 
     private EnemyRegistry() {}
