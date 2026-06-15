@@ -43,10 +43,13 @@ public class NpcMarkerBlockEntity extends BlockEntity {
     @Override
     protected void readNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registries) {
         super.readNbt(nbt, registries);
-        //? if <=1.21.1 {
-        occupant = nbt.getString(OCCUPANT_KEY);
-        //?} else {
-        /*occupant = nbt.getString(OCCUPANT_KEY, "");
-        *///?}
+        // 1.21.5 changed getString(key) to return Optional<String> and added the
+        // two-arg getString(key, default) overload; <=1.21.4 only has the single-arg
+        // form that returns String directly.
+        //? if <=1.21.4 {
+        /*occupant = nbt.getString(OCCUPANT_KEY);
+        *///?} else {
+        occupant = nbt.getString(OCCUPANT_KEY, "");
+        //?}
     }
 }

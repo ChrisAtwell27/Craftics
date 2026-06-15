@@ -31,6 +31,17 @@ public class CrafticsClient implements ClientModInitializer {
 
     private static final String KEYBIND_CATEGORY = "key.categories.craftics";
 
+    /**
+     * Whether the camera should pan to follow enemies/allies as they move and
+     * attack during their turn. Off by default. Guarded so a config-load failure
+     * (e.g. before the wrapper initializes) leaves the camera on the player rather
+     * than throwing in a network-receiver thread.
+     */
+    private static boolean cameraFollowEnemies() {
+        try { return com.crackedgames.craftics.CrafticsMod.CONFIG.cameraFollowEnemies(); }
+        catch (Exception ignored) { return false; }
+    }
+
     private static KeyBinding guideBookKey;
     private static KeyBinding respecKey;
     private static KeyBinding endTurnKey;
@@ -129,7 +140,8 @@ public class CrafticsClient implements ClientModInitializer {
                 context.client().execute(() -> {
                 switch (payload.eventType()) {
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_DAMAGED -> {
-                        if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
+                        if (payload.targetX() >= 0 && payload.targetZ() >= 0
+                                && cameraFollowEnemies()) {
                             CombatState.focusOnTile(payload.targetX(), payload.targetZ());
                         }
                         if (payload.valueA() == 0) {
@@ -163,7 +175,8 @@ public class CrafticsClient implements ClientModInitializer {
                         }
                     }
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_MOVED -> {
-                        if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
+                        if (payload.targetX() >= 0 && payload.targetZ() >= 0
+                                && cameraFollowEnemies()) {
                             CombatState.focusOnTile(payload.targetX(), payload.targetZ());
                         }
                         // Movement-only turns light up the act-order strip too;
@@ -195,7 +208,8 @@ public class CrafticsClient implements ClientModInitializer {
                         }
                     }
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_MOB_ATTACK_ANIM -> {
-                        if (payload.targetX() >= 0 && payload.targetZ() >= 0) {
+                        if (payload.targetX() >= 0 && payload.targetZ() >= 0
+                                && cameraFollowEnemies()) {
                             CombatState.focusOnTile(payload.targetX(), payload.targetZ());
                         }
                         // Mark the attacker as "acting now" so the HUD act-order

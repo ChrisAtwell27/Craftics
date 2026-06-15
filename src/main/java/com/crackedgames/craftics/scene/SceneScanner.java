@@ -56,6 +56,20 @@ public final class SceneScanner {
      * replace every marker block with its most common neighbor so the markers
      * vanish into the surrounding floor.
      */
+    /**
+     * Horizontal facing of a marker as positive degrees (south=0, west=90, ...).
+     * 1.21.4 renamed {@code Direction.asRotation()} to
+     * {@code getPositiveHorizontalDegrees()}; both return the same value, so this
+     * isolates the single version split for the two scan call sites.
+     */
+    private static float facingDegrees(Direction facing) {
+        //? if <=1.21.3 {
+        /*return facing.asRotation();
+        *///?} else {
+        return facing.getPositiveHorizontalDegrees();
+        //?}
+    }
+
     public static SceneLayout scan(ServerWorld world, BlockPos origin, int width, int height, int length) {
         List<RawMarker> markers = new ArrayList<>();
         List<BlockPos> markerPositions = new ArrayList<>();
@@ -67,7 +81,7 @@ public final class SceneScanner {
                     if (state.isOf(ModBlocks.SCENE_SPAWN_BLOCK)) {
                         markers.add(new RawMarker(RawMarker.Kind.SPAWN,
                             pos.getX(), pos.getY(), pos.getZ(),
-                            state.get(SceneSpawnBlock.FACING).asRotation(), ""));
+                            facingDegrees(state.get(SceneSpawnBlock.FACING)), ""));
                         markerPositions.add(pos);
                     } else if (state.isOf(ModBlocks.STAND_MARKER_BLOCK)) {
                         // Corner marker: no facing, no occupant. Used in pairs.
@@ -77,7 +91,7 @@ public final class SceneScanner {
                     } else if (state.isOf(ModBlocks.NPC_MARKER_BLOCK)) {
                         markers.add(new RawMarker(RawMarker.Kind.NPC,
                             pos.getX(), pos.getY(), pos.getZ(),
-                            state.get(NpcMarkerBlock.FACING).asRotation(), occupantAt(world, pos)));
+                            facingDegrees(state.get(NpcMarkerBlock.FACING)), occupantAt(world, pos)));
                         markerPositions.add(pos);
                     }
                 }

@@ -687,8 +687,12 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             };
 
+            // Gate is config-driven: admin-only when rebuildArenasAdminOnly is set,
+            // otherwise open to any player (they can only rebuild their own world).
+            // The predicate reads the config live so toggling it takes effect without
+            // re-registering commands.
             var rebuildArenasNode = CommandManager.literal("rebuild_arenas")
-                .requires(src -> src.hasPermissionLevel(2))
+                .requires(src -> !CONFIG.rebuildArenasAdminOnly() || src.hasPermissionLevel(2))
                 .executes(rebuildArenasExec);
 
             // Register a literal child per biome so tab-completion suggests valid ids.
@@ -1869,6 +1873,13 @@ public class CrafticsMod implements ModInitializer {
      */
     private static void teleportToHub(ServerPlayerEntity player, ServerWorld overworld,
                                        net.minecraft.util.math.BlockPos hub) {
+        // Hub islands only exist in Craftics (void-generated) worlds. On any other
+        // world type there is no hub to land on, so send the player to their respawn
+        // point (bed/anchor, or the world spawn fallback) instead of the void.
+        if (!(overworld.getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator)) {
+            teleportToRespawn(player);
+            return;
+        }
         double x = hub.getX() + 0.5;
         double z = hub.getZ() + 0.5;
         double y = hub.getY();
@@ -1919,6 +1930,52 @@ public class CrafticsMod implements ModInitializer {
         } else {
             player.requestTeleport(x, y, z);
         }
+    }
+
+    /**
+     * Send the player to their respawn point (bed / respawn anchor) if one is set,
+     * otherwise to that dimension's world spawn. Used when "go home" is requested on a
+     * non-Craftics world where no hub island exists. Falls back to the overworld spawn
+     * if the saved respawn dimension is missing or the spawn block can't be resolved.
+     */
+    private static void teleportToRespawn(ServerPlayerEntity player) {
+        net.minecraft.server.MinecraftServer server = player.getServer();
+        // 1.21.5 consolidated the loose spawn-point getters into a single nullable
+        // ServerPlayerEntity.Respawn record (getRespawn().pos()/.dimension()); earlier
+        // versions expose getSpawnPointPosition()/getSpawnPointDimension() directly.
+        //? if <=1.21.4 {
+        /*net.minecraft.util.math.BlockPos respawnPos = player.getSpawnPointPosition();
+        net.minecraft.registry.RegistryKey<net.minecraft.world.World> respawnDim =
+            player.getSpawnPointDimension();
+        *///?} else {
+        net.minecraft.server.network.ServerPlayerEntity.Respawn respawn = player.getRespawn();
+        net.minecraft.util.math.BlockPos respawnPos = respawn != null ? respawn.pos() : null;
+        net.minecraft.registry.RegistryKey<net.minecraft.world.World> respawnDim =
+            respawn != null ? respawn.dimension() : null;
+        //?}
+
+        ServerWorld targetWorld = respawnDim != null ? server.getWorld(respawnDim) : null;
+        if (targetWorld == null) targetWorld = server.getOverworld();
+
+        net.minecraft.util.math.BlockPos pos = respawnPos != null
+            ? respawnPos
+            : targetWorld.getSpawnPos();
+
+        double x = pos.getX() + 0.5;
+        double y = pos.getY();
+        double z = pos.getZ() + 0.5;
+        if (player.getServerWorld() != targetWorld) {
+            //? if <=1.21.1 {
+            /*player.teleport(targetWorld, x, y, z,
+                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
+            *///?} else {
+            player.teleport(targetWorld, x, y, z,
+                java.util.Collections.emptySet(), player.getYaw(), player.getPitch(), true);
+            //?}
+        } else {
+            player.requestTeleport(x, y, z);
+        }
+        player.sendMessage(Text.literal("§eThis isn't a Craftics world - returning to your spawn point."), false);
     }
 
     /**

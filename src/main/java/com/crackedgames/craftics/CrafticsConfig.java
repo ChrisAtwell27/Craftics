@@ -75,6 +75,12 @@ public class CrafticsConfig {
 
     public boolean healBetweenLevels = true;
 
+    /**
+     * When true, {@code /craftics rebuild_arenas} requires op/permission level 2.
+     * When false (default), any player may run it on their own personal world.
+     */
+    public boolean rebuildArenasAdminOnly = false;
+
     // ===== Enemy Counts =====
 
     @SectionHeader("enemyCounts")
@@ -284,9 +290,15 @@ public class CrafticsConfig {
     @RangeConstraint(min = 1, max = 20)
     public int enemyTurnDelay = 5;
 
-    /** Stretch enemy/ally turns so the camera can pan onto each acting unit and
-     *  linger, then return to your framing when your turn starts. */
-    public boolean cinematicEnemyTurns = true;
+    /** Stretch each enemy/ally action delay (~1.8x) so their turns play out at a
+     *  slower, more readable pace. Off (default) keeps enemy turns at the base
+     *  enemyTurnDelay speed. Independent of cameraFollowEnemies. */
+    public boolean cinematicEnemyTurns = false;
+
+    /** When on, the camera pans to follow enemies/allies as they move and attack
+     *  during their turn. Off (default) keeps the camera on your framing for the
+     *  whole enemy phase. Boss spectacle moments still play regardless. */
+    public boolean cameraFollowEnemies = false;
 
     public boolean autoEndTurn = false;
 

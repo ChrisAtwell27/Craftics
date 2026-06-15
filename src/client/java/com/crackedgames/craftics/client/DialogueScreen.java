@@ -160,7 +160,10 @@ public class DialogueScreen extends Screen {
         int offerBtnW = 90;
         int walkBtnW = 90;
         int boxTop = this.height - BOX_BOTTOM_GAP - BOX_H;
-        int actionY = boxTop - btnSize - 6;
+        // Lift the action row enough that the "you have N gold" line drawn beneath it
+        // still clears the dialogue box top instead of clipping into it. The gold line
+        // needs ~11px; reserve that gap above the box.
+        int actionY = boxTop - btnSize - 13;
         int rowY = actionY - btnSize - gap;
 
         // Centered cluster:  [-] (value) [+]

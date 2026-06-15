@@ -1,4 +1,9 @@
 ﻿Changelog
+0.2.5
+Combat and Camera
+
+- The camera no longer follows enemies and allies around during their turn by default. A new "Camera Follows Enemies" setting (default off) controls the panning, and enemy-turn pacing ("Cinematic Enemy Turns") now defaults off as well so enemy turns play at full speed. Both can be re-enabled in the config
+
 0.2.4
 Gameplay, Progression, and Economy
 

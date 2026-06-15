@@ -8323,7 +8323,8 @@ public class CombatManager {
         // tile, so lava and powder snow can't reach them (see mount immunity).
         GridTile turnTile = arena.getTile(arena.getPlayerGridPos());
         if (turnTile != null) {
-            if (turnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted) {
+            if (turnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted
+                    && !combatEffects.hasFireResistance()) {
                 int lavaDmg = damagePlayer(10);
                 sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
@@ -9059,7 +9060,7 @@ public class CombatManager {
 
             // Lava damage on move -10 damage when stepping onto lava
             if (landingTile != null && landingTile.getType() == com.crackedgames.craftics.core.TileType.LAVA
-                    && !playerMounted) {
+                    && !playerMounted && !combatEffects.hasFireResistance()) {
                 int lavaDmg = damagePlayer(10);
                 sendMessage("§6  Stepped in lava for " + lavaDmg + " damage!");
                 if (getPlayerHp() <= 0) {
@@ -9750,7 +9751,8 @@ public class CombatManager {
             // Hazard tile damage at turn start (must match startPlayerTurn logic)
             GridTile qTurnTile = arena.getTile(arena.getPlayerGridPos());
             if (qTurnTile != null) {
-                if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted) {
+                if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted
+                        && !combatEffects.hasFireResistance()) {
                     int lavaDmg = damagePlayer(10);
                     sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
@@ -15318,8 +15320,12 @@ public class CombatManager {
                             }
                         }
                         case LAVA -> {
-                            int lavaDmg = damagePlayer(10, source);
-                            sendMessage("§6  Knocked into lava for " + lavaDmg + " damage!");
+                            if (!combatEffects.hasFireResistance()) {
+                                int lavaDmg = damagePlayer(10, source);
+                                sendMessage("§6  Knocked into lava for " + lavaDmg + " damage!");
+                            } else {
+                                sendMessage("§6  Knocked into lava, but the heat washes over you!");
+                            }
                         }
                         case WATER -> {
                             addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
