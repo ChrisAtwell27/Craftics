@@ -44,12 +44,12 @@ public class CrafticsAnimComponent implements AutoSyncedComponent {
     @Override
     public void readFromNbt(NbtCompound tag, RegistryWrapper.WrapperLookup registryLookup) {
         //? if <=1.21.4 {
-        /*int ord = tag.getInt("state");
+        int ord = tag.getInt("state");
         this.startTick = tag.getLong("startTick");
-        *///?} else {
-        int ord = tag.getInt("state", 0);
+        //?} else {
+        /*int ord = tag.getInt("state", 0);
         this.startTick = tag.getLong("startTick", 0L);
-        //?}
+        *///?}
         AnimState[] values = AnimState.values();
         this.state = (ord >= 0 && ord < values.length) ? values[ord] : AnimState.IDLE;
     }

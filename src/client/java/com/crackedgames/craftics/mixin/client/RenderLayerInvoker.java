@@ -12,11 +12,11 @@ import org.spongepowered.asm.mixin.Mixin;
 @Mixin(RenderLayer.class)
 public interface RenderLayerInvoker {
     //? if >=1.21.5 {
-    @org.spongepowered.asm.mixin.gen.Invoker("of")
+    /*@org.spongepowered.asm.mixin.gen.Invoker("of")
     static RenderLayer.MultiPhase craftics$of(String name, int bufferSize,
             com.mojang.blaze3d.pipeline.RenderPipeline pipeline,
             RenderLayer.MultiPhaseParameters parameters) {
         throw new AssertionError();
     }
-    //?}
+    *///?}
 }

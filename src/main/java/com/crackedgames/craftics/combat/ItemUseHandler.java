@@ -177,8 +177,8 @@ public class ItemUseHandler {
     public static boolean isThrowable(Item item) {
         if (THROWABLES.contains(item)) return true;
         //? if >=1.21.5 {
-        if (item == net.minecraft.item.Items.BLUE_EGG || item == net.minecraft.item.Items.BROWN_EGG) return true;
-        //?}
+        /*if (item == net.minecraft.item.Items.BLUE_EGG || item == net.minecraft.item.Items.BROWN_EGG) return true;
+        *///?}
         return false;
     }
 
@@ -321,9 +321,9 @@ public class ItemUseHandler {
         } else if (item == Items.EGG) {
             return useEgg(player, arena, targetTile, held, 1);
         //? if >=1.21.5 {
-        } else if (item == net.minecraft.item.Items.BLUE_EGG || item == net.minecraft.item.Items.BROWN_EGG) {
+        /*} else if (item == net.minecraft.item.Items.BLUE_EGG || item == net.minecraft.item.Items.BROWN_EGG) {
             return useEgg(player, arena, targetTile, held, 3);
-        //?}
+        *///?}
         } else if (item == Items.ENDER_PEARL) {
             return useEnderPearl(player, arena, targetTile, held);
         } else if (isSplashPotion(item)) {
@@ -518,14 +518,14 @@ public class ItemUseHandler {
 
         // Drinking sound
         //? if <=1.21.1 {
-        /*player.getWorld().playSound(null, player.getBlockPos(),
+        player.getWorld().playSound(null, player.getBlockPos(),
             net.minecraft.sound.SoundEvents.ENTITY_GENERIC_DRINK,
             net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
-        *///?} else {
-        player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
+        //?} else {
+        /*player.getWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
             net.minecraft.sound.SoundEvents.ENTITY_GENERIC_DRINK,
             net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
-        //?}
+        *///?}
 
         // Swirl particles on player
         net.minecraft.server.world.ServerWorld sw = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();

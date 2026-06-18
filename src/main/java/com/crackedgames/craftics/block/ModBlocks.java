@@ -32,8 +32,8 @@ public class ModBlocks {
     public static final Block LEVEL_SELECT_BLOCK = registerBlock("level_select_block",
         new LevelSelectBlock(AbstractBlock.Settings.create()
             //? if >=1.21.2 {
-            .registryKey(LEVEL_SELECT_BLOCK_KEY)
-            //?}
+            /*.registryKey(LEVEL_SELECT_BLOCK_KEY)
+            *///?}
             .mapColor(MapColor.OAK_TAN)
             .strength(2.0f, 3.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.WOOD)
@@ -50,8 +50,8 @@ public class ModBlocks {
     public static final Block LEVEL_SELECT_GHOST_BLOCK = registerBlockNoItem("level_select_ghost_block",
         new LevelSelectGhostBlock(AbstractBlock.Settings.create()
             //? if >=1.21.2 {
-            .registryKey(LEVEL_SELECT_GHOST_BLOCK_KEY)
-            //?}
+            /*.registryKey(LEVEL_SELECT_GHOST_BLOCK_KEY)
+            *///?}
             .strength(2.0f, 3.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.WOOD)
             .nonOpaque()
@@ -69,8 +69,8 @@ public class ModBlocks {
     public static final Block ARENA_CORNER_BLOCK = registerBlock("arena_corner",
         new ArenaCornerBlock(AbstractBlock.Settings.create()
             //? if >=1.21.2 {
-            .registryKey(ARENA_CORNER_BLOCK_KEY)
-            //?}
+            /*.registryKey(ARENA_CORNER_BLOCK_KEY)
+            *///?}
             .mapColor(MapColor.LAPIS_BLUE)
             .strength(1.5f, 6.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.STONE)
@@ -82,8 +82,8 @@ public class ModBlocks {
     public static final Block SCENE_SPAWN_BLOCK = registerBlock("scene_spawn",
         new SceneSpawnBlock(AbstractBlock.Settings.create()
             //? if >=1.21.2 {
-            .registryKey(SCENE_SPAWN_BLOCK_KEY)
-            //?}
+            /*.registryKey(SCENE_SPAWN_BLOCK_KEY)
+            *///?}
             .mapColor(MapColor.EMERALD_GREEN)
             .strength(1.5f, 6.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.STONE)
@@ -96,8 +96,8 @@ public class ModBlocks {
     public static final Block NPC_MARKER_BLOCK = registerBlock("npc_marker",
         new NpcMarkerBlock(AbstractBlock.Settings.create()
             //? if >=1.21.2 {
-            .registryKey(NPC_MARKER_BLOCK_KEY)
-            //?}
+            /*.registryKey(NPC_MARKER_BLOCK_KEY)
+            *///?}
             .mapColor(MapColor.LIGHT_BLUE)
             .strength(1.5f, 6.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.STONE)
@@ -110,8 +110,8 @@ public class ModBlocks {
     public static final Block STAND_MARKER_BLOCK = registerBlock("stand_marker",
         new StandMarkerBlock(AbstractBlock.Settings.create()
             //? if >=1.21.2 {
-            .registryKey(STAND_MARKER_BLOCK_KEY)
-            //?}
+            /*.registryKey(STAND_MARKER_BLOCK_KEY)
+            *///?}
             .mapColor(MapColor.GOLD)
             .strength(1.5f, 6.0f)
             .sounds(net.minecraft.sound.BlockSoundGroup.STONE)
@@ -139,11 +139,11 @@ public class ModBlocks {
 
         // Register block item
         //? if <=1.21.1 {
-        /*Item.Settings itemSettings = new Item.Settings();
-        *///?} else {
-        Item.Settings itemSettings = new Item.Settings()
+        Item.Settings itemSettings = new Item.Settings();
+        //?} else {
+        /*Item.Settings itemSettings = new Item.Settings()
             .registryKey(RegistryKey.of(RegistryKeys.ITEM, id));
-        //?}
+        *///?}
         Registry.register(Registries.ITEM, id,
             new BlockItem(block, itemSettings));
 

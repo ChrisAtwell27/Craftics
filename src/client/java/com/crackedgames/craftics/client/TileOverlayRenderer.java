@@ -2,8 +2,8 @@ package com.crackedgames.craftics.client;
 
 import com.crackedgames.craftics.core.GridPos;
 //? if <=1.21.4 {
-/*import com.mojang.blaze3d.systems.RenderSystem;
-*///?}
+import com.mojang.blaze3d.systems.RenderSystem;
+//?}
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.MinecraftClient;
@@ -64,9 +64,9 @@ public class TileOverlayRenderer {
             if (!CombatState.isInCombat()) return;
             if (MinecraftClient.getInstance().options.hudHidden) return;
             //? if <=1.21.4 {
-            /*render(context.matrixStack(), context.camera());
-            *///?} else
-            renderV5(context);
+            render(context.matrixStack(), context.camera());
+            //?} else
+            /*renderV5(context);*/
         });
     }
 
@@ -428,7 +428,7 @@ public class TileOverlayRenderer {
     // up with the normal pass.
 
     //? if <=1.21.4 {
-    /*private static void render(MatrixStack matrices, Camera camera) {
+    private static void render(MatrixStack matrices, Camera camera) {
         if (matrices == null || camera == null) return;
         MinecraftClient mc = MinecraftClient.getInstance();
 
@@ -446,10 +446,10 @@ public class TileOverlayRenderer {
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();
         //? if <=1.21.1 {
-        /^RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        ^///?} else {
-        RenderSystem.setShader(net.minecraft.client.gl.ShaderProgramKeys.POSITION_COLOR);
-        //?}
+        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        //?} else {
+        /*RenderSystem.setShader(net.minecraft.client.gl.ShaderProgramKeys.POSITION_COLOR);
+        *///?}
 
         Matrix4f matrix = matrices.peek().getPositionMatrix();
 
@@ -488,14 +488,14 @@ public class TileOverlayRenderer {
 
         matrices.pop();
     }
-    *///?} else {
-    /**
+    //?} else {
+    /*/^*
      * Lazily-built see-through layer: identical to the debug-quads layer but
      * with depth test GREATER and no depth write. 1.21.5 made both
      * {@code RenderLayer.of} and the POSITION_COLOR snippet inaccessible, so
      * the pipeline replicates the snippet's shaders/uniforms explicitly and
      * the layer is constructed through the {@code RenderLayerInvoker} mixin.
-     */
+     ^/
     private static RenderLayer xrayLayer = null;
 
     private static RenderLayer getXrayLayer() {
@@ -562,5 +562,5 @@ public class TileOverlayRenderer {
 
         matrices.pop();
     }
-    //?}
+    *///?}
 }

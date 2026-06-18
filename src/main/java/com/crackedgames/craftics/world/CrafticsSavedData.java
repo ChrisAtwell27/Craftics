@@ -6,9 +6,9 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.PersistentState;
 //? if >=1.21.5 {
-import net.minecraft.world.PersistentStateType;
+/*import net.minecraft.world.PersistentStateType;
 import com.mojang.serialization.Codec;
-//?}
+*///?}
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -321,7 +321,7 @@ public class CrafticsSavedData extends PersistentState {
         }
 
         //? if <=1.21.4 {
-        /*public static PlayerData fromNbt(NbtCompound nbt) {
+        public static PlayerData fromNbt(NbtCompound nbt) {
             PlayerData pd = new PlayerData();
             pd.highestBiomeUnlocked = nbt.getInt("highestBiomeUnlocked");
             pd.emeralds = nbt.getInt("emeralds");
@@ -376,8 +376,8 @@ public class CrafticsSavedData extends PersistentState {
             }
             return pd;
         }
-        *///?} else {
-        public static PlayerData fromNbt(NbtCompound nbt) {
+        //?} else {
+        /*public static PlayerData fromNbt(NbtCompound nbt) {
             PlayerData pd = new PlayerData();
             pd.highestBiomeUnlocked = nbt.getInt("highestBiomeUnlocked", 0);
             pd.emeralds = nbt.getInt("emeralds", 0);
@@ -422,7 +422,7 @@ public class CrafticsSavedData extends PersistentState {
             }
             return pd;
         }
-        //?}
+        *///?}
     }
 
     public CrafticsSavedData() {}
@@ -442,7 +442,7 @@ public class CrafticsSavedData extends PersistentState {
     }
 
     //? if <=1.21.4 {
-    /*public static CrafticsSavedData fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
+    public static CrafticsSavedData fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registryLookup) {
         CrafticsSavedData data = new CrafticsSavedData();
         data.hubBuilt = nbt.getBoolean("hubBuilt");
         data.hubVersion = nbt.getInt("hubVersion");
@@ -516,8 +516,8 @@ public class CrafticsSavedData extends PersistentState {
     public static CrafticsSavedData get(ServerWorld world) {
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE, "craftics_data");
     }
-    *///?} else {
-    private static CrafticsSavedData decodeNbt(NbtCompound nbt) {
+    //?} else {
+    /*private static CrafticsSavedData decodeNbt(NbtCompound nbt) {
         CrafticsSavedData data = new CrafticsSavedData();
         data.hubBuilt = nbt.getBoolean("hubBuilt", false);
         data.hubVersion = nbt.getInt("hubVersion", 0);
@@ -594,7 +594,7 @@ public class CrafticsSavedData extends PersistentState {
     public static CrafticsSavedData get(ServerWorld world) {
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE);
     }
-    //?}
+    *///?}
 
     public Party getParty(UUID partyId) {
         return parties.get(partyId);

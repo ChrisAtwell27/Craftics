@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.Mixin;
 @Mixin(RenderLayer.MultiPhaseParameters.Builder.class)
 public interface RenderPhaseBuilderInvoker {
     //? if >=1.21.5 {
-    @org.spongepowered.asm.mixin.gen.Invoker("build")
+    /*@org.spongepowered.asm.mixin.gen.Invoker("build")
     RenderLayer.MultiPhaseParameters craftics$build(boolean affectsOutline);
-    //?}
+    *///?}
 }

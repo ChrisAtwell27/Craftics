@@ -47,9 +47,9 @@ public class NpcMarkerBlockEntity extends BlockEntity {
         // two-arg getString(key, default) overload; <=1.21.4 only has the single-arg
         // form that returns String directly.
         //? if <=1.21.4 {
-        /*occupant = nbt.getString(OCCUPANT_KEY);
-        *///?} else {
-        occupant = nbt.getString(OCCUPANT_KEY, "");
-        //?}
+        occupant = nbt.getString(OCCUPANT_KEY);
+        //?} else {
+        /*occupant = nbt.getString(OCCUPANT_KEY, "");
+        *///?}
     }
 }

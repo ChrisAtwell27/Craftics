@@ -47,10 +47,10 @@ public final class TesterLabelRenderer {
         Camera camera = ctx.camera();
         Vec3d cam = camera.getPos();
         //? if <=1.21.4 {
-        /*float tickDelta = ctx.tickCounter().getTickDelta(false);
-        *///?} else {
-        float tickDelta = ctx.tickCounter().getTickProgress(false);
-        //?}
+        float tickDelta = ctx.tickCounter().getTickDelta(false);
+        //?} else {
+        /*float tickDelta = ctx.tickCounter().getTickProgress(false);
+        *///?}
         TextRenderer textRenderer = client.textRenderer;
         int bgColor = (int) (client.options.getTextBackgroundOpacity(0.25f) * 255.0f) << 24;
 

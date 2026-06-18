@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class PlayerEntityMixin {
 
     //? if <=1.21.4 {
-    /*@Inject(method = "dropItem(Lnet/minecraft/item/ItemStack;ZZ)Lnet/minecraft/entity/ItemEntity;",
+    @Inject(method = "dropItem(Lnet/minecraft/item/ItemStack;ZZ)Lnet/minecraft/entity/ItemEntity;",
             at = @At("HEAD"), cancellable = true)
     private void craftics$blockItemDropDuringCombat(net.minecraft.item.ItemStack stack, boolean throwRandomly,
                                                      boolean retainOwnership, CallbackInfoReturnable<net.minecraft.entity.ItemEntity> cir) {
@@ -27,8 +27,8 @@ public class PlayerEntityMixin {
             }
         }
     }
-    *///?} else {
-    @Inject(method = "dropItem(Lnet/minecraft/item/ItemStack;Z)Lnet/minecraft/entity/ItemEntity;",
+    //?} else {
+    /*@Inject(method = "dropItem(Lnet/minecraft/item/ItemStack;Z)Lnet/minecraft/entity/ItemEntity;",
             at = @At("HEAD"), cancellable = true)
     private void craftics$blockItemDropDuringCombat(net.minecraft.item.ItemStack stack, boolean throwRandomly,
                                                      CallbackInfoReturnable<net.minecraft.entity.ItemEntity> cir) {
@@ -40,17 +40,17 @@ public class PlayerEntityMixin {
             }
         }
     }
-    //?}
+    *///?}
 
     @Inject(method = "dropInventory", at = @At("TAIL"))
     private void craftics$dropAccessoriesOnDeath(CallbackInfo ci) {
         PlayerEntity player = (PlayerEntity) (Object) this;
         if (!(player instanceof ServerPlayerEntity serverPlayer)) return;
         //? if <=1.21.1 {
-        /*if (serverPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
-        *///?} else {
-        if (((net.minecraft.server.world.ServerWorld) serverPlayer.getWorld()).getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
-        //?}
+        if (serverPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
+        //?} else {
+        /*if (((net.minecraft.server.world.ServerWorld) serverPlayer.getWorld()).getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
+        *///?}
         // If the HEAD injection just armed a recovery compass, it will have cancelled
         // this method so TAIL shouldn't even fire - but defend against it anyway.
         if (CrafticsComponents.DEATH_PROTECTION.get(serverPlayer).hasPendingRestore()) return;
@@ -62,10 +62,10 @@ public class PlayerEntityMixin {
         PlayerEntity player = (PlayerEntity) (Object) this;
         if (!(player instanceof ServerPlayerEntity serverPlayer)) return;
         //? if <=1.21.1 {
-        /*if (serverPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
-        *///?} else {
-        if (((net.minecraft.server.world.ServerWorld) serverPlayer.getWorld()).getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
-        //?}
+        if (serverPlayer.getWorld().getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
+        //?} else {
+        /*if (((net.minecraft.server.world.ServerWorld) serverPlayer.getWorld()).getGameRules().getBoolean(GameRules.KEEP_INVENTORY)) return;
+        *///?}
         if (!DeathProtectionComponent.hasRecoveryCompass(serverPlayer)) return;
 
         var deathProtection = CrafticsComponents.DEATH_PROTECTION.get(serverPlayer);

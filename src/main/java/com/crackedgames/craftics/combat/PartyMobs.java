@@ -50,12 +50,12 @@ public final class PartyMobs {
     }
 
     //? if <=1.21.1 {
-    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
-        net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE;
-    *///?} else {
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
+        net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE;
+    //?} else {
+    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE;
-    //?}
+    *///?}
 
     /**
      * Vanilla mobs that attack on sight, unprovoked - never party-eligible. Every
@@ -113,14 +113,14 @@ public final class PartyMobs {
     /** Whether a rideable mob currently has a saddle - required for it to mount the player. */
     public static boolean isSaddled(MobEntity mob) {
         //? if <=1.21.4 {
-        /*if (mob instanceof net.minecraft.entity.passive.AbstractHorseEntity horse) return horse.isSaddled();
+        if (mob instanceof net.minecraft.entity.passive.AbstractHorseEntity horse) return horse.isSaddled();
         if (mob instanceof net.minecraft.entity.passive.PigEntity pig) return pig.isSaddled();
         if (mob instanceof net.minecraft.entity.passive.StriderEntity strider) return strider.isSaddled();
         return false;
-        *///?} else {
-        // 1.21.5 reworked saddles into a dedicated equipment slot.
+        //?} else {
+        /*// 1.21.5 reworked saddles into a dedicated equipment slot.
         return !mob.getEquippedStack(net.minecraft.entity.EquipmentSlot.SADDLE).isEmpty();
-        //?}
+        *///?}
     }
 
     /**

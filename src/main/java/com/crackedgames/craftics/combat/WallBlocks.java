@@ -3,9 +3,14 @@ package com.crackedgames.craftics.combat;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockEntityProvider;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
+import net.minecraft.block.CarpetBlock;
+import net.minecraft.block.ShapeContext;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.BlockView;
 
 /**
  * Shared eligibility check for using a held block as a temporary wall obstacle
@@ -54,10 +59,46 @@ public final class WallBlocks {
 
     private static boolean isOpaqueFullCube(BlockState state) {
         //? if <=1.21.1 {
-        /*return state.isOpaqueFullCube(net.minecraft.world.EmptyBlockView.INSTANCE, net.minecraft.util.math.BlockPos.ORIGIN);
-        *///?} else {
-        return state.isOpaqueFullCube();
-        //?}
+        return state.isOpaqueFullCube(net.minecraft.world.EmptyBlockView.INSTANCE, net.minecraft.util.math.BlockPos.ORIGIN);
+        //?} else {
+        /*return state.isOpaqueFullCube();
+        *///?}
+    }
+
+    /**
+     * True when a block sitting one level above the arena floor (Y+1) should
+     * count as a movement-blocking OBSTACLE tile.
+     *
+     * <p>The old test was {@code aboveState.isSolidBlock(...)}, which is only
+     * true for FULL opaque cubes. That silently let the player (and
+     * pathfinding) walk straight through fences, cobblestone walls, glass
+     * panes, iron bars, and fence gates - they physically block movement in
+     * the world but were classified as plain ground, so auto-routing never
+     * pathed around them. Cactus had to be special-cased for the exact same
+     * reason (non-full collision shape), which was the canary for this bug.
+     *
+     * <p>The robust, version-proof check: the block has a NON-EMPTY collision
+     * shape (so a body cannot pass through it), excluding carpets (decorative,
+     * walked over). This catches every connecting/partial wall block without
+     * an ever-growing instanceof list, while non-colliding decorations
+     * (torches, flowers, redstone, pressure plates - empty collision) and
+     * walkable dressing correctly stay non-obstacle.
+     *
+     * <p>Callers handle slabs, stairs, snow layers, tall grass/fern, and
+     * cobwebs BEFORE reaching this check, so those never fall through here.
+     */
+    public static boolean isArenaObstacle(BlockState aboveState, BlockView world, BlockPos abovePos) {
+        if (aboveState.isAir()) return false;
+        // Cactus: non-full collision but a hard obstacle (kept explicit so the
+        // intent stays obvious even though the collision test below also catches it).
+        if (aboveState.isOf(Blocks.CACTUS)) return true;
+        // Carpets are decorative floor dressing the player walks over.
+        if (aboveState.getBlock() instanceof CarpetBlock) return false;
+        // Full opaque cubes are always obstacles (logs, stone, leaves, etc.).
+        if (aboveState.isSolidBlock(world, abovePos)) return true;
+        // Any remaining block with a real collision shape blocks movement:
+        // fences, walls, panes, iron bars, fence gates, closed trapdoors...
+        return !aboveState.getCollisionShape(world, abovePos, ShapeContext.absent()).isEmpty();
     }
 
     private static boolean isTallOrHinged(Block block) {

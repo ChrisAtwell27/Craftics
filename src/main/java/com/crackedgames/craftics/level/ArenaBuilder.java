@@ -175,16 +175,14 @@ public class ArenaBuilder {
                     continue;
                 }
 
-                // Cactus has a non-full collision shape so isSolidBlock returns false for it,
-                // but we still want it to act as a hard movement obstacle.
-                boolean cactusObstacle = aboveState.isOf(Blocks.CACTUS);
-                boolean hasObstacleBlock = cactusObstacle
-                    || (!aboveState.isAir()
-                    && !(aboveState.getBlock() instanceof net.minecraft.block.CarpetBlock)
-                    && aboveState.isSolidBlock(world, abovePos));
-                boolean hasHeadBlock = !headState.isAir()
-                    && !(headState.getBlock() instanceof net.minecraft.block.CarpetBlock)
-                    && headState.isSolidBlock(world, headPos);
+                // Fences, walls, panes, iron bars, fence gates, and cactus all
+                // have non-full collision shapes so isSolidBlock returns false,
+                // yet they hard-block movement. isArenaObstacle catches them all
+                // (see WallBlocks#isArenaObstacle) so pathfinding routes around them.
+                boolean hasObstacleBlock =
+                    com.crackedgames.craftics.combat.WallBlocks.isArenaObstacle(aboveState, world, abovePos);
+                boolean hasHeadBlock =
+                    com.crackedgames.craftics.combat.WallBlocks.isArenaObstacle(headState, world, headPos);
 
                 if (hasObstacleBlock) {
                     tiles[x][z] = new GridTile(com.crackedgames.craftics.core.TileType.OBSTACLE,
@@ -345,11 +343,11 @@ public class ArenaBuilder {
         }
 
         //? if >=1.21.5 {
-        // Spring to Life decorations: river gets a firefly bush on a grass border tile
+        /*// Spring to Life decorations: river gets a firefly bush on a grass border tile
         if ("river".equals(env.id()) && structureInsideMask == null) {
             placeRiverFireflyBush(world, floorX, floorY, floorZ, finalW, finalH, rng);
         }
-        //?}
+        *///?}
 
         // Biome-themed light posts around the border. Skipped for trial
         // chambers - the dev's schematic already provides any lighting it
@@ -462,16 +460,14 @@ public class ArenaBuilder {
                     }
                 }
 
-                // Cactus has a non-full collision shape so isSolidBlock returns false for it,
-                // but we still want it to act as a hard movement obstacle.
-                boolean cactusObstacle = aboveState.isOf(Blocks.CACTUS);
-                boolean hasObstacleBlock = cactusObstacle
-                    || (!aboveState.isAir()
-                    && !(aboveState.getBlock() instanceof net.minecraft.block.CarpetBlock)
-                    && aboveState.isSolidBlock(world, abovePos));
-                boolean hasHeadBlock = !headState.isAir()
-                    && !(headState.getBlock() instanceof net.minecraft.block.CarpetBlock)
-                    && headState.isSolidBlock(world, headPos);
+                // Fences, walls, panes, iron bars, fence gates, and cactus all
+                // have non-full collision shapes so isSolidBlock returns false,
+                // yet they hard-block movement. isArenaObstacle catches them all
+                // (see WallBlocks#isArenaObstacle) so pathfinding routes around them.
+                boolean hasObstacleBlock =
+                    com.crackedgames.craftics.combat.WallBlocks.isArenaObstacle(aboveState, world, abovePos);
+                boolean hasHeadBlock =
+                    com.crackedgames.craftics.combat.WallBlocks.isArenaObstacle(headState, world, headPos);
 
                 // Solid block above floor = obstacle; block at head level too = permanent (can't mine)
                 if (tile.isWalkable() && hasObstacleBlock) {
@@ -1925,8 +1921,8 @@ public class ArenaBuilder {
             case "desert" -> {
                 placeSimpleObstacles(world, ox, oy, oz, w, h, Blocks.CACTUS, 1, 3, rng);
                 //? if >=1.21.5 {
-                placeCactusFlowerToppers(world, ox, oy, oz, w, h, rng);
-                //?}
+                /*placeCactusFlowerToppers(world, ox, oy, oz, w, h, rng);
+                *///?}
             }
             case "snowy" -> placePowderSnowPatch(world, ox, oy, oz, w, h, rng);
             case "cave", "deep_dark" -> placePitObstacles(world, ox, oy, oz, w, h, 0, 7, rng);
@@ -2152,7 +2148,7 @@ public class ArenaBuilder {
     }
 
     //? if >=1.21.5 {
-    // Scan the arena floor for cactus blocks placed by placeSimpleObstacles and,
+    /*// Scan the arena floor for cactus blocks placed by placeSimpleObstacles and,
     // for each one, roll a 50/50 to stack a cactus flower on top. 1.21.5+ only.
     private static void placeCactusFlowerToppers(ServerWorld world, int ox, int oy, int oz,
                                                    int w, int h, Random rng) {
@@ -2187,7 +2183,7 @@ public class ArenaBuilder {
         BlockPos pick = candidates.get(rng.nextInt(candidates.size()));
         world.setBlockState(pick, Blocks.FIREFLY_BUSH.getDefaultState(), SET_FLAGS);
     }
-    //?}
+    *///?}
 
     /**
      * Place connected pit obstacles for mountain biomes.
@@ -2493,10 +2489,10 @@ public class ArenaBuilder {
         int pad = 3;
         int fromY = Math.max(world.getBottomY(), minY);
         //? if <=1.21.1 {
-        /*int toY = Math.min(world.getTopY() - 1, maxY);
-        *///?} else {
-        int toY = Math.min(world.getTopYInclusive(), maxY);
-        //?}
+        int toY = Math.min(world.getTopY() - 1, maxY);
+        //?} else {
+        /*int toY = Math.min(world.getTopYInclusive(), maxY);
+        *///?}
         var lighting = world.getLightingProvider();
 
         for (int x = ox - pad; x < ox + w + pad; x++) {
@@ -2530,19 +2526,19 @@ public class ArenaBuilder {
     private static void setBiomeForArena(ServerWorld world, BlockPos origin, int w, int h, String crafticsBiomeId) {
         Identifier mcBiomeId = toMinecraftBiomeId(crafticsBiomeId);
         //? if <=1.21.1 {
-        /*var biomeRegistry = world.getRegistryManager().get(RegistryKeys.BIOME);
-        *///?} else {
-        var biomeRegistry = world.getRegistryManager().getOrThrow(RegistryKeys.BIOME);
-        //?}
+        var biomeRegistry = world.getRegistryManager().get(RegistryKeys.BIOME);
+        //?} else {
+        /*var biomeRegistry = world.getRegistryManager().getOrThrow(RegistryKeys.BIOME);
+        *///?}
         var biomeKey = RegistryKey.of(RegistryKeys.BIOME, mcBiomeId);
         //? if <=1.21.1 {
-        /*java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.getEntry(biomeKey);
-        *///?} else {
-        java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.streamEntries()
+        java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.getEntry(biomeKey);
+        //?} else {
+        /*java.util.Optional<? extends RegistryEntry<Biome>> optEntry = biomeRegistry.streamEntries()
             .filter(e -> e.getKey().isPresent() && e.getKey().get().equals(biomeKey))
             .map(e -> (RegistryEntry<Biome>) e)
             .findFirst();
-        //?}
+        *///?}
         if (optEntry.isEmpty()) {
             CrafticsMod.LOGGER.warn("BiomePainter: biome '{}' not found (craftics id: '{}')", mcBiomeId, crafticsBiomeId);
             return;
@@ -2563,10 +2559,10 @@ public class ArenaBuilder {
                 var chunk = world.getChunk(cx, cz);
                 chunk.populateBiomes((bx, by, bz, noise) -> biomeEntry, null);
                 //? if <=1.21.1 {
-                /*chunk.setNeedsSaving(true);
-                *///?} else {
-                chunk.markNeedsSaving();
-                //?}
+                chunk.setNeedsSaving(true);
+                //?} else {
+                /*chunk.markNeedsSaving();
+                *///?}
                 count++;
             }
         }

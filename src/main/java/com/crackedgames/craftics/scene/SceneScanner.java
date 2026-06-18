@@ -64,10 +64,10 @@ public final class SceneScanner {
      */
     private static float facingDegrees(Direction facing) {
         //? if <=1.21.3 {
-        /*return facing.asRotation();
-        *///?} else {
-        return facing.getPositiveHorizontalDegrees();
-        //?}
+        return facing.asRotation();
+        //?} else {
+        /*return facing.getPositiveHorizontalDegrees();
+        *///?}
     }
 
     public static SceneLayout scan(ServerWorld world, BlockPos origin, int width, int height, int length) {

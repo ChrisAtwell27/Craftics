@@ -73,8 +73,8 @@ public final class HintArrowRenderer {
 
     private static void spawn(ClientWorld world, double x, double y, double z) {
         //? if <=1.21.4 {
-        /*world.addParticle(ParticleTypes.HAPPY_VILLAGER, x, y, z, 0.0, -0.02, 0.0);
-        *///?} else
-        world.addParticleClient(ParticleTypes.HAPPY_VILLAGER, x, y, z, 0.0, -0.02, 0.0);
+        world.addParticle(ParticleTypes.HAPPY_VILLAGER, x, y, z, 0.0, -0.02, 0.0);
+        //?} else
+        /*world.addParticleClient(ParticleTypes.HAPPY_VILLAGER, x, y, z, 0.0, -0.02, 0.0);*/
     }
 }

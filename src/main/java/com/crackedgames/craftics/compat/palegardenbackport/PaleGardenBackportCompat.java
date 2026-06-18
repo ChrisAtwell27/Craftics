@@ -70,20 +70,20 @@ public final class PaleGardenBackportCompat {
     /** True when a creaking entity (vanilla or backport) is available to spawn. */
     public static boolean shouldSpawnPaleGarden() {
         //? if >=1.21.4 {
-        return true;
-        //?} else {
-        /*return loaded;
-        *///?}
+        /*return true;
+        *///?} else {
+        return loaded;
+        //?}
     }
 
     /** Returns the entity id to spawn for the Pale Garden creaking. */
     public static String creakingEntityId() {
         //? if >=1.21.4 {
-        // Prefer vanilla creaking on 1.21.4+ so existing AI/loot keys keep matching.
+        /*// Prefer vanilla creaking on 1.21.4+ so existing AI/loot keys keep matching.
         return "minecraft:creaking";
-        //?} else {
-        /*return "palegardenbackport:creaking";
-        *///?}
+        *///?} else {
+        return "palegardenbackport:creaking";
+        //?}
     }
 
     /** True if the given entity type id is any flavor of "creaking". */
@@ -95,23 +95,23 @@ public final class PaleGardenBackportCompat {
     /** Pale moss block for the Pale Garden floor - falls back to moss block then podzol. */
     public static Block paleMossBlock() {
         //? if >=1.21.4 {
-        return Blocks.PALE_MOSS_BLOCK;
-        //?} else {
-        /*Block b = lookupBlock("palegardenbackport", "pale_moss_block");
+        /*return Blocks.PALE_MOSS_BLOCK;
+        *///?} else {
+        Block b = lookupBlock("palegardenbackport", "pale_moss_block");
         if (b != null && b != Blocks.AIR) return b;
         return Blocks.MOSS_BLOCK;
-        *///?}
+        //?}
     }
 
     /** Block placed at the heart's world position (visual only - entity is the actual target). */
     public static Block creakingHeartBlock() {
         //? if >=1.21.4 {
-        return Blocks.CREAKING_HEART;
-        //?} else {
-        /*Block b = lookupBlock("palegardenbackport", "creaking_heart");
+        /*return Blocks.CREAKING_HEART;
+        *///?} else {
+        Block b = lookupBlock("palegardenbackport", "creaking_heart");
         if (b != null && b != Blocks.AIR) return b;
         return Blocks.OAK_LOG;
-        *///?}
+        //?}
     }
 
     @SuppressWarnings("unused") // referenced from version-conditional branches above
@@ -132,10 +132,10 @@ public final class PaleGardenBackportCompat {
      */
     public static Identifier paleGardenBiomeId() {
         //? if >=1.21.4 {
-        return Identifier.of("minecraft", "pale_garden");
-        //?} else {
-        /*return Identifier.of("palegardenbackport", "pale_garden");
-        *///?}
+        /*return Identifier.of("minecraft", "pale_garden");
+        *///?} else {
+        return Identifier.of("palegardenbackport", "pale_garden");
+        //?}
     }
 
     /**

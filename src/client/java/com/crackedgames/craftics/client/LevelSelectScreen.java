@@ -754,10 +754,10 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             return;
         }
         //? if <=1.21.1 {
-        /*context.drawTexture(texture, x, y, 0f, 0f, w, h, w, h);
-        *///?} else {
-        context.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, texture, x, y, 0f, 0f, w, h, w, h);
-        //?}
+        context.drawTexture(texture, x, y, 0f, 0f, w, h, w, h);
+        //?} else {
+        /*context.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, texture, x, y, 0f, 0f, w, h, w, h);
+        *///?}
     }
 
     /**

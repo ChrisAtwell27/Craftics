@@ -4,10 +4,10 @@ import com.crackedgames.craftics.client.anim.CrafticsAnimHolder;
 import com.crackedgames.craftics.component.CrafticsAnimComponent;
 import com.crackedgames.craftics.component.CrafticsComponents;
 //? if >=1.21.3 {
-import net.minecraft.client.MinecraftClient;
+/*import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.entity.LivingEntityRenderer;
 import net.minecraft.client.render.entity.state.LivingEntityRenderState;
-//?}
+*///?}
 import net.minecraft.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * pose (see {@code BipedAnimMixin}) can read it without holding an entity ref.
  */
 //? if >=1.21.3 {
-@Mixin(LivingEntityRenderer.class)
+/*@Mixin(LivingEntityRenderer.class)
 public abstract class LivingEntityRendererAnimMixin {
 
     @Inject(method = "updateRenderState(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/client/render/entity/state/LivingEntityRenderState;F)V",
@@ -42,10 +42,10 @@ public abstract class LivingEntityRendererAnimMixin {
         h.craftics$setAnimTicks(Math.max(0f, (now - comp.getStartTick()) + tickDelta));
     }
 }
-//?} else {
-/*@Mixin(LivingEntity.class)
+*///?} else {
+@Mixin(LivingEntity.class)
 public abstract class LivingEntityRendererAnimMixin {
     // No-op on 1.21.1: entity is available directly in BipedAnimMixin#setAngles,
     // so no state-snapshot pre-population is needed.
 }
-*///?}
+//?}

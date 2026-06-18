@@ -92,16 +92,16 @@ public class CombatManager {
     private int getMoveTicks() { return CrafticsMod.CONFIG.skipEnemyAnimations() ? 1 : MOVE_TICKS; }
 
     //? if <=1.21.1 {
-    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE;
-    *///?} else {
-    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
+    //?} else {
+    /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE;
-    //?}
+    *///?}
 
     private static GridPos adaptSpawnToArena(GridPos originalPos, LevelDefinition levelDef, GridArena arena) {
         int mappedX = scaleGridCoordinate(originalPos.x(), levelDef.getWidth(), arena.getWidth());
@@ -2310,10 +2310,10 @@ public class CombatManager {
                         .PaleGardenBackportCompat.creakingHeartBlock().getDefaultState());
                 // Spawn an invisible armor stand as the entity reference
                 //? if <=1.21.1 {
-                /*var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world);
-                *///?} else {
-                var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world, SpawnReason.COMMAND);
-                //?}
+                var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world);
+                //?} else {
+                /*var heartStand = net.minecraft.entity.EntityType.ARMOR_STAND.create(world, SpawnReason.COMMAND);
+                *///?}
                 if (heartStand != null) {
                     heartStand.refreshPositionAndAngles(
                         heartBlockPos.getX() + 0.5, heartBlockPos.getY(), heartBlockPos.getZ() + 0.5, 0, 0);
@@ -2884,14 +2884,14 @@ public class CombatManager {
         int dz = tPos.z() - pPos.z();
         float counterYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
         //? if <=1.21.1 {
-        /*player.teleport((ServerWorld) player.getEntityWorld(),
-            player.getX(), player.getY(), player.getZ(),
-            java.util.Collections.emptySet(), counterYaw, 0f);
-        *///?} else {
         player.teleport((ServerWorld) player.getEntityWorld(),
             player.getX(), player.getY(), player.getZ(),
+            java.util.Collections.emptySet(), counterYaw, 0f);
+        //?} else {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
+            player.getX(), player.getY(), player.getZ(),
             java.util.Collections.emptySet(), counterYaw, 0f, true);
-        //?}
+        *///?}
 
         // Weapon-swing animation (valueA == 0 → animation-only event, valueB = attacker id).
         sendToAllParty(new CombatEventPayload(
@@ -3954,14 +3954,14 @@ public class CombatManager {
                 arena.setPlayerGridPos(warpDest);
                 BlockPos warpBlock = arena.gridToBlockPos(warpDest);
                 //? if <=1.21.1 {
-                /*player.teleport((ServerWorld) player.getEntityWorld(),
-                    warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
-                    java.util.Collections.emptySet(), player.getYaw(), 0f);
-                *///?} else {
                 player.teleport((ServerWorld) player.getEntityWorld(),
                     warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
+                    java.util.Collections.emptySet(), player.getYaw(), 0f);
+                //?} else {
+                /*player.teleport((ServerWorld) player.getEntityWorld(),
+                    warpBlock.getX() + 0.5, warpBlock.getY(), warpBlock.getZ() + 0.5,
                     java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-                //?}
+                *///?}
                 pPos = warpDest;
                 consumeWarpDrive();
                 warpFired = true;
@@ -4070,14 +4070,14 @@ public class CombatManager {
         float attackYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
         updateMountFacing(dx, dz); // netherite mount: wall reorients toward the struck tile
         //? if <=1.21.1 {
-        /*player.teleport((ServerWorld) player.getEntityWorld(),
-            player.getX(), player.getY(), player.getZ(),
-            java.util.Collections.emptySet(), attackYaw, 0f);
-        *///?} else {
         player.teleport((ServerWorld) player.getEntityWorld(),
             player.getX(), player.getY(), player.getZ(),
+            java.util.Collections.emptySet(), attackYaw, 0f);
+        //?} else {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
+            player.getX(), player.getY(), player.getZ(),
             java.util.Collections.emptySet(), attackYaw, 0f, true);
-        //?}
+        *///?}
 
         // Rocket crossbow shots spend a firework rocket (consumed by the crossbow
         // weapon ability), not an arrow -skip arrow/tipped-arrow consumption.
@@ -5383,14 +5383,14 @@ public class CombatManager {
         player.setOnGround(true);
 
         //? if <=1.21.4 {
-        /*player.prevX = player.getX();
+        player.prevX = player.getX();
         player.prevY = player.getY();
         player.prevZ = player.getZ();
-        *///?} else {
-        player.lastX = player.getX();
+        //?} else {
+        /*player.lastX = player.getX();
         player.lastY = player.getY();
         player.lastZ = player.getZ();
-        //?}
+        *///?}
         player.setPosition(x, y, z);
         player.networkHandler.requestTeleport(x, y, z, riptideAnimYaw, 0f);
         // The vanilla entity tracker doesn't broadcast server-driven position
@@ -6363,16 +6363,16 @@ public class CombatManager {
             return new String[]{"loyalty", "channeling", "impaling", "riptide", "unbreaking", "mending"};
         }
         //? if <=1.21.4 {
-        /*if (item instanceof net.minecraft.item.SwordItem) {
+        if (item instanceof net.minecraft.item.SwordItem) {
             return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
         }
-        *///?} else {
-        if (item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) {
+        //?} else {
+        /*if (item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) {
             return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
         }
-        //?}
+        *///?}
         if (item instanceof net.minecraft.item.AxeItem) {
             return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "unbreaking", "mending"};
@@ -6418,10 +6418,10 @@ public class CombatManager {
                                             String[] pool, java.util.Random rng) {
         if (stack == null || stack.isEmpty() || pool == null || pool.length == 0) return stack;
         //? if <=1.21.1 {
-        /*var registry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        *///?} else {
-        var registry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        //?}
+        var registry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        //?} else {
+        /*var registry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        *///?}
         int wanted = 3 + rng.nextInt(3); // 3, 4, or 5
         int target = Math.min(wanted, pool.length);
         java.util.List<String> shuffled = new java.util.ArrayList<>(java.util.Arrays.asList(pool));
@@ -6583,10 +6583,10 @@ public class CombatManager {
     /** Apply a single enchantment by registry path to an itemstack. */
     private static void applyMobEnchant(ItemStack stack, String enchantPath, int level, ServerWorld world) {
         //? if <=1.21.1 {
-        /*var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        *///?} else {
-        var enchantRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-        //?}
+        var enchantRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        //?} else {
+        /*var enchantRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+        *///?}
         var enchantEntry = enchantRegistry.streamEntries()
             .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(enchantPath))
             .findFirst().orElse(null);
@@ -6630,9 +6630,9 @@ public class CombatManager {
                 // Evoker already has robes; enchanted hat for magical look
                 ItemStack hat = new ItemStack(Items.LEATHER_HELMET);
                 //? if <=1.21.4 {
-                /*hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B, false));
-                *///?} else
-                hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B));
+                hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B, false));
+                //?} else
+                /*hat.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x1B3A1B));*/
                 applyMobEnchant(hat, "protection", 2, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, hat);
                 scaleBoss(mob, 1.5);
@@ -6669,9 +6669,9 @@ public class CombatManager {
                 // Coral crown = prismarine-tinted helmet
                 ItemStack crown = new ItemStack(Items.LEATHER_HELMET);
                 //? if <=1.21.4 {
-                /*crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B, false));
-                *///?} else
-                crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B));
+                crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B, false));
+                //?} else
+                /*crown.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x2E8B8B));*/
                 applyMobEnchant(crown, "aqua_affinity", 1, world);
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, crown);
                 // Enchanted trident
@@ -6717,9 +6717,9 @@ public class CombatManager {
                 // Ore-encrusted body = leather armor dyed gray-green
                 ItemStack oreChest = new ItemStack(Items.LEATHER_CHESTPLATE);
                 //? if <=1.21.4 {
-                /*oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F, false));
-                *///?} else
-                oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F));
+                oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F, false));
+                //?} else
+                /*oreChest.set(DataComponentTypes.DYED_COLOR, new net.minecraft.component.type.DyedColorComponent(0x556B2F));*/
                 mob.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, oreChest);
                 scaleBoss(mob, 1.6);
             }
@@ -9026,13 +9026,13 @@ public class CombatManager {
                         BlockPos boatBlock = arena.gridToBlockPos(finalPos);
                         double boatY = boatBlock.getY(); // surface level, not lowered
                         //? if <=1.21.1 {
-                        /*boat = new net.minecraft.entity.vehicle.BoatEntity(
-                            net.minecraft.entity.EntityType.BOAT, sw);
-                        *///?} else {
                         boat = new net.minecraft.entity.vehicle.BoatEntity(
+                            net.minecraft.entity.EntityType.BOAT, sw);
+                        //?} else {
+                        /*boat = new net.minecraft.entity.vehicle.BoatEntity(
                             net.minecraft.entity.EntityType.OAK_BOAT, sw,
                             () -> net.minecraft.item.Items.OAK_BOAT);
-                        //?}
+                        *///?}
                         boat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
                         boat.setYaw(player.getYaw() - 90f);
                         boat.setInvulnerable(true);
@@ -9153,14 +9153,14 @@ public class CombatManager {
 
             // prevXYZ needed so client limb animator sees the movement delta
             //? if <=1.21.4 {
-            /*player.prevX = player.getX();
+            player.prevX = player.getX();
             player.prevY = player.getY();
             player.prevZ = player.getZ();
-            *///?} else {
-            player.lastX = player.getX();
+            //?} else {
+            /*player.lastX = player.getX();
             player.lastY = player.getY();
             player.lastZ = player.getZ();
-            //?}
+            *///?}
             player.setPosition(x, y, z);
 
             // Velocity drives vanilla limb animation on client
@@ -11648,10 +11648,10 @@ public class CombatManager {
             if (visualEntityId != null) {
                 EntityType<?> visualType = Registries.ENTITY_TYPE.get(Identifier.of(visualEntityId));
                 //? if <=1.21.1 {
-                /*var visualEntity = visualType.create(world);
-                *///?} else {
-                var visualEntity = visualType.create(world, net.minecraft.entity.SpawnReason.LOAD);
-                //?}
+                var visualEntity = visualType.create(world);
+                //?} else {
+                /*var visualEntity = visualType.create(world, net.minecraft.entity.SpawnReason.LOAD);
+                *///?}
                 if (visualEntity != null) {
                     visualEntity.refreshPositionAndAngles(
                         spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5, 0, 0);
@@ -13238,12 +13238,12 @@ public class CombatManager {
         double spawnY = targetBp.getY() + 6.0;
 
         //? if <=1.21.1 {
-        /*net.minecraft.entity.FallingBlockEntity fbe =
-            net.minecraft.entity.EntityType.FALLING_BLOCK.create(world);
-        *///?} else {
         net.minecraft.entity.FallingBlockEntity fbe =
+            net.minecraft.entity.EntityType.FALLING_BLOCK.create(world);
+        //?} else {
+        /*net.minecraft.entity.FallingBlockEntity fbe =
             net.minecraft.entity.EntityType.FALLING_BLOCK.create(world, net.minecraft.entity.SpawnReason.TRIGGERED);
-        //?}
+        *///?}
         if (fbe == null) return;
         net.minecraft.nbt.NbtCompound nbt = new net.minecraft.nbt.NbtCompound();
         fbe.writeNbt(nbt);
@@ -15180,14 +15180,14 @@ public class CombatManager {
             arena.setPlayerGridPos(dest);
             BlockPos shoveBlock = arena.gridToBlockPos(dest);
             //? if <=1.21.1 {
-            /*player.teleport((ServerWorld) player.getEntityWorld(),
-                shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
-                java.util.Collections.emptySet(), player.getYaw(), 0f);
-            *///?} else {
             player.teleport((ServerWorld) player.getEntityWorld(),
                 shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
+                java.util.Collections.emptySet(), player.getYaw(), 0f);
+            //?} else {
+            /*player.teleport((ServerWorld) player.getEntityWorld(),
+                shoveBlock.getX() + 0.5, shoveBlock.getY(), shoveBlock.getZ() + 0.5,
                 java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-            //?}
+            *///?}
             return;
         }
     }
@@ -15995,14 +15995,14 @@ public class CombatManager {
         arena.setPlayerGridPos(dest);
         BlockPos bp = arena.gridToBlockPos(dest);
         //? if <=1.21.1 {
-        /*player.teleport((ServerWorld) player.getEntityWorld(),
-            bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
-            java.util.Collections.emptySet(), player.getYaw(), 0f);
-        *///?} else {
         player.teleport((ServerWorld) player.getEntityWorld(),
             bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
+            java.util.Collections.emptySet(), player.getYaw(), 0f);
+        //?} else {
+        /*player.teleport((ServerWorld) player.getEntityWorld(),
+            bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5,
             java.util.Collections.emptySet(), player.getYaw(), 0f, true);
-        //?}
+        *///?}
         sendMessage("\u00a7d\u2726 Teleported to safety!");
     }
 
@@ -16100,17 +16100,17 @@ public class CombatManager {
             player.getX(), player.getY() + 1.0, player.getZ(),
             8, 0.3, 0.5, 0.3, 0.02);
         //? if <=1.21.1 {
-        /*downedWorld.spawnParticles(
+        downedWorld.spawnParticles(
             new net.minecraft.particle.DustParticleEffect(
                 new org.joml.Vector3f(1.0f, 0.2f, 0.2f), 1.5f),
             player.getX(), player.getY() + 0.5, player.getZ(),
             12, 0.4, 0.3, 0.4, 0.01);
-        *///?} else {
-        downedWorld.spawnParticles(
+        //?} else {
+        /*downedWorld.spawnParticles(
             new net.minecraft.particle.DustParticleEffect(0xFF3333, 1.5f),
             player.getX(), player.getY() + 0.5, player.getZ(),
             12, 0.4, 0.3, 0.4, 0.01);
-        //?}
+        *///?}
 
         // Send downed event to client (orange vignette, different from red death vignette)
         sendToAllParty(new CombatEventPayload(
@@ -16305,14 +16305,14 @@ public class CombatManager {
                     }
                 }
                 //? if <=1.21.4 {
-                /*for (int slot = 0; slot < p.getInventory().armor.size(); slot++) {
+                for (int slot = 0; slot < p.getInventory().armor.size(); slot++) {
                     if (!p.getInventory().armor.get(slot).isEmpty() && Math.random() < gearLoss) {
                         p.getInventory().armor.set(slot, ItemStack.EMPTY);
                         itemsLost++;
                     }
                 }
-                *///?} else {
-                for (net.minecraft.entity.EquipmentSlot armorSlot : new net.minecraft.entity.EquipmentSlot[]{
+                //?} else {
+                /*for (net.minecraft.entity.EquipmentSlot armorSlot : new net.minecraft.entity.EquipmentSlot[]{
                         net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
                         net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
                     if (!p.getEquippedStack(armorSlot).isEmpty() && Math.random() < gearLoss) {
@@ -16320,7 +16320,7 @@ public class CombatManager {
                         itemsLost++;
                     }
                 }
-                //?}
+                *///?}
                 if (!p.getOffHandStack().isEmpty() && Math.random() < gearLoss) {
                     p.setStackInHand(net.minecraft.util.Hand.OFF_HAND, ItemStack.EMPTY);
                     itemsLost++;
@@ -16343,9 +16343,9 @@ public class CombatManager {
                     && !(mainHand.getItem() instanceof com.crackedgames.craftics.item.GuideBookItem)) {
                     dropped = mainHand.copy();
                     //? if <=1.21.4 {
-                    /*p.getInventory().setStack(p.getInventory().selectedSlot, ItemStack.EMPTY);
-                    *///?} else
-                    p.getInventory().setStack(p.getInventory().getSelectedSlot(), ItemStack.EMPTY);
+                    p.getInventory().setStack(p.getInventory().selectedSlot, ItemStack.EMPTY);
+                    //?} else
+                    /*p.getInventory().setStack(p.getInventory().getSelectedSlot(), ItemStack.EMPTY);*/
                 }
 
                 if (dropped.isEmpty()) {
@@ -18040,14 +18040,14 @@ public class CombatManager {
             EntityWalker.Mover mover = (x, y, z, yaw) -> {
                 fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
                 //? if <=1.21.4 {
-                /*fp.prevX = fp.getX();
+                fp.prevX = fp.getX();
                 fp.prevY = fp.getY();
                 fp.prevZ = fp.getZ();
-                *///?} else {
-                fp.lastX = fp.getX();
+                //?} else {
+                /*fp.lastX = fp.getX();
                 fp.lastY = fp.getY();
                 fp.lastZ = fp.getZ();
-                //?}
+                *///?}
                 double dx = x - fp.getX(), dz = z - fp.getZ();
                 double len = Math.sqrt(dx * dx + dz * dz);
                 if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
@@ -18272,14 +18272,14 @@ public class CombatManager {
                 // client limb animator sees a movement delta and interpolates smoothly -
                 // matches the combat movement code (tickAnimation).
                 //? if <=1.21.4 {
-                /*fp.prevX = fp.getX();
+                fp.prevX = fp.getX();
                 fp.prevY = fp.getY();
                 fp.prevZ = fp.getZ();
-                *///?} else {
-                fp.lastX = fp.getX();
+                //?} else {
+                /*fp.lastX = fp.getX();
                 fp.lastY = fp.getY();
                 fp.lastZ = fp.getZ();
-                //?}
+                *///?}
                 // Velocity drives vanilla limb-swing fallback; magnitude matches combat.
                 double dx = x - fp.getX(), dz = z - fp.getZ();
                 double len = Math.sqrt(dx * dx + dz * dz);
@@ -18569,14 +18569,14 @@ public class CombatManager {
                 // prevXYZ (lastXYZ on 1.21.5+) must be set BEFORE setPosition so the
                 // client limb animator sees a movement delta and interpolates smoothly.
                 //? if <=1.21.4 {
-                /*fp.prevX = fp.getX();
+                fp.prevX = fp.getX();
                 fp.prevY = fp.getY();
                 fp.prevZ = fp.getZ();
-                *///?} else {
-                fp.lastX = fp.getX();
+                //?} else {
+                /*fp.lastX = fp.getX();
                 fp.lastY = fp.getY();
                 fp.lastZ = fp.getZ();
-                //?}
+                *///?}
                 double dx = x - fp.getX(), dz = z - fp.getZ();
                 double len = Math.sqrt(dx * dx + dz * dz);
                 if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
@@ -18685,14 +18685,14 @@ public class CombatManager {
             EntityWalker.Mover mover = (x, y, z, yaw) -> {
                 fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
                 //? if <=1.21.4 {
-                /*fp.prevX = fp.getX();
+                fp.prevX = fp.getX();
                 fp.prevY = fp.getY();
                 fp.prevZ = fp.getZ();
-                *///?} else {
-                fp.lastX = fp.getX();
+                //?} else {
+                /*fp.lastX = fp.getX();
                 fp.lastY = fp.getY();
                 fp.lastZ = fp.getZ();
-                //?}
+                *///?}
                 double dx = x - fp.getX(), dz = z - fp.getZ();
                 double len = Math.sqrt(dx * dx + dz * dz);
                 if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
@@ -18854,14 +18854,14 @@ public class CombatManager {
             EntityWalker.Mover mover = (x, y, z, yaw) -> {
                 fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
                 //? if <=1.21.4 {
-                /*fp.prevX = fp.getX();
+                fp.prevX = fp.getX();
                 fp.prevY = fp.getY();
                 fp.prevZ = fp.getZ();
-                *///?} else {
-                fp.lastX = fp.getX();
+                //?} else {
+                /*fp.lastX = fp.getX();
                 fp.lastY = fp.getY();
                 fp.lastZ = fp.getZ();
-                //?}
+                *///?}
                 double dx = x - fp.getX(), dz = z - fp.getZ();
                 double len = Math.sqrt(dx * dx + dz * dz);
                 if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
@@ -18899,7 +18899,7 @@ public class CombatManager {
             if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM
                 || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
             //? if <=1.21.4 {
-            /*boolean isWeapon = item instanceof net.minecraft.item.SwordItem
+            boolean isWeapon = item instanceof net.minecraft.item.SwordItem
                     || item instanceof net.minecraft.item.AxeItem
                     || item instanceof net.minecraft.item.HoeItem
                     || item instanceof net.minecraft.item.ShovelItem
@@ -18907,8 +18907,8 @@ public class CombatManager {
                     || item instanceof net.minecraft.item.TridentItem
                     || item instanceof net.minecraft.item.BowItem
                     || item instanceof net.minecraft.item.CrossbowItem;
-            *///?} else {
-            boolean isWeapon = item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)
+            //?} else {
+            /*boolean isWeapon = item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)
                     || item instanceof net.minecraft.item.AxeItem
                     || item instanceof net.minecraft.item.HoeItem
                     || item instanceof net.minecraft.item.ShovelItem
@@ -18916,13 +18916,13 @@ public class CombatManager {
                     || item instanceof net.minecraft.item.TridentItem
                     || item instanceof net.minecraft.item.BowItem
                     || item instanceof net.minecraft.item.CrossbowItem;
-            //?}
+            *///?}
             if (isWeapon) {
                 playerSlots.add(new int[]{i, 0, -1});
             }
         }
         //? if <=1.21.4 {
-        /*for (int i = 0; i < p.getInventory().armor.size(); i++) {
+        for (int i = 0; i < p.getInventory().armor.size(); i++) {
             ItemStack armor = p.getInventory().armor.get(i);
             if (!armor.isEmpty()) {
                 int slotId = 100 + i;
@@ -18930,8 +18930,8 @@ public class CombatManager {
                 playerSlots.add(new int[]{slotId, 1, armorEnhancement});
             }
         }
-        *///?} else {
-        net.minecraft.entity.EquipmentSlot[] armorOrder = {
+        //?} else {
+        /*net.minecraft.entity.EquipmentSlot[] armorOrder = {
                 net.minecraft.entity.EquipmentSlot.FEET, net.minecraft.entity.EquipmentSlot.LEGS,
                 net.minecraft.entity.EquipmentSlot.CHEST, net.minecraft.entity.EquipmentSlot.HEAD};
         for (int i = 0; i < 4; i++) {
@@ -18942,7 +18942,7 @@ public class CombatManager {
                 playerSlots.add(new int[]{slotId, 1, armorEnhancement});
             }
         }
-        //?}
+        *///?}
         return playerSlots;
     }
 
@@ -19001,17 +19001,17 @@ public class CombatManager {
     private static ItemStack lookupEnchanterStack(ServerPlayerEntity player, int slotId) {
         if (slotId >= 100) {
             //? if <=1.21.4 {
-            /*int armorIdx = slotId - 100;
+            int armorIdx = slotId - 100;
             if (armorIdx < 0 || armorIdx >= player.getInventory().armor.size()) return ItemStack.EMPTY;
             return player.getInventory().armor.get(armorIdx);
-            *///?} else {
-            net.minecraft.entity.EquipmentSlot[] armorOrder = {
+            //?} else {
+            /*net.minecraft.entity.EquipmentSlot[] armorOrder = {
                     net.minecraft.entity.EquipmentSlot.FEET, net.minecraft.entity.EquipmentSlot.LEGS,
                     net.minecraft.entity.EquipmentSlot.CHEST, net.minecraft.entity.EquipmentSlot.HEAD};
             int armorIdx = slotId - 100;
             if (armorIdx < 0 || armorIdx >= armorOrder.length) return ItemStack.EMPTY;
             return player.getEquippedStack(armorOrder[armorIdx]);
-            //?}
+            *///?}
         }
         if (slotId < 0 || slotId >= player.getInventory().size()) return ItemStack.EMPTY;
         return player.getInventory().getStack(slotId);
@@ -19023,13 +19023,13 @@ public class CombatManager {
         ItemStack stack;
         if (slotId >= 100) {
             //? if <=1.21.4 {
-            /*stack = player.getInventory().armor.get(slotId - 100);
-            *///?} else {
-            net.minecraft.entity.EquipmentSlot[] armorOrder = {
+            stack = player.getInventory().armor.get(slotId - 100);
+            //?} else {
+            /*net.minecraft.entity.EquipmentSlot[] armorOrder = {
                     net.minecraft.entity.EquipmentSlot.FEET, net.minecraft.entity.EquipmentSlot.LEGS,
                     net.minecraft.entity.EquipmentSlot.CHEST, net.minecraft.entity.EquipmentSlot.HEAD};
             stack = player.getEquippedStack(armorOrder[slotId - 100]);
-            //?}
+            *///?}
         } else {
             stack = player.getInventory().getStack(slotId);
         }
@@ -19049,28 +19049,28 @@ public class CombatManager {
 
             // Apply trim via ArmorTrim component
             //? if <=1.21.1 {
-            /*var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
-            *///?} else {
-            var patternRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
-            //?}
+            var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            //?} else {
+            /*var patternRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+            *///?}
             var patternEntry = patternRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(pattern))
                 .findFirst().orElse(null);
             //? if <=1.21.1 {
-            /*var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
-            *///?} else {
-            var materialRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
-            //?}
+            var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            //?} else {
+            /*var materialRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+            *///?}
             var materialEntry = materialRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(material))
                 .findFirst().orElse(null);
 
             if (patternEntry != null && materialEntry != null) {
                 //? if <=1.21.1 {
-                /*var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
-                *///?} else {
-                var trim = new net.minecraft.item.equipment.trim.ArmorTrim(materialEntry, patternEntry);
-                //?}
+                var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
+                //?} else {
+                /*var trim = new net.minecraft.item.equipment.trim.ArmorTrim(materialEntry, patternEntry);
+                *///?}
                 stack.set(DataComponentTypes.TRIM, trim);
                 sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " received a §e" + pattern + " §dtrim with §e" + material + " §dmaterial!");
                 // Unlock "How Trims Work" guide entry
@@ -19108,12 +19108,12 @@ public class CombatManager {
             int level = 1 + rng.nextInt(3); // level 1-3
 
             //? if <=1.21.1 {
-            /*var enchantRegistry = world.getRegistryManager()
-                .get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-            *///?} else {
             var enchantRegistry = world.getRegistryManager()
+                .get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
+            //?} else {
+            /*var enchantRegistry = world.getRegistryManager()
                 .getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
-            //?}
+            *///?}
             var enchantEntry = enchantRegistry.streamEntries()
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(chosenKey))
                 .findFirst().orElse(null);
@@ -19211,14 +19211,14 @@ public class CombatManager {
             EntityWalker.Mover mover = (x, y, z, yaw) -> {
                 fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
                 //? if <=1.21.4 {
-                /*fp.prevX = fp.getX();
+                fp.prevX = fp.getX();
                 fp.prevY = fp.getY();
                 fp.prevZ = fp.getZ();
-                *///?} else {
-                fp.lastX = fp.getX();
+                //?} else {
+                /*fp.lastX = fp.getX();
                 fp.lastY = fp.getY();
                 fp.lastZ = fp.getZ();
-                //?}
+                *///?}
                 double dx = x - fp.getX(), dz = z - fp.getZ();
                 double len = Math.sqrt(dx * dx + dz * dz);
                 if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
@@ -19303,10 +19303,10 @@ public class CombatManager {
 
     private ItemStack randomEnchantedBook(ServerWorld world, int count, com.crackedgames.craftics.level.BiomeTemplate biome) {
         //? if <=1.21.1 {
-        /*var registry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
-        *///?} else {
-        var registry = world.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
-        //?}
+        var registry = world.getRegistryManager().get(RegistryKeys.ENCHANTMENT);
+        //?} else {
+        /*var registry = world.getRegistryManager().getOrThrow(RegistryKeys.ENCHANTMENT);
+        *///?}
         java.util.Random rng = new java.util.Random();
 
         net.minecraft.registry.entry.RegistryEntry<net.minecraft.enchantment.Enchantment> entry = null;
@@ -19674,15 +19674,15 @@ public class CombatManager {
         if (p == null || p.getEntityWorld() == null) return;
         if (!(p.getEntityWorld() instanceof ServerWorld sw)) return;
         //? if <=1.21.1 {
-        /*net.minecraft.network.packet.Packet<?> packet =
+        net.minecraft.network.packet.Packet<?> packet =
             new net.minecraft.network.packet.s2c.play.EntityPositionS2CPacket(p);
-        *///?} else {
-        // 1.21.3+ split the legacy EntityPositionS2CPacket (absolute teleport
+        //?} else {
+        /*// 1.21.3+ split the legacy EntityPositionS2CPacket (absolute teleport
         // taking an Entity) into a new relative-position packet, and introduced
         // EntityPositionSyncS2CPacket for the absolute-sync use case.
         net.minecraft.network.packet.Packet<?> packet =
             net.minecraft.network.packet.s2c.play.EntityPositionSyncS2CPacket.create(p);
-        //?}
+        *///?}
         sw.getChunkManager().sendToOtherNearbyPlayers(p, packet);
     }
 
@@ -21155,12 +21155,12 @@ public class CombatManager {
             case "minecraft:creaking", "palegardenbackport:creaking" -> new LootPool()
                 .add(Items.STICK, 5).add(Items.OAK_LOG, 3).add(Items.BONE, 2);
             //? if >=1.21.4 {
-            case "craftics:creaking_heart" -> new LootPool()
-                .add(Items.PALE_OAK_LOG, 4).add(Items.BONE_MEAL, 3).add(Items.RESIN_CLUMP, 2);
-            //?} else {
             /*case "craftics:creaking_heart" -> new LootPool()
+                .add(Items.PALE_OAK_LOG, 4).add(Items.BONE_MEAL, 3).add(Items.RESIN_CLUMP, 2);
+            *///?} else {
+            case "craftics:creaking_heart" -> new LootPool()
                 .add(Items.OAK_LOG, 4).add(Items.BONE_MEAL, 3).add(Items.STICK, 2);
-            *///?}
+            //?}
 
             // === Boss mobs (vanilla entities used as bosses) ===
             case "minecraft:warden" -> new LootPool()
@@ -21584,14 +21584,14 @@ public class CombatManager {
                 saveData.getPlayerData(player.getUuid());
             for (var n : pd.drainHubPets()) {
                 //? if <=1.21.4 {
-                /*savedPets.add(new HubPetCollector.PetData(
+                savedPets.add(new HubPetCollector.PetData(
                     n.getString("type"), n.getInt("hp"), n.getInt("maxHp"),
                     n.getInt("atk"), n.getInt("def"), n.getInt("speed"), n.getInt("range"), null, false));
-                *///?} else {
-                savedPets.add(new HubPetCollector.PetData(
+                //?} else {
+                /*savedPets.add(new HubPetCollector.PetData(
                     n.getString("type", ""), n.getInt("hp", 0), n.getInt("maxHp", 0),
                     n.getInt("atk", 0), n.getInt("def", 0), n.getInt("speed", 0), n.getInt("range", 0), null, false));
-                //?}
+                *///?}
             }
             if (!savedPets.isEmpty()) saveData.markDirty();
         }
@@ -22183,10 +22183,10 @@ public class CombatManager {
         }
 
         //? if <=1.21.3 {
-        /*net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(eggStack);
-        *///?} else {
-        net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(player.getEntityWorld().getRegistryManager(), eggStack);
-        //?}
+        net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(eggStack);
+        //?} else {
+        /*net.minecraft.entity.EntityType<?> entityType = egg.getEntityType(player.getEntityWorld().getRegistryManager(), eggStack);
+        *///?}
         if (entityType == null) {
             sendMessage("§cThis spawn egg is empty!");
             return false;

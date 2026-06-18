@@ -90,7 +90,7 @@ public class WorldDataComponent implements Component {
     @Override
     public void readFromNbt(NbtCompound tag, RegistryWrapper.WrapperLookup registryLookup) {
         //? if <=1.21.4 {
-        /*hubBuilt = tag.getBoolean("hubBuilt");
+        hubBuilt = tag.getBoolean("hubBuilt");
         hubVersion = tag.getInt("hubVersion");
         highestBiomeUnlocked = tag.getInt("highestBiomeUnlocked");
         if (highestBiomeUnlocked < 1) highestBiomeUnlocked = 1;
@@ -103,8 +103,8 @@ public class WorldDataComponent implements Component {
         discoveredBiomes = tag.getString("discoveredBiomes");
         if (discoveredBiomes == null) discoveredBiomes = "";
         ngPlusLevel = tag.getInt("ngPlusLevel");
-        *///?} else {
-        hubBuilt = tag.getBoolean("hubBuilt", false);
+        //?} else {
+        /*hubBuilt = tag.getBoolean("hubBuilt", false);
         hubVersion = tag.getInt("hubVersion", 0);
         highestBiomeUnlocked = tag.getInt("highestBiomeUnlocked", 1);
         if (highestBiomeUnlocked < 1) highestBiomeUnlocked = 1;
@@ -115,7 +115,7 @@ public class WorldDataComponent implements Component {
         if (branchChoice == 0 && !tag.contains("branchChoice")) branchChoice = -1;
         discoveredBiomes = tag.getString("discoveredBiomes", "");
         ngPlusLevel = tag.getInt("ngPlusLevel", 0);
-        //?}
+        *///?}
     }
 
     @Override

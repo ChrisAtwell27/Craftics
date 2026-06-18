@@ -79,14 +79,14 @@ public final class HornVariants {
         var entry = stack.get(net.minecraft.component.DataComponentTypes.INSTRUMENT);
         if (entry != null) {
             //? if <=1.21.4 {
-            /*String variant = entry.getKey()
+            String variant = entry.getKey()
                 .map(key -> variantForInstrumentPath(key.getValue().getPath()))
                 .orElse(null);
-            *///?} else {
-            String variant = entry.instrument().getKey()
+            //?} else {
+            /*String variant = entry.instrument().getKey()
                 .map(key -> variantForInstrumentPath(key.getValue().getPath()))
                 .orElse(null);
-            //?}
+            *///?}
             if (variant != null) return variant;
         }
 
@@ -121,18 +121,18 @@ public final class HornVariants {
         String path = instrumentPathForVariant(variantId);
         if (path == null) return;
         //? if <=1.21.1 {
-        /*var instrumentRegistry = registries.get(net.minecraft.registry.RegistryKeys.INSTRUMENT);
-        *///?} else {
-        var instrumentRegistry = registries.getOrThrow(net.minecraft.registry.RegistryKeys.INSTRUMENT);
-        //?}
+        var instrumentRegistry = registries.get(net.minecraft.registry.RegistryKeys.INSTRUMENT);
+        //?} else {
+        /*var instrumentRegistry = registries.getOrThrow(net.minecraft.registry.RegistryKeys.INSTRUMENT);
+        *///?}
         var entryOpt = instrumentRegistry.getEntry(net.minecraft.util.Identifier.of("minecraft", path));
         if (entryOpt.isEmpty()) return;
         //? if <=1.21.4 {
-        /*stack.set(net.minecraft.component.DataComponentTypes.INSTRUMENT, entryOpt.get());
-        *///?} else {
-        stack.set(net.minecraft.component.DataComponentTypes.INSTRUMENT,
+        stack.set(net.minecraft.component.DataComponentTypes.INSTRUMENT, entryOpt.get());
+        //?} else {
+        /*stack.set(net.minecraft.component.DataComponentTypes.INSTRUMENT,
             new net.minecraft.component.type.InstrumentComponent(entryOpt.get()));
-        //?}
+        *///?}
     }
 
     /**

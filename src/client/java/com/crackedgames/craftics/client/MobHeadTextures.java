@@ -188,20 +188,20 @@ public final class MobHeadTextures {
     public static void drawMobHead(net.minecraft.client.gui.DrawContext ctx, Identifier texture, int x, int y, int size) {
         if (size == 16) {
             //? if <=1.21.1 {
-            /*ctx.drawTexture(texture, x, y, 0f, 0f, 16, 16, 16, 16);
-            *///?} else {
-            ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, texture, x, y, 0f, 0f, 16, 16, 16, 16);
-            //?}
+            ctx.drawTexture(texture, x, y, 0f, 0f, 16, 16, 16, 16);
+            //?} else {
+            /*ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, texture, x, y, 0f, 0f, 16, 16, 16, 16);
+            *///?}
         } else {
             ctx.getMatrices().push();
             ctx.getMatrices().translate(x, y, 0);
             float s = size / 16.0f;
             ctx.getMatrices().scale(s, s, 1.0f);
             //? if <=1.21.1 {
-            /*ctx.drawTexture(texture, 0, 0, 0f, 0f, 16, 16, 16, 16);
-            *///?} else {
-            ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, texture, 0, 0, 0f, 0f, 16, 16, 16, 16);
-            //?}
+            ctx.drawTexture(texture, 0, 0, 0f, 0f, 16, 16, 16, 16);
+            //?} else {
+            /*ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, texture, 0, 0, 0f, 0f, 16, 16, 16, 16);
+            *///?}
             ctx.getMatrices().pop();
         }
     }

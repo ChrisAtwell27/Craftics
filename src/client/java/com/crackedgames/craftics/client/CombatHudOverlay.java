@@ -239,16 +239,16 @@ public class CombatHudOverlay implements HudRenderCallback {
         // the hat overlay at (40,8)-(48,16). Both are 8×8 pixels.
         // Draw face base layer
         //? if <=1.21.1 {
-        /*ctx.drawTexture(skinTex, x, y, size, size, 8.0f, 8.0f, 8, 8, 64, 64);
-        *///?} else {
-        ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 8.0f, 8.0f, size, size, 8, 8, 64, 64);
-        //?}
+        ctx.drawTexture(skinTex, x, y, size, size, 8.0f, 8.0f, 8, 8, 64, 64);
+        //?} else {
+        /*ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 8.0f, 8.0f, size, size, 8, 8, 64, 64);
+        *///?}
         // Draw hat overlay on top (semi-transparent second layer on most skins)
         //? if <=1.21.1 {
-        /*ctx.drawTexture(skinTex, x, y, size, size, 40.0f, 8.0f, 8, 8, 64, 64);
-        *///?} else {
-        ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 40.0f, 8.0f, size, size, 8, 8, 64, 64);
-        //?}
+        ctx.drawTexture(skinTex, x, y, size, size, 40.0f, 8.0f, 8, 8, 64, 64);
+        //?} else {
+        /*ctx.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, skinTex, x, y, 40.0f, 8.0f, size, size, 8, 8, 64, 64);
+        *///?}
     }
 
     /**
@@ -804,7 +804,37 @@ public class CombatHudOverlay implements HudRenderCallback {
                 "\u00a77Soaked entities take more lightning damage.");
         }
 
-        // Air at the floor level - sunken pit (solid below) or void (nothing below).
+        // Obstacle / decoration in the column ABOVE the floor (Y+1). This MUST
+        // come before the air-at-floor check below: when the cursor points at a
+        // raised obstacle block (e.g. a wall one block up), TileRaycast returns
+        // that block's grid column, but floorPos is the cell at arena Y - the
+        // layer UNDER the block. If that under-cell is air (pillared/cantilevered
+        // obstacle, or one sitting over a sunken/void cell) the old order fell
+        // into the Sunken Pit / Void branch and described the wrong layer. That
+        // was the "single blocks up count as void or sunken pit" bug: the
+        // highlight (which follows the real surface) was right, only this
+        // re-derived tooltip was wrong.
+        net.minecraft.block.BlockState aboveState = world.getBlockState(floorPos.up());
+        // Decorative snow layers in snowy arenas are walkable floor dressing,
+        // not movement-blocking obstacles. Checked first so a snowed tile never
+        // reads as an obstacle.
+        if (aboveState.getBlock() instanceof net.minecraft.block.SnowBlock) {
+            return new TileTooltipInfo("\u00a7f\u00a7lSnow Layer",
+                "\u00a7fWalkable decorative snow.",
+                "\u00a77Some boss attacks may still target this tile.");
+        }
+        // Any movement-blocking block above the floor = Obstacle. Uses the same
+        // predicate as the server's tile classification so the tooltip agrees
+        // with pathfinding (fences, walls, panes, iron bars, fence gates, logs,
+        // boulders, leaves...).
+        if (com.crackedgames.craftics.combat.WallBlocks.isArenaObstacle(aboveState, world, floorPos.up())) {
+            return new TileTooltipInfo("\u00a78\u00a7lObstacle",
+                "\u00a7fBlocks movement and line of sight.",
+                "\u00a77Path around it or destroy it.");
+        }
+
+        // Air at the floor level (and nothing blocking above) - sunken pit
+        // (solid below) or void (nothing below).
         if (floor.getDefaultState().isAir()) {
             net.minecraft.block.Block below = world.getBlockState(floorPos.down()).getBlock();
             if (!below.getDefaultState().isAir()) {
@@ -815,23 +845,6 @@ public class CombatHudOverlay implements HudRenderCallback {
             return new TileTooltipInfo("\u00a74\u00a7lVoid",
                 "\u00a7fFalling here is instantly fatal.",
                 "\u00a77Mind your step.");
-        }
-
-        // Generic obstacle - any solid block above the floor that we didn't
-        // already special-case. Covers logs (fallen trees), stems, stone
-        // boulders, leaves, etc.
-        net.minecraft.block.BlockState aboveState = world.getBlockState(floorPos.up());
-        // Decorative snow layers in snowy arenas are walkable floor dressing,
-        // not movement-blocking obstacles.
-        if (aboveState.getBlock() instanceof net.minecraft.block.SnowBlock) {
-            return new TileTooltipInfo("\u00a7f\u00a7lSnow Layer",
-                "\u00a7fWalkable decorative snow.",
-                "\u00a77Some boss attacks may still target this tile.");
-        }
-        if (!aboveState.isAir()) {
-            return new TileTooltipInfo("\u00a78\u00a7lObstacle",
-                "\u00a7fBlocks movement and line of sight.",
-                "\u00a77Path around it or destroy it.");
         }
 
         return null;

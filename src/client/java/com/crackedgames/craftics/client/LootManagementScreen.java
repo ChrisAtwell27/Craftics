@@ -104,10 +104,10 @@ public class LootManagementScreen extends HandledScreen<LootManagementScreenHand
     private void drawChestTexture(DrawContext context, int x, int y, int u, int v, int w, int h) {
         Identifier tex = Identifier.of("minecraft", "textures/gui/container/generic_54.png");
         //? if <=1.21.1 {
-        /*context.drawTexture(tex, x, y, (float) u, (float) v, w, h, 256, 256);
-        *///?} else {
-        context.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, tex, x, y, (float) u, (float) v, w, h, 256, 256);
-        //?}
+        context.drawTexture(tex, x, y, (float) u, (float) v, w, h, 256, 256);
+        //?} else {
+        /*context.drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured, tex, x, y, (float) u, (float) v, w, h, 256, 256);
+        *///?}
     }
 
     @Override

@@ -15,10 +15,10 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.screen.NamedScreenHandlerFactory;
 import net.minecraft.state.StateManager;
 //? if <=1.21.1 {
-/*import net.minecraft.state.property.DirectionProperty;
-*///?} else {
-import net.minecraft.state.property.EnumProperty;
-//?}
+import net.minecraft.state.property.DirectionProperty;
+//?} else {
+/*import net.minecraft.state.property.EnumProperty;
+*///?}
 import net.minecraft.state.property.Properties;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.BlockMirror;
@@ -35,10 +35,10 @@ public class LevelSelectBlock extends BlockWithEntity {
 
     public static final MapCodec<LevelSelectBlock> CODEC = createCodec(LevelSelectBlock::new);
     //? if <=1.21.1 {
-    /*public static final DirectionProperty FACING = Properties.HORIZONTAL_FACING;
-    *///?} else {
-    public static final EnumProperty<Direction> FACING = Properties.HORIZONTAL_FACING;
-    //?}
+    public static final DirectionProperty FACING = Properties.HORIZONTAL_FACING;
+    //?} else {
+    /*public static final EnumProperty<Direction> FACING = Properties.HORIZONTAL_FACING;
+    *///?}
 
     // The model extends 2 blocks (0..32 in model space). Blockstate rotates it via
     // y-rotation, and y=90 maps +Z → -X in MC's coordinate system, so the body

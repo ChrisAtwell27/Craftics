@@ -41,7 +41,7 @@ public final class VariantHelper {
      */
     public static void applyVariant(MobEntity mob, ServerWorld world, String biomeId) {
         //? if >=1.21.5 {
-        Climate climate = climateFor(biomeId);
+        /*Climate climate = climateFor(biomeId);
         net.minecraft.registry.DynamicRegistryManager drm = world.getRegistryManager();
         if (mob instanceof net.minecraft.entity.passive.CowEntity cow) {
             net.minecraft.registry.RegistryKey<net.minecraft.entity.passive.CowVariant> key = switch (climate) {
@@ -73,6 +73,6 @@ public final class VariantHelper {
                 pig.readCustomDataFromNbt(tag);
             });
         }
-        //?}
+        *///?}
     }
 }

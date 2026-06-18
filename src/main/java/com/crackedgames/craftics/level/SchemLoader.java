@@ -252,10 +252,10 @@ public class SchemLoader {
         /** Version-split: the full-cube check signature differs between MC versions. */
         private static boolean isOpaqueFullCube(BlockState state) {
             //? if <=1.21.1 {
-            /*return state.isOpaqueFullCube(net.minecraft.world.EmptyBlockView.INSTANCE, net.minecraft.util.math.BlockPos.ORIGIN);
-            *///?} else {
-            return state.isOpaqueFullCube();
-            //?}
+            return state.isOpaqueFullCube(net.minecraft.world.EmptyBlockView.INSTANCE, net.minecraft.util.math.BlockPos.ORIGIN);
+            //?} else {
+            /*return state.isOpaqueFullCube();
+            *///?}
         }
 
         /**
@@ -296,22 +296,22 @@ public class SchemLoader {
         NbtCompound schem;
         if (root.contains("Schematic")) {
             //? if <=1.21.4 {
-            /*schem = root.getCompound("Schematic");
-            *///?} else
-            schem = root.getCompoundOrEmpty("Schematic");
+            schem = root.getCompound("Schematic");
+            //?} else
+            /*schem = root.getCompoundOrEmpty("Schematic");*/
         } else {
             schem = root;
         }
 
         //? if <=1.21.4 {
-        /*int schemWidth = schem.getShort("Width") & 0xFFFF;
+        int schemWidth = schem.getShort("Width") & 0xFFFF;
         int schemHeight = schem.getShort("Height") & 0xFFFF;
         int schemLength = schem.getShort("Length") & 0xFFFF;
-        *///?} else {
-        int schemWidth = schem.getShort("Width").orElse((short) 0) & 0xFFFF;
+        //?} else {
+        /*int schemWidth = schem.getShort("Width").orElse((short) 0) & 0xFFFF;
         int schemHeight = schem.getShort("Height").orElse((short) 0) & 0xFFFF;
         int schemLength = schem.getShort("Length").orElse((short) 0) & 0xFFFF;
-        //?}
+        *///?}
 
         if (schemWidth == 0 || schemHeight == 0 || schemLength == 0) {
             CrafticsMod.LOGGER.warn("Invalid schematic dimensions in {}: {}x{}x{}",
@@ -325,35 +325,35 @@ public class SchemLoader {
 
         if (schem.contains("Blocks")) {
             //? if <=1.21.4 {
-            /*// v3
+            // v3
             NbtCompound blocks = schem.getCompound("Blocks");
             paletteNbt = blocks.getCompound("Palette");
             blockDataBytes = blocks.getByteArray("Data");
-            *///?} else {
-            // v3
+            //?} else {
+            /*// v3
             NbtCompound blocks = schem.getCompoundOrEmpty("Blocks");
             paletteNbt = blocks.getCompoundOrEmpty("Palette");
             blockDataBytes = blocks.getByteArray("Data").orElse(new byte[0]);
-            //?}
+            *///?}
         } else {
             //? if <=1.21.4 {
-            /*// v2
+            // v2
             paletteNbt = schem.getCompound("Palette");
             blockDataBytes = schem.getByteArray("BlockData");
-            *///?} else {
-            // v2
+            //?} else {
+            /*// v2
             paletteNbt = schem.getCompoundOrEmpty("Palette");
             blockDataBytes = schem.getByteArray("BlockData").orElse(new byte[0]);
-            //?}
+            *///?}
         }
 
         int maxId = 0;
         Map<String, Integer> paletteMap = new HashMap<>();
         for (String key : paletteNbt.getKeys()) {
             //? if <=1.21.4 {
-            /*int id = paletteNbt.getInt(key);
-            *///?} else
-            int id = paletteNbt.getInt(key, 0);
+            int id = paletteNbt.getInt(key);
+            //?} else
+            /*int id = paletteNbt.getInt(key, 0);*/
             paletteMap.put(key, id);
             if (id > maxId) maxId = id;
         }

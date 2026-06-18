@@ -18,22 +18,22 @@ public record BarterContextPayload(boolean active, int gold, int maxOffer) imple
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "barter_context"));
 
     //? if <=1.21.3 {
-    /*public static final PacketCodec<RegistryByteBuf, BarterContextPayload> CODEC =
+    public static final PacketCodec<RegistryByteBuf, BarterContextPayload> CODEC =
         PacketCodec.tuple(
             PacketCodecs.BOOL, BarterContextPayload::active,
             PacketCodecs.INTEGER, BarterContextPayload::gold,
             PacketCodecs.INTEGER, BarterContextPayload::maxOffer,
             BarterContextPayload::new
         );
-    *///?} else {
-    public static final PacketCodec<RegistryByteBuf, BarterContextPayload> CODEC =
+    //?} else {
+    /*public static final PacketCodec<RegistryByteBuf, BarterContextPayload> CODEC =
         PacketCodec.tuple(
             PacketCodecs.BOOLEAN, BarterContextPayload::active,
             PacketCodecs.INTEGER, BarterContextPayload::gold,
             PacketCodecs.INTEGER, BarterContextPayload::maxOffer,
             BarterContextPayload::new
         );
-    //?}
+    *///?}
 
     @Override
     public Id<? extends CustomPayload> getId() { return ID; }
