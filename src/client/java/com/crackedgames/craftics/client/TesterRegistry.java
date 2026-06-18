@@ -65,6 +65,7 @@ public final class TesterRegistry {
         register("beabu5",        "Playtester",            TESTER_COLOR, Rank.TESTER);
         register("mouse_guy",        "Playtester",            TESTER_COLOR, Rank.TESTER);
         register("WELP_Shadow",        "Playtester",            TESTER_COLOR, Rank.TESTER);
+        register("Jball__",        "Playtester",            TESTER_COLOR, Rank.TESTER);
 
         // Add more here (all testers share TESTER_COLOR regardless of the value passed):
         // register("SomeName", "Playtester", TESTER_COLOR, Rank.TESTER);

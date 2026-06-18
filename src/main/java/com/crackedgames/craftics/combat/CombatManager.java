@@ -784,15 +784,20 @@ public class CombatManager {
             CombatManager leaderCm = INSTANCES.get(leaderUuid);
             if (leaderCm != null && leaderCm.active) return leaderCm;
         }
-        // Event fallback: handlePostLevelChoice → endCombat → cleanupPartyTracking
-        // clears PARTY_COMBAT_LEADER for non-leader members, but the event then
-        // set up on the leader's CM still tracks them in eventPendingPlayers or
-        // traderPendingPlayers. Without this lookup, an EventChoicePayload /
-        // DialogueChoicePayload from a non-leader routes to their own (inactive)
-        // CM and the event softlocks.
+        // Event fallback: every between-level gate (events, trader, the boss/addon
+        // intro narrator, the dig-site minigame) is set up on the leader's CM AFTER
+        // endCombat → cleanupPartyTracking has already cleared PARTY_COMBAT_LEADER for
+        // non-leader members. Without this lookup, a non-leader's EventChoicePayload /
+        // DialogueChoicePayload routes to their own (inactive) CM, so the leader's
+        // pending-set never drains and the party softlocks. Each set below is one
+        // such gate; a player can only be tracked by one CM at a time, so first match
+        // wins. (introPendingPlayers covers the "☠ Boss Approaching ☠ / Waiting for
+        // party..." screen; without it MP parties hang there forever while solo works.)
         for (CombatManager cm : INSTANCES.values()) {
             if (cm.eventPendingPlayers.contains(playerUuid)) return cm;
             if (cm.traderPendingPlayers.contains(playerUuid)) return cm;
+            if (cm.introPendingPlayers.contains(playerUuid)) return cm;
+            if (cm.digSitePendingPlayers.contains(playerUuid)) return cm;
         }
         return get(playerUuid);
     }
