@@ -1,4 +1,10 @@
 ﻿Changelog
+0.2.7
+World, Arenas, and Tile Classification
+
+- Fences, cobblestone walls, glass panes, iron bars, and fence gates now count as obstacles. Tile classification only treated full solid cubes as obstacles (with a lone special case for cactus), so these partial-collision blocks were classified as plain ground: the player and auto-routing walked straight through walls that physically block movement in the world. A single shared check now flags any block above the floor that has a real collision shape, so pathfinding routes around all of them
+- Tiles with a block one level up no longer mislabel as "Sunken Pit" or "Void" in the hover tooltip. When the cursor pointed at a raised obstacle block, the tooltip read the cell underneath it instead of the block itself, and an air cell down there fell into the sunken-pit / void branch and described the wrong layer. The tooltip now identifies an obstacle above the floor before the air-floor check, using the same obstacle test as tile classification so the tooltip, the move highlight, and pathfinding all agree
+
 0.2.6
 Multiplayer
 
