@@ -1,4 +1,9 @@
 ﻿Changelog
+0.2.6
+Multiplayer
+
+- Boss-fight (and Dig Site) intros no longer soft-lock parties on the "☠ Boss Approaching ☠ / Waiting for party..." screen. The narrator intro before a boss level is set up after the previous fight's combat state and party-leader routing map have already been torn down; the packet router that forwards a member's dismiss to the leader's combat manager only checked the event and trader pending-sets, not the intro or dig-site ones, so every non-leader's dismiss landed on their own inactive manager and the leader's gate never drained. Solo play was unaffected because the lone player routes to their own active manager. The router now resolves through the intro and dig-site gates too
+
 0.2.5
 Combat and Camera
 
