@@ -1893,8 +1893,12 @@ public class CombatManager {
     // === Progression stat per-point scaling ===
     // Buffed so non-AP stats are worth picking. AP and Speed keep their baseValue-driven
     // scaling (one extra action / tile per point) and are intentionally left alone.
-    static final int PROG_MELEE_PER_POINT = 2;       // +2 melee damage per point (was +1)
-    static final int PROG_RANGED_PER_POINT = 2;      // +2 ranged damage per point (was +1)
+    // Melee/Ranged Power is HYBRID: a small flat bonus per point PLUS a percent of total
+    // weapon damage (applyPowerPercent), so it keeps scaling with weapons instead of the
+    // old flat +2 that became negligible late-game.
+    static final int PROG_MELEE_PER_POINT = 1;       // flat +1 melee damage per point
+    static final int PROG_RANGED_PER_POINT = 1;      // flat +1 ranged damage per point
+    static final double PROG_POWER_PCT_PER_POINT = 0.06; // +6% weapon damage per melee/ranged power point
     static final int PROG_DEFENSE_PER_POINT = 2;     // +2 Armor Class per point (was +1)
     static final int PROG_VITALITY_LEVELS_PER_POINT = 2; // x2 Health Boost levels -> +8 HP/point (was +4)
     static final int PROG_RESOURCEFUL_PER_POINT = 2; // +2 emeralds/level per point (was +1)
@@ -1908,6 +1912,21 @@ public class CombatManager {
     private int getProgRangedBonus() {
         if (player == null) return 0;
         return PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player).getPoints(PlayerProgression.Stat.RANGED_POWER) * PROG_RANGED_PER_POINT;
+    }
+
+    /** Points the manager's current player has put into the relevant power stat. */
+    private int powerPoints(boolean ranged) {
+        if (player == null) return 0;
+        return PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player)
+            .getPoints(ranged ? PlayerProgression.Stat.RANGED_POWER : PlayerProgression.Stat.MELEE_POWER);
+    }
+
+    /** Apply the hybrid Power percent bonus to an assembled base damage. The flat part is
+     *  already folded into baseDamage via PROG_*_PER_POINT; this adds PROG_POWER_PCT_PER_POINT
+     *  of total weapon damage per point so Power stays relevant as weapons scale up. */
+    static int applyPowerPercent(int baseDamage, int powerPoints) {
+        if (powerPoints <= 0) return baseDamage;
+        return (int)(baseDamage * (1.0 + powerPoints * PROG_POWER_PCT_PER_POINT));
     }
 
     private int getProgDefenseBonus() {
@@ -2856,6 +2875,10 @@ public class CombatManager {
             + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus;
         baseDamage = (int)(baseDamage
             * com.crackedgames.craftics.CrafticsMod.CONFIG.playerDamageMultiplier());
+        baseDamage = applyPowerPercent(baseDamage, powerPoints(false));
+        if (com.crackedgames.craftics.api.registry.WeaponRegistry.getApCost(weapon) <= 1) {
+            baseDamage += PlayerCombatStats.getSetLightWeaponDamage(player); // Rogue: light-weapon bonus
+        }
         // Weakness reduces the player's outgoing damage (matches the main attack path):
         // a weakened physical hit can be ground all the way down to 0.
         return applyWeaknessFloor(baseDamage, combatEffects.getWeaknessPenalty());
@@ -3451,6 +3474,15 @@ public class CombatManager {
     }
 
     private void handleMove(GridPos target) {
+        // An attack deducts AP immediately but applies its damage after a short animation
+        // delay (pendingAttackAction). Moving during that window used to strand the hit while
+        // the AP stayed spent, so resolve any pending attack first before the move.
+        if (pendingAttackAction != null) {
+            pendingAttackAction.run();
+            pendingAttackAction = null;
+            pendingAttackDelay = 0;
+            if (!active) return; // the resolved hit may have ended combat
+        }
         if (!arena.isInBounds(target)) return;
 
         // Elytra: first move of the turn can reach any tile for free
@@ -4197,6 +4229,13 @@ public class CombatManager {
             + progBonus + PlayerCombatStats.getSetAttackBonus(player)
             + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus;
         baseDamage = (int)(baseDamage * com.crackedgames.craftics.CrafticsMod.CONFIG.playerDamageMultiplier());
+        baseDamage = applyPowerPercent(baseDamage, powerPoints(isRangedWeapon));
+        // Rogue (Chainmail) set: light (1-AP) weapons hit harder and crit more, rewarding
+        // fast weapons instead of the old flat AP-cost cut that doubled 2-AP weapon output.
+        boolean lightWeapon = com.crackedgames.craftics.api.registry.WeaponRegistry.getApCost(weapon) <= 1;
+        if (lightWeapon) {
+            baseDamage += PlayerCombatStats.getSetLightWeaponDamage(player);
+        }
         if (isRangedWeapon) {
             baseDamage += PlayerCombatStats.getBowPower(player);
         }
@@ -4249,6 +4288,11 @@ public class CombatManager {
             luckCrit = Math.random()
                 < HybridSetEffects.berserkerCritChance(player.getHealth(), player.getMaxHealth());
         }
+        // Rogue (Chainmail) set: bonus crit chance with light (1-AP) weapons.
+        if (!luckCrit && lightWeapon) {
+            int rogueCrit = PlayerCombatStats.getSetLightWeaponCrit(player);
+            if (rogueCrit > 0) luckCrit = Math.random() < (rogueCrit / 100.0);
+        }
         if (luckCrit) {
             // Gladiator: critical hits deal +50% extra damage (2.0x in place of 1.5x).
             double critMult = activeHybrid == HybridEffect.GLADIATOR
@@ -4272,7 +4316,7 @@ public class CombatManager {
         }
 
         // Apply mob-type vulnerability/resistance multiplier
-        double mobResistMult = MobResistances.getDamageMultiplier(target.getEntityTypeId(), damageType);
+        double mobResistMult = MobResistances.getDamageMultiplier(target.getEntityTypeId(), target.getAiKey(), damageType);
         // Breaker hybrid: ignore enemy resistances/immunities (mult < 1.0 -> 1.0).
         if (activeHybrid == HybridEffect.BREAKER && mobResistMult < 1.0) {
             mobResistMult = 1.0;
@@ -4743,8 +4787,14 @@ public class CombatManager {
                 if (msg.contains("Sweep!")) achievementTracker.recordSweepTargets(extraHits);
                 if (msg.contains("CRITICAL HIT")) achievementTracker.recordCrit();
                 if (msg.contains("EXECUTE!") && !fTarget.isAlive()) achievementTracker.recordExecutionKill();
-                if (msg.contains("ARMOR CRUSH")) {
-                    achievementTracker.recordArmorCrush(fTarget.getDefense());
+                if (msg.contains("SHATTER ARMOR") && msg.contains("destroyed ")) {
+                    // Record the DEF actually destroyed (parsed from "...destroyed N DEF...")
+                    // so the Armor Crush feat (ignore 5+ DEF in one hit) can fire. The old
+                    // check looked for "ARMOR CRUSH", which the shatter message never contains.
+                    try {
+                        String after = msg.substring(msg.indexOf("destroyed ") + 10);
+                        achievementTracker.recordArmorCrush(Integer.parseInt(after.split(" ")[0]));
+                    } catch (NumberFormatException ignored) {}
                 }
                 if (msg.contains("STUNNED")) achievementTracker.recordStun(fTarget.getEntityId());
                 if (msg.contains("Splash!")) achievementTracker.recordCoralFanTargets(extraHits);
@@ -4799,6 +4849,18 @@ public class CombatManager {
                 fTarget.stackBleed(fSharpnessBleed);
                 sendMessage("§4✦ Sharpness " + fSharpnessBleed + "! " + fTarget.getDisplayName()
                     + " is bleeding (" + fTarget.getBleedStacks() + " stacks).");
+            }
+
+            // === MOB HEAD: Wither Skeleton Skull -25% chance to inflict Wither on a melee hit ===
+            if (!fIsRangedWeapon && fTarget.isAlive()
+                    && PlayerCombatStats.wearsHead(player, Items.WITHER_SKELETON_SKULL)
+                    && Math.random() < 0.25) {
+                fTarget.setWitherTurns(Math.max(fTarget.getWitherTurns(), 3));
+                sendMessage("§8✦ Withering! " + fTarget.getDisplayName() + " is afflicted with Wither.");
+            }
+            // === MOB HEAD: Creeper Head -concussive blast knocks the 3x3 around the target outward ===
+            if (fTarget.isAlive() && PlayerCombatStats.wearsHead(player, Items.CREEPER_HEAD)) {
+                creeperHeadKnockback(fTarget.getGridPos());
             }
 
             // === TRIDENT LOYALTY: Ricochet to nearby enemies, then return ===
@@ -4879,7 +4941,7 @@ public class CombatManager {
                         if (ricochetTarget == null) break;
 
                         int ricRawDamage = fBaseDamageBeforeResist;
-                        double ricResistMult = MobResistances.getDamageMultiplier(ricochetTarget.getEntityTypeId(), fDamageType);
+                        double ricResistMult = MobResistances.getDamageMultiplier(ricochetTarget.getEntityTypeId(), ricochetTarget.getAiKey(), fDamageType);
                         if (ricResistMult == 0.0) {
                             sendMessage("§b↷ Ricochet! " + ricochetTarget.getDisplayName() + " is immune.");
                             hitIds.add(ricochetTarget.getEntityId());
@@ -5733,6 +5795,12 @@ public class CombatManager {
                 if ("boss:warped_forest".equals(entity.getAiKey())) {
                     clearVoidRifts();
                 }
+                // Phase Skipper: record the kill if this phase-based boss never reached Phase 2.
+                var deadBossAi = resolveAi(entity);
+                if (deadBossAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bai
+                        && !bai.isInPhaseTwo()) {
+                    achievementTracker.recordBossKilledBeforePhase2();
+                }
             }
             // Mirror image clones use a different death path -no XP, no loot,
             // and a "shatter" message instead of the usual boss-defeated line.
@@ -5777,6 +5845,7 @@ public class CombatManager {
             int deathMaxHp = entity.getMaxHp();
             int deathAtk = entity.getAttackPower();
             int deathDef = entity.getDefense();
+            applyMobHeadKillRewards(entity); // Zombie Head heal / Piglin Head emerald for the killer
             arena.removeEntity(entity);
 
             // Death particles (big poof)
@@ -8329,12 +8398,14 @@ public class CombatManager {
         GridTile turnTile = arena.getTile(arena.getPlayerGridPos());
         if (turnTile != null) {
             if (turnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted
-                    && !combatEffects.hasFireResistance()) {
+                    && !combatEffects.hasFireResistance()
+                    && !PlayerCombatStats.wearsHead(player, Items.PIGLIN_HEAD)) {
                 int lavaDmg = damagePlayer(10);
                 sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
             } else if (turnTile.getType() == com.crackedgames.craftics.core.TileType.FIRE
-                    && !combatEffects.hasFireResistance()) {
+                    && !combatEffects.hasFireResistance()
+                    && !PlayerCombatStats.wearsHead(player, Items.PIGLIN_HEAD)) {
                 int fireDmg = damagePlayer(4);
                 sendMessage("§6  Standing on magma! " + fireDmg + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
@@ -9411,7 +9482,7 @@ public class CombatManager {
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getBurningTurns() <= 0) continue;
                 boolean wasAlive = e.isAlive();
-                int burnDmg = applyStatusDot(e, e.getBurningDamage());
+                int burnDmg = applyStatusDot(e, e.getBurningTickDamage());
                 e.setBurningTurns(e.getBurningTurns() - 1);
                 sendMessage("§6" + e.getDisplayName() + " burned for " + burnDmg + ".");
                 if (e.getMobEntity() != null) {
@@ -9430,7 +9501,7 @@ public class CombatManager {
             // --- Bleed DOT: damage scales quadratically with stack count, then 1 stack drops off ---
             for (CombatEntity e : enemies) {
                 if (!e.isAlive() || e.getBleedStacks() <= 0) continue;
-                int bleedDmg = applyStatusDot(e, CombatEntity.computeBleedTickDamage(e.getBleedStacks()));
+                int bleedDmg = applyStatusDot(e, CombatEntity.computeBleedTickDamage(e.getBleedStacks()) + e.getMaxHpDotBonus());
                 sendMessage("§4" + e.getDisplayName() + " bleeds for " + bleedDmg + " (" + e.getBleedStacks() + " stacks).");
                 if (e.getMobEntity() != null) {
                     ((ServerWorld) player.getEntityWorld()).spawnParticles(
@@ -9757,7 +9828,8 @@ public class CombatManager {
             GridTile qTurnTile = arena.getTile(arena.getPlayerGridPos());
             if (qTurnTile != null) {
                 if (qTurnTile.getType() == com.crackedgames.craftics.core.TileType.LAVA && !playerMounted
-                        && !combatEffects.hasFireResistance()) {
+                        && !combatEffects.hasFireResistance()
+                        && !PlayerCombatStats.wearsHead(player, Items.PIGLIN_HEAD)) {
                     int lavaDmg = damagePlayer(10);
                     sendMessage("§6  Standing in lava! " + lavaDmg + " damage! (HP: " + getPlayerHp() + ")");
                     if (getPlayerHp() <= 0) { sendSync(); handlePlayerDeathOrGameOver(); return; }
@@ -11138,6 +11210,9 @@ public class CombatManager {
         activeVoidRifts.clear();
         // Sand mines share the same combat-teardown lifecycle as rifts.
         activeSandMines.clear();
+        // Drop unresolved boss telegraphs on teardown too, so a warning whose boss
+        // died before it resolved can't keep broadcasting its tiles into later levels.
+        pendingBossWarnings.clear();
     }
 
     /**
@@ -13463,7 +13538,10 @@ public class CombatManager {
                 int dist = Math.abs(enemy.getGridPos().x() - center.x())
                          + Math.abs(enemy.getGridPos().z() - center.z());
                 if (dist <= 2) {
-                    int dmg = dist == 0 ? 8 : (dist == 1 ? 5 : 3);
+                    // Flat blast damage plus a percent of max HP by ring (center/adjacent/outer)
+                    // so TNT stays lethal against late-game HP pools. Bosses take 1/3 (8/5/3%).
+                    double hpPct = dist == 0 ? 0.24 : (dist == 1 ? 0.15 : 0.09);
+                    int dmg = (dist == 0 ? 8 : (dist == 1 ? 5 : 3)) + enemy.percentMaxHpDamage(hpPct);
                     int dealt = applySpecialUtilityDamage(enemy, dmg);
                     totalDamage += dealt;
                     enemiesHit++;
@@ -17381,7 +17459,8 @@ public class CombatManager {
                         data.markDirty();
                         pendingNextLevelDef = nextLevelDef;
                         pendingBiome = biome;
-                        var ambushDef = RandomEvents.generateAmbush(biome.biomeId, biomeOrdinal, ngPlusLevel);
+                        var ambushDef = RandomEvents.generateAmbush(biome.biomeId, biomeOrdinal,
+                            biome.getBiomeLevelIndex(globalLevel), ngPlusLevel);
                         pendingEventBiomeOrdinal = Math.max(0, biomeOrdinal);
                         lastFightWasTrial = true;
                         offerShinyChoice(savedPlayer, savedMembers, ambushDef);
@@ -19124,6 +19203,9 @@ public class CombatManager {
                 .findFirst().orElse(null);
 
             if (enchantEntry != null) {
+                // Clamp the 1-3 roll to the enchant's real max level so the enchanter
+                // never hands out invalid levels like Mending II or Knockback III.
+                level = Math.min(level, enchantEntry.value().getMaxLevel());
                 ItemEnchantmentsComponent.Builder builder = new ItemEnchantmentsComponent.Builder(
                     stack.getOrDefault(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT));
                 builder.add(enchantEntry, level);
@@ -19623,6 +19705,50 @@ public class CombatManager {
         }
         // Fallback -couldn't resolve the killer, share with everyone present.
         return getAllParticipants();
+    }
+
+    /** Mob-head on-kill rewards for the player(s) credited with the kill: Zombie Head heals
+     *  2 HP, Piglin Head grants a bonus emerald. */
+    private void applyMobHeadKillRewards(CombatEntity dead) {
+        if (dead.isAlly()) return;
+        for (ServerPlayerEntity killer : resolveKillerRecipients(dead)) {
+            if (killer == null) continue;
+            var head = killer.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD);
+            if (head.isOf(Items.ZOMBIE_HEAD)) {
+                killer.setHealth(Math.min(killer.getMaxHealth(), killer.getHealth() + 2f));
+            }
+            if (head.isOf(Items.PIGLIN_HEAD)
+                    && killer.getEntityWorld() instanceof ServerWorld sw) {
+                var data = com.crackedgames.craftics.world.CrafticsSavedData.get(sw);
+                data.getPlayerData(killer.getUuid()).addEmeralds(1);
+                data.markDirty();
+            }
+        }
+    }
+
+    /** Creeper Head: a concussive blast knocks every enemy in the 3x3 around the hit target
+     *  one tile outward (away from the target). Pure displacement, no damage. */
+    private void creeperHeadKnockback(GridPos center) {
+        boolean any = false;
+        for (CombatEntity e : new java.util.ArrayList<>(enemies)) {
+            if (!e.isAlive() || e.isAlly()) continue;
+            GridPos pos = e.getGridPos();
+            int dx = pos.x() - center.x();
+            int dz = pos.z() - center.z();
+            if (dx == 0 && dz == 0) continue;                    // skip the hit target itself
+            if (Math.abs(dx) > 1 || Math.abs(dz) > 1) continue;  // only the surrounding 3x3
+            GridPos dest = new GridPos(pos.x() + Integer.signum(dx), pos.z() + Integer.signum(dz));
+            if (!arena.isInBounds(dest) || arena.isOccupied(dest)) continue;
+            GridTile t = arena.getTile(dest);
+            if (t == null || !t.isWalkable()) continue;
+            arena.moveEntity(e, dest);
+            if (e.getMobEntity() != null) {
+                BlockPos bp = arena.gridToBlockPos(dest);
+                e.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(dest, e.isFlying()), bp.getZ() + 0.5);
+            }
+            any = true;
+        }
+        if (any) sendMessage("§a✦ Concussive Blast! Nearby enemies are knocked back.");
     }
 
     /** Consume one of the held food stack to heal {@code ally}. Mirrors the
@@ -21904,7 +22030,13 @@ public class CombatManager {
             enemyTypesBuilder.append(enemy.getEntityTypeId());
         }
 
-        // Build boss attack warning tiles from pending warnings
+        // Build boss attack warning tiles from pending warnings. First drop any
+        // whose boss died before the telegraph could resolve: resolvePendingBossWarnings
+        // only removes warnings for a LIVING boss and only runs on that boss's own
+        // turn, so a boss killed on its telegraph turn is never purged. Left in the
+        // list, its tiles rebroadcast in every TileSetPayload for the rest of the run,
+        // leaving red boss-attack tiles stuck on screen across multiple levels.
+        pendingBossWarnings.removeIf(pw -> !pw.boss().isAlive());
         java.util.List<Integer> warningList = new java.util.ArrayList<>();
         for (PendingBossWarning pw : pendingBossWarnings) {
             if (pw.ability().warningTiles() != null) {
@@ -22569,7 +22701,7 @@ public class CombatManager {
             // armor bonuses are already folded in at spawn time).
             typeIds.append(";atk=").append(
                 e.getAttackPower() + computeAllyPetBonus(e) + computeEnemyRuntimeAttackBonus(e));
-            typeIds.append(";def=").append(e.getDefense());
+            typeIds.append(";def=").append(e.getEffectiveDefense());
             typeIds.append(";spd=").append(e.getMoveSpeed());
             typeIds.append(";range=").append(e.getRange());
             typeIds.append(";mv=").append(MoveStyle.forEntityType(e.getEntityTypeId()).tag());
@@ -22709,9 +22841,9 @@ public class CombatManager {
         boolean ranged = weapon == Items.BOW || weapon == Items.CROSSBOW;
         DamageType damageType = DamageType.fromWeapon(weapon);
         CombatEffects fx = (member == player) ? combatEffects : null;
-        int progBonus = ranged
-            ? ms.getPoints(PlayerProgression.Stat.RANGED_POWER) * PROG_RANGED_PER_POINT
-            : ms.getPoints(PlayerProgression.Stat.MELEE_POWER) * PROG_MELEE_PER_POINT;
+        int powerPts = ranged ? ms.getPoints(PlayerProgression.Stat.RANGED_POWER)
+                              : ms.getPoints(PlayerProgression.Stat.MELEE_POWER);
+        int progBonus = powerPts * (ranged ? PROG_RANGED_PER_POINT : PROG_MELEE_PER_POINT);
         int damageTypeBonus = DamageType.getTotalBonus(member, trimScan, fx, damageType, ms)
             + DamageType.getMobHeadBonus(
                 member.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), damageType);
@@ -22721,6 +22853,10 @@ public class CombatManager {
             + PlayerCombatStats.getWeaponEnchantBonus(member) + damageTypeBonus;
         baseDamage = (int)(baseDamage
             * com.crackedgames.craftics.CrafticsMod.CONFIG.playerDamageMultiplier());
+        baseDamage = applyPowerPercent(baseDamage, powerPts);
+        if (com.crackedgames.craftics.api.registry.WeaponRegistry.getApCost(weapon) <= 1) {
+            baseDamage += PlayerCombatStats.getSetLightWeaponDamage(member); // Rogue: light-weapon bonus
+        }
         if (ranged) baseDamage += PlayerCombatStats.getBowPower(member);
         // INFERNAL trim set: fire attacks deal +3.
         if (trimScan != null && trimScan.setBonus() == TrimEffects.SetBonus.INFERNAL

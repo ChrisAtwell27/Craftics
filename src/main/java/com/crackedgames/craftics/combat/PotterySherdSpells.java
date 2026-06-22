@@ -394,7 +394,7 @@ public class PotterySherdSpells {
             playerBlock.getZ() + 0.5, 6, 0.2, 0.3, 0.2, 0.05);
 
         // Damage + debuff immediately (game state): 5 dmg (buffed from 3), -7 DEF (buffed from -5)
-        int dealt = target.takeDamage(5);
+        int dealt = target.takeSpecialDamage(5, 0.08);
         target.stackDefensePenalty(3, 7);
 
         // Phase 1 (4 ticks) - Acid trail
@@ -469,7 +469,7 @@ public class PotterySherdSpells {
         int baseDmg = 6;
         boolean adjacent = pullPos.manhattanDistance(playerPos) <= 1;
         if (adjacent) baseDmg += 5;
-        int dealt = target.takeDamage(baseDmg);
+        int dealt = target.takeSpecialDamage(baseDmg, 0.08);
 
         // Phase 2 (7 ticks) - Impact splash
         queueEffect(7, () -> {
@@ -500,7 +500,7 @@ public class PotterySherdSpells {
             playerBlock.getZ() + 0.5, 8, 0.3, 0.4, 0.3, 0.08);
 
         // Damage + debuffs immediately: 5 dmg (buffed from 3), -5 ATK (from -4), -4 SPD (from -3)
-        int dealt = target.takeDamage(5);
+        int dealt = target.takeSpecialDamage(5, 0.08);
         target.setAttackPenalty(target.getAttackPenalty() + 5);
         target.setSpeedBonus(target.getSpeedBonus() - 4);
 
@@ -607,7 +607,7 @@ public class PotterySherdSpells {
         }
 
         int baseDmg = nearObstacle ? 16 : 10; // buffed from 11/7
-        int dealt = target.takeDamage(baseDmg);
+        int dealt = target.takeSpecialDamage(baseDmg, 0.10);
 
         // Phase 1 (4 ticks) - Ground trail + rumble
         final boolean hasBonus = nearObstacle;
@@ -682,7 +682,7 @@ public class PotterySherdSpells {
         ProjectileSpawner.spawnConverging(world, playerBlock, 0.6, ParticleTypes.ENCHANTED_HIT, 6);
 
         // Damage immediately (game state)
-        int dealt = target.takeDamage(12); // buffed from 8
+        int dealt = target.takeSpecialDamage(12, 0.10); // buffed from 8
         StringBuilder msg = new StringBuilder("§d§lPhantom Slash! §f" + target.getDisplayName() + " takes " + dealt + " damage!");
 
         // Cleave - find a random adjacent enemy (not the primary target)
@@ -744,7 +744,7 @@ public class PotterySherdSpells {
         ProjectileSpawner.spawnConverging(world, playerBlock, 0.7, ParticleTypes.FLAME, 6);
 
         // 9 fire damage to target + burning for 3 turns (3 dmg/turn, buffed from 6/2)
-        int dealt = target.takeDamage(9);
+        int dealt = target.takeSpecialDamage(9, 0.08);
         target.stackBurning(3, 3); // buffed from 2
         if (target.getMobEntity() != null) target.getMobEntity().setFireTicks(200);
 
@@ -836,7 +836,7 @@ public class PotterySherdSpells {
             damage += 9; // buffed from 6
             target.setStunned(true);
         }
-        int dealt = damage > 0 ? target.takeDamage(damage) : 0;
+        int dealt = damage > 0 ? target.takeSpecialDamage(damage, 0.08) : 0;
 
         // Phase 1 (3 ticks) - Dust trail along push path
         final boolean wallSlam = hitWall;
@@ -936,8 +936,8 @@ public class PotterySherdSpells {
             if (!e.isAlive() || e.isAlly()) continue;
             if (e.getGridPos().manhattanDistance(playerPos) > 2) continue;
 
-            // 8 water damage (buffed from 5)
-            int dealt = e.takeDamage(8);
+            // 8 water damage (buffed from 5) + a small percent of max HP so the AoE scales
+            int dealt = e.takeSpecialDamage(8, 0.06);
             hit++;
             if (e.getMobEntity() != null) {
                 hitBlocks.add(arena.gridToBlockPos(e.getGridPos()));
@@ -1010,7 +1010,7 @@ public class PotterySherdSpells {
             playerBlock.getZ() + 0.5, 8, 0.2, 0.3, 0.2, 0.05);
 
         // 10 damage (buffed from 7) + heal
-        int dealt = target.takeDamage(10);
+        int dealt = target.takeSpecialDamage(10, 0.08);
         float maxHp = player.getMaxHealth();
         player.setHealth(Math.min(maxHp, player.getHealth() + dealt));
 
@@ -1139,7 +1139,7 @@ public class PotterySherdSpells {
         ProjectileSpawner.spawnConverging(world, playerBlock, 0.5, ParticleTypes.ENCHANTED_HIT, 4);
 
         // Damage immediately (game state) - buffed from 7/4
-        int dealt = target.takeDamage(11);
+        int dealt = target.takeSpecialDamage(11, 0.08);
         StringBuilder msg = new StringBuilder("§b§lSpectral Volley! §f" + target.getDisplayName() + " takes "
             + dealt + " RANGED damage!");
 
@@ -1200,7 +1200,7 @@ public class PotterySherdSpells {
             if (!e.isAlive() || e.isAlly()) continue;
             if (e.getGridPos().manhattanDistance(playerPos) > 3) continue;
 
-            int dealt = e.takeDamage(7); // buffed from 4
+            int dealt = e.takeSpecialDamage(7, 0.06); // buffed from 4, + percent max HP
             e.setStunned(true);
             hit++;
             if (e.getMobEntity() != null) {
@@ -1355,7 +1355,7 @@ public class PotterySherdSpells {
             return "§4§l☠ DEATH MARK - EXECUTE! §f" + target.getDisplayName() + " obliterated!";
         } else {
             // Game state immediately - 10 damage + real Wither IV for 4 turns
-            int dealt = target.takeDamage(10);
+            int dealt = target.takeSpecialDamage(10, 0.08);
             target.stackWither(4, 3); // Wither IV (amp 3); damage = remainingTurns + 1 + amp + maxHpBonus
 
             // Phase 2 (8 ticks) - Wither curse impact
@@ -1421,7 +1421,7 @@ public class PotterySherdSpells {
             int dmg = Math.max(3, baseDamage - (depth * chainDecay));
             // Soaked enemies take 2x lightning damage
             if (e.getSoakedTurns() > 0) dmg *= 2;
-            int dealt = e.takeDamage(dmg);
+            int dealt = e.takeSpecialDamage(dmg, 0.06);
             BlockPos eBlock = arena.gridToBlockPos(e.getGridPos());
             chainBlocks.add(eBlock);
 

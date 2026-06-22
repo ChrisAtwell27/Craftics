@@ -331,10 +331,10 @@ public class CombatTooltips implements ItemTooltipCallback {
     private static String getEnchantEffect(String enchantId, int level) {
         return switch (enchantId) {
             // Weapon damage
-            case "sharpness" -> "\u00a7c\u2694 Sharpness " + toRoman(level) + ": \u00a77+" + level + " melee damage";
+            case "sharpness" -> "\u00a7c\u2694 Sharpness " + toRoman(level) + ": \u00a77+" + level + " dmg & +" + level + " Bleed per hit";
             case "smite" -> "\u00a7e\u2694 Smite " + toRoman(level) + ": \u00a77+" + (level * 2) + " damage vs undead";
             case "bane_of_arthropods" -> "\u00a72\u2694 Bane " + toRoman(level) + ": \u00a77+" + (level * 2) + " damage vs spiders";
-            case "power" -> "\u00a7c\u27B3 Power " + toRoman(level) + ": \u00a77+" + level + " ranged damage";
+            case "power" -> "\u00a7c\u27B3 Power " + toRoman(level) + ": \u00a77+" + level + " ranged dmg & +" + ((level + 1) / 2) + " range";
             case "impaling" -> "\u00a7b\u2694 Impaling " + toRoman(level) + ": \u00a77+" + (level * 2) + " damage vs aquatic";
             case "density" -> "\u00a78\u2694 Density " + toRoman(level) + ": \u00a77+" + level + " AoE damage (mace)";
             case "breach" -> "\u00a74\u2694 Breach " + toRoman(level) + ": \u00a77Ignore " + level + " enemy DEF";
@@ -367,7 +367,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "depth_strider" -> "\u00a73\u2248 Depth Strider " + toRoman(level) + ": \u00a77+" + level + " speed on water tiles";
             case "frost_walker" -> "\u00a7b\u2744 Frost Walker " + toRoman(level) + ": \u00a77Water tiles become walkable ice";
             case "soul_speed" -> "\u00a75\u2605 Soul Speed " + toRoman(level) + ": \u00a77+" + level + " speed on soul sand";
-            case "swift_sneak" -> "\u00a78\u2605 Swift Sneak " + toRoman(level) + ": \u00a77No speed penalty when sneaking";
+            case "swift_sneak" -> "\u00a78\u2605 Swift Sneak " + toRoman(level) + ": \u00a77No effect in tactical combat";
 
             // Tool enchants with combat use
             case "efficiency" -> "\u00a7e\u26CF Efficiency " + toRoman(level) + ": \u00a77Break obstacles faster";
@@ -933,11 +933,11 @@ public class CombatTooltips implements ItemTooltipCallback {
         }
 
         // ── Mob skulls (equip as helmet for a +1 damage type affinity) ──
-        if (item == Items.SKELETON_SKULL) return "\u00a7f\u2620 Wear: \u00a7b+1 Ranged \u00a77damage\n\u00a78Rare drop from skeletons, strays, bogged";
-        if (item == Items.WITHER_SKELETON_SKULL) return "\u00a7f\u2620 Wear: \u00a7d+1 Special \u00a77damage\n\u00a78Rare drop from wither skeletons";
-        if (item == Items.CREEPER_HEAD) return "\u00a7f\u2620 Wear: \u00a78+1 Blunt \u00a77damage\n\u00a78Rare drop from creepers";
-        if (item == Items.PIGLIN_HEAD) return "\u00a7f\u2620 Wear: \u00a7c+1 Slashing \u00a77damage\n\u00a78Rare drop from piglins, brutes, z.piglins";
-        if (item == Items.ZOMBIE_HEAD) return "\u00a7f\u2620 Wear: \u00a77+1 Physical \u00a77damage\n\u00a78Rare drop from zombies, husks, drowned";
+        if (item == Items.SKELETON_SKULL) return "\u00a7f\u2620 Wear: \u00a7b+1 Ranged \u00a77dmg, \u00a7b+1 \u00a77bow range\n\u00a78Rare drop from skeletons, strays, bogged";
+        if (item == Items.WITHER_SKELETON_SKULL) return "\u00a7f\u2620 Wear: \u00a7d+1 Special \u00a77dmg, \u00a7825% Wither on melee hit\n\u00a78Rare drop from wither skeletons";
+        if (item == Items.CREEPER_HEAD) return "\u00a7f\u2620 Wear: \u00a78+1 Blunt \u00a77dmg, \u00a77hits knock back nearby foes\n\u00a78Rare drop from creepers";
+        if (item == Items.PIGLIN_HEAD) return "\u00a7f\u2620 Wear: \u00a7c+1 Slashing \u00a77dmg, \u00a76fireproof, +1 emerald/kill\n\u00a78Rare drop from piglins, brutes, z.piglins";
+        if (item == Items.ZOMBIE_HEAD) return "\u00a7f\u2620 Wear: \u00a77+1 Physical \u00a77dmg, \u00a7aheal 2 HP per kill\n\u00a78Rare drop from zombies, husks, drowned";
 
         return null;
     }

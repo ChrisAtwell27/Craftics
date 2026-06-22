@@ -464,7 +464,7 @@ public final class VanillaWeapons {
     // ===== Axes (CLEAVING, range 1, apCost 2) =====
 
     private static void registerAxes() {
-        WeaponAbilityHandler axeHandler = Abilities.armorIgnore(0.05, 0.03);
+        WeaponAbilityHandler axeHandler = Abilities.armorIgnore(0.05, 0.03).and(Abilities.enchantKnockback());
 
         WeaponRegistry.register(Items.WOODEN_AXE, WeaponEntry.builder(Items.WOODEN_AXE)
             .damageType(DamageType.CLEAVING)

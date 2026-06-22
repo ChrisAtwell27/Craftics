@@ -121,7 +121,7 @@ public class CrafticsMod implements ModInitializer {
             String forced;
             String label;
             if (item == net.minecraft.item.Items.TRIAL_KEY) {
-                forced = "trial_chamber";
+                forced = "trial";
                 label = "Trial Chamber";
             } else if (item == net.minecraft.item.Items.OMINOUS_TRIAL_KEY) {
                 forced = "ominous_trial";
@@ -166,7 +166,7 @@ public class CrafticsMod implements ModInitializer {
             String forced;
             String label;
             if (item == net.minecraft.item.Items.TRIAL_KEY) {
-                forced = "trial_chamber";
+                forced = "trial";
                 label = "Trial Chamber";
             } else if (item == net.minecraft.item.Items.OMINOUS_TRIAL_KEY) {
                 forced = "ominous_trial";

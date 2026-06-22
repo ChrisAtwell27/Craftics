@@ -79,9 +79,12 @@ public class PlayerCombatStats {
     public static int getWeaponRange(ServerPlayerEntity player) {
         Item weapon = player.getMainHandStack().getItem();
         int baseRange = com.crackedgames.craftics.api.registry.WeaponRegistry.getRange(weapon);
+        // Skeleton Skull (Deadeye): +1 range with bows and crossbows.
+        int headRange = (weapon == Items.BOW || weapon == Items.CROSSBOW)
+            && wearsHead(player, Items.SKELETON_SKULL) ? 1 : 0;
         // Bow Power enchant adds bonus range dynamically
         if (weapon == Items.BOW && hasArrows(player)) {
-            return baseRange + getBowPowerRange(player);
+            return baseRange + getBowPowerRange(player) + headRange;
         }
         // Crossbow needs ammo to fire - arrows, or a firework rocket in the
         // offhand (the rocket-crossbow shot). Without either it falls to melee.
@@ -89,7 +92,12 @@ public class PlayerCombatStats {
                 && !player.getOffHandStack().isOf(Items.FIREWORK_ROCKET)) {
             return 1; // melee range fallback
         }
-        return baseRange;
+        return baseRange + headRange;
+    }
+
+    /** True if the player is wearing the given mob-head item in the helmet slot. */
+    public static boolean wearsHead(ServerPlayerEntity player, Item head) {
+        return player.getEquippedStack(EquipmentSlot.HEAD).isOf(head);
     }
 
     /** Check if a target is on a valid straight/diagonal line from the player. */
@@ -225,6 +233,14 @@ public class PlayerCombatStats {
 
     public static int getSetApCostReduction(ServerPlayerEntity player) {
         return ArmorSetRegistry.getApCostReduction(getArmorSet(player));
+    }
+
+    public static int getSetLightWeaponDamage(ServerPlayerEntity player) {
+        return ArmorSetRegistry.getLightWeaponDamage(getArmorSet(player));
+    }
+
+    public static int getSetLightWeaponCrit(ServerPlayerEntity player) {
+        return ArmorSetRegistry.getLightWeaponCrit(getArmorSet(player));
     }
 
     public static boolean hasTurtleSet(ServerPlayerEntity player) {

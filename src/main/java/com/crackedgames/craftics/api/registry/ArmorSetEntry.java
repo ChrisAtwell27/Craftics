@@ -43,6 +43,8 @@ public record ArmorSetEntry(
     int defenseBonus,
     int attackBonus,
     int apCostReduction,
+    int lightWeaponDamage,
+    int lightWeaponCrit,
     String description
 ) {
     public static Builder builder(String armorSetId) { return new Builder(armorSetId); }
@@ -56,6 +58,7 @@ public record ArmorSetEntry(
         private final String armorSetId;
         private final Map<DamageType, Integer> damageTypeBonuses = new HashMap<>();
         private int speedBonus = 0, apBonus = 0, defenseBonus = 0, attackBonus = 0, apCostReduction = 0;
+        private int lightWeaponDamage = 0, lightWeaponCrit = 0;
         private String description = "";
 
         public Builder(String id) { this.armorSetId = id; }
@@ -81,11 +84,18 @@ public record ArmorSetEntry(
         /** AP cost reduction per attack when the full 4-piece set is worn. Default {@code 0}. */
         public Builder apCostReduction(int v) { this.apCostReduction = v; return this; }
 
+        /** Bonus damage when striking with a light (1-AP) weapon, full 4-piece set worn. Default {@code 0}. */
+        public Builder lightWeaponDamage(int v) { this.lightWeaponDamage = v; return this; }
+
+        /** Extra crit chance (percent) when striking with a light (1-AP) weapon, full set worn. Default {@code 0}. */
+        public Builder lightWeaponCrit(int v) { this.lightWeaponCrit = v; return this; }
+
         /** One-line mechanic text shown on armor tooltips. */
         public Builder description(String d) { this.description = d; return this; }
         public ArmorSetEntry build() {
             return new ArmorSetEntry(armorSetId, Map.copyOf(damageTypeBonuses),
-                speedBonus, apBonus, defenseBonus, attackBonus, apCostReduction, description);
+                speedBonus, apBonus, defenseBonus, attackBonus, apCostReduction,
+                lightWeaponDamage, lightWeaponCrit, description);
         }
     }
 }

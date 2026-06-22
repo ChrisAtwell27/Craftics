@@ -89,7 +89,7 @@ public final class Abilities {
                     target.addPermanentDefReduction(destroyed);
                     int bonusDmg = target.takeDamage(destroyed);
                     totalDamage += bonusDmg;
-                    int remaining = target.getDefense();
+                    int remaining = target.getEffectiveDefense();
                     messages.add("§6SHATTER ARMOR! §ePermanently destroyed " + destroyed
                         + " DEF for +" + bonusDmg + " damage. §7(" + remaining + " DEF remaining)");
                 } else {
@@ -131,6 +131,43 @@ public final class Abilities {
             // Avoid zero-vector when player and target share a row/column axis
             if (dx == 0 && dz == 0) dx = 1;
 
+            GridPos kbPos = target.getGridPos();
+            int pushed = 0;
+            for (int step = 0; step < distance; step++) {
+                GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
+                if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
+                var tile = arena.getTile(next);
+                if (tile == null || !tile.isWalkable()) break;
+                kbPos = next;
+                pushed++;
+            }
+            if (pushed > 0) {
+                arena.moveEntity(target, kbPos);
+                if (target.getMobEntity() != null) {
+                    var bp = arena.gridToBlockPos(kbPos);
+                    target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                }
+                messages.add("§6Knocked back " + target.getDisplayName() + " " + pushed + " tile(s)!");
+            }
+            return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
+        };
+    }
+
+    /**
+     * Applies the player's Knockback enchant as a directional push, for melee weapons whose
+     * base ability does not already handle it (axes, maces, etc.). No-op without the enchant.
+     * Pushes (level + 1) tiles away from the player, matching the sword's push distance.
+     */
+    public static WeaponAbilityHandler enchantKnockback() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> messages = new ArrayList<>();
+            int kb = PlayerCombatStats.getKnockback(player);
+            if (kb <= 0) return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
+            int distance = kb + 1;
+            GridPos pPos = arena.getPlayerGridPos();
+            int dx = Integer.signum(target.getGridPos().x() - pPos.x());
+            int dz = Integer.signum(target.getGridPos().z() - pPos.z());
+            if (dx == 0 && dz == 0) dx = 1;
             GridPos kbPos = target.getGridPos();
             int pushed = 0;
             for (int step = 0; step < distance; step++) {
