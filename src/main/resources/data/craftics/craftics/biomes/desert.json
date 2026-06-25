@@ -43,6 +43,7 @@
     {"item": "minecraft:iron_ingot", "weight": 1},
     {"item": "minecraft:iron_nugget", "weight": 3},
     {"item": "minecraft:emerald", "weight": 1},
-    {"item": "minecraft:leather", "weight": 2}
+    {"item": "minecraft:leather", "weight": 2},
+    {"item": "minecraft:acacia_sapling", "weight": 1}
   ]
 }

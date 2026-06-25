@@ -237,6 +237,12 @@ public class LevelGenerator {
                                                                    boolean scaleHpPerLevel, boolean bossBeaten,
                                                                    Random rand) {
         List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
+        // Index of the boss spawn within `spawns`, or -1 on non-boss rounds. The
+        // boss must never be turned into a stacked trash mob by the replacement
+        // pass below: that rewrites its type (so boss selection can no longer find
+        // it) and its HP to a placeholder, which demotes the fight to a stray
+        // 6-HP add masquerading as the boss.
+        int bossSpawnIndex = -1;
 
         // Use active-campaign position for difficulty scaling (not registry index)
         int biomeOrdinal = com.crackedgames.craftics.level.campaign.CampaignManager
@@ -308,6 +314,7 @@ public class LevelGenerator {
             });
 
             int bossHp = (int)((biome.boss.baseHp() + hpBonus) * com.crackedgames.craftics.CrafticsMod.CONFIG.bossHpMultiplier());
+            bossSpawnIndex = spawns.size();
             spawns.add(new LevelDefinition.EnemySpawn(
                 biome.boss.entityTypeId(), bossPos,
                 bossHp,
@@ -385,6 +392,7 @@ public class LevelGenerator {
         // The stack mob inherits the spawn's position; CombatManager handles
         // building the actual stack visuals from its definition.
         for (int i = 0; i < spawns.size(); i++) {
+            if (i == bossSpawnIndex) continue; // never restack the boss (see bossSpawnIndex note)
             LevelDefinition.EnemySpawn s = spawns.get(i);
             if (com.crackedgames.craftics.combat.StackVariants.isStackType(s.entityTypeId())) continue;
             com.crackedgames.craftics.combat.StackVariants.StackDef def =

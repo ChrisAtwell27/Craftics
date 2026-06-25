@@ -41,7 +41,7 @@
     {"item": "minecraft:cobblestone", "weight": 4},
     {"item": "minecraft:iron_ingot", "weight": 2},
     {"item": "minecraft:amethyst_shard", "weight": 1},
-    {"item": "minecraft:diamond", "weight": 1}
-
+    {"item": "minecraft:diamond", "weight": 1},
+    {"item": "minecraft:spruce_sapling", "weight": 1}
   ]
 }

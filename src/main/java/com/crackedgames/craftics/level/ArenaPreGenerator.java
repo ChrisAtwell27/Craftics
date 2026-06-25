@@ -85,13 +85,39 @@ public class ArenaPreGenerator {
         CrafticsSavedData.PlayerData pd = data.getPlayerData(playerUuid);
         if (pd.worldSlot < 0) return null;
 
-        int[] existing = pd.getArenaMetadata(level);
-        if (existing != null) return existing;
-
         BiomeTemplate biome = BiomeRegistry.getForLevel(level);
         if (biome == null) {
             CrafticsMod.LOGGER.warn("ArenaPreGenerator.ensureArena: no biome for level {}", level);
             return null;
+        }
+
+        int[] existing = pd.getArenaMetadata(level);
+        if (existing != null) {
+            // Trust the cache only if it was built for the biome this level now
+            // resolves to. New Game+ re-rolls the branch order while the arena
+            // cache is keyed by level number alone, so a cached arena from a prior
+            // cycle can belong to a different biome (e.g. mountain boss / jungle
+            // arena). On a biome mismatch, drop the stale entry and fall through to
+            // rebuild. Older saves with no stamp (null) are trusted to avoid mass
+            // rebuilds; they self-correct the first time each level is rebuilt.
+            String cachedBiome = pd.getArenaBiome(level);
+            if (cachedBiome == null || cachedBiome.equals(biome.biomeId)) {
+                return existing;
+            }
+            // Biome mismatch: the cached arena belongs to a different biome than
+            // this level now resolves to (New Game+ branch re-roll). Wipe the stale
+            // footprint and rebuild for the correct biome so the boss and arena
+            // agree. regenerateLevel reads the old metadata for the wipe size, so
+            // do NOT invalidate before calling it.
+            CrafticsMod.LOGGER.info(
+                "ArenaPreGenerator.ensureArena: level {} cached arena biome '{}' != current '{}' "
+                + "(New Game+ branch re-roll); rebuilding to match.",
+                level, cachedBiome, biome.biomeId);
+            if (regenerateLevel(world, playerUuid, level)) {
+                return pd.getArenaMetadata(level);
+            }
+            // Rebuild failed: drop the stale entry and fall through to a fresh build.
+            pd.invalidateArena(level);
         }
 
         try {
@@ -104,7 +130,8 @@ public class ArenaPreGenerator {
             if (arena == null) return null;
 
             pd.storeArenaMetadata(level, arena.getOrigin(),
-                arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask());
+                arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask(),
+                biome.biomeId);
             pd.arenasPreGenerated = true;
             data.markDirty();
             CrafticsMod.LOGGER.debug(
@@ -166,7 +193,8 @@ public class ArenaPreGenerator {
                 GridArena arena = ArenaBuilder.buildAt(world, levelDef, origin);
                 if (arena != null) {
                     pd.storeArenaMetadata(level, arena.getOrigin(),
-                        arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask());
+                        arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask(),
+                        biome.biomeId);
                     rebuilt++;
                 }
                 CrafticsMod.LOGGER.debug("ArenaPreGenerator: rebuilt level {} ({}) at {}", level, biome.biomeId, origin);
@@ -204,10 +232,12 @@ public class ArenaPreGenerator {
 
             wipeArenaFootprint(world, origin, levelDef, oldW, oldH);
 
+            BiomeTemplate biome = BiomeRegistry.getForLevel(level);
             GridArena arena = ArenaBuilder.buildAt(world, levelDef, origin);
             if (arena != null) {
                 pd.storeArenaMetadata(level, arena.getOrigin(),
-                    arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask());
+                    arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask(),
+                    biome != null ? biome.biomeId : null);
                 data.markDirty();
                 CrafticsMod.LOGGER.info("ArenaPreGenerator: auto-repaired level {}", level);
                 return true;

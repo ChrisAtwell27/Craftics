@@ -1581,8 +1581,37 @@ public class CombatManager {
      * the target enemy and applies the actual Special damage when the
      * countdown reaches 0. Vanilla anvil gravity damage is disabled.
      */
-    private record PendingAnvil(int targetEntityId, int damage, java.util.UUID fbeUuid, int ticksLeft) {}
+    private record PendingAnvil(int targetEntityId, int damage, java.util.UUID fbeUuid, int ticksLeft,
+                                BlockPos landingPos) {}
     private final List<PendingAnvil> pendingAnvils = new ArrayList<>();
+
+    /**
+     * Original world BlockState of every position a player-placed combat block
+     * (water/lava bucket, powder snow, campfire/scaffold/spore/bell/jukebox/
+     * sponge/honey/slime, banner, cactus, and a landed anvil) overwrote during
+     * this fight. Captured once per position, restored verbatim in endCombat.
+     *
+     * Without this, placed blocks are left in the world on level transition; the
+     * arena is cached per level and revisits rebuild via ArenaBuilder.scanExisting,
+     * which re-derives tile types from whatever blocks are physically present, so
+     * the leftovers (most visibly water) get baked into the arena permanently and
+     * even bleed into New Game+ replays. TNT and boss temporary terrain already
+     * have their own restore passes; this covers every other placeable.
+     */
+    private final java.util.Map<BlockPos, net.minecraft.block.BlockState> placedBlockRestores =
+        new java.util.LinkedHashMap<>();
+
+    /**
+     * Remember the original block at {@code bp} so endCombat can put it back.
+     * Capture-once: if a position is overwritten twice in one fight, the first
+     * (true original) state is what we restore.
+     */
+    private void recordPlacedBlock(BlockPos bp) {
+        if (bp == null || player == null) return;
+        if (placedBlockRestores.containsKey(bp)) return;
+        ServerWorld w = (ServerWorld) player.getEntityWorld();
+        placedBlockRestores.put(bp.toImmutable(), w.getBlockState(bp));
+    }
 
     private boolean tripleDamageNextAttack = false;
     private int windBurstDamageBonus = 0;
@@ -1932,6 +1961,12 @@ public class CombatManager {
         if (adjustedDamage <= 0) {
             return 0;
         }
+        // Special/utility damage (instruments, lightning rod, placed TNT, etc.) is the
+        // PLAYER dealing damage, not a pet. Attribute it so achievements that key off
+        // "the player never touched anything" (e.g. Pacifist General) don't mis-fire
+        // when the player kills with one of these. This mirrors the weapon attack path,
+        // which records player-dealt damage on every swing.
+        achievementTracker.recordPlayerDealtDamage();
         return target.takeDamage(adjustedDamage);
     }
 
@@ -2132,6 +2167,7 @@ public class CombatManager {
         clearAllRevenantSummonMarkers();
         tileEffects.clear();
         litZones.clear();
+        placedBlockRestores.clear();
 
         player.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
 
@@ -2226,6 +2262,22 @@ public class CombatManager {
                 if (bossSpawnIndex < 0 || s.hp() > enemySpawns[bossSpawnIndex].hp()) {
                     bossSpawnIndex = i;
                 }
+            }
+            // Defense in depth: on a boss level the boss spawn must exist. If no
+            // spawn matched the boss entity type (e.g. a future spawn-rewrite pass
+            // retyped it), fall back to the single highest-HP spawn rather than
+            // leaving the level bossless or flagging a stray low-HP add as the boss.
+            if (bossSpawnIndex < 0 && enemySpawns.length > 0) {
+                for (int i = 0; i < enemySpawns.length; i++) {
+                    if (bossSpawnIndex < 0 || enemySpawns[i].hp() > enemySpawns[bossSpawnIndex].hp()) {
+                        bossSpawnIndex = i;
+                    }
+                }
+                CrafticsMod.LOGGER.warn(
+                    "spawnEnemies: no spawn matched boss type {} on a boss level; "
+                    + "falling back to highest-HP spawn (index {}, hp {}).",
+                    bossEntityTypeId, bossSpawnIndex,
+                    bossSpawnIndex >= 0 ? enemySpawns[bossSpawnIndex].hp() : -1);
             }
         }
 
@@ -7259,6 +7311,15 @@ public class CombatManager {
         // VFX: spawn the instrument's note particles on the actual affected tiles.
         playInstrumentVfx(def, center, tiles);
 
+        // Re-check the win condition the same way every other damage path does.
+        // resolveInstrumentAttack credits and despawns the killed enemy via
+        // checkAndHandleDeath, but that helper deliberately never ends the fight,
+        // so without this an instrument landing the final blow soft-locks the level.
+        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            handleVictory();
+            return true;
+        }
+
         sendSync();
         return true;
     }
@@ -7696,6 +7757,7 @@ public class CombatManager {
                     }
                     BlockPos cactusBp = arena.gridToBlockPos(effectPos);
                     ServerWorld cactusWorld = (ServerWorld) player.getEntityWorld();
+                    recordPlacedBlock(cactusBp);
                     cactusWorld.setBlockState(cactusBp, Blocks.CACTUS.getDefaultState(),
                         net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
                 }
@@ -7716,6 +7778,7 @@ public class CombatManager {
                     if (bannerBlock != null) {
                         BlockPos bannerBp = arena.gridToBlockPos(effectPos);
                         ServerWorld bannerWorld = (ServerWorld) player.getEntityWorld();
+                        recordPlacedBlock(bannerBp);
                         bannerWorld.setBlockState(bannerBp, bannerBlock.getDefaultState(),
                             net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
                     }
@@ -7743,6 +7806,8 @@ public class CombatManager {
                     BlockPos fluidBp = arena.gridToBlockPos(effectPos);
                     BlockPos fluidFloorBp = fluidBp.down();
                     ServerWorld fluidWorld = (ServerWorld) player.getEntityWorld();
+                    recordPlacedBlock(fluidFloorBp);
+                    recordPlacedBlock(fluidBp);
                     fluidWorld.setBlockState(fluidFloorBp, fluidBlock.getDefaultState(),
                         net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
                     fluidWorld.setBlockState(fluidBp, net.minecraft.block.Blocks.AIR.getDefaultState());
@@ -13226,8 +13291,14 @@ public class CombatManager {
     /**
      * Spawn a falling-block anvil visual above the target enemy, queue the
      * actual damage to apply when it lands (~12 ticks). The block is
-     * non-damaging on impact -Craftics' base damage applies instead. Falling
-     * block has a kill-after-landing flag so it doesn't add an obstacle.
+     * non-damaging on impact -Craftics' base damage applies instead.
+     *
+     * Vanilla FallingBlockEntity converts itself into a REAL anvil block the
+     * tick it lands (well before our discard countdown), so we record the
+     * landing floor position up front: tickPendingAnvils clears it on resolve,
+     * and endCombat's placed-block restore guarantees it never survives the
+     * level even if the timing slips. Otherwise a left-behind anvil sits at
+     * floor+1 and gets re-read as a permanent OBSTACLE on the next visit.
      */
     private void spawnAnvilDrop(int targetEntityId, int damage) {
         CombatEntity victim = null;
@@ -13237,6 +13308,8 @@ public class CombatManager {
         if (victim == null || !victim.isAlive()) return;
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         BlockPos targetBp = arena.gridToBlockPos(victim.getGridPos());
+        // The falling anvil settles on the floor of the victim's column.
+        recordPlacedBlock(targetBp);
         double cx = targetBp.getX() + 0.5;
         double cz = targetBp.getZ() + 0.5;
         // Spawn 6 blocks above the target so the fall is visible but quick.
@@ -13263,7 +13336,7 @@ public class CombatManager {
         fbe.timeFalling = 1;
         world.spawnEntity(fbe);
 
-        pendingAnvils.add(new PendingAnvil(targetEntityId, damage, fbe.getUuid(), 14));
+        pendingAnvils.add(new PendingAnvil(targetEntityId, damage, fbe.getUuid(), 14, targetBp.toImmutable()));
 
         world.playSound(null, targetBp,
             net.minecraft.sound.SoundEvents.BLOCK_ANVIL_FALL,
@@ -13285,14 +13358,23 @@ public class CombatManager {
             if (next > 0) {
                 // Replace with a decremented copy (record is immutable).
                 int idx = pendingAnvils.indexOf(pa);
-                pendingAnvils.set(idx, new PendingAnvil(pa.targetEntityId(), pa.damage(), pa.fbeUuid(), next));
+                pendingAnvils.set(idx, new PendingAnvil(pa.targetEntityId(), pa.damage(), pa.fbeUuid(), next,
+                    pa.landingPos()));
                 // Iterator is now stale -we set in place so continue.
                 continue;
             }
             it.remove();
-            // Discard the visual falling block before vanilla can convert it.
+            // Discard the visual falling block, and clear the real anvil block if
+            // vanilla already converted it on landing (it lands in ~5-7 ticks, well
+            // before this 14-tick countdown). Restore the floor we recorded at spawn
+            // so the stage shows the anvil fall, then nothing left behind.
             net.minecraft.entity.Entity fbe = world.getEntity(pa.fbeUuid());
             if (fbe != null) fbe.discard();
+            if (pa.landingPos() != null && world.getBlockState(pa.landingPos()).isOf(Blocks.ANVIL)) {
+                net.minecraft.block.BlockState original = placedBlockRestores.get(pa.landingPos());
+                world.setBlockState(pa.landingPos(),
+                    original != null ? original : Blocks.AIR.getDefaultState());
+            }
 
             CombatEntity victim = null;
             for (CombatEntity e : enemies) {
@@ -13351,6 +13433,7 @@ public class CombatManager {
         BlockPos bp = arena.gridToBlockPos(effectPos);
         if (atFloorLevel) bp = bp.down();
         ServerWorld world = (ServerWorld) player.getEntityWorld();
+        recordPlacedBlock(bp);
         world.setBlockState(bp, block.getDefaultState(),
             net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
         GridTile tile = arena.getTile(effectPos);
@@ -21455,6 +21538,25 @@ public class CombatManager {
             }
         } catch (Exception e) {
             CrafticsMod.LOGGER.warn("endCombat: temporary terrain restore failed: {}", e.getMessage());
+        }
+
+        // Restore every player-placed combat block (water/lava, powder snow,
+        // campfire/scaffold/spore/bell/jukebox/sponge/honey/slime, banner,
+        // cactus, and any landed anvil) to the original block we captured before
+        // overwriting it. Without this they survive into the cached arena and get
+        // baked in permanently via scanExisting on the next visit / NG+ replay.
+        try {
+            if (!placedBlockRestores.isEmpty() && player != null) {
+                ServerWorld placedWorld = (ServerWorld) player.getEntityWorld();
+                for (var entry : placedBlockRestores.entrySet()) {
+                    placedWorld.setBlockState(entry.getKey(), entry.getValue(),
+                        net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                }
+            }
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.warn("endCombat: placed-block restore failed: {}", e.getMessage());
+        } finally {
+            placedBlockRestores.clear();
         }
 
         arena = null;

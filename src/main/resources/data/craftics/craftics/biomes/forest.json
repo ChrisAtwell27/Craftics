@@ -46,7 +46,10 @@
     {"item": "minecraft:amethyst_shard", "weight": 2},
     {"item": "minecraft:resin_clump", "weight": 3},
     {"item": "minecraft:leather", "weight": 4},
-    {"item": "minecraft:enchanted_book", "weight": 1}
+    {"item": "minecraft:enchanted_book", "weight": 1},
+    {"item": "minecraft:dark_oak_sapling", "weight": 1},
+    {"item": "minecraft:birch_sapling", "weight": 1},
+    {"item": "minecraft:pale_oak_sapling", "weight": 1}
   ],
   "enchantment_loot": [
     {"enchantment": "minecraft:quick_charge", "weight": 4},

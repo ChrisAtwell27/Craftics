@@ -87,6 +87,13 @@ public class CrafticsSavedData extends PersistentState {
                                         int width, int height,
                                         com.crackedgames.craftics.core.GridPos playerStart,
                                         boolean[][] insideMask) {
+            storeArenaMetadata(level, origin, width, height, playerStart, insideMask, null);
+        }
+
+        public void storeArenaMetadata(int level, net.minecraft.util.math.BlockPos origin,
+                                        int width, int height,
+                                        com.crackedgames.craftics.core.GridPos playerStart,
+                                        boolean[][] insideMask, String biomeId) {
             String base = origin.getX() + "," + origin.getY() + "," + origin.getZ()
                 + "," + width + "," + height + "," + playerStart.x() + "," + playerStart.z();
             // Polygon arenas: pack the playable mask (row-major bits, idx = x*h + z)
@@ -95,6 +102,17 @@ public class CrafticsSavedData extends PersistentState {
             // spawn / the cursor hovers outside the drawn outline.
             if (insideMask != null) {
                 base += "," + packMask(insideMask, width, height);
+            }
+            // Biome stamp: a prefixed trailing field ("b=<id>") that records which
+            // biome this cached arena was built for. New Game+ re-rolls the branch
+            // order while the arena cache is keyed only by level number, so on a new
+            // cycle a level can resolve to a different biome than the one cached here
+            // (e.g. mountain boss vs jungle arena). On load we compare this stamp to
+            // the level's current biome and rebuild on mismatch. The "b=" prefix is
+            // scanned by name, not position, so it never disturbs the positional
+            // metadata/mask fields and old saves (no stamp) simply read as null.
+            if (biomeId != null && !biomeId.isEmpty()) {
+                base += ",b=" + biomeId;
             }
             preBuiltArenas.put(level, base);
         }
@@ -133,6 +151,24 @@ public class CrafticsSavedData extends PersistentState {
             }
         }
 
+        /** The biome id this level's cached arena was built for, or {@code null}
+         *  for older metadata saved before the biome stamp existed. Used to detect
+         *  a New Game+ branch re-roll that points this level at a different biome
+         *  than the one physically cached, so the arena can be rebuilt to match. */
+        public String getArenaBiome(int level) {
+            String raw = preBuiltArenas.get(level);
+            if (raw == null) return null;
+            for (String part : raw.split(",")) {
+                if (part.startsWith("b=")) return part.substring(2);
+            }
+            return null;
+        }
+
+        /** Drop the cached arena metadata for a level so the next visit rebuilds it. */
+        public void invalidateArena(int level) {
+            preBuiltArenas.remove(level);
+        }
+
         /** The stored polygon mask for a pre-built arena, or {@code null} for a
          *  rectangular arena (or older metadata saved before masks were packed). */
         public boolean[][] getArenaMask(int level, int w, int h) {
@@ -141,6 +177,9 @@ public class CrafticsSavedData extends PersistentState {
             String[] parts = raw.split(",");
             if (parts.length < 8) return null;
             String hex = parts[7];
+            // A biome stamp ("b=...") can occupy field 7 when the arena is
+            // rectangular (no mask). That is not a mask; treat it as "no mask".
+            if (hex.startsWith("b=")) return null;
             if (hex.isEmpty() || w <= 0 || h <= 0) return null;
             try {
                 byte[] bytes = new byte[hex.length() / 2];

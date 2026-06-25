@@ -1,4 +1,21 @@
 ﻿Changelog
+0.2.8
+Combat, Bosses, and Addon Compat
+
+- Genshin Instruments addon: landing the killing blow with an instrument no longer soft-locks the level. Instrument attacks route through their own handler and break out before reaching the normal weapon handler, so they skipped the "all enemies dead -> end the fight" check every other attack runs. The kill itself was credited and the mob despawned, but combat never ended. The instrument handler now runs the same win-condition check after resolving, so an instrument can finish a fight (including a boss) like any weapon
+- Killing a boss with only instruments no longer wrongly grants Pacifist General. That achievement means the player never personally dealt damage (pets did all the work), and it keys off a "player dealt damage" flag that only the weapon-attack path set. Instrument, lightning rod, placed-TNT, and similar player-initiated "special" damage all flow through one shared helper that never set the flag, so the game thought the player was a pacifist. The shared helper now records player-dealt damage whenever it actually damages an enemy, so every form of player damage counts
+- Plains boss can no longer start a fight with only 6 HP. The stacked-enemy replacement pass (Zombie Stack, etc.) ran over every spawn with no boss guard, so on an unlucky roll it converted the plains boss into a stacked trash mob with placeholder HP. Boss selection then failed to find a matching boss and flagged a stray 6-HP zombie add as the boss. The replacement pass now skips the boss spawn, and boss selection falls back to the highest-HP spawn if no type match is found
+
+World and Arenas
+
+- Anvils no longer linger on the stage after use. The falling anvil converts to a real anvil block on landing (in a handful of ticks), but the cleanup waited 14 ticks and only tried to discard the visual entity, which was already gone, so the block stayed. The anvil now records its landing tile, clears the landed block when it resolves, and is restored on combat end, so it plays the fall animation and then disappears
+- Player-placed blocks no longer persist between arenas. Water and lava from buckets, powder snow, campfire, scaffolding, spore blossom, bell, jukebox, sponge, honey, slime, banner, and cactus were written into the world as real blocks but never cleared when combat ended; because arenas are cached per level and revisits rebuild from whatever blocks are physically present, the leftovers (water most visibly) got baked into the arena permanently and even bled into New Game+. Every placeable now records the block it overwrote and is restored to the original on combat end
+- New Game+ no longer loads a mismatched arena for a boss (e.g. entering the mountain boss but getting the jungle arena). The cached arena was keyed by level number alone, so a New Game+ branch re-roll that points a level at a different biome would replay a stale arena from a prior cycle while the boss followed the new ordering. Cached arenas now carry a biome stamp; on load, if the stamp does not match the level's current biome, the arena is wiped and rebuilt to match. Older saves with no stamp self-correct the first time each arena rebuilds
+
+Loot
+
+- Every wood type's sapling now drops from a fitting biome: oak (Plains), acacia (Desert), jungle (Jungle), dark oak + birch + pale oak (Dark Forest), mangrove propagule (River Delta), spruce (Snowy Tundra), and cherry (Stony Peaks). Pale oak only exists on 1.21.4+, so on 1.21.1 / 1.21.3 that one entry is harmlessly skipped at load
+
 0.2.7
 World, Arenas, and Tile Classification
 
