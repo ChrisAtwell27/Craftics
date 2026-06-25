@@ -235,6 +235,7 @@ public class ItemUseHandler {
         if (item == Items.GOLDEN_CARROT) return 0;
         if (PotterySherdSpells.isPotterySherd(item)) return PotterySherdSpells.getSherdApCost(item);
         if (item == Items.FISHING_ROD) return FISHING_AP_COST;
+        if (item == Items.TNT) return 2; // raised from default 1: TNT now deals %-max-HP blast damage
         if (TWO_AP_ITEMS.contains(item)) return 2;
         if (isArtifactsNonConsumingFood(item)) return 2;
         return 1;
@@ -910,7 +911,7 @@ public class ItemUseHandler {
                             sei.getEffectType(), -1, scaledAmp, false, true));
                     }
                     if (effectType == StatusEffects.INSTANT_DAMAGE.value()) {
-                        int dealt = target.takeDamage(3 * (scaledAmp + 1) + specialDamageBonus);
+                        int dealt = target.takeSpecialDamage(3 * (scaledAmp + 1) + specialDamageBonus, 0.12);
                         msg.append("§5").append(target.getDisplayName()).append(" -").append(dealt).append("HP ");
                     } else if (effectType == StatusEffects.POISON.value()) {
                         target.takeDamage(1 + scaledAmp);
@@ -986,7 +987,7 @@ public class ItemUseHandler {
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
 
         consumeSpecialItem(player, stack);
-        int dealt = applyTypedDamage(player, enemy, 4, DamageType.SPECIAL);
+        int dealt = applyTypedDamage(player, enemy, 4 + enemy.percentMaxHpDamage(0.08), DamageType.SPECIAL);
         // Set mob on fire visually for 3 seconds
         if (enemy.getMobEntity() != null) {
             enemy.getMobEntity().setFireTicks(60);
@@ -1329,8 +1330,14 @@ public class ItemUseHandler {
             rarity = "§d";
         }
 
-        LootDelivery.deliver(player, new ItemStack(loot, count));
-        String lootName = new ItemStack(loot).getName().getString();
+        // Enchanted books need a random stored enchantment applied, otherwise fishing
+        // one up hands the player a blank "Enchanted Book" with no enchantment on it.
+        // Reuse the same version-correct helper the event-room rewards use.
+        ItemStack caught = loot == Items.ENCHANTED_BOOK
+            ? RandomEvents.createRandomEnchantedBook(player)
+            : new ItemStack(loot, count);
+        LootDelivery.deliver(player, caught);
+        String lootName = caught.getName().getString();
         return FISHING_PREFIX + rarity + "Caught: " + lootName + "!";
     }
 

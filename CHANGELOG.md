@@ -22,6 +22,66 @@ World, Arenas, and Tile Classification
 - Fences, cobblestone walls, glass panes, iron bars, and fence gates now count as obstacles. Tile classification only treated full solid cubes as obstacles (with a lone special case for cactus), so these partial-collision blocks were classified as plain ground: the player and auto-routing walked straight through walls that physically block movement in the world. A single shared check now flags any block above the floor that has a real collision shape, so pathfinding routes around all of them
 - Tiles with a block one level up no longer mislabel as "Sunken Pit" or "Void" in the hover tooltip. When the cursor pointed at a raised obstacle block, the tooltip read the cell underneath it instead of the block itself, and an air cell down there fell into the sunken-pit / void branch and described the wrong layer. The tooltip now identifies an obstacle above the floor before the air-floor check, using the same obstacle test as tile classification so the tooltip, the move highlight, and pathfinding all agree
 
+Bosses
+
+- Boss attack telegraph tiles no longer get stuck on screen across levels. A boss killed on the same turn it telegraphed left its warning in the server's pending list forever. Dead bosses' telegraphs are now pruned every tick and the list clears on combat teardown.
+
+Items and Loot
+
+- Fished-up enchanted books now come with a real random enchantment instead of a blank book.
+
+Events
+
+- Ambushes now scale with progression instead of always spawning 2 or 3 enemies. Enemy count ramps with biome depth plus a surcharge for campaign position and NG+, so a late-game ambush hits harder than the regular fight.
+- Trial chambers and ominous trials stay harder than the surrounding levels at any depth. Their mobs now get the same per-biome stat scaling normal levels do, with the trial multiplier kept as a surcharge on top.
+
+Balance
+
+- Rogue (Chainmail) set reworked. The old "attacks cost 1 less AP" did nothing for 1-AP weapons but doubled a 2-AP weapon's attacks per turn. It now keeps +1 Speed and +1 Slashing, and gives light (1-AP) weapons +2 damage and +20% crit, rewarding fast weapons instead.
+- Melee and Ranged Power are now hybrid. Each point gives +1 flat damage plus +6% of total weapon damage, so the stat keeps scaling late-game instead of the old flat +2 that fell off.
+- Armor Class and Max HP trims and materials rebalanced to match a level-up point. AC bonuses went from +1 to +2 per piece and Max HP trims from +4 to +8 per piece. Power affinity bonuses were already +3 damage per piece, so they were left alone.
+- Blunt-resistant mobs are now immune to stun, which was too strong against them. This covers spiders, cave spiders, magma cubes, hoglins, piglin brutes, zoglins, ravagers, iron golems, goats, the Warden, and the Wither. Every stun source (mace, breeze, sherds, arrows, hybrid sets) respects it through a single gate.
+- Bosses now shrug off half of every stun attempt (on top of full immunity for the blunt-resistant ones), so they can't be stun-locked.
+- The Rockbreaker, Bastion Brute, and Hollow King now have blunt resistance, so they take half blunt damage and are stun-immune. This uses a per-boss override keyed on the boss id, so the regular mobs they are based on are unaffected.
+
+Mob Heads
+
+- Worn mob heads now grant a thematic combat buff on top of their damage-type affinity, so each head feels distinct.
+- Skeleton Skull: +1 attack range with bows and crossbows.
+- Wither Skeleton Skull: melee hits have a 25% chance to inflict Wither.
+- Zombie Head: heal 2 HP on every kill.
+- Creeper Head: a hit knocks the enemies in the 3x3 around the target one tile outward.
+- Piglin Head: immune to fire and lava, plus 1 bonus emerald per kill.
+
+Text and Display
+
+- Sharpness tooltip now says it adds Bleed stacks per hit, not just melee damage, matching the guide and its real effect.
+- Power enchant tooltip now lists its range bonus alongside the damage.
+- Cleaving affinity wording changed from "armor ignore" to "armor shatter", since the effect permanently destroys defense rather than ignoring it once.
+- Armor shatter chat message and the enemy hover panel now show the real reduced DEF after a shatter, instead of the original unbroken value.
+
+Combat and Enchantments
+
+- The wandering enchanter no longer rolls enchant levels above an enchant's real cap, so items can no longer come out with Mending II or Knockback III.
+- Knockback now works on axes (and other melee weapons the enchanter can put it on), pushing the target like it does on swords.
+- Fire-immune mobs such as blazes, magma cubes, striders, ghasts, and the Wither no longer take fire or burning damage.
+- Swift Sneak's tooltip no longer promises a sneaking speed bonus. Sneaking has no role in tactical combat, so it now states plainly that it has no combat effect.
+- Trial keys now actually queue a trial chamber after the fight. The regular trial key set an event id the spawner did not recognize, so it silently did nothing (ominous keys already worked).
+- Moving right after an attack no longer wastes the AP. The hit's delayed damage now resolves before the move instead of being dropped mid-animation.
+
+Achievements
+
+- Armor Crush now unlocks. It watched for an "ARMOR CRUSH" message that never existed (the real one says "SHATTER ARMOR") and now records the defense actually destroyed.
+- Phase Skipper now unlocks. The flag for killing a boss before it reaches Phase 2 was never set on boss death.
+- Jack of All Trades now unlocks after respeccing into one point in every affinity, not only through normal level-up allocation.
+
+Offensive Items
+
+- Offensive special items now add a percent of the target's max HP on top of their flat damage, so they keep mattering against late-game enemies instead of falling off. Bosses take a third of the percent.
+- TNT deals 24 / 15 / 9% max HP by blast ring (center / adjacent / outer) plus its flat damage, and its AP cost went from 1 to 2.
+- Harming splash potions add 12% max HP. Single-target damage sherds add 8% (10% for the heavy Earthen Spike and Phantom Slash), the area sherds (Tidal Surge, Dread Howl, Chain Lightning) add 6% per enemy, and fire charge adds 8%.
+- Damage-over-time effects now all scale with the target's max HP. Poison and wither already did; burning and bleed now add the same per-tick max-HP bonus so they keep up against tougher enemies instead of staying flat.
+
 0.2.6
 Multiplayer
 

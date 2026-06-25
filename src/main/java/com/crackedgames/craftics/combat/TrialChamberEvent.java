@@ -41,8 +41,15 @@ public class TrialChamberEvent {
     public static LevelDefinition generate(int currentBiomeOrdinal, int ngPlusLevel) {
         Random rng = new Random();
 
-        // Scale difficulty: harder than current level
-        float diffMultiplier = 1.3f + (currentBiomeOrdinal * 0.05f) + (ngPlusLevel * 0.15f);
+        // Trial chambers must stay harder than the equivalent normal level at any depth.
+        // The old purely-multiplicative scale was applied to small FIXED base stats, while
+        // normal levels add biomeOrdinal*hpPerBiome on top of biome-scaled mobs - so by
+        // late overworld / the Nether the normal mobs outgrew the trial's and "the foes
+        // within are stronger" stopped being true. Apply the SAME per-biome additive bonus
+        // the campaign uses, then a trial surcharge (widening slightly with depth) on top.
+        int hpBonus  = currentBiomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
+        int atkBonus = currentBiomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());
+        float diffMultiplier = 1.35f + (currentBiomeOrdinal * 0.03f) + (ngPlusLevel * 0.15f);
 
         // Grid size: spacious arena for tactical play
         int width = 10 + rng.nextInt(3);   // 10-12
@@ -63,8 +70,8 @@ public class TrialChamberEvent {
             if (pos == null) continue;
             usedPositions.add(pos);
 
-            int hp  = (int)(Integer.parseInt(mob[1]) * diffMultiplier);
-            int atk = (int)(Integer.parseInt(mob[2]) * diffMultiplier);
+            int hp  = (int)((Integer.parseInt(mob[1]) + hpBonus) * diffMultiplier);
+            int atk = (int)((Integer.parseInt(mob[2]) + atkBonus) * diffMultiplier);
             int def = Integer.parseInt(mob[3]);
             int range = Integer.parseInt(mob[4]);
 
@@ -74,8 +81,8 @@ public class TrialChamberEvent {
         // Always spawn a Breeze as the challenge mob
         GridPos breezePos = findSpawnPos(width, height, usedPositions, rng);
         if (breezePos != null) {
-            int breezeHp  = (int)(Integer.parseInt(BREEZE[1]) * diffMultiplier);
-            int breezeAtk = (int)(Integer.parseInt(BREEZE[2]) * diffMultiplier);
+            int breezeHp  = (int)((Integer.parseInt(BREEZE[1]) + hpBonus) * diffMultiplier);
+            int breezeAtk = (int)((Integer.parseInt(BREEZE[2]) + atkBonus) * diffMultiplier);
             spawnList.add(new LevelDefinition.EnemySpawn(BREEZE[0], breezePos,
                 breezeHp, breezeAtk, Integer.parseInt(BREEZE[3]), Integer.parseInt(BREEZE[4])));
         }
@@ -169,7 +176,8 @@ public class TrialChamberEvent {
     }
 
     /** Generate a small quick ambush encounter - 2-3 fast enemies, tiny arena. */
-    public static LevelDefinition generateAmbush(String arenaBiomeId, int biomeOrdinal, int ngPlusLevel) {
+    public static LevelDefinition generateAmbush(String arenaBiomeId, int biomeOrdinal,
+                                                 int biomeIndex, int ngPlusLevel) {
         Random rng = new Random();
 
         // Pull the biome's hostile pool so ambushes match where you are -
@@ -188,7 +196,20 @@ public class TrialChamberEvent {
         // NG+ bumps both a little on top of the biome scaling
         float ngMult = 1.0f + (ngPlusLevel * 0.08f);
 
-        int enemyCount = 2 + (rng.nextFloat() < 0.3f ? 1 : 0); // 2-3 enemies
+        // Ambush size scales with progression so a deep run isn't trivialised by a
+        // fixed 2-3 mob ambush. The base mirrors a normal level's ramp within the biome
+        // (BASE_ENEMIES + biomeIndex, so "late plains" is bigger than "early plains"),
+        // plus an ambush surcharge that grows with global campaign position and NG+, so
+        // an ambush always lands a notch harder than the regular level at the same depth.
+        // Capped a few above the normal per-level max (the 8x8 arena and findSpawnPos
+        // absorb the rest) and floored so it's never a pushover.
+        int normalRamp = com.crackedgames.craftics.level.BiomeDifficulty.BASE_ENEMIES
+            + Math.max(0, biomeIndex);
+        int ambushSurcharge = 2 + Math.max(0, biomeOrdinal) / 3 + Math.max(0, ngPlusLevel);
+        int ambushCap = com.crackedgames.craftics.CrafticsMod.CONFIG.maxEnemiesPerLevel() + 3;
+        int enemyCount = normalRamp + ambushSurcharge + (rng.nextFloat() < 0.3f ? 1 : 0);
+        enemyCount = Math.max(com.crackedgames.craftics.level.BiomeDifficulty.BASE_ENEMIES,
+            Math.min(enemyCount, ambushCap));
         List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
         List<GridPos> used = new ArrayList<>();
         used.add(new GridPos(2, 2)); // player start
@@ -302,7 +323,11 @@ public class TrialChamberEvent {
     /** Generate an ominous trial chamber - harder, with Warden + Breeze. */
     public static LevelDefinition generateOminous(int biomeOrdinal, int ngPlusLevel) {
         Random rng = new Random();
-        float diffMultiplier = 1.6f + (biomeOrdinal * 0.06f) + (ngPlusLevel * 0.2f);
+        // Same additive per-biome scaling as the regular trial so ominous mobs keep pace
+        // at depth; the higher base multiplier keeps ominous a clear notch above it.
+        int hpBonus  = biomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
+        int atkBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());
+        float diffMultiplier = 1.6f + (biomeOrdinal * 0.03f) + (ngPlusLevel * 0.2f);
 
         int width = 12 + rng.nextInt(3);  // 12-14
         int height = 12 + rng.nextInt(3); // 12-14
@@ -318,8 +343,8 @@ public class TrialChamberEvent {
             GridPos pos = findSpawnPos(width, height, used, rng);
             if (pos == null) continue;
             used.add(pos);
-            int hp = (int)(Integer.parseInt(mob[1]) * diffMultiplier);
-            int atk = (int)(Integer.parseInt(mob[2]) * diffMultiplier);
+            int hp = (int)((Integer.parseInt(mob[1]) + hpBonus) * diffMultiplier);
+            int atk = (int)((Integer.parseInt(mob[2]) + atkBonus) * diffMultiplier);
             spawns.add(new LevelDefinition.EnemySpawn(mob[0], pos, hp, atk,
                 Integer.parseInt(mob[3]), Integer.parseInt(mob[4])));
         }
@@ -329,14 +354,14 @@ public class TrialChamberEvent {
         if (breezePos != null) {
             used.add(breezePos);
             spawns.add(new LevelDefinition.EnemySpawn(BREEZE[0], breezePos,
-                (int)(30 * diffMultiplier), (int)(6 * diffMultiplier), 3, 3));
+                (int)((30 + hpBonus) * diffMultiplier), (int)((6 + atkBonus) * diffMultiplier), 3, 3));
         }
 
         // Spawn a Warden as the ominous boss
         GridPos wardenPos = findSpawnPos(width, height, used, rng);
         if (wardenPos != null) {
             spawns.add(new LevelDefinition.EnemySpawn("minecraft:warden", wardenPos,
-                (int)(50 * diffMultiplier), (int)(8 * diffMultiplier), 4, 2));
+                (int)((50 + hpBonus) * diffMultiplier), (int)((8 + atkBonus) * diffMultiplier), 4, 2));
         }
 
         return new TrialChamberLevelDef(width, height, spawns, rng) {

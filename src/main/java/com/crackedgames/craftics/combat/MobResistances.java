@@ -164,6 +164,12 @@ public class MobResistances {
         // wither: dimension-agnostic boss, tanky.
         vuln("minecraft:wither",            DamageType.WATER);
         resist("minecraft:wither",          DamageType.BLUNT, DamageType.SLASHING, DamageType.RANGED, DamageType.PHYSICAL);
+
+        // ── Per-boss overrides, keyed by boss id ("boss:<biome>") not mob type, so a specific
+        //    boss can resist a type its base mob doesn't. Looked up via the boss-key overloads. ──
+        resist("boss:mountain",        DamageType.BLUNT); // The Rockbreaker
+        resist("boss:crimson_forest",  DamageType.BLUNT); // The Bastion Brute
+        resist("boss:cave",            DamageType.BLUNT); // The Hollow King
     }
 
     // ── Helpers to populate the maps ──
@@ -194,6 +200,12 @@ public class MobResistances {
         return set != null && set.contains(type);
     }
 
+    /** Resistance check that also honors a boss-identity key (e.g. {@code "boss:mountain"}),
+     *  so a specific boss can resist a type its base mob doesn't. The boss key wins. */
+    public static boolean isResistant(String entityTypeId, String bossKey, DamageType type) {
+        return (bossKey != null && isResistant(bossKey, type)) || isResistant(entityTypeId, type);
+    }
+
     /** Check if a mob type is immune to a damage type. */
     public static boolean isImmune(String entityTypeId, DamageType type) {
         Set<DamageType> set = IMMUNITIES.get(entityTypeId);
@@ -209,6 +221,17 @@ public class MobResistances {
         if (isResistant(entityTypeId, type)) return 0.5;
         if (isVulnerable(entityTypeId, type)) return 1.5;
         return 1.0;
+    }
+
+    /** Damage multiplier honoring a boss-identity key: any explicit relation on the boss key
+     *  overrides the base mob type, so a boss can resist a type its base mob is weak to. */
+    public static double getDamageMultiplier(String entityTypeId, String bossKey, DamageType type) {
+        if (bossKey != null) {
+            if (isImmune(bossKey, type)) return 0.0;
+            if (isResistant(bossKey, type)) return 0.5;
+            if (isVulnerable(bossKey, type)) return 1.5;
+        }
+        return getDamageMultiplier(entityTypeId, type);
     }
 
     /**

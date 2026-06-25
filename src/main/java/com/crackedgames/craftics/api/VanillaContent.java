@@ -43,8 +43,8 @@ public final class VanillaContent {
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("chainmail")
             .damageBonus(DamageType.SLASHING, 1)
-            .speedBonus(1).apCostReduction(1)
-            .description("§7Rogue: +1 Speed, attacks cost -1 AP (min 1)")
+            .speedBonus(1).lightWeaponDamage(2).lightWeaponCrit(20)
+            .description("§7Rogue: +1 Speed, +1 Slashing; light (1-AP) weapons: +2 dmg & +20% crit")
             .build());
         ArmorSetRegistry.register(ArmorSetEntry.builder("iron")
             .damageBonus(DamageType.CLEAVING, 1)
@@ -89,7 +89,7 @@ public final class VanillaContent {
             TrimEffects.SetBonus.FERAL, "Feral",
             "Kill streak: 1.3x damage per streak level (resets if no kills on your turn)"));
         TrimPatternRegistry.register(new TrimPatternEntry("ward",
-            TrimEffects.Bonus.DEFENSE, "+1 Armor Class per piece",
+            TrimEffects.Bonus.DEFENSE, "+2 Armor Class per piece",
             TrimEffects.SetBonus.FORTRESS, "Fortress",
             "50% less damage when you didn't move this turn"));
         TrimPatternRegistry.register(new TrimPatternEntry("eye",
@@ -121,7 +121,7 @@ public final class VanillaContent {
             TrimEffects.SetBonus.PATHFINDER, "Pathfinder",
             "Movement ignores obstacle tiles"));
         TrimPatternRegistry.register(new TrimPatternEntry("shaper",
-            TrimEffects.Bonus.DEFENSE, "+1 Armor Class per piece",
+            TrimEffects.Bonus.DEFENSE, "+2 Armor Class per piece",
             TrimEffects.SetBonus.TERRAFORMER, "Earthshatter",
             "Moving 3+ tiles deals 2 damage to all enemies adjacent to your destination"));
         TrimPatternRegistry.register(new TrimPatternEntry("silence",
@@ -133,7 +133,7 @@ public final class VanillaContent {
             TrimEffects.SetBonus.RALLY, "Rally",
             "Tamed allies get +2 Speed and +1 Attack"));
         TrimPatternRegistry.register(new TrimPatternEntry("host",
-            TrimEffects.Bonus.MAX_HP, "+2 max HP per piece",
+            TrimEffects.Bonus.MAX_HP, "+8 max HP per piece",
             TrimEffects.SetBonus.SYMBIOTE, "Symbiote",
             "Heal 1 HP for each enemy killed"));
         TrimPatternRegistry.register(new TrimPatternEntry("flow",
@@ -147,7 +147,7 @@ public final class VanillaContent {
     }
 
     private static void registerTrimMaterials() {
-        TrimMaterialRegistry.register(new TrimMaterialEntry("iron",      TrimEffects.Bonus.DEFENSE,    1, "+1 Armor Class per piece"));
+        TrimMaterialRegistry.register(new TrimMaterialEntry("iron",      TrimEffects.Bonus.DEFENSE,    2, "+2 Armor Class per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("copper",    TrimEffects.Bonus.SPEED,      1, "+1 Speed per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("gold",      TrimEffects.Bonus.LUCK,       1, "+1 Luck per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("lapis",     TrimEffects.Bonus.SPECIAL_POWER, 1, "+1 Special Power per piece"));
@@ -156,7 +156,7 @@ public final class VanillaContent {
         TrimMaterialRegistry.register(new TrimMaterialEntry("netherite", TrimEffects.Bonus.ARMOR_PEN,  1, "+1 Armor Penetration per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("redstone",  TrimEffects.Bonus.RANGED_POWER, 1, "+1 Ranged Power per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("amethyst",  TrimEffects.Bonus.REGEN,      1, "+1 HP Regen per piece"));
-        TrimMaterialRegistry.register(new TrimMaterialEntry("quartz",    TrimEffects.Bonus.MAX_HP,     2, "+2 Max HP per piece"));
+        TrimMaterialRegistry.register(new TrimMaterialEntry("quartz",    TrimEffects.Bonus.MAX_HP,     2, "+8 Max HP per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("resin",     TrimEffects.Bonus.ALLY_DAMAGE, 1, "+1 Ally Damage per piece"));
     }
 

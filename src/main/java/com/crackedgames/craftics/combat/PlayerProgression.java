@@ -21,8 +21,8 @@ public class PlayerProgression extends PersistentState {
     public enum Stat {
         SPEED("Speed", "§b⚡", "+1 movement per turn", 3),
         AP("Action Points", "§e⚡", "+1 action per turn", 3),
-        MELEE_POWER("Melee Power", "§c⚔", "+2 melee damage", 0),
-        RANGED_POWER("Ranged Power", "§d\uD83C\uDFF9", "+2 ranged damage", 0),
+        MELEE_POWER("Melee Power", "§c⚔", "+1 & +6% melee damage", 0),
+        RANGED_POWER("Ranged Power", "§d\uD83C\uDFF9", "+1 & +6% ranged damage", 0),
         VITALITY("Vitality", "§a❤", "+8 max HP", 0),
         DEFENSE("Defense", "§9\uD83D\uDEE1", "+2 Armor Class", 0),
         LUCK("Luck", "§6✦", "+8% crit, +2% loot per point", 0),
@@ -43,7 +43,7 @@ public class PlayerProgression extends PersistentState {
 
     public enum Affinity {
         SLASHING("Slashing", "\u00a7c\u2694", "+3 dmg, +5% sweep chance"),
-        CLEAVING("Cleaving", "\u00a76\u2716", "+3 dmg, +3% armor ignore"),
+        CLEAVING("Cleaving", "\u00a76\u2716", "+3 dmg, +3% armor shatter"),
         BLUNT("Blunt", "\u00a78\u2B24", "+3 dmg, +3% stun chance"),
         RANGED("Ranged", "\u00a7b\u27B3", "+3 ranged dmg, +5% ricochet chain chance"),
         WATER("Water", "\u00a73\u2248", "+3 dmg, +3% knockback & Wet"),

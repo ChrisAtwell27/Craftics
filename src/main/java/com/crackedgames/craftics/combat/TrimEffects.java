@@ -102,7 +102,7 @@ public class TrimEffects {
 
             Bonus bonus = TrimPatternRegistry.getPerPieceBonus(patternId);
             if (bonus != null) {
-                bonuses.merge(bonus, 1, Integer::sum);
+                bonuses.merge(bonus, trimPerPieceWeight(bonus), Integer::sum);
             }
 
             //? if <=1.21.1 {
@@ -144,6 +144,20 @@ public class TrimEffects {
         var combatEffects = new java.util.ArrayList<>(addonMods.getCombatEffects());
 
         return new TrimScan(bonuses, setBonus, setName, trimCount, materialCounts, combatEffects);
+    }
+
+    /**
+     * Per-piece magnitude for a trim pattern's bonus, normalized so one trimmed piece is
+     * worth ~one level-up stat point. DEFENSE and MAX_HP get 2 (a Defense point = +2 Armor
+     * Class; a Vitality point = +8 HP = 2 Health Boost levels). Everything else is 1 -
+     * including the power bonuses, since each is a damage-affinity point already worth
+     * DamageType.DAMAGE_PER_AFFINITY_POINT (3) damage, i.e. more than a melee/ranged point.
+     */
+    private static int trimPerPieceWeight(Bonus b) {
+        return switch (b) {
+            case DEFENSE, MAX_HP -> 2;
+            default -> 1;
+        };
     }
 
     public static String getMaterialDescription(String materialId) {

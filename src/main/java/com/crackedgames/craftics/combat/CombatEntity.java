@@ -258,8 +258,21 @@ public class CombatEntity {
         return witherTurns + 1 + witherAmplifier + getMaxHpDotBonus();
     }
 
+    /** Damage one tick of burning would deal at this moment. Returns 0 if not burning.
+     *  Folds in the max-HP bonus like poison/wither so fire DoT scales with tougher targets. */
+    public int getBurningTickDamage() {
+        if (burningTurns <= 0) return 0;
+        return burningDamage + getMaxHpDotBonus();
+    }
+
     public MobEntity getMobEntity() { return mobEntity; }
     public void setMobEntity(MobEntity mob) { this.mobEntity = mob; }
+
+    /** True when the backing mob is fire-immune in vanilla (blaze, magma cube, strider,
+     *  ghast, wither, ...), so fire and burning must not damage it. */
+    public boolean isFireImmune() {
+        return mobEntity != null && mobEntity.isFireImmune();
+    }
 
     public boolean wasDamagedSinceLastTurn() { return damagedSinceLastTurn; }
     public void setDamagedSinceLastTurn(boolean v) { this.damagedSinceLastTurn = v; }
@@ -272,7 +285,22 @@ public class CombatEntity {
 
     private boolean stunned = false;
     public boolean isStunned() { return stunned; }
-    public void setStunned(boolean s) { this.stunned = s; }
+    public void setStunned(boolean s) {
+        if (s) {
+            if (isStunImmune()) return; // blunt-resistant mobs shrug off stuns
+            // Bosses resist half of every stun attempt (halves the effective stun chance from
+            // any source) so they can't be stun-locked. Blunt-resistant bosses are fully immune above.
+            if (isBoss() && Math.random() >= 0.5) return;
+        }
+        this.stunned = s;
+    }
+
+    /** Blunt-resistant mobs (spiders, golems, ravager, warden, the Wither, etc.) are immune
+     *  to stun: a crushing blow that barely dents them can't lock them down. Single gate so
+     *  every stun source (mace, breeze, sherds, arrows, hybrid sets) respects it. */
+    public boolean isStunImmune() {
+        return MobResistances.isResistant(entityTypeId, getAiKey(), DamageType.BLUNT);
+    }
 
     private boolean boss = false;
     public boolean isBoss() { return boss; }
@@ -553,6 +581,7 @@ public class CombatEntity {
     }
 
     public void stackBurning(int turns, int dmgIncrease) {
+        if (isFireImmune()) return; // fire-immune mobs (blaze, magma cube, ...) don't burn
         // Repeat hits EXTEND the burn: the new turns add onto whatever's left
         // (so re-applying Fire Aspect prolongs the fire), capped at the
         // configured max effect duration so it can't run away.
@@ -713,6 +742,19 @@ public class CombatEntity {
 
     public int takeDamage(int rawDamage) {
         return takeDamage(rawDamage, 0);
+    }
+
+    /** Bonus damage equal to a fraction of this entity's max HP, used by offensive special
+     *  items (TNT, damage sherds, harming potions) so their flat damage keeps scaling into
+     *  late-game HP pools. Bosses take a third of the percent so they aren't trivialized. */
+    public int percentMaxHpDamage(double percent) {
+        double pct = isBoss() ? percent / 3.0 : percent;
+        return (int) Math.round(getMaxHp() * pct);
+    }
+
+    /** Offensive special-item hit: flat damage plus a percent of max HP. Returns damage dealt. */
+    public int takeSpecialDamage(int flat, double pctMaxHp) {
+        return takeDamage(flat + percentMaxHpDamage(pctMaxHp));
     }
 
     /**

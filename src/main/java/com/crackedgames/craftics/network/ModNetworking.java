@@ -535,6 +535,9 @@ public class ModNetworking {
             }
             progression.saveStats(player);
             syncPlayerStats(player);
+            // Respeccing into 1-point-in-every-affinity must be able to unlock Jack of All
+            // Trades; normal allocation checks this, the respec path previously did not.
+            com.crackedgames.craftics.achievement.AchievementManager.checkProgression(player);
 
             player.sendMessage(net.minecraft.text.Text.literal(
                 "§aAffinities respecced!" + (totalRefunded > 0

@@ -86,6 +86,18 @@ public final class ArmorSetRegistry {
         return entry != null ? entry.apCostReduction() : 0;
     }
 
+    /** Bonus damage with a light (1-AP) weapon for the full 4-piece set, or {@code 0}. */
+    public static int getLightWeaponDamage(String armorSet) {
+        ArmorSetEntry entry = REGISTRY.get(armorSet);
+        return entry != null ? entry.lightWeaponDamage() : 0;
+    }
+
+    /** Extra crit chance (percent) with a light (1-AP) weapon for the full 4-piece set, or {@code 0}. */
+    public static int getLightWeaponCrit(String armorSet) {
+        ArmorSetEntry entry = REGISTRY.get(armorSet);
+        return entry != null ? entry.lightWeaponCrit() : 0;
+    }
+
     /** Tooltip description for the full 4-piece set, or an empty string if not registered. */
     public static String getDescription(String armorSet) {
         ArmorSetEntry entry = REGISTRY.get(armorSet);

@@ -179,8 +179,8 @@ public class RandomEvents {
 
     // ── Ambush ──
     // Quick unavoidable fight with 2-3 fast enemies
-    public static com.crackedgames.craftics.level.LevelDefinition generateAmbush(String arenaBiomeId, int biomeOrdinal, int ngPlusLevel) {
-        return TrialChamberEvent.generateAmbush(arenaBiomeId, biomeOrdinal, ngPlusLevel);
+    public static com.crackedgames.craftics.level.LevelDefinition generateAmbush(String arenaBiomeId, int biomeOrdinal, int biomeIndex, int ngPlusLevel) {
+        return TrialChamberEvent.generateAmbush(arenaBiomeId, biomeOrdinal, biomeIndex, ngPlusLevel);
     }
 
     // === Multi-player reward methods ===
@@ -215,8 +215,10 @@ public class RandomEvents {
         return handleSuspiciousBlock(player);
     }
 
-    /** Create an enchanted book with a random enchantment from the full registry. */
-    private static ItemStack createRandomEnchantedBook(ServerPlayerEntity player) {
+    /** Create an enchanted book with a random enchantment from the full registry.
+     *  Package-private so the fishing-rod loot path ({@link ItemUseHandler}) reuses
+     *  the same version-correct stored-enchantment logic instead of duplicating it. */
+    static ItemStack createRandomEnchantedBook(ServerPlayerEntity player) {
         net.minecraft.server.world.ServerWorld world = (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
         //? if <=1.21.1 {
         var registry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
