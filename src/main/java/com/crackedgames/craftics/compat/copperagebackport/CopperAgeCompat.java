@@ -182,7 +182,7 @@ public final class CopperAgeCompat {
         registerHybrid("copper", "chainmail", "Deadeye", HybridEffect.DEADEYE,
             "Ranged attacks vs an enemy that hasn't acted: +3 damage");
         registerHybrid("copper", "iron", "Aegis", HybridEffect.AEGIS,
-            "Incoming ranged attacks have a 30% chance to be dodged");
+            "Incoming ranged attacks have a 30% chance to be deflected");
         registerHybrid("copper", "gold", "Contagion", HybridEffect.CONTAGION,
             "Negative status effects spread to adjacent enemies");
         registerHybrid("copper", "diamond", "Siege", HybridEffect.SIEGE,

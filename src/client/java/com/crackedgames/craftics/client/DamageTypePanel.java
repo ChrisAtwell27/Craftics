@@ -5,9 +5,11 @@ import com.crackedgames.craftics.api.registry.HybridSetRegistry;
 import com.crackedgames.craftics.combat.ArmorClassTable;
 import com.crackedgames.craftics.combat.DamageType;
 import com.crackedgames.craftics.combat.PlayerProgression;
+import com.crackedgames.craftics.client.guide.GuideTheme;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.text.Text;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.EquipmentSlot;
@@ -32,7 +34,8 @@ import java.util.Map;
  */
 public class DamageTypePanel {
 
-    // ARGB colors for each damage type bar (matching DamageType color codes)
+    // ARGB colors for each damage type BAR (kept vibrant - reads fine on the
+    // parchment bar track).
     private static final int COLOR_SLASHING    = 0xFFFF5555; // red
     private static final int COLOR_CLEAVING = 0xFFFFAA00; // orange
     private static final int COLOR_BLUNT    = 0xFF888888; // gray
@@ -42,11 +45,117 @@ public class DamageTypePanel {
     private static final int COLOR_RANGED   = 0xFF55FFFF; // cyan
     private static final int COLOR_PHYSICAL = 0xFFAAAAAA; // light gray
 
+    // Darkened variants for LABEL/ICON text so light-on-parchment stays legible.
+    // Water stays as-is (already dark enough); everything else is deepened.
+    private static final int LABEL_SLASHING = 0xFFB02020; // deep red
+    private static final int LABEL_CLEAVING = 0xFFB06A00; // deep orange
+    private static final int LABEL_BLUNT    = 0xFF4A4A4A; // dark gray
+    private static final int LABEL_WATER    = 0xFF3838C8; // blue (kept)
+    private static final int LABEL_SPECIAL  = 0xFFB030B0; // deep magenta
+    private static final int LABEL_PET      = 0xFF2E8B2E; // deep green
+    private static final int LABEL_RANGED   = 0xFF1F8A8A; // deep teal
+    private static final int LABEL_PHYSICAL = 0xFF555555; // dark gray
+
     private static final EquipmentSlot[] ARMOR_SLOTS = {
         EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
     };
 
-    public static void render(DrawContext ctx, int screenWidth, int screenHeight) {
+    private static final int BTN = 11;
+    private static final int STRIP_W = 26;
+    /** Minecraft inventory background height; panels match it so they read as the
+     *  same size as the inventory and center against it. */
+    private static final int INV_H = 166;
+
+    private static final int PANEL_W = 120;
+    // Content height pieces: 4 inset + 13 title + 4 rule + 8 bars x 18 + 4 pad = 169.
+    // A set/hybrid label, when shown, adds one 11px row (computed in panelHeight).
+    private static final int PANEL_H_BASE = 169;
+    private static final int LABEL_ROW = 11;
+
+    /** 1.0 if the panel's left edge has room; otherwise a shrink factor. */
+    public static float fitScale(int screenWidth, int screenHeight) {
+        int[] L = computeLayout(screenWidth, screenHeight);
+        if (L[0] >= 6) return 1.0f;
+        int avail = (screenWidth / 2) - 90 - 6;
+        return Math.max(0.5f, avail / (float) (L[2] + 6));
+    }
+
+    /** Minimize-button rect {x, y, w, h} for the affinity panel. */
+    public static int[] buttonRect(int screenWidth, int screenHeight) {
+        float s = fitScale(screenWidth, screenHeight);
+        int ox, oy; int[] base;
+        if (CombatState.isAffinityPanelCollapsed()) {
+            int[] c = collapsedLayout(screenWidth, screenHeight);
+            ox = c[0]; oy = c[1];
+            base = new int[]{c[0] + c[2] - BTN, c[1], BTN, BTN};
+        } else {
+            int[] L = computeLayout(screenWidth, screenHeight);
+            ox = L[0]; oy = L[1];
+            base = new int[]{L[0] + L[2] - BTN, L[1] + 2, BTN, BTN};
+        }
+        if (s == 1.0f) return base;
+        int x = ox + Math.round((base[0] - ox) * s);
+        int y = oy + Math.round((base[1] - oy) * s);
+        return new int[]{x, y, Math.round(BTN * s), Math.round(BTN * s)};
+    }
+
+    /** Collapsed icon-strip rect {x, y, w, h}. Matches the inventory's height so
+     *  the thin sidebar reads as the same size as the inventory, anchored to the
+     *  same left edge as the expanded panel and vertically centered. */
+    private static int[] collapsedLayout(int screenWidth, int screenHeight) {
+        int x = (screenWidth / 2) - 90 - STRIP_W - 6;
+        int y = (screenHeight / 2) - INV_H / 2;
+        return new int[]{x, y, STRIP_W, INV_H};
+    }
+
+    private static void drawAffinityButton(DrawContext ctx, TextRenderer tr, int bx, int by, boolean collapsed) {
+        ctx.fill(bx, by, bx + BTN, by + BTN, GuideTheme.PARCH_EDGE);
+        ctx.fill(bx, by, bx + BTN, by + 1, GuideTheme.GOLD_DIM);
+        String sym = collapsed ? "+" : "–";
+        int sw = tr.getWidth(sym);
+        ctx.drawText(tr, Text.literal(sym), bx + (BTN - sw) / 2, by + 2, GuideTheme.INK, false);
+    }
+
+    /** Unicode glyph for a damage type, borrowed from the matching Affinity enum
+     *  (which carries per-type icons). Falls back to the first letter. */
+    private static String affinityGlyph(DamageType type) {
+        try {
+            return PlayerProgression.Affinity.valueOf(type.name()).icon;
+        } catch (IllegalArgumentException e) {
+            return type.displayName.substring(0, 1);
+        }
+    }
+
+    /** True when the panel will draw a "Set:" or "Hybrid:" label row, which only
+     *  happens for a full vanilla set or a recognized two-material hybrid combo. */
+    private static boolean hasSetLabel() {
+        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (player == null) return false;
+        if (!getSetDisplayName(getArmorSet(player)).isEmpty()) return true;
+        String[] worn = new String[4];
+        int i = 0;
+        for (EquipmentSlot slot : ARMOR_SLOTS) {
+            worn[i++] = ArmorClassTable.armorSetKeyOf(player.getEquippedStack(slot).getItem());
+        }
+        return HybridSetRegistry.resolve(worn) != null;
+    }
+
+    /** Panel content height, shrinking when there is no set/hybrid label row so
+     *  there's no dead space under the last bar. */
+    private static int panelHeight() {
+        return PANEL_H_BASE + (hasSetLabel() ? LABEL_ROW : 0);
+    }
+
+    /** Content rect {x, y, w, h} anchored left of the inventory GUI and vertically
+     *  centered against the 166px inventory background. */
+    public static int[] computeLayout(int screenWidth, int screenHeight) {
+        int h = panelHeight();
+        int x = (screenWidth / 2) - 90 - PANEL_W - 6;
+        int y = (screenHeight / 2) - h / 2;
+        return new int[]{x, y, PANEL_W, h};
+    }
+
+    public static void render(DrawContext ctx, int screenWidth, int screenHeight, int mouseX, int mouseY) {
         MinecraftClient client = MinecraftClient.getInstance();
         ClientPlayerEntity player = client.player;
         if (player == null) return;
@@ -67,35 +176,83 @@ public class DamageTypePanel {
             if (mat != null) armorCounts.merge(mat, 1, Integer::sum);
         }
 
-        // Panel position: left side of inventory
-        int panelW = 120;
-        int panelH = 185;
-        int panelX = (screenWidth / 2) - 90 - panelW - 6;
-        int panelY = (screenHeight / 2) - 80;
+        if (CombatState.isAffinityPanelCollapsed()) {
+            int[] CL = collapsedLayout(screenWidth, screenHeight);
+            int cx = CL[0], cy0 = CL[1], cw = CL[2], ch = CL[3];
+            float cScale = fitScale(screenWidth, screenHeight);
+            boolean cScaled = cScale != 1.0f;
+            if (cScaled) {
+                ctx.getMatrices().push();
+                ctx.getMatrices().translate((float) cx, (float) cy0, 0);
+                ctx.getMatrices().scale(cScale, cScale, 1.0f);
+                ctx.getMatrices().translate((float) -cx, (float) -cy0, 0);
+            }
+            GuideTheme.drawPanel(ctx, cx, cy0, cw, ch);
+            int[] cbr = buttonRect(screenWidth, screenHeight);
+            drawAffinityButton(ctx, tr, cbr[0], cbr[1], true);
 
-        // Background
-        ctx.fill(panelX - 4, panelY - 4, panelX + panelW + 4, panelY + panelH + 4, 0xCC000000);
-        ctx.fill(panelX - 3, panelY - 3, panelX + panelW + 3, panelY + panelH + 3, 0xCC1A1A2E);
+            DamageType[] cTypes = { DamageType.SLASHING, DamageType.CLEAVING, DamageType.BLUNT,
+                DamageType.RANGED, DamageType.WATER, DamageType.SPECIAL, DamageType.PHYSICAL, DamageType.PET };
+            int[] cColors = { LABEL_SLASHING, LABEL_CLEAVING, LABEL_BLUNT,
+                LABEL_RANGED, LABEL_WATER, LABEL_SPECIAL, LABEL_PHYSICAL, LABEL_PET };
+            // Space the icon rows evenly through the strip below the button, each
+            // glyph horizontally centered in the strip.
+            int top = cy0 + BTN + 4;
+            int bottom = cy0 + ch - 4;
+            int n = cTypes.length;
+            int slot = (bottom - top) / n;
+            for (int i = 0; i < cTypes.length; i++) {
+                int bonusHalf = computeBonus(armorCounts, trimBonuses, cTypes[i]);
+                String glyph = affinityGlyph(cTypes[i]);
+                int gx = cx + (cw - tr.getWidth(glyph)) / 2;
+                int rowY = top + i * slot + (slot - 8) / 2;
+                ctx.drawText(tr, Text.literal(glyph), gx, rowY, cColors[i], false);
+                if (mouseX >= cx && mouseX < cx + cw && mouseY >= rowY - 3 && mouseY < rowY + 11) {
+                    String tip = cTypes[i].displayName + ": +" + DamageType.formatAffinityHalfPoints(bonusHalf);
+                    ctx.drawTooltip(tr, Text.literal(tip), mouseX, mouseY);
+                }
+            }
+            if (cScaled) ctx.getMatrices().pop();
+            return;
+        }
 
-        // Title
-        ctx.drawTextWithShadow(tr, "§6§l⚔ Damage Affinities", panelX, panelY, 0xFFFFAA00);
+        int[] L = computeLayout(screenWidth, screenHeight);
+        int panelX = L[0];
+        int panelY = L[1];
+        int panelW = L[2];
+        float scale = fitScale(screenWidth, screenHeight);
+        boolean scaled = scale != 1.0f;
+        int originX = L[0], originY = L[1];
+        if (scaled) {
+            ctx.getMatrices().push();
+            ctx.getMatrices().translate((float) originX, (float) originY, 0);
+            ctx.getMatrices().scale(scale, scale, 1.0f);
+            ctx.getMatrices().translate((float) -originX, (float) -originY, 0);
+        }
+        GuideTheme.drawPanel(ctx, panelX, panelY, panelW, L[3]);
+        panelX += 4;
+        panelY += 4;
+        panelW -= 8;
+
+        // Title (kept short so it clears the minimize button on the same row)
+        ctx.drawText(tr, "§l⚔ Affinities", panelX, panelY, GuideTheme.GOLD, false);
         panelY += 13;
 
         // Divider
-        ctx.fill(panelX, panelY, panelX + panelW, panelY + 1, 0xFF444444);
+        GuideTheme.drawRule(ctx, panelX, panelY, panelW);
         panelY += 4;
 
         // Armor set / hybrid label
         String setName = getSetDisplayName(armorSet);
         if (!setName.isEmpty()) {
-            ctx.drawTextWithShadow(tr, "§7Set: " + setName, panelX, panelY, 0xFFAAAAAA);
+            ctx.drawText(tr, "Set: " + setName, panelX, panelY, GuideTheme.INK_SOFT, false);
             panelY += 11;
         } else {
             // Not a full set - show the hybrid subclass name if a two-material combo is worn.
             HybridSetEntry hybrid = HybridSetRegistry.resolve(wornMaterials);
             if (hybrid != null) {
-                ctx.drawTextWithShadow(tr, "§7Hybrid: §d" + hybrid.className(),
-                    panelX, panelY, 0xFFAAAAAA);
+                ctx.drawText(tr, "Hybrid: §d" + hybrid.className(),
+                    panelX, panelY, GuideTheme.INK_SOFT, false);
                 panelY += 11;
             }
         }
@@ -110,26 +267,28 @@ public class DamageTypePanel {
             DamageType.RANGED, DamageType.WATER, DamageType.SPECIAL, DamageType.PHYSICAL, DamageType.PET };
         int[] colors = { COLOR_SLASHING, COLOR_CLEAVING, COLOR_BLUNT,
             COLOR_RANGED, COLOR_WATER, COLOR_SPECIAL, COLOR_PHYSICAL, COLOR_PET };
+        int[] labelColors = { LABEL_SLASHING, LABEL_CLEAVING, LABEL_BLUNT,
+            LABEL_RANGED, LABEL_WATER, LABEL_SPECIAL, LABEL_PHYSICAL, LABEL_PET };
 
         for (int i = 0; i < types.length; i++) {
             DamageType type = types[i];
             int bonusHalf = computeBonus(armorCounts, trimBonuses, type);
 
-            // Label
+            // Label (darkened so it reads on parchment; bar keeps the vibrant color)
             String label = type.displayName;
-            ctx.drawTextWithShadow(tr, label, panelX, panelY, colors[i]);
+            ctx.drawText(tr, label, panelX, panelY, labelColors[i], false);
 
             // Bonus number on right
             if (bonusHalf > 0) {
                 String bonusStr = "+" + DamageType.formatAffinityHalfPoints(bonusHalf);
                 int bonusWidth = tr.getWidth(bonusStr);
-                ctx.drawTextWithShadow(tr, bonusStr, panelX + panelW - bonusWidth, panelY, 0xFFFFFFFF);
+                ctx.drawText(tr, bonusStr, panelX + panelW - bonusWidth, panelY, GuideTheme.INK, false);
             }
 
             panelY += 9;
 
             // Bar background
-            ctx.fill(panelX, panelY, panelX + barMaxWidth, panelY + barHeight, 0xFF222222);
+            ctx.fill(panelX, panelY, panelX + barMaxWidth, panelY + barHeight, GuideTheme.PARCH_SHADE);
 
             // Bar fill
             if (bonusHalf > 0) {
@@ -139,11 +298,15 @@ public class DamageTypePanel {
                 ctx.fill(panelX, panelY, panelX + fillWidth, panelY + barHeight, barColor);
                 // Shine on top pixel row
                 ctx.fill(panelX, panelY, panelX + fillWidth, panelY + 1,
-                    brighten(barColor, 60));
+                    GuideTheme.brighten(barColor, 60));
             }
 
             panelY += barHeight + (lineHeight - barHeight - 9) + 4;
         }
+
+        int[] ebr = buttonRect(screenWidth, screenHeight);
+        drawAffinityButton(ctx, tr, ebr[0], ebr[1], false);
+        if (scaled) ctx.getMatrices().pop();
     }
 
     /**
@@ -328,14 +491,5 @@ public class DamageTypePanel {
             case "copper"    -> "§6Marksman";
             default -> "";
         };
-    }
-
-    /** Brighten an ARGB color by adding to RGB channels. */
-    private static int brighten(int argb, int amount) {
-        int a = (argb >> 24) & 0xFF;
-        int r = Math.min(255, ((argb >> 16) & 0xFF) + amount);
-        int g = Math.min(255, ((argb >> 8) & 0xFF) + amount);
-        int b = Math.min(255, (argb & 0xFF) + amount);
-        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 }

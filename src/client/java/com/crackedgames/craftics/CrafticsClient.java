@@ -285,9 +285,23 @@ public class CrafticsClient implements ClientModInitializer {
                     TransitionOverlay.startFadeOut();
                     context.client().setScreen(new com.crackedgames.craftics.client.VictoryChoiceScreen(
                         payload.emeraldsEarned(), payload.totalEmeralds(),
-                        payload.biomeName(), payload.levelIndex(), payload.nextIsBoss()
+                        payload.biomeName(), payload.levelIndex(), payload.nextIsBoss(),
+                        payload.isLeader(), payload.rewards()
                     ));
                     CombatState.setEmeralds(payload.totalEmeralds());
+                });
+            }
+        );
+
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.GameOverItemsPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    context.client().mouse.unlockCursor();
+                    com.crackedgames.craftics.client.TransitionOverlay.startFadeOut();
+                    context.client().setScreen(new com.crackedgames.craftics.client.GameOverScreen(
+                        payload.items(), payload.lostCounts(),
+                        payload.emeraldsLost(), payload.xpLevelsLost()
+                    ));
                 });
             }
         );

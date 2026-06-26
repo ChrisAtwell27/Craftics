@@ -99,7 +99,7 @@ public final class ArtifactsTooltips {
                 out.add(active("Immune to knockback"));
             }
             case "charm_of_shrinking" -> {
-                out.add(active("20% chance to dodge any incoming attack"));
+                out.add(active("20% chance to deflect any incoming attack"));
             }
             case "scarf_of_invisibility" -> {
                 out.add(stat("+1 Stealth Range"));
@@ -168,7 +168,7 @@ public final class ArtifactsTooltips {
             }
             case "cloud_in_a_bottle" -> {
                 out.add(stat("+2 Speed"));
-                out.add(active("15% chance to dodge incoming attacks"));
+                out.add(active("15% chance to deflect incoming attacks"));
             }
             case "warp_drive" -> {
                 out.add(active("Once per combat: type \u00a7e/craftics warp\u00a77"));
@@ -195,7 +195,7 @@ public final class ArtifactsTooltips {
             // Feet slot
             case "bunny_hoppers" -> {
                 out.add(stat("+1 Speed"));
-                out.add(active("10% chance to dodge incoming attacks"));
+                out.add(active("10% chance to deflect incoming attacks"));
             }
             case "kitty_slippers" -> {
                 out.add(stat("+2 Stealth Range"));

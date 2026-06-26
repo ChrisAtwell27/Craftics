@@ -1,10 +1,52 @@
 ﻿Changelog
+0.2.9
+Enemies, Combat, Tools, and Interface
+
+Interface
+
+- The inventory stat panels got a full visual overhaul to match the Guide Book. Both the right-side Stats panel and the left-side Damage Affinities panel now render on the same parchment-and-leather frame the field manual uses (shared via a new GuideTheme so the styles can never drift apart), instead of the old flat dark-blue boxes
+- Each panel now has a minimize button in its top corner. Clicking it collapses the panel to a thin sidebar showing just each stat's icon; hovering an icon pops a tooltip with the full name and value. Click again to expand. The collapsed/expanded choice is remembered for the rest of the session
+- The panels now scale down automatically when the window is small or the GUI scale is high, so they always stay fully on-screen and their minimize buttons stay clickable under the cursor
+- The "Next Level" victory screen got the same parchment Guide Book makeover, and now shows everything you collected during the level as an icon grid with x amounts (emeralds included), instead of just a line of text. Identical drops are merged into a single icon with a count, the grid wraps to fit, and hovering an item shows its tooltip. In multiplayer each player sees their own collected loot, and the event-prompt screens (Trial Chamber, Treasure Vault) share the new styling
+- When your whole party wipes mid-run, you now get a Game Over screen that shows your at-risk items and runs a quick coin-flip on each one. A gold coin tumbles in above the panel, then flies down and lands on each item to reveal its fate: a gold star (kept), an orange hyphen (you lost some of the stack), or a red X (the whole stack is gone). Identical items spread across different slots are merged into a single stack, and each unit in it is rolled individually, so a stack of 5 might lose 2 and keep 3. The odds are the real death odds the game already used (backpack items are far likelier to be lost than gear) with the Luck stat improving your keep chance on every unit. The coins have easing, landing pops, and sound effects, and you leave the screen with an explicit Continue button. Each player sees their own flips; items are only actually removed once you continue (or after a short timeout), so a disconnect can't dodge the penalty. The old "lose ALL items" warning was corrected to "you risk losing items"
+- The reward and Game Over screens no longer clip the item count: counts are now drawn in a separate pass layered above the item icons, so a neighbouring icon can never paint over a number (no more half-hidden stack sizes)
+
+Bug Fixes
+
+- Landing the killing blow with an anvil, TNT, or another consumable/special item no longer soft-locks the level. Those deferred and item-use damage paths despawned the last enemy but never ran the "all enemies defeated" check, so the fight hung; they now end the level the same way a normal weapon hit does
+- The Game Over coin-flip screen now shows on any death during a biome run, including the first level of a biome. It was previously gated to deaths past level 1, so dying early just sent you home with no screen
+- Digging a sunken pit or void with a pickaxe no longer fills in an adjacent pit or void you already dug. The cobblestone wall that keeps a fresh hole from opening into a big air gap now skips neighbouring tiles that are themselves a void, pit, or water/lava
+
+Enemies
+
+- Armored mobs can now spawn with trimmed armor. When a humanoid mob already rolls a piece of armor, each piece has a 5% chance to also receive an armor trim with a fully random material (iron, copper, gold, lapis, emerald, diamond, netherite, redstone, amethyst, quartz, or resin). Purely a visual flourish on the gear they already carry
+- An EXTREMELY rare netherite miniboss can now appear. Any humanoid mob has a 0.001% spawn roll to instead deck out in a full, heavily enchanted netherite armor set plus a heavily enchanted netherite sword. It carries no extra stat buffs beyond what that god-tier gear provides, so it is a gear check rather than a scripted boss
+
+Combat
+
+- Reflected ghast fireballs now detonate the ghast that fired them. Hitting a ghast's fireball reverses it as before, but a redirected fireball that reaches a regular ghast enemy now kills it outright instead of chipping its health. This never applies to the Wailing Revenant boss (or any boss): bosses still take only the scaled reflected-fireball damage they always did
+- Smite, Bane of Arthropods, and Impaling no longer fall off late-game. Their mob-type bonuses now scale as a percentage of the hit's base damage (+25% per level, so a level 5 enchant adds +125%) instead of a fixed flat amount, with the old flat curve kept as a floor so they are never weaker than before. Smite's radiant burst and Bane's poison-per-turn both ramp with weapon and stat growth
+- Impaling now also rewards wet targets. On top of its percentage scaling, an Impaling hit against a Soaked enemy deals a further +50% on the Impaling bonus, leaning into its anti-aquatic identity within the combat system
+
+Tools
+
+- Pickaxes can now reshape the arena floor. Mining an adjacent normal floor tile digs a 1-deep sunken pit (a walkable dip), and mining an existing sunken pit deepens it into a bottomless void hole that anything falling in is lost to. Both digs auto-wall the hole with cobblestone so you never break through into a large air gap underneath, and the void hole keeps cobblestone interior walls with a black-concrete bottom. Mining a breakable obstacle still just clears it to walkable ground as before. All of this is restored when combat ends
+- Anvils now always deal at least 10 damage. The per-stage fraction of the target's max HP still applies, but the minimum floor was raised from 1 to 10 so an anvil drop is always a meaningful hit, even against very low max-HP targets
+
+Wording
+
+- The combat "Dodge" mechanic is now called "Deflected" everywhere it shows to the player: the on-hit feedback, the Vex / Ethereal armor and artifact tooltips, the Aegis hybrid description, and the relevant guide pages all read "deflect" / "deflected" now
+
 0.2.8
 Combat, Bosses, and Addon Compat
 
 - Genshin Instruments addon: landing the killing blow with an instrument no longer soft-locks the level. Instrument attacks route through their own handler and break out before reaching the normal weapon handler, so they skipped the "all enemies dead -> end the fight" check every other attack runs. The kill itself was credited and the mob despawned, but combat never ended. The instrument handler now runs the same win-condition check after resolving, so an instrument can finish a fight (including a boss) like any weapon
 - Killing a boss with only instruments no longer wrongly grants Pacifist General. That achievement means the player never personally dealt damage (pets did all the work), and it keys off a "player dealt damage" flag that only the weapon-attack path set. Instrument, lightning rod, placed-TNT, and similar player-initiated "special" damage all flow through one shared helper that never set the flag, so the game thought the player was a pacifist. The shared helper now records player-dealt damage whenever it actually damages an enemy, so every form of player damage counts
 - Plains boss can no longer start a fight with only 6 HP. The stacked-enemy replacement pass (Zombie Stack, etc.) ran over every spawn with no boss guard, so on an unlucky roll it converted the plains boss into a stacked trash mob with placeholder HP. Boss selection then failed to find a matching boss and flagged a stray 6-HP zombie add as the boss. The replacement pass now skips the boss spawn, and boss selection falls back to the highest-HP spawn if no type match is found
+
+Balance
+
+- Anvil reworked to scale with the target instead of a flat 15 damage, and to wear out with use so its impact matches its cost. A pristine anvil now deals half the target's max HP, then wears to a chipped anvil (a third of max HP), then a damaged anvil (a quarter), then shatters. Each use wears the anvil one stage unless Special affinity saves it: every Special point gives a 10% additive chance to skip the wear (10 points keeps it pristine forever). Stacks degrade one anvil at a time, so a stack of pristine anvils becomes one chipped plus the rest pristine after a single use. Tooltips and the guide describe each stage and the affinity save
 
 World and Arenas
 

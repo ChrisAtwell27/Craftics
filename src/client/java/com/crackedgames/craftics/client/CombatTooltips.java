@@ -593,7 +593,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "wild"      -> "Kill streak: 1.3x damage per streak level";
             case "ward"      -> "50% less damage when you didn't move this turn";
             case "eye"       -> "See all enemy stats and their next action";
-            case "vex"       -> "20% chance to dodge incoming attacks";
+            case "vex"       -> "20% chance to deflect incoming attacks";
             case "tide"      -> "Full heal when dropping below 25% HP (once per combat)";
             case "snout"     -> "Melee attacks splash to adjacent enemies";
             case "rib"       -> "Fire attacks deal +3 bonus damage";
@@ -814,7 +814,9 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.RECOVERY_COMPASS) return "\u00a76Passive: \u00a77Consumed on death\n\u00a77Saves your full inventory one time instead of losing it";
         if (item == Items.BUNDLE) return "\u00a7ePassive: \u00a77Auto-collects loot\n\u00a77Combat drops go into the bundle first\n\u00a77Keeps your inventory organized";
         if (item == Items.BELL) return "\u00a762 AP \u00a77- Ring at target tile\n\u00a77Stuns ALL enemies within 2 tiles";
-        if (item == Items.ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7c5 DMG \u00a77| Consumed on use";
+        if (item == Items.ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cHalf the target's max HP\n\u00a77Wears to a chipped anvil on use";
+        if (item == Items.CHIPPED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA third of the target's max HP\n\u00a77Wears to a damaged anvil on use";
+        if (item == Items.DAMAGED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA quarter of the target's max HP\n\u00a77Shatters on use\n\u00a7dSpecial: 10% per point to avoid wear";
         if (item == Items.HONEY_BLOCK) return "\u00a7e1 AP \u00a77- Place sticky trap\n\u00a77Enemies that step on it lose all movement";
         if (item == Items.POWDER_SNOW_BUCKET) return "\u00a7b1 AP \u00a77- Freeze an enemy\n\u00a7c1 DMG \u00a77+ stun (skip next turn)";
         if (item == Items.JUKEBOX) return "\u00a7d2 AP \u00a77- Play music\n\u00a77Buffs all ally pets +1 Speed\n\u00a77Consumed on use";

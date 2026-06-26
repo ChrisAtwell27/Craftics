@@ -1,5 +1,7 @@
 package com.crackedgames.craftics.client;
 
+import com.crackedgames.craftics.client.guide.GuideButton;
+import com.crackedgames.craftics.client.guide.GuideTheme;
 import com.crackedgames.craftics.network.DialogueChoicePayload;
 import com.crackedgames.craftics.network.DialoguePayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -66,9 +68,6 @@ public class DialogueScreen extends Screen {
     private static final int PORTRAIT_PAD = 4; // backing-panel padding around the portrait
     private static final int BOX_MARGIN = 20;
     private static final int BOX_BOTTOM_GAP = 20;
-
-    private static final int BOX_BG = 0xEE0D0F14;
-    private static final int BOX_BORDER = 0xFF4A5468;
 
     public DialogueScreen(String speakerId, List<String> lines,
                           List<String> choiceLabels, List<String> choiceActions) {
@@ -173,18 +172,18 @@ public class DialogueScreen extends Screen {
         int minusX = clusterX;
         int plusX = clusterX + btnSize + gap + valueW + gap;
 
-        barterMinusButton = ButtonWidget.builder(Text.literal("-"), b -> adjustOffer(-1))
-            .dimensions(minusX, rowY, btnSize, btnSize).build();
-        barterPlusButton = ButtonWidget.builder(Text.literal("+"), b -> adjustOffer(1))
-            .dimensions(plusX, rowY, btnSize, btnSize).build();
+        barterMinusButton = GuideButton.of(minusX, rowY, btnSize, btnSize,
+            Text.literal("-"), b -> adjustOffer(-1));
+        barterPlusButton = GuideButton.of(plusX, rowY, btnSize, btnSize,
+            Text.literal("+"), b -> adjustOffer(1));
 
         // Action buttons one row below the stepper (still above the box).
         int actionsW = offerBtnW + gap + walkBtnW;
         int actionsX = (this.width - actionsW) / 2;
-        barterOfferButton = ButtonWidget.builder(Text.literal("Offer Gold"), b -> submitOffer())
-            .dimensions(actionsX, actionY, offerBtnW, btnSize).build();
-        barterWalkButton = ButtonWidget.builder(Text.literal("Walk away"), b -> choose("barter:leave"))
-            .dimensions(actionsX + offerBtnW + gap, actionY, walkBtnW, btnSize).build();
+        barterOfferButton = GuideButton.of(actionsX, actionY, offerBtnW, btnSize,
+            Text.literal("Offer Gold"), b -> submitOffer());
+        barterWalkButton = GuideButton.of(actionsX + offerBtnW + gap, actionY, walkBtnW, btnSize,
+            Text.literal("Walk away"), b -> choose("barter:leave"));
 
         // With no gold the player can only walk away.
         barterMinusButton.active = hasGold;
@@ -247,10 +246,9 @@ public class DialogueScreen extends Screen {
             // Rows stack UPWARD: the last row sits just above the box, earlier rows higher.
             int y = boxTop - 6 - (totalRows - row) * 24;
             final String action = choiceActions.get(i);
-            this.addDrawableChild(ButtonWidget.builder(
-                    Text.literal(choiceLabels.get(i)),
-                    b -> choose(action))
-                .dimensions(x, y, btnW, 20).build());
+            this.addDrawableChild(GuideButton.of(x, y, btnW, 20,
+                Text.literal(choiceLabels.get(i)),
+                b -> choose(action)));
         }
     }
 
@@ -366,10 +364,15 @@ public class DialogueScreen extends Screen {
 
         boolean narrator = isNarrator();
 
+        // Main dialogue box: a parchment panel. drawPanel draws its leather bevel 4px
+        // OUTSIDE the rect, so the BOX_MARGIN/BOX_BOTTOM_GAP (20px) margins leave plenty
+        // of room on the sides and bottom.
+        GuideTheme.drawPanel(ctx, boxX, boxY, boxW, BOX_H);
+
         if (!narrator) {
             // Speaker portrait resting on the box's top-right edge.
             int px = boxX + boxW - PORTRAIT - 8;
-            // Portrait rests on (overlaps) the box's top edge by a few px (layout B).
+            // Portrait rests just above the box's top edge.
             int py = boxY - PORTRAIT + 6;
             // While actively talking (line still typing), give the portrait a gentle
             // vertical bob; hold still once the line is complete.
@@ -378,52 +381,25 @@ public class DialogueScreen extends Screen {
                 portraitYOff = (int) Math.round(Math.sin(System.currentTimeMillis() / 90.0) * 2.0);
             }
             int portraitY = py + portraitYOff;
-            int panelX = px - PORTRAIT_PAD;
-            int panelY = portraitY - PORTRAIT_PAD;
-            int panelW = PORTRAIT + 2 * PORTRAIT_PAD;
 
-            // Portrait backing panel: a small extension that only occupies the strip ABOVE
-            // the box's top edge. The box background is translucent, so drawing the panel
-            // behind the box would show through (and shift as the portrait bobs). Instead we
-            // clip the panel to [panelY, boxY) and let it merge seamlessly into the box top.
-            int panelBottom = boxY; // meet the box's top edge exactly
-            if (panelY < panelBottom) {
-                ctx.fill(panelX, panelY, panelX + panelW, panelBottom, BOX_BG);
-                ctx.fill(panelX, panelY, panelX + panelW, panelY + 1, BOX_BORDER);            // top
-                ctx.fill(panelX, panelY, panelX + 1, panelBottom, BOX_BORDER);                // left
-                ctx.fill(panelX + panelW - 1, panelY, panelX + panelW, panelBottom, BOX_BORDER); // right
-            }
+            // Portrait backing: its own small parchment panel framing the portrait. The
+            // drawPanel bevel won't merge seamlessly with the box panel below, so the two
+            // sit as cleanly separated adjacent parchment frames (intentional look). Inset
+            // the panel rect by PORTRAIT_PAD so the leather/gold frame surrounds the image.
+            GuideTheme.drawPanel(ctx, px + PORTRAIT_PAD, portraitY + PORTRAIT_PAD,
+                PORTRAIT - 2 * PORTRAIT_PAD, PORTRAIT - 2 * PORTRAIT_PAD);
 
-            // Box background + border with the panel seam.
-            ctx.fill(boxX, boxY, boxX + boxW, boxY + BOX_H, BOX_BG);
-            ctx.fill(boxX, boxY + BOX_H - 1, boxX + boxW, boxY + BOX_H, BOX_BORDER); // bottom
-            ctx.fill(boxX, boxY, boxX + 1, boxY + BOX_H, BOX_BORDER);               // left
-            ctx.fill(boxX + boxW - 1, boxY, boxX + boxW, boxY + BOX_H, BOX_BORDER); // right
-            boolean panelAbove = panelY < boxY;
-            int seamL = panelX + 1, seamR = panelX + panelW - 1;
-            if (panelAbove) {
-                ctx.fill(boxX, boxY, seamL, boxY + 1, BOX_BORDER);            // top, left of panel
-                ctx.fill(seamR, boxY, boxX + boxW, boxY + 1, BOX_BORDER);     // top, right of panel
-            } else {
-                ctx.fill(boxX, boxY, boxX + boxW, boxY + 1, BOX_BORDER);      // full top (no panel above)
-            }
-
-            // Portrait drawn last so it sits on top of both panel and box.
+            // Portrait drawn last so it sits on top of its panel.
             Identifier headTex = MobHeadTextures.get(speakerId);
             if (headTex != null) {
                 MobHeadTextures.drawMobHead(ctx, headTex, px, portraitY, PORTRAIT);
             } else {
                 ctx.fill(px, portraitY, px + PORTRAIT, portraitY + PORTRAIT, MobHeadTextures.getMobColor(speakerId));
-                drawBorderRect(ctx, px, portraitY, PORTRAIT, PORTRAIT, BOX_BORDER);
             }
 
             // Speaker name inside the box.
-            ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal("§e" + speakerDisplayName()), boxX + 8, boxY + 6, 0xFFFFAA);
-        } else {
-            // Narrator: plain box, no portrait, panel, or name.
-            ctx.fill(boxX, boxY, boxX + boxW, boxY + BOX_H, BOX_BG);
-            drawBorderRect(ctx, boxX, boxY, boxW, BOX_H, BOX_BORDER);
+            GuideTheme.drawInk(ctx, this.textRenderer,
+                speakerDisplayName(), boxX + 8, boxY + 6, GuideTheme.GOLD);
         }
 
         // Current line (revealed prefix). While typing, the most recently revealed
@@ -435,8 +411,8 @@ public class DialogueScreen extends Screen {
         // are plain text, but for any future formatted dialogue fall back to the static
         // draw so colors render correctly and text never drifts.
         if (lineComplete || shown.indexOf('§') >= 0) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal(shown), boxX + 8, boxY + 22, 0xFFFFFFFF);
+            GuideTheme.drawInk(ctx, this.textRenderer,
+                shown, boxX + 8, boxY + 22, GuideTheme.INK);
         } else {
             int x = boxX + 8;
             int baseY = boxY + 22;
@@ -449,17 +425,17 @@ public class DialogueScreen extends Screen {
                     double decay = (4 - age) / 4.0;                    // 1.0 newest -> ~0 older
                     yOff = Math.sin(timeMs / 60.0 + i) * 1.5 * decay;  // tiny wiggle, settles with age
                 }
-                ctx.drawTextWithShadow(this.textRenderer,
-                    Text.literal(ch), x, baseY + (int) Math.round(yOff), 0xFFFFFFFF);
+                GuideTheme.drawInk(ctx, this.textRenderer,
+                    ch, x, baseY + (int) Math.round(yOff), GuideTheme.INK);
                 x += this.textRenderer.getWidth(ch);
             }
         }
 
         // "click to continue" hint while choices aren't yet shown.
         if (choiceLabels.isEmpty() || !(onLastLine() && lineComplete)) {
-            ctx.drawTextWithShadow(this.textRenderer,
-                Text.literal("§8(click to continue)"),
-                boxX + boxW - 110, boxY + BOX_H - 12, 0xFF888888);
+            GuideTheme.drawInk(ctx, this.textRenderer,
+                "(click to continue)",
+                boxX + boxW - 110, boxY + BOX_H - 12, GuideTheme.INK_FAINT);
         }
 
         if (barterActive) {
@@ -477,27 +453,19 @@ public class DialogueScreen extends Screen {
         int centerX = this.width / 2;
 
         // "YOUR OFFER" heading sits just above the stepper row.
-        ctx.drawCenteredTextWithShadow(this.textRenderer,
-            "§eYOUR OFFER", centerX, rowY - 11, 0xFFFFAA);
+        GuideTheme.drawCentered(ctx, this.textRenderer,
+            "YOUR OFFER", centerX, rowY - 11, GuideTheme.GOLD);
 
         // Current offer value centered between the - and + buttons.
-        ctx.drawCenteredTextWithShadow(this.textRenderer,
-            "§f" + barterOffer, centerX, rowY + 6, 0xFFFFFFFF);
+        GuideTheme.drawCentered(ctx, this.textRenderer,
+            String.valueOf(barterOffer), centerX, rowY + 6, GuideTheme.INK);
 
         // Player's gold count below the action buttons.
         int goldY = barterWalkButton != null
             ? barterWalkButton.getY() + barterWalkButton.getHeight() + 2
             : rowY + 48;
-        ctx.drawCenteredTextWithShadow(this.textRenderer,
-            "§7you have " + barterGold + " gold", centerX, goldY, 0xFFAAAAAA);
-    }
-
-    /** Draw a 1px rectangular border using 4 fills (version-portable). */
-    private static void drawBorderRect(DrawContext ctx, int x, int y, int w, int h, int color) {
-        ctx.fill(x, y, x + w, y + 1, color);             // top
-        ctx.fill(x, y + h - 1, x + w, y + h, color);     // bottom
-        ctx.fill(x, y, x + 1, y + h, color);             // left
-        ctx.fill(x + w - 1, y, x + w, y + h, color);     // right
+        GuideTheme.drawCentered(ctx, this.textRenderer,
+            "you have " + barterGold + " gold", centerX, goldY, GuideTheme.INK_SOFT);
     }
 
     private boolean isNarrator() { return speakerId == null || speakerId.isEmpty(); }

@@ -119,10 +119,13 @@ public final class VanillaWeapons {
             messages.add("\u00a7cBleed! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
         }
 
-        // Smite: AoE radiant burst vs undead
+        // Smite: AoE radiant burst vs undead. Scales as +25% of the hit's base
+        // damage per level (Lv5 = +125%) instead of a flat +2/level, so it keeps
+        // pace with weapon/stat growth and doesn't fall off in late biomes. Floored
+        // at the old smite*2 so it's never weaker than before at any base damage.
         int smite = PlayerCombatStats.getSmite(player);
         if (smite > 0 && PlayerCombatStats.isUndead(target.getEntityTypeId())) {
-            int smiteDmg = smite * 2;
+            int smiteDmg = Math.max(smite * 2, (int) Math.round(baseDamage * 0.25 * smite));
             int smiteRadius = smite <= 2 ? 2 : (smite <= 4 ? 3 : 4);
             GridPos tPos = target.getGridPos();
             for (CombatEntity enemy : arena.getOccupants().values()) {
@@ -137,13 +140,17 @@ public final class VanillaWeapons {
             }
         }
 
-        // Bane of Arthropods: poison + slowness vs arthropods
+        // Bane of Arthropods: poison + slowness vs arthropods. The poison's
+        // per-turn intensity scales as +25% of the hit's base damage per level
+        // (Lv5 = +125%) instead of a flat 1/level, so the venom stays relevant
+        // against high-HP late-game arthropods. Floored at the old flat value.
         int bane = PlayerCombatStats.getBane(player);
         if (bane > 0 && PlayerCombatStats.isArthropod(target.getEntityTypeId())) {
-            target.stackPoison(3, bane);
+            int poisonPerTurn = Math.max(bane, (int) Math.round(baseDamage * 0.25 * bane));
+            target.stackPoison(3, poisonPerTurn);
             int slowPenalty = bane <= 2 ? 1 : (bane <= 4 ? 2 : 3);
             target.stackSlowness(3, slowPenalty);
-            messages.add("\u00a72Venom! " + target.getDisplayName() + " is poisoned (" + bane + "/turn) and slowed (-" + slowPenalty + " speed).");
+            messages.add("\u00a72Venom! " + target.getDisplayName() + " is poisoned (" + poisonPerTurn + "/turn) and slowed (-" + slowPenalty + " speed).");
         }
 
         // Knockback: directional shockwave - push target + enemies behind in a line

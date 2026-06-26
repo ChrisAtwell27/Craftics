@@ -194,7 +194,7 @@ public class GuideBookData {
                 "- New Game Plus multiplies everything again\n\n" +
                 "Bosses get a large HP multiplier on top of their base.\n\n" +
                 "So a Plains zombie and a Cave zombie are very different fights. Use base stats to compare mobs, not to predict exact numbers."),
-            new Page("Enemy Defense & Your Dodge",
+            new Page("Enemy Defense & Your Deflect",
                 "Enemy DEF reduces the damage they take per hit (capped - high DEF never makes them immune).\n\n" +
                 "Your Armor Class (AC) instead gives a chance for enemies to MISS you entirely. The higher your AC compared to the attacker's strength, the more often they whiff.\n\n" +
                 "Hover any enemy to inspect its live stats in the panel.")
@@ -776,7 +776,7 @@ public class GuideBookData {
             new Page("Sweeper",
                 "§cSweeper. Clear adds with every swing.\n\n" +
                 "Weapon: any Sword + Sweeping Edge. Lv1 hits a 3-wide chop, Lv2 a 5-tile arc, Lv3 a full 360° spin (90% damage + knockback).\n\n" +
-                "Armor: Iron set (Guard) for survivability while standing in a pile of enemies, or Hybrid Chain+Iron (Sentinel) for ripostes on dodged hits.\n\n" +
+                "Armor: Iron set (Guard) for survivability while standing in a pile of enemies, or Hybrid Chain+Iron (Sentinel) for ripostes on deflected hits.\n\n" +
                 "Great vs swarms like Slimes, Silverfish, and Vexes.")
         )));
         progression.add(new Entry("§6Cleaving Loadouts", "minecraft:diamond_axe", List.of(
@@ -919,7 +919,7 @@ public class GuideBookData {
                 "Six Copper hybrids:\n" +
                 "Copper+Leather (Run and Gun): moved this turn = +1 range.\n" +
                 "Copper+Chain (Deadeye): +3 vs enemies that haven't acted.\n" +
-                "Copper+Iron (Aegis): 30% dodge vs incoming ranged.\n" +
+                "Copper+Iron (Aegis): 30% deflect vs incoming ranged.\n" +
                 "Copper+Gold (Contagion): spread debuffs to adjacent.\n" +
                 "Copper+Diamond (Siege): splash half dmg to adjacent.\n" +
                 "Copper+Netherite (Stormbringer): arc to extra enemy.")
@@ -1074,7 +1074,7 @@ public class GuideBookData {
                 "Eye: +1 Attack Range /piece\n  Full Set: Eagle Eye (ranged attacks +30% crit)"),
             new Page("End & Trial Trims",
                 "Spire: +1 Luck /piece (+3% crit each)\n  Full Set: Fortune's Peak (double emeralds)\n\n" +
-                "Vex: Ignore 1 enemy DEF /piece\n  Full Set: Ethereal (20% dodge)\n\n" +
+                "Vex: Ignore 1 enemy DEF /piece\n  Full Set: Ethereal (20% deflect)\n\n" +
                 "Silence: +1 stealth range /piece\n  Full Set: Phantom (invisible 2 turns)\n\n" +
                 "Flow: +1 Speed /piece\n  Full Set: Current (kills refund 1 AP)\n\n" +
                 "Bolt: +1 Slashing Power /piece\n  Full Set: Thunderstrike (crits stun)"),
@@ -1165,7 +1165,7 @@ public class GuideBookData {
         List<Entry> items = new ArrayList<>();
         items.add(new Entry("Combat Items", "minecraft:anvil", List.of(
             new Page("Offensive Items",
-                "Anvil (1 AP): 15 Special DMG - drops on the enemy at the start of next round\n" +
+                "Anvil (1 AP): drops on the enemy - 1/2 its max HP (pristine), 1/3 (chipped), 1/4 (damaged), then breaks. Wears one stage per use unless Special affinity saves it (10% per point)\n" +
                 "TNT (1 AP): detonates next round - 8/5/3 dmg by distance, radius 2. Hurts everyone, including you\n" +
                 "Bell (2 AP): stun all enemies within 2 tiles\n" +
                 "Crossbow item-throw (2 AP): 3 DMG, 4-tile range\n" +

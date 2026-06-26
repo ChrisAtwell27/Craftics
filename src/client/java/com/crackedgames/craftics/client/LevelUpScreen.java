@@ -1,12 +1,13 @@
 package com.crackedgames.craftics.client;
 
+import com.crackedgames.craftics.client.guide.GuideButton;
+import com.crackedgames.craftics.client.guide.GuideTheme;
 import com.crackedgames.craftics.combat.PlayerProgression;
 import com.crackedgames.craftics.network.AffinityChoicePayload;
 import com.crackedgames.craftics.network.StatChoicePayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 /**
@@ -24,15 +25,20 @@ public class LevelUpScreen extends Screen {
     private Phase phase;
 
     // Layout constants
-    private static final int CARD_WIDTH = 320;
+    private static final int CARD_WIDTH  = 320;
     private static final int CARD_HEIGHT = 24;
-    private static final int CARD_GAP = 4;
+    private static final int CARD_GAP    = 4;
+
+    // Panel sizing
+    private static final int PANEL_W    = CARD_WIDTH + 32;
+    private static final int HEADER_H   = 45;   // lines above the card list
+    private static final int FOOTER_H   = 20;   // description tooltip row below cards
+    private static final int PANEL_PAD  = 12;   // top/bottom padding inside panel
 
     public LevelUpScreen(int playerLevel, int unspentPoints, String statData) {
         super(Text.literal("Level Up!"));
-        this.playerLevel = playerLevel;
-        this.unspentPoints = unspentPoints;
-        // Determine which choice to show based on level parity
+        this.playerLevel    = playerLevel;
+        this.unspentPoints  = unspentPoints;
         this.phase = (playerLevel % 2 == 0) ? Phase.STAT_CHOICE : Phase.AFFINITY_CHOICE;
 
         String[] parts = statData.split(":");
@@ -43,10 +49,39 @@ public class LevelUpScreen extends Screen {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Layout helpers (shared between init() and render())
+    // -------------------------------------------------------------------------
+
+    private int cardCount() {
+        return phase == Phase.STAT_CHOICE
+            ? PlayerProgression.Stat.values().length
+            : PlayerProgression.Affinity.values().length;
+    }
+
+    private int panelHeight() {
+        int cards = cardCount();
+        int listH = cards * (CARD_HEIGHT + CARD_GAP) - CARD_GAP;
+        return PANEL_PAD + HEADER_H + listH + FOOTER_H + PANEL_PAD;
+    }
+
+    /** Y of the top-left corner of the parchment panel. */
+    private int panelTop() {
+        return (this.height - panelHeight()) / 2;
+    }
+
+    /** Y where the first card/button starts. */
+    private int cardsStartY() {
+        return panelTop() + PANEL_PAD + HEADER_H;
+    }
+
+    // -------------------------------------------------------------------------
+    // init
+    // -------------------------------------------------------------------------
+
     @Override
     protected void init() {
         this.clearChildren();
-
         if (phase == Phase.STAT_CHOICE) {
             initStatChoice();
         } else {
@@ -57,21 +92,19 @@ public class LevelUpScreen extends Screen {
     private void initStatChoice() {
         PlayerProgression.Stat[] stats = PlayerProgression.Stat.values();
         int centerX = this.width / 2;
-        int totalHeight = stats.length * (CARD_HEIGHT + CARD_GAP);
-        int startY = (this.height / 2) - (totalHeight / 2);
+        int startY  = cardsStartY();
 
         for (int i = 0; i < stats.length; i++) {
             PlayerProgression.Stat stat = stats[i];
-            int currentPoints = statValues[i];
-            int effective = stat.baseValue + currentPoints;
             int y = startY + i * (CARD_HEIGHT + CARD_GAP);
 
             String btnText = unspentPoints > 0
-                ? "\u00a7a[+] " + stat.icon + " " + stat.displayName
-                : "\u00a78" + stat.icon + " " + stat.displayName;
+                ? "[+] " + stat.icon + " " + stat.displayName
+                : stat.icon + " " + stat.displayName;
 
             final int statIndex = i;
-            ButtonWidget btn = ButtonWidget.builder(
+            GuideButton btn = GuideButton.of(
+                centerX - CARD_WIDTH / 2, y, CARD_WIDTH, CARD_HEIGHT,
                 Text.literal(btnText),
                 button -> {
                     if (unspentPoints > 0) {
@@ -81,8 +114,7 @@ public class LevelUpScreen extends Screen {
                         this.close();
                     }
                 }
-            ).dimensions(centerX - CARD_WIDTH / 2, y, CARD_WIDTH, CARD_HEIGHT).build();
-
+            );
             btn.active = unspentPoints > 0;
             this.addDrawableChild(btn);
         }
@@ -91,65 +123,78 @@ public class LevelUpScreen extends Screen {
     private void initAffinityChoice() {
         PlayerProgression.Affinity[] affinities = PlayerProgression.Affinity.values();
         int centerX = this.width / 2;
-        int totalHeight = affinities.length * (CARD_HEIGHT + CARD_GAP);
-        int startY = (this.height / 2) - (totalHeight / 2);
+        int startY  = cardsStartY();
 
         for (int i = 0; i < affinities.length; i++) {
             PlayerProgression.Affinity affinity = affinities[i];
             int y = startY + i * (CARD_HEIGHT + CARD_GAP);
 
-            String btnText = affinity.icon + " " + affinity.displayName + " \u00a77" + affinity.description;
+            String btnText = affinity.icon + " " + affinity.displayName + " - " + affinity.description;
 
             final int affinityIndex = i;
-            ButtonWidget btn = ButtonWidget.builder(
+            GuideButton btn = GuideButton.of(
+                centerX - CARD_WIDTH / 2, y, CARD_WIDTH, CARD_HEIGHT,
                 Text.literal(btnText),
                 button -> {
                     ClientPlayNetworking.send(new AffinityChoicePayload(affinityIndex));
                     this.close();
                 }
-            ).dimensions(centerX - CARD_WIDTH / 2, y, CARD_WIDTH, CARD_HEIGHT).build();
-
+            );
             this.addDrawableChild(btn);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Background (world dim)
+    // -------------------------------------------------------------------------
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
         context.fill(0, 0, this.width, this.height, 0xE0101010);
     }
 
+    // -------------------------------------------------------------------------
+    // Render
+    // -------------------------------------------------------------------------
+
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        // 1. Draw parchment panel behind everything
+        int panelH = panelHeight();
+        int panelX = (this.width - PANEL_W) / 2;
+        int panelY = panelTop();
+        GuideTheme.drawPanel(context, panelX, panelY, PANEL_W, panelH);
+
+        // 2. Buttons (stat/affinity cards) - drawn by super.render()
         super.render(context, mouseX, mouseY, delta);
 
         PlayerProgression.Stat[] stats = PlayerProgression.Stat.values();
         int centerX = this.width / 2;
-        int totalHeight = stats.length * (CARD_HEIGHT + CARD_GAP);
-        int startY = (this.height / 2) - (totalHeight / 2);
+        int startY  = cardsStartY();
 
-        // Header area
-        int headerY = startY - 45;
-
+        // 3. Header text
+        int headerY = panelY + PANEL_PAD;
         if (phase == Phase.STAT_CHOICE) {
-            context.drawCenteredTextWithShadow(this.textRenderer,
-                "\u00a76\u00a7l\u2605 LEVEL UP! \u2605", centerX, headerY, 0xFFAA00);
-            context.drawCenteredTextWithShadow(this.textRenderer,
-                "\u00a7fLevel \u00a7e\u00a7l" + playerLevel, centerX, headerY + 14, 0xFFFFFF);
+            GuideTheme.drawCentered(context, this.textRenderer,
+                "★ LEVEL UP! ★", centerX, headerY, GuideTheme.GOLD);
+            GuideTheme.drawCentered(context, this.textRenderer,
+                "Level " + playerLevel, centerX, headerY + 14, GuideTheme.INK);
             String pointsText = unspentPoints > 0
-                ? "\u00a7a" + unspentPoints + " point" + (unspentPoints != 1 ? "s" : "") + " to spend"
-                : "\u00a77Choose a stat to upgrade!";
-            context.drawCenteredTextWithShadow(this.textRenderer,
-                pointsText, centerX, headerY + 28, 0xAAAAAA);
+                ? unspentPoints + " point" + (unspentPoints != 1 ? "s" : "") + " to spend"
+                : "Choose a stat to upgrade!";
+            GuideTheme.drawCentered(context, this.textRenderer,
+                pointsText, centerX, headerY + 28, GuideTheme.INK_SOFT);
         } else {
-            context.drawCenteredTextWithShadow(this.textRenderer,
-                "\u00a76\u00a7l\u2694 CHOOSE AFFINITY \u2694", centerX, headerY, 0xFFAA00);
-            context.drawCenteredTextWithShadow(this.textRenderer,
-                "\u00a7fPermanent +1 damage & special effect boost", centerX, headerY + 14, 0xFFFFFF);
-            context.drawCenteredTextWithShadow(this.textRenderer,
-                "\u00a77Each point increases damage and unique ability chance", centerX, headerY + 28, 0xAAAAAA);
+            GuideTheme.drawCentered(context, this.textRenderer,
+                "⚔ CHOOSE AFFINITY ⚔", centerX, headerY, GuideTheme.GOLD);
+            GuideTheme.drawCentered(context, this.textRenderer,
+                "Permanent +1 damage & special effect boost", centerX, headerY + 14, GuideTheme.INK);
+            GuideTheme.drawCentered(context, this.textRenderer,
+                "Each point increases damage and unique ability chance",
+                centerX, headerY + 28, GuideTheme.INK_SOFT);
         }
 
-        // Stat value labels (drawn to the right of each button)
+        // 4. Stat value labels + bars (stat choice only)
         if (phase == Phase.STAT_CHOICE) {
             for (int i = 0; i < stats.length; i++) {
                 PlayerProgression.Stat stat = stats[i];
@@ -157,17 +202,15 @@ public class LevelUpScreen extends Screen {
                 int effective = stat.baseValue + currentPoints;
                 int y = startY + i * (CARD_HEIGHT + CARD_GAP);
 
-                // Value display to the right
+                // Value display to the right of the card
                 int labelX = centerX + CARD_WIDTH / 2 + 8;
                 int labelY = y + (CARD_HEIGHT - 8) / 2;
-                String valueStr = "\u00a7f" + effective;
-                if (currentPoints > 0) {
-                    valueStr += " \u00a77(+" + currentPoints + ")";
-                }
-                context.drawTextWithShadow(this.textRenderer, valueStr, labelX, labelY, 0xFFFFFF);
+                String valueStr = String.valueOf(effective);
+                if (currentPoints > 0) valueStr += " (+" + currentPoints + ")";
+                GuideTheme.drawInk(context, this.textRenderer, valueStr, labelX, labelY, GuideTheme.INK_SOFT);
 
-                // Draw stat bar (visual indicator of points)
-                int barX = centerX - CARD_WIDTH / 2 - 6;
+                // Stat bar (small colored fill to the left of the card)
+                int barX     = centerX - CARD_WIDTH / 2 - 6;
                 int barWidth = 4;
                 int maxDisplay = 10;
                 int barHeight = Math.min(currentPoints, maxDisplay) * 2;
@@ -176,12 +219,12 @@ public class LevelUpScreen extends Screen {
                     context.fill(barX, y + CARD_HEIGHT - barHeight, barX + barWidth, y + CARD_HEIGHT, barColor);
                 }
 
-                // Description tooltip on hover
+                // Hover description below card list
                 if (mouseX >= centerX - CARD_WIDTH / 2 && mouseX <= centerX + CARD_WIDTH / 2
-                    && mouseY >= y && mouseY <= y + CARD_HEIGHT) {
-                    context.drawCenteredTextWithShadow(this.textRenderer,
-                        "\u00a77" + stat.description,
-                        centerX, startY + stats.length * (CARD_HEIGHT + CARD_GAP) + 8, 0x888888);
+                        && mouseY >= y && mouseY <= y + CARD_HEIGHT) {
+                    int descY = startY + stats.length * (CARD_HEIGHT + CARD_GAP) + 4;
+                    GuideTheme.drawCentered(context, this.textRenderer,
+                        stat.description, centerX, descY, GuideTheme.INK_FAINT);
                 }
             }
         }
@@ -189,20 +232,20 @@ public class LevelUpScreen extends Screen {
 
     private int getStatColor(PlayerProgression.Stat stat) {
         return switch (stat) {
-            case SPEED -> 0xFF55FFFF;
-            case AP -> 0xFFFFFF55;
-            case MELEE_POWER -> 0xFFFF5555;
-            case RANGED_POWER -> 0xFFFF55FF;
-            case VITALITY -> 0xFF55FF55;
-            case DEFENSE -> 0xFF5555FF;
-            case LUCK -> 0xFFFFAA00;
-            case RESOURCEFUL -> 0xFF00AA00;
+            case SPEED         -> 0xFF55FFFF;
+            case AP            -> 0xFFFFFF55;
+            case MELEE_POWER   -> 0xFFFF5555;
+            case RANGED_POWER  -> 0xFFFF55FF;
+            case VITALITY      -> 0xFF55FF55;
+            case DEFENSE       -> 0xFF5555FF;
+            case LUCK          -> 0xFFFFAA00;
+            case RESOURCEFUL   -> 0xFF00AA00;
         };
     }
 
     @Override
     public boolean shouldCloseOnEsc() {
-        return unspentPoints <= 0; // Can only close once all points are spent
+        return unspentPoints <= 0;
     }
 
     @Override

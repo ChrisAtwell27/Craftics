@@ -356,6 +356,29 @@ public class CombatManager {
     private CombatPhase phase;
     private int playerDeathAnimTick = 0;
     private static final int PLAYER_DEATH_ANIM_TICKS = 60; // ~3 seconds at 20 TPS
+    static final int GAME_OVER_FLIP_TIMEOUT = 300; // ~15s; applies loss even if a client never acks
+    private static final double LUCK_KEEP_PER_POINT = 0.02; // each Luck point cuts loss chance by 2%
+    private static final double MIN_LOSS_CHANCE = 0.05;     // floor so high Luck never trivializes loss
+
+    // Deferred game-over item loss: pre-rolled outcomes held until clients ack the
+    // coin-flip animation (or the timeout fires), then applied in applyGameOverLossAndTeardown.
+    private final java.util.Map<java.util.UUID, java.util.List<PendingItemRoll>> pendingGameOverLoss = new java.util.HashMap<>();
+    private final java.util.Set<java.util.UUID> gameOverAcks = new java.util.HashSet<>();
+    private final java.util.Set<java.util.UUID> gameOverWaiting = new java.util.HashSet<>();
+    private int gameOverFlipTimer = 0;
+    // Per-player XP levels lost this wipe, captured in the XP-loss loop so the payload can report them.
+    private final java.util.Map<java.util.UUID, Integer> lastXpLevelsLost = new java.util.HashMap<>();
+
+    /** One pre-decided death-loss roll for a single item. kind: 0=MAIN,1=ARMOR,2=OFFHAND,3=ACCESSORY. */
+    /** One physical slot's contribution to a loss group: how many units to remove
+     *  from it. kind: 0=MAIN,1=ARMOR,2=OFFHAND,3=ACCESSORY. */
+    private record SlotLoss(int kind, int index, String accContainer, int accKind, int accSlot, int lose) {}
+
+    /** One display group: all identical stacks across slots merged. {@code repr} is
+     *  a representative stack with count = {@code totalQ}; {@code lostQ} units are
+     *  removed (drawn from {@code slots}). The coin-flip shows the X when lostQ>0. */
+    private record PendingItemRoll(ItemStack repr, int totalQ, int lostQ, java.util.List<SlotLoss> slots) {}
+
     private int apRemaining;
     private int movePointsRemaining;
     private int turnNumber;
@@ -1613,6 +1636,103 @@ public class CombatManager {
         placedBlockRestores.put(bp.toImmutable(), w.getBlockState(bp));
     }
 
+    /** Set a world block, snapshotting its prior state so the arena restores
+     *  cleanly when combat ends. Only fills air with the given block when
+     *  {@code onlyIfAir} is set (used to wall hole sides without clobbering
+     *  existing terrain). */
+    private void setArenaBlock(ServerWorld w, BlockPos bp, net.minecraft.block.Block block, boolean onlyIfAir) {
+        if (onlyIfAir && !w.getBlockState(bp).isAir()) return;
+        recordPlacedBlock(bp);
+        w.setBlockState(bp, block.getDefaultState(),
+            net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+    }
+
+    /** Wall the 8 horizontal neighbours of a column at one Y level with
+     *  cobblestone wherever there's currently air, so a freshly dug hole never
+     *  opens into a large air gap. {@code gridCenter} is the dug tile's grid
+     *  position; neighbours that are themselves pits/hazards (another void, a
+     *  sunken pit, water, lava) are skipped so the wall fill never clobbers an
+     *  adjacent hole the player already dug. */
+    private void wallRingWithCobble(ServerWorld w, BlockPos center, GridPos gridCenter) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                // Skip neighbours whose tile is intentionally open/hazardous - filling
+                // their column would bury an adjacent void/pit/water tile in cobblestone.
+                GridTile neighbour = arena.getTile(new GridPos(gridCenter.x() + dx, gridCenter.z() + dz));
+                if (neighbour != null && isOpenOrHazardTile(neighbour.getType())) continue;
+                setArenaBlock(w, center.add(dx, 0, dz), net.minecraft.block.Blocks.COBBLESTONE, true);
+            }
+        }
+    }
+
+    /** Tile types that are deliberately open or hazardous and must NOT be filled in
+     *  by an adjacent pit/void dig's cobblestone wall. */
+    private static boolean isOpenOrHazardTile(com.crackedgames.craftics.core.TileType t) {
+        return t == com.crackedgames.craftics.core.TileType.VOID
+            || t == com.crackedgames.craftics.core.TileType.LOW_GROUND
+            || t == com.crackedgames.craftics.core.TileType.DEEP_WATER
+            || t == com.crackedgames.craftics.core.TileType.WATER
+            || t == com.crackedgames.craftics.core.TileType.LAVA;
+    }
+
+    /** Pickaxe-dug sunken pit: a 1-deep dip (LOW_GROUND). The overlay and floor
+     *  blocks are cleared and the block the player stands on (floorY-1) plus its
+     *  side walls are filled with cobblestone so nothing breaks through below. */
+    private void digSunkenPit(GridPos pos) {
+        GridTile tile = arena.getTile(pos);
+        if (tile == null) return;
+        ServerWorld w = (ServerWorld) player.getEntityWorld();
+        BlockPos overlay = arena.gridToBlockPos(pos); // floorY+1
+        BlockPos floor   = overlay.down();            // floorY
+        BlockPos pitFloor = floor.down();             // floorY-1 (the dip the player stands in)
+
+        // Clear the overlay and original floor so the tile sinks one block.
+        setArenaBlock(w, overlay, net.minecraft.block.Blocks.AIR, false);
+        setArenaBlock(w, floor,   net.minecraft.block.Blocks.AIR, false);
+        // Solid stand-on floor for the dip, and cobblestone walls around it.
+        setArenaBlock(w, pitFloor, net.minecraft.block.Blocks.COBBLESTONE, false);
+        wallRingWithCobble(w, pitFloor, pos);
+
+        tile.setType(com.crackedgames.craftics.core.TileType.LOW_GROUND);
+        tile.setBlockType(net.minecraft.block.Blocks.COBBLESTONE);
+
+        w.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+            floor.getX() + 0.5, floor.getY() + 0.1, floor.getZ() + 0.5, 10, 0.3, 0.1, 0.3, 0.02);
+        w.playSound(null, floor, net.minecraft.sound.SoundEvents.BLOCK_GRAVEL_BREAK,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 0.9f);
+    }
+
+    /** Pickaxe-dug void hole (deepens a sunken pit). The pit floor is removed to
+     *  make a VOID (instant-death) tile, the interior side walls are lined with
+     *  cobblestone, and the bottom is capped with black concrete. */
+    private void digVoidPit(GridPos pos) {
+        GridTile tile = arena.getTile(pos);
+        if (tile == null) return;
+        ServerWorld w = (ServerWorld) player.getEntityWorld();
+        BlockPos overlay = arena.gridToBlockPos(pos); // floorY+1
+        BlockPos floor    = overlay.down();           // floorY
+        BlockPos pitFloor = floor.down();             // floorY-1 (old dip floor -> now open void)
+        BlockPos bottom   = pitFloor.down();          // floorY-2 (black concrete bottom)
+
+        // Open the shaft: clear overlay, floor, and the old dip floor.
+        setArenaBlock(w, overlay,  net.minecraft.block.Blocks.AIR, false);
+        setArenaBlock(w, floor,    net.minecraft.block.Blocks.AIR, false);
+        setArenaBlock(w, pitFloor, net.minecraft.block.Blocks.AIR, false);
+        // Black concrete bottom, cobblestone walls on both interior layers.
+        setArenaBlock(w, bottom, net.minecraft.block.Blocks.BLACK_CONCRETE, false);
+        wallRingWithCobble(w, pitFloor, pos);
+        wallRingWithCobble(w, bottom, pos);
+
+        tile.setType(com.crackedgames.craftics.core.TileType.VOID);
+        tile.setBlockType(net.minecraft.block.Blocks.AIR);
+
+        w.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+            floor.getX() + 0.5, floor.getY(), floor.getZ() + 0.5, 14, 0.3, 0.4, 0.3, 0.02);
+        w.playSound(null, floor, net.minecraft.sound.SoundEvents.BLOCK_STONE_BREAK,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 0.6f);
+    }
+
     private boolean tripleDamageNextAttack = false;
     private int windBurstDamageBonus = 0;
     /** Armed by a Wind Charge self-launch; the next attack deals 1.5x, cleared on any move or end of turn. */
@@ -1736,8 +1856,13 @@ public class CombatManager {
             }
             DodgeRoll.DodgeResult dodge = DodgeRoll.roll(ac, rawDamage, combatRng);
             if (dodge.dodged()) {
-                playDodgeFeedback("§b§l✦ DODGED!",
-                    "§b§l✦ Dodged!§r §7You slipped past the " + attacker.getDisplayName() + "'s attack.");
+                playDodgeFeedback("§b§l✦ DEFLECTED!",
+                    "§b§l✦ Deflected!§r §7You slipped past the " + attacker.getDisplayName() + "'s attack.");
+                // AC deflect gets a heavy metallic clang (like the anvil drop) so a
+                // pure armor-class deflect reads as the hit ringing off your armor.
+                player.getWorld().playSound(null, player.getBlockPos(),
+                    net.minecraft.sound.SoundEvents.BLOCK_ANVIL_LAND,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.2f);
                 fireEffectHook(h -> h.onDodge(effectContext, attacker));
                 hybridSentinelRiposte(attacker);
                 lastHitAvoided = true;
@@ -2125,6 +2250,14 @@ public class CombatManager {
         this.arena = arena;
         this.levelDef = levelDef;
         this.enemies = new ArrayList<>();
+        // Begin tallying loot for this fight so the victory screen can show
+        // everything collected. Records all current participants.
+        {
+            java.util.List<java.util.UUID> ids = new java.util.ArrayList<>();
+            for (ServerPlayerEntity p : getAllParticipants()) ids.add(p.getUuid());
+            if (ids.isEmpty() && player != null) ids.add(player.getUuid());
+            LootRecorder.begin(ids);
+        }
         this.phase = CombatPhase.PLAYER_TURN;
         this.achievementTracker = new CombatAchievementTracker();
         PlayerProgression prog = PlayerProgression.get((ServerWorld) player.getEntityWorld());
@@ -2546,10 +2679,15 @@ public class CombatManager {
                 int equipDefBonus = 0;
                 int equipSpeedBonus = 0;
 
-                // Give humanoid mobs random gear, then roll enchant chances on it
+                // Give humanoid mobs random gear, then roll enchant chances on it.
+                // A vanishingly rare roll (0.001%) instead decks the mob out as a
+                // fully enchanted netherite miniboss -that path does its own
+                // enchanting, so the normal per-piece enchant/trim pass is skipped.
                 if (!isBoss) {
-                    randomizeMobGear(mob, finalBiomeOrdinal);
-                    enchantMobGear(mob, finalBiomeOrdinal, world);
+                    boolean miniboss = randomizeMobGear(mob, finalBiomeOrdinal, world);
+                    if (!miniboss) {
+                        enchantMobGear(mob, finalBiomeOrdinal, world);
+                    }
                 }
 
                 // Weapon check
@@ -4461,7 +4599,7 @@ public class CombatManager {
         final int fTridentChanneling = tridentChannelingLevel;
         final boolean fTridentHasLoyalty = tridentHasLoyalty;
         final int fTridentLoyaltyLevel = tridentLoyaltyLevel;
-        final int fImpalingDmg = weapon == Items.TRIDENT ? PlayerCombatStats.getImpalingDamage(player) : 0;
+        final int fImpalingLevel = weapon == Items.TRIDENT ? PlayerCombatStats.getImpaling(player) : 0;
         final int fImpalingBleed = weapon == Items.TRIDENT ? PlayerCombatStats.getImpalingBleed(player) : 0;
         // Sharpness on the player's weapon also inflicts bleed (1 stack per level).
         // Bow/crossbow Power is the ranged equivalent and does not bleed.
@@ -4890,10 +5028,21 @@ public class CombatManager {
             }
 
             // === TRIDENT IMPALING: Bonus damage + bleed ===
-            if (fImpalingDmg > 0 && fTarget.isAlive()) {
-                int impDmg = fTarget.takeDamage(fImpalingDmg);
+            // Impaling now scales as +25% of the hit's base damage per level
+            // (Lv5 = +125%) instead of a flat 1/2/5/8/10, so it keeps pace with
+            // late-game HP pools. Floored at the old flat curve so it's never
+            // weaker. Vanilla Impaling only matters vs aquatic mobs; here the
+            // Soaked status is the in-combat "wet enemy" analogue, so a soaked
+            // target takes a further +50% on the Impaling bonus.
+            if (fImpalingLevel > 0 && fTarget.isAlive()) {
+                int impBonus = Math.max(impalingFlatFloor(fImpalingLevel),
+                    (int) Math.round(fBaseDamage * 0.25 * fImpalingLevel));
+                boolean soaked = fTarget.getSoakedTurns() > 0;
+                if (soaked) impBonus = (int) Math.round(impBonus * 1.5);
+                int impDmg = fTarget.takeDamage(impBonus);
                 fTarget.stackBleed(fImpalingBleed);
-                sendMessage("§b✦ Impaling! +" + impDmg + " damage, " + fImpalingBleed + " bleed on " + fTarget.getDisplayName() + ".");
+                sendMessage("§b✦ Impaling! +" + impDmg + " damage, " + fImpalingBleed + " bleed on "
+                    + fTarget.getDisplayName() + (soaked ? " §3(Soaked +50%!)" : "") + ".");
             }
 
             // === SHARPNESS: melee weapon sharpness applies bleed stacks (1 per level) ===
@@ -6371,6 +6520,15 @@ public class CombatManager {
     private static final double GEAR_SPAWN_CHANCE = 0.10;   // 10% of mobs roll any gear
     private static final double GEAR_SLOT_CHANCE  = 0.55;   // each slot rolls within the gate
     private static final double GEAR_ENCHANT_CHANCE = 0.10; // 10% per piece to enchant
+    private static final double GEAR_TRIM_CHANCE  = 0.05;   // 5% per worn armor piece to get a random trim
+    private static final double NETHERITE_MINIBOSS_CHANCE = 0.00001; // 0.001% -fully enchanted netherite miniboss
+
+    // Random trim pattern/material pools for armored-mob trims (mirrors the
+    // player armor-enhancement table). Material is fully random per piece.
+    private static final String[] TRIM_PATTERNS = {"sentry", "dune", "coast", "wild", "ward", "eye",
+        "vex", "tide", "snout", "rib", "spire", "wayfinder", "shaper", "silence", "raiser", "host", "flow", "bolt"};
+    private static final String[] TRIM_MATERIALS = {"iron", "copper", "gold", "lapis", "emerald", "diamond",
+        "netherite", "redstone", "amethyst", "quartz", "resin"};
 
     private static final Item[][] WEAPONS_BY_TIER = {
         { Items.WOODEN_SWORD, Items.WOODEN_AXE, Items.WOODEN_PICKAXE, Items.WOODEN_SHOVEL, Items.WOODEN_HOE },
@@ -6411,12 +6569,19 @@ public class CombatManager {
      * high tiers rare), and each slot independently rolls whether to fill. Existing
      * vanilla-given gear is preserved.
      */
-    private static void randomizeMobGear(MobEntity mob, int biomeOrdinal) {
+    private static boolean randomizeMobGear(MobEntity mob, int biomeOrdinal, ServerWorld world) {
         String typeId = Registries.ENTITY_TYPE.getId(mob.getType()).toString();
-        if (!isHumanoidMob(typeId)) return;
+        if (!isHumanoidMob(typeId)) return false;
+
+        // Ultra-rare netherite miniboss: full enchanted netherite set + weapon.
+        // Rolled before the normal gate; overwrites any vanilla gear.
+        if (Math.random() < NETHERITE_MINIBOSS_CHANCE) {
+            equipNetheriteMiniboss(mob, world);
+            return true;
+        }
 
         // Top-level gate -most mobs get nothing.
-        if (Math.random() >= GEAR_SPAWN_CHANCE) return;
+        if (Math.random() >= GEAR_SPAWN_CHANCE) return false;
 
         // Pick a tier once so the mob's gear is internally consistent
         int tier = rollGearTier();
@@ -6433,6 +6598,58 @@ public class CombatManager {
         rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.CHEST, CHESTS_BY_TIER[tier]);
         rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.LEGS,  LEGGINGS_BY_TIER[tier]);
         rollArmorSlot(mob, net.minecraft.entity.EquipmentSlot.FEET,  BOOTS_BY_TIER[tier]);
+        return false;
+    }
+
+    /** Deck a mob out as a fully enchanted netherite miniboss: a netherite weapon
+     *  plus the full netherite armor set, each heavily enchanted at max level. */
+    private static void equipNetheriteMiniboss(MobEntity mob, ServerWorld world) {
+        java.util.Random rng = new java.util.Random();
+        ItemStack weapon = new ItemStack(Items.NETHERITE_SWORD);
+        heavilyEnchant(world, weapon, getValidWeaponEnchants(weapon), rng);
+        mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, weapon);
+
+        equipEnchantedArmor(mob, net.minecraft.entity.EquipmentSlot.HEAD,  Items.NETHERITE_HELMET, world, rng);
+        equipEnchantedArmor(mob, net.minecraft.entity.EquipmentSlot.CHEST, Items.NETHERITE_CHESTPLATE, world, rng);
+        equipEnchantedArmor(mob, net.minecraft.entity.EquipmentSlot.LEGS,  Items.NETHERITE_LEGGINGS, world, rng);
+        equipEnchantedArmor(mob, net.minecraft.entity.EquipmentSlot.FEET,  Items.NETHERITE_BOOTS, world, rng);
+    }
+
+    private static void equipEnchantedArmor(MobEntity mob, net.minecraft.entity.EquipmentSlot slot,
+                                            Item item, ServerWorld world, java.util.Random rng) {
+        ItemStack piece = new ItemStack(item);
+        heavilyEnchant(world, piece, getValidArmorEnchants(slot), rng);
+        mob.equipStack(slot, piece);
+    }
+
+    /** Apply a random-material armor trim to {@code stack} (pattern + material both
+     *  random). No-op if the registries don't resolve the chosen ids. */
+    private static void applyRandomTrim(ItemStack stack, ServerWorld world) {
+        String pattern = TRIM_PATTERNS[(int) (Math.random() * TRIM_PATTERNS.length)];
+        String material = TRIM_MATERIALS[(int) (Math.random() * TRIM_MATERIALS.length)];
+        //? if <=1.21.1 {
+        var patternRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+        //?} else {
+        /*var patternRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_PATTERN);
+        *///?}
+        var patternEntry = patternRegistry.streamEntries()
+            .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(pattern))
+            .findFirst().orElse(null);
+        //? if <=1.21.1 {
+        var materialRegistry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+        //?} else {
+        /*var materialRegistry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.TRIM_MATERIAL);
+        *///?}
+        var materialEntry = materialRegistry.streamEntries()
+            .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(material))
+            .findFirst().orElse(null);
+        if (patternEntry == null || materialEntry == null) return;
+        //? if <=1.21.1 {
+        var trim = new net.minecraft.item.trim.ArmorTrim(materialEntry, patternEntry);
+        //?} else {
+        /*var trim = new net.minecraft.item.equipment.trim.ArmorTrim(materialEntry, patternEntry);
+        *///?}
+        stack.set(DataComponentTypes.TRIM, trim);
     }
 
     private static void rollArmorSlot(MobEntity mob, net.minecraft.entity.EquipmentSlot slot, Item[] pool) {
@@ -6463,7 +6680,15 @@ public class CombatManager {
                 net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
                 net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
             ItemStack piece = mob.getEquippedStack(slot);
-            if (piece.isEmpty() || Math.random() >= GEAR_ENCHANT_CHANCE) continue;
+            if (piece.isEmpty()) continue;
+
+            // Rarely, an armored piece also gets a random-material trim (purely
+            // cosmetic-flavored here; rolled independently of the enchant chance).
+            if (Math.random() < GEAR_TRIM_CHANCE) {
+                applyRandomTrim(piece, world);
+            }
+
+            if (Math.random() >= GEAR_ENCHANT_CHANCE) continue;
             String[] armorEnchants = getValidArmorEnchants(slot);
             if (armorEnchants.length == 0) continue;
             String chosen = armorEnchants[(int) (Math.random() * armorEnchants.length)];
@@ -6704,6 +6929,21 @@ public class CombatManager {
             sb.append(entry.getKey()).append(':').append(entry.getValue());
         }
         return sb.toString();
+    }
+
+    /** The old flat Impaling bonus curve (1/2/5/8/10, then +2/level past 5).
+     *  Kept as a floor so the new %-of-base scaling is never weaker than before
+     *  at low base damage. See the Impaling apply block in the melee path. */
+    private static int impalingFlatFloor(int level) {
+        return switch (level) {
+            case 0 -> 0;
+            case 1 -> 1;
+            case 2 -> 2;
+            case 3 -> 5;
+            case 4 -> 8;
+            case 5 -> 10;
+            default -> 10 + (level - 5) * 2;
+        };
     }
 
     /** Apply a single enchantment by registry path to an itemstack. */
@@ -7798,6 +8038,15 @@ public class CombatManager {
                 player.getWorld().playSound(null, aboveBp,
                     net.minecraft.sound.SoundEvents.BLOCK_STONE_BREAK,
                     net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+            } else if ("pit".equals(effectType)) {
+                // Pickaxe on a normal floor tile: dig a 1-deep sunken pit
+                // (LOW_GROUND). Wall the hole with cobblestone so the player
+                // doesn't break through into a large air gap underneath.
+                digSunkenPit(new GridPos(tx, tz));
+            } else if ("void".equals(effectType)) {
+                // Pickaxe on a sunken pit: deepen it into a VOID hole. Keep
+                // cobblestone interior walls and lay a black-concrete bottom.
+                digVoidPit(new GridPos(tx, tz));
             } else {
                 GridPos effectPos = new GridPos(tx, tz);
                 // Banner: store color- and bonus-tagged form so the aura is visually
@@ -7996,6 +8245,16 @@ public class CombatManager {
                 dead.getGridPos().x(), dead.getGridPos().z()
             ));
             killEnemy(dead);
+        }
+
+        // A consumable/item landing the final blow (egg, harming splash, befriend,
+        // water-drowning, etc.) must end the level too. checkAndHandleDeath/killEnemy
+        // never end the fight on their own, so without this an item kill soft-locks.
+        // Same win check as handleAttack / tryHandleInstrument.
+        if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
+                && enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            handleVictory();
+            return;
         }
 
         sendSync();
@@ -9071,6 +9330,7 @@ public class CombatManager {
             case REACTING -> tickReacting();
             case ENEMY_TURN -> tickEnemyTurn();
             case PLAYER_DYING -> tickPlayerDying();
+            case GAME_OVER_FLIP -> tickGameOverFlip();
             default -> {}
         }
     }
@@ -10437,7 +10697,7 @@ public class CombatManager {
                                 PlayerProgression.get((ServerWorld) member.getEntityWorld())
                                     .getStats(member).getPoints(PlayerProgression.Stat.DEFENSE) * PROG_DEFENSE_PER_POINT, 0);
                             if (DodgeRoll.roll(memberAc, swoop.damage(), combatRng).dodged()) {
-                                sendMessage("§b  " + member.getName().getString() + " dodged the swoop!");
+                                sendMessage("§b  " + member.getName().getString() + " deflected the swoop!");
                             } else {
                                 int actual = Math.max(1, swoop.damage());
                                 member.setHealth(Math.max(1, member.getHealth() - actual));
@@ -11992,6 +12252,17 @@ public class CombatManager {
                 }
 
                 if (inAoe) {
+                    // A reflected fireball that strikes a regular ghast enemy
+                    // detonates it outright -its own ammunition turned back on it.
+                    // Bosses (Wailing Revenant included) are explicitly excluded:
+                    // they only ever take the scaled chip damage below.
+                    if (redirected && !e.isBoss()
+                            && "minecraft:ghast".equals(e.getEntityTypeId())) {
+                        int dealt = e.takeDamage(e.getMaxHp());
+                        sendMessage("§6§l  Reflected fireball detonates " + e.getDisplayName() + "!");
+                        checkAndHandleDeath(e);
+                        continue;
+                    }
                     // Redirected fireballs deal 1/20 of the boss's max HP as damage
                     int fireDmg = (redirected && e.isBoss()) ? Math.max(1, e.getMaxHp() / 20) : damage;
                     int dealt = e.takeDamage(fireDmg);
@@ -13382,12 +13653,20 @@ public class CombatManager {
         }
         if (victim == null || !victim.isAlive()) return;
         ServerWorld world = (ServerWorld) player.getEntityWorld();
-        BlockPos targetBp = arena.gridToBlockPos(victim.getGridPos());
-        // The falling anvil settles on the floor of the victim's column.
+        // The falling anvil settles on the floor the VICTIM stands on. On sunken
+        // tiles (water, deep water, lava, low ground, powder snow) the victim -and
+        // thus the floor the anvil lands on- sits one block below the flat overlay
+        // Y that gridToBlockPos returns. Using gridToBlockPos here made the anvil
+        // land lower than the recorded/cleanup position, so on those tiles the real
+        // anvil block was never cleared and got re-read as a permanent obstacle.
+        // Anchor the landing to the victim's actual standing Y instead.
+        BlockPos overlayBp = arena.gridToBlockPos(victim.getGridPos());
+        int landY = (int) Math.floor(arena.getEntityY(victim.getGridPos()));
+        BlockPos targetBp = new BlockPos(overlayBp.getX(), landY, overlayBp.getZ());
         recordPlacedBlock(targetBp);
         double cx = targetBp.getX() + 0.5;
         double cz = targetBp.getZ() + 0.5;
-        // Spawn 6 blocks above the target so the fall is visible but quick.
+        // Spawn 6 blocks above the landing floor so the fall is visible but quick.
         double spawnY = targetBp.getY() + 6.0;
 
         //? if <=1.21.1 {
@@ -13445,10 +13724,21 @@ public class CombatManager {
             // so the stage shows the anvil fall, then nothing left behind.
             net.minecraft.entity.Entity fbe = world.getEntity(pa.fbeUuid());
             if (fbe != null) fbe.discard();
-            if (pa.landingPos() != null && world.getBlockState(pa.landingPos()).isOf(Blocks.ANVIL)) {
-                net.minecraft.block.BlockState original = placedBlockRestores.get(pa.landingPos());
-                world.setBlockState(pa.landingPos(),
-                    original != null ? original : Blocks.AIR.getDefaultState());
+            // Clear the real anvil block vanilla left when the falling block landed.
+            // The exact rest Y can vary by a block depending on what was solid in the
+            // column (liquids/offset-Y tiles settle the anvil lower), so scan a small
+            // vertical band around the recorded landing position rather than a single
+            // cell, restoring whatever was there before (or air).
+            if (pa.landingPos() != null) {
+                for (int dy = 1; dy >= -2; dy--) {
+                    BlockPos check = pa.landingPos().up(dy);
+                    if (world.getBlockState(check).isOf(Blocks.ANVIL)) {
+                        net.minecraft.block.BlockState original = placedBlockRestores.get(check);
+                        world.setBlockState(check,
+                            original != null ? original : Blocks.AIR.getDefaultState());
+                        break;
+                    }
+                }
             }
 
             CombatEntity victim = null;
@@ -13471,6 +13761,14 @@ public class CombatManager {
             checkAndHandleDeath(victim);
             sendSync();
             refreshHighlights();
+        }
+        // checkAndHandleDeath never ends the fight on its own, so a deferred anvil
+        // landing the final blow would soft-lock the level. Re-run the same
+        // win-condition check every other damage path uses (see handleAttack /
+        // tryHandleInstrument) once all anvils this tick have resolved.
+        if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
+                && enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            handleVictory();
         }
     }
 
@@ -13688,6 +13986,15 @@ public class CombatManager {
             if (!tntHitAnyone && enemiesHit > 0) {
                 sendMessage("§7  Hit " + enemiesHit + " enemies for " + totalDamage + " total damage!");
             }
+        }
+        // A deferred TNT landing the final blow would soft-lock the level:
+        // checkAndHandleDeath despawns the enemy but never ends the fight. Re-run
+        // the win check every other damage path uses, once all TNT this tick has
+        // resolved and only if the blast didn't already trigger a player game-over.
+        if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
+                && enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            handleVictory();
+            return;
         }
         sendSync();
     }
@@ -16392,8 +16699,122 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Pre-roll the death-loss outcome for every losable item this player carries,
+     * WITHOUT mutating the inventory. Returns an empty list (caller falls back to
+     * the legacy synchronous path) when the player is death-protected or is not in
+     * a biome run past level 1, or when there is nothing losable. Exempt items
+     * (Move feather, Guide Book) are skipped entirely.
+     */
+    /** One slot before grouping: its stack, its per-unit loss chance, and how many
+     *  of its units rolled "lost". */
+    private record RawSlotRoll(int kind, int index, String accContainer, int accKind, int accSlot,
+                               ItemStack stack, int lost) {}
+
+    private java.util.List<PendingItemRoll> rollGameOverLoss(ServerPlayerEntity p,
+                                                             CrafticsSavedData.PlayerData ld) {
+        java.util.List<PendingItemRoll> rolls = new java.util.ArrayList<>();
+        // Protected players keep everything - no flip.
+        if (DeathProtectionComponent.hasRecoveryCompass(p)
+                && DeathProtectionComponent.protectCombatInventory(p)) {
+            return rolls;
+        }
+        // Any biome-run death uses the per-item coin-flip (level 1 included).
+        if (!ld.isInBiomeRun()) return rolls;
+
+        double mainLoss = CrafticsMod.CONFIG.deathMainInventoryLossChance();
+        double gearLoss = CrafticsMod.CONFIG.deathGearLossChance();
+        int luck = PlayerProgression.get((ServerWorld) p.getEntityWorld())
+            .getStats(p).getPoints(PlayerProgression.Stat.LUCK);
+        double gearEff = Math.max(MIN_LOSS_CHANCE, gearLoss - LUCK_KEEP_PER_POINT * luck);
+        double mainEff = Math.max(MIN_LOSS_CHANCE, mainLoss - LUCK_KEEP_PER_POINT * luck);
+
+        // Roll each physical slot at its own rate, per UNIT in the stack.
+        java.util.List<RawSlotRoll> raw = new java.util.ArrayList<>();
+        // Main + hotbar 36 slots (hotbar < 9 = gear rate, backpack >= 9 = main rate).
+        int mainSlots = Math.min(36, p.getInventory().size());
+        for (int slot = 0; slot < mainSlots; slot++) {
+            ItemStack stack = p.getInventory().getStack(slot);
+            if (stack.isEmpty()) continue;
+            Item item = stack.getItem();
+            if (item == com.crackedgames.craftics.item.ModItems.MOVE_ITEM
+                    || item instanceof com.crackedgames.craftics.item.GuideBookItem) continue;
+            int lost = rollUnitsLost(stack.getCount(), slot < 9 ? gearEff : mainEff);
+            raw.add(new RawSlotRoll(0, slot, null, 0, 0, stack.copy(), lost));
+        }
+        // Armor (4 slots) at gear rate.
+        //? if <=1.21.4 {
+        for (int slot = 0; slot < p.getInventory().armor.size(); slot++) {
+            ItemStack stack = p.getInventory().armor.get(slot);
+            if (stack.isEmpty()) continue;
+            raw.add(new RawSlotRoll(1, slot, null, 0, 0, stack.copy(),
+                rollUnitsLost(stack.getCount(), gearEff)));
+        }
+        //?} else {
+        /*net.minecraft.entity.EquipmentSlot[] armorSlots = {
+                net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+                net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET};
+        for (int slot = 0; slot < armorSlots.length; slot++) {
+            ItemStack stack = p.getEquippedStack(armorSlots[slot]);
+            if (stack.isEmpty()) continue;
+            raw.add(new RawSlotRoll(1, slot, null, 0, 0, stack.copy(),
+                rollUnitsLost(stack.getCount(), gearEff)));
+        }
+        *///?}
+        // Offhand at gear rate.
+        ItemStack off = p.getOffHandStack();
+        if (!off.isEmpty()) {
+            raw.add(new RawSlotRoll(2, 0, null, 0, 0, off.copy(),
+                rollUnitsLost(off.getCount(), gearEff)));
+        }
+        // Accessories (Artifacts trinkets) at gear rate, enumerated per slot.
+        for (com.crackedgames.craftics.compat.artifacts.AccessoriesReflect.AccessorySnapshot snap :
+                com.crackedgames.craftics.compat.artifacts.AccessoriesReflect.saveAccessories(p)) {
+            raw.add(new RawSlotRoll(3, 0, snap.container(), snap.kind(), snap.slot(),
+                snap.stack().copy(), rollUnitsLost(snap.stack().getCount(), gearEff)));
+        }
+
+        // Group identical item-types (same item + components) across all slots into
+        // one display entry: total quantity, summed lost quantity, and the per-slot
+        // removals to apply. Insertion order preserved for a stable grid.
+        for (RawSlotRoll rs : raw) {
+            PendingItemRoll group = null;
+            for (PendingItemRoll g : rolls) {
+                if (ItemStack.areItemsAndComponentsEqual(g.repr(), rs.stack())) { group = g; break; }
+            }
+            SlotLoss sl = new SlotLoss(rs.kind(), rs.index(), rs.accContainer(), rs.accKind(),
+                rs.accSlot(), rs.lost());
+            if (group == null) {
+                java.util.List<SlotLoss> slots = new java.util.ArrayList<>();
+                slots.add(sl);
+                ItemStack repr = rs.stack().copy();
+                repr.setCount(rs.stack().getCount());
+                rolls.add(new PendingItemRoll(repr, rs.stack().getCount(), rs.lost(), slots));
+            } else {
+                group.slots().add(sl);
+                // records are immutable; replace with an updated total/lost. The repr
+                // stack carries the merged total purely for the client display.
+                int idx = rolls.indexOf(group);
+                int newTotal = group.totalQ() + rs.stack().getCount();
+                ItemStack repr = group.repr().copy();
+                repr.setCount(Math.min(9999, newTotal));
+                rolls.set(idx, new PendingItemRoll(repr, newTotal, group.lostQ() + rs.lost(), group.slots()));
+            }
+        }
+        return rolls;
+    }
+
+    /** Roll {@code count} independent units at {@code lossChance} each; return how
+     *  many were lost. */
+    private static int rollUnitsLost(int count, double lossChance) {
+        int lost = 0;
+        for (int i = 0; i < count; i++) if (Math.random() < lossChance) lost++;
+        return lost;
+    }
+
     private void handleGameOver() {
         phase = CombatPhase.GAME_OVER;
+        lastXpLevelsLost.clear();
         // Sound: defeat
         if (player != null) {
             player.getWorld().playSound(null, player.getBlockPos(),
@@ -16427,12 +16848,56 @@ public class CombatManager {
             if (levels > 0) {
                 int lost = Math.max(1, levels / 2);
                 p.addExperienceLevels(-lost);
+                lastXpLevelsLost.put(p.getUuid(), lost);
                 sendMessageTo(p, "§cLost " + lost + " XP level" + (lost != 1 ? "s" : "") + "!");
             }
         }
 
-        // Strip items from ALL party members (full team wipe)
+        // Per-player item loss. Eligible players (biome run past level 1, not
+        // death-protected, with losable items) defer to the coin-flip screen; the
+        // rest take the legacy synchronous path immediately.
+        pendingGameOverLoss.clear();
+        gameOverAcks.clear();
+        gameOverWaiting.clear();
+        boolean anyFlip = false;
         for (ServerPlayerEntity p : getAllParticipants()) {
+            java.util.List<PendingItemRoll> rolls = rollGameOverLoss(p, ld);
+            if (rolls.isEmpty()) {
+                applyLegacyGameOverLoss(p, ld); // protected / level-1 / nothing losable
+                continue;
+            }
+            pendingGameOverLoss.put(p.getUuid(), rolls);
+            gameOverWaiting.add(p.getUuid());
+            anyFlip = true;
+            // Build the parallel lists for the payload: one entry per grouped item,
+            // its representative stack (count = total owned) and how many units of
+            // it are lost.
+            java.util.List<ItemStack> items = new java.util.ArrayList<>();
+            java.util.List<Integer> lostCounts = new java.util.ArrayList<>();
+            for (PendingItemRoll r : rolls) {
+                items.add(r.repr());
+                lostCounts.add(r.lostQ());
+            }
+            int pXpLost = lastXpLevelsLost.getOrDefault(p.getUuid(), 0);
+            ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.GameOverItemsPayload(
+                items, lostCounts, emeraldLoss, pXpLost));
+        }
+
+        if (anyFlip) {
+            // Hold here; clients animate, then ack. tickGameOverFlip applies the
+            // loss + teardown on all-acked or on timeout.
+            phase = CombatPhase.GAME_OVER_FLIP;
+            gameOverFlipTimer = GAME_OVER_FLIP_TIMEOUT;
+            return;
+        }
+        // Nobody flips - fall through to the existing heal/teleport/endCombat teardown below.
+        finishGameOverTeardown();
+    }
+
+    /** The original synchronous death-loss for one player: recovery-compass save,
+     *  past-level-1 probabilistic per-slot loss, or level-1 single-item loss.
+     *  Used for players who do not get the coin-flip screen. */
+    private void applyLegacyGameOverLoss(ServerPlayerEntity p, CrafticsSavedData.PlayerData ld) {
             if (DeathProtectionComponent.hasRecoveryCompass(p)
                 && DeathProtectionComponent.protectCombatInventory(p)) {
                 // Particles + sound for recovery compass activation
@@ -16447,7 +16912,7 @@ public class CombatManager {
                     net.minecraft.sound.SoundEvents.BLOCK_RESPAWN_ANCHOR_CHARGE,
                     net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.2f);
                 sendMessageTo(p, "\u00a76\u00a7l\u2728 Recovery Compass activated! \u00a7rYour inventory was saved.");
-                continue;
+                return;
             }
             if (ld.isInBiomeRun() && ld.activeBiomeLevelIndex > 0) {
                 // Past level 1: probabilistic loss. Backpack (main inventory) items are very
@@ -16552,7 +17017,15 @@ public class CombatManager {
                     sendMessageTo(p, "§cDropped: " + dropped.getName().getString());
                 }
             }
-        }
+    }
+
+    /** Shared game-over teardown tail: heal/clear participants, end the biome run,
+     *  clear lost party mobs, teleport everyone home, and end combat. Runs exactly
+     *  once per wipe - from the no-flip fall-through or from applyGameOverLossAndTeardown. */
+    private void finishGameOverTeardown() {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        CrafticsSavedData.PlayerData ld = data.getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid());
 
         // Heal all participants (including dead spectators returning home)
         for (ServerPlayerEntity p : getAllParticipants()) {
@@ -16601,6 +17074,77 @@ public class CombatManager {
         }
         sendToAllParty(new ExitCombatPayload(false));
         endCombat();
+    }
+
+    /** Apply every pending player's pre-decided losses, then run the shared teardown. */
+    private void applyGameOverLossAndTeardown() {
+        if (phase != CombatPhase.GAME_OVER_FLIP) return; // already applied (late ack vs timeout race)
+        phase = CombatPhase.GAME_OVER;                   // close the window for any further ack/tick
+        for (var entry : pendingGameOverLoss.entrySet()) {
+            ServerPlayerEntity p = server != null ? server.getPlayerManager().getPlayer(entry.getKey()) : null;
+            int lost = 0;
+            for (PendingItemRoll r : entry.getValue()) {
+                lost += r.lostQ();
+                if (p == null) continue; // disconnected - their items still count as lost server-side
+                // Remove exactly `lose` units from each slot in this group.
+                for (SlotLoss sl : r.slots()) {
+                    if (sl.lose() <= 0) continue;
+                    removeUnitsFromSlot(p, sl);
+                }
+            }
+            if (p != null && lost > 0) {
+                sendMessageTo(p, "§c§lLost " + lost + " item" + (lost != 1 ? "s" : "") + "!");
+            }
+        }
+        pendingGameOverLoss.clear();
+        gameOverAcks.clear();
+        gameOverWaiting.clear();
+        finishGameOverTeardown();
+    }
+
+    /** Remove {@code sl.lose()} units from the physical slot {@code sl} refers to.
+     *  Armor/offhand/accessory stacks are size 1 so any loss clears them; main slots
+     *  decrement by the lost count (clearing the slot if it empties). */
+    private void removeUnitsFromSlot(ServerPlayerEntity p, SlotLoss sl) {
+        int lose = sl.lose();
+        switch (sl.kind()) {
+            case 0 -> {
+                ItemStack s = p.getInventory().getStack(sl.index());
+                if (s.isEmpty()) return;
+                if (lose >= s.getCount()) p.getInventory().setStack(sl.index(), ItemStack.EMPTY);
+                else s.decrement(lose);
+            }
+            case 1 -> {
+                //? if <=1.21.4 {
+                p.getInventory().armor.set(sl.index(), ItemStack.EMPTY);
+                //?} else {
+                /*net.minecraft.entity.EquipmentSlot[] as = {
+                        net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+                        net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET};
+                if (sl.index() >= 0 && sl.index() < as.length) p.equipStack(as[sl.index()], ItemStack.EMPTY);
+                *///?}
+            }
+            case 2 -> p.setStackInHand(net.minecraft.util.Hand.OFF_HAND, ItemStack.EMPTY);
+            case 3 -> com.crackedgames.craftics.compat.artifacts.AccessoriesReflect
+                .clearAccessoryAt(p, sl.accContainer(), sl.accKind(), sl.accSlot());
+        }
+    }
+
+    /** Tick the GAME_OVER_FLIP hold; apply outcomes when the client timeout expires. */
+    private void tickGameOverFlip() {
+        if (gameOverFlipTimer > 0) gameOverFlipTimer--;
+        if (gameOverFlipTimer <= 0) {
+            applyGameOverLossAndTeardown();
+        }
+    }
+
+    /** A player's client finished the coin-flip animation. Apply once all ack or on timeout. */
+    public void handleGameOverAck(ServerPlayerEntity p) {
+        if (phase != CombatPhase.GAME_OVER_FLIP) return;
+        gameOverAcks.add(p.getUuid());
+        if (gameOverAcks.containsAll(gameOverWaiting)) {
+            applyGameOverLossAndTeardown();
+        }
     }
 
     private void killEnemy(CombatEntity enemy) {
@@ -17193,7 +17737,8 @@ public class CombatManager {
                 return;
             }
             ServerPlayNetworking.send(decisionPlayer, new VictoryChoicePayload(
-                emeraldsEarned, ld.emeralds, false, biomeName, displayIndex, nextIsBoss
+                emeraldsEarned, ld.emeralds, false, biomeName, displayIndex, nextIsBoss,
+                true, LootRecorder.drain(decisionPlayer.getUuid())
             ));
             // Non-leaders get a persistent "waiting" loading screen. It fades out
             // automatically when their next EnterCombatPayload arrives from the
@@ -17201,12 +17746,16 @@ public class CombatManager {
             String leaderName = decisionPlayer.getName().getString();
             for (ServerPlayerEntity member : getAllParticipants()) {
                 if (!member.getUuid().equals(decisionPlayer.getUuid())) {
-                    sendMessageTo(member, "§7Waiting for party leader to decide...");
-                    ServerPlayNetworking.send(member, new com.crackedgames.craftics.network.LoadingScreenPayload(
-                        true, "§aVictory!", "§7Waiting for " + leaderName + "..."
+                    sendMessageTo(member, "§7Waiting for " + leaderName + " to decide...");
+                    // Non-leaders see their OWN collected rewards; isLeader=false makes
+                    // the screen show a "waiting for the leader" note instead of buttons.
+                    ServerPlayNetworking.send(member, new VictoryChoicePayload(
+                        emeraldsEarned, ld.emeralds, false, biomeName, displayIndex, nextIsBoss,
+                        false, LootRecorder.drain(member.getUuid())
                     ));
                 }
             }
+            LootRecorder.clear();
             // Don't endCombat yet -wait for player choice
             // But do clear the arena
             clearHighlights();
@@ -17635,7 +18184,7 @@ public class CombatManager {
                                     final String addonLabel = addonEvent.displayName();
                                     Runnable addonPrompt = leaderPromptOrAutoDecline(addonLeader,
                                         new VictoryChoicePayload(0, addonLeaderEmeralds, false,
-                                            addonLabel, -1, false));
+                                            addonLabel, -1, false, true, new java.util.ArrayList<>()));
                                     if (addonEvent.introLines() != null && !addonEvent.introLines().isEmpty()) {
                                         // Opt-in narrator intro -gate the leader's Accept/Decline
                                         // screen behind an all-dismiss dialogue.
@@ -21397,6 +21946,7 @@ public class CombatManager {
             if (this.arena != null) this.arena.clearAllVfxObstacles(w);
         } catch (Throwable ignored) { /* defensive -combat cleanup must not fail */ }
         if (!active) return;
+        LootRecorder.clear();
         despawnAllBoats();
 
         // Remove hidden fire resistance, restore freeze damage, and re-enable random ticks

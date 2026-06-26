@@ -18,6 +18,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(StartLevelPayload.ID, StartLevelPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(CombatActionPayload.ID, CombatActionPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(PostLevelChoicePayload.ID, PostLevelChoicePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(GameOverAckPayload.ID, GameOverAckPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(TraderBuyPayload.ID, TraderBuyPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(TraderDonePayload.ID, TraderDonePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(StatChoicePayload.ID, StatChoicePayload.CODEC);
@@ -37,6 +38,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(ExitCombatPayload.ID, ExitCombatPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(CombatSyncPayload.ID, CombatSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(VictoryChoicePayload.ID, VictoryChoicePayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(GameOverItemsPayload.ID, GameOverItemsPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(TraderOfferPayload.ID, TraderOfferPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(LevelUpPayload.ID, LevelUpPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(PlayerStatsSyncPayload.ID, PlayerStatsSyncPayload.CODEC);
@@ -245,6 +247,12 @@ public class ModNetworking {
         ServerPlayNetworking.registerGlobalReceiver(PostLevelChoicePayload.ID, (payload, context) -> {
             CombatManager.getActiveCombat(context.player().getUuid())
                 .handlePostLevelChoice(context.player(), payload.goHome());
+        });
+
+        // Handle game-over coin-flip ack - route to party leader's CombatManager
+        ServerPlayNetworking.registerGlobalReceiver(GameOverAckPayload.ID, (payload, context) -> {
+            CombatManager active = CombatManager.getActiveCombat(context.player().getUuid());
+            if (active != null) active.handleGameOverAck(context.player());
         });
 
         // Handle trader buy request - route to party leader

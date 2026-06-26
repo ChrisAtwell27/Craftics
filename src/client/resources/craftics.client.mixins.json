@@ -18,6 +18,7 @@
     "MovementDisableMixin",
     "MusicTrackerMixin",
     "InventoryStatsMixin",
+    "InventoryClickMixin",
     "OverlayMessageMixin",
     "PlayerNameTagMixin",
     "PlayerListHudMixin",

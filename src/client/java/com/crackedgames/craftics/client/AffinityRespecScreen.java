@@ -1,5 +1,7 @@
 package com.crackedgames.craftics.client;
 
+import com.crackedgames.craftics.client.guide.GuideButton;
+import com.crackedgames.craftics.client.guide.GuideTheme;
 import com.crackedgames.craftics.combat.PlayerProgression;
 import com.crackedgames.craftics.network.AffinityRespecPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -28,6 +30,11 @@ public class AffinityRespecScreen extends Screen {
     private static final int CARD_GAP = 2;
     private static final int BTN_SIZE = 20;
 
+    // Panel layout constants
+    private static final int PANEL_INSET = 8;
+    private static final int HEADER_H    = 36;
+    private static final int FOOTER_H    = 20;
+
     private ButtonWidget confirmButton;
 
     public AffinityRespecScreen() {
@@ -51,6 +58,29 @@ public class AffinityRespecScreen extends Screen {
         this.playerXpLevels = -1; // set in init() from client player
     }
 
+    // -------------------------------------------------------------------------
+    // Panel geometry helpers (mirroring VictoryChoiceScreen pattern)
+    // -------------------------------------------------------------------------
+
+    private int panelWidth() {
+        return CARD_WIDTH + 20; // 10px padding each side for stepper buttons
+    }
+
+    private int panelHeight() {
+        PlayerProgression.Affinity[] affinities = PlayerProgression.Affinity.values();
+        int totalHeight = affinities.length * (CARD_HEIGHT + CARD_GAP);
+        // inset + header + rows + gap + buttons + inset
+        return PANEL_INSET + HEADER_H + totalHeight + 8 + FOOTER_H + PANEL_INSET;
+    }
+
+    private int panelLeft() {
+        return (this.width - panelWidth()) / 2;
+    }
+
+    private int panelTop() {
+        return (this.height - panelHeight()) / 2;
+    }
+
     @Override
     protected void init() {
         this.clearChildren();
@@ -61,11 +91,8 @@ public class AffinityRespecScreen extends Screen {
 
         PlayerProgression.Affinity[] affinities = PlayerProgression.Affinity.values();
         int centerX = this.width / 2;
-        int totalHeight = affinities.length * (CARD_HEIGHT + CARD_GAP);
-        // Center the full content: header(32) + rows + gap(8) + buttons(20)
-        int fullHeight = 32 + totalHeight + 8 + 20;
-        int contentTop = (this.height - fullHeight) / 2;
-        int startY = contentTop + 32;
+        int panelT  = panelTop();
+        int startY  = panelT + PANEL_INSET + HEADER_H;
 
         for (int i = 0; i < affinities.length; i++) {
             int y = startY + i * (CARD_HEIGHT + CARD_GAP);
@@ -73,8 +100,9 @@ public class AffinityRespecScreen extends Screen {
 
             // [-] refund button: refunds cost 1 XP level each
             boolean canRefund = currentValues[i] > 0 && getTotalRefunded() < playerXpLevels;
-            ButtonWidget minusBtn = ButtonWidget.builder(
-                Text.literal("§c[-]"),
+            GuideButton minusBtn = GuideButton.of(
+                centerX - CARD_WIDTH / 2, y, BTN_SIZE, CARD_HEIGHT,
+                Text.literal("[-]"),
                 button -> {
                     if (currentValues[idx] > 0 && getTotalRefunded() < playerXpLevels) {
                         currentValues[idx]--;
@@ -82,14 +110,15 @@ public class AffinityRespecScreen extends Screen {
                         init();
                     }
                 }
-            ).dimensions(centerX - CARD_WIDTH / 2, y, BTN_SIZE, CARD_HEIGHT).build();
+            );
             minusBtn.active = canRefund;
             this.addDrawableChild(minusBtn);
 
             // [+] allocate button: draws from the unspent pool
             boolean canAllocate = currentUnspent > 0;
-            ButtonWidget plusBtn = ButtonWidget.builder(
-                Text.literal("§a[+]"),
+            GuideButton plusBtn = GuideButton.of(
+                centerX + CARD_WIDTH / 2 - BTN_SIZE, y, BTN_SIZE, CARD_HEIGHT,
+                Text.literal("[+]"),
                 button -> {
                     if (currentUnspent > 0) {
                         currentValues[idx]++;
@@ -97,21 +126,23 @@ public class AffinityRespecScreen extends Screen {
                         init();
                     }
                 }
-            ).dimensions(centerX + CARD_WIDTH / 2 - BTN_SIZE, y, BTN_SIZE, CARD_HEIGHT).build();
+            );
             plusBtn.active = canAllocate;
             this.addDrawableChild(plusBtn);
         }
 
         // Bottom row: Confirm, Reset, Cancel
-        int bottomY = startY + totalHeight + 8;
+        int totalHeight = affinities.length * (CARD_HEIGHT + CARD_GAP);
+        int bottomY = panelT + PANEL_INSET + HEADER_H + totalHeight + 8;
         int btnWidth = 80;
         int gap = 4;
         int totalBtnWidth = btnWidth * 2 + 50 + gap * 2;
         int btnStartX = centerX - totalBtnWidth / 2;
 
         boolean canConfirm = hasAnyChanges();
-        confirmButton = ButtonWidget.builder(
-            Text.literal(canConfirm ? "§aConfirm" : "§8Confirm"),
+        confirmButton = GuideButton.of(
+            btnStartX, bottomY, btnWidth, 20,
+            Text.literal("Confirm"),
             button -> {
                 if (hasAnyChanges()) {
                     StringBuilder sb = new StringBuilder();
@@ -124,12 +155,13 @@ public class AffinityRespecScreen extends Screen {
                     this.close();
                 }
             }
-        ).dimensions(btnStartX, bottomY, btnWidth, 20).build();
+        );
         confirmButton.active = canConfirm;
         this.addDrawableChild(confirmButton);
 
-        ButtonWidget resetBtn = ButtonWidget.builder(
-            Text.literal("§eReset"),
+        GuideButton resetBtn = GuideButton.of(
+            btnStartX + btnWidth + gap, bottomY, 50, 20,
+            Text.literal("Reset"),
             button -> {
                 for (int i = 0; i < originalValues.length; i++) {
                     currentValues[i] = originalValues[i];
@@ -137,13 +169,14 @@ public class AffinityRespecScreen extends Screen {
                 currentUnspent = originalUnspent;
                 init();
             }
-        ).dimensions(btnStartX + btnWidth + gap, bottomY, 50, 20).build();
+        );
         this.addDrawableChild(resetBtn);
 
-        ButtonWidget cancelBtn = ButtonWidget.builder(
+        GuideButton cancelBtn = GuideButton.of(
+            btnStartX + btnWidth + 50 + gap * 2, bottomY, btnWidth, 20,
             Text.literal("Cancel"),
             button -> this.close()
-        ).dimensions(btnStartX + btnWidth + 50 + gap * 2, bottomY, btnWidth, 20).build();
+        );
         this.addDrawableChild(cancelBtn);
     }
 
@@ -165,6 +198,7 @@ public class AffinityRespecScreen extends Screen {
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        // Dim the world behind the panel (same as GameOverScreen/VictoryChoiceScreen)
         context.fill(0, 0, this.width, this.height, 0xE0101010);
     }
 
@@ -174,29 +208,36 @@ public class AffinityRespecScreen extends Screen {
 
         PlayerProgression.Affinity[] affinities = PlayerProgression.Affinity.values();
         int centerX = this.width / 2;
-        int totalHeight = affinities.length * (CARD_HEIGHT + CARD_GAP);
-        int fullHeight = 32 + totalHeight + 8 + 20;
-        int contentTop = (this.height - fullHeight) / 2;
-        int startY = contentTop + 32;
+        int panelL  = panelLeft();
+        int panelT  = panelTop();
+        int panelW  = panelWidth();
+        int panelH  = panelHeight();
 
-        // Header
-        int headerY = contentTop;
-        context.drawCenteredTextWithShadow(this.textRenderer,
-            "§6§lRESPEC AFFINITIES", centerX, headerY, 0xFFAA00);
+        // Parchment panel
+        GuideTheme.drawPanel(context, panelL, panelT, panelW, panelH);
+
+        int contentTop = panelT + PANEL_INSET;
+
+        // --- Header ---
+        GuideTheme.drawCentered(context, this.textRenderer,
+            "RESPEC AFFINITIES", centerX, contentTop, GuideTheme.GOLD);
 
         int totalRefunded = getTotalRefunded();
         String costText = totalRefunded > 0
-            ? "§cCost: " + totalRefunded + " XP Level" + (totalRefunded != 1 ? "s" : "")
-              + " §7(You have §a" + playerXpLevels + "§7)"
-            : "§7Spend unspent points, or refund to reallocate";
-        context.drawCenteredTextWithShadow(this.textRenderer, costText, centerX, headerY + 11, 0xAAAAAA);
+            ? "Cost: " + totalRefunded + " XP Level" + (totalRefunded != 1 ? "s" : "")
+              + " (You have " + playerXpLevels + ")"
+            : "Spend unspent points, or refund to reallocate";
+        int costColor = totalRefunded > 0 ? 0xFFB02020 : GuideTheme.INK_SOFT;
+        GuideTheme.drawCentered(context, this.textRenderer, costText, centerX, contentTop + 12, costColor);
 
         String unspentText = currentUnspent > 0
-            ? "§a" + currentUnspent + " affinity point" + (currentUnspent != 1 ? "s" : "") + " to spend"
-            : "§7No unspent affinity points";
-        context.drawCenteredTextWithShadow(this.textRenderer, unspentText, centerX, headerY + 22, 0xAAAAAA);
+            ? currentUnspent + " affinity point" + (currentUnspent != 1 ? "s" : "") + " to spend"
+            : "No unspent affinity points";
+        int unspentColor = currentUnspent > 0 ? GuideTheme.INK : GuideTheme.INK_FAINT;
+        GuideTheme.drawCentered(context, this.textRenderer, unspentText, centerX, contentTop + 24, unspentColor);
 
-        // Affinity rows: labels between the [-] and [+] buttons
+        // --- Affinity rows ---
+        int startY = panelT + PANEL_INSET + HEADER_H;
         for (int i = 0; i < affinities.length; i++) {
             PlayerProgression.Affinity affinity = affinities[i];
             int y = startY + i * (CARD_HEIGHT + CARD_GAP);
@@ -205,26 +246,30 @@ public class AffinityRespecScreen extends Screen {
 
             // Affinity name + icon
             String label = affinity.icon + " " + affinity.displayName;
-            context.drawTextWithShadow(this.textRenderer, label, labelX, labelY, 0xFFFFFF);
+            GuideTheme.drawInk(context, this.textRenderer, label, labelX, labelY, GuideTheme.INK);
 
             // Current value + delta indicator
             int affDelta = currentValues[i] - originalValues[i];
-            String valueStr = "§f" + currentValues[i];
-            if (affDelta > 0) {
-                valueStr += " §a(+" + affDelta + ")";
-            } else if (affDelta < 0) {
-                valueStr += " §c(" + affDelta + ")";
+            String baseVal = String.valueOf(currentValues[i]);
+            String deltaStr = affDelta != 0
+                ? " (" + (affDelta > 0 ? "+" : "") + affDelta + ")"
+                : "";
+            int valueX = centerX + CARD_WIDTH / 2 - BTN_SIZE - 8
+                - this.textRenderer.getWidth(baseVal + deltaStr);
+            GuideTheme.drawInk(context, this.textRenderer, baseVal, valueX, labelY, GuideTheme.INK);
+            if (affDelta != 0) {
+                int dxOff = this.textRenderer.getWidth(baseVal);
+                int deltaColor = affDelta > 0 ? 0xFF2E7B2E : 0xFFB02020;
+                GuideTheme.drawInk(context, this.textRenderer, deltaStr,
+                    valueX + dxOff, labelY, deltaColor);
             }
-            int valueX = centerX + CARD_WIDTH / 2 - BTN_SIZE - 8 - this.textRenderer.getWidth(
-                currentValues[i] + (affDelta != 0 ? " (" + (affDelta > 0 ? "+" : "") + affDelta + ")" : ""));
-            context.drawTextWithShadow(this.textRenderer, valueStr, valueX, labelY, 0xFFFFFF);
 
             // Hover description
             if (mouseX >= centerX - CARD_WIDTH / 2 && mouseX <= centerX + CARD_WIDTH / 2
                 && mouseY >= y && mouseY <= y + CARD_HEIGHT) {
-                context.drawCenteredTextWithShadow(this.textRenderer,
-                    "§7" + affinity.description,
-                    centerX, startY + affinities.length * (CARD_HEIGHT + CARD_GAP) + 30, 0x888888);
+                int descY = startY + affinities.length * (CARD_HEIGHT + CARD_GAP) + 30;
+                GuideTheme.drawCentered(context, this.textRenderer,
+                    affinity.description, centerX, descY, GuideTheme.INK_FAINT);
             }
         }
     }

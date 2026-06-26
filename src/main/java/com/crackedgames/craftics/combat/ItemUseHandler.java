@@ -255,7 +255,8 @@ public class ItemUseHandler {
 
     private static final Set<Item> EXTRA_USABLE = Set.of(
         Items.SPYGLASS, Items.COMPASS, Items.BELL, Items.LAVA_BUCKET,
-        Items.SCAFFOLDING, Items.CAMPFIRE, Items.ANVIL, Items.HONEY_BLOCK, Items.SLIME_BLOCK,
+        Items.SCAFFOLDING, Items.CAMPFIRE, Items.ANVIL, Items.CHIPPED_ANVIL, Items.DAMAGED_ANVIL,
+        Items.HONEY_BLOCK, Items.SLIME_BLOCK,
         Items.POWDER_SNOW_BUCKET, Items.JUKEBOX,
         Items.WHITE_BANNER, Items.BLACK_BANNER, Items.RED_BANNER,
         Items.BLUE_BANNER, Items.GREEN_BANNER, Items.YELLOW_BANNER,
@@ -363,7 +364,7 @@ public class ItemUseHandler {
             return useScaffolding(arena, targetTile, held);
         } else if (item == Items.CAMPFIRE) {
             return useCampfire(arena, targetTile, held);
-        } else if (item == Items.ANVIL) {
+        } else if (item == Items.ANVIL || item == Items.CHIPPED_ANVIL || item == Items.DAMAGED_ANVIL) {
             return useAnvil(player, arena, targetTile, held);
         } else if (item == Items.HONEY_BLOCK) {
             return useHoneyBlock(arena, targetTile, held);
@@ -1449,17 +1450,68 @@ public class ItemUseHandler {
             + "|§6Placed campfire! Heals 2 HP per turn while you're inside the 5x5 area + creates light (negate darkness).";
     }
 
-    // --- Anvil: drop on enemy - falling-block animation, then 15 Special damage. ---
+    // --- Anvil: drop on enemy - falling-block animation, then %-max-HP Special damage. ---
+    // The anvil has three condition stages, each dealing a fraction of the
+    // target's MAX HP and degrading to the next on use:
+    //   pristine  (minecraft:anvil)         -> 1/2 max HP, degrades to chipped
+    //   chipped   (minecraft:chipped_anvil) -> 1/3 max HP, degrades to damaged
+    //   damaged   (minecraft:damaged_anvil) -> 1/4 max HP, breaks (consumed) on use
+    // Degradation is guaranteed unless Special affinity saves it: each Special
+    // point grants a 10% additive chance the anvil does NOT degrade this use
+    // (10 points = it never degrades). Stacks split: one use consumes one anvil
+    // from the held stack and, on a degrade, hands back a single next-stage
+    // anvil, so a stack of pristine anvils becomes (stack-1) pristine + 1 chipped.
     // The actual damage is deferred to the moment the falling anvil "lands" so
     // the player sees it crash down on the target. Vanilla anvil gravity damage
-    // is disabled - only the Craftics base damage applies.
+    // is disabled - only the Craftics %-HP damage applies.
     private static String useAnvil(ServerPlayerEntity player, GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target an enemy!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+
+        Item current = stack.getItem();
+        // Damage denominator by condition: pristine 1/2, chipped 1/3, damaged 1/4.
+        int denom = current == Items.CHIPPED_ANVIL ? 3
+                  : current == Items.DAMAGED_ANVIL ? 4
+                  : 2;
+        // Floor of 10 so the anvil always lands a meaningful hit even against a
+        // very low max-HP target (e.g. a 2-HP parrot at the 1/4 stage) and stays
+        // useful as a guaranteed-damage tool.
+        int damage = Math.max(10, enemy.getMaxHp() / denom);
+
+        // Consume the used anvil from the (possibly stacked) held stack.
         stack.decrement(1);
-        return ANVIL_DROP_PREFIX + enemy.getEntityId() + ":15"
-            + "|§8An anvil falls toward " + enemy.getDisplayName() + "!";
+
+        // Degrade to the next condition unless Special affinity conserves it.
+        // The damaged anvil's next stage is "broken" (no item handed back).
+        Item next = current == Items.ANVIL ? Items.CHIPPED_ANVIL
+                  : current == Items.CHIPPED_ANVIL ? Items.DAMAGED_ANVIL
+                  : null; // damaged -> breaks
+        String degradeNote;
+        if (rollSpecialConserveAnvil(player)) {
+            // No degrade: hand back an identical anvil so the stack is unchanged.
+            player.getInventory().insertStack(new ItemStack(current));
+            degradeNote = " §dYour Special focus spared the anvil from wear.";
+        } else if (next != null) {
+            player.getInventory().insertStack(new ItemStack(next));
+            degradeNote = " §7The anvil is now " + (next == Items.CHIPPED_ANVIL ? "chipped" : "damaged") + ".";
+        } else {
+            degradeNote = " §8The anvil shatters on impact!";
+        }
+
+        return ANVIL_DROP_PREFIX + enemy.getEntityId() + ":" + damage
+            + "|§8An anvil falls toward " + enemy.getDisplayName() + "!" + degradeNote;
+    }
+
+    /**
+     * Roll the anvil's degrade-conserve save: each Special affinity point grants
+     * a 10% additive chance the anvil does NOT wear down this use (10+ points =
+     * guaranteed). Distinct from {@link #trySpecialConserve} only in that it
+     * sends no chat line (the anvil result message reports wear inline).
+     */
+    private static boolean rollSpecialConserveAnvil(ServerPlayerEntity player) {
+        double saveChance = SpecialAffinity.points(player) * 0.10;
+        return saveChance > 0 && Math.random() < saveChance;
     }
 
     // --- Honey Block: place sticky trap - enemies lose all movement when stepping on it (1 AP) ---
@@ -1610,23 +1662,50 @@ public class ItemUseHandler {
             + "|§eSponge placed! Drained " + drained + " water tile" + (drained == 1 ? "" : "s") + ".";
     }
 
-    // --- Pickaxe: break obstacle tile, making it walkable (1 AP, durability cost) ---
+    // --- Pickaxe: three tile interactions on an adjacent tile (1 AP, durability cost) ---
+    //   * OBSTACLE  -> break it, leaving a walkable floor (original behavior)
+    //   * NORMAL    -> dig a 1-deep sunken pit (LOW_GROUND), walling it so the
+    //                  player doesn't punch through into a large air gap below
+    //   * LOW_GROUND-> deepen the pit into a VOID hole (instant-death), keeping
+    //                  cobblestone interior walls and a black-concrete bottom
     private static String usePickaxe(GridArena arena, GridPos targetTile, ItemStack stack) {
-        if (targetTile == null) return "§cNeed to target an obstacle!";
+        if (targetTile == null) return "§cNeed to target a tile!";
         GridTile tile = arena.getTile(targetTile);
         if (tile == null) return "§cInvalid tile!";
-        if (tile.isWalkable()) return "§cThat tile is already walkable!";
-        if (tile.isPermanent()) return "§cThis obstacle is too solid to break!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+
+        com.crackedgames.craftics.core.TileType type = tile.getType();
+        boolean isObstacle = type == com.crackedgames.craftics.core.TileType.OBSTACLE;
+        boolean isPit = type == com.crackedgames.craftics.core.TileType.LOW_GROUND;
+        boolean isDiggableFloor = type == com.crackedgames.craftics.core.TileType.NORMAL;
+
+        if (!isObstacle && !isPit && !isDiggableFloor) {
+            return "§cYou can't mine that tile.";
+        }
+        if (isObstacle && tile.isPermanent()) return "§cThis obstacle is too solid to break!";
+
         GridPos playerPos = arena.getPlayerGridPos();
         int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
-        if (dist > 1) return "§cToo far! Stand next to the obstacle.";
+        if (dist > 1) return "§cToo far! Stand next to the tile.";
+
         if (stack.getDamage() + 1 >= stack.getMaxDamage()) {
             stack.decrement(1);
         } else {
             stack.setDamage(stack.getDamage() + 1);
         }
-        return TILE_EFFECT_PREFIX + "break:" + targetTile.x() + ":" + targetTile.z()
-            + "|§7Obstacle broken! Tile is now walkable.";
+
+        if (isObstacle) {
+            return TILE_EFFECT_PREFIX + "break:" + targetTile.x() + ":" + targetTile.z()
+                + "|§7Obstacle broken! Tile is now walkable.";
+        }
+        if (isPit) {
+            return TILE_EFFECT_PREFIX + "void:" + targetTile.x() + ":" + targetTile.z()
+                + "|§8You dig the pit into a bottomless void! Anything that falls in is lost.";
+        }
+        // NORMAL floor -> sunken pit
+        return TILE_EFFECT_PREFIX + "pit:" + targetTile.x() + ":" + targetTile.z()
+            + "|§7You dig out a sunken pit.";
     }
 
     // --- Crossbow: 4-tile range, 3 damage (2 AP, durability cost) ---

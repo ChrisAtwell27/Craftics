@@ -254,12 +254,12 @@ public final class ArtifactEffects {
         }
     }
 
-    /** 20% chance to dodge any incoming attack. */
+    /** 20% chance to deflect any incoming attack. */
     public static final class CharmOfShrinking implements CombatEffectHandler {
         @Override
         public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
             if (RNG.nextFloat() < 0.20f) {
-                return CombatResult.cancel("§7Charm of Shrinking - dodged!");
+                return CombatResult.cancel("§7Charm of Shrinking - deflected!");
             }
             return CombatResult.unchanged(damage);
         }
@@ -476,12 +476,12 @@ public final class ArtifactEffects {
         }
     }
 
-    /** 15% chance to dodge incoming attacks (paired with +2 Speed stat bonus). */
+    /** 15% chance to deflect incoming attacks (paired with +2 Speed stat bonus). */
     public static final class CloudInABottle implements CombatEffectHandler {
         @Override
         public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
             if (RNG.nextFloat() < 0.15f) {
-                return CombatResult.cancel("§bCloud in a Bottle - dodged!");
+                return CombatResult.cancel("§bCloud in a Bottle - deflected!");
             }
             return CombatResult.unchanged(damage);
         }
@@ -542,12 +542,12 @@ public final class ArtifactEffects {
 
     // Feet slot
 
-    /** 10% chance to dodge incoming attacks. */
+    /** 10% chance to deflect incoming attacks. */
     public static final class BunnyHoppers implements CombatEffectHandler {
         @Override
         public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
             if (RNG.nextFloat() < 0.10f) {
-                return CombatResult.cancel("§aBunny Hoppers - dodged!");
+                return CombatResult.cancel("§aBunny Hoppers - deflected!");
             }
             return CombatResult.unchanged(damage);
         }

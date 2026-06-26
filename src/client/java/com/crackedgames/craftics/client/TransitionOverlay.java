@@ -78,7 +78,7 @@ public class TransitionOverlay {
         "Some enemies can fly, ignoring obstacles and terrain hazards.",
         "Spiders can climb to the ceiling and drop on you from above!",
         "Endermen teleport. Ranged attacks may miss them entirely.",
-        "The Ender Dragon swoops across the arena. Watch for the warning tiles and dodge.",
+        "The Ender Dragon swoops across the arena. Watch for the warning tiles and deflect.",
         "Witches throw potions that apply harmful effects. Take them out quickly!",
         "Creepers explode after a fuse turn. Run or kill them before they blow.",
         "Baby mobs are faster but weaker than their adult counterparts.",

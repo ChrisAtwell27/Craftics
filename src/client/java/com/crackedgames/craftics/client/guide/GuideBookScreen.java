@@ -34,22 +34,23 @@ public class GuideBookScreen extends Screen {
     // UI version: 2026-06-12 parchment overhaul
 
     // ── Palette ──────────────────────────────────────────────────────────────
-    private static final int COVER_EDGE   = 0xFF1F1209;
-    private static final int COVER        = 0xFF3D2817;
-    private static final int COVER_LIGHT  = 0xFF5A3D24;
-    private static final int SIDEBAR_BG   = 0xFF31200F;
+    // Shared palette (see GuideTheme); SIDEBAR_ROW/HOVER/SEL are book-only.
+    private static final int COVER_EDGE   = GuideTheme.COVER_EDGE;
+    private static final int COVER        = GuideTheme.COVER;
+    private static final int COVER_LIGHT  = GuideTheme.COVER_LIGHT;
+    private static final int SIDEBAR_BG   = GuideTheme.SIDEBAR_BG;
     private static final int SIDEBAR_ROW  = 0xFF3F2B16;
     private static final int SIDEBAR_HOVER= 0xFF54391D;
     private static final int SIDEBAR_SEL  = 0xFF6B4A24;
-    private static final int GOLD         = 0xFFE8B637;
-    private static final int GOLD_DIM     = 0xFFB78A2A;
-    private static final int PARCH        = 0xFFEADCB3;
-    private static final int PARCH_EDGE   = 0xFFD9C490;
-    private static final int PARCH_SHADE  = 0xFFC4AA72;
-    private static final int INK          = 0xFF3B2B12;
-    private static final int INK_SOFT     = 0xFF6E5A36;
-    private static final int INK_FAINT    = 0xFF9A8455;
-    private static final int RULE         = 0xFFB39A66;
+    private static final int GOLD         = GuideTheme.GOLD;
+    private static final int GOLD_DIM     = GuideTheme.GOLD_DIM;
+    private static final int PARCH        = GuideTheme.PARCH;
+    private static final int PARCH_EDGE   = GuideTheme.PARCH_EDGE;
+    private static final int PARCH_SHADE  = GuideTheme.PARCH_SHADE;
+    private static final int INK          = GuideTheme.INK;
+    private static final int INK_SOFT     = GuideTheme.INK_SOFT;
+    private static final int INK_FAINT    = GuideTheme.INK_FAINT;
+    private static final int RULE         = GuideTheme.RULE;
 
     private static final int LINE_HEIGHT = 11;
 

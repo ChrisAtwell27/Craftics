@@ -65,6 +65,11 @@ public final class LootDelivery {
             return ItemStack.EMPTY;
         }
 
+        // Tally this grant for the victory reward grid. Done before the emerald
+        // early-return below so emeralds are recorded too. Records the count about
+        // to be delivered; no-op outside a recording fight.
+        LootRecorder.record(player, stack);
+
         // Emeralds are the virtual currency tracked in PlayerData and spent at
         // traders/shrines. Letting them land as inventory items breaks the
         // economy - players hoard physical stacks instead of seeing them in

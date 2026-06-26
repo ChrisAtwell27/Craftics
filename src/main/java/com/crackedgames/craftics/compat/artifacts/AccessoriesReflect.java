@@ -208,6 +208,30 @@ public final class AccessoriesReflect {
     }
 
     /**
+     * Clears exactly one accessory (or cosmetic accessory) slot, identified by the
+     * container key, kind (0 = accessories, 1 = cosmetic), and slot index captured
+     * by {@link #saveAccessories}. No-op when Accessories isn't installed or the
+     * slot is out of range. Used to apply a pre-decided per-item death outcome.
+     */
+    public static void clearAccessoryAt(LivingEntity entity, String container, int kind, int slot) {
+        if (!AVAILABLE || entity == null || container == null) return;
+        try {
+            Object capability = CAPABILITY_GET.invoke(null, entity);
+            if (capability == null) return;
+            Object containersObj = GET_CONTAINERS.invoke(capability);
+            if (!(containersObj instanceof java.util.Map<?, ?> containers)) return;
+            Object c = containers.get(container);
+            if (c == null) return;
+            Object invObj = (kind == 1 ? GET_COSMETIC_ACCESSORIES : GET_ACCESSORIES).invoke(c);
+            if (!(invObj instanceof net.minecraft.inventory.Inventory inv)) return;
+            if (slot < 0 || slot >= inv.size()) return;
+            inv.setStack(slot, net.minecraft.item.ItemStack.EMPTY);
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.warn("[Craftics × Accessories] clearAccessoryAt failed", t);
+        }
+    }
+
+    /**
      * Re-applies accessory + cosmetic stacks previously captured by
      * {@link #saveAccessories}. No-op when Accessories isn't installed or the
      * snapshot is empty.

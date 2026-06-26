@@ -949,6 +949,20 @@ public class CombatState {
     /** Flips the inventory stats + damage-affinity panel visibility. */
     public static void toggleStatsOverlay() { statsOverlayVisible = !statsOverlayVisible; }
 
+    // --- Per-panel minimize state (per session, not persisted) ---
+    private static boolean statsPanelCollapsed = false;
+    private static boolean affinityPanelCollapsed = false;
+
+    /** Whether the right-side Stats panel is minimized to its icon strip. */
+    public static boolean isStatsPanelCollapsed() { return statsPanelCollapsed; }
+    /** Toggle the right-side Stats panel between full and minimized. */
+    public static void toggleStatsPanelCollapsed() { statsPanelCollapsed = !statsPanelCollapsed; }
+
+    /** Whether the left-side Damage Affinity panel is minimized to its icon strip. */
+    public static boolean isAffinityPanelCollapsed() { return affinityPanelCollapsed; }
+    /** Toggle the left-side Damage Affinity panel between full and minimized. */
+    public static void toggleAffinityPanelCollapsed() { affinityPanelCollapsed = !affinityPanelCollapsed; }
+
     // === Addon equipment scanner bonuses (from AddonBonusSyncPayload) ===
 
     private static final java.util.Map<String, Integer> addonBonuses = new java.util.HashMap<>();
