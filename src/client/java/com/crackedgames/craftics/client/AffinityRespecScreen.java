@@ -204,8 +204,6 @@ public class AffinityRespecScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        super.render(context, mouseX, mouseY, delta);
-
         PlayerProgression.Affinity[] affinities = PlayerProgression.Affinity.values();
         int centerX = this.width / 2;
         int panelL  = panelLeft();
@@ -213,8 +211,10 @@ public class AffinityRespecScreen extends Screen {
         int panelW  = panelWidth();
         int panelH  = panelHeight();
 
-        // Parchment panel
+        // Parchment panel drawn BEFORE super.render so buttons appear on top
         GuideTheme.drawPanel(context, panelL, panelT, panelW, panelH);
+
+        super.render(context, mouseX, mouseY, delta);
 
         int contentTop = panelT + PANEL_INSET;
 
@@ -264,10 +264,12 @@ public class AffinityRespecScreen extends Screen {
                     valueX + dxOff, labelY, deltaColor);
             }
 
-            // Hover description
+            // Hover description: drawn just below the last affinity row, above the footer buttons
             if (mouseX >= centerX - CARD_WIDTH / 2 && mouseX <= centerX + CARD_WIDTH / 2
                 && mouseY >= y && mouseY <= y + CARD_HEIGHT) {
-                int descY = startY + affinities.length * (CARD_HEIGHT + CARD_GAP) + 30;
+                // bottomY (button row) = startY + affinities.length*(CARD_HEIGHT+CARD_GAP) + 8
+                // place description 2px below the last row, which is 6px above the button row
+                int descY = startY + affinities.length * (CARD_HEIGHT + CARD_GAP) - 2;
                 GuideTheme.drawCentered(context, this.textRenderer,
                     affinity.description, centerX, descY, GuideTheme.INK_FAINT);
             }

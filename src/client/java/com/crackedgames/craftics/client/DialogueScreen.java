@@ -382,14 +382,13 @@ public class DialogueScreen extends Screen {
             }
             int portraitY = py + portraitYOff;
 
-            // Portrait backing: its own small parchment panel framing the portrait. The
-            // drawPanel bevel won't merge seamlessly with the box panel below, so the two
-            // sit as cleanly separated adjacent parchment frames (intentional look). Inset
-            // the panel rect by PORTRAIT_PAD so the leather/gold frame surrounds the image.
-            GuideTheme.drawPanel(ctx, px + PORTRAIT_PAD, portraitY + PORTRAIT_PAD,
-                PORTRAIT - 2 * PORTRAIT_PAD, PORTRAIT - 2 * PORTRAIT_PAD);
+            // Portrait backing: parchment panel that SURROUNDS the portrait image so the
+            // leather/gold bevel is visible as a frame around it. Expand outward by
+            // PORTRAIT_PAD on each side so the panel rect rings the image.
+            GuideTheme.drawPanel(ctx, px - PORTRAIT_PAD, portraitY - PORTRAIT_PAD,
+                PORTRAIT + 2 * PORTRAIT_PAD, PORTRAIT + 2 * PORTRAIT_PAD);
 
-            // Portrait drawn last so it sits on top of its panel.
+            // Portrait drawn on top of its surrounding panel frame.
             Identifier headTex = MobHeadTextures.get(speakerId);
             if (headTex != null) {
                 MobHeadTextures.drawMobHead(ctx, headTex, px, portraitY, PORTRAIT);
