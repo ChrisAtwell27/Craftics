@@ -1,12 +1,12 @@
 package com.crackedgames.craftics.client;
 
+import com.crackedgames.craftics.client.guide.GuideButton;
 import com.crackedgames.craftics.client.guide.GuideTheme;
 import com.crackedgames.craftics.network.PostLevelChoicePayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 
@@ -31,6 +31,14 @@ public class VictoryChoiceScreen extends Screen {
     /** True when this screen is prompting for a trial/event, not a regular level victory. */
     private final boolean isEventPrompt;
 
+    // ── Reward reveal animation (shares the Game Over sequence's feel) ──
+    private static final long REVEAL_STAGGER_MS = 110; // gap between successive item drops
+    private static final long REVEAL_DROP_MS    = 300; // per-item fall + settle
+    private long startMs = -1;                          // reveal clock; starts once the fade clears
+    private final boolean[] revealPopPlayed;            // per reward: landing chime fired
+    private boolean openStingPlayed = false;
+    private boolean doneStingPlayed = false;
+
     public VictoryChoiceScreen(int emeraldsEarned, int totalEmeralds,
                                 String biomeName, int levelIndex, boolean nextIsBoss,
                                 boolean isLeader, java.util.List<net.minecraft.item.ItemStack> rewards) {
@@ -43,6 +51,7 @@ public class VictoryChoiceScreen extends Screen {
         this.isEventPrompt = (levelIndex == -1);
         this.isLeader = isLeader;
         this.rewards = rewards != null ? rewards : new java.util.ArrayList<>();
+        this.revealPopPlayed = new boolean[this.rewards.size()];
     }
 
     @Override
@@ -77,7 +86,8 @@ public class VictoryChoiceScreen extends Screen {
             }
 
             // Accept button (sends goHome=false to enter trial)
-            this.addDrawableChild(ButtonWidget.builder(
+            this.addDrawableChild(GuideButton.of(
+                centerX - btnW / 2, btnY, btnW, btnH,
                 Text.literal(acceptLabel),
                 btn -> {
                     this.close();
@@ -86,10 +96,11 @@ public class VictoryChoiceScreen extends Screen {
                         () -> ClientPlayNetworking.send(new PostLevelChoicePayload(false))
                     );
                 }
-            ).dimensions(centerX - btnW / 2, btnY, btnW, btnH).build());
+            ));
 
             // Decline button (sends goHome=true to skip)
-            this.addDrawableChild(ButtonWidget.builder(
+            this.addDrawableChild(GuideButton.of(
+                centerX - btnW / 2, btnY + 25, btnW, btnH,
                 Text.literal(declineLabel),
                 btn -> {
                     this.close();
@@ -98,11 +109,12 @@ public class VictoryChoiceScreen extends Screen {
                         () -> ClientPlayNetworking.send(new PostLevelChoicePayload(true))
                     );
                 }
-            ).dimensions(centerX - btnW / 2, btnY + 25, btnW, btnH).build());
+            ));
 
         } else if (isLeader) {
             // --- Normal victory choice (leader only) ---
-            this.addDrawableChild(ButtonWidget.builder(
+            this.addDrawableChild(GuideButton.of(
+                centerX - btnW / 2, btnY, btnW, btnH,
                 Text.literal("§a⌂ Go Home (Keep loot, reset biome progress)"),
                 btn -> {
                     this.close();
@@ -111,11 +123,12 @@ public class VictoryChoiceScreen extends Screen {
                         () -> ClientPlayNetworking.send(new PostLevelChoicePayload(true))
                     );
                 }
-            ).dimensions(centerX - btnW / 2, btnY, btnW, btnH).build());
+            ));
 
             int nextLevel = levelIndex + 1; // payload is already next level index (0-based)
             if (nextIsBoss) {
-                this.addDrawableChild(ButtonWidget.builder(
+                this.addDrawableChild(GuideButton.of(
+                    centerX - btnW / 2, btnY + 25, btnW, btnH,
                     Text.literal("§4§l☠ BOSS FIGHT: " + biomeName + " ☠ (Risk it all!)"),
                     btn -> {
                         this.close();
@@ -125,9 +138,10 @@ public class VictoryChoiceScreen extends Screen {
                             () -> ClientPlayNetworking.send(new PostLevelChoicePayload(false))
                         );
                     }
-                ).dimensions(centerX - btnW / 2, btnY + 25, btnW, btnH).build());
+                ));
             } else {
-                this.addDrawableChild(ButtonWidget.builder(
+                this.addDrawableChild(GuideButton.of(
+                    centerX - btnW / 2, btnY + 25, btnW, btnH,
                     Text.literal("§c⚔ Continue to Level " + nextLevel + " (Risk it all!)"),
                     btn -> {
                         this.close();
@@ -136,7 +150,7 @@ public class VictoryChoiceScreen extends Screen {
                             () -> ClientPlayNetworking.send(new PostLevelChoicePayload(false))
                         );
                     }
-                ).dimensions(centerX - btnW / 2, btnY + 25, btnW, btnH).build());
+                ));
             }
         }
     }
@@ -149,17 +163,21 @@ public class VictoryChoiceScreen extends Screen {
         ctx.drawText(this.textRenderer, t, cx - w / 2, y, color, false);
     }
 
-    /** Draw the reward grid (item icon + count) wrapping inside [x, x+w). Returns
-     *  the Y just below the grid. Hovering a cell draws its tooltip. */
+    /** Draw the reward grid with a staggered drop-in reveal (mirrors the Game Over
+     *  sequence's feel): each reward falls into its cell with an ease-out-back settle,
+     *  a rarity-tinted landing pop, and a per-item chime. Counts and tooltips appear
+     *  only once an item has landed. Returns the Y just below the grid. */
     private int drawRewardGrid(DrawContext ctx, int x, int y, int w, int mouseX, int mouseY) {
         if (rewards.isEmpty()) {
             centered(ctx, "No items collected", x + w / 2, y, GuideTheme.INK_SOFT);
             return y + 12;
         }
+        long t = elapsed();
         int perRow = Math.max(1, w / CELL);
         int rows = (rewards.size() + perRow - 1) / perRow;
         int gridW = Math.min(rewards.size(), perRow) * CELL;
         int startX = x + (w - gridW) / 2; // center the grid
+
         ItemStack hovered = null;
         int hx = 0, hy = 0;
         for (int i = 0; i < rewards.size(); i++) {
@@ -167,33 +185,125 @@ public class VictoryChoiceScreen extends Screen {
             // 16px icon centered in the 20px cell -> 2px gap on every side.
             int ix = startX + (i % perRow) * CELL + 2;
             int iy = y + (i / perRow) * CELL + 2;
+
+            long launch = (long) i * REVEAL_STAGGER_MS;
+            if (t < launch) {
+                // Not dropped yet: a faint empty cell keeps the grid footprint stable.
+                ctx.fill(ix - 1, iy - 1, ix + 17, iy + 17, 0x22000000);
+                continue;
+            }
+            float p = Math.min(1f, (t - launch) / (float) REVEAL_DROP_MS);
+            float eased = RewardReveal.easeOutBack(p);
+            float scale = 1.35f - 0.35f * RewardReveal.smoothstep(p);
+            int yShift = Math.round(-(1f - eased) * 14f); // fall in from ~14px above
+            int cxItem = ix + 8, cyItem = iy + 8;
+
+            ctx.getMatrices().push();
+            ctx.getMatrices().translate(0, yShift, 0);
+            ctx.getMatrices().translate(cxItem, cyItem, 0);
+            ctx.getMatrices().scale(scale, scale, 1f);
+            ctx.getMatrices().translate(-cxItem, -cyItem, 0);
             ctx.drawItem(stack, ix, iy);
-            if (mouseX >= ix && mouseX < ix + 16 && mouseY >= iy && mouseY < iy + 16) {
+            ctx.getMatrices().pop();
+
+            // Landing chime (once) + rarity-tinted pop ring as the item settles.
+            if (p >= 1f && !revealPopPlayed[i]) {
+                revealPopPlayed[i] = true;
+                RewardReveal.playMaster(net.minecraft.sound.SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME,
+                    0.5f, rarityPitch(stack));
+            }
+            float popP = (t - (launch + REVEAL_DROP_MS)) / 200f;
+            RewardReveal.drawPopRing(ctx, ix - 2, iy - 2, ix + 18, iy + 18, popP, rarityColor(stack));
+
+            if (p >= 1f && mouseX >= ix && mouseX < ix + 16 && mouseY >= iy && mouseY < iy + 16) {
                 hovered = stack; hx = mouseX; hy = mouseY;
             }
         }
         // Stack counts in a SEPARATE pass pushed above the item-icon Z layer, so a
-        // neighbouring icon can never draw over a count (no dark backing needed once
-        // the digits sit on top). Vanilla-style white digits with a shadow.
+        // neighbouring icon can never draw over a count. Only for settled items.
         ctx.getMatrices().push();
         ctx.getMatrices().translate(0, 0, 250);
         for (int i = 0; i < rewards.size(); i++) {
             ItemStack stack = rewards.get(i);
             if (stack.getCount() <= 1) continue;
+            if (t < (long) i * REVEAL_STAGGER_MS + REVEAL_DROP_MS) continue; // not landed yet
             int ix = startX + (i % perRow) * CELL + 2;
             int iy = y + (i / perRow) * CELL + 2;
-            net.minecraft.text.Text c = Text.literal(String.valueOf(stack.getCount()));
+            Text c = Text.literal(String.valueOf(stack.getCount()));
             int cwid = this.textRenderer.getWidth(c);
             ctx.drawTextWithShadow(this.textRenderer, c, ix + 16 - cwid, iy + 9, 0xFFFFFFFF);
         }
         ctx.getMatrices().pop();
         if (hovered != null) {
-            java.util.List<net.minecraft.text.Text> lines =
-                net.minecraft.client.gui.screen.Screen.getTooltipFromItem(
-                    MinecraftClient.getInstance(), hovered);
+            java.util.List<Text> lines =
+                Screen.getTooltipFromItem(MinecraftClient.getInstance(), hovered);
             ctx.drawTooltip(this.textRenderer, lines, hx, hy);
         }
         return y + rows * CELL + 2;
+    }
+
+    // ── Reward-reveal timing / helpers ──────────────────────────────────────
+
+    private long elapsed() {
+        return startMs < 0 ? 0L : System.currentTimeMillis() - startMs;
+    }
+
+    /** Total reveal length: last item's launch + drop + a short pop tail. */
+    private long revealDurationMs() {
+        if (rewards.isEmpty()) return 0L;
+        return (long) (rewards.size() - 1) * REVEAL_STAGGER_MS + REVEAL_DROP_MS + 200L;
+    }
+
+    private boolean revealComplete() {
+        return isEventPrompt || elapsed() >= revealDurationMs();
+    }
+
+    /** Emerald total eased from the pre-victory amount up to the new total over the reveal. */
+    private int shownEmeraldTotal() {
+        if (rewards.isEmpty() || revealDurationMs() <= 0) return totalEmeralds;
+        float op = Math.min(1f, elapsed() / (float) revealDurationMs());
+        int start = Math.max(0, totalEmeralds - emeraldsEarned);
+        return start + Math.round((totalEmeralds - start) * op);
+    }
+
+    private static int rarityColor(ItemStack stack) {
+        return switch (stack.getRarity()) {
+            case UNCOMMON -> 0xFFFFFF55;
+            case RARE     -> 0xFF55FFFF;
+            case EPIC     -> 0xFFFF55FF;
+            default       -> 0xFFFFFFFF;
+        };
+    }
+
+    private static float rarityPitch(ItemStack stack) {
+        return switch (stack.getRarity()) {
+            case UNCOMMON -> 1.2f;
+            case RARE     -> 1.45f;
+            case EPIC     -> 1.7f;
+            default       -> 1.0f;
+        };
+    }
+
+    /** Snap the reward reveal to its end, muting the remaining per-item chimes. */
+    private void skipReveal() {
+        startMs = System.currentTimeMillis() - revealDurationMs() - 1L;
+        for (int i = 0; i < revealPopPlayed.length; i++) revealPopPlayed[i] = true;
+        if (!doneStingPlayed) {
+            doneStingPlayed = true;
+            RewardReveal.playMaster(net.minecraft.sound.SoundEvents.BLOCK_BELL_USE, 0.5f, 1.2f);
+        }
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Let the choice buttons handle the click first; a click on empty space during
+        // the reveal fast-forwards it (like the dialogue typewriter).
+        if (super.mouseClicked(mouseX, mouseY, button)) return true;
+        if (!isEventPrompt && button == 0 && startMs >= 0 && !revealComplete()) {
+            skipReveal();
+            return true;
+        }
+        return false;
     }
 
     /** Number of grid rows the rewards occupy at the current panel width. */
@@ -220,6 +330,17 @@ public class VictoryChoiceScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        // Hold the reward reveal until the level-transition fade has fully cleared -
+        // the screen opens behind a fade-to-black, and starting the staggered drop-in
+        // immediately would play the whole thing under the black overlay, unseen.
+        if (startMs < 0 && !TransitionOverlay.isActive()) {
+            startMs = System.currentTimeMillis();
+            if (!isEventPrompt && !openStingPlayed) {
+                openStingPlayed = true;
+                RewardReveal.playMaster(net.minecraft.sound.SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, 0.4f, 0.8f);
+            }
+        }
+
         super.render(context, mouseX, mouseY, delta);
         int panelH = panelHeight();
         int x = (this.width - PANEL_W) / 2;
@@ -230,6 +351,13 @@ public class VictoryChoiceScreen extends Screen {
             renderEventPrompt(context, cx, y + 12, PANEL_W, mouseX, mouseY);
         } else {
             renderVictoryScreen(context, cx, x, y + 10, PANEL_W, mouseX, mouseY);
+        }
+
+        // Completion sting once every reward has settled (and the reveal has started).
+        if (!isEventPrompt && !rewards.isEmpty() && !doneStingPlayed
+                && startMs >= 0 && elapsed() >= revealDurationMs()) {
+            doneStingPlayed = true;
+            RewardReveal.playMaster(net.minecraft.sound.SoundEvents.BLOCK_BELL_USE, 0.5f, 1.2f);
         }
     }
 
@@ -274,7 +402,7 @@ public class VictoryChoiceScreen extends Screen {
         y += 12;
         GuideTheme.drawRule(context, panelX + 12, y, panelW - 24);
         y += 6;
-        centered(context, "Total: " + totalEmeralds + " Emeralds", cx, y, GuideTheme.INK_SOFT);
+        centered(context, "Total: " + shownEmeraldTotal() + " Emeralds", cx, y, GuideTheme.INK_SOFT);
         y += 14;
         y = drawRewardGrid(context, panelX + 12, y, panelW - 24, mouseX, mouseY);
         y += 4;

@@ -649,6 +649,12 @@ public class CrafticsSavedData extends PersistentState {
         return Collections.unmodifiableMap(parties);
     }
 
+    /** All player UUIDs with saved data (defensive copy) - used to enumerate every
+     *  world owner's fixed event room for the cleanup command. */
+    public java.util.Set<UUID> getAllPlayerIds() {
+        return new java.util.HashSet<>(players.keySet());
+    }
+
     public Party createParty(UUID leaderUuid) {
         leaveParty(leaderUuid);
         UUID partyId = UUID.randomUUID();

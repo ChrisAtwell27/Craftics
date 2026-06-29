@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.client;
 
+import com.crackedgames.craftics.client.guide.GuideButton;
 import com.crackedgames.craftics.client.guide.GuideTheme;
 import com.crackedgames.craftics.network.GameOverAckPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -37,7 +38,7 @@ public class GameOverScreen extends Screen {
 
     private long startMs = -1;     // set on first render
     private boolean acked = false;
-    private net.minecraft.client.gui.widget.ButtonWidget continueButton;
+    private GuideButton continueButton;
 
     // Animation/sound bookkeeping (fire-once guards).
     private boolean[] landed;          // per item: landing clink played
@@ -70,8 +71,7 @@ public class GameOverScreen extends Screen {
 
     /** Play a UI sound at master volume (Screens have no world position). */
     private void playSound(net.minecraft.sound.SoundEvent sound, float volume, float pitch) {
-        MinecraftClient.getInstance().getSoundManager().play(
-            net.minecraft.client.sound.PositionedSoundInstance.master(sound, pitch, volume));
+        RewardReveal.playMaster(sound, volume, pitch);
     }
 
     /** Total animation length in ms (last coin's launch + spin + land). */
@@ -94,9 +94,9 @@ public class GameOverScreen extends Screen {
     @Override
     protected void init() {
         // Continue button hidden until the animation finishes; added in render once done.
-        this.continueButton = net.minecraft.client.gui.widget.ButtonWidget.builder(
-            Text.literal("§cContinue"), btn -> sendAck())
-            .dimensions(this.width / 2 - 100, this.height / 2 + 90, 200, 20).build();
+        this.continueButton = GuideButton.of(
+            this.width / 2 - 100, this.height / 2 + 90, 200, 20,
+            Text.literal("§cContinue"), btn -> sendAck());
     }
 
     private void sendAck() {
@@ -104,6 +104,18 @@ public class GameOverScreen extends Screen {
         acked = true;
         ClientPlayNetworking.send(new GameOverAckPayload());
         this.close();
+    }
+
+    @Override
+    public void removed() {
+        super.removed();
+        // Safety net: if this screen is closed without the Continue button (ESC fallback,
+        // forced close) still send the ack so the party advances immediately instead of
+        // waiting out the server-side game-over timeout. Idempotent via `acked`.
+        if (!acked) {
+            acked = true;
+            ClientPlayNetworking.send(new GameOverAckPayload());
+        }
     }
 
     @Override
@@ -204,18 +216,9 @@ public class GameOverScreen extends Screen {
             if (resolved && landedAt[i] > 0) {
                 long since = t - landedAt[i];
                 if (since < 220) {
-                    float p = since / 220f;            // 0..1
-                    int grow = Math.round(6 * p);      // ring expands outward
-                    int alpha = Math.round(0xCC * (1 - p)); // fades out
                     int oc = outcome(i);
                     int rgb = oc == 0 ? 0x6FFF6F : (oc == 1 ? 0xFFB347 : 0xFF6F6F);
-                    int ring = (alpha << 24) | rgb;
-                    int rx0 = ix - 2 - grow, ry0 = iy - 2 - grow;
-                    int rx1 = ix + 18 + grow, ry1 = iy + 18 + grow;
-                    ctx.fill(rx0, ry0, rx1, ry0 + 1, ring);
-                    ctx.fill(rx0, ry1 - 1, rx1, ry1, ring);
-                    ctx.fill(rx0, ry0, rx0 + 1, ry1, ring);
-                    ctx.fill(rx1 - 1, ry0, rx1, ry1, ring);
+                    RewardReveal.drawPopRing(ctx, ix - 2, iy - 2, ix + 18, iy + 18, since / 220f, rgb);
                 }
             }
         }
@@ -303,7 +306,7 @@ public class GameOverScreen extends Screen {
             float raw = Math.min(1f, (local - SPIN_MS) / (float) LAND_MS);
             // Ease-out-back: the coin accelerates, overshoots its target slightly,
             // then settles - a satisfying "snap onto the item" instead of a linear glide.
-            float k = easeOutBack(raw);
+            float k = RewardReveal.easeOutBack(raw);
             // Size eases linearly-ish so the overshoot doesn't make it grow past start.
             float kSize = raw * raw * (3 - 2 * raw);   // smoothstep for the shrink
             edge = false;
@@ -318,9 +321,9 @@ public class GameOverScreen extends Screen {
         int r = diameter / 2;
         int rx = edge ? Math.max(2, r / 4) : r;        // squash horizontally mid-flip
         // Coin body (filled ellipse), bright rim, dark inner ring for depth.
-        drawDisc(ctx, dx, dy, rx, r, faceCol);
-        drawDisc(ctx, dx, dy - 1, rx, r, GuideTheme.brighten(faceCol, 40));
-        drawDisc(ctx, dx, dy, Math.max(1, rx - 2), Math.max(1, r - 2), faceCol);
+        RewardReveal.drawDisc(ctx, dx, dy, rx, r, faceCol);
+        RewardReveal.drawDisc(ctx, dx, dy - 1, rx, r, GuideTheme.brighten(faceCol, 40));
+        RewardReveal.drawDisc(ctx, dx, dy, Math.max(1, rx - 2), Math.max(1, r - 2), faceCol);
         // Face glyph (hidden when edge-on): "?" while spinning, then a gold star
         // (kept), an orange hyphen (partial loss), or a red X (fully lost).
         if (!edge) {
@@ -331,27 +334,6 @@ public class GameOverScreen extends Screen {
             Text f = Text.literal(face);
             ctx.drawTextWithShadow(this.textRenderer, f,
                 dx - this.textRenderer.getWidth(f) / 2, dy - 4, glyphCol);
-        }
-    }
-
-    /** Ease-out-back: overshoots past 1.0 near the end, then settles back to 1.0. */
-    private static float easeOutBack(float x) {
-        final float c1 = 1.70158f;
-        final float c3 = c1 + 1f;
-        float xm = x - 1f;
-        return 1f + c3 * xm * xm * xm + c1 * xm * xm;
-    }
-
-    /** Filled ellipse (radii rx,ry) centered at (cx,cy), via horizontal scanlines. */
-    private static void drawDisc(DrawContext ctx, int cx, int cy, int rx, int ry, int color) {
-        if (rx <= 0 || ry <= 0) return;
-        for (int dyp = -ry; dyp <= ry; dyp++) {
-            // half-width of the ellipse at this row
-            double frac = 1.0 - (double) (dyp * dyp) / (double) (ry * ry);
-            if (frac < 0) continue;
-            int half = (int) Math.round(rx * Math.sqrt(frac));
-            int yy = cy + dyp;
-            ctx.fill(cx - half, yy, cx + half + 1, yy + 1, color);
         }
     }
 

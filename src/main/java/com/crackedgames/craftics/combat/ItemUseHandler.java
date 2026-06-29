@@ -509,6 +509,10 @@ public class ItemUseHandler {
             + (int) newHealth + "/" + (int) maxHealth + ")";
     }
 
+    /** HP restored per Instant Health level (Level I). Level II heals double, etc.
+     *  Raised above the old 4 so a heal potion is worth spending a turn on. */
+    private static final int INSTANT_HEALTH_PER_LEVEL = 8;
+
     private static String useDrinkPotion(ServerPlayerEntity player, ItemStack stack) {
         // Read potion contents BEFORE decrementing (decrement destroys component data)
         var potionContents = stack.get(net.minecraft.component.DataComponentTypes.POTION_CONTENTS);
@@ -558,7 +562,7 @@ public class ItemUseHandler {
                 }
                 // Instant effects
                 if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
-                    int healAmount = 4 * (sei.getAmplifier() + 1) + getSpecialAffinityPoints(player);
+                    int healAmount = INSTANT_HEALTH_PER_LEVEL * (sei.getAmplifier() + 1) + getSpecialAffinityPoints(player);
                     player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + healAmount));
                     if (applied.length() > 0) applied.append(", ");
                     applied.append("Healed ").append(healAmount);
@@ -945,7 +949,7 @@ public class ItemUseHandler {
                 if (playerInRange) {
                     CombatEffects.EffectType combatType = mapStatusEffect(effectType);
                     if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
-                        int heal = 4 * (amp + 1) + getSpecialAffinityPoints(player);
+                        int heal = INSTANT_HEALTH_PER_LEVEL * (amp + 1) + getSpecialAffinityPoints(player);
                         player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + heal));
                         msg.append("§a+").append(heal).append("HP ");
                         hitCount++;

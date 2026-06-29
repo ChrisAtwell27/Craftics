@@ -105,30 +105,14 @@ public class HubPetCollector {
     }
 
     /**
-     * Landing Y of the hub ANCHOR column (the spawn plate the player teleports
-     * to): scan up then down from {@code hub.y} for a solid block with air above.
-     * Matches the safe-landing logic in CrafticsMod.teleportToHub, so this is
-     * the same floor the returning player ends up on.
+     * Landing Y of the hub ANCHOR column (the spawn plate the player teleports to):
+     * the HIGHEST solid block with air above. Delegates to the shared
+     * {@code CrafticsMod.hubLandingY}, so pets land on the exact same top surface the
+     * returning player does (and never inside a hollow island or under it).
      */
     private static int findAnchorLandingY(ServerWorld world, BlockPos hub) {
-        BlockPos.Mutable probe = new BlockPos.Mutable(hub.getX(), hub.getY(), hub.getZ());
-        for (int dy = 0; dy < 60; dy++) {
-            probe.setY(hub.getY() + dy);
-            var below = world.getBlockState(probe);
-            var at = world.getBlockState(probe.up());
-            if (!below.isAir() && below.isSolidBlock(world, probe) && at.isAir()) {
-                return probe.getY() + 1;
-            }
-        }
-        for (int dy = 1; dy < 40; dy++) {
-            probe.setY(hub.getY() - dy);
-            var below = world.getBlockState(probe);
-            var at = world.getBlockState(probe.up());
-            if (!below.isAir() && below.isSolidBlock(world, probe) && at.isAir()) {
-                return probe.getY() + 1;
-            }
-        }
-        return hub.getY();
+        int y = com.crackedgames.craftics.CrafticsMod.hubLandingY(world, hub.getX(), hub.getZ(), hub.getY());
+        return y != Integer.MIN_VALUE ? y : hub.getY();
     }
 
     /**

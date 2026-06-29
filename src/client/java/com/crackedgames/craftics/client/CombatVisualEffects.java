@@ -20,6 +20,12 @@ public class CombatVisualEffects {
     private static int deathOverlayDuration = 0;
     private static int downedFlashTicks = 0;
 
+    // One-shot title banner ("BOSS DEFEATED" etc.): scale-in, hold, then fade out.
+    private static String bannerText = "";
+    private static int bannerColor = 0xFFFFD050;
+    private static int bannerTick = 0;
+    private static int bannerDuration = 0;
+
     private static float shakeIntensity = 0f;
     private static float shakeOffsetX = 0f;
     private static float shakeOffsetZ = 0f;
@@ -125,6 +131,16 @@ public class CombatVisualEffects {
         screenFlashColor = argb;
     }
 
+    /** Show a large centered title banner (e.g. "BOSS DEFEATED") that scales in,
+     *  holds, then fades. Pass only style codes like §l in the text - the colour +
+     *  fade alpha come from {@code color}, so a §-colour in the text would defeat them. */
+    public static void showBanner(String text, int color, int durationTicks) {
+        bannerText = text == null ? "" : text;
+        bannerColor = color;
+        bannerDuration = Math.max(1, durationTicks);
+        bannerTick = 0;
+    }
+
     public static void addFloatingTextAt(double worldX, double worldY, double worldZ,
                                           String text, int color, int lifetimeTicks) {
         MinecraftClient client = MinecraftClient.getInstance();
@@ -157,6 +173,8 @@ public class CombatVisualEffects {
         downedFlashTicks = 0;
         screenFlashTicks = 0;
         attackFlashTicks = 0;
+        bannerDuration = 0;
+        bannerTick = 0;
     }
 
     // intensity: 0.3 = light, 0.6 = medium, 1.0 = heavy
@@ -201,6 +219,7 @@ public class CombatVisualEffects {
         if (deathOverlayDuration > 0 && deathOverlayTick < deathOverlayDuration) {
             deathOverlayTick++;
         }
+        if (bannerDuration > 0 && bannerTick < bannerDuration) bannerTick++;
         Iterator<DelayedEffect> dit = delayedEffects.iterator();
         while (dit.hasNext()) {
             DelayedEffect de = dit.next();
@@ -343,6 +362,22 @@ public class CombatVisualEffects {
                     Text.literal("\u00a7l\u00a76DOWNED"),
                     screenW / 2, screenH / 2 - 10, textColor);
             }
+        }
+
+        // Title banner - drawn last so it sits on top of every other overlay.
+        if (bannerDuration > 0 && bannerTick > 0 && !bannerText.isEmpty()) {
+            float p = (float) bannerTick / bannerDuration;
+            float inP = Math.min(1f, p / 0.25f);            // scale-in over first quarter
+            float scale = 0.6f + 0.4f * (1f - (1f - inP) * (1f - inP)); // ease-out to 1.0
+            float alpha = p > 0.7f ? Math.max(0f, 1f - (p - 0.7f) / 0.3f) : 1f; // fade last 30%
+            int col = ((int) (alpha * 255) << 24) | (bannerColor & 0x00FFFFFF);
+            int cx = screenW / 2, cy = screenH / 2 - 30;
+            ctx.getMatrices().push();
+            ctx.getMatrices().translate(cx, cy, 0);
+            ctx.getMatrices().scale(scale, scale, 1f);
+            ctx.getMatrices().translate(-cx, -cy, 0);
+            ctx.drawCenteredTextWithShadow(client.textRenderer, Text.literal(bannerText), cx, cy, col);
+            ctx.getMatrices().pop();
         }
     }
 

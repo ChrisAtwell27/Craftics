@@ -228,6 +228,40 @@ public class CombatManager {
         return bestPos;
     }
 
+    /** True if there's a non-air block within 3 blocks below {@code standPos} -- i.e. the
+     *  player will land on something instead of dropping into a void/pit. Used to keep
+     *  party members off floorless tiles in schematic arenas (trial chambers), where the
+     *  grid can mark a real gap "walkable" even though the world has no floor under it. */
+    private static boolean hasSolidFloorBelow(ServerWorld world, BlockPos standPos) {
+        for (int dy = 0; dy <= 3; dy++) {
+            if (!world.getBlockState(standPos.down(dy)).isAir()) return true;
+        }
+        return false;
+    }
+
+    /** Like {@link #findNearestWalkableUnreserved} but ALSO requires a real floor under the
+     *  tile, so a player is never dropped into a trial-chamber pit. Falls back to plain
+     *  walkability only if no floored tile exists at all (degenerate arena). */
+    private static GridPos findNearestSafeSpawn(ServerWorld world, GridArena arena,
+                                                GridPos desired, java.util.Set<GridPos> reserved) {
+        GridPos bestFloored = null; int bestFlDist = Integer.MAX_VALUE;
+        GridPos bestWalkable = null; int bestWkDist = Integer.MAX_VALUE;
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos c = new GridPos(x, z);
+                if (reserved.contains(c)) continue;
+                GridTile tile = arena.getTile(c);
+                if (tile == null || !tile.isWalkable()) continue;
+                int dist = c.manhattanDistance(desired);
+                if (dist < bestWkDist) { bestWkDist = dist; bestWalkable = c; }
+                if (dist < bestFlDist && hasSolidFloorBelow(world, arena.gridToBlockPos(c))) {
+                    bestFlDist = dist; bestFloored = c;
+                }
+            }
+        }
+        return bestFloored != null ? bestFloored : bestWalkable;
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Party spawn layouts
     //
@@ -389,6 +423,9 @@ public class CombatManager {
     // Party turn rotation
     private final List<java.util.UUID> turnQueue = new ArrayList<>();
     private int currentTurnIndex = 0;
+    /** Server ticks the current player's turn has run without an action. Drives the optional
+     *  AFK turn watchdog (CrafticsConfig.turnTimerEnabled). Reset on every action and turn change. */
+    private int turnIdleTicks = 0;
     // In MP each party member needs their OWN status-effect state -bleed /
     // burn / poison applied to player 2 should not appear on player 1's HUD,
     // tick on player 1's turn, or modify player 1's speed. The field is kept
@@ -743,6 +780,28 @@ public class CombatManager {
         return null;
     }
 
+    /** True if this combat manager is holding {@code uuid} in a between-level event gate
+     *  (the per-player "pending" sets). The disconnect handler needs this: during an event
+     *  interlude the manager is no longer {@link #active}, so without it a disconnect would
+     *  skip {@link #removePartyMember} (which releases the gate via
+     *  {@link #clearEventPendingForDisconnect}) and softlock the rest of the party. */
+    public boolean holdsPendingPlayer(java.util.UUID uuid) {
+        return eventPendingPlayers.contains(uuid)
+            || introPendingPlayers.contains(uuid)
+            || traderPendingPlayers.contains(uuid)
+            || lootPendingPlayers.contains(uuid)
+            || digSitePendingPlayers.contains(uuid);
+    }
+
+    /** True if this manager is still gating any between-level event on per-player input.
+     *  Used so a LEADER disconnecting during the (inactive) event interlude still runs the
+     *  "send the party home" teardown instead of stranding the remaining members. */
+    public boolean hasPendingEvent() {
+        return !eventPendingPlayers.isEmpty() || !introPendingPlayers.isEmpty()
+            || !traderPendingPlayers.isEmpty() || !lootPendingPlayers.isEmpty()
+            || !digSitePendingPlayers.isEmpty();
+    }
+
     // Pulls one player out of party combat, transferring leader role if needed
     public void leavePartyCombat(ServerPlayerEntity leaver) {
         if (!active) return;
@@ -1062,16 +1121,25 @@ public class CombatManager {
             CrafticsMod.LOGGER.error("transitionPartyToArena: leader is null -aborting transition");
             return;
         }
-        if (leaderUuid != null && !leader.getUuid().equals(leaderUuid)) {
-            // Caller passed the wrong player as "leader" (commonly this.player
-            // in party combat, which rotates with turns). Override with the
-            // real leader so the arena anchors on them.
-            ServerPlayerEntity real = getCombatLeader();
+        // Anchor on this combat's real host (this CM's INSTANCES key), NOT whoever
+        // the caller passed. Event finalizers commonly pass the last voter / current
+        // turn player, which may be a non-host party member. If that wrong player
+        // becomes the new "leader", startCombat below rewrites leaderUuid +
+        // PARTY_COMBAT_LEADER to point at them, so every OTHER member's actions
+        // mis-route to their own inactive CM -- they get no turn and the per-tick
+        // MoveSlotManager strips their move item.
+        //
+        // The old check was gated on `leaderUuid != null`, but during an event
+        // interlude endCombat has already nulled leaderUuid (and emptied partyPlayers,
+        // so getCombatLeader() returns null too) -- so the correction was silently
+        // skipped exactly when it mattered. resolveCmOwnerPlayer recovers the host
+        // from the INSTANCES key, which survives endCombat.
+        ServerPlayerEntity resolvedHost = resolveCmOwnerPlayer(leader);
+        if (resolvedHost != null && !resolvedHost.getUuid().equals(leader.getUuid())) {
             CrafticsMod.LOGGER.warn(
-                "transitionPartyToArena: caller passed non-leader '{}' as leader (real leader: {}); correcting",
-                leader.getName().getString(),
-                real != null ? real.getName().getString() : leaderUuid);
-            if (real != null) leader = real;
+                "transitionPartyToArena: caller passed '{}' but this combat's host is '{}'; anchoring on host",
+                leader.getName().getString(), resolvedHost.getName().getString());
+            leader = resolvedHost;
         }
 
         // --- Resolve the members list with an explicit fallback chain. ---
@@ -1117,8 +1185,12 @@ public class CombatManager {
             if (!m.getUuid().equals(leader.getUuid())) orderedMembers.add(m);
         }
 
+        ServerWorld spawnWorld = (ServerWorld) leader.getEntityWorld();
         GridPos startGrid = newArena.getPlayerStart();
-        GridPos safeLeaderGrid = findNearestWalkableUnreserved(newArena, startGrid, new java.util.HashSet<>());
+        // Floor-aware search so nobody lands over a pit/void: schematic arenas (trial
+        // chambers) have genuine gaps the grid can still report as "walkable", which was
+        // dropping fanned-out party members into death pits on spawn.
+        GridPos safeLeaderGrid = findNearestSafeSpawn(spawnWorld, newArena, startGrid, new java.util.HashSet<>());
         if (safeLeaderGrid == null) safeLeaderGrid = startGrid;
         newArena.setPlayerGridPos(safeLeaderGrid);
 
@@ -1143,7 +1215,7 @@ public class CombatManager {
         for (int i = 0; i < orderedMembers.size(); i++) {
             ServerPlayerEntity member = orderedMembers.get(i);
             GridPos desired = desiredSpawns.get(i);
-            GridPos chosen = findNearestWalkableUnreserved(newArena, desired, reservedSpawns);
+            GridPos chosen = findNearestSafeSpawn(spawnWorld, newArena, desired, reservedSpawns);
             if (chosen == null) chosen = safeLeaderGrid;
             reservedSpawns.add(chosen);
 
@@ -1431,32 +1503,10 @@ public class CombatManager {
                 vehicle.discard();
             }
         }
-        // Scan for a safe landing spot so stale/fallback hub Y values don't drop
-        // the player into air, water, or inside a block.
-        BlockPos.Mutable probe = new BlockPos.Mutable(hub.getX(), hub.getY(), hub.getZ());
-        int y = hub.getY();
-        boolean found = false;
-        for (int dy = 0; dy < 60; dy++) {
-            probe.setY(hub.getY() + dy);
-            net.minecraft.block.BlockState below = world.getBlockState(probe);
-            net.minecraft.block.BlockState at = world.getBlockState(probe.up());
-            if (!below.isAir() && below.isSolidBlock(world, probe) && at.isAir()) {
-                y = probe.getY() + 1;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            for (int dy = 1; dy < 40; dy++) {
-                probe.setY(hub.getY() - dy);
-                net.minecraft.block.BlockState below = world.getBlockState(probe);
-                net.minecraft.block.BlockState at = world.getBlockState(probe.up());
-                if (!below.isAir() && below.isSolidBlock(world, probe) && at.isAir()) {
-                    y = probe.getY() + 1;
-                    break;
-                }
-            }
-        }
+        // Always land on the HIGHEST solid block in the hub column so a stale/low hub Y
+        // (or a hollow island interior) can never drop the player under the island.
+        int landY = CrafticsMod.hubLandingY(world, hub.getX(), hub.getZ(), hub.getY());
+        int y = landY != Integer.MIN_VALUE ? landY : hub.getY();
         p.requestTeleport(hub.getX() + 0.5, y, hub.getZ() + 0.5);
     }
 
@@ -2259,6 +2309,7 @@ public class CombatManager {
             LootRecorder.begin(ids);
         }
         this.phase = CombatPhase.PLAYER_TURN;
+        this.turnIdleTicks = 0;
         this.achievementTracker = new CombatAchievementTracker();
         PlayerProgression prog = PlayerProgression.get((ServerWorld) player.getEntityWorld());
         PlayerProgression.PlayerStats pStats = prog.getStats(player);
@@ -2539,6 +2590,9 @@ public class CombatManager {
                         heartStand.getId(), "craftics:creaking_heart", resolvedPos,
                         scaledHp, 0, spawn.defense(), 0
                     );
+                    // Stationary virtual block -- never let knockback/pull displace it, or the
+                    // grid target desyncs from the in-world heart block and it can't be hit.
+                    ce.setImmovable(true);
                     enemies.add(ce);
                     arena.placeEntity(ce);
                 }
@@ -3174,6 +3228,7 @@ public class CombatManager {
             // Not your turn -silently ignore
             return;
         }
+        turnIdleTicks = 0; // any action resets the AFK turn watchdog
 
         // Block input during spell cast animations (particles still staging)
         if (spellAnimCooldown > 0) return;
@@ -3743,7 +3798,7 @@ public class CombatManager {
         boolean hitCobweb = false;
         for (int pi = 0; pi < path.size(); pi++) {
             GridPos step = path.get(pi);
-            if (!arena.hasWebOverlay(step)) continue;
+            if (!arena.hasWebOverlay(step) && !tileHasWebBlock(step)) continue;
             CombatEntity stepOccupant = arena.getOccupant(step);
             if (stepOccupant != null && stepOccupant.isAlive() && !stepOccupant.isAlly()) continue;
             path = new ArrayList<>(path.subList(0, pi + 1)); // stop ON the cobweb tile
@@ -3767,6 +3822,19 @@ public class CombatManager {
         this.moveTickCounter = 0;
         this.phase = CombatPhase.ANIMATING;
         sendSync(); // tell client we're animating so walk animation plays
+    }
+
+    /** True if a real cobweb block sits at body (Y+1) or head (Y+2) level over this grid
+     *  tile. A robust fallback to {@link GridArena#hasWebOverlay}: a web the build-time
+     *  overlay scan missed (polygon-edge tiles, head-hung webs, modded web blocks, any
+     *  registration gap) still traps a player who walks onto it. If you can SEE the cobweb,
+     *  walking into it does something. */
+    private boolean tileHasWebBlock(GridPos tile) {
+        if (arena == null || tile == null) return false;
+        if (!(player != null && player.getEntityWorld() instanceof ServerWorld w)) return false;
+        BlockPos bp = arena.gridToBlockPos(tile);
+        return w.getBlockState(bp.up(1)).isOf(Blocks.COBWEB)
+            || w.getBlockState(bp.up(2)).isOf(Blocks.COBWEB);
     }
 
     private boolean playerHasElytra() {
@@ -6072,9 +6140,13 @@ public class CombatManager {
                 deathWorld.playSound(null, deathBlock,
                     net.minecraft.sound.SoundEvents.ENTITY_WITHER_DEATH,
                     net.minecraft.sound.SoundCategory.HOSTILE, 0.6f, 1.1f);
+                // A boss isn't guaranteed to die last. The client celebration ("BOSS
+                // DEFEATED" banner + toll) must only fire on the WINNING kill - valueB == 1
+                // means no other enemy is still alive, so combat is actually over.
+                boolean combatWon = enemies.stream().noneMatch(e -> e != entity && e.isAlive() && !e.isAlly());
                 sendToAllParty(new CombatEventPayload(
                     CombatEventPayload.EVENT_BOSS_MOMENT, entity.getEntityId(),
-                    CombatEventPayload.BOSS_MOMENT_DEFEATED, 0,
+                    CombatEventPayload.BOSS_MOMENT_DEFEATED, combatWon ? 1 : 0,
                     deathPos.x(), deathPos.z()
                 ));
             }
@@ -8612,6 +8684,7 @@ public class CombatManager {
     }
 
     private void handleEndTurn() {
+        turnIdleTicks = 0; // the turn is ending; the next holder starts fresh
         if (!killedThisTurn && killStreak > 0) {
             killStreak = 0;
             sendSync();
@@ -8670,6 +8743,7 @@ public class CombatManager {
         }
 
         this.player = nextPlayer;
+        turnIdleTicks = 0; // fresh turn for the next player
         retargetEffectsToCurrentPlayer();
 
         if (arena != null) {
@@ -8934,6 +9008,36 @@ public class CombatManager {
         }
 
         tickCounter++;
+
+        // AFK turn watchdog (CrafticsConfig.turnTimerEnabled, off by default): if the current
+        // player does nothing for turnTimerSeconds, auto-end their turn so an AFK player can't
+        // stall a multiplayer fight. The idle counter is reset on every action (handleAction)
+        // and turn change (handleEndTurn / switchToTurnPlayer / startCombat).
+        if (phase == CombatPhase.PLAYER_TURN) {
+            boolean timerOn = false;
+            int limitSec = 90;
+            try {
+                timerOn = com.crackedgames.craftics.CrafticsMod.CONFIG.turnTimerEnabled();
+                limitSec = com.crackedgames.craftics.CrafticsMod.CONFIG.turnTimerSeconds();
+            } catch (Exception ignored) { /* config not loaded yet - leave the timer off */ }
+            if (timerOn) {
+                int limitTicks = Math.max(1, limitSec) * 20;
+                turnIdleTicks++;
+                if (limitTicks - turnIdleTicks == 200 && player != null) {
+                    // ~10s warning to the active player (action bar).
+                    player.sendMessage(net.minecraft.text.Text.literal(
+                        "§eYour turn ends automatically in 10 seconds..."), true);
+                } else if (turnIdleTicks >= limitTicks) {
+                    if (player != null) {
+                        sendMessage("§e" + player.getName().getString()
+                            + "'s turn timed out - ending automatically.");
+                    }
+                    turnIdleTicks = 0;
+                    handleEndTurn();
+                    return; // turn handed off this tick; skip the rest of the combat body
+                }
+            }
+        }
 
         // Netherite mount furnace glow: while charged, re-assert the "charged" state each
         // tick (the mod's AI may try to reset it) and decay the timer; turn it off on the
@@ -9398,19 +9502,23 @@ public class CombatManager {
                 }
             }
 
-            if (arena.hasWebOverlay(finalPos)) {
+            if (arena.hasWebOverlay(finalPos) || tileHasWebBlock(finalPos)) {
                 arena.clearWebOverlay(finalPos);
-                // Break the cobweb block in the world
-                BlockPos webBlockPos = new BlockPos(
-                    arena.getOrigin().getX() + finalPos.x(),
-                    arena.getOrigin().getY() + 1,
-                    arena.getOrigin().getZ() + finalPos.z());
+                // Break the cobweb block(s) in the world at body (Y+1) and head (Y+2) -
+                // schematics hang webs at either height. gridToBlockPos resolves the real
+                // world tile in schematic/offset arenas (the old origin+grid math could miss).
+                BlockPos base = arena.gridToBlockPos(finalPos);
                 if (player.getWorld() instanceof ServerWorld sw) {
-                    sw.setBlockState(webBlockPos, Blocks.AIR.getDefaultState(),
-                        net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
-                    sw.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_COBWEB,
-                        webBlockPos.getX() + 0.5, webBlockPos.getY() + 0.5, webBlockPos.getZ() + 0.5,
-                        8, 0.3, 0.3, 0.3, 0.01);
+                    for (int dy = 1; dy <= 2; dy++) {
+                        BlockPos wp = base.up(dy);
+                        if (sw.getBlockState(wp).isOf(Blocks.COBWEB)) {
+                            sw.setBlockState(wp, Blocks.AIR.getDefaultState(),
+                                net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+                            sw.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_COBWEB,
+                                wp.getX() + 0.5, wp.getY() + 0.5, wp.getZ() + 0.5,
+                                8, 0.3, 0.3, 0.3, 0.01);
+                        }
+                    }
                 }
                 sendMessage("§7  Caught in cobwebs! Movement stopped.");
             }
@@ -9919,22 +10027,6 @@ public class CombatManager {
 
             tickPlacedWalls();
 
-            String expired = combatEffects.tickTurn();
-            if (expired != null) {
-                // Strip vanilla status effects that mapped to expired combat effects
-                for (CombatEffects.EffectType expType : combatEffects.getLastExpired()) {
-                    var mcEffect = mapCombatToVanillaEffect(expType);
-                    if (mcEffect != null && player != null) {
-                        player.removeStatusEffect(mcEffect);
-                    }
-                }
-            }
-            // Addon combat effects: notify when effects expire
-            for (CombatEffects.EffectType expiredType : combatEffects.getLastExpired()) {
-                final CombatEffects.EffectType expType = expiredType;
-                fireEffectHook(h -> h.onEffectExpired(effectContext, expType));
-            }
-
             // Player-side per-turn effects (trim regen, DoT, tile hazards, campfire
             // heal, poison-cloud breath) run once PER PARTY MEMBER, not just for the
             // single host/last-actor. Previously this block ran against this.player
@@ -9960,6 +10052,22 @@ public class CombatManager {
                         this.player = member;
                         retargetEffectsToCurrentPlayer();
                         arena.setPlayerGridPos(gridPosOf(member));
+                    }
+                    // Tick down THIS member's status-effect durations. combatEffects is
+                    // retargeted to them above, so Slowness/Poison/Strength/shields expire
+                    // per member. Previously this ran ONCE before the loop against only the
+                    // turn-holder, so in co-op every other member's effects were frozen at
+                    // their initial duration and never wore off.
+                    String memberExpired = combatEffects.tickTurn();
+                    if (memberExpired != null) {
+                        for (CombatEffects.EffectType expType : combatEffects.getLastExpired()) {
+                            var mcEffect = mapCombatToVanillaEffect(expType);
+                            if (mcEffect != null) member.removeStatusEffect(mcEffect);
+                        }
+                    }
+                    for (CombatEffects.EffectType expiredType : combatEffects.getLastExpired()) {
+                        final CombatEffects.EffectType expType = expiredType;
+                        fireEffectHook(h -> h.onEffectExpired(effectContext, expType));
                     }
                     if (tickPlayerPerTurnEffects()) { gameOver = true; break; }
                 }
@@ -18392,6 +18500,11 @@ public class CombatManager {
     private EventCinematic activeCinematic;
     private final java.util.List<EntityWalker> activeWalkers = new java.util.ArrayList<>();
     private String activeTraderIntroGroup;
+    // Shared-merchant serialization: the trader is a single vanilla WanderingTrader, which
+    // can only bind ONE customer at a time. Only the player holding currentTrader shops at
+    // once; the rest queue and are opened in turn (see openTraderFor / handleTraderDone).
+    private java.util.UUID currentTrader = null;
+    private final java.util.ArrayDeque<java.util.UUID> traderQueue = new java.util.ArrayDeque<>();
 
     // ---- Deferred event-return transition ----
     // When an event finishes, we show a loading screen and hold it for at least
@@ -18701,6 +18814,7 @@ public class CombatManager {
         // Spawn the piglin where the trader stands in the trader area (origin+6.5 x,
         // origin+4.5 z, yaw -90 = facing -X toward the talk tiles). AI off,
         // invulnerable, persistent. No merchant offers.
+        clearStrayEventNpcs(world, barterOrigin); // remove any orphaned NPC at this fixed room first
         spawnedBarterPiglin = (net.minecraft.entity.mob.PiglinEntity)
             net.minecraft.entity.EntityType.PIGLIN.spawn(world, barterOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
         if (spawnedBarterPiglin != null) {
@@ -18710,6 +18824,11 @@ public class CombatManager {
             spawnedBarterPiglin.setAiDisabled(true);
             spawnedBarterPiglin.setInvulnerable(true);
             spawnedBarterPiglin.setPersistent(); // never despawn during the event
+            // The event room is in the overworld, where a piglin converts to a zombified
+            // piglin after ~15s - longer events (intro + stepper + reveal) hit that easily.
+            // Conversion swaps the entity out, orphaning spawnedBarterPiglin so finalize can
+            // never discard the leftover. Immunity keeps it a piglin and keeps the reference live.
+            spawnedBarterPiglin.setImmuneToZombification(true);
             world.spawnEntity(spawnedBarterPiglin);
         }
 
@@ -18854,6 +18973,8 @@ public class CombatManager {
         // Give each player emerald items from their own currency
         CrafticsSavedData data = CrafticsSavedData.get(world);
         traderPendingPlayers.clear();
+        currentTrader = null;
+        traderQueue.clear();
         for (ServerPlayerEntity p : members) {
             traderPendingPlayers.add(p.getUuid());
             CrafticsSavedData.PlayerData traderPd = data.getPlayerData(p.getUuid());
@@ -18914,6 +19035,7 @@ public class CombatManager {
         }
 
         // Spawn real wandering trader in the trader area
+        clearStrayEventNpcs(world, traderAreaOrigin); // remove any orphaned NPC at this fixed room first
         spawnedTrader = (net.minecraft.entity.passive.WanderingTraderEntity)
             net.minecraft.entity.EntityType.WANDERING_TRADER.spawn(world, traderAreaOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
         if (spawnedTrader != null) {
@@ -19176,6 +19298,36 @@ public class CombatManager {
 
     // ── Interactive Event Rooms (Shrine, Traveler, Vault) ──
 
+    /**
+     * Discard any stray event NPCs (piglin / villager / wandering trader) standing in
+     * the fixed event-room volume before a new event spawns its own. The {@code spawned*}
+     * fields are per-CombatManager-instance, but the event room is a single fixed location
+     * reused across runs (see {@link #getEventRoomOrigin}). An event that ended without
+     * finalizing — or one from a previous combat session whose manager is already gone —
+     * leaves an orphaned persistent NPC that no field still references, so the next event
+     * (e.g. an overworld trader/traveler villager) would spawn on top of a leftover
+     * nether-barter piglin. The room is an isolated, barriered arena, so discarding these
+     * vanilla trader entity types there is always safe.
+     *
+     * <p>Also catches {@link net.minecraft.entity.mob.ZombifiedPiglinEntity}: piglins
+     * spawned before the zombification-immunity fix may already have converted in the
+     * overworld, so this is what auto-cleans the piles in existing worlds the next time
+     * any event builds at the room.
+     */
+    private static void clearStrayEventNpcs(ServerWorld world, BlockPos origin) {
+        // 9x9 room at origin + an 8-long approach walkway toward low Z, padded generously.
+        net.minecraft.util.math.Box box = new net.minecraft.util.math.Box(
+            origin.getX() - 2, origin.getY() - 1, origin.getZ() - 11,
+            origin.getX() + 11, origin.getY() + 8, origin.getZ() + 11);
+        for (net.minecraft.entity.Entity e : world.getOtherEntities(null, box, en ->
+                en instanceof net.minecraft.entity.mob.AbstractPiglinEntity     // piglin / brute
+                || en instanceof net.minecraft.entity.mob.ZombifiedPiglinEntity // converted in the overworld
+                || en instanceof net.minecraft.entity.passive.VillagerEntity
+                || en instanceof net.minecraft.entity.passive.WanderingTraderEntity)) {
+            e.discard();
+        }
+    }
+
     private BlockPos getEventRoomOrigin(ServerPlayerEntity refPlayer) {
         if (worldOwnerUuid != null && refPlayer != null) {
             ServerWorld w = (ServerWorld) refPlayer.getEntityWorld();
@@ -19352,6 +19504,7 @@ public class CombatManager {
 
         // Spawn the wounded villager at the far end of the dirt path, facing the
         // party as they walk in (yaw 180 = facing -Z, i.e. the entrance).
+        clearStrayEventNpcs(world, travelerOrigin); // remove any orphaned NPC at this fixed room first
         spawnedTraveler = (net.minecraft.entity.passive.VillagerEntity)
             net.minecraft.entity.EntityType.VILLAGER.spawn(world, travelerOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
         if (spawnedTraveler != null) {
@@ -19508,6 +19661,7 @@ public class CombatManager {
 
         // Spawn the enchanter at the back of the room, facing the walkway entrance
         // so the party walks in to meet them.
+        clearStrayEventNpcs(world, enchanterOrigin); // remove any orphaned NPC at this fixed room first
         spawnedTraveler = (net.minecraft.entity.passive.VillagerEntity)
             net.minecraft.entity.EntityType.VILLAGER.spawn(world, enchanterOrigin.up(), net.minecraft.entity.SpawnReason.EVENT);
         if (spawnedTraveler != null) {
@@ -20479,6 +20633,17 @@ public class CombatManager {
             background));
     }
 
+    /** Open the shared reward-reveal screen on the client - the staggered, sound-backed
+     *  loot reveal used for the barter gamble and vault loot. The items are display
+     *  snapshots; they're already delivered server-side. The screen sends DISMISS on
+     *  close, resuming the event's finish path exactly like the result dialogue it replaces. */
+    private void sendRewardReveal(ServerPlayerEntity player, int style, boolean success,
+                                  String title, String subtitle, java.util.List<ItemStack> items) {
+        ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.RewardRevealPayload(
+            style, success ? 1 : 0, title == null ? "" : title,
+            subtitle == null ? "" : subtitle, items));
+    }
+
     /** Resolve a dialogue choice action and drive the active event accordingly. */
     public void handleDialogueChoice(ServerPlayerEntity player, String action) {
         if (com.crackedgames.craftics.network.DialogueChoicePayload.ACTION_MERCHANT_CLOSED.equals(action)) {
@@ -20656,7 +20821,9 @@ public class CombatManager {
             default -> resultLine = "...";
         }
 
+        java.util.List<ItemStack> revealItems = new java.util.ArrayList<>();
         if (reward != null) {
+            revealItems.add(reward.copy()); // snapshot before deliver drains the stack
             LootDelivery.deliver(player, reward);
         }
         BlockPos shrineOrigin = getEventRoomOrigin(player);
@@ -20664,11 +20831,17 @@ public class CombatManager {
             shrineOrigin.getX() + 4.5, shrineOrigin.getY() + 2.5, shrineOrigin.getZ() + 4.5,
             30, 0.5, 1.0, 0.5, 0.1);
 
-        var resultDef = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
-            "craftics:shrine_result", "", "shrine_result",
-            java.util.List.of(resultLine),
-            java.util.List.of());
-        sendDialogue(player, resultDef);
+        if (!revealItems.isEmpty()) {
+            // Reward reveal; its DISMISS-on-close routes back here → finishShrinePlayer.
+            sendRewardReveal(player, com.crackedgames.craftics.network.RewardRevealPayload.STYLE_DROP_IN,
+                true, "Shrine Blessing", resultLine, revealItems);
+        } else {
+            // No reward (the offering vanished) - a plain line, dismissed the same way.
+            var resultDef = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                "craftics:shrine_result", "", "shrine_result",
+                java.util.List.of(resultLine), java.util.List.of());
+            sendDialogue(player, resultDef);
+        }
         // DISMISS on click-through routes back here → finishShrinePlayer.
     }
 
@@ -20743,18 +20916,21 @@ public class CombatManager {
         double chance = com.crackedgames.craftics.combat.barter.PiglinBarterSystem.successChance(offer, threshold);
         int tier = barterTier;
 
+        // Snapshot count/name (and a copy for the reveal) BEFORE delivery: LootDelivery.deliver
+        // mutates the stack (insertStack / decrement drain it to empty), so reading it afterward
+        // yields "0x Air" even though the item was handed over correctly.
+        boolean success = rng.nextDouble() < chance;
+        java.util.List<ItemStack> revealItems = new java.util.ArrayList<>();
         String resultLine;
-        if (rng.nextDouble() < chance) {
+        if (success) {
             net.minecraft.item.ItemStack reward =
                 com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollGoodReward(barterCategoryId, tier, rng);
             if (reward.isEmpty()) {
                 reward = com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollJunk(rng);
             }
-            // Snapshot count/name BEFORE delivery: LootDelivery.deliver mutates the stack
-            // (insertStack / decrement drain it to empty), so reading it afterward yields
-            // "0x Air" even though the item was handed over correctly.
             int rewardCount = reward.getCount();
             String rewardName = reward.getName().getString();
+            revealItems.add(reward.copy());
             LootDelivery.deliver(player, reward);
             resultLine = "The piglin nods and shoves over " + rewardCount + "x "
                 + rewardName + ".";
@@ -20767,6 +20943,7 @@ public class CombatManager {
                 if (!bonus.isEmpty()) {
                     int bonusCount = bonus.getCount();
                     String bonusName = bonus.getName().getString();
+                    revealItems.add(bonus.copy());
                     LootDelivery.deliver(player, bonus);
                     resultLine += " It tosses in " + bonusCount + "x "
                         + bonusName + " too!";
@@ -20777,19 +20954,19 @@ public class CombatManager {
                 com.crackedgames.craftics.combat.barter.PiglinBarterSystem.rollJunk(rng);
             int junkCount = junk.getCount();
             String junkName = junk.getName().getString();
+            revealItems.add(junk.copy());
             LootDelivery.deliver(player, junk);
             resultLine = "The piglin grumbles and flicks you " + junkCount + "x "
                 + junkName + ".";
         }
 
-        var resultDef = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
-            "craftics:piglin_barter_result", "minecraft:piglin", "piglin_barter_result",
-            java.util.List.of(resultLine), java.util.List.of());
-        sendDialogue(player, resultDef);
-        // close the stepper UI client-side
+        // Close the +/- stepper UI client-side, then show the coin-flip gamble reveal.
+        // Its DISMISS-on-close routes back here -> finishBarterPlayer, exactly like the
+        // old result dialogue did.
         net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
             new com.crackedgames.craftics.network.BarterContextPayload(false, 0, 0));
-        // DISMISS on this result finishes the player (routes back to finishBarterPlayer)
+        sendRewardReveal(player, com.crackedgames.craftics.network.RewardRevealPayload.STYLE_GAMBLE,
+            success, "Piglin Barter", resultLine, revealItems);
     }
 
     /** Mark one player done with the piglin barter, exit their cinematic camera,
@@ -20914,6 +21091,7 @@ public class CombatManager {
         }
 
         String rewardName = reward.getName().getString();
+        ItemStack rewardCopy = reward.copy(); // snapshot before deliver drains the stack
         LootDelivery.deliver(player, reward);
 
         ServerWorld world = (ServerWorld) player.getEntityWorld();
@@ -20922,13 +21100,10 @@ public class CombatManager {
             travelerOrigin.getX() + 4.5, travelerOrigin.getY() + 2.5, travelerOrigin.getZ() + 5.5,
             10, 0.3, 0.5, 0.3, 0.02);
 
-        var resultDef = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
-            "craftics:traveler_result", "minecraft:villager", "traveler_result",
-            java.util.List.of("\"Thank you, brave warrior!\"",
-                              "You gave " + foodName + ". You receive: " + rewardName + "."),
-            java.util.List.of());
-        sendDialogue(player, resultDef);
-        // DISMISS on click-through routes back here → finishTravelerPlayer.
+        // Reward reveal; its DISMISS-on-close routes back here → finishTravelerPlayer.
+        sendRewardReveal(player, com.crackedgames.craftics.network.RewardRevealPayload.STYLE_DROP_IN,
+            true, "A Grateful Traveler",
+            "You gave " + foodName + " — you receive:", java.util.List.of(rewardCopy));
     }
 
     /** Mark one player done with the traveler event, exit their cinematic camera,
@@ -21062,6 +21237,8 @@ public class CombatManager {
         // For a reward, pick one of the Yes voters at random and deliver the item
         // before the narrator fires (so the loot popup is queued under the box).
         String rewardLine = null;
+        java.util.UUID rewardWinner = null;
+        ItemStack rewardReveal = null;
         if (rewardOutcome && !takers.isEmpty()) {
             ServerWorld world = (ServerWorld) referencePlayer.getEntityWorld();
             java.util.UUID winnerUuid = takers.get(rng.nextInt(takers.size()));
@@ -21073,6 +21250,8 @@ public class CombatManager {
             if (reward != null && !reward.isEmpty() && reward.getCount() > 0) {
                 String rewardName = reward.getName().getString();
                 String winnerName = winner != null ? winner.getName().getString() : "Someone";
+                rewardReveal = reward.copy(); // snapshot before deliver drains it
+                rewardWinner = winnerUuid;
                 if (winner != null) LootDelivery.deliver(winner, reward);
                 rewardLine = winnerName + " pockets " + rewardName + ".";
             }
@@ -21107,10 +21286,18 @@ public class CombatManager {
         }
 
         ServerWorld world = (ServerWorld) referencePlayer.getEntityWorld();
+        String revealSub = rewardLine != null ? rewardLine : "A small fortune changes hands.";
         for (java.util.UUID u : new java.util.ArrayList<>(eventPendingPlayers)) {
             ServerPlayerEntity p = world.getServer().getPlayerManager().getPlayer(u);
-            if (p != null) sendDialogue(p, outcome);
-            else eventPendingPlayers.remove(u);
+            if (p == null) { eventPendingPlayers.remove(u); continue; }
+            if (rewardWinner != null && rewardWinner.equals(u) && rewardReveal != null) {
+                // The winner sees their loot revealed; everyone else reads the narration.
+                // Both dismiss with the same DISMISS → handleShinyDialogueChoice → finish.
+                sendRewardReveal(p, com.crackedgames.craftics.network.RewardRevealPayload.STYLE_DROP_IN,
+                    true, "The shiny is yours.", revealSub, java.util.List.of(rewardReveal));
+            } else {
+                sendDialogue(p, outcome);
+            }
         }
         if (eventPendingPlayers.isEmpty()) finalizeShinyEvent(referencePlayer);
     }
@@ -21323,8 +21510,10 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         java.util.Random rng = new java.util.Random();
         int itemCount = 2 + rng.nextInt(3); // 2..4 items
+        java.util.List<ItemStack> revealItems = new java.util.ArrayList<>();
         for (int i = 0; i < itemCount; i++) {
             ItemStack loot = getVaultLootItem(eventBiomeOrdinal, rng);
+            revealItems.add(loot.copy()); // snapshot before deliver drains the stack
             LootDelivery.deliver(player, loot);
         }
         BlockPos vaultOrigin = getEventRoomOrigin(player);
@@ -21332,12 +21521,9 @@ public class CombatManager {
             vaultOrigin.getX() + 4.5, vaultOrigin.getY() + 2, vaultOrigin.getZ() + 4.5,
             50, 1.0, 1.0, 1.0, 0.3);
 
-        var resultDef = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
-            "craftics:vault_result", "", "vault_result",
-            java.util.List.of("The chests yield " + itemCount + " treasures."),
-            java.util.List.of());
-        sendDialogue(player, resultDef);
-        // DISMISS on click-through routes back here → finishVaultPlayer.
+        // Chest-burst reveal of the haul; its DISMISS-on-close routes back here → finishVaultPlayer.
+        sendRewardReveal(player, com.crackedgames.craftics.network.RewardRevealPayload.STYLE_CHEST,
+            true, "Treasure Vault", "The chests yield " + itemCount + " treasures.", revealItems);
     }
 
     /** Mark one player done with the vault event, exit their cinematic camera,
@@ -21372,6 +21558,18 @@ public class CombatManager {
     /** Open the vanilla merchant screen for the player against the spawned trader. */
     private void openTraderFor(ServerPlayerEntity player) {
         if (spawnedTrader == null || activeTraderOffer == null) return;
+        // Serialize access to the single shared merchant. Only one party member can hold
+        // the vanilla customer slot at a time; the rest queue and are opened when the
+        // current shopper finishes. Without this, near-simultaneous setCustomer() calls
+        // clobber each other, the losers never get a working merchant screen, never reach
+        // handleTraderDone, and the whole party softlocks waiting on them.
+        if (currentTrader != null && !currentTrader.equals(player.getUuid())) {
+            if (!traderQueue.contains(player.getUuid())) traderQueue.add(player.getUuid());
+            sendMessageTo(player, "§7The trader is serving someone else — you're next in line...");
+            return; // stays in traderPendingPlayers; opened when the lock frees
+        }
+        currentTrader = player.getUuid();
+        traderQueue.remove(player.getUuid());
         // Mirror vanilla WanderingTraderEntity.interactMob: bind the customer and open
         // the MerchantScreenHandler via the Merchant.sendOffers default. We deliberately
         // do NOT re-send TraderOfferPayload here -that payload's client receiver kicks
@@ -21402,6 +21600,21 @@ public class CombatManager {
 
         // Remove this player from pending traders
         traderPendingPlayers.remove(player.getUuid());
+        traderQueue.remove(player.getUuid());
+        // Release the shared-merchant lock and hand it to the next queued shopper, so the
+        // party trades one at a time instead of fighting over the single customer slot.
+        if (player.getUuid().equals(currentTrader)) {
+            currentTrader = null;
+            spawnedTrader.setCustomer(null);
+            while (!traderQueue.isEmpty()) {
+                java.util.UUID nextUuid = traderQueue.poll();
+                ServerPlayerEntity next = player.getServer().getPlayerManager().getPlayer(nextUuid);
+                if (next != null && traderPendingPlayers.contains(nextUuid)) {
+                    openTraderFor(next);
+                    break;
+                }
+            }
+        }
         // Restore this finishing player's camera/control out of the cinematic.
         ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.ExitEventCinematicPayload());
         if (!traderPendingPlayers.isEmpty()) return; // still waiting for other players
@@ -21420,6 +21633,8 @@ public class CombatManager {
      *                        {@code transitionPartyToArena}.
      */
     private void finalizeTraderEvent(ServerPlayerEntity referencePlayer) {
+        currentTrader = null;
+        traderQueue.clear();
         if (spawnedTrader != null) {
             spawnedTrader.discard();
             spawnedTrader = null;
@@ -22125,6 +22340,18 @@ public class CombatManager {
             CrafticsMod.LOGGER.warn("endCombat: arena entity cleanup failed: {}", e.getMessage());
         }
 
+        // Discard any event NPC still standing if the run ends mid-event. Their
+        // finalize paths normally remove them; this is the safety net for abnormal
+        // exits (death, disconnect, force-end) so a persistent piglin/villager/trader
+        // can't be orphaned at the fixed event room and overlap the next event's NPC.
+        try {
+            if (spawnedBarterPiglin != null) { spawnedBarterPiglin.discard(); spawnedBarterPiglin = null; }
+            if (spawnedTraveler != null) { spawnedTraveler.discard(); spawnedTraveler = null; }
+            if (spawnedTrader != null) { spawnedTrader.discard(); spawnedTrader = null; }
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.warn("endCombat: event NPC cleanup failed: {}", e.getMessage());
+        }
+
         // Release force-loaded arena chunks
         try {
             if (!forcedChunks.isEmpty() && player != null) {
@@ -22338,6 +22565,7 @@ public class CombatManager {
      * Returns null only if nothing in range is usable.
      */
     private GridPos findPetSpawnTile(GridPos playerStart) {
+        ServerWorld w = (player != null && player.getEntityWorld() instanceof ServerWorld sw) ? sw : null;
         final int maxRadius = 5;
         for (int r = 1; r <= maxRadius; r++) {
             for (int dx = -r; dx <= r; dx++) {
@@ -22349,7 +22577,12 @@ public class CombatManager {
                     if (!arena.isInBounds(candidate) || arena.isOccupied(candidate)) continue;
                     if (arena.hasWebOverlay(candidate)) continue;
                     var tile = arena.getTile(candidate);
-                    if (tile != null && tile.isSafeForSpawn()) return candidate;
+                    // Require a real floor too, so carried-over pets don't drop into
+                    // trial-chamber pits (same death-pit guard used for player spawns).
+                    if (tile != null && tile.isSafeForSpawn()
+                            && (w == null || hasSolidFloorBelow(w, arena.gridToBlockPos(candidate)))) {
+                        return candidate;
+                    }
                 }
             }
         }
@@ -22401,8 +22634,12 @@ public class CombatManager {
             // pet isn't silently dropped when the adjacent tiles are taken).
             GridPos spawnPos = findPetSpawnTile(playerStart);
             if (spawnPos == null) {
-                CrafticsMod.LOGGER.warn("No valid spawn tile for saved pet {}", pet.entityType());
-                continue;
+                // No free floored tile nearby -- co-locate the pet on the player's (safe)
+                // start tile rather than dropping it from the run entirely, which was
+                // silently losing carried-over pets in pit-heavy arenas.
+                CrafticsMod.LOGGER.warn("No free spawn tile for saved pet {} - placing at player start",
+                    pet.entityType());
+                spawnPos = playerStart;
             }
 
             // Spawn the pet entity

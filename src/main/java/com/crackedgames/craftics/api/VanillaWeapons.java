@@ -551,7 +551,7 @@ public final class VanillaWeapons {
                         if (dx == 0 && dz == 0) continue;
                         GridPos scanPos = new GridPos(impactPos.x() + dx, impactPos.z() + dz);
                         CombatEntity pullTarget = arena.getOccupant(scanPos);
-                        if (pullTarget == null || !pullTarget.isAlive() || pullTarget == target || pullTarget.isAlly()) continue;
+                        if (pullTarget == null || !pullTarget.isAlive() || pullTarget == target || pullTarget.isAlly() || pullTarget.isImmovable()) continue;
                         // Pull toward impact point
                         int pdx = Integer.signum(impactPos.x() - pullTarget.getGridPos().x());
                         int pdz = Integer.signum(impactPos.z() - pullTarget.getGridPos().z());
@@ -603,7 +603,7 @@ public final class VanillaWeapons {
                     for (int dz = -1; dz <= 1; dz++) {
                         GridPos checkPos = new GridPos(target.getGridPos().x() + dx, target.getGridPos().z() + dz);
                         CombatEntity kbTarget = arena.getOccupant(checkPos);
-                        if (kbTarget != null && kbTarget.isAlive() && !kbTarget.isAlly()) {
+                        if (kbTarget != null && kbTarget.isAlive() && !kbTarget.isAlly() && !kbTarget.isImmovable()) {
                             kbTargets.add(kbTarget);
                         }
                     }
@@ -656,7 +656,7 @@ public final class VanillaWeapons {
                 int dz = Integer.signum(target.getGridPos().z() - pPos.z());
                 GridPos kbPos = target.getGridPos();
                 GridPos nextKb = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
-                if (arena.isInBounds(nextKb) && !arena.isOccupied(nextKb)) {
+                if (arena.isInBounds(nextKb) && !arena.isOccupied(nextKb) && !target.isImmovable()) {
                     var tile = arena.getTile(nextKb);
                     if (tile != null && tile.isWalkable()) {
                         arena.moveEntity(target, nextKb);

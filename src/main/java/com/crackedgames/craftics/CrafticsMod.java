@@ -235,8 +235,12 @@ public class CrafticsMod implements ModInitializer {
             ServerWorld overworld = server.getOverworld();
             if (overworld.getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator) {
                 LOGGER.info("Craftics: Teleporting player {} to hub", player.getName().getString());
-                player.refreshPositionAndAngles(0, 65, 0, 0f, 0f);
-                player.requestTeleport(0, 65, 0);
+                // Land on the HIGHEST solid block at the lobby column, never a hard y=65
+                // that can sit inside or under the lobby island.
+                int joinY = hubLandingY(overworld, 0, 0, 65);
+                if (joinY == Integer.MIN_VALUE) joinY = 65;
+                player.refreshPositionAndAngles(0.5, joinY, 0.5, 0f, 0f);
+                player.requestTeleport(0.5, joinY, 0.5);
                 player.changeGameMode(GameMode.SURVIVAL);
 
                 // Give the starter guide once per saved player profile.
@@ -336,7 +340,13 @@ public class CrafticsMod implements ModInitializer {
 
             // Check if this player is in someone else's party combat (non-leader)
             CombatManager leaderCm = CombatManager.getActiveCombat(playerUuid);
-            if (leaderCm != null && leaderCm.isActive() && !leaderCm.equals(CombatManager.get(playerUuid))) {
+            // isActive() alone misses the between-level event interlude: there the leader's
+            // CM has already ended combat (active=false) but is still holding this player in
+            // an event gate (eventPending/intro/trader/loot/digSite). Without the
+            // holdsPendingPlayer() term, a disconnect there would never release the gate and
+            // the rest of the party would softlock waiting on the departed player.
+            if (leaderCm != null && !leaderCm.equals(CombatManager.get(playerUuid))
+                    && (leaderCm.isActive() || leaderCm.holdsPendingPlayer(playerUuid))) {
                 // Party member disconnected: remove from leader's combat, notify party
                 leaderCm.removePartyMember(playerUuid);
                 if (leaderCm.getEventManager() != null) {
@@ -348,9 +358,12 @@ public class CrafticsMod implements ModInitializer {
                 LOGGER.info("Party member {} disconnected during combat", playerName);
             }
 
-            // Clean up this player's own CombatManager
+            // Clean up this player's own CombatManager. hasPendingEvent() covers the leader
+            // disconnecting during a between-level event interlude, where the CM is already
+            // inactive but still gating the party - without it the remaining members would be
+            // stranded (never sent home, gate never released).
             CombatManager cm = CombatManager.get(playerUuid);
-            if (cm.isActive()) {
+            if (cm.isActive() || cm.hasPendingEvent()) {
                 LOGGER.info("Player {} disconnected during combat, cleaning up", playerName);
 
                 // If leader disconnects, send all remaining party members home first
@@ -362,7 +375,9 @@ public class CrafticsMod implements ModInitializer {
                                 "\u00a7cParty leader disconnected. Returning to hub..."), false);
                             net.minecraft.util.math.BlockPos hub = CrafticsSavedData.get(world)
                                 .getHubTeleportPos(member.getUuid());
-                            member.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+                            int memberHubY = hubLandingY(world, hub.getX(), hub.getZ(), hub.getY());
+                            member.requestTeleport(hub.getX() + 0.5,
+                                memberHubY != Integer.MIN_VALUE ? memberHubY : hub.getY(), hub.getZ() + 0.5);
                             member.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
                             member.clearStatusEffects();
                             net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(member,
@@ -404,6 +419,18 @@ public class CrafticsMod implements ModInitializer {
                 CombatManager.tickAll();
             } catch (Throwable t) {
                 LOGGER.error("CombatManager.tickAll() crashed; continuing server tick", t);
+            }
+
+            try {
+                com.crackedgames.craftics.combat.EventRoomCleanup.tick();
+            } catch (Throwable t) {
+                LOGGER.error("EventRoomCleanup.tick() crashed; continuing server tick", t);
+            }
+
+            try {
+                com.crackedgames.craftics.combat.RunInviteManager.tick(server);
+            } catch (Throwable t) {
+                LOGGER.error("RunInviteManager.tick() crashed; continuing server tick", t);
             }
 
             try {
@@ -1233,6 +1260,39 @@ public class CrafticsMod implements ModInitializer {
                 })
             ));
 
+            // /craftics cleanup_events: sweep every world's fixed event room for stray
+            // trader NPCs (orphaned piglins / zombified piglins / villagers / wandering
+            // traders). Fixes existing worlds on demand instead of waiting for the next
+            // event to build at the room. Live event rooms are skipped.
+            dispatcher.register(CommandManager.literal("craftics").then(
+                CommandManager.literal("cleanup_events").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                    ServerWorld world = player.getServerWorld();
+                    CrafticsSavedData data = CrafticsSavedData.get(world);
+
+                    java.util.List<net.minecraft.util.math.BlockPos> origins = new java.util.ArrayList<>();
+                    for (java.util.UUID id : data.getAllPlayerIds()) {
+                        net.minecraft.util.math.BlockPos o = data.getTraderOrigin(id);
+                        if (o != null) origins.add(o);
+                    }
+                    if (origins.isEmpty()) {
+                        ctx.getSource().sendFeedback(() -> Text.literal(
+                            "§eNo event rooms to clean (no personal worlds yet)."), false);
+                        return 0;
+                    }
+
+                    int roomCount = origins.size();
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        "§7Cleaning " + roomCount + " event room(s)..."), false);
+                    var src = ctx.getSource();
+                    com.crackedgames.craftics.combat.EventRoomCleanup.request(world, origins, removed ->
+                        src.sendFeedback(() -> Text.literal(
+                            "§aEvent cleanup complete: removed " + removed
+                                + " stray NPC(s) from " + roomCount + " room(s)."), false));
+                    return 1;
+                })
+            ));
+
             // /lobby: shortcut to central lobby
             dispatcher.register(CommandManager.literal("lobby").executes(ctx -> {
                 ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
@@ -1352,7 +1412,9 @@ public class CrafticsMod implements ModInitializer {
                     if (cm.isActive()) cm.endCombat();
 
                     net.minecraft.util.math.BlockPos targetHub = data.getHubOrigin(target.getUuid());
-                    player.requestTeleport(targetHub.getX() + 0.5, targetHub.getY(), targetHub.getZ() + 0.5);
+                    int visitY = hubLandingY(overworld, targetHub.getX(), targetHub.getZ(), targetHub.getY());
+                    player.requestTeleport(targetHub.getX() + 0.5,
+                        visitY != Integer.MIN_VALUE ? visitY : targetHub.getY(), targetHub.getZ() + 0.5);
                     player.changeGameMode(GameMode.SURVIVAL);
                     ctx.getSource().sendFeedback(() -> Text.literal(
                         "\u00a7aVisiting " + target.getName().getString() + "'s world."), false);
@@ -1865,6 +1927,30 @@ public class CrafticsMod implements ModInitializer {
     }
 
     /**
+     * Highest safe standing Y in the hub column at {@code (x,z)}: scans DOWN from well above
+     * the island for the highest solid block with air above it, so the player ALWAYS lands on
+     * the top surface. The old logic scanned UP from the stored hub Y and stopped at the first
+     * solid-with-air-above, which dropped players onto a hollow island's interior floor (or
+     * under the island) whenever that stored Y sat below the surface. Returns
+     * {@link Integer#MIN_VALUE} if the whole column is empty.
+     */
+    public static int hubLandingY(ServerWorld world, int x, int z, int fallbackY) {
+        net.minecraft.util.math.BlockPos.Mutable probe =
+            new net.minecraft.util.math.BlockPos.Mutable(x, fallbackY, z);
+        int top = fallbackY + 96;     // comfortably above any hub island top
+        int bottom = fallbackY - 64;  // and below it
+        for (int yy = top; yy > bottom; yy--) {
+            probe.setY(yy);
+            net.minecraft.block.BlockState st = world.getBlockState(probe);
+            if (!st.isAir() && st.isSolidBlock(world, probe)
+                    && world.getBlockState(probe.up()).isAir()) {
+                return yy + 1; // stand on top of the highest solid block
+            }
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    /**
      * Teleport a player to their personal hub, switching dimension if they are not
      * already in the overworld (hubs only exist in the overworld). If no safe
      * landing is found near the saved hub spawn (e.g. the player wiped the floor
@@ -1882,35 +1968,10 @@ public class CrafticsMod implements ModInitializer {
         }
         double x = hub.getX() + 0.5;
         double z = hub.getZ() + 0.5;
-        double y = hub.getY();
-        net.minecraft.util.math.BlockPos.Mutable probe = new net.minecraft.util.math.BlockPos.Mutable(
-            hub.getX(), (int) y, hub.getZ());
-        boolean found = false;
-        // Scan upward first (covers raised islands)
-        for (int dy = 0; dy < 60; dy++) {
-            probe.setY((int) y + dy);
-            net.minecraft.block.BlockState below = overworld.getBlockState(probe);
-            net.minecraft.block.BlockState at = overworld.getBlockState(probe.up());
-            if (!below.isAir() && below.isSolidBlock(overworld, probe) && at.isAir()) {
-                y = probe.getY() + 1;
-                found = true;
-                break;
-            }
-        }
-        // Fallback: scan downward
-        if (!found) {
-            for (int dy = 1; dy < 40; dy++) {
-                probe.setY((int) hub.getY() - dy);
-                net.minecraft.block.BlockState below = overworld.getBlockState(probe);
-                net.minecraft.block.BlockState at = overworld.getBlockState(probe.up());
-                if (!below.isAir() && below.isSolidBlock(overworld, probe) && at.isAir()) {
-                    y = probe.getY() + 1;
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found) {
+        double y;
+        // Always land on the HIGHEST solid block in the hub column (see hubLandingY).
+        int landY = hubLandingY(overworld, hub.getX(), hub.getZ(), hub.getY());
+        if (landY == Integer.MIN_VALUE) {
             LOGGER.warn("No safe landing near hub {} for {}, sending to central lobby",
                 hub, player.getName().getString());
             player.sendMessage(Text.literal(
@@ -1918,6 +1979,8 @@ public class CrafticsMod implements ModInitializer {
             x = 0.5;
             y = 65;
             z = 0.5;
+        } else {
+            y = landY;
         }
         if (player.getServerWorld() != overworld) {
             //? if <=1.21.1 {

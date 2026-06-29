@@ -93,6 +93,16 @@ public class CrafticsClient implements ClientModInitializer {
                     payload.originX(), payload.originY(), payload.originZ(),
                     payload.width(), payload.height()
                 );
+                // Non-host clients can still have a Victory / Game Over / event screen open
+                // from the previous level - the host's choice pulled the whole party into the
+                // next arena, so that screen is now stale. Close it (container screens manage
+                // their own lifecycle and are left alone).
+                net.minecraft.client.gui.screen.Screen openScreen = context.client().currentScreen;
+                if (openScreen != null
+                        && !(openScreen instanceof net.minecraft.client.gui.screen.ingame.HandledScreen)
+                        && openScreen.getClass().getName().startsWith("com.crackedgames.craftics")) {
+                    context.client().setScreen(null);
+                }
                 // Only set camera yaw on first combat entry; keep orientation between levels
                 if (!wasInCombat) {
                     if (payload.cameraYaw() >= 0) {
@@ -203,8 +213,18 @@ public class CrafticsClient implements ClientModInitializer {
                             CombatVisualEffects.triggerShakeTimed(0.55f, 12);
                             CombatVisualEffects.flashWithColor(0x55AA0000, 14); // dark red surge
                         } else if (payload.valueA() == com.crackedgames.craftics.network.CombatEventPayload.BOSS_MOMENT_DEFEATED) {
+                            // The boss-corpse spectacle always plays. The "BOSS DEFEATED"
+                            // celebration (freeze-frame punch, banner, victory toll) only fires
+                            // on the winning kill - valueB == 1 means no enemies remain. Otherwise
+                            // a banner could linger over a fight that's still going.
                             CombatVisualEffects.triggerShakeTimed(0.7f, 16);
-                            CombatVisualEffects.flashWithColor(0x55FFAA00, 18); // golden payoff
+                            CombatVisualEffects.flashWithColor(0x55FFAA00, 18); // golden boss-corpse flash
+                            if (payload.valueB() == 1) {
+                                com.crackedgames.craftics.client.vfx.HitPauseState.freeze(4);
+                                CombatVisualEffects.showBanner("§l☠ BOSS DEFEATED ☠", 0xFFFFC030, 34);
+                                com.crackedgames.craftics.client.RewardReveal.playMaster(
+                                    net.minecraft.sound.SoundEvents.BLOCK_BELL_USE, 0.7f, 0.9f);
+                            }
                         }
                     }
                     case com.crackedgames.craftics.network.CombatEventPayload.EVENT_MOB_ATTACK_ANIM -> {
@@ -293,6 +313,37 @@ public class CrafticsClient implements ClientModInitializer {
             }
         );
 
+        // Mid-event reward reveal (piglin barter gamble / treasure-vault loot).
+        // Opens over the active event cinematic - no fade-out (unlike victory/game-over),
+        // mirroring the result dialogue it replaces.
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.RewardRevealPayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    context.client().mouse.unlockCursor();
+                    // This reveal replaces the prior dialogue/reveal as normal flow - mark it
+                    // superseded so its close() safety net doesn't fire a stray DISMISS.
+                    net.minecraft.client.gui.screen.Screen prev = context.client().currentScreen;
+                    if (prev instanceof com.crackedgames.craftics.client.DialogueScreen ds) ds.markSuperseded();
+                    else if (prev instanceof com.crackedgames.craftics.client.RewardRevealScreen rr) rr.markSuperseded();
+                    context.client().setScreen(new com.crackedgames.craftics.client.RewardRevealScreen(
+                        payload.style(), payload.success(), payload.title(),
+                        payload.subtitle(), payload.items()
+                    ));
+                });
+            }
+        );
+
+        // Run-join invite: a party member started a run and is asking whether we want in.
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.RunInvitePayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    context.client().mouse.unlockCursor();
+                    context.client().setScreen(new com.crackedgames.craftics.client.RunJoinScreen(
+                        payload.biomeName(), payload.starterName(), payload.timeoutSeconds()));
+                });
+            }
+        );
+
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.GameOverItemsPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
@@ -354,6 +405,11 @@ public class CrafticsClient implements ClientModInitializer {
                     // the dialogue. Otherwise events like the trial intro sit
                     // behind a black overlay and the player can't see them.
                     TransitionOverlay.startFadeOut();
+                    // This dialogue replaces the prior one as normal flow - mark it superseded
+                    // so the outgoing box's close() safety net doesn't fire a stray DISMISS.
+                    net.minecraft.client.gui.screen.Screen prev = context.client().currentScreen;
+                    if (prev instanceof com.crackedgames.craftics.client.DialogueScreen ds) ds.markSuperseded();
+                    else if (prev instanceof com.crackedgames.craftics.client.RewardRevealScreen rr) rr.markSuperseded();
                     context.client().setScreen(new com.crackedgames.craftics.client.DialogueScreen(
                         payload.speaker(), lines, labels, actions, payload.background()));
                 });

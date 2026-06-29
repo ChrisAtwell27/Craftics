@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.client;
 
+import com.crackedgames.craftics.client.guide.GuideTheme;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
@@ -13,8 +14,12 @@ import java.util.Map;
 
 public class CombatHudOverlay implements HudRenderCallback {
 
-    private static final int PANEL_BG = 0xBB111122;
-    private static final int PANEL_BORDER = 0xFF333344;
+    // Combat HUD chrome mirrors the GuideTheme leather/gold book palette, kept
+    // translucent so the arena reads through. BG is the book's dark leather edge
+    // at ~73% alpha; the frame is the warm leather-cover highlight. (GuideTheme is
+    // the one source of truth for the palette.)
+    private static final int PANEL_BG = 0xBB000000 | (GuideTheme.COVER_EDGE & 0x00FFFFFF);
+    private static final int PANEL_BORDER = GuideTheme.COVER_LIGHT;
 
     /** Wall-clock time of the last turn-phase change, drives the banner
      *  entrance pop and the fade to the compact "Turn N" pill, independent

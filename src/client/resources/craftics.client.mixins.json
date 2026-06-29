@@ -7,6 +7,7 @@
     "AttackSuppressMixin",
     "BipedAnimMixin",
     "CameraLockMixin",
+    "CrafticsEscCloseMixin",
     "EnderDragonRendererMixin",
     "LivingEntityRendererAnimMixin",
     "LivingEntityRenderStateAnimMixin",

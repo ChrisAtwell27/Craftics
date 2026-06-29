@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.client;
 
+import com.crackedgames.craftics.client.guide.GuideTheme;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.RenderTickCounter;
@@ -259,13 +260,15 @@ public class TransitionOverlay {
 
             if (!currentTip.isEmpty()) {
                 int tipColor = 0x888888 | (textAlpha << 24);
-                int labelColor = 0xFFAA00 | (textAlpha << 24);
+                // "TIP:" rendered in the book's gold; the tip body inherits the
+                // faded grey so it still fades in with the rest of the overlay.
+                Text tipLine = Text.literal("TIP: ")
+                    .styled(s -> s.withBold(true)
+                        .withColor(net.minecraft.text.TextColor.fromRgb(GuideTheme.GOLD & 0x00FFFFFF)))
+                    .append(Text.literal(currentTip).styled(s -> s.withBold(false)));
                 context.drawCenteredTextWithShadow(
-                    client.textRenderer,
-                    Text.literal("\u00a7lTIP: ").append(Text.literal(currentTip).styled(s -> s.withBold(false))),
-                    screenW / 2, screenH - 30,
-                    tipColor
-                );
+                    client.textRenderer, tipLine,
+                    screenW / 2, screenH - 30, tipColor);
             }
         }
     }

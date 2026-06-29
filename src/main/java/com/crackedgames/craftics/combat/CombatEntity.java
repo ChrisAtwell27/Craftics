@@ -311,6 +311,14 @@ public class CombatEntity {
     public boolean isHazardImmune() { return hazardImmune; }
     public void setHazardImmune(boolean v) { this.hazardImmune = v; }
 
+    /** True for stationary "virtual block" enemies (e.g. the Creaking Heart) that must NEVER
+     *  be displaced. Their in-world block doesn't move with the grid entity, so any
+     *  knockback/pull desyncs the target and makes them unhittable. {@link GridArena#moveEntity}
+     *  refuses to move these and knockback code skips them. */
+    private boolean immovable = false;
+    public boolean isImmovable() { return immovable; }
+    public void setImmovable(boolean v) { this.immovable = v; }
+
     /** Spider ceiling mechanic - true when the spider is hanging from the ceiling (off-grid). */
     private boolean onCeiling = false;
     public boolean isOnCeiling() { return onCeiling; }

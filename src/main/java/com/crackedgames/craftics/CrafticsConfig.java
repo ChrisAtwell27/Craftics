@@ -302,6 +302,15 @@ public class CrafticsConfig {
 
     public boolean autoEndTurn = false;
 
+    /** When on, a player's turn auto-ends after {@link #turnTimerSeconds} of inactivity
+     *  (no action taken), so an AFK player can't stall a multiplayer fight indefinitely.
+     *  Off by default. */
+    public boolean turnTimerEnabled = false;
+
+    /** Inactivity timeout (seconds) before {@link #turnTimerEnabled} ends a player's turn. */
+    @RangeConstraint(min = 15, max = 600)
+    public int turnTimerSeconds = 90;
+
     public boolean showEnemyRangeHints = false;
 
     public boolean showEnemyIntentions = false;

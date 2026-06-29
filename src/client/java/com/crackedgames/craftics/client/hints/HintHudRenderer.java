@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.client.hints;
 
+import com.crackedgames.craftics.client.guide.GuideTheme;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
@@ -9,8 +10,10 @@ import net.minecraft.text.Text;
 
 public final class HintHudRenderer implements HudRenderCallback {
 
-    private static final int PANEL_BG = 0xCC1A1A2A;
-    private static final int PANEL_BORDER = 0xFF6688CC;
+    // Mirror the GuideTheme leather/gold book palette: translucent dark-leather
+    // backing with a dim-gold frame, white text for legibility over the world.
+    private static final int PANEL_BG = 0xCC000000 | (GuideTheme.COVER_EDGE & 0x00FFFFFF);
+    private static final int PANEL_BORDER = GuideTheme.GOLD_DIM;
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int PADDING = 8;
     /** Vertical pixel offset from the top of the screen - sits just below the turn banner

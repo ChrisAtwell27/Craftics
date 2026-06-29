@@ -139,6 +139,10 @@ public class GridArena {
     }
 
     public void moveEntity(CombatEntity entity, GridPos newPos) {
+        // Immovable entities (Creaking Heart and other virtual block enemies) must stay put:
+        // their in-world block never moves, so relocating the grid entry would desync the
+        // target and make them impossible to hit. Refuse the move.
+        if (entity.isImmovable()) return;
         // Remove from all old tiles
         for (GridPos tile : getOccupiedTiles(entity.getGridPos(), entity.getSize())) {
             occupants.remove(tile);
@@ -334,15 +338,22 @@ public class GridArena {
         return baseY;
     }
 
+    /** Far-away X base for the legacy / test arena origins, kept well clear of the
+     *  personal-world region (the hub sits at X=10000, slot arenas at X≥11000). Without
+     *  this offset the old {@code level * 1000} formula landed on the hub at level 10
+     *  (X=10000) - and the arena build + its wipe would hollow out the hub island.
+     *  Pushing the legacy fallback into deep negative X makes that collision impossible. */
+    private static final int LEGACY_ARENA_BASE_X = -1_000_000;
+
     /** Get arena origin for singleplayer (Z=0 lane). Legacy - use world-slot variant. */
     public static BlockPos arenaOriginForLevel(int level) {
-        return new BlockPos(level * 1000, 100, 0);
+        return new BlockPos(LEGACY_ARENA_BASE_X - level * 1000, 100, 0);
     }
 
     /** Get arena origin for a specific player (unique Z lane based on UUID). Legacy - used by test range. */
     public static BlockPos arenaOriginForLevel(int level, java.util.UUID playerId) {
         int lane = Math.abs(playerId.hashCode() % 1000);
-        return new BlockPos(level * 1000, 100, lane * 1000);
+        return new BlockPos(LEGACY_ARENA_BASE_X - level * 1000, 100, lane * 1000);
     }
 
     /** Get arena origin within a player's world slot. Column=X (levels), Row=Z (players). */

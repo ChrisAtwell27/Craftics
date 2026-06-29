@@ -41,6 +41,9 @@ public class DialogueScreen extends Screen {
     private int tickCounter = 0;
     private int lastWordCount = 0;
     private boolean lineComplete = false;
+    /** Set once a choice / dismiss has been sent (or the server superseded this box).
+     *  Guards the close() safety net below from double-sending or firing on progression. */
+    private boolean finished = false;
 
     // --- Piglin barter stepper state ---------------------------------------
     // The barter intro narration arrives as a normal DialoguePayload (opening a
@@ -253,8 +256,30 @@ public class DialogueScreen extends Screen {
     }
 
     private void choose(String action) {
+        finished = true;
         ClientPlayNetworking.send(new DialogueChoicePayload(action));
         this.close();
+    }
+
+    /** Called by the client receiver right before it replaces this box with the NEXT
+     *  server-driven dialogue/reveal, so the close() safety net below doesn't mistake
+     *  normal flow progression for the player bailing out. */
+    public void markSuperseded() {
+        finished = true;
+    }
+
+    @Override
+    public void removed() {
+        super.removed();
+        // Safety net: if this box is closed without a choice having been sent - an ESC
+        // fallback, a forced close, anything - still tell the server we're done so the
+        // per-player event / intro / trader gate releases and the rest of the party isn't
+        // left softlocked waiting on us. markSuperseded() suppresses this when the server
+        // is simply swapping in the next screen.
+        if (!finished) {
+            finished = true;
+            ClientPlayNetworking.send(new DialogueChoicePayload(DialogueChoicePayload.ACTION_DISMISS));
+        }
     }
 
     @Override
@@ -282,8 +307,19 @@ public class DialogueScreen extends Screen {
         float pitch = 0.9f + this.client.world.random.nextFloat() * 0.3f;
         net.minecraft.sound.SoundEvent voice = isNarrator()
             ? net.minecraft.sound.SoundEvents.UI_BUTTON_CLICK.value() // neutral narrator blip
-            : net.minecraft.sound.SoundEvents.ENTITY_VILLAGER_AMBIENT;
+            : voiceFor(speakerId);
         this.client.getSoundManager().play(PositionedSoundInstance.master(voice, pitch));
+    }
+
+    /** Per-speaker talking blip so e.g. the piglin trader grunts instead of borrowing
+     *  the villager voice. Unknown speakers fall back to the villager ambient. */
+    private static net.minecraft.sound.SoundEvent voiceFor(String speakerId) {
+        if (speakerId == null) return net.minecraft.sound.SoundEvents.ENTITY_VILLAGER_AMBIENT;
+        String id = speakerId.toLowerCase(java.util.Locale.ROOT);
+        if (id.contains("piglin")) return net.minecraft.sound.SoundEvents.ENTITY_PIGLIN_AMBIENT;
+        if (id.contains("hoglin")) return net.minecraft.sound.SoundEvents.ENTITY_HOGLIN_AMBIENT;
+        if (id.contains("wandering_trader")) return net.minecraft.sound.SoundEvents.ENTITY_WANDERING_TRADER_AMBIENT;
+        return net.minecraft.sound.SoundEvents.ENTITY_VILLAGER_AMBIENT;
     }
 
     @Override
@@ -312,6 +348,7 @@ public class DialogueScreen extends Screen {
             } else if (onLastLine() && choiceLabels.isEmpty() && !barterActive) {
                 // In barter mode the stepper buttons drive submission/leaving, so a
                 // click on the finished last line must NOT auto-dismiss the screen.
+                finished = true;
                 ClientPlayNetworking.send(new DialogueChoicePayload(DialogueChoicePayload.ACTION_DISMISS));
                 this.close();
                 return true;
