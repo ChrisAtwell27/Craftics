@@ -57,12 +57,29 @@ public class CrafticsConfig {
     @RangeConstraint(min = 1, max = 10)
     public int defPerBiome = 3;
 
+    /**
+     * Extra enemy HP per additional party member, as a fraction of base HP.
+     * partyHpMult = 1 + (partySize - 1) * partyHpPerPlayer. Default 0.75 →
+     * 2p = 1.75x, 3p = 2.5x, 4p = 3.25x. Applies to bosses too.
+     */
+    @RangeConstraint(min = 0.0, max = 3.0)
+    public float partyHpPerPlayer = 0.75f;
+
     // ===== Boss Scaling =====
 
     /** HP multiplier applied only to bosses (does not stack with enemyHpMultiplier). */
     @SectionHeader("bossScaling")
     @RangeConstraint(min = 0.5, max = 5.0)
     public float bossHpMultiplier = 3.0f;
+
+    /**
+     * Linear boss HP bonus per prior defeat of that boss on the same island.
+     * bossKillMult = 1 + bossKillHpScale * killCount. Default 0.5 → 2nd kill
+     * 1.5x, 3rd 2.0x, 4th 2.5x. Kill count is per-island (per world owner) per
+     * boss biome; see CrafticsSavedData.PlayerData.bossKills.
+     */
+    @RangeConstraint(min = 0.0, max = 3.0)
+    public float bossKillHpScale = 0.5f;
 
     // ===== Gameplay Flags =====
 

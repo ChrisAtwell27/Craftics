@@ -83,6 +83,18 @@ public class CrafticsSavedData extends PersistentState {
         /** Pre-built arena metadata: level -> "originX,originY,originZ,width,height,playerX,playerZ" */
         private final Map<Integer, String> preBuiltArenas = new HashMap<>();
 
+        /** Per-island boss defeat counts, keyed by boss biome id. Drives the
+         *  linear boss-HP ramp (see CrafticsConfig.bossKillHpScale). */
+        private final Map<String, Integer> bossKills = new HashMap<>();
+
+        public int getBossKills(String biomeId) {
+            return bossKills.getOrDefault(biomeId, 0);
+        }
+
+        public void incrementBossKills(String biomeId) {
+            bossKills.merge(biomeId, 1, Integer::sum);
+        }
+
         public void storeArenaMetadata(int level, net.minecraft.util.math.BlockPos origin,
                                         int width, int height,
                                         com.crackedgames.craftics.core.GridPos playerStart,
@@ -356,6 +368,11 @@ public class CrafticsSavedData extends PersistentState {
                 arenasMeta.putString(String.valueOf(entry.getKey()), entry.getValue());
             }
             nbt.put("preBuiltArenas", arenasMeta);
+            NbtCompound bossKillsNbt = new NbtCompound();
+            for (var e : bossKills.entrySet()) {
+                bossKillsNbt.putInt(e.getKey(), e.getValue());
+            }
+            nbt.put("bossKills", bossKillsNbt);
             return nbt;
         }
 
@@ -413,6 +430,12 @@ public class CrafticsSavedData extends PersistentState {
                     } catch (NumberFormatException ignored) {}
                 }
             }
+            if (nbt.contains("bossKills")) {
+                NbtCompound bk = nbt.getCompound("bossKills");
+                for (String key : bk.getKeys()) {
+                    pd.bossKills.put(key, bk.getInt(key));
+                }
+            }
             return pd;
         }
         //?} else {
@@ -458,6 +481,10 @@ public class CrafticsSavedData extends PersistentState {
                 try {
                     pd.preBuiltArenas.put(Integer.parseInt(key), arenasMeta.getString(key, ""));
                 } catch (NumberFormatException ignored) {}
+            }
+            NbtCompound bk = nbt.getCompoundOrEmpty("bossKills");
+            for (String key : bk.getKeys()) {
+                pd.bossKills.put(key, bk.getInt(key, 0));
             }
             return pd;
         }

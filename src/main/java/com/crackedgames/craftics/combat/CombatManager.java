@@ -693,10 +693,28 @@ public class CombatManager {
     private void clearEventPendingForDisconnect(java.util.UUID memberUuid) {
         // Drop the leaver from the cinematic so they never block the arrived/finished gates.
         if (activeCinematic != null) activeCinematic.removePlayer(memberUuid);
-        if (traderPendingPlayers.remove(memberUuid)
-                && traderPendingPlayers.isEmpty() && spawnedTrader != null) {
-            ServerPlayerEntity ref = firstOnlinePartyMember();
-            if (ref != null) finalizeTraderEvent(ref);
+        if (traderPendingPlayers.remove(memberUuid)) {
+            // If the leaver was the active shopper, release the shared-merchant lock
+            // and hand it to the next queued member so the party doesn't freeze on the
+            // waiting overlay. Mirrors the handoff in handleTraderDone.
+            if (memberUuid.equals(currentTrader)) {
+                currentTrader = null;
+                if (spawnedTrader != null) spawnedTrader.setCustomer(null);
+                while (!traderQueue.isEmpty()) {
+                    java.util.UUID nextUuid = traderQueue.poll();
+                    ServerPlayerEntity next = firstOnlinePartyMember() != null
+                        ? firstOnlinePartyMember().getServer().getPlayerManager().getPlayer(nextUuid)
+                        : null;
+                    if (next != null && traderPendingPlayers.contains(nextUuid)) {
+                        openTraderFor(next);
+                        break;
+                    }
+                }
+            }
+            if (traderPendingPlayers.isEmpty() && spawnedTrader != null) {
+                ServerPlayerEntity ref = firstOnlinePartyMember();
+                if (ref != null) finalizeTraderEvent(ref);
+            }
         }
         if (lootPendingPlayers.remove(memberUuid) && lootPendingPlayers.isEmpty()) {
             continueVictoryAfterLoot();
@@ -2583,7 +2601,8 @@ public class CombatManager {
                     heartStand.addCommandTag("craftics_arena");
                     world.spawnEntity(heartStand);
                     int partySize = getAllParticipants().size();
-                    double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * 0.25 : 1.0;
+                    double perPlayer = com.crackedgames.craftics.CrafticsMod.CONFIG.partyHpPerPlayer();
+                    double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * perPlayer : 1.0;
                     int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult
                         * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier() * partyHpMult));
                     CombatEntity ce = new CombatEntity(
@@ -2777,9 +2796,16 @@ public class CombatManager {
                 // Apply NG+ scaling + config multiplier (biome progression bonus already in spawn.hp() from LevelGenerator)
                 // Scale HP by 1.25x per extra player in the party
                 int partySize = getAllParticipants().size();
-                double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * 0.25 : 1.0;
+                double perPlayer = com.crackedgames.craftics.CrafticsMod.CONFIG.partyHpPerPlayer();
+                double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * perPlayer : 1.0;
                 double hpMult = isBoss ? 1.0 : com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
-                int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult * hpMult * partyHpMult));
+                double bossKillMult = 1.0;
+                if (isBoss && bossBiomeId != null && worldOwnerUuid != null) {
+                    int kills = CrafticsSavedData.get(world)
+                        .getPlayerData(worldOwnerUuid).getBossKills(bossBiomeId);
+                    bossKillMult = 1.0 + com.crackedgames.craftics.CrafticsMod.CONFIG.bossKillHpScale() * kills;
+                }
+                int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult * hpMult * partyHpMult * bossKillMult));
                 int scaledAtk = Math.max(1, (int)((spawn.attack() + equipAtkBonus) * ngMult));
                 // Sharpness on the mainhand adds to damage at attack time (in
                 // tickEnemyAttacking). A boss handed a Sharpness V netherite
@@ -2865,7 +2891,8 @@ public class CombatManager {
             } else if ("minecraft:end_crystal".equals(spawn.entityTypeId())) {
                 // End crystals are not MobEntity -register as a non-mob combat entity
                 int partySize = getAllParticipants().size();
-                double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * 0.25 : 1.0;
+                double perPlayer = com.crackedgames.craftics.CrafticsMod.CONFIG.partyHpPerPlayer();
+                double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * perPlayer : 1.0;
                 int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult
                     * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier() * partyHpMult));
                 int scaledAtk = Math.max(1, (int)(spawn.attack() * ngMult));
@@ -6352,7 +6379,8 @@ public class CombatManager {
         }
 
         int partySize = getAllParticipants().size();
-        double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * 0.25 : 1.0;
+        double perPlayer = com.crackedgames.craftics.CrafticsMod.CONFIG.partyHpPerPlayer();
+        double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * perPlayer : 1.0;
         double hpMult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
         int scaledHp = Math.max(1, (int)(baseLayer.hp() * ngMult * hpMult * partyHpMult));
         int scaledAtk = Math.max(1, (int)(baseLayer.attack() * ngMult));
@@ -6888,45 +6916,45 @@ public class CombatManager {
         List<ServerPlayerEntity> recipients = resolveKillerRecipients(enemy);
         if (recipients.isEmpty()) return;
 
+        ServerWorld world = (ServerWorld) mob.getEntityWorld();
         for (net.minecraft.entity.EquipmentSlot slot : slots) {
             ItemStack equipped = mob.getEquippedStack(slot);
             if (equipped.isEmpty()) continue;
 
-            // Snapshot the enchantment component BEFORE we copy/clear -this guards against
-            // any subtle component transfer issues and lets us re-apply it to the drop stack
-            // if for any reason the copy didn't carry it over.
             ItemEnchantmentsComponent enchantSnapshot = equipped.get(DataComponentTypes.ENCHANTMENTS);
             boolean hasEnchant = enchantSnapshot != null && !enchantSnapshot.isEmpty();
 
-            // Base 6% drop chance, +6% if the item carries enchantments (so enchanted gear
-            // is the more exciting drop without being trivially farmable).
             double dropChance = hasEnchant ? 0.12 : 0.06;
-            // Bosses roll each equipment slot independently at 50% -signature gear is
-            // still a much better reward than trash mobs, but no longer a guaranteed
-            // full set every kill.
             if (enemy.isBoss()) dropChance = 0.5;
-
-            // A victim marked for a bonus loot roll (e.g. a barrel golem kill) doubles the chance.
             if (enemy.isBonusLootRoll()) dropChance = Math.min(1.0, dropChance * 2.0);
 
-            if (Math.random() >= dropChance) continue;
-
-            ItemStack dropCopy = equipped.copy();
-            dropCopy.setCount(1);
-            // Ensure enchants are present on the drop -belt & suspenders against
-            // any component-map quirk during copy/equipStack(EMPTY) sequencing.
-            if (hasEnchant) {
-                dropCopy.set(DataComponentTypes.ENCHANTMENTS, enchantSnapshot);
-                dropCopy.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
-            }
-            // Clear the slot so the death animation doesn't double-render the item floating
-            mob.equipStack(slot, ItemStack.EMPTY);
-
+            boolean isArmor = slot != net.minecraft.entity.EquipmentSlot.MAINHAND;
+            boolean anyDropped = false;
             for (ServerPlayerEntity recipient : recipients) {
-                LootDelivery.deliver(recipient, dropCopy.copy());
+                // Each killer rolls independently: same enemy, different per-player outcome.
+                if (Math.random() >= dropChance) continue;
+                anyDropped = true;
+
+                ItemStack dropCopy = equipped.copy();
+                dropCopy.setCount(1);
+                if (hasEnchant) {
+                    dropCopy.set(DataComponentTypes.ENCHANTMENTS, enchantSnapshot);
+                    dropCopy.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                }
+                // Re-roll the trim per recipient so two players who both win the same
+                // armor piece get visually different trims (cosmetic only).
+                if (isArmor) {
+                    applyRandomTrim(dropCopy, world);
+                }
+
+                LootDelivery.deliver(recipient, dropCopy);
+                String label = hasEnchant ? "§b§l✦ ENCHANTED LOOT: " : "§e+ Loot: ";
+                sendMessageTo(recipient, label + dropCopy.getName().getString());
             }
-            String label = hasEnchant ? "§b§l✦ ENCHANTED LOOT: " : "§e+ Loot: ";
-            sendMessage(label + dropCopy.getName().getString());
+            // Clear the slot once if anyone won, so the death animation doesn't double-render it.
+            if (anyDropped) {
+                mob.equipStack(slot, ItemStack.EMPTY);
+            }
         }
     }
 
@@ -17592,6 +17620,17 @@ public class CombatManager {
         data.markDirty();
         sendMessage("§a+ " + emeraldsEarned + " Emeralds");
 
+        // Per-island boss-kill scaling: record this defeat so the NEXT encounter
+        // with the same boss on this island spawns with +bossKillHpScale HP.
+        if (isBoss && biomeTemplate != null && biomeTemplate.biomeId != null) {
+            java.util.UUID owner = worldOwnerUuid;
+            if (owner != null) {
+                CrafticsSavedData killData = CrafticsSavedData.get((net.minecraft.server.world.ServerWorld) player.getEntityWorld());
+                killData.getPlayerData(owner).incrementBossKills(biomeTemplate.biomeId);
+                killData.markDirty();
+            }
+        }
+
         // Boss trim template drops (semi-rare: ~35% chance, Luck boosts)
         if (isBoss && Math.random() < CrafticsMod.CONFIG.trimDropChance() + luckBonusItems * 0.02) {
             // Determine dimension from the active campaign's region for this biome
@@ -17612,13 +17651,19 @@ public class CombatManager {
                 if (candidates.isEmpty()) {
                     for (net.minecraft.item.Item t : trimPool) candidates.add(t);
                 }
-                net.minecraft.item.Item trimItem = candidates.get(new java.util.Random().nextInt(candidates.size()));
-                lastDroppedTrim = trimItem;
-                ItemStack trimStack = new ItemStack(trimItem);
+                java.util.Random trimRng = new java.util.Random();
+                String lastName = null;
                 for (ServerPlayerEntity recipient : rewardRecipients) {
+                    net.minecraft.item.Item trimItem =
+                        candidates.get(trimRng.nextInt(candidates.size()));
+                    lastDroppedTrim = trimItem; // best-effort anti-repeat across drops
+                    ItemStack trimStack = new ItemStack(trimItem);
                     deliverLoot(recipient, trimStack.copy(), lootOverflow);
+                    lastName = trimStack.getName().getString();
                 }
-                sendMessage("\u00a7b\u00a7l\u2726 RARE DROP: " + trimStack.getName().getString() + "!");
+                if (lastName != null) {
+                    sendMessage("\u00a7b\u00a7l\u2726 RARE DROP: " + lastName + "!");
+                }
 
                 // Unlock "How Trims Work" guide entry for all recipients
                 ServerWorld trimWorld = (ServerWorld) player.getEntityWorld();
@@ -21555,6 +21600,15 @@ public class CombatManager {
         scheduleEventReturnTransition(referencePlayer);
     }
 
+    /** Show ("§7Waiting for the rest of the party...") or clear the trader waiting
+     *  overlay for a single player. The player stays in the event cinematic lock
+     *  (no free movement) while this overlay is shown. */
+    private void sendTraderWaitOverlay(ServerPlayerEntity player, boolean show) {
+        ServerPlayNetworking.send(player,
+            new com.crackedgames.craftics.network.LoadingScreenPayload(
+                show, "§eWandering Trader", show ? "§7Waiting for the rest of the party..." : ""));
+    }
+
     /** Open the vanilla merchant screen for the player against the spawned trader. */
     private void openTraderFor(ServerPlayerEntity player) {
         if (spawnedTrader == null || activeTraderOffer == null) return;
@@ -21565,7 +21619,9 @@ public class CombatManager {
         // handleTraderDone, and the whole party softlocks waiting on them.
         if (currentTrader != null && !currentTrader.equals(player.getUuid())) {
             if (!traderQueue.contains(player.getUuid())) traderQueue.add(player.getUuid());
-            sendMessageTo(player, "§7The trader is serving someone else — you're next in line...");
+            // Hold them on the waiting overlay (still in the cinematic lock) so they
+            // can't walk around the event room while another member trades.
+            sendTraderWaitOverlay(player, true);
             return; // stays in traderPendingPlayers; opened when the lock frees
         }
         currentTrader = player.getUuid();
@@ -21577,6 +21633,9 @@ public class CombatManager {
         // tore down this freshly-opened merchant screen. The client self-arms its
         // merchant-close detection when it sees the MerchantScreen open during a
         // cinematic (see CrafticsClient), so no extra signal is needed.
+        // This player is now the active shopper — clear any waiting overlay so the
+        // merchant screen isn't drawn under the fade.
+        sendTraderWaitOverlay(player, false);
         spawnedTrader.setCustomer(player);
         spawnedTrader.sendOffers(player, spawnedTrader.getDisplayName(), 1);
     }
@@ -21615,9 +21674,14 @@ public class CombatManager {
                 }
             }
         }
-        // Restore this finishing player's camera/control out of the cinematic.
+        if (!traderPendingPlayers.isEmpty()) {
+            // Others are still trading. Keep this finisher locked in the cinematic and
+            // show the waiting overlay instead of restoring free movement.
+            sendTraderWaitOverlay(player, true);
+            return;
+        }
+        // Everyone is done — restore this last player's camera/control out of the cinematic.
         ServerPlayNetworking.send(player, new com.crackedgames.craftics.network.ExitEventCinematicPayload());
-        if (!traderPendingPlayers.isEmpty()) return; // still waiting for other players
 
         finalizeTraderEvent(player);
     }
@@ -21633,6 +21697,15 @@ public class CombatManager {
      *                        {@code transitionPartyToArena}.
      */
     private void finalizeTraderEvent(ServerPlayerEntity referencePlayer) {
+        // Clear the waiting overlay and release the cinematic lock for every still-online
+        // party member. scheduleEventReturnTransition (called below) only sends
+        // LoadingScreenPayload(true) — it does NOT send ExitEventCinematicPayload — so
+        // players who finished early and were held on the waiting overlay (Step 4) would
+        // otherwise remain locked indefinitely. Send both here before the transition fires.
+        for (ServerPlayerEntity m : getOnlinePartyMembers(referencePlayer)) {
+            sendTraderWaitOverlay(m, false);
+            ServerPlayNetworking.send(m, new com.crackedgames.craftics.network.ExitEventCinematicPayload());
+        }
         currentTrader = null;
         traderQueue.clear();
         if (spawnedTrader != null) {
