@@ -10,6 +10,46 @@ public class CombatState {
     public static boolean isCinematicActive() { return cinematicActive; }
     public static void setCinematicActive(boolean v) { cinematicActive = v; }
 
+    // Explicit "in a merchant scene" flag, toggled by the server's SceneStatePayload
+    // at SceneController.build/leave. Kept separate from cinematicActive because that
+    // flag is also raised by non-combat EVENTS (shrine/trader/vault) - only this one
+    // means a click-to-walk scene is live, so it gates scene tile-clicks + Leave button.
+    private static boolean inScene = false;
+    public static boolean isInScene() { return inScene; }
+    public static void setInScene(boolean v) { inScene = v; }
+
+    /**
+     * Seed the arena origin + grid size for a merchant SCENE (not combat). A scene
+     * never calls {@link #enterCombat}, so without this {@link TileRaycast} reads
+     * all-zero bounds and every floor click resolves to null. Sets exactly the same
+     * arena fields {@code enterCombat} does (origin, width/height, base/center) so the
+     * raycast and the tile tooltip line up, but does NOT set {@code inCombat} and leaves
+     * the polygon mask null (null mask -> {@code isInPolygon} returns true for the whole
+     * rectangle). Pass all-zero / call {@link #clearSceneBounds} when the scene ends.
+     *
+     * <p>{@code originY} must be the floor-BLOCK Y; {@code TileRaycast} intersects the
+     * floor plane at {@code originY + 1} (the walkable top surface).
+     */
+    public static void setSceneBounds(int originX, int originY, int originZ, int width, int height) {
+        arenaOriginX = originX;
+        arenaOriginY = originY;
+        arenaOriginZ = originZ;
+        arenaWidth = width;
+        arenaHeight = height;
+        arenaBaseCenterX = originX + width / 2.0;
+        arenaBaseCenterZ = originZ + height / 2.0;
+        arenaCenterX = arenaBaseCenterX;
+        arenaCenterY = originY + 1.0;
+        arenaCenterZ = arenaBaseCenterZ;
+        // Full-rectangle scene floor: no polygon mask, so isInPolygon() is always true.
+        setPolygonMask(null, width, height);
+    }
+
+    /** Clear the scene grid bounds (call when the scene state goes inactive). */
+    public static void clearSceneBounds() {
+        setSceneBounds(0, 0, 0, 0, 0);
+    }
+
     /**
      * Snap the camera focus point onto the local player at the start of an event
      * cinematic, so {@link #tickCameraFocus()} begins following from the player's
@@ -68,6 +108,7 @@ public class CombatState {
     public static void enterCombat(int originX, int originY, int originZ, int width, int height) {
         boolean wasInCombat = inCombat;
         inCombat = true;
+        inScene = false; // FIX 4: clear stale scene flag so Leave button never renders over combat
         clearTileSets();
         arenaOriginX = originX;
         arenaOriginY = originY;
@@ -1107,6 +1148,7 @@ public class CombatState {
     public static void resetAll() {
         inCombat = false;
         cinematicActive = false;
+        inScene = false;
         clearTileSets();
         resetCombatStats();
         combatPitch = 55.0f;

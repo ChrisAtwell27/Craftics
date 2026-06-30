@@ -13,6 +13,7 @@ import java.util.Set;
 public class CombatInputHandler {
 
     private static boolean lastLeftClick = false;
+    private static boolean lastSceneLeftClick = false;
     private static long lastHoverBroadcastTime = 0;
     private static GridPos lastBroadcastedHover = null;
     private static boolean wasPlayerTurnLastTick = false;
@@ -95,6 +96,16 @@ public class CombatInputHandler {
             com.crackedgames.craftics.client.hints.HintManager.get().onPlayerTurnStart();
         }
         wasPlayerTurnLastTick = nowPlayerTurn;
+
+        // Merchant scene input runs on its OWN path. A scene is not combat, so the
+        // combat early-return below would otherwise swallow scene clicks entirely.
+        // Here a left-click first tries the HUD Leave button, then falls through to
+        // a floor raycast that sends a walk-to SceneClickPayload (never a combat
+        // action). Handled and returned before any combat logic runs.
+        if (CombatState.isInScene() && !CombatState.isInCombat()) {
+            tickScene(client);
+            return;
+        }
 
         if (!CombatState.isInCombat()) return;
         if (client.currentScreen != null) return;
@@ -195,6 +206,42 @@ public class CombatInputHandler {
                 handleClick(client, getActionMode(client));
             }
         }
+    }
+
+    /**
+     * Per-tick input for an active merchant scene (NOT combat). Detects a left-click
+     * rising edge with its own latch (separate from the combat latch so the two
+     * never stomp each other), then:
+     * <ol>
+     *   <li>hit-tests the HUD Leave button - if hit, sends {@code LeaveScenePayload}
+     *       and consumes the click;</li>
+     *   <li>otherwise raycasts the floor tile under the cursor and, when one is
+     *       found, sends a walk-to {@code SceneClickPayload(tx, tz)}.</li>
+     * </ol>
+     * No combat action is ever sent from here.
+     */
+    private static void tickScene(MinecraftClient client) {
+        // A merchant/trade or other screen open over the scene captures the mouse;
+        // don't also fire a world click underneath it.
+        if (client.currentScreen != null) {
+            lastSceneLeftClick = false;
+            return;
+        }
+
+        long window = client.getWindow().getHandle();
+        boolean leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+        boolean clicked = leftDown && !lastSceneLeftClick;
+        lastSceneLeftClick = leftDown;
+        if (!clicked) return;
+
+        // Leave button gets first claim on the click.
+        if (SceneHudOverlay.tryClickLeaveButton(client)) return;
+
+        // Otherwise: walk-to. The server validates the tile against the scene floor.
+        GridPos pos = TileRaycast.getGridPosUnderCursor();
+        if (pos == null) return;
+        ClientPlayNetworking.send(
+            new com.crackedgames.craftics.network.SceneClickPayload(pos.x(), pos.z()));
     }
 
     private static void handleClick(MinecraftClient client, ActionMode mode) {

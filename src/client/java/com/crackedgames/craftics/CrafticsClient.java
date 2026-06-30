@@ -475,6 +475,25 @@ public class CrafticsClient implements ClientModInitializer {
             }
         );
 
+        // Explicit "in a merchant scene" toggle from SceneController.build/leave.
+        // Drives scene tile-click routing + the HUD Leave button, kept separate
+        // from the cinematic flag (which non-combat events also raise).
+        ClientPlayNetworking.registerGlobalReceiver(
+            com.crackedgames.craftics.network.SceneStatePayload.ID, (payload, context) -> {
+                context.client().execute(() -> {
+                    CombatState.setInScene(payload.active());
+                    if (payload.active()) {
+                        // Seed TileRaycast's grid bounds from the scene footprint so floor
+                        // clicks resolve to a tile (a scene never calls enterCombat).
+                        CombatState.setSceneBounds(payload.ox(), payload.oy(), payload.oz(),
+                            payload.w(), payload.h());
+                    } else {
+                        CombatState.clearSceneBounds();
+                    }
+                });
+            }
+        );
+
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.LoadingScreenPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
@@ -625,6 +644,7 @@ public class CrafticsClient implements ClientModInitializer {
                     com.crackedgames.craftics.client.music.MusicManager.request(payload.trackKey())));
 
         HudRenderCallback.EVENT.register(new CombatHudOverlay());
+        HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.SceneHudOverlay());
         HudRenderCallback.EVENT.register(TransitionOverlay::render);
         HudRenderCallback.EVENT.register(new AchievementToast());
         HudRenderCallback.EVENT.register(new com.crackedgames.craftics.client.music.MusicToast());

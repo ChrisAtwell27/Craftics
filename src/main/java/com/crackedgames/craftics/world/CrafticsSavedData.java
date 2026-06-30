@@ -851,6 +851,16 @@ public class CrafticsSavedData extends PersistentState {
         return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 800);
     }
 
+    /** Get the merchant-scene origin within a player's world (Village / Bartering Station).
+     *  Uses laneZ + 900, one slot past the trial chamber (+800), so it never collides with
+     *  the arena (+0), trader (+500), dig site (+600), event arena (+700), or trial (+800). */
+    public net.minecraft.util.math.BlockPos getSceneOrigin(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot < 0) return null;
+        int laneZ = pd.worldSlot * LANE_SPACING_Z;
+        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 900);
+    }
+
     /**
      * Get the effective world owner for a player. If in a party, returns the party leader
      * (all party members use the leader's world). Otherwise returns the player's own UUID.

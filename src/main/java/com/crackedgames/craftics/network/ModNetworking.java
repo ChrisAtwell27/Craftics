@@ -31,6 +31,9 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(ClearPartyPayload.ID, ClearPartyPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(MountAbilityPayload.ID, MountAbilityPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(DialogueChoicePayload.ID, DialogueChoicePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(EnterScenePayload.ID, EnterScenePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(SceneClickPayload.ID, SceneClickPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(LeaveScenePayload.ID, LeaveScenePayload.CODEC);
 
         // Register S2C payload types
         PayloadTypeRegistry.playS2C().register(EnterCombatPayload.ID, EnterCombatPayload.CODEC);
@@ -48,6 +51,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(DialoguePayload.ID, DialoguePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(EnterEventCinematicPayload.ID, EnterEventCinematicPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(ExitEventCinematicPayload.ID, ExitEventCinematicPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(SceneStatePayload.ID, SceneStatePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AchievementUnlockPayload.ID, AchievementUnlockPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(GuideBookSyncPayload.ID, GuideBookSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AddonBonusSyncPayload.ID, AddonBonusSyncPayload.CODEC);
@@ -394,6 +398,19 @@ public class ModNetworking {
                 "§aAffinities respecced!" + (totalRefunded > 0
                     ? " §7(-" + totalRefunded + " XP level" + (totalRefunded != 1 ? "s" : "") + ")"
                     : "")), false);
+        });
+
+        // Handle scene enter/click/leave - dispatch to SceneController
+        ServerPlayNetworking.registerGlobalReceiver(EnterScenePayload.ID, (payload, context) -> {
+            com.crackedgames.craftics.scene.SceneController.handleEnter(
+                context.player(), payload.sceneName());
+        });
+        ServerPlayNetworking.registerGlobalReceiver(SceneClickPayload.ID, (payload, context) -> {
+            com.crackedgames.craftics.scene.SceneController.handleClick(
+                context.player(), payload.tx(), payload.tz());
+        });
+        ServerPlayNetworking.registerGlobalReceiver(LeaveScenePayload.ID, (payload, context) -> {
+            com.crackedgames.craftics.scene.SceneController.handleLeave(context.player());
         });
 
         // Handle hover updates - relay to party members

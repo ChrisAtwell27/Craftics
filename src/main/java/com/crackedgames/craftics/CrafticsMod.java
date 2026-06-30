@@ -389,6 +389,7 @@ public class CrafticsMod implements ModInitializer {
                 cm.endCombat();
             }
             CombatManager.remove(playerUuid);
+            com.crackedgames.craftics.scene.SceneController.onDisconnect(playerUuid);
         });
 
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
@@ -419,6 +420,12 @@ public class CrafticsMod implements ModInitializer {
                 CombatManager.tickAll();
             } catch (Throwable t) {
                 LOGGER.error("CombatManager.tickAll() crashed; continuing server tick", t);
+            }
+
+            try {
+                com.crackedgames.craftics.scene.SceneController.tickAll();
+            } catch (Throwable t) {
+                LOGGER.error("SceneController.tickAll() crashed; continuing server tick", t);
             }
 
             try {

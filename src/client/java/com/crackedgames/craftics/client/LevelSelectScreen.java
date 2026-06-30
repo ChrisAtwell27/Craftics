@@ -341,6 +341,27 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
             .dimensions(cx + imgSize / 2 + 8, this.height / 2 - 10, 20, 20).build();
         rightArrow.active = selectedIndex < biomes.size() - 1;
         this.addDrawableChild(rightArrow);
+
+        // Bottom-left: enter the walk-around merchant scenes (Stage 1).
+        ButtonWidget tradingHallBtn = ButtonWidget.builder(
+                Text.literal("\u00A7lTrading Hall"),
+                b -> {
+                    this.close();
+                    ClientPlayNetworking.send(
+                        new com.crackedgames.craftics.network.EnterScenePayload("village"));
+                })
+            .dimensions(8, this.height - 48, 120, 20).build();
+        this.addDrawableChild(tradingHallBtn);
+
+        ButtonWidget barterStationBtn = ButtonWidget.builder(
+                Text.literal("\u00A7lBartering Station"),
+                b -> {
+                    this.close();
+                    ClientPlayNetworking.send(
+                        new com.crackedgames.craftics.network.EnterScenePayload("barter_station"));
+                })
+            .dimensions(8, this.height - 24, 120, 20).build();
+        this.addDrawableChild(barterStationBtn);
     }
 
     private void scrollBiome(int dir) {
