@@ -52,6 +52,7 @@ public final class TesterRegistry {
         register("GokentoPower",        "Playtester+",            TESTER_COLOR, Rank.TESTER);
         register("Jpkrus",           "Playtester+",            TESTER_COLOR, Rank.TESTER);
         register("Timelles_",        "Playtester+",            TESTER_COLOR, Rank.TESTER);
+        register("RoguePixelNoob",        "Playtester+",            TESTER_COLOR, Rank.TESTER);
         register("PaulnPaul",        "Playtester+",            TESTER_COLOR, Rank.TESTER);
         register("TripleExM",        "Playtester",            TESTER_COLOR, Rank.TESTER);
         register("Tintartie",        "Playtester",            TESTER_COLOR, Rank.TESTER);

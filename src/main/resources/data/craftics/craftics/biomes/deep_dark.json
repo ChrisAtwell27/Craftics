@@ -36,7 +36,7 @@
     {"item": "minecraft:coal", "weight": 3},
     {"item": "minecraft:redstone", "weight": 3},
     {"item": "minecraft:lapis_lazuli", "weight": 4},
-    {"item": "minecraft:copper_ingot", "weight": 2},
+    {"item": "minecraft:copper_ingot", "weight": 8},
     {"item": "minecraft:amethyst_shard", "weight": 3},
     {"item": "minecraft:emerald", "weight": 2},
     {"item": "minecraft:recovery_compass", "weight": 1},

@@ -304,12 +304,16 @@ public class BroodmotherAI extends BossAI {
     }
 
     private EnemyAction tryPounce(CombatEntity self, GridArena arena, GridPos playerPos) {
-        // Find landing spot adjacent to player
+        // Find a landing anchor adjacent to the player where the FULL 2x2 boss
+        // footprint fits. The Broodmother is a 2x2 boss (getGridSize() == 2), so
+        // validating only the single anchor tile let it pounce into a spot where
+        // 3 of its 4 footprint tiles overlapped walls / egg sacs / adds, leaving
+        // it stuck or mispositioned. Mirror SpiderAI: check all 4 tiles via
+        // canPlaceFootprint with the boss's grid size.
         GridPos landingPos = null;
         for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
             GridPos p = new GridPos(playerPos.x() + d[0], playerPos.z() + d[1]);
-            if (arena.isInBounds(p) && !arena.isOccupied(p)
-                    && arena.getTile(p) != null && arena.getTile(p).isWalkable()) {
+            if (com.crackedgames.craftics.combat.ai.AIUtils.canPlaceFootprint(arena, p, getGridSize())) {
                 landingPos = p;
                 break;
             }

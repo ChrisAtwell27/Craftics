@@ -4471,7 +4471,24 @@ public class CombatManager {
                         if (tile != null && tile.isWalkable()) { fallback = candidate; break; }
                     }
                 }
-                landPos = fallback != null ? fallback : tridentAimTile;
+                // If the throw line is blocked (e.g. a wall of obstacles between the
+                // player and the target), the backward search finds nothing. Never
+                // land the trident on the target's own occupied tile - the player can
+                // never step there, so it would be permanently uncollectable. Instead
+                // drop it on a tile the player can actually reach: a free walkable tile
+                // adjacent to the player, falling back to the player's own tile.
+                if (fallback == null) {
+                    for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
+                        GridPos adj = new GridPos(pPos.x() + d[0], pPos.z() + d[1]);
+                        if (arena.isInBounds(adj) && !arena.isOccupied(adj)
+                                && arena.getTile(adj) != null && arena.getTile(adj).isWalkable()) {
+                            fallback = adj;
+                            break;
+                        }
+                    }
+                    if (fallback == null) fallback = pPos; // player's own tile is always reachable
+                }
+                landPos = fallback;
             }
             droppedTridentPos = landPos;
             player.getMainHandStack().decrement(1);
@@ -8414,7 +8431,17 @@ public class CombatManager {
             String afterPrefix = result.substring(result.indexOf(PotterySherdSpells.RESTORE_AP_PREFIX) + PotterySherdSpells.RESTORE_AP_PREFIX.length());
             String[] parts = afterPrefix.split("\\|", 2);
             int restoreAmount = Integer.parseInt(parts[0]);
-            apRemaining += restoreAmount;
+            // Clamp the restore to the player's effective AP ceiling for this turn so the
+            // Plenty sherd refills toward the cap instead of stacking past it. The ceiling
+            // is the same expression used at turn start (effective AP + set bonus + Haste
+            // - Mining Fatigue); a player already at/above it gains nothing.
+            PlayerProgression apProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+            PlayerProgression.PlayerStats apStats = apProg.getStats(player);
+            int apCeiling = Math.max(0, apStats.getEffective(PlayerProgression.Stat.AP)
+                + PlayerCombatStats.getSetApBonus(player)
+                + combatEffects.getHasteBonus()
+                - combatEffects.getMiningFatiguePenalty());
+            apRemaining = Math.min(apCeiling, apRemaining + restoreAmount);
             if (parts.length > 1) sendMessage(parts[1]);
         }
         // Triple damage next attack (Prize sherd)
@@ -18308,6 +18335,13 @@ public class CombatManager {
                             float addonRoll = eventRoll - cTrader; // remaining probability space
                             if (addonRoll >= 0) {
                                 for (var addonEvent : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
+                                    // Skip built-in events that are also mirrored into the registry
+                                    // with a null handler (VanillaContent registers them for listing
+                                    // only). They are driven by the inline cascade above, not here;
+                                    // counting them would consume the addon probability space and
+                                    // starve real addon events (e.g. the Artifacts campsite), which
+                                    // sit later in the iteration order and could never be reached.
+                                    if (addonEvent.handler() == null) continue;
                                     if (biomeOrdinal >= addonEvent.minBiomeOrdinal()) {
                                         addonRoll -= addonEvent.probability() * (1f - pityDiscount);
                                         if (addonRoll < 0) {

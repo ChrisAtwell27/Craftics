@@ -1,6 +1,17 @@
 ﻿Changelog
 0.2.9
-Enemies, Combat, Tools, and Interface
+Multiplayer, Enemies, Combat, Tools, and Interface
+
+Multiplayer
+
+- Loot is now rolled per player instead of shared. When several players land the killing blow on the same mob, each one rolls the equipment-drop chance independently, so two players who co-kill an armored mob no longer always get the same outcome (one can get a piece the other doesn't). The dropped gear is also copied per recipient, and any armor trim is re-rolled per player, so two players who both win the same helmet see different trims
+- The victory boss trim template is rolled per player too. Each reward recipient rolls their own smithing template from the eligible pool instead of the whole party receiving one identical template
+- The Wandering Trader event no longer lets idle players wander the event room. The trader is a single shared merchant that serves one player at a time, so while one player shops the rest are now held on a locked "Waiting for the rest of the party..." overlay with no free movement, instead of being handed back first-person control to walk around mid-event. Everyone is released together once the last player finishes. A player who disconnects while actively trading now also releases the merchant lock and hands it to the next in line, so the rest of the party can never be frozen waiting on someone who left
+
+Scaling
+
+- Enemy HP now scales harder with party size, and the rate is configurable. The per-extra-player HP bonus moved from a hardcoded +25% to a config value (partyHpPerPlayer, default +75%), applied at every enemy spawn path (normal mobs, the creaking heart, end crystals, and stacked riders). At the default a 2-player fight has roughly 1.75x enemy HP, 3-player 2.5x, 4-player 3.25x, so multiplayer is no longer trivially easy
+- Bosses now get tougher each time you beat them on the same island. A new per-island kill counter (stored per world owner, so a party shares one count and other islands are unaffected) adds a linear HP bonus on every repeat encounter (bossKillHpScale, default +50% per prior kill: 2nd fight 1.5x, 3rd 2x, and so on). The count is applied at spawn time and persists across world reloads. This stacks with party scaling, so a repeatedly-farmed boss in a full party ramps up meaningfully
 
 Interface
 
@@ -17,6 +28,10 @@ Bug Fixes
 - Landing the killing blow with an anvil, TNT, or another consumable/special item no longer soft-locks the level. Those deferred and item-use damage paths despawned the last enemy but never ran the "all enemies defeated" check, so the fight hung; they now end the level the same way a normal weapon hit does
 - The Game Over coin-flip screen now shows on any death during a biome run, including the first level of a biome. It was previously gated to deaths past level 1, so dying early just sent you home with no screen
 - Digging a sunken pit or void with a pickaxe no longer fills in an adjacent pit or void you already dug. The cobblestone wall that keeps a fresh hole from opening into a big air gap now skips neighbouring tiles that are themselves a void, pit, or water/lava
+- The Abandoned Campsite (Artifacts mimic) addon event can actually trigger now. The between-level event roll iterated the built-in events a second time (they are also listed in the addon registry with no handler) before ever reaching real addon events, so it kept landing on a handler-less entry and silently skipped to the next level. The roll now ignores those handler-less listing entries, so registered addon events like the campsite are reachable again
+- The spider boss (Broodmother) no longer pounces into walls and gets stuck. As a 2x2 boss it was only checking that a single tile next to the player was clear before pouncing, so it could land with three of its four footprint tiles overlapping walls, egg sacs, or other mobs. It now validates its full 2x2 footprint before pouncing, the same way the regular spider does
+- The Plenty pottery sherd no longer pushes Action Points past the cap. Its AP restore was added directly to your remaining AP with no ceiling, so it could stack you above your real per-turn maximum. The restore is now clamped to your effective AP ceiling for the turn (base AP plus set and Haste bonuses, minus Mining Fatigue), so it refills toward the cap instead of over it
+- Thrown tridents are no longer lost when the target stands behind a line of obstacles. If the throw path was blocked, the trident "landed" on the enemy's own occupied tile, which you can never step onto, so it was gone for good. A blocked throw now drops the trident on a tile you can actually reach (next to you, or your own tile), so it is always retrievable
 
 Enemies
 
@@ -37,6 +52,10 @@ Tools
 Wording
 
 - The combat "Dodge" mechanic is now called "Deflected" everywhere it shows to the player: the on-hit feedback, the Vex / Ethereal armor and artifact tooltips, the Aegis hybrid description, and the relevant guide pages all read "deflect" / "deflected" now
+
+Loot
+
+- Copper now drops far more often. As an early-game material it was a very low weight in its biome loot pools (weight 1 of roughly 70 on Plains and River), so it almost never appeared. Its weight was raised across the board: Plains and River 1 to 6, Cave 4 to 10, Mountain and Deep Dark 2 to 8
 
 0.2.8
 Combat, Bosses, and Addon Compat

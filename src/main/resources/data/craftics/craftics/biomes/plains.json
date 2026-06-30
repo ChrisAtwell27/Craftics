@@ -43,7 +43,7 @@
     {"item": "minecraft:leather", "weight": 5},
     {"item": "minecraft:coal", "weight": 2},
     {"item": "minecraft:gold_ingot", "weight": 1},
-    {"item": "minecraft:copper_ingot", "weight": 1},
+    {"item": "minecraft:copper_ingot", "weight": 6},
     {"item": "minecraft:oak_sapling", "weight": 1}
   ]
 }
