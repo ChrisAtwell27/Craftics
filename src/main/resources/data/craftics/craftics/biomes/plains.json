@@ -40,6 +40,7 @@
     {"item": "minecraft:wheat_seeds", "weight": 5},
     {"item": "minecraft:cobblestone", "weight": 3},
     {"item": "minecraft:beetroot_seeds", "weight": 3},
+    {"item": "minecraft:bone_meal", "weight": 4},
     {"item": "minecraft:leather", "weight": 5},
     {"item": "minecraft:coal", "weight": 2},
     {"item": "minecraft:gold_ingot", "weight": 1},

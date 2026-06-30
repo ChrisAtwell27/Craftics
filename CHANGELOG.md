@@ -56,6 +56,8 @@ Wording
 Loot
 
 - Copper now drops far more often. As an early-game material it was a very low weight in its biome loot pools (weight 1 of roughly 70 on Plains and River), so it almost never appeared. Its weight was raised across the board: Plains and River 1 to 6, Cave 4 to 10, Mountain and Deep Dark 2 to 8
+- Gravel is now a completion-loot drop in River and Mountain (weight 4 each). It was previously only obtainable from Piglin Barter
+- A batch of common, useful blocks and materials that were never in any loot pool are now dropped from a thematically fitting biome. Several of these are literally a biome's own floor or obstacle block that you could see but never collect: clay (River), tuff plus andesite, diorite and granite (Mountain, completing the polished-stone set), moss block and mud (Jungle), calcite and dripstone block (Cave), and glass plus terracotta (Desert). A handful of handy materials that previously only came from specific mob kills were also added to completion loot: charcoal and honeycomb (Forest), slime ball (Jungle), glowstone dust (Nether Wastes), and bone meal (Plains)
 
 0.2.8
 Combat, Bosses, and Addon Compat

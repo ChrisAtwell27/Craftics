@@ -36,6 +36,8 @@
     {"item": "minecraft:pumpkin_seeds", "weight": 2},
     {"item": "minecraft:glow_berries", "weight": 3},
     {"item": "minecraft:cobblestone", "weight": 6},
+    {"item": "minecraft:calcite", "weight": 4},
+    {"item": "minecraft:dripstone_block", "weight": 4},
     {"item": "minecraft:copper_ingot", "weight": 10},
     {"item": "minecraft:amethyst_shard", "weight": 3},
     {"item": "minecraft:emerald", "weight": 2},

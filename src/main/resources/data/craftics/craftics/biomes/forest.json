@@ -39,6 +39,8 @@
     {"item": "minecraft:arrow", "weight": 4},
     {"item": "minecraft:string", "weight": 6},
     {"item": "minecraft:spider_eye", "weight": 4},
+    {"item": "minecraft:charcoal", "weight": 4},
+    {"item": "minecraft:honeycomb", "weight": 3},
     {"item": "minecraft:mushroom_stew", "weight": 3},
     {"item": "minecraft:sweet_berries", "weight": 4},
     {"item": "minecraft:brown_mushroom", "weight": 3},

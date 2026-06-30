@@ -30,6 +30,8 @@
     {"item": "minecraft:sandstone", "weight": 8},
     {"item": "minecraft:coal", "weight": 3},
     {"item": "minecraft:sand", "weight": 7},
+    {"item": "minecraft:glass", "weight": 5},
+    {"item": "minecraft:terracotta", "weight": 4},
     {"item": "minecraft:feather", "weight": 6},
     {"item": "minecraft:flint", "weight": 6},
     {"item": "minecraft:gold_ingot", "weight": 6},
