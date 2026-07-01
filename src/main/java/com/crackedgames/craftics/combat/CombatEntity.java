@@ -513,6 +513,8 @@ public class CombatEntity {
     public void setBurningDamage(int d) { this.burningDamage = d; }
     public int getSoakedTurns() { return soakedTurns; }
     public void setSoakedTurns(int t) { this.soakedTurns = t; }
+    /** True while a Soaked status is active. THE predicate lightning sources use. */
+    public boolean isSoaked() { return soakedTurns > 0; }
     public int getSoakedAmplifier() { return soakedAmplifier; }
     public void setSoakedAmplifier(int a) { this.soakedAmplifier = a; }
     public int getConfusionTurns() { return confusionTurns; }
@@ -763,6 +765,23 @@ public class CombatEntity {
     /** Offensive special-item hit: flat damage plus a percent of max HP. Returns damage dealt. */
     public int takeSpecialDamage(int flat, double pctMaxHp) {
         return takeDamage(flat + percentMaxHpDamage(pctMaxHp));
+    }
+
+    /**
+     * Lightning damage against this target. A Soaked target takes 2x - this is THE
+     * rule every lightning source (trident Channeling, Guster sherd, lightning rod,
+     * and any future source) routes through, so the Soaked bonus is applied
+     * consistently and can never be silently forgotten. Returns damage dealt.
+     */
+    public int takeLightningDamage(int rawDamage) {
+        int dmg = isSoaked() ? rawDamage * 2 : rawDamage;
+        return takeDamage(dmg);
+    }
+
+    /** Lightning variant of takeSpecialDamage: flat + percent-of-maxHP, doubled on Soaked. */
+    public int takeSpecialLightningDamage(int flat, double pctMaxHp) {
+        int base = flat + percentMaxHpDamage(pctMaxHp);
+        return takeLightningDamage(base);
     }
 
     /**

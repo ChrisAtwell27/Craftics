@@ -34,12 +34,19 @@ public class TraderSystem {
     public record Trade(ItemStack item, int emeraldCost, String description) {}
 
     /**
+     * Roll a trader offer for a SPECIFIC type (used by the merchant-scene booths, which have a
+     * fixed occupant per booth rather than a random trader).
+     */
+    public static TraderOffer generateOfferForType(TraderType type, int tier, Random random) {
+        return new TraderOffer(type, generateTrades(type, tier, random));
+    }
+
+    /**
      * Generate trades for a random trader type at the given biome tier (1-9).
      */
     public static TraderOffer generateOffer(int biomeTier, Random random) {
         TraderType type = TraderType.values()[random.nextInt(TraderType.values().length)];
-        List<Trade> trades = generateTrades(type, biomeTier, random);
-        return new TraderOffer(type, trades);
+        return generateOfferForType(type, biomeTier, random);
     }
 
     public record TraderOffer(TraderType type, List<Trade> trades) {}

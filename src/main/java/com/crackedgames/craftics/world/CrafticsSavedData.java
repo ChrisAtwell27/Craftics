@@ -851,14 +851,15 @@ public class CrafticsSavedData extends PersistentState {
         return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 800);
     }
 
-    /** Get the merchant-scene origin within a player's world (Village / Bartering Station).
-     *  Uses laneZ + 900, one slot past the trial chamber (+800), so it never collides with
-     *  the arena (+0), trader (+500), dig site (+600), event arena (+700), or trial (+800). */
-    public net.minecraft.util.math.BlockPos getSceneOrigin(UUID playerId) {
+    /** Merchant-scene origin within a player's world, one lane slot per scene type so the
+     *  Village (+900) and Bartering Station (+1000) can be active independently. Both sit
+     *  past arena (+0), trader (+500), dig (+600), event (+700), and trial (+800). */
+    public net.minecraft.util.math.BlockPos getSceneOrigin(UUID playerId, String sceneName) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
         int laneZ = pd.worldSlot * LANE_SPACING_Z;
-        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 900);
+        int sceneZ = "barter_station".equals(sceneName) ? 1000 : 900;
+        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + sceneZ);
     }
 
     /**

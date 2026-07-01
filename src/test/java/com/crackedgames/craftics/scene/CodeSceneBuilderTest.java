@@ -42,4 +42,12 @@ class CodeSceneBuilderTest {
         SceneLayout layout = CodeSceneBuilder.buildLayout(0, 100, 0, "nope");
         assertTrue(layout.stands().isEmpty());
     }
+
+    @Test
+    void villageBoothsCarryFixedOccupants() {
+        SceneLayout layout = CodeSceneBuilder.buildLayout(0, 100, 0, "village");
+        for (int i = 0; i < layout.stands().size(); i++) {
+            assertEquals(SceneBooths.occupantFor("village", i), layout.stands().get(i).occupant());
+        }
+    }
 }

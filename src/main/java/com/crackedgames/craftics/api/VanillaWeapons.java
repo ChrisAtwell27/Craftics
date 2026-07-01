@@ -401,6 +401,8 @@ public final class VanillaWeapons {
                                                                 int luckPoints) {
         List<String> messages = new ArrayList<>();
         target.setAttackPenalty(Math.max(target.getAttackPenalty(), 2));
+        // Refresh to 1 turn so the decay tick clears it, matching the "for 1 turn" message.
+        target.setAttackPenaltyTurns(Math.max(target.getAttackPenaltyTurns(), 1));
         messages.add("\u00a77Weakened! " + target.getDisplayName() + " loses 2 ATK for 1 turn.");
         return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
     }
@@ -425,6 +427,33 @@ public final class VanillaWeapons {
             messages.add("\u00a73Splash! " + splash.getDisplayName() + " hit for " + splashDmg + ".");
         }
         return new WeaponAbility.AttackResult(baseDamage + totalExtra, messages, extraTargets);
+    }
+
+    /** Fire Coral Fan splash: same cone AoE as shapedFanSplash, plus +3 bonus damage
+     *  to every burning enemy hit (mirrors the bare Fire Coral's searing sting). */
+    private static WeaponAbility.AttackResult fireFanSplash(CombatEntity target,
+                                                            GridArena arena,
+                                                            int baseDamage,
+                                                            List<GridPos> tiles) {
+        List<String> messages = new ArrayList<>();
+        List<CombatEntity> extraTargets = new ArrayList<>();
+        int totalExtra = 0;
+        for (CombatEntity splash : AoeShapes.enemiesOn(arena, tiles, target)) {
+            int splashDmg = splash.takeDamage(baseDamage);
+            if (splash.getBurningTurns() > 0) {
+                splashDmg += splash.takeDamage(3);
+            }
+            extraTargets.add(splash);
+            totalExtra += splashDmg;
+            messages.add("§3Splash! " + splash.getDisplayName() + " hit for " + splashDmg + ".");
+        }
+        // Primary target burning bonus (the engine already applied the base hit to it).
+        int primaryBonus = 0;
+        if (target.getBurningTurns() > 0) {
+            primaryBonus = target.takeDamage(3);
+            messages.add("§6✖ Searing sting! +" + primaryBonus + " bonus damage to burning target!");
+        }
+        return new WeaponAbility.AttackResult(baseDamage + totalExtra + primaryBonus, messages, extraTargets);
     }
 
     // =========================================================================
@@ -991,8 +1020,8 @@ public final class VanillaWeapons {
             shapedFanSplash(t, a, dmg, AoeShapes.slam3x3(t.getGridPos()));
         WeaponAbilityHandler bubbleFan = (p, t, a, dmg, s, lp) ->      // Knockback -> line outward
             shapedFanSplash(t, a, dmg, AoeShapes.lineOutward(a.getPlayerGridPos(), t.getGridPos(), 3));
-        WeaponAbilityHandler fireFan = (p, t, a, dmg, s, lp) ->        // Burning -> cone in front
-            shapedFanSplash(t, a, dmg, AoeShapes.cone(a.getPlayerGridPos(), t.getGridPos(), 2));
+        WeaponAbilityHandler fireFan = (p, t, a, dmg, s, lp) ->        // Burning -> cone in front, +3 vs burning
+            fireFanSplash(t, a, dmg, AoeShapes.cone(a.getPlayerGridPos(), t.getGridPos(), 2));
         WeaponAbilityHandler hornFan = (p, t, a, dmg, s, lp) ->        // Defense pierce -> single + pierce behind
             shapedFanSplash(t, a, dmg, AoeShapes.pierceBehind(a.getPlayerGridPos(), t.getGridPos()));
 

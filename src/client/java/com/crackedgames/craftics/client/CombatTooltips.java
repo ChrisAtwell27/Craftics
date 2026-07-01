@@ -794,11 +794,17 @@ public class CombatTooltips implements ItemTooltipCallback {
             || item == Items.DEAD_BUBBLE_CORAL_FAN || item == Items.DEAD_FIRE_CORAL_FAN
             || item == Items.DEAD_HORN_CORAL_FAN)
             return weaponStatLine(item) + "\n\u00a77\u2716 Weakened: \u00a77Saps enemy ATK by 2 for 1 turn";
-        // Coral fans
-        if (item == Items.TUBE_CORAL_FAN || item == Items.BRAIN_CORAL_FAN
-            || item == Items.BUBBLE_CORAL_FAN || item == Items.FIRE_CORAL_FAN
-            || item == Items.HORN_CORAL_FAN)
-            return weaponStatLine(item) + "\n\u00a73\u2716 Splash: \u00a77Hits all enemies adjacent to target";
+        // Coral fans (each fan has its own AoE shape)
+        if (item == Items.TUBE_CORAL_FAN)
+            return weaponStatLine(item) + "\n\u00a73\u2716 Splash: \u00a77Hits target + the 4 orthogonally adjacent tiles (plus shape)";
+        if (item == Items.BRAIN_CORAL_FAN)
+            return weaponStatLine(item) + "\n\u00a73\u2716 Splash: \u00a77Hits target + all 8 surrounding tiles (3x3)";
+        if (item == Items.BUBBLE_CORAL_FAN)
+            return weaponStatLine(item) + "\n\u00a73\u2716 Splash: \u00a77Hits in a 3-tile line outward from you through the target";
+        if (item == Items.FIRE_CORAL_FAN)
+            return weaponStatLine(item) + "\n\u00a73\u2716 Splash: \u00a77Cone in front (2 tiles); +3 damage to each burning enemy hit";
+        if (item == Items.HORN_CORAL_FAN)
+            return weaponStatLine(item) + "\n\u00a73\u2716 Splash: \u00a77Hits target + 1 tile directly behind it (pierce)";
 
         // ── Utility Items ──
         if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+1 DEF when in offhand\n\u00a79Block: \u00a7725% chance to fully block an attack\n\u00a77No AP cost \u2014 equip in offhand slot";
@@ -940,6 +946,64 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.CREEPER_HEAD) return "\u00a7f\u2620 Wear: \u00a78+1 Blunt \u00a77dmg, \u00a77hits knock back nearby foes\n\u00a78Rare drop from creepers";
         if (item == Items.PIGLIN_HEAD) return "\u00a7f\u2620 Wear: \u00a7c+1 Slashing \u00a77dmg, \u00a76fireproof, +1 emerald/kill\n\u00a78Rare drop from piglins, brutes, z.piglins";
         if (item == Items.ZOMBIE_HEAD) return "\u00a7f\u2620 Wear: \u00a77+1 Physical \u00a77dmg, \u00a7aheal 2 HP per kill\n\u00a78Rare drop from zombies, husks, drowned";
+
+        // Paladins mod items. Spell weapons (staves/wands) describe their bound spell; melee
+        // weapons note their damage type; armor and spell books/scrolls are vanity. Kite
+        // shields grant offhand AC and are left to the normal shield path.
+        {
+            net.minecraft.util.Identifier palId = net.minecraft.registry.Registries.ITEM.getId(item);
+            if ("paladins".equals(palId.getNamespace())) {
+                String path = palId.getPath();
+
+                // Wands = priest/support spells (one per tier).
+                if (path.equals("acolyte_wand")) {
+                    return "\u00a7d\u2726 Heal \u00a78[1 AP]\u00a77: restore HP to a targeted ally, or yourself.";
+                }
+                if (path.equals("holy_wand")) {
+                    return "\u00a7d\u2726 Flash Heal \u00a78[2 AP]\u00a77: a stronger single-target heal on an ally or yourself.";
+                }
+                if (path.equals("diamond_holy_wand")) {
+                    return "\u00a7d\u2726 Circle of Healing \u00a78[2 AP]\u00a77: heal you and allies within 2 tiles, plus Absorption.";
+                }
+                if (path.equals("netherite_holy_wand")) {
+                    return "\u00a7b\u2726 Barrier \u00a78[2 AP]\u00a77: shield you and nearby allies with Absorption.";
+                }
+                // Staves = paladin/offense spells (one per tier).
+                if (path.equals("holy_staff")) {
+                    return "\u00a7e\u2726 Holy Shock \u00a78[2 AP]\u00a77: smite an enemy for damage + knockback, or mend an ally.";
+                }
+                if (path.equals("diamond_holy_staff")) {
+                    return "\u00a76\u2726 Judgement \u00a78[3 AP]\u00a77: AoE holy damage around the target (2x vs undead), stuns survivors.";
+                }
+                if (path.equals("netherite_holy_staff")) {
+                    return "\u00a7c\u2726 Battle Banner \u00a78[2 AP]\u00a77: rally you and nearby allies with Strength.";
+                }
+                if (path.equals("ruby_holy_staff")) {
+                    return "\u00a7b\u2726 Holy Beam \u00a78[2 AP]\u00a77: pierces the target and the tile beyond it. Enemies take damage; allies are healed.";
+                }
+                if (path.equals("aether_holy_staff")) {
+                    return "\u00a7e\u2726 Divine Protection \u00a78[2 AP]\u00a77: ward yourself with Resistance.";
+                }
+                // Melee weapons -> damage-type note
+                if (path.endsWith("_claymore")) {
+                    return "\u00a7f\u2694 Claymore\u00a77: heavy Slashing two-hander.";
+                }
+                if (path.endsWith("_great_hammer")) {
+                    return "\u00a7f\u2692 Great Hammer\u00a77: heavy Blunt weapon.";
+                }
+                if (path.endsWith("_mace")) {
+                    return "\u00a7f\u2692 Mace\u00a77: Blunt weapon.";
+                }
+
+                // Vanity: armor pieces and spell books/scrolls have no combat effect.
+                boolean isVanityArmor = path.endsWith("_head") || path.endsWith("_chest")
+                    || path.endsWith("_legs") || path.endsWith("_feet");
+                boolean isSpellItem = path.startsWith("spell_book/") || path.startsWith("spell_scroll/");
+                if (isVanityArmor || isSpellItem) {
+                    return "\u00a77Paladins item (no combat effect in Craftics)";
+                }
+            }
+        }
 
         return null;
     }

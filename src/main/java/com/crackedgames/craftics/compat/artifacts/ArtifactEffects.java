@@ -5,10 +5,14 @@ import com.crackedgames.craftics.api.CombatEffectHandler;
 import com.crackedgames.craftics.api.CombatResult;
 import com.crackedgames.craftics.combat.CombatEffects;
 import com.crackedgames.craftics.combat.CombatEntity;
+import com.crackedgames.craftics.combat.DamageType;
+import com.crackedgames.craftics.combat.PlayerProgression;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -223,24 +227,45 @@ public final class ArtifactEffects {
         }
     }
 
-    /** When you take damage, gain +2 Speed for the rest of the turn. */
+    /** When you take damage, gain +Speed for the turn, and 30% of the time the
+     *  panic rattles the attacker (Confusion, 1 turn). */
     public static final class PanicNecklace implements CombatEffectHandler {
         @Override
         public CombatResult onTakeDamage(CombatEffectContext ctx, CombatEntity attacker, int damage) {
             ctx.getPlayerEffects().addEffect(CombatEffects.EffectType.SPEED, 1, 0);
+            if (attacker != null && attacker.isAlive() && !attacker.isAlly() && RNG.nextFloat() < 0.30f) {
+                attacker.stackConfusion(1, 1);
+                return new CombatResult(damage,
+                    List.of("§dPanic Necklace: " + attacker.getDisplayName() + " is rattled and disoriented!"),
+                    false);
+            }
             return CombatResult.unchanged(damage);
         }
     }
 
-    /** 30% chance on hit to chain 3 damage to an adjacent enemy. */
+    /** 30% chance on hit to chain lightning to an adjacent enemy: 3 base damage
+     *  (plus Special affinity, doubled if the target is Soaked, via the central
+     *  lightning rule) and Confusion for 1 turn. */
     public static final class ShockPendant implements CombatEffectHandler {
         @Override
         public CombatResult onDealDamage(CombatEffectContext ctx, CombatEntity target, int damage) {
             if (target == null || RNG.nextFloat() >= 0.30f) return CombatResult.unchanged(damage);
             for (CombatEntity adj : adjacentEnemies(ctx.getArena(), target.getGridPos())) {
                 if (adj == target) continue;
-                adj.applyDirectDamage(3);
-                return new CombatResult(damage, List.of("§bShock Pendant chains 3 to " + adj.getDisplayName()), false);
+                ServerPlayerEntity player = ctx.getPlayer();
+                // Special-class affinity boosts this lightning chain, same as the
+                // lightning rod / Channeling / Guster. takeLightningDamage then applies
+                // the Soaked 2x to (base + special).
+                int specialBonus = DamageType.getTotalBonus(
+                        player, ctx.getTrimScan(), ctx.getPlayerEffects(), DamageType.SPECIAL,
+                        PlayerProgression.get((ServerWorld) player.getEntityWorld()).getStats(player))
+                    + DamageType.getMobHeadBonus(
+                        player.getEquippedStack(EquipmentSlot.HEAD), DamageType.SPECIAL);
+                int dealt = adj.takeLightningDamage(3 + specialBonus);
+                adj.stackConfusion(1, 1);
+                return new CombatResult(damage,
+                    List.of("§bShock Pendant shocks and scrambles " + adj.getDisplayName() + " for " + dealt + "!"),
+                    false);
             }
             return CombatResult.unchanged(damage);
         }

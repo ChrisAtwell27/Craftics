@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "B"
+  ],
+  "key": {
+    "B": { "item": "minecraft:barrier" }
+  },
+  "result": {
+    "count": 1,
+    "id": "paladins:monk_workbench"
+  }
+}

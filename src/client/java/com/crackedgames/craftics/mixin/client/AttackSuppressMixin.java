@@ -9,22 +9,25 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Suppress vanilla attack swing animation during combat.
- * Prevents the player from punching the air when clicking tiles.
+ * Suppress vanilla attack + item-use during combat AND in a merchant scene.
+ * In combat this stops the player punching air / using items when clicking tiles.
+ * In a scene it also blocks the vanilla right-click that would reopen a booth
+ * villager's merchant screen directly (VillagerEntity.interactMob gates only on
+ * non-empty offers), which otherwise loops the "Are you done shopping?" flow.
  */
 @Mixin(MinecraftClient.class)
 public class AttackSuppressMixin {
 
     @Inject(method = "doAttack", at = @At("HEAD"), cancellable = true)
     private void craftics$suppressAttackInCombat(CallbackInfoReturnable<Boolean> cir) {
-        if (CombatState.isInCombat()) {
+        if (CombatState.isInCombat() || CombatState.isInScene()) {
             cir.setReturnValue(false);
         }
     }
 
     @Inject(method = "doItemUse", at = @At("HEAD"), cancellable = true)
     private void craftics$suppressItemUseInCombat(CallbackInfo ci) {
-        if (CombatState.isInCombat()) {
+        if (CombatState.isInCombat() || CombatState.isInScene()) {
             ci.cancel();
         }
     }

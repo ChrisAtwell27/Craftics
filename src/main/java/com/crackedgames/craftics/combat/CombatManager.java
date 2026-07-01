@@ -5358,7 +5358,16 @@ public class CombatManager {
             }
 
             // Check death
+            // Coral Fan Club achievement: count enemies killed by a coral-fan splash this hit.
+            net.minecraft.item.Item fanWeapon = player.getMainHandStack().getItem();
+            boolean isCoralFan = fanWeapon == net.minecraft.item.Items.TUBE_CORAL_FAN
+                || fanWeapon == net.minecraft.item.Items.BRAIN_CORAL_FAN
+                || fanWeapon == net.minecraft.item.Items.BUBBLE_CORAL_FAN
+                || fanWeapon == net.minecraft.item.Items.FIRE_CORAL_FAN
+                || fanWeapon == net.minecraft.item.Items.HORN_CORAL_FAN;
+            boolean primaryWasAlive = fTarget.isAlive();
             checkAndHandleDeath(fTarget);
+            if (isCoralFan && primaryWasAlive && !fTarget.isAlive()) achievementTracker.recordCoralFanKill();
             for (CombatEntity extra : abilityResult.extraTargets()) {
                 net.minecraft.util.math.BlockPos extraBlock = arena.gridToBlockPos(extra.getGridPos());
                 com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome extraOutcome;
@@ -5380,7 +5389,9 @@ public class CombatManager {
                         player.getBlockPos(), extraBlock,
                         0f, false, arena);
                 com.crackedgames.craftics.vfx.Vfx.play(attackWorld, extraDesc, extraCtx);
+                boolean extraWasAlive = extra.isAlive();
                 checkAndHandleDeath(extra);
+                if (isCoralFan && extraWasAlive && !extra.isAlive()) achievementTracker.recordCoralFanKill();
             }
 
             sendSync();
@@ -5817,12 +5828,13 @@ public class CombatManager {
 
         // Scaled lightning damage: Lv1=3, Lv2=6, Lv3=10
         int lightningDmg = channelingLevel == 1 ? 3 : (channelingLevel == 2 ? 6 : 10);
+        // Special-class affinity also boosts lightning. The Soaked 2x in takeLightningDamage
+        // then applies to (base + special), so hybrid Water+Special builds compound.
+        int specialBonus = getSpecialUtilityDamageBonus();
 
-        // Soaked bonus: double lightning damage
-        boolean targetSoaked = target.getSoakedTurns() > 0;
-        if (targetSoaked) lightningDmg *= 2;
-
-        int dealt = target.takeDamage(lightningDmg);
+        // Soaked bonus (2x) is applied centrally by takeLightningDamage -see CombatEntity.
+        boolean targetSoaked = target.isSoaked();
+        int dealt = target.takeLightningDamage(lightningDmg + specialBonus);
 
         // Lightning visual + sound
         BlockPos targetBlock = arena.gridToBlockPos(target.getGridPos());
@@ -5861,9 +5873,10 @@ public class CombatManager {
         int chained = 0;
         for (CombatEntity chain : candidates) {
             if (chained >= chainCount) break;
-            boolean chainSoaked = chain.getSoakedTurns() > 0;
-            int chainDmg = chainSoaked ? lightningDmg : lightningDmg / 2;
-            int chainDealt = chain.takeDamage(chainDmg);
+            boolean chainSoaked = chain.isSoaked();
+            // Chain base is half the main bolt; takeLightningDamage restores full damage
+            // on a Soaked chain target (2x), matching every other lightning hit's ratio.
+            int chainDealt = chain.takeLightningDamage(lightningDmg / 2 + specialBonus);
             hitIds.add(chain.getEntityId());
             chained++;
 
@@ -10205,8 +10218,10 @@ public class CombatManager {
                         if (!e.isAlive() || e.isAlly()) continue;
                         int d = Math.abs(e.getGridPos().x() - tPos.x()) + Math.abs(e.getGridPos().z() - tPos.z());
                         if (d <= 1) {
-                            int lightningDmg = 4;
-                            if (e.getSoakedTurns() > 0) lightningDmg *= 2; // soaked = double lightning
+                            // Soaked doubles lightning -mirrors CombatEntity.takeLightningDamage
+                            // (canonical rule). The rod keeps the SPECIAL-resistance utility path,
+                            // so it applies the same 2x factor here rather than routing through it.
+                            int lightningDmg = e.isSoaked() ? 4 * 2 : 4;
                             applySpecialUtilityDamage(e, lightningDmg);
                             hit++;
                         }
@@ -20667,19 +20682,7 @@ public class CombatManager {
      *  the entity never traverses the arena). Fixes the host-only walking-in-
      *  place desync in MP combat / cinematic walk-ups. */
     private static void broadcastPlayerPositionToOthers(ServerPlayerEntity p) {
-        if (p == null || p.getEntityWorld() == null) return;
-        if (!(p.getEntityWorld() instanceof ServerWorld sw)) return;
-        //? if <=1.21.1 {
-        net.minecraft.network.packet.Packet<?> packet =
-            new net.minecraft.network.packet.s2c.play.EntityPositionS2CPacket(p);
-        //?} else {
-        /*// 1.21.3+ split the legacy EntityPositionS2CPacket (absolute teleport
-        // taking an Entity) into a new relative-position packet, and introduced
-        // EntityPositionSyncS2CPacket for the absolute-sync use case.
-        net.minecraft.network.packet.Packet<?> packet =
-            net.minecraft.network.packet.s2c.play.EntityPositionSyncS2CPacket.create(p);
-        *///?}
-        sw.getChunkManager().sendToOtherNearbyPlayers(p, packet);
+        CinematicBroadcast.broadcastPlayerPositionToOthers(p);
     }
 
     public void handleTraderBuy(ServerPlayerEntity player, int tradeIndex) {

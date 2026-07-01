@@ -114,8 +114,14 @@ public class ModNetworking {
                 .handleTraderDone(context.player());
         });
 
-        // Handle dialogue choice - route to party leader's CombatManager
+        // Handle dialogue choice - route to scene first, then combat
         ServerPlayNetworking.registerGlobalReceiver(DialogueChoicePayload.ID, (payload, context) -> {
+            if (com.crackedgames.craftics.scene.SceneController.forPlayer(
+                    context.player().getUuid()) != null) {
+                com.crackedgames.craftics.scene.SceneController.handleDialogueChoice(
+                    context.player(), payload.action());
+                return;
+            }
             CombatManager.getActiveCombat(context.player().getUuid())
                 .handleDialogueChoice(context.player(), payload.action());
         });

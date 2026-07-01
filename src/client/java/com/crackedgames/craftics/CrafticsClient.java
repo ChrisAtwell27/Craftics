@@ -471,6 +471,16 @@ public class CrafticsClient implements ClientModInitializer {
                     CombatState.setCinematicActive(false);
                     context.client().options.setPerspective(Perspective.FIRST_PERSON);
                     context.client().mouse.lockCursor();
+                    // Leaving a cinematic (event OR merchant scene) must clear any lingering
+                    // custom walk-animation layer. A scene's cinematic walk starts a WalkAnimation
+                    // on the local player's layer; without this reset it (and the shared
+                    // currentLayer/wasAnimating statics) carries into the NEXT combat, leaving that
+                    // fight's walk animation dead. Mirrors the entity-swap recovery in
+                    // CombatAnimations.tick(). Safe for events too (combat re-inits on start).
+                    if (context.client().player != null) {
+                        com.crackedgames.craftics.client.CombatAnimations.stopWalking(context.client().player);
+                    }
+                    com.crackedgames.craftics.client.CombatAnimations.clearCache();
                 });
             }
         );
@@ -873,7 +883,7 @@ public class CrafticsClient implements ClientModInitializer {
                 // Never let a hint bug crash the client tick.
             }
 
-            if (CombatState.isInCombat() && client.mouse.isCursorLocked()
+            if ((CombatState.isInCombat() || CombatState.isInScene()) && client.mouse.isCursorLocked()
                     && client.currentScreen == null) {
                 client.mouse.unlockCursor();
             }

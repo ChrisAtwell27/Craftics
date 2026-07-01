@@ -269,6 +269,12 @@ public class CombatAnimations {
     public static void clearCache() {
         currentLayer = null;
         wasAnimating = false;
+        // Also reset the cinematic-walk tracking so a scene/event that left the local
+        // player mid-walk can't carry a stale "already walking" state into the next
+        // combat (which would suppress that fight's walk animation).
+        wasCinematicWalking = false;
+        lastCinX = Double.NaN;
+        lastCinZ = Double.NaN;
     }
 
     private static float easeInOut(float t) {

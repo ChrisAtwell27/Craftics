@@ -60,6 +60,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.init();
         com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();
         com.crackedgames.craftics.compat.instruments.InstrumentsCompat.init();
+        com.crackedgames.craftics.compat.paladins.PaladinsCompat.init();
 
         // Addon entrypoint: invoked after all built-in content and compat modules are
         // registered, so addon registrations run last and win deterministically over
@@ -429,6 +430,12 @@ public class CrafticsMod implements ModInitializer {
             }
 
             try {
+                com.crackedgames.craftics.scene.SceneOfferStore.tick();
+            } catch (Throwable t) {
+                LOGGER.error("SceneOfferStore.tick() crashed; continuing server tick", t);
+            }
+
+            try {
                 com.crackedgames.craftics.combat.EventRoomCleanup.tick();
             } catch (Throwable t) {
                 LOGGER.error("EventRoomCleanup.tick() crashed; continuing server tick", t);
@@ -522,6 +529,7 @@ public class CrafticsMod implements ModInitializer {
                 com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
                 com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
                 com.crackedgames.craftics.compat.instruments.InstrumentsCompat.registerDeferred();
+                com.crackedgames.craftics.compat.paladins.PaladinsCompat.registerDeferred();
             });
 
         // Load biome definitions from JSON datapacks on server start

@@ -176,7 +176,7 @@ public class PotterySherdSpells {
         else if (item == Items.ARMS_UP_POTTERY_SHERD) result = useArmsUpSherd(player, world, playerBlock, combatEffects);
         else if (item == Items.PRIZE_POTTERY_SHERD) result = usePrizeSherd(player, world, playerBlock, combatEffects);
         else if (item == Items.SKULL_POTTERY_SHERD) result = useSkullSherd(player, arena, world, targetTile, playerPos, playerBlock);
-        else if (item == Items.GUSTER_POTTERY_SHERD) result = useGusterSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
+        else if (item == Items.GUSTER_POTTERY_SHERD) result = useGusterSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies, combatEffects);
         else return null;
 
         if (rollSherdBreak(player)) {
@@ -1377,7 +1377,7 @@ public class PotterySherdSpells {
      *  Soaked enemies take 2x damage. Each arc deals slightly less damage. */
     private static String useGusterSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                           GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
-                                          List<CombatEntity> enemies) {
+                                          List<CombatEntity> enemies, CombatEffects combatEffects) {
         CombatEntity target = arena.getOccupant(targetTile);
 
         // Phase 0 - Cast: storm charging
@@ -1387,6 +1387,13 @@ public class PotterySherdSpells {
 
         // Chain lightning: BFS from the target, chaining to enemies within 2 tiles of each hit
         int baseDamage = 8;
+        // Special-class affinity boosts this lightning spell too, matching the lightning rod
+        // and Channeling. Computed the same way as CombatManager.getSpecialUtilityDamageBonus.
+        int specialBonus = DamageType.getTotalBonus(
+                player, TrimEffects.scan(player), combatEffects, DamageType.SPECIAL,
+                PlayerProgression.get(world).getStats(player))
+            + DamageType.getMobHeadBonus(
+                player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), DamageType.SPECIAL);
         int chainDecay = 1; // damage reduces per chain
         Set<CombatEntity> hit = new LinkedHashSet<>();
         java.util.Deque<CombatEntity> queue = new java.util.ArrayDeque<>();
@@ -1419,9 +1426,8 @@ public class PotterySherdSpells {
         for (CombatEntity e : hit) {
             int depth = chainDepth.get(e);
             int dmg = Math.max(3, baseDamage - (depth * chainDecay));
-            // Soaked enemies take 2x lightning damage
-            if (e.getSoakedTurns() > 0) dmg *= 2;
-            int dealt = e.takeSpecialDamage(dmg, 0.06);
+            // Soaked 2x is applied centrally by takeSpecialLightningDamage -see CombatEntity.
+            int dealt = e.takeSpecialLightningDamage(dmg + specialBonus, 0.06);
             BlockPos eBlock = arena.gridToBlockPos(e.getGridPos());
             chainBlocks.add(eBlock);
 

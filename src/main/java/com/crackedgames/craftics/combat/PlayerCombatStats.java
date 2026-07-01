@@ -135,7 +135,17 @@ public class PlayerCombatStats {
     }
 
     public static boolean hasShield(ServerPlayerEntity player) {
-        return player.getEquippedStack(EquipmentSlot.OFFHAND).getItem() == Items.SHIELD;
+        net.minecraft.item.Item off = player.getEquippedStack(EquipmentSlot.OFFHAND).getItem();
+        if (off == Items.SHIELD) return true;
+        // Paladins kite shields count as shields for the passive offhand AC.
+        if (com.crackedgames.craftics.compat.paladins.PaladinsCompat.isLoaded()) {
+            net.minecraft.util.Identifier id = net.minecraft.registry.Registries.ITEM.getId(off);
+            if (com.crackedgames.craftics.compat.paladins.PaladinsCompat.NAMESPACE.equals(id.getNamespace())
+                    && id.getPath().endsWith("_kite_shield")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static boolean isBow(ServerPlayerEntity player) {

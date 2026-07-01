@@ -48,7 +48,7 @@ public final class CodeSceneBuilder {
                 minX, minZ, maxX, maxZ, oy,
                 npcX, oy, npcZ, 180f,
                 npcX, oy, npcZ - 1, 0f,
-                "", StandSlot.Kind.DEDICATED));
+                SceneBooths.occupantFor(sceneName, i), StandSlot.Kind.DEDICATED));
         }
         // Player spawns at the front-center of the walkway, facing +z toward the booths.
         int spawnX = ox + FLOOR_WIDTH / 2;
