@@ -80,6 +80,13 @@ public class CombatManager {
         return INSTANCES.values().stream().anyMatch(cm -> cm.active);
     }
 
+    /** Count of currently-active combats, for {@code /craftics status}. INSTANCES
+     *  holds one (mostly idle) manager per player who has ever fought, so raw map
+     *  size would overcount; only cm.active entries are live fights. */
+    public static int activeCount() {
+        return (int) INSTANCES.values().stream().filter(cm -> cm.active).count();
+    }
+
     /** @deprecated use get(player) instead */
     @Deprecated
     public static CombatManager getInstance() {
@@ -1526,30 +1533,7 @@ public class CombatManager {
     }
 
     private static void teleportToHub(ServerPlayerEntity p) {
-        ServerWorld world = (ServerWorld) p.getEntityWorld();
-        CrafticsSavedData data = CrafticsSavedData.get(world);
-        BlockPos hub = data.getHubTeleportPos(p.getUuid());
-        // Dismount first. While a passenger of a combat mount/boat,
-        // requestTeleport silently keeps the player bound to the vehicle
-        // and snaps them back, leaving them stuck inside the arena.
-        if (p.hasVehicle()) {
-            net.minecraft.entity.Entity vehicle = p.getVehicle();
-            p.stopRiding();
-            // A Craftics combat mount is frozen server-side (CombatMountMixin), so a
-            // plain stopRiding can leave the CLIENT's rider link intact -it then
-            // rubber-bands the player back onto the (in-arena) mount and ignores the
-            // teleport below. Discarding the mount entity forces the client to drop the
-            // link so the teleport sticks. Going home restores the mount to the hub from
-            // saved NBT, so removing the live combat entity here loses nothing.
-            if (vehicle != null && vehicle.getCommandTags().contains("craftics_arena_mount")) {
-                vehicle.discard();
-            }
-        }
-        // Always land on the HIGHEST solid block in the hub column so a stale/low hub Y
-        // (or a hollow island interior) can never drop the player under the island.
-        int landY = CrafticsMod.hubLandingY(world, hub.getX(), hub.getZ(), hub.getY());
-        int y = landY != Integer.MIN_VALUE ? landY : hub.getY();
-        p.requestTeleport(hub.getX() + 0.5, y, hub.getZ() + 0.5);
+        com.crackedgames.craftics.world.HubTeleports.toHub(p);
     }
 
     // Best-effort tame state via reflection -- resilient across mapping/name changes
@@ -18907,6 +18891,7 @@ public class CombatManager {
         com.crackedgames.craftics.combat.barter.BarterCategory picked =
             eligible.get(rng.nextInt(eligible.size()));
         barterCategoryId = picked.id();
+        com.crackedgames.craftics.scene.MetMerchants.recordBarterer(world, savedPlayer.getUuid(), picked.id());
 
         // Track participating players and roll each one's secret success threshold.
         for (ServerPlayerEntity p : members) {
@@ -19086,6 +19071,8 @@ public class CombatManager {
         // Tier is based on the biome where the event started, not mutable runtime state.
         int biomeTier = Math.max(1, biomeOrdinal + 1);
         activeTraderOffer = TraderSystem.generateOffer(biomeTier, new java.util.Random());
+        com.crackedgames.craftics.scene.MetMerchants.recordTrader(
+            world, savedPlayer.getUuid(), activeTraderOffer.type().name());
 
         // Apply Resourceful stat discount per-player (use leader's for trade offer since it's shared)
         int resourcefulDiscount = PlayerProgression.get(world)

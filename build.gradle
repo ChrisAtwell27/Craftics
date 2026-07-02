@@ -28,6 +28,10 @@ repositories {
 		name = 'EngineHub'
 		url = 'https://maven.enginehub.org/repo/'
 	}
+	maven {
+		name = 'Nucleoid'
+		url = 'https://maven.nucleoid.xyz/'
+	}
 }
 
 loom {
@@ -99,6 +103,9 @@ dependencies {
 	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-base:${project.cca_version}")
 	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-entity:${project.cca_version}")
 	include modImplementation("org.ladysnake.cardinal-components-api:cardinal-components-world:${project.cca_version}")
+
+	// Fantasy — runtime dimension management (per-island persistent worlds)
+	include modImplementation("xyz.nucleoid:fantasy:${project.fantasy_version}")
 
 	// JUnit 5 — pure-logic unit tests (VFX descriptor builder, codecs, anchor resolver)
 	testImplementation platform('org.junit:junit-bom:5.10.2')

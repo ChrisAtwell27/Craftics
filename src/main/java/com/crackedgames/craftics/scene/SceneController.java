@@ -105,7 +105,12 @@ public final class SceneController {
         // instance), so the old `getActiveCombat(...) != null` guard silently
         // blocked ALL scene entry - isEngaged() is the real check.
         if (com.crackedgames.craftics.combat.CombatManager.isEngaged(player.getUuid())) return;
+        if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)) return;
         ServerWorld world = (ServerWorld) player.getEntityWorld();
+        // Scene booths are built at fixed coords inside the owner's island dim. Entry
+        // is only valid while the player is standing in an island dim - otherwise the
+        // build/teleport would land in the overworld lobby. (De-laned, Task 6.)
+        if (!com.crackedgames.craftics.world.IslandDimensions.isIslandWorld(world)) return;
         CrafticsSavedData data = CrafticsSavedData.get(world);
         UUID owner = data.getEffectiveWorldOwner(player.getUuid());
         if (INSTANCES.containsKey(owner)) return; // a scene is already active for this island
@@ -196,6 +201,13 @@ public final class SceneController {
         for (SceneController c : new ArrayList<>(INSTANCES.values())) c.tick();
     }
 
+    /** Count of currently-active island scenes, for {@code /craftics status}.
+     *  INSTANCES only ever holds live scenes (created on enter, removed by
+     *  {@link #teardown} on the last member leaving), so raw size IS the count. */
+    public static int activeCount() {
+        return INSTANCES.size();
+    }
+
     public static void onDisconnect(UUID playerUuid) {
         SceneController c = forPlayer(playerUuid);
         if (c == null) return;
@@ -249,39 +261,35 @@ public final class SceneController {
     }
 
     /**
-     * Give every booth a merchant identity. The village draws distinct villager
-     * trader types; the bartering station draws distinct piglin barter
-     * categories (tier-gated, falling back to the full list if the gate empties
-     * it). Re-rolled per visit so the hall's stock rotates.
+     * Give every booth a merchant identity, but only for merchants the island
+     * has actually met (via {@link MetMerchants}). Unmet merchants leave their
+     * stand empty ({@code null}) rather than falling back to a default or
+     * duplicating another merchant to fill the hall - meeting every merchant is
+     * what fills the hall. Re-rolled per visit so the hall's stock rotates.
      */
     private void assignOccupants() {
         Random rng = new Random();
         boothOccupants.clear();
+        CrafticsSavedData.PlayerData ownerData =
+            CrafticsSavedData.get(world).getPlayerData(islandOwner);
         if ("barter_station".equals(sceneName)) {
-            List<BarterCategory> pool = new ArrayList<>(
-                com.crackedgames.craftics.api.registry.BarterCategoryRegistry.all());
+            List<BarterCategory> pool = MetMerchants.filterMet(
+                new ArrayList<>(com.crackedgames.craftics.api.registry.BarterCategoryRegistry.all()),
+                ownerData.metBarterers, BarterCategory::id);
             pool.removeIf(c -> c.minBiomeTier() > tradeTier);
-            if (pool.isEmpty()) {
-                pool = new ArrayList<>(
-                    com.crackedgames.craftics.api.registry.BarterCategoryRegistry.all());
-            }
             java.util.Collections.shuffle(pool, rng);
             for (int i = 0; i < layout.stands().size(); i++) {
-                // Wrap around if there are more booths than categories.
-                BarterCategory cat = pool.isEmpty() ? null : pool.get(i % pool.size());
-                if (cat == null) {
-                    boothOccupants.add(new BoothOccupant.Barter(new BarterCategory(
-                        "craftics:generic", "Barterer", "§6♦", "odds and ends", 0)));
-                } else {
-                    boothOccupants.add(new BoothOccupant.Barter(cat));
-                }
+                // One booth per met category; leftover stands stay empty. No defaults.
+                boothOccupants.add(i < pool.size() ? new BoothOccupant.Barter(pool.get(i)) : null);
             }
         } else {
-            List<TraderSystem.TraderType> types =
-                new ArrayList<>(List.of(TraderSystem.TraderType.values()));
+            List<TraderSystem.TraderType> types = MetMerchants.filterMet(
+                new ArrayList<>(List.of(TraderSystem.TraderType.values())),
+                ownerData.metTraders, TraderSystem.TraderType::name);
             java.util.Collections.shuffle(types, rng);
             for (int i = 0; i < layout.stands().size(); i++) {
-                TraderSystem.TraderType type = types.get(i % types.size());
+                if (i >= types.size()) { boothOccupants.add(null); continue; }
+                TraderSystem.TraderType type = types.get(i);
                 TraderSystem.TraderOffer offer = TraderSystem.generateOffer(type, tradeTier, rng);
                 int[] stock = new int[offer.trades().size()];
                 for (int t = 0; t < stock.length; t++) {
@@ -307,6 +315,7 @@ public final class SceneController {
 
     private void spawnNpcs() {
         for (int i = 0; i < layout.stands().size(); i++) {
+            if (boothOccupants.get(i) == null) { npcEntityIds.add(-1); continue; }
             StandSlot s = layout.stands().get(i);
             Entity npc = "barter_station".equals(sceneName)
                 ? EntityType.PIGLIN.spawn(world, new BlockPos(s.npcX(), s.npcY(), s.npcZ()), SpawnReason.EVENT)
@@ -358,6 +367,8 @@ public final class SceneController {
         for (int i = 0; i < layout.stands().size(); i++) {
             if (layout.stands().get(i).contains(wx, wz)) { boothIdx = i; break; }
         }
+        // An empty stand (unmet merchant) is plain ground: no booth walk-up.
+        if (boothIdx >= 0 && boothOccupants.get(boothIdx) == null) boothIdx = -1;
         if (boothIdx >= 0) {
             StandSlot slot = layout.stands().get(boothIdx);
             final int fBooth = boothIdx;
@@ -407,6 +418,7 @@ public final class SceneController {
     private void openBooth(ServerPlayerEntity player, int boothIdx) {
         if (boothIdx < 0 || boothIdx >= boothOccupants.size()) return;
         BoothOccupant occ = boothOccupants.get(boothIdx);
+        if (occ == null) return; // empty stand - nothing to open
         activeBooth.put(player.getUuid(), boothIdx);
         if (occ instanceof BoothOccupant.Trader trader) {
             playBoothSound(boothIdx, SoundEvents.ENTITY_VILLAGER_TRADE, 1.0f, 1.0f);
@@ -637,14 +649,12 @@ public final class SceneController {
     }
 
     private void leave() {
-        CrafticsSavedData data = CrafticsSavedData.get(world);
         for (UUID memberUuid : new ArrayList<>(members)) {
             ServerPlayerEntity m = world.getServer().getPlayerManager().getPlayer(memberUuid);
             if (m == null) continue;
             ServerPlayNetworking.send(m, new ExitEventCinematicPayload());
             ServerPlayNetworking.send(m, new SceneStatePayload(false, 0, 0, 0, 0, 0));
-            BlockPos hub = data.getHubTeleportPos(memberUuid);
-            if (hub != null) m.requestTeleport(hub.getX() + 0.5, hub.getY(), hub.getZ() + 0.5);
+            com.crackedgames.craftics.world.HubTeleports.toHub(m);
         }
         teardown();
     }

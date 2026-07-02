@@ -97,6 +97,9 @@ public class CrafticsMod implements ModInitializer {
         // mob on your island to add it to, or remove it from, your battle party.
         net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) return net.minecraft.util.ActionResult.PASS;
+            if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)) {
+                return net.minecraft.util.ActionResult.FAIL;
+            }
             if (!player.isSneaking() || !player.getMainHandStack().isEmpty()) return net.minecraft.util.ActionResult.PASS;
             if (!(entity instanceof net.minecraft.entity.mob.MobEntity mob)) return net.minecraft.util.ActionResult.PASS;
             if (!(player instanceof net.minecraft.server.network.ServerPlayerEntity sp)) return net.minecraft.util.ActionResult.PASS;
@@ -116,6 +119,9 @@ public class CrafticsMod implements ModInitializer {
         net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
                 return net.minecraft.util.TypedActionResult.pass(player.getStackInHand(hand));
+            }
+            if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)) {
+                return net.minecraft.util.TypedActionResult.fail(player.getStackInHand(hand));
             }
             net.minecraft.item.ItemStack stack = player.getStackInHand(hand);
             net.minecraft.item.Item item = stack.getItem();
@@ -161,6 +167,9 @@ public class CrafticsMod implements ModInitializer {
         /*net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient || hand != net.minecraft.util.Hand.MAIN_HAND) {
                 return net.minecraft.util.ActionResult.PASS;
+            }
+            if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)) {
+                return net.minecraft.util.ActionResult.FAIL;
             }
             net.minecraft.item.ItemStack stack = player.getStackInHand(hand);
             net.minecraft.item.Item item = stack.getItem();
@@ -208,6 +217,9 @@ public class CrafticsMod implements ModInitializer {
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             CombatManager.clearAll();
             com.crackedgames.craftics.level.BiomeRegistry.clear();
+            // Fantasy saves/unloads its own runtime worlds on stop; this only drops
+            // our stale UUID->handle map so it doesn't leak into the next session.
+            com.crackedgames.craftics.world.IslandDimensions.clear();
         });
 
         // When the overworld loads, check if we need to build the hub
@@ -237,11 +249,32 @@ public class CrafticsMod implements ModInitializer {
             if (overworld.getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator) {
                 LOGGER.info("Craftics: Teleporting player {} to hub", player.getName().getString());
                 // Land on the HIGHEST solid block at the lobby column, never a hard y=65
-                // that can sit inside or under the lobby island.
-                int joinY = hubLandingY(overworld, 0, 0, 65);
-                if (joinY == Integer.MIN_VALUE) joinY = 65;
-                player.refreshPositionAndAngles(0.5, joinY, 0.5, 0f, 0f);
-                player.requestTeleport(0.5, joinY, 0.5);
+                // that can sit inside or under the lobby island. Honors a custom stored
+                // lobby spawn (/craftics lobby setspawn) when one has been set.
+                CrafticsSavedData joinLobbyData = CrafticsSavedData.get(overworld);
+                net.minecraft.util.math.BlockPos joinLobbySpawn = joinLobbyData.getLobbySpawn();
+                double joinX = joinLobbySpawn != null ? joinLobbySpawn.getX() + 0.5 : 0.5;
+                double joinZ = joinLobbySpawn != null ? joinLobbySpawn.getZ() + 0.5 : 0.5;
+                float joinYaw = joinLobbySpawn != null ? joinLobbyData.lobbySpawnYaw : 0f;
+                int joinFallbackY = joinLobbySpawn != null ? joinLobbySpawn.getY() : 65;
+                int joinY = hubLandingY(overworld, (int) Math.floor(joinX), (int) Math.floor(joinZ), joinFallbackY);
+                if (joinY == Integer.MIN_VALUE) joinY = joinFallbackY;
+                // De-laned: a player who logged out inside their island dim rejoins THERE,
+                // so routing to the overworld lobby is now cross-dim. requestTeleport is
+                // same-dim only (it would land them at island-(0,65,0) instead of the lobby);
+                // use the version-split cross-dim teleport when they aren't already here.
+                if (player.getServerWorld() != overworld) {
+                    //? if <=1.21.1 {
+                    player.teleport(overworld, joinX, joinY, joinZ,
+                        java.util.Collections.emptySet(), joinYaw, 0f);
+                    //?} else {
+                    /*player.teleport(overworld, joinX, joinY, joinZ,
+                        java.util.Collections.emptySet(), joinYaw, 0f, true);
+                    *///?}
+                } else {
+                    player.refreshPositionAndAngles(joinX, joinY, joinZ, joinYaw, 0f);
+                    player.requestTeleport(joinX, joinY, joinZ);
+                }
                 player.changeGameMode(GameMode.SURVIVAL);
 
                 // Give the starter guide once per saved player profile.
@@ -266,8 +299,11 @@ public class CrafticsMod implements ModInitializer {
                     server.execute(() -> {
                         com.crackedgames.craftics.world.CrafticsSavedData d =
                             com.crackedgames.craftics.world.CrafticsSavedData.get(overworld);
+                        // Hubs live in the owner's island dim now - repair THAT world.
+                        net.minecraft.server.world.ServerWorld islandWorld =
+                            com.crackedgames.craftics.world.IslandDimensions.getOrCreate(server, repairUuid);
                         com.crackedgames.craftics.world.HubRoomBuilder.repair(
-                            overworld, d.getHubOrigin(repairUuid));
+                            islandWorld, d.getHubOrigin(repairUuid));
                         d.getPlayerData(repairUuid).personalHubVersion =
                             com.crackedgames.craftics.world.HubRoomBuilder.HUB_VERSION;
                         d.markDirty();
@@ -410,6 +446,34 @@ public class CrafticsMod implements ModInitializer {
             }
             CombatManager.remove(playerUuid);
             com.crackedgames.craftics.scene.SceneController.onDisconnect(playerUuid);
+
+            // Visiting (Task 8) is transient/in-memory only, so a disconnecting player
+            // must drop its bookkeeping here or it leaks forever. Two cases:
+            //  - the leaver was themselves visiting someone: drop that tracking.
+            //  - the leaver IS an island owner: every visitor currently on their island
+            //    must be kicked to the lobby (nobody should be left standing in a
+            //    dimension whose owner is now offline), then the now-visitor-free
+            //    island is unloaded if empty.
+            com.crackedgames.craftics.world.VisitManager.clearVisit(playerUuid);
+            CrafticsSavedData disconnectData = CrafticsSavedData.get(server.getOverworld());
+            if (disconnectData.getEffectiveWorldOwner(playerUuid).equals(playerUuid)) {
+                com.crackedgames.craftics.world.VisitManager.onOwnerLogout(server, playerUuid);
+            }
+
+            // De-laned islands are per-owner runtime dims that should cost zero tick
+            // time when empty. If this player logged out inside an island dim, unload
+            // it once nobody remains. Deferred one tick via server.execute so the
+            // leaving player entity is fully removed from the world's player list
+            // before unloadIfEmpty checks getPlayers().isEmpty().
+            net.minecraft.world.World leftWorld = handler.getPlayer().getEntityWorld();
+            if (com.crackedgames.craftics.world.IslandDimensions.isIslandWorld(leftWorld)) {
+                java.util.UUID leftOwner =
+                    com.crackedgames.craftics.world.IslandDimensions.ownerOf(leftWorld);
+                if (leftOwner != null) {
+                    server.execute(() ->
+                        com.crackedgames.craftics.world.IslandDimensions.unloadIfEmpty(server, leftOwner));
+                }
+            }
         });
 
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
@@ -452,6 +516,12 @@ public class CrafticsMod implements ModInitializer {
                 com.crackedgames.craftics.scene.SceneOfferStore.tick();
             } catch (Throwable t) {
                 LOGGER.error("SceneOfferStore.tick() crashed; continuing server tick", t);
+            }
+
+            try {
+                com.crackedgames.craftics.world.VisitManager.tick();
+            } catch (Throwable t) {
+                LOGGER.error("VisitManager.tick() crashed; continuing server tick", t);
             }
 
             try {
@@ -528,6 +598,7 @@ public class CrafticsMod implements ModInitializer {
         // Prevent breaking blocks during combat AND hub structure blocks
         net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents.BEFORE.register(
             (world, player, pos, state, blockEntity) -> {
+                if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)) return false;
                 if (player instanceof net.minecraft.server.network.ServerPlayerEntity sp
                         && CombatManager.get(sp).isActive()) {
                     return false; // cancel block breaking for THIS player during combat
@@ -538,6 +609,15 @@ public class CrafticsMod implements ModInitializer {
                 return true;
             }
         );
+
+        // Look-only visitors: block/entity interaction and block-hit (attack) are denied
+        // in a foreign island dim; PASS lets vanilla/other handlers decide otherwise.
+        net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hit) ->
+            com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)
+                ? net.minecraft.util.ActionResult.FAIL : net.minecraft.util.ActionResult.PASS);
+        net.fabricmc.fabric.api.event.player.AttackBlockCallback.EVENT.register((player, world, hand, pos, dir) ->
+            com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(player)
+                ? net.minecraft.util.ActionResult.FAIL : net.minecraft.util.ActionResult.PASS);
 
         // Deferred copper-tier registration. WeaponRegistry needs the actual Item
         // instances from copperagebackport, but Fabric doesn't guarantee that mod's
@@ -704,7 +784,7 @@ public class CrafticsMod implements ModInitializer {
                 // Tell the client to exit combat mode (camera, UI, controls)
                 net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(cmdPlayer,
                     new com.crackedgames.craftics.network.ExitCombatPayload(false));
-                cmdPlayer.requestTeleport(0, 65, 0);
+                com.crackedgames.craftics.world.HubTeleports.toLobby(cmdPlayer);
                 cmdPlayer.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
                 cmdPlayer.clearStatusEffects();
                 src.sendFeedback(() -> Text.literal("§aCombat state reset. Teleported to hub."), true);
@@ -1133,6 +1213,7 @@ public class CrafticsMod implements ModInitializer {
 
             registerPartyCommands(root);
             registerWorldCommands(root);
+            com.crackedgames.craftics.command.CrafticsServerCommands.register(root);
 
             dispatcher.register(root);
 
@@ -1164,9 +1245,12 @@ public class CrafticsMod implements ModInitializer {
                 // lower-end servers for multiple seconds.
                 overworld.getServer().execute(() -> {
                     CrafticsSavedData d = CrafticsSavedData.get(finalOverworld);
-                    d.allocateWorldSlot(playerUuid);
+                    d.allocateWorldSlot(playerUuid); // dormant marker; no longer a coordinate
+                    // Build the hub in the OWNER'S island dim at the fixed hub origin.
+                    ServerWorld islandWorld = com.crackedgames.craftics.world.IslandDimensions
+                        .getOrCreate(finalOverworld.getServer(), playerUuid);
                     net.minecraft.util.math.BlockPos hubCenter = d.getHubOrigin(playerUuid);
-                    net.minecraft.util.math.BlockPos spawnPos = HubRoomBuilder.build(finalOverworld, hubCenter);
+                    net.minecraft.util.math.BlockPos spawnPos = HubRoomBuilder.build(islandWorld, hubCenter);
                     CrafticsSavedData.PlayerData pd = d.getPlayerData(playerUuid);
                     pd.personalHubBuilt = true;
                     pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
@@ -1176,12 +1260,12 @@ public class CrafticsMod implements ModInitializer {
                     d.markDirty();
 
                     // Flip the lazy-mode flag on (no actual arenas built).
-                    com.crackedgames.craftics.level.ArenaPreGenerator.generateAll(finalOverworld, playerUuid);
+                    com.crackedgames.craftics.level.ArenaPreGenerator.generateAll(islandWorld, playerUuid);
 
-                    // Everything is ready: teleport and dismiss loading screen
+                    // Everything is ready: teleport (cross-dim into the island) and dismiss loading screen
                     var p = finalOverworld.getServer().getPlayerManager().getPlayer(playerUuid);
                     if (p != null) {
-                        p.requestTeleport(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
+                        com.crackedgames.craftics.world.HubTeleports.toHub(p);
                         p.sendMessage(Text.literal(
                             "\u00a7a\u00a7lPersonal world created! \u00a7r\u00a7aUse \u00a7e/home\u00a7a to return anytime."), false);
                         ServerPlayNetworking.send(p,
@@ -1240,23 +1324,12 @@ public class CrafticsMod implements ModInitializer {
                         true, "Returning Home...", ""));
 
                 final ServerPlayerEntity homePlayer = player;
-                final ServerWorld homeWorld = overworld;
                 overworld.getServer().execute(() -> {
-                    net.minecraft.util.math.BlockPos hub = CrafticsSavedData.get(homeWorld)
-                        .getHubTeleportPos(homePlayer.getUuid());
-
-                    // Force-load hub chunks before teleporting
-                    int minCX = (hub.getX() - 48) >> 4;
-                    int maxCX = (hub.getX() + 48) >> 4;
-                    int minCZ = (hub.getZ() - 48) >> 4;
-                    int maxCZ = (hub.getZ() + 48) >> 4;
-                    for (int cx = minCX; cx <= maxCX; cx++) {
-                        for (int cz = minCZ; cz <= maxCZ; cz++) {
-                            homeWorld.getChunk(cx, cz);
-                        }
-                    }
-
-                    teleportToHub(homePlayer, homeWorld, hub);
+                    // HubTeleports.toHub resolves the owner's island dim (re-opening it
+                    // if unloaded), clamps the landing Y against that world, and unloads
+                    // the island the player is leaving behind once it's empty - the same
+                    // cross-dim path every other hub/lobby return already uses.
+                    com.crackedgames.craftics.world.HubTeleports.toHub(homePlayer);
                     homePlayer.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
                     homePlayer.sendMessage(Text.literal("\u00a7aTeleported home."), false);
                     ServerPlayNetworking.send(homePlayer,
@@ -1333,7 +1406,7 @@ public class CrafticsMod implements ModInitializer {
                 CombatManager cm = CombatManager.get(player);
                 if (cm.isActive()) cm.endCombat();
 
-                player.requestTeleport(0.5, 65, 0.5);
+                com.crackedgames.craftics.world.HubTeleports.toLobby(player);
                 player.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
                 ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to the lobby."), false);
                 return 1;
@@ -1355,10 +1428,13 @@ public class CrafticsMod implements ModInitializer {
                 return 0;
             }
 
-            int slot = data.allocateWorldSlot(player.getUuid());
+            int slot = data.allocateWorldSlot(player.getUuid()); // dormant marker; no longer a coordinate
             net.minecraft.util.math.BlockPos hubCenter = data.getHubOrigin(player.getUuid());
 
-            net.minecraft.util.math.BlockPos spawnPos = HubRoomBuilder.build(overworld, hubCenter);
+            // Build the hub in the OWNER'S island dim, then cross-dim teleport into it.
+            ServerWorld islandWorld = com.crackedgames.craftics.world.IslandDimensions
+                .getOrCreate(overworld.getServer(), player.getUuid());
+            net.minecraft.util.math.BlockPos spawnPos = HubRoomBuilder.build(islandWorld, hubCenter);
             CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
             pd.personalHubBuilt = true;
             pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
@@ -1367,7 +1443,7 @@ public class CrafticsMod implements ModInitializer {
             pd.hubSpawnZ = spawnPos.getZ();
             data.markDirty();
 
-            player.requestTeleport(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5);
+            com.crackedgames.craftics.world.HubTeleports.toHub(player);
 
             ctx.getSource().sendFeedback(() -> Text.literal(
                 "\u00a7a\u00a7l\u2726 Personal world created! \u00a7r\u00a7a(Slot " + slot + ")"), true);
@@ -1400,8 +1476,9 @@ public class CrafticsMod implements ModInitializer {
 
             if (cm.isActive()) cm.endCombat();
 
-            net.minecraft.util.math.BlockPos hub = data.getHubTeleportPos(player.getUuid());
-            teleportToHub(player, overworld, hub);
+            // HubTeleports.toHub resolves the effective owner (party leader when in a
+            // party) and the island dim itself, same as the manual lookup this replaced.
+            com.crackedgames.craftics.world.HubTeleports.toHub(player);
             player.changeGameMode(GameMode.SURVIVAL);
             ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to your personal hub."), false);
             return 1;
@@ -1414,44 +1491,21 @@ public class CrafticsMod implements ModInitializer {
             CombatManager cm = CombatManager.get(player);
             if (cm.isActive()) cm.endCombat();
 
-            player.requestTeleport(0.5, 65, 0.5);
+            com.crackedgames.craftics.world.HubTeleports.toLobby(player);
             player.changeGameMode(GameMode.SURVIVAL);
             ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to the central lobby."), false);
             return 1;
         }));
 
-        // /craftics world visit <player>: visit another player's hub (party members only)
+        // /craftics world visit <player>: legacy alias, delegates to VisitManager
+        // (Task 8). Party members get the instant fast-path; anyone else now gets a
+        // real invite prompt to the target instead of the old hard "party only" block.
         worldNode.then(CommandManager.literal("visit")
             .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
                 .executes(ctx -> {
                     ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                     ServerPlayerEntity target = net.minecraft.command.argument.EntityArgumentType.getPlayer(ctx, "player");
-                    ServerWorld overworld = player.getServerWorld();
-                    CrafticsSavedData data = CrafticsSavedData.get(overworld);
-
-                    if (!data.hasPersonalWorld(target.getUuid())) {
-                        ctx.getSource().sendError(Text.literal(
-                            "\u00a7c" + target.getName().getString() + " doesn't have a personal world."));
-                        return 0;
-                    }
-
-                    com.crackedgames.craftics.world.Party playerParty = data.getPlayerParty(player.getUuid());
-                    if (playerParty == null || !playerParty.isMember(target.getUuid())) {
-                        ctx.getSource().sendError(Text.literal(
-                            "\u00a7cYou can only visit party members' worlds."));
-                        return 0;
-                    }
-
-                    CombatManager cm = CombatManager.get(player);
-                    if (cm.isActive()) cm.endCombat();
-
-                    net.minecraft.util.math.BlockPos targetHub = data.getHubOrigin(target.getUuid());
-                    int visitY = hubLandingY(overworld, targetHub.getX(), targetHub.getZ(), targetHub.getY());
-                    player.requestTeleport(targetHub.getX() + 0.5,
-                        visitY != Integer.MIN_VALUE ? visitY : targetHub.getY(), targetHub.getZ() + 0.5);
-                    player.changeGameMode(GameMode.SURVIVAL);
-                    ctx.getSource().sendFeedback(() -> Text.literal(
-                        "\u00a7aVisiting " + target.getName().getString() + "'s world."), false);
+                    com.crackedgames.craftics.world.VisitManager.request(player, target);
                     return 1;
                 })));
 
@@ -1984,96 +2038,13 @@ public class CrafticsMod implements ModInitializer {
         return Integer.MIN_VALUE;
     }
 
-    /**
-     * Teleport a player to their personal hub, switching dimension if they are not
-     * already in the overworld (hubs only exist in the overworld). If no safe
-     * landing is found near the saved hub spawn (e.g. the player wiped the floor
-     * under their spawn), fall back to the central lobby instead of dropping them
-     * into the void.
-     */
-    private static void teleportToHub(ServerPlayerEntity player, ServerWorld overworld,
-                                       net.minecraft.util.math.BlockPos hub) {
-        // Hub islands only exist in Craftics (void-generated) worlds. On any other
-        // world type there is no hub to land on, so send the player to their respawn
-        // point (bed/anchor, or the world spawn fallback) instead of the void.
-        if (!(overworld.getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator)) {
-            teleportToRespawn(player);
-            return;
-        }
-        double x = hub.getX() + 0.5;
-        double z = hub.getZ() + 0.5;
-        double y;
-        // Always land on the HIGHEST solid block in the hub column (see hubLandingY).
-        int landY = hubLandingY(overworld, hub.getX(), hub.getZ(), hub.getY());
-        if (landY == Integer.MIN_VALUE) {
-            LOGGER.warn("No safe landing near hub {} for {}, sending to central lobby",
-                hub, player.getName().getString());
-            player.sendMessage(Text.literal(
-                "\u00a7eYour home spawn point is blocked or missing - returning to the lobby."), false);
-            x = 0.5;
-            y = 65;
-            z = 0.5;
-        } else {
-            y = landY;
-        }
-        if (player.getServerWorld() != overworld) {
-            //? if <=1.21.1 {
-            player.teleport(overworld, x, y, z,
-                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
-            //?} else {
-            /*player.teleport(overworld, x, y, z,
-                java.util.Collections.emptySet(), player.getYaw(), player.getPitch(), true);
-            *///?}
-        } else {
-            player.requestTeleport(x, y, z);
-        }
-    }
-
-    /**
-     * Send the player to their respawn point (bed / respawn anchor) if one is set,
-     * otherwise to that dimension's world spawn. Used when "go home" is requested on a
-     * non-Craftics world where no hub island exists. Falls back to the overworld spawn
-     * if the saved respawn dimension is missing or the spawn block can't be resolved.
-     */
-    private static void teleportToRespawn(ServerPlayerEntity player) {
-        net.minecraft.server.MinecraftServer server = player.getServer();
-        // 1.21.5 consolidated the loose spawn-point getters into a single nullable
-        // ServerPlayerEntity.Respawn record (getRespawn().pos()/.dimension()); earlier
-        // versions expose getSpawnPointPosition()/getSpawnPointDimension() directly.
-        //? if <=1.21.4 {
-        net.minecraft.util.math.BlockPos respawnPos = player.getSpawnPointPosition();
-        net.minecraft.registry.RegistryKey<net.minecraft.world.World> respawnDim =
-            player.getSpawnPointDimension();
-        //?} else {
-        /*net.minecraft.server.network.ServerPlayerEntity.Respawn respawn = player.getRespawn();
-        net.minecraft.util.math.BlockPos respawnPos = respawn != null ? respawn.pos() : null;
-        net.minecraft.registry.RegistryKey<net.minecraft.world.World> respawnDim =
-            respawn != null ? respawn.dimension() : null;
-        *///?}
-
-        ServerWorld targetWorld = respawnDim != null ? server.getWorld(respawnDim) : null;
-        if (targetWorld == null) targetWorld = server.getOverworld();
-
-        net.minecraft.util.math.BlockPos pos = respawnPos != null
-            ? respawnPos
-            : targetWorld.getSpawnPos();
-
-        double x = pos.getX() + 0.5;
-        double y = pos.getY();
-        double z = pos.getZ() + 0.5;
-        if (player.getServerWorld() != targetWorld) {
-            //? if <=1.21.1 {
-            player.teleport(targetWorld, x, y, z,
-                java.util.Collections.emptySet(), player.getYaw(), player.getPitch());
-            //?} else {
-            /*player.teleport(targetWorld, x, y, z,
-                java.util.Collections.emptySet(), player.getYaw(), player.getPitch(), true);
-            *///?}
-        } else {
-            player.requestTeleport(x, y, z);
-        }
-        player.sendMessage(Text.literal("§eThis isn't a Craftics world - returning to your spawn point."), false);
-    }
+    // teleportToHub(player, island, hub) and its non-void-world fallback
+    // teleportToRespawn were removed here (Task 7): every caller now routes through
+    // HubTeleports.toHub/adminTeleport, which cover the same clamp-landing-Y +
+    // cross-dim-move logic. The non-void-world guard those two methods existed for
+    // is dead in the island-dim architecture - IslandDimensions.getOrCreate always
+    // builds a VoidChunkGenerator world, so the "island" argument could never be a
+    // mis-resolved non-Craftics dimension by the time it reached these methods.
 
     /**
      * Writes the biome icon of the player's highest unlocked biome as the world's icon.png,

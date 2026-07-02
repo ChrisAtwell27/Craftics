@@ -25,10 +25,32 @@ public class CrafticsSavedData extends PersistentState {
 
     private int nextWorldSlot = 0;
 
-    /** Z distance between player lanes (rows). Arenas are narrow in Z, so 1000 is plenty. */
-    private static final int LANE_SPACING_Z = 1000;
-    /** X offset where the hub sits for every player. */
-    private static final int HUB_X = 10000;
+    /** Custom lobby spawn (root-level, shared across all players). Y=Integer.MIN_VALUE sentinel = unset,
+     *  falls back to the default lobby column. Set via /craftics lobby setspawn. */
+    public int lobbySpawnX = 0, lobbySpawnY = Integer.MIN_VALUE, lobbySpawnZ = 0;
+    public float lobbySpawnYaw = 0f;
+
+    /** The stored custom lobby spawn, or null when unset (Y sentinel Integer.MIN_VALUE). */
+    public net.minecraft.util.math.BlockPos getLobbySpawn() {
+        if (lobbySpawnY == Integer.MIN_VALUE) return null;
+        return new net.minecraft.util.math.BlockPos(lobbySpawnX, lobbySpawnY, lobbySpawnZ);
+    }
+
+    // === Fixed island layout (Task 6: de-laned) ===
+    // Every island lives in its OWNER'S dimension (craftics:island/<uuid>), so all
+    // content sits at the SAME fixed coordinates in that dim - there are no per-player
+    // lanes anymore. The overworld keeps only the central lobby. The hub is at the
+    // dim origin; arenas march out along +X; the fixed event/scene rooms share an X
+    // column and are separated in Z. Coordinates are small enough that the client
+    // overlay renderer's single-precision float math stays well-conditioned.
+    /** Hub (dim origin) for every island. */
+    private static final int HUB_Y = 65;
+    /** Base X for numbered arenas: arena level N sits at (ARENA_BASE_X + N*ARENA_STRIDE_X). */
+    private static final int ARENA_BASE_X = 1000;
+    private static final int ARENA_STRIDE_X = 300;
+    /** Shared X column + build Y for the fixed event/scene rooms. */
+    private static final int ROOM_X = 1500;
+    private static final int ROOM_Y = 100;
 
     private final Map<UUID, PlayerData> players = new HashMap<>();
     private final Map<UUID, Party> parties = new HashMap<>();
@@ -65,6 +87,10 @@ public class CrafticsSavedData extends PersistentState {
         public boolean scaleHpPerLevelEnabled = false;
         /** Pity timer - resets when an event occurs */
         public int levelsSinceLastEvent = 0;
+        /** Trader types (TraderSystem.TraderType.name()) met in run events - island-scoped via owner. */
+        public final java.util.Set<String> metTraders = new java.util.HashSet<>();
+        /** Barter category ids (BarterCategory.id()) met in run events - island-scoped via owner. */
+        public final java.util.Set<String> metBarterers = new java.util.HashSet<>();
         /** Pets waiting at the hub to rejoin next fight */
         private final java.util.List<net.minecraft.nbt.NbtCompound> hubPets = new java.util.ArrayList<>();
         /**
@@ -349,6 +375,10 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putBoolean("personalHubBuilt", personalHubBuilt);
             nbt.putInt("personalHubVersion", personalHubVersion);
             nbt.putBoolean("scaleHpPerLevelEnabled", scaleHpPerLevelEnabled);
+            // Pipe-delimited (mirrors unlockedGuideEntries). Safe: TraderType enum names and
+            // Identifier-validated BarterCategory ids can never contain '|'.
+            nbt.putString("metTraders", String.join("|", metTraders));
+            nbt.putString("metBarterers", String.join("|", metBarterers));
             NbtList petList = new NbtList();
             hubPets.forEach(petList::add);
             nbt.put("hubPets", petList);
@@ -396,6 +426,22 @@ public class CrafticsSavedData extends PersistentState {
             // Default: true (matches global config default) - islands created before this
             // field existed keep the old scaling behavior.
             pd.scaleHpPerLevelEnabled = !nbt.contains("scaleHpPerLevelEnabled") || nbt.getBoolean("scaleHpPerLevelEnabled");
+            if (nbt.contains("metTraders")) {
+                String raw = nbt.getString("metTraders");
+                if (!raw.isEmpty()) {
+                    for (String entry : raw.split("\\|")) {
+                        if (!entry.isEmpty()) pd.metTraders.add(entry);
+                    }
+                }
+            }
+            if (nbt.contains("metBarterers")) {
+                String raw = nbt.getString("metBarterers");
+                if (!raw.isEmpty()) {
+                    for (String entry : raw.split("\\|")) {
+                        if (!entry.isEmpty()) pd.metBarterers.add(entry);
+                    }
+                }
+            }
             if (nbt.contains("hubPets")) {
                 NbtList pl = nbt.getList("hubPets", net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
                 for (int i = 0; i < pl.size(); i++) pd.hubPets.add(pl.getCompound(i));
@@ -456,6 +502,18 @@ public class CrafticsSavedData extends PersistentState {
             pd.personalHubBuilt = nbt.getBoolean("personalHubBuilt", false);
             pd.personalHubVersion = nbt.getInt("personalHubVersion", 0);
             pd.scaleHpPerLevelEnabled = nbt.getBoolean("scaleHpPerLevelEnabled", true);
+            String metTradersRaw = nbt.getString("metTraders", "");
+            if (!metTradersRaw.isEmpty()) {
+                for (String entry : metTradersRaw.split("\\|")) {
+                    if (!entry.isEmpty()) pd.metTraders.add(entry);
+                }
+            }
+            String metBartererRaw = nbt.getString("metBarterers", "");
+            if (!metBartererRaw.isEmpty()) {
+                for (String entry : metBartererRaw.split("\\|")) {
+                    if (!entry.isEmpty()) pd.metBarterers.add(entry);
+                }
+            }
             NbtList pl = nbt.getListOrEmpty("hubPets");
             for (int i = 0; i < pl.size(); i++) pl.getCompound(i).ifPresent(pd.hubPets::add);
             String guideRaw = nbt.getString("unlockedGuideEntries", "");
@@ -513,6 +571,10 @@ public class CrafticsSavedData extends PersistentState {
         data.hubBuilt = nbt.getBoolean("hubBuilt");
         data.hubVersion = nbt.getInt("hubVersion");
         data.nextWorldSlot = nbt.contains("nextWorldSlot") ? nbt.getInt("nextWorldSlot") : 0;
+        data.lobbySpawnX = nbt.contains("lobbySpawnX") ? nbt.getInt("lobbySpawnX") : 0;
+        data.lobbySpawnY = nbt.contains("lobbySpawnY") ? nbt.getInt("lobbySpawnY") : Integer.MIN_VALUE;
+        data.lobbySpawnZ = nbt.contains("lobbySpawnZ") ? nbt.getInt("lobbySpawnZ") : 0;
+        data.lobbySpawnYaw = nbt.contains("lobbySpawnYaw") ? nbt.getFloat("lobbySpawnYaw") : 0f;
 
         if (nbt.contains("players")) {
             NbtCompound playersNbt = nbt.getCompound("players");
@@ -560,6 +622,10 @@ public class CrafticsSavedData extends PersistentState {
         nbt.putBoolean("hubBuilt", hubBuilt);
         nbt.putInt("hubVersion", hubVersion);
         nbt.putInt("nextWorldSlot", nextWorldSlot);
+        nbt.putInt("lobbySpawnX", lobbySpawnX);
+        nbt.putInt("lobbySpawnY", lobbySpawnY);
+        nbt.putInt("lobbySpawnZ", lobbySpawnZ);
+        nbt.putFloat("lobbySpawnYaw", lobbySpawnYaw);
 
         NbtCompound playersNbt = new NbtCompound();
         for (var entry : players.entrySet()) {
@@ -579,6 +645,10 @@ public class CrafticsSavedData extends PersistentState {
     private static final PersistentState.Type<CrafticsSavedData> TYPE =
         new PersistentState.Type<>(CrafticsSavedData::new, CrafticsSavedData::fromNbt, null);
 
+    /** Single global state, always rooted at the overworld's PersistentStateManager.
+     *  Island dims (craftics:island/&lt;uuid&gt;) intentionally read the SAME state, so
+     *  passing an island world here still returns the one shared save. Do not switch
+     *  this to {@code world.getPersistentStateManager()} - it would fork per-dim state. */
     public static CrafticsSavedData get(ServerWorld world) {
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE, "craftics_data");
     }
@@ -588,6 +658,10 @@ public class CrafticsSavedData extends PersistentState {
         data.hubBuilt = nbt.getBoolean("hubBuilt", false);
         data.hubVersion = nbt.getInt("hubVersion", 0);
         data.nextWorldSlot = nbt.getInt("nextWorldSlot", 0);
+        data.lobbySpawnX = nbt.getInt("lobbySpawnX", 0);
+        data.lobbySpawnY = nbt.getInt("lobbySpawnY", Integer.MIN_VALUE);
+        data.lobbySpawnZ = nbt.getInt("lobbySpawnZ", 0);
+        data.lobbySpawnYaw = nbt.getFloat("lobbySpawnYaw", 0f);
 
         NbtCompound playersNbt = nbt.getCompoundOrEmpty("players");
         for (String key : playersNbt.getKeys()) {
@@ -633,6 +707,10 @@ public class CrafticsSavedData extends PersistentState {
         nbt.putBoolean("hubBuilt", hubBuilt);
         nbt.putInt("hubVersion", hubVersion);
         nbt.putInt("nextWorldSlot", nextWorldSlot);
+        nbt.putInt("lobbySpawnX", lobbySpawnX);
+        nbt.putInt("lobbySpawnY", lobbySpawnY);
+        nbt.putInt("lobbySpawnZ", lobbySpawnZ);
+        nbt.putFloat("lobbySpawnYaw", lobbySpawnYaw);
 
         NbtCompound playersNbt = new NbtCompound();
         for (var entry : players.entrySet()) {
@@ -657,6 +735,7 @@ public class CrafticsSavedData extends PersistentState {
     private static final PersistentStateType<CrafticsSavedData> TYPE =
         new PersistentStateType<>("craftics_data", CrafticsSavedData::new, CODEC, null);
 
+    // Single global state, always overworld-rooted; island dims read the same save.
     public static CrafticsSavedData get(ServerWorld world) {
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE);
     }
@@ -771,11 +850,13 @@ public class CrafticsSavedData extends PersistentState {
         return pd.worldSlot;
     }
 
-    /** Get the world origin (hub center) for a player's personal world, or null if not created. */
+    /** Get the world origin (hub center) for a player's personal island, or null if not
+     *  created. Fixed at the island dim origin - {@code worldSlot} is only the
+     *  "has an island" marker now (>=0), never a coordinate. */
     public net.minecraft.util.math.BlockPos getWorldOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
-        if (pd.worldSlot < 0) return null;
-        return new net.minecraft.util.math.BlockPos(HUB_X, 65, pd.worldSlot * LANE_SPACING_Z);
+        if (pd.worldSlot < 0) return null; // still the "has an island" marker
+        return new net.minecraft.util.math.BlockPos(0, HUB_Y, 0);
     }
 
     /** Alias for getWorldOrigin - returns the center of the player's personal hub. */
@@ -795,31 +876,26 @@ public class CrafticsSavedData extends PersistentState {
         return getHubOrigin(playerId);
     }
 
-    /** Offset from hub center to first arena - well beyond render distance. */
-    private static final int ARENA_OFFSET = 1000;
-
-    /** Get the arena origin for a specific level within a player's world. */
+    /** Get the arena origin for a specific level within the player's island dim.
+     *  Numbered arenas march out along +X: level N at (1000 + N*300, 100, 0). */
     public net.minecraft.util.math.BlockPos getArenaOrigin(UUID playerId, int level) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        int laneZ = pd.worldSlot * LANE_SPACING_Z;
-        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + level * 300, 100, laneZ);
+        return new net.minecraft.util.math.BlockPos(ARENA_BASE_X + level * ARENA_STRIDE_X, ROOM_Y, 0);
     }
 
-    /** Get the trader area origin within a player's world. */
+    /** Get the trader area origin within the player's island dim. */
     public net.minecraft.util.math.BlockPos getTraderOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        int laneZ = pd.worldSlot * LANE_SPACING_Z;
-        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 500);
+        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, 500);
     }
 
-    /** Get the dig site origin within a player's world. */
+    /** Get the dig site origin within the player's island dim. */
     public net.minecraft.util.math.BlockPos getDigSiteOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        int laneZ = pd.worldSlot * LANE_SPACING_Z;
-        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 600);
+        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, 600);
     }
 
     /**
@@ -831,35 +907,32 @@ public class CrafticsSavedData extends PersistentState {
     public net.minecraft.util.math.BlockPos getEventArenaOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        int laneZ = pd.worldSlot * LANE_SPACING_Z;
-        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 700);
+        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, 700);
     }
 
     /**
      * Dedicated origin slot for trial chamber arenas. Trial chamber level
      * numbers are 9000+ to avoid colliding with regular biome levels; routing
-     * those through the standard {@code level * 300} origin sends them out to
-     * world X ~2.7 million where single-precision float math in the client
-     * overlay renderer produces visible half-block offsets and per-frame
-     * jitter. Park them in the player's lane instead so the chunks are loaded
-     * and the coordinates stay in well-conditioned float range.
+     * those through the standard {@code level * 300} arena origin would send
+     * them out to world X ~2.7 million where single-precision float math in the
+     * client overlay renderer produces visible half-block offsets and per-frame
+     * jitter. Park them in the fixed room column instead so the coordinates stay
+     * small and well-conditioned in float range.
      */
     public net.minecraft.util.math.BlockPos getTrialChamberOrigin(UUID playerId) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        int laneZ = pd.worldSlot * LANE_SPACING_Z;
-        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + 800);
+        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, 800);
     }
 
-    /** Merchant-scene origin within a player's world, one lane slot per scene type so the
-     *  Village (+900) and Bartering Station (+1000) can be active independently. Both sit
-     *  past arena (+0), trader (+500), dig (+600), event (+700), and trial (+800). */
+    /** Merchant-scene origin within the player's island dim, one Z slot per scene type so the
+     *  Village (Z 900) and Bartering Station (Z 1000) can be active independently. Both sit
+     *  past trader (Z 500), dig (Z 600), event (Z 700), and trial (Z 800) in the fixed room column. */
     public net.minecraft.util.math.BlockPos getSceneOrigin(UUID playerId, String sceneName) {
         PlayerData pd = getPlayerData(playerId);
         if (pd.worldSlot < 0) return null;
-        int laneZ = pd.worldSlot * LANE_SPACING_Z;
         int sceneZ = "barter_station".equals(sceneName) ? 1000 : 900;
-        return new net.minecraft.util.math.BlockPos(HUB_X + ARENA_OFFSET + 500, 100, laneZ + sceneZ);
+        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, sceneZ);
     }
 
     /**

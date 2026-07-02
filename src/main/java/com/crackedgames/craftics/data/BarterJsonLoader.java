@@ -38,6 +38,10 @@ public final class BarterJsonLoader extends CrafticsDataLoader<BarterJsonLoader.
             return null;
         }
         String categoryId = json.get("category").getAsString();
+        if (Identifier.tryParse(categoryId) == null) {
+            CrafticsMod.LOGGER.warn("Barter JSON {} invalid category id '{}' - skipping", fileId, categoryId);
+            return null;
+        }
         String displayName = json.has("displayName") ? json.get("displayName").getAsString() : categoryId;
         String icon = json.has("icon") ? json.get("icon").getAsString() : "";
         String hint = json.has("dialogueHint") ? json.get("dialogueHint").getAsString() : "";

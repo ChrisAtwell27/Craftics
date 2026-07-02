@@ -71,6 +71,10 @@ public final class RunInviteManager {
      * Validates, then either starts immediately (no one else to ask) or opens the lobby.
      */
     public static void requestStart(ServerPlayerEntity starter, String biomeId) {
+        if (com.crackedgames.craftics.world.VisitProtection.isForeignVisitor(starter)) {
+            starter.sendMessage(Text.literal("§cYou cannot start a run while visiting."), false);
+            return;
+        }
         ServerWorld world = (ServerWorld) starter.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         data.claimLegacyData(starter.getUuid());
