@@ -18,4 +18,13 @@ public interface CrafticsAnimHolder {
     /** Ticks elapsed since the state was set (client world time at update). */
     float craftics$getAnimTicks();
     void craftics$setAnimTicks(float t);
+
+    /**
+     * Visual knock-up render offset (see {@code EntityBounceState}), ferried
+     * onto the render-state snapshot the same way as the anim pose because the
+     * 1.21.3+ render method no longer receives the live entity. Defaults keep
+     * the 1.21.1 no-op mixin compiling without implementing them.
+     */
+    default float craftics$getBounceY() { return 0f; }
+    default void craftics$setBounceY(float y) {}
 }

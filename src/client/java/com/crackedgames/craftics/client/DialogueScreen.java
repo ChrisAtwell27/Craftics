@@ -60,8 +60,9 @@ public class DialogueScreen extends Screen {
     private int barterGold = 0;
     private int barterMaxOffer = 0;
     private int barterOffer = 1;
-    private ButtonWidget barterMinusButton;
-    private ButtonWidget barterPlusButton;
+    /** All stepper widgets, kept for the pre-typewriter hit test. */
+    private final java.util.List<ButtonWidget> barterWidgets = new java.util.ArrayList<>();
+    private ButtonWidget barterMinusButton;   // [-1] - layout anchor for the labels
     private ButtonWidget barterOfferButton;
     private ButtonWidget barterWalkButton;
 
@@ -155,10 +156,13 @@ public class DialogueScreen extends Screen {
         boolean hasGold = barterGold > 0;
 
         // Lay the stepper out fully above the dialogue box.
-        // Keep both rows clear of the box so labels/text never overlap buttons.
+        // Bottom-up: [gold line] sits between the action row and the box; above
+        // the action row comes the stepper row, then the greed meter + heading
+        // (drawn in renderBarterStepper, anchored off these widgets).
         int btnSize = 20;
-        int valueW = 60; // reserved space between - and + for the offer number
-        int gap = 6;
+        int quickW = 26;   // [-5]/[+5]/[Max] quick-adjust buttons
+        int valueW = 48;   // reserved space between -1 and +1 for the offer number
+        int gap = 4;
         int offerBtnW = 90;
         int walkBtnW = 90;
         int boxTop = this.height - BOX_BOTTOM_GAP - BOX_H;
@@ -166,19 +170,27 @@ public class DialogueScreen extends Screen {
         // still clears the dialogue box top instead of clipping into it. The gold line
         // needs ~11px; reserve that gap above the box.
         int actionY = boxTop - btnSize - 13;
-        int rowY = actionY - btnSize - gap;
+        int rowY = actionY - btnSize - 6;
 
-        // Centered cluster:  [-] (value) [+]
-        int clusterW = btnSize + gap + valueW + gap + btnSize;
-        int clusterX = (this.width - clusterW) / 2;
+        // Centered cluster:  [-5][-1] (value) [+1][+5][Max]
+        int clusterW = quickW + gap + btnSize + gap + valueW + gap + btnSize + gap + quickW + gap + quickW;
+        int x = (this.width - clusterW) / 2;
 
-        int minusX = clusterX;
-        int plusX = clusterX + btnSize + gap + valueW + gap;
-
-        barterMinusButton = GuideButton.of(minusX, rowY, btnSize, btnSize,
+        barterWidgets.clear();
+        ButtonWidget minus5 = GuideButton.of(x, rowY, quickW, btnSize,
+            Text.literal("-5"), b -> adjustOffer(-5));
+        x += quickW + gap;
+        barterMinusButton = GuideButton.of(x, rowY, btnSize, btnSize,
             Text.literal("-"), b -> adjustOffer(-1));
-        barterPlusButton = GuideButton.of(plusX, rowY, btnSize, btnSize,
+        x += btnSize + gap + valueW + gap;
+        ButtonWidget plus1 = GuideButton.of(x, rowY, btnSize, btnSize,
             Text.literal("+"), b -> adjustOffer(1));
+        x += btnSize + gap;
+        ButtonWidget plus5 = GuideButton.of(x, rowY, quickW, btnSize,
+            Text.literal("+5"), b -> adjustOffer(5));
+        x += quickW + gap;
+        ButtonWidget maxBtn = GuideButton.of(x, rowY, quickW, btnSize,
+            Text.literal("Max"), b -> adjustOffer(Integer.MAX_VALUE / 2));
 
         // Action buttons one row below the stepper (still above the box).
         int actionsW = offerBtnW + gap + walkBtnW;
@@ -189,19 +201,26 @@ public class DialogueScreen extends Screen {
             Text.literal("Walk away"), b -> choose("barter:leave"));
 
         // With no gold the player can only walk away.
+        minus5.active = hasGold;
         barterMinusButton.active = hasGold;
-        barterPlusButton.active = hasGold;
+        plus1.active = hasGold;
+        plus5.active = hasGold;
+        maxBtn.active = hasGold;
         barterOfferButton.active = hasGold;
 
-        this.addDrawableChild(barterMinusButton);
-        this.addDrawableChild(barterPlusButton);
-        this.addDrawableChild(barterOfferButton);
-        this.addDrawableChild(barterWalkButton);
+        barterWidgets.add(minus5);
+        barterWidgets.add(barterMinusButton);
+        barterWidgets.add(plus1);
+        barterWidgets.add(plus5);
+        barterWidgets.add(maxBtn);
+        barterWidgets.add(barterOfferButton);
+        barterWidgets.add(barterWalkButton);
+        for (ButtonWidget w : barterWidgets) this.addDrawableChild(w);
     }
 
     private void adjustOffer(int delta) {
-        int cap = barterCap();
-        barterOffer = Math.max(1, Math.min(barterOffer + delta, cap));
+        long next = (long) barterOffer + delta;
+        barterOffer = (int) Math.max(1, Math.min(next, barterCap()));
     }
 
     private void submitOffer() {
@@ -209,10 +228,10 @@ public class DialogueScreen extends Screen {
     }
 
     private boolean isOverBarterWidget(double mx, double my) {
-        return overWidget(barterMinusButton, mx, my)
-            || overWidget(barterPlusButton, mx, my)
-            || overWidget(barterOfferButton, mx, my)
-            || overWidget(barterWalkButton, mx, my);
+        for (ButtonWidget w : barterWidgets) {
+            if (overWidget(w, mx, my)) return true;
+        }
+        return false;
     }
 
     private static boolean overWidget(ButtonWidget w, double mx, double my) {
@@ -479,29 +498,65 @@ public class DialogueScreen extends Screen {
         }
     }
 
-    /** Labels + the current offer value for the barter stepper, aligned to its widgets. */
+    /** Labels, the offer value, and the greed meter for the barter stepper,
+     *  all anchored off the widgets positioned in initBarterStepper(). */
     private void renderBarterStepper(DrawContext ctx) {
         if (barterMinusButton == null) return;
 
-        // The stepper widgets were positioned in initBarterStepper(); derive the text
-        // anchors from them so label and value always line up with the buttons.
         int rowY = barterMinusButton.getY();
         int centerX = this.width / 2;
 
-        // "YOUR OFFER" heading sits just above the stepper row.
+        // Greed meter: how tempting the offer is, as a fraction of the highest
+        // possible piglin threshold. An offer at the cap ALWAYS wins, so the
+        // meter (and its flavor line) is an honest read of the odds ladder
+        // without spoiling the hidden roll.
+        int meterW = 150;
+        int meterH = 5;
+        int meterX = centerX - meterW / 2;
+        int meterY = rowY - 10;
+        float ratio = barterMaxOffer > 0
+            ? Math.min(1f, barterOffer / (float) barterMaxOffer) : 0f;
+        ctx.fill(meterX - 1, meterY - 1, meterX + meterW + 1, meterY + meterH + 1, 0xFF3B2B12);
+        ctx.fill(meterX, meterY, meterX + meterW, meterY + meterH, 0xFF221805);
+        int fillW = Math.max(1, Math.round(meterW * ratio));
+        // Red → amber → green as the offer grows.
+        int r = (int) (0xE0 * (1f - ratio * 0.75f));
+        int g = (int) (0x40 + 0xA0 * ratio);
+        ctx.fill(meterX, meterY, meterX + fillW, meterY + meterH, 0xFF000000 | (r << 16) | (g << 8) | 0x20);
+
+        // "YOUR OFFER" heading above the meter, reaction line above that.
         GuideTheme.drawCentered(ctx, this.textRenderer,
-            "YOUR OFFER", centerX, rowY - 11, GuideTheme.GOLD);
+            "YOUR OFFER", centerX, meterY - 12, GuideTheme.GOLD);
+        GuideTheme.drawCentered(ctx, this.textRenderer,
+            piglinReaction(), centerX, meterY - 24, GuideTheme.INK_SOFT);
 
         // Current offer value centered between the - and + buttons.
         GuideTheme.drawCentered(ctx, this.textRenderer,
             String.valueOf(barterOffer), centerX, rowY + 6, GuideTheme.INK);
 
-        // Player's gold count below the action buttons.
+        // Player's gold count below the action buttons, with a gold ingot icon.
         int goldY = barterWalkButton != null
             ? barterWalkButton.getY() + barterWalkButton.getHeight() + 2
             : rowY + 48;
-        GuideTheme.drawCentered(ctx, this.textRenderer,
-            "you have " + barterGold + " gold", centerX, goldY, GuideTheme.INK_SOFT);
+        String goldLine = "you have " + barterGold + " gold";
+        int lineW = this.textRenderer.getWidth(goldLine) + 18;
+        int lineX = centerX - lineW / 2;
+        ctx.drawItem(new net.minecraft.item.ItemStack(net.minecraft.item.Items.GOLD_INGOT),
+            lineX, goldY - 5);
+        GuideTheme.drawInk(ctx, this.textRenderer, goldLine, lineX + 18, goldY, GuideTheme.INK_SOFT);
+    }
+
+    /** Qualitative read of the piglin's interest in the current offer. The
+     *  stages follow the real odds ladder (thresholds roll 16-64; an offer of
+     *  64 is a guaranteed win), so bigger offers genuinely earn the reaction. */
+    private String piglinReaction() {
+        if (barterGold <= 0)        return "The piglin ignores your empty pockets.";
+        if (barterOffer >= barterMaxOffer && barterMaxOffer > 0)
+                                    return "The piglin CANNOT resist this much gold!";
+        if (barterOffer >= 48)      return "The piglin drools eagerly...";
+        if (barterOffer >= 32)      return "The piglin's eyes gleam.";
+        if (barterOffer >= 16)      return "The piglin sniffs at your gold.";
+        return "The piglin looks insulted.";
     }
 
     private boolean isNarrator() { return speakerId == null || speakerId.isEmpty(); }

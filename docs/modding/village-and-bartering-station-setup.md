@@ -4,7 +4,7 @@ The Village and Bartering Station are walk-around merchant hubs the player telep
 
 The Village and the Bartering Station are authored exactly the same way. The only differences are which occupant ids you give the NPC markers (villager professions vs piglin barter categories) and which file name you save under (`village.schem` vs `barter_station.schem`).
 
-> Note on current status: the shipped tooling is the marker blocks and the scanner that turns a placed schematic into a layout. The in-game runtime that consumes the scene (teleport, third person, click to walk between booths, trading) is a later unit and is not wired up yet. This guide is the authoring workflow for building the scenes.
+> Note on current status: the in-game runtime is live - the Trading Hall and Bartering Station buttons on the level select teleport the party into a walk-around scene where every booth hosts a working merchant (villager trader types selling from the emerald bank; piglin barter personalities running the gold gamble). The runtime currently builds its layout from the code-defined scene (`CodeSceneBuilder`); loading a user-authored `.schem` through the scanner described below is the remaining authoring hookup. This guide is the authoring workflow for building those scenes.
 >
 > Markers are invisible in the finished scene. When the scene is scanned, each marker block is replaced with the most common block touching it, so it blends into the surrounding floor and the player never sees a marker (the same way arena corner markers disappear).
 

@@ -18,11 +18,14 @@ import org.spongepowered.asm.mixin.Unique;
 public abstract class LivingEntityRenderStateAnimMixin implements CrafticsAnimHolder {
     @Unique private AnimState craftics$animState = AnimState.IDLE;
     @Unique private float craftics$animTicks = 0f;
+    @Unique private float craftics$bounceY = 0f;
 
     @Override public AnimState craftics$getAnimState() { return craftics$animState; }
     @Override public void craftics$setAnimState(AnimState s) { this.craftics$animState = s; }
     @Override public float craftics$getAnimTicks() { return craftics$animTicks; }
     @Override public void craftics$setAnimTicks(float t) { this.craftics$animTicks = t; }
+    @Override public float craftics$getBounceY() { return craftics$bounceY; }
+    @Override public void craftics$setBounceY(float y) { this.craftics$bounceY = y; }
 }
 *///?} else {
 @Mixin(net.minecraft.entity.LivingEntity.class)

@@ -255,6 +255,25 @@ public class CrafticsMod implements ModInitializer {
                     joinData.markDirty();
                 }
 
+                // Repair home islands built by older versions: home.schem used to be
+                // placed through the arena-style visibility cull, which skipped every
+                // buried interior block and generated the island hollow. Fills only
+                // the culled holes (never touches player-built or player-mined
+                // blocks), then stamps the version so it runs once per bump.
+                if (joinPd.personalHubBuilt
+                        && joinPd.personalHubVersion < com.crackedgames.craftics.world.HubRoomBuilder.HUB_VERSION) {
+                    final java.util.UUID repairUuid = player.getUuid();
+                    server.execute(() -> {
+                        com.crackedgames.craftics.world.CrafticsSavedData d =
+                            com.crackedgames.craftics.world.CrafticsSavedData.get(overworld);
+                        com.crackedgames.craftics.world.HubRoomBuilder.repair(
+                            overworld, d.getHubOrigin(repairUuid));
+                        d.getPlayerData(repairUuid).personalHubVersion =
+                            com.crackedgames.craftics.world.HubRoomBuilder.HUB_VERSION;
+                        d.markDirty();
+                    });
+                }
+
                 // Always stock the Move item into the locked slot on join.
                 com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
 

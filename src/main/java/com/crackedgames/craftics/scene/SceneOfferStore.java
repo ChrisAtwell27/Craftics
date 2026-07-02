@@ -42,7 +42,7 @@ public final class SceneOfferStore {
         Map<Integer, TraderSystem.TraderOffer> byBooth =
             OFFERS.computeIfAbsent(owner, k -> new HashMap<>());
         return byBooth.computeIfAbsent(boothIndex,
-            k -> TraderSystem.generateOfferForType(type, tier, new java.util.Random()));
+            k -> TraderSystem.generateOffer(type, tier, new java.util.Random()));
     }
 
     /** Test/reset hook. */

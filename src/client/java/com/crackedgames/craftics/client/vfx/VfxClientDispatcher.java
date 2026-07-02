@@ -34,6 +34,8 @@ public final class VfxClientDispatcher {
                         case FROST   -> CombatVisualEffects.flashWithColor(0x88AAE0FF, s.durationTicks());
                     }
                 }
+                case VfxClientPayload.ClientPrim.EntityBounce s ->
+                    EntityBounceState.trigger(s.entityIds(), s.amplitude(), s.durationTicks());
             }
         }
     }

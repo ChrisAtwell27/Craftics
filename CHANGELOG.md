@@ -2,6 +2,41 @@
 0.2.9
 Multiplayer, Enemies, Combat, Tools, and Interface
 
+World
+
+- Fixed the home base island generating hollowed out. The island schematic was being placed through the arena terrain optimizer, which skips every fully-buried block - fine for arena landscapes, catastrophic for a solid island you live on. Fresh islands now place every block, and existing hollowed islands self-repair the next time their owner logs in: the repair fills exactly the interior blocks the bug skipped (only where the world still has air), so nothing a player built or deliberately mined is ever touched
+
+Boss Fights
+
+- Every telegraphed boss ability now visibly charges instead of silently painting red tiles: a low resonant toll sounds, the boss's aura flares in its own colors, and particles converge on the doomed tiles in tightening pulses across your whole turn. The warning tiles themselves got scarier - on top of the red pulse, an inner square repeatedly collapses toward each tile's center, the noose tightening until the hit lands
+- The "prepares X!" message now tells you how to survive it: every telegraph carries a plain-words hint like "a heavy blow will crush the marked tiles - get clear!" or "it will charge down the marked path - step aside!", so you're never guessing what a named ability is about to do
+- Every boss attack resolves with a themed, shaped impact instead of a flat particle flash. Each boss speaks in its own visual voice (the Wither in souls and smoke, the Tidecaller in splashes, the Void Walker in portal motes, the Warden in sculk...), and the attack's nature decides its shape: slams detonate traveling ground shockwaves that bounce nearby minions, line and charge attacks sweep a flash down their tiles in order so you see the direction of travel, spells converge and burst with a tinted screen flash, summons breathe souls out of cracked earth, and terrain attacks ripple across the tiles they change. Camera shake, hit-pause and heavy smash sounds scale with the category - and when YOU are standing in the blast, the hit flashes the screen red and freezes for a beat
+- Late-biome bosses that skip telegraphs no longer skip the presentation too: their attacks land with the same themed impact instead of an unheralded damage tick
+- Phase 2 transitions are now a moment: a dragon growl, a shockwave rolling out from the boss that knocks its own minions into the air, a blood-red flash, heavy camera shake, and ENRAGED floating over its head - on top of the existing roar pose and title card
+
+Interface
+
+- The Victory, Game Over, and reward reveal screens were polished to a professional standard while keeping the parchment theme. All three now ease in with a curtain-up scale-settle instead of popping into existence, and share upgraded coin rendering: soft drop shadows, rim lighting, and a continuous tumble instead of a two-frame flip
+- Game Over is now a somber cinematic: letterbox bars close in, a blood-red vignette edges the screen, grey ash (with the occasional ember) drifts down for the duration, and the title lands as a large, slowly-pulsing "GAME OVER" instead of one more line of text
+- Victory earns its name: a larger shimmering gold title, a "+N" gain readout riding the emerald counter while it ticks up, and a shower of gold sparks when the last reward settles. The barter gamble's coin now pays off in sparks too - a gold shower on a win, a dull grey puff on a dud - and "(click to continue)" gently pulses so the exit is never missed
+
+Trading Hall & Bartering Station
+
+- The Trading Hall and Bartering Station are now real, working markets instead of empty walk-around sets. Every booth hosts a named merchant with a floating title over its head: the hall draws three distinct villager trader types per visit (Weaponsmith, Armorer, Alchemist, and so on), and the station draws three distinct piglin barter personalities (Warmonger, Hoarder, Flesh Dealer, Relic Trader, Beast Tamer), each holding a gold ingot. Booths re-roll per visit so the market rotates
+- Booths are click-to-shop: booth floors glow softly (and pulse under your cursor) so they read as clickable, and clicking anywhere on a booth walks you up to its counter and opens that merchant automatically. Clicking open floor is still a plain walk-to, with a hover marker showing where you'll go
+- Villager booths open a new parchment shop screen: every trade shows its real item icon with stack count, hovering shows the full item tooltip, costs draw next to an emerald icon and turn red when you can't afford them, and your emerald balance animates down as you spend. Trades carry per-visit stock ("2 left"), big-ticket items are one-offs, and sold-out rows gray out with a SOLD OUT tag. Purchases flash the row green with a villager chime, stock is shared across the party in real time, and ESC or Done both close the booth cleanly. Purchases come straight out of your emerald bank - no item juggling
+- Trade quality scales with your island's highest unlocked biome, so the hall grows with your progression
+- The piglin barter stepper got a full overhaul: -5/-1/+1/+5/Max quick-adjust buttons, a greed meter that fills red-to-green as your offer grows, and the piglin visibly reacting to the amount ("The piglin looks insulted." up to "The piglin CANNOT resist this much gold!") - an honest read of the odds ladder, since a maxed offer always wins. Your gold count now draws with a gold ingot icon, wins play the piglin celebration grunt, losses its angry squeal, and the coin-flip reveal then hands over the goods. Walk away any time; come back and the piglin rolls a fresh hidden threshold
+- Trading in the hall is fully multiplayer-safe: every party member can shop at different booths (or the same one) simultaneously, and a shopper disconnecting can never wedge the market
+
+Combat Feel
+
+- Mace ground slams are now true shockwaves. The impact detonates outward ring by ring over time - dust and cloud rings expanding under a pale tile flash that travels with the wave front, falling-pitch thumps per ring, and every mob the wave passes under visibly bouncing into the air (a parabolic hop with a little rebound, purely visual). A Wind Burst mace upgrades to a heavier three-ring wave with the heavy smash sound and a brief white flash
+- Mobs caught in a slam's area no longer re-detonate the full explosion each: extra victims get a light poof while the single traveling shockwave carries the drama, so a crowded slam reads as one big hit instead of five stacked ones
+- Impacts are now directional: sword, axe, bow, crossbow, trident, mace and even fist hits spray their particles along the actual line of the blow, so a strike from the west visibly carries through to the east. Diamond crits, netherite executes, axe cleaves and heavy shovels also give the target a visible knock-up on impact, and the netherite execute scorches the ground tile red
+- The mace uses the real mace smash sounds (air whoosh on the windup, ground smash on impact, heavy smash for Wind Burst)
+- The attack preview now flows with your aim: while hovering a target, the highlighted damage and effect tiles pulse in a wave that travels outward from you through the shape - a cone visibly sweeps away from you, a slam radiates from the impact point - so you can read at a glance where the hit is going
+
 Multiplayer
 
 - Loot is now rolled per player instead of shared. When several players land the killing blow on the same mob, each one rolls the equipment-drop chance independently, so two players who co-kill an armored mob no longer always get the same outcome (one can get a piece the other doesn't). The dropped gear is also copied per recipient, and any armor trim is re-rolled per player, so two players who both win the same helmet see different trims

@@ -86,31 +86,50 @@ public class RewardRevealScreen extends Screen {
 
         int perRow = Math.max(1, (PANEL_W - 24) / CELL);
         int rows = items.isEmpty() ? 1 : (items.size() + perRow - 1) / perRow;
-        int panelH = 14 + 14 + 8 + rows * CELL + 16;
+        int panelH = 14 + 14 + 10 + rows * CELL + 16;
         int x = (this.width - PANEL_W) / 2;
         int y = (this.height - panelH) / 2 - 6;
-        GuideTheme.drawPanel(ctx, x, y, PANEL_W, panelH);
         int cx = this.width / 2;
+
+        // Panel eases in with a subtle scale-settle so the reveal has a curtain-up.
+        float in = RewardReveal.smoothstep(Math.min(1f, elapsed() / 220f));
+        RewardReveal.pushScaledAround(ctx, 0.93f + 0.07f * RewardReveal.easeOutBack(in),
+            cx, y + panelH / 2f);
+        GuideTheme.drawPanel(ctx, x, y, PANEL_W, panelH);
+        ctx.getMatrices().pop();
 
         GuideTheme.drawCentered(ctx, this.textRenderer, title, cx, y + 8, GuideTheme.GOLD);
         if (!subtitle.isEmpty()) {
             GuideTheme.drawCentered(ctx, this.textRenderer, subtitle, cx, y + 20, GuideTheme.INK);
         }
+        GuideTheme.drawRule(ctx, x + 14, y + 30, PANEL_W - 28);
 
         // Gamble coin intro spins above the panel, lands heads/tails, then loot drops.
         if (style == RewardRevealPayload.STYLE_GAMBLE && elapsed() < coinDelay() + 150) {
             drawGambleCoin(ctx, cx, y - 16, elapsed());
         }
 
-        drawItemGrid(ctx, x, y + 34, perRow, mouseX, mouseY);
+        drawItemGrid(ctx, x, y + 36, perRow, mouseX, mouseY);
 
         if (!items.isEmpty() && !doneStingPlayed && revealComplete()) {
             doneStingPlayed = true;
             RewardReveal.playMaster(net.minecraft.sound.SoundEvents.BLOCK_BELL_USE, 0.5f, 1.2f);
+            // A triumphant reveal earns a burst of gold sparks off the panel top.
+            if (style != RewardRevealPayload.STYLE_GAMBLE || success) {
+                RewardReveal.burst(cx, y + 4, 26, 0xF7C84A, 90f);
+            }
         }
+        // Spark layer above the panel, below tooltips.
+        ctx.getMatrices().push();
+        ctx.getMatrices().translate(0, 0, 350);
+        RewardReveal.tickAndDrawParticles(ctx);
+        ctx.getMatrices().pop();
+
         if (revealComplete()) {
+            float p = 0.45f + 0.55f * RewardReveal.pulse(1400);
+            int a = Math.round(0xFF * p) << 24;
             GuideTheme.drawCentered(ctx, this.textRenderer, "(click to continue)",
-                cx, y + panelH - 12, GuideTheme.INK_FAINT);
+                cx, y + panelH - 12, a | (GuideTheme.INK_FAINT & 0xFFFFFF));
         }
     }
 
@@ -181,18 +200,18 @@ public class RewardRevealScreen extends Screen {
     /** Spinning gamble coin that lands a gold star (paid off) or a red X (a dud). */
     private void drawGambleCoin(DrawContext ctx, int cx, int cy, long t) {
         boolean spinning = t < COIN_SPIN_MS;
-        int r = COIN_BIG / 2;
-        boolean edge = false;
+        float squash;
         int faceCol;
         if (spinning) {
-            float phase = (t % 200) / 200f;        // ~5 flips/sec
-            edge = phase > 0.40f && phase < 0.60f; // thin slice mid-flip
+            float phase = (t % 200) / 200f;        // ~5 flips/sec, continuous tumble
+            squash = Math.abs((float) Math.cos(phase * Math.PI * 2));
             faceCol = GuideTheme.GOLD;
             if (lastSpinTickMs < 0 || t - lastSpinTickMs >= 90) {
                 lastSpinTickMs = t;
                 RewardReveal.playMaster(net.minecraft.sound.SoundEvents.BLOCK_AMETHYST_BLOCK_HIT, 0.25f, 1.6f);
             }
         } else {
+            squash = 1f;
             faceCol = success ? 0xFF2E7D32 : 0xFFB02020;
             if (!coinLandPlayed) {
                 coinLandPlayed = true;
@@ -200,20 +219,17 @@ public class RewardRevealScreen extends Screen {
                     success ? net.minecraft.sound.SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME
                             : net.minecraft.sound.SoundEvents.BLOCK_ANVIL_LAND,
                     0.6f, success ? 1.5f : 0.9f);
+                // The landing pays off (or stings) in sparks: gold shower for a
+                // win, a dull grey puff for a dud.
+                RewardReveal.burst(cx, cy, success ? 22 : 10,
+                    success ? 0xF7C84A : 0x777069, success ? 80f : 40f);
             }
         }
         ctx.getMatrices().push();
         ctx.getMatrices().translate(0, 0, 300);
-        int rx = edge ? Math.max(2, r / 4) : r;
-        RewardReveal.drawDisc(ctx, cx, cy, rx, r, faceCol);
-        RewardReveal.drawDisc(ctx, cx, cy - 1, rx, r, GuideTheme.brighten(faceCol, 40));
-        RewardReveal.drawDisc(ctx, cx, cy, Math.max(1, rx - 2), Math.max(1, r - 2), faceCol);
-        if (!edge) {
-            String face = spinning ? "?" : (success ? "★" : "✖");
-            int gcol = spinning ? 0xFF3B2B12 : (success ? 0xFFF7E27A : 0xFFFF4040);
-            Text f = Text.literal(face);
-            ctx.drawTextWithShadow(this.textRenderer, f, cx - this.textRenderer.getWidth(f) / 2, cy - 4, gcol);
-        }
+        String face = spinning ? "?" : (success ? "★" : "✖");
+        int gcol = spinning ? 0xFF3B2B12 : (success ? 0xFFF7E27A : 0xFFFF4040);
+        RewardReveal.drawCoin(ctx, this.textRenderer, cx, cy, COIN_BIG / 2, squash, faceCol, face, gcol);
         ctx.getMatrices().pop();
     }
 
@@ -255,6 +271,7 @@ public class RewardRevealScreen extends Screen {
     @Override
     public void removed() {
         super.removed();
+        RewardReveal.clearParticles();
         // Safety net: if this reveal is closed without dismissing (ESC fallback, forced
         // close) still send DISMISS so the event gate releases and the party isn't left
         // softlocked waiting on this player. Idempotent via `dismissed`.

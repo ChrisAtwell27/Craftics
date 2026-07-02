@@ -285,6 +285,7 @@ public class CrafticsClient implements ClientModInitializer {
             context.client().execute(() -> {
                 CombatState.setInCombat(false);
                 CombatVisualEffects.resetOverlays();
+                com.crackedgames.craftics.client.vfx.EntityBounceState.clear();
                 context.client().options.getBobView().setValue(previousBobView);
                 context.client().options.getChatScale().setValue(previousChatScale);
                 context.client().options.getChatWidth().setValue(previousChatWidth);
@@ -383,6 +384,23 @@ public class CrafticsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(
             com.crackedgames.craftics.network.TraderOfferPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
+                    // Trading hall booth: open (or refresh in place) the parchment
+                    // shop screen. Refresh-in-place keeps the screen steady across
+                    // the server's post-purchase re-send, and a refresh payload
+                    // (openScreen == 0) is dropped when no screen is showing so an
+                    // in-flight re-send can't resurrect a shop the player closed.
+                    if (CombatState.isInScene()) {
+                        if (context.client().currentScreen
+                                instanceof com.crackedgames.craftics.client.TraderScreen ts) {
+                            ts.updateOffer(payload.tradeData(), payload.playerEmeralds());
+                        } else if (payload.openScreen() != 0) {
+                            context.client().setScreen(new com.crackedgames.craftics.client.TraderScreen(
+                                payload.traderName(), payload.traderIcon(),
+                                payload.tradeData(), payload.playerEmeralds()));
+                        }
+                        return;
+                    }
+                    // Legacy event flow (vanilla merchant screen opens separately).
                     CombatState.setTraderActive(true);
                     CombatState.setEmeralds(payload.playerEmeralds());
                     TransitionOverlay.startFadeOut();
@@ -469,6 +487,12 @@ public class CrafticsClient implements ClientModInitializer {
             com.crackedgames.craftics.network.ExitEventCinematicPayload.ID, (payload, context) -> {
                 context.client().execute(() -> {
                     CombatState.setCinematicActive(false);
+                    // Barter only exists inside a cinematic/scene, and every clean
+                    // barter flow already sent BarterContextPayload(false) by now -
+                    // this catch-all drops parked stepper context that an abnormal
+                    // close (party leave, ejection into a run) would otherwise
+                    // resurrect on the next unrelated dialogue.
+                    com.crackedgames.craftics.client.DialogueScreen.clearPendingBarterContext();
                     context.client().options.setPerspective(Perspective.FIRST_PERSON);
                     context.client().mouse.lockCursor();
                     // Leaving a cinematic (event OR merchant scene) must clear any lingering
@@ -696,6 +720,11 @@ public class CrafticsClient implements ClientModInitializer {
             CombatVisualEffects.resetOverlays();
             com.crackedgames.craftics.client.guide.GuideBookData.resetToDefaults();
             com.crackedgames.craftics.client.PartyLabelRenderer.clear();
+            // Parked barter-stepper context and live bounce offsets are session
+            // state: a disconnect mid-barter/mid-fight must not carry them into
+            // the next world (a stale stepper would hijack unrelated dialogues).
+            com.crackedgames.craftics.client.DialogueScreen.clearPendingBarterContext();
+            com.crackedgames.craftics.client.vfx.EntityBounceState.clear();
             if (wasInCombat && client != null) {
                 client.options.getBobView().setValue(previousBobView);
                 client.options.getChatScale().setValue(previousChatScale);

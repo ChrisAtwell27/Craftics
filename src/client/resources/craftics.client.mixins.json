@@ -9,6 +9,7 @@
     "CameraLockMixin",
     "CrafticsEscCloseMixin",
     "EnderDragonRendererMixin",
+    "LivingEntityBounceMixin",
     "LivingEntityRendererAnimMixin",
     "LivingEntityRenderStateAnimMixin",
     "FovLockMixin",

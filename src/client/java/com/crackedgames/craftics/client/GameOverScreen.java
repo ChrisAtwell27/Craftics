@@ -109,6 +109,7 @@ public class GameOverScreen extends Screen {
     @Override
     public void removed() {
         super.removed();
+        RewardReveal.clearParticles();
         // Safety net: if this screen is closed without the Continue button (ESC fallback,
         // forced close) still send the ack so the party advances immediately instead of
         // waiting out the server-side game-over timeout. Idempotent via `acked`.
@@ -116,6 +117,21 @@ public class GameOverScreen extends Screen {
             acked = true;
             ClientPlayNetworking.send(new GameOverAckPayload());
         }
+    }
+
+    /** Solemn backdrop: deep darkening with a blood-red edge vignette and
+     *  cinematic letterbox bars sliding in, instead of the vanilla menu blur -
+     *  a defeat should feel heavier than opening a chest. */
+    @Override
+    public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        ctx.fill(0, 0, this.width, this.height, 0xCC000000);
+        int edge = Math.max(24, this.height / 6);
+        ctx.fillGradient(0, 0, this.width, edge, 0x66550000, 0x00000000);
+        ctx.fillGradient(0, this.height - edge, this.width, this.height, 0x00000000, 0x66550000);
+        float lb = RewardReveal.smoothstep(Math.min(1f, elapsed() / 400f));
+        int barH = Math.round(lb * Math.max(16, this.height / 12));
+        ctx.fill(0, 0, this.width, barH, 0xFF000000);
+        ctx.fill(0, this.height - barH, this.width, this.height, 0xFF000000);
     }
 
     @Override
@@ -161,23 +177,45 @@ public class GameOverScreen extends Screen {
             playSound(net.minecraft.sound.SoundEvents.BLOCK_BELL_USE, 0.6f, 0.8f);
         }
 
-        // Panel (content-fit-ish): header + summary + grid rows.
+        // Slow ash drifting down the whole screen sets the funeral mood; the
+        // occasional ember catches the eye without stealing it.
+        if (this.width > 0 && Math.random() < 0.30) {
+            boolean ember = Math.random() < 0.18;
+            RewardReveal.ash((float) (Math.random() * this.width), -4f,
+                ember ? 0xC24A2A : 0x8A8178);
+        }
+
+        // Panel (content-fit-ish): header + summary + grid rows, easing in with
+        // a subtle scale-settle over the first ~250ms.
         int perRow = Math.max(1, (PANEL_W - 24) / CELL);
         int rows = items.isEmpty() ? 1 : (items.size() + perRow - 1) / perRow;
-        int panelH = 16 + 14 + 14 + rows * CELL + 30;
+        int panelH = 16 + 22 + 16 + rows * CELL + 30;
         int x = (this.width - PANEL_W) / 2;
         int y = (this.height - panelH) / 2 - 10;
-        GuideTheme.drawPanel(ctx, x, y, PANEL_W, panelH);
         int cx = this.width / 2;
+        float in = RewardReveal.smoothstep(Math.min(1f, t / 250f));
+        float panelScale = 0.92f + 0.08f * RewardReveal.easeOutBack(in);
+        RewardReveal.pushScaledAround(ctx, panelScale, cx, y + panelH / 2f);
+        GuideTheme.drawPanel(ctx, x, y, PANEL_W, panelH);
+        ctx.getMatrices().pop();
 
-        centered(ctx, "§l☠ GAME OVER", cx, y + 8, 0xFFB02020);
+        // Title: large, slow red heartbeat pulse - the moment should land hard.
+        float titleIn = RewardReveal.smoothstep(Math.min(1f, t / 500f));
+        float titleScale = (1.9f - 0.3f * titleIn); // eases 1.9 -> 1.6
+        int titleColor = GuideTheme.brighten(0xFFB02020,
+            Math.round(24 * RewardReveal.pulse(1600)));
+        if (titleIn > 0.05f) {
+            RewardReveal.drawCenteredScaled(ctx, this.textRenderer, "☠ GAME OVER ☠",
+                cx, y + 15, titleScale * titleIn, titleColor, true);
+        }
         String summary = "";
         if (emeraldsLost > 0) summary += "Lost " + emeraldsLost + " emeralds";
         if (xpLevelsLost > 0) summary += (summary.isEmpty() ? "Lost " : ", ") + xpLevelsLost + " XP levels";
-        if (!summary.isEmpty()) centered(ctx, summary, cx, y + 22, GuideTheme.INK_SOFT);
+        if (!summary.isEmpty()) centered(ctx, summary, cx, y + 30, GuideTheme.INK_SOFT);
+        GuideTheme.drawRule(ctx, x + 14, y + 41, PANEL_W - 28);
 
         // Item grid + per-item resolution overlay.
-        int gridTop = y + 38;
+        int gridTop = y + 46;
         int gridW = Math.min(items.size(), perRow) * CELL;
         int startX = x + (PANEL_W - gridW) / 2;
         for (int i = 0; i < items.size(); i++) {
@@ -269,6 +307,12 @@ public class GameOverScreen extends Screen {
             this.addDrawableChild(continueButton);
         }
 
+        // Ash layer drifts over the whole composition (but under tooltips).
+        ctx.getMatrices().push();
+        ctx.getMatrices().translate(0, 0, 350);
+        RewardReveal.tickAndDrawParticles(ctx);
+        ctx.getMatrices().pop();
+
         // Hover tooltip on resolved cells.
         for (int i = 0; i < items.size(); i++) {
             int ix = startX + (i % perRow) * CELL + 3;
@@ -292,13 +336,13 @@ public class GameOverScreen extends Screen {
 
         boolean spinning = local < SPIN_MS;
         int diameter, dx, dy;
-        // Side of the spinning coin: flat (thin) when the flip "edge-on", round when
-        // face-on, so it reads as a tumbling coin. After SPIN it locks to the outcome.
-        boolean edge;
+        // Continuous tumble: the coin's width follows |cos| of the flip phase, so
+        // it visibly rotates instead of snapping between face-on and edge-on.
+        float squash;
         int faceCol;
         if (spinning) {
             float phase = (local % 200) / 200f;       // 5 flips/sec
-            edge = phase > 0.40f && phase < 0.60f;     // thin slice mid-flip
+            squash = Math.abs((float) Math.cos(phase * Math.PI * 2));
             diameter = COIN_BIG;
             dx = cxScreen; dy = cyScreen;
             faceCol = GuideTheme.GOLD;
@@ -309,7 +353,7 @@ public class GameOverScreen extends Screen {
             float k = RewardReveal.easeOutBack(raw);
             // Size eases linearly-ish so the overshoot doesn't make it grow past start.
             float kSize = raw * raw * (3 - 2 * raw);   // smoothstep for the shrink
-            edge = false;
+            squash = 1f;
             diameter = Math.round(COIN_BIG - (COIN_BIG - 16) * kSize); // shrink to ~item size
             dx = Math.round(cxScreen + (targetX - cxScreen) * k);
             dy = Math.round(cyScreen + (targetY - cyScreen) * k);
@@ -318,23 +362,14 @@ public class GameOverScreen extends Screen {
             faceCol = oc == 0 ? 0xFF2E7D32 : (oc == 1 ? 0xFFE08000 : 0xFFB02020);
         }
 
-        int r = diameter / 2;
-        int rx = edge ? Math.max(2, r / 4) : r;        // squash horizontally mid-flip
-        // Coin body (filled ellipse), bright rim, dark inner ring for depth.
-        RewardReveal.drawDisc(ctx, dx, dy, rx, r, faceCol);
-        RewardReveal.drawDisc(ctx, dx, dy - 1, rx, r, GuideTheme.brighten(faceCol, 40));
-        RewardReveal.drawDisc(ctx, dx, dy, Math.max(1, rx - 2), Math.max(1, r - 2), faceCol);
-        // Face glyph (hidden when edge-on): "?" while spinning, then a gold star
-        // (kept), an orange hyphen (partial loss), or a red X (fully lost).
-        if (!edge) {
-            int oc = outcome(index);
-            String face = spinning ? "?" : (oc == 0 ? "★" : (oc == 1 ? "-" : "✖"));
-            int glyphCol = spinning ? 0xFF3B2B12
-                : (oc == 0 ? 0xFFF7E27A : (oc == 1 ? 0xFFFFC04D : 0xFFFF4040));
-            Text f = Text.literal(face);
-            ctx.drawTextWithShadow(this.textRenderer, f,
-                dx - this.textRenderer.getWidth(f) / 2, dy - 4, glyphCol);
-        }
+        // Face glyph: "?" while spinning, then a gold star (kept), an orange
+        // hyphen (partial loss), or a red X (fully lost).
+        int oc = outcome(index);
+        String face = spinning ? "?" : (oc == 0 ? "★" : (oc == 1 ? "-" : "✖"));
+        int glyphCol = spinning ? 0xFF3B2B12
+            : (oc == 0 ? 0xFFF7E27A : (oc == 1 ? 0xFFFFC04D : 0xFFFF4040));
+        RewardReveal.drawCoin(ctx, this.textRenderer, dx, dy, diameter / 2,
+            squash, faceCol, face, glyphCol);
     }
 
     /** Red X across a 16px cell at (ix,iy). */

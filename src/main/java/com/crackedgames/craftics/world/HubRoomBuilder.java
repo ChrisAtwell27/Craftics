@@ -41,8 +41,11 @@ public class HubRoomBuilder {
     private static final int DIRT_DEPTH = 3; // 3 layers of dirt
     private static final int YARD_Y = 63; // ground level (1 below floor)
 
-    // Hub version for rebuild detection - bump to trigger rebuild
-    public static final int HUB_VERSION = 3;
+    // Hub version for rebuild detection - bump to trigger the on-join repair
+    // pass (see repairIfOutdated). v4: home.schem was being placed through the
+    // arena-style visibility cull, which skipped every buried interior block
+    // and generated the island hollow.
+    public static final int HUB_VERSION = 4;
 
     // Offset applied to all block placements (set before building)
     private static int ox = 0, oz = 0;
@@ -206,11 +209,14 @@ public class HubRoomBuilder {
         }
         if (schem == null) return hubCenter;
 
-        // Place the schematic centered on hubCenter, raised 20 blocks above the base Y
+        // Place the schematic centered on hubCenter, raised 20 blocks above the
+        // base Y. cullBuried = false: the island is a solid structure the player
+        // lives on - the arena-style visibility cull would skip every buried
+        // interior block and generate it hollow.
         int placeX = hubCenter.getX() - schem.width() / 2;
         int placeY = hubCenter.getY() - schem.height() / 2 + 20;
         int placeZ = hubCenter.getZ() - schem.length() / 2;
-        schem.place(world, placeX, placeY, placeZ);
+        schem.place(world, placeX, placeY, placeZ, false);
 
         // Scan for podzol - the marker block for the spawn point
         BlockPos spawnPos = hubCenter; // fallback
@@ -234,6 +240,40 @@ public class HubRoomBuilder {
         CrafticsMod.LOGGER.info("Home island built. origin=({},{},{}), size={}x{}x{}, spawn={}",
             placeX, placeY, placeZ, schem.width(), schem.height(), schem.length(), spawnPos);
         return spawnPos;
+    }
+
+    /**
+     * Repair a home island built by an older version through the visibility
+     * cull (hollow interior): re-fills ONLY the buried solids the cull skipped
+     * and only where the world still has air, so player-built and player-mined
+     * blocks are untouched. Version-gated by the caller via
+     * {@code personalHubVersion < HUB_VERSION}.
+     *
+     * @return the number of blocks filled (0 = nothing to repair / schem missing)
+     */
+    public static int repair(ServerWorld world, BlockPos hubCenter) {
+        net.minecraft.util.Identifier schemId = net.minecraft.util.Identifier.of("craftics", "home.schem");
+        var resource = world.getServer().getResourceManager().getResource(schemId);
+        if (resource.isEmpty()) {
+            CrafticsMod.LOGGER.error("home.schem not found in resources - cannot repair island");
+            return 0;
+        }
+        com.crackedgames.craftics.level.SchemLoader.SchemData schem;
+        try (java.io.InputStream in = resource.get().getInputStream()) {
+            schem = com.crackedgames.craftics.level.SchemLoader.load(in, schemId.toString());
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.error("Failed to read home.schem for repair", e);
+            return 0;
+        }
+        if (schem == null) return 0;
+
+        // Must mirror build()'s placement math exactly.
+        int placeX = hubCenter.getX() - schem.width() / 2;
+        int placeY = hubCenter.getY() - schem.height() / 2 + 20;
+        int placeZ = hubCenter.getZ() - schem.length() / 2;
+        int filled = schem.repairBuried(world, placeX, placeY, placeZ);
+        CrafticsMod.LOGGER.info("Home island repair at {}: {} interior blocks restored", hubCenter, filled);
+        return filled;
     }
 
     /**
