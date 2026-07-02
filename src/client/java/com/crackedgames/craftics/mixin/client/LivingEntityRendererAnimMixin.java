@@ -27,6 +27,11 @@ public abstract class LivingEntityRendererAnimMixin {
             at = @At("TAIL"))
     private void craftics$copyAnim(LivingEntity entity, LivingEntityRenderState state,
                                    float tickDelta, CallbackInfo ci) {
+        // Bounce offset is ferried for every living entity (bounce ids only ever
+        // target arena mobs, so this is 0 elsewhere) - and must be re-set each
+        // frame because render states are reused snapshots.
+        ((CrafticsAnimHolder) state).craftics$setBounceY(
+            com.crackedgames.craftics.client.vfx.EntityBounceState.offsetFor(entity.getId()));
         if (!entity.getCommandTags().contains("craftics_arena")) {
             CrafticsAnimHolder h = (CrafticsAnimHolder) state;
             h.craftics$setAnimState(com.crackedgames.craftics.combat.animation.AnimState.IDLE);

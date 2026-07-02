@@ -36,7 +36,16 @@ public class SchemLoader {
             Blocks.DIAMOND_BLOCK, Blocks.EMERALD_BLOCK, Blocks.GOLD_BLOCK,
             Blocks.IRON_BLOCK, Blocks.COPPER_BLOCK, Blocks.COAL_BLOCK, Blocks.PODZOL);
 
+        /** Place with the terrain-style visibility cull (arenas): buried filler
+         *  is skipped. Solid-structure schematics (the home island) must use
+         *  {@link #place(ServerWorld, int, int, int, boolean)} with
+         *  {@code cullBuried = false} or their interiors generate hollow. */
         public void place(ServerWorld world, int placeX, int placeY, int placeZ) {
+            place(world, placeX, placeY, placeZ, true);
+        }
+
+        /** Decode the varint-packed block indices, or null if truncated. */
+        private int[] decodePaletteIds() {
             int total = width * height * length;
             int[] paletteIds = new int[total];
             int index = 0;
@@ -47,7 +56,7 @@ public class SchemLoader {
                         int shift = 0;
                         int b;
                         do {
-                            if (index >= blockData.length) return;
+                            if (index >= blockData.length) return null;
                             b = blockData[index++] & 0xFF;
                             paletteId |= (b & 0x7F) << shift;
                             shift += 7;
@@ -58,6 +67,13 @@ public class SchemLoader {
                     }
                 }
             }
+            return paletteIds;
+        }
+
+        public void place(ServerWorld world, int placeX, int placeY, int placeZ, boolean cullBuried) {
+            int total = width * height * length;
+            int[] paletteIds = decodePaletteIds();
+            if (paletteIds == null) return;
 
             // Classify the palette once instead of re-deciding per block
             int palCount = palette.length;
@@ -111,7 +127,8 @@ public class SchemLoader {
                         int id = paletteIds[flat];
                         if (id < 0 || id >= palCount || palette[id] == null || palAir[id]) continue;
                         nonAir++;
-                        keep[flat] = palExempt[id] || isExposed(paletteIds, palHides, x, y, z);
+                        keep[flat] = !cullBuried
+                            || palExempt[id] || isExposed(paletteIds, palHides, x, y, z);
                     }
                 }
             }
@@ -208,6 +225,61 @@ public class SchemLoader {
             CrafticsMod.LOGGER.info(
                 "Placed schematic: {} of {} solid blocks set ({} buried blocks culled, {} gravity supports added)",
                 placed, nonAir, nonAir - (placed - supports), supports);
+        }
+
+        /**
+         * Repair pass for volumes placed by older builds through the visibility
+         * cull: re-place ONLY the buried solids the cull skipped, and only into
+         * positions the world currently has as air. Surface blocks the player
+         * mined and anything the player built are untouched - this fills
+         * exactly the holes the cull bug left behind, nothing else.
+         *
+         * <p>The "what was culled" math must mirror {@link #place}'s keep[]
+         * computation (exempt || exposed); keep the two in sync.
+         *
+         * @return the number of blocks filled in
+         */
+        public int repairBuried(ServerWorld world, int placeX, int placeY, int placeZ) {
+            int[] paletteIds = decodePaletteIds();
+            if (paletteIds == null) return 0;
+
+            int palCount = palette.length;
+            boolean[] palAir = new boolean[palCount];
+            boolean[] palHides = new boolean[palCount];
+            boolean[] palExempt = new boolean[palCount];
+            for (int i = 0; i < palCount; i++) {
+                BlockState s = palette[i];
+                if (s == null) continue;
+                Block block = s.getBlock();
+                palAir[i] = s.isAir();
+                boolean liquid = !s.getFluidState().isEmpty();
+                palHides[i] = !palAir[i] && !liquid && isOpaqueFullCube(s);
+                palExempt[i] = !palAir[i]
+                    && (MARKER_BLOCKS.contains(block)
+                        || block instanceof BlockEntityProvider
+                        || !"minecraft".equals(Registries.BLOCK.getId(block).getNamespace()));
+            }
+
+            int filled = 0;
+            for (int y = 0; y < height; y++) {
+                for (int z = 0; z < length; z++) {
+                    for (int x = 0; x < width; x++) {
+                        int flat = ((y * length) + z) * width + x;
+                        int id = paletteIds[flat];
+                        if (id < 0 || id >= palCount || palette[id] == null || palAir[id]) continue;
+                        // Only the blocks the cull skipped: buried, non-exempt solids.
+                        if (palExempt[id] || isExposed(paletteIds, palHides, x, y, z)) continue;
+                        BlockPos pos = new BlockPos(placeX + x, placeY + y, placeZ + z);
+                        if (!world.getBlockState(pos).isAir()) continue;
+                        world.setBlockState(pos, palette[id], ArenaBuilder.SET_FLAGS);
+                        filled++;
+                    }
+                }
+            }
+            if (filled > 0) {
+                CrafticsMod.LOGGER.info("Schematic repair: filled {} hollowed-out interior blocks", filled);
+            }
+            return filled;
         }
 
         /** True if any face of (x,y,z) borders something that doesn't fully hide it. */

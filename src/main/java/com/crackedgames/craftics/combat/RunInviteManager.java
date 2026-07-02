@@ -110,12 +110,18 @@ public final class RunInviteManager {
             return;
         }
 
-        // Eligible joiners: every other online party member (they all share this island).
+        // Eligible joiners: every other online party member (they all share this
+        // island). Members browsing a merchant scene are skipped - a run invite
+        // popping over the trading hall would drag them into combat while still
+        // registered as scene members, wedging both flows.
         List<ServerPlayerEntity> invitees = new ArrayList<>();
         for (UUID memberUuid : data.getPartyMemberUuids(starter.getUuid())) {
             if (memberUuid.equals(starter.getUuid())) continue;
             ServerPlayerEntity member = world.getServer().getPlayerManager().getPlayer(memberUuid);
-            if (member != null && !CombatManager.get(memberUuid).isActive()) invitees.add(member);
+            if (member != null && !CombatManager.get(memberUuid).isActive()
+                    && !com.crackedgames.craftics.scene.SceneController.isSceneMember(memberUuid)) {
+                invitees.add(member);
+            }
         }
 
         if (invitees.isEmpty()) {
@@ -221,6 +227,19 @@ public final class RunInviteManager {
         ServerWorld world = (ServerWorld) starter.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         CrafticsSavedData.PlayerData pd = data.getPlayerData(starter.getUuid());
+
+        // A run and a merchant scene are mutually exclusive. The invite filter
+        // already skips scene members, but the ~22s lobby window (and any future
+        // entry path) can still race a scene entry - eject at grant time so no
+        // participant enters the arena while still registered in a scene.
+        com.crackedgames.craftics.scene.SceneController.ejectForRun(starter);
+        for (UUID participantUuid : participants) {
+            ServerPlayerEntity participant =
+                world.getServer().getPlayerManager().getPlayer(participantUuid);
+            if (participant != null) {
+                com.crackedgames.craftics.scene.SceneController.ejectForRun(participant);
+            }
+        }
 
         BiomeTemplate biome = findBiome(biomeId);
         if (biome == null) { ServerPlayNetworking.send(starter, new ExitCombatPayload(false)); return; }

@@ -61,7 +61,7 @@ public class TileOverlayRenderer {
 
     public static void register() {
         WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
-            if (!CombatState.isInCombat()) return;
+            if (!CombatState.isInCombat() && !CombatState.isInScene()) return;
             if (MinecraftClient.getInstance().options.hudHidden) return;
             //? if <=1.21.4 {
             render(context.matrixStack(), context.camera());
@@ -212,6 +212,12 @@ public class TileOverlayRenderer {
         int oy = CombatState.getArenaOriginY();
         int oz = CombatState.getArenaOriginZ();
 
+        // Merchant scene: booths + hover only (no combat layers exist here).
+        if (CombatState.isInScene() && !CombatState.isInCombat()) {
+            buildSceneQuads(mc, world, out, ox, oy, oz);
+            return;
+        }
+
         boolean colorblind = false;
         try {
             colorblind = com.crackedgames.craftics.CrafticsMod.CONFIG.colorblindMode();
@@ -285,11 +291,21 @@ public class TileOverlayRenderer {
         // danger/threat washes, and the xray ghost keeps the telegraph
         // readable when terrain occludes it at low camera angles. A
         // telegraph you can't see is a hit you can't dodge.
+        //
+        // On top of the pulse, an inner square repeatedly COLLAPSES toward each
+        // tile's center (edge → center over ~700ms, brightening as it closes) -
+        // the noose tightening - so a telegraph reads as "impact incoming",
+        // not just "this tile is red".
         if (!blind && !CombatState.getWarningTiles().isEmpty()) {
             Set<GridPos> warningTiles = CombatState.getWarningTiles();
             float warningPulse = (float) (0.4 + 0.2 * Math.sin(time * 9.0));
+            float collapse = (time % 0.7f) / 0.7f;                  // 0 → 1 loop
+            float margin = 0.08f + 0.34f * collapse;                // edge → center
+            float collapseAlpha = 0.25f + 0.55f * collapse;         // brightens closing
             for (GridPos tile : warningTiles) {
                 fillTile(out, world, ox, oy, oz, tile, 0.01f, 1.0f, 0.1f, 0.1f, warningPulse);
+                markTile(out, world, ox, oy, oz, tile, 0.0125f, margin,
+                    1.0f, 0.55f, 0.25f, collapseAlpha);
                 fillTile(xray, world, ox, oy, oz, tile, 0.01f, 1.0f, 0.1f, 0.1f, 0.15f);
             }
             outlineRegion(out, world, ox, oy, oz, warningTiles, 0.0118f,
@@ -322,14 +338,24 @@ public class TileOverlayRenderer {
         // effect-only like Density pull / Wind Burst). Reuses the server's
         // AoeShapes geometry so the preview matches the real hit. Damage tiles
         // get an outline - they're also valid click targets (empty-tile AoE).
+        //
+        // The fill isn't static: a brightness pulse travels outward from the
+        // PLAYER through the shape (each tile's phase offset is its distance
+        // from the player), so the highlight visibly flows in the direction
+        // the hit will travel - a cone sweeps away from you, a slam radiates
+        // from the impact point outward.
         GridPos hover = CombatState.getHoveredTile();
         if (!blind && hover != null) {
             AttackAoePreview.Preview ap = AttackAoePreview.compute(mc, hover);
+            GridPos pulseFrom = ClientGridHelper.getPlayerGridPos(mc);
+            if (pulseFrom == null) pulseFrom = hover;
             for (GridPos tile : ap.effectTiles()) {
-                fillTile(out, world, ox, oy, oz, tile, 0.006f, 0.2f, 0.7f, 1.0f, 0.25f);
+                float a = previewPulse(time, pulseFrom, tile, 0.22f, 0.08f);
+                fillTile(out, world, ox, oy, oz, tile, 0.006f, 0.2f, 0.7f, 1.0f, a);
             }
             for (GridPos tile : ap.damageTiles()) {
-                fillTile(out, world, ox, oy, oz, tile, 0.007f, 1.0f, 0.75f, 0.1f, 0.35f);
+                float a = previewPulse(time, pulseFrom, tile, 0.33f, 0.13f);
+                fillTile(out, world, ox, oy, oz, tile, 0.007f, 1.0f, 0.75f, 0.1f, a);
             }
             outlineRegion(out, world, ox, oy, oz, ap.damageTiles(), 0.0116f,
                 1.0f, 0.85f, 0.3f, 0.7f);
@@ -394,6 +420,63 @@ public class TileOverlayRenderer {
             outlineTile(xray, world, ox, oy, oz, hover, 0.013f,
                 lighten(r), lighten(g), lighten(b), 0.4f);
         }
+    }
+
+    /**
+     * Highlight layers for a merchant scene: each booth's stand rectangle gets
+     * a soft gold wash (pulsing brighter under the cursor, so booths read as
+     * clickable at a glance), and the hovered walkable tile gets the familiar
+     * cyan hover ring. Booth geometry is recomputed from the same pure
+     * {@link com.crackedgames.craftics.scene.CodeSceneBuilder} layout the
+     * server built from - both scene types share identical booth positions,
+     * so no extra network data is needed.
+     */
+    private static void buildSceneQuads(MinecraftClient mc, net.minecraft.client.world.ClientWorld world,
+                                        List<Quad> out, int ox, int oy, int oz) {
+        com.crackedgames.craftics.scene.SceneLayout layout =
+            com.crackedgames.craftics.scene.CodeSceneBuilder.buildLayout(ox, oy + 1, oz, "village");
+        // Per-tick cached hover from CombatInputHandler.tickScene - nulled while
+        // a screen is open, so no glow invites clicks the UI would swallow.
+        GridPos hover = CombatState.getHoveredTile();
+        float time = timeSeconds();
+
+        boolean overBooth = false;
+        for (com.crackedgames.craftics.scene.StandSlot s : layout.stands()) {
+            boolean hovered = hover != null && s.contains(ox + hover.x(), oz + hover.z());
+            overBooth |= hovered;
+            Set<GridPos> rect = new java.util.LinkedHashSet<>();
+            for (int wx = s.minX(); wx <= s.maxX(); wx++) {
+                for (int wz = s.minZ(); wz <= s.maxZ(); wz++) {
+                    rect.add(new GridPos(wx - ox, wz - oz));
+                }
+            }
+            float fill = hovered ? (float) (0.30 + 0.10 * Math.sin(time * 5.0)) : 0.12f;
+            for (GridPos tile : rect) {
+                fillTile(out, world, ox, oy, oz, tile, 0.002f, 1.0f, 0.82f, 0.35f, fill);
+            }
+            outlineRegion(out, world, ox, oy, oz, rect, 0.011f,
+                1.0f, 0.9f, 0.5f, hovered ? 0.9f : 0.35f);
+        }
+
+        // Walk-to hover cue on plain floor tiles (booth hover already glows).
+        if (hover != null && !overBooth) {
+            float pulse = (float) (0.35 + 0.1 * Math.sin(time * 4.8));
+            fillTile(out, world, ox, oy, oz, hover, 0.005f, 0.3f, 0.9f, 1.0f, pulse);
+            outlineTile(out, world, ox, oy, oz, hover, 0.013f,
+                lighten(0.3f), lighten(0.9f), lighten(1.0f), 0.9f);
+        }
+    }
+
+    /**
+     * Alpha for one AoE-preview tile this frame: a base wash plus a sine pulse
+     * whose phase lags by the tile's distance from {@code from}, so the bright
+     * band travels outward through the shape at ~3.4 tiles/second. Wall-clock
+     * driven like every other pulse here, so it's frame-rate independent.
+     */
+    private static float previewPulse(float time, GridPos from, GridPos tile,
+                                      float base, float amplitude) {
+        float dist = (float) Math.hypot(tile.x() - from.x(), tile.z() - from.z());
+        return base + amplitude * (float) Math.sin(time * 6.0 - dist * 1.75);
     }
 
     /** Refresh the cached BFS path when the player tile or hover target changed. */

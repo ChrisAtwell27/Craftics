@@ -902,6 +902,30 @@ public class CombatManager {
         return get(playerUuid);
     }
 
+    /**
+     * True when the player is actually mid-run: in active combat or held at a
+     * between-level gate (event/trader/intro/dig-site pending set). Use this
+     * for engagement checks - {@link #getActiveCombat} can NEVER return null
+     * (its final fallback is {@code get(playerUuid)}, which creates an inactive
+     * instance on demand), so {@code getActiveCombat(...) != null} is a
+     * tautology, not a check.
+     */
+    public static boolean isEngaged(java.util.UUID playerUuid) {
+        java.util.UUID leaderUuid = PARTY_COMBAT_LEADER.get(playerUuid);
+        if (leaderUuid != null) {
+            CombatManager leaderCm = INSTANCES.get(leaderUuid);
+            if (leaderCm != null && leaderCm.active) return true;
+        }
+        for (CombatManager cm : INSTANCES.values()) {
+            if (cm.eventPendingPlayers.contains(playerUuid)
+                    || cm.traderPendingPlayers.contains(playerUuid)
+                    || cm.introPendingPlayers.contains(playerUuid)
+                    || cm.digSitePendingPlayers.contains(playerUuid)) return true;
+        }
+        CombatManager own = INSTANCES.get(playerUuid);
+        return own != null && own.active;
+    }
+
     public boolean isPartyMember(java.util.UUID uuid) {
         return partyPlayers.stream().anyMatch(p -> p.getUuid().equals(uuid));
     }
@@ -5221,6 +5245,10 @@ public class CombatManager {
                            && (fTarget.getCurrentHp() + dealt) <= fTarget.getMaxHp() * 0.3f) {
                     // Netherite execute: target was at/below 30% HP before this hit
                     outcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.EXECUTE;
+                } else if (vfxWeapon == net.minecraft.item.Items.MACE
+                           && PlayerCombatStats.getEnchantLevel(player.getMainHandStack(), "minecraft:wind_burst") > 0) {
+                    // Wind Burst mace: the heavy smash - a wider, louder shockwave
+                    outcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.SMASH_AOE;
                 } else if (fLuckCrit) {
                     outcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.CRIT;
                 } else {
@@ -5364,7 +5392,9 @@ public class CombatManager {
                 com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome extraOutcome;
                 net.minecraft.item.Item extraWeapon = player.getMainHandStack().getItem();
                 if (extraWeapon == net.minecraft.item.Items.MACE) {
-                    extraOutcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.SMASH_AOE;
+                    // Light poof per victim - the slam's shockwave already covers the AoE
+                    // drama; replaying the full smash per extra target stacked N explosions.
+                    extraOutcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.SMASH_SECONDARY;
                 } else if (net.minecraft.registry.Registries.ITEM.getId(extraWeapon).getPath().endsWith("_axe")) {
                     // Axes: reuse BASIC_HIT for the extra (stun is target-single; no visible secondary target damage).
                     extraOutcome = com.crackedgames.craftics.vfx.weapon.WeaponVfxSelector.Outcome.BASIC_HIT;
@@ -11076,7 +11106,9 @@ public class CombatManager {
                 boolean skipTelegraph = currentBiomeOrdinal >= 3 && !isVoidWalker;
                 if (!skipTelegraph && ba.warningTiles() != null && !ba.warningTiles().isEmpty()) {
                     sendMessage("§e" + currentEnemy.getDisplayName() + " prepares " +
-                        ba.abilityName().replace('_', ' ') + "!");
+                        ba.abilityName().replace('_', ' ') + "! §7("
+                        + com.crackedgames.craftics.vfx.boss.BossAttackVfx.hintFor(ba.abilityName())
+                        + ")");
                     // Store pending warning for resolution next turn
                     pendingBossWarnings.add(new PendingBossWarning(currentEnemy, ba));
                     // The boss visibly channels while the telegraph charges -
@@ -11088,6 +11120,10 @@ public class CombatManager {
                     }
                     // Render warning particles on the telegraphed tiles
                     spawnBossAbilityTelegraphParticles(ba);
+                    // Dread pass: resonant toll, boss aura flare, and particles
+                    // converging on the doomed tiles in pulses across the turn.
+                    com.crackedgames.craftics.vfx.boss.BossAttackVfx.telegraph(
+                        (ServerWorld) player.getEntityWorld(), arena, currentEnemy, ba);
                     // Paint the red tile overlay on each warning tile so the player can
                     // actually see where the attack will land.
                     for (GridPos tile : ba.warningTiles()) {
@@ -11109,6 +11145,11 @@ public class CombatManager {
                             && ba.warningTiles() != null && ba.warningTiles().size() >= 2) {
                         registerVoidRift(currentEnemy, ba.warningTiles().get(0), ba.warningTiles().get(1));
                     }
+                    // Even without a telegraph the hit must LAND: themed,
+                    // category-shaped impact instead of an unheralded damage tick.
+                    com.crackedgames.craftics.vfx.boss.BossAttackVfx.impact(
+                        (ServerWorld) player.getEntityWorld(), arena, currentEnemy, ba,
+                        arena.getPlayerGridPos());
                     dispatchBossSubAction(ba.resolvedAction());
                 }
                 sendSync();
@@ -11321,23 +11362,12 @@ public class CombatManager {
             if (pw.boss() == boss && boss.isAlive()) {
                 sendMessage("§c" + boss.getDisplayName() + "'s " +
                     pw.ability().abilityName().replace('_', ' ') + " resolves!");
-                // Resolution burst -particles flash on all warning tiles as the attack lands
+                // The payoff: themed, category-shaped impact - slams ripple a
+                // shockwave, lines sweep their tiles in order, magic converges
+                // then bursts - instead of the old flat FLASH+CRIT sprinkle.
                 java.util.List<GridPos> warnTiles = pw.ability().warningTiles();
-                if (warnTiles != null && !warnTiles.isEmpty()) {
-                    // Limit to 12 tiles max for burst to avoid lag on huge areas
-                    int burstCount = Math.min(warnTiles.size(), 12);
-                    for (int i = 0; i < burstCount; i++) {
-                        GridPos tile = warnTiles.get(i);
-                        if (!arena.isInBounds(tile)) continue;
-                        BlockPos bp = arena.gridToBlockPos(tile);
-                        world.spawnParticles(net.minecraft.particle.ParticleTypes.FLASH,
-                            bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5,
-                            1, 0.0, 0.0, 0.0, 0.0);
-                        world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
-                            bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5,
-                            4, 0.2, 0.4, 0.2, 0.03);
-                    }
-                }
+                com.crackedgames.craftics.vfx.boss.BossAttackVfx.impact(
+                    world, arena, boss, pw.ability(), arena.getPlayerGridPos());
                 // Ghast scream on attack resolution
                 triggerGhastScream(boss, true);
                 // Void Walker: register a live rift pair once the telegraph finishes.
@@ -14346,6 +14376,11 @@ public class CombatManager {
         if (bossMob != null) {
             com.crackedgames.craftics.combat.animation.MobAnimations.set(bossMob,
                 com.crackedgames.craftics.combat.animation.AnimState.ROAR);
+        }
+        // The arena itself flinches: dragon growl, a shockwave rolling out from
+        // the boss that bounces its own minions, blood flash, ENRAGED overhead.
+        if (player != null && player.getEntityWorld() instanceof ServerWorld phaseWorld) {
+            com.crackedgames.craftics.vfx.boss.BossAttackVfx.phaseTransition(phaseWorld, arena, boss);
         }
 
         sendToAllParty(new CombatEventPayload(

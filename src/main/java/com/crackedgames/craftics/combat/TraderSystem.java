@@ -38,6 +38,14 @@ public class TraderSystem {
      */
     public static TraderOffer generateOffer(int biomeTier, Random random) {
         TraderType type = TraderType.values()[random.nextInt(TraderType.values().length)];
+        return generateOffer(type, biomeTier, random);
+    }
+
+    /**
+     * Generate trades for a SPECIFIC trader type - used by the trading hall
+     * scene, where each booth has a fixed merchant identity.
+     */
+    public static TraderOffer generateOffer(TraderType type, int biomeTier, Random random) {
         List<Trade> trades = generateTrades(type, biomeTier, random);
         return new TraderOffer(type, trades);
     }

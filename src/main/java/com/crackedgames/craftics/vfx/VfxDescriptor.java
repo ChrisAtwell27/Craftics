@@ -79,6 +79,39 @@ public record VfxDescriptor(List<VfxPhase> phases) {
             return this;
         }
 
+        /** Particles sprayed along the hit direction (context origin→target). */
+        public PhaseBuilder directionalBurst(VfxAnchor at, ParticleEffect type, int count,
+                                             double speed, double spreadDegrees, double upwardBias) {
+            primitives.add(new VfxPrimitive.DirectionalBurst(at, type, count, speed, spreadDegrees, upwardBias));
+            return this;
+        }
+
+        /** Traveling ground shockwave: per-ring particles, tile flashes, thumps and mob knock-ups. */
+        public PhaseBuilder shockwave(VfxAnchor center, int maxRadiusTiles, int ticksPerRing,
+                                      ParticleEffect ringParticle, @Nullable ParticleEffect dustParticle,
+                                      int flashColor, int flashDurationTicks,
+                                      float bounceAmplitude, int bounceDurationTicks,
+                                      @Nullable SoundEvent ringSound) {
+            primitives.add(new VfxPrimitive.Shockwave(center, maxRadiusTiles, ticksPerRing,
+                ringParticle, dustParticle, flashColor, flashDurationTicks,
+                bounceAmplitude, bounceDurationTicks, ringSound));
+            return this;
+        }
+
+        /** Flash the Chebyshev ring of arena tiles at {@code radiusTiles} around the anchor. */
+        public PhaseBuilder tileRingFlash(VfxAnchor center, int radiusTiles, int color, int durationTicks) {
+            primitives.add(new VfxPrimitive.TileRingFlash(center, radiusTiles, color, durationTicks));
+            return this;
+        }
+
+        /** Visually knock up arena mobs within the tile-radius band around the anchor. */
+        public PhaseBuilder bounce(VfxAnchor center, int minRadiusTiles, int maxRadiusTiles,
+                                   float amplitude, int durationTicks) {
+            primitives.add(new VfxPrimitive.BounceEntities(center, minRadiusTiles, maxRadiusTiles,
+                amplitude, durationTicks));
+            return this;
+        }
+
         public PhaseBuilder launchBlock(VfxAnchor origin, Vec3d velocity,
                                          BlockState state, int lifetimeTicks) {
             primitives.add(new VfxPrimitive.LaunchBlock(origin, velocity, state, lifetimeTicks));

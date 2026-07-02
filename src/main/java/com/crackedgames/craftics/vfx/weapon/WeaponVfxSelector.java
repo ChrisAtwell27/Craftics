@@ -15,6 +15,7 @@ public final class WeaponVfxSelector {
         EXECUTE,
         SWEEP_SECONDARY,     // extra hit on a sweep secondary target
         SMASH_AOE,
+        SMASH_SECONDARY,     // extra mob caught in a slam's AoE (light poof; the shockwave carries the drama)
         PIERCE_SECONDARY,
         THROWN,              // for trident thrown attack
         AP_REFUND            // hoe Special proc
@@ -24,6 +25,7 @@ public final class WeaponVfxSelector {
         // Abilities override weapon base
         if (outcome == Outcome.EXECUTE) return WeaponVfx.SWORD_NETHERITE_EXECUTE;
         if (outcome == Outcome.SMASH_AOE) return WeaponVfx.MACE_SMASH_AOE;
+        if (outcome == Outcome.SMASH_SECONDARY) return WeaponVfx.MACE_SMASH_SECONDARY;
         if (outcome == Outcome.SWEEP_SECONDARY) return WeaponVfx.SWORD_SWEEP;
         if (outcome == Outcome.PIERCE_SECONDARY) return WeaponVfx.CROSSBOW_PIERCE_FLOURISH;
         if (outcome == Outcome.THROWN) return WeaponVfx.TRIDENT_THROWN;

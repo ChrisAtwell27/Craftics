@@ -31,6 +31,13 @@ public final class Vfx {
                         pos.x, pos.y, pos.z, s.text(), s.color(), s.lifetimeTicks()));
                 }
                 case VfxPrimitive.Vignette s -> out.add(new com.crackedgames.craftics.network.VfxClientPayload.ClientPrim.Vignette(s.type().ordinal(), s.level(), s.durationTicks()));
+                case VfxPrimitive.BounceEntities b -> {
+                    int[] ids = resolveBounceTargets(world, ctx, b, resolver);
+                    if (ids.length > 0) {
+                        out.add(new com.crackedgames.craftics.network.VfxClientPayload.ClientPrim.EntityBounce(
+                            ids, b.amplitude(), b.durationTicks()));
+                    }
+                }
                 default -> { /* non-client primitive slipped in - ignore */ }
             }
         }
@@ -40,5 +47,34 @@ public final class Vfx {
         for (net.minecraft.server.network.ServerPlayerEntity player : world.getPlayers()) {
             net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player, payload);
         }
+    }
+
+    /**
+     * Collect the entity ids of living, grounded arena mobs whose Chebyshev
+     * tile distance from the anchor lies within the primitive's radius band.
+     * Multi-tile mobs (bosses) are deduped by entity id.
+     */
+    private static int[] resolveBounceTargets(ServerWorld world, VfxContext ctx,
+                                              VfxPrimitive.BounceEntities b,
+                                              VfxAnchorResolver resolver) {
+        com.crackedgames.craftics.core.GridArena arena = ctx.arena();
+        if (arena == null) return new int[0];
+        com.crackedgames.craftics.core.GridPos center =
+            VfxRunner.worldToGrid(arena, resolver.resolve(b.center()));
+        java.util.LinkedHashSet<Integer> ids = new java.util.LinkedHashSet<>();
+        for (java.util.Map.Entry<com.crackedgames.craftics.core.GridPos,
+                com.crackedgames.craftics.combat.CombatEntity> e : arena.getOccupants().entrySet()) {
+            com.crackedgames.craftics.combat.CombatEntity occupant = e.getValue();
+            if (occupant == null || !occupant.isAlive() || occupant.isFlying()) continue;
+            if (occupant.getMobEntity() == null) continue;
+            int dist = Math.max(Math.abs(e.getKey().x() - center.x()),
+                                Math.abs(e.getKey().z() - center.z()));
+            if (dist < b.minRadiusTiles() || dist > b.maxRadiusTiles()) continue;
+            ids.add(occupant.getMobEntity().getId());
+        }
+        int[] arr = new int[ids.size()];
+        int i = 0;
+        for (int id : ids) arr[i++] = id;
+        return arr;
     }
 }

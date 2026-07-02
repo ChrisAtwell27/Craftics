@@ -222,11 +222,18 @@ public class CombatInputHandler {
      */
     private static void tickScene(MinecraftClient client) {
         // A merchant/trade or other screen open over the scene captures the mouse;
-        // don't also fire a world click underneath it.
+        // don't also fire a world click underneath it - and null the cached hover
+        // so the booth glow / hover ring doesn't keep pulsing behind the panel.
         if (client.currentScreen != null) {
             lastSceneLeftClick = false;
+            CombatState.setHoveredTile(null);
             return;
         }
+
+        // Cache the hovered tile once per tick (the renderer reads it every
+        // frame; re-raycasting per frame was pure waste for a hover cue).
+        GridPos hover = TileRaycast.getGridPosUnderCursor();
+        CombatState.setHoveredTile(hover);
 
         long window = client.getWindow().getHandle();
         boolean leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
@@ -238,10 +245,9 @@ public class CombatInputHandler {
         if (SceneHudOverlay.tryClickLeaveButton(client)) return;
 
         // Otherwise: walk-to. The server validates the tile against the scene floor.
-        GridPos pos = TileRaycast.getGridPosUnderCursor();
-        if (pos == null) return;
+        if (hover == null) return;
         ClientPlayNetworking.send(
-            new com.crackedgames.craftics.network.SceneClickPayload(pos.x(), pos.z()));
+            new com.crackedgames.craftics.network.SceneClickPayload(hover.x(), hover.z()));
     }
 
     private static void handleClick(MinecraftClient client, ActionMode mode) {

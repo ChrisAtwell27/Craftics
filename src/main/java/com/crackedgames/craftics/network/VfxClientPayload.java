@@ -29,6 +29,17 @@ public record VfxClientPayload(UUID runId, int phaseIndex, List<ClientPrim> prim
         record HitPause(int freezeTicks) implements ClientPrim {}
         record FloatingText(double x, double y, double z, String text, int color, int lifetimeTicks) implements ClientPrim {}
         record Vignette(int typeOrdinal, int level, int durationTicks) implements ClientPrim {}
+        /** Visual knock-up: each entity gets a parabolic render-offset hop. */
+        record EntityBounce(int[] entityIds, float amplitude, int durationTicks) implements ClientPrim {
+            @Override public boolean equals(Object o) {
+                return o instanceof EntityBounce b
+                    && java.util.Arrays.equals(entityIds, b.entityIds)
+                    && amplitude == b.amplitude && durationTicks == b.durationTicks;
+            }
+            @Override public int hashCode() {
+                return Objects.hash(java.util.Arrays.hashCode(entityIds), amplitude, durationTicks);
+            }
+        }
     }
 
     private void encode(RegistryByteBuf buf) {
@@ -66,6 +77,13 @@ public record VfxClientPayload(UUID runId, int phaseIndex, List<ClientPrim> prim
                     buf.writeVarInt(s.level());
                     buf.writeVarInt(s.durationTicks());
                 }
+                case ClientPrim.EntityBounce s -> {
+                    buf.writeByte(5);
+                    buf.writeVarInt(s.entityIds().length);
+                    for (int id : s.entityIds()) buf.writeVarInt(id);
+                    buf.writeFloat(s.amplitude());
+                    buf.writeVarInt(s.durationTicks());
+                }
             }
         }
     }
@@ -85,6 +103,12 @@ public record VfxClientPayload(UUID runId, int phaseIndex, List<ClientPrim> prim
                     buf.readDouble(), buf.readDouble(), buf.readDouble(),
                     buf.readString(), buf.readInt(), buf.readVarInt()));
                 case 4 -> list.add(new ClientPrim.Vignette(buf.readVarInt(), buf.readVarInt(), buf.readVarInt()));
+                case 5 -> {
+                    int idCount = buf.readVarInt();
+                    int[] ids = new int[idCount];
+                    for (int j = 0; j < idCount; j++) ids[j] = buf.readVarInt();
+                    list.add(new ClientPrim.EntityBounce(ids, buf.readFloat(), buf.readVarInt()));
+                }
                 default -> throw new IllegalStateException("Unknown VFX client primitive tag: " + tag);
             }
         }

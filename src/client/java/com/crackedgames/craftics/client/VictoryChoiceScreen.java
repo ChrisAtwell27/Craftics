@@ -345,20 +345,38 @@ public class VictoryChoiceScreen extends Screen {
         int panelH = panelHeight();
         int x = (this.width - PANEL_W) / 2;
         int y = panelTop();
-        GuideTheme.drawPanel(context, x, y, PANEL_W, panelH);
         int cx = this.width / 2;
+        // Panel curtain-up: a subtle scale-settle once the transition fade clears.
+        float in = startMs < 0 ? 0f
+            : RewardReveal.smoothstep(Math.min(1f, elapsed() / 220f));
+        RewardReveal.pushScaledAround(context, 0.93f + 0.07f * RewardReveal.easeOutBack(in),
+            cx, y + panelH / 2f);
+        GuideTheme.drawPanel(context, x, y, PANEL_W, panelH);
+        context.getMatrices().pop();
         if (isEventPrompt) {
             renderEventPrompt(context, cx, y + 12, PANEL_W, mouseX, mouseY);
         } else {
             renderVictoryScreen(context, cx, x, y + 10, PANEL_W, mouseX, mouseY);
         }
 
-        // Completion sting once every reward has settled (and the reveal has started).
+        // Completion sting + a shower of gold sparks once every reward settled.
         if (!isEventPrompt && !rewards.isEmpty() && !doneStingPlayed
                 && startMs >= 0 && elapsed() >= revealDurationMs()) {
             doneStingPlayed = true;
             RewardReveal.playMaster(net.minecraft.sound.SoundEvents.BLOCK_BELL_USE, 0.5f, 1.2f);
+            RewardReveal.burst(cx, y + 6, 30, 0xF7C84A, 95f);
         }
+        // Spark layer above the panel content.
+        context.getMatrices().push();
+        context.getMatrices().translate(0, 0, 350);
+        RewardReveal.tickAndDrawParticles(context);
+        context.getMatrices().pop();
+    }
+
+    @Override
+    public void removed() {
+        super.removed();
+        RewardReveal.clearParticles();
     }
 
     private void renderEventPrompt(DrawContext context, int cx, int topY,
@@ -395,14 +413,26 @@ public class VictoryChoiceScreen extends Screen {
     private void renderVictoryScreen(DrawContext context, int cx, int panelX, int topY,
                                      int panelW, int mouseX, int mouseY) {
         int y = topY;
-        centered(context, "★ VICTORY!", cx, y, GuideTheme.GOLD);
-        y += 13;
+        // Title carries the win: larger, with a slow gold shimmer.
+        int shimmer = GuideTheme.brighten(GuideTheme.GOLD,
+            Math.round(28 * RewardReveal.pulse(1800)));
+        RewardReveal.drawCenteredScaled(context, this.textRenderer, "★ VICTORY! ★",
+            cx, y + 4, 1.35f, shimmer, false);
+        y += 15;
         centered(context, biomeName + " — Level " + (levelIndex + 1) + " Complete",
             cx, y, GuideTheme.INK);
         y += 12;
         GuideTheme.drawRule(context, panelX + 12, y, panelW - 24);
         y += 6;
         centered(context, "Total: " + shownEmeraldTotal() + " Emeralds", cx, y, GuideTheme.INK_SOFT);
+        // While the total is still counting up, a green "+N" rides beside it so
+        // the gain itself is legible, not just the final number.
+        if (emeraldsEarned > 0 && startMs >= 0 && shownEmeraldTotal() < totalEmeralds) {
+            String gain = "+" + emeraldsEarned;
+            int totW = this.textRenderer.getWidth("Total: " + shownEmeraldTotal() + " Emeralds");
+            context.drawText(this.textRenderer, Text.literal(gain),
+                cx + totW / 2 + 6, y, 0xFF2E7D32, false);
+        }
         y += 14;
         y = drawRewardGrid(context, panelX + 12, y, panelW - 24, mouseX, mouseY);
         y += 4;

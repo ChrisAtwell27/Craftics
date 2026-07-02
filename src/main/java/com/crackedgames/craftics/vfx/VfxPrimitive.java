@@ -32,6 +32,46 @@ public sealed interface VfxPrimitive {
     record Converge(VfxAnchor center, double radius,
                     ParticleEffect type, int count) implements VfxPrimitive {}
 
+    /**
+     * Particles sprayed from {@code at} along the context's origin→target
+     * direction, so the burst visibly "carries through" the hit instead of
+     * puffing uniformly. {@code spreadDegrees} fans the spray in a cone around
+     * the hit direction; {@code upwardBias} tilts it skyward (0 = flat).
+     * Resolved at fire time, so it follows moving attackers/targets.
+     */
+    record DirectionalBurst(VfxAnchor at, ParticleEffect type, int count,
+                            double speed, double spreadDegrees, double upwardBias) implements VfxPrimitive {}
+
+    /**
+     * Multi-tick ground shockwave rippling outward from the anchor: one ring of
+     * particles per tile radius, each {@code ticksPerRing} apart, with an
+     * optional grid-tile flash ({@code flashColor} 0 disables), an optional
+     * per-ring thump ({@code ringSound} null disables), and an optional visual
+     * knock-up of arena mobs the wave passes under ({@code bounceAmplitude} 0
+     * disables). Expanded into scheduled phases at fire time so a single
+     * primitive produces the whole traveling wave.
+     */
+    record Shockwave(VfxAnchor center, int maxRadiusTiles, int ticksPerRing,
+                     ParticleEffect ringParticle, @Nullable ParticleEffect dustParticle,
+                     int flashColor, int flashDurationTicks,
+                     float bounceAmplitude, int bounceDurationTicks,
+                     @Nullable SoundEvent ringSound) implements VfxPrimitive {}
+
+    /** Flash the ring of arena tiles at exactly {@code radiusTiles} (Chebyshev)
+     *  around the anchor's grid tile. Radius 0 flashes just the center tile.
+     *  No-op without an arena in context. */
+    record TileRingFlash(VfxAnchor center, int radiusTiles,
+                         int color, int durationTicks) implements VfxPrimitive {}
+
+    /**
+     * Visually bounce living arena mobs whose Chebyshev tile distance from the
+     * anchor lies in {@code [minRadiusTiles, maxRadiusTiles]}. The bounce is a
+     * client-side render offset (a parabolic hop with a small rebound) - no
+     * gameplay position changes. Flying mobs are skipped.
+     */
+    record BounceEntities(VfxAnchor center, int minRadiusTiles, int maxRadiusTiles,
+                          float amplitude, int durationTicks) implements VfxPrimitive {}
+
     /** One sound played in the world. */
     record PlaySound(VfxAnchor at, SoundEvent sound,
                      float volume, float pitch) implements VfxPrimitive {}

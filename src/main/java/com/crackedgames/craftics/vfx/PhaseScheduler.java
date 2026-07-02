@@ -44,17 +44,24 @@ public final class PhaseScheduler {
 
     private void tick(ServerWorld world) {
         long now = world.getTime();
+        // Drain due phases BEFORE running any of them: a running phase may
+        // schedule new ones (Shockwave expands into per-ring phases), and
+        // adding to `pending` mid-iteration would throw CME.
+        List<Scheduled> due = new ArrayList<>();
         Iterator<Scheduled> it = pending.iterator();
         while (it.hasNext()) {
             Scheduled s = it.next();
             if (s.fireTick() <= now) {
-                try {
-                    VfxRunner.runPhase(world, s.ctx(), s.phase(), s.runId());
-                } catch (Throwable t) {
-                    com.crackedgames.craftics.CrafticsMod.LOGGER.error(
-                        "VFX phase crashed; dropping", t);
-                }
+                due.add(s);
                 it.remove();
+            }
+        }
+        for (Scheduled s : due) {
+            try {
+                VfxRunner.runPhase(world, s.ctx(), s.phase(), s.runId());
+            } catch (Throwable t) {
+                com.crackedgames.craftics.CrafticsMod.LOGGER.error(
+                    "VFX phase crashed; dropping", t);
             }
         }
     }

@@ -102,22 +102,30 @@ public class ModNetworking {
             if (active != null) active.handleGameOverAck(context.player());
         });
 
-        // Handle trader buy request - route to party leader
+        // Handle trader buy request - a scene booth session consumes it first;
+        // otherwise route to the party leader's CombatManager (null-guarded: the
+        // payload can arrive outside combat, e.g. a stale screen after a wipe).
         ServerPlayNetworking.registerGlobalReceiver(TraderBuyPayload.ID, (payload, context) -> {
-            CombatManager.getActiveCombat(context.player().getUuid())
-                .handleTraderBuy(context.player(), payload.tradeIndex());
+            if (com.crackedgames.craftics.scene.SceneController.handleSceneTraderBuy(
+                    context.player(), payload.tradeIndex())) return;
+            CombatManager active = CombatManager.getActiveCombat(context.player().getUuid());
+            if (active != null) active.handleTraderBuy(context.player(), payload.tradeIndex());
         });
 
-        // Handle trader done - proceed to next level - route to party leader
+        // Handle trader done - scene booth first, then the combat event flow
         ServerPlayNetworking.registerGlobalReceiver(TraderDonePayload.ID, (payload, context) -> {
-            CombatManager.getActiveCombat(context.player().getUuid())
-                .handleTraderDone(context.player());
+            if (com.crackedgames.craftics.scene.SceneController.handleSceneTraderDone(
+                    context.player())) return;
+            CombatManager active = CombatManager.getActiveCombat(context.player().getUuid());
+            if (active != null) active.handleTraderDone(context.player());
         });
 
-        // Handle dialogue choice - route to party leader's CombatManager
+        // Handle dialogue choice - scene barter stepper first, then the active event
         ServerPlayNetworking.registerGlobalReceiver(DialogueChoicePayload.ID, (payload, context) -> {
-            CombatManager.getActiveCombat(context.player().getUuid())
-                .handleDialogueChoice(context.player(), payload.action());
+            if (com.crackedgames.craftics.scene.SceneController.handleSceneDialogueChoice(
+                    context.player(), payload.action())) return;
+            CombatManager active = CombatManager.getActiveCombat(context.player().getUuid());
+            if (active != null) active.handleDialogueChoice(context.player(), payload.action());
         });
 
         // Handle stat choice from level-up screen
