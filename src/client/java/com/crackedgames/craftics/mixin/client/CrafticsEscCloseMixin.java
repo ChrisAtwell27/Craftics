@@ -25,6 +25,9 @@ public class CrafticsEscCloseMixin {
         if (keyCode != 256) return; // GLFW_KEY_ESCAPE
         Object self = (Object) this;
         if (self instanceof HandledScreen) return; // container screens handle their own ESC
+        // The custom main menu is a root screen: "closing" it would just spawn a
+        // TitleScreen that the swap mixin immediately replaces with a fresh menu.
+        if (self instanceof com.crackedgames.craftics.client.menu.CrafticsTitleScreen) return;
         if (!self.getClass().getName().startsWith("com.crackedgames.craftics")) return;
         MinecraftClient.getInstance().setScreen(null);
         cir.setReturnValue(true);

@@ -707,6 +707,14 @@ public class CrafticsClient implements ClientModInitializer {
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STARTED.register(
             CrafticsClient::resolveKeybindConflicts);
 
+        // The custom title screen plays the current biome's theme
+        // (CrafticsTitleScreen). Fade it out the moment a world connection
+        // starts so menu music never bleeds into gameplay - the server pushes
+        // the correct in-game track once combat/scene state syncs.
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
+            client.execute(() ->
+                com.crackedgames.craftics.client.music.MusicManager.request("")));
+
         // Without this, leaving a world mid-battle leaves CombatState.inCombat
         // stuck true, CameraLockMixin then overrides camera rotation/position
         // forever on the title screen and in every subsequent world, effectively

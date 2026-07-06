@@ -2,6 +2,15 @@
 0.2.9
 Multiplayer, Enemies, Combat, Tools, and Interface
 
+Main Menu
+
+- Craftics now has its own main menu. The vanilla title screen is replaced with a cinematic front door built around YOUR run: the backdrop is the card art of the biome you're currently on in your most recent world, slowly drifting and zooming, and it cross-fades through every biome you've discovered - the menu literally tours your own journey. A caption in the corner names each biome as it goes by ("YOU ARE HERE" when it's your current one)
+- The new cracked-stone CRAFTICS logo headlines the screen, and the menu column carries your region's accent color (green in the Overworld, red in the Nether, purple in the End) with drifting ember/spore motes to match
+- A hero CONTINUE card shows your world's name, the biome you're on, your campaign progress (like "7/18"), and your NG+ tier - one click boots straight into the world, no world-select detour. With no worlds yet it becomes BEGIN YOUR RUN
+- The full campaign path is laid out along the bottom as cleared / current / locked nodes - the same progression the in-game world select shows - with the current biome pulsing gold. Hover a node for its name; undiscovered biomes stay "???"
+- The menu finally has music: it plays the battle theme of the biome you're on (the title screen used to be silent, since Craftics suppresses all vanilla music), with a "now playing" credit in the corner. The theme fades out cleanly the moment you enter a world
+- Progress is read straight from your save files on a background thread - the menu knows where you are without loading the world, works with branch-swapped run orders, New Game+, and custom campaigns, and falls back gracefully on fresh installs or corrupted saves
+
 World
 
 - Fixed the home base island generating hollowed out. The island schematic was being placed through the arena terrain optimizer, which skips every fully-buried block - fine for arena landscapes, catastrophic for a solid island you live on. Newly created islands now place every block. EXISTING worlds are deliberately left untouched: opt in with §e/craftics world repairhollow§r to fill your island's hollow interior (fills only buried schematic blocks where the world has air), and §e/craftics world undorepair§r reverts that fill (it removes exactly the blocks the fill could have placed - anything you built or mined stays as-is). An earlier dev build briefly ran the repair automatically on login and could paste blocks into older-layout saves - if that hit your island, run §e/craftics world undorepair§r once to clean it up
