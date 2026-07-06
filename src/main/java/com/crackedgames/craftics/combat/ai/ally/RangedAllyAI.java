@@ -39,7 +39,7 @@ public class RangedAllyAI implements AllyAI {
             int bestScore = Integer.MIN_VALUE;
             int currentDist = pos.manhattanDistance(targetAnchor);
             for (GridPos candidate : Pathfinding.getReachableTiles(
-                    arena, pos, self.getMoveSpeed(), self.getSize(), self)) {
+                    arena, pos, self.getMoveSpeed(), self)) {
                 int d = candidate.manhattanDistance(targetAnchor);
                 if (d <= currentDist) continue;
                 int score = d * 10;
@@ -80,7 +80,7 @@ public class RangedAllyAI implements AllyAI {
         // lands within range.
         GridPos aim = AllyTargeting.nearestTileOnTarget(target, arena, pos);
         GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, pos, aim, self.getMoveSpeed(), self, self.getSize());
+            arena, pos, aim, self.getMoveSpeed(), self);
         if (closest != null && !closest.equals(pos)) {
             List<GridPos> seek = AllyTargeting.pathTo(self, arena, closest);
             if (seek != null && !seek.isEmpty()) {

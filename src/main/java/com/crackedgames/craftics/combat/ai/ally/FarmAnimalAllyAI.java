@@ -48,7 +48,7 @@ public class FarmAnimalAllyAI implements AllyAI {
         GridPos playerPos = arena.getPlayerGridPos();
         if (pos.manhattanDistance(playerPos) > 1) {
             GridPos beside = AIUtils.findBestAdjacentTarget(
-                arena, pos, playerPos, self.getMoveSpeed(), self.getSize());
+                arena, pos, playerPos, self.getMoveSpeed(), self.getSizeX(), self.getSizeZ());
             if (beside != null && !beside.equals(pos)) {
                 List<GridPos> path = AllyTargeting.pathTo(self, arena, beside);
                 if (path != null && !path.isEmpty()) return new EnemyAction.Move(path);

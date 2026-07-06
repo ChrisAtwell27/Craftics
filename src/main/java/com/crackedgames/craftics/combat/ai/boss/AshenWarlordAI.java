@@ -89,10 +89,13 @@ public class AshenWarlordAI extends BossAI {
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                     xTiles, 1, pillarAction, 0xFFFF6600);
             } else {
+                // Single-direction pillar carries its travel direction; the phase-2
+                // X variant fires BOTH ways at once, so it stays arrow-less rather
+                // than showing one misleading direction.
                 pillarAction = new EnemyAction.LineAttack(myPos, dir[0], dir[1], 4, 6);
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                    pillarTiles, 1, pillarAction, 0xFFFF6600);
+                    pillarTiles, 1, pillarAction, 0xFFFF6600, dir[0], dir[1]);
             }
             return advanceWhileCharging(self, arena, playerPos);
         }

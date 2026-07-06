@@ -58,7 +58,13 @@ public class Pathfinding {
     /** Size-aware enemy pathfinding. For entities > 1x1, checks full footprint at each position. */
     public static List<GridPos> findPathSized(GridArena arena, GridPos from, GridPos to,
                                                int maxSteps, CombatEntity self, int entitySize) {
-        return findPathSized(arena, from, to, maxSteps, self, entitySize, false);
+        return findPathSized(arena, from, to, maxSteps, self, entitySize, entitySize, false);
+    }
+
+    /** Footprint-aware enemy pathfinding using the entity's own (possibly rectangular) footprint. */
+    public static List<GridPos> findPathSized(GridArena arena, GridPos from, GridPos to,
+                                               int maxSteps, CombatEntity self) {
+        return findPathSized(arena, from, to, maxSteps, self, self.getSizeX(), self.getSizeZ(), false);
     }
 
     /**
@@ -67,8 +73,14 @@ public class Pathfinding {
      */
     public static List<GridPos> findPathSized(GridArena arena, GridPos from, GridPos to,
                                                int maxSteps, CombatEntity self, int entitySize, boolean ignoreObstacles) {
-        if (entitySize <= 1) return findPath(arena, from, to, maxSteps, self, false, ignoreObstacles);
-        return findPathSizedInternal(arena, from, to, maxSteps, self, entitySize, ignoreObstacles);
+        return findPathSized(arena, from, to, maxSteps, self, entitySize, entitySize, ignoreObstacles);
+    }
+
+    /** Rectangular-footprint pathfinding - the variant everything else delegates to. */
+    public static List<GridPos> findPathSized(GridArena arena, GridPos from, GridPos to,
+                                               int maxSteps, CombatEntity self, int sizeX, int sizeZ, boolean ignoreObstacles) {
+        if (sizeX <= 1 && sizeZ <= 1) return findPath(arena, from, to, maxSteps, self, false, ignoreObstacles);
+        return findPathSizedInternal(arena, from, to, maxSteps, self, sizeX, sizeZ, ignoreObstacles);
     }
 
     /**
@@ -236,23 +248,23 @@ public class Pathfinding {
      * Check if ALL tiles of a sized entity's footprint at a given anchor position are valid.
      * For size 1, this is equivalent to checking a single tile.
      */
-    private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int entitySize,
+    private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int sizeX, int sizeZ,
                                                 CombatEntity self, boolean hasBoat) {
-        return canPlaceSizedEntity(arena, anchor, entitySize, self, hasBoat, false, true);
+        return canPlaceSizedEntity(arena, anchor, sizeX, sizeZ, self, hasBoat, false, true);
     }
 
-    private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int entitySize,
+    private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int sizeX, int sizeZ,
                                                 CombatEntity self, boolean hasBoat, boolean ignoreObstacles) {
-        return canPlaceSizedEntity(arena, anchor, entitySize, self, hasBoat, ignoreObstacles, true);
+        return canPlaceSizedEntity(arena, anchor, sizeX, sizeZ, self, hasBoat, ignoreObstacles, true);
     }
 
     /**
      * @param isFinalDestination when false, allies do not block (passable for traversal).
      */
-    private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int entitySize,
+    private static boolean canPlaceSizedEntity(GridArena arena, GridPos anchor, int sizeX, int sizeZ,
                                                 CombatEntity self, boolean hasBoat, boolean ignoreObstacles,
                                                 boolean isFinalDestination) {
-        for (GridPos tile : GridArena.getOccupiedTiles(anchor, entitySize)) {
+        for (GridPos tile : GridArena.getOccupiedTiles(anchor, sizeX, sizeZ)) {
             if (!arena.isInBounds(tile)) return false;
             var gridTile = arena.getTile(tile);
             if (gridTile == null || !gridTile.isWalkableEx(hasBoat, ignoreObstacles)) return false;
@@ -290,21 +302,33 @@ public class Pathfinding {
      */
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
                                                    int entitySize, CombatEntity self) {
-        return getReachableTiles(arena, from, maxSteps, entitySize, self, false);
+        return getReachableTiles(arena, from, maxSteps, entitySize, entitySize, self, false, false, false);
+    }
+
+    /** Footprint-aware reachability using the entity's own (possibly rectangular) footprint. */
+    public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
+                                                   CombatEntity self) {
+        return getReachableTiles(arena, from, maxSteps, self.getSizeX(), self.getSizeZ(), self, false, false, false);
     }
 
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
                                                    int entitySize, CombatEntity self, boolean hasBoat) {
-        return getReachableTiles(arena, from, maxSteps, entitySize, self, hasBoat, false, false);
+        return getReachableTiles(arena, from, maxSteps, entitySize, entitySize, self, hasBoat, false, false);
     }
 
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
                                                    int entitySize, CombatEntity self, boolean hasBoat, boolean ignoreObstacles) {
-        return getReachableTiles(arena, from, maxSteps, entitySize, self, hasBoat, ignoreObstacles, false);
+        return getReachableTiles(arena, from, maxSteps, entitySize, entitySize, self, hasBoat, ignoreObstacles, false);
     }
 
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
                                                    int entitySize, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean ignoreHazardCost) {
+        return getReachableTiles(arena, from, maxSteps, entitySize, entitySize, self, hasBoat, ignoreObstacles, ignoreHazardCost);
+    }
+
+    /** Rectangular-footprint reachability - the variant everything else delegates to. */
+    public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
+                                                   int sizeX, int sizeZ, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean ignoreHazardCost) {
         Set<GridPos> reachable = new HashSet<>();
         Map<GridPos, Integer> dist = new HashMap<>();
         Queue<GridPos> queue = new LinkedList<>();
@@ -323,12 +347,12 @@ public class Pathfinding {
                 if (dist.containsKey(neighbor)) continue;
 
                 // Traversal check: allies are passable so paths can route through them.
-                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, hasBoat, ignoreObstacles, false)) continue;
+                if (!canPlaceSizedEntity(arena, neighbor, sizeX, sizeZ, self, hasBoat, ignoreObstacles, false)) continue;
 
                 // Hazard cost: use highest move cost across the footprint
                 int moveCost = 1;
                 if (!ignoreHazardCost) {
-                    for (GridPos ft : GridArena.getOccupiedTiles(neighbor, entitySize)) {
+                    for (GridPos ft : GridArena.getOccupiedTiles(neighbor, sizeX, sizeZ)) {
                         var ft_tile = arena.getTile(ft);
                         if (ft_tile != null) moveCost = Math.max(moveCost, ft_tile.getMoveCost());
                     }
@@ -339,7 +363,7 @@ public class Pathfinding {
                 dist.put(neighbor, newDist);
                 queue.add(neighbor);
                 // Stop check: ally tiles are not valid landing spots, so they aren't highlighted.
-                if (canPlaceSizedEntity(arena, neighbor, entitySize, self, hasBoat, ignoreObstacles, true)) {
+                if (canPlaceSizedEntity(arena, neighbor, sizeX, sizeZ, self, hasBoat, ignoreObstacles, true)) {
                     reachable.add(neighbor);
                 }
             }
@@ -405,14 +429,20 @@ public class Pathfinding {
      */
     public static GridPos findClosestReachableTo(GridArena arena, GridPos from, GridPos target,
                                                    int maxSteps, CombatEntity self, int entitySize) {
-        if (entitySize <= 1) return findClosestReachableTo(arena, from, target, maxSteps, self);
+        return findClosestReachableTo(arena, from, target, maxSteps, self, entitySize, entitySize);
+    }
 
-        Set<GridPos> reachable = getReachableTiles(arena, from, maxSteps, entitySize, self);
+    /** Rectangular-footprint variant of findClosestReachableTo. */
+    public static GridPos findClosestReachableTo(GridArena arena, GridPos from, GridPos target,
+                                                   int maxSteps, CombatEntity self, int sizeX, int sizeZ) {
+        if (sizeX <= 1 && sizeZ <= 1) return findClosestReachableTo(arena, from, target, maxSteps, self);
+
+        Set<GridPos> reachable = getReachableTiles(arena, from, maxSteps, sizeX, sizeZ, self, false, false, false);
 
         GridPos best = null;
         int bestDist = Integer.MAX_VALUE;
         for (GridPos pos : reachable) {
-            int d = CombatEntity.minDistanceFromSizedEntity(pos, entitySize, target);
+            int d = CombatEntity.minDistanceFromSizedEntity(pos, sizeX, sizeZ, target);
             if (d < bestDist) {
                 bestDist = d;
                 best = pos;
@@ -426,10 +456,10 @@ public class Pathfinding {
      * Checks all footprint tiles at each candidate position.
      */
     private static List<GridPos> findPathSizedInternal(GridArena arena, GridPos from, GridPos to,
-                                                         int maxSteps, CombatEntity self, int entitySize,
+                                                         int maxSteps, CombatEntity self, int sizeX, int sizeZ,
                                                          boolean ignoreObstacles) {
         if (from.equals(to)) return List.of();
-        if (!canPlaceSizedEntity(arena, to, entitySize, self, false, ignoreObstacles)) return List.of();
+        if (!canPlaceSizedEntity(arena, to, sizeX, sizeZ, self, false, ignoreObstacles)) return List.of();
 
         Map<GridPos, GridPos> cameFrom = new HashMap<>();
         Map<GridPos, Integer> gScore = new HashMap<>();
@@ -445,7 +475,7 @@ public class Pathfinding {
         while (!open.isEmpty()) {
             GridPos current = open.poll();
             if (current.equals(to)) {
-                return reconstructSizedPath(cameFrom, to, maxSteps, arena, self, entitySize);
+                return reconstructSizedPath(cameFrom, to, maxSteps, arena, self, sizeX, sizeZ);
             }
 
             if (closed.contains(current)) continue;
@@ -459,11 +489,11 @@ public class Pathfinding {
                 if (closed.contains(neighbor)) continue;
 
                 // Check all footprint tiles at this anchor (except allow destination)
-                if (!canPlaceSizedEntity(arena, neighbor, entitySize, self, false, ignoreObstacles)) continue;
+                if (!canPlaceSizedEntity(arena, neighbor, sizeX, sizeZ, self, false, ignoreObstacles)) continue;
 
                 // Use highest move cost across the footprint
                 int moveCost = 1;
-                for (GridPos ft : GridArena.getOccupiedTiles(neighbor, entitySize)) {
+                for (GridPos ft : GridArena.getOccupiedTiles(neighbor, sizeX, sizeZ)) {
                     var ft_tile = arena.getTile(ft);
                     if (ft_tile != null) moveCost = Math.max(moveCost, ft_tile.getMoveCost());
                 }
@@ -516,7 +546,7 @@ public class Pathfinding {
 
     private static List<GridPos> reconstructSizedPath(Map<GridPos, GridPos> cameFrom, GridPos end,
                                                         int maxSteps, GridArena arena,
-                                                        CombatEntity self, int entitySize) {
+                                                        CombatEntity self, int sizeX, int sizeZ) {
         List<GridPos> path = new ArrayList<>();
         GridPos current = end;
         while (cameFrom.containsKey(current)) {
@@ -530,7 +560,7 @@ public class Pathfinding {
         }
 
         // Trim if the truncated endpoint is occupied
-        while (!path.isEmpty() && !canPlaceSizedEntity(arena, path.get(path.size() - 1), entitySize, self, false)) {
+        while (!path.isEmpty() && !canPlaceSizedEntity(arena, path.get(path.size() - 1), sizeX, sizeZ, self, false)) {
             path.remove(path.size() - 1);
         }
 

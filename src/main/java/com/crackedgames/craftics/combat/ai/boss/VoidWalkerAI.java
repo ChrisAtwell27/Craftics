@@ -135,7 +135,8 @@ public class VoidWalkerAI extends BossAI {
                     int beamDmg = atk;
                     EnemyAction beam = new EnemyAction.LineAttack(
                         effectivePos, dir[0], dir[1], beamLen, beamDmg);
-                    return new EnemyAction.BossAbility("void_beam", beam, beamTiles);
+                    return new EnemyAction.BossAbility("void_beam", beam, beamTiles,
+                        beamTiles, dir[0], dir[1]);
                 }
             }
         }

@@ -119,7 +119,7 @@ public class HollowKingAI extends BossAI {
                     self.getEntityId(), BossWarning.WarningType.DIRECTIONAL,
                     chargePath, 1,
                     new EnemyAction.LineAttack(myPos, dir[0], dir[1], 3, self.getAttackPower() + 2),
-                    0xFFFF6600);
+                    0xFFFF6600, dir[0], dir[1]);
                 return advanceWhileCharging(self, arena, playerPos);
             }
         }

@@ -44,6 +44,7 @@ public class GameOverScreen extends Screen {
     private boolean[] landed;          // per item: landing clink played
     private long[] landedAt;           // per item: ms the coin landed (for the pop)
     private long lastSpinTickMs = -1;  // throttle the spin tick sound
+    private long lastAshMs = -1;       // wall-clock ash spawn accumulator
     private boolean openStingPlayed = false;
     private boolean allDoneStingPlayed = false;
 
@@ -178,11 +179,19 @@ public class GameOverScreen extends Screen {
         }
 
         // Slow ash drifting down the whole screen sets the funeral mood; the
-        // occasional ember catches the eye without stealing it.
-        if (this.width > 0 && Math.random() < 0.30) {
-            boolean ember = Math.random() < 0.18;
-            RewardReveal.ash((float) (Math.random() * this.width), -4f,
-                ember ? 0xC24A2A : 0x8A8178);
+        // occasional ember catches the eye without stealing it. Spawned at a
+        // fixed wall-clock rate (~18/sec) so density doesn't scale with fps.
+        if (this.width > 0) {
+            if (lastAshMs < 0) lastAshMs = t;
+            double expected = (t - lastAshMs) * 0.018;
+            lastAshMs = t;
+            int n = (int) expected;
+            if (Math.random() < expected - n) n++;
+            for (int k = 0; k < n; k++) {
+                boolean ember = Math.random() < 0.18;
+                RewardReveal.ash((float) (Math.random() * this.width), -4f,
+                    ember ? 0xC24A2A : 0x8A8178);
+            }
         }
 
         // Panel (content-fit-ish): header + summary + grid rows, easing in with

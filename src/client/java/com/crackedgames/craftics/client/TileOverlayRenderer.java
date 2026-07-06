@@ -139,6 +139,42 @@ public class TileOverlayRenderer {
     }
 
     /**
+     * Blocky arrow glyph pieces in tile-local (u, v) space: u runs 0(tail)→1(tip)
+     * along the arrow's direction, v runs across it. A shaft plus three narrowing
+     * head strips - the stepped triangle reads instantly at tile scale and only
+     * needs axis-aligned quads, so it slots straight into the existing pipeline.
+     */
+    private static final float[][] ARROW_GLYPH = {
+        // {u0, u1, v0, v1}
+        {0.16f, 0.52f, 0.42f, 0.58f}, // shaft
+        {0.52f, 0.64f, 0.28f, 0.72f}, // head, widest step
+        {0.64f, 0.76f, 0.36f, 0.64f}, // head, middle step
+        {0.76f, 0.88f, 0.44f, 0.56f}, // head, tip step
+    };
+
+    /** Directional telegraph arrow on a tile, pointing along cardinal (dx, dz). */
+    private static void arrowTile(List<Quad> out, net.minecraft.client.world.ClientWorld world,
+                                  int ox, int oy, int oz, GridPos tile, int dx, int dz, float yOff,
+                                  float r, float g, float b, float a) {
+        // Diagonals never occur today (all telegraph dirs are signum-cardinal);
+        // if one ever arrives, collapse to the x axis rather than draw garbage.
+        if (dx != 0) dz = 0;
+        if (dx == 0 && dz == 0) return;
+        float y = tileRenderY(world, ox, oy, oz, tile.x(), tile.z()) + yOff;
+        float wx = ox + tile.x();
+        float wz = oz + tile.z();
+        for (float[] piece : ARROW_GLYPH) {
+            float u0 = piece[0], u1 = piece[1], v0 = piece[2], v1 = piece[3];
+            float x0, x1, z0, z1;
+            if (dx > 0)      { x0 = wx + u0;     x1 = wx + u1;     z0 = wz + v0;     z1 = wz + v1; }
+            else if (dx < 0) { x0 = wx + 1 - u1; x1 = wx + 1 - u0; z0 = wz + v0;     z1 = wz + v1; }
+            else if (dz > 0) { x0 = wx + v0;     x1 = wx + v1;     z0 = wz + u0;     z1 = wz + u1; }
+            else             { x0 = wx + v0;     x1 = wx + v1;     z0 = wz + 1 - u1; z1 = wz + 1 - u0; }
+            out.add(new Quad(x0, z0, x1, z1, y, r, g, b, a));
+        }
+    }
+
+    /**
      * Outline the border of a tile region: each tile contributes an edge strip
      * on every side whose neighbor is NOT in the region. A single tile gets a
      * full ring; a connected blob gets one crisp perimeter, which reads far
@@ -310,6 +346,25 @@ public class TileOverlayRenderer {
             }
             outlineRegion(out, world, ox, oy, oz, warningTiles, 0.0118f,
                 1.0f, 0.45f, 0.2f, Math.min(1.0f, warningPulse + 0.35f));
+        }
+
+        // Directional telegraph arrows: bright glyphs pointing the way a charge,
+        // pull, or gale will travel. The brightness wave marches from tile to
+        // tile ALONG the direction (each tile's phase lags by its projection on
+        // the axis), so even in a still frame the lit gradient reads as motion -
+        // and in an arena-wide gale the whole floor visibly flows one way.
+        // Drawn above the red warning paint; icy white-cyan so it stays legible
+        // both on red charge lanes and on plain unmarked floor.
+        if (!blind && !CombatState.getWarningArrows().isEmpty()) {
+            for (CombatState.WarningArrow arrow : CombatState.getWarningArrows()) {
+                float proj = arrow.pos().x() * arrow.dx() + arrow.pos().z() * arrow.dz();
+                float a = 0.45f + 0.32f * (float) Math.sin(time * 6.5 - proj * 1.4);
+                a = Math.max(0.14f, a);
+                arrowTile(out, world, ox, oy, oz, arrow.pos(), arrow.dx(), arrow.dz(),
+                    0.014f, 0.75f, 0.95f, 1.0f, a);
+                arrowTile(xray, world, ox, oy, oz, arrow.pos(), arrow.dx(), arrow.dz(),
+                    0.014f, 0.75f, 0.95f, 1.0f, a * 0.3f);
+            }
         }
 
         // Hovered enemy's movement range (purple).

@@ -284,14 +284,12 @@ public class VictoryChoiceScreen extends Screen {
         };
     }
 
-    /** Snap the reward reveal to its end, muting the remaining per-item chimes. */
+    /** Snap the reward reveal to its end, muting the remaining per-item chimes.
+     *  The completion bell + spark shower fire from render()'s completion block
+     *  next frame (doneStingPlayed stays false), so skippers get the finale too. */
     private void skipReveal() {
         startMs = System.currentTimeMillis() - revealDurationMs() - 1L;
         for (int i = 0; i < revealPopPlayed.length; i++) revealPopPlayed[i] = true;
-        if (!doneStingPlayed) {
-            doneStingPlayed = true;
-            RewardReveal.playMaster(net.minecraft.sound.SoundEvents.BLOCK_BELL_USE, 0.5f, 1.2f);
-        }
     }
 
     @Override

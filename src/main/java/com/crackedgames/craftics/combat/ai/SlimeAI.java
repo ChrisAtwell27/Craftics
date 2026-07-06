@@ -27,16 +27,16 @@ public class SlimeAI implements EnemyAI {
         // Otherwise close the gap in a straight line toward the player. Slimes are
         // 2x2, so use the size-aware target picker and pathfinder - otherwise the
         // slime's footprint can land on top of the player (clipping into it).
-        int size = self.getSize();
-        GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), size);
+        GridPos target = AIUtils.findBestAdjacentTarget(
+            arena, myPos, playerPos, self.getMoveSpeed(), self.getSizeX(), self.getSizeZ());
         if (target == null) target = playerPos;
 
-        List<GridPos> path = Pathfinding.findPathSized(arena, myPos, target, self.getMoveSpeed(), self, size);
+        List<GridPos> path = Pathfinding.findPathSized(arena, myPos, target, self.getMoveSpeed(), self);
         if (path.isEmpty()) return AIUtils.seekOrWander(self, arena, playerPos);
 
         GridPos endPos = path.get(path.size() - 1);
         // Measure from the slime's would-be footprint, not just its anchor corner.
-        if (CombatEntity.minDistanceFromSizedEntity(endPos, size, playerPos) == 1) {
+        if (CombatEntity.minDistanceFromSizedEntity(endPos, self.getSizeX(), self.getSizeZ(), playerPos) == 1) {
             return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
         }
         return new EnemyAction.Move(path);

@@ -86,7 +86,7 @@ public class LlamaAI implements EnemyAI {
         int bestScore = Integer.MIN_VALUE;
 
         for (GridPos candidate : Pathfinding.getReachableTiles(
-                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+                arena, myPos, self.getMoveSpeed(), self)) {
             if (candidate.equals(myPos)) continue;
 
             int distToPlayer = candidate.manhattanDistance(playerPos);

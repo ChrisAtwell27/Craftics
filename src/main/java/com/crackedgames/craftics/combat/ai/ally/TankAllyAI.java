@@ -40,7 +40,7 @@ public class TankAllyAI implements AllyAI {
         GridPos block = null;
         int bestScore = Integer.MIN_VALUE;
         for (GridPos candidate : Pathfinding.getReachableTiles(
-                arena, pos, self.getMoveSpeed(), self.getSize(), self)) {
+                arena, pos, self.getMoveSpeed(), self)) {
             int dPlayer = candidate.manhattanDistance(playerPos);
             if (dPlayer > 2) continue; // stay with the player
             // On the line = the two leg distances sum to the direct distance.

@@ -24,6 +24,35 @@ import java.util.Set;
 /** Loads WorldEdit .schem files (Sponge Schematic v2/v3) and places them in the world */
 public class SchemLoader {
 
+    /**
+     * Pure buried/exposed test over a flat volume grid: true when any face of
+     * (x,y,z) borders something that doesn't fully hide it (out-of-bounds
+     * counts as open - sides, sky, AND the underside so floating builds like
+     * the home island keep a correct bottom face).
+     *
+     * <p>This is the single source of truth for "what the visibility cull
+     * skips" - place()'s keep[] mask, repairBuried()'s fill set, and
+     * undoRepairBuried()'s removal set all derive from it, which is what makes
+     * the repair and its undo exact inverses. Static and MC-free so
+     * {@code SchemBuriedMaskTest} can pin the geometry down.
+     */
+    static boolean isExposedAt(int[] paletteIds, boolean[] palHides,
+                               int width, int height, int length, int x, int y, int z) {
+        return faceOpenAt(paletteIds, palHides, width, height, length, x + 1, y, z)
+            || faceOpenAt(paletteIds, palHides, width, height, length, x - 1, y, z)
+            || faceOpenAt(paletteIds, palHides, width, height, length, x, y, z + 1)
+            || faceOpenAt(paletteIds, palHides, width, height, length, x, y, z - 1)
+            || faceOpenAt(paletteIds, palHides, width, height, length, x, y + 1, z)
+            || faceOpenAt(paletteIds, palHides, width, height, length, x, y - 1, z);
+    }
+
+    private static boolean faceOpenAt(int[] paletteIds, boolean[] palHides,
+                                      int width, int height, int length, int x, int y, int z) {
+        if (x < 0 || x >= width || y < 0 || y >= height || z < 0 || z >= length) return true;
+        int id = paletteIds[((y * length) + z) * width + x];
+        return id < 0 || id >= palHides.length || !palHides[id];
+    }
+
     public record SchemData(int width, int height, int length, BlockState[] palette, byte[] blockData) {
 
         /**
@@ -271,7 +300,11 @@ public class SchemLoader {
                         if (palExempt[id] || isExposed(paletteIds, palHides, x, y, z)) continue;
                         BlockPos pos = new BlockPos(placeX + x, placeY + y, placeZ + z);
                         if (!world.getBlockState(pos).isAir()) continue;
-                        world.setBlockState(pos, palette[id], ArenaBuilder.SET_FLAGS);
+                        // NOTIFY_LISTENERS (unlike arena builds): the island's chunks
+                        // can be loaded and watched while this runs, and un-notified
+                        // fills render as invisible ghost blocks to those clients.
+                        world.setBlockState(pos, palette[id],
+                            Block.NOTIFY_LISTENERS | Block.FORCE_STATE);
                         filled++;
                     }
                 }
@@ -282,24 +315,63 @@ public class SchemLoader {
             return filled;
         }
 
-        /** True if any face of (x,y,z) borders something that doesn't fully hide it. */
-        private boolean isExposed(int[] paletteIds, boolean[] palHides, int x, int y, int z) {
-            return faceOpen(paletteIds, palHides, x + 1, y, z)
-                || faceOpen(paletteIds, palHides, x - 1, y, z)
-                || faceOpen(paletteIds, palHides, x, y, z + 1)
-                || faceOpen(paletteIds, palHides, x, y, z - 1)
-                || faceOpen(paletteIds, palHides, x, y + 1, z)
-                || faceOpen(paletteIds, palHides, x, y - 1, z);
+        /**
+         * Inverse of {@link #repairBuried}: remove exactly the blocks that pass
+         * could have placed - buried, non-exempt schematic solids whose world
+         * block still MATCHES the schematic state - setting them back to air.
+         * Anything a player placed (different state) or that was never filled
+         * is untouched. Used by {@code /craftics world undorepair} to revert
+         * the briefly-shipped automatic island repair on saves it misfired on.
+         *
+         * @return the number of blocks removed
+         */
+        public int undoRepairBuried(ServerWorld world, int placeX, int placeY, int placeZ) {
+            int[] paletteIds = decodePaletteIds();
+            if (paletteIds == null) return 0;
+
+            int palCount = palette.length;
+            boolean[] palAir = new boolean[palCount];
+            boolean[] palHides = new boolean[palCount];
+            boolean[] palExempt = new boolean[palCount];
+            for (int i = 0; i < palCount; i++) {
+                BlockState s = palette[i];
+                if (s == null) continue;
+                Block block = s.getBlock();
+                palAir[i] = s.isAir();
+                boolean liquid = !s.getFluidState().isEmpty();
+                palHides[i] = !palAir[i] && !liquid && isOpaqueFullCube(s);
+                palExempt[i] = !palAir[i]
+                    && (MARKER_BLOCKS.contains(block)
+                        || block instanceof BlockEntityProvider
+                        || !"minecraft".equals(Registries.BLOCK.getId(block).getNamespace()));
+            }
+
+            int removed = 0;
+            for (int y = 0; y < height; y++) {
+                for (int z = 0; z < length; z++) {
+                    for (int x = 0; x < width; x++) {
+                        int flat = ((y * length) + z) * width + x;
+                        int id = paletteIds[flat];
+                        if (id < 0 || id >= palCount || palette[id] == null || palAir[id]) continue;
+                        // Same buried set repairBuried fills.
+                        if (palExempt[id] || isExposed(paletteIds, palHides, x, y, z)) continue;
+                        BlockPos pos = new BlockPos(placeX + x, placeY + y, placeZ + z);
+                        if (!world.getBlockState(pos).equals(palette[id])) continue;
+                        world.setBlockState(pos, Blocks.AIR.getDefaultState(),
+                            Block.NOTIFY_LISTENERS | Block.FORCE_STATE);
+                        removed++;
+                    }
+                }
+            }
+            if (removed > 0) {
+                CrafticsMod.LOGGER.info("Schematic un-repair: removed {} filled interior blocks", removed);
+            }
+            return removed;
         }
 
-        /**
-         * Out of bounds counts as open: sides and sky, plus the underside so
-         * floating builds (home island) keep a correct bottom face.
-         */
-        private boolean faceOpen(int[] paletteIds, boolean[] palHides, int x, int y, int z) {
-            if (x < 0 || x >= width || y < 0 || y >= height || z < 0 || z >= length) return true;
-            int id = paletteIds[((y * length) + z) * width + x];
-            return id < 0 || id >= palHides.length || !palHides[id];
+        /** True if any face of (x,y,z) borders something that doesn't fully hide it. */
+        private boolean isExposed(int[] paletteIds, boolean[] palHides, int x, int y, int z) {
+            return isExposedAt(paletteIds, palHides, width, height, length, x, y, z);
         }
 
         /**

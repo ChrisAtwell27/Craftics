@@ -27,7 +27,15 @@ public class CombatEntity {
     private java.util.UUID lastDamagerUuid = null;
     private int fuseTimer = 0;
     private boolean selfExploded = false; // creeper self-detonation = no drops
-    private int size;
+    /**
+     * Grid footprint in tiles. Independent per axis so long mobs (sniffer, camel,
+     * ravager, horses) can occupy e.g. 1x2 or 2x3 rectangles instead of being
+     * squeezed into squares. The anchor tile is gridPos; the footprint covers
+     * (x+dx, z+dz) for dx in [0,sizeX), dz in [0,sizeZ). Orientation is fixed at
+     * spawn (see {@link #orientFootprint}) - it does not rotate with model yaw.
+     */
+    private int sizeX;
+    private int sizeZ;
     private int moveSpeed;
     private int speedBonus = 0;
     private int attackPenalty = 0;
@@ -69,6 +77,13 @@ public class CombatEntity {
     private EnemyAI aiInstance = null; // per-entity AI override (for split copies with own state)
     private int linkedHeartId = -1; // creaking → heart link (heart death kills creaking)
     private int linkedCreakingId = -1; // heart → creaking back-link
+    /** Craftics × Artifacts: curio this enemy carries (EMPTY = none). Its stat buffs are
+     *  folded in at spawn; the stack itself is kept for the on-kill drop roll.
+     *  Stored as null internally (the getter maps null → EMPTY): an inline
+     *  {@code ItemStack.EMPTY} initializer triggers Minecraft's registry
+     *  bootstrap at construction, which breaks every pure-logic CombatEntity
+     *  unit test (buffs/DoT) that runs without the game. */
+    private net.minecraft.item.ItemStack wornArtifact = null;
 
     public CombatEntity(int entityId, String entityTypeId, GridPos gridPos,
                         int maxHp, int attackPower, int defense, int range) {
@@ -97,7 +112,14 @@ public class CombatEntity {
         this.defense = defense;
         this.range = range;
         this.alive = true;
-        this.size = sizeOverride > 0 ? sizeOverride : getDefaultSize(entityTypeId);
+        if (sizeOverride > 0) {
+            this.sizeX = sizeOverride;
+            this.sizeZ = sizeOverride;
+        } else {
+            int[] fp = getDefaultFootprint(entityTypeId);
+            this.sizeX = fp[0];
+            this.sizeZ = fp[1];
+        }
         this.moveSpeed = speedOverride > 0 ? speedOverride : getDefaultMoveSpeed(entityTypeId);
     }
 
@@ -116,8 +138,21 @@ public class CombatEntity {
     public void setDefenseBoost(int boost) { this.defenseBoost = boost; }
     public void setRangeOverride(int r) { this.rangeOverride = r; }
     public boolean isAlive() { return alive; }
-    public int getSize() { return size; }
-    public void setSize(int size) { this.size = size; }
+    /** Footprint width in tiles along the grid X axis. */
+    public int getSizeX() { return sizeX; }
+    /** Footprint depth in tiles along the grid Z axis. */
+    public int getSizeZ() { return sizeZ; }
+    /** Largest footprint dimension - for scalar consumers (VFX radii, clearance scans). */
+    public int getMaxSize() { return Math.max(sizeX, sizeZ); }
+    /** True when the footprint covers more than one tile on either axis. */
+    public boolean isMultiTile() { return sizeX > 1 || sizeZ > 1; }
+    /** Square footprint setter (bosses, dragon/revenant background-boss resets). */
+    public void setSize(int size) { this.sizeX = size; this.sizeZ = size; }
+    /** Rectangular footprint setter; use {@link #orientFootprint} to pick the axes. */
+    public void setFootprint(int sizeX, int sizeZ) {
+        this.sizeX = Math.max(1, sizeX);
+        this.sizeZ = Math.max(1, sizeZ);
+    }
     public boolean isBackgroundBoss() { return backgroundBoss; }
     public void setBackgroundBoss(boolean bg) { this.backgroundBoss = bg; }
     public int getVisualProjectileEntityId() { return visualProjectileEntityId; }
@@ -130,6 +165,13 @@ public class CombatEntity {
     public void setLinkedHeartId(int id) { this.linkedHeartId = id; }
     public int getLinkedCreakingId() { return linkedCreakingId; }
     public void setLinkedCreakingId(int id) { this.linkedCreakingId = id; }
+    /** Never null: internal null (unset) reads as EMPTY. */
+    public net.minecraft.item.ItemStack getWornArtifact() {
+        return wornArtifact == null ? net.minecraft.item.ItemStack.EMPTY : wornArtifact;
+    }
+    public void setWornArtifact(net.minecraft.item.ItemStack stack) {
+        this.wornArtifact = stack;
+    }
     public EnemyAI getAiInstance() { return aiInstance; }
     public void setAiInstance(EnemyAI ai) { this.aiInstance = ai; }
 
@@ -149,7 +191,7 @@ public class CombatEntity {
 
     /** Minimum manhattan distance from a point to any tile this entity occupies. */
     public int minDistanceTo(GridPos from) {
-        return minDistanceFromSizedEntity(gridPos, size, from);
+        return minDistanceFromSizedEntity(gridPos, sizeX, sizeZ, from);
     }
 
     /**
@@ -159,12 +201,12 @@ public class CombatEntity {
      * included. Used for melee reach on both the server and the attack highlight.
      */
     public int minChebyshevDistanceTo(GridPos from) {
-        if (size <= 1) {
+        if (sizeX <= 1 && sizeZ <= 1) {
             return Math.max(Math.abs(from.x() - gridPos.x()), Math.abs(from.z() - gridPos.z()));
         }
         int min = Integer.MAX_VALUE;
-        for (int dx = 0; dx < size; dx++) {
-            for (int dz = 0; dz < size; dz++) {
+        for (int dx = 0; dx < sizeX; dx++) {
+            for (int dz = 0; dz < sizeZ; dz++) {
                 int d = Math.max(Math.abs(from.x() - (gridPos.x() + dx)),
                                  Math.abs(from.z() - (gridPos.z() + dz)));
                 if (d < min) min = d;
@@ -175,11 +217,11 @@ public class CombatEntity {
 
     /** Returns the occupied tile of this entity closest to the given point. */
     public GridPos nearestTileTo(GridPos from) {
-        if (size <= 1) return gridPos;
+        if (sizeX <= 1 && sizeZ <= 1) return gridPos;
         GridPos best = gridPos;
         int bestDist = Integer.MAX_VALUE;
-        for (int dx = 0; dx < size; dx++) {
-            for (int dz = 0; dz < size; dz++) {
+        for (int dx = 0; dx < sizeX; dx++) {
+            for (int dz = 0; dz < sizeZ; dz++) {
                 GridPos tile = new GridPos(gridPos.x() + dx, gridPos.z() + dz);
                 int dist = Math.abs(from.x() - tile.x()) + Math.abs(from.z() - tile.z());
                 if (dist < bestDist) { bestDist = dist; best = tile; }
@@ -188,12 +230,17 @@ public class CombatEntity {
         return best;
     }
 
-    /** Minimum manhattan distance from any tile of a sized entity at origin to a target point. */
+    /** Square-footprint convenience overload of the rectangular version below. */
     public static int minDistanceFromSizedEntity(GridPos origin, int entitySize, GridPos target) {
-        if (entitySize <= 1) return origin.manhattanDistance(target);
+        return minDistanceFromSizedEntity(origin, entitySize, entitySize, target);
+    }
+
+    /** Minimum manhattan distance from any tile of a sized entity at origin to a target point. */
+    public static int minDistanceFromSizedEntity(GridPos origin, int sizeX, int sizeZ, GridPos target) {
+        if (sizeX <= 1 && sizeZ <= 1) return origin.manhattanDistance(target);
         int min = Integer.MAX_VALUE;
-        for (int dx = 0; dx < entitySize; dx++) {
-            for (int dz = 0; dz < entitySize; dz++) {
+        for (int dx = 0; dx < sizeX; dx++) {
+            for (int dz = 0; dz < sizeZ; dz++) {
                 int dist = Math.abs(target.x() - (origin.x() + dx)) + Math.abs(target.z() - (origin.z() + dz));
                 if (dist < min) min = dist;
             }
@@ -863,8 +910,10 @@ public class CombatEntity {
         return sb.toString();
     }
 
+    /** Largest default footprint dimension - for scalar consumers (spawn clearance). */
     public static int getDefaultSizeStatic(String entityTypeId) {
-        return getDefaultSize(entityTypeId);
+        int[] fp = getDefaultFootprint(entityTypeId);
+        return Math.max(fp[0], fp[1]);
     }
 
     /** Returns true for mobs that must spawn and live on water tiles. */
@@ -877,14 +926,49 @@ public class CombatEntity {
         };
     }
 
-    private static int getDefaultSize(String entityTypeId) {
+    /**
+     * Default grid footprint per species as {@code {width, length}}, where
+     * {@code length} is the mob's nose-to-tail axis and {@code width} is
+     * shoulder-to-shoulder. 1 tile = 1 world block, so dimensions track the
+     * mob's actual floor coverage (hitbox width, visual body length):
+     * long quadrupeds get 1x2 or 2x3 instead of being crammed into one tile.
+     * The canonical orientation puts length along Z; spawn code rotates the
+     * pair via {@link #orientFootprint} so the long axis faces the target.
+     */
+    public static int[] getDefaultFootprint(String entityTypeId) {
         return switch (entityTypeId) {
-            case "minecraft:spider", "minecraft:hoglin",
+            // Bulky squares: ~1.3-2.0 blocks wide, roughly as long as wide.
+            case "minecraft:spider", "minecraft:hoglin", "minecraft:zoglin",
                  "minecraft:slime", "minecraft:magma_cube",
-                 "minecraft:ghast",
-                 "minecraft:polar_bear", "minecraft:camel" -> 2;
-            default -> 1;
+                 "minecraft:ghast", // spawned at 0.5 scale, so 4x4 hitbox -> 2x2
+                 "minecraft:polar_bear", "minecraft:panda",
+                 "minecraft:iron_golem", "minecraft:elder_guardian" -> new int[]{2, 2};
+            // Long heavyweights: ~2 blocks wide, ~3 blocks nose to tail.
+            case "minecraft:sniffer", "minecraft:camel", "minecraft:ravager" -> new int[]{2, 3};
+            // Long but narrow: horses, llamas - one tile wide, two long.
+            case "minecraft:horse", "minecraft:skeleton_horse", "minecraft:zombie_horse",
+                 "minecraft:donkey", "minecraft:mule",
+                 "minecraft:llama", "minecraft:trader_llama" -> new int[]{1, 2};
+            // Giant zombie: 3.6-block hitbox width.
+            case "minecraft:giant" -> new int[]{3, 3};
+            default -> new int[]{1, 1};
         };
+    }
+
+    /**
+     * Rotate a canonical {@code {width, length}} footprint so its length axis
+     * runs along the dominant direction from {@code from} toward {@code toward},
+     * returning {@code {sizeX, sizeZ}}. Long mobs advance on their target, so
+     * pointing nose-to-tail at it at spawn keeps the model over its tiles for
+     * most of the fight (footprints never rotate mid-combat). Ties and null
+     * targets keep the canonical length-along-Z orientation.
+     */
+    public static int[] orientFootprint(int[] widthLength, GridPos from, GridPos toward) {
+        int w = widthLength[0], l = widthLength[1];
+        if (w == l || from == null || toward == null) return new int[]{w, l};
+        int adx = Math.abs(toward.x() - from.x());
+        int adz = Math.abs(toward.z() - from.z());
+        return adx > adz ? new int[]{l, w} : new int[]{w, l};
     }
 
     /**

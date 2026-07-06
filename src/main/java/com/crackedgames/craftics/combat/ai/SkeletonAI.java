@@ -94,7 +94,7 @@ public class SkeletonAI implements EnemyAI {
         int currentMin = AIUtils.minThreatDistance(myPos, threats);
 
         for (GridPos candidate : Pathfinding.getReachableTiles(
-                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+                arena, myPos, self.getMoveSpeed(), self)) {
             if (candidate.equals(myPos)) continue;
 
             int minThreatDist = AIUtils.minThreatDistance(candidate, threats);
@@ -132,7 +132,7 @@ public class SkeletonAI implements EnemyAI {
         int range = self.getRange();
 
         for (GridPos candidate : Pathfinding.getReachableTiles(
-                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+                arena, myPos, self.getMoveSpeed(), self)) {
             if (candidate.equals(myPos)) continue;
             if (!AIUtils.hasCardinalLOS(arena, candidate, playerPos, range)) continue;
 

@@ -25,15 +25,31 @@ public class BossWarning {
     private int turnsUntilResolve;
     private final EnemyAction resolveAction;
     private final int color; // ARGB for rendering
+    /** Cardinal direction of travel/push for DIRECTIONAL-style telegraphs
+     *  (charge path, pull, knockback). (0,0) = no direction; the client then
+     *  renders plain warning tiles without arrow glyphs. */
+    private final int dirX;
+    private final int dirZ;
 
     public BossWarning(int bossEntityId, WarningType type, List<GridPos> affectedTiles,
                        int turnsUntilResolve, EnemyAction resolveAction, int color) {
+        this(bossEntityId, type, affectedTiles, turnsUntilResolve, resolveAction, color, 0, 0);
+    }
+
+    /** Directional variant: {@code dirX/dirZ} is the (signum) direction the attack
+     *  travels or shoves the player - the client draws marching arrow glyphs on the
+     *  affected tiles pointing that way. */
+    public BossWarning(int bossEntityId, WarningType type, List<GridPos> affectedTiles,
+                       int turnsUntilResolve, EnemyAction resolveAction, int color,
+                       int dirX, int dirZ) {
         this.bossEntityId = bossEntityId;
         this.type = type;
         this.affectedTiles = List.copyOf(affectedTiles);
         this.turnsUntilResolve = turnsUntilResolve;
         this.resolveAction = resolveAction;
         this.color = color;
+        this.dirX = dirX;
+        this.dirZ = dirZ;
     }
 
     public int getBossEntityId() { return bossEntityId; }
@@ -42,6 +58,9 @@ public class BossWarning {
     public int getTurnsUntilResolve() { return turnsUntilResolve; }
     public EnemyAction getResolveAction() { return resolveAction; }
     public int getColor() { return color; }
+    public int getDirX() { return dirX; }
+    public int getDirZ() { return dirZ; }
+    public boolean hasDirection() { return dirX != 0 || dirZ != 0; }
 
     /** Tick down the warning. Returns true if it should resolve now. */
     public boolean tick() {

@@ -45,12 +45,17 @@ public class AIUtils {
      * Size-aware version: checks that ALL footprint tiles at each candidate are valid.
      */
     public static GridPos findBestAdjacentTarget(GridArena arena, GridPos self, GridPos playerPos, int maxSteps, int entitySize) {
+        return findBestAdjacentTarget(arena, self, playerPos, maxSteps, entitySize, entitySize);
+    }
+
+    /** Rectangular-footprint version of findBestAdjacentTarget. */
+    public static GridPos findBestAdjacentTarget(GridArena arena, GridPos self, GridPos playerPos, int maxSteps, int sizeX, int sizeZ) {
         GridPos best = null;
         int bestDist = Integer.MAX_VALUE;
 
         for (GridPos dir : CARDINALS) {
             GridPos adj = new GridPos(playerPos.x() + dir.x(), playerPos.z() + dir.z());
-            if (!canPlaceFootprint(arena, adj, entitySize)) continue;
+            if (!canPlaceFootprint(arena, adj, sizeX, sizeZ)) continue;
 
             int dist = self.manhattanDistance(adj);
             if (dist < bestDist) {
@@ -65,11 +70,34 @@ public class AIUtils {
      * Check if a sized entity can be placed at an anchor position (all footprint tiles valid).
      */
     public static boolean canPlaceFootprint(GridArena arena, GridPos anchor, int entitySize) {
-        for (GridPos tile : GridArena.getOccupiedTiles(anchor, entitySize)) {
+        return canPlaceFootprint(arena, anchor, entitySize, entitySize);
+    }
+
+    /** Rectangular-footprint version of canPlaceFootprint. */
+    public static boolean canPlaceFootprint(GridArena arena, GridPos anchor, int sizeX, int sizeZ) {
+        for (GridPos tile : GridArena.getOccupiedTiles(anchor, sizeX, sizeZ)) {
             if (!arena.isInBounds(tile)) return false;
             GridTile gridTile = arena.getTile(tile);
             if (gridTile == null || !gridTile.isWalkable()) return false;
             if (arena.isEnemyOccupied(tile)) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Footprint check for a mob's own charge/bounce landing: tiles the mob
+     * currently occupies count as free (it vacates them by moving). Without
+     * this, any multi-tile mob's short hop overlaps its own footprint and is
+     * wrongly rejected. The player's tile still blocks.
+     */
+    public static boolean canPlaceFootprintIgnoringSelf(GridArena arena, GridPos anchor, CombatEntity self) {
+        for (GridPos tile : GridArena.getOccupiedTiles(anchor, self.getSizeX(), self.getSizeZ())) {
+            if (!arena.isInBounds(tile)) return false;
+            GridTile gridTile = arena.getTile(tile);
+            if (gridTile == null || !gridTile.isWalkable()) return false;
+            if (tile.equals(arena.getPlayerGridPos())) return false;
+            CombatEntity occupant = arena.getOccupant(tile);
+            if (occupant != null && occupant != self && !occupant.isBackgroundBoss()) return false;
         }
         return true;
     }
@@ -188,7 +216,7 @@ public class AIUtils {
         GridPos best = null;
         int bestScore = Integer.MIN_VALUE;
         for (GridPos candidate : Pathfinding.getReachableTiles(
-                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+                arena, myPos, self.getMoveSpeed(), self)) {
             if (candidate.equals(myPos)) continue;
             int minDist = minThreatDistance(candidate, threats);
             if (minDist <= currentMin) continue; // must actually gain ground
@@ -214,7 +242,7 @@ public class AIUtils {
         int currentDist = myPos.manhattanDistance(threat);
         GridPos best = null;
         int bestScore = Integer.MIN_VALUE;
-        for (GridPos candidate : Pathfinding.getReachableTiles(arena, myPos, maxSteps, self.getSize(), self)) {
+        for (GridPos candidate : Pathfinding.getReachableTiles(arena, myPos, maxSteps, self.getSizeX(), self.getSizeZ(), self, false, false, false)) {
             if (candidate.equals(myPos)) continue;
             int dist = candidate.manhattanDistance(threat);
             if (dist <= currentDist) continue;
@@ -229,7 +257,7 @@ public class AIUtils {
             best = getFleeTarget(arena, myPos, threat, maxSteps);
         }
         if (best != null) {
-            List<GridPos> path = Pathfinding.findPathSized(arena, myPos, best, maxSteps, self, self.getSize());
+            List<GridPos> path = Pathfinding.findPathSized(arena, myPos, best, maxSteps, self);
             if (!path.isEmpty()) return new EnemyAction.Flee(path);
         }
         return null;
@@ -251,7 +279,7 @@ public class AIUtils {
 
         GridPos attackPos = approachSteps > 0 ? approachPath.get(approachSteps - 1) : self.getGridPos();
         java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(
-            arena, attackPos, remaining, self.getSize(), self);
+            arena, attackPos, remaining, self);
         GridPos retreatTarget = null;
         int bestScore = Integer.MIN_VALUE;
         int currentDist = attackPos.manhattanDistance(victimPos);
@@ -279,26 +307,27 @@ public class AIUtils {
      * Returns a Move action, or Idle only if truly boxed in.
      */
     public static EnemyAction seekOrWander(CombatEntity self, GridArena arena, GridPos playerPos) {
-        int size = self.getSize();
+        int sizeX = self.getSizeX();
+        int sizeZ = self.getSizeZ();
         // Already adjacent? Attack instead of wandering - the path search below
         // returns empty when the only reachable best tile IS the current tile
         // (e.g. blocked in by other party members), and the wander fallback
         // would otherwise make the mob sit there or shuffle off uselessly while
         // the player stands next to it.
-        if (CombatEntity.minDistanceFromSizedEntity(self.getGridPos(), size, playerPos) <= 1) {
+        if (CombatEntity.minDistanceFromSizedEntity(self.getGridPos(), sizeX, sizeZ, playerPos) <= 1) {
             return new EnemyAction.Attack(self.getAttackPower());
         }
         // Try to find the closest reachable tile to the player
         GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, self.getGridPos(), playerPos, self.getMoveSpeed(), self, size);
+            arena, self.getGridPos(), playerPos, self.getMoveSpeed(), self, sizeX, sizeZ);
 
         if (closest != null && !closest.equals(self.getGridPos())) {
             List<GridPos> path = Pathfinding.findPathSized(
-                arena, self.getGridPos(), closest, self.getMoveSpeed(), self, size);
+                arena, self.getGridPos(), closest, self.getMoveSpeed(), self);
             if (!path.isEmpty()) {
                 // Check if we end up adjacent - attack too
                 GridPos endPos = path.get(path.size() - 1);
-                if (CombatEntity.minDistanceFromSizedEntity(endPos, size, playerPos) <= 1) {
+                if (CombatEntity.minDistanceFromSizedEntity(endPos, sizeX, sizeZ, playerPos) <= 1) {
                     return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                 }
                 return new EnemyAction.Move(path);

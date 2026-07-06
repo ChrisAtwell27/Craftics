@@ -243,15 +243,14 @@ public class RewardRevealScreen extends Screen {
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
-    /** Snap the reveal to its end, muting the remaining per-item chimes. */
+    /** Snap the reveal to its end, muting the remaining per-item chimes. The
+     *  completion bell + spark payoff fire from render()'s completion block on
+     *  the next frame (doneStingPlayed stays false here), so skippers get the
+     *  same finale as everyone else. */
     private void skip() {
         startMs = System.currentTimeMillis() - coinDelay() - itemRevealEnd() - 1L;
         for (int i = 0; i < popPlayed.length; i++) popPlayed[i] = true;
         coinLandPlayed = true;
-        if (!doneStingPlayed) {
-            doneStingPlayed = true;
-            RewardReveal.playMaster(net.minecraft.sound.SoundEvents.BLOCK_BELL_USE, 0.5f, 1.2f);
-        }
     }
 
     private void dismiss() {

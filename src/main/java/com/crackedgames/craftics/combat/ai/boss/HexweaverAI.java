@@ -100,10 +100,12 @@ public class HexweaverAI extends BossAI {
                         self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
                         crossTiles, 1, combined, 0xFF664422);
                 } else {
+                    // Single lane carries its direction; the phase-2 four-way cross
+                    // above stays arrow-less (one arrow direction would mislead).
                     EnemyAction fangAttack = new EnemyAction.LineAttack(myPos, dir[0], dir[1], 5, 4);
                     pendingWarning = new BossWarning(
                         self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
-                        fangTiles, 1, fangAttack, 0xFF664422);
+                        fangTiles, 1, fangAttack, 0xFF664422, dir[0], dir[1]);
                 }
                 return new EnemyAction.Idle();
             }
@@ -156,7 +158,7 @@ public class HexweaverAI extends BossAI {
         setCooldown(CD_SNARE, 3);
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.DIRECTIONAL,
-            warnTiles, 1, resolve, 0xFFAA55FF);
+            warnTiles, 1, resolve, 0xFFAA55FF, pullDir[0], pullDir[1]);
         return new EnemyAction.Idle();
     }
 

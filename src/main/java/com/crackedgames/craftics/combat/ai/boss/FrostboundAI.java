@@ -108,10 +108,15 @@ public class FrostboundAI extends BossAI {
             warningTiles.addAll(inferWarningTiles(passiveWall, arena, playerPos));
 
             EnemyAction resolved = composeActions(resolvedParts);
+            // Preserve the directional arrow overlay (e.g. the harpoon's arena-wide
+            // gust) - rebuilding with the 3-arg constructor would silently drop it.
             return new EnemyAction.BossAbility(
                 warned.abilityName(),
                 resolved,
-                dedupeTiles(warningTiles)
+                dedupeTiles(warningTiles),
+                warned.arrowTiles(),
+                warned.arrowDx(),
+                warned.arrowDz()
             );
         }
 
@@ -288,11 +293,18 @@ public class FrostboundAI extends BossAI {
         int[] pullDir = getDirectionToward(playerPos, myPos);
         if (pullDir[0] == 0 && pullDir[1] == 0) return null;
 
-        // Big telegraph: paint the full lane the player will be dragged along,
-        // not just the next 2 tiles, so the push direction is obvious.
-        List<GridPos> warningTiles = pullDir[0] != 0
-            ? getRowTiles(arena, playerPos.z())
-            : getColumnTiles(arena, playerPos.x());
+        // Wind-gust telegraph: red danger paint ONLY where the harpoon damage
+        // actually lands (the player's tile), while the pull itself is drawn as
+        // arrow glyphs sweeping across the WHOLE arena in the drag direction.
+        // The old version painted the player's full row/column red, which lied
+        // about the damage area and still didn't say which WAY you'd be dragged.
+        List<GridPos> warningTiles = List.of(playerPos);
+        List<GridPos> gustTiles = new ArrayList<>();
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                gustTiles.add(new GridPos(x, z));
+            }
+        }
 
         EnemyAction resolve = new EnemyAction.CompositeAction(List.of(
             new EnemyAction.AreaAttack(playerPos, 0, 4, "frost_harpoon"),
@@ -300,7 +312,8 @@ public class FrostboundAI extends BossAI {
         ));
 
         setCooldown(CD_HARPOON, cooldown);
-        return new EnemyAction.BossAbility("frost_harpoon", resolve, warningTiles);
+        return new EnemyAction.BossAbility("frost_harpoon", resolve, warningTiles,
+            gustTiles, pullDir[0], pullDir[1]);
     }
 
     private EnemyAction castWhiteoutRing(CombatEntity self, GridArena arena,

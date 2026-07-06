@@ -146,7 +146,7 @@ public class RockbreakerAI extends BossAI {
         setCooldown(CD_CHARGE, cooldown);
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.DIRECTIONAL,
-            warningTiles, 1, resolve, 0xFFFF4422);
+            warningTiles, 1, resolve, 0xFFFF4422, dir[0], dir[1]);
         return advanceWhileCharging(self, arena, playerPos);
     }
 
@@ -165,9 +165,11 @@ public class RockbreakerAI extends BossAI {
             new EnemyAction.ForcedMovement(-1, pushDir[0], pushDir[1], kbDist)
         ));
 
+        // Carries the knockback direction so the cross telegraph also shows
+        // which way the shockwave will hurl you.
         pendingWarning = new BossWarning(
             self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
-            crossTiles, 1, slamAction, 0xFFFF6644);
+            crossTiles, 1, slamAction, 0xFFFF6644, pushDir[0], pushDir[1]);
         return advanceWhileCharging(self, arena, playerPos);
     }
 
@@ -193,7 +195,7 @@ public class RockbreakerAI extends BossAI {
             ));
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                targetTiles, 1, boulderAction, 0xFF887744);
+                targetTiles, 1, boulderAction, 0xFF887744, pushDir[0], pushDir[1]);
         } else {
             // Single boulder
             List<GridPos> targetTiles = List.of(playerPos);
@@ -204,7 +206,7 @@ public class RockbreakerAI extends BossAI {
             ));
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                targetTiles, 1, boulderAction, 0xFF887744);
+                targetTiles, 1, boulderAction, 0xFF887744, pushDir[0], pushDir[1]);
         }
         return new EnemyAction.Idle();
     }
@@ -231,7 +233,7 @@ public class RockbreakerAI extends BossAI {
             ));
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                allTiles, 1, avalanche, 0xFFAA6633);
+                allTiles, 1, avalanche, 0xFFAA6633, 0, pushDz);
         } else {
             EnemyAction avalanche = new EnemyAction.CompositeAction(List.of(
                 new EnemyAction.AreaAttack(new GridPos(0, targetRow), arena.getWidth(), avalancheDmg, "avalanche"),
@@ -239,7 +241,7 @@ public class RockbreakerAI extends BossAI {
             ));
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                rowTiles, 1, avalanche, 0xFFAA6633);
+                rowTiles, 1, avalanche, 0xFFAA6633, 0, pushDz);
         }
         return new EnemyAction.Idle();
     }

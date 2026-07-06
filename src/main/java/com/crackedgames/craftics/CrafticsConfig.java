@@ -235,6 +235,12 @@ public class CrafticsConfig {
     @RangeConstraint(min = 0.0, max = 1.0)
     public float totemDropChance = 0.04f;
 
+    /** Boss-kill chance to drop a Simply Swords unique weapon (Luck adds a little on top).
+     *  Higher than the totem chance on purpose - there are ~45 uniques to collect, and each
+     *  recipient rolls independently, preferring weapons they don't already carry. */
+    @RangeConstraint(min = 0.0, max = 1.0)
+    public float uniqueWeaponDropChance = 0.15f;
+
     @RangeConstraint(min = 0.0, max = 1.0)
     public float potterySherdDropChance = 0.04f;
 

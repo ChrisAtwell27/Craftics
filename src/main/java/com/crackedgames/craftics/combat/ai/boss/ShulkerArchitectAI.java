@@ -130,7 +130,7 @@ public class ShulkerArchitectAI extends BossAI {
 
     /** A footprint-valid anchor adjacent to {@code turret} for the 2×2 boss; null if none. */
     private GridPos findLandingNear(GridArena arena, GridPos turret, CombatEntity self) {
-        int size = self.getSize();
+        int size = self.getMaxSize();
         for (int dx = -size; dx <= 1; dx++) {
             for (int dz = -size; dz <= 1; dz++) {
                 GridPos p = new GridPos(turret.x() + dx, turret.z() + dz);

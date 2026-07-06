@@ -98,7 +98,7 @@ public class TidecallerAI extends BossAI {
                 ));
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.GATHERING_PARTICLES,
-                    chargePath, 1, riptide, 0xFF2266AA);
+                    chargePath, 1, riptide, 0xFF2266AA, dir[0], dir[1]);
                 return new EnemyAction.Idle();
             }
         }

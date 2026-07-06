@@ -61,6 +61,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();
         com.crackedgames.craftics.compat.instruments.InstrumentsCompat.init();
         com.crackedgames.craftics.compat.paladins.PaladinsCompat.init();
+        com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.init();
 
         // Addon entrypoint: invoked after all built-in content and compat modules are
         // registered, so addon registrations run last and win deterministically over
@@ -288,26 +289,22 @@ public class CrafticsMod implements ModInitializer {
                     joinData.markDirty();
                 }
 
-                // Repair home islands built by older versions: home.schem used to be
-                // placed through the arena-style visibility cull, which skipped every
-                // buried interior block and generated the island hollow. Fills only
-                // the culled holes (never touches player-built or player-mined
-                // blocks), then stamps the version so it runs once per bump.
+                // NOTE: the hollow-island fix deliberately does NOT auto-migrate
+                // existing worlds. Solid placement applies only to NEWLY built
+                // islands; older saves are left exactly as they are (an automatic
+                // on-join repair shipped briefly and misfired on pre-schematic and
+                // re-laid-out saves). Owners of pre-fix islands get a ONE-TIME chat
+                // notice pointing at the opt-in commands - a message, never a world
+                // edit - then the version is stamped so it never repeats.
                 if (joinPd.personalHubBuilt
                         && joinPd.personalHubVersion < com.crackedgames.craftics.world.HubRoomBuilder.HUB_VERSION) {
-                    final java.util.UUID repairUuid = player.getUuid();
-                    server.execute(() -> {
-                        com.crackedgames.craftics.world.CrafticsSavedData d =
-                            com.crackedgames.craftics.world.CrafticsSavedData.get(overworld);
-                        // Hubs live in the owner's island dim now - repair THAT world.
-                        net.minecraft.server.world.ServerWorld islandWorld =
-                            com.crackedgames.craftics.world.IslandDimensions.getOrCreate(server, repairUuid);
-                        com.crackedgames.craftics.world.HubRoomBuilder.repair(
-                            islandWorld, d.getHubOrigin(repairUuid));
-                        d.getPlayerData(repairUuid).personalHubVersion =
-                            com.crackedgames.craftics.world.HubRoomBuilder.HUB_VERSION;
-                        d.markDirty();
-                    });
+                    player.sendMessage(Text.literal(
+                        "§6Your island predates the hollow-island fix.§7 If its interior is "
+                        + "hollow, §e/craftics world repairhollow§7 fills it. If a recent dev "
+                        + "build pasted unwanted blocks into it, §e/craftics world undorepair§7 "
+                        + "removes exactly those blocks. Both are optional and reversible."), false);
+                    joinPd.personalHubVersion = com.crackedgames.craftics.world.HubRoomBuilder.HUB_VERSION;
+                    joinData.markDirty();
                 }
 
                 // Always stock the Move item into the locked slot on join.
@@ -571,12 +568,27 @@ public class CrafticsMod implements ModInitializer {
                             sb.append(e.getKey().name()).append(":").append(e.getValue());
                         }
                         String newData = sb.toString();
-                        // Only send if changed (avoid unnecessary packets)
+                        // Change detection fingerprint: payload data PLUS the combat
+                        // effect handler names. Effect-only artifacts (Cross Necklace,
+                        // Umbrella, ...) contribute no stat ints, so without the names
+                        // an equip/unequip mid-combat would go completely unnoticed.
+                        StringBuilder fp = new StringBuilder(newData);
+                        for (var eff : addonMods.getCombatEffects()) {
+                            fp.append("|").append(eff.name());
+                        }
+                        String fingerprint = fp.toString();
+                        // Only act if changed (avoid unnecessary packets)
                         String lastData = addonBonusCache.getOrDefault(p.getUuid(), "");
-                        if (!newData.equals(lastData)) {
-                            addonBonusCache.put(p.getUuid(), newData);
+                        if (!fingerprint.equals(lastData)) {
+                            addonBonusCache.put(p.getUuid(), fingerprint);
                             net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p,
                                 new com.crackedgames.craftics.network.AddonBonusSyncPayload(newData));
+                            // Mid-combat equipment change: refresh the active fight so
+                            // stat artifacts (Running Shoes, ...) apply immediately.
+                            CombatManager cm = CombatManager.getActiveCombat(p.getUuid());
+                            if (cm.isActive()) {
+                                cm.onAddonEquipmentChanged(p);
+                            }
                         }
                     } catch (Throwable t) {
                         LOGGER.error("Addon bonus sync failed for {}: {}",
@@ -629,6 +641,7 @@ public class CrafticsMod implements ModInitializer {
                 com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
                 com.crackedgames.craftics.compat.instruments.InstrumentsCompat.registerDeferred();
                 com.crackedgames.craftics.compat.paladins.PaladinsCompat.registerDeferred();
+                com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.registerDeferred();
             });
 
         // Load biome definitions from JSON datapacks on server start
@@ -1481,6 +1494,48 @@ public class CrafticsMod implements ModInitializer {
             com.crackedgames.craftics.world.HubTeleports.toHub(player);
             player.changeGameMode(GameMode.SURVIVAL);
             ctx.getSource().sendFeedback(() -> Text.literal("\u00a7aTeleported to your personal hub."), false);
+            return 1;
+        }));
+
+        // /craftics world undorepair: revert the briefly-shipped automatic
+        // hollow-island fill on YOUR island. Removes exactly the buried
+        // schematic blocks that fill could have placed - and only where the
+        // world block still matches the schematic - so player-placed blocks
+        // and everything else are untouched.
+        worldNode.then(CommandManager.literal("undorepair").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = player.getServer().getOverworld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            if (!data.hasPersonalWorld(player.getUuid())) {
+                ctx.getSource().sendError(Text.literal("§cYou don't have a personal world."));
+                return 0;
+            }
+            ServerWorld islandWorld = com.crackedgames.craftics.world.IslandDimensions
+                .getOrCreate(player.getServer(), player.getUuid());
+            int removed = HubRoomBuilder.undoRepair(islandWorld, data.getHubOrigin(player.getUuid()));
+            ctx.getSource().sendFeedback(() -> Text.literal(removed > 0
+                ? "§aRemoved §e" + removed + "§a repair-filled blocks from your island."
+                : "§7Nothing to undo - no repair-filled blocks found."), false);
+            return 1;
+        }));
+
+        // /craftics world repairhollow: opt IN to filling a hollow island
+        // interior (islands built before the hollow-generation fix). Fills only
+        // buried schematic blocks where the world currently has air.
+        worldNode.then(CommandManager.literal("repairhollow").executes(ctx -> {
+            ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+            ServerWorld overworld = player.getServer().getOverworld();
+            CrafticsSavedData data = CrafticsSavedData.get(overworld);
+            if (!data.hasPersonalWorld(player.getUuid())) {
+                ctx.getSource().sendError(Text.literal("§cYou don't have a personal world."));
+                return 0;
+            }
+            ServerWorld islandWorld = com.crackedgames.craftics.world.IslandDimensions
+                .getOrCreate(player.getServer(), player.getUuid());
+            int filled = HubRoomBuilder.repair(islandWorld, data.getHubOrigin(player.getUuid()));
+            ctx.getSource().sendFeedback(() -> Text.literal(filled > 0
+                ? "§aFilled §e" + filled + "§a hollow interior blocks on your island."
+                : "§7Nothing to fill - your island interior is already solid."), false);
             return 1;
         }));
 

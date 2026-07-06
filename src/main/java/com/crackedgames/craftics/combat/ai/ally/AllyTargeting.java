@@ -89,7 +89,7 @@ final class AllyTargeting {
     /** Size-aware path from the ally's tile to {@code to} (delegates to 1x1 routing for small allies). */
     static List<GridPos> pathTo(CombatEntity self, GridArena arena, GridPos to) {
         return Pathfinding.findPathSized(
-            arena, self.getGridPos(), to, self.getMoveSpeed(), self, self.getSize());
+            arena, self.getGridPos(), to, self.getMoveSpeed(), self);
     }
 
     /**
@@ -116,7 +116,7 @@ final class AllyTargeting {
         // the boss tile that is genuinely closest to us instead.
         GridPos aim = nearestTileOnTarget(target, arena, pos);
         GridPos closest = Pathfinding.findClosestReachableTo(
-            arena, pos, aim, self.getMoveSpeed(), self, self.getSize());
+            arena, pos, aim, self.getMoveSpeed(), self);
         if (closest != null && !closest.equals(pos)) {
             List<GridPos> seek = pathTo(self, arena, closest);
             if (seek != null && !seek.isEmpty()) {
@@ -149,7 +149,7 @@ final class AllyTargeting {
         GridPos best = null;
         int bestDist = pos.manhattanDistance(threatPos);
         for (GridPos candidate : Pathfinding.getReachableTiles(
-                arena, pos, self.getMoveSpeed(), self.getSize(), self)) {
+                arena, pos, self.getMoveSpeed(), self)) {
             int d = candidate.manhattanDistance(threatPos);
             if (d > bestDist) {
                 bestDist = d;

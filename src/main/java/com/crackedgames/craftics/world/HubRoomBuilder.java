@@ -41,11 +41,14 @@ public class HubRoomBuilder {
     private static final int DIRT_DEPTH = 3; // 3 layers of dirt
     private static final int YARD_Y = 63; // ground level (1 below floor)
 
-    // Hub version for rebuild detection - bump to trigger the on-join repair
-    // pass (see repairIfOutdated). v4: home.schem was being placed through the
-    // arena-style visibility cull, which skipped every buried interior block
-    // and generated the island hollow.
-    public static final int HUB_VERSION = 4;
+    // Hub version stamp. NEVER used to drive automatic world edits (a v4-era
+    // on-join repair misfired on older saves and was removed) - it only gates
+    // the one-time chat notice pointing owners of older islands at the opt-in
+    // /craftics world repairhollow + undorepair commands.
+    // v4: home.schem stopped being placed through the arena visibility cull
+    //     (which skipped every buried block and generated islands hollow).
+    // v5: fresh islands stamp 5 so only pre-existing saves see the notice.
+    public static final int HUB_VERSION = 5;
 
     // Offset applied to all block placements (set before building)
     private static int ox = 0, oz = 0;
@@ -274,6 +277,38 @@ public class HubRoomBuilder {
         int filled = schem.repairBuried(world, placeX, placeY, placeZ);
         CrafticsMod.LOGGER.info("Home island repair at {}: {} interior blocks restored", hubCenter, filled);
         return filled;
+    }
+
+    /**
+     * Inverse of {@link #repair}: strip out exactly the blocks the repair fill
+     * could have placed (buried schematic solids still matching the schematic),
+     * restoring the pre-repair state. For saves the automatic repair misfired
+     * on. Same placement math as build()/repair().
+     *
+     * @return the number of blocks removed
+     */
+    public static int undoRepair(ServerWorld world, BlockPos hubCenter) {
+        net.minecraft.util.Identifier schemId = net.minecraft.util.Identifier.of("craftics", "home.schem");
+        var resource = world.getServer().getResourceManager().getResource(schemId);
+        if (resource.isEmpty()) {
+            CrafticsMod.LOGGER.error("home.schem not found in resources - cannot undo repair");
+            return 0;
+        }
+        com.crackedgames.craftics.level.SchemLoader.SchemData schem;
+        try (java.io.InputStream in = resource.get().getInputStream()) {
+            schem = com.crackedgames.craftics.level.SchemLoader.load(in, schemId.toString());
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.error("Failed to read home.schem for undo", e);
+            return 0;
+        }
+        if (schem == null) return 0;
+
+        int placeX = hubCenter.getX() - schem.width() / 2;
+        int placeY = hubCenter.getY() - schem.height() / 2 + 20;
+        int placeZ = hubCenter.getZ() - schem.length() / 2;
+        int removed = schem.undoRepairBuried(world, placeX, placeY, placeZ);
+        CrafticsMod.LOGGER.info("Home island un-repair at {}: {} filled blocks removed", hubCenter, removed);
+        return removed;
     }
 
     /**

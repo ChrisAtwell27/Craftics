@@ -50,9 +50,13 @@ public class RevenantAI extends BossAI {
                 int chargeDmg = self.getAttackPower() + (isPhaseTwo() ? 4 : 2);
                 setCooldown(CD_CHARGE, 2);
 
+                // DIRECTIONAL + charge direction: the client draws marching arrows
+                // along the telegraphed lane so the dash reads as "coming THIS way",
+                // not just "these tiles are red".
                 pendingWarning = new BossWarning(
-                    self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                    charge.warningTiles(), 1, new EnemyAction.MoveAndAttack(charge.path(), chargeDmg), 0xFFFF4444);
+                    self.getEntityId(), BossWarning.WarningType.DIRECTIONAL,
+                    charge.warningTiles(), 1, new EnemyAction.MoveAndAttack(charge.path(), chargeDmg), 0xFFFF4444,
+                    charge.dx(), charge.dz());
                 return advanceWhileCharging(self, arena, playerPos);
             }
         }

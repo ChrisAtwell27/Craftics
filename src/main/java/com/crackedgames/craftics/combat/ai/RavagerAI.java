@@ -35,12 +35,12 @@ public class RavagerAI implements EnemyAI {
         // Try bull rush - charge in cardinal directions up to 3 tiles
         int[][] directions = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
         for (int[] dir : directions) {
-            List<GridPos> chargePath = buildChargePath(arena, myPos, dir[0], dir[1], 3);
+            List<GridPos> chargePath = buildChargePath(self, arena, myPos, dir[0], dir[1], 3);
             if (chargePath.isEmpty()) continue;
 
             // Check if player is at the end of or in the charge path
             GridPos chargeEnd = chargePath.get(chargePath.size() - 1);
-            if (CombatEntity.minDistanceFromSizedEntity(chargeEnd, self.getSize(), playerPos) <= 1) {
+            if (CombatEntity.minDistanceFromSizedEntity(chargeEnd, self.getSizeX(), self.getSizeZ(), playerPos) <= 1) {
                 // Charge ends adjacent to player - charge + attack with knockback
                 return new EnemyAction.MoveAndAttackWithKnockback(
                     new ArrayList<>(chargePath), self.getAttackPower() + 1, 2);
@@ -48,14 +48,15 @@ public class RavagerAI implements EnemyAI {
         }
 
         // Can't charge into player - try to get closer (size-aware)
-        int size = self.getSize();
-        GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), size);
+        int sizeX = self.getSizeX();
+        int sizeZ = self.getSizeZ();
+        GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), sizeX, sizeZ);
         if (target == null) target = playerPos;
 
-        List<GridPos> path = Pathfinding.findPathSized(arena, myPos, target, self.getMoveSpeed(), self, size);
+        List<GridPos> path = Pathfinding.findPathSized(arena, myPos, target, self.getMoveSpeed(), self);
         if (!path.isEmpty()) {
             GridPos endPos = path.get(path.size() - 1);
-            if (CombatEntity.minDistanceFromSizedEntity(endPos, size, playerPos) <= 1) {
+            if (CombatEntity.minDistanceFromSizedEntity(endPos, sizeX, sizeZ, playerPos) <= 1) {
                 return new EnemyAction.MoveAndAttackWithKnockback(path, self.getAttackPower(), 2);
             }
             return new EnemyAction.Move(path);
@@ -73,14 +74,14 @@ public class RavagerAI implements EnemyAI {
         return count;
     }
 
-    private List<GridPos> buildChargePath(GridArena arena, GridPos start, int dx, int dz, int maxLen) {
-        // Use size-aware footprint check for 2x2 ravager
-        int size = 2;
+    private List<GridPos> buildChargePath(CombatEntity self, GridArena arena, GridPos start, int dx, int dz, int maxLen) {
+        // Footprint-aware, ignoring the ravager's own tiles: a short charge
+        // overlaps its current footprint, which a plain occupancy check rejects.
         List<GridPos> path = new ArrayList<>();
         GridPos current = start;
         for (int i = 0; i < maxLen; i++) {
             GridPos next = new GridPos(current.x() + dx, current.z() + dz);
-            if (!AIUtils.canPlaceFootprint(arena, next, size)) break;
+            if (!AIUtils.canPlaceFootprintIgnoringSelf(arena, next, self)) break;
             path.add(next);
             current = next;
         }

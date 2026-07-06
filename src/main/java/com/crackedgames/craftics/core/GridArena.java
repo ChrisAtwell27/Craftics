@@ -133,7 +133,7 @@ public class GridArena {
     }
 
     public void placeEntity(CombatEntity entity) {
-        for (GridPos tile : getOccupiedTiles(entity.getGridPos(), entity.getSize())) {
+        for (GridPos tile : getOccupiedTiles(entity)) {
             occupants.put(tile, entity);
         }
     }
@@ -144,27 +144,37 @@ public class GridArena {
         // target and make them impossible to hit. Refuse the move.
         if (entity.isImmovable()) return;
         // Remove from all old tiles
-        for (GridPos tile : getOccupiedTiles(entity.getGridPos(), entity.getSize())) {
+        for (GridPos tile : getOccupiedTiles(entity)) {
             occupants.remove(tile);
         }
         entity.setGridPos(newPos);
         // Place in all new tiles
-        for (GridPos tile : getOccupiedTiles(newPos, entity.getSize())) {
+        for (GridPos tile : getOccupiedTiles(entity)) {
             occupants.put(tile, entity);
         }
     }
 
     public void removeEntity(CombatEntity entity) {
-        for (GridPos tile : getOccupiedTiles(entity.getGridPos(), entity.getSize())) {
+        for (GridPos tile : getOccupiedTiles(entity)) {
             occupants.remove(tile);
         }
     }
 
-    /** Returns all grid positions occupied by an entity of the given size at the given origin. */
+    /** All grid positions covered by an entity's (possibly rectangular) footprint. */
+    public static java.util.List<GridPos> getOccupiedTiles(CombatEntity entity) {
+        return getOccupiedTiles(entity.getGridPos(), entity.getSizeX(), entity.getSizeZ());
+    }
+
+    /** Returns all grid positions occupied by a square entity of the given size at the given origin. */
     public static java.util.List<GridPos> getOccupiedTiles(GridPos origin, int size) {
+        return getOccupiedTiles(origin, size, size);
+    }
+
+    /** Returns all grid positions occupied by a {@code sizeX x sizeZ} footprint at the given origin. */
+    public static java.util.List<GridPos> getOccupiedTiles(GridPos origin, int sizeX, int sizeZ) {
         java.util.List<GridPos> tiles = new java.util.ArrayList<>();
-        for (int dx = 0; dx < size; dx++) {
-            for (int dz = 0; dz < size; dz++) {
+        for (int dx = 0; dx < sizeX; dx++) {
+            for (int dz = 0; dz < sizeZ; dz++) {
                 tiles.add(new GridPos(origin.x() + dx, origin.z() + dz));
             }
         }

@@ -16,7 +16,8 @@ public record TileSetPayload(
     int[] warningTiles,  // flat: [x1, z1, x2, z2, ...] - boss attack telegraphs
     int[] enemyMap,      // flat: [x, z, entityId, x, z, entityId, ...]
     String enemyTypes,   // pipe-separated entity type IDs parallel to enemyMap triplets
-    int[] mountTiles     // flat: [x1, z1, ...] - netherite mount 1×3 footprint side tiles
+    int[] mountTiles,    // flat: [x1, z1, ...] - netherite mount 1×3 footprint side tiles
+    int[] warningArrows  // flat: [x, z, dx, dz, ...] - directional telegraph arrow glyphs
 ) implements CustomPayload {
 
     public static final Id<TileSetPayload> ID =
@@ -33,7 +34,8 @@ public record TileSetPayload(
         int[] enemy = readIntArray(buf);
         String types = buf.readString();
         int[] mount = readIntArray(buf);
-        return new TileSetPayload(move, attack, danger, warning, enemy, types, mount);
+        int[] arrows = readIntArray(buf);
+        return new TileSetPayload(move, attack, danger, warning, enemy, types, mount, arrows);
     }
 
     private void encode(RegistryByteBuf buf) {
@@ -44,6 +46,7 @@ public record TileSetPayload(
         writeIntArray(buf, enemyMap);
         buf.writeString(enemyTypes);
         writeIntArray(buf, mountTiles);
+        writeIntArray(buf, warningArrows);
     }
 
     private static void writeIntArray(RegistryByteBuf buf, int[] arr) {

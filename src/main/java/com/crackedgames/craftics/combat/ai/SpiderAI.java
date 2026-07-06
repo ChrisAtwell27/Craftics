@@ -35,7 +35,7 @@ public class SpiderAI implements EnemyAI {
 
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
-        int size = self.getSize();
+        int size = self.getMaxSize();
 
         // Badly wounded - break off and reset on the ceiling. The ambusher
         // re-enters the fight with a drop instead of trading hits to the death.

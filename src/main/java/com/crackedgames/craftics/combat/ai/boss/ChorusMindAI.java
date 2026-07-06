@@ -115,7 +115,7 @@ public class ChorusMindAI extends BossAI {
 
     private EnemyAction chooseOffensiveAbility(CombatEntity self, GridArena arena,
                                                GridPos playerPos, GridPos effectivePos) {
-        int dist = CombatEntity.minDistanceFromSizedEntity(effectivePos, self.getSize(), playerPos);
+        int dist = CombatEntity.minDistanceFromSizedEntity(effectivePos, self.getMaxSize(), playerPos);
 
         // Resonance Cascade - needs plants on field. The resolve pulses every
         // warned tile (the old resolve was a radius-0 strike on the boss's own
@@ -196,7 +196,7 @@ public class ChorusMindAI extends BossAI {
 
     /** A footprint-valid anchor beside a random living plant; null if none fits. */
     private GridPos findPlantSideLanding(GridArena arena, CombatEntity self) {
-        int size = self.getSize();
+        int size = self.getMaxSize();
         List<GridPos> plants = new ArrayList<>(chorusPlants);
         Collections.shuffle(plants);
         for (GridPos plant : plants) {

@@ -83,7 +83,7 @@ public class EvokerAI implements EnemyAI {
         GridPos best = null;
         int bestScore = Integer.MIN_VALUE;
         for (GridPos candidate : Pathfinding.getReachableTiles(
-                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+                arena, myPos, self.getMoveSpeed(), self)) {
             if (candidate.equals(myPos)) continue;
             int distToPlayer = candidate.manhattanDistance(playerPos);
             if (distToPlayer < 3 || distToPlayer > self.getRange()) continue;

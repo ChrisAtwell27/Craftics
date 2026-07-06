@@ -1075,6 +1075,12 @@ public class CombatState {
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getAttackTiles() { return cachedAttackTiles; }
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getDangerTiles() { return cachedDangerTiles; }
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getWarningTiles() { return cachedWarningTiles; }
+
+    /** One directional telegraph arrow: a tile plus the cardinal the attack travels. */
+    public record WarningArrow(com.crackedgames.craftics.core.GridPos pos, int dx, int dz) {}
+    private static final java.util.List<WarningArrow> cachedWarningArrows = new java.util.ArrayList<>();
+    /** Directional telegraph arrows (charge lanes, pulls, gales); empty when none pending. */
+    public static java.util.List<WarningArrow> getWarningArrows() { return cachedWarningArrows; }
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getMountTiles() { return cachedMountTiles; }
     public static java.util.Map<com.crackedgames.craftics.core.GridPos, Integer> getEnemyGridMap() { return enemyGridMap; }
     public static java.util.Map<com.crackedgames.craftics.core.GridPos, String> getEnemyGridTypeMap() { return enemyGridTypeMap; }
@@ -1087,14 +1093,20 @@ public class CombatState {
 
     public static void updateTileSets(int[] moveTiles, int[] attackTiles, int[] dangerTiles,
                                        int[] warningTiles, int[] enemyMapData, String enemyTypes,
-                                       int[] mountTiles) {
+                                       int[] mountTiles, int[] warningArrows) {
         cachedMoveTiles.clear();
         cachedAttackTiles.clear();
         cachedDangerTiles.clear();
         cachedWarningTiles.clear();
         cachedMountTiles.clear();
+        cachedWarningArrows.clear();
         enemyGridMap.clear();
         enemyGridTypeMap.clear();
+
+        for (int i = 0; i + 3 < warningArrows.length; i += 4)
+            cachedWarningArrows.add(new WarningArrow(
+                new com.crackedgames.craftics.core.GridPos(warningArrows[i], warningArrows[i + 1]),
+                warningArrows[i + 2], warningArrows[i + 3]));
 
         for (int i = 0; i + 1 < mountTiles.length; i += 2)
             cachedMountTiles.add(new com.crackedgames.craftics.core.GridPos(mountTiles[i], mountTiles[i + 1]));
@@ -1128,6 +1140,7 @@ public class CombatState {
         cachedDangerTiles.clear();
         cachedWarningTiles.clear();
         cachedMountTiles.clear();
+        cachedWarningArrows.clear();
         enemyGridMap.clear();
         enemyGridTypeMap.clear();
         teammateHovers.clear();

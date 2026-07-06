@@ -43,7 +43,7 @@ public class SupportAllyAI implements AllyAI {
             GridPos beside = findShelteredSide(self, arena, playerPos, threat);
             if (beside == null) {
                 beside = AIUtils.findBestAdjacentTarget(
-                    arena, pos, playerPos, self.getMoveSpeed(), self.getSize());
+                    arena, pos, playerPos, self.getMoveSpeed(), self.getSizeX(), self.getSizeZ());
             }
             if (beside != null && !beside.equals(pos)) {
                 List<GridPos> path = AllyTargeting.pathTo(self, arena, beside);
@@ -61,7 +61,7 @@ public class SupportAllyAI implements AllyAI {
         GridPos best = null;
         int bestDist = Integer.MIN_VALUE;
         for (GridPos beside : AIUtils.getAdjacentTiles(arena, playerPos)) {
-            if (!AIUtils.canPlaceFootprint(arena, beside, self.getSize())) continue;
+            if (!AIUtils.canPlaceFootprint(arena, beside, self.getSizeX(), self.getSizeZ())) continue;
             // Only consider tiles we can actually walk to this turn.
             List<GridPos> path = AllyTargeting.pathTo(self, arena, beside);
             if (path == null || path.isEmpty()) continue;

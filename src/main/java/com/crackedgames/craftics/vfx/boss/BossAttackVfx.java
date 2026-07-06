@@ -210,11 +210,11 @@ public final class BossAttackVfx {
         return switch (categorize(abilityName)) {
             case SLAM    -> "a heavy blow will crush the marked tiles - get clear!";
             case LINE    -> "a strike will sweep along the marked line!";
-            case CHARGE  -> "it will charge down the marked path - step aside!";
+            case CHARGE  -> "it will charge along the arrows - step out of the lane!";
             case MAGIC   -> "a spell will detonate on the marked tiles!";
             case SUMMON  -> "reinforcements will rise from the marked ground!";
             case TERRAIN -> "the marked ground is about to change!";
-            case PULL    -> "you will be dragged - brace or reposition!";
+            case PULL    -> "the arrows show which way you'll be dragged - brace or reposition!";
             case GENERIC -> "the marked tiles will be struck!";
         };
     }

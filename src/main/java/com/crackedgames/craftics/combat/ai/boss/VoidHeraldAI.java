@@ -85,7 +85,7 @@ public class VoidHeraldAI extends BossAI {
                 self.getEntityId(), BossWarning.WarningType.DIRECTIONAL,
                 warningTiles, 1,
                 new EnemyAction.ForcedMovement(-1, pushDir[0], pushDir[1], pushDist),
-                0xFF8800FF);
+                0xFF8800FF, pushDir[0], pushDir[1]);
             return new EnemyAction.Idle();
         }
 
@@ -147,7 +147,7 @@ public class VoidHeraldAI extends BossAI {
 
     /** A blink anchor within 2 tiles of the player whose 2×2 footprint fits and doesn't cover the player. */
     private GridPos findBlinkLanding(GridArena arena, GridPos playerPos, CombatEntity self) {
-        int size = self.getSize();
+        int size = self.getMaxSize();
         List<GridPos> candidates = new ArrayList<>();
         for (int dx = -2; dx <= 2; dx++) {
             for (int dz = -2; dz <= 2; dz++) {

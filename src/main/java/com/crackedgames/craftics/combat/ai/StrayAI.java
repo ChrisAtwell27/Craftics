@@ -77,7 +77,7 @@ public class StrayAI implements EnemyAI {
         int range = self.getRange();
 
         for (GridPos candidate : Pathfinding.getReachableTiles(
-                arena, myPos, self.getMoveSpeed(), self.getSize(), self)) {
+                arena, myPos, self.getMoveSpeed(), self)) {
             if (candidate.equals(myPos)) continue;
 
             int distToPlayer = candidate.manhattanDistance(playerPos);

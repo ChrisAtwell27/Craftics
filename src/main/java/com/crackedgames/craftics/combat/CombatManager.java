@@ -126,31 +126,15 @@ public class CombatManager {
     }
 
     private static GridPos findNearestValidSpawn(GridArena arena, GridPos desiredPos, int entitySize) {
-        GridPos bestPos = null;
-        int bestDistance = Integer.MAX_VALUE;
-
-        for (int x = 0; x <= arena.getWidth() - entitySize; x++) {
-            for (int z = 0; z <= arena.getHeight() - entitySize; z++) {
-                GridPos candidate = new GridPos(x, z);
-                if (!canPlaceSpawnAt(arena, candidate, entitySize)) continue;
-
-                int distance = candidate.manhattanDistance(desiredPos);
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    bestPos = candidate;
-                }
-            }
-        }
-
-        return bestPos;
+        return findNearestValidSpawn(arena, desiredPos, entitySize, entitySize, false);
     }
 
     private static boolean canPlaceSpawnAt(GridArena arena, GridPos origin, int entitySize) {
-        return canPlaceSpawnAt(arena, origin, entitySize, false);
+        return canPlaceSpawnAt(arena, origin, entitySize, entitySize, false);
     }
 
-    private static boolean canPlaceSpawnAt(GridArena arena, GridPos origin, int entitySize, boolean aquatic) {
-        for (GridPos tilePos : GridArena.getOccupiedTiles(origin, entitySize)) {
+    private static boolean canPlaceSpawnAt(GridArena arena, GridPos origin, int sizeX, int sizeZ, boolean aquatic) {
+        for (GridPos tilePos : GridArena.getOccupiedTiles(origin, sizeX, sizeZ)) {
             if (!arena.isInBounds(tilePos)) return false;
 
             GridTile tile = arena.getTile(tilePos);
@@ -167,14 +151,14 @@ public class CombatManager {
         return true;
     }
 
-    private static GridPos findNearestValidSpawn(GridArena arena, GridPos desiredPos, int entitySize, boolean aquatic) {
+    private static GridPos findNearestValidSpawn(GridArena arena, GridPos desiredPos, int sizeX, int sizeZ, boolean aquatic) {
         GridPos bestPos = null;
         int bestDistance = Integer.MAX_VALUE;
 
-        for (int x = 0; x <= arena.getWidth() - entitySize; x++) {
-            for (int z = 0; z <= arena.getHeight() - entitySize; z++) {
+        for (int x = 0; x <= arena.getWidth() - sizeX; x++) {
+            for (int z = 0; z <= arena.getHeight() - sizeZ; z++) {
                 GridPos candidate = new GridPos(x, z);
-                if (!canPlaceSpawnAt(arena, candidate, entitySize, aquatic)) continue;
+                if (!canPlaceSpawnAt(arena, candidate, sizeX, sizeZ, aquatic)) continue;
 
                 int distance = candidate.manhattanDistance(desiredPos);
                 if (distance < bestDistance) {
@@ -192,14 +176,14 @@ public class CombatManager {
      * Prevents enemies from spawning on islands the player can't reach.
      */
     private static GridPos findNearestReachableSpawn(GridArena arena, GridPos desiredPos,
-                                                      int entitySize, java.util.Set<GridPos> reachable) {
+                                                      int sizeX, int sizeZ, java.util.Set<GridPos> reachable) {
         GridPos bestPos = null;
         int bestDistance = Integer.MAX_VALUE;
 
-        for (int x = 0; x <= arena.getWidth() - entitySize; x++) {
-            for (int z = 0; z <= arena.getHeight() - entitySize; z++) {
+        for (int x = 0; x <= arena.getWidth() - sizeX; x++) {
+            for (int z = 0; z <= arena.getHeight() - sizeZ; z++) {
                 GridPos candidate = new GridPos(x, z);
-                if (!canPlaceSpawnAt(arena, candidate, entitySize)) continue;
+                if (!canPlaceSpawnAt(arena, candidate, sizeX, sizeZ, false)) continue;
                 if (!reachable.contains(candidate)) continue;
 
                 int distance = candidate.manhattanDistance(desiredPos);
@@ -2539,24 +2523,29 @@ public class CombatManager {
 
             GridPos requestedPos = spawn.position();
             GridPos adaptedPos = adaptSpawnToArena(requestedPos, levelDef, arena);
-            int size = CombatEntity.getDefaultSizeStatic(spawn.entityTypeId());
+            // Rectangular footprint, long axis pointed at the player start so
+            // long mobs (sniffer, camel, ravager, horses) face their target.
+            int[] footprint = CombatEntity.orientFootprint(
+                CombatEntity.getDefaultFootprint(spawn.entityTypeId()),
+                adaptedPos, arena.getPlayerStart());
+            int sizeX = footprint[0];
+            int sizeZ = footprint[1];
             // Bosses with a larger grid footprint need the spawn search to reserve enough tiles
             if (isBossSpawn && bossBiomeId != null) {
                 var bossAiForSize = AIRegistry.get("boss:" + bossBiomeId);
                 if (bossAiForSize instanceof BossAI bai) {
-                    size = Math.max(size, bai.getGridSize());
+                    sizeX = Math.max(sizeX, bai.getGridSize());
+                    sizeZ = Math.max(sizeZ, bai.getGridSize());
                 }
             }
             boolean aquatic = CombatEntity.isAquatic(spawn.entityTypeId());
-            GridPos resolvedPos = aquatic
-                ? findNearestValidSpawn(arena, adaptedPos, size, true)
-                : findNearestValidSpawn(arena, adaptedPos, size);
+            GridPos resolvedPos = findNearestValidSpawn(arena, adaptedPos, sizeX, sizeZ, aquatic);
 
             // If the resolved position is unreachable by the player, relocate to the
             // nearest reachable tile so the player can never be soft-locked.
             if (resolvedPos != null && !aquatic && !playerReachable.contains(resolvedPos)) {
                 CrafticsMod.LOGGER.info("Enemy spawn {} is unreachable from player start, relocating", resolvedPos);
-                GridPos relocated = findNearestReachableSpawn(arena, resolvedPos, size, playerReachable);
+                GridPos relocated = findNearestReachableSpawn(arena, resolvedPos, sizeX, sizeZ, playerReachable);
                 if (relocated != null) {
                     resolvedPos = relocated;
                 } else {
@@ -2693,12 +2682,13 @@ public class CombatManager {
                     if (vehicle != null) vehicle.discard();
                 }
 
-                // Position entity at center of occupied area (size / 2.0 blocks from the origin corner)
-                double offset = size / 2.0;
+                // Position entity at center of occupied area (half the footprint from the origin corner)
+                double offsetX = sizeX / 2.0;
+                double offsetZ = sizeZ / 2.0;
                 // Ghasts float 1 block higher so they don't phase into the ground
                 double spawnY = spawnPos.getY() + ("minecraft:ghast".equals(spawn.entityTypeId()) ? 1.0 : 0.0);
                 mob.refreshPositionAndAngles(
-                    spawnPos.getX() + offset, spawnY, spawnPos.getZ() + offset,
+                    spawnPos.getX() + offsetX, spawnY, spawnPos.getZ() + offsetZ,
                     mob.getYaw(), mob.getPitch()
                 );
                 mob.setAiDisabled(true);
@@ -2771,6 +2761,24 @@ public class CombatManager {
                     }
                 }
 
+                // Craftics × Artifacts: rare carrier roll (~trim odds). The curio is
+                // held in the offhand, buffs the mob (MobArtifacts.buffsFor), and gets
+                // a generous on-kill drop roll in rollMobEquipmentDrops. No-op when
+                // the Artifacts mod isn't installed.
+                ItemStack wornArtifact = ItemStack.EMPTY;
+                com.crackedgames.craftics.compat.artifacts.MobArtifacts.Buffs artifactBuffs = null;
+                if (!isBoss) {
+                    wornArtifact = com.crackedgames.craftics.compat.artifacts.MobArtifacts.maybeRollWorn();
+                    if (!wornArtifact.isEmpty()) {
+                        artifactBuffs = com.crackedgames.craftics.compat.artifacts.MobArtifacts.buffsFor(wornArtifact);
+                        equipSpeedBonus += artifactBuffs.speed();
+                        equipDefBonus += artifactBuffs.defense();
+                        if (mob.getEquippedStack(net.minecraft.entity.EquipmentSlot.OFFHAND).isEmpty()) {
+                            mob.equipStack(net.minecraft.entity.EquipmentSlot.OFFHAND, wornArtifact.copy());
+                        }
+                    }
+                }
+
                 // Weapon check
                 ItemStack mainHand = mob.getMainHandStack();
                 if (!mainHand.isEmpty()) {
@@ -2835,6 +2843,14 @@ public class CombatManager {
                     int damageCap = 3 + (Math.max(0, finalBiomeOrdinal) / 2);
                     if (scaledAtk > damageCap) scaledAtk = damageCap;
                 }
+                // Artifact-carrier attack/HP land AFTER the biome damage cap on
+                // purpose - the carrier is a rare mini-elite and its buff should
+                // always be felt, even in early biomes where the cap would
+                // otherwise swallow it.
+                if (artifactBuffs != null) {
+                    scaledAtk += artifactBuffs.attack();
+                    scaledHp += artifactBuffs.hp();
+                }
                 int finalDef = spawn.defense() + equipDefBonus;
 
                 // Determine entity grid size: boss AI defines its own, others use mob defaults
@@ -2850,6 +2866,11 @@ public class CombatManager {
                     scaledHp, scaledAtk, finalDef, spawn.range(),
                     sizeOverride, spawn.speed()
                 );
+                // Non-boss mobs take the oriented rectangular footprint the spawn
+                // search reserved (the ctor default is the unoriented canonical).
+                if (sizeOverride <= 0) {
+                    ce.setFootprint(sizeX, sizeZ);
+                }
                 // Honor an EnemyEntry's AI override (its appearance differs from its
                 // AI). The boss block below sets its own aiOverrideKey, which wins.
                 if (!spawn.aiKey().equals(spawn.entityTypeId())) {
@@ -2858,6 +2879,22 @@ public class CombatManager {
                 // Apply baby speed bonus
                 if (equipSpeedBonus > 0) {
                     ce.setSpeedBonus(equipSpeedBonus);
+                }
+                // Attach the carried artifact: kept on the CombatEntity for the
+                // on-kill drop roll; range buff applies via override; a name marker
+                // + chat line telegraph the rare carrier (and its 25% drop) to the party.
+                if (!wornArtifact.isEmpty()) {
+                    ce.setWornArtifact(wornArtifact.copy());
+                    if (artifactBuffs != null && artifactBuffs.range() > 0) {
+                        ce.setRangeOverride(ce.getRange() + artifactBuffs.range());
+                    }
+                    String mobName = mob.getType().getName().getString();
+                    if (mob.getCustomName() == null) {
+                        mob.setCustomName(Text.literal("§d✦ " + mobName));
+                        mob.setCustomNameVisible(true);
+                    }
+                    sendMessage("§d✦ A " + mobName + " carries §e"
+                        + wornArtifact.getName().getString() + "§d!");
                 }
                 // Per-entity AI instances for mobs whose AI keeps turn-to-turn
                 // state (blaze barrage phases, the artifacts mimic's tantrum/dash
@@ -3697,11 +3734,10 @@ public class CombatManager {
         MobEntity mob = leadWalkAlly.getMobEntity();
         GridPos next = leadWalkPath.get(leadWalkPathIndex);
         BlockPos endBlock = arena.gridToBlockPos(next);
-        double moveOffset = leadWalkAlly.getSize() > 1 ? leadWalkAlly.getSize() / 2.0 : 0.5;
         boolean flying = leadWalkAlly.isFlying();
-        double endX = endBlock.getX() + moveOffset;
+        double endX = endBlock.getX() + leadWalkAlly.getSizeX() / 2.0;
         double endY = arena.getEntityY(next, flying);
-        double endZ = endBlock.getZ() + moveOffset;
+        double endZ = endBlock.getZ() + leadWalkAlly.getSizeZ() / 2.0;
 
         if (!leadWalkLerpInit) {
             leadWalkStartX = mob.getX();
@@ -4650,7 +4686,8 @@ public class CombatManager {
         // stationary spear (base sword-3) stays weaker than a sword on purpose, so the
         // payoff is charging in rather than poking from range.
         if (baseDamage > 0 && tilesMovedThisTurn > 0
-                && com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isSpear(weapon)) {
+                && (com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isSpear(weapon)
+                    || com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.isSpear(weapon))) {
             double spearMult = Math.min(
                 com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.SPEAR_MOVE_CAP,
                 1.0 + com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.SPEAR_MOVE_PER_TILE
@@ -6180,7 +6217,7 @@ public class CombatManager {
                 sendMessage("§a" + entity.getDisplayName() + " defeated!");
             }
             GridPos deathPos = entity.getGridPos();
-            int deathSize = entity.getSize();
+            int deathSize = entity.getMaxSize();
             String deathType = entity.getEntityTypeId();
             int deathMaxHp = entity.getMaxHp();
             int deathAtk = entity.getAttackPower();
@@ -7000,6 +7037,23 @@ public class CombatManager {
                 mob.equipStack(slot, ItemStack.EMPTY);
             }
         }
+
+        // Craftics × Artifacts: a carried artifact drops far more generously than
+        // regular gear (25% per killer) - it's the payoff for hunting the rare carrier.
+        ItemStack carriedArtifact = enemy.getWornArtifact();
+        if (carriedArtifact != null && !carriedArtifact.isEmpty()) {
+            boolean artifactDropped = false;
+            for (ServerPlayerEntity recipient : recipients) {
+                if (Math.random() >= com.crackedgames.craftics.compat.artifacts.MobArtifacts.DROP_CHANCE) continue;
+                artifactDropped = true;
+                LootDelivery.deliver(recipient, carriedArtifact.copy());
+                sendMessageTo(recipient, "§d§l★ ARTIFACT DROP: §e" + carriedArtifact.getName().getString());
+            }
+            if (artifactDropped) {
+                enemy.setWornArtifact(ItemStack.EMPTY);
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.OFFHAND, ItemStack.EMPTY);
+            }
+        }
     }
 
     /**
@@ -7632,10 +7686,9 @@ public class CombatManager {
         enemyMoveTickCounter++;
         GridPos next = enemyMovePath.get(enemyMovePathIndex);
         BlockPos endBlock = arena.gridToBlockPos(next);
-        double moveOffset = (currentEnemy != null && currentEnemy.getSize() > 1) ? currentEnemy.getSize() / 2.0 : 0.5;
-        double endX = endBlock.getX() + moveOffset;
+        double endX = endBlock.getX() + (currentEnemy != null ? currentEnemy.getSizeX() / 2.0 : 0.5);
         double endY = arena.getEntityY(next, currentEnemy != null && currentEnemy.isFlying());
-        double endZ = endBlock.getZ() + moveOffset;
+        double endZ = endBlock.getZ() + (currentEnemy != null ? currentEnemy.getSizeZ() / 2.0 : 0.5);
 
         int emTicks = getMoveTicks();
         float progress = Math.min(1.0f, (float) enemyMoveTickCounter / emTicks);
@@ -8837,15 +8890,26 @@ public class CombatManager {
             ));
         }
 
+        // Scan the incoming player's equipment BEFORE the AP/speed block so trim and
+        // addon (e.g. Artifacts) bonuses actually feed it. The scan used to run after
+        // the stats were already computed - and the trim AP/SPEED bonuses were never
+        // added at all - so every party member after the first silently lost their
+        // trim/artifact bonuses on turn switch.
+        this.activeTrimScan = TrimEffects.scan(player);
+        this.activeCombatEffects = activeTrimScan.getCombatEffects();
+        if (effectContext != null) effectContext.update(player, arena, combatEffects, activeTrimScan);
+
         PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
         PlayerProgression.PlayerStats turnStats = turnProg.getStats(player);
         apRemaining = Math.max(0, turnStats.getEffective(PlayerProgression.Stat.AP)
             + PlayerCombatStats.getSetApBonus(player)
+            + activeTrimScan.get(TrimEffects.Bonus.AP)
             + combatEffects.getHasteBonus()            // Haste: +1 AP per level
             - combatEffects.getMiningFatiguePenalty()); // Mining Fatigue: -1 AP per level
         movePointsRemaining = baseSpeedStat(turnStats)
             + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
             + PlayerCombatStats.getSetSpeedBonus(player)
+            + activeTrimScan.get(TrimEffects.Bonus.SPEED)
             - combatEffects.getLevitationPenalty();    // Levitation: -1 movement per level
         if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
             movePointsRemaining = Math.max(1, movePointsRemaining - 1);
@@ -8856,10 +8920,6 @@ public class CombatManager {
         // shield rule depend on, so one party member's turn never bleeds into the next.
         tilesMovedThisTurn = 0;
         attackedWithoutShieldThisTurn = false;
-
-        this.activeTrimScan = TrimEffects.scan(player);
-        this.activeCombatEffects = activeTrimScan.getCombatEffects();
-        if (effectContext != null) effectContext.update(player, arena, combatEffects, activeTrimScan);
 
         player.getWorld().playSound(null, player.getBlockPos(),
             net.minecraft.sound.SoundEvents.BLOCK_NOTE_BLOCK_CHIME.value(),
@@ -9375,8 +9435,6 @@ public class CombatManager {
                     EntityType<?> reType = Registries.ENTITY_TYPE.get(Identifier.of(e.getEntityTypeId()));
                     var newMob = reType.create(tickWorld, null, respawnPos, SpawnReason.COMMAND, false, false);
                     if (newMob instanceof MobEntity replacementMob) {
-                        int size = CombatEntity.getDefaultSizeStatic(e.getEntityTypeId());
-                        double offset = size > 1 ? 1.0 : 0.5;
                         // Background bosses (Wailing Revenant, parked Ender
                         // Dragon) have a sentinel gridPos like (0, 0) used
                         // only for targeting -their real world position is
@@ -9389,9 +9447,11 @@ public class CombatManager {
                             spawnZ = arena.getOrigin().getZ() - 10.0;
                             spawnY = arena.getOrigin().getY() + 2.0;
                         } else {
-                            spawnX = respawnPos.getX() + offset;
+                            // Center over the live footprint (the entity's dims, not the
+                            // type default - orientation/boss overrides may differ).
+                            spawnX = respawnPos.getX() + e.getSizeX() / 2.0;
                             spawnY = respawnPos.getY();
-                            spawnZ = respawnPos.getZ() + offset;
+                            spawnZ = respawnPos.getZ() + e.getSizeZ() / 2.0;
                         }
                         replacementMob.refreshPositionAndAngles(spawnX, spawnY, spawnZ, 0, 0);
                         replacementMob.setInvulnerable(true);
@@ -9454,9 +9514,8 @@ public class CombatManager {
                         && (e != currentEnemy || enemyTurnState == EnemyTurnState.DONE
                         || enemyTurnState == EnemyTurnState.DECIDING)) {
                     BlockPos gridBlock = arena.gridToBlockPos(e.getGridPos());
-                    double sizeOffset = e.getSize() > 1 ? e.getSize() / 2.0 : 0.5;
-                    double targetX = gridBlock.getX() + sizeOffset;
-                    double targetZ = gridBlock.getZ() + sizeOffset;
+                    double targetX = gridBlock.getX() + e.getSizeX() / 2.0;
+                    double targetZ = gridBlock.getZ() + e.getSizeZ() / 2.0;
                     double targetY = arena.getEntityY(e.getGridPos(), e.isFlying());
                     double driftX = Math.abs(mob.getX() - targetX);
                     double driftZ = Math.abs(mob.getZ() - targetZ);
@@ -10303,11 +10362,16 @@ public class CombatManager {
                             qBlock.getZ() - qOrigin.getZ()
                         ));
                     }
-                    this.activeTrimScan = TrimEffects.scan(player);
-                    this.activeCombatEffects = activeTrimScan.getCombatEffects();
-                    if (effectContext != null) effectContext.update(player, arena, combatEffects, activeTrimScan);
                 }
             }
+
+            // Re-scan the acting player's equipment EVERY round start - solo included.
+            // This scan used to live only inside the party branch above, so a solo
+            // player who equipped an artifact (e.g. Running Shoes) mid-fight kept the
+            // stale combat-start scan and never received the new bonuses.
+            this.activeTrimScan = TrimEffects.scan(player);
+            this.activeCombatEffects = activeTrimScan.getCombatEffects();
+            if (effectContext != null) effectContext.update(player, arena, combatEffects, activeTrimScan);
 
             // `player` may have been switched by the turn queue above
             PlayerProgression turnProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
@@ -10404,7 +10468,7 @@ public class CombatManager {
                 // doesn't route its footprint over the player while staggering to
                 // its target.
                 java.util.List<GridPos> path = Pathfinding.findPathSized(arena, currentEnemy.getGridPos(),
-                    victim.getGridPos(), currentEnemy.getMoveSpeed(), currentEnemy, currentEnemy.getSize());
+                    victim.getGridPos(), currentEnemy.getMoveSpeed(), currentEnemy);
                 pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.MoveAndAttackMob(
                     path, victim.getEntityId(), currentEnemy.getAttackPower());
                 currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
@@ -10589,14 +10653,15 @@ public class CombatManager {
                 // landing whose footprint covers the player tile (clipping into it).
                 // If the planned landing would overlap the player, stay put and just
                 // attack from here instead of teleporting on top of them.
-                boolean landingClipsPlayer = currentEnemy.getSize() > 1
+                boolean landingClipsPlayer = currentEnemy.isMultiTile()
                     && CombatEntity.minDistanceFromSizedEntity(
-                        pounce.landingPos(), currentEnemy.getSize(), arena.getPlayerGridPos()) == 0;
+                        pounce.landingPos(), currentEnemy.getSizeX(), currentEnemy.getSizeZ(),
+                        arena.getPlayerGridPos()) == 0;
                 if (!landingClipsPlayer) {
                     MobEntity mob = currentEnemy.getMobEntity();
                     if (mob != null) {
-                        double wx = arena.getOrigin().getX() + pounce.landingPos().x() + 0.5;
-                        double wz = arena.getOrigin().getZ() + pounce.landingPos().z() + 0.5;
+                        double wx = arena.getOrigin().getX() + pounce.landingPos().x() + currentEnemy.getSizeX() / 2.0;
+                        double wz = arena.getOrigin().getZ() + pounce.landingPos().z() + currentEnemy.getSizeZ() / 2.0;
                         mob.requestTeleport(wx,
                             arena.getEntityY(pounce.landingPos(), currentEnemy.isFlying()), wz);
                     }
@@ -10610,7 +10675,6 @@ public class CombatManager {
                 sendMessage("§6§l" + currentEnemy.getDisplayName() + " DASHES!");
                 ServerWorld dashWorld = (ServerWorld) player.getEntityWorld();
                 GridPos start = currentEnemy.getGridPos();
-                int size = currentEnemy.getSize();
                 GridPos current = start;
                 int steps = 0;
                 int maxSteps = Math.max(arena.getWidth(), arena.getHeight()) + 1;
@@ -10825,11 +10889,10 @@ public class CombatManager {
                         GridPos swoopStart = swoopPath.get(0);
                         if (!currentEnemy.getGridPos().equals(swoopStart)) {
                             BlockPos snapBlock = arena.gridToBlockPos(swoopStart);
-                            double snapOffset = currentEnemy.getSize() / 2.0;
                             swoopMob.requestTeleport(
-                                snapBlock.getX() + snapOffset,
+                                snapBlock.getX() + currentEnemy.getSizeX() / 2.0,
                                 arena.getEntityY(swoopStart),
-                                snapBlock.getZ() + snapOffset);
+                                snapBlock.getZ() + currentEnemy.getSizeZ() / 2.0);
                             arena.moveEntity(currentEnemy, swoopStart);
                         }
                     }
@@ -10845,10 +10908,10 @@ public class CombatManager {
 
                 // Damage the player if any path tile intersects their footprint
                 GridPos playerGridPos = arena.getPlayerGridPos();
-                int entitySize = currentEnemy.getSize();
                 boolean hitPlayer = false;
                 for (GridPos pos : swoopPath) {
-                    if (CombatEntity.minDistanceFromSizedEntity(pos, entitySize, playerGridPos) <= 0) {
+                    if (CombatEntity.minDistanceFromSizedEntity(
+                            pos, currentEnemy.getSizeX(), currentEnemy.getSizeZ(), playerGridPos) <= 0) {
                         hitPlayer = true;
                         break;
                     }
@@ -10876,7 +10939,8 @@ public class CombatManager {
                             mbp.getX() - swoopOrigin.getX(), mbp.getZ() - swoopOrigin.getZ());
                         boolean memberHit = false;
                         for (GridPos pos : swoopPath) {
-                            if (CombatEntity.minDistanceFromSizedEntity(pos, entitySize, memberGrid) <= 0) {
+                            if (CombatEntity.minDistanceFromSizedEntity(pos,
+                                    currentEnemy.getSizeX(), currentEnemy.getSizeZ(), memberGrid) <= 0) {
                                 memberHit = true;
                                 break;
                             }
@@ -11148,7 +11212,7 @@ public class CombatManager {
                     // category-shaped impact instead of an unheralded damage tick.
                     com.crackedgames.craftics.vfx.boss.BossAttackVfx.impact(
                         (ServerWorld) player.getEntityWorld(), arena, currentEnemy, ba,
-                        arena.getPlayerGridPos());
+                        findAnyPlayerInside(ba.warningTiles()));
                     dispatchBossSubAction(ba.resolvedAction());
                 }
                 sendSync();
@@ -11194,14 +11258,15 @@ public class CombatManager {
                             dispatchBossSubAction(new EnemyAction.Attack(maa.damage()));
                         }
                     } else if (subAction instanceof EnemyAction.Pounce pounce) {
-                        boolean clipsPlayer = currentEnemy.getSize() > 1
+                        boolean clipsPlayer = currentEnemy.isMultiTile()
                             && CombatEntity.minDistanceFromSizedEntity(
-                                pounce.landingPos(), currentEnemy.getSize(), arena.getPlayerGridPos()) == 0;
+                                pounce.landingPos(), currentEnemy.getSizeX(), currentEnemy.getSizeZ(),
+                                arena.getPlayerGridPos()) == 0;
                         if (!clipsPlayer) {
                             MobEntity pMob = currentEnemy.getMobEntity();
                             if (pMob != null) {
-                                double wx = arena.getOrigin().getX() + pounce.landingPos().x() + 0.5;
-                                double wz = arena.getOrigin().getZ() + pounce.landingPos().z() + 0.5;
+                                double wx = arena.getOrigin().getX() + pounce.landingPos().x() + currentEnemy.getSizeX() / 2.0;
+                                double wz = arena.getOrigin().getZ() + pounce.landingPos().z() + currentEnemy.getSizeZ() / 2.0;
                                 pMob.requestTeleport(wx,
                                     arena.getEntityY(pounce.landingPos(), currentEnemy.isFlying()), wz);
                             }
@@ -11353,6 +11418,21 @@ public class CombatManager {
      * Resolve pending boss warnings at the start of a boss's turn.
      * Called before the boss chooses its new action.
      */
+    /**
+     * The grid position of ANY party member standing inside {@code tiles}, or
+     * null when nobody is. Drives the "you are standing in the blast" screen
+     * treatment - checking every member (not just the tracked player) so a
+     * co-op teammate in the AoE triggers it too.
+     */
+    private GridPos findAnyPlayerInside(java.util.List<GridPos> tiles) {
+        if (tiles == null || tiles.isEmpty() || arena == null) return null;
+        for (GridPos p : arena.getAllPlayerGridPositions()) {
+            if (p != null && tiles.contains(p)) return p;
+        }
+        GridPos tracked = arena.getPlayerGridPos();
+        return tracked != null && tiles.contains(tracked) ? tracked : null;
+    }
+
     private void resolvePendingBossWarnings(CombatEntity boss) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         var iterator = pendingBossWarnings.iterator();
@@ -11366,7 +11446,7 @@ public class CombatManager {
                 // then bursts - instead of the old flat FLASH+CRIT sprinkle.
                 java.util.List<GridPos> warnTiles = pw.ability().warningTiles();
                 com.crackedgames.craftics.vfx.boss.BossAttackVfx.impact(
-                    world, arena, boss, pw.ability(), arena.getPlayerGridPos());
+                    world, arena, boss, pw.ability(), findAnyPlayerInside(warnTiles));
                 // Ghast scream on attack resolution
                 triggerGhastScream(boss, true);
                 // Void Walker: register a live rift pair once the telegraph finishes.
@@ -11614,16 +11694,17 @@ public class CombatManager {
         MobEntity mob = enemy.getMobEntity();
         if (mob != null) {
             BlockPos arrBp = arena.gridToBlockPos(target);
-            double offset = enemy.getSize() > 1 ? enemy.getSize() / 2.0 : 0.5;
+            double offsetX = enemy.getSizeX() / 2.0;
+            double offsetZ = enemy.getSizeZ() / 2.0;
             mob.requestTeleport(
-                arrBp.getX() + offset,
+                arrBp.getX() + offsetX,
                 arena.getEntityY(target, enemy.isFlying()),
-                arrBp.getZ() + offset);
+                arrBp.getZ() + offsetZ);
             // Arrival burst
             world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
-                arrBp.getX() + offset, arrBp.getY() + 1.0, arrBp.getZ() + offset, 25, 0.3, 0.8, 0.3, 0.5);
+                arrBp.getX() + offsetX, arrBp.getY() + 1.0, arrBp.getZ() + offsetZ, 25, 0.3, 0.8, 0.3, 0.5);
             world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
-                arrBp.getX() + offset, arrBp.getY() + 1.0, arrBp.getZ() + offset, 10, 0.2, 0.3, 0.2, 0.05);
+                arrBp.getX() + offsetX, arrBp.getY() + 1.0, arrBp.getZ() + offsetZ, 10, 0.2, 0.3, 0.2, 0.05);
             world.playSound(null, arrBp,
                 net.minecraft.sound.SoundEvents.ENTITY_ENDERMAN_TELEPORT,
                 net.minecraft.sound.SoundCategory.HOSTILE, 0.9f, 1.1f);
@@ -12002,11 +12083,10 @@ public class CombatManager {
                     GridPos swoopStart = swoop.path().get(0);
                     if (!currentEnemy.getGridPos().equals(swoopStart)) {
                         BlockPos snapBlock = arena.gridToBlockPos(swoopStart);
-                        double snapOffset = currentEnemy.getSize() / 2.0;
                         subMob.requestTeleport(
-                            snapBlock.getX() + snapOffset,
+                            snapBlock.getX() + currentEnemy.getSizeX() / 2.0,
                             arena.getEntityY(swoopStart),
-                            snapBlock.getZ() + snapOffset);
+                            snapBlock.getZ() + currentEnemy.getSizeZ() / 2.0);
                         arena.moveEntity(currentEnemy, swoopStart);
                     }
                 }
@@ -13564,9 +13644,26 @@ public class CombatManager {
                 spawnWarningParticles(warning.getAffectedTiles(), shimmerParticle, 2);
             }
             case DIRECTIONAL -> {
-                // Arrow-like -directional wind/spark particles
-                spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.CLOUD, 2);
-                spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.CRIT, 1);
+                // Directional wind/spark particles. When the warning carries a real
+                // direction, particles DRIFT along it (velocity mode) so even the
+                // server-side layer reads "that way", matching the client arrows.
+                if (warning.hasDirection() && player != null && arena != null) {
+                    ServerWorld dirWorld = (ServerWorld) player.getEntityWorld();
+                    for (GridPos tile : warning.getAffectedTiles()) {
+                        if (!arena.isInBounds(tile)) continue;
+                        BlockPos bp = arena.gridToBlockPos(tile);
+                        // count=0 -> offsets become velocity; speed scales the vector
+                        dirWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                            bp.getX() + 0.5, bp.getY() + 1.2, bp.getZ() + 0.5,
+                            0, warning.getDirX(), 0.02, warning.getDirZ(), 0.18);
+                        dirWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                            bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
+                            0, warning.getDirX(), 0.0, warning.getDirZ(), 0.3);
+                    }
+                } else {
+                    spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.CLOUD, 2);
+                    spawnWarningParticles(warning.getAffectedTiles(), net.minecraft.particle.ParticleTypes.CRIT, 1);
+                }
             }
             case ENTITY_GLOW -> {
                 // Boss is powering up -bright sparks
@@ -14225,7 +14322,7 @@ public class CombatManager {
                 // split copies -this guarantees they fit inside the footprint the
                 // parent just vacated.
                 GridPos origin = target.getGridPos();
-                int parentSize = target.getSize();
+                int parentSize = target.getMaxSize(); // Molten King is square (4x4 gen 0)
                 List<GridPos> quadrantOrigins = new ArrayList<>();
                 for (int dx = 0; dx + splitSize <= parentSize; dx += splitSize) {
                     for (int dz = 0; dz + splitSize <= parentSize; dz += splitSize) {
@@ -14427,7 +14524,8 @@ public class CombatManager {
                     GridPos slot = new GridPos(ox + dx, oz + dz);
                     CombatEntity existing = arena.getOccupant(slot);
                     if (existing != null && existing != bossEntity) {
-                        GridPos relocated = findNearestValidSpawn(arena, new GridPos(ox + dx, oz + dz + bh), existing.getSize());
+                        GridPos relocated = findNearestValidSpawn(arena,
+                            new GridPos(ox + dx, oz + dz + bh), existing.getSizeX(), existing.getSizeZ(), false);
                         if (relocated != null) {
                             arena.moveEntity(existing, relocated);
                             MobEntity eMob = existing.getMobEntity();
@@ -14488,7 +14586,8 @@ public class CombatManager {
                 CombatEntity existing = arena.getOccupant(bossSlot);
                 if (existing != null && existing != bossEntity) {
                     // Relocate the existing enemy to the nearest open tile
-                    GridPos relocated = findNearestValidSpawn(arena, new GridPos(x, 1), existing.getSize());
+                    GridPos relocated = findNearestValidSpawn(arena,
+                        new GridPos(x, 1), existing.getSizeX(), existing.getSizeZ(), false);
                     if (relocated != null) {
                         arena.moveEntity(existing, relocated);
                         MobEntity eMob = existing.getMobEntity();
@@ -14677,11 +14776,12 @@ public class CombatManager {
         // from the player yet still overlap them; size-blind AI planning could route
         // there. Truncate to the last tile that keeps the mob off the player. This
         // backstops every AI, including any that didn't use the sized pathfinder.
-        if (currentEnemy != null && currentEnemy.getSize() > 1) {
-            int sz = currentEnemy.getSize();
+        if (currentEnemy != null && currentEnemy.isMultiTile()) {
+            int szX = currentEnemy.getSizeX();
+            int szZ = currentEnemy.getSizeZ();
             GridPos pPos = arena.getPlayerGridPos();
             for (int i = 0; i < path.size(); i++) {
-                if (CombatEntity.minDistanceFromSizedEntity(path.get(i), sz, pPos) == 0) {
+                if (CombatEntity.minDistanceFromSizedEntity(path.get(i), szX, szZ, pPos) == 0) {
                     path = new ArrayList<>(path.subList(0, i));
                     break;
                 }
@@ -14760,10 +14860,9 @@ public class CombatManager {
         enemyMoveTickCounter++;
         GridPos next = enemyMovePath.get(enemyMovePathIndex);
         BlockPos endBlock = arena.gridToBlockPos(next);
-        double moveOffset = (currentEnemy != null && currentEnemy.getSize() > 1) ? currentEnemy.getSize() / 2.0 : 0.5;
-        double endX = endBlock.getX() + moveOffset;
+        double endX = endBlock.getX() + (currentEnemy != null ? currentEnemy.getSizeX() / 2.0 : 0.5);
         double endY = arena.getEntityY(next, currentEnemy != null && currentEnemy.isFlying());
-        double endZ = endBlock.getZ() + moveOffset;
+        double endZ = endBlock.getZ() + (currentEnemy != null ? currentEnemy.getSizeZ() / 2.0 : 0.5);
 
         int emTicks2 = getMoveTicks();
         float progress = Math.min(1.0f, (float) enemyMoveTickCounter / emTicks2);
@@ -15765,7 +15864,7 @@ public class CombatManager {
         // Iterate every tile occupied by the target (handles multi-tile bosses) and
         // collect their 4-neighbour tiles. Score each candidate by manhattan distance
         // from the player, choose the closest valid one.
-        java.util.List<GridPos> targetTiles = GridArena.getOccupiedTiles(target.getGridPos(), target.getSize());
+        java.util.List<GridPos> targetTiles = GridArena.getOccupiedTiles(target);
         GridPos best = null;
         int bestScore = Integer.MAX_VALUE;
         int[][] dirs = { {1,0}, {-1,0}, {0,1}, {0,-1} };
@@ -16073,7 +16172,8 @@ public class CombatManager {
      */
     private GridPos knockEnemyBack(CombatEntity enemy, int dx, int dz, int tiles) {
         GridPos startPos = enemy.getGridPos();
-        int size = enemy.getSize();
+        int sizeX = enemy.getSizeX();
+        int sizeZ = enemy.getSizeZ();
         GridPos landingPos = startPos;
         boolean hitHazard = false;
         boolean hitCactus = false;
@@ -16091,8 +16191,8 @@ public class CombatManager {
             boolean candidateHazard = false;
             boolean candidateWall = false;
             boolean candidateCactus = false;
-            for (int fx = 0; fx < size && !candidateWall; fx++) {
-                for (int fz = 0; fz < size; fz++) {
+            for (int fx = 0; fx < sizeX && !candidateWall; fx++) {
+                for (int fz = 0; fz < sizeZ; fz++) {
                     GridPos fp = new GridPos(candidate.x() + fx, candidate.z() + fz);
 
                     if (!arena.isInBounds(fp)) {
@@ -17653,6 +17753,22 @@ public class CombatManager {
                 }
             }
         }
+        // Rare Simply Swords unique weapon drop -boss kills only (Luck boosts chance).
+        // Each recipient rolls independently, preferring uniques they don't already carry.
+        // No-op when the mod is absent (rollOne returns EMPTY).
+        if (isBoss) {
+            float uniqueChance = (float) CrafticsMod.CONFIG.uniqueWeaponDropChance() + luckBonusItems * 0.01f;
+            if (Math.random() < uniqueChance) {
+                for (ServerPlayerEntity recipient : rewardRecipients) {
+                    ItemStack uniqueDrop = com.crackedgames.craftics.compat.simplyswords
+                        .SimplySwordsLootRoller.rollOne(recipient);
+                    if (!uniqueDrop.isEmpty()) {
+                        deliverLoot(recipient, uniqueDrop.copy(), lootOverflow);
+                        sendMessage("§6§l⚔ LEGENDARY DROP: " + uniqueDrop.getName().getString() + "!");
+                    }
+                }
+            }
+        }
         // Resourceful stat: +1 emerald per point (uses leader's stat)
         PlayerProgression victoryProg = PlayerProgression.get(world);
         int resourcefulBonus = victoryProg.getStats(player).getPoints(PlayerProgression.Stat.RESOURCEFUL) * PROG_RESOURCEFUL_PER_POINT;
@@ -18216,12 +18332,15 @@ public class CombatManager {
                     }
 
                     // === PITY TIMER: Increase overall event chance based on levels without event ===
-                    float pityDiscount = 0f;
+                    // Each event-less level ADDS 5% (cap +50%) to every event window.
+                    // This used to multiply the thresholds by (1 - pity), which SHRANK
+                    // them - the longer the dry streak, the RARER events got, quietly
+                    // starving the low-probability tail (e.g. the Artifacts campsite).
+                    float pityBonus = 0f;
                     if (!skipEvents && ld.levelsSinceLastEvent > 0) {
-                        // 5% additional chance per level without event (scales down the thresholds)
-                        pityDiscount = Math.min(0.50f, ld.levelsSinceLastEvent * 0.05f);
+                        pityBonus = Math.min(0.50f, ld.levelsSinceLastEvent * 0.05f);
                         if (ld.levelsSinceLastEvent >= 3) {
-                            //sendMessageToAllChat("§7§o[Pity Timer: " + ld.levelsSinceLastEvent + " levels without events - event probability +" + (int)(pityDiscount * 100) + "%]");
+                            //sendMessageToAllChat("§7§o[Pity Timer: " + ld.levelsSinceLastEvent + " levels without events - event probability +" + (int)(pityBonus * 100) + "%]");
                         }
                     }
 
@@ -18236,16 +18355,41 @@ public class CombatManager {
                     // Use savedMembers (captured before endCombat) since party state is already cleared
                     List<ServerPlayerEntity> partyMsg = savedMembers;
 
-                    // Build cumulative thresholds from config (with pity discount applied)
-                    float cOminous = CrafticsMod.CONFIG.ominousTrialChance() * (1f - pityDiscount);
-                    float cTrial = cOminous + CrafticsMod.CONFIG.trialChamberChance() * (1f - pityDiscount);
-                    float cAmbush = cTrial + CrafticsMod.CONFIG.ambushChance() * (1f - pityDiscount);
-                    float cShrine = cAmbush + CrafticsMod.CONFIG.shrineChance() * (1f - pityDiscount);
-                    float cTraveler = cShrine + CrafticsMod.CONFIG.travelerChance() * (1f - pityDiscount);
-                    float cVault = cTraveler + CrafticsMod.CONFIG.vaultChance() * (1f - pityDiscount);
-                    float cDigSite = cVault + CrafticsMod.CONFIG.digSiteChance() * (1f - pityDiscount);
-                    float cEnchanter = cDigSite + 0.06f * (1f - pityDiscount); // 6% enchanter chance
-                    float cTrader = cEnchanter + CrafticsMod.CONFIG.traderSpawnChance() * (1f - pityDiscount);
+                    // Cap the pity boost so the whole cascade (built-ins + addon
+                    // events) still fits under 1.0 - otherwise a long dry streak
+                    // would push the trader window past 1.0 and make the addon
+                    // events at the tail unreachable again.
+                    float addonEventTotal = 0f;
+                    for (var addonEntry : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
+                        if (addonEntry.handler() != null && biomeOrdinal >= addonEntry.minBiomeOrdinal()) {
+                            addonEventTotal += addonEntry.probability();
+                        }
+                    }
+                    float baseEventTotal = CrafticsMod.CONFIG.ominousTrialChance()
+                        + CrafticsMod.CONFIG.trialChamberChance()
+                        + CrafticsMod.CONFIG.ambushChance()
+                        + CrafticsMod.CONFIG.shrineChance()
+                        + CrafticsMod.CONFIG.travelerChance()
+                        + CrafticsMod.CONFIG.vaultChance()
+                        + CrafticsMod.CONFIG.digSiteChance()
+                        + 0.06f // enchanter (hardcoded below)
+                        + CrafticsMod.CONFIG.traderSpawnChance()
+                        + addonEventTotal;
+                    float pityScale = 1f + pityBonus;
+                    if (baseEventTotal * pityScale > 0.98f) {
+                        pityScale = Math.max(1f, 0.98f / baseEventTotal);
+                    }
+
+                    // Build cumulative thresholds from config (with pity boost applied)
+                    float cOminous = CrafticsMod.CONFIG.ominousTrialChance() * pityScale;
+                    float cTrial = cOminous + CrafticsMod.CONFIG.trialChamberChance() * pityScale;
+                    float cAmbush = cTrial + CrafticsMod.CONFIG.ambushChance() * pityScale;
+                    float cShrine = cAmbush + CrafticsMod.CONFIG.shrineChance() * pityScale;
+                    float cTraveler = cShrine + CrafticsMod.CONFIG.travelerChance() * pityScale;
+                    float cVault = cTraveler + CrafticsMod.CONFIG.vaultChance() * pityScale;
+                    float cDigSite = cVault + CrafticsMod.CONFIG.digSiteChance() * pityScale;
+                    float cEnchanter = cDigSite + 0.06f * pityScale; // 6% enchanter chance
+                    float cTrader = cEnchanter + CrafticsMod.CONFIG.traderSpawnChance() * pityScale;
 
                     boolean isNetherRegion = "nether".equals(
                         java.util.Optional.ofNullable(
@@ -18364,8 +18508,8 @@ public class CombatManager {
                             addonEventId = forced;
                         } else {
                             // Roll against addon event probabilities. Apply the same
-                            // pity-timer discount as built-in events so addons don't
-                            // disproportionately fill the cascade as pity ramps.
+                            // pity-timer boost as built-in events so addons scale
+                            // proportionally as pity ramps.
                             float addonRoll = eventRoll - cTrader; // remaining probability space
                             if (addonRoll >= 0) {
                                 for (var addonEvent : com.crackedgames.craftics.api.registry.EventRegistry.getAll()) {
@@ -18377,7 +18521,7 @@ public class CombatManager {
                                     // sit later in the iteration order and could never be reached.
                                     if (addonEvent.handler() == null) continue;
                                     if (biomeOrdinal >= addonEvent.minBiomeOrdinal()) {
-                                        addonRoll -= addonEvent.probability() * (1f - pityDiscount);
+                                        addonRoll -= addonEvent.probability() * pityScale;
                                         if (addonRoll < 0) {
                                             addonEventId = addonEvent.id();
                                             break;
@@ -22958,7 +23102,7 @@ public class CombatManager {
                     boolean inRange;
                     if (range == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
                         inRange = false;
-                        for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                        for (var tile : GridArena.getOccupiedTiles(enemy)) {
                             if (PlayerCombatStats.isInCrossbowLine(arena, playerPos, tile)) { inRange = true; break; }
                         }
                     } else {
@@ -22967,7 +23111,7 @@ public class CombatManager {
 
                     if (inRange) {
                         highlighted.add(enemy);
-                        for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                        for (var tile : GridArena.getOccupiedTiles(enemy)) {
                             attackList.add(tile.x());
                             attackList.add(tile.z());
                         }
@@ -23041,7 +23185,7 @@ public class CombatManager {
                 }
             } else {
                 // Normal entities: use getOccupiedTiles for multi-tile entities (e.g., 2x2 spider)
-                for (GridPos occupied : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                for (GridPos occupied : GridArena.getOccupiedTiles(enemy)) {
                     enemyMapList.add(occupied.x());
                     enemyMapList.add(occupied.z());
                     enemyMapList.add(enemy.getEntityId());
@@ -23059,11 +23203,24 @@ public class CombatManager {
         // leaving red boss-attack tiles stuck on screen across multiple levels.
         pendingBossWarnings.removeIf(pw -> !pw.boss().isAlive());
         java.util.List<Integer> warningList = new java.util.ArrayList<>();
+        // Directional telegraph arrows: [x, z, dx, dz] per tile. The client draws a
+        // marching arrow glyph on each entry so pushes/pulls/charges read at a
+        // glance which way the attack travels - a red tile alone can't say that.
+        java.util.List<Integer> warningArrowList = new java.util.ArrayList<>();
         for (PendingBossWarning pw : pendingBossWarnings) {
             if (pw.ability().warningTiles() != null) {
                 for (GridPos wt : pw.ability().warningTiles()) {
                     warningList.add(wt.x());
                     warningList.add(wt.z());
+                }
+            }
+            if (pw.ability().arrowTiles() != null
+                    && (pw.ability().arrowDx() != 0 || pw.ability().arrowDz() != 0)) {
+                for (GridPos at : pw.ability().arrowTiles()) {
+                    warningArrowList.add(at.x());
+                    warningArrowList.add(at.z());
+                    warningArrowList.add(pw.ability().arrowDx());
+                    warningArrowList.add(pw.ability().arrowDz());
                 }
             }
         }
@@ -23072,9 +23229,16 @@ public class CombatManager {
             if (!enemy.isBoss() || !enemy.isAlive()) continue;
             var ai = resolveAi(enemy);
             if (ai instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bai && bai.getPendingWarning() != null) {
-                for (GridPos wt : bai.getPendingWarning().getAffectedTiles()) {
+                var pending = bai.getPendingWarning();
+                for (GridPos wt : pending.getAffectedTiles()) {
                     warningList.add(wt.x());
                     warningList.add(wt.z());
+                    if (pending.hasDirection()) {
+                        warningArrowList.add(wt.x());
+                        warningArrowList.add(wt.z());
+                        warningArrowList.add(pending.getDirX());
+                        warningArrowList.add(pending.getDirZ());
+                    }
                 }
             }
         }
@@ -23095,8 +23259,11 @@ public class CombatManager {
             mountArr[i * 2 + 1] = mountWallTiles.get(i).z();
         }
 
+        int[] warningArrowArr = warningArrowList.stream().mapToInt(Integer::intValue).toArray();
+
         sendToAllParty(new TileSetPayload(
-            moveArr, attackArr, dangerArr, warningArr, enemyMapArr, enemyTypesBuilder.toString(), mountArr
+            moveArr, attackArr, dangerArr, warningArr, enemyMapArr, enemyTypesBuilder.toString(), mountArr,
+            warningArrowArr
         ));
 
         // Auto-end turn when AP is depleted (configurable)
@@ -23114,7 +23281,7 @@ public class CombatManager {
             for (CombatEntity enemy : enemies) {
                 if (!enemy.isAlive() || enemy.isAlly()) continue;
                 if (heldRange == PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
-                    for (var tile : GridArena.getOccupiedTiles(enemy.getGridPos(), enemy.getSize())) {
+                    for (var tile : GridArena.getOccupiedTiles(enemy)) {
                         if (PlayerCombatStats.isInCrossbowLine(arena, playerPos, tile)) { canReachAny = true; break; }
                     }
                 } else if (enemy.minDistanceTo(playerPos) <= heldRange) {
@@ -23193,7 +23360,7 @@ public class CombatManager {
 
     private void clearHighlights() {
         sendToAllParty(new TileSetPayload(
-            new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0]
+            new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0], new int[0]
         ));
     }
 
@@ -24271,6 +24438,41 @@ public class CombatManager {
         }
         net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
             new com.crackedgames.craftics.network.AddonBonusSyncPayload(sb.toString()));
+    }
+
+    /**
+     * Called from the server-tick addon-bonus sync (CrafticsMod) when a player's
+     * addon equipment (e.g. an Artifacts curio) changed while this combat is active.
+     * Without this, an artifact equipped mid-fight only landed at the NEXT turn
+     * boundary rescan; with it, stat bonuses (Speed, AP) apply to the remaining
+     * turn immediately and effect handlers hot-swap in.
+     * <p>
+     * Only the currently acting player is refreshed here - everyone else gets
+     * their fresh scan at their own turn start, and mutating {@code activeTrimScan}
+     * for a non-acting player would hand the turn-holder someone else's bonuses.
+     */
+    public void onAddonEquipmentChanged(ServerPlayerEntity changedPlayer) {
+        if (!active || player == null || changedPlayer == null) return;
+        if (!player.getUuid().equals(changedPlayer.getUuid())) return;
+
+        TrimEffects.TrimScan fresh = TrimEffects.scan(player);
+        int speedDelta = fresh.get(TrimEffects.Bonus.SPEED)
+            - (activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.SPEED) : 0);
+        int apDelta = fresh.get(TrimEffects.Bonus.AP)
+            - (activeTrimScan != null ? activeTrimScan.get(TrimEffects.Bonus.AP) : 0);
+
+        this.activeTrimScan = fresh;
+        this.activeCombatEffects = fresh.getCombatEffects();
+        if (effectContext != null) effectContext.update(player, arena, combatEffects, activeTrimScan);
+        syncAddonBonuses();
+
+        if (phase == CombatPhase.PLAYER_TURN && (speedDelta != 0 || apDelta != 0)) {
+            movePointsRemaining = Math.max(0, movePointsRemaining + speedDelta);
+            apRemaining = Math.max(0, apRemaining + apDelta);
+            sendMessageTo(player, "§b✦ Equipment updated! §aAP: " + apRemaining
+                + " | SPD: " + movePointsRemaining);
+            sendSync();
+        }
     }
 
     private void fireEffectHook(java.util.function.Consumer<com.crackedgames.craftics.api.CombatEffectHandler> hook) {

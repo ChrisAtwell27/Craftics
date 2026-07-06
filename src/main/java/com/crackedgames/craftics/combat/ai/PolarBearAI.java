@@ -29,7 +29,8 @@ public class PolarBearAI implements EnemyAI {
         // footprint (the old anchor-only distance let players stand "inside"
         // its melee reach without triggering the territorial agro).
         int dist = self.minDistanceTo(playerPos);
-        int size = self.getSize();
+        int sizeX = self.getSizeX();
+        int sizeZ = self.getSizeZ();
 
         // Become agro if player is within 2 blocks OR if hit
         if (!self.isEnraged() && (dist <= 2 || self.wasDamagedSinceLastTurn())) {
@@ -42,12 +43,12 @@ public class PolarBearAI implements EnemyAI {
                 return new EnemyAction.AttackWithKnockback(self.getAttackPower(), 1);
             }
 
-            GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), size);
+            GridPos target = AIUtils.findBestAdjacentTarget(arena, myPos, playerPos, self.getMoveSpeed(), sizeX, sizeZ);
             if (target != null) {
-                List<GridPos> path = Pathfinding.findPathSized(arena, myPos, target, self.getMoveSpeed(), self, size);
+                List<GridPos> path = Pathfinding.findPathSized(arena, myPos, target, self.getMoveSpeed(), self);
                 if (!path.isEmpty()) {
                     GridPos endPos = path.get(path.size() - 1);
-                    if (CombatEntity.minDistanceFromSizedEntity(endPos, size, playerPos) <= 1) {
+                    if (CombatEntity.minDistanceFromSizedEntity(endPos, sizeX, sizeZ, playerPos) <= 1) {
                         return new EnemyAction.MoveAndAttackWithKnockback(path, self.getAttackPower(), 1);
                     }
                     return new EnemyAction.Move(path);

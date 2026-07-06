@@ -169,7 +169,7 @@ public class MoltenKingAI extends BossAI {
      * legal landing exists (caller skips the eruption).
      */
     private GridPos findEruptionLanding(GridArena arena, GridPos playerPos, CombatEntity self) {
-        int size = self.getSize();
+        int size = self.getMaxSize();
         List<GridPos> candidates = new ArrayList<>();
         for (int radius = 1; radius <= 2 + size; radius++) {
             for (int dx = -radius; dx <= radius; dx++) {

@@ -28,6 +28,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // before a world is loaded), the first tooltip render finishes the job.
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
         com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
+        com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.registerDeferred();
 
         // Artifacts mod compat: replace the entire vanilla/Artifacts tooltip body with
         // Craftics-only lines so the player sees the in-Craftics behaviour, not the
@@ -50,6 +51,19 @@ public class CombatTooltips implements ItemTooltipCallback {
                 lines.subList(1, lines.size()).clear();
             }
             MoreTotemsTooltips.appendLines(itemId.getPath(), lines);
+            return;
+        }
+
+        // Simply Swords: strip the mod's tooltip body entirely (unique-effect fluff, gem
+        // socket lines, attack-speed attributes) and show only the Craftics combat block.
+        // Gated on WeaponRegistry registration, so crafting materials (runic tablet, gems,
+        // relics) keep the mod's own tooltips.
+        if (SimplySwordsTooltips.isSimplySwords(itemId)
+            && com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.isSimplySword(item)) {
+            if (lines.size() > 1) {
+                lines.subList(1, lines.size()).clear();
+            }
+            SimplySwordsTooltips.appendLines(item, itemId.getPath(), lines);
             return;
         }
 
@@ -688,7 +702,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.NETHERITE_AXE) return weaponStatLine(item) + "\n\u00a76\u2716 Armor Crush: \u00a775% chance to ignore armor";
 
         // Mace
-        if (item == Items.MACE) return weaponStatLine(item) + "\n\u00a76AoE: \u00a77Half damage to all in 3x3\n\u00a76Knockback: \u00a77Pushes target back\n\u00a7dDensity: \u00a77+AoE dmg | \u00a74Breach: \u00a77Armor pen | \u00a7bWind Burst: \u00a77+KB range";
+        if (item == Items.MACE) return weaponStatLine(item) + "\n\u00a76AoE: \u00a77Half damage to all in 3x3\n\u00a76Knockback: \u00a77Pushes target back";
         if (item == Items.STICK) return weaponStatLine(item) + "\n\u00a78\u2716 Stun: \u00a775% chance to stun target";
         if (item == Items.BAMBOO) return weaponStatLine(item) + "\n\u00a78\u2716 Stun: \u00a775% chance to stun target";
         if (item == Items.BLAZE_ROD) return weaponStatLine(item) + "\n\u00a76\u2716 Fire: \u00a77+1 fire dmg | \u00a78Stun: \u00a775% chance";
@@ -711,9 +725,9 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.NETHERITE_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Ultimate beastmaster blade";
 
         // Ranged
-        if (item == Items.BOW) return weaponStatLine(item) + "\n\u00a77Consumes arrows. Tipped arrows apply effects.\n\u00a7dPower: \u00a77+1 DMG/lvl | \u00a76Flame: \u00a77Ignite | \u00a7eInfinity: \u00a77Free ammo";
-        if (item == Items.CROSSBOW) return weaponStatLine(item) + "\n\u00a7bPierce: \u00a77Bolt hits targets behind for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.";
-        if (item == Items.TRIDENT) return "\u00a7c" + com.crackedgames.craftics.api.registry.WeaponRegistry.getAttackPower(Items.TRIDENT) + " DMG \u00a77| \u00a73Water\n\u00a77Melee (1 AP) when adjacent.\n\u00a77Throw (2 AP) in straight/diagonal lines.\n\u00a77Thrown trident lodges in ground \u2014 retrieve manually.\n\u00a7bLoyalty: \u00a77auto-returns | \u00a73Riptide: \u00a77dash | \u00a7eChanneling: \u00a77lightning";
+        if (item == Items.BOW) return weaponStatLine(item) + "\n\u00a77Consumes arrows. Tipped arrows apply effects.";
+        if (item == Items.CROSSBOW) return weaponStatLine(item) + "\n\u00a7bPierce: \u00a77Bolt hits targets behind for 50%\n\u00a77Consumes arrows. Tipped arrows apply effects.\n\u00a76Rocket Crossbow: \u00a77Firework Rocket in off-hand \u2192 3x3 explosive blast (no arrows needed)";
+        if (item == Items.TRIDENT) return "\u00a7c" + com.crackedgames.craftics.api.registry.WeaponRegistry.getAttackPower(Items.TRIDENT) + " DMG \u00a77| \u00a73Water\n\u00a77Melee (1 AP) when adjacent.\n\u00a77Throw (2 AP) in straight/diagonal lines.\n\u00a77Thrown trident lodges in ground \u2014 retrieve manually.";
 
         // ── Food ──
         if (item == Items.APPLE) return "\u00a7a+2 HP \u00a77| 1 AP";
@@ -824,12 +838,14 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.CHIPPED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA third of the target's max HP\n\u00a77Wears to a damaged anvil on use";
         if (item == Items.DAMAGED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA quarter of the target's max HP\n\u00a77Shatters on use\n\u00a7dSpecial: 10% per point to avoid wear";
         if (item == Items.HONEY_BLOCK) return "\u00a7e1 AP \u00a77- Place sticky trap\n\u00a77Enemies that step on it lose all movement";
+        if (item == Items.SLIME_BLOCK) return "\u00a7a1 AP \u00a77- Place bouncy wall\n\u00a77Blocks movement and knocks adjacent enemies back when they end their turn beside it";
         if (item == Items.POWDER_SNOW_BUCKET) return "\u00a7b1 AP \u00a77- Freeze an enemy\n\u00a7c1 DMG \u00a77+ stun (skip next turn)";
         if (item == Items.JUKEBOX) return "\u00a7d2 AP \u00a77- Play music\n\u00a77Buffs all ally pets +1 Speed\n\u00a77Consumed on use";
         if (item == Items.GOAT_HORN) return "\u00a761-3 AP \u00a77- Combat horn\n\u00a77Each variant gives a different buff or debuff\n\u00a77(see horn name for specific effect)";
         if (item == Items.ECHO_SHARD) return "\u00a751 AP \u00a77- Echo teleport\n\u00a77Return to start-of-turn position\n\u00a77Consumed on use";
         if (item == Items.BRUSH) return "\u00a7e1 AP \u00a77- Excavate adjacent tile\n\u00a77Dig up random loot (gold, gems, etc.)\n\u00a77Uses durability";
         if (item == Items.LANTERN) return "\u00a7e1 AP \u00a77- Place light source\n\u00a77Reveals hidden/invisible enemies in 3 tiles";
+        if (item == Items.TORCH) return "\u00a7e1 AP \u00a77- Place light source\n\u00a77Lights a radius-2 zone and negates darkness (weaker than a lantern)";
         if (item == Items.LIGHTNING_ROD) return "\u00a7e1 AP \u00a77- Place on tile\n\u00a77Strikes next turn: 4 DMG to all within 1 tile\n\u00a77Consumed after striking";
         if (item == Items.CACTUS) return "\u00a721 AP \u00a77- Place wall trap\n\u00a77Pricks adjacent enemies for 1 DMG/turn";
         if (item == Items.CAMPFIRE) return "\u00a761 AP \u00a77- Place healing zone\n\u00a77Heals 1 HP/turn when adjacent to it";
@@ -842,6 +858,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.WATER_BUCKET) return "\u00a7b1 AP \u00a77- Place water tile\n\u00a77Creates fishable/boat-traversable water";
         if (item == Items.SPONGE) return "\u00a7e1 AP \u00a77- Absorb adjacent water\n\u00a77Removes a water tile next to you";
         if (item == Items.LAVA_BUCKET) return "\u00a761 AP \u00a77- Place lava on tile\n\u00a77Enemies on it take 3 fire DMG/turn";
+        if (item == Items.BUCKET) return "\u00a7e1 AP \u00a77- Scoop up a liquid tile\n\u00a77Removes a water, lava, or powder snow tile and fills the bucket";
 
         // Pickaxes
         if (item == Items.WOODEN_PICKAXE || item == Items.STONE_PICKAXE || item == Items.IRON_PICKAXE
@@ -893,12 +910,25 @@ public class CombatTooltips implements ItemTooltipCallback {
             return "\u00a7a1 AP \u00a77- Feed to chicken\n\u00a77Passive mobs: befriend and send to hub";
         if (item == Items.TORCHFLOWER_SEEDS)
             return "\u00a7a1 AP \u00a77- Feed to sniffer\n\u00a77Passive mobs: befriend and send to hub";
+        if (item == Items.DANDELION)
+            return "\u00a7a1 AP \u00a77- Feed to a rabbit or bee\n\u00a77Befriends it to fight alongside you";
+        if (item == Items.POPPY || item == Items.BLUE_ORCHID)
+            return "\u00a7a1 AP \u00a77- Feed to a bee\n\u00a77Befriends it to fight alongside you";
+        if (item == Items.SEAGRASS)
+            return "\u00a7a1 AP \u00a77- Feed to a turtle\n\u00a77Befriends it to fight alongside you";
+        if (item == Items.SLIME_BALL)
+            return "\u00a7a1 AP \u00a77- Feed to a frog\n\u00a77Befriends it to fight alongside you";
+        if (item == Items.TROPICAL_FISH_BUCKET)
+            return "\u00a7a1 AP \u00a77- Feed to an axolotl\n\u00a77Befriends it to fight alongside you";
 
         // ── Arrows ──
         if (item == Items.ARROW) return "\u00a78Ammo for Bow and Crossbow\n\u00a77Consumed per shot (Infinity skips)";
         // Tipped arrows handled dynamically in getTooltip
         if (item == Items.TIPPED_ARROW) return null;
         if (item == Items.SPECTRAL_ARROW) return "\u00a78WIP \u00a77- Not yet implemented in combat";
+        // Firework rocket: rocket-crossbow ammo. Held in the off-hand while firing a
+        // crossbow, it replaces the bolt with a 3x3 explosive blast (no arrow needed).
+        if (item == Items.FIREWORK_ROCKET) return "\u00a76Rocket Crossbow Ammo \u00a77(hold in off-hand)\n\u00a77Fire a Crossbow to launch it: \u00a763x3 explosive blast\u00a77 around the impact\n\u00a77No arrows needed \u2014 the rocket is the ammo. \u00a7bMultishot \u00a77adds 2 diagonal rockets";
 
         // ── Boats ──
         if (item == Items.OAK_BOAT || item == Items.SPRUCE_BOAT || item == Items.BIRCH_BOAT

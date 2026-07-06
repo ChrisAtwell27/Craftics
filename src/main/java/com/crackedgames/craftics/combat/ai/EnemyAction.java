@@ -109,9 +109,21 @@ public sealed interface EnemyAction {
     record ForcedMovement(int targetEntityId, int dx, int dz, int tiles) implements EnemyAction {}
 
     /** Boss telegraphs a warning - the actual ability resolves next turn.
-     *  The warningId is used to match the warning to its resolution in BossWarning. */
+     *  The warningId is used to match the warning to its resolution in BossWarning.
+     *  <p>
+     *  {@code arrowTiles}/{@code arrowDx}/{@code arrowDz} are an optional directional
+     *  overlay: the client draws marching arrow glyphs on those tiles pointing along
+     *  (dx,dz), independent of the red {@code warningTiles} danger paint. Used by
+     *  pushes/pulls (e.g. the Frostbound gale) where "where the damage lands" and
+     *  "which way you'll be shoved" are different pieces of information.
+     *  {@code arrowTiles == null} means no directional overlay. */
     record BossAbility(String abilityName, EnemyAction resolvedAction,
-                       List<GridPos> warningTiles) implements EnemyAction {}
+                       List<GridPos> warningTiles,
+                       List<GridPos> arrowTiles, int arrowDx, int arrowDz) implements EnemyAction {
+        public BossAbility(String abilityName, EnemyAction resolvedAction, List<GridPos> warningTiles) {
+            this(abilityName, resolvedAction, warningTiles, null, 0, 0);
+        }
+    }
 
     /** Spider ceiling ascend: mob shoots web upward, rises off the grid for 1 turn. */
     record CeilingAscend() implements EnemyAction {}
