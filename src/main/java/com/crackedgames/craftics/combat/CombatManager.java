@@ -2452,6 +2452,13 @@ public class CombatManager {
             if (biome.isBossLevel(gld.getLevelNumber()) && biome.boss != null) {
                 bossEntityTypeId = biome.boss.entityTypeId();
                 bossBiomeId = biome.biomeId;
+                // INFINITE MODE: the spawn list carries the randomized boss's
+                // entity type, not the biome's authored one - match on that so
+                // the boss pick below finds the right entry directly.
+                com.crackedgames.craftics.level.InfiniteSpec infBossSpec = gld.getInfiniteSpec();
+                if (infBossSpec != null && infBossSpec.hasBossOverride()) {
+                    bossEntityTypeId = infBossSpec.bossEntityTypeId();
+                }
             }
             // Determine biome ordinal from the active campaign for enchant chance scaling
             CrafticsSavedData.PlayerData pdSpawn = ngData.getPlayerData(player.getUuid());
@@ -2922,6 +2929,28 @@ public class CombatManager {
                     EnemyAI freshBossAi = AIRegistry.createFresh("boss:" + bossBiomeId);
                     if (freshBossAi != null) {
                         ce.setAiInstance(freshBossAi);
+                    }
+                    // INFINITE MODE: replace the biome boss with the run's randomized
+                    // one - a standard-size mob with a generated name and a movepool
+                    // pulled from every boss in the mod. Must run before placeEntity
+                    // so the 1x1 footprint (not the biome boss's) is what gets placed.
+                    com.crackedgames.craftics.level.InfiniteSpec infSpec = currentInfiniteSpec();
+                    if (infSpec != null && infSpec.hasBossOverride()) {
+                        var infiniteAi = new com.crackedgames.craftics.combat.ai.boss.InfiniteBossAI(
+                            infSpec.abilityNames(), infSpec.bossName());
+                        ce.setAiOverrideKey(InfiniteRunManager.BOSS_AI_KEY);
+                        ce.setAiInstance(infiniteAi);
+                        ce.setBossDisplayName(infSpec.bossName());
+                        ce.setSize(1);
+                        // Extra actions per enemy phase (+1 every 10 cleared biomes);
+                        // consumed by tickEnemyDone's re-entry loop.
+                        ce.setAiMemory("inf_actions_per_turn", Math.max(1, infSpec.actionsPerTurn()));
+                        sendMessage("§5§l" + infSpec.bossName() + "§r§5 manifests, wielding "
+                            + infSpec.abilityNames().size() + " stolen powers!");
+                        CrafticsMod.LOGGER.info(
+                            "[INFINITE BOSS] '{}' as {} moves={} actions/turn={}",
+                            infSpec.bossName(), spawn.entityTypeId(),
+                            infSpec.abilityNames(), infSpec.actionsPerTurn());
                     }
                     CrafticsMod.LOGGER.info("[BOSS DEBUG] Spawned boss entity='{}' aiOverrideKey='boss:{}' entityId={} hp={}",
                         spawn.entityTypeId(), bossBiomeId, ce.getEntityId(), spawn.hp());
@@ -9086,6 +9115,13 @@ public class CombatManager {
         enemyTurnState = EnemyTurnState.DECIDING;
         pendingAction = null;
         currentEnemy = null;
+        // Reset infinite-boss multi-action counters at the top of every enemy
+        // phase, so an interrupted turn can never leak a stale partial budget.
+        for (CombatEntity e : enemies) {
+            if (e.isBoss() && e.hasAiMemory("inf_actions_used")) {
+                e.setAiMemory("inf_actions_used", 0);
+            }
+        }
 
         // Netherite golem mount: raise the 1×3 wall now so enemies path around it this
         // turn. It's cleared again at the start of the player's turn so it never blocks
@@ -12306,7 +12342,9 @@ public class CombatManager {
         // Determine which visual entity to spawn alongside the invisible tracking mob
         String visualEntityId = switch (sp.projectileType()) {
             case "ghast_fireball" -> "minecraft:fireball";
-            case "wither_skull" -> "minecraft:wither_skull";
+            case "wither_skull", "grave_skull" -> "minecraft:wither_skull";
+            case "shulker_bullet" -> "minecraft:shulker_bullet";
+            case "scarab" -> "minecraft:silverfish";
             default -> null;
         };
 
@@ -12335,28 +12373,47 @@ public class CombatManager {
                     visualEntity.setNoGravity(true);
                     visualEntity.addCommandTag("craftics_arena");
                     visualEntity.addCommandTag("craftics_visual_projectile");
+                    // Mob-typed visuals (the scarab's silverfish) must not think
+                    // for themselves - they're puppets synced to the grid mob.
+                    if (visualEntity instanceof MobEntity visualMob) {
+                        visualMob.setAiDisabled(true);
+                        visualMob.setSilent(true);
+                        visualMob.setInvulnerable(true);
+                    }
                     world.spawnEntity(visualEntity);
                     spawnedVisualId = visualEntity.getId();
                 }
             }
 
-            // Spawn the invisible tracking mob for grid logic
+            // Spawn the invisible tracking mob for grid logic. Some projectile
+            // types (e.g. minecraft:wither_skull) are NOT MobEntity, so when
+            // that happens we use a hidden blaze tracker instead.
             var rawEntity = type.create(world, null, spawnPos, SpawnReason.MOB_SUMMONED, false, false);
-            if (rawEntity == null) continue;
-
-            rawEntity.refreshPositionAndAngles(
-                spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, 0, 0);
-            if (rawEntity instanceof MobEntity mob) {
-                mob.setAiDisabled(true);
-                mob.setInvulnerable(true);
-                mob.setNoGravity(true);
-                mob.noClip = true;
-                mob.setPersistent();
-                mob.addCommandTag("craftics_arena");
+            MobEntity mob;
+            if (rawEntity instanceof MobEntity asMob) {
+                mob = asMob;
+            } else {
+                //? if <=1.21.1 {
+                var fallback = net.minecraft.entity.EntityType.BLAZE.create(world);
+                //?} else {
+                /*var fallback = net.minecraft.entity.EntityType.BLAZE
+                    .create(world, net.minecraft.entity.SpawnReason.LOAD);
+                *///?}
+                if (!(fallback instanceof MobEntity fallbackMob)) continue;
+                mob = fallbackMob;
             }
-            world.spawnEntity(rawEntity);
 
-            if (rawEntity instanceof MobEntity mob) {
+            mob.refreshPositionAndAngles(
+                spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, 0, 0);
+            mob.setAiDisabled(true);
+            mob.setInvulnerable(true);
+            mob.setNoGravity(true);
+            mob.noClip = true;
+            mob.setPersistent();
+            mob.addCommandTag("craftics_arena");
+            world.spawnEntity(mob);
+
+            {
                 // Hide the tracking mob when a visual projectile entity exists
                 if (visualEntityId != null) {
                     mob.setInvisible(true);
@@ -12371,7 +12428,12 @@ public class CombatManager {
                     sp.hp(), sp.atk(), sp.def(), 1
                 );
                 ce.setMobEntity(mob);
-                ce.setAiOverrideKey("projectile");
+                // Seeker types home in on the player; everything else flies straight.
+                boolean seeking = switch (sp.projectileType()) {
+                    case "shulker_bullet", "grave_skull", "scarab" -> true;
+                    default -> false;
+                };
+                ce.setAiOverrideKey(seeking ? "seeking_projectile" : "projectile");
                 ce.setProjectile(true);
                 ce.setProjectileDirX(dir[0]);
                 ce.setProjectileDirZ(dir[1]);
@@ -12383,6 +12445,12 @@ public class CombatManager {
                     ce.setBossDisplayName("Fireball");
                 } else if ("wither_skull".equals(sp.projectileType())) {
                     ce.setBossDisplayName("Wither Skull");
+                } else if ("shulker_bullet".equals(sp.projectileType())) {
+                    ce.setBossDisplayName("Shulker Bullet");
+                } else if ("grave_skull".equals(sp.projectileType())) {
+                    ce.setBossDisplayName("Grave Skull");
+                } else if ("scarab".equals(sp.projectileType())) {
+                    ce.setBossDisplayName("Scarab");
                 }
                 enemies.add(ce);
                 arena.placeEntity(ce);
@@ -12407,7 +12475,8 @@ public class CombatManager {
                     world.spawnParticles(net.minecraft.particle.ParticleTypes.SMOKE,
                         spawnPos.getX() + 0.5, spawnPos.getY() + 1.0, spawnPos.getZ() + 0.5,
                         4, 0.15, 0.3, 0.15, 0.01);
-                } else if ("wither_skull".equals(sp.projectileType())) {
+                } else if ("wither_skull".equals(sp.projectileType())
+                        || "grave_skull".equals(sp.projectileType())) {
                     world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
                         spawnPos.getX() + 0.5, spawnPos.getY() + 0.8, spawnPos.getZ() + 0.5,
                         8, 0.3, 0.5, 0.3, 0.03);
@@ -12417,6 +12486,13 @@ public class CombatManager {
                     world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
                         spawnPos.getX() + 0.5, spawnPos.getY() + 1.0, spawnPos.getZ() + 0.5,
                         4, 0.15, 0.3, 0.15, 0.01);
+                } else if ("shulker_bullet".equals(sp.projectileType())) {
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+                        spawnPos.getX() + 0.5, spawnPos.getY() + 0.8, spawnPos.getZ() + 0.5,
+                        10, 0.25, 0.4, 0.25, 0.03);
+                    world.playSound(null, spawnPos,
+                        net.minecraft.sound.SoundEvents.ENTITY_SHULKER_SHOOT,
+                        net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.0f);
                 } else {
                     world.spawnParticles(net.minecraft.particle.ParticleTypes.POOF,
                         spawnPos.getX() + 0.5, spawnPos.getY() + 0.5, spawnPos.getZ() + 0.5,
@@ -12425,7 +12501,13 @@ public class CombatManager {
             }
         }
         if (spawned > 0) {
-            String name = "ghast_fireball".equals(sp.projectileType()) ? "fireball" : "wither skull";
+            String name = switch (sp.projectileType()) {
+                case "ghast_fireball" -> "fireball";
+                case "shulker_bullet" -> "shulker bullet";
+                case "grave_skull" -> "grave skull";
+                case "scarab" -> "scarab";
+                default -> "wither skull";
+            };
             sendMessage("§5  " + spawned + " " + name + "(s) launched!");
         }
     }
@@ -12562,6 +12644,57 @@ public class CombatManager {
                 sendMessage("§8  Wither Skull hits for " + actual + " damage!");
                 addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
                 sendMessage("§8  Withered for 3 turns! (damage ramps up)");
+                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            }
+        } else if ("shulker_bullet".equals(type)) {
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 12, 0.35, 0.5, 0.35, 0.04);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK,
+                bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5, 6, 0.25, 0.35, 0.25, 0.02);
+            player.getWorld().playSound(null, bp,
+                net.minecraft.sound.SoundEvents.ENTITY_SHULKER_BULLET_HIT,
+                net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.0f);
+
+            GridPos playerGridPos = arena.getPlayerGridPos();
+            if (effectCenter.equals(playerGridPos)) {
+                int actual = damagePlayer(damage);
+                sendMessage("§d✦ Shulker bullet hits for " + actual + " damage!");
+                addEffectHooked(CombatEffects.EffectType.LEVITATION, 2, 0);
+                sendMessage("§d  You float helplessly - Levitation for 2 turns!");
+                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            }
+        } else if ("grave_skull".equals(type)) {
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 10, 0.35, 0.5, 0.35, 0.03);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
+                bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5, 5, 0.25, 0.35, 0.25, 0.01);
+            player.getWorld().playSound(null, bp,
+                net.minecraft.sound.SoundEvents.ENTITY_WITHER_SKELETON_HURT,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.8f, 0.7f);
+
+            GridPos playerGridPos = arena.getPlayerGridPos();
+            if (effectCenter.equals(playerGridPos)) {
+                int actual = damagePlayer(damage);
+                sendMessage("§8☠ Grave Skull bites for " + actual + " damage!");
+                addEffectHooked(CombatEffects.EffectType.WITHER, 2, 0);
+                sendMessage("§8  Withered for 2 turns!");
+                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            }
+        } else if ("scarab".equals(type)) {
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                bp.getX() + 0.5, bp.getY() + 0.8, bp.getZ() + 0.5, 8, 0.3, 0.3, 0.3, 0.05);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME,
+                bp.getX() + 0.5, bp.getY() + 0.6, bp.getZ() + 0.5, 6, 0.25, 0.25, 0.25, 0.02);
+            player.getWorld().playSound(null, bp,
+                net.minecraft.sound.SoundEvents.ENTITY_SILVERFISH_DEATH,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.9f, 0.8f);
+
+            GridPos playerGridPos = arena.getPlayerGridPos();
+            if (effectCenter.equals(playerGridPos)) {
+                int actual = damagePlayer(damage);
+                sendMessage("§2⚘ Scarab burrows in for " + actual + " damage!");
+                addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
+                sendMessage("§2  Poisoned for 2 turns!");
                 if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
             }
         }
@@ -14301,6 +14434,11 @@ public class CombatManager {
         // ShulkerArchitect: notify it was damaged (primes Fortify Shell)
         if (ai instanceof ShulkerArchitectAI sa) {
             sa.notifyDamaged();
+        }
+
+        // Rockbreaker P2: notify it was damaged (primes the retaliatory slam)
+        if (ai instanceof com.crackedgames.craftics.combat.ai.boss.RockbreakerAI rb) {
+            rb.notifyDamaged();
         }
 
         // MoltenKing: at 50% HP, the original boss dies and cleanly splits into 2
@@ -16519,6 +16657,28 @@ public class CombatManager {
             }
         }
 
+        // INFINITE MODE: bosses past biome 10/20/... act multiple times per enemy
+        // phase. Re-enter DECIDING for the same enemy (index unchanged) until its
+        // per-turn action budget is spent; the counter self-resets at phase start.
+        if (currentEnemy != null && currentEnemy.isAlive() && currentEnemy.isBoss()
+                && phase == CombatPhase.ENEMY_TURN) {
+            int totalActions = currentEnemy.getAiMemory("inf_actions_per_turn", 1);
+            if (totalActions > 1) {
+                int used = currentEnemy.getAiMemory("inf_actions_used", 0) + 1;
+                if (used < totalActions) {
+                    currentEnemy.setAiMemory("inf_actions_used", used);
+                    sendMessage("§5  " + currentEnemy.getDisplayName() + " strikes again! ("
+                        + (used + 1) + "/" + totalActions + ")");
+                    enemyTurnState = EnemyTurnState.DECIDING;
+                    enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
+                    pendingAction = null;
+                    currentEnemy = null;
+                    return;
+                }
+                currentEnemy.setAiMemory("inf_actions_used", 0);
+            }
+        }
+
         enemyTurnIndex++;
         enemyTurnState = EnemyTurnState.DECIDING;
         enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
@@ -17123,6 +17283,16 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         CrafticsSavedData.PlayerData ld = data.getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid());
+
+        // INFINITE MODE: a wipe just ends the run. No emerald/XP/item death
+        // penalties - the run items evaporate with the stash restore, emeralds
+        // and the banked best score are kept.
+        if (ld.infiniteActive) {
+            java.util.UUID infHost = leaderUuid != null ? leaderUuid : player.getUuid();
+            finishGameOverTeardown();
+            InfiniteRunManager.endRun(world.getServer(), infHost, "the party fell");
+            return;
+        }
 
         // Permadeath mode: lose ALL emeralds and reset biome progress
         if (CrafticsMod.CONFIG.permadeathMode()) {
@@ -17799,7 +17969,10 @@ public class CombatManager {
 
         // Per-island boss-kill scaling: record this defeat so the NEXT encounter
         // with the same boss on this island spawns with +bossKillHpScale HP.
-        if (isBoss && biomeTemplate != null && biomeTemplate.biomeId != null) {
+        // Infinite-run kills are excluded - their bosses are randomized stand-ins
+        // and must never inflate the campaign's per-boss HP ramp.
+        if (isBoss && biomeTemplate != null && biomeTemplate.biomeId != null
+                && currentInfiniteSpec() == null) {
             java.util.UUID owner = worldOwnerUuid;
             if (owner != null) {
                 CrafticsSavedData killData = CrafticsSavedData.get((net.minecraft.server.world.ServerWorld) player.getEntityWorld());
@@ -17878,6 +18051,65 @@ public class CombatManager {
     }
 
     /**
+     * INFINITE MODE boss clear: score +1 (banked immediately, so a crash can't
+     * lose it), a guaranteed level-up on the run-scoped stats (alternating stat
+     * point / affinity pick via grantLevelUp), then the party is moved to the
+     * rest room where the bell continues into a random biome. The campaign's
+     * unlock/NG+/boss-kill bookkeeping is deliberately absent here.
+     */
+    private void handleInfiniteBossVictory(ServerWorld world, CrafticsSavedData data,
+                                           java.util.UUID hostUuid,
+                                           List<ServerPlayerEntity> rewardRecipients) {
+        CrafticsSavedData.PlayerData ld = data.getPlayerData(hostUuid);
+        savePets();
+        sendToAllParty(new ExitCombatPayload(true));
+        sendMessage("§5§l*** ∞ BIOME " + (ld.infiniteBiomesCleared + 1) + " CLEARED! ∞ ***");
+        ld.inCombat = false;
+        data.markDirty();
+        world.setTimeOfDay(6000);
+
+        // Surviving pets return to the hub - the rest room is people-only.
+        if (!savedPets.isEmpty()) {
+            HubPetCollector.restorePetsToHub(world, player, savedPets, data);
+            savedPets.clear();
+        }
+        petsRescued = true;
+
+        List<ServerPlayerEntity> savedParty = new ArrayList<>(rewardRecipients);
+        endCombat();
+
+        // Every infinite boss grants a level-up on the run-scoped profile; the
+        // reward alternates automatically (even level = stat point, odd level =
+        // affinity pick) - same cadence as the campaign, one per boss.
+        PlayerProgression progression = PlayerProgression.get(world);
+        for (ServerPlayerEntity member : savedParty) {
+            PlayerProgression.PlayerStats stats = progression.getStats(member);
+            stats.grantLevelUp();
+            stats.pendingAffinityChoice = stats.isAffinityLevel();
+            progression.saveStats(member);
+            StringBuilder statData = new StringBuilder();
+            for (PlayerProgression.Stat s : PlayerProgression.Stat.values()) {
+                if (statData.length() > 0) statData.append(":");
+                statData.append(stats.getPoints(s));
+            }
+            ServerPlayNetworking.send(member, new com.crackedgames.craftics.network.LevelUpPayload(
+                stats.level, stats.unspentPoints, statData.toString()));
+            StringBuilder affData = new StringBuilder();
+            for (PlayerProgression.Affinity a : PlayerProgression.Affinity.values()) {
+                if (affData.length() > 0) affData.append(":");
+                affData.append(stats.getAffinityPoints(a));
+            }
+            CrafticsSavedData.PlayerData memberPd = data.getPlayerData(member.getUuid());
+            ServerPlayNetworking.send(member, new com.crackedgames.craftics.network.PlayerStatsSyncPayload(
+                stats.level, stats.unspentPoints, statData.toString(),
+                memberPd.emeralds, affData.toString()));
+        }
+
+        // Bank the score, roll the next realm, rebuild the rest room, move the party.
+        InfiniteRunManager.onBossDefeated(world, hostUuid, savedParty);
+    }
+
+    /**
      * Runs the boss / non-boss victory branch -either straight after loot
      * delivery (no overflow) or once every player's loot screen has closed.
      */
@@ -17893,6 +18125,20 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         java.util.UUID dataOwner = leaderUuid != null ? leaderUuid : player.getUuid();
+        java.util.UUID infiniteHostOwner = dataOwner;
+        if (!InfiniteRunManager.isHostOfActiveRun(data, infiniteHostOwner)) {
+            String hostRef = data.getPlayerData(player.getUuid()).infiniteRunHost;
+            if (hostRef != null && !hostRef.isEmpty()) {
+                try {
+                    java.util.UUID parsedHost = java.util.UUID.fromString(hostRef);
+                    if (InfiniteRunManager.isHostOfActiveRun(data, parsedHost)) {
+                        infiniteHostOwner = parsedHost;
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    // Bad host ref in save data: fall back to the normal owner path.
+                }
+            }
+        }
         CrafticsSavedData.PlayerData ld = data.getPlayerData(dataOwner);
         List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
 
@@ -17906,6 +18152,14 @@ public class CombatManager {
         }
 
         if (isBoss) {
+            // INFINITE MODE: a boss clear banks score and parks the party in the
+            // rest room instead of unlocking biomes / going home. No campaign
+            // side-effects (unlocks, NG+, boss-kill HP ramp) are touched.
+            if (InfiniteRunManager.isHostOfActiveRun(data, infiniteHostOwner)) {
+                handleInfiniteBossVictory(world, data, infiniteHostOwner, rewardRecipients);
+                return;
+            }
+
             // Boss fights end the run immediately, so capture surviving allied pets now.
             savePets();
 
@@ -18269,6 +18523,7 @@ public class CombatManager {
                 sendMessage("§aYour surviving pets returned to the hub.");
                 savedPets.clear();
             }
+            boolean wasInfinite = ld.infiniteActive;
             ld.endBiomeRun();
             ld.inCombat = false;
             data.markDirty();
@@ -18279,6 +18534,10 @@ public class CombatManager {
             }
             sendToAllParty(new ExitCombatPayload(true));
             endCombat();
+            // INFINITE MODE: going home ends the run - stash comes back, score stays banked.
+            if (wasInfinite) {
+                InfiniteRunManager.endRun(world.getServer(), dataOwner, "went home");
+            }
         } else {
             // Continue to next level
             // Broadcast to all BEFORE endCombat clears party state
@@ -18308,15 +18567,21 @@ public class CombatManager {
                 // biome spawns the biome's peak enemy count instead of the normal ramp.
                 boolean ownerBeatBiomeBoss = PlayerProgression.get(world)
                     .getStats(hpScaleOwnerId).getBossKills(biomeId) >= 1;
+                // INFINITE MODE: thread the run spec so the next level scales off
+                // the cleared-biome count and a boss level rolls the randomized boss.
+                com.crackedgames.craftics.level.InfiniteSpec contInfSpec =
+                    InfiniteRunManager.specFor(data, dataOwner, biome, globalLevel);
                 com.crackedgames.craftics.level.LevelDefinition nextLevelDef =
                     com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, branchChoice,
-                        islandHpScale, ownerBeatBiomeBoss);
+                        islandHpScale, ownerBeatBiomeBoss, contInfSpec);
                 if (nextLevelDef != null) {
                     java.util.Random eventRng = new java.util.Random();
                     float eventRoll = eventRng.nextFloat();
 
                     // Calculate biome position for difficulty scaling (use active-campaign ordinal, not registry index)
-                    int biomeOrdinal = com.crackedgames.craftics.level.campaign.CampaignManager
+                    int biomeOrdinal = contInfSpec != null
+                        ? contInfSpec.virtualOrdinal()
+                        : com.crackedgames.craftics.level.campaign.CampaignManager
                             .ordinalOf(biome.biomeId, Math.max(0, branchChoice));
                     if (biomeOrdinal < 0) biomeOrdinal = 0;
 
@@ -18413,7 +18678,9 @@ public class CombatManager {
                             GridArena nextArena = buildArena(w, nextDef);
                             transitionPartyToArena(source, members, nextArena, nextDef);
                         };
-                        if (isBossLevel) {
+                        if (isBossLevel && contInfSpec == null) {
+                            // Infinite runs skip the authored biome-boss intro - the
+                            // randomized boss announces itself at spawn instead.
                             offerBossIntro(members, biome, transition);
                         } else {
                             transition.run();
@@ -19804,10 +20071,13 @@ public class CombatManager {
         int idx = 0;
         for (ServerPlayerEntity p : members) {
             ServerPlayNetworking.send(p, new com.crackedgames.craftics.network.EnterEventCinematicPayload());
-            // Talk tiles fanned across x=3..5 at z=3 so multiple members stand side by side.
+            // Talk tiles fanned across x=3..5 at z=3; parties larger than three
+            // fill additional rows one tile back instead of stacking on the
+            // first row's tiles (overlapping players cram-push each other off
+            // their parked spots - the way players used to end up in the fire).
             double tx = travelerOrigin.getX() + 3.5 + (idx % 3);
             double ty = travelerOrigin.getY() + 1;
-            double tz = travelerOrigin.getZ() + 3.5;
+            double tz = travelerOrigin.getZ() + 3.5 - (idx / 3);
             double walkDist = Math.hypot(tx - p.getX(), tz - p.getZ());
             int walkTicks = Math.max(1, (int) Math.round(walkDist / WALK_SPEED));
             final ServerPlayerEntity fp = p;
@@ -20601,8 +20871,12 @@ public class CombatManager {
         for (int z = 0; z <= 6; z++)
             world.setBlockState(new BlockPos(ox + 4, oy, oz + z), Blocks.DIRT_PATH.getDefaultState(), sf);
 
-        // Campfire in center
-        world.setBlockState(new BlockPos(ox + 4, oy + 1, oz + 4), Blocks.CAMPFIRE.getDefaultState(), sf);
+        // Campfire beside the camp, NOT at the center. The old spot (4,4) sat
+        // on the walk lane, one tile behind the talk row - entity pushing can
+        // nudge a parked party member a tile during the cinematic, movement is
+        // client-disabled, and the cinematic runs outside the combat tick's
+        // fire suppression: a player shoved into the fire burned to death.
+        world.setBlockState(new BlockPos(ox + 2, oy + 1, oz + 5), Blocks.CAMPFIRE.getDefaultState(), sf);
 
         // Hay bale bed near traveler
         world.setBlockState(new BlockPos(ox + 6, oy + 1, oz + 5), Blocks.HAY_BLOCK.getDefaultState(), sf);
@@ -20611,8 +20885,10 @@ public class CombatManager {
         world.setBlockState(new BlockPos(ox + 2, oy + 1, oz + 3), Blocks.LANTERN.getDefaultState(), sf);
         world.setBlockState(new BlockPos(ox + 6, oy + 1, oz + 3), Blocks.LANTERN.getDefaultState(), sf);
 
-        // Oak logs as seating
-        world.setBlockState(new BlockPos(ox + 3, oy + 1, oz + 3), Blocks.OAK_LOG.getDefaultState(), sf);
+        // Oak logs as seating. (2,4) sits by the campfire; the old (3,3) seat
+        // occupied the first TALK TILE (x=3..5 at z=3), forcing whoever parked
+        // there into a solid block.
+        world.setBlockState(new BlockPos(ox + 2, oy + 1, oz + 4), Blocks.OAK_LOG.getDefaultState(), sf);
         world.setBlockState(new BlockPos(ox + 5, oy + 1, oz + 5), Blocks.OAK_LOG.getDefaultState(), sf);
 
         // Barrier walls
@@ -24236,12 +24512,22 @@ public class CombatManager {
     /** Position of the current combat's biome in the full dimension path. Used to gate late-game tuning (e.g. bosses skipping their telegraphed "waiting" turn). */
     private int currentBiomeOrdinal = 0;
 
+    /** The infinite-mode spec stamped on the current level, or null outside infinite runs. */
+    private com.crackedgames.craftics.level.InfiniteSpec currentInfiniteSpec() {
+        return levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld
+            ? gld.getInfiniteSpec() : null;
+    }
+
     /**
      * Compute the current combat's biome ordinal (position in the full dimension path).
      * Returns 0 for trial chambers, ambushes, or levels without an associated biome.
      */
     private int computeCurrentBiomeOrdinal() {
         if (levelDef == null || player == null) return 0;
+        // Infinite runs: the virtual ordinal (cleared-biome count) drives all the
+        // late-game tuning, so telegraph-skips etc. keep escalating forever.
+        com.crackedgames.craftics.level.InfiniteSpec infSpec = currentInfiniteSpec();
+        if (infSpec != null) return Math.max(0, infSpec.virtualOrdinal());
         com.crackedgames.craftics.level.BiomeTemplate biomeTemplate = null;
         if (levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
             biomeTemplate = gld.getBiomeTemplate();

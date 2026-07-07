@@ -123,6 +123,8 @@ public class AIRegistry {
 
         // === Projectile entities (boss-spawned fireballs, wither skulls) ===
         register("projectile", new ProjectileAI());
+        // Homing variant (shulker bullets): re-aims at the player every step.
+        register("seeking_projectile", new SeekingProjectileAI());
 
         // === End mobs ===
         register("minecraft:shulker", new ShulkerAI());             // stationary turret, ranged projectiles

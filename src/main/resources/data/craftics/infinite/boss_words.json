@@ -1,0 +1,30 @@
+{
+  "_comment": "Infinite mode boss name generator. Names are built as 'The <first> <second>'. Add or remove words freely - the generator picks one from each list at random. Datapacks can override this file at data/craftics/infinite/boss_words.json.",
+  "first": [
+    "Molten", "Shrieking", "Hollow", "Gilded", "Withered", "Frozen", "Blazing",
+    "Corrupted", "Ancient", "Ravenous", "Silent", "Thundering", "Venomous",
+    "Spectral", "Rotting", "Crimson", "Obsidian", "Howling", "Shattered",
+    "Boundless", "Creeping", "Dreadful", "Ashen", "Verdant", "Twisted",
+    "Unblinking", "Ironclad", "Sunken", "Feral", "Grinning", "Wailing",
+    "Burning", "Cursed", "Rusted", "Pale", "Umbral", "Savage", "Whispering",
+    "Colossal", "Vile", "Radiant", "Grim", "Warped", "Sporeborn", "Hexed",
+    "Bloodied", "Stormbound", "Nameless", "Forgotten", "Endless", "Volatile",
+    "Seething", "Ghastly", "Brutal", "Sinister", "Arcane", "Fallen", "Wretched",
+    "Gluttonous", "Thorned", "Smoldering", "Abyssal", "Screaming", "Petrified",
+    "Starving", "Lurking", "Vengeful", "Sleepless", "Marrowed", "Unchained"
+  ],
+  "second": [
+    "Warden", "Butcher", "Monarch", "Reaper", "Tyrant", "Devourer", "Herald",
+    "Executioner", "Colossus", "Marauder", "Sovereign", "Stalker", "Behemoth",
+    "Inquisitor", "Harbinger", "Juggernaut", "Prophet", "Ravager", "Sentinel",
+    "Overlord", "Gravedigger", "Widow", "Fiend", "Champion", "Gorger",
+    "Lurker", "Broodlord", "Warlock", "Bonecaller", "Hunter", "Impaler",
+    "Leviathan", "Nightmare", "Oracle", "Pillager", "Revenant", "Shambler",
+    "Slaughterer", "Specter", "Titan", "Usurper", "Vindicator", "Watcher",
+    "Wraith", "Zealot", "Cannibal", "Deceiver", "Flayer", "Gladiator",
+    "Hierophant", "Kingslayer", "Mauler", "Necromancer", "Punisher",
+    "Scourge", "Tormentor", "Undertaker", "Vulture", "Warbringer", "Basilisk",
+    "Cinderlord", "Doomsayer", "Earthshaker", "Frostfang", "Gorgon",
+    "Hollowmaw", "Ironjaw", "Mireking", "Nightcaller", "Plaguebearer"
+  ]
+}

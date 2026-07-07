@@ -38,13 +38,23 @@ import java.util.List;
  *   Instant (no telegraph). P2: knockback 3.
  *
  * Phase 2 - "Unstoppable": +1 speed, all knockback distances increased,
- *           shorter cooldowns, destroys obstacles when charging through them.
+ *           shorter cooldowns, destroys obstacles when charging through them -
+ *           and it RETALIATES: the first time it's damaged between its turns,
+ *           its next turn opens with a free ground-slam shockwave (4 dmg,
+ *           knockback 2) woven in before its normal action. Hitting the
+ *           Rockbreaker up close costs you your footing.
  */
 public class RockbreakerAI extends BossAI {
     private static final String CD_SLAM = "seismic_slam";
     private static final String CD_BOULDER = "boulder_toss";
     private static final String CD_CHARGE = "charge";
     private static final String CD_AVALANCHE = "avalanche";
+
+    /** Set by CombatManager when the boss takes damage; fuels the P2 retaliation. */
+    private boolean wasHitSinceLastTurn = false;
+
+    /** Called by CombatManager when the boss takes damage. */
+    public void notifyDamaged() { wasHitSinceLastTurn = true; }
 
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
@@ -54,6 +64,43 @@ public class RockbreakerAI extends BossAI {
 
     @Override
     protected EnemyAction chooseAbility(CombatEntity self, GridArena arena, GridPos playerPos) {
+        boolean hitSinceLastTurn = wasHitSinceLastTurn;
+        wasHitSinceLastTurn = false;
+
+        EnemyAction primary = choosePrimary(self, arena, playerPos);
+
+        // Phase 2 retaliation: got hit since last turn -> open this turn with a
+        // free shockwave slam before the normal action. Only worth the drama
+        // when someone is close enough to feel it, and skipped on Ground Pound
+        // turns (that's already a slam - no double-pounding the same target).
+        if (isPhaseTwo() && hitSinceLastTurn
+                && self.minDistanceTo(playerPos) > 1
+                && anyThreatWithin(self, arena, playerPos, 2)) {
+            GridPos myPos = self.getGridPos();
+            int[] pushDir = getDirectionToward(myPos, playerPos);
+            if (pushDir[0] == 0 && pushDir[1] == 0) pushDir = new int[]{1, 0};
+            List<EnemyAction> subs = new ArrayList<>();
+            subs.add(new EnemyAction.AreaAttack(myPos, 1, 4, "ground_pound"));
+            subs.add(new EnemyAction.ForcedMovement(-1, pushDir[0], pushDir[1], 2));
+            if (primary instanceof EnemyAction.CompositeAction ca) {
+                subs.addAll(ca.actions());
+            } else {
+                subs.add(primary);
+            }
+            return new EnemyAction.CompositeAction(subs);
+        }
+        return primary;
+    }
+
+    /** True when the player or any pet stands within {@code range} of the boss. */
+    private boolean anyThreatWithin(CombatEntity self, GridArena arena, GridPos playerPos, int range) {
+        for (GridPos threat : com.crackedgames.craftics.combat.ai.AIUtils.threatPositions(arena, playerPos)) {
+            if (self.minDistanceTo(threat) <= range) return true;
+        }
+        return false;
+    }
+
+    private EnemyAction choosePrimary(CombatEntity self, GridArena arena, GridPos playerPos) {
         GridPos myPos = self.getGridPos();
         int dist = self.minDistanceTo(playerPos);
         boolean p2 = isPhaseTwo();

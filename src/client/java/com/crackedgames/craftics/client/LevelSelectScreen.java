@@ -362,6 +362,21 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                 })
             .dimensions(8, this.height - 24, 120, 20).build();
         this.addDrawableChild(barterStationBtn);
+
+        // Bottom-right: infinite mode. Rides the normal run-start flow under a
+        // sentinel biome id; the server handles the party prompt + fresh-start rules.
+        ButtonWidget infiniteBtn = ButtonWidget.builder(
+                Text.literal("\u00A75\u00A7l\u221E Infinite Mode"),
+                b -> {
+                    this.close();
+                    TransitionOverlay.startTransition(
+                        "\u221E Infinite Mode \u221E", "No items. No levels. No end.",
+                        () -> ClientPlayNetworking.send(new StartLevelPayload(
+                            "craftics:infinite"))
+                    );
+                })
+            .dimensions(this.width - 128, this.height - 24, 120, 20).build();
+        this.addDrawableChild(infiniteBtn);
     }
 
     private void scrollBiome(int dir) {

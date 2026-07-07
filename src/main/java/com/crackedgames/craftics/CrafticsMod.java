@@ -247,6 +247,9 @@ public class CrafticsMod implements ModInitializer {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerPlayerEntity player = handler.getPlayer();
             ServerWorld overworld = server.getOverworld();
+            // Infinite mode: refresh the leaderboard name and, if this player
+            // disconnected mid-run, hand their stashed items/levels back.
+            com.crackedgames.craftics.combat.InfiniteRunManager.onPlayerJoin(player);
             if (overworld.getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator) {
                 LOGGER.info("Craftics: Teleporting player {} to hub", player.getName().getString());
                 // Land on the HIGHEST solid block at the lobby column, never a hard y=65
@@ -621,6 +624,10 @@ public class CrafticsMod implements ModInitializer {
                 return true;
             }
         );
+
+        // Infinite mode: registers the boss:infinite AI key and the rest-room
+        // continue-bell interaction.
+        com.crackedgames.craftics.combat.InfiniteRunManager.init();
 
         // Look-only visitors: block/entity interaction and block-hit (attack) are denied
         // in a foreign island dim; PASS lets vanilla/other handlers decide otherwise.
@@ -1228,6 +1235,40 @@ public class CrafticsMod implements ModInitializer {
             registerWorldCommands(root);
             com.crackedgames.craftics.command.CrafticsServerCommands.register(root);
 
+            // /craftics infinite [start|stop|top] - the command-line door into
+            // infinite mode (the Level Select block's button is the other one).
+            var startInfinite = (com.mojang.brigadier.Command<ServerCommandSource>) (ctx -> {
+                ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                com.crackedgames.craftics.combat.RunInviteManager.requestStart(player,
+                    com.crackedgames.craftics.combat.InfiniteRunManager.START_ID);
+                return 1;
+            });
+            root.then(CommandManager.literal("infinite")
+                .executes(startInfinite)
+                .then(CommandManager.literal("start").executes(startInfinite))
+                .then(CommandManager.literal("top").executes(ctx -> {
+                    com.crackedgames.craftics.combat.InfiniteRunManager
+                        .sendLeaderboard(ctx.getSource().getPlayerOrThrow());
+                    return 1;
+                }))
+                .then(CommandManager.literal("stop").executes(ctx -> {
+                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
+                    CrafticsSavedData stopData = CrafticsSavedData.get(player.getServer().getOverworld());
+                    if (stopData.getPlayerData(player.getUuid()).infiniteRunHost.isEmpty()) {
+                        ctx.getSource().sendError(Text.literal("§cYou're not in an infinite run."));
+                        return 0;
+                    }
+                    if (CombatManager.get(player).isActive()
+                            || CombatManager.getActiveCombat(player.getUuid()) != null) {
+                        ctx.getSource().sendError(Text.literal(
+                            "§cFinish (or flee) the current fight first."));
+                        return 0;
+                    }
+                    com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(player);
+                    com.crackedgames.craftics.world.HubTeleports.toHub(player);
+                    return 1;
+                })));
+
             dispatcher.register(root);
 
             // Shortcut commands
@@ -1338,6 +1379,10 @@ public class CrafticsMod implements ModInitializer {
 
                 final ServerPlayerEntity homePlayer = player;
                 overworld.getServer().execute(() -> {
+                    // Infinite mode: /home banks and leaves the run (host = run over,
+                    // member = steps out). Must run BEFORE the teleport so the stash
+                    // restore replaces the run items while state is still coherent.
+                    com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(homePlayer);
                     // HubTeleports.toHub resolves the owner's island dim (re-opening it
                     // if unloaded), clamps the landing Y against that world, and unloads
                     // the island the player is leaving behind once it's empty - the same

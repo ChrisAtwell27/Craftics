@@ -87,6 +87,14 @@ public final class RunInviteManager {
             ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
             return;
         }
+        // An infinite run parked at the rest room is still a live run - don't let a
+        // second run (of either kind) clobber its state between fights.
+        if (!data.getPlayerData(island).infiniteHostRef.isEmpty()) {
+            starter.sendMessage(Text.literal(
+                "§cAn infinite run is in progress on this island. Ring its bell to continue, or have the host use §e/home§c to end it."), false);
+            ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
+            return;
+        }
         if (CombatManager.get(starter).isActive()) {
             ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
             return;
@@ -98,20 +106,25 @@ public final class RunInviteManager {
             return;
         }
 
-        BiomeTemplate biome = findBiome(biomeId);
-        if (biome == null) {
-            CrafticsMod.LOGGER.warn("RunInviteManager: no biome for ID '{}'", biomeId);
-            ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
-            return;
-        }
-        // Unlock check uses the starter's own progression (it's their run).
-        pd.initBranchIfNeeded();
-        int biomeOrder = CampaignManager.ordinalOf(biomeId, Math.max(0, pd.branchChoice)) + 1;
-        if (biomeOrder <= 0 || biomeOrder > pd.highestBiomeUnlocked) {
-            CrafticsMod.LOGGER.warn("{} tried to start locked biome {} (unlocked={}, needed={})",
-                starter.getName().getString(), biomeId, pd.highestBiomeUnlocked, biomeOrder);
-            ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
-            return;
+        // Infinite mode rides the same lobby flow under a sentinel "biome id" -
+        // there's no biome to validate and no unlock gate (everyone starts at plains).
+        boolean infinite = InfiniteRunManager.START_ID.equals(biomeId);
+        if (!infinite) {
+            BiomeTemplate biome = findBiome(biomeId);
+            if (biome == null) {
+                CrafticsMod.LOGGER.warn("RunInviteManager: no biome for ID '{}'", biomeId);
+                ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
+                return;
+            }
+            // Unlock check uses the starter's own progression (it's their run).
+            pd.initBranchIfNeeded();
+            int biomeOrder = CampaignManager.ordinalOf(biomeId, Math.max(0, pd.branchChoice)) + 1;
+            if (biomeOrder <= 0 || biomeOrder > pd.highestBiomeUnlocked) {
+                CrafticsMod.LOGGER.warn("{} tried to start locked biome {} (unlocked={}, needed={})",
+                    starter.getName().getString(), biomeId, pd.highestBiomeUnlocked, biomeOrder);
+                ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
+                return;
+            }
         }
 
         // Eligible joiners: every other online party member (they all share this
@@ -211,6 +224,7 @@ public final class RunInviteManager {
 
     /** "deep_dark" / "forest/pale_garden" -> "Deep Dark" / "Pale Garden" for the popup. */
     private static String prettyBiome(String biomeId) {
+        if (InfiniteRunManager.START_ID.equals(biomeId)) return "∞ Infinite Mode ∞";
         String tail = biomeId.contains("/") ? biomeId.substring(biomeId.lastIndexOf('/') + 1) : biomeId;
         String[] words = tail.replace('_', ' ').trim().split("\\s+");
         StringBuilder sb = new StringBuilder();
@@ -231,6 +245,12 @@ public final class RunInviteManager {
         ServerWorld world = (ServerWorld) starter.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         CrafticsSavedData.PlayerData pd = data.getPlayerData(starter.getUuid());
+
+        // Infinite mode: the sentinel resolves here, after the lobby. Stash every
+        // participant's inventory/progression, mark the run, and land on plains.
+        if (InfiniteRunManager.START_ID.equals(biomeId)) {
+            biomeId = InfiniteRunManager.startRun(starter, participants);
+        }
 
         // A run and a merchant scene are mutually exclusive. The invite filter
         // already skips scene members, but the ~22s lobby window (and any future
@@ -262,7 +282,11 @@ public final class RunInviteManager {
         int globalLevel = biome.startLevel + levelIndex;
         UUID worldOwner = data.getEffectiveWorldOwner(starter.getUuid());
         boolean ownerHpScale = data.getPlayerData(worldOwner).scaleHpPerLevelEnabled;
-        LevelDefinition levelDef = LevelRegistry.get(globalLevel, pd.branchChoice, ownerHpScale);
+        // Infinite runs scale off the cleared-biome count and randomize boss levels.
+        com.crackedgames.craftics.level.InfiniteSpec infiniteSpec =
+            InfiniteRunManager.specFor(data, starter.getUuid(), biome, globalLevel);
+        LevelDefinition levelDef = LevelRegistry.get(globalLevel, pd.branchChoice, ownerHpScale,
+            false, infiniteSpec);
         if (levelDef == null) {
             CrafticsMod.LOGGER.warn("RunInviteManager: no definition for level {}", globalLevel);
             ServerPlayNetworking.send(starter, new ExitCombatPayload(false));

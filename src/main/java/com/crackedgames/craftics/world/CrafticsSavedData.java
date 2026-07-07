@@ -113,6 +113,32 @@ public class CrafticsSavedData extends PersistentState {
          *  linear boss-HP ramp (see CrafticsConfig.bossKillHpScale). */
         private final Map<String, Integer> bossKills = new HashMap<>();
 
+        // === Infinite mode ===
+        /** True while this player is HOSTING an active infinite run. The run cursor
+         *  reuses activeBiomeId/activeBiomeLevelIndex on this same record. */
+        public boolean infiniteActive = false;
+        /** Biomes fully cleared (bosses beaten) in the current run - the live score. */
+        public int infiniteBiomesCleared = 0;
+        /** Participant UUIDs of the current run (host included), comma-separated. */
+        public String infiniteParticipants = "";
+        /** On the ISLAND OWNER's record: UUID of the member hosting the island's
+         *  active infinite run ("" = none). The rest-room bell resolves the run
+         *  through this pointer since the ringer may not be the host. */
+        public String infiniteHostRef = "";
+        /** Personal best infinite score (biomes cleared), across all runs. */
+        public int highestInfiniteScore = 0;
+        /** On each PARTICIPANT's record: UUID of the run host they joined ("" = none). */
+        public String infiniteRunHost = "";
+        /** True while this participant's pre-run inventory + progression are stashed. */
+        public boolean infiniteStashActive = false;
+        /** Pre-run inventory snapshot (PlayerInventory.writeNbt format). */
+        public net.minecraft.nbt.NbtList infiniteStashInventory = new net.minecraft.nbt.NbtList();
+        public int infiniteStashSelectedSlot = 0;
+        /** Pre-run PlayerProgression snapshot (PlayerStats.serialize format). */
+        public String infiniteStashStats = "";
+        /** Last known player name, for offline leaderboard rows. Refreshed on join. */
+        public String lastKnownName = "";
+
         public int getBossKills(String biomeId) {
             return bossKills.getOrDefault(biomeId, 0);
         }
@@ -403,6 +429,17 @@ public class CrafticsSavedData extends PersistentState {
                 bossKillsNbt.putInt(e.getKey(), e.getValue());
             }
             nbt.put("bossKills", bossKillsNbt);
+            nbt.putBoolean("infiniteActive", infiniteActive);
+            nbt.putInt("infiniteBiomesCleared", infiniteBiomesCleared);
+            nbt.putString("infiniteParticipants", infiniteParticipants);
+            nbt.putString("infiniteHostRef", infiniteHostRef);
+            nbt.putInt("highestInfiniteScore", highestInfiniteScore);
+            nbt.putString("infiniteRunHost", infiniteRunHost);
+            nbt.putBoolean("infiniteStashActive", infiniteStashActive);
+            nbt.put("infiniteStashInventory", infiniteStashInventory.copy());
+            nbt.putInt("infiniteStashSelectedSlot", infiniteStashSelectedSlot);
+            nbt.putString("infiniteStashStats", infiniteStashStats);
+            nbt.putString("lastKnownName", lastKnownName);
             return nbt;
         }
 
@@ -482,6 +519,20 @@ public class CrafticsSavedData extends PersistentState {
                     pd.bossKills.put(key, bk.getInt(key));
                 }
             }
+            pd.infiniteActive = nbt.contains("infiniteActive") && nbt.getBoolean("infiniteActive");
+            pd.infiniteBiomesCleared = nbt.contains("infiniteBiomesCleared") ? nbt.getInt("infiniteBiomesCleared") : 0;
+            pd.infiniteParticipants = nbt.contains("infiniteParticipants") ? nbt.getString("infiniteParticipants") : "";
+            pd.infiniteHostRef = nbt.contains("infiniteHostRef") ? nbt.getString("infiniteHostRef") : "";
+            pd.highestInfiniteScore = nbt.contains("highestInfiniteScore") ? nbt.getInt("highestInfiniteScore") : 0;
+            pd.infiniteRunHost = nbt.contains("infiniteRunHost") ? nbt.getString("infiniteRunHost") : "";
+            pd.infiniteStashActive = nbt.contains("infiniteStashActive") && nbt.getBoolean("infiniteStashActive");
+            if (nbt.contains("infiniteStashInventory")) {
+                pd.infiniteStashInventory = nbt.getList("infiniteStashInventory",
+                    net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
+            }
+            pd.infiniteStashSelectedSlot = nbt.contains("infiniteStashSelectedSlot") ? nbt.getInt("infiniteStashSelectedSlot") : 0;
+            pd.infiniteStashStats = nbt.contains("infiniteStashStats") ? nbt.getString("infiniteStashStats") : "";
+            pd.lastKnownName = nbt.contains("lastKnownName") ? nbt.getString("lastKnownName") : "";
             return pd;
         }
         //?} else {
@@ -544,6 +595,17 @@ public class CrafticsSavedData extends PersistentState {
             for (String key : bk.getKeys()) {
                 pd.bossKills.put(key, bk.getInt(key, 0));
             }
+            pd.infiniteActive = nbt.getBoolean("infiniteActive", false);
+            pd.infiniteBiomesCleared = nbt.getInt("infiniteBiomesCleared", 0);
+            pd.infiniteParticipants = nbt.getString("infiniteParticipants", "");
+            pd.infiniteHostRef = nbt.getString("infiniteHostRef", "");
+            pd.highestInfiniteScore = nbt.getInt("highestInfiniteScore", 0);
+            pd.infiniteRunHost = nbt.getString("infiniteRunHost", "");
+            pd.infiniteStashActive = nbt.getBoolean("infiniteStashActive", false);
+            pd.infiniteStashInventory = nbt.getListOrEmpty("infiniteStashInventory");
+            pd.infiniteStashSelectedSlot = nbt.getInt("infiniteStashSelectedSlot", 0);
+            pd.infiniteStashStats = nbt.getString("infiniteStashStats", "");
+            pd.lastKnownName = nbt.getString("lastKnownName", "");
             return pd;
         }
         *///?}
@@ -933,6 +995,20 @@ public class CrafticsSavedData extends PersistentState {
         if (pd.worldSlot < 0) return null;
         int sceneZ = "barter_station".equals(sceneName) ? 1000 : 900;
         return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, sceneZ);
+    }
+
+    /** Infinite-mode rest room origin: last slot in the fixed room column (Z 1100),
+     *  past the merchant scenes. Rebuilt on every boss clear by RestRoomBuilder. */
+    public net.minecraft.util.math.BlockPos getRestRoomOrigin(UUID playerId) {
+        PlayerData pd = getPlayerData(playerId);
+        if (pd.worldSlot < 0) return null;
+        return new net.minecraft.util.math.BlockPos(ROOM_X, ROOM_Y, 1100);
+    }
+
+    /** Read-only view of every stored player record - used by the infinite-mode
+     *  leaderboard, which ranks offline players too. */
+    public Map<UUID, PlayerData> getAllPlayerData() {
+        return java.util.Collections.unmodifiableMap(players);
     }
 
     /**

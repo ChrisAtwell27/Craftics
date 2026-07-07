@@ -13,8 +13,10 @@ import java.util.List;
  * Entity: Shulker | 50HP / 9ATK / 4DEF / Range 5 / Speed 1 | Size 2×2
  *
  * Abilities:
- * - Bullet Storm: telegraphed volley - 4 (P2: 6) marked tiles around the player,
- *   3 dmg each on resolve, with a half-power plink while it charges.
+ * - Bullet Storm: blooms 4 (P2: 6) homing bullet ENTITIES from the ring of
+ *   tiles around its 2x2 shell - each a real 1-HP seeker (SeekingProjectileAI,
+ *   2 tiles/turn, 3 dmg + Levitation on impact). Shoot them down or outplay
+ *   them; a new bloom only starts once the previous volley has resolved.
  * - Deploy Turret: Stationary shulker turret (6HP, 1 bullet/turn range 4, 2 dmg). Max 3 (P2: 5).
  * - Fortify Shell: 80% damage reduction 1 turn. P2: also reflects 50% damage.
  * - Teleport Link: Blink to a tile beside the turret farthest from the player.
@@ -95,29 +97,28 @@ public class ShulkerArchitectAI extends BossAI {
             }
         }
 
-        // Bullet Storm - a telegraphed volley: one bullet per marked tile
-        // (player's tile + surrounding spread, 4 in P1 / 6 in P2), resolving
-        // next turn. The old version built the target list, threw it away, and
-        // fired an instant untelegraphed AoE - the bullet count did nothing
-        // and phase two's extra bullets were pure flavor text.
-        if (!isOnCooldown(CD_BULLET) && dist <= 5) {
-            setCooldown(CD_BULLET, 2);
+        // Bullet Storm - blooms a ring of homing bullet ENTITIES around the
+        // boss's own shell: 4 in P1 / 6 in P2, each a 1-HP seeker that chases
+        // the player at 2 tiles/turn (SeekingProjectileAI) and lands 3 damage
+        // + Levitation on impact. The bullets themselves are the telegraph -
+        // visible, killable, and a full turn away - so the old marked-tile
+        // warning is gone. A fresh bloom waits until the last volley has fully
+        // resolved (killed or landed) so the sky never stacks two storms.
+        if (!isOnCooldown(CD_BULLET) && dist <= 5 && countLiveBullets(self, arena) == 0) {
             int bulletCount = isPhaseTwo() ? 6 : 4;
-            List<GridPos> targets = new ArrayList<>();
-            targets.add(playerPos);
-            for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1},{1,1},{-1,-1}}) {
-                GridPos p = new GridPos(playerPos.x() + d[0], playerPos.z() + d[1]);
-                if (arena.isInBounds(p) && targets.size() < bulletCount) targets.add(p);
+            List<GridPos> ring = findBloomPositions(self, arena, bulletCount);
+            if (!ring.isEmpty()) {
+                setCooldown(CD_BULLET, 2);
+                GridPos center = self.getGridPos();
+                List<int[]> directions = new ArrayList<>();
+                for (GridPos p : ring) {
+                    int dx = Integer.signum(p.x() - center.x());
+                    int dz = Integer.signum(p.z() - center.z());
+                    directions.add(new int[]{dx != 0 ? dx : 0, dx != 0 ? 0 : (dz != 0 ? dz : 1)});
+                }
+                return new EnemyAction.SpawnProjectile(
+                    "minecraft:blaze", ring, directions, 1, 3, 0, "shulker_bullet");
             }
-            List<EnemyAction> bullets = new ArrayList<>();
-            for (GridPos t : targets) {
-                bullets.add(new EnemyAction.AreaAttack(t, 0, 3, "bullet_storm"));
-            }
-            pendingWarning = new BossWarning(
-                self.getEntityId(), BossWarning.WarningType.GATHERING_PARTICLES,
-                targets, 1, new EnemyAction.CompositeAction(bullets), 0xFFCC88FF);
-            // Plink a normal bullet while the volley charges - no free turn.
-            return new EnemyAction.RangedAttack(Math.max(2, self.getAttackPower() / 2), "shulker_bullet");
         }
 
         // Ranged attack if in range
@@ -126,6 +127,48 @@ public class ShulkerArchitectAI extends BossAI {
         }
 
         return meleeOrApproach(self, arena, playerPos, 0);
+    }
+
+    /** Live homing bullets owned by this boss still in flight. */
+    private int countLiveBullets(CombatEntity self, GridArena arena) {
+        int n = 0;
+        for (CombatEntity e : arena.getOccupants().values()) {
+            if (e.isAlive() && e.isProjectile()
+                    && "shulker_bullet".equals(e.getProjectileType())
+                    && e.getProjectileOwnerId() == self.getEntityId()) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * Up to {@code count} free walkable tiles from the ring around the boss's
+     * 2x2 footprint, picked evenly around the loop so the bloom surrounds the
+     * shell instead of clustering on one side.
+     */
+    private List<GridPos> findBloomPositions(CombatEntity self, GridArena arena, int count) {
+        GridPos anchor = self.getGridPos();
+        int size = self.getMaxSize();
+        // Walk the ring clockwise: top edge, right edge, bottom edge, left edge.
+        List<GridPos> ring = new ArrayList<>();
+        for (int x = -1; x <= size; x++) ring.add(new GridPos(anchor.x() + x, anchor.z() - 1));
+        for (int z = 0; z < size; z++) ring.add(new GridPos(anchor.x() + size, anchor.z() + z));
+        for (int x = size; x >= -1; x--) ring.add(new GridPos(anchor.x() + x, anchor.z() + size));
+        for (int z = size - 1; z >= 0; z--) ring.add(new GridPos(anchor.x() - 1, anchor.z() + z));
+
+        List<GridPos> valid = new ArrayList<>();
+        for (GridPos p : ring) {
+            if (!arena.isInBounds(p) || arena.isOccupied(p)) continue;
+            if (arena.getTile(p) == null || !arena.getTile(p).isWalkable()) continue;
+            valid.add(p);
+        }
+        if (valid.size() <= count) return valid;
+        List<GridPos> spread = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            spread.add(valid.get(i * valid.size() / count));
+        }
+        return spread;
     }
 
     /** A footprint-valid anchor adjacent to {@code turret} for the 2×2 boss; null if none. */

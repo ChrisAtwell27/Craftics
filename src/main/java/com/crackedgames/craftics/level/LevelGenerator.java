@@ -66,6 +66,18 @@ public class LevelGenerator {
      */
     public static LevelDefinition generate(int levelNumber, int branchChoice, boolean scaleHpPerLevel,
                                            boolean bossBeaten) {
+        return generate(levelNumber, branchChoice, scaleHpPerLevel, bossBeaten, null);
+    }
+
+    /**
+     * Infinite-mode variant. A non-null {@code infiniteSpec} replaces the
+     * campaign-ordinal difficulty input with the run's virtual ordinal (cleared
+     * biome count, unbounded) and, on boss levels, swaps the biome's authored
+     * boss for the run's randomized standard-size boss. The spec is stamped on
+     * the returned definition for CombatManager's spawn/victory hooks.
+     */
+    public static LevelDefinition generate(int levelNumber, int branchChoice, boolean scaleHpPerLevel,
+                                           boolean bossBeaten, InfiniteSpec infiniteSpec) {
         BiomeTemplate biome = BiomeRegistry.getForLevel(levelNumber);
         if (biome == null) {
             throw new IllegalStateException("No biome registered for level " + levelNumber
@@ -89,12 +101,15 @@ public class LevelGenerator {
         } else {
             name = biome.displayName + " " + (biomeIndex + 1);
         }
+        if (infiniteSpec != null) {
+            name = "∞ " + name; // ∞ prefix marks infinite-run levels
+        }
 
         GridPos playerStart = new GridPos(width / 2, 0);
         GridTile[][] tiles = generateTiles(biome, width, height, biomeIndex, rand);
         LevelDefinition.EnemySpawn[] enemies = generateEnemies(
             biome, tiles, width, height, biomeIndex, levelNumber, isBoss, branchChoice, scaleHpPerLevel,
-            bossBeaten, rand);
+            bossBeaten, rand, infiniteSpec);
         // Completion loot scales with how many enemies this level actually has, so an
         // early (few-enemy) level pays less than a late (full) one. Boss levels keep
         // their own loot footprint and are not scaled down by their small add-crew.
@@ -122,6 +137,7 @@ public class LevelGenerator {
             levelDef = buildPaleGardenLevel(levelNumber, biome, biomeIndex, width, height, loot, rand, scaleHpPerLevel, branchChoice);
         }
 
+        levelDef.setInfiniteSpec(infiniteSpec);
         return levelDef;
     }
 
@@ -235,7 +251,7 @@ public class LevelGenerator {
                                                                    int biomeIndex, int globalLevel,
                                                                    boolean isBoss, int branchChoice,
                                                                    boolean scaleHpPerLevel, boolean bossBeaten,
-                                                                   Random rand) {
+                                                                   Random rand, InfiniteSpec infiniteSpec) {
         List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
         // Index of the boss spawn within `spawns`, or -1 on non-boss rounds. The
         // boss must never be turned into a stacked trash mob by the replacement
@@ -244,11 +260,18 @@ public class LevelGenerator {
         // 6-HP add masquerading as the boss.
         int bossSpawnIndex = -1;
 
-        // Use active-campaign position for difficulty scaling (not registry index)
-        int biomeOrdinal = com.crackedgames.craftics.level.campaign.CampaignManager
-                .ordinalOf(biome.biomeId, Math.max(0, branchChoice));
-        if (biomeOrdinal < 0) {
-            biomeOrdinal = BiomeRegistry.getAllBiomes().indexOf(biome);
+        // Use active-campaign position for difficulty scaling (not registry index).
+        // Infinite runs use the run's virtual ordinal instead - the cleared-biome
+        // count, which grows without bound so the scaling never plateaus.
+        int biomeOrdinal;
+        if (infiniteSpec != null) {
+            biomeOrdinal = infiniteSpec.virtualOrdinal();
+        } else {
+            biomeOrdinal = com.crackedgames.craftics.level.campaign.CampaignManager
+                    .ordinalOf(biome.biomeId, Math.max(0, branchChoice));
+            if (biomeOrdinal < 0) {
+                biomeOrdinal = BiomeRegistry.getAllBiomes().indexOf(biome);
+            }
         }
         if (biomeOrdinal < 0) biomeOrdinal = 0;
         // Enemy count scales by biome: plains caps ~6, later biomes scale toward config max (7).
@@ -315,14 +338,29 @@ public class LevelGenerator {
 
             int bossHp = (int)((biome.boss.baseHp() + hpBonus) * com.crackedgames.craftics.CrafticsMod.CONFIG.bossHpMultiplier());
             bossSpawnIndex = spawns.size();
-            spawns.add(new LevelDefinition.EnemySpawn(
-                biome.boss.entityTypeId(), bossPos,
-                bossHp,
-                biome.boss.baseAttack() + atkBonus,
-                biome.boss.baseDefense() + defBonus,
-                biome.boss.range(),
-                biome.boss.aiKey(), biome.boss.speed()
-            ));
+            // Infinite mode: the biome's authored boss is replaced by the run's
+            // randomized standard-size boss. Its stats reuse the biome boss's
+            // scaled baseline; appearance/AI come from the spec (CombatManager
+            // pins the InfiniteBossAI + generated name at spawn).
+            if (infiniteSpec != null && infiniteSpec.hasBossOverride()) {
+                spawns.add(new LevelDefinition.EnemySpawn(
+                    infiniteSpec.bossEntityTypeId(), bossPos,
+                    bossHp,
+                    biome.boss.baseAttack() + atkBonus,
+                    biome.boss.baseDefense() + defBonus,
+                    Math.max(1, biome.boss.range()),
+                    "boss:infinite", biome.boss.speed()
+                ));
+            } else {
+                spawns.add(new LevelDefinition.EnemySpawn(
+                    biome.boss.entityTypeId(), bossPos,
+                    bossHp,
+                    biome.boss.baseAttack() + atkBonus,
+                    biome.boss.baseDefense() + defBonus,
+                    biome.boss.range(),
+                    biome.boss.aiKey(), biome.boss.speed()
+                ));
+            }
         }
 
         // On boss rounds, restrict the hostile pool to the boss's themed backup

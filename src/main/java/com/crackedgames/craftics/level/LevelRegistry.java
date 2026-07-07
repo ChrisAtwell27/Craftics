@@ -24,6 +24,16 @@ public class LevelRegistry {
         return LevelGenerator.generate(levelNumber, branchChoice, scaleHpPerLevel, bossBeaten);
     }
 
+    /**
+     * Infinite-mode variant: {@code infiniteSpec} overrides the campaign-ordinal
+     * difficulty scaling and (on boss levels) swaps the authored boss for the
+     * run's randomized one. Null spec behaves exactly like the overload above.
+     */
+    public static LevelDefinition get(int levelNumber, int branchChoice, boolean scaleHpPerLevel,
+                                      boolean bossBeaten, InfiniteSpec infiniteSpec) {
+        return LevelGenerator.generate(levelNumber, branchChoice, scaleHpPerLevel, bossBeaten, infiniteSpec);
+    }
+
     public static int getLevelCount() {
         return BiomeRegistry.getTotalLevelCount();
     }

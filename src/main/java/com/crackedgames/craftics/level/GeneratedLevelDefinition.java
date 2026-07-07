@@ -19,6 +19,8 @@ public class GeneratedLevelDefinition extends LevelDefinition {
     private final boolean nightLevel;
     private final BiomeTemplate biomeTemplate;
     private String arenaBiomeOverride = null;
+    /** Set on levels generated for an infinite-mode run; null otherwise. */
+    private InfiniteSpec infiniteSpec = null;
 
     public GeneratedLevelDefinition(int levelNumber, String name, int width, int height,
                                      GridPos playerStart, Block floorBlock, GridTile[][] tiles,
@@ -38,6 +40,9 @@ public class GeneratedLevelDefinition extends LevelDefinition {
     }
 
     public void setArenaBiomeOverride(String biomeId) { this.arenaBiomeOverride = biomeId; }
+
+    public void setInfiniteSpec(InfiniteSpec spec) { this.infiniteSpec = spec; }
+    public InfiniteSpec getInfiniteSpec() { return infiniteSpec; }
 
     @Override public int getLevelNumber() { return levelNumber; }
     @Override public String getName() { return name; }

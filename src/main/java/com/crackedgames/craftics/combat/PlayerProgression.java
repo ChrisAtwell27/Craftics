@@ -118,6 +118,13 @@ public class PlayerProgression extends PersistentState {
             return achievements.add(achievement.name());
         }
 
+        /** Raw achievement import - used when merging profiles (infinite-mode stash). */
+        public void importAchievement(String achievementName) {
+            if (achievementName != null && !achievementName.isEmpty()) {
+                achievements.add(achievementName);
+            }
+        }
+
         public Set<String> getAchievements() {
             return Collections.unmodifiableSet(achievements);
         }
@@ -391,6 +398,51 @@ public class PlayerProgression extends PersistentState {
 
     public void saveStats(ServerPlayerEntity player) {
         saveStats(player.getUuid());
+    }
+
+    // === Infinite mode: run-scoped progression ===
+
+    /**
+     * Serialized snapshot of a player's current stats, for the infinite-mode
+     * stash. Forces a save of any cached mutations first so the snapshot is
+     * never stale.
+     */
+    public String snapshotSerialized(UUID playerId) {
+        getStats(playerId); // ensure an entry exists
+        saveStats(playerId);
+        return playerData.get(playerId.toString());
+    }
+
+    /**
+     * Replace a player's stats with a fresh level-1 profile for an infinite
+     * run. Achievements carry over (they're account-wide, not run-scoped).
+     */
+    public void resetForInfiniteRun(UUID playerId) {
+        PlayerStats old = getStats(playerId);
+        PlayerStats fresh = new PlayerStats();
+        for (String achievement : old.getAchievements()) {
+            fresh.importAchievement(achievement);
+        }
+        cache.put(playerId, fresh);
+        playerData.put(playerId.toString(), fresh.serialize());
+        markDirty();
+    }
+
+    /**
+     * Restore a stashed pre-run snapshot after an infinite run ends. Any
+     * achievements earned DURING the run are merged into the restored profile
+     * so they aren't lost with the run stats.
+     */
+    public void restoreSnapshot(UUID playerId, String serialized) {
+        if (serialized == null || serialized.isEmpty()) return;
+        PlayerStats runStats = getStats(playerId);
+        PlayerStats restored = PlayerStats.deserialize(serialized);
+        for (String achievement : runStats.getAchievements()) {
+            restored.importAchievement(achievement);
+        }
+        cache.put(playerId, restored);
+        playerData.put(playerId.toString(), restored.serialize());
+        markDirty();
     }
 
     public void grantLevelUp(ServerPlayerEntity player) {

@@ -21,7 +21,10 @@ import java.util.List;
  *
  * Phase 2 (≤50% HP) - "Undying Rage":
  * - Gains Regeneration (1 HP/turn) - handled by CombatManager checking isEnraged
- * - Raise the Dead every 2 turns instead of 3
+ * - Raise the Dead every 2 turns instead of 3, and every summon ALSO tears a
+ *   Grave Skull out of the earth: a 1-HP homing skull entity
+ *   (SeekingProjectileAI, 2 tiles/turn) that bites for 3 + 2 turns of Wither.
+ *   Shoot it down or feed the action economy - the graves keep giving.
  * - Death Charge ATK+4 + fire trail
  */
 public class RevenantAI extends BossAI {
@@ -78,15 +81,33 @@ public class RevenantAI extends BossAI {
         // Priority 4: Raise the Dead on schedule
         if (!isOnCooldown(CD_RAISE) && getAliveMinionCount() < SUMMON_CAP) {
             int count = isPhaseTwo() ? 2 : (getAliveMinionCount() == 0 ? 2 : 1);
-            List<GridPos> positions = findSummonPositions(arena, count);
+            // P2 asks for one extra grave tile: the zombies rise from the
+            // telegraphed tiles next turn, while the LAST tile births a homing
+            // Grave Skull immediately - the summon turn is no longer free.
+            int wanted = isPhaseTwo() ? count + 1 : count;
+            List<GridPos> positions = findSummonPositions(arena, wanted);
             if (!positions.isEmpty()) {
                 setCooldown(CD_RAISE, summonInterval);
+                List<GridPos> summonTiles = positions;
+                GridPos skullTile = null;
+                if (isPhaseTwo() && positions.size() > count) {
+                    skullTile = positions.get(positions.size() - 1);
+                    summonTiles = positions.subList(0, positions.size() - 1);
+                }
                 // Telegraph: ground cracks on summon tiles, resolves next turn
                 EnemyAction summon = new EnemyAction.SummonMinions(
-                    "minecraft:zombie", positions.size(), positions, 6, 2, 0);
+                    "minecraft:zombie", summonTiles.size(), summonTiles, 6, 2, 0);
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.GROUND_CRACK,
-                    positions, 1, summon, 0xFF44FF44);
+                    summonTiles, 1, summon, 0xFF44FF44);
+                if (skullTile != null) {
+                    int sdx = Integer.signum(playerPos.x() - skullTile.x());
+                    int sdz = Integer.signum(playerPos.z() - skullTile.z());
+                    return new EnemyAction.SpawnProjectile(
+                        "minecraft:blaze", List.of(skullTile),
+                        List.of(sdx != 0 ? new int[]{sdx, 0} : new int[]{0, sdz != 0 ? sdz : 1}),
+                        1, 3, 0, "grave_skull");
+                }
                 return new EnemyAction.Idle();
             }
         }

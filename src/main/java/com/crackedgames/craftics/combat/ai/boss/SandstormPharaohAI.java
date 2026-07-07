@@ -19,7 +19,10 @@ import java.util.List;
  * - Sandstorm: 3×3 AoE, 3 dmg, -1 accuracy 2 turns.
  * - Curse of the Sands: Mark player - tiles moved off become quicksand. 3 turns.
  *
- * Phase 2 - "Tomb Wrath": 2 mines/turn, 3×3 burial, summon 2 Husks (once).
+ * Phase 2 - "Tomb Wrath": 2 mines/turn, 3×3 burial, summon 2 Husks (once) -
+ * and every Sand Burial cast releases 2 SCARABS while the sand gathers: 1-HP
+ * homing bug entities (SeekingProjectileAI, 2 tiles/turn) that burrow in for
+ * 2 damage + 2 turns of Poison. Squash them before they reach you.
  */
 public class SandstormPharaohAI extends BossAI {
     private static final String CD_MINE = "plant_mine";
@@ -121,6 +124,22 @@ public class SandstormPharaohAI extends BossAI {
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
                 burialTiles, 1, burial, 0xFFCC9933);
+            // Phase 2: the gathering sand disgorges 2 homing scarabs on the
+            // cast turn (instead of the usual advance) - burial turns apply
+            // pressure from two directions at once.
+            if (isPhaseTwo()) {
+                List<GridPos> scarabTiles = findSummonPositions(arena, 2);
+                if (!scarabTiles.isEmpty()) {
+                    List<int[]> dirs = new ArrayList<>();
+                    for (GridPos t : scarabTiles) {
+                        int sdx = Integer.signum(playerPos.x() - t.x());
+                        int sdz = Integer.signum(playerPos.z() - t.z());
+                        dirs.add(sdx != 0 ? new int[]{sdx, 0} : new int[]{0, sdz != 0 ? sdz : 1});
+                    }
+                    return new EnemyAction.SpawnProjectile(
+                        "minecraft:blaze", scarabTiles, dirs, 1, 2, 0, "scarab");
+                }
+            }
             return advanceWhileCharging(self, arena, playerPos);
         }
 
