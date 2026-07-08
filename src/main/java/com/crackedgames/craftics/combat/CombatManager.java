@@ -3917,6 +3917,9 @@ public class CombatManager {
 
         // Start animated movement
         clearHighlights();
+        // Telegraphs must stay visible while the player walks - arrival's
+        // refreshHighlights() restores the rest.
+        syncWarningTiles();
         this.movePath = path;
         this.movePathIndex = 0;
         this.moveTickCounter = 0;
@@ -9108,6 +9111,8 @@ public class CombatManager {
                 net.minecraft.sound.SoundCategory.PLAYERS, 0.6f, 0.5f);
         }
         clearHighlights();
+        // Keep live boss telegraphs painted while the enemies act.
+        syncWarningTiles();
         phase = CombatPhase.ENEMY_TURN;
         enemyTurnIndex = 0;
         enemyTurnDelay = 10;
@@ -10549,7 +10554,11 @@ public class CombatManager {
         EnemyAI ai = resolveAi(currentEnemy);
         // Resolve pending telegraphs for anything running on a BossAI -real bosses
         // AND mirror-image clones that run VoidWalkerAI with their own state.
-        if (currentEnemy.isBoss() || ai instanceof BossAI) {
+        // Skip on an infinite boss's 2nd+ action of the SAME enemy phase
+        // (inf_actions_used > 0): a telegraph stored by action 1 must survive
+        // until the player has had a turn to react, not resolve seconds later.
+        if ((currentEnemy.isBoss() || ai instanceof BossAI)
+                && currentEnemy.getAiMemory("inf_actions_used", 0) == 0) {
             resolvePendingBossWarnings(currentEnemy);
         }
         if (currentEnemy.isBoss()) {
@@ -11195,6 +11204,16 @@ public class CombatManager {
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
+            case EnemyAction.PlaceWeb pw -> {
+                // Infinite-pool web_spray/entangle return this directly (campaign
+                // bosses only ever emit it as a BossAbility sub-action) - without
+                // this case it fell to the default and silently did nothing.
+                sendMessage("§c" + currentEnemy.getDisplayName() + " sprays webbing!");
+                resolvePlaceWeb(pw);
+                sendSync();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
             case EnemyAction.BossAbility ba -> {
                 // Warning telegraph -store and resolve next turn, or resolve immediately if no warning tiles.
                 // Late-game bosses (ordinal >= 3) normally skip the telegraph and fire immediately,
@@ -11210,6 +11229,9 @@ public class CombatManager {
                         + ")");
                     // Store pending warning for resolution next turn
                     pendingBossWarnings.add(new PendingBossWarning(currentEnemy, ba));
+                    // Paint it NOW - the telegraph fires mid-enemy-phase, where
+                    // refreshHighlights() is turn-gated and would drop it.
+                    syncWarningTiles();
                     // The boss visibly channels while the telegraph charges -
                     // arms raised, head up, converging enchant particles.
                     if (currentEnemy.getMobEntity() != null) {
@@ -11471,6 +11493,7 @@ public class CombatManager {
 
     private void resolvePendingBossWarnings(CombatEntity boss) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
+        boolean resolvedAny = false;
         var iterator = pendingBossWarnings.iterator();
         while (iterator.hasNext()) {
             PendingBossWarning pw = iterator.next();
@@ -11491,7 +11514,13 @@ public class CombatManager {
                 }
                 dispatchBossSubAction(pw.ability().resolvedAction());
                 iterator.remove();
+                resolvedAny = true;
             }
+        }
+        if (resolvedAny) {
+            // Un-paint the resolved telegraph immediately; the next player-turn
+            // refreshHighlights() is a whole enemy phase away.
+            syncWarningTiles();
         }
     }
 
@@ -12332,6 +12361,30 @@ public class CombatManager {
     }
 
     /**
+     * A free, walkable tile adjacent (8-dir) to {@code want} for a displaced
+     * projectile spawn, never a tile a party member is standing on. Null when
+     * the whole neighborhood is blocked.
+     */
+    private GridPos findFreeProjectileTileNear(GridPos want) {
+        if (arena == null || want == null) return null;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                GridPos cand = new GridPos(want.x() + dx, want.z() + dz);
+                if (!arena.isInBounds(cand) || arena.isOccupied(cand)) continue;
+                GridTile t = arena.getTile(cand);
+                if (t == null || !t.isWalkable()) continue;
+                boolean onPlayer = false;
+                for (GridPos pp : arena.getAllPlayerGridPositions()) {
+                    if (cand.equals(pp)) { onPlayer = true; break; }
+                }
+                if (!onPlayer) return cand;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Spawn projectile entities for a boss SpawnProjectile action.
      */
     private void spawnProjectiles(EnemyAction.SpawnProjectile sp) {
@@ -12352,7 +12405,27 @@ public class CombatManager {
             GridPos pos = sp.positions().get(i);
             int[] dir = sp.directions().get(i);
 
-            if (!arena.isInBounds(pos) || arena.isOccupied(pos)) continue;
+            // Positions were picked when the ability was CAST - for telegraphed
+            // barrages that's a full boss action earlier, and by resolve time the
+            // player/boss/a minion can be standing there. Shift to a free
+            // neighbor instead of silently dropping the projectile (which made
+            // whole barrages fizzle against a mobile 1x1 infinite boss).
+            if (!arena.isInBounds(pos) || arena.isOccupied(pos)
+                    || arena.getTile(pos) == null || !arena.getTile(pos).isWalkable()) {
+                pos = findFreeProjectileTileNear(pos);
+                if (pos == null) continue;
+            }
+            // Re-aim from the actual spawn tile at the player's current position;
+            // the cast-time direction goes stale the moment the player moves.
+            GridPos aim = arena.getPlayerGridPos();
+            if (aim != null && !aim.equals(pos)) {
+                int adx = aim.x() - pos.x();
+                int adz = aim.z() - pos.z();
+                dir = Math.abs(adx) >= Math.abs(adz)
+                    ? new int[]{Integer.signum(adx), 0}
+                    : new int[]{0, Integer.signum(adz)};
+            }
+
             GridTile tile = arena.getTile(pos);
             if (tile == null || !tile.isWalkable()) continue;
 
@@ -23638,6 +23711,62 @@ public class CombatManager {
         sendToAllParty(new TileSetPayload(
             new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0], new int[0]
         ));
+    }
+
+    /**
+     * Re-send ONLY the boss telegraph overlay (red warning tiles + direction
+     * arrows), leaving move/attack/danger empty. refreshHighlights() is gated
+     * to PLAYER_TURN and clearHighlights() wipes everything, so without this
+     * a telegraph disappeared from the player's screen for the entire enemy
+     * phase - exactly the window in which it resolves onto their tile.
+     */
+    private void syncWarningTiles() {
+        if (player == null || !active) return;
+        pendingBossWarnings.removeIf(pw -> !pw.boss().isAlive());
+        java.util.List<Integer> warnList = new java.util.ArrayList<>();
+        java.util.List<Integer> arrowList = new java.util.ArrayList<>();
+        for (PendingBossWarning pw : pendingBossWarnings) {
+            if (pw.ability().warningTiles() != null) {
+                for (GridPos wt : pw.ability().warningTiles()) {
+                    warnList.add(wt.x());
+                    warnList.add(wt.z());
+                }
+            }
+            if (pw.ability().arrowTiles() != null
+                    && (pw.ability().arrowDx() != 0 || pw.ability().arrowDz() != 0)) {
+                for (GridPos at : pw.ability().arrowTiles()) {
+                    arrowList.add(at.x());
+                    arrowList.add(at.z());
+                    arrowList.add(pw.ability().arrowDx());
+                    arrowList.add(pw.ability().arrowDz());
+                }
+            }
+        }
+        // BossWarning-style telegraphs (campaign bosses that manage their own
+        // pendingWarning) get the same treatment as in refreshHighlights.
+        for (CombatEntity enemy : enemies) {
+            if (!enemy.isBoss() || !enemy.isAlive()) continue;
+            var eAi = resolveAi(enemy);
+            if (eAi instanceof com.crackedgames.craftics.combat.ai.boss.BossAI bai
+                    && bai.getPendingWarning() != null) {
+                var pending = bai.getPendingWarning();
+                for (GridPos wt : pending.getAffectedTiles()) {
+                    warnList.add(wt.x());
+                    warnList.add(wt.z());
+                    if (pending.hasDirection()) {
+                        arrowList.add(wt.x());
+                        arrowList.add(wt.z());
+                        arrowList.add(pending.getDirX());
+                        arrowList.add(pending.getDirZ());
+                    }
+                }
+            }
+        }
+        sendToAllParty(new TileSetPayload(
+            new int[0], new int[0], new int[0],
+            warnList.stream().mapToInt(Integer::intValue).toArray(),
+            new int[0], "", new int[0],
+            arrowList.stream().mapToInt(Integer::intValue).toArray()));
     }
 
     /**

@@ -297,8 +297,9 @@ public final class InfiniteRunManager {
                 + "§7 (the run's host) can ring the party onward."), false);
             return ActionResult.SUCCESS;
         }
-        if (CombatManager.get(hostUuid).isActive()
-                || CombatManager.getActiveCombat(hostUuid) != null) {
+        // NOTE: getActiveCombat() never returns null (its fallback creates an
+        // inactive instance), so a null-check here would silently eat every ring.
+        if (CombatManager.isEngaged(hostUuid)) {
             return ActionResult.SUCCESS; // already mid-fight; ignore the double-ring
         }
 
