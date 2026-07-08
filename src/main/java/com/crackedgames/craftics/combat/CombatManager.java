@@ -8018,10 +8018,46 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Open a crafting station's UI for the acting player, spending {@link
+     * CraftingStations#AP_COST} AP. The screen is bound to the player's own tile,
+     * so any items left in the station's working slots on close drop at their feet
+     * and are re-collected -nothing is lost. No block is placed; the held station
+     * item stays in the player's hand.
+     */
+    private void handleStationOpen(CraftingStations.Station station) {
+        if (player == null || arena == null) return;
+        if (apRemaining < CraftingStations.AP_COST) {
+            sendMessage("§cNeed " + CraftingStations.AP_COST + " AP to use the "
+                + station.label() + "! (have " + apRemaining + ")");
+            return;
+        }
+        if (!(player.getEntityWorld() instanceof ServerWorld world)) return;
+        net.minecraft.screen.ScreenHandlerContext ctx =
+            net.minecraft.screen.ScreenHandlerContext.create(world, player.getBlockPos());
+        // Charge only if the screen actually opened (openHandledScreen is empty
+        // when the player already has a screen up).
+        if (player.openHandledScreen(station.factory(ctx)).isEmpty()) return;
+        apRemaining -= CraftingStations.AP_COST;
+        sendMessage("§b✦ " + station.label() + " opened. §7(-" + CraftingStations.AP_COST + " AP)");
+        sendSync();
+        refreshHighlights();
+    }
+
     private void handleUseItem(GridPos targetTile) {
         // Variable AP cost based on item type (stack-aware for goat horns)
         ItemStack heldStack = player.getMainHandStack();
         Item heldItem = heldStack.getItem();
+
+        // Crafting stations (crafting table, smithing table, loom, stonecutter,
+        // grindstone, cartography table, enchanting table): spend 1 AP to open the
+        // station's UI for the acting player. The item is not consumed and no block
+        // is placed. Furnaces/smelters are intentionally not stations.
+        CraftingStations.Station station = CraftingStations.of(heldItem);
+        if (station != null) {
+            handleStationOpen(station);
+            return;
+        }
 
         // Co-op feed: holding food + clicking an adjacent ally tile feeds them
         // instead of self-healing. Lets parties share consumables to keep a

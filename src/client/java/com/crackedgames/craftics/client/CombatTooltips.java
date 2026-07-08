@@ -656,6 +656,14 @@ public class CombatTooltips implements ItemTooltipCallback {
     }
 
     private static String getTooltipFor(Item item) {
+        // ── Crafting stations ── open their UI mid-battle for 1 AP.
+        com.crackedgames.craftics.combat.CraftingStations.Station station =
+            com.crackedgames.craftics.combat.CraftingStations.of(item);
+        if (station != null) {
+            return "§d" + com.crackedgames.craftics.combat.CraftingStations.AP_COST
+                + " AP §7- Opens the " + station.label() + " in battle";
+        }
+
         // ── Copper Age Backport ── (modded items; resolved at runtime)
         Item copperSword = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperSword();
         if (copperSword != null) {

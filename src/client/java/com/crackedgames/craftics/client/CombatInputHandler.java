@@ -78,6 +78,8 @@ public class CombatInputHandler {
             return ActionMode.MELEE_ATTACK;
         // Spawn eggs are use-items - clicking a tile summons an ally there.
         if (held instanceof net.minecraft.item.SpawnEggItem) return ActionMode.USE_ITEM;
+        // Crafting stations open their UI on click (1 AP).
+        if (com.crackedgames.craftics.combat.CraftingStations.isStation(held)) return ActionMode.USE_ITEM;
         // Eligible wall blocks place a 4-turn obstacle on click.
         if (com.crackedgames.craftics.combat.WallBlocks.isEligibleItem(held)) return ActionMode.USE_ITEM;
         if (FOODS.contains(held) || USE_ITEMS.contains(held)
