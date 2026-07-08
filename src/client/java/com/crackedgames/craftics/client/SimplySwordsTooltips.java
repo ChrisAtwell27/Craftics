@@ -181,7 +181,7 @@ public final class SimplySwordsTooltips {
                 "heals you for 30% of damage; 20% to sap 1 ATK",
                 "It feeds so you don't have to."};
             case "soulrender" -> new String[]{"Rend Souls",
-                "cleave arc at half damage; +1 HP per enemy caught",
+                "cleave arc at half damage; +2 HP per enemy caught",
                 "Every soul torn is a breath returned."};
             case "soulstealer" -> new String[]{"Siphon",
                 "heals you for 25% of damage; 15% to steal 1 ATK",

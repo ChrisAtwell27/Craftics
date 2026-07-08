@@ -288,16 +288,13 @@ public final class SimplySwordsUniques {
             target.stackBurning(1, 0);
             fxRing(player, arena, target, 1.5, ParticleTypes.FLAME, "entity.generic.explode", 0.7f);
             msgs.add("§6✦ Cinder Slam! §7Embers scatter from the impact.");
-            GridPos tPos = target.getGridPos();
-            for (CombatEntity e : arena.getOccupants().values()) {
-                if (e == target || !e.isAlive() || e.isAlly()) continue;
-                if (tPos.manhattanDistance(e.getGridPos()) <= 1) {
-                    int dmg = e.takeDamage(Math.max(1, baseDamage / 2));
-                    e.stackBurning(1, 0);
-                    extras.add(e);
-                    total += dmg;
-                    msgs.add("§6✦ Cinders hit " + e.getDisplayName() + " for " + dmg + "!");
-                }
+            for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                    AoeShapes.slam3x3(target.getGridPos()), target)) {
+                int dmg = e.takeDamage(Math.max(1, baseDamage / 2));
+                e.stackBurning(1, 0);
+                extras.add(e);
+                total += dmg;
+                msgs.add("§6✦ Cinders hit " + e.getDisplayName() + " for " + dmg + "!");
             }
             return new WeaponAbility.AttackResult(total, msgs, extras);
         };
@@ -452,16 +449,13 @@ public final class SimplySwordsUniques {
             target.stackSoaked(2, 1);
             fxRing(player, arena, target, 1.6, ParticleTypes.SPLASH, "entity.generic.splash", 0.6f);
             msgs.add("§3✦ Depth Charge! §7A wall of water crashes outward.");
-            GridPos tPos = target.getGridPos();
-            for (CombatEntity e : arena.getOccupants().values()) {
-                if (e == target || !e.isAlive() || e.isAlly()) continue;
-                if (tPos.manhattanDistance(e.getGridPos()) <= 1) {
-                    int dmg = e.takeDamage(Math.max(1, baseDamage / 2));
-                    e.stackSoaked(2, 1);
-                    extras.add(e);
-                    total += dmg;
-                    msgs.add("§3✦ The wave hits " + e.getDisplayName() + " for " + dmg + "!");
-                }
+            for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                    AoeShapes.slam3x3(target.getGridPos()), target)) {
+                int dmg = e.takeDamage(Math.max(1, baseDamage / 2));
+                e.stackSoaked(2, 1);
+                extras.add(e);
+                total += dmg;
+                msgs.add("§3✦ The wave hits " + e.getDisplayName() + " for " + dmg + "!");
             }
             return new WeaponAbility.AttackResult(total, msgs, extras);
         };
@@ -503,15 +497,12 @@ public final class SimplySwordsUniques {
                 total += bonus;
                 msgs.add("§e✦ THUNDERSTRIKE! §7Lightning courses through " + target.getDisplayName()
                     + " for +" + bonus + "!");
-                GridPos tPos = target.getGridPos();
-                for (CombatEntity e : arena.getOccupants().values()) {
-                    if (e == target || !e.isAlive() || e.isAlly()) continue;
-                    if (tPos.manhattanDistance(e.getGridPos()) <= 1) {
-                        int dmg = e.takeDamage(Math.max(1, baseDamage / 2));
-                        extras.add(e);
-                        total += dmg;
-                        msgs.add("§e✦ The shockwave arcs to " + e.getDisplayName() + " for " + dmg + "!");
-                    }
+                for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                        AoeShapes.slam3x3(target.getGridPos()), target)) {
+                    int dmg = e.takeDamage(Math.max(1, baseDamage / 2));
+                    extras.add(e);
+                    total += dmg;
+                    msgs.add("§e✦ The shockwave arcs to " + e.getDisplayName() + " for " + dmg + "!");
                 }
             }
             return new WeaponAbility.AttackResult(total, msgs, extras);
@@ -946,15 +937,12 @@ public final class SimplySwordsUniques {
                 total += bonus;
                 fxBurst(player, arena, target, ParticleTypes.END_ROD, 26, "block.amethyst_block.resonate", 0.8f);
                 msgs.add("§f✦ STARFALL! §7Starlight lances down for +" + bonus + "!");
-                GridPos tPos = target.getGridPos();
-                for (CombatEntity e : arena.getOccupants().values()) {
-                    if (e == target || !e.isAlive() || e.isAlly()) continue;
-                    if (tPos.manhattanDistance(e.getGridPos()) <= 1) {
-                        int dmg = e.takeDamage(Math.max(1, baseDamage / 2));
-                        extras.add(e);
-                        total += dmg;
-                        msgs.add("§f✦ Stardust burns " + e.getDisplayName() + " for " + dmg + "!");
-                    }
+                for (CombatEntity e : AoeShapes.enemiesOn(arena,
+                        AoeShapes.slam3x3(target.getGridPos()), target)) {
+                    int dmg = e.takeDamage(Math.max(1, baseDamage / 2));
+                    extras.add(e);
+                    total += dmg;
+                    msgs.add("§f✦ Stardust burns " + e.getDisplayName() + " for " + dmg + "!");
                 }
             }
             return new WeaponAbility.AttackResult(total, msgs, extras);
