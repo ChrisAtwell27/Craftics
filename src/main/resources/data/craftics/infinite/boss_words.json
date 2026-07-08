@@ -11,7 +11,8 @@
     "Bloodied", "Stormbound", "Nameless", "Forgotten", "Endless", "Volatile",
     "Seething", "Ghastly", "Brutal", "Sinister", "Arcane", "Fallen", "Wretched",
     "Gluttonous", "Thorned", "Smoldering", "Abyssal", "Screaming", "Petrified",
-    "Starving", "Lurking", "Vengeful", "Sleepless", "Marrowed", "Unchained"
+    "Starving", "Lurking", "Vengeful", "Sleepless", "Marrowed", "Unchained", "Silly", "Cracked",
+    "Crunk", "Ballsy", "Eggy", "Bumble", "Wild", "Hairy"
   ],
   "second": [
     "Warden", "Butcher", "Monarch", "Reaper", "Tyrant", "Devourer", "Herald",
@@ -25,6 +26,7 @@
     "Hierophant", "Kingslayer", "Mauler", "Necromancer", "Punisher",
     "Scourge", "Tormentor", "Undertaker", "Vulture", "Warbringer", "Basilisk",
     "Cinderlord", "Doomsayer", "Earthshaker", "Frostfang", "Gorgon",
-    "Hollowmaw", "Ironjaw", "Mireking", "Nightcaller", "Plaguebearer"
+    "Hollowmaw", "Ironjaw", "Mireking", "Nightcaller", "Plaguebearer", "Egg", "Mom", "Dad",
+    "Thing", "Guy", "Chud", "Bee", "Flower"
   ]
 }
