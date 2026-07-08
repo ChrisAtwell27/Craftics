@@ -685,6 +685,14 @@ public class CombatManager {
         // Drop the leaver from the cinematic so they never block the arrived/finished gates.
         if (activeCinematic != null) activeCinematic.removePlayer(memberUuid);
         if (traderPendingPlayers.remove(memberUuid)) {
+            // Reclaim any emerald items still in the leaver's inventory into their bank.
+            // offerTrader materialized their whole balance as items, so a mid-trade
+            // disconnect would otherwise strand the currency as loose inventory items.
+            if (server != null) {
+                ServerPlayerEntity leaver = server.getPlayerManager().getPlayer(memberUuid);
+                if (leaver != null) reclaimTraderEmeralds(leaver);
+            }
+            traderQueue.remove(memberUuid);
             // If the leaver was the active shopper, release the shared-merchant lock
             // and hand it to the next queued member so the party doesn't freeze on the
             // waiting overlay. Mirrors the handoff in handleTraderDone.
@@ -693,9 +701,8 @@ public class CombatManager {
                 if (spawnedTrader != null) spawnedTrader.setCustomer(null);
                 while (!traderQueue.isEmpty()) {
                     java.util.UUID nextUuid = traderQueue.poll();
-                    ServerPlayerEntity next = firstOnlinePartyMember() != null
-                        ? firstOnlinePartyMember().getServer().getPlayerManager().getPlayer(nextUuid)
-                        : null;
+                    ServerPlayerEntity next = server != null
+                        ? server.getPlayerManager().getPlayer(nextUuid) : null;
                     if (next != null && traderPendingPlayers.contains(nextUuid)) {
                         openTraderFor(next);
                         break;
@@ -781,12 +788,21 @@ public class CombatManager {
         }
     }
 
-    /** First still-online party member, or {@code null} if everyone is gone. */
+    /** First still-online party member, or {@code null} if everyone is gone. During a
+     *  between-level gate endCombat has already run cleanupPartyTracking, so partyPlayers
+     *  is EMPTY -every disconnect finalizer in clearEventPendingForDisconnect would get
+     *  null here and silently strand the party. Fall back to the durable EventManager
+     *  roster (how the event code itself reaches players), then to this CM's owner. */
     private ServerPlayerEntity firstOnlinePartyMember() {
         for (ServerPlayerEntity p : partyPlayers) {
             if (p != null && !p.isRemoved() && !p.isDisconnected()) return p;
         }
-        return null;
+        if (eventManager != null && server != null) {
+            for (ServerPlayerEntity p : eventManager.getOnlineParticipants(server.getOverworld())) {
+                if (p != null && !p.isRemoved() && !p.isDisconnected()) return p;
+            }
+        }
+        return resolveCmOwnerPlayer(null);
     }
 
     /** True if this combat manager is holding {@code uuid} in a between-level event gate
@@ -889,6 +905,7 @@ public class CombatManager {
             if (cm.traderPendingPlayers.contains(playerUuid)) return cm;
             if (cm.introPendingPlayers.contains(playerUuid)) return cm;
             if (cm.digSitePendingPlayers.contains(playerUuid)) return cm;
+            if (cm.lootPendingPlayers.contains(playerUuid)) return cm;
         }
         return get(playerUuid);
     }
@@ -911,7 +928,8 @@ public class CombatManager {
             if (cm.eventPendingPlayers.contains(playerUuid)
                     || cm.traderPendingPlayers.contains(playerUuid)
                     || cm.introPendingPlayers.contains(playerUuid)
-                    || cm.digSitePendingPlayers.contains(playerUuid)) return true;
+                    || cm.digSitePendingPlayers.contains(playerUuid)
+                    || cm.lootPendingPlayers.contains(playerUuid)) return true;
         }
         CombatManager own = INSTANCES.get(playerUuid);
         return own != null && own.active;
@@ -11354,7 +11372,12 @@ public class CombatManager {
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay() + 4;
             }
-            case EnemyAction.ProjectileMove pm -> {
+            case EnemyAction.ProjectileMove pmRaw -> {
+                // ProjectileAI collision-tests only the single AI-target tile (the
+                // closest member), so in co-op its flight path can pass straight
+                // through everyone else. Clip at the first member on the path.
+                EnemyAction.ProjectileMove pm = clipProjectileAtAnyMember(pmRaw);
+                if (pm != pmRaw) pendingAction = pm;
                 if (pm.path().isEmpty()) {
                     if (pm.impacts()) {
                         resolveProjectileImpact(currentEnemy, pm.impactPos());
@@ -12612,6 +12635,85 @@ public class CombatManager {
         }
     }
 
+    /** Party members standing within {@code radius} tiles (Chebyshev box) of
+     *  {@code center}; falls back to the tracked player solo. Offline and dead
+     *  members are skipped. radius 0 = exact tile only. */
+    private java.util.List<ServerPlayerEntity> partyVictimsNear(GridPos center, int radius) {
+        java.util.List<ServerPlayerEntity> victims = new java.util.ArrayList<>();
+        if (partyPlayers.size() > 1) {
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                if (deadPartyMembers.contains(member.getUuid())) continue;
+                GridPos mPos = gridPosOf(member);
+                if (Math.abs(mPos.x() - center.x()) <= radius
+                    && Math.abs(mPos.z() - center.z()) <= radius) {
+                    victims.add(member);
+                }
+            }
+        } else {
+            GridPos playerGridPos = arena.getPlayerGridPos();
+            if (Math.abs(playerGridPos.x() - center.x()) <= radius
+                && Math.abs(playerGridPos.z() - center.z()) <= radius) {
+                victims.add(player);
+            }
+        }
+        return victims;
+    }
+
+    /** Per-victim messaging/effects hook for {@link #damagePartyVictims}. Runs inside
+     *  the this.player swap, so addEffectHooked/getPlayerHp target the victim. */
+    private interface PartyHitCallback {
+        void accept(ServerPlayerEntity victim, int actualDamage, boolean swapped);
+    }
+
+    /**
+     * Damage every listed party member, routing each through the this.player swap so
+     * their own dodge/armor/effects/death handling apply (mirrors resolveAreaAttack's
+     * loop, shared by the projectile impact types).
+     *
+     * @return true when a death ended combat (game over) -the caller must stop
+     *         touching combat state immediately.
+     */
+    private boolean damagePartyVictims(java.util.List<ServerPlayerEntity> victims, int damage,
+                                       PartyHitCallback afterDamage) {
+        for (ServerPlayerEntity victim : victims) {
+            ServerPlayerEntity savedPlayer = this.player;
+            boolean swapped = victim != savedPlayer;
+            if (swapped) { this.player = victim; retargetEffectsToCurrentPlayer(); }
+            boolean victimDied = false;
+            try {
+                int actual = damagePlayer(damage);
+                afterDamage.accept(victim, actual, swapped);
+                if (getPlayerHp() <= 0) {
+                    victimDied = true;
+                    handlePlayerDeathOrGameOver();
+                    if (partyPlayers.size() <= 1 || !active) return true;
+                }
+            } finally {
+                if (!victimDied) { this.player = savedPlayer; retargetEffectsToCurrentPlayer(); }
+            }
+        }
+        return false;
+    }
+
+    /** ProjectileAI is handed one target tile (the closest member), so in co-op its
+     *  flight path can sail through other party members. Clip the returned move at the
+     *  first path tile any living member is standing on and impact there instead. */
+    private EnemyAction.ProjectileMove clipProjectileAtAnyMember(EnemyAction.ProjectileMove pm) {
+        if (pm.path().isEmpty() || partyPlayers.size() <= 1 || arena == null) return pm;
+        refreshAllPlayerGridPositions();
+        java.util.List<GridPos> allPlayers = arena.getAllPlayerGridPositions();
+        for (int i = 0; i < pm.path().size(); i++) {
+            GridPos step = pm.path().get(i);
+            if (allPlayers.contains(step)) {
+                if (pm.impacts() && step.equals(pm.impactPos())) return pm; // already ends here
+                return new EnemyAction.ProjectileMove(
+                    new java.util.ArrayList<>(pm.path().subList(0, i + 1)), true, step);
+            }
+        }
+        return pm;
+    }
+
     /**
      * Resolve a projectile impact -AOE explosion for fireballs, wither effect for skulls.
      */
@@ -12640,19 +12742,21 @@ public class CombatManager {
                 net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.0f);
 
             int aoeRadius = 1;
-            GridPos playerGridPos = arena.getPlayerGridPos();
 
-            // Damage player if in AOE (skip for redirected fireballs -they're heading away)
-            if (!redirected
-                    && Math.abs(playerGridPos.x() - effectCenter.x()) <= aoeRadius
-                    && Math.abs(playerGridPos.z() - effectCenter.z()) <= aoeRadius) {
-                int actual = damagePlayer(damage);
-                sendMessage("§c  Explosion hit for " + actual + " damage! (HP: " + getPlayerHp() + ")");
-                if (!combatEffects.hasFireResistance()) {
-                    addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
-                    sendMessage("§6  You're burning for 2 turns!");
-                }
-                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            // Damage EVERY party member in the AOE, not just the leader-tracked player
+            // (skip for redirected fireballs -they're heading away)
+            if (!redirected) {
+                boolean gameOver = damagePartyVictims(partyVictimsNear(effectCenter, aoeRadius),
+                    damage, (victim, actual, swapped) -> {
+                        sendMessage("§c  Explosion hit " + (swapped ? victim.getName().getString() : "you")
+                            + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+                        if (!combatEffects.hasFireResistance()) {
+                            addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
+                            sendMessage("§6  " + (swapped ? victim.getName().getString() + " is" : "You're")
+                                + " burning for 2 turns!");
+                        }
+                    });
+                if (gameOver) return;
             }
 
             // Damage all enemies in AOE (always -this is how redirected fireballs damage the boss)
@@ -12710,14 +12814,16 @@ public class CombatManager {
             world.spawnParticles(net.minecraft.particle.ParticleTypes.LARGE_SMOKE,
                 bp.getX() + 0.5, bp.getY() + 1.3, bp.getZ() + 0.5, 6, 0.4, 0.5, 0.4, 0.01);
 
-            // Damage + wither to player if hit
-            GridPos playerGridPos = arena.getPlayerGridPos();
-            if (effectCenter.equals(playerGridPos)) {
-                int actual = damagePlayer(damage);
-                sendMessage("§8  Wither Skull hits for " + actual + " damage!");
-                addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
-                sendMessage("§8  Withered for 3 turns! (damage ramps up)");
-                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            // Damage + wither to whichever party member is on the impact tile
+            if (damagePartyVictims(partyVictimsNear(effectCenter, 0), damage,
+                    (victim, actual, swapped) -> {
+                        sendMessage("§8  Wither Skull hits " + (swapped ? victim.getName().getString() : "you")
+                            + " for " + actual + " damage!");
+                        addEffectHooked(CombatEffects.EffectType.WITHER, 3, 0);
+                        sendMessage("§8  " + (swapped ? victim.getName().getString() + " is withered" : "Withered")
+                            + " for 3 turns! (damage ramps up)");
+                    })) {
+                return;
             }
         } else if ("shulker_bullet".equals(type)) {
             world.spawnParticles(net.minecraft.particle.ParticleTypes.END_ROD,
@@ -12728,13 +12834,15 @@ public class CombatManager {
                 net.minecraft.sound.SoundEvents.ENTITY_SHULKER_BULLET_HIT,
                 net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.0f);
 
-            GridPos playerGridPos = arena.getPlayerGridPos();
-            if (effectCenter.equals(playerGridPos)) {
-                int actual = damagePlayer(damage);
-                sendMessage("§d✦ Shulker bullet hits for " + actual + " damage!");
-                addEffectHooked(CombatEffects.EffectType.LEVITATION, 2, 0);
-                sendMessage("§d  You float helplessly - Levitation for 2 turns!");
-                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            if (damagePartyVictims(partyVictimsNear(effectCenter, 0), damage,
+                    (victim, actual, swapped) -> {
+                        sendMessage("§d✦ Shulker bullet hits " + (swapped ? victim.getName().getString() : "you")
+                            + " for " + actual + " damage!");
+                        addEffectHooked(CombatEffects.EffectType.LEVITATION, 2, 0);
+                        sendMessage("§d  " + (swapped ? victim.getName().getString() + " floats" : "You float")
+                            + " helplessly - Levitation for 2 turns!");
+                    })) {
+                return;
             }
         } else if ("grave_skull".equals(type)) {
             world.spawnParticles(net.minecraft.particle.ParticleTypes.SOUL,
@@ -12745,13 +12853,15 @@ public class CombatManager {
                 net.minecraft.sound.SoundEvents.ENTITY_WITHER_SKELETON_HURT,
                 net.minecraft.sound.SoundCategory.HOSTILE, 0.8f, 0.7f);
 
-            GridPos playerGridPos = arena.getPlayerGridPos();
-            if (effectCenter.equals(playerGridPos)) {
-                int actual = damagePlayer(damage);
-                sendMessage("§8☠ Grave Skull bites for " + actual + " damage!");
-                addEffectHooked(CombatEffects.EffectType.WITHER, 2, 0);
-                sendMessage("§8  Withered for 2 turns!");
-                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            if (damagePartyVictims(partyVictimsNear(effectCenter, 0), damage,
+                    (victim, actual, swapped) -> {
+                        sendMessage("§8☠ Grave Skull bites " + (swapped ? victim.getName().getString() : "you")
+                            + " for " + actual + " damage!");
+                        addEffectHooked(CombatEffects.EffectType.WITHER, 2, 0);
+                        sendMessage("§8  " + (swapped ? victim.getName().getString() + " is withered" : "Withered")
+                            + " for 2 turns!");
+                    })) {
+                return;
             }
         } else if ("scarab".equals(type)) {
             world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
@@ -12762,13 +12872,15 @@ public class CombatManager {
                 net.minecraft.sound.SoundEvents.ENTITY_SILVERFISH_DEATH,
                 net.minecraft.sound.SoundCategory.HOSTILE, 0.9f, 0.8f);
 
-            GridPos playerGridPos = arena.getPlayerGridPos();
-            if (effectCenter.equals(playerGridPos)) {
-                int actual = damagePlayer(damage);
-                sendMessage("§2⚘ Scarab burrows in for " + actual + " damage!");
-                addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
-                sendMessage("§2  Poisoned for 2 turns!");
-                if (getPlayerHp() <= 0) handlePlayerDeathOrGameOver();
+            if (damagePartyVictims(partyVictimsNear(effectCenter, 0), damage,
+                    (victim, actual, swapped) -> {
+                        sendMessage("§2⚘ Scarab burrows into " + (swapped ? victim.getName().getString() : "you")
+                            + " for " + actual + " damage!");
+                        addEffectHooked(CombatEffects.EffectType.POISON, 2, 0);
+                        sendMessage("§2  " + (swapped ? victim.getName().getString() + " is poisoned" : "Poisoned")
+                            + " for 2 turns!");
+                    })) {
+                return;
             }
         }
 
@@ -12802,51 +12914,18 @@ public class CombatManager {
         // Hit EVERY party member inside the AoE box, not just the host. The boss
         // AI centers the blast on the closest member, so in co-op the targeted
         // teammate (if not the leader-tracked player) previously took zero damage
-        // while the wrong player got hit. Each member is routed via the this.player
-        // swap so their dodge/armor/effects/death handling apply. Mirrors the
-        // creeper Explode loop.
-        java.util.List<ServerPlayerEntity> areaVictims = new java.util.ArrayList<>();
-        if (partyPlayers.size() > 1) {
-            for (ServerPlayerEntity member : partyPlayers) {
-                if (member == null || member.isRemoved() || member.isDisconnected()) continue;
-                if (deadPartyMembers.contains(member.getUuid())) continue;
-                GridPos mPos = gridPosOf(member);
-                if (Math.abs(mPos.x() - center.x()) <= radius
-                    && Math.abs(mPos.z() - center.z()) <= radius) {
-                    areaVictims.add(member);
-                }
-            }
-        } else {
-            GridPos playerGridPos = arena.getPlayerGridPos();
-            if (Math.abs(playerGridPos.x() - center.x()) <= radius
-                && Math.abs(playerGridPos.z() - center.z()) <= radius) {
-                areaVictims.add(player);
-            }
-        }
-        boolean gameOverFromArea = false;
-        for (ServerPlayerEntity victim : areaVictims) {
-            ServerPlayerEntity savedAreaPlayer = this.player;
-            boolean areaSwapped = victim != savedAreaPlayer;
-            if (areaSwapped) { this.player = victim; retargetEffectsToCurrentPlayer(); }
-            boolean victimDied = false;
-            try {
-                int actual = damagePlayer(damage);
-                sendMessage("§c  Area hit " + (areaSwapped ? victim.getName().getString() : "you")
+        // while the wrong player got hit. damagePartyVictims routes each member via
+        // the this.player swap so their dodge/armor/effects/death handling apply.
+        boolean gameOverFromArea = damagePartyVictims(partyVictimsNear(center, radius),
+            damage, (victim, actual, swapped) -> {
+                sendMessage("§c  Area hit " + (swapped ? victim.getName().getString() : "you")
                     + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 // Apply named effects to this victim
                 if (aa.effectName() != null) {
                     applyBossAreaEffect(aa.effectName());
                 }
-                if (getPlayerHp() <= 0) {
-                    victimDied = true;
-                    handlePlayerDeathOrGameOver();
-                    gameOverFromArea = (partyPlayers.size() <= 1 || !active);
-                }
-            } finally {
-                if (!victimDied) { this.player = savedAreaPlayer; retargetEffectsToCurrentPlayer(); }
-            }
-            if (gameOverFromArea) return;
-        }
+            });
+        if (gameOverFromArea) return;
 
         // Damage enemy mobs in the area (friendly fire for bosses)
         if (CrafticsMod.CONFIG.friendlyFireEnabled()) {
@@ -19580,13 +19659,23 @@ public class CombatManager {
             CrafticsSavedData.PlayerData traderPd = data.getPlayerData(p.getUuid());
             int emeraldsToGive = traderPd.emeralds;
             if (emeraldsToGive > 0) {
+                // Only deduct what actually made it into the inventory: insertStack
+                // leaves whatever didn't fit in the passed stack, and unconditionally
+                // zeroing here used to delete a full-inventory player's whole balance.
+                int undelivered = 0;
                 int remaining = emeraldsToGive;
                 while (remaining > 0) {
                     int stackSize = Math.min(64, remaining);
-                    p.getInventory().insertStack(new ItemStack(Items.EMERALD, stackSize));
+                    ItemStack emeraldStack = new ItemStack(Items.EMERALD, stackSize);
+                    p.getInventory().insertStack(emeraldStack);
                     remaining -= stackSize;
+                    undelivered += emeraldStack.getCount();
                 }
-                traderPd.emeralds = 0;
+                traderPd.emeralds = undelivered;
+                if (undelivered > 0) {
+                    p.sendMessage(Text.literal("§e" + undelivered
+                        + " emerald(s) didn't fit in your inventory - they stay banked."), false);
+                }
             }
         }
         data.markDirty();
@@ -22192,9 +22281,11 @@ public class CombatManager {
         spawnedTrader.sendOffers(player, spawnedTrader.getDisplayName(), 1);
     }
 
-    public void handleTraderDone(ServerPlayerEntity player) {
-        if (spawnedTrader == null) return; // no active trader session
-        // Collect remaining emerald items from this player's inventory back into their own currency
+    /** Collect every emerald item in the player's inventory back into their banked
+     *  currency, ADDING to the balance -the bank may still hold an undelivered
+     *  remainder from a full inventory at offerTrader time, and re-entrant calls
+     *  must not overwrite it with a fresh (possibly zero) count. */
+    private void reclaimTraderEmeralds(ServerPlayerEntity player) {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         CrafticsSavedData.PlayerData traderPd = data.getPlayerData(player.getUuid());
@@ -22206,8 +22297,17 @@ public class CombatManager {
                 player.getInventory().removeStack(i);
             }
         }
-        traderPd.emeralds = collectedEmeralds;
+        traderPd.emeralds += collectedEmeralds;
         data.markDirty();
+    }
+
+    public void handleTraderDone(ServerPlayerEntity player) {
+        if (spawnedTrader == null) return; // no active trader session
+        // Re-entry guard: a duplicate Done from a player who already finished would
+        // re-run the collection against an emerald-less inventory.
+        if (!traderPendingPlayers.contains(player.getUuid())) return;
+        // Collect remaining emerald items from this player's inventory back into their own currency
+        reclaimTraderEmeralds(player);
 
         // Remove this player from pending traders
         traderPendingPlayers.remove(player.getUuid());

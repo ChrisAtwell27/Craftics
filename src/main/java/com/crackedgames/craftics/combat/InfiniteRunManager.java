@@ -310,7 +310,7 @@ public final class InfiniteRunManager {
             if (uuid.equals(hostUuid)) continue;
             ServerPlayerEntity member = world.getServer().getPlayerManager().getPlayer(uuid);
             if (member != null && member.getEntityWorld() == world
-                    && !CombatManager.get(uuid).isActive()) {
+                    && !CombatManager.isEngaged(uuid)) {
                 gathered.add(uuid);
             }
         }
@@ -345,10 +345,14 @@ public final class InfiniteRunManager {
         host.infiniteParticipants = "";
         host.endBiomeRun();
 
-        UUID islandOwner = data.getEffectiveWorldOwner(hostUuid);
-        CrafticsSavedData.PlayerData ownerPd = data.getPlayerData(islandOwner);
-        if (hostUuid.toString().equals(ownerPd.infiniteHostRef)) {
-            ownerPd.infiniteHostRef = "";
+        // Clear the island-side ref on WHICHEVER record it was stamped on at startRun.
+        // getEffectiveWorldOwner resolves through the party leader, so re-resolving it
+        // here returns a different record after any mid-run leadership change - the
+        // stale ref then refuses every future run on the island with no recovery.
+        for (CrafticsSavedData.PlayerData pd : data.getAllPlayerData().values()) {
+            if (hostUuid.toString().equals(pd.infiniteHostRef)) {
+                pd.infiniteHostRef = "";
+            }
         }
 
         for (UUID uuid : participants) {

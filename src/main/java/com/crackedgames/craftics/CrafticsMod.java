@@ -403,10 +403,15 @@ public class CrafticsMod implements ModInitializer {
             // the rest of the party would softlock waiting on the departed player.
             if (leaderCm != null && !leaderCm.equals(CombatManager.get(playerUuid))
                     && (leaderCm.isActive() || leaderCm.holdsPendingPlayer(playerUuid))) {
-                // Party member disconnected: remove from leader's combat, notify party
-                leaderCm.removePartyMember(playerUuid);
+                // Party member disconnected: remove from leader's combat, notify party.
+                // Roster removal must run BEFORE removePartyMember: the gate finalizers it
+                // triggers (clearEventPendingForDisconnect) resolve "who is still here" via
+                // the EventManager roster, and must not resolve the departing player.
                 if (leaderCm.getEventManager() != null) {
                     leaderCm.getEventManager().removeParticipant(playerUuid);
+                }
+                leaderCm.removePartyMember(playerUuid);
+                if (leaderCm.getEventManager() != null) {
                     ServerWorld world = server.getOverworld();
                     leaderCm.getEventManager().broadcastMessage(world,
                         "\u00a7c" + playerName + " disconnected from the party.");

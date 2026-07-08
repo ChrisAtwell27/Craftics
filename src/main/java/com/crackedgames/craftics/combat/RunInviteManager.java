@@ -88,14 +88,33 @@ public final class RunInviteManager {
             return;
         }
         // An infinite run parked at the rest room is still a live run - don't let a
-        // second run (of either kind) clobber its state between fights.
-        if (!data.getPlayerData(island).infiniteHostRef.isEmpty()) {
-            starter.sendMessage(Text.literal(
-                "§cAn infinite run is in progress on this island. Ring its bell to continue, or have the host use §e/home§c to end it."), false);
-            ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
-            return;
+        // second run (of either kind) clobber its state between fights. The ref can go
+        // stale (leadership drift re-resolved the owner at run end, or a crash), which
+        // used to refuse runs on this island forever - validate and self-heal instead.
+        String parkedHostRef = data.getPlayerData(island).infiniteHostRef;
+        if (!parkedHostRef.isEmpty()) {
+            UUID parkedHost = null;
+            try {
+                parkedHost = UUID.fromString(parkedHostRef);
+            } catch (IllegalArgumentException ignored) {}
+            if (parkedHost == null || !data.getPlayerData(parkedHost).infiniteActive) {
+                data.getPlayerData(island).infiniteHostRef = "";
+                data.markDirty();
+            } else if (world.getServer().getPlayerManager().getPlayer(parkedHost) == null) {
+                // Logging out mid-run forfeits it by design (onPlayerJoin ends it when the
+                // host returns). End it now so the island isn't locked while they're gone.
+                InfiniteRunManager.endRun(world.getServer(), parkedHost, "host offline");
+            } else {
+                starter.sendMessage(Text.literal(
+                    "§cAn infinite run is in progress on this island. Ring its bell to continue, or have the host use §e/home§c to end it."), false);
+                ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
+                return;
+            }
         }
-        if (CombatManager.get(starter).isActive()) {
+        // isEngaged, not isActive: a starter parked at a between-level gate (trader,
+        // shrine, intro, ...) is still mid-run even though their CM is inactive.
+        if (CombatManager.isEngaged(starter.getUuid())) {
+            starter.sendMessage(Text.literal("§cYou're still in the middle of a run."), false);
             ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
             return;
         }
@@ -135,7 +154,7 @@ public final class RunInviteManager {
         for (UUID memberUuid : data.getPartyMemberUuids(starter.getUuid())) {
             if (memberUuid.equals(starter.getUuid())) continue;
             ServerPlayerEntity member = world.getServer().getPlayerManager().getPlayer(memberUuid);
-            if (member != null && !CombatManager.get(memberUuid).isActive()
+            if (member != null && !CombatManager.isEngaged(memberUuid)
                     && !com.crackedgames.craftics.scene.SceneController.isSceneMember(memberUuid)) {
                 invitees.add(member);
             }
@@ -207,10 +226,13 @@ public final class RunInviteManager {
         beginRun(starter, p.biomeId, participants);
     }
 
-    /** True if any of the starter's party members is currently mid-run (one run per island). */
+    /** True if any of the starter's party members is currently mid-run (one run per island).
+     *  isEngaged, not isActive: a member parked at a between-level gate is still mid-run,
+     *  and opening a second lobby over their gate would overwrite PARTY_COMBAT_LEADER and
+     *  paste a second arena onto the island. */
     private static boolean islandRunActive(ServerPlayerEntity starter, CrafticsSavedData data) {
         for (UUID memberUuid : data.getPartyMemberUuids(starter.getUuid())) {
-            if (CombatManager.get(memberUuid).isActive()) return true;
+            if (CombatManager.isEngaged(memberUuid)) return true;
         }
         return false;
     }
