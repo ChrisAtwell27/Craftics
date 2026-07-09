@@ -119,6 +119,74 @@ public final class InfiniteRunManager {
     }
 
     /**
+     * Resolve the active infinite-run host from the perspective of one participant,
+     * regardless of who the party leader / island owner is. The run's "who is host"
+     * state lives on THREE records (infiniteActive on the host, infiniteHostRef on the
+     * island owner, infiniteRunHost on each participant); the victory/rest-room flow
+     * used to assume host == party leader, which is only true solo. This checks, in
+     * order: the candidate itself, the candidate's infiniteRunHost pointer, then the
+     * participant's own record + pointer. Returns the host UUID whose record has
+     * infiniteActive == true, or null if none of them point at an active run.
+     */
+    public static UUID resolveActiveHost(CrafticsSavedData data, UUID candidate, UUID participant) {
+        if (candidate != null && data.getPlayerData(candidate).infiniteActive) return candidate;
+        UUID viaCandidate = parseHostRef(data.getPlayerData(candidate).infiniteRunHost, data);
+        if (viaCandidate != null) return viaCandidate;
+        if (participant != null) {
+            if (data.getPlayerData(participant).infiniteActive) return participant;
+            UUID viaParticipant = parseHostRef(data.getPlayerData(participant).infiniteRunHost, data);
+            if (viaParticipant != null) return viaParticipant;
+        }
+        return null;
+    }
+
+    // ─── Scoring ─────────────────────────────────────────────────────────────
+    /** Base points for clearing a normal level. */
+    public static final int LEVEL_POINTS = 5;
+    /** Base points for beating a boss. */
+    public static final int BOSS_POINTS = 10;
+
+    /**
+     * Points earned for a clear: {@code base} minus 1 per 2 player-turns taken,
+     * floored at 1. Rewards finishing fast. Pure - unit-testable.
+     *
+     * @param base       LEVEL_POINTS or BOSS_POINTS
+     * @param playerTurns turns the player took in that single level/fight
+     */
+    public static int clearPoints(int base, int playerTurns) {
+        return Math.max(1, base - Math.max(0, playerTurns) / 2);
+    }
+
+    /**
+     * Add {@code points} to the run host's live score, refresh the participants'
+     * personal-best, and return the new running total. Host is resolved by the
+     * caller; participants are the run party for best-score updates.
+     */
+    public static int awardScore(CrafticsSavedData data, UUID hostUuid, int points,
+                                 List<ServerPlayerEntity> participants) {
+        CrafticsSavedData.PlayerData host = data.getPlayerData(hostUuid);
+        host.infiniteScore += points;
+        int total = host.infiniteScore;
+        for (ServerPlayerEntity member : participants) {
+            CrafticsSavedData.PlayerData pd = data.getPlayerData(member.getUuid());
+            if (total > pd.highestInfiniteScore) pd.highestInfiniteScore = total;
+        }
+        data.markDirty();
+        return total;
+    }
+
+    /** Parse an infiniteRunHost string and return it only if it names an ACTIVE host. */
+    private static UUID parseHostRef(String hostRef, CrafticsSavedData data) {
+        if (hostRef == null || hostRef.isEmpty()) return null;
+        try {
+            UUID parsed = UUID.fromString(hostRef);
+            return data.getPlayerData(parsed).infiniteActive ? parsed : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
      * The infinite parameters for a level about to be generated, or null when
      * the host isn't in an infinite run. Boss levels roll the boss here: its
      * appearance, its "The ____ ____" name, and its movepool.
@@ -157,6 +225,7 @@ public final class InfiniteRunManager {
         CrafticsSavedData.PlayerData host = data.getPlayerData(hostUuid);
         host.infiniteActive = true;
         host.infiniteBiomesCleared = 0;
+        host.infiniteScore = 0;
         host.infiniteParticipants = joinUuids(participants);
         host.startBiomeRun(STARTING_BIOME);
 
@@ -212,19 +281,29 @@ public final class InfiniteRunManager {
      * there. Combat itself is already torn down by the caller (CombatManager).
      */
     public static void onBossDefeated(ServerWorld world, UUID hostUuid,
-                                      List<ServerPlayerEntity> participants) {
+                                      List<ServerPlayerEntity> participants, int playerTurns) {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         CrafticsSavedData.PlayerData host = data.getPlayerData(hostUuid);
+        // Difficulty/progress counter (drives the boss ramp + "BIOME N" line).
         host.infiniteBiomesCleared++;
-        int score = host.infiniteBiomesCleared;
+        int cleared = host.infiniteBiomesCleared;
 
+        // POINT score: +10 for the boss, minus 1 per 2 player-turns, floored at 1.
+        // Capture each member's prior best BEFORE awardScore bumps it, so the
+        // "new personal best" line only fires on a genuine beat.
+        java.util.Map<UUID, Integer> priorBest = new java.util.HashMap<>();
         for (ServerPlayerEntity member : participants) {
-            CrafticsSavedData.PlayerData pd = data.getPlayerData(member.getUuid());
-            pd.lastKnownName = member.getName().getString();
-            if (score > pd.highestInfiniteScore) {
-                pd.highestInfiniteScore = score;
-                member.sendMessage(Text.literal("§6§l★ NEW PERSONAL BEST: " + score
-                    + (score == 1 ? " biome!" : " biomes!")), false);
+            priorBest.put(member.getUuid(), data.getPlayerData(member.getUuid()).highestInfiniteScore);
+        }
+        int earned = clearPoints(BOSS_POINTS, playerTurns);
+        int total = awardScore(data, hostUuid, earned, participants);
+        for (ServerPlayerEntity member : participants) {
+            data.getPlayerData(member.getUuid()).lastKnownName = member.getName().getString();
+            member.sendMessage(Text.literal("§5§l∞ Boss down! §r§d+" + earned
+                + " points §7(fewer turns = more). Score: §f" + total), false);
+            if (total > priorBest.getOrDefault(member.getUuid(), 0) && total > 0) {
+                member.sendMessage(Text.literal("§6§l★ NEW PERSONAL BEST: " + total
+                    + " points!"), false);
             }
         }
 
@@ -233,40 +312,34 @@ public final class InfiniteRunManager {
         host.startBiomeRun(next);
 
         // Every ESCALATION_INTERVAL clears the bosses grow crueler - call it out.
-        if (score % ESCALATION_INTERVAL == 0) {
+        if (cleared % ESCALATION_INTERVAL == 0) {
             for (ServerPlayerEntity member : participants) {
                 member.sendMessage(Text.literal(
                     "§4§l⚠ The bosses ahead learned a new move... and strike twice as often."), false);
             }
         }
 
-        // Resolve the rest-room owner from the CURRENT island first. In party
-        // infinite runs the run host and island owner can differ.
-        UUID islandOwner = IslandDimensions.ownerOf(world);
-        if (islandOwner == null) {
-            islandOwner = data.getEffectiveWorldOwner(hostUuid);
-        }
-        BlockPos origin = data.getRestRoomOrigin(islandOwner);
-        if (origin == null) {
-            // Last-chance fallback to keep the run flowing if ownership records
-            // are temporarily out of sync.
-            origin = data.getRestRoomOrigin(hostUuid);
-        }
-        if (origin != null) {
-            RestRoomBuilder.build(world, origin, score, host.highestInfiniteScore);
-            BlockPos spawn = RestRoomBuilder.spawnPos(origin);
-            for (ServerPlayerEntity member : participants) {
-                member.requestTeleport(spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5);
-                member.sendMessage(Text.literal("§5§l∞ Score: " + score
-                    + " §r§7- rest, craft, smelt, smith."), false);
-                member.sendMessage(Text.literal(
-                    "§7Ring the §ebell§7 to brave the next realm, or §e/home§7 to bank your run."), false);
-            }
-        } else {
-            CrafticsMod.LOGGER.warn("Infinite onBossDefeated: no rest room origin found (host={}, islandOwner={})",
-                hostUuid, islandOwner);
+        // Skip the rest room: go straight into the next biome's first level. The
+        // rest room was a between-biomes breather (craft/smelt/bell-to-continue), but
+        // its build/teleport was failing, so we now transition directly. host.activeBiomeId
+        // is already set to `next` by startBiomeRun above; beginRun builds and drops
+        // the party into that biome's level 1, the same path the bell used to trigger.
+        for (ServerPlayerEntity member : participants) {
+            member.sendMessage(Text.literal("§5§l∞ Score: " + total
+                + " §r§7- onward to the next realm!"), false);
         }
         data.markDirty();
+
+        ServerPlayerEntity hostPlayer = world.getServer().getPlayerManager().getPlayer(hostUuid);
+        if (hostPlayer == null) {
+            // Host offline (shouldn't happen right after their boss kill): nothing to
+            // do - the run stays active and resumes when they rejoin.
+            CrafticsMod.LOGGER.warn("Infinite onBossDefeated: host {} offline, cannot start next biome", hostUuid);
+            return;
+        }
+        List<UUID> nextParty = new ArrayList<>();
+        for (ServerPlayerEntity member : participants) nextParty.add(member.getUuid());
+        RunInviteManager.beginRun(hostPlayer, next, nextParty);
     }
 
     // ─── The bell ──────────────────────────────────────────────────────────────
@@ -336,12 +409,14 @@ public final class InfiniteRunManager {
         CrafticsSavedData.PlayerData host = data.getPlayerData(hostUuid);
         if (!host.infiniteActive) return;
 
-        int finalScore = host.infiniteBiomesCleared;
+        int finalScore = host.infiniteScore;
+        int biomesCleared = host.infiniteBiomesCleared;
         List<UUID> participants = parseUuids(host.infiniteParticipants);
         if (!participants.contains(hostUuid)) participants.add(hostUuid);
 
         host.infiniteActive = false;
         host.infiniteBiomesCleared = 0;
+        host.infiniteScore = 0;
         host.infiniteParticipants = "";
         host.endBiomeRun();
 
@@ -361,8 +436,8 @@ public final class InfiniteRunManager {
                 CrafticsSavedData.PlayerData pd = data.getPlayerData(uuid);
                 member.sendMessage(Text.literal("§5§l∞ RUN OVER §r§7(" + reason + ")§5§l ∞"), false);
                 member.sendMessage(Text.literal("§6Final score: §l" + finalScore
-                    + "§r§6 biome" + (finalScore == 1 ? "" : "s")
-                    + " §7| Best: §6" + Math.max(pd.highestInfiniteScore, finalScore)), false);
+                    + "§r§6 points §7(" + biomesCleared + " biome" + (biomesCleared == 1 ? "" : "s")
+                    + " cleared) §7| Best: §6" + Math.max(pd.highestInfiniteScore, finalScore)), false);
                 restoreParticipant(member, data, progression);
             }
             // Offline members keep their stash flags; onPlayerJoin restores them.
@@ -487,10 +562,10 @@ public final class InfiniteRunManager {
                 default -> "§8" + (i + 1) + ".";
             };
             viewer.sendMessage(Text.literal(" " + medal + " §f" + rows.get(i)[0]
-                + " §7- §5" + rows.get(i)[1] + " biome" + ((int) rows.get(i)[1] == 1 ? "" : "s")), false);
+                + " §7- §5" + rows.get(i)[1] + " pts"), false);
         }
         int own = data.getPlayerData(viewer.getUuid()).highestInfiniteScore;
-        viewer.sendMessage(Text.literal("§7Your best: §5" + own), false);
+        viewer.sendMessage(Text.literal("§7Your best: §5" + own + " pts"), false);
     }
 
     // ─── Boss names ────────────────────────────────────────────────────────────

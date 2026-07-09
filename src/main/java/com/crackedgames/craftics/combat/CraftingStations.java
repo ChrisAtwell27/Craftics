@@ -76,6 +76,50 @@ public final class CraftingStations {
         }
     }
 
+    /**
+     * A screen-handler context for a station opened from a held item with no real
+     * block behind it. It executes world-touching callbacks ({@code run}) against the
+     * real world at the player's position - so recipe result computation, enchant
+     * bookshelf scans, grindstone/stonecutter logic, and on-close item drops all work
+     * - but returns the caller's DEFAULT for value getters ({@code get}). Vanilla's
+     * {@code ScreenHandler.canUse(context, player, block)} is a {@code get} that
+     * checks the source block still exists and is in range; returning the default
+     * (true) makes canUse always pass, so the screen no longer snaps shut every tick.
+     *
+     * <p>Using {@link ScreenHandlerContext#EMPTY} instead was wrong: EMPTY is the
+     * client-side stub whose {@code run} is a no-op, so the crafting result slot never
+     * updated (a log in the grid produced no planks). This context keeps {@code run}
+     * live while only faking {@code get}.
+     */
+    public static ScreenHandlerContext virtualContext(net.minecraft.world.World world,
+                                                      net.minecraft.util.math.BlockPos pos) {
+        return new ScreenHandlerContext() {
+            @Override
+            public <T> java.util.Optional<T> get(
+                    java.util.function.BiFunction<net.minecraft.world.World,
+                        net.minecraft.util.math.BlockPos, T> getter) {
+                // Optional getters (rare) resolve to empty: no real block to report.
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            public <T> T get(java.util.function.BiFunction<net.minecraft.world.World,
+                    net.minecraft.util.math.BlockPos, T> getter, T defaultValue) {
+                // canUse() and friends take this path: hand back the default so the
+                // "is the source block present + in range" check always passes.
+                return defaultValue;
+            }
+
+            @Override
+            public void run(java.util.function.BiConsumer<net.minecraft.world.World,
+                    net.minecraft.util.math.BlockPos> consumer) {
+                // Real world work (recipe output, item drops) runs against the player's
+                // actual position so crafting behaves normally.
+                consumer.accept(world, pos);
+            }
+        };
+    }
+
     /** The station backed by {@code item}, or {@code null} if it isn't one. */
     public static Station of(Item item) {
         if (item == null) return null;

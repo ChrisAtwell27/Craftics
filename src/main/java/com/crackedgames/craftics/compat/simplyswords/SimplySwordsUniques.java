@@ -53,6 +53,18 @@ public final class SimplySwordsUniques {
             && REGISTERED_PATHS.contains(id.getPath());
     }
 
+    /**
+     * True if this unique fights like a trident: melee stab when adjacent (1 AP),
+     * straight/diagonal line throw otherwise (2 AP, lodges in the ground).
+     * CombatManager routes these through the trident attack path.
+     */
+    public static boolean isTridentLike(Item item) {
+        if (item == null) return false;
+        Identifier id = Registries.ITEM.getId(item);
+        return SimplySwordsCompat.NAMESPACE.equals(id.getNamespace())
+            && "wickpiercer".equals(id.getPath());
+    }
+
     // Damage baselines: uniques sit at/above netherite, read live from config.
     private static IntSupplier sword(int offset) {
         return () -> CrafticsMod.CONFIG.dmgNetheriteSword() + offset;
@@ -72,29 +84,32 @@ public final class SimplySwordsUniques {
 
         // ── Fire ──
         any |= u("emberblade", DamageType.SLASHING, sword(1), 1, 1, emberblade());
-        any |= u("molten_edge", DamageType.SLASHING, sword(1), 1, 1, moltenEdge());
+        any |= u("molten_edge", DamageType.SLASHING, sword(1), 2, 2, moltenEdge());
         any |= u("hearthflame", DamageType.BLUNT, axe(2), 3, 1, hearthflame());
         any |= u("brimstone_claymore", DamageType.CLEAVING, axe(2), 3, 1, brimstone());
         any |= u("sunfire", DamageType.SPECIAL, sword(0), 1, 1, sunfire());
-        any |= u("wickpiercer", DamageType.SLASHING, sword(0), 1, 1, wickpiercer());
+        // Trident-like: melee stab adjacent (1 AP) or line throw (2 AP) - see isTridentLike.
+        any |= u("wickpiercer", DamageType.SLASHING, sword(0), 1,
+            com.crackedgames.craftics.combat.PlayerCombatStats.TRIDENT_THROW_RANGE, true, wickpiercer());
         any |= u("flamewind", DamageType.SLASHING, sword(0), 1, 1, flamewind());
         any |= u("emberlash", DamageType.SLASHING, sword(-1), 1, 2, emberlash());
-        any |= u("soulpyre", DamageType.SPECIAL, sword(0), 1, 1, lifestealBlade(0.25, "Soul Pyre",
-            ParticleTypes.SOUL_FIRE_FLAME, "particle.soul_escape"));
+        any |= u("soulpyre", DamageType.SPECIAL, sword(0), 1, 2, soulPyre());
 
         // ── Ice & Water ──
         any |= u("frostfall", DamageType.WATER, sword(1), 1, 1, frostfall());
         any |= u("icewhisper", DamageType.WATER, sword(0), 1, 1, icewhisper());
         any |= u("dreadtide", DamageType.WATER, sword(1), 1, 1, dreadtide());
-        any |= u("livyatan", DamageType.BLUNT, axe(2), 3, 1, livyatan());
-        any |= u("chompolotl", DamageType.WATER, sword(0), 1, 1, chompolotl());
+        any |= u("livyatan", DamageType.BLUNT, axe(2), 3, 2, livyatan());
+        // Chakram profile: thrown, always returns, ricochets - plus the axolotl summon.
+        any |= u("chompolotl", DamageType.WATER, sword(0), 1, 3, true, chompolotl());
 
         // ── Storm ──
         any |= u("mjolnir", DamageType.BLUNT, axe(2), 2, 1, mjolnir());
         any |= u("stormbringer", DamageType.SPECIAL, sword(1), 1, 1, stormbringer());
-        any |= u("thunderbrand", DamageType.SLASHING, sword(0), 1, 1, thunderbrand());
+        any |= u("thunderbrand", DamageType.SLASHING, sword(0), 2, 2, thunderbrand());
         any |= u("storms_edge", DamageType.SLASHING, sword(0), 1, 1, stormsEdge());
-        any |= u("tempest", DamageType.SPECIAL, sword(0), 1, 1, tempest());
+        // Chakram profile: thrown, always returns, ricochets - plus the cyclone.
+        any |= u("tempest", DamageType.SPECIAL, sword(0), 1, 3, true, tempest());
         any |= u("whisperwind", DamageType.SLASHING, sword(-1), 1, 1, whisperwind());
 
         // ── Nature & Toxin ──
@@ -141,10 +156,16 @@ public final class SimplySwordsUniques {
 
     private static boolean u(String path, DamageType dt, IntSupplier dmg, int ap, int range,
                              WeaponAbilityHandler ability) {
+        return u(path, dt, dmg, ap, range, false, ability);
+    }
+
+    private static boolean u(String path, DamageType dt, IntSupplier dmg, int ap, int range,
+                             boolean ranged, WeaponAbilityHandler ability) {
         Item item = SimplySwordsCompat.lookupItem(path);
         if (item == null) return false;
         WeaponRegistry.register(item, WeaponEntry.builder(item)
-            .damageType(dt).attackPower(dmg).apCost(ap).range(range).ability(ability).build());
+            .damageType(dt).attackPower(dmg).apCost(ap).range(range).ranged(ranged)
+            .ability(ability).build());
         REGISTERED_PATHS.add(path);
         return true;
     }
@@ -247,6 +268,22 @@ public final class SimplySwordsUniques {
     // Fire
     // =========================================================================
 
+    /** Soul Pyre - reach-2 blade; 25% chance the pyre drains half the damage dealt as HP. */
+    private static WeaponAbilityHandler soulPyre() {
+        return (player, target, arena, baseDamage, stats, luckPoints) -> {
+            List<String> msgs = new ArrayList<>();
+            if (Math.random() < 0.25 + luckPoints * 0.02) {
+                int healed = lifesteal(player, baseDamage, 0.5);
+                if (healed > 0) {
+                    fxBurst(player, arena, target, ParticleTypes.SOUL_FIRE_FLAME, 10,
+                        "particle.soul_escape", 1.2f);
+                    msgs.add("§d✦ Soul Pyre: §adrained " + healed + " HP.");
+                }
+            }
+            return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+        };
+    }
+
     /** Emberblade - Ember Ire: every hit ignites the target. */
     private static WeaponAbilityHandler emberblade() {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
@@ -257,22 +294,37 @@ public final class SimplySwordsUniques {
         };
     }
 
-    /** Molten Edge - Molten Roar: chance to erupt, burning every enemy adjacent to the target. */
+    /** Molten Edge - Molten Roar: chance to erupt lava on 8 random tiles within 3 of the wielder. */
     private static WeaponAbilityHandler moltenEdge() {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             List<String> msgs = new ArrayList<>();
             List<CombatEntity> extras = new ArrayList<>();
             int total = baseDamage;
             if (Math.random() < 0.25 + luckPoints * 0.02) {
-                fxRing(player, arena, target, 1.6, ParticleTypes.LAVA, "entity.blaze.shoot", 0.8f);
                 target.stackBurning(2, 0);
-                msgs.add("§c✦ MOLTEN ROAR! §7Lava erupts around " + target.getDisplayName() + "!");
-                for (CombatEntity e : Abilities.findAdjacentEnemies(arena, target, 8)) {
+                msgs.add("§c✦ MOLTEN ROAR! §7The ground erupts around you!");
+                GridPos pPos = arena.getPlayerGridPos();
+                List<GridPos> candidates = new ArrayList<>();
+                for (GridPos t : AoeShapes.filledDisc(pPos, 3)) {
+                    if (!t.equals(pPos) && arena.isInBounds(t)) candidates.add(t);
+                }
+                java.util.Collections.shuffle(candidates);
+                List<GridPos> erupted = candidates.subList(0, Math.min(8, candidates.size()));
+                ServerWorld sw = world(player);
+                if (sw != null) {
+                    for (GridPos t : erupted) {
+                        BlockPos bp = arena.gridToBlockPos(t);
+                        sw.spawnParticles(ParticleTypes.LAVA, bp.getX() + 0.5, bp.getY() + 0.6,
+                            bp.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.02);
+                    }
+                    sound(sw, arena.gridToBlockPos(pPos), "entity.blaze.shoot", 0.8f);
+                }
+                for (CombatEntity e : AoeShapes.enemiesOn(arena, erupted, target)) {
                     int dmg = e.takeDamage(Math.max(1, baseDamage / 2));
                     e.stackBurning(2, 0);
                     extras.add(e);
                     total += dmg;
-                    msgs.add("§6✦ Molten splash hits " + e.getDisplayName() + " for " + dmg + "!");
+                    msgs.add("§6✦ Lava erupts under " + e.getDisplayName() + " for " + dmg + "!");
                 }
             }
             return new WeaponAbility.AttackResult(total, msgs, extras);
@@ -461,19 +513,26 @@ public final class SimplySwordsUniques {
         };
     }
 
-    /** Chomp'olotl - Chomp: bites feed the axolotl spirit, which feeds you. */
+    /** Chomp'olotl - a thrown chakram; 25% chance the axolotl spirit answers the bite in person. */
     private static WeaponAbilityHandler chompolotl() {
-        return (player, target, arena, baseDamage, stats, luckPoints) -> {
-            List<String> msgs = new ArrayList<>();
-            if (Math.random() < 0.30 + luckPoints * 0.02) {
-                target.stackSoaked(1, 1);
-                int healed = lifesteal(player, Math.max(baseDamage, 4), 0.5);
-                fxBurst(player, arena, target, ParticleTypes.HEART, 4, "entity.axolotl.attack", 1.0f);
-                fxBurst(player, arena, target, ParticleTypes.BUBBLE, 10, null, 1.0f);
-                msgs.add("§d✦ CHOMP! §aThe axolotl spirit shares its meal: +" + healed + " HP.");
-            }
-            return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
-        };
+        return SimplySwordsCompat.chakramAbility().and(
+            (player, target, arena, baseDamage, stats, luckPoints) -> {
+                List<String> msgs = new ArrayList<>();
+                if (Math.random() < 0.25 + luckPoints * 0.02) {
+                    var cm = com.crackedgames.craftics.combat.CombatManager
+                        .getActiveCombat(player.getUuid());
+                    CombatEntity ally = cm != null
+                        ? cm.summonWeaponProcAlly("minecraft:axolotl", player, 3) : null;
+                    if (ally != null) {
+                        fxBurst(player, arena, target, ParticleTypes.HEART, 4,
+                            "entity.axolotl.attack", 1.0f);
+                        fxBurst(player, arena, ally, ParticleTypes.BUBBLE, 12,
+                            "entity.axolotl.splash", 1.0f);
+                        msgs.add("§d✦ CHOMP! §aAn axolotl ally leaps to your side!");
+                    }
+                }
+                return new WeaponAbility.AttackResult(baseDamage, msgs, List.of());
+            });
     }
 
     // =========================================================================
@@ -549,17 +608,31 @@ public final class SimplySwordsUniques {
         };
     }
 
-    /** Thunderbrand - Static Charge: a third of hits discharge stored lightning. */
+    /** Per-player Thunderbrand charge stacks. Session-scoped; a leftover charge
+     *  carrying into the next fight is deliberate (the blade "stays charged"). */
+    private static final java.util.Map<java.util.UUID, Integer> THUNDER_CHARGE =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Thunderbrand - Static Charge: every hit builds a stack; at 3 stacks the
+     *  next strike discharges for double damage and resets the charge. */
     private static WeaponAbilityHandler thunderbrand() {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             List<String> msgs = new ArrayList<>();
             int total = baseDamage;
-            if (Math.random() < 0.33 + luckPoints * 0.02) {
-                int bonus = target.takeDamage(3);
+            int charge = THUNDER_CHARGE.getOrDefault(player.getUuid(), 0);
+            if (charge >= 3) {
+                THUNDER_CHARGE.put(player.getUuid(), 0);
+                int bonus = target.takeDamage(baseDamage);
                 total += bonus;
-                fxBurst(player, arena, target, ParticleTypes.ELECTRIC_SPARK, 18,
+                fxBurst(player, arena, target, ParticleTypes.ELECTRIC_SPARK, 26,
                     "entity.lightning_bolt.impact", 1.6f);
-                msgs.add("§e✦ Static Charge: §7the blade discharges for +" + bonus + "!");
+                msgs.add("§e✦ FULL DISCHARGE! §7Stored lightning doubles the blow: +" + bonus + "!");
+            } else {
+                charge++;
+                THUNDER_CHARGE.put(player.getUuid(), charge);
+                fxBurst(player, arena, target, ParticleTypes.ELECTRIC_SPARK, 6, null, 1.2f);
+                msgs.add("§e✦ Static Charge: §7" + charge + "/3"
+                    + (charge >= 3 ? " - §enext strike discharges!" : "."));
             }
             return new WeaponAbility.AttackResult(total, msgs, List.of());
         };
@@ -574,8 +647,12 @@ public final class SimplySwordsUniques {
             });
     }
 
-    /** Tempest - Cyclone: chance to hurl the target away in a violent spiral. */
+    /** Tempest - a thrown chakram; Cyclone can still hurl the target away in a violent spiral. */
     private static WeaponAbilityHandler tempest() {
+        return SimplySwordsCompat.chakramAbility().and(tempestCyclone());
+    }
+
+    private static WeaponAbilityHandler tempestCyclone() {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             List<String> msgs = new ArrayList<>();
             int total = baseDamage;

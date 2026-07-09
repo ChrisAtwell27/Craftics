@@ -67,6 +67,29 @@ public final class BasicWeaponsCompat {
         return null;
     }
 
+    /**
+     * Item PATH strings ("iron_glaive", ...) for BW weapons at a Craftics gear tier:
+     * 0=wooden,1=stone,2=iron,3=golden,4=diamond+netherite. Pure: TIERS x TYPES, no
+     * registry. Seeds the mob modded-weapon pool.
+     */
+    public static java.util.List<String> weaponTierIds(int craftTier) {
+        java.util.List<String> bwTiers = switch (craftTier) {
+            case 0 -> java.util.List.of("wooden");
+            case 1 -> java.util.List.of("stone");
+            case 2 -> java.util.List.of("iron");
+            case 3 -> java.util.List.of("golden");
+            case 4 -> java.util.List.of("diamond", "netherite");
+            default -> java.util.List.of();
+        };
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        for (String bwTier : bwTiers) {
+            for (String type : TYPES) {
+                ids.add(bwTier + "_" + type);
+            }
+        }
+        return ids;
+    }
+
     /** True for the three BLUNT types that Might affects. Pure. */
     public static boolean isBluntType(String type) {
         return "club".equals(type) || "hammer".equals(type) || "quarterstaff".equals(type);

@@ -343,6 +343,11 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         this.addDrawableChild(rightArrow);
 
         // Bottom-left: enter the walk-around merchant scenes (Stage 1).
+        // HIDDEN (WIP): the Trading Hall and Bartering Station scenes aren't
+        // finished yet - buttons hidden for this release. Restore both blocks
+        // below to re-enable. The scenes themselves ("village"/"barter_station")
+        // still exist server-side; only the entry buttons are gone.
+        /*
         ButtonWidget tradingHallBtn = ButtonWidget.builder(
                 Text.literal("\u00A7lTrading Hall"),
                 b -> {
@@ -362,6 +367,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                 })
             .dimensions(8, this.height - 24, 120, 20).build();
         this.addDrawableChild(barterStationBtn);
+        */
 
         // Bottom-right: infinite mode. Rides the normal run-start flow under a
         // sentinel biome id; the server handles the party prompt + fresh-start rules.
@@ -375,7 +381,7 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
                             "craftics:infinite"))
                     );
                 })
-            .dimensions(this.width - 128, this.height - 24, 120, 20).build();
+            .dimensions(this.width - 128, buttonY, 120, 20).build();
         this.addDrawableChild(infiniteBtn);
     }
 

@@ -40,6 +40,39 @@ class ArmorClassTableTest {
         assertEquals(0, ArmorClassTable.baseAC(""));
     }
 
+    // ---- Enemy DEF compression: ceil(AC / 3), material-scaled ----
+
+    /** Sums a full set's enemy DEF for a material via the pure formula. */
+    private static int fullSetDefense(int b) {
+        return ArmorClassTable.pieceDefenseFromAC(ArmorClassTable.pieceAC(b, Slot.LEGGINGS))
+             + ArmorClassTable.pieceDefenseFromAC(ArmorClassTable.pieceAC(b, Slot.CHESTPLATE))
+             + ArmorClassTable.pieceDefenseFromAC(ArmorClassTable.pieceAC(b, Slot.HELMET))
+             + ArmorClassTable.pieceDefenseFromAC(ArmorClassTable.pieceAC(b, Slot.BOOTS));
+    }
+
+    @Test
+    void pieceDefense_isCeilOfAcOverThree() {
+        assertEquals(0, ArmorClassTable.pieceDefenseFromAC(0));
+        assertEquals(0, ArmorClassTable.pieceDefenseFromAC(-4)); // guards non-armor
+        assertEquals(1, ArmorClassTable.pieceDefenseFromAC(1));
+        assertEquals(1, ArmorClassTable.pieceDefenseFromAC(3));
+        assertEquals(2, ArmorClassTable.pieceDefenseFromAC(4));
+        assertEquals(2, ArmorClassTable.pieceDefenseFromAC(6)); // diamond leggings
+        assertEquals(3, ArmorClassTable.pieceDefenseFromAC(7)); // diamond chestplate
+    }
+
+    @Test
+    void fullSetDefense_ranksMaterialsAndStaysInDefBudget() {
+        // Leather < iron/copper < diamond < netherite, all within the 5%/60% DEF stat.
+        assertEquals(4, fullSetDefense(2));  // leather:   1+1+1+1 -> 20% reduction
+        assertEquals(6, fullSetDefense(4));  // iron/copper: 2+2+1+1 -> 30%
+        assertEquals(7, fullSetDefense(6));  // diamond:   2+3+1+1 -> 35%
+        assertEquals(10, fullSetDefense(7)); // netherite: 3+3+2+2 -> 50% (under 60% cap)
+        assertTrue(fullSetDefense(2) < fullSetDefense(4));
+        assertTrue(fullSetDefense(4) < fullSetDefense(6));
+        assertTrue(fullSetDefense(6) < fullSetDefense(7));
+    }
+
     // ---- Per-piece formula: legs=B, chest=B+1, helm=boots=ceil(B/2) ----
 
     @Test

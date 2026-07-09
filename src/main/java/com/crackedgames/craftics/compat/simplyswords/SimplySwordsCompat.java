@@ -74,6 +74,28 @@ public final class SimplySwordsCompat {
         return null;
     }
 
+    /**
+     * Item PATH strings ("iron_katana", ...) for the SS standard weapons that map to a
+     * Craftics gear tier: 2=iron, 3=gold, 4=diamond+netherite+runic. Wood/stone (0,1)
+     * have no SS equivalent -> empty. Pure: builds paths from TIERS x TYPES, no registry.
+     * Used to seed the mob modded-weapon pool (uniques are intentionally excluded).
+     */
+    public static java.util.List<String> standardWeaponTierIds(int craftTier) {
+        java.util.List<String> ssTiers = switch (craftTier) {
+            case 2 -> java.util.List.of("iron");
+            case 3 -> java.util.List.of("gold");
+            case 4 -> java.util.List.of("diamond", "netherite", "runic");
+            default -> java.util.List.of();
+        };
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        for (String ssTier : ssTiers) {
+            for (String type : TYPES) {
+                ids.add(ssTier + "_" + type);
+            }
+        }
+        return ids;
+    }
+
     // =========================================================================
     // Lifecycle
     // =========================================================================
@@ -301,8 +323,9 @@ public final class SimplySwordsCompat {
         };
     }
 
-    /** Chakram: thrown disc ricochets to the nearest other enemy within 2 tiles of the target. */
-    private static WeaponAbilityHandler chakramAbility() {
+    /** Chakram: thrown disc ricochets to the nearest other enemy within 2 tiles of the target.
+     *  Package-private: the Tempest and Chomp'olotl uniques compose it with their own procs. */
+    static WeaponAbilityHandler chakramAbility() {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             List<String> msgs = new ArrayList<>();
             List<CombatEntity> extras = new ArrayList<>();

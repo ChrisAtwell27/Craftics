@@ -102,7 +102,7 @@ public final class SimplySwordsTooltips {
                 "every hit sets the target ablaze (2 turns)",
                 "It never stopped smoldering."};
             case "molten_edge" -> new String[]{"Molten Roar",
-                "25%: eruption - splash burns everything adjacent for half damage",
+                "25% chance lava erupts on 8 random tiles within 3 of you for half damage and burn",
                 "Forged in a caldera's throat."};
             case "hearthflame" -> new String[]{"Cinder Slam",
                 "3x3 slam at half damage; everything caught catches fire",
@@ -114,7 +114,7 @@ public final class SimplySwordsTooltips {
                 "30%: +3 searing damage and the target is dazzled (-1 ATK)",
                 "Staring at it is not recommended."};
             case "wickpiercer" -> new String[]{"Candlelight",
-                "+3 damage and ignites targets still at full health",
+                "melee stab for 1 AP or line throw for 2 AP that lodges, plus 3 and ignites full-health prey",
                 "The first cut snuffs the light."};
             case "flamewind" -> new String[]{"Flame Dash",
                 "40%: the cut bleeds and burns",
@@ -123,7 +123,7 @@ public final class SimplySwordsTooltips {
                 "reach 2; ignites, 25% to drag the target a tile closer",
                 "The whip cracks in cinders."};
             case "soulpyre" -> new String[]{"Soul Pyre",
-                "heals you for 25% of damage dealt",
+                "25% chance to drain half the damage dealt back as HP",
                 "The pyre burns on borrowed souls."};
             // Ice & water
             case "frostfall" -> new String[]{"Frost Fury",
@@ -136,10 +136,10 @@ public final class SimplySwordsTooltips {
                 "soaks every hit; 25% the undertow drags the target adjacent",
                 "The tide always collects."};
             case "livyatan" -> new String[]{"Depth Charge",
-                "3x3 wave at half damage; everything hit is soaked",
+                "3x3 wave at half damage and everything hit is soaked",
                 "Carved from something that should have stayed sunken."};
             case "chompolotl" -> new String[]{"Chomp",
-                "30%: soaks the target and the axolotl spirit heals you",
+                "thrown chakram that returns and ricochets for half damage, 25% chance to summon an axolotl ally",
                 "It is very cute. It is very hungry."};
             // Storm
             case "mjolnir" -> new String[]{"Thunderstrike",
@@ -149,13 +149,13 @@ public final class SimplySwordsTooltips {
                 "25%: chains lightning to the 2 nearest enemies for half damage",
                 "The storm goes where it is brought."};
             case "thunderbrand" -> new String[]{"Static Charge",
-                "33%: the stored charge discharges for +3",
+                "every hit builds a stack and at 3 the next strike hits for double",
                 "Your hair stands up holding it."};
             case "storms_edge" -> new String[]{"Gale Slash",
                 "every hit shoves the target back a tile",
                 "The wind takes their footing."};
             case "tempest" -> new String[]{"Cyclone",
-                "30%: hurls the target 2 tiles and batters for +2",
+                "thrown chakram that returns and ricochets for half damage, 30% chance to hurl the target 2 tiles for 2 bonus",
                 "The eye of the storm fits in one hand."};
             case "whisperwind" -> new String[]{"Zephyr",
                 "30%: the wind echoes your cut for +50% damage",
@@ -200,7 +200,7 @@ public final class SimplySwordsTooltips {
                 "It is awake. It is hungry."};
             // Arcane
             case "arcanethyst" -> new String[]{"Prismatic Echo",
-                "30%: the crystal rings, repeating half your hit (+Special)",
+                "30% chance the crystal rings and repeats half your hit scaled by Special",
                 "It remembers every blow in violet."};
             case "magiblade" -> new String[]{"Arcane Edge",
                 "+1 damage per 2 Special affinity points, every hit",

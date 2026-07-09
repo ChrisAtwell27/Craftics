@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.compat.artifacts;
 
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
@@ -42,6 +43,32 @@ public final class MobArtifacts {
         if (!ArtifactsCompat.isLoaded()) return ItemStack.EMPTY;
         if (Math.random() >= WEAR_CHANCE) return ItemStack.EMPTY;
         return ArtifactRoller.rollOne();
+    }
+
+    /**
+     * The vanilla equipment slot an artifact should occupy on a mob so it renders
+     * as WORN, not held. Feet artifacts (boots/shoes) go on the feet, head artifacts
+     * (hats/goggles) on the head; everything else - necklaces, rings, gloves, belts,
+     * which have no vanilla-armor analogue - stays in the offhand (held) as before.
+     * A worn slot keeps the vanilla renderer drawing the item in the right place.
+     */
+    public static EquipmentSlot slotFor(ItemStack stack) {
+        String path = "";
+        if (stack != null && !stack.isEmpty()) {
+            Identifier id = Registries.ITEM.getId(stack.getItem());
+            if (id != null && ArtifactsCompat.MOD_ID.equals(id.getNamespace())) {
+                path = id.getPath();
+            }
+        }
+        return switch (path) {
+            case "bunny_hoppers", "kitty_slippers", "running_shoes", "aqua_dashers",
+                 "rooted_boots", "snowshoes", "steadfast_spikes", "flippers",
+                 "strider_shoes" -> EquipmentSlot.FEET;
+            case "night_vision_goggles", "superstitious_hat", "villager_hat",
+                 "cowboy_hat", "anglers_hat", "snorkel", "plastic_drinking_hat",
+                 "novelty_drinking_hat" -> EquipmentSlot.HEAD;
+            default -> EquipmentSlot.OFFHAND;
+        };
     }
 
     /**

@@ -106,4 +106,28 @@ public final class ArmorClassTable {
     public static int getPieceAC(ItemStack stack) {
         return (stack == null || stack.isEmpty()) ? 0 : getPieceAC(stack.getItem());
     }
+
+    /**
+     * Enemy DEF contribution from a single worn armor piece, material-scaled.
+     *
+     * <p>Enemies use the flat 5%-per-point / 60%-cap DEF stat, not the player's
+     * AC dodge system, so a piece's AC ({@link #getPieceAC}) is compressed by a
+     * third (⌈AC/3⌉) to stay inside that budget while still ranking materials.
+     * Per full set: leather ~2, iron/copper ~4, diamond ~7, netherite ~8 DEF.
+     * Non-armor / unknown materials contribute 0 (modded armor without an AC
+     * falls back to the caller's flat +1, same as before).
+     */
+    public static int getPieceDefense(Item item) {
+        return pieceDefenseFromAC(getPieceAC(item));
+    }
+
+    /** Pure AC-&gt;enemy-DEF compression (⌈ac/3⌉). Registry-free for unit tests. */
+    public static int pieceDefenseFromAC(int ac) {
+        return ac <= 0 ? 0 : (ac + 2) / 3;
+    }
+
+    /** Enemy DEF from a worn stack. Empty stacks contribute 0. */
+    public static int getPieceDefense(ItemStack stack) {
+        return (stack == null || stack.isEmpty()) ? 0 : getPieceDefense(stack.getItem());
+    }
 }

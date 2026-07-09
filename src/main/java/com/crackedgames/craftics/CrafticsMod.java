@@ -250,6 +250,10 @@ public class CrafticsMod implements ModInitializer {
             // Infinite mode: refresh the leaderboard name and, if this player
             // disconnected mid-run, hand their stashed items/levels back.
             com.crackedgames.craftics.combat.InfiniteRunManager.onPlayerJoin(player);
+            // Hardcore: participants who disconnected before their party's wipe
+            // landed get it now. Must run AFTER the infinite stash restore above
+            // so restored items don't survive.
+            com.crackedgames.craftics.world.HardcoreIslands.checkPendingWipeOnJoin(player);
             if (overworld.getChunkManager().getChunkGenerator() instanceof VoidChunkGenerator) {
                 LOGGER.info("Craftics: Teleporting player {} to hub", player.getName().getString());
                 // Land on the HIGHEST solid block at the lobby column, never a hard y=65
@@ -1278,8 +1282,11 @@ public class CrafticsMod implements ModInitializer {
 
             // Shortcut commands
 
-            // /new and /craftics new: create a new personal island
-            var shortcutNewCmd = (com.mojang.brigadier.Command<ServerCommandSource>) (ctx -> {
+            // /new and /craftics new: create a new personal island.
+            // /new hardcore: same island, but a full-party combat defeat deletes it
+            // and wipes every run participant (see HardcoreIslands).
+            java.util.function.Function<Boolean, com.mojang.brigadier.Command<ServerCommandSource>>
+                    newCmdFactory = hardcore -> ctx -> {
                 ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                 ServerWorld overworld = player.getServerWorld();
                 CrafticsSavedData data = CrafticsSavedData.get(overworld);
@@ -1305,6 +1312,10 @@ public class CrafticsMod implements ModInitializer {
                 overworld.getServer().execute(() -> {
                     CrafticsSavedData d = CrafticsSavedData.get(finalOverworld);
                     d.allocateWorldSlot(playerUuid); // dormant marker; no longer a coordinate
+                    if (hardcore) {
+                        d.getPlayerData(playerUuid).hardcoreIsland = true;
+                        d.markDirty();
+                    }
                     // Build the hub in the OWNER'S island dim at the fixed hub origin.
                     ServerWorld islandWorld = com.crackedgames.craftics.world.IslandDimensions
                         .getOrCreate(finalOverworld.getServer(), playerUuid);
@@ -1313,6 +1324,7 @@ public class CrafticsMod implements ModInitializer {
                     CrafticsSavedData.PlayerData pd = d.getPlayerData(playerUuid);
                     pd.personalHubBuilt = true;
                     pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
+                    pd.islandMigrated = true; // new-layout island; never probe the old overworld
                     pd.hubSpawnX = spawnPos.getX();
                     pd.hubSpawnY = spawnPos.getY();
                     pd.hubSpawnZ = spawnPos.getZ();
@@ -1325,8 +1337,13 @@ public class CrafticsMod implements ModInitializer {
                     var p = finalOverworld.getServer().getPlayerManager().getPlayer(playerUuid);
                     if (p != null) {
                         com.crackedgames.craftics.world.HubTeleports.toHub(p);
-                        p.sendMessage(Text.literal(
-                            "\u00a7a\u00a7lPersonal world created! \u00a7r\u00a7aUse \u00a7e/home\u00a7a to return anytime."), false);
+                        if (hardcore) {
+                            p.sendMessage(Text.literal(
+                                "\u00a74\u00a7l\u2620 HARDCORE world created! \u00a7r\u00a7cIf your whole party falls, the island and ALL items, XP and progression are wiped."), false);
+                        } else {
+                            p.sendMessage(Text.literal(
+                                "\u00a7a\u00a7lPersonal world created! \u00a7r\u00a7aUse \u00a7e/home\u00a7a to return anytime."), false);
+                        }
                         ServerPlayNetworking.send(p,
                             new com.crackedgames.craftics.network.LoadingScreenPayload(
                                 false, "", ""));
@@ -1334,10 +1351,16 @@ public class CrafticsMod implements ModInitializer {
                 });
 
                 return 1;
-            });
-            dispatcher.register(CommandManager.literal("new").executes(shortcutNewCmd));
+            };
+            var shortcutNewCmd = newCmdFactory.apply(false);
+            var shortcutNewHardcoreCmd = newCmdFactory.apply(true);
+            dispatcher.register(CommandManager.literal("new")
+                .executes(shortcutNewCmd)
+                .then(CommandManager.literal("hardcore").executes(shortcutNewHardcoreCmd)));
             dispatcher.register(CommandManager.literal("craftics").then(
-                CommandManager.literal("new").executes(shortcutNewCmd)));
+                CommandManager.literal("new")
+                    .executes(shortcutNewCmd)
+                    .then(CommandManager.literal("hardcore").executes(shortcutNewHardcoreCmd))));
 
             // /home and /craftics home: teleport to personal hub
             var shortcutHomeCmd = (com.mojang.brigadier.Command<ServerCommandSource>) (ctx -> {
@@ -1501,6 +1524,7 @@ public class CrafticsMod implements ModInitializer {
             CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
             pd.personalHubBuilt = true;
             pd.personalHubVersion = HubRoomBuilder.HUB_VERSION;
+            pd.islandMigrated = true; // new-layout island; never probe the old overworld
             pd.hubSpawnX = spawnPos.getX();
             pd.hubSpawnY = spawnPos.getY();
             pd.hubSpawnZ = spawnPos.getZ();

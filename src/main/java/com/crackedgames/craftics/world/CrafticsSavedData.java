@@ -55,6 +55,8 @@ public class CrafticsSavedData extends PersistentState {
     private final Map<UUID, PlayerData> players = new HashMap<>();
     private final Map<UUID, Party> parties = new HashMap<>();
     private final Map<UUID, UUID> playerToParty = new HashMap<>();
+    /** Run participants who disconnected before a hardcore wipe landed: wiped on next join. */
+    private final java.util.Set<UUID> pendingHardcoreWipe = new java.util.HashSet<>();
 
     public static class PlayerData {
         public int highestBiomeUnlocked = 1;
@@ -85,6 +87,14 @@ public class CrafticsSavedData extends PersistentState {
          * effective world owner - guests inherit whatever the owner has set.
          */
         public boolean scaleHpPerLevelEnabled = false;
+        /** Hardcore island: full-party combat defeat deletes the island and
+         *  wipes every run participant. Set by {@code /new hardcore}; dies with
+         *  the record on {@link CrafticsSavedData#resetPlayerData}. */
+        public boolean hardcoreIsland = false;
+        /** True once this island has been checked/migrated from the old overworld-lane
+         *  layout to the per-owner dimension. Absent in old saves -> false -> triggers
+         *  the one-time migration in {@link IslandMigration#ensureMigrated}. */
+        public boolean islandMigrated = false;
         /** Pity timer - resets when an event occurs */
         public int levelsSinceLastEvent = 0;
         /** Trader types (TraderSystem.TraderType.name()) met in run events - island-scoped via owner. */
@@ -117,15 +127,22 @@ public class CrafticsSavedData extends PersistentState {
         /** True while this player is HOSTING an active infinite run. The run cursor
          *  reuses activeBiomeId/activeBiomeLevelIndex on this same record. */
         public boolean infiniteActive = false;
-        /** Biomes fully cleared (bosses beaten) in the current run - the live score. */
+        /** Levels+bosses cleared in the current run. Drives DIFFICULTY scaling
+         *  (boss moves/actions ramp every ESCALATION_INTERVAL of these) and the
+         *  "BIOME N CLEARED" counter. NOT the score - see {@link #infiniteScore}. */
         public int infiniteBiomesCleared = 0;
+        /** Live POINT score for the current run: +5 per level and +10 per boss,
+         *  each minus 1 per 2 player-turns taken (floored at 1 per clear). Kept
+         *  separate from infiniteBiomesCleared so fast play scores high without
+         *  inflating the difficulty ramp. */
+        public int infiniteScore = 0;
         /** Participant UUIDs of the current run (host included), comma-separated. */
         public String infiniteParticipants = "";
         /** On the ISLAND OWNER's record: UUID of the member hosting the island's
          *  active infinite run ("" = none). The rest-room bell resolves the run
          *  through this pointer since the ringer may not be the host. */
         public String infiniteHostRef = "";
-        /** Personal best infinite score (biomes cleared), across all runs. */
+        /** Personal best infinite POINT score (see {@link #infiniteScore}), across all runs. */
         public int highestInfiniteScore = 0;
         /** On each PARTICIPANT's record: UUID of the run host they joined ("" = none). */
         public String infiniteRunHost = "";
@@ -401,6 +418,8 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putBoolean("personalHubBuilt", personalHubBuilt);
             nbt.putInt("personalHubVersion", personalHubVersion);
             nbt.putBoolean("scaleHpPerLevelEnabled", scaleHpPerLevelEnabled);
+            nbt.putBoolean("hardcoreIsland", hardcoreIsland);
+            nbt.putBoolean("islandMigrated", islandMigrated);
             // Pipe-delimited (mirrors unlockedGuideEntries). Safe: TraderType enum names and
             // Identifier-validated BarterCategory ids can never contain '|'.
             nbt.putString("metTraders", String.join("|", metTraders));
@@ -431,6 +450,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.put("bossKills", bossKillsNbt);
             nbt.putBoolean("infiniteActive", infiniteActive);
             nbt.putInt("infiniteBiomesCleared", infiniteBiomesCleared);
+            nbt.putInt("infiniteScore", infiniteScore);
             nbt.putString("infiniteParticipants", infiniteParticipants);
             nbt.putString("infiniteHostRef", infiniteHostRef);
             nbt.putInt("highestInfiniteScore", highestInfiniteScore);
@@ -463,6 +483,8 @@ public class CrafticsSavedData extends PersistentState {
             // Default: true (matches global config default) - islands created before this
             // field existed keep the old scaling behavior.
             pd.scaleHpPerLevelEnabled = !nbt.contains("scaleHpPerLevelEnabled") || nbt.getBoolean("scaleHpPerLevelEnabled");
+            pd.hardcoreIsland = nbt.contains("hardcoreIsland") && nbt.getBoolean("hardcoreIsland");
+            pd.islandMigrated = nbt.contains("islandMigrated") && nbt.getBoolean("islandMigrated");
             if (nbt.contains("metTraders")) {
                 String raw = nbt.getString("metTraders");
                 if (!raw.isEmpty()) {
@@ -521,6 +543,7 @@ public class CrafticsSavedData extends PersistentState {
             }
             pd.infiniteActive = nbt.contains("infiniteActive") && nbt.getBoolean("infiniteActive");
             pd.infiniteBiomesCleared = nbt.contains("infiniteBiomesCleared") ? nbt.getInt("infiniteBiomesCleared") : 0;
+            pd.infiniteScore = nbt.contains("infiniteScore") ? nbt.getInt("infiniteScore") : 0;
             pd.infiniteParticipants = nbt.contains("infiniteParticipants") ? nbt.getString("infiniteParticipants") : "";
             pd.infiniteHostRef = nbt.contains("infiniteHostRef") ? nbt.getString("infiniteHostRef") : "";
             pd.highestInfiniteScore = nbt.contains("highestInfiniteScore") ? nbt.getInt("highestInfiniteScore") : 0;
@@ -553,6 +576,8 @@ public class CrafticsSavedData extends PersistentState {
             pd.personalHubBuilt = nbt.getBoolean("personalHubBuilt", false);
             pd.personalHubVersion = nbt.getInt("personalHubVersion", 0);
             pd.scaleHpPerLevelEnabled = nbt.getBoolean("scaleHpPerLevelEnabled", true);
+            pd.hardcoreIsland = nbt.getBoolean("hardcoreIsland", false);
+            pd.islandMigrated = nbt.getBoolean("islandMigrated", false);
             String metTradersRaw = nbt.getString("metTraders", "");
             if (!metTradersRaw.isEmpty()) {
                 for (String entry : metTradersRaw.split("\\|")) {
@@ -597,6 +622,7 @@ public class CrafticsSavedData extends PersistentState {
             }
             pd.infiniteActive = nbt.getBoolean("infiniteActive", false);
             pd.infiniteBiomesCleared = nbt.getInt("infiniteBiomesCleared", 0);
+            pd.infiniteScore = nbt.getInt("infiniteScore", 0);
             pd.infiniteParticipants = nbt.getString("infiniteParticipants", "");
             pd.infiniteHostRef = nbt.getString("infiniteHostRef", "");
             pd.highestInfiniteScore = nbt.getInt("highestInfiniteScore", 0);
@@ -625,6 +651,35 @@ public class CrafticsSavedData extends PersistentState {
 
     public PlayerData getPlayerData(ServerPlayerEntity player) {
         return getPlayerData(player.getUuid());
+    }
+
+    /** Flag an offline hardcore-run participant for wipe-on-join. */
+    public void addPendingHardcoreWipe(UUID playerId) {
+        if (pendingHardcoreWipe.add(playerId)) markDirty();
+    }
+
+    /** True exactly once per flagged player: removes the flag when found. */
+    public boolean consumePendingHardcoreWipe(UUID playerId) {
+        boolean had = pendingHardcoreWipe.remove(playerId);
+        if (had) markDirty();
+        return had;
+    }
+
+    /**
+     * Hardcore wipe: replace the owner's island record with a fresh one, freeing
+     * the world slot so {@code /new} works again. Keeps account-ish fields only.
+     * starterGuideGranted stays true because the wipe hands the book back directly.
+     */
+    public void resetPlayerData(UUID playerId) {
+        PlayerData old = players.get(playerId);
+        PlayerData fresh = new PlayerData();
+        if (old != null) {
+            fresh.lastKnownName = old.lastKnownName;
+            fresh.highestInfiniteScore = old.highestInfiniteScore;
+        }
+        fresh.starterGuideGranted = true;
+        players.put(playerId, fresh);
+        markDirty();
     }
 
     //? if <=1.21.4 {
@@ -676,6 +731,14 @@ public class CrafticsSavedData extends PersistentState {
             }
         }
 
+        if (nbt.contains("pendingHardcoreWipe")) {
+            for (String s : nbt.getString("pendingHardcoreWipe").split("\\|")) {
+                if (s.isEmpty()) continue;
+                try { data.pendingHardcoreWipe.add(UUID.fromString(s)); }
+                catch (IllegalArgumentException ignored) {}
+            }
+        }
+
         return data;
     }
 
@@ -700,6 +763,8 @@ public class CrafticsSavedData extends PersistentState {
             partiesNbt.put(entry.getKey().toString(), entry.getValue().toNbt());
         }
         nbt.put("parties", partiesNbt);
+
+        nbt.putString("pendingHardcoreWipe", joinPendingHardcoreWipe());
 
         return nbt;
     }
@@ -761,6 +826,12 @@ public class CrafticsSavedData extends PersistentState {
             } catch (IllegalArgumentException ignored) {}
         }
 
+        for (String s : nbt.getString("pendingHardcoreWipe", "").split("\\|")) {
+            if (s.isEmpty()) continue;
+            try { data.pendingHardcoreWipe.add(UUID.fromString(s)); }
+            catch (IllegalArgumentException ignored) {}
+        }
+
         return data;
     }
 
@@ -786,6 +857,8 @@ public class CrafticsSavedData extends PersistentState {
         }
         nbt.put("parties", partiesNbt);
 
+        nbt.putString("pendingHardcoreWipe", joinPendingHardcoreWipe());
+
         return nbt;
     }
 
@@ -802,6 +875,16 @@ public class CrafticsSavedData extends PersistentState {
         return world.getServer().getOverworld().getPersistentStateManager().getOrCreate(TYPE);
     }
     *///?}
+
+    /** Pipe-joined uuid list for NBT (mirrors the metTraders string pattern). */
+    private String joinPendingHardcoreWipe() {
+        StringBuilder sb = new StringBuilder();
+        for (UUID id : pendingHardcoreWipe) {
+            if (sb.length() > 0) sb.append('|');
+            sb.append(id);
+        }
+        return sb.toString();
+    }
 
     public Party getParty(UUID partyId) {
         return parties.get(partyId);

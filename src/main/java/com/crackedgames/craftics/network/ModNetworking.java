@@ -86,14 +86,24 @@ public class ModNetworking {
 
         // Handle combat actions - route to party leader's CombatManager with sender validation
         ServerPlayNetworking.registerGlobalReceiver(CombatActionPayload.ID, (payload, context) -> {
-            CombatManager.getActiveCombat(context.player().getUuid())
-                .handleAction(payload, context.player().getUuid());
+            // Null-guard: a stray action packet arriving after combat ends would NPE
+            // and surface as an "unexpected error" to the player.
+            CombatManager active = CombatManager.getActiveCombat(context.player().getUuid());
+            if (active != null) {
+                active.handleAction(payload, context.player().getUuid());
+            }
         });
 
         // Handle post-level choice (Go Home vs Continue) - route to party leader
         ServerPlayNetworking.registerGlobalReceiver(PostLevelChoicePayload.ID, (payload, context) -> {
-            CombatManager.getActiveCombat(context.player().getUuid())
-                .handlePostLevelChoice(context.player(), payload.goHome());
+            // Null-guard: after a boss victory the combat is already torn down, so a
+            // late/duplicate PostLevelChoice (client's victory screen still open) would
+            // NPE here and surface to the player as an "unexpected error" packet
+            // failure. Ignore it when there's no active combat to choose in.
+            CombatManager active = CombatManager.getActiveCombat(context.player().getUuid());
+            if (active != null) {
+                active.handlePostLevelChoice(context.player(), payload.goHome());
+            }
         });
 
         // Handle game-over coin-flip ack - route to party leader's CombatManager

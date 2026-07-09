@@ -2786,11 +2786,15 @@ public class CombatManager {
                     }
                 }
 
-                // Craftics × Artifacts: rare carrier roll (~trim odds). The curio is
-                // held in the offhand, buffs the mob (MobArtifacts.buffsFor), and gets
-                // a generous on-kill drop roll in rollMobEquipmentDrops. No-op when
-                // the Artifacts mod isn't installed.
+                // Craftics × Artifacts: rare carrier roll (~trim odds). The curio buffs
+                // the mob (MobArtifacts.buffsFor) and gets a generous on-kill drop roll.
+                // Equip preference: if the Accessories mod is installed, put the artifact
+                // in its real Accessories slot so the Artifacts renderer draws it properly
+                // WORN (boots on feet, necklace on neck, ...). Otherwise fall back to the
+                // best-fit vanilla equipment slot (MobArtifacts.slotFor), which renders
+                // boots/hats worn but hand-curios held. No-op when Artifacts isn't loaded.
                 ItemStack wornArtifact = ItemStack.EMPTY;
+                net.minecraft.entity.EquipmentSlot artifactSlot = null;
                 com.crackedgames.craftics.compat.artifacts.MobArtifacts.Buffs artifactBuffs = null;
                 if (!isBoss) {
                     wornArtifact = com.crackedgames.craftics.compat.artifacts.MobArtifacts.maybeRollWorn();
@@ -2798,8 +2802,16 @@ public class CombatManager {
                         artifactBuffs = com.crackedgames.craftics.compat.artifacts.MobArtifacts.buffsFor(wornArtifact);
                         equipSpeedBonus += artifactBuffs.speed();
                         equipDefBonus += artifactBuffs.defense();
-                        if (mob.getEquippedStack(net.minecraft.entity.EquipmentSlot.OFFHAND).isEmpty()) {
-                            mob.equipStack(net.minecraft.entity.EquipmentSlot.OFFHAND, wornArtifact.copy());
+                        boolean equippedViaAccessories =
+                            com.crackedgames.craftics.compat.artifacts.AccessoriesReflect
+                                .equipOnMob(mob, wornArtifact);
+                        if (!equippedViaAccessories) {
+                            net.minecraft.entity.EquipmentSlot slot =
+                                com.crackedgames.craftics.compat.artifacts.MobArtifacts.slotFor(wornArtifact);
+                            if (mob.getEquippedStack(slot).isEmpty()) {
+                                mob.equipStack(slot, wornArtifact.copy());
+                                artifactSlot = slot; // only vanilla slots count toward armor DEF skip
+                            }
                         }
                     }
                 }
@@ -2812,18 +2824,32 @@ public class CombatManager {
                     else if (weapon == Items.DIAMOND_SWORD || weapon == Items.DIAMOND_AXE) equipAtkBonus += 3;
                     else if (weapon == Items.NETHERITE_SWORD || weapon == Items.NETHERITE_AXE) equipAtkBonus += 4;
                     else if (weapon == Items.GOLDEN_SWORD || weapon == Items.BOW || weapon == Items.CROSSBOW) equipAtkBonus += 1;
+                    else if (com.crackedgames.craftics.api.registry.WeaponRegistry.isRegistered(weapon)) {
+                        // Modded weapon: registry-derived, capped bonus (vanilla weapons
+                        // already handled by the explicit branches above).
+                        equipAtkBonus += com.crackedgames.craftics.combat.ModdedMobWeapons
+                            .cappedAttackBonus(weapon);
+                    }
                     // NOTE: Sharpness is intentionally NOT added to attack power here.
                     // It is applied once on hit (damage += sharpness level, plus a bleed
                     // stack per level) in the melee-resolution path. Folding it in here too
                     // double-counted the bonus, inflating every sharpened enemy's damage.
                 }
-                // Armor check (sum of all armor slots)
+                // Armor check (sum of all armor slots). Skip the slot a worn artifact
+                // occupies - MobArtifacts.buffsFor already granted its defense, so
+                // counting it here as +1 armor too would double up (an artifact is a
+                // curio, not real armor).
                 for (net.minecraft.entity.EquipmentSlot slot : new net.minecraft.entity.EquipmentSlot[]{
                     net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
                     net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
+                    if (slot == artifactSlot) continue;
                     ItemStack armor = mob.getEquippedStack(slot);
                     if (!armor.isEmpty()) {
-                        equipDefBonus += 1;
+                        // Material-scaled DEF (diamond > iron > leather). Unknown/modded
+                        // armor has no AC entry -> getPieceDefense returns 0, so fall back
+                        // to the old flat +1 so it still counts as worn armor.
+                        int matDef = ArmorClassTable.getPieceDefense(armor);
+                        equipDefBonus += matDef > 0 ? matDef : 1;
                         // Protection enchants add bonus DEF (1 per 2 levels, rounded down)
                         equipDefBonus += PlayerCombatStats.getEnchantLevel(armor, "minecraft:protection") / 2;
                     }
@@ -2915,7 +2941,7 @@ public class CombatManager {
                     }
                     String mobName = mob.getType().getName().getString();
                     if (mob.getCustomName() == null) {
-                        mob.setCustomName(Text.literal("§d✦ " + mobName));
+                        mob.setCustomName(Text.literal("§d" + mobName));
                         mob.setCustomNameVisible(true);
                     }
                     sendMessage("§d✦ A " + mobName + " carries §e"
@@ -2959,6 +2985,13 @@ public class CombatManager {
                         ce.setAiOverrideKey(InfiniteRunManager.BOSS_AI_KEY);
                         ce.setAiInstance(infiniteAi);
                         ce.setBossDisplayName(infSpec.bossName());
+                        // Overwrite the floating nameplate too. equipBossVisuals (line
+                        // ~2767) already stamped the BASE boss name (e.g. "The Revenant")
+                        // via mob.setCustomName; the grid display swap above doesn't touch
+                        // that, so without this the nameplate keeps the base name while the
+                        // grid shows the generated one.
+                        mob.setCustomName(Text.literal("§5§l" + infSpec.bossName()));
+                        mob.setCustomNameVisible(true);
                         ce.setSize(1);
                         // Extra actions per enemy phase (+1 every 10 cleared biomes);
                         // consumed by tickEnemyDone's re-entry loop.
@@ -4007,8 +4040,14 @@ public class CombatManager {
         if (id.contains("bow") || id.contains("crossbow")) return 10;
         if (id.contains("axe")) return 9;
         if (id.contains("mace")) return 10;
-        if (id.contains("trident")) return 5;
+        if (id.contains("trident") || isTridentWeapon(weapon)) return 5;
         return 6; // sword/fist default
+    }
+
+    /** True for the vanilla trident and any trident-like unique (melee stab / line throw). */
+    private static boolean isTridentWeapon(Item weapon) {
+        return weapon == Items.TRIDENT
+            || com.crackedgames.craftics.compat.simplyswords.SimplySwordsUniques.isTridentLike(weapon);
     }
 
     /** Mine a VFX-placed obstacle tile adjacent to the player, if the player holds a pickaxe. Costs 1 AP. */
@@ -4287,7 +4326,7 @@ public class CombatManager {
         // For multi-tile mobs, use the nearest occupied tile for line/distance checks
         GridPos tridentAimTile = tPos;
 
-        if (weapon == Items.TRIDENT) {
+        if (isTridentWeapon(weapon)) {
             tridentAimTile = target.nearestTileTo(pPos);
             int chebyDist = Math.max(Math.abs(pPos.x() - tridentAimTile.x()), Math.abs(pPos.z() - tridentAimTile.z()));
             tridentRiptideLevel = PlayerCombatStats.getRiptide(player);
@@ -4312,7 +4351,7 @@ public class CombatManager {
             } else {
                 isTridentThrow = true;
                 if (!PlayerCombatStats.isInTridentLine(pPos, tridentAimTile)) {
-                    sendMessage("§cTrident can only be thrown in straight or diagonal lines!");
+                    sendMessage("§cCan only be thrown in straight or diagonal lines!");
                     return;
                 }
                 int throwDist = Math.max(Math.abs(tridentAimTile.x() - pPos.x()), Math.abs(tridentAimTile.z() - pPos.z()));
@@ -4364,7 +4403,7 @@ public class CombatManager {
         // Warp Drive (Artifacts compat): bypass range/LOS, teleport adjacent to the target,
         // then continue with the attack. Consumes the once-per-combat charge.
         boolean warpFired = false;
-        if (warpDriveArmed && weapon != Items.TRIDENT && !target.isBackgroundBoss()) {
+        if (warpDriveArmed && !isTridentWeapon(weapon) && !target.isBackgroundBoss()) {
             GridPos warpDest = findWarpAdjacentTile(target);
             if (warpDest != null) {
                 arena.setPlayerGridPos(warpDest);
@@ -4394,7 +4433,7 @@ public class CombatManager {
 
         // Range check (scaffold tile grants +1 range for ranged) -trident range already validated above.
         // Skipped entirely when Warp Drive fired this attack.
-        if (!warpFired && weapon != Items.TRIDENT) {
+        if (!warpFired && !isTridentWeapon(weapon)) {
             int range = getEffectiveWeaponRange();
             if (range > 1) range += getScaffoldRangeBonus(pPos);
             // Run and Gun hybrid: ranged attacks gain +1 range if the player moved this turn.
@@ -4595,7 +4634,8 @@ public class CombatManager {
             droppedTridentEntity.setPickupDelay(Integer.MAX_VALUE); // prevent vanilla pickup
             droppedTridentEntity.setNeverDespawn();
             dropWorld.spawnEntity(droppedTridentEntity);
-            sendMessage("§3Trident lodges in the ground at (" + landPos.x() + ", " + landPos.z() + ")! Walk there to retrieve it.");
+            sendMessage("§3" + droppedTridentStack.getName().getString() + " lodges in the ground at ("
+                + landPos.x() + ", " + landPos.z() + ")! Walk there to retrieve it.");
         }
 
         // Track weapon usage for achievements
@@ -4806,8 +4846,8 @@ public class CombatManager {
         final int fTridentChanneling = tridentChannelingLevel;
         final boolean fTridentHasLoyalty = tridentHasLoyalty;
         final int fTridentLoyaltyLevel = tridentLoyaltyLevel;
-        final int fImpalingLevel = weapon == Items.TRIDENT ? PlayerCombatStats.getImpaling(player) : 0;
-        final int fImpalingBleed = weapon == Items.TRIDENT ? PlayerCombatStats.getImpalingBleed(player) : 0;
+        final int fImpalingLevel = isTridentWeapon(weapon) ? PlayerCombatStats.getImpaling(player) : 0;
+        final int fImpalingBleed = isTridentWeapon(weapon) ? PlayerCombatStats.getImpalingBleed(player) : 0;
         // Sharpness on the player's weapon also inflicts bleed (1 stack per level).
         // Bow/crossbow Power is the ranged equivalent and does not bleed.
         final int fSharpnessBleed = (weapon != Items.BOW && weapon != Items.CROSSBOW)
@@ -6328,6 +6368,15 @@ public class CombatManager {
                     net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 0.8f);
             }
 
+            // Clean up the visual projectile entity. checkAndHandleDeath is the
+            // damage-death sink (shot down, swatted, AoE, DoT); without this the
+            // linked minecraft:fireball/wither_skull/shulker_bullet visual lingers
+            // in the world until the end-of-combat sweep. Mirrors killEnemy's
+            // impact-death cleanup so BOTH death paths despawn the visual.
+            if (entity.isProjectile()) {
+                killVisualProjectileNear(entity);
+            }
+
             // Shrink animation then discard (instead of instant removal)
             MobEntity mob = entity.getMobEntity();
             if (mob != null) {
@@ -6819,9 +6868,20 @@ public class CombatManager {
 
         // Weapon roll
         if (mob.getMainHandStack().isEmpty() && Math.random() < GEAR_SLOT_CHANCE) {
-            Item[] pool = WEAPONS_BY_TIER[tier];
-            mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND,
-                new ItemStack(pool[(int) (Math.random() * pool.length)]));
+            // 15% of the time an armed mob instead carries a modded instrument (if any).
+            java.util.List<net.minecraft.item.Item> instruments =
+                com.crackedgames.craftics.combat.ModdedMobWeapons.instruments();
+            if (!instruments.isEmpty() && Math.random() < 0.15) {
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND,
+                    new ItemStack(instruments.get((int) (Math.random() * instruments.size()))));
+            } else {
+                // Combine the vanilla tier pool with the modded (SS + Basic Weapons) pool.
+                java.util.List<net.minecraft.item.Item> pool = new java.util.ArrayList<>();
+                java.util.Collections.addAll(pool, WEAPONS_BY_TIER[tier]);
+                pool.addAll(com.crackedgames.craftics.combat.ModdedMobWeapons.moddedWeaponsForTier(tier));
+                net.minecraft.item.Item picked = pool.get((int) (Math.random() * pool.size()));
+                mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, new ItemStack(picked));
+            }
         }
 
         // Each armor slot rolls independently
@@ -7883,6 +7943,57 @@ public class CombatManager {
     private static final int INSTRUMENT_FLAT_HEAL = 6;   // FLAT_HEAL signature (Vintage Lyre)
     private static final int INSTRUMENT_ARENA_HEAL = 4;  // ARENA_HEAL signature (Violin)
 
+    /**
+     * A mob performs a held instrument. ATTACK: aim the shape at the player, apply the
+     * def's debuff effects + baseDamage if the player is in the shape. SUPPORT: aim at
+     * the performer's own tile, buff the living enemy-side entities caught in the shape
+     * (the mob's "allies"). Returns false when there's no valid target so the caller
+     * falls back to the normal action. Mirrors resolveInstrumentAttack/Support with the
+     * target side flipped (the mob is the caster, the player is the enemy).
+     */
+    private boolean resolveMobInstrument(CombatEntity performer,
+            com.crackedgames.craftics.compat.instruments.InstrumentDef def) {
+        if (def == null || arena == null || player == null) return false;
+        GridPos center = performer.getGridPos();
+        if (center == null) return false;
+        boolean fullArena = def.shape()
+            == com.crackedgames.craftics.compat.instruments.InstrumentDef.Shape.FULL_ARENA;
+
+        if (def.role() == com.crackedgames.craftics.compat.instruments.InstrumentDef.Role.ATTACK) {
+            GridPos aim = arena.getPlayerGridPos();
+            java.util.List<GridPos> tiles = fullArena
+                ? com.crackedgames.craftics.combat.AoeShapes.allTiles(arena)
+                : com.crackedgames.craftics.compat.instruments.InstrumentPerformance
+                    .shapeTiles(def, center, aim, combatRng.nextLong());
+            if (!tiles.contains(aim)) return false; // player not caught in the shape
+            int dealt = def.baseDamage() > 0 ? damagePlayer(def.baseDamage(), performer) : 0;
+            for (var fx : def.effects()) {
+                if (fx.type() != null) addEffectHooked(fx.type(), fx.turns(), fx.amplifier());
+            }
+            playInstrumentVfx(def, center, tiles);
+            sendMessage("§5  " + performer.getDisplayName() + " plays a haunting tune"
+                + (dealt > 0 ? " for " + dealt + " damage!" : "!"));
+            return true;
+        } else {
+            java.util.List<GridPos> tiles = fullArena
+                ? com.crackedgames.craftics.combat.AoeShapes.allTiles(arena)
+                : com.crackedgames.craftics.compat.instruments.InstrumentPerformance
+                    .shapeTiles(def, center, center, combatRng.nextLong());
+            java.util.List<CombatEntity> allies =
+                com.crackedgames.craftics.combat.AoeShapes.enemiesOn(arena, tiles, null);
+            allies.removeIf(e -> e == performer || !e.isAlive());
+            if (allies.isEmpty()) return false; // nothing to buff -> fall back to melee
+            for (CombatEntity ally : allies) {
+                for (var fx : def.effects()) {
+                    if (fx.type() != null) applyInstrumentEffect(ally, fx.type(), fx.turns(), fx.amplifier());
+                }
+            }
+            playInstrumentVfx(def, center, tiles);
+            sendMessage("§5  " + performer.getDisplayName() + " rallies its allies with a song!");
+            return true;
+        }
+    }
+
     private void resolveInstrumentAttack(com.crackedgames.craftics.compat.instruments.InstrumentDef def,
                                          GridPos center, java.util.List<GridPos> tiles) {
         java.util.List<CombatEntity> hit =
@@ -8033,8 +8144,17 @@ public class CombatManager {
             return;
         }
         if (!(player.getEntityWorld() instanceof ServerWorld world)) return;
+        // Virtual context (not create(...) and not EMPTY): the station is opened from
+        // a held item on an empty combat tile, so there is no real station block.
+        //  - create(world, pos) would make canUse() fail every tick (no block at pos)
+        //    and the game snaps the screen shut ("opens then instantly closes").
+        //  - EMPTY is the client stub whose run() is a no-op, so recipe/enchant/grind
+        //    world logic never fires and crafting does nothing (a log made no planks).
+        // CraftingStations.virtualContext runs world callbacks against the player's
+        // real position (recipes + on-close drops work) but fakes canUse to always
+        // pass, so the screen stays open AND crafting works.
         net.minecraft.screen.ScreenHandlerContext ctx =
-            net.minecraft.screen.ScreenHandlerContext.create(world, player.getBlockPos());
+            CraftingStations.virtualContext(world, player.getBlockPos());
         // Charge only if the screen actually opened (openHandledScreen is empty
         // when the player already has a screen up).
         if (player.openHandledScreen(station.factory(ctx)).isEmpty()) return;
@@ -9945,8 +10065,10 @@ public class CombatManager {
             }
 
             if (droppedTridentPos != null && next.equals(droppedTridentPos)) {
+                String retrievedName = droppedTridentStack != null
+                    ? droppedTridentStack.getName().getString() : "trident";
                 returnDroppedTrident();
-                sendMessage("§3You retrieve your trident!");
+                sendMessage("§3You retrieve your " + retrievedName + "!");
             }
 
             if (tileEffects.containsKey(next) && tileEffects.get(next).startsWith("cake")) {
@@ -10701,6 +10823,24 @@ public class CombatManager {
             if (distToPlayer > detectionRange) {
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = Math.max(1, CrafticsMod.CONFIG.enemyTurnDelay() / 2);
+                return;
+            }
+        }
+
+        // Modded instrument: a non-boss mob holding one PERFORMS it this turn instead
+        // of its normal action - an ATTACK instrument aimed at the player, or a SUPPORT
+        // one buffing its allies. Falls through to the normal action if it can't perform
+        // (player out of shape / no allies to buff).
+        if (!currentEnemy.isBoss() && currentEnemy.getMobEntity() != null) {
+            ItemStack heldInstrument = currentEnemy.getMobEntity().getMainHandStack();
+            if (com.crackedgames.craftics.compat.instruments.InstrumentsCompat
+                    .isInstrument(heldInstrument.getItem())
+                    && resolveMobInstrument(currentEnemy,
+                        com.crackedgames.craftics.compat.instruments.InstrumentsCompat
+                            .defFor(heldInstrument.getItem()))) {
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                pendingAction = null;
                 return;
             }
         }
@@ -16011,6 +16151,28 @@ public class CombatManager {
                 + " for " + actual + "!");
             applyEnemyHitEffect(currentEnemy.getEntityTypeId());
 
+            // Modded mob weapon on-hit debuff: a mob swinging a registered modded weapon
+            // applies a short player-facing debuff (katana -> bleed, poison sword ->
+            // poison, ...). this.player is already the swapped victim here, and
+            // addEffectHooked targets this.player, so the right player gets it.
+            if (currentEnemy.getMobEntity() != null) {
+                ItemStack mobWeapon = currentEnemy.getMobEntity().getMainHandStack();
+                if (!mobWeapon.isEmpty()) {
+                    net.minecraft.util.Identifier wid =
+                        net.minecraft.registry.Registries.ITEM.getId(mobWeapon.getItem());
+                    var debuff = com.crackedgames.craftics.combat.ModdedMobWeapons.onHitDebuff(
+                        wid != null ? wid.getPath() : null);
+                    if (debuff != null) {
+                        boolean skipBurn = debuff.type() == CombatEffects.EffectType.BURNING
+                            && combatEffects.hasFireResistance();
+                        if (!skipBurn && addEffectHooked(debuff.type(), debuff.turns(), debuff.amplifier())) {
+                            sendMessage("§5  " + currentEnemy.getDisplayName() + "'s "
+                                + mobWeapon.getName().getString() + " afflicts you!");
+                        }
+                    }
+                }
+            }
+
             // Enemy weapon Sharpness: applies bleed stacks to the player (1 stack per level, 3 turn duration)
             if (enemyHasSharpness) {
                 int bleedDuration = 3;
@@ -17472,6 +17634,15 @@ public class CombatManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         CrafticsSavedData.PlayerData ld = data.getPlayerData(leaderUuid != null ? leaderUuid : player.getUuid());
 
+        // HARDCORE ISLAND: full-party defeat = total wipe. Takes precedence over
+        // the infinite-mode and permadeath flows; no emerald/XP penalties and no
+        // coin-flip item screen - everything is gone regardless.
+        java.util.UUID hcOwner = leaderUuid != null ? leaderUuid : player.getUuid();
+        if (com.crackedgames.craftics.world.HardcoreIslands.isHardcore(world.getServer(), hcOwner)) {
+            finishHardcoreTeardown(hcOwner, ld);
+            return;
+        }
+
         // INFINITE MODE: a wipe just ends the run. No emerald/XP/item death
         // penalties - the run items evaporate with the stash restore, emeralds
         // and the banked best score are kept.
@@ -17729,6 +17900,54 @@ public class CombatManager {
         }
         sendToAllParty(new ExitCombatPayload(false));
         endCombat();
+    }
+
+    /**
+     * Hardcore variant of the game-over teardown: no penalties, no coin flip.
+     * Resolves an active infinite run first (its stash restore is wiped anyway),
+     * does the normal run-failure bookkeeping, ends combat, then hands off to
+     * HardcoreIslands.wipe which empties + deletes the island dimension.
+     */
+    private void finishHardcoreTeardown(java.util.UUID owner, CrafticsSavedData.PlayerData ld) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        net.minecraft.server.MinecraftServer srv = world.getServer();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+
+        sendMessage("§4§l☠ HARDCORE DEFEAT §r§4- the island is lost.");
+
+        // Infinite run on a hardcore island: resolve stash flags before the wipe
+        // (restoreParticipant refills inventories, but the wipe below clears them
+        // again; offline members are caught by the pending-wipe join hook, which
+        // runs AFTER the join-time stash restore).
+        if (ld.infiniteActive) {
+            InfiniteRunManager.endRun(srv, owner, "hardcore defeat");
+        }
+
+        // Same run-failure bookkeeping as finishGameOverTeardown.
+        ld.endBiomeRun();
+        ld.inCombat = false;
+        data.markDirty();
+        // Dead run: pets are lost with it; block endCombat's rescue safety-net
+        // (same reasoning as finishGameOverTeardown). The owner record reset in
+        // HardcoreIslands.wipe clears the party-mob list itself.
+        petsRescued = true;
+
+        // Snapshot participants BEFORE endCombat clears party state.
+        java.util.List<ServerPlayerEntity> participants =
+            new java.util.ArrayList<>(getAllParticipants());
+
+        // Downed party members sit in SPECTATOR; restore before the lobby move.
+        for (ServerPlayerEntity p : participants) {
+            if (p != null && !p.isRemoved() && !p.isDisconnected()) {
+                p.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+            }
+        }
+
+        world.setTimeOfDay(6000);
+        sendToAllParty(new ExitCombatPayload(false));
+        endCombat();
+
+        com.crackedgames.craftics.world.HardcoreIslands.wipe(srv, owner, participants);
     }
 
     /** Apply every pending player's pre-decided losses, then run the shared teardown. */
@@ -18249,6 +18468,9 @@ public class CombatManager {
                                            java.util.UUID hostUuid,
                                            List<ServerPlayerEntity> rewardRecipients) {
         CrafticsSavedData.PlayerData ld = data.getPlayerData(hostUuid);
+        // Capture player turns taken THIS boss fight before endCombat resets it -
+        // drives the "fewer turns = more points" boss score.
+        int bossTurns = turnNumber;
         savePets();
         sendToAllParty(new ExitCombatPayload(true));
         sendMessage("§5§l*** ∞ BIOME " + (ld.infiniteBiomesCleared + 1) + " CLEARED! ∞ ***");
@@ -18294,7 +18516,7 @@ public class CombatManager {
         }
 
         // Bank the score, roll the next realm, rebuild the rest room, move the party.
-        InfiniteRunManager.onBossDefeated(world, hostUuid, savedParty);
+        InfiniteRunManager.onBossDefeated(world, hostUuid, savedParty, bossTurns);
     }
 
     /**
@@ -18313,20 +18535,14 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         java.util.UUID dataOwner = leaderUuid != null ? leaderUuid : player.getUuid();
-        java.util.UUID infiniteHostOwner = dataOwner;
-        if (!InfiniteRunManager.isHostOfActiveRun(data, infiniteHostOwner)) {
-            String hostRef = data.getPlayerData(player.getUuid()).infiniteRunHost;
-            if (hostRef != null && !hostRef.isEmpty()) {
-                try {
-                    java.util.UUID parsedHost = java.util.UUID.fromString(hostRef);
-                    if (InfiniteRunManager.isHostOfActiveRun(data, parsedHost)) {
-                        infiniteHostOwner = parsedHost;
-                    }
-                } catch (IllegalArgumentException ignored) {
-                    // Bad host ref in save data: fall back to the normal owner path.
-                }
-            }
-        }
+        // Resolve the ACTUAL infinite-run host, not just the party leader. The run's
+        // host state lives on the host's own record (infiniteActive), which in co-op
+        // is not necessarily the party leader / island owner. resolveActiveHost checks
+        // the leader, then this player's infiniteRunHost pointer, and returns whoever's
+        // record is actually active - so the boss-victory rest-room flow fires in co-op,
+        // not just solo. null when there's no active run (campaign boss).
+        java.util.UUID infiniteHostOwner = InfiniteRunManager.resolveActiveHost(
+            data, dataOwner, player.getUuid());
         CrafticsSavedData.PlayerData ld = data.getPlayerData(dataOwner);
         List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
 
@@ -18487,6 +18703,20 @@ public class CombatManager {
             if (!lastFightWasTrial) {
                 ld.advanceBiomeRun();
                 data.markDirty();
+                // INFINITE MODE: clearing a normal level banks +5 points minus 1 per
+                // 2 player-turns (floored at 1) - rewards finishing levels quickly.
+                // Trials/ambushes are excluded (guarded above). Boss levels score via
+                // onBossDefeated, not here.
+                if (InfiniteRunManager.isHostOfActiveRun(data, infiniteHostOwner)) {
+                    int earned = InfiniteRunManager.clearPoints(
+                        InfiniteRunManager.LEVEL_POINTS, turnNumber);
+                    int total = InfiniteRunManager.awardScore(
+                        data, infiniteHostOwner, earned, rewardRecipients);
+                    for (ServerPlayerEntity member : rewardRecipients) {
+                        sendMessageTo(member, "§5∞ Level cleared! §d+" + earned
+                            + " points §7(fewer turns = more). Score: §f" + total);
+                    }
+                }
             }
             String biomeName = biomeTemplate != null ? biomeTemplate.displayName : "Unknown";
             int displayIndex = ld.activeBiomeLevelIndex;
@@ -24203,6 +24433,20 @@ public class CombatManager {
         arena.placeEntity(ce);
         sendSync();
         return ce;
+    }
+
+    /**
+     * Summon a temporary combat ally on a free tile beside the attacking player -
+     * the weapon-proc summon path (Chomp'olotl's axolotl). Bypasses AP cost and the
+     * party cap like the other scripted summons ({@link #spawnSummonedAlly}).
+     *
+     * @return the new ally, or {@code null} when combat is inactive or no free tile exists
+     */
+    public CombatEntity summonWeaponProcAlly(String typeId, ServerPlayerEntity owner, int lifespanRounds) {
+        if (!active || arena == null) return null;
+        GridPos tile = adjacentFreeTile(arena.getPlayerGridPos());
+        if (tile == null) return null;
+        return spawnSummonedAlly(typeId, tile, owner != null ? owner.getUuid() : null, lifespanRounds);
     }
 
     /**

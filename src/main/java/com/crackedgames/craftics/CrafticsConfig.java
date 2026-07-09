@@ -63,14 +63,14 @@ public class CrafticsConfig {
      * 2p = 1.75x, 3p = 2.5x, 4p = 3.25x. Applies to bosses too.
      */
     @RangeConstraint(min = 0.0, max = 3.0)
-    public float partyHpPerPlayer = 0.75f;
+    public float partyHpPerPlayer = 0.95f;
 
     // ===== Boss Scaling =====
 
     /** HP multiplier applied only to bosses (does not stack with enemyHpMultiplier). */
     @SectionHeader("bossScaling")
     @RangeConstraint(min = 0.5, max = 5.0)
-    public float bossHpMultiplier = 3.0f;
+    public float bossHpMultiplier = 3.25f;
 
     /**
      * Linear boss HP bonus per prior defeat of that boss on the same island.
@@ -105,7 +105,7 @@ public class CrafticsConfig {
     public int maxEnemiesPerLevel = 7;
 
     @RangeConstraint(min = 1, max = 6)
-    public int maxBossAdds = 4;
+    public int maxBossAdds = 5;
 
     // ===== Combat Tuning =====
 
@@ -239,10 +239,10 @@ public class CrafticsConfig {
      *  Higher than the totem chance on purpose - there are ~45 uniques to collect, and each
      *  recipient rolls independently, preferring weapons they don't already carry. */
     @RangeConstraint(min = 0.0, max = 1.0)
-    public float uniqueWeaponDropChance = 0.15f;
+    public float uniqueWeaponDropChance = 0.02f;
 
     @RangeConstraint(min = 0.0, max = 1.0)
-    public float potterySherdDropChance = 0.04f;
+    public float potterySherdDropChance = 0.1f;
 
     @RangeConstraint(min = 0.0, max = 1.0)
     public float traderSpawnChance = 0.25f;

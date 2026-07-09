@@ -30,16 +30,18 @@ public final class AccessoriesReflect {
     private static final Method GET_ACCESSORIES;           // AccessoriesContainer.getAccessories() -> ExpandedSimpleContainer
     private static final Method GET_COSMETIC_ACCESSORIES;  // AccessoriesContainer.getCosmeticAccessories() -> ExpandedSimpleContainer
     private static final Method MARK_CHANGED;              // AccessoriesContainer.markChanged(boolean)
+    private static final Method ATTEMPT_EQUIP;            // AccessoriesCapability.attemptToEquipAccessory(ItemStack) -> SlotReference
     private static final boolean AVAILABLE;
 
     static {
-        Method mGet = null, mGetC = null, mGetA = null, mGetCo = null, mMark = null;
+        Method mGet = null, mGetC = null, mGetA = null, mGetCo = null, mMark = null, mEquip = null;
         boolean ok = false;
         Throwable failure = null;
         try {
             Class<?> capCls = Class.forName("io.wispforest.accessories.api.AccessoriesCapability");
             mGet = capCls.getMethod("get", LivingEntity.class);
             mGetC = capCls.getMethod("getContainers");
+            mEquip = capCls.getMethod("attemptToEquipAccessory", ItemStack.class);
             Class<?> contCls = Class.forName("io.wispforest.accessories.api.AccessoriesContainer");
             mGetA = contCls.getMethod("getAccessories");
             mGetCo = contCls.getMethod("getCosmeticAccessories");
@@ -53,6 +55,7 @@ public final class AccessoriesReflect {
         GET_ACCESSORIES = mGetA;
         GET_COSMETIC_ACCESSORIES = mGetCo;
         MARK_CHANGED = mMark;
+        ATTEMPT_EQUIP = mEquip;
         AVAILABLE = ok;
         if (ok) {
             CrafticsMod.LOGGER.info("[Craftics × Accessories] Resolved AccessoriesCapability via reflection");
@@ -65,6 +68,29 @@ public final class AccessoriesReflect {
 
     public static boolean isAvailable() {
         return AVAILABLE;
+    }
+
+    /**
+     * Equip {@code stack} into a valid Accessories slot on {@code entity} (mob or
+     * player) so the Artifacts renderer draws it WORN in the right place - boots on
+     * the feet, a necklace on the neck, etc. - instead of hovering as a held item.
+     * Uses the mod's own {@code attemptToEquipAccessory}, which picks the first
+     * slot the item is valid for. Returns true if it equipped. No-op / false when
+     * Accessories isn't installed or no valid slot exists.
+     */
+    public static boolean equipOnMob(LivingEntity entity, ItemStack stack) {
+        if (!AVAILABLE || entity == null || stack == null || stack.isEmpty()) return false;
+        if (entity.getWorld() == null || entity.getWorld().isClient) return false;
+        try {
+            Object capability = CAPABILITY_GET.invoke(null, entity);
+            if (capability == null) return false; // entity has no accessories capability
+            Object slotRef = ATTEMPT_EQUIP.invoke(capability, stack.copy());
+            // attemptToEquipAccessory returns a SlotReference on success, null on failure.
+            return slotRef != null;
+        } catch (Throwable t) {
+            CrafticsMod.LOGGER.debug("[Craftics × Accessories] equipOnMob failed", t);
+            return false;
+        }
     }
 
     /**

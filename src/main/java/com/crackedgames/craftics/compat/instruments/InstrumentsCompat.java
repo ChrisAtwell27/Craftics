@@ -68,6 +68,11 @@ public final class InstrumentsCompat {
         return item == null ? null : BY_ITEM.get(item);
     }
 
+    /** Every instrument Item that resolved at registration (drives the mob pool). */
+    public static java.util.List<Item> registeredInstrumentItems() {
+        return new java.util.ArrayList<>(BY_ITEM.keySet());
+    }
+
     public static boolean isInstrument(Item item) {
         return item != null && BY_ITEM.containsKey(item);
     }

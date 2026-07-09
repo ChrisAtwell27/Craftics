@@ -42,6 +42,10 @@ public final class HubTeleports {
         // Re-open over getLoaded: a stale HANDLES entry (Fantasy unloaded the world
         // externally) would otherwise hand back a null asWorld() as the target.
         ServerWorld island = IslandDimensions.getOrCreate(server, owner);
+        // Old-save migration: copy an overworld-lane base into this dim (or build a
+        // fresh hub) before the personalHubBuilt guard below - otherwise an old save
+        // (personalHubBuilt=true) skips the rebuild and voids the player.
+        IslandMigration.ensureMigrated(server, owner);
         // Self-heal: /craftics island reset wipes the built hub (personalHubBuilt=false)
         // but keeps worldSlot as the has-island marker, so neither /new nor the JOIN
         // repair path ever rebuilds it. Without this, the player lands at the stored
@@ -77,6 +81,10 @@ public final class HubTeleports {
         // Re-open over getLoaded: a stale HANDLES entry (Fantasy unloaded the world
         // externally) would otherwise hand back a null asWorld() as the target.
         ServerWorld island = IslandDimensions.getOrCreate(server, owner);
+        // Old-save migration: same as toHub - migrate the owner's overworld-lane base
+        // into this dim before the guard, so a guest visiting an unmigrated owner lands
+        // in the copied base rather than a void.
+        IslandMigration.ensureMigrated(server, owner);
         // Self-heal: mirrors toHub's hub-rebuild guard so a visit into an island whose
         // hub was wiped by /craftics island reset doesn't drop the visitor into the void.
         CrafticsSavedData.PlayerData ownerPd = data.getPlayerData(owner);
