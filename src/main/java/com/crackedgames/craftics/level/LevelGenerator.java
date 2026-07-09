@@ -312,6 +312,19 @@ public class LevelGenerator {
         atkBonus += (biomeIndex + 1) / 2;
         int defBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.defPerBiome());
 
+        // Infinite mode overrides the campaign HP math with a flat ordinal curve that
+        // ignores the random biome's authored HP + bossHpMultiplier. ord = biomes cleared.
+        final boolean infinite = infiniteSpec != null;
+        final int infOrdinal = infinite ? infiniteSpec.virtualOrdinal() : 0;
+        // Enemy HP under infinite (same for every non-passive add on this level).
+        final int infEnemyHp = infinite
+            ? com.crackedgames.craftics.level.InfiniteScaling.enemyHp(
+                biomeIndex, infOrdinal,
+                com.crackedgames.craftics.CrafticsMod.CONFIG.infiniteEnemyBaseHp(),
+                com.crackedgames.craftics.CrafticsMod.CONFIG.infiniteEnemyHpPerLevel(),
+                com.crackedgames.craftics.CrafticsMod.CONFIG.infiniteEnemyHpPerBiome())
+            : 0;
+
         GridPos playerStart = new GridPos(w / 2, 0);
         List<GridPos> validPositions = new ArrayList<>();
         for (int x = 0; x < w; x++) {
@@ -336,7 +349,13 @@ public class LevelGenerator {
                 return false;
             });
 
-            int bossHp = (int)((biome.boss.baseHp() + hpBonus) * com.crackedgames.craftics.CrafticsMod.CONFIG.bossHpMultiplier());
+            int bossHp = infinite
+                ? com.crackedgames.craftics.level.InfiniteScaling.bossHp(
+                    infOrdinal,
+                    com.crackedgames.craftics.CrafticsMod.CONFIG.infiniteBossBaseHp(),
+                    com.crackedgames.craftics.CrafticsMod.CONFIG.infiniteBossHpPerBiome())
+                : (int)((biome.boss.baseHp() + hpBonus)
+                    * com.crackedgames.craftics.CrafticsMod.CONFIG.bossHpMultiplier());
             bossSpawnIndex = spawns.size();
             // Infinite mode: the biome's authored boss is replaced by the run's
             // randomized standard-size boss. Its stats reuse the biome boss's
@@ -392,7 +411,9 @@ public class LevelGenerator {
             boolean isPassive = !hostile || isPassiveType(mob.entityTypeId());
             spawns.add(new LevelDefinition.EnemySpawn(
                 mob.entityTypeId(), pos,
-                mob.baseHp() + (isPassive ? 0 : hpBonus),
+                // Infinite: non-passive adds use the flat enemy curve; passives keep
+                // base HP (they don't scale in campaign either).
+                isPassive ? mob.baseHp() : (infinite ? infEnemyHp : mob.baseHp() + hpBonus),
                 mob.baseAttack() + (isPassive ? 0 : atkBonus),
                 mob.baseDefense() + (isPassive ? 0 : defBonus),
                 mob.range(),
@@ -414,7 +435,7 @@ public class LevelGenerator {
                     if (!s.entityTypeId().equals("minecraft:bee") && isPassiveType(s.entityTypeId())) {
                         spawns.set(i, new LevelDefinition.EnemySpawn(
                             "minecraft:bee", s.position(),
-                            bee.baseHp() + hpBonus + biomeIndex,
+                            infinite ? infEnemyHp : bee.baseHp() + hpBonus + biomeIndex,
                             bee.baseAttack() + atkBonus,
                             bee.baseDefense() + defBonus,
                             bee.range(),

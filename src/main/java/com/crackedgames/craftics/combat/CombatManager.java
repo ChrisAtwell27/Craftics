@@ -2865,9 +2865,13 @@ public class CombatManager {
                 int partySize = getAllParticipants().size();
                 double perPlayer = com.crackedgames.craftics.CrafticsMod.CONFIG.partyHpPerPlayer();
                 double partyHpMult = partySize > 1 ? 1.0 + (partySize - 1) * perPlayer : 1.0;
-                double hpMult = isBoss ? 1.0 : com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
+                boolean infiniteRun = currentInfiniteSpec() != null;
+                // Infinite HP already comes from the flat InfiniteScaling curve, so the
+                // enemy multiplier and the per-biome boss-kill ramp must NOT re-inflate it.
+                double hpMult = (isBoss || infiniteRun)
+                    ? 1.0 : com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
                 double bossKillMult = 1.0;
-                if (isBoss && bossBiomeId != null && worldOwnerUuid != null) {
+                if (isBoss && !infiniteRun && bossBiomeId != null && worldOwnerUuid != null) {
                     int kills = CrafticsSavedData.get(world)
                         .getPlayerData(worldOwnerUuid).getBossKills(bossBiomeId);
                     bossKillMult = 1.0 + com.crackedgames.craftics.CrafticsMod.CONFIG.bossKillHpScale() * kills;
