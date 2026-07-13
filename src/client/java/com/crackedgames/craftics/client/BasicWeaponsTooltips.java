@@ -61,12 +61,13 @@ public final class BasicWeaponsTooltips {
             };
             case "spear" -> new String[]{
                 "Reach (2 tiles), lower base damage",
-                "§e+20% damage per tile walked before attacking (up to 2x)"
+                "§e" + com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat
+                    .spearMomentumLine()
             };
             case "quarterstaff" -> new String[]{"Reach (2 tiles) + adjacent sweep"};
             case "club" -> new String[]{"Chance to slow on hit"};
             case "hammer" -> new String[]{"Knockback + stun + shockwave"};
-            case "glaive" -> new String[]{"Wide cleave (AoE arc)"};
+            case "glaive" -> new String[]{"Reach (2 tiles) + wide cleave arc at half damage"};
             default -> new String[0];
         };
     }

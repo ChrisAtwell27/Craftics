@@ -67,7 +67,7 @@ public final class ImmersiveArmorsCompat {
         if (!anyArmorPresent()) return; // mod flagged loaded but its items never appeared
 
         // Armor Class (B) mirrors the mod's own protection curve, mapped onto Craftics'
-        // vanilla scale (leather 2, chainmail/gold 3, iron 4, diamond 6, netherite 7).
+        // vanilla scale (leather/gold 2, chainmail 3, iron 4, diamond 6, netherite 7).
 
         // Wooden - the starter set. Springy rather than rigid: it soaks arrows and blasts
         // but splinters, and can shatter outright when struck.

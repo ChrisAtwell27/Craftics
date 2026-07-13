@@ -1,0 +1,7 @@
+{
+  "comment": "Stand corner marker. Placed in PAIRS as opposite corners of a booth's clickable rectangle. No facing - the corner brackets on the texture say what it is.",
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "craftics:block/stand_marker"
+  }
+}

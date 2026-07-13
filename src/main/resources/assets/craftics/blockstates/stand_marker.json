@@ -1,6 +1,6 @@
 {
-  "comment": "Stand corner marker (placed in pairs). Replaced by the most common neighbor block on scan, so the in-world look only matters while authoring.",
+  "comment": "Stand corner marker (placed in PAIRS as opposite corners of a booth rectangle). No facing property - a corner has no direction.",
   "variants": {
-    "": { "model": "craftics:block/scene_marker" }
+    "": { "model": "craftics:block/stand_marker" }
   }
 }

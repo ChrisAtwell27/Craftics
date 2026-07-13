@@ -2551,10 +2551,28 @@ public class ArenaBuilder {
         GridTile requestedTile = tiles[rx][rz];
         boolean requestedInMask = insideMask == null
             || (rx < insideMask.length && rz < insideMask[0].length && insideMask[rx][rz]);
-        if (requestedTile != null && requestedTile.isSafeForSpawn() && requestedInMask) {
+        // A tile being safe to STAND on is not enough - it must also be possible to LEAVE.
+        // A one-block pillar ringed by lava or void passes isSafeForSpawn and used to strand
+        // the player with no legal move on turn one.
+        if (requestedTile != null && requestedTile.isSafeForSpawn() && requestedInMask
+                && hasEscapeRoute(tiles, insideMask, rx, rz)) {
             return new GridPos(rx, rz);
         }
 
+        // First pass: the nearest safe tile the player can actually walk off of.
+        GridPos best = nearestSafeTile(tiles, insideMask, rx, rz, true);
+        // Only if the whole arena is stranded tiles do we accept one without an exit -
+        // better to stand somewhere than to fail the level build outright.
+        if (best == null) best = nearestSafeTile(tiles, insideMask, rx, rz, false);
+
+        return best != null ? best : new GridPos(rx, rz);
+    }
+
+    /** Nearest spawn-safe tile to (rx,rz), optionally requiring a walkable neighbour. */
+    private static GridPos nearestSafeTile(GridTile[][] tiles, boolean[][] insideMask,
+                                           int rx, int rz, boolean requireEscape) {
+        int w = tiles.length;
+        int h = w > 0 ? tiles[0].length : 0;
         GridPos best = null;
         int bestDist = Integer.MAX_VALUE;
         for (int x = 0; x < w; x++) {
@@ -2566,6 +2584,7 @@ public class ArenaBuilder {
                     && (x >= insideMask.length || z >= insideMask[0].length || !insideMask[x][z])) {
                     continue;
                 }
+                if (requireEscape && !hasEscapeRoute(tiles, insideMask, x, z)) continue;
                 int dist = Math.abs(x - rx) + Math.abs(z - rz);
                 if (dist < bestDist) {
                     bestDist = dist;
@@ -2573,8 +2592,31 @@ public class ArenaBuilder {
                 }
             }
         }
+        return best;
+    }
 
-        return best != null ? best : new GridPos(rx, rz);
+    /**
+     * True if at least one of the eight tiles around (x,z) can be walked onto, so a player
+     * standing here has somewhere to go. Hazard tiles (lava, fire) don't count as an exit -
+     * being able only to step into lava is not an escape.
+     */
+    private static boolean hasEscapeRoute(GridTile[][] tiles, boolean[][] insideMask, int x, int z) {
+        int w = tiles.length;
+        int h = w > 0 ? tiles[0].length : 0;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                int nx = x + dx, nz = z + dz;
+                if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue;
+                if (insideMask != null
+                    && (nx >= insideMask.length || nz >= insideMask[0].length || !insideMask[nx][nz])) {
+                    continue;
+                }
+                GridTile n = tiles[nx][nz];
+                if (n != null && n.isSafeForSpawn()) return true;
+            }
+        }
+        return false;
     }
 
     private static Block getMostCommonTouchingBlock(ServerWorld world, BlockPos pos, Block fallback) {

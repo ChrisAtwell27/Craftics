@@ -1,0 +1,13 @@
+{
+  "comment": "Booth NPC marker. The arrow on the TOP face shows which way the merchant will face. Distinct texture + rotation so the three marker types are told apart at a glance while authoring a scene.",
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "craftics:block/npc_marker",
+    "up": "craftics:block/npc_marker_top",
+    "down": "craftics:block/npc_marker",
+    "north": "craftics:block/npc_marker",
+    "south": "craftics:block/npc_marker",
+    "east": "craftics:block/npc_marker",
+    "west": "craftics:block/npc_marker"
+  }
+}

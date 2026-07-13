@@ -26,7 +26,7 @@ class ArmorClassTableTest {
     void baseAC_matchesSpecTable() {
         assertEquals(2, ArmorClassTable.baseAC("leather"));
         assertEquals(3, ArmorClassTable.baseAC("chainmail"));
-        assertEquals(3, ArmorClassTable.baseAC("golden"));
+        assertEquals(2, ArmorClassTable.baseAC("golden"));
         assertEquals(4, ArmorClassTable.baseAC("iron"));
         assertEquals(4, ArmorClassTable.baseAC("copper"));
         assertEquals(4, ArmorClassTable.baseAC("turtle"));
@@ -38,6 +38,32 @@ class ArmorClassTableTest {
     void baseAC_unknownMaterialIsZero() {
         assertEquals(0, ArmorClassTable.baseAC("mithril"));
         assertEquals(0, ArmorClassTable.baseAC(""));
+    }
+
+    /**
+     * Gold is the one material whose item path ({@code golden_helmet} -> "golden") differs
+     * from its armor-set key ("gold"), and the AC table is looked up with BOTH: the
+     * per-piece AC path resolves an item through {@code armorSetKeyOf}, which normalizes
+     * to "gold". A table that only knew "golden" silently gave gold armor 0 AC.
+     */
+    @Test
+    void baseAC_acceptsBothSpellingsOfGold() {
+        assertEquals(2, ArmorClassTable.baseAC("golden"), "item-path spelling");
+        assertEquals(2, ArmorClassTable.baseAC("gold"), "armor-set-key spelling");
+    }
+
+    /**
+     * Every material the armor-set keys use must be known to the AC table. This is the
+     * contract {@code getPieceAC} relies on - it resolves an item to its SET KEY and looks
+     * that up - so a key the table doesn't recognise means that armor wears as 0 AC.
+     */
+    @Test
+    void everyArmorSetKey_hasAnAC() {
+        for (String setKey : new String[]{
+                "leather", "chainmail", "gold", "iron", "copper", "turtle", "diamond", "netherite"}) {
+            assertTrue(ArmorClassTable.baseAC(setKey) > 0,
+                "armor-set key '" + setKey + "' must have a base AC");
+        }
     }
 
     // ---- Enemy DEF compression: ceil(AC / 3), material-scaled ----
@@ -111,7 +137,8 @@ class ArmorClassTableTest {
     void fullSetTotals_matchSpec() {
         assertEquals(7,  fullSet(ArmorClassTable.baseAC("leather")));
         assertEquals(11, fullSet(ArmorClassTable.baseAC("chainmail")));
-        assertEquals(11, fullSet(ArmorClassTable.baseAC("golden")));
+        // The Gambler set trades protection for crits and emeralds - as soft as leather.
+        assertEquals(7,  fullSet(ArmorClassTable.baseAC("golden")));
         assertEquals(13, fullSet(ArmorClassTable.baseAC("iron")));
         assertEquals(13, fullSet(ArmorClassTable.baseAC("copper")));
         assertEquals(19, fullSet(ArmorClassTable.baseAC("diamond")));

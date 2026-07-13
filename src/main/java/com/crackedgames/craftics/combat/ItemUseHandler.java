@@ -174,18 +174,27 @@ public class ItemUseHandler {
     /** Heal an ally party member by consuming one of the held food stack. Used
      *  when a player clicks an adjacent ally tile while holding food, so co-op
      *  parties can share consumables. Returns the chat-formatted result message,
-     *  or {@code null} if {@code stack} isn't an edible food item we recognise. */
-    public static String feedAlly(ServerPlayerEntity ally, ItemStack stack) {
+     *  or {@code null} if {@code stack} isn't an edible food item we recognise.
+     *
+     *  <p>Medic scales off the FEEDER's hoe, not the recipient's - the medic is the one
+     *  doing the healing, so it's their enchantment that decides how much it's worth. */
+    public static String feedAlly(ServerPlayerEntity feeder, ServerPlayerEntity ally, ItemStack stack) {
         Item food = stack.getItem();
         if (!FOOD_HEAL.containsKey(food)) return null;
-        int healAmount = FOOD_HEAL.getOrDefault(food, 1);
+        int medic = HoeEnchantEffects.medicBonus(feeder);
+        int healAmount = FOOD_HEAL.getOrDefault(food, 1) + medic;
         float maxHealth = ally.getMaxHealth();
-        float newHealth = Math.min(maxHealth, ally.getHealth() + healAmount);
+        float before = ally.getHealth();
+        float newHealth = Math.min(maxHealth, before + healAmount);
         ally.setHealth(newHealth);
+        int healed = Math.round(newHealth - before);
         String itemName = stack.getName().getString();
         String allyName = ally.getName().getString();
         stack.decrement(1);
-        return "§aFed " + itemName + " to " + allyName + " - healed " + healAmount
+        if (medic > 0 && ally.getEntityWorld() instanceof ServerWorld fsw) {
+            HoeEnchantEffects.medicVfx(fsw, ally.getX(), ally.getY(), ally.getZ());
+        }
+        return "§aFed " + itemName + " to " + allyName + " - healed " + healed
             + " HP §7(" + (int) newHealth + "/" + (int) maxHealth + ")";
     }
 
@@ -598,13 +607,20 @@ public class ItemUseHandler {
                 }
                 // Instant effects
                 if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
-                    int healAmount = INSTANT_HEALTH_PER_LEVEL * (sei.getAmplifier() + 1) + getSpecialAffinityPoints(player);
+                    // Medic (hoe) tops up every heal a Special item does.
+                    int medic = HoeEnchantEffects.medicBonus(player);
+                    int healAmount = INSTANT_HEALTH_PER_LEVEL * (sei.getAmplifier() + 1)
+                        + getSpecialAffinityPoints(player) + medic;
                     player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + healAmount));
                     if (applied.length() > 0) applied.append(", ");
                     applied.append("Healed ").append(healAmount);
-                    // Heart particles for healing
-                    sw.spawnParticles(net.minecraft.particle.ParticleTypes.HEART,
-                        player.getX(), player.getY() + 1.5, player.getZ(), 6, 0.4, 0.3, 0.4, 0.05);
+                    if (medic > 0) {
+                        HoeEnchantEffects.medicVfx(sw, player.getX(), player.getY(), player.getZ());
+                    } else {
+                        // Heart particles for healing
+                        sw.spawnParticles(net.minecraft.particle.ParticleTypes.HEART,
+                            player.getX(), player.getY() + 1.5, player.getZ(), 6, 0.4, 0.3, 0.4, 0.05);
+                    }
                 }
             }
             if (applied.length() > 0) {
@@ -706,6 +722,28 @@ public class ItemUseHandler {
         }
     }
 
+    /**
+     * Whether {@code item} is a Special-class consumable - the caster's toolkit, and therefore
+     * what the hoe enchantments (Reserving, Performative) key off.
+     *
+     * <p>This is the same set every {@link #consumeSpecialItem} call site covers, listed once
+     * here so the two can't drift. Note it deliberately does NOT go through
+     * {@code DamageType.fromWeapon}: that reads the WeaponRegistry, and a fire charge or ender
+     * pearl is a usable item rather than a registered weapon, so it would answer null for most
+     * of this list.
+     *
+     * <p>Pottery sherds are Special casts too, but they are classified by
+     * {@code PotterySherdSpells.isPotterySherd} at the call site rather than duplicated here.
+     */
+    public static boolean isSpecialConsumable(Item item) {
+        if (item == null) return false;
+        if (isPotion(item)) return true; // drink, splash and lingering all conserve
+        if (item == Items.GOAT_HORN) return true;
+        if (item == Items.FIRE_CHARGE || item == Items.WIND_CHARGE) return true;
+        if (item == Items.SNOWBALL || item == Items.EGG || item == Items.ENDER_PEARL) return true;
+        return isBanner(item);
+    }
+
     private static int getPotionPotencyBonus(ServerPlayerEntity player) {
         return SpecialAffinity.potencyBonus(player);
     }
@@ -742,6 +780,18 @@ public class ItemUseHandler {
         }
         CombatEffects effects = CombatManager.get(player).getCombatEffects();
         int rawDamage = baseDamage + getTypedDamageBonus(player, effects, type);
+        // Radiant (hoe): Special items burn the undead. Every Special item's damage funnels
+        // through here, so hooking it once covers charges, pearls, sherds, potions and the rest.
+        if (type == DamageType.SPECIAL) {
+            int radiant = HoeEnchantEffects.radiantBonus(player, target);
+            if (radiant > 0) {
+                rawDamage += radiant;
+                var radiantArena = CombatManager.get(player).getArena();
+                if (radiantArena != null && player.getEntityWorld() instanceof ServerWorld rw) {
+                    HoeEnchantEffects.radiantVfx(rw, radiantArena.gridToBlockPos(target.getGridPos()));
+                }
+            }
+        }
         int adjustedDamage = MobResistances.applyResistance(target.getEntityTypeId(), type, rawDamage);
         if (adjustedDamage <= 0) {
             return 0;
@@ -1005,9 +1055,14 @@ public class ItemUseHandler {
                 if (playerInRange) {
                     CombatEffects.EffectType combatType = mapStatusEffect(effectType);
                     if (effectType == StatusEffects.INSTANT_HEALTH.value()) {
-                        int heal = INSTANT_HEALTH_PER_LEVEL * (amp + 1) + getSpecialAffinityPoints(player);
+                        int medicSplash = HoeEnchantEffects.medicBonus(player);
+                        int heal = INSTANT_HEALTH_PER_LEVEL * (amp + 1)
+                            + getSpecialAffinityPoints(player) + medicSplash;
                         player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + heal));
                         msg.append("§a+").append(heal).append("HP ");
+                        if (medicSplash > 0 && player.getEntityWorld() instanceof ServerWorld msw) {
+                            HoeEnchantEffects.medicVfx(msw, player.getX(), player.getY(), player.getZ());
+                        }
                         hitCount++;
                     } else if (combatType != null) {
                         boolean debuff = CombatEffects.isDebuff(combatType);

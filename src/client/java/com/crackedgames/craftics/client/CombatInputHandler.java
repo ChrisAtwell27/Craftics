@@ -120,53 +120,7 @@ public class CombatInputHandler {
 
         long window = client.getWindow().getHandle();
 
-        // --- Middle mouse pan ---
-        boolean middleDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_MIDDLE) == GLFW.GLFW_PRESS;
-        double[] mouseXArr = new double[1], mouseYArr = new double[1];
-        GLFW.glfwGetCursorPos(window, mouseXArr, mouseYArr);
-        double mouseX = mouseXArr[0], mouseY = mouseYArr[0];
-
-        if (middleDown) {
-            if (middleMouseDown) {
-                // Dragging - compute delta and pan
-                double dx = (mouseX - panStartX) * 0.02;
-                double dz = (mouseY - panStartY) * 0.02;
-                // Convert screen delta to world-space pan (account for camera yaw)
-                double yawRad = Math.toRadians(CombatState.getCombatYaw());
-                double worldDx = dx * Math.cos(yawRad) - dz * Math.sin(yawRad);
-                double worldDz = dx * Math.sin(yawRad) + dz * Math.cos(yawRad);
-                CombatState.pan(worldDx, worldDz);
-            }
-            panStartX = mouseX;
-            panStartY = mouseY;
-            middleMouseDown = true;
-        } else {
-            middleMouseDown = false;
-        }
-
-        // --- Double-click middle mouse to reset pan ---
-        // (holding Shift + middle click resets)
-        if (middleDown && GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS) {
-            CombatState.resetPan();
-        }
-
-        // --- Right mouse drag: orbit the camera (yaw + pitch) ---
-        boolean rightDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
-        if (rightDown) {
-            if (rightMouseDown) {
-                double dx = mouseX - orbitStartX;
-                double dy = mouseY - orbitStartY;
-                CombatState.adjustCameraAngles(
-                    (float) (dx * ORBIT_YAW_SENSITIVITY),
-                    (float) (dy * ORBIT_PITCH_SENSITIVITY)
-                );
-            }
-            orbitStartX = mouseX;
-            orbitStartY = mouseY;
-            rightMouseDown = true;
-        } else {
-            rightMouseDown = false;
-        }
+        handleCameraDrag(window);
 
         // Detect left click (rising edge) - only when NOT panning
         boolean leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
@@ -228,15 +182,83 @@ public class CombatInputHandler {
      * </ol>
      * No combat action is ever sent from here.
      */
+    /**
+     * The shared sky-camera drag controls: middle-drag pans the view, Shift+middle resets the
+     * pan, right-drag orbits (yaw + pitch). One implementation for combat AND merchant scenes,
+     * so the camera handles identically in both.
+     */
+    private static void handleCameraDrag(long window) {
+        // --- Middle mouse pan ---
+        boolean middleDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_MIDDLE) == GLFW.GLFW_PRESS;
+        double[] mouseXArr = new double[1], mouseYArr = new double[1];
+        GLFW.glfwGetCursorPos(window, mouseXArr, mouseYArr);
+        double mouseX = mouseXArr[0], mouseY = mouseYArr[0];
+
+        if (middleDown) {
+            if (middleMouseDown) {
+                // Dragging - compute delta and pan
+                double dx = (mouseX - panStartX) * 0.02;
+                double dz = (mouseY - panStartY) * 0.02;
+                // Convert screen delta to world-space pan (account for camera yaw)
+                double yawRad = Math.toRadians(CombatState.getCombatYaw());
+                double worldDx = dx * Math.cos(yawRad) - dz * Math.sin(yawRad);
+                double worldDz = dx * Math.sin(yawRad) + dz * Math.cos(yawRad);
+                CombatState.pan(worldDx, worldDz);
+            }
+            panStartX = mouseX;
+            panStartY = mouseY;
+            middleMouseDown = true;
+        } else {
+            middleMouseDown = false;
+        }
+
+        // Holding Shift + middle click resets the pan.
+        if (middleDown && GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS) {
+            CombatState.resetPan();
+        }
+
+        // --- Right mouse drag: orbit the camera (yaw + pitch) ---
+        boolean rightDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
+        if (rightDown) {
+            if (rightMouseDown) {
+                double dx = mouseX - orbitStartX;
+                double dy = mouseY - orbitStartY;
+                CombatState.adjustCameraAngles(
+                    (float) (dx * ORBIT_YAW_SENSITIVITY),
+                    (float) (dy * ORBIT_PITCH_SENSITIVITY)
+                );
+            }
+            orbitStartX = mouseX;
+            orbitStartY = mouseY;
+            rightMouseDown = true;
+        } else {
+            rightMouseDown = false;
+        }
+    }
+
+    /** Ticks left in the grace period after a screen over the scene closed - clicks are
+     *  ignored while it runs, so the press that closed the screen can't leak to the floor. */
+    private static int sceneScreenCloseGrace = 0;
+
     private static void tickScene(MinecraftClient client) {
         // A merchant/trade or other screen open over the scene captures the mouse;
         // don't also fire a world click underneath it - and null the cached hover
         // so the booth glow / hover ring doesn't keep pulsing behind the panel.
         if (client.currentScreen != null) {
-            lastSceneLeftClick = false;
+            // Treat the button as HELD, not released: clicking "Done Trading" closes the
+            // screen during the press, and marking it released here made that same press
+            // read as a fresh floor click one tick later - walking the player straight
+            // back into the booth they just left.
+            lastSceneLeftClick = true;
+            sceneScreenCloseGrace = 4;
             CombatState.setHoveredTile(null);
             return;
         }
+        if (sceneScreenCloseGrace > 0) sceneScreenCloseGrace--;
+
+        // Same camera controls as combat: middle-drag pans, right-drag orbits. The scene's
+        // sky camera follows the player; the pan offset rides on top of that follow.
+        handleCameraDrag(client.getWindow().getHandle());
 
         // Cache the hovered tile once per tick (the renderer reads it every
         // frame; re-raycasting per frame was pure waste for a hover cue).
@@ -247,7 +269,7 @@ public class CombatInputHandler {
         boolean leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
         boolean clicked = leftDown && !lastSceneLeftClick;
         lastSceneLeftClick = leftDown;
-        if (!clicked) return;
+        if (!clicked || sceneScreenCloseGrace > 0) return;
 
         // Leave button gets first claim on the click.
         if (SceneHudOverlay.tryClickLeaveButton(client)) return;

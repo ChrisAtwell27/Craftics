@@ -38,7 +38,7 @@ public final class SceneOfferStore {
 
     /** Current offer for a village booth, rolled lazily (per fixed type + tier) if absent. */
     public static TraderSystem.TraderOffer getOffers(UUID owner, int boothIndex,
-                                                     TraderSystem.TraderType type, int tier) {
+                                                     com.crackedgames.craftics.combat.TraderCategory type, int tier) {
         Map<Integer, TraderSystem.TraderOffer> byBooth =
             OFFERS.computeIfAbsent(owner, k -> new HashMap<>());
         return byBooth.computeIfAbsent(boothIndex,

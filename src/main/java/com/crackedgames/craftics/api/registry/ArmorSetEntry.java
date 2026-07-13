@@ -31,7 +31,7 @@ import java.util.Map;
  *                          leave the material without an AC. Each worn piece derives its
  *                          own AC from this via {@code ArmorClassTable.pieceAC}, so a
  *                          modded set only has to state one number. Vanilla values for
- *                          reference: leather 2, chainmail/gold 3, iron 4, diamond 6,
+ *                          reference: leather/gold 2, chainmail 3, iron 4, diamond 6,
  *                          netherite 7
  * @param speedBonus        flat speed bonus when the full 4-piece set is worn
  * @param apBonus           flat AP bonus when the full 4-piece set is worn
@@ -81,7 +81,7 @@ public record ArmorSetEntry(
          * Base Armor Class {@code B} for this material. Each worn piece derives its own
          * AC from it (leggings {@code B}, chestplate {@code B+1}, helmet/boots {@code ⌈B/2⌉}),
          * so modded armor only has to state one number to join the AC system.
-         * Vanilla reference: leather 2, chainmail/gold 3, iron 4, diamond 6, netherite 7.
+         * Vanilla reference: leather/gold 2, chainmail 3, iron 4, diamond 6, netherite 7.
          * Default {@code 0} - the material contributes no AC.
          */
         public Builder armorClass(int v) { this.armorClass = v; return this; }

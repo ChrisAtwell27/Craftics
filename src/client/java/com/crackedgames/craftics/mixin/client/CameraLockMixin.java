@@ -30,6 +30,11 @@ public abstract class CameraLockMixin {
 
     @Inject(method = "update", at = @At("TAIL"))
     private void craftics$lockCameraInCombat(CallbackInfo ci) {
+        // Merchant scenes use this same sky camera (the cinematic branch follows the walking
+        // player). Do NOT bypass it for scenes: with the rig off, the scene shows the vanilla
+        // behind-the-shoulder camera while the cursor is unlocked for tile clicks - which means
+        // no mouse-look either, i.e. a camera that can't be turned at all. Panning/orbiting in
+        // scenes comes from the same middle/right-drag controls combat uses (CombatInputHandler).
         if (CombatState.isInCombat() || CombatState.isCinematicActive()) {
             setRotation(CombatState.getCombatYaw(), CombatState.getCombatPitch());
 

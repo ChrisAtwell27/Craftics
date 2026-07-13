@@ -50,6 +50,17 @@ public class CombatHudOverlay implements HudRenderCallback {
     /** Bottom Y of the party turn-order panel this frame so the enemy
      *  act-order strip can stack below it instead of overlapping. */
     private static int turnOrderBottomY = 20;
+    /** Bottom Y of the enemy act-order strip this frame (scaled coords); tracks
+     *  turnOrderBottomY when the strip didn't draw. */
+    private static int actStripBottomY = 20;
+    /** Bottom edge (REAL screen px) of everything stacked at top-center - banner, party
+     *  panel, act-order strip - so other HUD layers (the hint popup) can sit below the
+     *  stack instead of drawing over it. Defaults to just under the banner. */
+    private static int topCenterReservedPx = 22;
+
+    /** Bottom of the top-center HUD stack in real screen pixels, for out-of-class HUD
+     *  layers that must not overlap it. */
+    public static int getTopCenterReservedPx() { return topCenterReservedPx; }
 
     @Override
     public void onHudRender(DrawContext ctx, RenderTickCounter tickCounter) {
@@ -61,6 +72,7 @@ public class CombatHudOverlay implements HudRenderCallback {
             if (!hpAnim.isEmpty()) hpAnim.clear();
             endTurnBtnRect = null;
             lastFrameMs = 0;
+            topCenterReservedPx = 22; // just the (absent) banner - hints may sit high again
             return;
         }
 
@@ -93,7 +105,11 @@ public class CombatHudOverlay implements HudRenderCallback {
         renderAllyRoster(ctx, client, screenW);
         renderTurnBanner(ctx, client, screenW);
         renderTurnOrder(ctx, client, screenW);
+        actStripBottomY = turnOrderBottomY; // strip may not draw; renderActOrderStrip raises it
         renderActOrderStrip(ctx, client, screenW);
+        // Publish where the top-center stack ends, in REAL pixels (the panels above render
+        // inside the largerUI matrix scale, but out-of-class consumers draw unscaled).
+        topCenterReservedPx = (int) (Math.max(turnOrderBottomY, actStripBottomY) * uiScale);
         renderEnemyRoster(ctx, client, screenW);
         renderTileTooltip(ctx, client, screenW, screenH);
         renderModePill(ctx, client, screenW, screenH);
@@ -105,8 +121,9 @@ public class CombatHudOverlay implements HudRenderCallback {
         try { showEmeralds = com.crackedgames.craftics.CrafticsMod.CONFIG.showEmeraldsInCombat(); } catch (Exception ignored) {}
         if (showEmeralds) {
             int emeralds = CombatState.getEmeralds();
+            // Just above the resource plaque (plaque top is ~screenH - 39).
             ctx.drawTextWithShadow(client.textRenderer,
-                Text.literal("\u00a7a\u25c6 " + emeralds), screenW - 60, screenH - 70, 0xFF55FF55);
+                Text.literal("\u00a7a\u25c6 " + emeralds), screenW - 60, screenH - 52, 0xFF55FF55);
         }
 
         CombatVisualEffects.render(ctx, client, screenW, screenH);
@@ -708,6 +725,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         int stripY = turnOrderBottomY + 2;
 
         drawPanel(ctx, stripX, stripY, stripW, stripH);
+        actStripBottomY = stripY + stripH; // the hint popup stacks below this
 
         int actingId = CombatState.getActingEnemyId();
         int x = stripX + pad;
@@ -1371,7 +1389,8 @@ public class CombatHudOverlay implements HudRenderCallback {
             case USE_ITEM -> { modeText = "ITEM"; modeColor = 0xFFFF55FF; pillBg = 0xBB331133; }
             case LEAD -> {
                 boolean picked = CombatState.getLeadSelectedAllyId() != null;
-                modeText = picked ? "COMMAND" : "COMMAND: PICK ALLY";
+                // Once an ally is picked the highlights are theirs, so name the price here.
+                modeText = picked ? "COMMAND: MOVE OR STRIKE · 1 AP" : "COMMAND: PICK ALLY";
                 modeColor = 0xFF66BBFF; pillBg = 0xBB112233;
             }
             default -> { modeText = "MOVE"; modeColor = 0xFF55FF55; pillBg = 0xBB113311; }
@@ -1487,102 +1506,100 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.drawTextWithShadow(client.textRenderer, Text.literal(label), bx, by, color);
     }
 
-    // ─── 5. Resource Bar (Bottom-Right, Horizontal) ──────────────────────
+    // ─── 5. Resource Plaque (Bottom-Right, fixed footprint) ─────────────
 
     private void renderResourceBar(DrawContext ctx, MinecraftClient client, int screenW, int screenH) {
-        int maxAp = CombatState.getMaxAp();
-        int maxSpeed = CombatState.getMaxSpeed();
+        int maxAp = Math.max(1, CombatState.getMaxAp());
+        int maxSpeed = Math.max(1, CombatState.getMaxSpeed());
         // The broadcast remaining-AP / move-points are the CURRENT turn-holder's
         // live values (there is no per-UUID remaining-resource field). On a
         // non-acting teammate's screen they'd show the active player's draining
-        // pips as if they were their own, so display full bars when it isn't the
+        // meters as if they were their own, so display full when it isn't the
         // local player's turn - they'll spend from full when their turn comes.
         boolean myTurn = CombatState.isLocalPlayersTurn();
         int ap = myTurn ? CombatState.getApRemaining() : maxAp;
         int speed = myTurn ? CombatState.getMovePointsRemaining() : maxSpeed;
 
-        // One pip per point, shrinking pip size as totals grow so the row always
-        // fits. The old layout fixed each section at 3 shared slots, which meant
-        // spending AP/SPD above the cap changed NOTHING on screen - the pips
-        // only started draining once you were already below 3.
-        int totalPips = Math.max(1, maxAp + maxSpeed);
-        int pipSize = totalPips <= 8 ? 10 : totalPips <= 12 ? 8 : totalPips <= 18 ? 6 : 5;
-        int pipGap = pipSize >= 8 ? 4 : 3; // between pips
-        int sectionGap = 12; // between AP and SPD sections
+        // Fixed-footprint plaque: two constant-width segmented meters in the same
+        // leather panel every other HUD element uses. The old layout drew one pip
+        // per point in a bare row that grew leftward with the player's totals, so
+        // a stacked AP/Speed build marched the row straight into the hotbar. Here
+        // the SEGMENTS shrink as the max grows and the panel never moves or grows:
+        // tick marks keep the points countable, the numbers carry the exact value,
+        // and the fill drains with the same ghost animation as the HP bars.
+        int pad = 5, rowH = 9, rowGap = 5;
+        int labelW = client.textRenderer.getWidth("SPD") + 4;
+        String apNum = ap + "/" + maxAp;
+        String spdNum = speed + "/" + maxSpeed;
+        int numW = Math.max(client.textRenderer.getWidth(apNum),
+                            client.textRenderer.getWidth(spdNum)) + 5;
 
-        int apDisplay = maxAp;
-        int spdDisplay = maxSpeed;
+        int barW = 88;
+        int panelW = pad + labelW + barW + numW + pad;
+        // Never let the plaque reach the hotbar on narrow GUIs - squeeze the
+        // meters first, since the numbers always carry the exact values.
+        int maxPanelW = screenW - (screenW / 2 + 91) - 12;
+        if (panelW > maxPanelW) {
+            barW = Math.max(36, barW - (panelW - maxPanelW));
+            panelW = pad + labelW + barW + numW + pad;
+        }
+        int panelH = pad + rowH + rowGap + rowH + pad;
+        int px = screenW - panelW - 6;
+        // Sit beside the hotbar: the plaque's width is fixed, so it can share the
+        // bottom edge without ever growing into the hotbar itself.
+        int py = screenH - panelH - 6;
 
-        // Labels include current/max numeric values alongside the pip visuals
-        String apLabel = "AP " + ap + "/" + maxAp;
-        String spdLabel = "SPD " + speed + "/" + maxSpeed;
+        drawPanel(ctx, px, py, panelW, panelH);
 
-        // Calculate widths
-        int apLabelW = client.textRenderer.getWidth(apLabel) + 4;
-        int apPipsW = apDisplay * (pipSize + pipGap) - pipGap;
-        int spdLabelW = client.textRenderer.getWidth(spdLabel) + 4;
-        int spdPipsW = spdDisplay * (pipSize + pipGap) - pipGap;
-        int totalW = apLabelW + apPipsW + sectionGap + spdLabelW + spdPipsW;
-
-        int rowY = screenH - 52;
-        int startX = screenW - totalW - 10;
-
-        // AP label
         int apLabelColor = maxAp >= 6 ? 0xFFFFEE88 : maxAp >= 4 ? 0xFFFFCC00 : 0xFFFFAA00;
-        ctx.drawTextWithShadow(client.textRenderer, Text.literal(apLabel), startX, rowY, apLabelColor);
-        int x = startX + apLabelW;
-
-        // AP pips - one per point
-        int pipY = rowY + (10 - pipSize) / 2;
-        for (int i = 0; i < apDisplay; i++) {
-            if (i >= ap) {
-                ctx.fill(x, pipY, x + pipSize, pipY + pipSize, 0xFF444444);
-                ctx.fill(x + 1, pipY + 1, x + pipSize - 1, pipY + pipSize - 1, 0xFF333333);
-            } else {
-                int outer, inner;
-                if (i < 3) { outer = 0xFFFF8800; inner = 0xFFFFAA22; }
-                else if (i < 5) { outer = 0xFFFFCC00; inner = 0xFFFFDD44; }
-                else if (i < 7) { outer = 0xFFFFDD33; inner = 0xFFFFEE77; }
-                else { outer = 0xFFFFEE88; inner = 0xFFFFFFC0; }
-                ctx.fill(x, pipY, x + pipSize, pipY + pipSize, outer);
-                ctx.fill(x + 1, pipY + 1, x + pipSize - 1, pipY + pipSize - 1, inner);
-                if (pipSize >= 7) {
-                    ctx.fill(x + 2, pipY + 1, x + pipSize - 2, pipY + 3,
-                        (inner & 0x00FFFFFF) | 0x66000000);
-                }
-            }
-            x += pipSize + pipGap;
-        }
-
-        x += sectionGap - pipGap; // gap between sections
-
-        // SPD label
         int spdLabelColor = maxSpeed >= 7 ? 0xFFAAEEFF : maxSpeed >= 5 ? 0xFF66CCFF : 0xFF55AAFF;
-        ctx.drawTextWithShadow(client.textRenderer, Text.literal(spdLabel), x, rowY, spdLabelColor);
-        x += spdLabelW;
 
-        // SPD pips - one per point
-        for (int i = 0; i < spdDisplay; i++) {
-            if (i >= speed) {
-                ctx.fill(x, pipY, x + pipSize, pipY + pipSize, 0xFF444444);
-                ctx.fill(x + 1, pipY + 1, x + pipSize - 1, pipY + pipSize - 1, 0xFF333333);
-            } else {
-                int outer, inner;
-                if (i < 3) { outer = 0xFF3388CC; inner = 0xFF55AAEE; }
-                else if (i < 5) { outer = 0xFF44AADD; inner = 0xFF66CCFF; }
-                else if (i < 7) { outer = 0xFF55CCEE; inner = 0xFF88DDFF; }
-                else if (i < 9) { outer = 0xFF88DDFF; inner = 0xFFAAEEFF; }
-                else { outer = 0xFFAAEEFF; inner = 0xFFDDFFFF; }
-                ctx.fill(x, pipY, x + pipSize, pipY + pipSize, outer);
-                ctx.fill(x + 1, pipY + 1, x + pipSize - 1, pipY + pipSize - 1, inner);
-                if (pipSize >= 7) {
-                    ctx.fill(x + 2, pipY + 1, x + pipSize - 2, pipY + 3,
-                        (inner & 0x00FFFFFF) | 0x66000000);
-                }
-            }
-            x += pipSize + pipGap;
+        drawResourceRow(ctx, client, "res_ap", px + pad, py + pad, labelW, barW, rowH, numW,
+            "AP", apLabelColor, ap, maxAp, 0xFFFFCC22, 0xFF3A3020);
+        drawResourceRow(ctx, client, "res_spd", px + pad, py + pad + rowH + rowGap, labelW, barW, rowH, numW,
+            "SPD", spdLabelColor, speed, maxSpeed, 0xFF55BBEE, 0xFF1E2E3A);
+
+        // Waiting on someone else's turn: dim the whole plaque so it reads as
+        // "not yours to spend right now" without hiding the numbers.
+        if (!myTurn) {
+            ctx.fill(px - 1, py - 1, px + panelW + 1, py + panelH + 1, 0x77000000);
         }
+    }
 
+    /**
+     * One plaque row: colored label, a fixed-width segmented meter, and the
+     * current/max readout. The meter reuses {@link #drawHpBar}'s eased ghost
+     * drain (keyed per row), then overlays a tick at every point boundary so
+     * individual points stay countable even when the max is large.
+     */
+    private void drawResourceRow(DrawContext ctx, MinecraftClient client, String animKey,
+                                 int x, int y, int labelW, int barW, int rowH, int numW,
+                                 String label, int labelColor, int value, int max,
+                                 int fillColor, int trackColor) {
+        ctx.drawTextWithShadow(client.textRenderer, Text.literal(label), x, y, labelColor);
+
+        // Buffs (Haste, Plenty, commands) can push the CURRENT value past the max.
+        // Segment on whichever is larger so every point you actually hold is a
+        // visible, countable segment - 10/3 AP must read as ten filled segments,
+        // not a full 3-segment bar.
+        int segments = Math.max(max, value);
+        int barX = x + labelW;
+        drawHpBar(ctx, animKey, barX, y, barW, rowH, (float) value / segments, fillColor, trackColor);
+        // Point-boundary ticks, drawn over fill and ghost so they always cut through.
+        for (int i = 1; i < segments; i++) {
+            int tx = barX + Math.round((float) i * barW / segments);
+            ctx.fill(tx, y, tx + 1, y + rowH, 0xAA101010);
+        }
+        // Thin border so the meter matches the plaque's framed look.
+        ctx.fill(barX - 1, y - 1, barX + barW + 1, y, 0xFF000000);
+        ctx.fill(barX - 1, y + rowH, barX + barW + 1, y + rowH + 1, 0xFF000000);
+        ctx.fill(barX - 1, y, barX, y + rowH, 0xFF000000);
+        ctx.fill(barX + barW, y, barX + barW + 1, y + rowH, 0xFF000000);
+
+        String num = value + "/" + max;
+        int numX = barX + barW + numW - client.textRenderer.getWidth(num);
+        ctx.drawTextWithShadow(client.textRenderer, Text.literal(num), numX, y + (rowH - 8) / 2 + 1,
+            value <= 0 ? 0xFF888888 : 0xFFFFFFFF);
     }
 
     // ─── Effect Parsing ──────────────────────────────────────────────────

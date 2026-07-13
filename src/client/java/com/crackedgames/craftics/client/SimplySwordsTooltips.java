@@ -76,7 +76,8 @@ public final class SimplySwordsTooltips {
             case "twinblade" -> new String[]{"Back blade always follows up at 50% damage"};
             case "spear" -> new String[]{
                 "Reach (2 tiles), lower base damage",
-                "§e+50% damage per tile walked before attacking"};
+                "§e" + com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat
+                    .spearMomentumLine()};
             case "warglaive" -> new String[]{
                 "§6Dual-wield two warglaives: §ecleaves 2 adjacent enemies at 50%"};
             case "chakram" -> new String[]{
@@ -84,7 +85,8 @@ public final class SimplySwordsTooltips {
                 "Ricochets to a nearby enemy for 50% damage"};
             case "halberd" -> new String[]{"Reach (2 tiles) + 15% adjacent sweep"};
             case "scythe" -> new String[]{"Reaping arc: half damage + Bleed across the sweep"};
-            case "claymore", "glaive" -> new String[]{"Wide cleave arc at half damage"};
+            case "claymore" -> new String[]{"Wide cleave arc at half damage"};
+            case "glaive" -> new String[]{"Reach (2 tiles) + wide cleave arc at half damage"};
             case "greataxe" -> new String[]{"15% (+Cleaving) to permanently shatter armor"};
             case "greathammer" -> new String[]{"3x3 shockwave, knockback + stun roll"};
             default -> new String[0];

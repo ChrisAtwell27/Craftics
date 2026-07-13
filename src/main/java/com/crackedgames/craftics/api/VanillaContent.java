@@ -156,7 +156,8 @@ public final class VanillaContent {
         TrimMaterialRegistry.register(new TrimMaterialEntry("netherite", TrimEffects.Bonus.ARMOR_PEN,  1, "+1 Armor Penetration per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("redstone",  TrimEffects.Bonus.RANGED_POWER, 1, "+1 Ranged Power per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("amethyst",  TrimEffects.Bonus.REGEN,      1, "+1 HP Regen per piece"));
-        TrimMaterialRegistry.register(new TrimMaterialEntry("quartz",    TrimEffects.Bonus.MAX_HP,     2, "+8 Max HP per piece"));
+        // Real hit points, not Health Boost levels. See TrimEffects.TRIM_MAX_HP_PER_PIECE.
+        TrimMaterialRegistry.register(new TrimMaterialEntry("quartz",    TrimEffects.Bonus.MAX_HP,     6, "+6 Max HP per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("resin",     TrimEffects.Bonus.ALLY_DAMAGE, 1, "+1 Ally Damage per piece"));
     }
 
@@ -191,5 +192,6 @@ public final class VanillaContent {
         // "piglin_barter" token never matches. The bare token lives in the force_event
         // list in CrafticsMod instead. We only register its categories/pools here.
         com.crackedgames.craftics.combat.barter.VanillaBarterContent.register();
+        com.crackedgames.craftics.combat.VanillaTraderContent.register();
     }
 }

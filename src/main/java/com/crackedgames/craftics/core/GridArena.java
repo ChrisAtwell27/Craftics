@@ -132,17 +132,45 @@ public class GridArena {
         return occupants.get(pos);
     }
 
-    public void placeEntity(CombatEntity entity) {
+    /**
+     * Register {@code entity}'s footprint in the occupant map. Never overwrites another
+     * entity: the map is tile-keyed, so a blind put would evict whoever was standing there
+     * while leaving BOTH mobs rendered on the square. Callers resolve a free spawn tile
+     * first; this refuses the rest.
+     *
+     * @return {@code true} if the entity was placed
+     */
+    public boolean placeEntity(CombatEntity entity) {
+        if (!canOccupy(entity, entity.getGridPos())) {
+            com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
+                "Refused to place {} at {} - tile already occupied",
+                entity.getEntityTypeId(), entity.getGridPos());
+            return false;
+        }
         for (GridPos tile : getOccupiedTiles(entity)) {
             occupants.put(tile, entity);
         }
+        return true;
     }
 
-    public void moveEntity(CombatEntity entity, GridPos newPos) {
+    /**
+     * Move {@code entity} to {@code newPos}, unless something else is already standing
+     * there. Returns {@code true} when the move happened.
+     *
+     * <p>The occupant map is keyed by tile, so writing a second entity onto an occupied
+     * tile used to silently overwrite the first: the map remembered only the newcomer
+     * while BOTH mobs kept rendering on the square. Most callers check occupancy first,
+     * but the ones that don't - notably the enemy teleport actions, which trust whatever
+     * tile their AI picked - could stack two mobs on one tile. Refusing here is the
+     * backstop: an enemy that fails to teleport is a far smaller problem than two enemies
+     * merged into one square.
+     */
+    public boolean moveEntity(CombatEntity entity, GridPos newPos) {
         // Immovable entities (Creaking Heart and other virtual block enemies) must stay put:
         // their in-world block never moves, so relocating the grid entry would desync the
         // target and make them impossible to hit. Refuse the move.
-        if (entity.isImmovable()) return;
+        if (entity.isImmovable()) return false;
+        if (!canOccupy(entity, newPos)) return false;
         // Remove from all old tiles
         for (GridPos tile : getOccupiedTiles(entity)) {
             occupants.remove(tile);
@@ -152,6 +180,21 @@ public class GridArena {
         for (GridPos tile : getOccupiedTiles(entity)) {
             occupants.put(tile, entity);
         }
+        return true;
+    }
+
+    /**
+     * True if {@code entity}'s footprint at {@code newPos} would land only on tiles that
+     * are free, or that the entity already occupies itself. Out-of-bounds tiles are
+     * rejected; a background boss is pass-through and never blocks.
+     */
+    private boolean canOccupy(CombatEntity entity, GridPos newPos) {
+        for (GridPos tile : getOccupiedTiles(newPos, entity.getSizeX(), entity.getSizeZ())) {
+            if (!isInBounds(tile)) return false;
+            CombatEntity other = occupants.get(tile);
+            if (other != null && other != entity && !other.isBackgroundBoss()) return false;
+        }
+        return true;
     }
 
     public void removeEntity(CombatEntity entity) {

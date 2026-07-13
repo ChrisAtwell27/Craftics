@@ -14,6 +14,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
@@ -805,6 +806,115 @@ public class CrafticsMod implements ModInitializer {
                 src.sendFeedback(() -> Text.literal("§aUnlocked all " + totalBiomes + " biomes."), true);
                 return 1;
             }));
+
+            // /craftics merchants ...: testing aid for the Trading Hall / Bartering Station.
+            // Booths only fill with merchants the island has MET at a run event, so without this
+            // you would have to grind trader events to see a full hall. Admin-only (level 2).
+            root.then(CommandManager.literal("merchants").requires(src -> src.hasPermissionLevel(2))
+                // /craftics merchants meet_all - meet every registered trader AND barterer.
+                .then(CommandManager.literal("meet_all").executes(ctx -> {
+                    ServerCommandSource src = ctx.getSource();
+                    ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                    ServerWorld world = (ServerWorld) cmdPlayer.getEntityWorld();
+                    int traders = 0, barterers = 0;
+                    for (var t : com.crackedgames.craftics.api.registry.TraderCategoryRegistry.all()) {
+                        com.crackedgames.craftics.scene.MetMerchants.recordTrader(
+                            world, cmdPlayer.getUuid(), t.id());
+                        traders++;
+                    }
+                    for (var b : com.crackedgames.craftics.api.registry.BarterCategoryRegistry.all()) {
+                        com.crackedgames.craftics.scene.MetMerchants.recordBarterer(
+                            world, cmdPlayer.getUuid(), b.id());
+                        barterers++;
+                    }
+                    final int ft = traders, fb = barterers;
+                    src.sendFeedback(() -> Text.literal("§aMet all merchants: §f" + ft
+                        + " trader(s), " + fb + " barterer(s). Every booth will now be filled."), true);
+                    return 1;
+                }))
+                // /craftics merchants meet <id> - meet one, e.g. craftics:weaponsmith
+                .then(CommandManager.literal("meet")
+                    // greedyString, not string(): an unquoted string() argument stops at the
+                    // first character outside [a-zA-Z0-9_.+-], so a namespaced id like
+                    // "craftics:alchemist" would parse as "craftics" and then choke on the colon.
+                    .then(CommandManager.argument("id", StringArgumentType.greedyString())
+                        .suggests((c, b) -> {
+                            for (var t : com.crackedgames.craftics.api.registry.TraderCategoryRegistry.all()) b.suggest(t.id());
+                            for (var x : com.crackedgames.craftics.api.registry.BarterCategoryRegistry.all()) b.suggest(x.id());
+                            return b.buildFuture();
+                        })
+                        .executes(ctx -> {
+                            ServerCommandSource src = ctx.getSource();
+                            ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                            ServerWorld world = (ServerWorld) cmdPlayer.getEntityWorld();
+                            // greedyString can carry trailing spaces; resolveLegacy also lets a bare
+                            // local id ("alchemist") work, not just the full "craftics:alchemist".
+                            String id = StringArgumentType.getString(ctx, "id").trim();
+                            var trader = com.crackedgames.craftics.api.registry.TraderCategoryRegistry.resolveLegacy(id);
+                            if (trader != null) {
+                                com.crackedgames.craftics.scene.MetMerchants.recordTrader(
+                                    world, cmdPlayer.getUuid(), trader.id());
+                                src.sendFeedback(() -> Text.literal("§aMet trader §f"
+                                    + trader.displayName() + " §7(" + trader.id() + ")"), true);
+                                return 1;
+                            }
+                            var barter = resolveBarterLenient(id);
+                            if (barter != null) {
+                                com.crackedgames.craftics.scene.MetMerchants.recordBarterer(
+                                    world, cmdPlayer.getUuid(), barter.id());
+                                src.sendFeedback(() -> Text.literal("§aMet barterer §f"
+                                    + barter.displayName() + " §7(" + barter.id() + ")"), true);
+                                return 1;
+                            }
+                            src.sendError(Text.literal("§cNo merchant registered with id '" + id
+                                + "'. Try tab-completion."));
+                            return 0;
+                        })))
+                // /craftics merchants forget_all - back to an empty hall.
+                .then(CommandManager.literal("forget_all").executes(ctx -> {
+                    ServerCommandSource src = ctx.getSource();
+                    ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                    ServerWorld world = (ServerWorld) cmdPlayer.getEntityWorld();
+                    CrafticsSavedData data = CrafticsSavedData.get(world);
+                    java.util.UUID owner = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
+                    var pd = data.getPlayerData(owner);
+                    int had = pd.metTraders.size() + pd.metBarterers.size();
+                    pd.metTraders.clear();
+                    pd.metBarterers.clear();
+                    data.markDirty();
+                    final int fh = had;
+                    src.sendFeedback(() -> Text.literal("§eForgot " + fh
+                        + " merchant(s). Every booth will now be empty."), true);
+                    return 1;
+                }))
+                // /craftics merchants list - what this island has met, and what it hasn't.
+                .then(CommandManager.literal("list").executes(ctx -> {
+                    ServerCommandSource src = ctx.getSource();
+                    ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                    ServerWorld world = (ServerWorld) cmdPlayer.getEntityWorld();
+                    CrafticsSavedData data = CrafticsSavedData.get(world);
+                    java.util.UUID owner = data.getEffectiveWorldOwner(cmdPlayer.getUuid());
+                    var pd = data.getPlayerData(owner);
+                    StringBuilder sb = new StringBuilder("§6Merchants on this island:");
+                    sb.append("\n§7Traders (booths fill in registry order):");
+                    for (var t : com.crackedgames.craftics.api.registry.TraderCategoryRegistry.all()) {
+                        // resolveLegacy so a pre-0.2.10 save's bare "WEAPONSMITH" still reads as met.
+                        boolean met = pd.metTraders.stream().anyMatch(m -> {
+                            var r = com.crackedgames.craftics.api.registry.TraderCategoryRegistry.resolveLegacy(m);
+                            return r != null && r.id().equals(t.id());
+                        });
+                        sb.append("\n  ").append(met ? "§a[met] " : "§8[ -- ] ")
+                          .append(t.displayName()).append(" §7").append(t.id());
+                    }
+                    sb.append("\n§7Barterers:");
+                    for (var b : com.crackedgames.craftics.api.registry.BarterCategoryRegistry.all()) {
+                        boolean met = pd.metBarterers.contains(b.id());
+                        sb.append("\n  ").append(met ? "§a[met] " : "§8[ -- ] ")
+                          .append(b.displayName()).append(" §7").append(b.id());
+                    }
+                    src.sendFeedback(() -> Text.literal(sb.toString()), false);
+                    return 1;
+                })));
 
             // /craftics reset_combat: force-clear corrupted combat state (inCombat, biome run)
             root.then(CommandManager.literal("reset_combat").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
@@ -2184,6 +2294,22 @@ public class CrafticsMod implements ModInitializer {
     // is dead in the island-dim architecture - IslandDimensions.getOrCreate always
     // builds a VoidChunkGenerator world, so the "island" argument could never be a
     // mis-resolved non-Craftics dimension by the time it reached these methods.
+
+    /**
+     * A barter category by id, accepting either the full namespaced id ({@code craftics:warmonger})
+     * or just its local part ({@code warmonger}), so the admin command is forgiving about which
+     * form you type. The trader side gets this from {@code TraderCategoryRegistry.resolveLegacy}.
+     */
+    private static com.crackedgames.craftics.combat.barter.BarterCategory resolveBarterLenient(String id) {
+        if (id == null || id.isBlank()) return null;
+        var exact = com.crackedgames.craftics.api.registry.BarterCategoryRegistry.get(id);
+        if (exact != null) return exact;
+        String local = id.toLowerCase(java.util.Locale.ROOT);
+        for (var c : com.crackedgames.craftics.api.registry.BarterCategoryRegistry.all()) {
+            if (c.localId().equals(local)) return c;
+        }
+        return null;
+    }
 
     /**
      * Writes the biome icon of the player's highest unlocked biome as the world's icon.png,

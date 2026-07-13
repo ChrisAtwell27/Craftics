@@ -1,6 +1,7 @@
 package com.crackedgames.craftics.sound;
 
-import com.crackedgames.craftics.combat.TraderSystem.TraderType;
+import com.crackedgames.craftics.combat.TraderCategory;
+import com.crackedgames.craftics.combat.VanillaTraderContent;
 
 /**
  * Server-side soundtrack selection. Pure mapping from combat/biome/boss/event state to a
@@ -25,7 +26,7 @@ public final class MusicDirector {
      * @return the track to play, or {@code null} to fade out / play nothing
      */
     public static MusicTracks select(boolean active, String biomeId, boolean bossLevel,
-                                     String eventRoom, TraderType trader, boolean ominous) {
+                                     String eventRoom, TraderCategory trader, boolean ominous) {
         // 1. Trader offer overrides everything (it's a between-level interlude).
         if (trader != null) return traderTrack(trader);
 
@@ -102,12 +103,16 @@ public final class MusicDirector {
         };
     }
 
-    public static MusicTracks traderTrack(TraderType type) {
+    /**
+     * Soundtrack for a trader booth. Keyed by trader id rather than an enum, so an addon trader
+     * simply lands on the default track instead of failing to compile or throwing.
+     */
+    public static MusicTracks traderTrack(TraderCategory type) {
         if (type == null) return null;
-        return switch (type) {
-            case WEAPONSMITH, ARMORER -> MusicTracks.STUGA;
-            case DECORATOR, CURIOSITY_DEALER -> MusicTracks.MARY;
-            // Provisioner, Alchemist, Supplier, Craftsman
+        return switch (type.id()) {
+            case VanillaTraderContent.WEAPONSMITH, VanillaTraderContent.ARMORER -> MusicTracks.STUGA;
+            case VanillaTraderContent.DECORATOR, VanillaTraderContent.CURIOSITY_DEALER -> MusicTracks.MARY;
+            // Provisioner, Alchemist, Supplier, Craftsman, and every addon trader.
             default -> MusicTracks.BEACH_HOUSE;
         };
     }

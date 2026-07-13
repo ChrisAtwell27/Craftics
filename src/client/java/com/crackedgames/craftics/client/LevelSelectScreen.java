@@ -342,32 +342,37 @@ public class LevelSelectScreen extends HandledScreen<LevelSelectScreenHandler> {
         rightArrow.active = selectedIndex < biomes.size() - 1;
         this.addDrawableChild(rightArrow);
 
-        // Bottom-left: enter the walk-around merchant scenes (Stage 1).
-        // HIDDEN (WIP): the Trading Hall and Bartering Station scenes aren't
-        // finished yet - buttons hidden for this release. Restore both blocks
-        // below to re-enable. The scenes themselves ("village"/"barter_station")
-        // still exist server-side; only the entry buttons are gone.
-        /*
-        ButtonWidget tradingHallBtn = ButtonWidget.builder(
-                Text.literal("\u00A7lTrading Hall"),
-                b -> {
-                    this.close();
-                    ClientPlayNetworking.send(
-                        new com.crackedgames.craftics.network.EnterScenePayload("village"));
-                })
-            .dimensions(8, this.height - 48, 120, 20).build();
-        this.addDrawableChild(tradingHallBtn);
+        // Bottom-left: enter the walk-around merchant scenes.
+        // Each button appears only once the island has MET a merchant of that kind at a run
+        // event. Before that the hall would just be a building full of empty stalls, so showing
+        // the way in would promise something that isn't there yet.
+        if (handler.hasMetAnyTrader()) {
+            ButtonWidget tradingHallBtn = ButtonWidget.builder(
+                    Text.literal("\u00A7lTrading Hall"),
+                    b -> {
+                        this.close();
+                        ClientPlayNetworking.send(
+                            new com.crackedgames.craftics.network.EnterScenePayload("village"));
+                    })
+                .dimensions(8, this.height - 48, 120, 20).build();
+            tradingHallBtn.setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(
+                Text.literal("\u00A77Visit the traders you have met. Meet more at run events to fill the hall.")));
+            this.addDrawableChild(tradingHallBtn);
+        }
 
-        ButtonWidget barterStationBtn = ButtonWidget.builder(
-                Text.literal("\u00A7lBartering Station"),
-                b -> {
-                    this.close();
-                    ClientPlayNetworking.send(
-                        new com.crackedgames.craftics.network.EnterScenePayload("barter_station"));
-                })
-            .dimensions(8, this.height - 24, 120, 20).build();
-        this.addDrawableChild(barterStationBtn);
-        */
+        if (handler.hasMetAnyBarterer()) {
+            ButtonWidget barterStationBtn = ButtonWidget.builder(
+                    Text.literal("\u00A7lBartering Station"),
+                    b -> {
+                        this.close();
+                        ClientPlayNetworking.send(
+                            new com.crackedgames.craftics.network.EnterScenePayload("barter_station"));
+                    })
+                .dimensions(8, this.height - 24, 120, 20).build();
+            barterStationBtn.setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(
+                Text.literal("\u00A77Gamble gold with the piglins you have met.")));
+            this.addDrawableChild(barterStationBtn);
+        }
 
         // Bottom-right: infinite mode. Rides the normal run-start flow under a
         // sentinel biome id; the server handles the party prompt + fresh-start rules.

@@ -545,6 +545,14 @@ public class CombatEntity {
     public boolean isLitOneShot() { return litOneShot; }
     public void setLitOneShot(boolean v) { this.litOneShot = v; }
 
+    /**
+     * A player-summoned seeker vex (Archer sherd): flies at the nearest enemy on its own and
+     * destroys itself on attack. The ally-side counterpart of the enemy's shulker-bullet seekers.
+     */
+    private boolean seekerProjectile = false;
+    public boolean isSeekerProjectile() { return seekerProjectile; }
+    public void setSeekerProjectile(boolean v) { this.seekerProjectile = v; }
+
     /** Marks a victim for a bonus loot roll, e.g. by a barrel golem kill. */
     private boolean bonusLootRoll = false;
     public boolean isBonusLootRoll() { return bonusLootRoll; }

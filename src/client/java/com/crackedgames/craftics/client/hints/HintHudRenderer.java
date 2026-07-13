@@ -50,7 +50,11 @@ public final class HintHudRenderer implements HudRenderCallback {
         int boxW = textW + PADDING * 2;
         int boxH = tr.fontHeight + PADDING * 2;
         int x = (screenW - boxW) / 2;
-        int y = TOP_OFFSET;
+        // Sit below the WHOLE top-center combat stack (turn banner + party turn-order panel
+        // + enemy act-order strip), not just the banner. The fixed offset drew this popup
+        // straight over the party panel whenever a fight had party members listed.
+        int y = Math.max(TOP_OFFSET,
+            com.crackedgames.craftics.client.CombatHudOverlay.getTopCenterReservedPx() + 4);
 
         ctx.fill(x, y, x + boxW, y + boxH, PANEL_BG);
         ctx.fill(x,             y,             x + boxW, y + 1,        PANEL_BORDER);

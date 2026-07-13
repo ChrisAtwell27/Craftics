@@ -1,4 +1,12 @@
 {
+  "enchantment.craftics.honed": "Honed",
+  "enchantment.craftics.fire_fang": "Fire Fang",
+  "enchantment.craftics.thunder_fang": "Thunder Fang",
+  "enchantment.craftics.water_fang": "Water Fang",
+  "enchantment.craftics.reserving": "Reserving",
+  "enchantment.craftics.performative": "Performative",
+  "enchantment.craftics.radiant": "Radiant",
+  "enchantment.craftics.medic": "Medic",
   "generator.craftics.craftics": "Craftics",
   "itemGroup.craftics.craftics": "Craftics",
   "block.craftics.level_select_block": "Level Select Table",

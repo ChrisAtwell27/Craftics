@@ -1,9 +1,9 @@
 {
-  "comment": "NPC marker keeps a FACING property (read by the scanner) and is replaced by the most common neighbor block on scan, so every facing maps to the shared marker model.",
+  "comment": "Booth NPC marker. The FACING property is read by the scanner and becomes the merchant's yaw, so the model ROTATES with it - the arrow on the top face points the way the merchant will look. Markers are erased into the surrounding block when the scene is scanned; the look only matters while authoring.",
   "variants": {
-    "facing=north": { "model": "craftics:block/scene_marker" },
-    "facing=south": { "model": "craftics:block/scene_marker" },
-    "facing=east":  { "model": "craftics:block/scene_marker" },
-    "facing=west":  { "model": "craftics:block/scene_marker" }
+    "facing=north": { "model": "craftics:block/npc_marker", "y": 0 },
+    "facing=east":  { "model": "craftics:block/npc_marker", "y": 90 },
+    "facing=south": { "model": "craftics:block/npc_marker", "y": 180 },
+    "facing=west":  { "model": "craftics:block/npc_marker", "y": 270 }
   }
 }

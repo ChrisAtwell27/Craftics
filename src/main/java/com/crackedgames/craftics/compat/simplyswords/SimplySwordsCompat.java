@@ -123,7 +123,8 @@ public final class SimplySwordsCompat {
                 Abilities.sweepAdjacent(0.20, 0.05));
             any |= registerOne(tier, "sai", DamageType.SLASHING, 1, 1, false, saiAbility());
             any |= registerOne(tier, "twinblade", DamageType.SLASHING, 1, 1, false, twinbladeAbility());
-            any |= registerOne(tier, "spear", DamageType.SLASHING, 1, 2, false, null);
+            // 2 AP, matching the Basic Weapons spear: one shared mechanic, one shared cost.
+            any |= registerOne(tier, "spear", DamageType.SLASHING, 2, 2, false, null);
             any |= registerOne(tier, "warglaive", DamageType.CLEAVING, 1, 1, false, warglaiveAbility());
             // Thrown outlier (1 AP, ranged, returns to hand - no ammo)
             any |= registerOne(tier, "chakram", DamageType.RANGED, 1, 3, true, chakramAbility());

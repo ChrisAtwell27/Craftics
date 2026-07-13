@@ -103,12 +103,21 @@ public class CombatManager {
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE;
+    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> MAX_HEALTH_ATTR =
+        net.minecraft.entity.attribute.EntityAttributes.GENERIC_MAX_HEALTH;
     //?} else {
     /*private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> SCALE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.SCALE;
     private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> ATTACK_DAMAGE_ATTR =
         net.minecraft.entity.attribute.EntityAttributes.ATTACK_DAMAGE;
+    private static final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> MAX_HEALTH_ATTR =
+        net.minecraft.entity.attribute.EntityAttributes.MAX_HEALTH;
     *///?}
+
+    /** Identifies Craftics' own max-HP modifier so it can be replaced without touching
+     *  any other mod's health bonuses. */
+    private static final net.minecraft.util.Identifier HP_BONUS_MODIFIER_ID =
+        net.minecraft.util.Identifier.of(CrafticsMod.MOD_ID, "hp_bonus");
 
     private static GridPos adaptSpawnToArena(GridPos originalPos, LevelDefinition levelDef, GridArena arena) {
         int mappedX = scaleGridCoordinate(originalPos.x(), levelDef.getWidth(), arena.getWidth());
@@ -1013,7 +1022,7 @@ public class CombatManager {
             biomeId = gld.getBiomeTemplate().biomeId;
             bossLevel = gld.getBiomeTemplate().isBossLevel(gld.getLevelNumber());
         }
-        TraderSystem.TraderType traderType =
+        TraderCategory traderType =
             activeTraderOffer != null ? activeTraderOffer.type() : null;
         com.crackedgames.craftics.sound.MusicTracks track =
             com.crackedgames.craftics.sound.MusicDirector.select(
@@ -1455,6 +1464,43 @@ public class CombatManager {
     }
 
     private GridArena buildArena(ServerWorld world, LevelDefinition def) {
+        GridArena built = buildArenaInner(world, def);
+        // Every battle start funnels through here, so this is the one choke point where
+        // leftover arena mobs from a fight that never cleaned up (crash, force-quit,
+        // chunk-unload mid-teardown) can be caught BEFORE the new battle spawns on top
+        // of them. Those orphans are spawned persistent, AI-disabled and invulnerable,
+        // so without this they stand in the arena forever as untargetable "ghosts".
+        if (built != null) purgeGhostMobs(world, built);
+        return built;
+    }
+
+    /**
+     * Discard every entity still carrying a Craftics arena tag inside {@code arena}'s
+     * volume. Safe by construction: this runs before the new fight spawns anything, and
+     * an arena volume is never shared by two live fights, so anything tagged in it now
+     * is by definition an orphan from a fight that failed to tear down.
+     */
+    private static void purgeGhostMobs(ServerWorld world, GridArena arena) {
+        net.minecraft.util.math.BlockPos o = arena.getOrigin();
+        // Generous vertical margin: flying combatants (ghasts, dragons) hover well above
+        // the floor, and a ghost is worth over-sweeping for inside our own arena box.
+        net.minecraft.util.math.Box volume = new net.minecraft.util.math.Box(
+            o.getX() - 3, o.getY() - 6, o.getZ() - 3,
+            o.getX() + arena.getWidth() + 3, o.getY() + 24, o.getZ() + arena.getHeight() + 3);
+        java.util.List<net.minecraft.entity.Entity> ghosts = world.getOtherEntities(null, volume,
+            e -> e.getCommandTags().contains("craftics_arena")
+                || e.getCommandTags().contains("craftics_arena_mount")
+                || e.getCommandTags().contains("craftics_visual_projectile")
+                || e.getCommandTags().contains("craftics_stack_visual"));
+        if (ghosts.isEmpty()) return;
+        for (net.minecraft.entity.Entity ghost : ghosts) {
+            ghost.discard();
+        }
+        CrafticsMod.LOGGER.info("Purged {} ghost arena mob(s) at {} before starting combat",
+            ghosts.size(), o);
+    }
+
+    private GridArena buildArenaInner(ServerWorld world, LevelDefinition def) {
         // Addon event levels (e.g. Artifacts mimic fight) can override the world
         // origin so they don't get placed in a random far-away row based on their
         // synthetic level number. When an override is present, skip the pre-built
@@ -1608,6 +1654,8 @@ public class CombatManager {
     private int mountFaceDx = 0, mountFaceDz = 1;
 
     // ── Lead-command state ───────────────────────────────────────────────────
+    /** AP a single Lead command costs, whether it's an attack or a reposition. */
+    private static final int LEAD_COMMAND_AP = 1;
     /** The ally currently glowing because the player picked it with a Lead. */
     private CombatEntity leadSelectedAlly = null;
 
@@ -1914,8 +1962,8 @@ public class CombatManager {
         // HP clamped to 1 to prevent vanilla death -- report 0 at clamp threshold
         if (hp <= 1) return 0;
         // Absorption (golden apples, enchanted golden apples) counts as bonus HP
-        // stacked on top of the base pool. Vanilla HEALTH_BOOST already raises
-        // getMaxHealth() via the attribute modifier so it's reflected in getHealth().
+        // stacked on top of the base pool. Vitality and trim HP already raise
+        // getMaxHealth() via our attribute modifier, so they're inside getHealth().
         int absorb = (int) player.getAbsorptionAmount();
         return hp + absorb;
     }
@@ -2198,7 +2246,7 @@ public class CombatManager {
     static final int PROG_RANGED_PER_POINT = 1;      // flat +1 ranged damage per point
     static final double PROG_POWER_PCT_PER_POINT = 0.06; // +6% weapon damage per melee/ranged power point
     static final int PROG_DEFENSE_PER_POINT = 2;     // +2 Armor Class per point (was +1)
-    static final int PROG_VITALITY_LEVELS_PER_POINT = 2; // x2 Health Boost levels -> +8 HP/point (was +4)
+    static final int PROG_VITALITY_HP_PER_POINT = 8; // +8 max HP per Vitality point
     static final int PROG_RESOURCEFUL_PER_POINT = 2; // +2 emeralds/level per point (was +1)
     static final double PROG_LUCK_CRIT_PER_POINT = 0.08; // +8% crit per point (was +5%)
 
@@ -2475,16 +2523,9 @@ public class CombatManager {
 
         player.changeGameMode(net.minecraft.world.GameMode.ADVENTURE);
 
-        // Vitality + Host trim HP bonus -- preserve HP ratio so level transitions don't full-heal
-        int vitalityPoints = pStats.getPoints(PlayerProgression.Stat.VITALITY);
-        int trimHpBonus = activeTrimScan.get(TrimEffects.Bonus.MAX_HP);
-        int totalHpBonusLevels = vitalityPoints * PROG_VITALITY_LEVELS_PER_POINT + trimHpBonus;
-        if (totalHpBonusLevels > 0) {
-            float hpRatio = player.getMaxHealth() > 0 ? player.getHealth() / player.getMaxHealth() : 1.0f;
-            player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
-                net.minecraft.entity.effect.StatusEffects.HEALTH_BOOST, 999999, totalHpBonusLevels - 1));
-            player.setHealth(Math.max(1, hpRatio * player.getMaxHealth()));
-        }
+        // Vitality + Host/quartz trim HP bonus. One shared implementation, so the leader
+        // and the rest of the party can never drift apart on how much HP they get.
+        applyHpBonusFromStats(player);
 
         combatEffects.unfreezeAll(5);
 
@@ -3500,18 +3541,37 @@ public class CombatManager {
             leadSelectedAlly.getMobEntity().setGlowing(false);
         }
         leadSelectedAlly = null;
-        if (allyEntityId < 0) return;
-        for (CombatEntity e : enemies) {
-            if (e.getEntityId() == allyEntityId && e.isAlive() && e.isAlly()) {
-                leadSelectedAlly = e;
-                if (e.getMobEntity() != null) e.getMobEntity().setGlowing(true);
-                break;
+        if (allyEntityId >= 0) {
+            for (CombatEntity e : enemies) {
+                if (e.getEntityId() == allyEntityId && e.isAlive() && e.isAlly()) {
+                    leadSelectedAlly = e;
+                    if (e.getMobEntity() != null) e.getMobEntity().setGlowing(true);
+                    break;
+                }
             }
         }
+        // Selecting/clearing an ally swaps the highlights between "where the PLAYER can
+        // act" and "where this ALLY can act", so they have to be rebuilt right now.
+        refreshHighlights();
     }
 
     /**
-     * Resolve a Lead-issued command. Costs 2 AP and does NOT consume the
+     * The ally whose move/attack range the highlights should currently describe: the
+     * Lead-selected ally, but only while the player is actually holding the Lead and the
+     * ally is still alive and theirs to command. {@code null} means highlight the player
+     * as normal.
+     */
+    private CombatEntity leadCommandTarget() {
+        if (leadSelectedAlly == null || player == null || arena == null) return null;
+        if (player.getMainHandStack().getItem() != net.minecraft.item.Items.LEAD) return null;
+        if (!leadSelectedAlly.isAlive() || !leadSelectedAlly.isAlly()) return null;
+        java.util.UUID owner = leadSelectedAlly.getOwnerUuid();
+        if (owner != null && !owner.equals(player.getUuid())) return null;
+        return leadSelectedAlly;
+    }
+
+    /**
+     * Resolve a Lead-issued command. Costs {@link #LEAD_COMMAND_AP} AP and does NOT consume the
      * ally's own AI turn this round. Two modes:
      * <ul>
      *   <li>{@code targetEntityId >= 0}: the ally attacks the target enemy
@@ -3759,8 +3819,8 @@ public class CombatManager {
             sendMessage("§cYou need to hold a Lead to command allies.");
             return;
         }
-        if (apRemaining < 2) {
-            sendMessage("§cNeed 2 AP to command an ally with the Lead!");
+        if (apRemaining < LEAD_COMMAND_AP) {
+            sendMessage("§cNeed " + LEAD_COMMAND_AP + " AP to command an ally with the Lead!");
             return;
         }
         // One walk at a time.
@@ -3800,9 +3860,9 @@ public class CombatManager {
             }
             int rawDamage = ally.getAttackPower() + computeAllyPetBonus(ally);
             int dealt = victim.takeDamage(rawDamage);
-            apRemaining -= 2;
+            apRemaining -= LEAD_COMMAND_AP;
             sendMessage("§a" + ally.getDisplayName() + " strikes " + victim.getDisplayName()
-                + " for " + dealt + " damage! §7(-2 AP)");
+                + " for " + dealt + " damage! §7(-" + LEAD_COMMAND_AP + " AP)");
             ServerWorld world = (ServerWorld) player.getEntityWorld();
             if (victim.getMobEntity() != null) {
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
@@ -3858,8 +3918,8 @@ public class CombatManager {
             return;
         }
 
-        apRemaining -= 2;
-        sendMessage("§a" + ally.getDisplayName() + " moves! §7(-2 AP)");
+        apRemaining -= LEAD_COMMAND_AP;
+        sendMessage("§a" + ally.getDisplayName() + " moves! §7(-" + LEAD_COMMAND_AP + " AP)");
         startLeadWalk(ally, path);
         // Clear the glow once the walk starts.
         handleLeadSelect(-1);
@@ -6857,7 +6917,8 @@ public class CombatManager {
         return true;
     }
 
-    private static boolean isUndeadMob(String entityTypeId) {
+    /** Whether this mob type is undead. Public so Radiant (HoeEnchantEffects) shares the one list. */
+    public static boolean isUndeadMob(String entityTypeId) {
         return switch (entityTypeId) {
             case "minecraft:zombie", "minecraft:husk", "minecraft:drowned",
                  "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
@@ -7143,8 +7204,25 @@ public class CombatManager {
         if (com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isBlunt(item)) {
             return new String[]{"might", "unbreaking", "mending"};
         }
-        // Hoe / shovel / generic -only the universal enchants apply
+        // Shovels and hoes are the Pet and Special focuses. They never swing, but the Craftics
+        // enchantments on them arm the owner's pets (shovel) and Special casts (hoe). Pools come
+        // straight from CrafticsEnchantments, so a new entry there rolls here automatically.
+        if (item instanceof net.minecraft.item.ShovelItem) {
+            return withUniversals(CrafticsEnchantments.poolFor(CrafticsEnchantments.Tool.SHOVEL));
+        }
+        if (item instanceof net.minecraft.item.HoeItem) {
+            return withUniversals(CrafticsEnchantments.poolFor(CrafticsEnchantments.Tool.HOE));
+        }
+        // Generic -only the universal enchants apply
         return new String[]{"unbreaking", "mending"};
+    }
+
+    /** Append the enchantments every tool can take to a tool-specific pool. */
+    private static String[] withUniversals(String[] pool) {
+        String[] out = java.util.Arrays.copyOf(pool, pool.length + 2);
+        out[pool.length] = "unbreaking";
+        out[pool.length + 1] = "mending";
+        return out;
     }
 
     /** Returns valid enchantment IDs for an armor piece based on its slot. */
@@ -8527,7 +8605,37 @@ public class CombatManager {
             return;
         }
 
-        apRemaining -= apCost;
+        // Performative (hoe): the cast echoes for free. useItem() consumes the held item itself,
+        // so hand one back BEFORE the encore - otherwise the second cast eats a second item and
+        // the enchantment would be a downgrade rather than a bonus.
+        if (isSpecialClassItem(heldItem) && HoeEnchantEffects.rollDoubleCast(player)) {
+            HoeEnchantEffects.performativeVfx(player, (ServerWorld) player.getEntityWorld());
+            sendMessage("§dPerformative! The cast echoes.");
+            ItemStack encoreStack = player.getMainHandStack();
+            boolean refunded = false;
+            if (encoreStack.isEmpty()) {
+                // The first cast used the last one - put a fresh one in hand to spend.
+                player.setStackInHand(net.minecraft.util.Hand.MAIN_HAND, new ItemStack(heldItem));
+                refunded = true;
+            } else if (encoreStack.getItem() == heldItem) {
+                encoreStack.increment(1);
+                refunded = true;
+            }
+            if (refunded) {
+                String encore = ItemUseHandler.useItem(player, arena, targetTile);
+                if (encore != null && !encore.startsWith("§c")) {
+                    sendMessage(encore);
+                }
+            }
+        }
+
+        // Reserving (hoe): chance the cast costs no AP at all.
+        if (isSpecialClassItem(heldItem) && HoeEnchantEffects.rollFreeAp(player)) {
+            HoeEnchantEffects.reservingVfx(player, (ServerWorld) player.getEntityWorld());
+            sendMessage("§dReserving! That cost you no AP.");
+        } else {
+            apRemaining -= apCost;
+        }
 
         // Sound: item use
         player.getWorld().playSound(null, player.getBlockPos(),
@@ -8595,17 +8703,16 @@ public class CombatManager {
                             }
                         }
                     }
-                    // Pet affinity: flat +3 HP per point (damage bonus is applied per-attack
-                    // via DamageType.getTotalBonus on the PET damage type, so no ATK boost here
-                    // to avoid double-counting).
-                    PlayerProgression.PlayerStats petOwnerStats = PlayerProgression.get(
-                        (ServerWorld) player.getEntityWorld()).getStats(player);
-                    int petPts = petOwnerStats.getAffinityPoints(PlayerProgression.Affinity.PET);
-                    if (petPts > 0) {
-                        int hpBoost = petPts * 3;
+                    // Pet affinity HP. A tamed mob already exists as a CombatEntity, so its
+                    // constructor-set max HP is raised with a negative reduction rather than
+                    // folded in at spawn like the other ally paths. The damage bonus is applied
+                    // per-attack via DamageType.getTotalBonus on the PET damage type, so there
+                    // is deliberately no ATK boost here -that would double-count it.
+                    int hpBoost = computeAllyPetHpBonus(e.getEntityTypeId(), player.getUuid());
+                    if (hpBoost > 0) {
                         e.addMaxHpReduction(-hpBoost);
                         e.heal(hpBoost);
-                        sendMessage("\u00a7a\uD83D\uDC3E Pet Affinity: +" + hpBoost + " HP!");
+                        sendMessage("\u00a7aPet Affinity: +" + hpBoost + " HP");
                     }
                     sendMessage("§a§l" + e.getDisplayName() + " has been tamed! They fight for you now!");
                     break;
@@ -8926,6 +9033,19 @@ public class CombatManager {
         refreshHighlights();
     }
 
+    /**
+     * Whether {@code item} is a Special-class cast - the things the hoe enchantments key off.
+     * Sherds are spells outright; everything else is the caster's consumable toolkit, defined
+     * once in {@link ItemUseHandler#isSpecialConsumable}.
+     */
+    private static boolean isSpecialClassItem(Item item) {
+        if (item == null) return false;
+        return PotterySherdSpells.isPotterySherd(item) || ItemUseHandler.isSpecialConsumable(item);
+    }
+
+    /** True while a Performative encore is replaying a sherd, so the encore can't itself echo. */
+    private boolean sherdEncoreInProgress = false;
+
     /** Handle pottery sherd spell usage -called from handleUseItem when held item is a sherd. */
     private void handleSherdSpell(GridPos targetTile, Item sherdItem, int apCost) {
         // Self-cast spells don't need a target tile
@@ -8940,7 +9060,16 @@ public class CombatManager {
             return;
         }
 
-        apRemaining -= apCost;
+        // Reserving (hoe): chance a sherd cast costs no AP. The encore is already free, so it
+        // neither rolls nor pays.
+        if (sherdEncoreInProgress) {
+            // free replay - charge nothing
+        } else if (HoeEnchantEffects.rollFreeAp(player)) {
+            HoeEnchantEffects.reservingVfx(player, (ServerWorld) player.getEntityWorld());
+            sendMessage("§dReserving! That cost you no AP.");
+        } else {
+            apRemaining -= apCost;
+        }
 
         // Cast the spell (applies damage/effects/particles; sherd may shatter on cast).
         // Wrapped so a self-buff sherd (e.g. War Cry's SPEED) tops up live AP/movement this turn.
@@ -8973,6 +9102,21 @@ public class CombatManager {
             tileEffects.put(new GridPos(tx, tz), effectType);
             hexTrapTurnsRemaining = 5;
             if (parts.length > 1) sendMessage(parts[1]);
+        }
+        // Seeker volley (Archer sherd). Spawning grid entities is the manager's job, so
+        // the sherd hands back a "count:damage" instruction instead of doing it itself.
+        else if (result.contains(PotterySherdSpells.SEEKERS_PREFIX)) {
+            String afterPrefix = result.substring(result.indexOf(PotterySherdSpells.SEEKERS_PREFIX)
+                + PotterySherdSpells.SEEKERS_PREFIX.length());
+            // Split the payload off the trailing text first: useSherd appends the
+            // "(The sherd shattered.)" suffix to whatever the spell returned, and it
+            // would otherwise land inside the number we're about to parse.
+            String[] parts = afterPrefix.split("\\|", 2);
+            String[] seekerInfo = parts[0].split(":");
+            int seekerCount = Integer.parseInt(seekerInfo[0]);
+            int seekerDamage = Integer.parseInt(seekerInfo[1]);
+            String volley = castSpectralSeekers(player, seekerCount, seekerDamage);
+            sendMessage(parts.length > 1 ? volley + parts[1] : volley);
         }
         // AP restoration (Plenty sherd)
         else if (result.contains(PotterySherdSpells.RESTORE_AP_PREFIX)) {
@@ -9018,6 +9162,21 @@ public class CombatManager {
         if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
             handleVictory();
             return;
+        }
+
+        // Performative (hoe): replay the whole cast once, for free. Re-entering the method (rather
+        // than just re-running useSherd) means the encore's own damage, deaths and prefix results
+        // all resolve exactly like the first cast. The guard stops an encore from echoing itself.
+        if (!sherdEncoreInProgress && HoeEnchantEffects.rollDoubleCast(player)) {
+            HoeEnchantEffects.performativeVfx(player, (ServerWorld) player.getEntityWorld());
+            sendMessage("§dPerformative! The cast echoes.");
+            sherdEncoreInProgress = true;
+            try {
+                handleSherdSpell(targetTile, sherdItem, 0);
+            } finally {
+                sherdEncoreInProgress = false;
+            }
+            return; // the encore ran its own sync/highlight pass
         }
 
         sendSync();
@@ -9679,6 +9838,9 @@ public class CombatManager {
         // they're lava-immune. Players ARE protected from ambient fire damage,
         // but the lava/fire tile damage runs through Craftics' tile system.
         enforceHiddenFireResistance();
+
+        // Keep anyone standing on a water tile breathing.
+        enforceWaterTileBreathing();
 
         // Advance any lead-commanded walk animation.
         tickLeadWalk();
@@ -11902,7 +12064,10 @@ public class CombatManager {
         }
         // null (unregistered ally) defaults to true: the pre-framework handleAllyTurn
         // applied the owner-gear bonus to every ally, so this preserves that behavior.
-        boolean scalesWithGear = entry == null || entry.scalesWithOwnerGear();
+        // A seeker is a spell's payload, not a pet, so Pet affinity must not scale it -
+        // its damage is the sherd's own number.
+        boolean scalesWithGear = !ally.isSeekerProjectile()
+            && (entry == null || entry.scalesWithOwnerGear());
 
         EnemyAction action = ai.decideAction(ally, arena, enemies);
 
@@ -11934,15 +12099,7 @@ public class CombatManager {
             int petBonus = 0;
             if (scalesWithGear) {
                 // Apply the owner's armor-set / trim / mob-head bonuses to this ally's damage.
-                ServerPlayerEntity allyOwner = player;
-                if (ally.getOwnerUuid() != null) {
-                    for (ServerPlayerEntity member : getAllParticipants()) {
-                        if (member.getUuid().equals(ally.getOwnerUuid())) {
-                            allyOwner = member;
-                            break;
-                        }
-                    }
-                }
+                ServerPlayerEntity allyOwner = resolveAllyOwner(ally.getOwnerUuid());
                 PlayerProgression.PlayerStats allyOwnerStats = PlayerProgression.get(
                     (ServerWorld) allyOwner.getEntityWorld()).getStats(allyOwner);
                 TrimEffects.TrimScan ownerTrimScan = activeTrimScan;
@@ -16068,6 +16225,17 @@ public class CombatManager {
                 String abilityMsg = allyTarget.isAlive()
                     ? com.crackedgames.craftics.combat.ai.ally.AllyAbilities.applyOnHit(currentEnemy, allyTarget)
                     : "";
+                // Shovel Fang enchantments: the owner's shovel arms every pet they own. Seekers
+                // are a spell's payload rather than a pet, so they carry no Fangs (matching how
+                // they're excluded from Pet affinity and Honed).
+                List<CombatEntity> fangShocked = new ArrayList<>();
+                if (allyTarget.isAlive() && !currentEnemy.isSeekerProjectile()) {
+                    ServerPlayerEntity fangOwner = resolveAllyOwner(currentEnemy.getOwnerUuid());
+                    if (fangOwner != null && fangOwner.getEntityWorld() instanceof ServerWorld fangWorld) {
+                        abilityMsg += ShovelEnchantEffects.applyOnAllyHit(
+                            currentEnemy, allyTarget, fangOwner, arena, fangWorld, fangShocked);
+                    }
+                }
                 if (currentEnemy.isLitOneShot() && allyTarget.isAlive()) {
                     allyTarget.stackBurning(3, 2);
                 }
@@ -16114,6 +16282,23 @@ public class CombatManager {
                         }
                     }
                 }
+                // Thunder Fang's arc can kill things the ally never touched, so those need the
+                // same death pipeline the direct victim just went through. Without this a
+                // shocked-to-death enemy would stand there at 0 HP until something else nudged it.
+                for (CombatEntity zapped : fangShocked) {
+                    if (zapped.isAlive()) continue;
+                    if (currentEnemy.getOwnerUuid() != null) {
+                        zapped.setLastDamagerUuid(currentEnemy.getOwnerUuid());
+                    }
+                    checkAndHandleDeath(zapped);
+                    if (!zapped.isAlive() && !zapped.isAlly()) {
+                        onEnemyKilled(zapped);
+                    }
+                }
+                if (!fangShocked.isEmpty()
+                        && enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+                    handleVictory();
+                }
                 // Bee allies pay the same sting recoil as enemy bees do.
                 if ("minecraft:bee".equals(currentEnemy.getEntityTypeId())) {
                     applyBeeStingRecoil(currentEnemy);
@@ -16123,6 +16308,11 @@ public class CombatManager {
                     sendMessage("§7The lit " + currentEnemy.getDisplayName() + " burns out.");
                     currentEnemy.takeDamage(currentEnemy.getCurrentHp() + currentEnemy.getDefense() + 9999);
                     checkAndHandleDeath(currentEnemy);
+                }
+                // A seeker IS its payload: reaching a target spends it. Detonate here
+                // rather than in the AI, since only the manager can pull it off the grid.
+                if (currentEnemy.isSeekerProjectile()) {
+                    detonateSeeker(currentEnemy);
                 }
             }
             sendSync();
@@ -17428,6 +17618,9 @@ public class CombatManager {
         int n = 0;
         for (CombatEntity e : enemies) {
             if (!e.isAlive() || !e.isAlly()) continue;
+            // Seekers are spell payloads, not party members - they must not eat the
+            // pet-affinity party slots a player summons real allies with.
+            if (e.isSeekerProjectile()) continue;
             java.util.UUID eOwner = e.getOwnerUuid();
             if (eOwner == null && owner == player) { n++; continue; }
             if (eOwner != null && eOwner.equals(ownerId)) n++;
@@ -17761,6 +17954,7 @@ public class CombatManager {
         } else {
             hp = 8; atk = 2; def = 0; range = 1;
         }
+        hp += computeAllyPetHpBonus(typeId, player.getUuid());
 
         java.util.Set<GridPos> reserved = new java.util.HashSet<>();
         for (CombatEntity e : enemies) {
@@ -20363,9 +20557,14 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         // Tier is based on the biome where the event started, not mutable runtime state.
         int biomeTier = Math.max(1, biomeOrdinal + 1);
-        activeTraderOffer = TraderSystem.generateOffer(biomeTier, new java.util.Random());
+        // Bias the roll toward a trader this island has NOT met, so the hall fills out instead of
+        // handing you the same Weaponsmith every event. Met traders stay possible, just rarer.
+        var metData = com.crackedgames.craftics.world.CrafticsSavedData.get(world);
+        var metOwner = metData.getEffectiveWorldOwner(savedPlayer.getUuid());
+        activeTraderOffer = TraderSystem.generateOffer(biomeTier, new java.util.Random(),
+            metData.getPlayerData(metOwner).metTraders);
         com.crackedgames.craftics.scene.MetMerchants.recordTrader(
-            world, savedPlayer.getUuid(), activeTraderOffer.type().name());
+            world, savedPlayer.getUuid(), activeTraderOffer.type().id());
 
         // Apply Resourceful stat discount per-player (use leader's for trade offer since it's shared)
         int resourcefulDiscount = PlayerProgression.get(world)
@@ -20480,7 +20679,10 @@ public class CombatManager {
 
         // Begin the dialogue intro cinematic: walk every member up to a talk tile
         // in front of the trader, then (once all arrive) push the intro dialogue.
-        this.activeTraderIntroGroup = "trader_intro_" + activeTraderOffer.type().name().toLowerCase();
+        // Dialogue groups are keyed by the local id ("trader_intro_weaponsmith"). An addon trader
+        // with no registered dialogue group simply gets no intro line, which VanillaDialogue
+        // already tolerates.
+        this.activeTraderIntroGroup = "trader_intro_" + activeTraderOffer.type().localId();
         java.util.List<java.util.UUID> partyUuids = new java.util.ArrayList<>();
         for (ServerPlayerEntity p : members) partyUuids.add(p.getUuid());
 
@@ -21974,7 +22176,7 @@ public class CombatManager {
             sendMessage("§cNeed " + apCost + " AP to feed!");
             return;
         }
-        String result = ItemUseHandler.feedAlly(ally, stack);
+        String result = ItemUseHandler.feedAlly(player, ally, stack);
         if (result == null) {
             sendMessage("§cCan't feed that to an ally.");
             return;
@@ -21991,20 +22193,41 @@ public class CombatManager {
     /** Apply the combat HP bonus (Vitality stat + Host trim) to a party member.
      *  Mirrors the per-leader application inside {@link #startCombat} so non-
      *  leader party members aren't stuck at base HP. Preserves their HP ratio
-     *  across level transitions so they don't get full-healed for free. */
-    private static void applyHpBonusFromStats(ServerPlayerEntity member) {
+     *  across level transitions so they don't get full-healed for free.
+     *
+     *  <p>Public because spending a stat point must take effect NOW: allocating Vitality
+     *  used to save the number and re-sync the HUD without ever refreshing the Health
+     *  Boost effect, so the player's max HP didn't actually move until the next combat
+     *  started. The level-up handler calls this the moment a point is spent. Also
+     *  REMOVES the effect when the bonus drops to zero (a trim was taken off), which the
+     *  old early-return could never do. */
+    public static void applyHpBonusFromStats(ServerPlayerEntity member) {
         if (member == null || member.getEntityWorld() == null) return;
         if (!(member.getEntityWorld() instanceof ServerWorld sw)) return;
+        var hpAttr = member.getAttributeInstance(MAX_HEALTH_ATTR);
+        if (hpAttr == null) return;
+
         PlayerProgression.PlayerStats memberStats = PlayerProgression.get(sw).getStats(member);
         int vitalityPoints = memberStats.getPoints(PlayerProgression.Stat.VITALITY);
         TrimEffects.TrimScan memberTrim = TrimEffects.scan(member);
-        int trimHpBonus = memberTrim.get(TrimEffects.Bonus.MAX_HP);
-        int totalHpBonusLevels = vitalityPoints * PROG_VITALITY_LEVELS_PER_POINT + trimHpBonus;
-        if (totalHpBonusLevels <= 0) return;
+        // Both halves are REAL HIT POINTS now - Vitality's own per-point value and the
+        // trim's MAX_HP bucket. They used to be Health Boost levels, which capped every
+        // bonus at a multiple of 4 HP and made the guide book's numbers lie.
+        int totalHpBonus = vitalityPoints * PROG_VITALITY_HP_PER_POINT
+            + memberTrim.get(TrimEffects.Bonus.MAX_HP);
+
         float hpRatio = member.getMaxHealth() > 0 ? member.getHealth() / member.getMaxHealth() : 1.0f;
-        member.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
-            net.minecraft.entity.effect.StatusEffects.HEALTH_BOOST, 999999, totalHpBonusLevels - 1));
-        member.setHealth(Math.max(1, hpRatio * member.getMaxHealth()));
+
+        // Replace only OUR modifier: another mod's max-health bonus is none of our business.
+        hpAttr.removeModifier(HP_BONUS_MODIFIER_ID);
+        if (totalHpBonus > 0) {
+            hpAttr.addPersistentModifier(new net.minecraft.entity.attribute.EntityAttributeModifier(
+                HP_BONUS_MODIFIER_ID, totalHpBonus,
+                net.minecraft.entity.attribute.EntityAttributeModifier.Operation.ADD_VALUE));
+        }
+        // Preserve the HP ratio so a level transition (or spending a point) never
+        // free-heals, and a shrinking pool never leaves the player above their new max.
+        member.setHealth(Math.max(1, Math.min(member.getMaxHealth(), hpRatio * member.getMaxHealth())));
     }
 
     /** Broadcast a player entity's current server-side position to OTHER nearby
@@ -24277,7 +24500,10 @@ public class CombatManager {
 
             // Build combat stats from the ally definition
             AllyEntry allyEntry = snapshot.allyEntry();
-            int hp = allyEntry.hp();
+            // Max HP is constructor-only, so the owner's Pet-affinity HP has to be
+            // folded in here rather than applied to the CombatEntity afterwards.
+            int hp = allyEntry.hp()
+                + computeAllyPetHpBonus(snapshot.entityTypeId(), snapshot.playerUuid());
             int atk = allyEntry.attack();
             int def = allyEntry.defense();
             int range = allyEntry.range();
@@ -24319,7 +24545,30 @@ public class CombatManager {
         java.util.List<Integer> moveList = new java.util.ArrayList<>();
         java.util.List<Integer> attackList = new java.util.ArrayList<>();
 
-        if (isMoveMode) {
+        // Lead with an ally picked: the highlights describe the ALLY, not the player.
+        // Green = where that ally can walk on its own speed budget, red = the enemies
+        // it can reach from where it stands. Without this the player was commanding
+        // blind, and the tiles on screen were the player's own weapon range.
+        CombatEntity commandTarget = leadCommandTarget();
+        if (commandTarget != null) {
+            // Same self-aware reachability the move command itself pathfinds with, so a
+            // green tile is always a tile the server will actually accept.
+            for (GridPos gp : Pathfinding.getReachableTiles(
+                    arena, commandTarget.getGridPos(),
+                    Math.max(1, commandTarget.getMoveSpeed()), commandTarget)) {
+                if (arena.isOccupied(gp)) continue;
+                moveList.add(gp.x());
+                moveList.add(gp.z());
+            }
+            for (CombatEntity enemy : enemies) {
+                if (!enemy.isAlive() || enemy.isAlly() || enemy.isMountWall()) continue;
+                if (enemy.minDistanceTo(commandTarget.getGridPos()) > 1) continue;
+                for (GridPos tile : GridArena.getOccupiedTiles(enemy)) {
+                    attackList.add(tile.x());
+                    attackList.add(tile.z());
+                }
+            }
+        } else if (isMoveMode) {
             if (movePointsRemaining > 0) {
                 boolean pathfinderActive = activeTrimScan != null
                     && activeTrimScan.setBonus() == TrimEffects.SetBonus.PATHFINDER;
@@ -24989,6 +25238,7 @@ public class CombatManager {
             def = 0;
             range = 1;
         }
+        hp += computeAllyPetHpBonus(typeId, player.getUuid());
 
         int apCost = 2;
         if (apRemaining < apCost) {
@@ -25091,6 +25341,7 @@ public class CombatManager {
         } else {
             hp = 8; atk = 2; def = 0; range = 1;
         }
+        hp += computeAllyPetHpBonus(typeId, ownerUuid);
 
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         BlockPos blockPos = arena.gridToBlockPos(tile);
@@ -25461,6 +25712,129 @@ public class CombatManager {
         sendSync();
     }
 
+    /** Rounds a summoned Archer-sherd seeker survives before it fizzles out. */
+    public static final int SEEKER_LIFESPAN_ROUNDS = 5;
+    /** Tiles a seeker vex closes per round - one faster than the enemy shulker-bullet seekers. */
+    public static final int SEEKER_SPEED = 3;
+    /** The mob a seeker IS - a vex, summoned and bound to the caster for the volley. */
+    private static final String SEEKER_ENTITY_TYPE = "minecraft:vex";
+
+    /**
+     * Destroy a seeker vex on the target it just reached: burst of spectral particles, then
+     * remove it. Uses {@link #despawnSummon} rather than the death pipeline, so a spent
+     * seeker drops no loot and never counts as an ally death.
+     */
+    private void detonateSeeker(CombatEntity seeker) {
+        if (seeker == null) return;
+        MobEntity mob = seeker.getMobEntity();
+        if (mob != null && player != null && player.getEntityWorld() instanceof ServerWorld sw) {
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.ENCHANTED_HIT,
+                mob.getX(), mob.getY() + 0.6, mob.getZ(), 14, 0.3, 0.3, 0.3, 0.15);
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                mob.getX(), mob.getY() + 0.6, mob.getZ(), 10, 0.3, 0.3, 0.3, 0.12);
+            sw.playSound(null, mob.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_ARROW_HIT,
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.4f);
+        }
+        despawnSummon(seeker);
+    }
+
+    /**
+     * Summon one seeker vex for the Archer sherd: it flies at the nearest enemy on its own
+     * each round at {@link #SEEKER_SPEED} tiles a turn and destroys itself on attack. The
+     * ally-side mirror of the shulker bullets bosses fire at the player.
+     *
+     * <p>Deliberately fragile at 1 HP, exactly like the enemy seekers, so a boss can swat
+     * one out of the air. It expires after {@link #SEEKER_LIFESPAN_ROUNDS} rounds if it
+     * never connects.
+     *
+     * @return the seeker, or {@code null} if there was no free tile for it
+     */
+    private CombatEntity spawnSeeker(GridPos tile, ServerPlayerEntity owner, int damage) {
+        if (tile == null || arena == null || player == null) return null;
+        if (!arena.isInBounds(tile) || arena.isOccupied(tile)) return null;
+        GridTile gridTile = arena.getTile(tile);
+        if (gridTile == null || !gridTile.isWalkable()) return null;
+
+        EntityType<?> entityType = Registries.ENTITY_TYPE.get(Identifier.of(SEEKER_ENTITY_TYPE));
+        if (entityType == null) return null;
+
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos blockPos = arena.gridToBlockPos(tile);
+        net.minecraft.entity.Entity rawEntity = entityType.create(world, null, blockPos,
+            SpawnReason.MOB_SUMMONED, false, false);
+        if (!(rawEntity instanceof MobEntity mob)) return null;
+        mob.refreshPositionAndAngles(
+            blockPos.getX() + 0.5, blockPos.getY(), blockPos.getZ() + 0.5, 0, 0);
+        mob.setPersistent();
+        mob.setAiDisabled(true);
+        mob.setInvulnerable(true);
+        mob.setNoGravity(true);
+        mob.noClip = true;
+        mob.setSilent(true);
+        mob.setGlowing(true);
+        mob.addCommandTag("craftics_arena");
+        world.spawnEntity(mob);
+
+        // 1 HP: swattable, same as the enemy seekers.
+        CombatEntity ce = new CombatEntity(mob.getId(), SEEKER_ENTITY_TYPE, tile, 1, damage, 0, 1);
+        ce.setAlly(true);
+        ce.setTemporaryAlly(true);
+        ce.setSeekerProjectile(true);
+        ce.setOwnerUuid(owner != null ? owner.getUuid() : null);
+        ce.setMobEntity(mob);
+        // Note: deliberately NOT routed through computeAllyPetHpBonus - a seeker must stay
+        // at 1 HP (swattable) no matter the caster's Pet affinity. It isn't a pet.
+        ce.setBossDisplayName("Seeker Vex");
+        ce.setAllyAi(new com.crackedgames.craftics.combat.ai.ally.SeekerAllyAI());
+        ce.setSpeedBonus(SEEKER_SPEED - ce.getMoveSpeed());
+        ce.setSummonLifespanRounds(SEEKER_LIFESPAN_ROUNDS);
+        enemies.add(ce);
+        arena.placeEntity(ce);
+        return ce;
+    }
+
+    /**
+     * Summon the Archer sherd's seeker vexes onto free tiles around the caster.
+     * Luck buys an extra vex on the usual {@code +2%/point} curve.
+     *
+     * @return a chat-ready summary of what was launched
+     */
+    public String castSpectralSeekers(ServerPlayerEntity caster, int count, int damage) {
+        if (arena == null || caster == null) return "";
+        GridPos from = arena.getPlayerGridPos();
+
+        // Ring outward from the caster so the seekers appear beside them, not on top.
+        java.util.List<GridPos> free = new java.util.ArrayList<>();
+        for (int r = 1; r <= 3 && free.size() < count; r++) {
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != r) continue;
+                    GridPos p = new GridPos(from.x() + dx, from.z() + dz);
+                    if (!arena.isInBounds(p) || arena.isOccupied(p)) continue;
+                    GridTile t = arena.getTile(p);
+                    if (t == null || !t.isWalkable()) continue;
+                    free.add(p);
+                }
+            }
+        }
+
+        int launched = 0;
+        for (GridPos p : free) {
+            if (launched >= count) break;
+            if (spawnSeeker(p, caster, damage) != null) launched++;
+        }
+        sendSync();
+        refreshHighlights();
+
+        if (launched == 0) {
+            return "§b§lSeeker Vexes! §7No room to summon them.";
+        }
+        return "§b§lSeeker Vexes! §fSummoned " + launched + " vex" + (launched == 1 ? "" : "es")
+            + ". They seek the nearest enemy and destroy themselves on attack for "
+            + damage + " damage.";
+    }
+
     /**
      * Shared manager-backed {@link com.crackedgames.craftics.combat.ai.ally.AllyCombatContext}
      * reused by both the per-round ally hooks and the on-death ally hooks. Lazily
@@ -25565,22 +25939,51 @@ public class CombatManager {
      * sent in {@link #sendSync} matches the damage the ally actually deals.
      * Returns 0 for non-allies and for allies whose entry opts out of gear scaling.
      */
+    /**
+     * The party member that owns {@code ownerUuid}, falling back to the combat leader
+     * when the ally has no owner (or its owner isn't in this fight). Pets must scale off
+     * <em>their own</em> owner's gear and affinity, not whoever happens to be leading.
+     */
+    private ServerPlayerEntity resolveAllyOwner(java.util.UUID ownerUuid) {
+        if (ownerUuid == null) return player;
+        for (ServerPlayerEntity member : getAllParticipants()) {
+            if (member.getUuid().equals(ownerUuid)) return member;
+        }
+        return player;
+    }
+
+    /**
+     * Bonus max HP an owner's Pet affinity grants one of their allies:
+     * {@code Pet affinity level × }{@link DamageType#ALLY_HP_PER_PET_AFFINITY_LEVEL}.
+     * Folded into the ally's max HP at spawn time (max HP is constructor-only on
+     * {@link CombatEntity}), so every ally-spawn path must call this.
+     *
+     * <p>Returns 0 when the owner isn't resolvable or the ally's registry entry opts out
+     * of gear scaling, mirroring {@link #computeAllyPetBonus}'s gating exactly.
+     */
+    private int computeAllyPetHpBonus(String entityTypeId, java.util.UUID ownerUuid) {
+        AllyEntry entry = AllyRegistry.getOrNull(entityTypeId);
+        // Unregistered allies default to gear-scaling -matches handleAllyTurn.
+        if (entry != null && !entry.scalesWithOwnerGear()) return 0;
+
+        ServerPlayerEntity allyOwner = resolveAllyOwner(ownerUuid);
+        if (allyOwner == null || !(allyOwner.getEntityWorld() instanceof ServerWorld sw)) return 0;
+
+        int petLevels = PlayerProgression.get(sw).getStats(allyOwner)
+            .getAffinityPoints(PlayerProgression.Affinity.PET);
+        return Math.max(0, petLevels) * DamageType.ALLY_HP_PER_PET_AFFINITY_LEVEL;
+    }
+
     private int computeAllyPetBonus(CombatEntity ally) {
         if (!ally.isAlly()) return 0;
+        // A seeker is a spell payload, not a pet -matches handleAllyTurn.
+        if (ally.isSeekerProjectile()) return 0;
         AllyEntry entry = AllyRegistry.getOrNull(ally.getEntityTypeId());
         // Unregistered allies default to gear-scaling -matches handleAllyTurn.
         boolean scalesWithGear = entry == null || entry.scalesWithOwnerGear();
         if (!scalesWithGear) return 0;
 
-        ServerPlayerEntity allyOwner = player;
-        if (ally.getOwnerUuid() != null) {
-            for (ServerPlayerEntity member : getAllParticipants()) {
-                if (member.getUuid().equals(ally.getOwnerUuid())) {
-                    allyOwner = member;
-                    break;
-                }
-            }
-        }
+        ServerPlayerEntity allyOwner = resolveAllyOwner(ally.getOwnerUuid());
         if (allyOwner == null) return 0;
 
         PlayerProgression.PlayerStats allyOwnerStats = PlayerProgression.get(
@@ -25596,6 +25999,9 @@ public class CombatManager {
         if (ownerTrimScan != null && ownerTrimScan.setBonus() == TrimEffects.SetBonus.RALLY) {
             petBonus += 1;
         }
+        // Honed: the owner's shovel sharpens every pet they own. Lives here rather than at the
+        // attack site so the inspect panel's ATK (which also calls this) tells the truth.
+        petBonus += ShovelEnchantEffects.honedBonus(allyOwner);
         return petBonus;
     }
 
@@ -26177,6 +26583,49 @@ public class CombatManager {
      * fire-immune for the combat tile system. Showing the icon misleads
      * players into thinking they can stand on lava tiles for free.
      */
+    /**
+     * Give any party member standing on a water tile hidden water breathing, and take it
+     * back the moment they step off.
+     *
+     * <p>A water tile is a normal, intended place to fight from - a full-height player's
+     * head sits above the surface, so they never drown. But anything that lowers eye
+     * height (the Artifacts Shrinking Charm, most obviously) sinks the player's head under
+     * the surface and they start drowning on a tile the game says is walkable. Rather than
+     * special-case one artifact, guarantee the invariant directly: if Craftics let you
+     * stand there, Craftics keeps you breathing.
+     *
+     * <p>Icon-hidden and particle-free, like the fire-resistance baseline, so the
+     * inventory doesn't advertise a buff the player didn't earn. Only Craftics' own
+     * hidden instance is removed on step-off - a real Water Breathing potion the player
+     * drank is left alone.
+     */
+    private void enforceWaterTileBreathing() {
+        if (!active || arena == null) return;
+        var waterBreathing = net.minecraft.entity.effect.StatusEffects.WATER_BREATHING;
+        for (ServerPlayerEntity member : allCombatPlayers()) {
+            if (member == null || member.isRemoved()
+                || deadPartyMembers.contains(member.getUuid())) continue;
+
+            GridPos pos = gridPosOf(member);
+            GridTile tile = pos != null ? arena.getTile(pos) : null;
+            boolean onWater = tile != null && tile.isWater();
+            var existing = member.getStatusEffect(waterBreathing);
+            // Ours is the icon-hidden, particle-free one. A potion the player drank shows
+            // its icon, and must survive both the grant and the revoke below.
+            boolean oursActive = existing != null
+                && !existing.shouldShowIcon() && !existing.shouldShowParticles();
+
+            if (onWater) {
+                if (!oursActive && existing == null) {
+                    member.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+                        waterBreathing, Integer.MAX_VALUE, 0, true, false, false));
+                }
+            } else if (oursActive) {
+                member.removeStatusEffect(waterBreathing);
+            }
+        }
+    }
+
     private void enforceHiddenFireResistance() {
         // Every party member, not just the turn-holder: the baseline is what
         // stops vanilla ambient fire/lava damage, and a teammate whose visible

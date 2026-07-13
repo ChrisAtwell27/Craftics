@@ -40,10 +40,32 @@ public final class BasicWeaponsCompat {
     // === Craftics balance tuning (daggers and spears) ===
     /** Off-hand dagger second hit fraction of the main hit (1.0 main + 0.75 off = 1.75x total). */
     public static final double DAGGER_OFFHAND_MULT = 0.75;
-    /** Spear bonus added per tile walked before attacking this turn. */
-    public static final double SPEAR_MOVE_PER_TILE = 0.50;
-    /** Hard cap on the spear movement multiplier. */
-    public static final double SPEAR_MOVE_CAP = 10.0;
+    /**
+     * Spear bonus added per tile walked before attacking this turn. Shared by every
+     * spear Craftics knows - Basic Weapons and Simply Swords alike - so no mod's spear
+     * is mechanically better than another's.
+     */
+    public static final double SPEAR_MOVE_PER_TILE = 0.20;
+    /**
+     * Hard cap on the spear movement multiplier. A charging spear doubles its hit at
+     * most: this was 10.0, which is no cap at all - a player with 8 Speed reached 5x and
+     * could open a turn for several hundred damage.
+     */
+    public static final double SPEAR_MOVE_CAP = 2.0;
+
+    /**
+     * The one-line spear-momentum description, generated from the live constants. BOTH
+     * spear tooltips (Basic Weapons and Simply Swords) render this, so the two can never
+     * again claim different numbers for what is one shared mechanic.
+     */
+    public static String spearMomentumLine() {
+        return "+" + Math.round(SPEAR_MOVE_PER_TILE * 100)
+            + "% damage per tile walked before attacking (up to "
+            + (SPEAR_MOVE_CAP == Math.rint(SPEAR_MOVE_CAP)
+                ? String.valueOf((int) SPEAR_MOVE_CAP)
+                : String.valueOf(SPEAR_MOVE_CAP))
+            + "x)";
+    }
 
     private static boolean loaded = false;
     private static boolean registered = false;
@@ -127,11 +149,16 @@ public final class BasicWeaponsCompat {
         boolean any = false;
         for (String tier : TIERS) {
             any |= registerOne(tier, "dagger", DamageType.SLASHING, 1, 1, daggerAbility());
-            any |= registerOne(tier, "spear", DamageType.SLASHING, 1, 2, null);
+            // 2 AP: a charging spear's momentum bonus makes it the strongest opener in the
+            // game, so it costs a full second action rather than being a 1-AP nuke.
+            any |= registerOne(tier, "spear", DamageType.SLASHING, 2, 2, null);
             any |= registerOne(tier, "quarterstaff", DamageType.BLUNT, 1, 2, Abilities.sweepAdjacent(0.10, 0.05));
             any |= registerOne(tier, "club", DamageType.BLUNT, 2, 1, clubAbility());
             any |= registerOne(tier, "hammer", DamageType.BLUNT, 3, 1, hammerAbility());
-            any |= registerOne(tier, "glaive", DamageType.CLEAVING, 3, 1, glaiveAbility());
+            // Range 2, matching the Simply Swords glaive: the two mods ship a glaive with
+            // the same name and the same recipe, so they must fight the same way. A glaive
+            // is a hafted polearm - it reaches, like the spear and the halberd.
+            any |= registerOne(tier, "glaive", DamageType.CLEAVING, 3, 2, glaiveAbility());
         }
         if (any) {
             registered = true;

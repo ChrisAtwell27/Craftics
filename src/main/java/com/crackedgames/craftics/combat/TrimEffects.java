@@ -147,15 +147,30 @@ public class TrimEffects {
     }
 
     /**
-     * Per-piece magnitude for a trim pattern's bonus, normalized so one trimmed piece is
-     * worth ~one level-up stat point. DEFENSE and MAX_HP get 2 (a Defense point = +2 Armor
-     * Class; a Vitality point = +8 HP = 2 Health Boost levels). Everything else is 1 -
+     * Max HP one MAX_HP-trimmed piece grants, in REAL HIT POINTS.
+     *
+     * <p>MAX_HP used to be counted in vanilla Health Boost LEVELS (1 level = 4 HP), which
+     * is the whole reason the numbers disagreed: the registry said "2", the guide book
+     * printed that 2 as if it were hit points, and the game actually applied 2 levels =
+     * +8 HP. Everything on this bonus is now plain hit points, granted through a max-health
+     * attribute modifier, so any value is expressible and what is written is what is given.
+     */
+    public static final int TRIM_MAX_HP_PER_PIECE = 8;
+
+    /**
+     * Per-piece magnitude for a trim PATTERN's bonus, normalized so one trimmed piece is
+     * worth ~one level-up stat point. DEFENSE gets 2 (a Defense point = +2 Armor Class);
+     * MAX_HP is in real hit points ({@link #TRIM_MAX_HP_PER_PIECE}). Everything else is 1 -
      * including the power bonuses, since each is a damage-affinity point already worth
      * DamageType.DAMAGE_PER_AFFINITY_POINT (3) damage, i.e. more than a melee/ranged point.
+     *
+     * <p>This is the PATTERN's contribution (the Host trim). A trim MATERIAL carries its
+     * own value - see {@code TrimMaterialRegistry}, where quartz is the MAX_HP material.
      */
     private static int trimPerPieceWeight(Bonus b) {
         return switch (b) {
-            case DEFENSE, MAX_HP -> 2;
+            case MAX_HP -> TRIM_MAX_HP_PER_PIECE;
+            case DEFENSE -> 2;
             default -> 1;
         };
     }

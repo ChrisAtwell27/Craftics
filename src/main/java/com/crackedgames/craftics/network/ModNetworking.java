@@ -153,6 +153,11 @@ public class ModNetworking {
                         "§a+" + stats[ordinal].displayName + "! §7(Now " +
                         progression.getStats(player).getEffective(stats[ordinal]) + ")"), false);
 
+                    // Vitality is the one stat backed by a real status effect, so spending
+                    // the point has to refresh it here. Without this the number moved on
+                    // the HUD but max HP didn't budge until the next combat started.
+                    com.crackedgames.craftics.combat.CombatManager.applyHpBonusFromStats(player);
+
                     // Re-sync updated stats to client so CombatState stays current
                     com.crackedgames.craftics.combat.PlayerProgression.PlayerStats ps =
                         progression.getStats(player);

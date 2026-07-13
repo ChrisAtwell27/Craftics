@@ -35,6 +35,13 @@ public class AffinityRespecScreen extends Screen {
     private static final int HEADER_H    = 36;
     private static final int FOOTER_H    = 20;
 
+    // Text colors. GuideTheme's INK shades are dark brown - they read correctly on the
+    // guide book's light parchment, but this screen draws over a DARK overlay
+    // (0xE0101010), where brown-on-dark is unreadable. Use light text instead.
+    private static final int TEXT        = 0xFFFFFFFF; // primary (labels, values)
+    private static final int TEXT_SOFT   = 0xFFC8C8C8; // secondary (subtitle)
+    private static final int TEXT_FAINT  = 0xFF9A9A9A; // tertiary (hints, descriptions)
+
     private ButtonWidget confirmButton;
 
     public AffinityRespecScreen() {
@@ -227,13 +234,13 @@ public class AffinityRespecScreen extends Screen {
             ? "Cost: " + totalRefunded + " XP Level" + (totalRefunded != 1 ? "s" : "")
               + " (You have " + playerXpLevels + ")"
             : "Spend unspent points, or refund to reallocate";
-        int costColor = totalRefunded > 0 ? 0xFFB02020 : GuideTheme.INK_SOFT;
+        int costColor = totalRefunded > 0 ? 0xFFFF6B6B : TEXT_SOFT;
         GuideTheme.drawCentered(context, this.textRenderer, costText, centerX, contentTop + 12, costColor);
 
         String unspentText = currentUnspent > 0
             ? currentUnspent + " affinity point" + (currentUnspent != 1 ? "s" : "") + " to spend"
             : "No unspent affinity points";
-        int unspentColor = currentUnspent > 0 ? GuideTheme.INK : GuideTheme.INK_FAINT;
+        int unspentColor = currentUnspent > 0 ? TEXT : TEXT_FAINT;
         GuideTheme.drawCentered(context, this.textRenderer, unspentText, centerX, contentTop + 24, unspentColor);
 
         // --- Affinity rows ---
@@ -246,7 +253,7 @@ public class AffinityRespecScreen extends Screen {
 
             // Affinity name + icon
             String label = affinity.icon + " " + affinity.displayName;
-            GuideTheme.drawInk(context, this.textRenderer, label, labelX, labelY, GuideTheme.INK);
+            GuideTheme.drawInk(context, this.textRenderer, label, labelX, labelY, TEXT);
 
             // Current value + delta indicator
             int affDelta = currentValues[i] - originalValues[i];
@@ -256,10 +263,11 @@ public class AffinityRespecScreen extends Screen {
                 : "";
             int valueX = centerX + CARD_WIDTH / 2 - BTN_SIZE - 8
                 - this.textRenderer.getWidth(baseVal + deltaStr);
-            GuideTheme.drawInk(context, this.textRenderer, baseVal, valueX, labelY, GuideTheme.INK);
+            GuideTheme.drawInk(context, this.textRenderer, baseVal, valueX, labelY, TEXT);
             if (affDelta != 0) {
                 int dxOff = this.textRenderer.getWidth(baseVal);
-                int deltaColor = affDelta > 0 ? 0xFF2E7B2E : 0xFFB02020;
+                // Brighter green/red so the delta reads on the dark overlay too.
+                int deltaColor = affDelta > 0 ? 0xFF5CD65C : 0xFFFF6B6B;
                 GuideTheme.drawInk(context, this.textRenderer, deltaStr,
                     valueX + dxOff, labelY, deltaColor);
             }
@@ -271,7 +279,7 @@ public class AffinityRespecScreen extends Screen {
                 // place description 2px below the last row, which is 6px above the button row
                 int descY = startY + affinities.length * (CARD_HEIGHT + CARD_GAP) - 2;
                 GuideTheme.drawCentered(context, this.textRenderer,
-                    affinity.description, centerX, descY, GuideTheme.INK_FAINT);
+                    affinity.description, centerX, descY, TEXT_FAINT);
             }
         }
     }

@@ -134,6 +134,14 @@ public enum DamageType {
     public static final int DAMAGE_PER_AFFINITY_POINT = 3;
 
     /**
+     * Max HP each level of Pet affinity grants to every gear-scaling ally the player
+     * owns - 5 hearts per level. Unlike {@link #DAMAGE_PER_AFFINITY_POINT} this comes
+     * from levelled Pet affinity only, not from gear affinity points, so armour that
+     * happens to carry Pet affinity boosts ally damage without inflating ally HP.
+     */
+    public static final int ALLY_HP_PER_PET_AFFINITY_LEVEL = 10;
+
+    /**
      * Total damage bonus from gear sources: per-piece armor affinity + trims + potion
      * effects. Armor affinity is per-piece (half-point granularity) and is converted
      * to damage at half resolution so a single piece's 0.5 affinity is not floored

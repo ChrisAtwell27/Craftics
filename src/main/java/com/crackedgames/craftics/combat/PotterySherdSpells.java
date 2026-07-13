@@ -56,6 +56,56 @@ public class PotterySherdSpells {
     public static final String TRIPLE_NEXT_PREFIX = "§6TRIPLE_NEXT:";
     /** Prefix for hex trap tile effect. */
     public static final String HEX_TRAP_PREFIX = "§eTILE:";
+    /** Prefix for the Archer sherd's seeker volley (count:damage). CombatManager parses this. */
+    public static final String SEEKERS_PREFIX = "§bSEEKERS:";
+
+    /** Base number of seeker vexes the Archer sherd summons, before Luck. */
+    private static final int SEEKER_BASE_COUNT = 2;
+    /** Damage one seeker vex deals when it reaches its target and destroys itself. */
+    private static final int SEEKER_DAMAGE = 9;
+
+    /** Attack the Friend sherd grants every pet. */
+    private static final int FRIEND_ATK_BUFF = 3;
+    /** Movement the Friend sherd grants every pet. */
+    private static final int FRIEND_SPEED_BUFF = 1;
+    /** Turns the Friend sherd's pet buffs last. */
+    private static final int FRIEND_BUFF_TURNS = 3;
+
+    /** Tiles each Petsplosion blast reaches from the pet at its center. */
+    private static final int PETSPLOSION_RADIUS = 2;
+    /** Petsplosion damage divisor - {@code maxHp/2}, matching a pristine anvil. */
+    private static final int PETSPLOSION_HP_DIVISOR = 2;
+    /** Petsplosion damage floor, so a blast always lands meaningfully. Matches the anvil's. */
+    private static final int PETSPLOSION_MIN_DAMAGE = 10;
+
+    /**
+     * Heal the caster by {@code base}, plus whatever a Medic hoe adds. Every sherd that heals the
+     * player goes through here so the Medic bonus can never be forgotten at one of them.
+     *
+     * @return the HP actually restored, for the caller's chat line
+     */
+    private static int healCaster(ServerPlayerEntity player, int base) {
+        int amount = base + HoeEnchantEffects.medicBonus(player);
+        float maxHp = player.getMaxHealth();
+        float before = player.getHealth();
+        player.setHealth(Math.min(maxHp, before + amount));
+        return Math.round(player.getHealth() - before);
+    }
+
+    /**
+     * The caster's live pets - every ally EXCEPT the Archer sherd's seeker vexes, which are a
+     * spell's payload rather than a companion. Without that exclusion, casting Archer and then
+     * Friend/Howl would heal and detonate your own vexes.
+     */
+    private static List<CombatEntity> livePets(List<CombatEntity> combatants) {
+        List<CombatEntity> pets = new ArrayList<>();
+        for (CombatEntity e : combatants) {
+            if (!e.isAlive() || !e.isAlly()) continue;
+            if (e.isSeekerProjectile()) continue;
+            pets.add(e);
+        }
+        return pets;
+    }
 
     /** All pottery sherd items that function as spells. */
     public static final Set<Item> POTTERY_SHERDS = Set.of(
@@ -100,7 +150,7 @@ public class PotterySherdSpells {
         if (item == Items.HEART_POTTERY_SHERD || item == Items.SCRAPE_POTTERY_SHERD
             || item == Items.ANGLER_POTTERY_SHERD || item == Items.HEARTBREAK_POTTERY_SHERD
             || item == Items.SHEAF_POTTERY_SHERD || item == Items.MINER_POTTERY_SHERD
-            || item == Items.DANGER_POTTERY_SHERD) return 3;
+            || item == Items.DANGER_POTTERY_SHERD || item == Items.HOWL_POTTERY_SHERD) return 3;
         // 4 AP - Strong spells
         if (item == Items.BLADE_POTTERY_SHERD || item == Items.BURN_POTTERY_SHERD
             || item == Items.SNORT_POTTERY_SHERD || item == Items.SHELTER_POTTERY_SHERD
@@ -108,7 +158,7 @@ public class PotterySherdSpells {
             || item == Items.BREWER_POTTERY_SHERD || item == Items.PLENTY_POTTERY_SHERD
             || item == Items.GUSTER_POTTERY_SHERD) return 4;
         // 5 AP - Powerful spells
-        if (item == Items.ARCHER_POTTERY_SHERD || item == Items.HOWL_POTTERY_SHERD
+        if (item == Items.ARCHER_POTTERY_SHERD
             || item == Items.ARMS_UP_POTTERY_SHERD || item == Items.PRIZE_POTTERY_SHERD) return 5;
         // 6 AP - Ultimate
         if (item == Items.SKULL_POTTERY_SHERD) return 6;
@@ -121,12 +171,13 @@ public class PotterySherdSpells {
      * or the manhattan distance range for targeted spells.
      */
     public static int getSherdRange(Item item) {
+        // Archer is self-cast: its seekers choose their own targets, so there is no target tile.
         if (item == Items.FRIEND_POTTERY_SHERD || item == Items.HEART_POTTERY_SHERD
             || item == Items.SHELTER_POTTERY_SHERD || item == Items.FLOW_POTTERY_SHERD
             || item == Items.BREWER_POTTERY_SHERD || item == Items.PLENTY_POTTERY_SHERD
             || item == Items.HOWL_POTTERY_SHERD || item == Items.ARMS_UP_POTTERY_SHERD
-            || item == Items.PRIZE_POTTERY_SHERD) return 0; // self-cast
-        if (item == Items.EXPLORER_POTTERY_SHERD || item == Items.ARCHER_POTTERY_SHERD) return 4;
+            || item == Items.PRIZE_POTTERY_SHERD || item == Items.ARCHER_POTTERY_SHERD) return 0;
+        if (item == Items.EXPLORER_POTTERY_SHERD) return 4;
         if (item == Items.SCRAPE_POTTERY_SHERD || item == Items.ANGLER_POTTERY_SHERD
             || item == Items.HEARTBREAK_POTTERY_SHERD || item == Items.SHEAF_POTTERY_SHERD
             || item == Items.DANGER_POTTERY_SHERD || item == Items.BURN_POTTERY_SHERD
@@ -286,6 +337,12 @@ public class PotterySherdSpells {
     }
 
     /** Friend Sherd - "Guardian Spirit": Heal 8 HP, buff ally pet. */
+    /**
+     * Friend Sherd - "Guardian Spirit": a pure pet-support cast. Heals EVERY ally to full
+     * and rallies them with {@value #FRIEND_ATK_BUFF} ATK and {@value #FRIEND_SPEED_BUFF}
+     * Speed for {@value #FRIEND_BUFF_TURNS} turns. Does nothing for the caster - this is the
+     * pet build's sustain button, not a self-heal.
+     */
     private static String useFriendSherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock,
                                           List<CombatEntity> enemies) {
         // Phase 0 - Cast: warm gathering glow
@@ -294,57 +351,48 @@ public class PotterySherdSpells {
         world.spawnParticles(ParticleTypes.ENCHANT, playerBlock.getX() + 0.5, playerBlock.getY() + 1.0,
             playerBlock.getZ() + 0.5, 8, 0.3, 0.5, 0.3, 0.02);
 
-        // Heal player 8 HP (buffed from 5)
-        float maxHp = player.getMaxHealth();
-        player.setHealth(Math.min(maxHp, player.getHealth() + 8));
-
-        CombatEntity allyPet = null;
-        for (CombatEntity e : enemies) {
-            if (e.isAlive() && e.isAlly()) { allyPet = e; break; }
+        List<CombatEntity> pets = livePets(enemies);
+        if (pets.isEmpty()) {
+            return "§a§lGuardian Spirit! §7You have no pets to rally.";
         }
 
-        // Phase 1 (3 ticks) - Healing burst on player + pet link
-        final CombatEntity pet = allyPet;
+        List<BlockPos> petBlocks = new ArrayList<>();
+        for (CombatEntity pet : pets) {
+            // Full heal: top the pet back up to its (bonus-inclusive) max.
+            pet.heal(pet.getEffectiveMaxHp());
+            pet.applyAttackBuff(FRIEND_ATK_BUFF, FRIEND_BUFF_TURNS);
+            pet.applySpeedBuff(FRIEND_SPEED_BUFF, FRIEND_BUFF_TURNS);
+            if (pet.getMobEntity() != null) {
+                petBlocks.add(pet.getMobEntity().getBlockPos());
+            }
+        }
+
+        // Phase 1 (3 ticks) - spirit link from the caster out to each pet
         queueEffect(3, () -> {
-            world.playSound(null, playerBlock, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.PLAYERS, 0.5f, 1.2f);
-            world.spawnParticles(ParticleTypes.HEART, playerBlock.getX() + 0.5, playerBlock.getY() + 1.5,
-                playerBlock.getZ() + 0.5, 8, 0.4, 0.5, 0.4, 0.05);
-            if (pet != null && pet.getMobEntity() != null) {
-                BlockPos petBlock = pet.getMobEntity().getBlockPos();
+            world.playSound(null, playerBlock, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP,
+                SoundCategory.PLAYERS, 0.5f, 1.2f);
+            for (BlockPos petBlock : petBlocks) {
                 ProjectileSpawner.spawnSpellTrail(world, playerBlock, petBlock,
                     ParticleTypes.HAPPY_VILLAGER, ParticleTypes.ENCHANT, 12, 0.4);
             }
         });
 
-        if (allyPet != null) {
-            // Buff pet immediately (game state): heal 8 HP, +5 ATK
-            allyPet.heal(8);
-            allyPet.setAttackPenalty(allyPet.getAttackPenalty() - 5);
-
-            // Phase 2 (6 ticks) - Pet empowerment burst
-            if (allyPet.getMobEntity() != null) {
-                final BlockPos petBlock = allyPet.getMobEntity().getBlockPos();
-                queueEffect(6, () -> {
-                    world.spawnParticles(ParticleTypes.HEART, petBlock.getX() + 0.5, petBlock.getY() + 1.5,
-                        petBlock.getZ() + 0.5, 6, 0.3, 0.3, 0.3, 0.05);
-                    world.spawnParticles(ParticleTypes.ENCHANTED_HIT, petBlock.getX() + 0.5, petBlock.getY() + 1.0,
-                        petBlock.getZ() + 0.5, 10, 0.4, 0.4, 0.4, 0.12);
-                    ProjectileSpawner.spawnExpandingRing(world, petBlock, 0.6, ParticleTypes.HAPPY_VILLAGER, 8);
-                    world.playSound(null, petBlock, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.PLAYERS, 0.5f, 1.5f);
-                });
-            }
-
-            return "§a§lGuardian Spirit! §fHealed 8 HP. " + allyPet.getDisplayName() + " healed & empowered (+5 ATK for 2 turns)!";
-        }
-
-        // Phase 2 (6 ticks) - Solo healing finisher
+        // Phase 2 (6 ticks) - empowerment burst on every pet
         queueEffect(6, () -> {
-            world.spawnParticles(ParticleTypes.HAPPY_VILLAGER, playerBlock.getX() + 0.5, playerBlock.getY() + 1.0,
-                playerBlock.getZ() + 0.5, 8, 0.5, 0.5, 0.5, 0.05);
-            ProjectileSpawner.spawnExpandingRing(world, playerBlock, 0.6, ParticleTypes.HEART, 6);
+            for (BlockPos petBlock : petBlocks) {
+                world.spawnParticles(ParticleTypes.HEART, petBlock.getX() + 0.5, petBlock.getY() + 1.5,
+                    petBlock.getZ() + 0.5, 6, 0.3, 0.3, 0.3, 0.05);
+                world.spawnParticles(ParticleTypes.ENCHANTED_HIT, petBlock.getX() + 0.5, petBlock.getY() + 1.0,
+                    petBlock.getZ() + 0.5, 10, 0.4, 0.4, 0.4, 0.12);
+                ProjectileSpawner.spawnExpandingRing(world, petBlock, 0.6, ParticleTypes.HAPPY_VILLAGER, 8);
+                world.playSound(null, petBlock, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP,
+                    SoundCategory.PLAYERS, 0.5f, 1.5f);
+            }
         });
 
-        return "§a§lGuardian Spirit! §fHealed 8 HP.";
+        return "§a§lGuardian Spirit! §f" + pets.size() + " pet" + (pets.size() == 1 ? "" : "s")
+            + " healed to full, +" + FRIEND_ATK_BUFF + " ATK and +" + FRIEND_SPEED_BUFF
+            + " Speed for " + FRIEND_BUFF_TURNS + " turns!";
     }
 
     // 3 AP - Standard spells
@@ -357,8 +405,7 @@ public class PotterySherdSpells {
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.5, ParticleTypes.ENCHANT, 10);
 
         // Heal 15 HP (buffed from 10) + Regen II for 4 turns (buffed from 3)
-        float maxHp = player.getMaxHealth();
-        player.setHealth(Math.min(maxHp, player.getHealth() + 15));
+        int healed = healCaster(player, 15);
         combatEffects.addEffect(CombatEffects.EffectType.REGENERATION, 4, 1);
 
         // Phase 1 (3 ticks) - Rising helix
@@ -381,7 +428,7 @@ public class PotterySherdSpells {
             world.spawnParticles(ParticleTypes.FIREWORK, cx, cy + 2.0, cz, 2, 0.1, 0.1, 0.1, 0.02);
         });
 
-        return "§a§lMending Light! §fHealed 15 HP + Regeneration II (4 turns).";
+        return "§a§lMending Light! §fHealed " + healed + " HP + Regeneration II (4 turns).";
     }
 
     /** Scrape Sherd - "Corrode": 5 damage + reduce target defense by 7 for 3 turns. */
@@ -1011,10 +1058,9 @@ public class PotterySherdSpells {
         world.spawnParticles(ParticleTypes.SOUL, playerBlock.getX() + 0.5, playerBlock.getY() + 1.2,
             playerBlock.getZ() + 0.5, 8, 0.2, 0.3, 0.2, 0.05);
 
-        // 10 damage (buffed from 7) + heal
+        // 10 damage (buffed from 7) + heal for what was drained
         int dealt = target.takeSpecialDamage(10, 0.08);
-        float maxHp = player.getMaxHealth();
-        player.setHealth(Math.min(maxHp, player.getHealth() + dealt));
+        int drained = healCaster(player, dealt);
 
         // Phase 1 (4 ticks) - Soul fire trail to target
         queueEffect(4, () -> {
@@ -1041,8 +1087,8 @@ public class PotterySherdSpells {
                 playerBlock.getZ() + 0.5, 6, 0.3, 0.3, 0.3, 0.05);
         });
 
-        return "§5§lSoul Drain! §f" + target.getDisplayName() + " takes " + dealt + " damage! You heal " + dealt + " HP. ("
-            + target.getCurrentHp() + "/" + target.getMaxHp() + " HP)";
+        return "§5§lSoul Drain! §f" + target.getDisplayName() + " takes " + dealt + " damage! You heal "
+            + drained + " HP. (" + target.getCurrentHp() + "/" + target.getMaxHp() + " HP)";
     }
 
     /** Brewer Sherd - "Alchemist's Surge": Apply 4 random positive effects II for 4 turns. */
@@ -1103,8 +1149,7 @@ public class PotterySherdSpells {
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.0, ParticleTypes.HAPPY_VILLAGER, 8);
 
         // Heal 15 HP (buffed from 10)
-        float maxHp = player.getMaxHealth();
-        player.setHealth(Math.min(maxHp, player.getHealth() + 15));
+        int plentyHealed = healCaster(player, 15);
 
         // Phase 1 (4 ticks) - Golden bloom
         queueEffect(4, () -> {
@@ -1122,121 +1167,127 @@ public class PotterySherdSpells {
         });
 
         // Return RESTORE_AP prefix - CombatManager adds the AP back (buffed from 5 to 7)
-        return RESTORE_AP_PREFIX + "7|§a§lBountiful Harvest! §fHealed 15 HP + restored 7 AP!";
+        return RESTORE_AP_PREFIX + "7|§a§lBountiful Harvest! §fHealed " + plentyHealed + " HP + restored 7 AP!";
     }
 
     // 5 AP - Powerful spells
 
     /** Archer Sherd - "Spectral Volley": 11 damage to target + 7 to enemies within 1 tile. */
+    /**
+     * Archer Sherd - "Seeker Vexes": summon vexes that fly at the nearest enemy on their own,
+     * one move per round, and destroy themselves on attack. The player-side answer to the
+     * shulker bullets bosses fire at you.
+     *
+     * <p>Self-cast: the vexes pick their own targets, so there is no target tile. The actual
+     * spawning belongs to CombatManager (only it can put entities on the grid), so this returns
+     * a {@link #SEEKERS_PREFIX} instruction for it to carry out.
+     */
     private static String useArcherSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                           GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
                                           List<CombatEntity> enemies) {
-        CombatEntity target = arena.getOccupant(targetTile);
-        BlockPos targetBlock = arena.gridToBlockPos(targetTile);
-
-        // Phase 0 - Cast: bow draw
+        // Cast: bow draw, spectral motes gathering at the caster.
         world.playSound(null, playerBlock, SoundEvents.ENTITY_SKELETON_SHOOT, SoundCategory.PLAYERS, 1.0f, 1.0f);
         world.spawnParticles(ParticleTypes.ENCHANTED_HIT, playerBlock.getX() + 0.5, playerBlock.getY() + 1.2,
-            playerBlock.getZ() + 0.5, 6, 0.2, 0.3, 0.2, 0.12);
-        ProjectileSpawner.spawnConverging(world, playerBlock, 0.5, ParticleTypes.ENCHANTED_HIT, 4);
+            playerBlock.getZ() + 0.5, 10, 0.3, 0.4, 0.3, 0.14);
+        ProjectileSpawner.spawnConverging(world, playerBlock, 1.2, ParticleTypes.ENCHANTED_HIT, 10);
 
-        // Damage immediately (game state) - buffed from 7/4
-        int dealt = target.takeSpecialDamage(11, 0.08);
-        StringBuilder msg = new StringBuilder("§b§lSpectral Volley! §f" + target.getDisplayName() + " takes "
-            + dealt + " RANGED damage!");
+        // Luck buys extra seekers on the usual +2%/point curve.
+        int luck = PlayerProgression.get(world).getStats(player).getPoints(PlayerProgression.Stat.LUCK);
+        int count = SEEKER_BASE_COUNT;
+        if (Math.random() < luck * 0.02) count++;
 
-        List<BlockPos> aoeBlocks = new ArrayList<>();
-        for (CombatEntity e : enemies) {
-            if (!e.isAlive() || e.isAlly() || e == target) continue;
-            if (e.getGridPos().manhattanDistance(targetTile) <= 1) {
-                int aoeDmg = e.takeDamage(7); // buffed from 4
-                aoeBlocks.add(arena.gridToBlockPos(e.getGridPos()));
-                msg.append(" §b").append(e.getDisplayName()).append(" hit for ").append(aoeDmg).append("!");
-            }
-        }
-
-        // Phase 1 (3 ticks) - Descending volley
-        queueEffect(3, () -> {
-            ProjectileSpawner.spawnDescendingVolley(world, targetBlock, 5, 1.2);
-            world.playSound(null, targetBlock, SoundEvents.ENTITY_ARROW_HIT, SoundCategory.PLAYERS, 1.0f, 1.0f);
+        queueEffect(4, () -> {
+            world.playSound(null, playerBlock, SoundEvents.ENTITY_ILLUSIONER_CAST_SPELL,
+                SoundCategory.PLAYERS, 0.8f, 1.5f);
+            ProjectileSpawner.spawnExpandingRing(world, playerBlock, 1.5, ParticleTypes.ENCHANTED_HIT, 12);
         });
 
-        // Phase 2 (7 ticks) - Explosion impact + AoE
-        queueEffect(7, () -> {
-            world.spawnParticles(ParticleTypes.CRIT, targetBlock.getX() + 0.5, targetBlock.getY() + 1.0,
-                targetBlock.getZ() + 0.5, 18, 0.4, 0.4, 0.4, 0.18);
-            world.spawnParticles(ParticleTypes.ENCHANTED_HIT, targetBlock.getX() + 0.5, targetBlock.getY() + 1.0,
-                targetBlock.getZ() + 0.5, 12, 0.4, 0.4, 0.4, 0.12);
-            ProjectileSpawner.spawnExpandingRing(world, targetBlock, 1.0, ParticleTypes.CRIT, 10);
-            for (BlockPos eBlock : aoeBlocks) {
-                world.spawnParticles(ParticleTypes.CRIT, eBlock.getX() + 0.5, eBlock.getY() + 1.0,
-                    eBlock.getZ() + 0.5, 8, 0.3, 0.3, 0.3, 0.12);
-                world.spawnParticles(ParticleTypes.DAMAGE_INDICATOR, eBlock.getX() + 0.5, eBlock.getY() + 1.0,
-                    eBlock.getZ() + 0.5, 5, 0.2, 0.2, 0.2, 0.12);
-            }
-            // Ground scatter
-            world.spawnParticles(ParticleTypes.ENCHANTED_HIT, targetBlock.getX() + 0.5, targetBlock.getY() + 0.5,
-                targetBlock.getZ() + 0.5, 8, 1.2, 0.1, 1.2, 0.06);
-        });
-
-        return msg.toString();
+        // Trailing "|" so the shatter suffix useSherd appends lands AFTER the payload
+        // rather than inside the numbers CombatManager parses out of it.
+        return SEEKERS_PREFIX + count + ":" + SEEKER_DAMAGE + "|";
     }
 
     /** Howl Sherd - "Dread Howl": 7 damage + stun to all enemies within 3 tiles. */
+    /**
+     * Howl Sherd - "Petsplosion": every one of your pets detonates a blast around itself.
+     * Each blast hits enemies within {@value #PETSPLOSION_RADIUS} tiles for anvil-grade
+     * damage, and the blasts STACK - an enemy standing between two pets eats both. The pets
+     * themselves are unharmed; this is a rally cry, not a sacrifice.
+     *
+     * <p>Damage matches a pristine anvil ({@code max(10, maxHp/2)} Special damage), so a
+     * single blast is a heavy hit and an overlap is close to lethal. Positioning your pets
+     * to catch the same target is the whole skill of the cast.
+     */
     private static String useHowlSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                         GridPos playerPos, BlockPos playerBlock, List<CombatEntity> enemies) {
-        // Phase 0 - Cast: breath intake
+        // Phase 0 - Cast: the pack draws breath
         //? if <=1.21.4 {
         world.playSound(null, playerBlock, SoundEvents.ENTITY_WOLF_HOWL, SoundCategory.PLAYERS, 2.0f, 0.8f);
         //?} else
         /*world.playSound(null, playerBlock, SoundEvents.ENTITY_WARDEN_ROAR, SoundCategory.PLAYERS, 2.0f, 0.8f);*/
-        double cx = playerBlock.getX() + 0.5, cy = playerBlock.getY() + 1.0, cz = playerBlock.getZ() + 0.5;
-        world.spawnParticles(ParticleTypes.SOUL, cx, cy, cz, 10, 0.2, 0.3, 0.2, 0.03);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.5, ParticleTypes.CLOUD, 8);
 
-        // Damage + stun immediately (game state) - buffed from 4
-        List<BlockPos> hitBlocks = new ArrayList<>();
-        int hit = 0;
-        StringBuilder msg = new StringBuilder("§7§lDread Howl! §f");
-        for (CombatEntity e : enemies) {
-            if (!e.isAlive() || e.isAlly()) continue;
-            if (e.getGridPos().manhattanDistance(playerPos) > 3) continue;
-
-            int dealt = e.takeSpecialDamage(7, 0.06); // buffed from 4, + percent max HP
-            e.setStunned(true);
-            hit++;
-            if (e.getMobEntity() != null) {
-                hitBlocks.add(arena.gridToBlockPos(e.getGridPos()));
-            }
-            msg.append(e.getDisplayName()).append(" ").append(dealt).append(" dmg + stunned! ");
+        List<CombatEntity> pets = livePets(enemies);
+        if (pets.isEmpty()) {
+            return "§7§lPetsplosion! §7You have no pets to detonate.";
         }
 
-        // Phase 1 (3 ticks) - Expanding shockwave rings
-        queueEffect(3, () -> {
-            ProjectileSpawner.spawnExpandingRing(world, playerBlock, 1.0, ParticleTypes.CLOUD, 10);
-            ProjectileSpawner.spawnExpandingRing(world, playerBlock, 2.0, ParticleTypes.CLOUD, 16);
-            //? if <=1.21.4 {
-            world.playSound(null, playerBlock, SoundEvents.ENTITY_WOLF_HOWL, SoundCategory.PLAYERS, 1.0f, 1.2f);
-            //?} else
-            /*world.playSound(null, playerBlock, SoundEvents.ENTITY_WARDEN_ROAR, SoundCategory.PLAYERS, 1.0f, 1.2f);*/
-        });
-
-        // Phase 2 (7 ticks) - Final ring + enemy impacts
-        queueEffect(7, () -> {
-            ProjectileSpawner.spawnExpandingRing(world, playerBlock, 3.0, ParticleTypes.CLOUD, 22);
-            for (BlockPos eBlock : hitBlocks) {
-                world.spawnParticles(ParticleTypes.CLOUD, eBlock.getX() + 0.5, eBlock.getY() + 1.0,
-                    eBlock.getZ() + 0.5, 12, 0.3, 0.6, 0.3, 0.06);
-                world.spawnParticles(ParticleTypes.SOUL, eBlock.getX() + 0.5, eBlock.getY() + 1.0,
-                    eBlock.getZ() + 0.5, 6, 0.2, 0.3, 0.2, 0.06);
-                world.spawnParticles(ParticleTypes.CRIT, eBlock.getX() + 0.5, eBlock.getY() + 1.0,
-                    eBlock.getZ() + 0.5, 5, 0.2, 0.2, 0.2, 0.12);
+        // Resolve every blast independently and let the damage stack: an enemy caught in
+        // two pets' radii takes two full hits. Damage is applied per blast rather than
+        // summed per enemy so each one is a real, separately-resisted anvil strike.
+        java.util.Map<CombatEntity, Integer> totals = new java.util.LinkedHashMap<>();
+        List<BlockPos> blastBlocks = new ArrayList<>();
+        for (CombatEntity pet : pets) {
+            GridPos petPos = pet.getGridPos();
+            if (pet.getMobEntity() != null) blastBlocks.add(arena.gridToBlockPos(petPos));
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive() || e.isAlly()) continue;
+                if (e.minDistanceTo(petPos) > PETSPLOSION_RADIUS) continue;
+                // Anvil formula: a flat floor so it always lands, else half of max HP.
+                int dealt = e.takeSpecialDamage(Math.max(PETSPLOSION_MIN_DAMAGE,
+                    e.getMaxHp() / PETSPLOSION_HP_DIVISOR), 0.0);
+                totals.merge(e, dealt, Integer::sum);
             }
-            // Echo
-            world.spawnParticles(ParticleTypes.SOUL, cx, cy, cz, 6, 0.5, 0.3, 0.5, 0.03);
+        }
+
+        // Phase 1 (3 ticks) - each pet's blast erupts
+        queueEffect(3, () -> {
+            for (BlockPos petBlock : blastBlocks) {
+                ProjectileSpawner.spawnExpandingRing(world, petBlock, 1.0, ParticleTypes.EXPLOSION, 10);
+                ProjectileSpawner.spawnExpandingRing(world, petBlock, 2.0, ParticleTypes.CLOUD, 16);
+                world.spawnParticles(ParticleTypes.EXPLOSION, petBlock.getX() + 0.5,
+                    petBlock.getY() + 1.0, petBlock.getZ() + 0.5, 3, 0.4, 0.4, 0.4, 0.0);
+                world.playSound(null, petBlock, SoundEvents.ENTITY_GENERIC_EXPLODE.value(),
+                    SoundCategory.PLAYERS, 0.9f, 1.3f);
+            }
         });
 
-        if (hit == 0) return "§7§lDread Howl! §7No enemies in range.";
+        // Phase 2 (7 ticks) - impacts on everything caught in a blast
+        final List<BlockPos> hitBlocks = new ArrayList<>();
+        for (CombatEntity e : totals.keySet()) {
+            if (e.getMobEntity() != null) hitBlocks.add(arena.gridToBlockPos(e.getGridPos()));
+        }
+        queueEffect(7, () -> {
+            for (BlockPos eBlock : hitBlocks) {
+                world.spawnParticles(ParticleTypes.EXPLOSION, eBlock.getX() + 0.5, eBlock.getY() + 1.0,
+                    eBlock.getZ() + 0.5, 2, 0.3, 0.3, 0.3, 0.0);
+                world.spawnParticles(ParticleTypes.CRIT, eBlock.getX() + 0.5, eBlock.getY() + 1.0,
+                    eBlock.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.14);
+                world.spawnParticles(ParticleTypes.LARGE_SMOKE, eBlock.getX() + 0.5, eBlock.getY() + 1.0,
+                    eBlock.getZ() + 0.5, 6, 0.3, 0.3, 0.3, 0.04);
+            }
+        });
+
+        if (totals.isEmpty()) {
+            return "§7§lPetsplosion! §f" + pets.size() + " pet" + (pets.size() == 1 ? "" : "s")
+                + " detonated. Nothing in range.";
+        }
+        StringBuilder msg = new StringBuilder("§7§lPetsplosion! §f" + pets.size() + " pet"
+            + (pets.size() == 1 ? "" : "s") + " detonate. ");
+        for (var entry : totals.entrySet()) {
+            msg.append("§f").append(entry.getKey().getDisplayName())
+                .append(" takes ").append(entry.getValue()).append(" damage. ");
+        }
         return msg.toString().trim();
     }
 
@@ -1464,7 +1515,9 @@ public class PotterySherdSpells {
     /** Get tooltip description for a pottery sherd spell. */
     public static String getSherdTooltip(Item item) {
         if (item == Items.EXPLORER_POTTERY_SHERD) return "§d[2 AP] Phase Step §7- Teleport 4 tiles + reveal enemy stats";
-        if (item == Items.FRIEND_POTTERY_SHERD) return "§d[2 AP] Guardian Spirit §7- Heal 8 HP, buff ally pet (+5 ATK)";
+        if (item == Items.FRIEND_POTTERY_SHERD) return "§d[2 AP] Guardian Spirit §7- Heal ALL pets to full\n"
+            + "§7+" + FRIEND_ATK_BUFF + " ATK and +" + FRIEND_SPEED_BUFF + " Speed to every pet ("
+            + FRIEND_BUFF_TURNS + " turns)";
         if (item == Items.HEART_POTTERY_SHERD) return "§d[3 AP] Mending Light §7- Heal 15 HP + Regen II (4 turns)";
         if (item == Items.SCRAPE_POTTERY_SHERD) return "§d[3 AP] Corrode §7- 5 dmg + reduce DEF by 7 (3 turns)";
         if (item == Items.ANGLER_POTTERY_SHERD) return "§3[3 AP] Riptide Hook §7- Pull 2 tiles + 6 dmg (+5 if adjacent)";
@@ -1480,8 +1533,15 @@ public class PotterySherdSpells {
         if (item == Items.MOURNER_POTTERY_SHERD) return "§5[4 AP] Soul Drain §7- 10 dmg, heal for damage dealt";
         if (item == Items.BREWER_POTTERY_SHERD) return "§d[4 AP] Alchemist's Surge §7- 4 random buffs II (4 turns each)";
         if (item == Items.PLENTY_POTTERY_SHERD) return "§a[4 AP] Bountiful Harvest §7- Heal 15 HP + restore 7 AP";
-        if (item == Items.ARCHER_POTTERY_SHERD) return "§b[5 AP] Spectral Volley §7- 11 RANGED dmg + 7 AoE splash";
-        if (item == Items.HOWL_POTTERY_SHERD) return "§7[5 AP] Dread Howl §7- 7 dmg + stun all within 3 tiles";
+        if (item == Items.ARCHER_POTTERY_SHERD) return "§b[5 AP] Seeker Vexes §7- Summon "
+            + SEEKER_BASE_COUNT + " seeking vexes\n"
+            + "§7They fly at the nearest enemy on their own each round, then destroy themselves on attack for "
+            + SEEKER_DAMAGE + " damage\n"
+            + "§7Fragile (1 HP) and vanish after 5 rounds. Luck can summon another";
+        if (item == Items.HOWL_POTTERY_SHERD) return "§7[3 AP] Petsplosion §7- Every pet erupts in a "
+            + PETSPLOSION_RADIUS + "-tile blast\n"
+            + "§7Anvil-grade damage (half an enemy's max HP, min " + PETSPLOSION_MIN_DAMAGE + ")\n"
+            + "§7Blasts STACK where they overlap. Pets are unharmed";
         if (item == Items.ARMS_UP_POTTERY_SHERD) return "§6[5 AP] War Cry §7- STR IV (+12 ATK) + SPD III (+6 SPD) (4 turns)";
         if (item == Items.PRIZE_POTTERY_SHERD) return "§6[5 AP] Fortune's Favor §7- Next attack = TRIPLE damage + Luck II (4t)";
         if (item == Items.SKULL_POTTERY_SHERD) return "§4[6 AP] Death Mark §7- Execute <50% HP or 10 dmg + Wither IV (4t)";

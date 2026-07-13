@@ -285,6 +285,23 @@ public final class CrafticsAPI {
         com.crackedgames.craftics.api.registry.BarterRegistry.register(entry);
     }
 
+    /**
+     * Register a new villager trader (a trader "type") and the stock it sells. Traders are drawn at
+     * random for the trader event, and each one that a player has MET gets a booth in the Trading
+     * Hall - so registering a trader also adds a stall to the hall. Addon ids should be namespaced,
+     * e.g. {@code "mymod:blacksmith"}.
+     *
+     * <p>Register during mod init. Order matters: the hall seats booths in registration order, so
+     * traders registered later take later stalls.
+     *
+     * @param category the trader's identity (id, display name, icon, minimum biome tier)
+     * @param stock    supplies the wares it can offer at a given tier
+     */
+    public static void registerTrader(com.crackedgames.craftics.combat.TraderCategory category,
+                                      com.crackedgames.craftics.api.registry.TraderStockProvider stock) {
+        com.crackedgames.craftics.api.registry.TraderCategoryRegistry.register(category, stock);
+    }
+
     // === New: Enchantments ===
 
     /**

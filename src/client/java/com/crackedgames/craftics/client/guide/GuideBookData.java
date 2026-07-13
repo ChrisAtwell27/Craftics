@@ -731,7 +731,7 @@ public class GuideBookData {
                 "Melee Power - +1 melee damage/point.\n\n" +
                 "Ranged Power - +1 ranged damage/point."),
             new Page("Defensive & Utility",
-                "Vitality - +2 max HP/point.\n\n" +
+                "Vitality - +8 max HP/point.\n\n" +
                 "Defense - +1 Armor Class/point. AC gives enemies a chance to MISS you - the gap between your AC and their attack decides how often.\n\n" +
                 "Luck - +5% crit chance/point, +2%/point to weapon procs and loot rolls.\n\n" +
                 "Resourceful - +1 emerald/level & trader discounts."),
@@ -750,7 +750,7 @@ public class GuideBookData {
                 "Ranged - 5% chain-ricochet chance per point\n" +
                 "Water - soak/lightning builds\n" +
                 "Special - 3% chance per point for ANY attack to cost 0 AP\n" +
-                "Pet - +3 ally HP per point, +1 party size per point\n" +
+                "Pet - +10 ally HP per point, +1 party size per point\n" +
                 "Physical - 3% counter-attack chance per point\n\n" +
                 "Press J to respec affinities. Gear adds more: armor pieces give half a point of their material's type, mob heads a full point."),
             new Page("Picking a Lane",
@@ -1071,7 +1071,28 @@ public class GuideBookData {
             new Page("Armor Enchantments",
                 "Protection (incl. Blast/Projectile Prot.): +1 Armor Class per 2 total levels worn.\n\n" +
                 "Thorns: 15% chance per level (boosted by Luck) to reflect damage back at attackers.\n\n" +
-                "Other vanilla armor enchants have no special combat effect - pick AC and set bonuses first.")
+                "Other vanilla armor enchants have no special combat effect - pick AC and set bonuses first."),
+            new Page("Focus Tools",
+                "Shovels and hoes are focuses, not weapons. They swing badly on purpose. Their value is the enchantment they carry.\n\n" +
+                "A focus works from ANYWHERE in your inventory. You never have to hold it.\n\n" +
+                "Carrying two of the same enchant does nothing - only the highest level counts. A second focus is only worth it for a DIFFERENT enchant.\n\n" +
+                "Find them in enchanting tables, enchanted books, the Wandering Enchanter, trial loot and traders."),
+            new Page("Shovel Enchantments (Pet)",
+                "A shovel arms your pets. It does nothing for you directly.\n\n" +
+                "Honed (max V): your pets deal +1 damage per level.\n\n" +
+                "Fire Fang (max III): pets set what they hit alight for 2/3/4 turns.\n\n" +
+                "Water Fang (max III): pets apply Soaked for 2/3/4 turns.\n\n" +
+                "Thunder Fang (max III): pets shock every OTHER enemy within 1/2/3 tiles of the target for 3 lightning damage."),
+            new Page("Shovel Enchantments (2)",
+                "The three Fangs are exclusive - one shovel takes one element.\n\n" +
+                "But you can carry more than one shovel. Water Fang on one and Thunder Fang on another is the combo: the Soak lands first, and lightning does DOUBLE damage to a Soaked target.\n\n" +
+                "Seeker vexes are a spell's payload, not pets. They carry no Fangs and gain no Honed."),
+            new Page("Hoe Enchantments (Special)",
+                "A hoe rides on your Special-item casts: potions, banners, horns, charges, pearls and pottery sherds.\n\n" +
+                "Reserving (max III): +5% per level that a Special item costs no AP. Stacks with Special affinity's own chance.\n\n" +
+                "Performative (max III): 5% per level to cast the item TWICE. The encore is free - no extra item, no extra AP.\n\n" +
+                "Radiant (max V): +2 damage per level when a Special item hits an undead.\n\n" +
+                "Medic (max III): +2 HP per level to any healing a Special item does - to you, a teammate you feed, or a pet.")
         )));
         equipment.add(new Entry("Tipped Arrows", "minecraft:tipped_arrow", List.of(
             new Page("Arrow Effects",
@@ -1105,7 +1126,7 @@ public class GuideBookData {
                 "Wayfinder: +1 Speed /piece\n  Full Set: Pathfinder (ignore obstacles)\n\n" +
                 "Shaper: +1 Armor Class /piece\n  Full Set: Earthshatter (move 3+ tiles to deal 2 dmg around your destination)\n\n" +
                 "Raiser: +1 ally damage /piece\n  Full Set: Rally (allies +2 Spd, +1 Atk)\n\n" +
-                "Host: +2 max HP /piece\n  Full Set: Symbiote (heal 1 HP/kill)\n\n" +
+                "Host: +8 max HP /piece\n  Full Set: Symbiote (heal 1 HP/kill)\n\n" +
                 "Tide: +1 HP regen per 2 turns /piece\n  Full Set: Ocean's Blessing (emergency heal)"),
             new Page("Nether Trims",
                 "Ward: +1 Armor Class /piece\n  Full Set: Fortress (50% less dmg when stationary)\n\n" +
@@ -1130,7 +1151,7 @@ public class GuideBookData {
                 "Netherite: +1 Armor Pen /piece\n" +
                 "Redstone: +1 Ranged Power /piece\n" +
                 "Amethyst: +1 HP Regen /piece\n" +
-                "Quartz: +2 Max HP /piece\n" +
+                "Quartz: +6 Max HP /piece\n" +
                 "Resin: +1 Ally Damage /piece\n\n" +
                 "Pattern + Material stack! Mix for your build.")
         )));

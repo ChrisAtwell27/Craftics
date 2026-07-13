@@ -1,5 +1,6 @@
 package com.crackedgames.craftics.combat;
 
+import com.crackedgames.craftics.api.registry.TraderCategoryRegistry;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -7,64 +8,103 @@ import net.minecraft.item.Items;
 import java.util.*;
 
 /**
- * Generates tiered trader inventories based on trader type and biome tier.
- * Trader types offer themed items, biome tier determines quality.
+ * Generates tiered trader inventories based on trader category and biome tier.
+ * Categories offer themed items; biome tier determines quality and price.
+ *
+ * <p>Trader categories used to be a hardcoded {@code TraderType} enum, which meant addons could
+ * never add one (you cannot extend an enum). They are now entries in
+ * {@link com.crackedgames.craftics.api.registry.TraderCategoryRegistry}, mirroring how piglin
+ * barter categories already worked. The eight vanilla traders are registered by
+ * {@code VanillaTraderContent}; everything here dispatches through the registry.
  */
 public class TraderSystem {
-
-    public enum TraderType {
-        WEAPONSMITH("Weaponsmith", "§c⚔"),
-        ARMORER("Armorer", "§9⛨"),
-        PROVISIONER("Provisioner", "§a⚘"),
-        ALCHEMIST("Alchemist", "§d⚗"),
-        SUPPLIER("Supplier", "§e⛏"),
-        DECORATOR("Decorator", "§b⌂"),
-        CRAFTSMAN("Craftsman", "§6⚒"),
-        CURIOSITY_DEALER("Curiosity Dealer", "§5✦");
-
-        public final String displayName;
-        public final String icon;
-
-        TraderType(String displayName, String icon) {
-            this.displayName = displayName;
-            this.icon = icon;
-        }
-    }
 
     public record Trade(ItemStack item, int emeraldCost, String description) {}
 
     /**
-     * Generate trades for a random trader type at the given biome tier (1-9).
+     * Generate trades for a random registered trader at the given biome tier (1-9). Traders
+     * gated above {@code biomeTier} are never picked.
+     *
+     * @return the offer, or {@code null} if no trader is available at this tier
      */
     public static TraderOffer generateOffer(int biomeTier, Random random) {
-        TraderType type = TraderType.values()[random.nextInt(TraderType.values().length)];
-        return generateOffer(type, biomeTier, random);
+        return generateOffer(biomeTier, random, java.util.Set.of());
     }
 
     /**
-     * Generate trades for a SPECIFIC trader type - used by the trading hall
-     * scene, where each booth has a fixed merchant identity.
+     * Weight given to a trader the island has ALREADY met, against {@value #UNMET_WEIGHT} for one
+     * it hasn't. Met traders stay possible - you can still bump into an old friend - but the roll
+     * leans hard toward filling out the hall with someone new.
      */
-    public static TraderOffer generateOffer(TraderType type, int biomeTier, Random random) {
+    private static final int MET_WEIGHT = 1;
+    /** Weight given to a trader the island has never met. */
+    private static final int UNMET_WEIGHT = 6;
+
+    /**
+     * Generate trades for a random registered trader at the given biome tier, biased toward
+     * traders the island has NOT met yet.
+     *
+     * <p>Once every eligible trader has been met the weights are all equal again, so the roll
+     * degrades cleanly to uniform rather than getting stuck.
+     *
+     * @param metIds ids the island has already met; see {@code MetMerchants}
+     * @return the offer, or {@code null} if no trader is available at this tier
+     */
+    public static TraderOffer generateOffer(int biomeTier, Random random, java.util.Set<String> metIds) {
+        List<TraderCategory> eligible = new ArrayList<>();
+        for (TraderCategory c : TraderCategoryRegistry.all()) {
+            if (c.minBiomeTier() <= biomeTier) eligible.add(c);
+        }
+        if (eligible.isEmpty()) return null;
+
+        // Resolve the met ids through the registry so a pre-0.2.10 save's bare "WEAPONSMITH"
+        // still counts as met and doesn't keep getting rolled as if it were new.
+        java.util.Set<String> met = new java.util.HashSet<>();
+        if (metIds != null) {
+            for (String raw : metIds) {
+                TraderCategory c = TraderCategoryRegistry.resolveLegacy(raw);
+                if (c != null) met.add(c.id());
+            }
+        }
+
+        int total = 0;
+        int[] weights = new int[eligible.size()];
+        for (int i = 0; i < eligible.size(); i++) {
+            weights[i] = met.contains(eligible.get(i).id()) ? MET_WEIGHT : UNMET_WEIGHT;
+            total += weights[i];
+        }
+
+        int roll = random.nextInt(total);
+        int cumulative = 0;
+        for (int i = 0; i < eligible.size(); i++) {
+            cumulative += weights[i];
+            if (roll < cumulative) {
+                return generateOffer(eligible.get(i), biomeTier, random);
+            }
+        }
+        // Unreachable while total > 0, but never return null from a rounding surprise.
+        return generateOffer(eligible.get(eligible.size() - 1), biomeTier, random);
+    }
+
+    /**
+     * Generate trades for a SPECIFIC trader - used by the trading hall scene, where each booth
+     * has a fixed merchant identity.
+     */
+    public static TraderOffer generateOffer(TraderCategory type, int biomeTier, Random random) {
         List<Trade> trades = generateTrades(type, biomeTier, random);
         return new TraderOffer(type, trades);
     }
 
-    public record TraderOffer(TraderType type, List<Trade> trades) {}
+    public record TraderOffer(TraderCategory type, List<Trade> trades) {}
 
-    private static List<Trade> generateTrades(TraderType type, int tier, Random random) {
+    private static List<Trade> generateTrades(TraderCategory type, int tier, Random random) {
         List<Trade> pool = new ArrayList<>();
 
-        switch (type) {
-            case WEAPONSMITH -> buildWeaponTrades(pool, tier);
-            case ARMORER -> buildArmorTrades(pool, tier);
-            case PROVISIONER -> buildFoodTrades(pool, tier);
-            case ALCHEMIST -> buildAlchemistTrades(pool, tier);
-            case SUPPLIER -> buildSupplierTrades(pool, tier);
-            case DECORATOR -> buildDecoratorTrades(pool, tier);
-            case CRAFTSMAN -> buildCraftsmanTrades(pool, tier);
-            case CURIOSITY_DEALER -> buildCuriosityTrades(pool, tier);
-        }
+        // Stock comes from whatever provider was registered under this trader's id. A category
+        // with no provider simply sells nothing, rather than throwing - an addon that registers
+        // an identity but forgets the wares should degrade, not crash the hall.
+        var provider = TraderCategoryRegistry.stockFor(type.id());
+        if (provider != null) provider.stock(pool, tier);
 
         // Scale prices by tier - later biomes cost significantly more
         double tierMult = 1.0 + (tier - 1) * 0.35; // tier 1=1.0x, tier 5=2.4x, tier 9=3.8x
@@ -81,7 +121,7 @@ public class TraderSystem {
     }
 
     // ---- WEAPONSMITH ----
-    private static void buildWeaponTrades(List<Trade> pool, int tier) {
+    static void buildWeaponTrades(List<Trade> pool, int tier) {
         // Current tier weapons (common)
         if (tier <= 2) {
             pool.add(trade(Items.WOODEN_SWORD, 1, 2, "Wooden Sword"));
@@ -160,7 +200,7 @@ public class TraderSystem {
     }
 
     // ---- ARMORER ----
-    private static void buildArmorTrades(List<Trade> pool, int tier) {
+    static void buildArmorTrades(List<Trade> pool, int tier) {
         if (tier <= 3) {
             pool.add(trade(Items.LEATHER_HELMET, 1, 2, "Leather Helmet"));
             pool.add(trade(Items.LEATHER_CHESTPLATE, 1, 3, "Leather Chestplate"));
@@ -188,7 +228,7 @@ public class TraderSystem {
     }
 
     // ---- PROVISIONER ----
-    private static void buildFoodTrades(List<Trade> pool, int tier) {
+    static void buildFoodTrades(List<Trade> pool, int tier) {
         pool.add(trade(Items.BREAD, 2, 2, "Bread (x2)"));
         pool.add(trade(Items.COOKED_BEEF, 2, 3, "Steak (x2)"));
         pool.add(trade(Items.BAKED_POTATO, 2, 2, "Baked Potato (x2)"));
@@ -240,7 +280,7 @@ public class TraderSystem {
     }
 
     // ---- ALCHEMIST ----
-    private static void buildAlchemistTrades(List<Trade> pool, int tier) {
+    static void buildAlchemistTrades(List<Trade> pool, int tier) {
         pool.add(trade(Items.GLASS_BOTTLE, 3, 1, "Glass Bottles (x3)"));
         if (tier >= 1) {
             pool.add(potionTrade(Items.POTION, net.minecraft.potion.Potions.HEALING, 1, 3, "Potion of Healing"));
@@ -288,7 +328,7 @@ public class TraderSystem {
     }
 
     // ---- SUPPLIER ----
-    private static void buildSupplierTrades(List<Trade> pool, int tier) {
+    static void buildSupplierTrades(List<Trade> pool, int tier) {
         pool.add(trade(Items.OAK_PLANKS, 3, 2, "Oak Planks (x3)"));
         pool.add(trade(Items.COBBLESTONE, 3, 3, "Cobblestone (x3)"));
         pool.add(trade(Items.STICK, 3, 1, "Sticks (x3)"));
@@ -332,7 +372,7 @@ public class TraderSystem {
     }
 
     // ---- DECORATOR ----
-    private static void buildDecoratorTrades(List<Trade> pool, int tier) {
+    static void buildDecoratorTrades(List<Trade> pool, int tier) {
         pool.add(trade(Items.PAINTING, 1, 3, "Painting"));
         pool.add(trade(Items.ITEM_FRAME, 2, 3, "Item Frames (x2)"));
         pool.add(trade(Items.FLOWER_POT, 2, 2, "Flower Pots (x2)"));
@@ -407,7 +447,7 @@ public class TraderSystem {
     }
 
     // ---- CRAFTSMAN ----
-    private static void buildCraftsmanTrades(List<Trade> pool, int tier) {
+    static void buildCraftsmanTrades(List<Trade> pool, int tier) {
         // Basic workstations - always available
         pool.add(trade(Items.CRAFTING_TABLE, 1, 2, "Crafting Table"));
         pool.add(trade(Items.FURNACE, 1, 3, "Furnace"));
@@ -441,7 +481,7 @@ public class TraderSystem {
     }
 
     // ---- CURIOSITY DEALER ----
-    private static void buildCuriosityTrades(List<Trade> pool, int tier) {
+    static void buildCuriosityTrades(List<Trade> pool, int tier) {
         pool.add(trade(Items.ENDER_PEARL, 1, 5, "Ender Pearl"));
         pool.add(trade(Items.TNT, 1, 5, "TNT"));
         pool.add(trade(Items.NAME_TAG, 1, 4, "Name Tag"));

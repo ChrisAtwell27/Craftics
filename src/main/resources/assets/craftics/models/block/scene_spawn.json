@@ -1,0 +1,13 @@
+{
+  "comment": "Scene spawn marker. The arrow on the TOP face shows which way the player will be facing when they arrive.",
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "craftics:block/scene_spawn",
+    "up": "craftics:block/scene_spawn_top",
+    "down": "craftics:block/scene_spawn",
+    "north": "craftics:block/scene_spawn",
+    "south": "craftics:block/scene_spawn",
+    "east": "craftics:block/scene_spawn",
+    "west": "craftics:block/scene_spawn"
+  }
+}

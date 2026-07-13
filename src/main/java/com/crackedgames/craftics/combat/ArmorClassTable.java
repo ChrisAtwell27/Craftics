@@ -14,7 +14,7 @@ import net.minecraft.registry.Registries;
  *   <li>Chestplate - {@code B + 1}</li>
  *   <li>Helmet / Boots - {@code ⌈B / 2⌉}</li>
  * </ul>
- * Full-set totals: leather 7, chainmail/gold 11, iron/copper 13, diamond 19,
+ * Full-set totals: leather/gold 7, chainmail 11, iron/copper 13, diamond 19,
  * netherite 23. See {@code docs/superpowers/specs/2026-05-10-armor-class-overhaul-design.md}.
  *
  * <p>The pure math ({@link #baseAC} / {@link #pieceAC}) is registry-free so it
@@ -36,16 +36,20 @@ public final class ArmorClassTable {
     public enum Slot { HELMET, CHESTPLATE, LEGGINGS, BOOTS }
 
     /**
-     * Base AC ({@code B}) for a built-in armor material, keyed by the registry-ID
-     * prefix (e.g. {@code "iron"} from {@code iron_helmet}). Unknown materials
-     * return 0; use {@link #resolveBaseAC} to also consult the armor-set registry.
-     * Kept registry-free so the AC formula stays unit-testable.
+     * Base AC ({@code B}) for a built-in armor material. Accepts BOTH spellings of the
+     * gold material: the item registry path yields {@code "golden"} (from
+     * {@code golden_helmet}) while the armor-set key is {@code "gold"}, and this table is
+     * looked up with each of them from different call sites. Unknown materials return 0;
+     * use {@link #resolveBaseAC} to also consult the armor-set registry. Kept
+     * registry-free so the AC formula stays unit-testable.
      */
     public static int baseAC(String material) {
         return switch (material) {
             case "leather"   -> 2;
             case "chainmail" -> 3;
-            case "golden"    -> 3;
+            // Gold is the Gambler set: crit chance and emeralds, not protection. It is
+            // deliberately the softest metal in the game, on a par with leather.
+            case "golden", "gold" -> 2;
             case "iron"      -> 4;
             case "copper"    -> 4;
             case "turtle"    -> 4; // turtle helmet treated as a B=4 helm (= 2 AC)

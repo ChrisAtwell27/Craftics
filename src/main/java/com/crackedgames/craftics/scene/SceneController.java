@@ -60,7 +60,7 @@ public final class SceneController {
     /** A booth's merchant identity + inventory, assigned when the scene builds. */
     private sealed interface BoothOccupant {
         /** Villager trader: fixed type, rolled trade list, shared per-visit stock. */
-        record Trader(TraderSystem.TraderType type, TraderSystem.TraderOffer offer,
+        record Trader(com.crackedgames.craftics.combat.TraderCategory type, TraderSystem.TraderOffer offer,
                       int[] stock) implements BoothOccupant {}
         /** Piglin barter personality: the gold gamble against this category's pool. */
         record Barter(BarterCategory category) implements BoothOccupant {}
@@ -84,6 +84,25 @@ public final class SceneController {
     private final Map<UUID, Integer> barterThresholds = new HashMap<>();
     /** Trade quality tier: the island's highest unlocked biome (clamped to 1..9). */
     private int tradeTier = 1;
+    /** The scene's actual footprint, set at build time. Dynamic now: a procedural hall sizes
+     *  itself to the merchant registry, and a schematic hall is whatever the author drew. Used
+     *  for the client's tile-raycast bounds and to reject clicks outside the scene. */
+    private int floorWidth = 16;
+    private int floorDepth = CodeSceneBuilder.FLOOR_DEPTH;
+
+    /**
+     * The floor BLOCK's Y - one below the surface entities stand on. This is the convention
+     * {@code SceneStatePayload} and {@code TileRaycast} share (the raycast intersects the floor
+     * plane at {@code oy + 1}).
+     *
+     * <p>Derived from the layout rather than the scene origin, because the two build paths put
+     * their floor in different places: the procedural hall lays a slab at {@code origin.getY()-1},
+     * while a schematic's floor is wherever the author drew it inside the volume. Assuming the
+     * former for both is what made every click in a hand-built hall land on the wrong tile.
+     */
+    private int floorBlockY() {
+        return (layout != null ? layout.spawnY() : origin.getY()) - 1;
+    }
 
     private SceneController(UUID islandOwner, ServerWorld world, BlockPos origin, String sceneName) {
         this.islandOwner = islandOwner;
@@ -228,9 +247,43 @@ public final class SceneController {
     // ---- lifecycle ----
 
     private void build(ServerPlayerEntity leader) {
-        this.layout = CodeSceneBuilder.buildLayout(
-            origin.getX(), origin.getY(), origin.getZ(), sceneName);
-        CodeSceneBuilder.place(world, origin, layout, snapshot);
+        // A hand-built schematic wins when one exists, at craftics_scenes/<name>.schem next to the
+        // run dir or bundled as data/craftics/scenes/<name>.schem. Booths are wherever its marker
+        // blocks say, so an authored hall can look like anything. With no schematic we fall back
+        // to the procedural walkway, which sizes itself to the merchant registry.
+        SceneScanner.Placed placed =
+            SceneScanner.buildAndScan(world, sceneName, origin, snapshot);
+        if (placed != null && !placed.layout().stands().isEmpty()) {
+            this.layout = placed.layout();
+            this.floorWidth = placed.width();
+            this.floorDepth = placed.length();
+            CrafticsMod.LOGGER.info("Scene '{}' built from schematic: {} booth(s), {}x{}",
+                sceneName, layout.stands().size(), floorWidth, floorDepth);
+        } else {
+            if (placed != null) {
+                // A schematic that loaded but marked no booths is a mistake worth naming - the
+                // player would otherwise get a hall with no merchants and no explanation.
+                CrafticsMod.LOGGER.warn(
+                    "Scene schematic '{}' has no usable booths (need STAND marker pairs with an "
+                    + "NPC marker inside each). Falling back to the procedural scene.", sceneName);
+            }
+            this.layout = CodeSceneBuilder.buildLayout(
+                origin.getX(), origin.getY(), origin.getZ(), sceneName);
+            CodeSceneBuilder.place(world, origin, layout, sceneName, snapshot);
+            this.floorWidth = CodeSceneBuilder.floorWidth(sceneName);
+            this.floorDepth = CodeSceneBuilder.FLOOR_DEPTH;
+        }
+
+        // Wall the scene in so nobody walks off it. Traced by flooding the walkable floor out from
+        // the spawn tile, so it follows the floor's real shape - an irregular village island gets a
+        // wall along its actual grass edge, not around the schematic's rectangular bounding box
+        // (which sits out in the void and walls nothing). Runs after the floor exists in the world,
+        // since the fill reads the blocks. Snapshot-tracked, so it comes down with the scene.
+        if (layout != null) {
+            CodeSceneBuilder.sealPerimeter(world,
+                new BlockPos(layout.spawnX(), layout.spawnY(), layout.spawnZ()),
+                layout.spawnY(), snapshot);
+        }
         CrafticsSavedData data = CrafticsSavedData.get(world);
         this.tradeTier = Math.max(1, Math.min(9,
             data.getPlayerData(islandOwner).highestBiomeUnlocked));
@@ -247,14 +300,22 @@ public final class SceneController {
             members.add(memberUuid);
             ServerPlayNetworking.send(m, new EnterEventCinematicPayload());
             // Carry the scene floor footprint so the client can seed TileRaycast's grid
-            // bounds (a scene never calls enterCombat). oy is the floor-BLOCK Y (origin Y
-            // minus 1): the floor slab sits at origin.getY()-1 and its top surface - the
-            // plane TileRaycast intersects at arenaOriginY+1, where the player's feet stand -
-            // is at origin.getY(). So arenaOriginY must be origin.getY()-1.
+            // bounds (a scene never calls enterCombat). oy is the floor-BLOCK Y: one BELOW the
+            // surface feet stand on, because TileRaycast intersects the floor plane at
+            // arenaOriginY + 1. layout.spawnY() is that standing surface for BOTH build paths, so
+            // the floor block is one under it. Deriving this from the layout (rather than
+            // assuming origin.getY() - 1, which is only true of the procedural hall) is what
+            // makes a schematic whose floor sits high inside its own volume click correctly.
             ServerPlayNetworking.send(m, new SceneStatePayload(true,
-                origin.getX(), origin.getY() - 1, origin.getZ(),
-                CodeSceneBuilder.FLOOR_WIDTH, CodeSceneBuilder.FLOOR_DEPTH));
-            m.requestTeleport(layout.spawnX() + 0.5, layout.spawnY(), layout.spawnZ() + 0.5);
+                origin.getX(), floorBlockY(), origin.getZ(),
+                floorWidth, floorDepth));
+            // Arrive TWO BLOCKS BEHIND the spawn marker (opposite its facing), still looking the
+            // way it points - so the player enters with the hall in front of them instead of
+            // standing on the marker tile itself. Falls back to the marker tile when the ground
+            // behind it isn't standable. The yaw must go through the network handler or the
+            // marker's facing never reaches the client.
+            double[] entry = backedUpEntry(2);
+            m.networkHandler.requestTeleport(entry[0], entry[1], entry[2], layout.spawnYaw(), 0f);
             m.setYaw(layout.spawnYaw());
             m.setHeadYaw(layout.spawnYaw());
         }
@@ -283,13 +344,23 @@ public final class SceneController {
                 boothOccupants.add(i < pool.size() ? new BoothOccupant.Barter(pool.get(i)) : null);
             }
         } else {
-            List<TraderSystem.TraderType> types = MetMerchants.filterMet(
-                new ArrayList<>(List.of(TraderSystem.TraderType.values())),
-                ownerData.metTraders, TraderSystem.TraderType::name);
+            // Met-trader ids are matched through resolveLegacy, because saves written before
+            // 0.2.10 stored the bare enum name ("WEAPONSMITH") rather than a namespaced id.
+            // Without that, every existing player would silently lose every merchant they had met.
+            List<com.crackedgames.craftics.combat.TraderCategory> types = new ArrayList<>();
+            for (String metId : ownerData.metTraders) {
+                var cat = com.crackedgames.craftics.api.registry.TraderCategoryRegistry
+                    .resolveLegacy(metId);
+                // A null here means the id names a trader that is no longer registered - an addon
+                // the player has uninstalled. Skip it rather than fail the hall.
+                if (cat != null && cat.minBiomeTier() <= tradeTier && !types.contains(cat)) {
+                    types.add(cat);
+                }
+            }
             java.util.Collections.shuffle(types, rng);
             for (int i = 0; i < layout.stands().size(); i++) {
                 if (i >= types.size()) { boothOccupants.add(null); continue; }
-                TraderSystem.TraderType type = types.get(i);
+                com.crackedgames.craftics.combat.TraderCategory type = types.get(i);
                 TraderSystem.TraderOffer offer = TraderSystem.generateOffer(type, tradeTier, rng);
                 int[] stock = new int[offer.trades().size()];
                 for (int t = 0; t < stock.length; t++) {
@@ -340,7 +411,7 @@ public final class SceneController {
             // Merchant identity floats over the booth so the hall reads at a glance.
             BoothOccupant occ = i < boothOccupants.size() ? boothOccupants.get(i) : null;
             if (occ instanceof BoothOccupant.Trader t) {
-                npc.setCustomName(Text.literal(t.type().icon + " " + t.type().displayName));
+                npc.setCustomName(Text.literal(t.type().icon() + " " + t.type().displayName()));
                 npc.setCustomNameVisible(true);
             } else if (occ instanceof BoothOccupant.Barter b) {
                 npc.setCustomName(Text.literal(b.category().icon() + " " + b.category().displayName()));
@@ -361,7 +432,7 @@ public final class SceneController {
         if (walkers.containsKey(player.getUuid())) return; // already walking
         if (activeBooth.containsKey(player.getUuid())) return; // trading - the screen owns input
         // FIX 1: validate tile is inside the scene floor footprint (local coords from TileRaycast).
-        if (tx < 0 || tx >= CodeSceneBuilder.FLOOR_WIDTH || tz < 0 || tz >= CodeSceneBuilder.FLOOR_DEPTH) return;
+        if (tx < 0 || tx >= floorWidth || tz < 0 || tz >= floorDepth) return;
         int wx = origin.getX() + tx, wz = origin.getZ() + tz;
         int boothIdx = -1;
         for (int i = 0; i < layout.stands().size(); i++) {
@@ -390,6 +461,10 @@ public final class SceneController {
         int ticks = Math.max(1, (int) Math.round(dist / 0.25)); // 0.25 blocks/tick, matches combat
         final ServerPlayerEntity fp = player;
         EntityWalker.Mover mover = (x, y, z, yaw) -> {
+            // Force the full rotation, view included: the scene uses the locked sky camera, so
+            // the view yaw is never seen as a camera - but it IS what the teleport packet
+            // carries, and the local player's own model renders from it. Without it the figure
+            // slides along facing the wrong way while walking.
             fp.setYaw(yaw); fp.setHeadYaw(yaw); fp.setBodyYaw(yaw); fp.setOnGround(true);
             //? if <=1.21.4 {
             fp.prevX = fp.getX();
@@ -403,8 +478,11 @@ public final class SceneController {
             double dx = x - fp.getX(), dz = z - fp.getZ();
             double len = Math.sqrt(dx * dx + dz * dz);
             if (len > 0) { fp.setVelocity(dx / len * 0.12, 0, dz / len * 0.12); fp.velocityDirty = true; }
-            fp.setPosition(x, y, z);
-            fp.networkHandler.requestTeleport(x, y, z, yaw, fp.getPitch());
+            // Follow the terrain rather than the walker's flat lerp: villages have steps, and a
+            // straight-line Y walked the player into rising ground / floated them over dips.
+            double gy = terrainStandY(fp.getX(), fp.getY(), fp.getZ(), x, z);
+            fp.setPosition(x, gy, z);
+            fp.networkHandler.requestTeleport(x, gy, z, fp.getYaw(), fp.getPitch());
         };
         EntityWalker walker = new EntityWalker(mover, sx, sy, sz, ex, layout.spawnY(), ez, ticks,
             () -> {
@@ -412,6 +490,55 @@ public final class SceneController {
                 if (onArrive != null) onArrive.run();
             });
         walkers.put(player.getUuid(), walker);
+    }
+
+    /**
+     * The entry position: {@code stepsBack} blocks behind the spawn marker, opposite its facing,
+     * so the player arrives looking INTO the scene rather than standing on the marker tile. Each
+     * step back is verified standable (ground below, room to stand); the walk stops at the last
+     * good tile, so an authored spawn near a wall or edge degrades to the marker tile itself.
+     *
+     * @return {x, y, z} entity coordinates (tile centers)
+     */
+    private double[] backedUpEntry(int stepsBack) {
+        double yawRad = Math.toRadians(layout.spawnYaw());
+        // Facing forward is (-sin, cos); backing up walks the opposite way.
+        int dx = (int) Math.round(Math.sin(yawRad));
+        int dz = (int) Math.round(-Math.cos(yawRad));
+        int x = layout.spawnX(), z = layout.spawnZ(), y = layout.spawnY();
+        for (int i = 0; i < stepsBack; i++) {
+            int nx = x + dx, nz = z + dz;
+            BlockPos feet = new BlockPos(nx, y, nz);
+            boolean ok = !world.getBlockState(feet.down()).getCollisionShape(world, feet.down()).isEmpty()
+                && world.getBlockState(feet).getCollisionShape(world, feet).isEmpty()
+                && world.getBlockState(feet.up()).getCollisionShape(world, feet.up()).isEmpty();
+            if (!ok) break;
+            x = nx;
+            z = nz;
+        }
+        return new double[]{x + 0.5, y, z + 0.5};
+    }
+
+    /**
+     * The Y a walking player should stand at when moving into column {@code (tx, tz)}: the current
+     * height, or one step up/down if that's where the ground is - the same +-1 rule the perimeter
+     * flood fill walks with. Falls back to the current Y when nothing nearby is standable (mid-step
+     * over a fence line, etc.), which just means "keep doing what the lerp was doing".
+     */
+    private double terrainStandY(double curX, double curY, double curZ, double tx, double tz) {
+        int bx = (int) Math.floor(tx), bz = (int) Math.floor(tz);
+        int by = (int) Math.floor(curY + 0.01);
+        for (int dy : new int[]{0, -1, 1}) {
+            BlockPos feet = new BlockPos(bx, by + dy, bz);
+            boolean groundBelow = !world.getBlockState(feet.down())
+                .getCollisionShape(world, feet.down()).isEmpty();
+            boolean feetFree = world.getBlockState(feet)
+                .getCollisionShape(world, feet).isEmpty();
+            boolean headFree = world.getBlockState(feet.up())
+                .getCollisionShape(world, feet.up()).isEmpty();
+            if (groundBelow && feetFree && headFree) return by + dy;
+        }
+        return curY;
     }
 
     /** Open the booth's merchant UI for one player (they just arrived at its stand). */
@@ -459,7 +586,7 @@ public final class SceneController {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         int emeralds = data.getPlayerData(player.getUuid()).emeralds;
         ServerPlayNetworking.send(player, new TraderOfferPayload(
-            trader.type().displayName, trader.type().icon, sb.toString(), emeralds,
+            trader.type().displayName(), trader.type().icon(), sb.toString(), emeralds,
             openScreen ? 1 : 0));
     }
 

@@ -452,6 +452,35 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "riptide" -> "\u00a73\u2B06 Riptide " + toRoman(level) + ": \u00a77Dash in a line, hit + knockback " + (1 + level) + " all enemies";
             case "channeling" -> "\u00a7e\u26A1 Channeling " + toRoman(level) + ": \u00a77Lightning on throw (" + (4 + level * 2) + " dmg, 2x if Soaked, chains to " + Math.max(0, level - 1) + ")";
 
+            // Craftics shovel enchants (Pet) - these arm the owner's ALLIES, not the shovel.
+            // Numbers come from the effect constants so a balance change can't leave the
+            // tooltip lying about what the enchantment actually does.
+            case "honed" -> "\u00a7aHoned " + toRoman(level) + ": \u00a77Your pets deal +"
+                + (level * com.crackedgames.craftics.combat.ShovelEnchantEffects.HONED_DAMAGE_PER_LEVEL)
+                + " damage";
+            case "fire_fang" -> "\u00a76Fire Fang " + toRoman(level) + ": \u00a77Your pets set targets alight ("
+                + (1 + level) + " turns)";
+            case "water_fang" -> "\u00a7bWater Fang " + toRoman(level) + ": \u00a77Your pets apply Soaked ("
+                + (1 + level) + " turns)";
+            case "thunder_fang" -> "\u00a7eThunder Fang " + toRoman(level)
+                + ": \u00a77Your pets shock enemies within "
+                + com.crackedgames.craftics.combat.ShovelEnchantEffects.thunderRadius(level)
+                + " tiles of the target (2x if Soaked)";
+
+            // Craftics hoe enchants (Special) - these ride on the owner's Special-item casts.
+            case "reserving" -> "\u00a7dReserving " + toRoman(level) + ": \u00a77+"
+                + Math.round(level * com.crackedgames.craftics.combat.HoeEnchantEffects.RESERVING_CHANCE_PER_LEVEL * 100)
+                + "% chance a Special item costs no AP";
+            case "performative" -> "\u00a7dPerformative " + toRoman(level) + ": \u00a77"
+                + Math.round(level * com.crackedgames.craftics.combat.HoeEnchantEffects.PERFORMATIVE_CHANCE_PER_LEVEL * 100)
+                + "% chance to cast a Special item twice";
+            case "radiant" -> "\u00a7eRadiant " + toRoman(level) + ": \u00a77Special items deal +"
+                + (level * com.crackedgames.craftics.combat.HoeEnchantEffects.RADIANT_DAMAGE_PER_LEVEL)
+                + " damage to undead";
+            case "medic" -> "\u00a7aMedic " + toRoman(level) + ": \u00a77Special items heal +"
+                + (level * com.crackedgames.craftics.combat.HoeEnchantEffects.MEDIC_HEAL_PER_LEVEL)
+                + " HP (you, teammates, and pets)";
+
             default -> null;
         };
     }
@@ -788,21 +817,21 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.BLAZE_ROD) return weaponStatLine(item) + "\n\u00a76\u2716 Fire: \u00a77+1 fire dmg | \u00a78Stun: \u00a775% chance";
         if (item == Items.BREEZE_ROD) return weaponStatLine(item) + "\n\u00a7b\u2716 Knockback: \u00a77Push back 1 | \u00a78Stun: \u00a775% chance";
 
-        // Hoes - Special type (low damage, effects/utility)
-        if (item == Items.WOODEN_HOE) return weaponStatLine(item) + "\n\u00a77Weak but channels special energy";
-        if (item == Items.STONE_HOE) return weaponStatLine(item) + "\n\u00a77Weak but channels special energy";
-        if (item == Items.IRON_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Low damage, boosted by Special affinity";
-        if (item == Items.GOLDEN_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Enchanted gold channels power";
-        if (item == Items.DIAMOND_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Strong special conduit";
-        if (item == Items.NETHERITE_HOE) return weaponStatLine(item) + "\n\u00a7d\u2728 Special weapon: \u00a77Ultimate special conduit";
-
-        // Shovels - Pet type (boosted by Pet affinity)
-        if (item == Items.WOODEN_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Boosted by Pet affinity";
-        if (item == Items.STONE_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Solid companion blade";
-        if (item == Items.IRON_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Reliable pet synergy";
-        if (item == Items.GOLDEN_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Golden beast bond";
-        if (item == Items.DIAMOND_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Strong pet synergy";
-        if (item == Items.NETHERITE_SHOVEL) return weaponStatLine(item) + "\n\u00a7a\uD83D\uDC3E Pet weapon: \u00a77Ultimate beastmaster blade";
+        // Hoes and shovels are the two FOCUS tools. They swing badly on purpose - their value is
+        // the Craftics enchantments they carry, which work from anywhere in your inventory and
+        // take only the highest level, so a second copy of the same enchant adds nothing.
+        if (item instanceof net.minecraft.item.HoeItem) {
+            return weaponStatLine(item)
+                + "\n\u00a7dSpecial focus: \u00a77Low damage, boosted by Special affinity"
+                + "\n\u00a77Carries Reserving, Performative, Radiant and Medic"
+                + "\n\u00a78Enchantments work from your inventory. No need to hold it.";
+        }
+        if (item instanceof net.minecraft.item.ShovelItem) {
+            return weaponStatLine(item)
+                + "\n\u00a7aPet focus: \u00a77Low damage, boosted by Pet affinity"
+                + "\n\u00a77Carries Honed and the Fire, Water and Thunder Fangs"
+                + "\n\u00a78Enchantments arm your pets from your inventory. No need to hold it.";
+        }
 
         // Ranged
         if (item == Items.BOW) return weaponStatLine(item) + "\n\u00a77Consumes arrows. Tipped arrows apply effects.";
@@ -1039,7 +1068,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.WIND_CHARGE) return "\u00a7f1 AP \u00a77- Knock an enemy back, or launch yourself off an adjacent tile\n\u00a77Strike an enemy right after a self-launch for \u00a7a1.5x damage";
 
         // \u2500\u2500 Lead (ally command tool) \u2500\u2500
-        if (item == Items.LEAD) return "\u00a7b2 AP \u00a77- Command an ally\n\u00a77Click an ally to select them, then click an adjacent enemy to make them strike (no ally turn used) or any tile to reposition them";
+        if (item == Items.LEAD) return "\u00a7b1 AP \u00a77- Command an ally\n\u00a77Click an ally to select them. Green tiles show how far they can move, red marks enemies they can reach\n\u00a77Click a green tile to reposition them, or a red enemy to make them strike (no ally turn used)";
 
         // ── Enchanting related ──
         // Enchanted books handled dynamically below

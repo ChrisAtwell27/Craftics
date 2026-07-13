@@ -8,12 +8,18 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class VanillaDialogueTest {
 
+    /**
+     * Every VANILLA trader needs an intro line. Addon traders are allowed to have none - the
+     * trader event tolerates a missing group - so this only covers the ones we ship.
+     */
     @Test
     void everyTraderTypeHasAnIntroGroup() {
         DialogueRegistry.clearAllForTest();
         VanillaDialogue.register();
-        for (TraderSystem.TraderType t : TraderSystem.TraderType.values()) {
-            String group = "trader_intro_" + t.name().toLowerCase();
+        com.crackedgames.craftics.api.registry.TraderCategoryRegistry.clearAllForTest();
+        com.crackedgames.craftics.combat.VanillaTraderContent.register();
+        for (var t : com.crackedgames.craftics.api.registry.TraderCategoryRegistry.all()) {
+            String group = "trader_intro_" + t.localId();
             assertNotNull(DialogueRegistry.pickFromGroup(group, new Random()),
                 "missing intro dialogue group: " + group);
         }

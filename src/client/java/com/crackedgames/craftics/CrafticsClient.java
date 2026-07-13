@@ -521,6 +521,9 @@ public class CrafticsClient implements ClientModInitializer {
                         // clicks resolve to a tile (a scene never calls enterCombat).
                         CombatState.setSceneBounds(payload.ox(), payload.oy(), payload.oz(),
                             payload.w(), payload.h());
+                        // Start centered on the player: a pan left over from the last fight
+                        // would otherwise offset the scene camera by that stale drag.
+                        CombatState.resetPan();
                     } else {
                         CombatState.clearSceneBounds();
                     }

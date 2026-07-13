@@ -9,7 +9,64 @@ Trading Hall & Bartering Station
 - The piglin barter stepper got a full overhaul: -5/-1/+1/+5/Max quick-adjust buttons, a greed meter that fills red-to-green as your offer grows, and the piglin visibly reacting to the amount ("The piglin looks insulted." up to "The piglin CANNOT resist this much gold!"). An honest read of the odds ladder, since a maxed offer always wins. Your gold count now draws with a gold ingot icon, wins play the piglin celebration grunt, losses its angry squeal, and the coin-flip reveal then hands over the goods. Walk away any time; come back and the piglin rolls a fresh hidden threshold
 - Trading in the hall is fully multiplayer-safe: every party member can shop at different booths (or the same one) simultaneously, and a shopper disconnecting can never wedge the market
 
+0.2.10
+Stats, Pets, Armor, and Arena Fixes
 
+Stats & Max HP
+
+- Vitality now applies the moment you spend the point, instead of waiting until the next fight starts
+- Max HP bonuses now come from a real max-health attribute instead of the vanilla Health Boost effect, which only came in 4 HP steps and forced every HP bonus to round to a multiple of 4
+- Quartz trim is now +6 max HP per piece (+24 for a full set). It said +2 in the guide book and granted +8
+- Vitality is +8 max HP per point and Host trim is +8 per piece. Both were listed as "+2" in the guide book
+
+Pets
+
+- Pet affinity now grants ally HP, raised from +3 to +10 max HP per level. Only tamed mobs were getting it before. Hub battle party pets, spawn-egg summons, totem-revive summons, and ability summons all spawned with no Pet-affinity scaling
+- In co-op, pets scale off their own owner's gear and affinity rather than the fight leader's. This already worked for ally damage, now it works for ally HP
+- The Lead can now move allies, not just order attacks. Select a pet and green tiles show where it can walk, red marks enemies it can reach. Click a green tile to move it, or a red enemy to strike. Commanding an ally still doesn't use its own turn
+- Lead commands now cost 1 AP instead of 2, for both moving and attacking
+- Selecting an ally with the Lead used to show no highlights at all, leaving you clicking blind
+
+Enchantments
+
+- Shovels and hoes are now focus tools with eight new Craftics enchantments. They still swing badly. Their value is what they carry, and a focus works from anywhere in your inventory - you never have to hold it. Carrying two of the same enchant does nothing; only the highest level counts
+- Shovel enchants arm your PETS: Honed (max V, +1 pet damage per level), Fire Fang (max III, pets set targets alight for 2/3/4 turns), Water Fang (max III, pets apply Soaked for 2/3/4 turns), and Thunder Fang (max III, pets shock every other enemy within 1/2/3 tiles of the target for 3 lightning damage)
+- The three Fangs are exclusive, so one shovel takes one element. Carrying a Water Fang shovel and a Thunder Fang shovel is the combo: the Soak lands first, and lightning does double damage to a Soaked target
+- Hoe enchants ride on your Special-item casts (potions, banners, horns, charges, pearls, pottery sherds): Reserving (max III, +5% per level that the cast costs no AP), Performative (max III, 5% per level to cast it twice for free, with no extra item and no extra AP), Radiant (max V, +2 damage per level against undead), and Medic (max III, +2 HP per level to any healing it does, including feeding a teammate)
+- All eight are found the normal ways: enchanting tables, enchanted book drops, the Wandering Enchanter, trial chamber loot, and traders. Shovels and hoes previously rolled nothing but Unbreaking and Mending
+- Every enchant has its own effect VFX, and item tooltips explain what each one does at its current level
+
+Pottery Sherds
+
+- Howl is now Petsplosion (3 AP, down from 5). Every pet detonates a 2-tile blast around itself for anvil-grade damage (half an enemy's max HP, minimum 10). Blasts stack where they overlap. Pets take no damage. Replaces Dread Howl
+- Friend is now pet-only. Guardian Spirit heals every pet to full and grants +3 ATK and +1 Speed for 3 turns, still 2 AP. It used to heal the caster and buff a single pet
+- Archer is now Seeker Vexes. Summons 2 vexes that fly at the nearest enemy on their own, 3 tiles a round, and destroy themselves on attack for 9 damage. They re-target if their quarry dies. Luck can summon a third
+- Seeker vexes have 1 HP so enemies can shoot them down, and vanish after 5 rounds. They don't scale with Pet affinity and don't use a party slot
+- Archer is now self-cast, where it used to need an enemy tile to target
+
+Armor
+
+- Gold armor was giving 0 Armor Class. It now has 2 base AC, on a par with leather. The Gambler set pays out in crit chance and emeralds, not protection
+
+Weapons
+
+- The Simply Swords spear could hit for 5x damage, enough for a 400-damage opening turn at high Speed. Its movement bonus is now +20% per tile up to a real 2x cap, and both spears cost 2 AP
+- The Basic Weapons and Simply Swords spears and glaives now behave identically, since both mods ship the same recipe and you can't pick which you get
+- Weapon tooltips now generate their numbers from the real values, so they can't disagree with what the weapon does
+- Enchantments show on modded weapons again. Compat tooltips were wiping the vanilla lines below the first one, taking the enchantment list with them
+
+Interface
+
+- The AP and Speed display no longer runs into your hotbar. It's now a fixed-size plaque with two segmented meters (gold for AP, blue for Speed) that never changes size: segments get thinner as your totals grow, tick marks keep points countable, and the exact numbers sit alongside
+- The plaque dims when it isn't your turn, so a teammate's spending doesn't read as your own
+
+Arenas
+
+- Arenas are sealed with a barrier wall so outside mobs can't wander in. Only grass and walkable blocks are replaced, so the terrain still reads naturally
+- You can no longer spawn on an isolated block with no way off. Spawns now verify an escape route and relocate to the nearest safe tile
+- Two mobs can no longer stack on the same tile (a pair of witches sharing one square). Placement and movement both refuse an occupied tile
+- Obstacles from legendary weapons (rose bushes, bubble columns) no longer bake permanently into arenas you revisit. Existing saves are healed on load
+- Standing on a water tile no longer drowns you. Players wearing Artifacts' Shrinking Charm took drowning damage on water obstacles; you now get water breathing while on one
 
 0.2.9
 Infinite Mode, Multiplayer, Enemies, Combat, Tools, and Interface

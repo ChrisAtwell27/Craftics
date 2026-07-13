@@ -1,9 +1,9 @@
 {
-  "comment": "Markers are dev tools, replaced by the most common neighbor block when the scene is scanned, so the placed appearance only matters while authoring. SceneSpawnBlock keeps a FACING property (read by the scanner), so every facing maps to the shared marker model.",
+  "comment": "Scene spawn marker. FACING becomes the player's yaw on arrival, so the model rotates with it and the top-face arrow shows which way they will be looking.",
   "variants": {
-    "facing=north": { "model": "craftics:block/scene_marker" },
-    "facing=south": { "model": "craftics:block/scene_marker" },
-    "facing=east":  { "model": "craftics:block/scene_marker" },
-    "facing=west":  { "model": "craftics:block/scene_marker" }
+    "facing=north": { "model": "craftics:block/scene_spawn", "y": 0 },
+    "facing=east":  { "model": "craftics:block/scene_spawn", "y": 90 },
+    "facing=south": { "model": "craftics:block/scene_spawn", "y": 180 },
+    "facing=west":  { "model": "craftics:block/scene_spawn", "y": 270 }
   }
 }

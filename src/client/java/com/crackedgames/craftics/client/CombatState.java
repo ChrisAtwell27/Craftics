@@ -290,8 +290,11 @@ public class CombatState {
             // arena center (which tickCameraFocus used to early-return on).
             net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
             if (mc.player != null) {
-                double tx = mc.player.getX();
-                double tz = mc.player.getZ();
+                // The manual pan offset rides on top of the player-follow so middle-drag can
+                // look around the scene - without it, the follow lerp erased every drag
+                // within a few frames. Shift+middle (resetPan) recenters on the player.
+                double tx = mc.player.getX() + cameraPanX;
+                double tz = mc.player.getZ() + cameraPanZ;
                 focusCurrentX += (tx - focusCurrentX) * FOCUS_LERP_SPEED;
                 focusCurrentZ += (tz - focusCurrentZ) * FOCUS_LERP_SPEED;
                 focusZoomCurrent += (FOCUS_ZOOM_DISTANCE - focusZoomCurrent) * FOCUS_LERP_SPEED;

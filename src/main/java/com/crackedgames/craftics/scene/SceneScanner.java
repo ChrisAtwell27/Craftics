@@ -37,18 +37,48 @@ public final class SceneScanner {
 
     private SceneScanner() {}
 
+    /** A placed-and-scanned scene: its layout plus the footprint the schematic actually occupied. */
+    public record Placed(SceneLayout layout, int width, int height, int length) {}
+
     /**
      * Place {@code sceneName}'s schematic at {@code origin} and scan it.
      * Returns {@code null} if the schematic could not be loaded.
      */
     public static SceneLayout buildAndScan(ServerWorld world, String sceneName, BlockPos origin) {
+        Placed p = buildAndScan(world, sceneName, origin, null);
+        return p == null ? null : p.layout();
+    }
+
+    /**
+     * Place {@code sceneName}'s schematic at {@code origin}, scan it for markers, and report the
+     * footprint it occupied so the caller can tell the client the real scene bounds.
+     *
+     * <p>When {@code snapshot} is non-null, EVERY block the schematic will overwrite is recorded
+     * into it first. That is not optional: a scene is torn down when the last player leaves, and
+     * without the snapshot the schematic would be pasted permanently over the player's island with
+     * no way back.
+     *
+     * @return the placed scene, or {@code null} when no schematic exists for {@code sceneName}
+     */
+    public static Placed buildAndScan(ServerWorld world, String sceneName, BlockPos origin,
+                                      java.util.Map<BlockPos, BlockState> snapshot) {
         SchemLoader.SchemData data = loadScene(world, sceneName);
-        if (data == null) {
-            CrafticsMod.LOGGER.warn("Scene schematic '{}' not found", sceneName);
-            return null;
+        if (data == null) return null;
+
+        if (snapshot != null) {
+            for (int y = 0; y < data.height(); y++) {
+                for (int z = 0; z < data.length(); z++) {
+                    for (int x = 0; x < data.width(); x++) {
+                        BlockPos pos = origin.add(x, y, z);
+                        snapshot.putIfAbsent(pos.toImmutable(), world.getBlockState(pos));
+                    }
+                }
+            }
         }
+
         data.place(world, origin.getX(), origin.getY(), origin.getZ());
-        return scan(world, origin, data.width(), data.height(), data.length());
+        SceneLayout layout = scan(world, origin, data.width(), data.height(), data.length());
+        return new Placed(layout, data.width(), data.height(), data.length());
     }
 
     /**
@@ -78,19 +108,25 @@ public final class SceneScanner {
                 for (int x = 0; x < width; x++) {
                     BlockPos pos = origin.add(x, y, z);
                     BlockState state = world.getBlockState(pos);
+                    // A marker is a BLOCK sitting IN the floor, but a layout's Y is where an
+                    // ENTITY STANDS - the air directly above it. (The procedural builder lays its
+                    // floor at oy-1 and stands everyone at oy, so it already has this convention.)
+                    // Reporting the marker's own Y instead buried the player and every merchant
+                    // inside the floor once the marker was scrubbed away.
+                    int standY = pos.getY() + 1;
                     if (state.isOf(ModBlocks.SCENE_SPAWN_BLOCK)) {
                         markers.add(new RawMarker(RawMarker.Kind.SPAWN,
-                            pos.getX(), pos.getY(), pos.getZ(),
+                            pos.getX(), standY, pos.getZ(),
                             facingDegrees(state.get(SceneSpawnBlock.FACING)), ""));
                         markerPositions.add(pos);
                     } else if (state.isOf(ModBlocks.STAND_MARKER_BLOCK)) {
                         // Corner marker: no facing, no occupant. Used in pairs.
                         markers.add(new RawMarker(RawMarker.Kind.STAND,
-                            pos.getX(), pos.getY(), pos.getZ(), 0f, ""));
+                            pos.getX(), standY, pos.getZ(), 0f, ""));
                         markerPositions.add(pos);
                     } else if (state.isOf(ModBlocks.NPC_MARKER_BLOCK)) {
                         markers.add(new RawMarker(RawMarker.Kind.NPC,
-                            pos.getX(), pos.getY(), pos.getZ(),
+                            pos.getX(), standY, pos.getZ(),
                             facingDegrees(state.get(NpcMarkerBlock.FACING)), occupantAt(world, pos)));
                         markerPositions.add(pos);
                     }
