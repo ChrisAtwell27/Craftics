@@ -23,6 +23,7 @@ import net.minecraft.util.Identifier;
  *     { "type": "WATER", "amount": 1 }
  *   ],
  *   "all_damage_bonus": 0,
+ *   "armor_class": 5,
  *   "speed_bonus": 0,
  *   "ap_bonus": 0,
  *   "defense_bonus": 2,
@@ -66,6 +67,7 @@ public final class ArmorSetJsonLoader extends CrafticsDataLoader<ArmorSetEntry> 
             }
         }
 
+        if (json.has("armor_class")) builder.armorClass(json.get("armor_class").getAsInt());
         if (json.has("speed_bonus")) builder.speedBonus(json.get("speed_bonus").getAsInt());
         if (json.has("ap_bonus")) builder.apBonus(json.get("ap_bonus").getAsInt());
         if (json.has("defense_bonus")) builder.defenseBonus(json.get("defense_bonus").getAsInt());

@@ -101,6 +101,110 @@ public class ArenaBuilder {
      * Scans existing world blocks for obstacles/water/voids - no blocks are placed.
      * Chunks are force-loaded and resent to the client.
      */
+    private static final int TRAP_FLAGS =
+        Block.NOTIFY_LISTENERS | Block.FORCE_STATE;
+
+    /** How tall the perimeter barrier wall stands above the arena floor. Matches the
+     *  ceiling the arena clears to, so flying mobs (ghast/phantom/blaze) can't cross. */
+    static final int PERIMETER_WALL_HEIGHT = 18;
+
+    /**
+     * Seal the ring of tiles ONE OUT from the playable grid with an invisible barrier
+     * wall, so mobs from the surrounding world can't wander in. Only walkable gaps are
+     * sealed: for each border tile, if the block at floor+1 is air or a non-solid
+     * pass-through (grass, a flower, snow layer, ...) a barrier column is raised there;
+     * if a solid block already stands (a natural stone wall, a hill, a fence), that tile
+     * is left untouched so the existing scenery keeps blocking mobs and stays smooth.
+     *
+     * <p>Idempotent - a barrier already standing is simply re-set - so it is safe to run
+     * on every arena entry, including cached-arena revisits.
+     *
+     * @param floorX,floorY,floorZ  the playable grid's origin (its 0,0 floor block)
+     * @param gridW,gridH           the playable grid size
+     */
+    static void sealArenaPerimeter(ServerWorld world, int floorX, int floorY, int floorZ,
+                                   int gridW, int gridH) {
+        int minX = floorX - 1, maxX = floorX + gridW;
+        int minZ = floorZ - 1, maxZ = floorZ + gridH;
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                // Border ring only: skip the interior (the playable tiles).
+                if (x > minX && x < maxX && z > minZ && z < maxZ) continue;
+                sealBorderColumn(world, x, floorY, z);
+            }
+        }
+    }
+
+    /** Raise a barrier column on one border tile, unless a solid block already walls it. */
+    private static void sealBorderColumn(ServerWorld world, int x, int floorY, int z) {
+        BlockPos wallStart = new BlockPos(x, floorY + 1, z);
+        BlockState atWall = world.getBlockState(wallStart);
+        // A solid full block at head level is already a wall - leave the scenery be.
+        if (atWall.isSolidBlock(world, wallStart) && !atWall.isOf(Blocks.BARRIER)) return;
+        for (int dy = 1; dy <= PERIMETER_WALL_HEIGHT; dy++) {
+            BlockPos p = new BlockPos(x, floorY + dy, z);
+            BlockState s = world.getBlockState(p);
+            // Only fill air / walkable pass-throughs; never overwrite a real block that
+            // isn't ours, so a tree trunk or overhang on the edge stays intact.
+            if (s.isAir() || s.isReplaceable() || s.isOf(Blocks.BARRIER)
+                    || s.isOf(Blocks.SHORT_GRASS) || s.isOf(Blocks.TALL_GRASS)
+                    || s.isOf(Blocks.FERN) || s.isOf(Blocks.LARGE_FERN)
+                    || s.isOf(Blocks.SNOW)) {
+                world.setBlockState(p, Blocks.BARRIER.getDefaultState(), TRAP_FLAGS);
+            }
+        }
+    }
+
+    /**
+     * Remove bow-trap blocks (Everbloom rose bushes, Bubbleveil bubble columns) left in an
+     * arena footprint by a fight that didn't clean up, so they don't get scanned in as
+     * permanent terrain. Rose bushes become air; a bubble column (water over soul sand)
+     * has both its water and its soul sand replaced with the arena's own floor material,
+     * sampled from a clean neighbouring tile.
+     */
+    private static void scrubTrapLeftovers(ServerWorld world, int floorX, int floorY, int floorZ,
+                                           int gridW, int gridH) {
+        Block floorFill = sampleArenaFloor(world, floorX, floorY, floorZ, gridW, gridH);
+        for (int x = 0; x < gridW; x++) {
+            for (int z = 0; z < gridH; z++) {
+                // Rose bush trap lives in the overlay column (floorY+1 / floorY+2).
+                for (int dy = 1; dy <= 2; dy++) {
+                    BlockPos p = new BlockPos(floorX + x, floorY + dy, floorZ + z);
+                    if (world.getBlockState(p).isOf(Blocks.ROSE_BUSH)) {
+                        world.setBlockState(p, Blocks.AIR.getDefaultState(), TRAP_FLAGS);
+                    }
+                }
+                // Bubble column trap: WATER (or the BUBBLE_COLUMN it becomes) at floor over
+                // SOUL_SAND one below. Restore both to the arena's floor material.
+                BlockPos floorPos = new BlockPos(floorX + x, floorY, floorZ + z);
+                BlockPos underPos = new BlockPos(floorX + x, floorY - 1, floorZ + z);
+                Block fb = world.getBlockState(floorPos).getBlock();
+                if ((fb == Blocks.WATER || fb == Blocks.BUBBLE_COLUMN)
+                        && world.getBlockState(underPos).isOf(Blocks.SOUL_SAND)) {
+                    world.setBlockState(floorPos, floorFill.getDefaultState(), TRAP_FLAGS);
+                    world.setBlockState(underPos, floorFill.getDefaultState(), TRAP_FLAGS);
+                }
+            }
+        }
+    }
+
+    /** A solid floor block from a tile with no trap on it, to patch a scrubbed column with. */
+    private static Block sampleArenaFloor(ServerWorld world, int floorX, int floorY, int floorZ,
+                                          int gridW, int gridH) {
+        for (int x = 0; x < gridW; x++) {
+            for (int z = 0; z < gridH; z++) {
+                net.minecraft.block.BlockState s =
+                    world.getBlockState(new BlockPos(floorX + x, floorY, floorZ + z));
+                Block b = s.getBlock();
+                if (s.isSolidBlock(world, new BlockPos(floorX + x, floorY, floorZ + z))
+                        && b != Blocks.SOUL_SAND) {
+                    return b;
+                }
+            }
+        }
+        return Blocks.STONE;
+    }
+
     public static GridArena scanExisting(ServerWorld world, BlockPos gridOrigin,
                                           int gridW, int gridH, GridPos playerStart, int level,
                                           boolean[][] insideMask) {
@@ -122,6 +226,13 @@ public class ArenaBuilder {
                 }
             }
         }
+
+        // Heal leftover bow-trap blocks before the scan reads them. A rose bush (Everbloom
+        // field) or a bubble column (Bubbleveil) left behind by a fight that didn't clean
+        // up would otherwise be read as permanent arena terrain and baked in forever. No
+        // natural arena floor uses these, so removing them here is unambiguous. This also
+        // repairs saves already polluted by the earlier restore-order bug.
+        scrubTrapLeftovers(world, floorX, floorY, floorZ, gridW, gridH);
 
         // Scan existing blocks to build tile grid
         GridTile[][] tiles = new GridTile[gridW][gridH];
@@ -199,6 +310,9 @@ public class ArenaBuilder {
         // Snap player start to nearest walkable tile, restricted to the polygon
         // mask when one was persisted at pre-gen (null = rectangular arena).
         GridPos finalPlayerStart = findNearestWalkableTile(tiles, playerStart, insideMask);
+
+        // Wall off the surrounding world so outside mobs can't wander into a revisited arena.
+        sealArenaPerimeter(world, floorX, floorY, floorZ, gridW, gridH);
 
         CrafticsMod.LOGGER.info("Scanned pre-built arena. origin={}, size={}x{}, playerStart={}, polygon={}",
             gridOrigin, gridW, gridH, finalPlayerStart, insideMask != null);
@@ -573,6 +687,12 @@ public class ArenaBuilder {
         // Hand the polygon mask (if any) to GridArena. Null = legacy rectangle.
         GridArena arena = new GridArena(finalW, finalH, finalTiles, finalOrigin, level,
             finalPlayerStart, structureInsideMask);
+
+        // Wall off the surrounding world so outside mobs can't wander into the arena. One
+        // ring out from the playable grid, walkable gaps only - existing scenery walls are
+        // left intact. Covers every buildAt sub-path (rectangle, polygon, procedural).
+        sealArenaPerimeter(world, finalOrigin.getX(), finalOrigin.getY(), finalOrigin.getZ(),
+            finalW, finalH);
 
         // Register static cobwebs as permanent web overlays - schematic + jungle
         // decoration cobwebs only go away when a player walks through them, so

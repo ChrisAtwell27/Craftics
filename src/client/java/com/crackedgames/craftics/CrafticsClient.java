@@ -545,7 +545,8 @@ public class CrafticsClient implements ClientModInitializer {
                 context.client().execute(() -> {
                     CombatState.updateTileSets(payload.moveTiles(), payload.attackTiles(),
                         payload.dangerTiles(), payload.warningTiles(), payload.enemyMap(), payload.enemyTypes(),
-                        payload.mountTiles(), payload.warningArrows());
+                        payload.mountTiles(), payload.warningArrows(),
+                        payload.forecastPath(), payload.forecastStrike());
                 });
             });
 
@@ -696,6 +697,8 @@ public class CrafticsClient implements ClientModInitializer {
             client -> {
                 com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
                 com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
+                com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
+                com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
             });
 
         // Resolve keybind conflicts at startup. CLIENT_STARTED runs after every

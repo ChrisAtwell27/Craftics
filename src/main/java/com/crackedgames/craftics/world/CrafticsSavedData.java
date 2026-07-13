@@ -153,6 +153,21 @@ public class CrafticsSavedData extends PersistentState {
         public int infiniteStashSelectedSlot = 0;
         /** Pre-run PlayerProgression snapshot (PlayerStats.serialize format). */
         public String infiniteStashStats = "";
+        /** On the HOST's record: true while the run is parked at a save point (the host
+         *  left mid-run or logged out). The cursor, score, and cleared count all stay;
+         *  opening Infinite Mode again resumes it, {@code /craftics infinite stop}
+         *  abandons it. */
+        public boolean infiniteSuspended = false;
+        /** The host's run inventory, parked while the run is suspended. */
+        public net.minecraft.nbt.NbtList infiniteParkedInventory = new net.minecraft.nbt.NbtList();
+        public int infiniteParkedSelectedSlot = 0;
+        /** The host's run progression, parked while the run is suspended. */
+        public String infiniteParkedStats = "";
+        /** The parked run's own biome/level cursor. A LIVE infinite run borrows
+         *  {@link #activeBiomeId}/{@link #activeBiomeLevelIndex}; suspending moves the
+         *  cursor here so normal biome runs can use the shared fields in the meantime. */
+        public String infiniteParkedBiomeId = "";
+        public int infiniteParkedLevelIndex = 0;
         /** Last known player name, for offline leaderboard rows. Refreshed on join. */
         public String lastKnownName = "";
 
@@ -459,6 +474,12 @@ public class CrafticsSavedData extends PersistentState {
             nbt.put("infiniteStashInventory", infiniteStashInventory.copy());
             nbt.putInt("infiniteStashSelectedSlot", infiniteStashSelectedSlot);
             nbt.putString("infiniteStashStats", infiniteStashStats);
+            nbt.putBoolean("infiniteSuspended", infiniteSuspended);
+            nbt.put("infiniteParkedInventory", infiniteParkedInventory.copy());
+            nbt.putInt("infiniteParkedSelectedSlot", infiniteParkedSelectedSlot);
+            nbt.putString("infiniteParkedStats", infiniteParkedStats);
+            nbt.putString("infiniteParkedBiomeId", infiniteParkedBiomeId);
+            nbt.putInt("infiniteParkedLevelIndex", infiniteParkedLevelIndex);
             nbt.putString("lastKnownName", lastKnownName);
             return nbt;
         }
@@ -555,6 +576,15 @@ public class CrafticsSavedData extends PersistentState {
             }
             pd.infiniteStashSelectedSlot = nbt.contains("infiniteStashSelectedSlot") ? nbt.getInt("infiniteStashSelectedSlot") : 0;
             pd.infiniteStashStats = nbt.contains("infiniteStashStats") ? nbt.getString("infiniteStashStats") : "";
+            pd.infiniteSuspended = nbt.contains("infiniteSuspended") && nbt.getBoolean("infiniteSuspended");
+            if (nbt.contains("infiniteParkedInventory")) {
+                pd.infiniteParkedInventory = nbt.getList("infiniteParkedInventory",
+                    net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
+            }
+            pd.infiniteParkedSelectedSlot = nbt.contains("infiniteParkedSelectedSlot") ? nbt.getInt("infiniteParkedSelectedSlot") : 0;
+            pd.infiniteParkedStats = nbt.contains("infiniteParkedStats") ? nbt.getString("infiniteParkedStats") : "";
+            pd.infiniteParkedBiomeId = nbt.contains("infiniteParkedBiomeId") ? nbt.getString("infiniteParkedBiomeId") : "";
+            pd.infiniteParkedLevelIndex = nbt.contains("infiniteParkedLevelIndex") ? nbt.getInt("infiniteParkedLevelIndex") : 0;
             pd.lastKnownName = nbt.contains("lastKnownName") ? nbt.getString("lastKnownName") : "";
             return pd;
         }
@@ -631,6 +661,12 @@ public class CrafticsSavedData extends PersistentState {
             pd.infiniteStashInventory = nbt.getListOrEmpty("infiniteStashInventory");
             pd.infiniteStashSelectedSlot = nbt.getInt("infiniteStashSelectedSlot", 0);
             pd.infiniteStashStats = nbt.getString("infiniteStashStats", "");
+            pd.infiniteSuspended = nbt.getBoolean("infiniteSuspended", false);
+            pd.infiniteParkedInventory = nbt.getListOrEmpty("infiniteParkedInventory");
+            pd.infiniteParkedSelectedSlot = nbt.getInt("infiniteParkedSelectedSlot", 0);
+            pd.infiniteParkedStats = nbt.getString("infiniteParkedStats", "");
+            pd.infiniteParkedBiomeId = nbt.getString("infiniteParkedBiomeId", "");
+            pd.infiniteParkedLevelIndex = nbt.getInt("infiniteParkedLevelIndex", 0);
             pd.lastKnownName = nbt.getString("lastKnownName", "");
             return pd;
         }

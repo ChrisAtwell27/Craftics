@@ -17,7 +17,9 @@ public record TileSetPayload(
     int[] enemyMap,      // flat: [x, z, entityId, x, z, entityId, ...]
     String enemyTypes,   // pipe-separated entity type IDs parallel to enemyMap triplets
     int[] mountTiles,    // flat: [x1, z1, ...] - netherite mount 1×3 footprint side tiles
-    int[] warningArrows  // flat: [x, z, dx, dz, ...] - directional telegraph arrow glyphs
+    int[] warningArrows, // flat: [x, z, dx, dz, ...] - directional telegraph arrow glyphs
+    int[] forecastPath,  // flat: [x1, z1, ...] - tiles enemies will walk next turn (Steampunk radar)
+    int[] forecastStrike // flat: [x1, z1, ...] - tiles that will be struck next turn (Steampunk radar)
 ) implements CustomPayload {
 
     public static final Id<TileSetPayload> ID =
@@ -35,7 +37,10 @@ public record TileSetPayload(
         String types = buf.readString();
         int[] mount = readIntArray(buf);
         int[] arrows = readIntArray(buf);
-        return new TileSetPayload(move, attack, danger, warning, enemy, types, mount, arrows);
+        int[] forecastPath = readIntArray(buf);
+        int[] forecastStrike = readIntArray(buf);
+        return new TileSetPayload(move, attack, danger, warning, enemy, types, mount, arrows,
+            forecastPath, forecastStrike);
     }
 
     private void encode(RegistryByteBuf buf) {
@@ -47,6 +52,8 @@ public record TileSetPayload(
         buf.writeString(enemyTypes);
         writeIntArray(buf, mountTiles);
         writeIntArray(buf, warningArrows);
+        writeIntArray(buf, forecastPath);
+        writeIntArray(buf, forecastStrike);
     }
 
     private static void writeIntArray(RegistryByteBuf buf, int[] arr) {

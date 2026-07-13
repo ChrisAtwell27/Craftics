@@ -22,6 +22,11 @@ import net.minecraft.registry.Registries;
  * resolves a live item by parsing its registry ID - which means Copper Age
  * Backport armor (registered under the {@code minecraft:} namespace as
  * {@code copper_*}) is picked up automatically with no compat hook.
+ *
+ * <p>A material {@link #baseAC} does not know falls back to whatever
+ * {@code ArmorSetRegistry} has registered for that key, so a mod (or a datapack)
+ * can give its armor an AC by registering an {@code ArmorSetEntry.armorClass}
+ * rather than by editing the switch below.
  */
 public final class ArmorClassTable {
 
@@ -31,9 +36,10 @@ public final class ArmorClassTable {
     public enum Slot { HELMET, CHESTPLATE, LEGGINGS, BOOTS }
 
     /**
-     * Base AC ({@code B}) for an armor material, keyed by the registry-ID prefix
-     * (e.g. {@code "iron"} from {@code iron_helmet}). Unknown materials -
-     * including modded armor that hasn't registered an AC - return 0.
+     * Base AC ({@code B}) for a built-in armor material, keyed by the registry-ID
+     * prefix (e.g. {@code "iron"} from {@code iron_helmet}). Unknown materials
+     * return 0; use {@link #resolveBaseAC} to also consult the armor-set registry.
+     * Kept registry-free so the AC formula stays unit-testable.
      */
     public static int baseAC(String material) {
         return switch (material) {
@@ -86,20 +92,39 @@ public final class ArmorClassTable {
     }
 
     /**
-     * AC contributed by a single armor item (vanilla + Copper Age Backport).
-     * Returns 0 for empty slots, non-armor items, or unrecognized materials.
+     * Base AC for an armor set key: the built-in {@link #baseAC} table first, then
+     * whatever {@code ArmorSetRegistry} has registered for that key. Registered sets
+     * therefore cannot override a vanilla material's AC, only supply one for a
+     * material the table doesn't know.
+     */
+    public static int resolveBaseAC(String armorSetKey) {
+        if (armorSetKey == null) return 0;
+        int builtIn = baseAC(armorSetKey);
+        if (builtIn > 0) return builtIn;
+        return com.crackedgames.craftics.api.registry.ArmorSetRegistry.getArmorClass(armorSetKey);
+    }
+
+    /** The slot an armor item occupies, or {@code null} if it is not an armor piece. */
+    public static Slot slotOf(Item item) {
+        if (item == null) return null;
+        String path = Registries.ITEM.getId(item).getPath();
+        if (path.endsWith("_helmet"))     return Slot.HELMET;
+        if (path.endsWith("_chestplate")) return Slot.CHESTPLATE;
+        if (path.endsWith("_leggings"))   return Slot.LEGGINGS;
+        if (path.endsWith("_boots"))      return Slot.BOOTS;
+        return null;
+    }
+
+    /**
+     * AC contributed by a single armor item - vanilla, Copper Age Backport, or any
+     * modded set that registered an {@code armorClass}. Returns 0 for empty slots,
+     * non-armor items, or materials with no AC anywhere.
      */
     public static int getPieceAC(Item item) {
         if (item == null) return 0;
-        String material = materialOf(item);
-        if (material == null) return 0;
-        String path = Registries.ITEM.getId(item).getPath();
-        Slot slot;
-        if (path.endsWith("_helmet"))          slot = Slot.HELMET;
-        else if (path.endsWith("_chestplate")) slot = Slot.CHESTPLATE;
-        else if (path.endsWith("_leggings"))   slot = Slot.LEGGINGS;
-        else                                   slot = Slot.BOOTS;
-        return pieceAC(baseAC(material), slot);
+        Slot slot = slotOf(item);
+        if (slot == null) return 0;
+        return pieceAC(resolveBaseAC(armorSetKeyOf(item)), slot);
     }
 
     /** AC contributed by a worn stack. Empty stacks contribute 0. */

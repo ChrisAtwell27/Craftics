@@ -52,9 +52,13 @@ import java.util.UUID;
  *       the bell and a random biome starts, forever. Difficulty keys off the
  *       cleared count (see {@link InfiniteSpec}); every 10 biomes the boss
  *       gains +1 move in its pool and +1 action per turn.</li>
- *   <li><b>Exit</b>: Go Home after a level, {@code /home} from the rest room,
- *       party wipe, or the host logging out. Run items vanish, the stash comes
- *       back, the best score is banked on the global board.</li>
+ *   <li><b>Save points</b>: Go Home, {@code /home}, or logging out PARKS the
+ *       host's run - run inventory and progression are stowed, the stash comes
+ *       back, and the score/biome/level cursor stay saved. Opening Infinite
+ *       Mode again resumes it; {@code /craftics infinite stop} abandons it.</li>
+ *   <li><b>Exit</b>: a party wipe (or hardcore defeat) ends the run for real.
+ *       Run items vanish, the stash comes back, the best score is banked on
+ *       the global board.</li>
  * </ul>
  *
  * Run state lives on the HOST's {@code PlayerData} (same record that carries
@@ -116,6 +120,13 @@ public final class InfiniteRunManager {
     /** True when {@code uuid}'s PlayerData hosts an active infinite run. */
     public static boolean isHostOfActiveRun(CrafticsSavedData data, UUID uuid) {
         return uuid != null && data.getPlayerData(uuid).infiniteActive;
+    }
+
+    /** True when {@code uuid} has an infinite run parked at a save point. */
+    public static boolean hasParkedRun(CrafticsSavedData data, UUID uuid) {
+        if (uuid == null) return false;
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(uuid);
+        return pd.infiniteActive && pd.infiniteSuspended;
     }
 
     /**
@@ -195,7 +206,9 @@ public final class InfiniteRunManager {
                                        BiomeTemplate biome, int globalLevel) {
         if (hostUuid == null) return null;
         CrafticsSavedData.PlayerData host = data.getPlayerData(hostUuid);
-        if (!host.infiniteActive) return null;
+        // A suspended run is not being played: a host with a parked run who starts a
+        // NORMAL biome run must not have infinite scaling bleed into it.
+        if (!host.infiniteActive || host.infiniteSuspended) return null;
         int ordinal = Math.max(0, host.infiniteBiomesCleared);
         if (biome == null || !biome.isBossLevel(globalLevel)) {
             return InfiniteSpec.forLevel(ordinal);
@@ -394,6 +407,186 @@ public final class InfiniteRunManager {
         return ActionResult.SUCCESS;
     }
 
+    // ─── Save points (suspend / resume) ─────────────────────────────────────────
+
+    /**
+     * Park {@code hostUuid}'s run at a save point instead of ending it. The score, the
+     * cleared count, and the biome/level cursor all stay on the host's record; the host's
+     * run inventory and run progression are parked, and their pre-run stash comes back.
+     * Opening Infinite Mode again resumes exactly here; {@code /craftics infinite stop}
+     * abandons it.
+     *
+     * <p>Other participants' seats are forfeited (they are restored and can be re-invited
+     * at resume), matching how a participant's own disconnect already works. The island's
+     * run lock is released so a parked run never blocks the island. Safe to call twice,
+     * and safe to call for an offline host - the parking half then happens on their next
+     * join, via {@link #onPlayerJoin}.
+     */
+    public static void suspendRun(MinecraftServer server, UUID hostUuid, String reason) {
+        ServerWorld overworld = server.getOverworld();
+        CrafticsSavedData data = CrafticsSavedData.get(overworld);
+        PlayerProgression progression = PlayerProgression.get(overworld);
+        CrafticsSavedData.PlayerData host = data.getPlayerData(hostUuid);
+        if (!host.infiniteActive) return;
+        if (!host.infiniteSuspended) {
+            // Move the run's biome/level cursor off the SHARED fields and onto its own
+            // parked pair, so a normal biome run can use activeBiomeId/LevelIndex while
+            // this run waits. Resume moves it back.
+            host.infiniteParkedBiomeId =
+                host.activeBiomeId == null ? STARTING_BIOME : host.activeBiomeId;
+            host.infiniteParkedLevelIndex = host.activeBiomeLevelIndex;
+            host.endBiomeRun();
+        }
+        host.infiniteSuspended = true;
+
+        // Release the island lock: a parked run must never wedge the island. Resume
+        // re-stamps it. (Same all-records sweep as endRun, for the same drift reason.)
+        for (CrafticsSavedData.PlayerData pd : data.getAllPlayerData().values()) {
+            if (hostUuid.toString().equals(pd.infiniteHostRef)) {
+                pd.infiniteHostRef = "";
+            }
+        }
+
+        // Everyone but the host steps out (their run items evaporate, stash returns).
+        // A member still mid-fight is left alone - their own exit path restores them.
+        for (UUID uuid : parseUuids(host.infiniteParticipants)) {
+            if (uuid.equals(hostUuid)) continue;
+            ServerPlayerEntity member = server.getPlayerManager().getPlayer(uuid);
+            if (member != null && !CombatManager.isEngaged(uuid)) {
+                member.sendMessage(Text.literal(
+                    "§5§l∞ §7The host parked the run - your stashed items return."), false);
+                restoreParticipant(member, data, progression);
+            }
+        }
+        host.infiniteParticipants = "";
+
+        ServerPlayerEntity hostPlayer = server.getPlayerManager().getPlayer(hostUuid);
+        if (hostPlayer != null) {
+            parkAndRestore(hostPlayer, host, data, progression);
+        }
+        data.markDirty();
+        CrafticsMod.LOGGER.info("Infinite run suspended ({}) host={} score={} biome={} level={}",
+            reason, hostUuid, host.infiniteScore, host.infiniteParkedBiomeId,
+            host.infiniteParkedLevelIndex);
+    }
+
+    /**
+     * The parking half of a suspend: snapshot the host's run inventory + run progression
+     * into the parked fields, then hand their pre-run stash back. No-op when the stash was
+     * already restored (double suspend, or an orphaned state a previous version left).
+     */
+    private static void parkAndRestore(ServerPlayerEntity player, CrafticsSavedData.PlayerData pd,
+                                       CrafticsSavedData data, PlayerProgression progression) {
+        if (!pd.infiniteStashActive) return;
+        pd.infiniteParkedInventory = player.getInventory().writeNbt(new NbtList());
+        //? if <=1.21.4 {
+        pd.infiniteParkedSelectedSlot = player.getInventory().selectedSlot;
+        //?} else
+        /*pd.infiniteParkedSelectedSlot = player.getInventory().getSelectedSlot();*/
+        pd.infiniteParkedStats = progression.snapshotSerialized(player.getUuid());
+        restoreParticipant(player, data, progression);
+        // restoreParticipant cleared the host pointer, but this run still exists.
+        pd.infiniteRunHost = player.getUuid().toString();
+        player.sendMessage(Text.literal("§5§l∞ RUN SAVED §r§7- score §f" + pd.infiniteScore
+            + "§7, parked at §f" + pd.infiniteParkedBiomeId + "§7 level §f"
+            + (pd.infiniteParkedLevelIndex + 1) + "§7."), false);
+        player.sendMessage(Text.literal(
+            "§7Open §dInfinite Mode§7 to resume, or §e/craftics infinite stop§7 to abandon it."), false);
+    }
+
+    /**
+     * Resume {@code starter}'s parked run: the run inventory and run progression come
+     * back, the CURRENT overworld inventory + stats are freshly stashed (whatever changed
+     * while the run was parked is what must return when it ends), and the party lands in
+     * the saved biome at the saved level. Returns the biome id to begin in, or
+     * {@code null} when the starter has no parked run - the caller then starts fresh.
+     *
+     * <p>Participants other than the host start the resumed run with the usual clean
+     * slate; only the host carries parked items.
+     */
+    public static String resumeRun(ServerPlayerEntity starter, List<UUID> participants) {
+        ServerWorld world = (ServerWorld) starter.getEntityWorld();
+        MinecraftServer server = world.getServer();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        PlayerProgression progression = PlayerProgression.get(world);
+        UUID hostUuid = starter.getUuid();
+        CrafticsSavedData.PlayerData host = data.getPlayerData(hostUuid);
+        if (!host.infiniteActive || !host.infiniteSuspended) return null;
+        // The shared cursor may be carrying a normal biome run right now; resuming would
+        // overwrite it. The caller gates on this too - this is the belt to its suspenders.
+        if (host.isInBiomeRun()) {
+            starter.sendMessage(Text.literal(
+                "§cFinish your current biome run (or Go Home from it) before resuming the infinite run."), false);
+            return null;
+        }
+
+        host.infiniteSuspended = false;
+        host.infiniteParticipants = joinUuids(participants);
+        // Move the parked cursor back onto the shared fields the live run plays on.
+        host.startBiomeRun(host.infiniteParkedBiomeId == null || host.infiniteParkedBiomeId.isEmpty()
+            ? STARTING_BIOME : host.infiniteParkedBiomeId);
+        host.activeBiomeLevelIndex = Math.max(0, host.infiniteParkedLevelIndex);
+        host.infiniteParkedBiomeId = "";
+        host.infiniteParkedLevelIndex = 0;
+        UUID islandOwner = data.getEffectiveWorldOwner(hostUuid);
+        data.getPlayerData(islandOwner).infiniteHostRef = hostUuid.toString();
+
+        for (UUID uuid : participants) {
+            ServerPlayerEntity member = server.getPlayerManager().getPlayer(uuid);
+            if (member == null) continue;
+            CrafticsSavedData.PlayerData pd = data.getPlayerData(uuid);
+            pd.infiniteRunHost = hostUuid.toString();
+            pd.lastKnownName = member.getName().getString();
+            if (uuid.equals(hostUuid)) {
+                unparkHost(member, pd, progression);
+            } else {
+                stashAndReset(member, pd, progression);
+            }
+            syncStats(member, progression, pd);
+            member.sendMessage(Text.literal("§5§l∞ RUN RESUMED ∞"), false);
+            member.sendMessage(Text.literal("§7Score §f" + host.infiniteScore
+                + "§7, " + host.infiniteBiomesCleared + " biome"
+                + (host.infiniteBiomesCleared == 1 ? "" : "s") + " cleared - back into §f"
+                + host.activeBiomeId + "§7 at level §f" + (host.activeBiomeLevelIndex + 1) + "§7."), false);
+        }
+        data.markDirty();
+        CrafticsMod.LOGGER.info("Infinite run resumed by {} at {} level {} (score {})",
+            starter.getName().getString(), host.activeBiomeId,
+            host.activeBiomeLevelIndex, host.infiniteScore);
+        return host.activeBiomeId;
+    }
+
+    /**
+     * The un-parking half of a resume. The stash is re-snapshotted from the player's
+     * CURRENT state, not reused: anything they gained or lost while the run was parked
+     * belongs to their real profile and must be what comes back when the run ends.
+     */
+    private static void unparkHost(ServerPlayerEntity player, CrafticsSavedData.PlayerData pd,
+                                   PlayerProgression progression) {
+        pd.infiniteStashInventory = player.getInventory().writeNbt(new NbtList());
+        //? if <=1.21.4 {
+        pd.infiniteStashSelectedSlot = player.getInventory().selectedSlot;
+        //?} else
+        /*pd.infiniteStashSelectedSlot = player.getInventory().getSelectedSlot();*/
+        pd.infiniteStashStats = progression.snapshotSerialized(player.getUuid());
+        pd.infiniteStashActive = true;
+
+        var inventory = player.getInventory();
+        inventory.clear();
+        inventory.readNbt(pd.infiniteParkedInventory);
+        //? if <=1.21.4 {
+        inventory.selectedSlot = Math.max(0, Math.min(pd.infiniteParkedSelectedSlot, 8));
+        //?} else
+        /*inventory.setSelectedSlot(Math.max(0, Math.min(pd.infiniteParkedSelectedSlot, 8)));*/
+        inventory.markDirty();
+        com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
+        progression.restoreSnapshot(player.getUuid(), pd.infiniteParkedStats);
+
+        pd.infiniteParkedInventory = new NbtList();
+        pd.infiniteParkedSelectedSlot = 0;
+        pd.infiniteParkedStats = "";
+    }
+
     // ─── Run end ───────────────────────────────────────────────────────────────
 
     /**
@@ -418,7 +611,16 @@ public final class InfiniteRunManager {
         host.infiniteBiomesCleared = 0;
         host.infiniteScore = 0;
         host.infiniteParticipants = "";
-        host.endBiomeRun();
+        // A LIVE run owns the shared cursor; a suspended one parked it, and the shared
+        // fields may already be carrying a normal biome run that must survive this.
+        if (!host.infiniteSuspended) host.endBiomeRun();
+        // Any parked save point dies with the run - its items were run loot.
+        host.infiniteSuspended = false;
+        host.infiniteParkedInventory = new NbtList();
+        host.infiniteParkedSelectedSlot = 0;
+        host.infiniteParkedStats = "";
+        host.infiniteParkedBiomeId = "";
+        host.infiniteParkedLevelIndex = 0;
 
         // Clear the island-side ref on WHICHEVER record it was stamped on at startRun.
         // getEffectiveWorldOwner resolves through the party leader, so re-resolving it
@@ -477,9 +679,17 @@ public final class InfiniteRunManager {
     }
 
     /**
-     * Join-time recovery. Logging out mid-run forfeits your seat: a returning
-     * participant is restored and dropped from the roster, and a returning HOST
-     * ends the whole run (nobody else can advance it).
+     * Join-time recovery. A returning HOST's run parks at a save point - their run
+     * inventory is stowed, their stash comes back, and Infinite Mode resumes it. A
+     * returning participant forfeits their seat and is restored (only the host can
+     * carry a run).
+     *
+     * <p>The stash restore here is UNCONDITIONAL once a stash exists and no live run
+     * claims it. The old flow routed the host through {@code endRun}, whose
+     * {@code !infiniteActive} guard could be defeated by any exit path that ended the
+     * run while the host was offline - leaving the player permanently holding the run
+     * inventory with their real one stranded in the stash. That state (and old saves
+     * already in it) now heals on the next join.
      */
     public static void onPlayerJoin(ServerPlayerEntity player) {
         MinecraftServer server = player.getServer();
@@ -491,12 +701,15 @@ public final class InfiniteRunManager {
         if (!pd.infiniteStashActive) return;
 
         String hostRef = pd.infiniteRunHost;
-        if (player.getUuid().toString().equals(hostRef)) {
-            endRun(server, player.getUuid(), "host returned from disconnect");
+        if (player.getUuid().toString().equals(hostRef) && pd.infiniteActive) {
+            // Logging out mid-run is a save point, not a forfeit.
+            suspendRun(server, player.getUuid(), "logged out mid-run");
             return;
         }
-        // Participant: leave the (possibly still-running) run and take the stash back.
-        if (hostRef != null && !hostRef.isEmpty()) {
+        // Either a participant returning to someone else's run (seat forfeited), or an
+        // orphaned stash whose run already ended behind this player's back. Both cases:
+        // take the stash back, no conditions attached.
+        if (hostRef != null && !hostRef.isEmpty() && !player.getUuid().toString().equals(hostRef)) {
             try {
                 CrafticsSavedData.PlayerData host = data.getPlayerData(UUID.fromString(hostRef));
                 host.infiniteParticipants = removeUuid(host.infiniteParticipants, player.getUuid());
@@ -506,8 +719,8 @@ public final class InfiniteRunManager {
     }
 
     /**
-     * A player used {@code /home} outside combat (e.g. from the rest room).
-     * The host banks and ends the run; a non-host member just steps out of it.
+     * A player used {@code /home} outside combat (e.g. from the rest room). The host's
+     * run parks at a save point; a non-host member just steps out of it.
      */
     public static void onHomeExit(ServerPlayerEntity player) {
         MinecraftServer server = player.getServer();
@@ -517,7 +730,37 @@ public final class InfiniteRunManager {
         if (pd.infiniteRunHost == null || pd.infiniteRunHost.isEmpty()) return;
 
         if (pd.infiniteRunHost.equals(player.getUuid().toString())) {
-            endRun(server, player.getUuid(), "returned home");
+            suspendRun(server, player.getUuid(), "returned home");
+            return;
+        }
+        try {
+            CrafticsSavedData.PlayerData host = data.getPlayerData(UUID.fromString(pd.infiniteRunHost));
+            host.infiniteParticipants = removeUuid(host.infiniteParticipants, player.getUuid());
+            data.markDirty();
+        } catch (IllegalArgumentException ignored) {}
+        player.sendMessage(Text.literal("§7You leave the infinite run."), false);
+        restoreParticipant(player, data, PlayerProgression.get(server.getOverworld()));
+    }
+
+    /**
+     * Explicitly throw the run away ({@code /craftics infinite stop}). The host's run -
+     * parked or live - ends for good: run items evaporate, stashes come back, the score
+     * stays banked. A non-host member just steps out, same as {@code /home}.
+     */
+    public static void abandonRun(ServerPlayerEntity player) {
+        MinecraftServer server = player.getServer();
+        if (server == null) return;
+        CrafticsSavedData data = CrafticsSavedData.get(server.getOverworld());
+        CrafticsSavedData.PlayerData pd = data.getPlayerData(player.getUuid());
+        if (pd.infiniteRunHost == null || pd.infiniteRunHost.isEmpty()) return;
+
+        if (pd.infiniteRunHost.equals(player.getUuid().toString())) {
+            endRun(server, player.getUuid(), "abandoned");
+            // endRun's restore only reaches players whose stash is still active; a host
+            // abandoning an already-parked run was restored at suspend time, so the only
+            // thing left to clear is the pointer that kept the parked run addressable.
+            pd.infiniteRunHost = "";
+            data.markDirty();
             return;
         }
         try {

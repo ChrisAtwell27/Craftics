@@ -27,6 +27,12 @@ import java.util.Map;
  *
  * @param armorSetId        the armor material key, e.g. {@code "iron"} or {@code "mymod:obsidian"}
  * @param damageTypeBonuses affinity bonus per 2 pieces for each damage type
+ * @param armorClass        base Armor Class {@code B} for the material, or {@code 0} to
+ *                          leave the material without an AC. Each worn piece derives its
+ *                          own AC from this via {@code ArmorClassTable.pieceAC}, so a
+ *                          modded set only has to state one number. Vanilla values for
+ *                          reference: leather 2, chainmail/gold 3, iron 4, diamond 6,
+ *                          netherite 7
  * @param speedBonus        flat speed bonus when the full 4-piece set is worn
  * @param apBonus           flat AP bonus when the full 4-piece set is worn
  * @param defenseBonus      flat defense (armor class) bonus when the full 4-piece set is worn
@@ -38,6 +44,7 @@ import java.util.Map;
 public record ArmorSetEntry(
     String armorSetId,
     Map<DamageType, Integer> damageTypeBonuses,
+    int armorClass,
     int speedBonus,
     int apBonus,
     int defenseBonus,
@@ -57,6 +64,7 @@ public record ArmorSetEntry(
     public static class Builder {
         private final String armorSetId;
         private final Map<DamageType, Integer> damageTypeBonuses = new HashMap<>();
+        private int armorClass = 0;
         private int speedBonus = 0, apBonus = 0, defenseBonus = 0, attackBonus = 0, apCostReduction = 0;
         private int lightWeaponDamage = 0, lightWeaponCrit = 0;
         private String description = "";
@@ -68,6 +76,15 @@ public record ArmorSetEntry(
 
         /** Apply the same affinity bonus per 2 pieces to every damage type. */
         public Builder allDamageBonus(int bonus) { for (DamageType t : DamageType.values()) damageTypeBonuses.put(t, bonus); return this; }
+
+        /**
+         * Base Armor Class {@code B} for this material. Each worn piece derives its own
+         * AC from it (leggings {@code B}, chestplate {@code B+1}, helmet/boots {@code ⌈B/2⌉}),
+         * so modded armor only has to state one number to join the AC system.
+         * Vanilla reference: leather 2, chainmail/gold 3, iron 4, diamond 6, netherite 7.
+         * Default {@code 0} - the material contributes no AC.
+         */
+        public Builder armorClass(int v) { this.armorClass = v; return this; }
 
         /** Flat speed bonus when the full 4-piece set is worn. Default {@code 0}. */
         public Builder speedBonus(int v) { this.speedBonus = v; return this; }
@@ -93,7 +110,7 @@ public record ArmorSetEntry(
         /** One-line mechanic text shown on armor tooltips. */
         public Builder description(String d) { this.description = d; return this; }
         public ArmorSetEntry build() {
-            return new ArmorSetEntry(armorSetId, Map.copyOf(damageTypeBonuses),
+            return new ArmorSetEntry(armorSetId, Map.copyOf(damageTypeBonuses), armorClass,
                 speedBonus, apBonus, defenseBonus, attackBonus, apCostReduction,
                 lightWeaponDamage, lightWeaponCrit, description);
         }

@@ -56,6 +56,22 @@ public final class ArmorSetRegistry {
         return entry != null ? entry.getDamageTypeBonus(type) : 0;
     }
 
+    /**
+     * Base Armor Class {@code B} for {@code armorSet}, or {@code 0} if the set is not
+     * registered or declared no AC. {@code ArmorClassTable} falls back to this for any
+     * material its built-in table doesn't know, which is how modded armor joins the AC
+     * system without a hardcoded case.
+     */
+    public static int getArmorClass(String armorSet) {
+        ArmorSetEntry entry = REGISTRY.get(armorSet);
+        return entry != null ? entry.armorClass() : 0;
+    }
+
+    /** Whether {@code armorSet} has a registered entry. */
+    public static boolean isRegistered(String armorSet) {
+        return armorSet != null && REGISTRY.containsKey(armorSet);
+    }
+
     /** Flat speed bonus for the full 4-piece set, or {@code 0} if not registered. */
     public static int getSpeedBonus(String armorSet) {
         ArmorSetEntry entry = REGISTRY.get(armorSet);

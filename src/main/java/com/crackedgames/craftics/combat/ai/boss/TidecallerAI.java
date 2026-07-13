@@ -15,7 +15,8 @@ import java.util.List;
  *
  * Abilities:
  * - Tidal Wave: 2-tile-wide column floods with water, 3 turns. P2: 3-wide + permanent.
- * - Trident Storm: 3 tridents in spread, 4 dmg each. Target tiles shimmer blue.
+ * - Trident Storm: three 3×3 splash zones (player + advance + flank), 4 dmg
+ *   (P2: 5) + brief Slowness. Every impacted tile shimmers blue.
  * - Riptide Charge: On water, charge 4 tiles, ATK+3, knockback 2.
  * - Call of the Deep: Summon 1-2 Drowned (9HP/3ATK) on water tiles. P2: 2-3 every 2 turns.
  *
@@ -124,19 +125,32 @@ public class TidecallerAI extends BossAI {
             return new EnemyAction.Idle();
         }
 
-        // Trident Storm at range
+        // Trident Storm at range - a true volley: three 3×3 impact zones (one on
+        // the player, one ahead toward the boss, one on the flank), so a lazy
+        // one-tile sidestep can walk straight into the next splash. The warning
+        // paints every tile that will actually be hit.
         if (!isOnCooldown(CD_TRIDENT) && dist >= 2 && dist <= 4) {
             setCooldown(CD_TRIDENT, 2);
-            // 3 tridents at different tiles near the player
-            List<GridPos> targets = new ArrayList<>();
-            targets.add(playerPos);
-            targets.add(new GridPos(playerPos.x() + 1, playerPos.z()));
-            targets.add(new GridPos(playerPos.x() - 1, playerPos.z()));
-            targets.removeIf(p -> !arena.isInBounds(p));
-            EnemyAction tridentAction = new EnemyAction.AreaAttack(playerPos, 1, 4, "trident_storm");
+            int[] toward = getDirectionToward(playerPos, myPos);
+            GridPos second = new GridPos(playerPos.x() + toward[0] * 2, playerPos.z() + toward[1] * 2);
+            GridPos third = new GridPos(playerPos.x() + toward[1] * 2, playerPos.z() + toward[0] * 2);
+            List<GridPos> centers = new ArrayList<>();
+            centers.add(playerPos);
+            if (arena.isInBounds(second)) centers.add(second);
+            if (arena.isInBounds(third)) centers.add(third);
+            List<GridPos> warnTiles = new ArrayList<>();
+            List<EnemyAction> splashes = new ArrayList<>();
+            for (GridPos c : centers) {
+                for (GridPos t : getAreaTiles(arena, c, 1)) {
+                    if (!warnTiles.contains(t)) warnTiles.add(t);
+                }
+                splashes.add(new EnemyAction.AreaAttack(c, 1, isPhaseTwo() ? 5 : 4, "trident_storm"));
+            }
+            EnemyAction tridentAction = splashes.size() == 1
+                ? splashes.get(0) : new EnemyAction.CompositeAction(splashes);
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                targets, 1, tridentAction, 0xFF2299DD);
+                warnTiles, 1, tridentAction, 0xFF2299DD);
             return new EnemyAction.Idle();
         }
 

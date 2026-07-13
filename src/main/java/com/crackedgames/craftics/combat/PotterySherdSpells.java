@@ -189,8 +189,10 @@ public class PotterySherdSpells {
     /**
      * Roll whether the sherd shatters on this cast.
      * Base 10%, reduced by Special affinity points and potency bonus.
+     * A Robe-armored caster never shatters one at all.
      */
     private static boolean rollSherdBreak(ServerPlayerEntity player) {
+        if (ArmorSetEffects.sherdsNeverBreak(PlayerCombatStats.getArmorSet(player))) return false;
         int reducedPercent = SHERD_BREAK_BASE_PERCENT
             - SpecialAffinity.points(player)
             - SpecialAffinity.potencyBonus(player);

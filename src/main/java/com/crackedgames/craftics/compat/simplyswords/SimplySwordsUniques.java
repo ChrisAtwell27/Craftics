@@ -134,7 +134,8 @@ public final class SimplySwordsUniques {
         any |= u("arcanethyst", DamageType.SPECIAL, sword(0), 1, 1, arcanethyst());
         any |= u("magiblade", DamageType.SPECIAL, sword(0), 1, 1, magiblade());
         any |= u("magic_estoc", DamageType.SPECIAL, sword(0), 1, 1, magicEstoc());
-        any |= u("magiscythe", DamageType.SPECIAL, axe(1), 2, 1, magiscythe());
+        // A scythe is a hafted polearm; it reaches, like the standard-tier scythes do.
+        any |= u("magiscythe", DamageType.SPECIAL, axe(1), 2, 2, magiscythe());
         any |= u("magispear", DamageType.SPECIAL, sword(-1), 1, 2, magispear());
         any |= u("enigma", DamageType.SPECIAL, sword(0), 1, 1, enigma());
         any |= u("twilight", DamageType.SPECIAL, sword(1), 1, 1, twilight());

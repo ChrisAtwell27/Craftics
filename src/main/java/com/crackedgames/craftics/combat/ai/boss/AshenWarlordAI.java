@@ -19,10 +19,10 @@ import java.util.List;
  * - Summon Blaze Guard: 2 Blazes (10HP/5ATK/Range 4). Every 4 turns, max 3.
  *   P2: Wither Skeletons (12HP/6ATK, also apply Wither) instead.
  * - Ash Brand: Marks the player's row and column, then scorches both lanes.
- * - Fire Pillar: Forward line strike. P2 adds mirrored reverse lane.
+ * - Fire Pillar: Forward line strike. P2: full 8-lane star of flame.
  *
  * Phase 2 - "Warlord's Command": Arc wither slash, wither skeletons, speed 4,
- * double wither stacking, X-pattern fire pillar.
+ * double wither stacking, 8-lane star fire pillar.
  */
 public class AshenWarlordAI extends BossAI {
     private static final String CD_SUMMON = "summon_guard";
@@ -79,15 +79,21 @@ public class AshenWarlordAI extends BossAI {
             List<GridPos> pillarTiles = getLineTiles(arena, myPos, dir[0], dir[1], 4);
             EnemyAction pillarAction;
             if (isPhaseTwo()) {
-                List<GridPos> xTiles = new ArrayList<>(pillarTiles);
-                xTiles.addAll(getLineTiles(arena, myPos, -dir[0], -dir[1], 4));
-                pillarAction = new EnemyAction.CompositeAction(List.of(
-                    new EnemyAction.LineAttack(myPos, dir[0], dir[1], 4, 6),
-                    new EnemyAction.LineAttack(myPos, -dir[0], -dir[1], 4, 6)
-                ));
+                // Phase 2: a full 8-lane star of flame erupts from the Warlord.
+                // Only the off-lane pockets between the rays are safe - the
+                // telegraph turn is for finding one.
+                int[][] starDirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1},
+                                    {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+                List<GridPos> starTiles = new ArrayList<>();
+                List<EnemyAction> rays = new ArrayList<>();
+                for (int[] d : starDirs) {
+                    starTiles.addAll(getLineTiles(arena, myPos, d[0], d[1], 4));
+                    rays.add(new EnemyAction.LineAttack(myPos, d[0], d[1], 4, 6));
+                }
+                pillarAction = new EnemyAction.CompositeAction(rays);
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                    xTiles, 1, pillarAction, 0xFFFF6600);
+                    starTiles, 1, pillarAction, 0xFFFF6600);
             } else {
                 // Single-direction pillar carries its travel direction; the phase-2
                 // X variant fires BOTH ways at once, so it stays arrow-less rather

@@ -24,8 +24,9 @@ public final class WeaponRegistry {
     /** Items whose current entry came from a JSON datapack - dropped on /reload. */
     private static final Set<Item> DATAPACK_KEYS = ConcurrentHashMap.newKeySet();
     private static final WeaponEntry DEFAULT = new WeaponEntry(
-        null, DamageType.PHYSICAL, () -> com.crackedgames.craftics.CrafticsMod.CONFIG.dmgFist(),
-        1, 1, false, 0.0, null
+        null, DamageType.PHYSICAL, null,
+        () -> com.crackedgames.craftics.CrafticsMod.CONFIG.dmgFist(),
+        1, 1, false, 0.0, null, null
     );
 
     private WeaponRegistry() {}
@@ -72,9 +73,42 @@ public final class WeaponRegistry {
         return REGISTRY.containsKey(item);
     }
 
+    /**
+     * Every currently-registered weapon item - vanilla, compat, and datapack alike.
+     * Snapshot: later registrations are not reflected. Useful for building "any weapon"
+     * loot pools that should automatically pick up whatever mods are installed.
+     *
+     * @since 0.3.0
+     */
+    public static java.util.Set<Item> registeredItems() {
+        return java.util.Set.copyOf(REGISTRY.keySet());
+    }
+
     /** Damage type for {@code item}, or {@code PHYSICAL} if not registered. */
     public static DamageType getDamageType(Item item) {
         return get(item).damageType();
+    }
+
+    /**
+     * The weapon's second affinity, or {@code null} when it has none. A hybrid weapon
+     * also scales off this type at half weight; resistances still use the primary.
+     *
+     * @since 0.3.0
+     */
+    @Nullable
+    public static DamageType getSecondaryDamageType(Item item) {
+        return get(item).secondaryDamageType();
+    }
+
+    /**
+     * The weapon's tile-aimed action, or {@code null} when it has none. Present only on
+     * weapons that do something to the ground instead of to an enemy.
+     *
+     * @since 0.3.0
+     */
+    @Nullable
+    public static com.crackedgames.craftics.api.TargetlessCastHandler getTargetlessCast(Item item) {
+        return get(item).targetlessCast();
     }
 
     /** Base attack power for {@code item}, or the configured fist damage if not registered. */

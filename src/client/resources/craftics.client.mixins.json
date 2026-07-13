@@ -28,7 +28,9 @@
     "RenderPhaseBuilderInvoker",
     "ScrollZoomMixin",
     "TitleScreenMixin",
-    "WorldCreatorMixin"
+    "WorldCreatorMixin",
+    "spellengine.SpellHotbarSuppressMixin",
+    "spellengine.SpellHudSuppressMixin"
   ],
   "injectors": {
     "defaultRequire": 1

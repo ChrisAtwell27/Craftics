@@ -101,9 +101,9 @@ public final class RunInviteManager {
                 data.getPlayerData(island).infiniteHostRef = "";
                 data.markDirty();
             } else if (world.getServer().getPlayerManager().getPlayer(parkedHost) == null) {
-                // Logging out mid-run forfeits it by design (onPlayerJoin ends it when the
-                // host returns). End it now so the island isn't locked while they're gone.
-                InfiniteRunManager.endRun(world.getServer(), parkedHost, "host offline");
+                // The host logged out mid-run: park it as a save point (their run and
+                // inventory survive for when they return) and free the island now.
+                InfiniteRunManager.suspendRun(world.getServer(), parkedHost, "host offline");
             } else {
                 starter.sendMessage(Text.literal(
                     "§cAn infinite run is in progress on this island. Ring its bell to continue, or have the host use §e/home§c to end it."), false);
@@ -128,6 +128,17 @@ public final class RunInviteManager {
         // Infinite mode rides the same lobby flow under a sentinel "biome id" -
         // there's no biome to validate and no unlock gate (everyone starts at plains).
         boolean infinite = InfiniteRunManager.START_ID.equals(biomeId);
+        if (infinite) {
+            // The live infinite run plays on the SHARED biome/level cursor. Starting or
+            // resuming one mid normal-run would overwrite that run's position; a parked
+            // infinite run, by contrast, keeps its own cursor and coexists fine.
+            if (pd.isInBiomeRun()) {
+                starter.sendMessage(Text.literal(
+                    "§cFinish your current biome run (or Go Home from it) before starting Infinite Mode."), false);
+                ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
+                return;
+            }
+        }
         if (!infinite) {
             BiomeTemplate biome = findBiome(biomeId);
             if (biome == null) {
@@ -268,10 +279,22 @@ public final class RunInviteManager {
         CrafticsSavedData data = CrafticsSavedData.get(world);
         CrafticsSavedData.PlayerData pd = data.getPlayerData(starter.getUuid());
 
-        // Infinite mode: the sentinel resolves here, after the lobby. Stash every
-        // participant's inventory/progression, mark the run, and land on plains.
+        // Infinite mode: the sentinel resolves here, after the lobby. A parked run
+        // resumes at its save point; otherwise stash every participant's
+        // inventory/progression, mark a fresh run, and land on plains. A parked run
+        // whose resume is refused (the shared cursor is mid normal-run) must NOT fall
+        // through to a fresh start - that would wipe the save point.
         if (InfiniteRunManager.START_ID.equals(biomeId)) {
-            biomeId = InfiniteRunManager.startRun(starter, participants);
+            if (InfiniteRunManager.hasParkedRun(data, starter.getUuid())) {
+                String resumed = InfiniteRunManager.resumeRun(starter, participants);
+                if (resumed == null) {
+                    ServerPlayNetworking.send(starter, new ExitCombatPayload(false));
+                    return;
+                }
+                biomeId = resumed;
+            } else {
+                biomeId = InfiniteRunManager.startRun(starter, participants);
+            }
         }
 
         // A run and a merchant scene are mutually exclusive. The invite filter

@@ -76,8 +76,8 @@ public class MoltenKingAI extends BossAI {
 
         // Lava Cage - deny escape routes around the player
         if (!isOnCooldown(CD_CAGE) && dist >= 2) {
-            List<GridPos> cageTiles = getLavaCageTiles(arena, playerPos);
-            if (!cageTiles.isEmpty()) {
+            List<GridPos> cageTiles = getLavaCageTiles(arena, playerPos, myPos);
+            if (cageTiles.size() >= 3) {
                 setCooldown(CD_CAGE, isPhaseTwo() ? 2 : 3);
                 pendingWarning = new BossWarning(
                     self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
@@ -147,17 +147,34 @@ public class MoltenKingAI extends BossAI {
         return meleeOrApproach(self, arena, playerPos, 0);
     }
 
-    private List<GridPos> getLavaCageTiles(GridArena arena, GridPos center) {
+    /**
+     * The full 8-tile ring around the player, minus one gap on the side facing
+     * AWAY from the boss. The cage reads as a real prison instead of four loose
+     * cardinal embers, and the single dark tile is the escape route - through
+     * the door the boss isn't standing at.
+     */
+    private List<GridPos> getLavaCageTiles(GridArena arena, GridPos center, GridPos bossPos) {
         List<GridPos> tiles = new ArrayList<>();
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
-                if (Math.abs(dx) + Math.abs(dz) != 1) continue;
+                if (dx == 0 && dz == 0) continue;
                 GridPos p = new GridPos(center.x() + dx, center.z() + dz);
                 if (!arena.isInBounds(p)) continue;
                 if (arena.getTile(p) == null || !arena.getTile(p).isWalkable()) continue;
                 tiles.add(p);
             }
         }
+        // Leave one gap: the ring tile farthest from the boss.
+        GridPos gap = null;
+        int best = Integer.MIN_VALUE;
+        for (GridPos t : tiles) {
+            int score = t.manhattanDistance(bossPos);
+            if (score > best) {
+                best = score;
+                gap = t;
+            }
+        }
+        if (gap != null) tiles.remove(gap);
         return tiles;
     }
 

@@ -62,6 +62,8 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.instruments.InstrumentsCompat.init();
         com.crackedgames.craftics.compat.paladins.PaladinsCompat.init();
         com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.init();
+        com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.init();
+        com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.init();
 
         // Addon entrypoint: invoked after all built-in content and compat modules are
         // registered, so addon registrations run last and win deterministically over
@@ -84,6 +86,7 @@ public class CrafticsMod implements ModInitializer {
 
         ModBlocks.register();
         com.crackedgames.craftics.item.ModItems.register();
+        com.crackedgames.craftics.item.ModItemGroups.register();
         ModScreenHandlers.register();
         com.crackedgames.craftics.sound.ModSounds.register();
         ModNetworking.registerServer();
@@ -375,7 +378,10 @@ public class CrafticsMod implements ModInitializer {
                 if (pd.inCombat && com.crackedgames.craftics.level.BiomeRegistry.getAllBiomes().isEmpty()) {
                     LOGGER.warn("Clearing stale inCombat flag for {} (biome registry empty)", player.getName().getString());
                     pd.inCombat = false;
-                    pd.endBiomeRun();
+                    // Only a LIVE infinite run owns the shared cursor. A parked one moved
+                    // its position to the parked fields (during onPlayerJoin, above), so
+                    // whatever the shared cursor holds now is a normal run's stale state.
+                    if (!pd.infiniteActive || pd.infiniteSuspended) pd.endBiomeRun();
                     data.markDirty();
                 }
                 // If the player was in combat when they disconnected, don't try to
@@ -385,7 +391,7 @@ public class CrafticsMod implements ModInitializer {
                     LOGGER.info("Player {} had stale inCombat flag, clearing and ending biome run",
                         player.getName().getString());
                     pd.inCombat = false;
-                    pd.endBiomeRun();
+                    if (!pd.infiniteActive || pd.infiniteSuspended) pd.endBiomeRun();
                     data.markDirty();
                     CombatManager.remove(player.getUuid());
                 }
@@ -658,6 +664,8 @@ public class CrafticsMod implements ModInitializer {
                 com.crackedgames.craftics.compat.instruments.InstrumentsCompat.registerDeferred();
                 com.crackedgames.craftics.compat.paladins.PaladinsCompat.registerDeferred();
                 com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.registerDeferred();
+                com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
+                com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
             });
 
         // Load biome definitions from JSON datapacks on server start
@@ -1273,7 +1281,9 @@ public class CrafticsMod implements ModInitializer {
                             "§cFinish (or flee) the current fight first."));
                         return 0;
                     }
-                    com.crackedgames.craftics.combat.InfiniteRunManager.onHomeExit(player);
+                    // stop = throw the run away for good. Leaving WITHOUT abandoning
+                    // (Go Home, /home, logging out) parks it at a save point instead.
+                    com.crackedgames.craftics.combat.InfiniteRunManager.abandonRun(player);
                     com.crackedgames.craftics.world.HubTeleports.toHub(player);
                     return 1;
                 })));

@@ -61,7 +61,7 @@ public class CombatInputHandler {
     private static final Set<Item> USE_ITEMS = Set.of(
         Items.POTION, Items.SPLASH_POTION, Items.SNOWBALL, Items.EGG,
         Items.ENDER_PEARL, Items.TNT, Items.FISHING_ROD, Items.FIRE_CHARGE,
-        Items.WIND_CHARGE
+        Items.WIND_CHARGE, Items.BRICK
     );
 
     public static ActionMode getActionMode(MinecraftClient client) {
@@ -72,7 +72,9 @@ public class CombatInputHandler {
         if (held == Items.LEAD) return ActionMode.LEAD;
         if (com.crackedgames.craftics.compat.instruments.InstrumentsCompat.isInstrument(held))
             return ActionMode.USE_ITEM;
-        if (held == Items.BOW || held == Items.CROSSBOW || held == Items.TRIDENT) return ActionMode.RANGED_ATTACK;
+        if (held == Items.BOW || held == Items.CROSSBOW || held == Items.TRIDENT
+            || com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isSimplyBow(held))
+            return ActionMode.RANGED_ATTACK;
         if (SWORDS.contains(held) || AXES.contains(held) || SPEARS.contains(held)
             || held == Items.MACE)
             return ActionMode.MELEE_ATTACK;
@@ -82,6 +84,10 @@ public class CombatInputHandler {
         if (com.crackedgames.craftics.combat.CraftingStations.isStation(held)) return ActionMode.USE_ITEM;
         // Eligible wall blocks place a 4-turn obstacle on click.
         if (com.crackedgames.craftics.combat.WallBlocks.isEligibleItem(held)) return ActionMode.USE_ITEM;
+        // Raw campfire food (kelp especially) isn't otherwise "usable", but it must be
+        // clickable so it can be cooked on a placed campfire tile.
+        if (com.crackedgames.craftics.combat.ItemUseHandler.isCampfireCookable(held))
+            return ActionMode.USE_ITEM;
         if (FOODS.contains(held) || USE_ITEMS.contains(held)
             || com.crackedgames.craftics.combat.ItemUseHandler.isUsableItem(held))
             return ActionMode.USE_ITEM;
@@ -293,6 +299,15 @@ public class CombatInputHandler {
                     // Rocket crossbow can target any empty tile so the 3x3
                     // blast catches enemies the player couldn't single-tile.
                     // Server validates range, AP, and consumes the rocket.
+                    ClientPlayNetworking.send(new CombatActionPayload(
+                        CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
+                    ));
+                    hintMgr.notifyAction(com.crackedgames.craftics.client.hints.ActionKind.ATTACKED);
+                } else if (client.player != null
+                        && com.crackedgames.craftics.api.registry.WeaponRegistry.getTargetlessCast(
+                            client.player.getMainHandStack().getItem()) != null) {
+                    // Ground-aimed weapon (arrow rain, trap-laying bow): the tile IS the
+                    // target. Server validates range, AP, and ammunition.
                     ClientPlayNetworking.send(new CombatActionPayload(
                         CombatActionPayload.ACTION_ATTACK, tilePos.x(), tilePos.z(), -1
                     ));

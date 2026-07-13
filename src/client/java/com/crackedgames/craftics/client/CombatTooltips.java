@@ -18,6 +18,36 @@ public class CombatTooltips implements ItemTooltipCallback {
         net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET
     };
 
+    /**
+     * Strip a compat mod's tooltip body, keeping the item name and its enchantments.
+     *
+     * <p>Craftics replaces a modded weapon's description with its own combat block, because
+     * the mod's text describes behaviour Craftics does not run. But an item's enchantments
+     * are not the mod talking - they are what the player put on it, and wiping them means a
+     * Sharpness V blade looks identical to a bare one. So the enchantment lines are rebuilt
+     * from the stack's own component rather than salvaged from the text we are throwing out.
+     */
+    private static void stripModTooltip(net.minecraft.item.ItemStack stack, java.util.List<Text> lines) {
+        if (lines.size() > 1) {
+            lines.subList(1, lines.size()).clear();
+        }
+        appendEnchantmentLines(stack, lines);
+    }
+
+    /**
+     * Re-add the vanilla enchantment lines for {@code stack}. Reads the enchantment
+     * component directly, so it works for any enchantment from any mod and cannot be
+     * confused by however the original tooltip happened to be worded.
+     */
+    private static void appendEnchantmentLines(net.minecraft.item.ItemStack stack,
+                                               java.util.List<Text> lines) {
+        var enchants = stack.get(net.minecraft.component.DataComponentTypes.ENCHANTMENTS);
+        if (enchants == null || enchants.isEmpty()) return;
+        for (var entry : enchants.getEnchantmentEntries()) {
+            lines.add(net.minecraft.enchantment.Enchantment.getName(entry.getKey(), entry.getIntValue()));
+        }
+    }
+
     @Override
     public void getTooltip(net.minecraft.item.ItemStack stack, net.minecraft.item.Item.TooltipContext ctx,
                            net.minecraft.item.tooltip.TooltipType type, java.util.List<Text> lines) {
@@ -29,6 +59,8 @@ public class CombatTooltips implements ItemTooltipCallback {
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.registerDeferred();
         com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.registerDeferred();
         com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.registerDeferred();
+        com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.registerDeferred();
+        com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.registerDeferred();
 
         // Artifacts mod compat: replace the entire vanilla/Artifacts tooltip body with
         // Craftics-only lines so the player sees the in-Craftics behaviour, not the
@@ -36,9 +68,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Keep the item name (lines.get(0)) and wipe everything else.
         net.minecraft.util.Identifier itemId = net.minecraft.registry.Registries.ITEM.getId(item);
         if (ArtifactsTooltips.isArtifactsItem(itemId)) {
-            if (lines.size() > 1) {
-                lines.subList(1, lines.size()).clear();
-            }
+            stripModTooltip(stack, lines);
             ArtifactsTooltips.appendLines(itemId.getPath(), lines);
             return; // skip all other tooltip handlers - artifacts only show our text
         }
@@ -47,9 +77,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // revive behavior instead. Keep the item name (lines.get(0)) and wipe the rest.
         if (MoreTotemsTooltips.isMoreTotem(itemId)
             && com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.isMoreTotem(item)) {
-            if (lines.size() > 1) {
-                lines.subList(1, lines.size()).clear();
-            }
+            stripModTooltip(stack, lines);
             MoreTotemsTooltips.appendLines(itemId.getPath(), lines);
             return;
         }
@@ -60,10 +88,24 @@ public class CombatTooltips implements ItemTooltipCallback {
         // relics) keep the mod's own tooltips.
         if (SimplySwordsTooltips.isSimplySwords(itemId)
             && com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.isSimplySword(item)) {
-            if (lines.size() > 1) {
-                lines.subList(1, lines.size()).clear();
-            }
+            stripModTooltip(stack, lines);
             SimplySwordsTooltips.appendLines(item, itemId.getPath(), lines);
+            return;
+        }
+
+        // Simply Bows: strip the mod's tooltip body (ability blurb, upgrade slots, rune
+        // etchings) and show only the Craftics combat block.
+        if (SimplyBowsTooltips.isSimplyBows(itemId)
+            && com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isSimplyBow(item)) {
+            stripModTooltip(stack, lines);
+            SimplyBowsTooltips.appendLines(item, itemId.getPath(), lines);
+            return;
+        }
+        // Its upgrade components and rune etchings are a crafting system Craftics doesn't
+        // run. Say so, rather than leaving the mod's promises of power on the tooltip.
+        if (SimplyBowsTooltips.isUpgradeComponent(itemId)) {
+            stripModTooltip(stack, lines);
+            SimplyBowsTooltips.appendUpgradeLines(lines);
             return;
         }
 
@@ -71,21 +113,26 @@ public class CombatTooltips implements ItemTooltipCallback {
         // WeaponRegistry.isRegistered so bronze (unregistered) keeps the mod's default tooltip.
         if (BasicWeaponsTooltips.isBasicWeapon(itemId)
             && com.crackedgames.craftics.api.registry.WeaponRegistry.isRegistered(item)) {
-            if (lines.size() > 1) {
-                lines.subList(1, lines.size()).clear();
-            }
             int might = com.crackedgames.craftics.combat.PlayerCombatStats
                 .getEnchantLevel(stack, "basicweapons:might");
+            stripModTooltip(stack, lines);
             BasicWeaponsTooltips.appendLines(item, itemId.getPath(), might, lines);
             return;
+        }
+
+        // Immersive Armors: the mod prints its own effect list (fire resistance, spikes,
+        // bounceback, ...), none of which Craftics implements - in here the set does what
+        // ArmorSetEffects says instead. Wipe its body and fall through to the shared
+        // "Craftics Armor:" block below, which reads AC, affinity, and the set's real
+        // mechanic straight out of the registry.
+        if (com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.isImmersiveArmor(item)) {
+            stripModTooltip(stack, lines);
         }
 
         // Instruments: strip the mod tooltip, show the Craftics performance block.
         if (InstrumentsTooltips.isInstrument(itemId)
             && com.crackedgames.craftics.compat.instruments.InstrumentsCompat.isInstrument(item)) {
-            if (lines.size() > 1) {
-                lines.subList(1, lines.size()).clear();
-            }
+            stripModTooltip(stack, lines);
             InstrumentsTooltips.appendLines(item, lines);
             return;
         }
@@ -152,6 +199,15 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         // Plain loot feathers should not get a tooltip - only the Move item does.
         String tip = (item == net.minecraft.item.Items.FEATHER) ? null : getTooltipFor(item);
+        // Raw food a campfire can cook says so once, here, instead of nine times in the
+        // food table. Kelp has no combat tooltip of its own, so this is all it gets.
+        boolean cookable = com.crackedgames.craftics.combat.ItemUseHandler.isCampfireCookable(item);
+        if (tip == null && cookable) tip = "\u00a77No combat use on its own.";
+        if (cookable) {
+            tip += "\n\u00a761 AP \u00a77- Cook up to "
+                + com.crackedgames.craftics.combat.ItemUseHandler.CAMPFIRE_COOK_BATCH
+                + " on a placed campfire";
+        }
         if (tip != null && armorAC <= 0) {
             lines.add(Text.empty());
             lines.add(Text.literal("\u00a76\u00a7lCraftics Combat:"));
@@ -212,7 +268,8 @@ public class CombatTooltips implements ItemTooltipCallback {
                     }
                 }
 
-                // Full-set bonus - shown only when the client player wears the full matching set.
+                // Full-set bonus. Always shown, so a player can judge a set before
+                // committing to all four pieces; greyed out until they actually wear it.
                 net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
                 if (mc.player != null) {
                     boolean fullSet = true;
@@ -221,12 +278,12 @@ public class CombatTooltips implements ItemTooltipCallback {
                             mc.player.getEquippedStack(slot).getItem());
                         if (!setKey.equals(wornKey)) { fullSet = false; break; }
                     }
-                    if (fullSet) {
-                        String desc = com.crackedgames.craftics.api.registry.ArmorSetRegistry
-                            .getDescription(setKey);
-                        if (desc != null && !desc.isEmpty()) {
-                            lines.add(Text.literal("\u00a7a  Full set: " + desc));
-                        }
+                    String desc = com.crackedgames.craftics.api.registry.ArmorSetRegistry
+                        .getDescription(setKey);
+                    if (desc != null && !desc.isEmpty()) {
+                        lines.add(Text.literal(fullSet
+                            ? "\u00a7a  Full set: " + desc
+                            : "\u00a78  Full set: " + desc));
                     }
 
                     // Hybrid set \u2014 shown when the client wears a qualifying two-material
@@ -646,6 +703,13 @@ public class CombatTooltips implements ItemTooltipCallback {
         sb.append(" \u00a77| ");
         if (ap > 1) sb.append("\u00a7c");
         sb.append(ap).append(" AP \u00a77| ").append(type.color).append(type.displayName);
+        // Hybrid weapons scale off a second affinity at half weight; a tooltip that named
+        // only the first would send the player building the wrong armor.
+        if (entry.secondaryDamageType() != null) {
+            sb.append("\u00a77 + ").append(entry.secondaryDamageType().color)
+                .append(entry.secondaryDamageType().displayName)
+                .append("\n\u00a78Hybrid: the second affinity scales at half weight");
+        }
         if (breakChance > 0) {
             sb.append("\n");
             if (breakChance >= 0.05) sb.append("\u00a7c");
@@ -660,8 +724,16 @@ public class CombatTooltips implements ItemTooltipCallback {
         com.crackedgames.craftics.combat.CraftingStations.Station station =
             com.crackedgames.craftics.combat.CraftingStations.of(item);
         if (station != null) {
-            return "§d" + com.crackedgames.craftics.combat.CraftingStations.AP_COST
+            String base = "§d" + com.crackedgames.craftics.combat.CraftingStations.AP_COST
                 + " AP §7- Opens the " + station.label() + " in battle";
+            // The arena has no bookshelves to scan, so the combat table reads the ones
+            // the player is carrying instead. Say so, or the levels look broken.
+            if (station == com.crackedgames.craftics.combat.CraftingStations.Station.ENCHANTING) {
+                base += "\n§7Enchant levels come from the bookshelves you CARRY (max "
+                    + com.crackedgames.craftics.combat.CombatEnchantmentScreenHandler.MAX_POWER
+                    + ")\n§7They are not consumed.";
+            }
+            return base;
         }
 
         // ── Copper Age Backport ── (modded items; resolved at runtime)
@@ -796,6 +868,9 @@ public class CombatTooltips implements ItemTooltipCallback {
         *///?}
         if (item == Items.ENDER_PEARL) return "\u00a751 AP \u00a77- Click any empty tile\n\u00a75Teleport instantly! \u00a7c(Costs 2 HP)";
         if (item == Items.FIRE_CHARGE) return "\u00a761 AP \u00a77- Ranged fire attack\n\u00a7c4 DMG \u00a77+ sets enemy on fire";
+        if (item == Items.BRICK) return "\u00a771 AP \u00a77- Throw at enemy (range 4)\n\u00a7c"
+            + com.crackedgames.craftics.combat.ItemUseHandler.BRICK_BASE_DAMAGE
+            + " DMG \u00a77| \u00a76Blunt \u00a77- scales with Blunt affinity";
 
         // ── Water AoE Throwables ──
         if (item == Items.TURTLE_EGG) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 1)\n\u00a7c2 DMG \u00a77| Radius 1 | \u00a73Water\n\u00a73Soaked I";
@@ -842,9 +917,9 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.RECOVERY_COMPASS) return "\u00a76Passive: \u00a77Consumed on death\n\u00a77Saves your full inventory one time instead of losing it";
         if (item == Items.BUNDLE) return "\u00a7ePassive: \u00a77Auto-collects loot\n\u00a77Combat drops go into the bundle first\n\u00a77Keeps your inventory organized";
         if (item == Items.BELL) return "\u00a762 AP \u00a77- Ring at target tile\n\u00a77Stuns ALL enemies within 2 tiles";
-        if (item == Items.ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cHalf the target's max HP\n\u00a77Wears to a chipped anvil on use";
-        if (item == Items.CHIPPED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA third of the target's max HP\n\u00a77Wears to a damaged anvil on use";
-        if (item == Items.DAMAGED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA quarter of the target's max HP\n\u00a77Shatters on use\n\u00a7dSpecial: 10% per point to avoid wear";
+        if (item == Items.ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cHalf the target's max HP\n\u00a77Wears to a chipped anvil on use\n\u00a7b1 AP \u00a77- Click empty ground or yourself to open the anvil";
+        if (item == Items.CHIPPED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA third of the target's max HP\n\u00a77Wears to a damaged anvil on use\n\u00a7b1 AP \u00a77- Click empty ground or yourself to open the anvil";
+        if (item == Items.DAMAGED_ANVIL) return "\u00a781 AP \u00a77- Drop on enemy\n\u00a7cA quarter of the target's max HP\n\u00a77Shatters on use\n\u00a7dSpecial: 10% per point to avoid wear\n\u00a7b1 AP \u00a77- Click empty ground or yourself to open the anvil";
         if (item == Items.HONEY_BLOCK) return "\u00a7e1 AP \u00a77- Place sticky trap\n\u00a77Enemies that step on it lose all movement";
         if (item == Items.SLIME_BLOCK) return "\u00a7a1 AP \u00a77- Place bouncy wall\n\u00a77Blocks movement and knocks adjacent enemies back when they end their turn beside it";
         if (item == Items.POWDER_SNOW_BUCKET) return "\u00a7b1 AP \u00a77- Freeze an enemy\n\u00a7c1 DMG \u00a77+ stun (skip next turn)";
@@ -856,7 +931,8 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.TORCH) return "\u00a7e1 AP \u00a77- Place light source\n\u00a77Lights a radius-2 zone and negates darkness (weaker than a lantern)";
         if (item == Items.LIGHTNING_ROD) return "\u00a7e1 AP \u00a77- Place on tile\n\u00a77Strikes next turn: 4 DMG to all within 1 tile\n\u00a77Consumed after striking";
         if (item == Items.CACTUS) return "\u00a721 AP \u00a77- Place wall trap\n\u00a77Pricks adjacent enemies for 1 DMG/turn";
-        if (item == Items.CAMPFIRE) return "\u00a761 AP \u00a77- Place healing zone\n\u00a77Heals 1 HP/turn when adjacent to it";
+        if (item == Items.CAMPFIRE) return "\u00a761 AP \u00a77- Place healing zone\n\u00a77Heals 2 HP/turn within 2 tiles of it\n\u00a761 AP \u00a77- Click a placed campfire with raw food to cook up to "
+            + com.crackedgames.craftics.combat.ItemUseHandler.CAMPFIRE_COOK_BATCH;
         if (item == Items.SCAFFOLDING) return "\u00a7a1 AP \u00a77- Place elevated tile\n\u00a77+1 range for ranged attacks from this tile";
         if (item == Items.CAKE) return "\u00a7d1 AP \u00a77- Place healing tile\n\u00a77Heals 2 HP when stepped on (3 uses)";
         if (item == Items.SPORE_BLOSSOM) return "\u00a7d1 AP \u00a77- AoE slow cloud\n\u00a77Enemies within 3 tiles get -1 Speed";
@@ -953,8 +1029,11 @@ public class CombatTooltips implements ItemTooltipCallback {
             return "\u00a7aSelect to enter Move Mode\n\u00a77Click tiles to move your character\n\u00a77Left/Right arrows rotate its hotbar slot";
 
         // ── Trial/Event items ──
-        if (item == Items.TRIAL_KEY) return "\u00a76Trial Chamber reward\n\u00a77Rare drop from trial chamber events";
-        if (item == Items.OMINOUS_TRIAL_KEY) return "\u00a74Ominous Trial Chamber reward\n\u00a77Legendary drop from trial chambers";
+        if (item == Items.TRIAL_KEY) return "\u00a76Trial Chamber reward\n\u00a77Rare drop from trial chamber events\n\u00a7b\u27a4 Offer it at a Shrine for guaranteed gear";
+        if (item == Items.OMINOUS_TRIAL_KEY) return "\u00a74Ominous Trial Chamber reward\n\u00a77Legendary drop from trial chambers\n\u00a7b\u27a4 Offer it at a Shrine for a legendary reward";
+        if (item == Items.BOOKSHELF) return "\u00a7dPassive: \u00a77Powers an in-combat Enchanting Table\n\u00a77Each bookshelf you CARRY is 1 point of enchant power (max "
+            + com.crackedgames.craftics.combat.CombatEnchantmentScreenHandler.MAX_POWER
+            + ")\n\u00a77They are not consumed.";
         if (item == Items.BREEZE_ROD) return "\u00a7bBreeze drop\n\u00a77Crafting material from trial chambers";
         if (item == Items.HEAVY_CORE) return "\u00a78Mace crafting component\n\u00a77Rare trial chamber drop";
         if (item == Items.WIND_CHARGE) return "\u00a7f1 AP \u00a77- Knock an enemy back, or launch yourself off an adjacent tile\n\u00a77Strike an enemy right after a self-launch for \u00a7a1.5x damage";

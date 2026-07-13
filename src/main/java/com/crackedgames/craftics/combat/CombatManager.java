@@ -494,6 +494,12 @@ public class CombatManager {
             }
         }
 
+        // Prismarine armor: the shell discharges at whatever has crowded the wearer.
+        if (ArmorSetEffects.hasPrismarineDischarge(PlayerCombatStats.getArmorSet(member))) {
+            applyPrismarineDischarge(member);
+        }
+
+
         // Campfire heal + poison-cloud breath are tile effects centered on the
         // player's own position, so they belong in this per-member pass.
         for (var entry : tileEffects.entrySet()) {
@@ -1619,6 +1625,14 @@ public class CombatManager {
     private final java.util.Map<GridPos, Integer> litZones = new java.util.HashMap<>();
     private int hexTrapTurnsRemaining = 0;
 
+    /**
+     * Timed traps laid on arena tiles. Unlike {@link #tileEffects} these expire on their
+     * own and re-mark themselves with particles every round, so the player can always see
+     * where they left one. Kept in a separate map because a trap can sit on a tile that
+     * already carries an effect.
+     */
+    private final java.util.Map<GridPos, TileTrap> tileTraps = new java.util.HashMap<>();
+
     private final java.util.List<net.minecraft.util.math.ChunkPos> forcedChunks = new java.util.ArrayList<>();
 
     // Delays damage/effects to sync with client animation impact
@@ -1661,6 +1675,13 @@ public class CombatManager {
     private static final int SAND_MINE_DAMAGE = 6;
     private static final int SAND_MINE_LIFETIME = 4;
     private final List<SandMine> activeSandMines = new ArrayList<>();
+
+    // Curse of the Sands: while > 0, every tile the player moves off sprouts a
+    // live sand mine (planted in tickAnimation's move-finish block). Applied by
+    // the "curse_of_sands" area effect, ticked down with the other end-of-player-
+    // turn timers, and torn down with the mines in clearVoidRifts.
+    private static final int CURSE_OF_SANDS_DURATION = 3;
+    private int curseOfSandsTurns = 0;
 
     // Placed this turn, detonate start of next round
     private static final class PendingTnt {
@@ -1911,10 +1932,23 @@ public class CombatManager {
     }
 
     private int damagePlayer(int rawDamage) {
-        return damagePlayer(rawDamage, null);
+        return damagePlayer(rawDamage, null, null);
     }
 
     private int damagePlayer(int rawDamage, CombatEntity attacker) {
+        return damagePlayer(rawDamage, attacker, null);
+    }
+
+    /**
+     * As {@link #damagePlayer(int, CombatEntity)}, but tagged with the kind of damage
+     * coming in so armor that resists a specific damage type can react.
+     *
+     * <p>Most damage sources pass {@code null}: an untyped hit is simply not eligible
+     * for type-specific mitigation. Only the sources a player would call by name -
+     * arrows and other ranged shots ({@link DamageType#RANGED}), explosions
+     * ({@link DamageType#BLUNT}) - name their type today.
+     */
+    private int damagePlayer(int rawDamage, CombatEntity attacker, DamageType incomingType) {
         lastHitAvoided = false; // set true below only if the hit is fully avoided
         // AC dodge roll -only enemy attacks roll. Environmental/self damage
         // (attacker == null) and DoT ticks bypass the roll and apply directly.
@@ -1986,6 +2020,20 @@ public class CombatManager {
             return 0;
         }
 
+        // Divine armor: the first enemy hit of the battle is turned aside entirely.
+        if (attacker != null && !divineDeflectUsed.contains(player.getUuid())
+                && ArmorSetEffects.hasDivineDeflect(PlayerCombatStats.getArmorSet(player))) {
+            divineDeflectUsed.add(player.getUuid());
+            playDodgeFeedback("§e§l✦ DIVINE!",
+                "§e§l✦ Divine!§r §7The " + attacker.getDisplayName() + "'s first blow is turned aside.");
+            player.getWorld().playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.BLOCK_BEACON_POWER_SELECT,
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.6f);
+            fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
+            lastHitAvoided = true;
+            return 0;
+        }
+
         // The hit lands -flat damage under the AC system.
         int actual = Math.max(0, rawDamage);
 
@@ -1996,6 +2044,17 @@ public class CombatManager {
         if (attacker != null && actual > 0) {
             int resist = combatEffects.getResistanceBonus();
             if (resist > 0) actual = Math.max(1, actual - resist);
+        }
+
+        // Armor-set resistance to a specific incoming damage type (Wooden armor's
+        // padding against arrows and blasts). Only typed hits qualify; a source that
+        // didn't name its damage type is never mitigated here.
+        if (attacker != null && actual > 0 && incomingType != null) {
+            double typeResist = ArmorSetEffects.incomingResistance(
+                PlayerCombatStats.getArmorSet(player), incomingType);
+            if (typeResist > 0) {
+                actual = Math.max(1, (int) Math.round(actual * (1.0 - typeResist)));
+            }
         }
 
         // Stonewall hybrid: every incoming hit is capped.
@@ -2041,6 +2100,13 @@ public class CombatManager {
             if (armorPiece.isDamageable()) {
                 armorPiece.damage(1, player, armorSlot);
             }
+        }
+
+        // Armor-set reactions to a hit that actually landed.
+        if (attacker != null) {
+            applyFragileArmorBreak();
+            applyWitherRetaliation(attacker);
+            applySlimeContactKnockback(attacker);
         }
 
         // Absorption hearts (golden apples, enchanted golden apples) are consumed
@@ -2393,10 +2459,17 @@ public class CombatManager {
         this.hybridLastWeapon = null;
         this.hybridEnemiesActed.clear();
         this.oceanBlessingUsed.clear();
+        this.divineDeflectUsed.clear();
         this.warpDriveArmed = false;
         this.warpDriveUsed = false;
         clearAllRevenantSummonMarkers();
         tileEffects.clear();
+        // Combat start: drop stale trap records without restoring blocks. Any trap from a
+        // prior fight was already torn down at that fight's endCombat (via
+        // placedBlockRestores); these leftover map entries just reference a floor that no
+        // longer exists, so restoring from them would be wrong.
+        tileTraps.clear();
+        trapBlocks.clear();
         litZones.clear();
         placedBlockRestores.clear();
 
@@ -2446,9 +2519,12 @@ public class CombatManager {
             }
         }
 
+        // Tall enough (+20) to catch a leftover mob that drifted or got launched above the
+        // old +5 ceiling - a floating ghast or a knockback'd straggler from a prior fight
+        // used to survive the scrub and read as a glitched enemy on revisit.
         net.minecraft.util.math.Box arenaBox = new net.minecraft.util.math.Box(
-            origin.getX() - 2, origin.getY() - 1, origin.getZ() - 2,
-            origin.getX() + arena.getWidth() + 2, origin.getY() + 5, origin.getZ() + arena.getHeight() + 2
+            origin.getX() - 2, origin.getY() - 2, origin.getZ() - 2,
+            origin.getX() + arena.getWidth() + 2, origin.getY() + 20, origin.getZ() + arena.getHeight() + 2
         );
         for (var entity : world.getEntitiesByClass(net.minecraft.entity.mob.MobEntity.class, arenaBox, e -> true)) {
             entity.discard();
@@ -4258,6 +4334,15 @@ public class CombatManager {
                 resolveRocketCrossbowOnTile(clickedTile);
                 return;
             }
+            // Ground-aimed weapons (arrow rain, trap-laying bows) do their work on the
+            // tile itself, so they fire at bare floor rather than being turned away.
+            if (clickedTile != null && arena.isInBounds(clickedTile)
+                    && com.crackedgames.craftics.api.registry.WeaponRegistry
+                        .getTargetlessCast(weapon) != null) {
+                resolveTargetlessCast(weapon, clickedTile);
+                return;
+            }
+
             // Empty-tile AoE: the clicked tile has no enemy, but if the held
             // weapon's footprint (cone, sweep, slam, line, fan) aimed at that
             // tile catches an enemy, fire anyway. The direct hit lands on
@@ -4392,7 +4477,7 @@ public class CombatManager {
 
         // Ranged ammo requirement: bows/crossbows need ammo unless bow has Infinity.
         // A firework rocket in the offhand is valid crossbow ammo (rocket crossbow).
-        boolean isBowWeapon = weapon == Items.BOW;
+        boolean isBowWeapon = PlayerCombatStats.isBowItem(weapon);
         boolean isCrossbowWeapon = weapon == Items.CROSSBOW;
         boolean crossbowRocket = isCrossbowWeapon
             && player.getOffHandStack().isOf(Items.FIREWORK_ROCKET);
@@ -4543,9 +4628,19 @@ public class CombatManager {
         java.util.List<String> tippedEffects = java.util.List.of();
         if ((PlayerCombatStats.isBow(player) || weapon == Items.CROSSBOW) && !crossbowRocket) {
             if (PlayerCombatStats.hasTippedArrows(player)) {
+                // A tipped arrow is spent for its effect, so the quiver-saving sets
+                // deliberately don't apply here.
                 tippedEffects = PlayerCombatStats.findAndConsumeTippedArrow(player);
             } else if (!PlayerCombatStats.hasInfinity(player)) {
-                PlayerCombatStats.consumeArrow(player);
+                // Bone and Wither armor: the quiver never seems to empty, and a lucky
+                // archer's empties slower still.
+                double ammoSave = ArmorSetEffects.ammoSaveChance(
+                    PlayerCombatStats.getArmorSet(player), luckPointsOf(player));
+                if (ammoSave > 0 && Math.random() < ammoSave) {
+                    sendMessage("§f✦ The arrow stays in your quiver.");
+                } else {
+                    PlayerCombatStats.consumeArrow(player);
+                }
             }
         }
 
@@ -4656,18 +4751,25 @@ public class CombatManager {
             attackedWithoutShieldThisTurn = true;
         }
 
-        // Pre-calculate damage before the delay (snapshot current stats)
-        boolean isRangedWeapon = weapon == Items.BOW || weapon == Items.CROSSBOW;
+        // Pre-calculate damage before the delay (snapshot current stats).
+        // Every bow - vanilla or modded - takes the bow path: ranged progression, bow
+        // enchants, arrow consumption, the accuracy roll. Thrown weapons that merely set
+        // ranged(true) (chakrams, tridents) deliberately do not.
+        boolean isRangedWeapon = PlayerCombatStats.isBowItem(weapon) || weapon == Items.CROSSBOW;
         int progBonus = isRangedWeapon ? getProgRangedBonus() : getProgMeleeBonus();
         DamageType damageType = DamageType.fromWeapon(weapon);
+        DamageType secondaryType =
+            com.crackedgames.craftics.api.registry.WeaponRegistry.getSecondaryDamageType(weapon);
         PlayerProgression.PlayerStats attackerStats = PlayerProgression.get(
             (ServerWorld) player.getEntityWorld()).getStats(player);
-        int damageTypeBonus = DamageType.getTotalBonus(
-            player, activeTrimScan, combatEffects, damageType, attackerStats)
-            + DamageType.getMobHeadBonus(player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), damageType);
+        int damageTypeBonus = DamageType.getWeaponAffinityBonus(
+            player, activeTrimScan, combatEffects, attackerStats, damageType, secondaryType);
+        // Warrior armor: the wearer's own wounds sharpen every swing.
+        int warriorRage = ArmorSetEffects.missingHealthDamage(
+            PlayerCombatStats.getArmorSet(player), player.getHealth(), player.getMaxHealth());
         int baseDamage = PlayerCombatStats.getAttackPower(weapon) + combatEffects.getStrengthBonus()
             + progBonus + PlayerCombatStats.getSetAttackBonus(player)
-            + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus;
+            + PlayerCombatStats.getWeaponEnchantBonus(player) + damageTypeBonus + warriorRage;
         baseDamage = (int)(baseDamage * com.crackedgames.craftics.CrafticsMod.CONFIG.playerDamageMultiplier());
         baseDamage = applyPowerPercent(baseDamage, powerPoints(isRangedWeapon));
         // Rogue (Chainmail) set: light (1-AP) weapons hit harder and crit more, rewarding
@@ -4842,6 +4944,7 @@ public class CombatManager {
         // Snapshot values for the delayed lambda
         final CombatEntity fTarget = target;
         final int fBaseDamage = baseDamage;
+        final int fWarriorRage = warriorRage;
         final boolean fUsedTriple = usedTriple;
         final double fMobResistMult = mobResistMult;
         final boolean fIsRangedWeapon = isRangedWeapon;
@@ -4854,14 +4957,14 @@ public class CombatManager {
         final int fImpalingBleed = isTridentWeapon(weapon) ? PlayerCombatStats.getImpalingBleed(player) : 0;
         // Sharpness on the player's weapon also inflicts bleed (1 stack per level).
         // Bow/crossbow Power is the ranged equivalent and does not bleed.
-        final int fSharpnessBleed = (weapon != Items.BOW && weapon != Items.CROSSBOW)
+        final int fSharpnessBleed = (!PlayerCombatStats.isBowItem(weapon) && weapon != Items.CROSSBOW)
             ? PlayerCombatStats.getSharpness(player) : 0;
         final boolean fLuckCrit = luckCrit;
         final java.util.List<String> fTippedEffects = tippedEffects;
         final int fFireAspect = fireAspect;
         // Sweeping Edge level scales the Fire Aspect shape (cone -> wide cone
         // -> ring) when both enchants are present on a sword.
-        final int fSweepingEdge = (weapon != Items.BOW && weapon != Items.CROSSBOW)
+        final int fSweepingEdge = (!PlayerCombatStats.isBowItem(weapon) && weapon != Items.CROSSBOW)
             ? PlayerCombatStats.getSweepingEdge(player) : 0;
         final boolean fHasBowFlame = hasBowFlame;
         final int fBowFlameLevel = bowFlameLevel;
@@ -5192,6 +5295,11 @@ public class CombatManager {
                 sendMessage("§7You strike at empty ground...");
             } else {
                 sendMessage("§6Hit " + fTarget.getDisplayName() + " for " + dealt + "!" + tripleMsg + critMsg + typeMsg + resistMsg);
+                if (fWarriorRage > 0) {
+                    sendMessage("§4✦ Warrior's rage: §7+" + fWarriorRage + " from your wounds.");
+                }
+                // Slime armor: your own blows bounce whatever they land on.
+                applySlimeAttackKnockback(fTarget);
             }
 
             // Weapon ability (cleave, pierce, etc.). On an indirect (empty-tile)
@@ -5579,7 +5687,7 @@ public class CombatManager {
             if (fireAspect > 0) tiles.addAll(AoeShapes.fireAspectShape(player, aim, fireAspect, sweep));
             return tiles;
         }
-        if (weapon == Items.BOW) {
+        if (PlayerCombatStats.isBowItem(weapon)) {
             tiles.add(aim);
             if (PlayerCombatStats.getEnchantLevel(held, "minecraft:flame") > 0) {
                 tiles.addAll(AoeShapes.slam3x3(aim));
@@ -6919,7 +7027,7 @@ public class CombatManager {
 
     /** Apply a random-material armor trim to {@code stack} (pattern + material both
      *  random). No-op if the registries don't resolve the chosen ids. */
-    private static void applyRandomTrim(ItemStack stack, ServerWorld world) {
+    static void applyRandomTrim(ItemStack stack, ServerWorld world) {
         String pattern = TRIM_PATTERNS[(int) (Math.random() * TRIM_PATTERNS.length)];
         String material = TRIM_MATERIALS[(int) (Math.random() * TRIM_MATERIALS.length)];
         //? if <=1.21.1 {
@@ -7056,20 +7164,42 @@ public class CombatManager {
         };
     }
 
+    /**
+     * Apply exactly two random enchantments from {@code pool} at level 1 or 2 (never above
+     * the enchantment's own maximum, so Mending and Infinity stay at I). This is ordinary
+     * good gear - what a plain trial key buys. The god-tier roll is
+     * {@link #heavilyEnchant}, and it is reserved for the ominous key.
+     */
+    public static ItemStack lightlyEnchant(ServerWorld world, ItemStack stack,
+                                           String[] pool, java.util.Random rng) {
+        return applyEnchants(world, stack, pool, rng, 2, false);
+    }
+
     /** Apply {@code 3-5} random enchantments from {@code pool} to {@code stack}
      *  at each enchantment's vanilla max level. Pool entries that aren't in the
      *  enchantment registry are skipped silently. Used by the ominous trial loot
      *  generator to produce "heavily enchanted" gear. */
     public static ItemStack heavilyEnchant(ServerWorld world, ItemStack stack,
                                             String[] pool, java.util.Random rng) {
+        return applyEnchants(world, stack, pool, rng, 3 + rng.nextInt(3), true);
+    }
+
+    /**
+     * Draw {@code count} distinct enchantments from {@code pool} and put them on
+     * {@code stack}. {@code maxLevel} picks each at its vanilla maximum; otherwise each
+     * lands at level 1 or 2, capped by its own maximum so single-level enchantments like
+     * Mending never come out as "Mending II". Pool entries missing from the enchantment
+     * registry are skipped silently.
+     */
+    private static ItemStack applyEnchants(ServerWorld world, ItemStack stack, String[] pool,
+                                           java.util.Random rng, int count, boolean maxLevel) {
         if (stack == null || stack.isEmpty() || pool == null || pool.length == 0) return stack;
         //? if <=1.21.1 {
         var registry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
         //?} else {
         /*var registry = world.getRegistryManager().getOrThrow(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
         *///?}
-        int wanted = 3 + rng.nextInt(3); // 3, 4, or 5
-        int target = Math.min(wanted, pool.length);
+        int target = Math.min(count, pool.length);
         java.util.List<String> shuffled = new java.util.ArrayList<>(java.util.Arrays.asList(pool));
         java.util.Collections.shuffle(shuffled, rng);
         ItemEnchantmentsComponent.Builder builder = new ItemEnchantmentsComponent.Builder(
@@ -7081,7 +7211,8 @@ public class CombatManager {
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(key))
                 .findFirst().orElse(null);
             if (entry == null) continue;
-            builder.add(entry, entry.value().getMaxLevel());
+            int cap = entry.value().getMaxLevel();
+            builder.add(entry, maxLevel ? cap : Math.min(cap, 1 + rng.nextInt(2)));
             applied++;
         }
         stack.set(DataComponentTypes.ENCHANTMENTS, builder.build());
@@ -8161,9 +8292,109 @@ public class CombatManager {
             CraftingStations.virtualContext(world, player.getBlockPos());
         // Charge only if the screen actually opened (openHandledScreen is empty
         // when the player already has a screen up).
-        if (player.openHandledScreen(station.factory(ctx)).isEmpty()) return;
+        if (player.openHandledScreen(station.factory(ctx, world, player.getBlockPos())).isEmpty()) return;
         apRemaining -= CraftingStations.AP_COST;
-        sendMessage("§b✦ " + station.label() + " opened. §7(-" + CraftingStations.AP_COST + " AP)");
+        String extra = "";
+        if (station == CraftingStations.Station.ENCHANTING) {
+            int power = CombatEnchantmentScreenHandler.carriedBookshelfPower(player.getInventory());
+            extra = power > 0
+                ? " §7(" + power + " carried bookshelves powering it)"
+                : " §7(carry bookshelves to raise the enchant levels)";
+            // Vanilla refuses to enchant an item that already carries an enchantment, and
+            // it says so only by greying the rows out. Spell it out, or a player who just
+            // enchanted their sword thinks the table broke.
+            sendMessage("§8The table offers nothing for an already-enchanted item, "
+                + "and each offer costs XP levels and lapis.");
+        }
+        sendMessage("§b✦ " + station.label() + " opened. §7(-" + CraftingStations.AP_COST + " AP)" + extra);
+        sendSync();
+        refreshHighlights();
+    }
+
+    /** True if a campfire has been placed on {@code tile} (see {@code useCampfire}). */
+    private boolean isCampfireTile(GridPos tile) {
+        return tile != null && "campfire".equals(tileEffects.get(tile));
+    }
+
+    /**
+     * Cook raw food on a placed campfire for 1 AP. A single action cooks up to
+     * {@link ItemUseHandler#CAMPFIRE_COOK_BATCH} items off the held stack - not the
+     * whole stack - so a full stack still takes several turns to work through.
+     * The player must be standing on the fire or next to it.
+     */
+    private void handleCampfireCook(ItemStack heldStack, GridPos targetTile) {
+        if (player == null || arena == null) return;
+        GridPos pPos = arena.getPlayerGridPos();
+        int cheby = Math.max(Math.abs(pPos.x() - targetTile.x()), Math.abs(pPos.z() - targetTile.z()));
+        if (cheby > 1) {
+            sendMessage("§cStand next to the campfire to cook.");
+            return;
+        }
+        if (apRemaining < 1) {
+            sendMessage("§cNeed 1 AP to cook! (have " + apRemaining + ")");
+            return;
+        }
+        Item cooked = ItemUseHandler.campfireResult(heldStack.getItem());
+        if (cooked == null) return;
+
+        int amount = Math.min(ItemUseHandler.CAMPFIRE_COOK_BATCH, heldStack.getCount());
+        String rawName = heldStack.getName().getString();
+        heldStack.decrement(amount);
+        ItemStack result = new ItemStack(cooked, amount);
+        if (!player.getInventory().insertStack(result)) {
+            player.dropItem(result, false);
+        }
+        apRemaining -= 1;
+
+        if (player.getEntityWorld() instanceof ServerWorld world) {
+            BlockPos bp = arena.gridToBlockPos(targetTile);
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5, 12, 0.2, 0.2, 0.2, 0.01);
+            world.playSound(null, bp, net.minecraft.sound.SoundEvents.BLOCK_CAMPFIRE_CRACKLE,
+                net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+        }
+        sendMessage("§6✦ Cooked " + amount + "x " + rawName + " §7(-1 AP)");
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * The acting player's Luck progression points, or 0 outside a live world. The single
+     * place armor and item procs read Luck from, so they all scale off the same number the
+     * weapon abilities do.
+     */
+    private int luckPointsOf(ServerPlayerEntity member) {
+        if (member == null || !(member.getEntityWorld() instanceof ServerWorld world)) return 0;
+        return PlayerProgression.get(world).getStats(member).getPoints(PlayerProgression.Stat.LUCK);
+    }
+
+    /** The three anvil condition variants, all of which double as a portable bench. */
+    private static boolean isAnvilItem(Item item) {
+        return item == Items.ANVIL || item == Items.CHIPPED_ANVIL || item == Items.DAMAGED_ANVIL;
+    }
+
+    /**
+     * Open the vanilla anvil UI for the acting player. Costs the same AP as a crafting
+     * station and, like one, neither consumes the anvil nor places a block. Aimed at an
+     * enemy the anvil is still a weapon; this is only the empty-tile / own-tile path.
+     */
+    private void handleAnvilOpen() {
+        if (player == null || arena == null) return;
+        if (apRemaining < CraftingStations.AP_COST) {
+            sendMessage("§cNeed " + CraftingStations.AP_COST + " AP to use the anvil! (have "
+                + apRemaining + ")");
+            return;
+        }
+        if (!(player.getEntityWorld() instanceof ServerWorld world)) return;
+        net.minecraft.screen.ScreenHandlerContext ctx =
+            CraftingStations.virtualContext(world, player.getBlockPos());
+        var factory = new net.minecraft.screen.SimpleNamedScreenHandlerFactory(
+            (syncId, inv, viewer) -> new net.minecraft.screen.AnvilScreenHandler(syncId, inv, ctx),
+            net.minecraft.text.Text.translatable("container.repair"));
+        if (player.openHandledScreen(factory).isEmpty()) return;
+        apRemaining -= CraftingStations.AP_COST;
+        sendMessage("§b✦ Anvil opened. §7(-" + CraftingStations.AP_COST
+            + " AP) §8Aim at an enemy to drop it instead.");
         sendSync();
         refreshHighlights();
     }
@@ -8180,6 +8411,14 @@ public class CombatManager {
         CraftingStations.Station station = CraftingStations.of(heldItem);
         if (station != null) {
             handleStationOpen(station);
+            return;
+        }
+
+        // Campfire cooking: holding raw food and clicking a placed campfire tile cooks
+        // it rather than eating it raw. Checked before the feed/eat paths below so a
+        // raw steak aimed at the fire never gets swallowed instead.
+        if (ItemUseHandler.isCampfireCookable(heldItem) && isCampfireTile(targetTile)) {
+            handleCampfireCook(heldStack, targetTile);
             return;
         }
 
@@ -8236,6 +8475,18 @@ public class CombatManager {
             return;
         }
 
+        // Anvil: dropping it on an enemy is a weapon (handled in ItemUseHandler), but
+        // clicking empty ground or your own tile opens the anvil UI instead, so a
+        // spare anvil doubles as a portable repair/rename bench mid-fight.
+        if (isAnvilItem(heldItem) && arena != null) {
+            CombatEntity occupant = arena.getOccupant(targetTile);
+            boolean ownTile = targetTile.equals(arena.getPlayerGridPos());
+            if (ownTile || occupant == null || !occupant.isAlive()) {
+                handleAnvilOpen();
+                return;
+            }
+        }
+
         // Eligible blocks place a temporary wall obstacle on the target tile.
         if (WallBlocks.isEligible(heldStack)) {
             handleWallBlockPlacement(heldStack, targetTile);
@@ -8243,6 +8494,13 @@ public class CombatManager {
         }
 
         int apCost = ItemUseHandler.getApCost(heldStack);
+
+        // Robe armor makes sherd spells cheaper. Applied before the affordability
+        // check so the discount can be the thing that lets the cast happen at all.
+        if (PotterySherdSpells.isPotterySherd(heldItem)) {
+            int discount = ArmorSetEffects.sherdApDiscount(PlayerCombatStats.getArmorSet(player));
+            if (discount > 0) apCost = Math.max(1, apCost - discount);
+        }
 
         if (apRemaining < apCost) {
             sendMessage("§cNeed " + apCost + " AP to use that! (have " + apRemaining + ")");
@@ -9831,6 +10089,13 @@ public class CombatManager {
                 final GridPos fromPos = moveOriginPos != null ? moveOriginPos : finalPos;
                 final int dist = tilesMoved;
                 fireEffectHook(h -> h.onMove(effectContext, fromPos, finalPos, dist));
+                // Curse of the Sands: the tile the player just left erupts into a
+                // buried mine. Counterplay is to stay put (or clear ground you'll
+                // need later) until the curse burns off.
+                if (curseOfSandsTurns > 0 && tilesMoved > 0 && !fromPos.equals(finalPos)) {
+                    sendMessage("§6  The curse stirs the sand behind you...");
+                    registerSandMine(fromPos);
+                }
                 moveOriginPos = null;
             }
 
@@ -10503,6 +10768,9 @@ public class CombatManager {
                     }
                 }
             }
+            // Timed traps: mend/harm whoever stands in them, age them, drop the spent ones.
+            tickTileTraps();
+
             // Lightning rod -single-use, strikes then self-removes
             tileEffects.entrySet().removeIf(entry -> {
                 if ("lightning".equals(entry.getValue())) {
@@ -10683,20 +10951,56 @@ public class CombatManager {
                 if (e != currentEnemy && e.isAlive() && !e.isAlly()) teammates.add(e);
             }
             if (!teammates.isEmpty()) {
-                CombatEntity victim = teammates.get((int)(Math.random() * teammates.size()));
-                sendMessage("§d" + currentEnemy.getDisplayName() + " is confused and attacks " + victim.getDisplayName() + "!");
-                // Size-aware path so a confused 2x2 mob (slime/magma cube/spider)
-                // doesn't route its footprint over the player while staggering to
-                // its target.
-                java.util.List<GridPos> path = Pathfinding.findPathSized(arena, currentEnemy.getGridPos(),
-                    victim.getGridPos(), currentEnemy.getMoveSpeed(), currentEnemy);
-                pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.MoveAndAttackMob(
-                    path, victim.getEntityId(), currentEnemy.getAttackPower());
+                // A confused swing still has to REACH its victim: pick only among
+                // teammates the mob can actually get adjacent to this turn. The old
+                // fully-random pick could land on a mob across the map, and the
+                // empty-path fallback then swung the attack anyway - a psychic hit
+                // from twenty tiles that read as pure nonsense.
+                java.util.Collections.shuffle(teammates);
+                CombatEntity victim = null;
+                java.util.List<GridPos> path = null;
+                for (CombatEntity candidate : teammates) {
+                    // Size-aware path so a confused 2x2 mob (slime/magma cube/spider)
+                    // doesn't route its footprint over the player while staggering.
+                    java.util.List<GridPos> p = Pathfinding.findPathSized(arena,
+                        currentEnemy.getGridPos(), candidate.getGridPos(),
+                        currentEnemy.getMoveSpeed(), currentEnemy);
+                    GridPos end = (p == null || p.isEmpty())
+                        ? currentEnemy.getGridPos() : p.get(p.size() - 1);
+                    if (candidate.minChebyshevDistanceTo(end) <= 1) {
+                        victim = candidate;
+                        path = p;
+                        break;
+                    }
+                }
                 currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
-                if (path != null && !path.isEmpty()) {
-                    startEnemyMove(path);
+                if (victim != null) {
+                    sendMessage("§d" + currentEnemy.getDisplayName() + " is confused and attacks "
+                        + victim.getDisplayName() + "!");
+                    pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.MoveAndAttackMob(
+                        path, victim.getEntityId(), currentEnemy.getAttackPower());
+                    if (path != null && !path.isEmpty()) {
+                        startEnemyMove(path);
+                    } else {
+                        // Already adjacent - swing without moving.
+                        startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+                    }
+                    return;
+                }
+                // Nobody in reach: stagger toward the nearest teammate, hitting nothing.
+                teammates.sort(java.util.Comparator.comparingInt(
+                    e -> e.minDistanceTo(currentEnemy.getGridPos())));
+                java.util.List<GridPos> stagger = Pathfinding.findPathSized(arena,
+                    currentEnemy.getGridPos(), teammates.get(0).getGridPos(),
+                    currentEnemy.getMoveSpeed(), currentEnemy);
+                sendMessage("§d" + currentEnemy.getDisplayName()
+                    + " staggers about in confusion!");
+                if (stagger != null && !stagger.isEmpty()) {
+                    pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.Move(stagger);
+                    startEnemyMove(stagger);
                 } else {
-                    startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+                    enemyTurnState = EnemyTurnState.DONE;
+                    enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
                 }
                 return;
             }
@@ -11032,7 +11336,7 @@ public class CombatManager {
                     }
                     boolean victimDied = false;
                     try {
-                        int actual = damagePlayer(explode.damage(), currentEnemy);
+                        int actual = damagePlayer(explode.damage(), currentEnemy, DamageType.BLUNT);
                         sendMessage("§c  Explosion hits "
                             + (expSwapped ? victim.getName().getString() : "you")
                             + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
@@ -12076,6 +12380,7 @@ public class CombatManager {
         activeVoidRifts.clear();
         // Sand mines share the same combat-teardown lifecycle as rifts.
         activeSandMines.clear();
+        curseOfSandsTurns = 0;
         // Drop unresolved boss telegraphs on teardown too, so a warning whose boss
         // died before it resolved can't keep broadcasting its tiles into later levels.
         pendingBossWarnings.clear();
@@ -12238,7 +12543,7 @@ public class CombatManager {
                     sendSync();
                     break;
                 }
-                int actual = damagePlayer(ra.damage(), currentEnemy);
+                int actual = damagePlayer(ra.damage(), currentEnemy, DamageType.RANGED);
                 // A fully avoided ranged hit (dodge / Ethereal / shield block / Gilded
                 // Guard) applies no impact effects, knockback, or hit message -only the
                 // avoid feedback already shown inside damagePlayer.
@@ -13169,11 +13474,34 @@ public class CombatManager {
                 addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 0);
                 sendMessage("§5  Null energy disrupts your footing! (-1 AP next turn)");
             }
-            case "burning", "fire", "magma", "raining_fireball" -> {
+            case "burning", "fire", "magma", "raining_fireball", "magma_eruption" -> {
                 if (!combatEffects.hasFireResistance()) {
                     addEffectHooked(CombatEffects.EffectType.BURNING, 2, 0);
                     sendMessage("§6  You're burning for 2 turns!");
                 }
+            }
+            case "sand_burial" -> {
+                // Buried alive: the same amp-9 MINING_FATIGUE stun the webs use.
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
+                sendMessage("§6  The sand swallows you! Stunned + slowed!");
+            }
+            case "sandstorm" -> {
+                addEffectHooked(CombatEffects.EffectType.WEAKNESS, 2, 0);
+                sendMessage("§6  Sand scours your eyes! Weakness for 2 turns.");
+            }
+            case "curse_of_sands" -> {
+                curseOfSandsTurns = Math.max(curseOfSandsTurns, CURSE_OF_SANDS_DURATION);
+                sendMessage("§6  §lCURSED!§r §6Every tile you leave sprouts a sand mine! §8("
+                    + curseOfSandsTurns + " turns)");
+            }
+            case "entangle" -> {
+                addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
+                sendMessage("§2  Roots grip your legs! Rooted for 1 turn!");
+            }
+            case "trident_storm" -> {
+                addEffectHooked(CombatEffects.EffectType.SLOWNESS, 1, 0);
+                sendMessage("§9  Drenched! Slowness for 1 turn.");
             }
             case "poison", "venom", "web_poison" -> {
                 addEffectHooked(CombatEffects.EffectType.POISON, 3, 0);
@@ -14865,6 +15193,13 @@ public class CombatManager {
         tickVoidRifts();
         // Tick Sandstorm Pharaoh sand-mine lifetimes (arm fresh mines, expire old ones).
         tickSandMines();
+        // Tick down the Curse of the Sands.
+        if (curseOfSandsTurns > 0) {
+            curseOfSandsTurns--;
+            if (curseOfSandsTurns == 0) {
+                sendMessage("§7The curse of the sands lifts.");
+            }
+        }
     }
 
     /**
@@ -15387,6 +15722,15 @@ public class CombatManager {
                 return;
             }
 
+            // Bow-laid traps fire the moment an enemy steps into them.
+            if (triggerTileTrap(next, currentEnemy)) {
+                enemyLerpInitialized = false;
+                enemyMovePathIndex = enemyMovePath.size();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                return;
+            }
+
             // Check for hex trap tile effect
             if (tileEffects.containsKey(next) && "hex_trap".equals(tileEffects.get(next))) {
                 tileEffects.remove(next);
@@ -15886,7 +16230,7 @@ public class CombatManager {
                 }
                 boolean raTargetDied = false;
                 try {
-                int raActual = damagePlayer(raDamage, currentEnemy);
+                int raActual = damagePlayer(raDamage, currentEnemy, DamageType.RANGED);
 
                 // Evoker fangs: magic sound + fang particles at player position
                 String raEntityType = currentEnemy.getEntityTypeId();
@@ -16487,12 +16831,123 @@ public class CombatManager {
     }
 
     /**
+     * Prismarine armor's guardian beam. At the start of the wearer's turn every live
+     * enemy standing within {@link ArmorSetEffects#PRISMARINE_RADIUS} tiles takes Water
+     * damage and is Soaked. Mob Water resistances still apply, so a drowned shrugs it
+     * off the same way it shrugs off a trident.
+     */
+    private void applyPrismarineDischarge(ServerPlayerEntity wearer) {
+        if (arena == null || wearer == null) return;
+        GridPos wearerPos = gridPosOf(wearer);
+        if (wearerPos == null) return;
+
+        int zapped = 0;
+        for (CombatEntity enemy : new java.util.ArrayList<>(enemies)) {
+            if (!enemy.isAlive() || enemy.isAlly()) continue;
+            if (enemy.minDistanceTo(wearerPos) > ArmorSetEffects.PRISMARINE_RADIUS) continue;
+
+            int dealt = enemy.takeDamage(MobResistances.applyResistance(
+                enemy.getEntityTypeId(), DamageType.WATER, ArmorSetEffects.PRISMARINE_DAMAGE));
+            if (dealt <= 0) continue;
+            enemy.stackSoaked(ArmorSetEffects.PRISMARINE_SOAK_TURNS, 1);
+            zapped++;
+            achievementTracker.recordPlayerDealtDamage();
+
+            if (wearer.getEntityWorld() instanceof ServerWorld world) {
+                ProjectileSpawner.spawnSpellTrail(world,
+                    arena.gridToBlockPos(wearerPos), arena.gridToBlockPos(enemy.getGridPos()),
+                    net.minecraft.particle.ParticleTypes.BUBBLE,
+                    net.minecraft.particle.ParticleTypes.SPLASH, 12, 0.2);
+            }
+            sendMessage("§3✦ Prismarine beam hits " + enemy.getDisplayName()
+                + " for " + dealt + " and soaks it!");
+            checkAndHandleDeath(enemy);
+        }
+        if (zapped > 0 && wearer.getEntityWorld() instanceof ServerWorld world) {
+            world.playSound(null, wearer.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_GUARDIAN_ATTACK,
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.2f);
+        }
+    }
+
+    /**
+     * Wooden and Bone armor are brittle: every worn piece of the set independently
+     * risks shattering when its wearer is struck. A piece that shatters is destroyed
+     * outright, not merely damaged - the set trades durability for its other perks.
+     * Luck steadies the gear, shaving the roll down without ever making it safe.
+     */
+    private void applyFragileArmorBreak() {
+        if (player == null) return;
+        double breakChance = ArmorSetEffects.fragileBreakChance(
+            PlayerCombatStats.getArmorSet(player), luckPointsOf(player));
+        if (breakChance <= 0) return;
+        for (net.minecraft.entity.EquipmentSlot slot : new net.minecraft.entity.EquipmentSlot[]{
+                net.minecraft.entity.EquipmentSlot.HEAD, net.minecraft.entity.EquipmentSlot.CHEST,
+                net.minecraft.entity.EquipmentSlot.LEGS, net.minecraft.entity.EquipmentSlot.FEET}) {
+            ItemStack piece = player.getEquippedStack(slot);
+            if (piece.isEmpty()) continue;
+            if (Math.random() >= breakChance) continue;
+            String name = piece.getName().getString();
+            player.equipStack(slot, ItemStack.EMPTY);
+            sendMessage("§c§l✦ SHATTERED! §r§7Your " + name + " breaks apart.");
+            player.getWorld().playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.BLOCK_GLASS_BREAK,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.8f);
+        }
+    }
+
+    /** Wither armor: whatever strikes the wearer in melee starts to rot. */
+    private void applyWitherRetaliation(CombatEntity attacker) {
+        if (player == null || attacker == null || !attacker.isAlive()) return;
+        int turns = ArmorSetEffects.witherRetaliationTurns(PlayerCombatStats.getArmorSet(player));
+        if (turns <= 0) return;
+        // Only a melee attacker touches the armor; an archer across the arena does not.
+        if (attacker.minDistanceTo(gridPosOf(player)) > 1) return;
+        attacker.stackWither(turns, 0);
+        sendMessage("§8✦ Wither armor: §7" + attacker.getDisplayName() + " begins to rot.");
+    }
+
+    /** Slime armor: the wearer's own hits bounce their target away. */
+    private void applySlimeAttackKnockback(CombatEntity target) {
+        if (player == null || target == null || !target.isAlive() || arena == null) return;
+        int tiles = ArmorSetEffects.contactKnockbackTiles(PlayerCombatStats.getArmorSet(player));
+        if (tiles <= 0) return;
+        GridPos pPos = gridPosOf(player);
+        GridPos tPos = target.getGridPos();
+        int dx = Integer.signum(tPos.x() - pPos.x());
+        int dz = Integer.signum(tPos.z() - pPos.z());
+        if (dx == 0 && dz == 0) return;
+        knockEnemyBack(target, dx, dz, tiles);
+        sendMessage("§a✦ Slime armor: §7" + target.getDisplayName() + " bounces away.");
+    }
+
+    /** Slime armor: the blow bounces. Both parties are shoved a tile apart. */
+    private void applySlimeContactKnockback(CombatEntity attacker) {
+        if (player == null || attacker == null || !attacker.isAlive() || arena == null) return;
+        int tiles = ArmorSetEffects.contactKnockbackTiles(PlayerCombatStats.getArmorSet(player));
+        if (tiles <= 0) return;
+        if (attacker.minDistanceTo(gridPosOf(player)) > 1) return; // only contact bounces
+
+        GridPos pPos = gridPosOf(player);
+        GridPos aPos = attacker.getGridPos();
+        knockEnemyBack(attacker,
+            Integer.signum(aPos.x() - pPos.x()), Integer.signum(aPos.z() - pPos.z()), tiles);
+        applyPlayerKnockback(aPos, tiles, attacker);
+        sendMessage("§a✦ Slime armor: §7the blow bounces you both apart.");
+    }
+
+    /**
      * Knock the player back N tiles away from the attacker position.
      */
     private void applyPlayerKnockback(GridPos attackerPos, int tiles, CombatEntity source) {
         // Immovable hybrid: the player cannot be knocked back at all.
         if (activeHybridEffect() == HybridEffect.IMMOVABLE) {
             sendMessage("§8⛏ Immovable -you don't budge.");
+            return;
+        }
+        // Heavy armor: too much plate to shift.
+        if (ArmorSetEffects.ignoresKnockback(PlayerCombatStats.getArmorSet(player))) {
+            sendMessage("§8⛨ Heavy armor -the blow doesn't move you.");
             return;
         }
         // Slow Falling: the player resists knockback (floats in place).
@@ -18334,15 +18789,16 @@ public class CombatManager {
                 }
             }
         }
-        // Rare Simply Swords unique weapon drop -boss kills only (Luck boosts chance).
-        // Each recipient rolls independently, preferring uniques they don't already carry.
-        // No-op when the mod is absent (rollOne returns EMPTY).
+        // Rare unique weapon drop -boss kills only (Luck boosts chance). Each recipient
+        // rolls independently, preferring uniques they don't already carry. Simply Swords
+        // and Simply Bows share ONE drop chance and one coin-flip between them, so having
+        // both mods installed widens the pool without doubling how often it pays out.
+        // No-op when neither mod is present (each roller returns EMPTY).
         if (isBoss) {
             float uniqueChance = (float) CrafticsMod.CONFIG.uniqueWeaponDropChance() + luckBonusItems * 0.01f;
             if (Math.random() < uniqueChance) {
                 for (ServerPlayerEntity recipient : rewardRecipients) {
-                    ItemStack uniqueDrop = com.crackedgames.craftics.compat.simplyswords
-                        .SimplySwordsLootRoller.rollOne(recipient);
+                    ItemStack uniqueDrop = rollUniqueWeapon(recipient);
                     if (!uniqueDrop.isEmpty()) {
                         deliverLoot(recipient, uniqueDrop.copy(), lootOverflow);
                         sendMessage("§6§l⚔ LEGENDARY DROP: " + uniqueDrop.getName().getString() + "!");
@@ -18946,7 +19402,10 @@ public class CombatManager {
                 savedPets.clear();
             }
             boolean wasInfinite = ld.infiniteActive;
-            ld.endBiomeRun();
+            // An infinite run keeps its biome/level cursor - that IS the save point.
+            if (!wasInfinite) {
+                ld.endBiomeRun();
+            }
             ld.inCombat = false;
             data.markDirty();
             world.setTimeOfDay(6000);
@@ -18956,9 +19415,10 @@ public class CombatManager {
             }
             sendToAllParty(new ExitCombatPayload(true));
             endCombat();
-            // INFINITE MODE: going home ends the run - stash comes back, score stays banked.
+            // INFINITE MODE: going home parks the run at a save point - the stash comes
+            // back now, and Infinite Mode resumes here later. Score stays banked either way.
             if (wasInfinite) {
-                InfiniteRunManager.endRun(world.getServer(), dataOwner, "went home");
+                InfiniteRunManager.suspendRun(world.getServer(), dataOwner, "went home");
             }
         } else {
             // Continue to next level
@@ -20365,7 +20825,7 @@ public class CombatManager {
                         finishShrinePlayer(p);
                         continue;
                     }
-                    sendDialogue(p, def);
+                    sendDialogue(p, withTrialKeyChoices(p, def));
                 }
             },
             () -> { /* all-finished handled via eventPendingPlayers/finalizeShrineEvent */ });
@@ -21674,6 +22134,41 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Insert the trial-key offerings into a shrine menu for whichever keys this player
+     * is actually carrying. The options are per-player, so in a party only the members
+     * holding a key are offered one. "Walk away" stays the last choice.
+     */
+    private com.crackedgames.craftics.combat.dialogue.DialogueDefinition withTrialKeyChoices(
+            ServerPlayerEntity player,
+            com.crackedgames.craftics.combat.dialogue.DialogueDefinition def) {
+        boolean trial = TrialKeyOffering.hasTrialKey(player);
+        boolean ominous = TrialKeyOffering.hasOminousTrialKey(player);
+        if (!trial && !ominous) return def;
+
+        java.util.List<com.crackedgames.craftics.combat.dialogue.DialogueChoice> choices =
+            new java.util.ArrayList<>(def.choices());
+        // Drop "Walk away" so the key offers sit above it, then put it back at the end.
+        com.crackedgames.craftics.combat.dialogue.DialogueChoice walkAway = null;
+        for (var ch : choices) {
+            if ("shrine:leave".equals(ch.action())) { walkAway = ch; break; }
+        }
+        if (walkAway != null) choices.remove(walkAway);
+
+        if (trial) {
+            choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+                "Give Trial Key", TrialKeyOffering.ACTION_TRIAL));
+        }
+        if (ominous) {
+            choices.add(new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
+                "Give Ominous Trial Key", TrialKeyOffering.ACTION_OMINOUS));
+        }
+        if (walkAway != null) choices.add(walkAway);
+
+        return new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+            def.id(), def.speaker(), def.group(), def.lines(), choices);
+    }
+
     /** Drive the shrine event off a dialogue choice. Actions are {@code shrine:small},
      *  {@code shrine:medium}, {@code shrine:large}, {@code shrine:leave}, or {@link
      *  com.crackedgames.craftics.network.DialogueChoicePayload#ACTION_DISMISS} for
@@ -21689,6 +22184,13 @@ public class CombatManager {
             finishShrinePlayer(player);
             return;
         }
+        // Trial keys buy a guaranteed reward instead of an emerald gamble.
+        if (TrialKeyOffering.ACTION_TRIAL.equals(action)
+                || TrialKeyOffering.ACTION_OMINOUS.equals(action)) {
+            handleTrialKeyOffering(player, action);
+            return;
+        }
+
         String key = action.substring("shrine:".length());
         int tier = switch (key) {
             case "small" -> 0;
@@ -21725,7 +22227,7 @@ public class CombatManager {
                     new com.crackedgames.craftics.combat.dialogue.DialogueChoice(
                         "Large Offering (" + com.crackedgames.craftics.combat.ShrineRewards.cost(2) + " emeralds)", "shrine:large"),
                     new com.crackedgames.craftics.combat.dialogue.DialogueChoice("Walk away", "shrine:leave")));
-            sendDialogue(player, poor);
+            sendDialogue(player, withTrialKeyChoices(player, poor));
             return;
         }
 
@@ -21798,6 +22300,49 @@ public class CombatManager {
                 java.util.List.of(resultLine), java.util.List.of());
             sendDialogue(player, resultDef);
         }
+        // DISMISS on click-through routes back here → finishShrinePlayer.
+    }
+
+    /**
+     * Hand a trial key to the shrine. Unlike an emerald offering this never rolls a
+     * dud: the key is consumed and the reward is guaranteed. An ominous key pays out
+     * a legendary tier. If the player somehow no longer holds the key (stale button),
+     * nothing is taken and the shrine simply shrugs.
+     */
+    private void handleTrialKeyOffering(ServerPlayerEntity player, String action) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        java.util.Random rng = new java.util.Random();
+        TrialKeyOffering.Offering offering = TrialKeyOffering.offer(player, world, action, rng);
+        if (offering == null) {
+            var gone = new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                "craftics:shrine_no_key", "", "shrine_no_key",
+                java.util.List.of("You reach for the key, but your hands are empty."),
+                java.util.List.of());
+            sendDialogue(player, gone);
+            return;
+        }
+
+        java.util.List<ItemStack> revealItems = new java.util.ArrayList<>();
+        for (ItemStack reward : offering.rewards()) {
+            if (reward.isEmpty()) continue;
+            revealItems.add(reward.copy()); // snapshot before deliver drains the stack
+            LootDelivery.deliver(player, reward);
+        }
+
+        BlockPos shrineOrigin = getEventRoomOrigin(player);
+        boolean ominous = TrialKeyOffering.ACTION_OMINOUS.equals(action);
+        world.spawnParticles(
+            ominous ? net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME
+                    : net.minecraft.particle.ParticleTypes.ENCHANT,
+            shrineOrigin.getX() + 4.5, shrineOrigin.getY() + 2.5, shrineOrigin.getZ() + 4.5,
+            60, 0.6, 1.2, 0.6, 0.12);
+        world.playSound(null, shrineOrigin.add(4, 2, 4),
+            ominous ? net.minecraft.sound.SoundEvents.BLOCK_VAULT_OPEN_SHUTTER
+                    : net.minecraft.sound.SoundEvents.BLOCK_VAULT_INSERT_ITEM,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, ominous ? 0.7f : 1.2f);
+
+        sendRewardReveal(player, com.crackedgames.craftics.network.RewardRevealPayload.STYLE_DROP_IN,
+            true, offering.revealTitle(), offering.resultLine(), revealItems);
         // DISMISS on click-through routes back here → finishShrinePlayer.
     }
 
@@ -23470,6 +24015,13 @@ public class CombatManager {
         // start, so there is no stale-data risk.
         combatEffects.clear();
         tileEffects.clear();
+        // The trap blocks themselves were already restored above via placedBlockRestores
+        // (which replays BEFORE player is nulled); here we only drop the now-stale records.
+        tileTraps.clear();
+        trapBlocks.clear();
+        // A player who left combat with the enchanting table still open would strand its
+        // scratch bookshelf ring in the sky above the arena.
+        CombatEnchantmentScreenHandler.razeAllRings();
         lootPendingPlayers.clear();
         pendingVictory = null;
         // Reset for the next combat -the pet disposition is undecided again.
@@ -23980,9 +24532,13 @@ public class CombatManager {
 
         int[] warningArrowArr = warningArrowList.stream().mapToInt(Integer::intValue).toArray();
 
+        // Steampunk radar: the exact route each enemy means to take, and the tiles it
+        // means to strike. Empty for everyone not wearing the set.
+        EnemyForecast forecast = buildEnemyForecast();
+
         sendToAllParty(new TileSetPayload(
             moveArr, attackArr, dangerArr, warningArr, enemyMapArr, enemyTypesBuilder.toString(), mountArr,
-            warningArrowArr
+            warningArrowArr, forecast.pathTiles(), forecast.strikeTiles()
         ));
 
         // Auto-end turn when AP is depleted (configurable)
@@ -24024,6 +24580,130 @@ public class CombatManager {
                 endTurnHintSent = true;
             }
         }
+    }
+
+    /** Flattened tile lists for the Steampunk radar overlay. */
+    private record EnemyForecast(int[] pathTiles, int[] strikeTiles) {
+        static final EnemyForecast EMPTY = new EnemyForecast(new int[0], new int[0]);
+    }
+
+    /**
+     * Look one turn ahead for the Steampunk radar: ask every enemy's AI what it means
+     * to do, and collect the tiles it will walk (painted yellow) and the tiles it will
+     * strike (painted red). {@code decideAction} is pure - it plans without executing,
+     * which is the same thing {@link #showEnemyIntentionPreviews} relies on - so calling
+     * it here does not commit the enemy to anything.
+     *
+     * <p>Returns empty unless someone in the party wears the full Steampunk set. The
+     * payload goes to the whole party, so a radar-wearer reveals the board for everyone;
+     * that is deliberate, and matches how the other party-wide overlays behave.
+     */
+    private EnemyForecast buildEnemyForecast() {
+        if (arena == null || !anyPartyMemberWearsRadar()) return EnemyForecast.EMPTY;
+
+        java.util.List<Integer> pathList = new java.util.ArrayList<>();
+        java.util.List<Integer> strikeList = new java.util.ArrayList<>();
+        GridPos playerPos = arena.getPlayerGridPos();
+
+        for (CombatEntity enemy : enemies) {
+            if (!enemy.isAlive() || enemy.isAlly()) continue;
+            EnemyAction action;
+            try {
+                action = resolveAi(enemy).decideAction(enemy, arena, playerPos);
+            } catch (Exception e) {
+                continue; // a mis-behaving AI must not break the overlay
+            }
+            forecastAction(action, enemy, playerPos, pathList, strikeList);
+        }
+        return new EnemyForecast(
+            pathList.stream().mapToInt(Integer::intValue).toArray(),
+            strikeList.stream().mapToInt(Integer::intValue).toArray());
+    }
+
+    /** True if any live party member wears the full radar (Steampunk) set. */
+    private boolean anyPartyMemberWearsRadar() {
+        for (ServerPlayerEntity member : partyPlayers) {
+            if (member == null || !member.isAlive()) continue;
+            if (ArmorSetEffects.revealsEnemyIntent(PlayerCombatStats.getArmorSet(member))) return true;
+        }
+        return false;
+    }
+
+    /** Fold one planned action into the radar's path/strike tile lists. */
+    private void forecastAction(EnemyAction action, CombatEntity enemy, GridPos playerPos,
+                                java.util.List<Integer> pathList, java.util.List<Integer> strikeList) {
+        switch (action) {
+            case EnemyAction.Move m -> addTiles(pathList, m.path());
+            case EnemyAction.Flee f -> addTiles(pathList, f.path());
+            case EnemyAction.MoveAndAttack ma -> {
+                addTiles(pathList, ma.path());
+                addTile(strikeList, playerPos);
+            }
+            case EnemyAction.MoveAndAttackWithKnockback mk -> {
+                addTiles(pathList, mk.path());
+                addTile(strikeList, playerPos);
+            }
+            case EnemyAction.MoveAttackMove mam -> {
+                addTiles(pathList, mam.approachPath());
+                addTiles(pathList, mam.retreatPath());
+                addTile(strikeList, playerPos);
+            }
+            case EnemyAction.MoveAndAttackMob mm -> addTiles(pathList, mm.path());
+            case EnemyAction.Swoop s -> {
+                addTiles(pathList, s.path());
+                addTile(strikeList, playerPos);
+            }
+            case EnemyAction.MimicTantrum mt -> {
+                addTiles(pathList, mt.path());
+                addTile(strikeList, playerPos);
+            }
+            case EnemyAction.Attack a -> addTile(strikeList, playerPos);
+            case EnemyAction.AttackWithKnockback ak -> addTile(strikeList, playerPos);
+            case EnemyAction.RangedAttack ra -> addTile(strikeList, playerPos);
+            // A destination, not a route: paint where it lands, and that it will strike.
+            case EnemyAction.Teleport t -> addTile(pathList, t.target());
+            case EnemyAction.TeleportAndAttack ta -> {
+                addTile(pathList, ta.target());
+                addTile(strikeList, playerPos);
+            }
+            case EnemyAction.Pounce p -> {
+                addTile(pathList, p.landingPos());
+                addTile(strikeList, playerPos);
+            }
+            case EnemyAction.CeilingDrop cd -> {
+                addTile(pathList, cd.landingPos());
+                addTile(strikeList, playerPos);
+            }
+            case EnemyAction.Explode ex -> {
+                // Everything inside the blast is about to be hit, the wearer included.
+                for (GridPos t : AoeShapes.filledDisc(enemy.getGridPos(), ex.radius())) {
+                    if (arena.isInBounds(t)) addTile(strikeList, t);
+                }
+            }
+            case EnemyAction.AreaAttack aa -> {
+                for (GridPos t : AoeShapes.filledDisc(aa.center(), aa.radius())) {
+                    if (arena.isInBounds(t)) addTile(strikeList, t);
+                }
+            }
+            case EnemyAction.CompositeAction ca -> {
+                for (EnemyAction sub : ca.actions()) {
+                    forecastAction(sub, enemy, playerPos, pathList, strikeList);
+                }
+            }
+            // Boss telegraphs already have their own red overlay; don't double-paint them.
+            default -> { }
+        }
+    }
+
+    private static void addTiles(java.util.List<Integer> out, java.util.List<GridPos> tiles) {
+        if (tiles == null) return;
+        for (GridPos t : tiles) addTile(out, t);
+    }
+
+    private static void addTile(java.util.List<Integer> out, GridPos tile) {
+        if (tile == null) return;
+        out.add(tile.x());
+        out.add(tile.z());
     }
 
     /**
@@ -24079,7 +24759,8 @@ public class CombatManager {
 
     private void clearHighlights() {
         sendToAllParty(new TileSetPayload(
-            new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0], new int[0]
+            new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0], new int[0],
+            new int[0], new int[0]
         ));
     }
 
@@ -24136,7 +24817,8 @@ public class CombatManager {
             new int[0], new int[0], new int[0],
             warnList.stream().mapToInt(Integer::intValue).toArray(),
             new int[0], "", new int[0],
-            arrowList.stream().mapToInt(Integer::intValue).toArray()));
+            arrowList.stream().mapToInt(Integer::intValue).toArray(),
+            new int[0], new int[0]));
     }
 
     /**
@@ -24446,6 +25128,296 @@ public class CombatManager {
      *
      * @return the new ally, or {@code null} when combat is inactive or no free tile exists
      */
+    /**
+     * Roll one legendary weapon for {@code recipient} across every installed unique-weapon
+     * mod. With both Simply Swords and Simply Bows present a coin decides which pool the
+     * drop comes from; with only one, that one always answers. Empty when neither is
+     * installed - the caller simply drops nothing.
+     */
+    public static ItemStack rollUniqueWeapon(ServerPlayerEntity recipient) {
+        boolean swords = com.crackedgames.craftics.compat.simplyswords.SimplySwordsCompat.isRegistered();
+        boolean bows = com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isRegistered();
+        if (swords && bows) {
+            return Math.random() < 0.5
+                ? com.crackedgames.craftics.compat.simplyswords.SimplySwordsLootRoller.rollOne(recipient)
+                : com.crackedgames.craftics.compat.simplybows.SimplyBowsLootRoller.rollOne(recipient);
+        }
+        if (bows) return com.crackedgames.craftics.compat.simplybows.SimplyBowsLootRoller.rollOne(recipient);
+        return com.crackedgames.craftics.compat.simplyswords.SimplySwordsLootRoller.rollOne(recipient);
+    }
+
+    /**
+     * Fire a ground-aimed weapon at a tile that holds no enemy. Charges the weapon's AP
+     * and an arrow exactly as a normal shot would - so the quiver-saving armor sets still
+     * apply - then hands the tile to the weapon's registered cast.
+     *
+     * <p>The cast is given the same resolved attack power a shot would land with, so a
+     * bow that rains arrows keeps pace with a bow that fires one.
+     */
+    private void resolveTargetlessCast(Item weapon, GridPos aimTile) {
+        var cast = com.crackedgames.craftics.api.registry.WeaponRegistry.getTargetlessCast(weapon);
+        if (cast == null || player == null || arena == null) return;
+
+        GridPos pPos = arena.getPlayerGridPos();
+        int range = getEffectiveWeaponRange();
+        if (range > 1) range += getScaffoldRangeBonus(pPos);
+        if (aimTile.manhattanDistance(pPos) > range) {
+            sendMessage("§cThat tile is out of range! (max " + range + ")");
+            return;
+        }
+        if (!Pathfinding.hasLineOfSight(arena, pPos, aimTile)) {
+            sendMessage("§cLine of sight blocked by an obstacle!");
+            return;
+        }
+
+        int apCost = WeaponAbility.getAttackCost(weapon);
+        int rogueReduction = PlayerCombatStats.getSetApCostReduction(player);
+        if (rogueReduction > 0) apCost = Math.max(1, apCost - rogueReduction);
+        if (apRemaining < apCost) {
+            sendMessage("§cNeed " + apCost + " AP for that shot! (have " + apRemaining + ")");
+            return;
+        }
+
+        boolean isBow = PlayerCombatStats.isBowItem(weapon);
+        if (isBow && !PlayerCombatStats.hasInfinity(player) && !PlayerCombatStats.hasArrows(player)) {
+            sendMessage("§cYou need arrows to use ranged weapons!");
+            return;
+        }
+
+        // Resolve the shot's power the same way handleAttack does, so a cast scales with
+        // affinity, enchants, and progression rather than being a flat number.
+        DamageType damageType = DamageType.fromWeapon(weapon);
+        DamageType secondaryType =
+            com.crackedgames.craftics.api.registry.WeaponRegistry.getSecondaryDamageType(weapon);
+        PlayerProgression.PlayerStats attackerStats = PlayerProgression.get(
+            (ServerWorld) player.getEntityWorld()).getStats(player);
+        int baseDamage = PlayerCombatStats.getAttackPower(weapon) + combatEffects.getStrengthBonus()
+            + getProgRangedBonus() + PlayerCombatStats.getSetAttackBonus(player)
+            + PlayerCombatStats.getWeaponEnchantBonus(player)
+            + DamageType.getWeaponAffinityBonus(player, activeTrimScan, combatEffects,
+                attackerStats, damageType, secondaryType);
+        baseDamage = (int) (baseDamage * CrafticsMod.CONFIG.playerDamageMultiplier());
+        baseDamage = applyPowerPercent(baseDamage, powerPoints(true));
+
+        int luckPoints = attackerStats.getPoints(PlayerProgression.Stat.LUCK);
+
+        apRemaining -= apCost;
+        if (isBow && !PlayerCombatStats.hasInfinity(player)) {
+            double ammoSave = ArmorSetEffects.ammoSaveChance(
+                PlayerCombatStats.getArmorSet(player), luckPoints);
+            if (ammoSave > 0 && Math.random() < ammoSave) {
+                sendMessage("§f✦ The arrow stays in your quiver.");
+            } else {
+                PlayerCombatStats.consumeArrow(player);
+            }
+        }
+        if (!PlayerCombatStats.hasShield(player)) attackedWithoutShieldThisTurn = true;
+        achievementTracker.recordWeaponUsed(weapon);
+        achievementTracker.recordPlayerDealtDamage();
+
+        for (String msg : cast.cast(player, aimTile, arena, baseDamage, luckPoints)) {
+            sendMessage(msg);
+        }
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * Lay a timed trap on every tile of {@code tiles} that can hold one. A weapon ability
+     * reaches this through {@link #getActiveCombat}, the same way a summoning ability
+     * reaches {@link #summonWeaponProcAlly}. Occupied tiles and out-of-bounds tiles are
+     * skipped; laying over an existing trap refreshes it.
+     *
+     * @return how many tiles actually received a trap
+     */
+    public int layTileTraps(java.util.List<GridPos> tiles, TileTrap.Kind kind, ServerPlayerEntity owner) {
+        return layTileTraps(tiles, kind, owner, 0);
+    }
+
+    /** As {@link #layTileTraps(java.util.List, TileTrap.Kind, ServerPlayerEntity)}, but the
+     *  traps linger {@code bonusTurns} longer - a lucky wielder's work outlasts the norm. */
+    public int layTileTraps(java.util.List<GridPos> tiles, TileTrap.Kind kind,
+                            ServerPlayerEntity owner, int bonusTurns) {
+        if (!active || arena == null || tiles == null || kind == null) return 0;
+        java.util.UUID ownerId = owner != null ? owner.getUuid() : null;
+        int laid = 0;
+        for (GridPos tile : tiles) {
+            if (tile == null || !arena.isInBounds(tile)) continue;
+            GridTile gridTile = arena.getTile(tile);
+            if (gridTile == null || !gridTile.isWalkable()) continue;
+            tileTraps.put(tile, TileTrap.fresh(kind, ownerId, bonusTurns));
+            placeTrapBlocks(tile, kind);
+            laid++;
+        }
+        if (laid > 0) sendSync();
+        return laid;
+    }
+
+    /**
+     * Age every trap by one round, fire the persistent ones on whoever is standing in
+     * them, and drop the ones that have run out. Runs once per round, after the enemy
+     * turn, alongside the other tile-effect processing.
+     */
+    private void tickTileTraps() {
+        if (tileTraps.isEmpty() || arena == null) return;
+
+        // The flower field is not a tripwire - it works on anything standing in it at the
+        // end of the round, which is what makes it worth standing in yourself.
+        for (var entry : new java.util.ArrayList<>(tileTraps.entrySet())) {
+            GridPos pos = entry.getKey();
+            if (entry.getValue().kind() != TileTrap.Kind.FLOWER_FIELD) continue;
+
+            CombatEntity occupant = arena.getOccupant(pos);
+            if (occupant != null && occupant.isAlive()) {
+                if (occupant.isAlly()) {
+                    occupant.heal(TileTrap.FLOWER_FIELD_HEAL);
+                    sendMessage("§a✿ The flower field mends " + occupant.getDisplayName()
+                        + " for " + TileTrap.FLOWER_FIELD_HEAL + " HP.");
+                } else {
+                    int dealt = occupant.takeDamage(TileTrap.FLOWER_FIELD_DAMAGE);
+                    occupant.stackConfusion(TileTrap.FLOWER_FIELD_CONFUSION_TURNS, 0);
+                    sendMessage("§2✿ The flower field saps " + occupant.getDisplayName()
+                        + " for " + dealt + " damage and its pollen bewilders it!");
+                    checkAndHandleDeath(occupant);
+                }
+            }
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (member == null || !member.isAlive()) continue;
+                if (!pos.equals(gridPosOf(member))) continue;
+                if (member.getHealth() >= member.getMaxHealth()) continue;
+                member.setHealth(Math.min(member.getMaxHealth(),
+                    member.getHealth() + TileTrap.FLOWER_FIELD_HEAL));
+                sendMessageTo(member, "§a✿ The flower field mends you for "
+                    + TileTrap.FLOWER_FIELD_HEAL + " HP.");
+            }
+        }
+
+        java.util.Iterator<java.util.Map.Entry<GridPos, TileTrap>> it = tileTraps.entrySet().iterator();
+        while (it.hasNext()) {
+            var entry = it.next();
+            TileTrap aged = entry.getValue().aged();
+            if (aged.expired()) {
+                it.remove();
+                removeTrapBlocks(entry.getKey());
+            } else {
+                entry.setValue(aged);
+            }
+        }
+    }
+
+    /** A block a trap placed, and what stood there before it. */
+    private record TrapBlock(BlockPos pos, net.minecraft.block.BlockState previous) {}
+
+    /** Real-world blocks belonging to each laid trap, so the field itself is the marker. */
+    private final java.util.Map<GridPos, java.util.List<TrapBlock>> trapBlocks = new java.util.HashMap<>();
+
+    /**
+     * Give a trap a physical body the player can read on the field, instead of a
+     * particle hint. Everbloom's field is a literal rose bush; Bubbleveil's column is
+     * literal soul sand sunk beneath a water-filled floor cavity, so the game's own
+     * physics produces the rising bubbles.
+     *
+     * <p>Every block placed is captured in BOTH {@code trapBlocks} (so a trap that pops
+     * or fades mid-fight can restore just its own tile) AND the general
+     * {@code placedBlockRestores} log via {@link #setArenaBlock}. The general log is the
+     * safety net: it is replayed early in {@code endCombat}, while {@code player} is still
+     * set, so a trap still standing when the fight ends is guaranteed to be torn down on
+     * every exit path - not left to bake into the cached arena on the next revisit.
+     */
+    private void placeTrapBlocks(GridPos tile, TileTrap.Kind kind) {
+        if (arena == null || player == null) return;
+        if (!(player.getEntityWorld() instanceof ServerWorld world)) return;
+        removeTrapBlocks(tile); // re-laying replaces whatever stood here
+        java.util.List<TrapBlock> placed = new java.util.ArrayList<>();
+        BlockPos bp = arena.gridToBlockPos(tile);
+        switch (kind) {
+            case FLOWER_FIELD -> {
+                // Both halves of the double plant, or vanilla pops the orphan half on
+                // the next neighbor update. Non-solid: the field stays walkable, which
+                // it must - it works on whatever is standing in it.
+                placed.add(new TrapBlock(bp, world.getBlockState(bp)));
+                placed.add(new TrapBlock(bp.up(), world.getBlockState(bp.up())));
+                setTrapBlockState(world, bp, Blocks.ROSE_BUSH.getDefaultState()
+                    .with(net.minecraft.block.TallPlantBlock.HALF,
+                        net.minecraft.block.enums.DoubleBlockHalf.LOWER));
+                setTrapBlockState(world, bp.up(), Blocks.ROSE_BUSH.getDefaultState()
+                    .with(net.minecraft.block.TallPlantBlock.HALF,
+                        net.minecraft.block.enums.DoubleBlockHalf.UPPER));
+            }
+            case BUBBLE_COLUMN -> {
+                // Water sits IN the floor cavity (same containment as the water bucket,
+                // so it cannot flood the arena) with soul sand under it - a genuine
+                // bubble column, bubbling by itself.
+                BlockPos floorBp = bp.down();
+                BlockPos sandBp = floorBp.down();
+                placed.add(new TrapBlock(sandBp, world.getBlockState(sandBp)));
+                placed.add(new TrapBlock(floorBp, world.getBlockState(floorBp)));
+                setTrapBlockState(world, sandBp, Blocks.SOUL_SAND.getDefaultState());
+                setTrapBlockState(world, floorBp, Blocks.WATER.getDefaultState());
+            }
+        }
+        trapBlocks.put(tile, placed);
+    }
+
+    /** Set a trap block, logging its prior state into the general restore log too. */
+    private void setTrapBlockState(ServerWorld world, BlockPos bp, net.minecraft.block.BlockState state) {
+        recordPlacedBlock(bp);
+        world.setBlockState(bp, state,
+            net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+    }
+
+    /** Put back everything the trap on {@code tile} displaced. Safe when nothing was placed. */
+    private void removeTrapBlocks(GridPos tile) {
+        java.util.List<TrapBlock> placed = trapBlocks.remove(tile);
+        if (placed == null || player == null) return;
+        if (!(player.getEntityWorld() instanceof ServerWorld world)) return;
+        for (int i = placed.size() - 1; i >= 0; i--) {
+            world.setBlockState(placed.get(i).pos(), placed.get(i).previous(),
+                net.minecraft.block.Block.NOTIFY_LISTENERS | net.minecraft.block.Block.FORCE_STATE);
+        }
+    }
+
+    /**
+     * Fire the trap on {@code tile}, if there is one, against the enemy that just arrived.
+     * Returns {@code true} when the trap ended the enemy's movement, so the caller stops
+     * walking it.
+     */
+    private boolean triggerTileTrap(GridPos tile, CombatEntity enemy) {
+        TileTrap trap = tileTraps.get(tile);
+        if (trap == null || enemy == null || !enemy.isAlive()) return false;
+
+        boolean stopsMovement = false;
+        switch (trap.kind()) {
+            case FLOWER_FIELD -> {
+                // Persistent: it bites at end of round (tickTileTraps), not on contact,
+                // so walking through it once is cheaper than standing in it.
+            }
+            case BUBBLE_COLUMN -> {
+                enemy.stackSoaked(TileTrap.BUBBLE_COLUMN_SOAK_TURNS, 1);
+                GridPos pPos = arena.getPlayerGridPos();
+                knockEnemyBack(enemy,
+                    Integer.signum(tile.x() - pPos.x()), Integer.signum(tile.z() - pPos.z()),
+                    TileTrap.BUBBLE_COLUMN_LAUNCH);
+                sendMessage("§b○ " + enemy.getDisplayName()
+                    + " is caught in a bubble column - soaked and thrown clear!");
+                if (player.getEntityWorld() instanceof ServerWorld world) {
+                    BlockPos bp = arena.gridToBlockPos(tile);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.BUBBLE_POP,
+                        bp.getX() + 0.5, bp.getY() + 0.6, bp.getZ() + 0.5, 24, 0.35, 0.5, 0.35, 0.05);
+                    world.playSound(null, bp, net.minecraft.sound.SoundEvents.ENTITY_PLAYER_SPLASH,
+                        net.minecraft.sound.SoundCategory.PLAYERS, 0.9f, 1.3f);
+                }
+                stopsMovement = true;
+            }
+        }
+        if (trap.kind().consumedOnTrigger()) {
+            tileTraps.remove(tile);
+            removeTrapBlocks(tile);
+        }
+        checkAndHandleDeath(enemy);
+        return stopsMovement;
+    }
+
     public CombatEntity summonWeaponProcAlly(String typeId, ServerPlayerEntity owner, int lifespanRounds) {
         if (!active || arena == null) return null;
         GridPos tile = adjacentFreeTile(arena.getPlayerGridPos());
@@ -24815,7 +25787,7 @@ public class CombatManager {
                                      PlayerProgression.PlayerStats ms,
                                      TrimEffects.TrimScan trimScan) {
         Item weapon = member.getMainHandStack().getItem();
-        boolean ranged = weapon == Items.BOW || weapon == Items.CROSSBOW;
+        boolean ranged = PlayerCombatStats.isBowItem(weapon) || weapon == Items.CROSSBOW;
         DamageType damageType = DamageType.fromWeapon(weapon);
         CombatEffects fx = (member == player) ? combatEffects : null;
         int powerPts = ranged ? ms.getPoints(PlayerProgression.Stat.RANGED_POWER)
@@ -25000,6 +25972,10 @@ public class CombatManager {
     // to trigger it lock everyone else out (and in MP the swapped victim, not
     // the wearer, would consume it).
     private final java.util.Set<java.util.UUID> oceanBlessingUsed = new java.util.HashSet<>();
+
+    // Divine armor: the first hit each combat is deflected. Tracked per player UUID for
+    // the same reason as oceanBlessingUsed - in MP the victim, not the last actor, spends it.
+    private final java.util.Set<java.util.UUID> divineDeflectUsed = new java.util.HashSet<>();
 
     // === Artifacts compat: Warp Drive state ===
     /** Set by /craftics warp; the player's NEXT attack ignores range and teleports adjacent to the target. */

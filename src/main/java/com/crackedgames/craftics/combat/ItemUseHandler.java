@@ -128,10 +128,44 @@ public class ItemUseHandler {
         Map.entry(Items.ROTTEN_FLESH, 2)
     );
 
+    /**
+     * Raw food to its campfire-cooked result. Mirrors vanilla's campfire recipes rather
+     * than looking them up, because the recipe API has moved between Minecraft versions
+     * and a campfire only ever accepts this fixed handful of inputs anyway.
+     */
+    private static final Map<Item, Item> CAMPFIRE_COOKING = Map.ofEntries(
+        Map.entry(Items.BEEF, Items.COOKED_BEEF),
+        Map.entry(Items.PORKCHOP, Items.COOKED_PORKCHOP),
+        Map.entry(Items.CHICKEN, Items.COOKED_CHICKEN),
+        Map.entry(Items.MUTTON, Items.COOKED_MUTTON),
+        Map.entry(Items.RABBIT, Items.COOKED_RABBIT),
+        Map.entry(Items.COD, Items.COOKED_COD),
+        Map.entry(Items.SALMON, Items.COOKED_SALMON),
+        Map.entry(Items.POTATO, Items.BAKED_POTATO),
+        Map.entry(Items.KELP, Items.DRIED_KELP)
+    );
+
+    /** Most food a single campfire action can cook. */
+    public static final int CAMPFIRE_COOK_BATCH = 4;
+
+    /** True if {@code item} is a raw food a campfire can cook. */
+    public static boolean isCampfireCookable(Item item) {
+        return CAMPFIRE_COOKING.containsKey(item);
+    }
+
+    /** The cooked result for a raw food, or {@code null} if it isn't cookable. */
+    public static Item campfireResult(Item raw) {
+        return CAMPFIRE_COOKING.get(raw);
+    }
+
     // Items that are "usable" in combat
     private static final Set<Item> THROWABLES = Set.of(
-        Items.SNOWBALL, Items.EGG, Items.ENDER_PEARL, Items.FIRE_CHARGE, Items.WIND_CHARGE
+        Items.SNOWBALL, Items.EGG, Items.ENDER_PEARL, Items.FIRE_CHARGE, Items.WIND_CHARGE,
+        Items.BRICK
     );
+
+    /** Base damage a thrown brick deals before affinity/trim/head bonuses. */
+    public static final int BRICK_BASE_DAMAGE = 4;
 
     public static boolean isFood(Item item) {
         return FOOD_HEAL.containsKey(item) || isArtifactsNonConsumingFood(item);
@@ -326,6 +360,8 @@ public class ItemUseHandler {
         /*} else if (item == net.minecraft.item.Items.BLUE_EGG || item == net.minecraft.item.Items.BROWN_EGG) {
             return useEgg(player, arena, targetTile, held, 3);
         *///?}
+        } else if (item == Items.BRICK) {
+            return useBrick(player, arena, targetTile, held);
         } else if (item == Items.ENDER_PEARL) {
             return useEnderPearl(player, arena, targetTile, held);
         } else if (isSplashPotion(item)) {
@@ -805,6 +841,26 @@ public class ItemUseHandler {
         consumeSpecialItem(player, stack);
         int dealt = applyTypedDamage(player, enemy, damage, DamageType.SPECIAL);
         return "§eEgg hit " + enemy.getDisplayName() + " for " + dealt + " Special damage!";
+    }
+
+    /**
+     * Brick - the common man's throwable. Blunt damage, so it inherits the whole
+     * BLUNT interaction table (undead take extra, slimes/arthropods resist) and
+     * scales off Blunt affinity, trims, and the Creeper head like any blunt hit.
+     * Plain decrement: BLUNT is not a Special-class consumable, so the caster's
+     * conserve perk deliberately doesn't apply.
+     */
+    private static String useBrick(ServerPlayerEntity player, GridArena arena,
+                                    GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        CombatEntity enemy = arena.getOccupant(targetTile);
+        if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
+        String reach = validateThrowReach(arena, enemy);
+        if (reach != null) return reach;
+
+        stack.decrement(1);
+        int dealt = applyTypedDamage(player, enemy, BRICK_BASE_DAMAGE, DamageType.BLUNT);
+        return "§7Brick hit " + enemy.getDisplayName() + " for " + dealt + " Blunt damage!";
     }
 
     private static String useEnderPearl(ServerPlayerEntity player, GridArena arena,

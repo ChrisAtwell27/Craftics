@@ -1,4 +1,16 @@
 ﻿Changelog
+0.3.0
+Trading Hall & Bartering Station
+
+- The Trading Hall and Bartering Station are now real, working markets instead of empty walk-around sets. Every booth hosts a named merchant with a floating title over its head: the hall draws three distinct villager trader types per visit (Weaponsmith, Armorer, Alchemist, and so on), and the station draws three distinct piglin barter personalities (Warmonger, Hoarder, Flesh Dealer, Relic Trader, Beast Tamer), each holding a gold ingot. Booths re-roll per visit so the market rotates
+- Booths are click-to-shop: booth floors glow softly (and pulse under your cursor) so they read as clickable, and clicking anywhere on a booth walks you up to its counter and opens that merchant automatically. Clicking open floor is still a plain walk-to, with a hover marker showing where you'll go
+- Villager booths open a new parchment shop screen: every trade shows its real item icon with stack count, hovering shows the full item tooltip, costs draw next to an emerald icon and turn red when you can't afford them, and your emerald balance animates down as you spend. Trades carry per-visit stock ("2 left"), big-ticket items are one-offs, and sold-out rows gray out with a SOLD OUT tag. Purchases flash the row green with a villager chime, stock is shared across the party in real time, and ESC or Done both close the booth cleanly. Purchases come straight out of your emerald bank, no item juggling
+- Trade quality scales with your island's highest unlocked biome, so the hall grows with your progression
+- The piglin barter stepper got a full overhaul: -5/-1/+1/+5/Max quick-adjust buttons, a greed meter that fills red-to-green as your offer grows, and the piglin visibly reacting to the amount ("The piglin looks insulted." up to "The piglin CANNOT resist this much gold!"). An honest read of the odds ladder, since a maxed offer always wins. Your gold count now draws with a gold ingot icon, wins play the piglin celebration grunt, losses its angry squeal, and the coin-flip reveal then hands over the goods. Walk away any time; come back and the piglin rolls a fresh hidden threshold
+- Trading in the hall is fully multiplayer-safe: every party member can shop at different booths (or the same one) simultaneously, and a shopper disconnecting can never wedge the market
+
+
+
 0.2.9
 Infinite Mode, Multiplayer, Enemies, Combat, Tools, and Interface
 
@@ -59,14 +71,6 @@ Interface
 - Game Over is now a somber cinematic: letterbox bars close in, a blood-red vignette edges the screen, grey ash (with the occasional ember) drifts down for the duration, and the title lands as a large, slowly-pulsing "GAME OVER" instead of one more line of text
 - Victory earns its name: a larger shimmering gold title, a "+N" gain readout riding the emerald counter while it ticks up, and a shower of gold sparks when the last reward settles. The barter gamble's coin now pays off in sparks too, a gold shower on a win, a dull grey puff on a dud, and "(click to continue)" gently pulses so the exit is never missed
 
-Trading Hall & Bartering Station
-
-- The Trading Hall and Bartering Station are now real, working markets instead of empty walk-around sets. Every booth hosts a named merchant with a floating title over its head: the hall draws three distinct villager trader types per visit (Weaponsmith, Armorer, Alchemist, and so on), and the station draws three distinct piglin barter personalities (Warmonger, Hoarder, Flesh Dealer, Relic Trader, Beast Tamer), each holding a gold ingot. Booths re-roll per visit so the market rotates
-- Booths are click-to-shop: booth floors glow softly (and pulse under your cursor) so they read as clickable, and clicking anywhere on a booth walks you up to its counter and opens that merchant automatically. Clicking open floor is still a plain walk-to, with a hover marker showing where you'll go
-- Villager booths open a new parchment shop screen: every trade shows its real item icon with stack count, hovering shows the full item tooltip, costs draw next to an emerald icon and turn red when you can't afford them, and your emerald balance animates down as you spend. Trades carry per-visit stock ("2 left"), big-ticket items are one-offs, and sold-out rows gray out with a SOLD OUT tag. Purchases flash the row green with a villager chime, stock is shared across the party in real time, and ESC or Done both close the booth cleanly. Purchases come straight out of your emerald bank, no item juggling
-- Trade quality scales with your island's highest unlocked biome, so the hall grows with your progression
-- The piglin barter stepper got a full overhaul: -5/-1/+1/+5/Max quick-adjust buttons, a greed meter that fills red-to-green as your offer grows, and the piglin visibly reacting to the amount ("The piglin looks insulted." up to "The piglin CANNOT resist this much gold!"). An honest read of the odds ladder, since a maxed offer always wins. Your gold count now draws with a gold ingot icon, wins play the piglin celebration grunt, losses its angry squeal, and the coin-flip reveal then hands over the goods. Walk away any time; come back and the piglin rolls a fresh hidden threshold
-- Trading in the hall is fully multiplayer-safe: every party member can shop at different booths (or the same one) simultaneously, and a shopper disconnecting can never wedge the market
 
 Combat Feel
 

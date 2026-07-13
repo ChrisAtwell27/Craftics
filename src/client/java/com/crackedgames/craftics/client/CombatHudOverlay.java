@@ -796,6 +796,24 @@ public class CombatHudOverlay implements HudRenderCallback {
                 "\u00a77Freeze damage unless wearing leather boots.");
         }
 
+        // Everbloom's flower field - a rose bush laid as a trap by the vine bow.
+        if (above == net.minecraft.block.Blocks.ROSE_BUSH) {
+            return new TileTooltipInfo("§d§l✿ Flower Field",
+                "§fEnemies standing here are sapped and bewildered each round.",
+                "§7You and your allies are mended instead. Fades on its own.");
+        }
+
+        // Bubbleveil's bubble column - soul sand under a water tile. Vanilla physics turns
+        // the water above soul sand into a BUBBLE_COLUMN block a tick after it is placed,
+        // so the floor reads as bubble-column, not water, for all but the first frame.
+        if (floor == net.minecraft.block.Blocks.BUBBLE_COLUMN
+                || (floor == net.minecraft.block.Blocks.WATER
+                    && world.getBlockState(floorPos.down()).getBlock() == net.minecraft.block.Blocks.SOUL_SAND)) {
+            return new TileTooltipInfo("§b§l○ Bubble Column",
+                "§fThe first enemy to walk in is Soaked and thrown clear.",
+                "§7Pops when it fires. Knock a target into it!");
+        }
+
         // Water - distinguish shallow (walkable) from deep (instant kill).
         if (floor == net.minecraft.block.Blocks.WATER) {
             net.minecraft.block.Block below = world.getBlockState(floorPos.down()).getBlock();

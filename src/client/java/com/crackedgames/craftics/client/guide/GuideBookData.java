@@ -985,6 +985,46 @@ public class GuideBookData {
                 "Diamond+Netherite (Stonewall): incoming damage capped at 6\n\n" +
                 "Copper Age Backport adds six more - see Ranged Loadouts.")
         )));
+        // Immersive Armors - only worth a page when the mod is actually installed.
+        if (com.crackedgames.craftics.compat.immersivearmors.ImmersiveArmorsCompat.isLoaded()) {
+            equipment.add(new Entry("Immersive Armors", "immersive_armors:warrior_chestplate", List.of(
+                new Page("Light Sets",
+                    "Ten more full sets, each with its own trick. Every piece still grants half an affinity point; the trick needs all four.\n\n" +
+                    "Wooden (Slashing, 2 AC): 30% less Ranged and Blunt damage, but each piece can shatter when you're hit\n\n" +
+                    "Bone (Blunt, 2 AC): 25% chance to fire without spending an arrow; pieces can shatter\n\n" +
+                    "Robe (Special, 2 AC): pottery sherds never break and cost 1 less AP"),
+                new Page("Middle Sets",
+                    "Wither (Special, 4 AC): 50% chance to fire without spending an arrow; melee attackers wither\n\n" +
+                    "Slime (Special, 4 AC): attackers bounce a tile away and so do you; your hits knock back too\n\n" +
+                    "Steampunk (Physical, 4 AC): +1 Speed, and its radar paints each enemy's next route in yellow, the tiles they'll strike in red\n\n" +
+                    "Warrior (Cleaving, 5 AC): +1 Cleaving damage for every heart you are missing"),
+                new Page("Heavy Sets",
+                    "Divine (Special, 6 AC): the first hit you take each battle is deflected entirely\n\n" +
+                    "Prismarine (Water, 6 AC): at the start of your turn, every enemy within 2 tiles takes 3 Water damage and is Soaked\n\n" +
+                    "Heavy (Blunt, 7 AC): netherite-grade plate. Immune to knockback, but -1 Speed.")
+            )));
+        }
+
+        // Simply Bows - only worth a page when the mod is actually installed.
+        if (com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isLoaded()) {
+            equipment.add(new Entry("Simply Bows", "simplybows:echo_bow/echo_bow", List.of(
+                new Page("Legendary Bows",
+                    "Seven bows drop from bosses, each with one trick. They eat arrows and take bow enchants like any bow.\n\n" +
+                    "Winterfang (Water, 1 AP): every hit fans out 3 homing frost bolts that chill what they find\n\n" +
+                    "Buzzkill (Ranged + Pet, 1 AP): poisons on hit, and 35% of the time bursts into 1-2 bee allies\n\n" +
+                    "Tremorstrike (Blunt, 1 AP): stuns the target and everything within 2 tiles"),
+                new Page("Ground Bows",
+                    "Three bows leave something behind. Shoot an enemy and the effect centers on IT; aim at open ground and it lands there instead. Either way it costs 2 AP and an arrow.\n\n" +
+                    "Everbloom (Ranged): grows a 3x3 flower field for 4 turns. Enemies in it are sapped and bewildered; you and your allies are mended.\n\n" +
+                    "Bubbleveil (Water + Ranged): Soaks what it hits and leaves a column under it. A column pops on the first enemy to WALK into it, so knock a soaked target off its tile and back again to set it off.\n\n" +
+                    "Petalwind (Ranged): rains arrows on a quarter of the arena's tiles. A struck enemy is always under one. Bigger arena, bigger storm."),
+                new Page("Echo & Hybrids",
+                    "Echo (Special, 1 AP): two phantom bows loose at the nearest other enemies for half your damage. It never shoots alone.\n\n" +
+                    "Bubbleveil and Buzzkill are HYBRID weapons: they scale off two affinities at once. The second affinity counts at half weight, so a hybrid is never strictly better than a bow that committed to one type - it just fits two builds.\n\n" +
+                    "Traps you lay are marked by their own particles, and fade on their own.")
+            )));
+        }
+
         equipment.add(new Entry("Shield", "minecraft:shield", List.of(
             new Page("Shield Mechanics",
                 "Equip a shield in your OFFHAND slot.\n\n" +

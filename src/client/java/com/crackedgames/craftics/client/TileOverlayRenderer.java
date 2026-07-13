@@ -86,6 +86,15 @@ public class TileOverlayRenderer {
                                       int originX, int originY, int originZ,
                                       int tileX, int tileZ) {
         if (world == null) return originY + 1.01f;
+        // A bubble-column trap replaces the FLOOR block (this tile, at originY) with
+        // churning water that renders animated water + rising bubbles up past the tile's
+        // top face. A highlight at the usual floor+0.01 is overdrawn by that animation and
+        // vanishes. Lift it a little higher so it sits clear of the column.
+        net.minecraft.util.math.BlockPos floorBlockPos =
+            new net.minecraft.util.math.BlockPos(originX + tileX, originY, originZ + tileZ);
+        if (world.getBlockState(floorBlockPos).getBlock() == net.minecraft.block.Blocks.BUBBLE_COLUMN) {
+            return originY + 1.35f;
+        }
         net.minecraft.util.math.BlockPos abovePos =
             new net.minecraft.util.math.BlockPos(originX + tileX, originY + 1, originZ + tileZ);
         net.minecraft.block.BlockState above = world.getBlockState(abovePos);
@@ -320,6 +329,34 @@ public class TileOverlayRenderer {
         // so the player can see the mount occupies 3 tiles; enemies can't enter these.
         for (GridPos tile : CombatState.getMountTiles()) {
             fillTile(out, world, ox, oy, oz, tile, 0.004f, 0.5f, 0.55f, 0.78f, 0.55f);
+        }
+
+        // Steampunk radar forecast. Yellow marks the exact route each enemy means to
+        // walk next turn; red marks the tiles it means to strike. Painted above the
+        // danger wash (which only says "could reach") but below the boss telegraph, so
+        // an incoming boss ability still reads as the more urgent thing on the floor.
+        // The blind check matches the other predictive overlays: you can't read a radar
+        // you can't see.
+        if (!blind) {
+            for (GridPos tile : CombatState.getForecastPath()) {
+                fillTile(out, world, ox, oy, oz, tile, 0.006f, 1.0f, 0.85f, 0.15f, 0.30f);
+                fillTile(xray, world, ox, oy, oz, tile, 0.006f, 1.0f, 0.85f, 0.15f, 0.12f);
+            }
+            if (!CombatState.getForecastPath().isEmpty()) {
+                outlineRegion(out, world, ox, oy, oz, CombatState.getForecastPath(), 0.0068f,
+                    1.0f, 0.9f, 0.25f, 0.7f);
+            }
+            // The strike paint pulses so "you are about to be hit" separates itself from
+            // the steady yellow route it usually sits at the end of.
+            if (!CombatState.getForecastStrike().isEmpty()) {
+                float strikePulse = (float) (0.42 + 0.18 * Math.sin(time * 7.5));
+                for (GridPos tile : CombatState.getForecastStrike()) {
+                    fillTile(out, world, ox, oy, oz, tile, 0.008f, 0.95f, 0.15f, 0.15f, strikePulse);
+                    fillTile(xray, world, ox, oy, oz, tile, 0.008f, 0.95f, 0.15f, 0.15f, 0.14f);
+                }
+                outlineRegion(out, world, ox, oy, oz, CombatState.getForecastStrike(), 0.0088f,
+                    1.0f, 0.3f, 0.25f, Math.min(1.0f, strikePulse + 0.3f));
+            }
         }
 
         // Boss attack warning tiles (pulsing bright red). The crisp pulsing

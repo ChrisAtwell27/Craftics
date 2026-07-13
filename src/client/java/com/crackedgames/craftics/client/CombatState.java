@@ -1032,6 +1032,9 @@ public class CombatState {
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedWarningTiles = new java.util.HashSet<>();
     // Netherite mount 1×3 footprint side tiles - rendered as the golem's body.
     private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedMountTiles = new java.util.HashSet<>();
+    // Steampunk radar: the route enemies will walk next turn, and the tiles they will strike.
+    private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedForecastPath = new java.util.HashSet<>();
+    private static final java.util.Set<com.crackedgames.craftics.core.GridPos> cachedForecastStrike = new java.util.HashSet<>();
     private static final java.util.Map<com.crackedgames.craftics.core.GridPos, Integer> enemyGridMap = new java.util.HashMap<>();
     private static final java.util.Map<com.crackedgames.craftics.core.GridPos, String> enemyGridTypeMap = new java.util.HashMap<>();
 
@@ -1082,6 +1085,10 @@ public class CombatState {
     /** Directional telegraph arrows (charge lanes, pulls, gales); empty when none pending. */
     public static java.util.List<WarningArrow> getWarningArrows() { return cachedWarningArrows; }
     public static java.util.Set<com.crackedgames.craftics.core.GridPos> getMountTiles() { return cachedMountTiles; }
+    /** Steampunk radar: tiles enemies will walk through on their next turn. */
+    public static java.util.Set<com.crackedgames.craftics.core.GridPos> getForecastPath() { return cachedForecastPath; }
+    /** Steampunk radar: tiles that will be struck on the enemies' next turn. */
+    public static java.util.Set<com.crackedgames.craftics.core.GridPos> getForecastStrike() { return cachedForecastStrike; }
     public static java.util.Map<com.crackedgames.craftics.core.GridPos, Integer> getEnemyGridMap() { return enemyGridMap; }
     public static java.util.Map<com.crackedgames.craftics.core.GridPos, String> getEnemyGridTypeMap() { return enemyGridTypeMap; }
     public static com.crackedgames.craftics.core.GridPos getHoveredTile() { return hoveredTile; }
@@ -1093,15 +1100,23 @@ public class CombatState {
 
     public static void updateTileSets(int[] moveTiles, int[] attackTiles, int[] dangerTiles,
                                        int[] warningTiles, int[] enemyMapData, String enemyTypes,
-                                       int[] mountTiles, int[] warningArrows) {
+                                       int[] mountTiles, int[] warningArrows,
+                                       int[] forecastPath, int[] forecastStrike) {
         cachedMoveTiles.clear();
         cachedAttackTiles.clear();
         cachedDangerTiles.clear();
         cachedWarningTiles.clear();
         cachedMountTiles.clear();
         cachedWarningArrows.clear();
+        cachedForecastPath.clear();
+        cachedForecastStrike.clear();
         enemyGridMap.clear();
         enemyGridTypeMap.clear();
+
+        for (int i = 0; i + 1 < forecastPath.length; i += 2)
+            cachedForecastPath.add(new com.crackedgames.craftics.core.GridPos(forecastPath[i], forecastPath[i + 1]));
+        for (int i = 0; i + 1 < forecastStrike.length; i += 2)
+            cachedForecastStrike.add(new com.crackedgames.craftics.core.GridPos(forecastStrike[i], forecastStrike[i + 1]));
 
         for (int i = 0; i + 3 < warningArrows.length; i += 4)
             cachedWarningArrows.add(new WarningArrow(

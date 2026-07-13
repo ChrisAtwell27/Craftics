@@ -4,7 +4,6 @@ import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import net.minecraft.screen.CartographyTableScreenHandler;
 import net.minecraft.screen.CraftingScreenHandler;
-import net.minecraft.screen.EnchantmentScreenHandler;
 import net.minecraft.screen.GrindstoneScreenHandler;
 import net.minecraft.screen.LoomScreenHandler;
 import net.minecraft.screen.NamedScreenHandlerFactory;
@@ -64,6 +63,18 @@ public final class CraftingStations {
          * where they immediately pick it back up - so nothing is lost.
          */
         public NamedScreenHandlerFactory factory(ScreenHandlerContext ctx) {
+            return factory(ctx, null, null);
+        }
+
+        /**
+         * As {@link #factory(ScreenHandlerContext)}, but the enchanting table also needs
+         * the live world and the player's block position: it builds its own context so
+         * vanilla's bookshelf scan can be pointed at a scratch ring sized by the shelves
+         * the player is carrying. See {@link CombatEnchantmentScreenHandler}.
+         */
+        public NamedScreenHandlerFactory factory(ScreenHandlerContext ctx,
+                                                 net.minecraft.world.World world,
+                                                 net.minecraft.util.math.BlockPos playerPos) {
             return new SimpleNamedScreenHandlerFactory((syncId, inv, viewer) -> switch (this) {
                 case CRAFTING    -> new CraftingScreenHandler(syncId, inv, ctx);
                 case SMITHING    -> new SmithingScreenHandler(syncId, inv, ctx);
@@ -71,7 +82,7 @@ public final class CraftingStations {
                 case STONECUTTER -> new StonecutterScreenHandler(syncId, inv, ctx);
                 case GRINDSTONE  -> new GrindstoneScreenHandler(syncId, inv, ctx);
                 case CARTOGRAPHY -> new CartographyTableScreenHandler(syncId, inv, ctx);
-                case ENCHANTING  -> new EnchantmentScreenHandler(syncId, inv, ctx);
+                case ENCHANTING  -> CombatEnchantmentScreenHandler.create(syncId, inv, world, playerPos);
             }, Text.translatable(titleKey));
         }
     }

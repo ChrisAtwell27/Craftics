@@ -20,7 +20,8 @@ import java.util.List;
  *   beside its plants as a free action (footprint-validated - it doesn't stand
  *   ON the obstacle).
  * - Entangle: 2×2 (P2: 3×3) root area. Immobilize 1 turn + 4 dmg.
- * - Chorus Bomb: Range 4, 2×2 AoE 5 dmg + random teleport on hit. P2: teleport toward boss.
+ * - Chorus Bomb: Range 4, 3×3 AoE 5 dmg + random teleport on hit. P2: 5×5 and
+ *   the blast pulls the player toward the boss.
  * - Resonance Cascade: every tile beside a plant takes a 3 dmg pulse - the
  *   resolve strikes exactly the tiles the warning marked.
  *   P2: auto every 2 turns.
@@ -179,11 +180,12 @@ public class ChorusMindAI extends BossAI {
             return new EnemyAction.Idle();
         }
 
-        // Chorus Bomb - ranged AoE
+        // Chorus Bomb - ranged AoE. Phase 2 detonations are a full 5×5 and pull
+        // the player toward the boss on hit.
         if (!isOnCooldown(CD_BOMB) && dist <= 4 && dist >= 2) {
             setCooldown(CD_BOMB, 2);
             String effect = isPhaseTwo() ? "chorus_bomb_pull" : "chorus_bomb";
-            return new EnemyAction.AreaAttack(playerPos, 1, 5, effect);
+            return new EnemyAction.AreaAttack(playerPos, isPhaseTwo() ? 2 : 1, 5, effect);
         }
 
         // Melee if adjacent

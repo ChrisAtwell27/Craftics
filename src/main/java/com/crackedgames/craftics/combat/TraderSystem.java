@@ -292,6 +292,11 @@ public class TraderSystem {
         pool.add(trade(Items.OAK_PLANKS, 3, 2, "Oak Planks (x3)"));
         pool.add(trade(Items.COBBLESTONE, 3, 3, "Cobblestone (x3)"));
         pool.add(trade(Items.STICK, 3, 1, "Sticks (x3)"));
+        // Clay - the raw material behind bricks. Craftics arenas rarely surface it, and
+        // the Curiosity Dealer only stocks finished bricks, so the supplier carries both
+        // the balls and the block for anyone smelting their own between runs.
+        pool.add(trade(Items.CLAY_BALL, 4, 2, "Clay Balls (x4)"));
+        pool.add(trade(Items.CLAY, 2, 3, "Clay Blocks (x2)"));
         if (tier >= 2) {
             pool.add(trade(Items.IRON_INGOT, 2, 4, "Iron Ingots (x2)"));
             pool.add(trade(Items.COAL, 3, 2, "Coal (x3)"));
@@ -442,6 +447,9 @@ public class TraderSystem {
         pool.add(trade(Items.NAME_TAG, 1, 4, "Name Tag"));
         pool.add(trade(Items.SNOWBALL, 3, 3, "Snowballs (x3)"));
         pool.add(trade(Items.EGG, 3, 3, "Eggs (x3)"));
+        // Bricks - the common blunt throwable. Cheap and ungated: they are meant to be
+        // the fallback ranged option when you have no charges or arrows.
+        pool.add(trade(Items.BRICK, 4, 3, "Bricks (x4) §7(blunt throwable)"));
         // Lead - commands allies in combat. Available from tier 1 because
         // it's a core utility tool and easy to miss otherwise.
         pool.add(trade(Items.LEAD, 1, 4, "Lead §7(ally command)"));

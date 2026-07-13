@@ -130,10 +130,12 @@ public final class SimplySwordsCompat {
             // Mid weight (2 AP)
             any |= registerOne(tier, "halberd", DamageType.CLEAVING, 2, 2, false,
                 Abilities.sweepAdjacent(0.15, 0.03));
-            any |= registerOne(tier, "scythe", DamageType.CLEAVING, 2, 1, false, scytheAbility());
+            // Scythe and glaive are hafted polearms like the halberd and spear: they
+            // strike from a tile away. Only the paired warglaives stay at arm's length.
+            any |= registerOne(tier, "scythe", DamageType.CLEAVING, 2, 2, false, scytheAbility());
             // Heavy (3 AP)
             any |= registerOne(tier, "claymore", DamageType.CLEAVING, 3, 1, false, wideCleaveAbility());
-            any |= registerOne(tier, "glaive", DamageType.CLEAVING, 3, 1, false, wideCleaveAbility());
+            any |= registerOne(tier, "glaive", DamageType.CLEAVING, 3, 2, false, wideCleaveAbility());
             any |= registerOne(tier, "greataxe", DamageType.CLEAVING, 3, 1, false,
                 Abilities.armorIgnore(0.15, 0.03));
             any |= registerOne(tier, "greathammer", DamageType.BLUNT, 3, 1, false, greathammerAbility());

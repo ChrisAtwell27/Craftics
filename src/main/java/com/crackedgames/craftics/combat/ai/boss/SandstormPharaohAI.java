@@ -16,8 +16,9 @@ import java.util.List;
  * Abilities:
  * - Plant Mine: Buried mine on a tile (subtle sand tell), 6 dmg + 1-turn stun on contact. Max 4 active.
  * - Sand Burial: 2×2 quicksand, stun 1 turn. P2: 3×3.
- * - Sandstorm: 3×3 AoE, 3 dmg, -1 accuracy 2 turns.
- * - Curse of the Sands: Mark player - tiles moved off become quicksand. 3 turns.
+ * - Sandstorm: 5×5 AoE, 3 dmg (P2: 4) + Weakness 2 turns.
+ * - Curse of the Sands: telegraphed 3×3 hex, 3 dmg. Cursed players sprout a live
+ *   sand mine on every tile they move off for 3 turns (CombatManager state).
  *
  * Phase 2 - "Tomb Wrath": 2 mines/turn, 3×3 burial, summon 2 Husks (once) -
  * and every Sand Burial cast releases 2 SCARABS while the sand gathers: 1-HP
@@ -52,11 +53,18 @@ public class SandstormPharaohAI extends BossAI {
             }
         }
 
-        // Curse of the Sands - apply to player every 6 turns
-        if (!isOnCooldown(CD_CURSE) && dist <= 4) {
+        // Curse of the Sands - telegraphed 3x3 hex. Anyone caught is CURSED:
+        // CombatManager plants a live sand mine on every tile the player moves
+        // off for the next 3 turns (the "curse_of_sands" area effect). Dodging
+        // the marked square dodges the curse entirely.
+        if (!isOnCooldown(CD_CURSE) && dist <= 5) {
             setCooldown(CD_CURSE, 6);
-            // This is effectively a debuff applied as an AreaAttack with a special effect name
-            return new EnemyAction.AreaAttack(playerPos, 0, 0, "curse_of_sands");
+            List<GridPos> curseTiles = getAreaTiles(arena, playerPos, 1);
+            EnemyAction curse = new EnemyAction.AreaAttack(playerPos, 1, 3, "curse_of_sands");
+            pendingWarning = new BossWarning(
+                self.getEntityId(), BossWarning.WarningType.GATHERING_PARTICLES,
+                curseTiles, 1, curse, 0xFF9944CC);
+            return advanceWhileCharging(self, arena, playerPos);
         }
 
         // Plant Mines
@@ -94,11 +102,11 @@ public class SandstormPharaohAI extends BossAI {
             }
         }
 
-        // Sandstorm AoE
+        // Sandstorm AoE - a 5x5 wall of stinging sand (weakens on hit)
         if (!isOnCooldown(CD_STORM) && dist <= 5) {
-            List<GridPos> stormTiles = getAreaTiles(arena, playerPos, 1);
+            List<GridPos> stormTiles = getAreaTiles(arena, playerPos, 2);
             setCooldown(CD_STORM, 3);
-            EnemyAction storm = new EnemyAction.AreaAttack(playerPos, 1, 3, "sandstorm");
+            EnemyAction storm = new EnemyAction.AreaAttack(playerPos, 2, isPhaseTwo() ? 4 : 3, "sandstorm");
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.GATHERING_PARTICLES,
                 stormTiles, 1, storm, 0xFFDDAA44);

@@ -164,6 +164,29 @@ public enum DamageType {
     }
 
     /**
+     * The whole damage bonus a weapon earns from its affinities: the full bonus for its
+     * primary type, plus half the bonus for its secondary type when it has one. Halving
+     * the second affinity is what keeps a hybrid from strictly beating a weapon that
+     * committed to one type - it scales off two builds, but never as hard as either.
+     *
+     * <p>Both the armor/trim/level-up bonus and the mob-head bonus are folded in, so this
+     * is the single number an attack adds to its base damage.
+     */
+    public static int getWeaponAffinityBonus(ServerPlayerEntity player, TrimEffects.TrimScan trimScan,
+                                             CombatEffects effects, PlayerProgression.PlayerStats playerStats,
+                                             DamageType primary, DamageType secondary) {
+        ItemStack helmet = player.getEquippedStack(EquipmentSlot.HEAD);
+        int bonus = getTotalBonus(player, trimScan, effects, primary, playerStats)
+            + getMobHeadBonus(helmet, primary);
+        if (secondary != null && secondary != primary) {
+            int second = getTotalBonus(player, trimScan, effects, secondary, playerStats)
+                + getMobHeadBonus(helmet, secondary);
+            bonus += second / 2;
+        }
+        return bonus;
+    }
+
+    /**
      * Mob skull helmets grant 1 affinity point of a specific type when worn.
      * Skeleton → Ranged, Creeper → Blunt, Piglin → Slashing,
      * Wither Skeleton → Special, Zombie → Physical.

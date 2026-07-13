@@ -80,10 +80,11 @@ public class PlayerCombatStats {
         Item weapon = player.getMainHandStack().getItem();
         int baseRange = com.crackedgames.craftics.api.registry.WeaponRegistry.getRange(weapon);
         // Skeleton Skull (Deadeye): +1 range with bows and crossbows.
-        int headRange = (weapon == Items.BOW || weapon == Items.CROSSBOW)
+        int headRange = (isBowItem(weapon) || weapon == Items.CROSSBOW)
             && wearsHead(player, Items.SKELETON_SKULL) ? 1 : 0;
-        // Bow Power enchant adds bonus range dynamically
-        if (weapon == Items.BOW && hasArrows(player)) {
+        // Bow Power enchant adds bonus range dynamically. A bow with no arrows keeps its
+        // registered range - the shot is refused earlier, in handleAttack's ammo check.
+        if (isBowItem(weapon) && hasArrows(player)) {
             return baseRange + getBowPowerRange(player) + headRange;
         }
         // Crossbow needs ammo to fire - arrows, or a firework rocket in the
@@ -148,8 +149,20 @@ public class PlayerCombatStats {
         return false;
     }
 
+    /**
+     * True for any item Craftics treats as a bow: the vanilla bow, and every Simply Bows
+     * unique. Bows draw arrows, roll the ranged accuracy check, and take bow enchants
+     * (Power, Flame, Punch, Infinity). Thrown weapons that merely set {@code ranged(true)}
+     * - chakrams, the trident - are not bows and take none of that.
+     */
+    public static boolean isBowItem(Item item) {
+        if (item == null) return false;
+        return item == Items.BOW
+            || com.crackedgames.craftics.compat.simplybows.SimplyBowsCompat.isSimplyBow(item);
+    }
+
     public static boolean isBow(ServerPlayerEntity player) {
-        return player.getMainHandStack().getItem() == Items.BOW && hasArrows(player);
+        return isBowItem(player.getMainHandStack().getItem()) && hasArrows(player);
     }
 
     public static boolean hasArrows(ServerPlayerEntity player) {
@@ -202,6 +215,19 @@ public class PlayerCombatStats {
         Item copperFeet  = com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.copperBoots();
         if (copperHead != null && head == copperHead && chest == copperChest
             && legs == copperLegs && feet == copperFeet) return "copper";
+
+        // Any other registered set: all four pieces share one armor-set key. This is
+        // what lets a modded set (Immersive Armors, a datapack) count as a full set
+        // without being named here. The vanilla chains above still win, so a modded
+        // set can never shadow a vanilla one.
+        String key = ArmorClassTable.armorSetKeyOf(head);
+        if (key != null
+                && key.equals(ArmorClassTable.armorSetKeyOf(chest))
+                && key.equals(ArmorClassTable.armorSetKeyOf(legs))
+                && key.equals(ArmorClassTable.armorSetKeyOf(feet))
+                && com.crackedgames.craftics.api.registry.ArmorSetRegistry.isRegistered(key)) {
+            return key;
+        }
 
         return "mixed";
     }
