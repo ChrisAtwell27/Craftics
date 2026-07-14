@@ -254,7 +254,8 @@ public class CombatEntity {
         int base = moveSpeed + speedBonus + getSpeedBuffBonus();
         if (soakedTurns > 0) base -= 1;
         if (slownessTurns > 0) base -= slownessPenalty;
-        float mult = com.crackedgames.craftics.CrafticsMod.CONFIG.enemyMoveSpeedMultiplier();
+        var speedCfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
+        float mult = speedCfg != null ? speedCfg.enemyMoveSpeedMultiplier() : 1.0f;
         // Allies always keep a usable move budget - never below 2 tiles/turn,
         // even under the speed multiplier or Soaked/Slowness debuffs. Enemies
         // keep the standard floor of 1.
@@ -585,6 +586,22 @@ public class CombatEntity {
     public boolean isMarked() { return markedTurns > 0; }
     public int getMarkedTurns() { return markedTurns; }
     public void setMarkedTurns(int t) { this.markedTurns = t; }
+
+    /**
+     * Mark this entity for {@code turns}, but ONLY if it isn't already Marked.
+     *
+     * <p>Deliberately not additive and not a refresh: it neither stacks the duration nor
+     * resets the timer. Spectral arrows use this, and without it a player could hold a stack
+     * of them and keep re-marking a single target every shot, pinning a boss under permanent
+     * double damage.
+     *
+     * @return true if the mark was applied, false if the entity was already Marked
+     */
+    public boolean markNonAdditive(int turns) {
+        if (markedTurns > 0) return false;
+        markedTurns = turns;
+        return true;
+    }
     /** The damage-taken multiplier while marked: 1.5x for bosses, 2x otherwise. 1.0 if unmarked. */
     public double getMarkedDamageMultiplier() {
         if (markedTurns <= 0) return 1.0;
@@ -614,6 +631,19 @@ public class CombatEntity {
     private int speedBuffBonus = 0;
     private int resistanceTurns = 0;
     private int resistanceLevel = 0;    // damage reduction per level
+
+    // Remaining-turn readers for the buffs above. The magnitude getters
+    // (getAttackBuffBonus, getResistanceLevel, ...) already return 0 once a buff expires, but
+    // the status-icon overlay needs the DURATION to show a countdown, and it needs to know a
+    // buff is active even where the magnitude alone can't say so.
+    public int getRegenTurns() { return regenTurns; }
+    public int getRegenPerTurn() { return regenPerTurn; }
+    public int getAbsorptionTurns() { return absorptionTurns; }
+    public int getSlowFallingTurns() { return slowFallingTurns; }
+    public int getAttackBuffTurns() { return attackBuffTurns; }
+    public int getSpeedBuffTurns() { return speedBuffTurns; }
+    public int getResistanceTurns() { return resistanceTurns; }
+
     public int getSlownessTurns() { return slownessTurns; }
     public void setSlownessTurns(int t) { this.slownessTurns = t; }
     public int getSlownessPenalty() { return slownessPenalty; }
@@ -647,17 +677,50 @@ public class CombatEntity {
 
     public void stackBurning(int turns, int dmgIncrease) {
         if (isFireImmune()) return; // fire-immune mobs (blaze, magma cube, ...) don't burn
+        // A drenched target can't catch light. Without this, Soaked's douse could be undone
+        // by any fire proc landing later in the same turn, and the "water beats fire" rule
+        // would hold only until the next hit.
+        if (isDrenched()) return;
         // Repeat hits EXTEND the burn: the new turns add onto whatever's left
         // (so re-applying Fire Aspect prolongs the fire), capped at the
         // configured max effect duration so it can't run away.
-        int maxDur = com.crackedgames.craftics.CrafticsMod.CONFIG.maxCombatEffectDuration();
+        var cfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
+        int maxDur = cfg != null ? cfg.maxCombatEffectDuration() : 10;
         burningTurns = Math.min(maxDur, burningTurns + turns);
         burningDamage = Math.min(MAX_EFFECT_AMPLIFIER + 1, burningDamage + dmgIncrease);
     }
 
+    /**
+     * Drench this entity, putting out any fire on it. Water beats fire: getting Soaked
+     * extinguishes Burning outright rather than the two ticking side by side.
+     *
+     * <p>Every source of Soaked routes through here (coral weapons, bubble columns, water
+     * tiles, creeper blasts, addon procs), so the douse applies to all of them.
+     */
     public void stackSoaked(int turns, int ampIncrease) {
         soakedTurns = Math.max(soakedTurns, turns);
         soakedAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, soakedAmplifier + ampIncrease);
+        extinguish();
+    }
+
+    /**
+     * Put out any fire on this entity, in both the combat model and the vanilla entity.
+     * Clearing the fire TICKS as well as the flag matters: the burning visual is driven by
+     * the tick timer, so dropping only the combat-model turns would leave a mob that takes no
+     * fire damage but still looks like it's alight.
+     */
+    public void extinguish() {
+        burningTurns = 0;
+        burningDamage = 0;
+        if (mobEntity != null) {
+            mobEntity.setFireTicks(0);
+            mobEntity.setOnFire(false);
+        }
+    }
+
+    /** True if this entity is currently drenched, which prevents it catching fire. */
+    public boolean isDrenched() {
+        return soakedTurns > 0;
     }
 
     public void stackSlowness(int turns, int penaltyIncrease) {

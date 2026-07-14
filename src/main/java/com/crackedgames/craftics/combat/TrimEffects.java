@@ -154,8 +154,11 @@ public class TrimEffects {
      * printed that 2 as if it were hit points, and the game actually applied 2 levels =
      * +8 HP. Everything on this bonus is now plain hit points, granted through a max-health
      * attribute modifier, so any value is expressible and what is written is what is given.
+     *
+     * <p>Balanced at 4 because MAX_HP has TWO sources - this (the Host PATTERN) and the
+     * quartz MATERIAL - and a full set carrying both should top out at +32, not +64.
      */
-    public static final int TRIM_MAX_HP_PER_PIECE = 8;
+    public static final int TRIM_MAX_HP_PER_PIECE = 4;
 
     /**
      * Per-piece magnitude for a trim PATTERN's bonus, normalized so one trimmed piece is

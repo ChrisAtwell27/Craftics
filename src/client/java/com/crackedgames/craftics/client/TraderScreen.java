@@ -56,19 +56,20 @@ public class TraderScreen extends Screen {
     private static final int HEADER_H  = 46;
     private static final int PANEL_PAD = 12;
 
-    public TraderScreen(String traderName, String traderIcon, String tradeData, int playerEmeralds) {
+    public TraderScreen(String traderName, String traderIcon, String tradeData,
+                        List<ItemStack> stacks, int playerEmeralds) {
         super(Text.literal("Merchant"));
         this.traderName = traderName;
         this.traderIcon = traderIcon;
-        this.rows = parse(tradeData);
+        this.rows = parse(tradeData, stacks);
         this.playerEmeralds = playerEmeralds;
         this.shownEmeralds = playerEmeralds;
     }
 
     /** Apply a refreshed offer (post-purchase) in place: flash rows whose stock
      *  dropped, and let the emerald counter ease to the new value. */
-    public void updateOffer(String tradeData, int newEmeralds) {
-        List<Row> fresh = parse(tradeData);
+    public void updateOffer(String tradeData, List<ItemStack> stacks, int newEmeralds) {
+        List<Row> fresh = parse(tradeData, stacks);
         for (int i = 0; i < fresh.size() && i < rows.size() && i < rowFlash.length; i++) {
             if (fresh.get(i).stock() >= 0 && fresh.get(i).stock() < rows.get(i).stock()) {
                 rowFlash[i] = System.currentTimeMillis();
@@ -78,18 +79,25 @@ public class TraderScreen extends Screen {
         this.playerEmeralds = newEmeralds;
     }
 
-    private static List<Row> parse(String tradeData) {
+    private static List<Row> parse(String tradeData, List<ItemStack> stacks) {
         List<Row> out = new ArrayList<>();
         if (tradeData == null || tradeData.isEmpty()) return out;
+        int idx = 0;
         for (String entry : tradeData.split("\\|")) {
             String[] p = entry.split("~", 5);
+            // Prefer the real stack from the payload: rebuilding from the bare item id loses
+            // every component, which previewed potions as "Uncraftable Potion / No Effects"
+            // and hid enchantments. The id form stays as the fallback.
+            ItemStack real = stacks != null && idx < stacks.size() && !stacks.get(idx).isEmpty()
+                ? stacks.get(idx).copy() : null;
+            idx++;
             try {
                 if (p.length == 5) {
-                    out.add(new Row(stackOf(p[0], Integer.parseInt(p[1])),
+                    out.add(new Row(real != null ? real : stackOf(p[0], Integer.parseInt(p[1])),
                         Integer.parseInt(p[2]), Integer.parseInt(p[3]), p[4]));
                 } else if (p.length == 4) {
                     // Legacy 4-field form: no stock (unlimited).
-                    out.add(new Row(stackOf(p[0], Integer.parseInt(p[1])),
+                    out.add(new Row(real != null ? real : stackOf(p[0], Integer.parseInt(p[1])),
                         Integer.parseInt(p[2]), -1, p[3]));
                 }
             } catch (NumberFormatException ignored) {

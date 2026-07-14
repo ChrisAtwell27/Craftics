@@ -51,6 +51,12 @@ public class TraderSystem {
      * @return the offer, or {@code null} if no trader is available at this tier
      */
     public static TraderOffer generateOffer(int biomeTier, Random random, java.util.Set<String> metIds) {
+        return generateOffer(biomeTier, random, metIds, null);
+    }
+
+    /** Weighted roll + world-aware stock upgrading (see the world-aware generateOffer). */
+    public static TraderOffer generateOffer(int biomeTier, Random random, java.util.Set<String> metIds,
+                                            net.minecraft.server.world.ServerWorld world) {
         List<TraderCategory> eligible = new ArrayList<>();
         for (TraderCategory c : TraderCategoryRegistry.all()) {
             if (c.minBiomeTier() <= biomeTier) eligible.add(c);
@@ -79,11 +85,11 @@ public class TraderSystem {
         for (int i = 0; i < eligible.size(); i++) {
             cumulative += weights[i];
             if (roll < cumulative) {
-                return generateOffer(eligible.get(i), biomeTier, random);
+                return generateOffer(eligible.get(i), biomeTier, random, world);
             }
         }
         // Unreachable while total > 0, but never return null from a rounding surprise.
-        return generateOffer(eligible.get(eligible.size() - 1), biomeTier, random);
+        return generateOffer(eligible.get(eligible.size() - 1), biomeTier, random, world);
     }
 
     /**
@@ -91,8 +97,94 @@ public class TraderSystem {
      * has a fixed merchant identity.
      */
     public static TraderOffer generateOffer(TraderCategory type, int biomeTier, Random random) {
+        return generateOffer(type, biomeTier, random, null);
+    }
+
+    /**
+     * World-aware variant: with a world available, high-tier stock actually LOOKS high-tier.
+     * Gear picks up enchantments from tier 5 (god rolls appearing from tier 8), and plain
+     * building blocks come in bigger stacks. Without a world (some callers have none) the
+     * offer is the plain one - enchanting needs the registry.
+     */
+    public static TraderOffer generateOffer(TraderCategory type, int biomeTier, Random random,
+                                            net.minecraft.server.world.ServerWorld world) {
         List<Trade> trades = generateTrades(type, biomeTier, random);
+        if (world != null) {
+            for (int i = 0; i < trades.size(); i++) {
+                trades.set(i, upgradeForTier(world, trades.get(i), biomeTier, random));
+            }
+        }
         return new TraderOffer(type, trades);
+    }
+
+    /** Chance per tier step above 4 that a piece of gear rolls enchanted. */
+    private static final double ENCHANT_CHANCE_PER_TIER = 0.25;
+
+    /**
+     * Make one trade worthy of its tier. A tier-9 weaponsmith selling a bare diamond sword
+     * (or a supplier selling 3 cobblestone) read as broken scaling - the PRICES scaled but
+     * the goods never did.
+     *
+     * <ul>
+     *   <li>Damageable gear: from tier 5, {@value #ENCHANT_CHANCE_PER_TIER} per tier above 4
+     *       to roll two modest enchantments; from tier 8 half of those become god rolls.
+     *   <li>Plain block stacks: quantity multiplies with tier (tier 9 sells 4x), capped at 64.
+     *       Prices are already tier-scaled by generateTrades, so bigger stacks are the value.
+     * </ul>
+     */
+    private static Trade upgradeForTier(net.minecraft.server.world.ServerWorld world,
+                                        Trade t, int tier, Random random) {
+        ItemStack stack = t.item();
+        // Bulk goods: scale the stack, not the price (the price already scaled).
+        if (stack.getItem() instanceof net.minecraft.item.BlockItem && stack.getCount() > 0
+                && stack.getMaxCount() > 1) {
+            int count = Math.min(stack.getMaxCount(),
+                Math.min(64, stack.getCount() * (1 + tier / 3)));
+            if (count != stack.getCount()) {
+                ItemStack bigger = stack.copy();
+                bigger.setCount(count);
+                return new Trade(bigger, t.emeraldCost(), t.description());
+            }
+            return t;
+        }
+        // Gear: enchant at high tier. Weapons use their real pool; armor uses the slot-aware
+        // pool, so a helmet can roll Respiration and boots Feather Falling / Depth Strider /
+        // Soul Speed. Armor used to share one hardcoded four-entry pool
+        // (protection/unbreaking/mending/thorns), and since a god roll draws 3-5 distinct
+        // enchants from it, every "god" piece came out as very nearly the same item.
+        if (stack.isDamageable() && tier >= 5
+                && random.nextDouble() < (tier - 4) * ENCHANT_CHANCE_PER_TIER) {
+            ItemStack enchanted = stack.copy();
+            ArmorClassTable.Slot armorSlot = ArmorClassTable.slotOf(stack.getItem());
+            String[] pool = armorSlot != null
+                ? CombatManager.getValidArmorEnchants(equipmentSlotOf(armorSlot))
+                : CombatManager.getValidWeaponEnchants(enchanted);
+            java.util.Random jr = new java.util.Random(random.nextLong());
+            if (tier >= 8 && random.nextBoolean()) {
+                // Varied, not maxed: see variedHeavyEnchant. Pinning every pick to its cap is
+                // what made high-tier stock look like the same item over and over.
+                CombatManager.variedHeavyEnchant(world, enchanted, pool, jr);
+            } else {
+                CombatManager.lightlyEnchant(world, enchanted, pool, jr);
+            }
+            return new Trade(enchanted, t.emeraldCost() + tier, "§d" + t.description());
+        }
+        return t;
+    }
+
+    /**
+     * Bridge {@link ArmorClassTable}'s registry-free {@code Slot} to the Minecraft
+     * {@code EquipmentSlot} that {@link CombatManager#getValidArmorEnchants} keys off.
+     * ArmorClassTable keeps its own enum so the AC formula stays unit-testable without a
+     * Minecraft bootstrap; this is the one place the two meet.
+     */
+    private static net.minecraft.entity.EquipmentSlot equipmentSlotOf(ArmorClassTable.Slot slot) {
+        return switch (slot) {
+            case HELMET     -> net.minecraft.entity.EquipmentSlot.HEAD;
+            case CHESTPLATE -> net.minecraft.entity.EquipmentSlot.CHEST;
+            case LEGGINGS   -> net.minecraft.entity.EquipmentSlot.LEGS;
+            case BOOTS      -> net.minecraft.entity.EquipmentSlot.FEET;
+        };
     }
 
     public record TraderOffer(TraderCategory type, List<Trade> trades) {}
@@ -150,6 +242,9 @@ public class TraderSystem {
         // Always available
         pool.add(trade(Items.ARROW, 16, 2, "Arrows (x16)"));
         pool.add(trade(Items.SHIELD, 1, 4, "Shield"));
+        // Spectral arrows Mark what they hit (2x damage for a turn), so they're a mid-game
+        // pickup rather than starting stock.
+        if (tier >= 4) pool.add(trade(Items.SPECTRAL_ARROW, 8, 6, "§eSpectral Arrows (x8) §7(Mark)"));
 
         // Trident (water-type ranged + lightning channeling).
         if (tier >= 4) pool.add(trade(Items.TRIDENT, 1, 12, "§bTrident"));
@@ -213,18 +308,69 @@ public class TraderSystem {
             pool.add(trade(Items.CHAINMAIL_LEGGINGS, 1, 4, "Chainmail Leggings"));
             pool.add(trade(Items.CHAINMAIL_BOOTS, 1, 3, "Chainmail Boots"));
         }
-        if (tier >= 4 && tier <= 7) {
+        // Stops at 5: from tier 6 the registry scan below stocks iron (and everything else
+        // that rates highly enough), so listing it here too would double-enter iron pieces
+        // and skew the shuffle toward them.
+        if (tier >= 4 && tier <= 5) {
             pool.add(trade(Items.IRON_HELMET, 1, 5, "Iron Helmet"));
             pool.add(trade(Items.IRON_CHESTPLATE, 1, 8, "Iron Chestplate"));
             pool.add(trade(Items.IRON_LEGGINGS, 1, 7, "Iron Leggings"));
             pool.add(trade(Items.IRON_BOOTS, 1, 5, "Iron Boots"));
         }
-        if (tier >= 7) {
-            pool.add(trade(Items.DIAMOND_HELMET, 1, 10, "Diamond Helmet"));
-            pool.add(trade(Items.DIAMOND_CHESTPLATE, 1, 15, "Diamond Chestplate"));
-            pool.add(trade(Items.DIAMOND_LEGGINGS, 1, 13, "Diamond Leggings"));
-            pool.add(trade(Items.DIAMOND_BOOTS, 1, 10, "Diamond Boots"));
+        // Late game: every armor piece in the registry strong enough for this tier, not just
+        // the diamond four. Vanilla netherite and turtle shells qualify, and so does any
+        // modded set that carries an Armor Class - see armorStockForTier.
+        if (tier >= 6) {
+            pool.addAll(armorStockForTier(tier));
         }
+    }
+
+    /**
+     * The minimum Armor Class a piece must carry to appear at a given biome tier. Keyed off
+     * AC rather than a material whitelist, so modded armor is ranked by how good it actually
+     * is: a mod's mythril chestplate that registered AC 6 stocks alongside diamond, and a
+     * cosmetic set that registered nothing never shows up as endgame gear at all.
+     *
+     * <p>Per-piece AC (see {@link ArmorClassTable#pieceAC}) - diamond runs 3/4/6/7 across
+     * boots/helmet/leggings/chestplate, netherite 4/4/7/8. Gating on the PIECE value would
+     * therefore let a diamond helmet (4) in wherever a netherite one (4) goes, so the gate
+     * reads the material's base AC instead, which ranks sets cleanly: iron 4, diamond 6,
+     * netherite 7.
+     */
+    private static int minArmorBaseACForTier(int tier) {
+        if (tier >= 8) return 6; // diamond-and-better only
+        if (tier >= 7) return 5; // diamond tier opens up
+        return 4;                // iron / copper / turtle and up
+    }
+
+    /**
+     * Every armor item in the item registry whose material is strong enough for {@code tier}.
+     *
+     * <p>This scans {@link Registries#ITEM} instead of listing items by hand, which is what
+     * makes modded armor sellable: {@link ArmorClassTable} resolves an item's slot from its
+     * registry path and its AC from the built-in table or {@code ArmorSetRegistry}, so a mod
+     * that registers an armor set with an {@code armorClass} shows up in the armorer's stock
+     * with no compat hook here. Anything the AC system can't rate is skipped rather than
+     * priced as junk.
+     *
+     * <p>Cost is derived from the piece's AC so modded gear is priced on the same curve as
+     * vanilla, rather than needing a hand-written price.
+     */
+    private static List<Trade> armorStockForTier(int tier) {
+        int minBase = minArmorBaseACForTier(tier);
+        List<Trade> out = new ArrayList<>();
+        for (Item item : net.minecraft.registry.Registries.ITEM) {
+            ArmorClassTable.Slot slot = ArmorClassTable.slotOf(item);
+            if (slot == null) continue;
+            int base = ArmorClassTable.resolveBaseAC(ArmorClassTable.armorSetKeyOf(item));
+            if (base < minBase) continue;
+            int ac = ArmorClassTable.pieceAC(base, slot);
+            // AC 3 boots -> 9 emeralds; AC 8 netherite chestplate -> 24. upgradeForTier adds
+            // the enchant premium on top, and generateTrades then scales the whole thing by tier.
+            int cost = Math.max(4, ac * 3);
+            out.add(trade(item, 1, cost, item.getName().getString()));
+        }
+        return out;
     }
 
     // ---- PROVISIONER ----

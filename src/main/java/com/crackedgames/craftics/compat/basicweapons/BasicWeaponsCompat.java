@@ -284,6 +284,9 @@ public final class BasicWeaponsCompat {
             }
             int offHit = Math.max(1, (int) Math.round(baseDamage * DAGGER_OFFHAND_MULT));
             int second = target.takeDamage(offHit);
+            // The off hand did real work, so it wears like the main hand does (handleAttack
+            // charges the MAIN weapon's durability; without this the offhand dagger was free).
+            player.getOffHandStack().damage(7, player, net.minecraft.entity.EquipmentSlot.OFFHAND);
             List<String> msgs = new ArrayList<>();
             msgs.add("§c✦ Dual strike " + target.getDisplayName() + " hit again for " + second);
             return new WeaponAbility.AttackResult(baseDamage + second, msgs, List.of());

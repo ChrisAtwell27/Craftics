@@ -5,9 +5,7 @@ import net.minecraft.block.Blocks;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -69,7 +67,7 @@ public final class CodeSceneBuilder {
             stands.add(new StandSlot(
                 minX, minZ, maxX, maxZ, oy,
                 npcX, oy, npcZ, 180f,
-                npcX, oy, npcZ - 1, 0f,
+                npcX, oy, npcZ - 2, 0f,
                 SceneBooths.occupantFor(sceneName, i), StandSlot.Kind.DEDICATED));
         }
         // Player spawns at the front-center of the walkway, facing +z toward the booths.
@@ -111,86 +109,84 @@ public final class CodeSceneBuilder {
 
     /** How high the invisible wall at a fall edge rises above the local floor. */
     public static final int PERIMETER_WALL_HEIGHT = 8;
-    /** Safety cap on the flood fill, so a leak into open terrain can't wall half the world. */
-    private static final int MAX_FLOOR_TILES = 20_000;
+
+    /** How far above/below the scene's base standing level the floor scan looks. */
+    private static final int FLOOR_SCAN_RANGE = 6;
 
     /**
-     * Wall the scene's FALL EDGES so a player can't drop off it - following the terrain's actual
-     * shape, including steps up and down.
+     * Wall every fall edge of the scene's TERRAIN so a player can't drop off it.
      *
-     * <p>How it works: flood-fill the walkable floor outward from {@code spawn}, letting the fill
-     * step up or down one block like a walking player, and tracking each tile's own height. Then
-     * raise a barrier column on every neighboring cell that is a genuine fall hazard: open at foot
-     * level with no ground to land on within two blocks below. Cells blocked by real architecture
-     * (a stall counter, a building wall, a cliff face going UP) are left alone - the architecture
-     * already stops you, and walling them was what entombed booth NPCs and boxed players in.
+     * <p>This outlines the BLOCKS, not a walk from the spawn: every column in the scene's
+     * footprint (plus a margin) is scanned for standable surfaces at any height near the base
+     * level, and every 8-neighbor of a standable cell that is a genuine fall hazard - open at
+     * foot level with nothing to land on within two blocks below - gets a barrier column.
      *
-     * <p>Hard-learned rules encoded here:
-     * <ul>
-     *   <li><b>Collision shapes, not isSolidBlock.</b> Dirt paths, slabs and stairs are not "solid
-     *       full cubes", so a solidity check read every village path as unwalkable - the fill
-     *       couldn't cross them, and walls got drawn through the middle of the village.
-     *   <li><b>Height-aware.</b> A single-plane fill treated every one-block step as the edge of
-     *       the world.
-     *   <li><b>Never replace a block, never dig below the floor.</b> The wall only fills AIR at and
-     *       above foot level. An earlier version overwrote terrain three blocks down with barriers,
-     *       which read as invisible holes punched in the ground.
-     * </ul>
+     * <p>The previous version flood-filled outward from the spawn tile and only walled what the
+     * fill reached. That left every surface the fill couldn't WALK to unwalled - and since the
+     * click-to-walk mover is a straight-line lerp, not a pathfind, players could be carried
+     * across unfilled ground straight to an unwalled edge and fall. Reachability was the wrong
+     * question; exposure is the right one.
+     *
+     * <p>Still true from hard experience: collision shapes not isSolidBlock (paths and slabs are
+     * ground), never replace a block, never dig below the floor - the wall only fills air.
      *
      * <p>Every placed block goes through {@code snapshot}, so the wall comes down with the scene.
      *
-     * @param floorY the level entities STAND on at the spawn tile (the air block, not the slab)
-     * @param spawn  a tile known to be on the floor - the fill starts here
+     * @param origin the scene's floor-surface origin corner (min x/z), at standing level
+     * @param baseY  the standing level at the spawn - the scan covers +-{@value #FLOOR_SCAN_RANGE}
+     * @param width  footprint x span
+     * @param depth  footprint z span
      */
-    public static void sealPerimeter(ServerWorld world, BlockPos spawn, int floorY,
-                                     Map<BlockPos, BlockState> snapshot) {
-        // 1. Height-aware flood fill of everywhere a player can walk (4-way, +-1 step).
-        Map<Long, Integer> floor = new HashMap<>();
-        Deque<int[]> queue = new ArrayDeque<>();
-        floor.put(key(spawn.getX(), spawn.getZ()), floorY);
-        queue.add(new int[]{spawn.getX(), floorY, spawn.getZ()});
+    public static void sealPerimeter(ServerWorld world, BlockPos origin, int baseY,
+                                     int width, int depth, Map<BlockPos, BlockState> snapshot) {
+        int margin = 4;
+        int minX = origin.getX() - margin, maxX = origin.getX() + width + margin;
+        int minZ = origin.getZ() - margin, maxZ = origin.getZ() + depth + margin;
 
-        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        while (!queue.isEmpty() && floor.size() < MAX_FLOOR_TILES) {
-            int[] cur = queue.poll();
-            for (int[] d : dirs) {
-                int nx = cur[0] + d[0], nz = cur[2] + d[1];
-                long k = key(nx, nz);
-                if (floor.containsKey(k)) continue;
-                for (int dy : new int[]{0, -1, 1}) {
-                    int ny = cur[1] + dy;
-                    if (isStandable(world, nx, ny, nz)) {
-                        floor.put(k, ny);
-                        queue.add(new int[]{nx, ny, nz});
-                        break;
-                    }
+        // 1. Every standable surface cell in the footprint, at every height near base level.
+        //    A column can hold several (a bridge over a path), and each gets its own outline.
+        Map<Long, int[]> floorHeights = new HashMap<>(); // key(x,z) -> heights found
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                int[] heights = new int[2 * FLOOR_SCAN_RANGE + 1];
+                int n = 0;
+                for (int y = baseY - FLOOR_SCAN_RANGE; y <= baseY + FLOOR_SCAN_RANGE; y++) {
+                    if (isStandable(world, x, y, z)) heights[n++] = y;
                 }
+                if (n > 0) floorHeights.put(key(x, z), java.util.Arrays.copyOf(heights, n));
             }
         }
-        if (floor.size() >= MAX_FLOOR_TILES) {
-            com.crackedgames.craftics.CrafticsMod.LOGGER.warn(
-                "Scene floor fill hit its {}-tile cap; the perimeter wall may be incomplete.",
-                MAX_FLOOR_TILES);
-        }
 
-        // 2. Wall only the FALL edges. 8-way, so a corner can't be cut diagonally.
+        // 2. Wall every 8-neighbor of a floor cell that is a fall hazard at that cell's height.
+        //    8-way so a corner can't be cut diagonally.
         int[][] around = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
-        Set<Long> walled = new HashSet<>();
-        for (Map.Entry<Long, Integer> e : floor.entrySet()) {
+        Set<Long> walled = new HashSet<>(); // key(x,z) ^ height, dedup per column+level
+        for (Map.Entry<Long, int[]> e : floorHeights.entrySet()) {
             int x = keyX(e.getKey()), z = keyZ(e.getKey());
-            int h = e.getValue();
-            for (int[] d : around) {
-                int nx = x + d[0], nz = z + d[1];
-                long nk = key(nx, nz);
-                if (floor.containsKey(nk) || walled.contains(nk)) continue;
-                if (!isFallEdge(world, nx, h, nz)) continue;
-                walled.add(nk);
-                for (int dy = 0; dy < PERIMETER_WALL_HEIGHT; dy++) {
-                    BlockPos p = new BlockPos(nx, h + dy, nz);
-                    // Fill AIR only. Anything already there is scenery, and replacing scenery
-                    // with invisible blocks is how the "holes in the floor" happened.
-                    if (!world.getBlockState(p).getCollisionShape(world, p).isEmpty()) continue;
-                    setTracked(world, p, Blocks.BARRIER.getDefaultState(), snapshot);
+            for (int h : e.getValue()) {
+                for (int[] d : around) {
+                    int nx = x + d[0], nz = z + d[1];
+                    long wk = key(nx, nz) * 31 + h;
+                    if (walled.contains(wk)) continue;
+                    // A neighbor that is itself floor at (or one step from) this height is a
+                    // walkable step, not an edge.
+                    int[] nh = floorHeights.get(key(nx, nz));
+                    boolean neighborWalkable = false;
+                    if (nh != null) {
+                        for (int y : nh) {
+                            if (Math.abs(y - h) <= 1) { neighborWalkable = true; break; }
+                        }
+                    }
+                    if (neighborWalkable) continue;
+                    if (!isFallEdge(world, nx, h, nz)) continue;
+                    walled.add(wk);
+                    for (int dy = 0; dy < PERIMETER_WALL_HEIGHT; dy++) {
+                        BlockPos p = new BlockPos(nx, h + dy, nz);
+                        // Fill AIR only. Anything already there is scenery, and replacing
+                        // scenery with invisible blocks reads as holes punched in the world.
+                        if (!world.getBlockState(p).getCollisionShape(world, p).isEmpty()) continue;
+                        setTracked(world, p, Blocks.BARRIER.getDefaultState(), snapshot);
+                    }
                 }
             }
         }

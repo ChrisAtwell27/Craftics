@@ -457,6 +457,76 @@ public class TrialChamberEvent {
         }
     }
 
+    /**
+     * Level definition for the Raid event: a plains arena where pillager waves keep arriving
+     * every few rounds. Carries the wave budget and stat scaling so {@code CombatManager} can
+     * spawn reinforcements mid-fight with the same math the initial spawns used.
+     *
+     * <p>{@code totalPillagers} is the REMAINING budget after the opening wave - the manager
+     * draws waves of 3-4 from it until it runs dry, then sends the finale (evoker or ravager).
+     */
+    public static class RaidLevelDef extends TrialChamberLevelDef {
+        public final int totalPillagers;
+        public final int hpBonus;
+        public final int atkBonus;
+        public final float ngMult;
+
+        RaidLevelDef(int width, int height, List<EnemySpawn> spawns, Random rng,
+                     int totalPillagers, int hpBonus, int atkBonus, float ngMult) {
+            super(width, height, spawns, rng);
+            this.totalPillagers = totalPillagers;
+            this.hpBonus = hpBonus;
+            this.atkBonus = atkBonus;
+            this.ngMult = ngMult;
+        }
+
+        @Override public String getName() { return "Raid!"; }
+        @Override public GridPos getPlayerStart() { return new GridPos(3, 3); }
+        @Override public Block getFloorBlock() { return Blocks.GRASS_BLOCK; }
+        @Override public String getArenaBiomeId() { return "plains"; }
+    }
+
+    /** Base stats for the raid's wave mobs, before biome/NG+ scaling. */
+    public static final int RAID_PILLAGER_HP = 8, RAID_PILLAGER_ATK = 3, RAID_PILLAGER_RANGE = 4;
+    public static final int RAID_EVOKER_HP = 26, RAID_EVOKER_ATK = 5;
+    public static final int RAID_RAVAGER_HP = 42, RAID_RAVAGER_ATK = 7, RAID_RAVAGER_DEF = 3;
+
+    /**
+     * Generate the Raid event level: a plains field, an opening wave of pillagers already on
+     * it, and a wave budget scaled to campaign progress - minimum 10 pillagers total, maximum
+     * 25. The remaining budget arrives in waves of 3-4 every 3 player turns, telegraphed like
+     * a boss attack, and the last wave brings an evoker or ravager.
+     */
+    public static RaidLevelDef generateRaid(int biomeOrdinal, int ngPlusLevel) {
+        Random rng = new Random();
+
+        int hpBonus = biomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
+        int atkBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());
+        float ngMult = 1.0f + (ngPlusLevel * 0.08f);
+
+        // 10 at the start of the campaign, +1 per biome cleared plus a nudge for NG+,
+        // hard-capped at 25.
+        int total = Math.max(10, Math.min(25, 10 + biomeOrdinal + ngPlusLevel * 2));
+
+        // Opening wave: 3-4 pillagers already advancing on the field.
+        int opening = Math.min(3 + rng.nextInt(2), total);
+        List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
+        List<GridPos> used = new ArrayList<>();
+        used.add(new GridPos(3, 3)); // player start
+        for (int i = 0; i < opening; i++) {
+            GridPos pos = findSpawnPos(8, 8, used, rng);
+            if (pos == null) break;
+            used.add(pos);
+            spawns.add(new LevelDefinition.EnemySpawn("minecraft:pillager", pos,
+                (int) ((RAID_PILLAGER_HP + hpBonus) * ngMult),
+                (int) ((RAID_PILLAGER_ATK + atkBonus) * ngMult),
+                0, RAID_PILLAGER_RANGE));
+        }
+
+        return new RaidLevelDef(8, 8, spawns, rng, total - spawns.size(),
+            hpBonus, atkBonus, ngMult);
+    }
+
     /** Inner level definition for trial chambers. */
     static class TrialChamberLevelDef extends LevelDefinition {
         private final int width, height;

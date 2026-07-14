@@ -58,6 +58,17 @@ public final class VanillaDialogue {
             List.of(new DialogueChoice("Take it", "shiny:take"),
                     new DialogueChoice("Leave it", "shiny:leave"))));
 
+        // Raid - a desperate villager begs the party to defend against pillager waves.
+        // Majority Accept drops the party into the raid fight; majority Decline passes.
+        // Defeating the raid (plus meeting a trader) unlocks the Trading Hall.
+        DialogueRegistry.register(new DialogueDefinition(
+            "craftics:raid_intro", "minecraft:villager", "raid_intro",
+            List.of("\"Please, travelers! Pillagers are marching on our village!\"",
+                    "\"They come in waves - we cannot hold them alone.\"",
+                    "\"Will you stand with us?\""),
+            List.of(new DialogueChoice("Defend the village", "raid:accept"),
+                    new DialogueChoice("Not our fight", "raid:decline"))));
+
         // Wandering Enchanter - step 1 (category select). The weapon/armor lists
         // are built per-player at runtime from the player's inventory.
         DialogueRegistry.register(new DialogueDefinition(

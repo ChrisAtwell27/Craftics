@@ -50,10 +50,12 @@ public final class TesterRegistry {
         register("__Egg__",          "Creator of Craftics", 0xFFE8B637, Rank.CREATOR); // rainbow + bold
         register("ChickenSizedKiwi", "<3",        0xFF8A9A5B, Rank.HELPER);  // sage green
         register("GokentoPower",        "Playtester+",            TESTER_COLOR, Rank.TESTER);
-        register("Jpkrus",           "Playtester+",            TESTER_COLOR, Rank.TESTER);
         register("Timelles_",        "Playtester+",            TESTER_COLOR, Rank.TESTER);
+        register("Jpkrus",           "Playtester+",            TESTER_COLOR, Rank.TESTER);
         register("RoguePixelNoob",        "Playtester+",            TESTER_COLOR, Rank.TESTER);
+        register("Alikoster173",        "Playtester+",            TESTER_COLOR, Rank.TESTER);
         register("PaulnPaul",        "Playtester+",            TESTER_COLOR, Rank.TESTER);
+        register("SuperSteve729",        "Playtester",            TESTER_COLOR, Rank.TESTER);
         register("TripleExM",        "Playtester",            TESTER_COLOR, Rank.TESTER);
         register("Tintartie",        "Playtester",            TESTER_COLOR, Rank.TESTER);
         register("TheRedLamb",        "Playtester",            TESTER_COLOR, Rank.TESTER);

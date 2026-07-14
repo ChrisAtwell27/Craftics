@@ -355,26 +355,60 @@ public class CombatManager {
     }
 
     // Finds a safe block pos for respawn: tries current pos, then start, then any walkable tile
+    /**
+     * Whether the arena's floor has actually been placed in the world yet.
+     *
+     * <p>Second line of defence behind {@link #FALL_DEATH_GRACE_TICKS}: a fall-death is only
+     * real if there is a floor to have fallen off. On a slow machine the grace window can
+     * expire while the arena is still being built (or its chunks are still loading), and
+     * without this the player would be killed - or have their totem consumed - for the crime
+     * of loading in slowly. Samples the player-start tile, which every arena places.
+     */
+    private boolean arenaFloorExists() {
+        if (arena == null || player == null) return false;
+        if (!(player.getEntityWorld() instanceof ServerWorld sw)) return false;
+        BlockPos start = arena.getPlayerStartBlockPos();
+        if (start == null) return false;
+        BlockPos floor = start.down();
+        return !sw.getBlockState(floor).getCollisionShape(sw, floor).isEmpty();
+    }
+
     private static BlockPos getSafeArenaBlockPos(GridArena arena) {
+        GridPos safe = getSafeArenaGridPos(arena);
+        return safe != null ? arena.gridToBlockPos(safe) : arena.getPlayerStartBlockPos();
+    }
+
+    /**
+     * A walkable tile to put the player on: their current tile if it is still valid, else the
+     * arena start, else the first walkable tile anywhere. {@code null} when the arena has no
+     * walkable tile at all (the caller falls back to the raw start block).
+     *
+     * <p>Callers that TELEPORT the player must also
+     * {@code arena.setPlayerGridPos(...)} to this position. The block position alone moves the
+     * entity while the grid still believes the player occupies the tile they left - which, for
+     * a void rescue, meant the arena thought they were standing in the pit they just fell into,
+     * so move highlights, attack range, and enemy pathing all read from the wrong tile.
+     */
+    private static GridPos getSafeArenaGridPos(GridArena arena) {
         GridPos current = arena.getPlayerGridPos();
         GridTile currentTile = arena.getTile(current);
         if (currentTile != null && currentTile.isWalkable()) {
-            return arena.gridToBlockPos(current);
+            return current;
         }
         GridPos start = arena.getPlayerStart();
         GridTile startTile = arena.getTile(start);
         if (startTile != null && startTile.isWalkable()) {
-            return arena.gridToBlockPos(start);
+            return start;
         }
         for (int x = 0; x < arena.getWidth(); x++) {
             for (int z = 0; z < arena.getHeight(); z++) {
                 GridTile tile = arena.getTile(x, z);
                 if (tile != null && tile.isWalkable()) {
-                    return arena.gridToBlockPos(new GridPos(x, z));
+                    return new GridPos(x, z);
                 }
             }
         }
-        return arena.getPlayerStartBlockPos();
+        return null;
     }
 
     private boolean active = false;
@@ -426,6 +460,35 @@ public class CombatManager {
     /** Server ticks the current player's turn has run without an action. Drives the optional
      *  AFK turn watchdog (CrafticsConfig.turnTimerEnabled). Reset on every action and turn change. */
     private int turnIdleTicks = 0;
+
+    /**
+     * Ticks of grace after combat starts before the fall-death check is armed.
+     *
+     * <p>The arena's blocks are placed over several ticks (and on a slow machine, chunk loading
+     * makes that much worse). Until the floor exists the player is standing in mid-air and
+     * gravity is pulling them down, so the "below the arena floor" check fires and reads a
+     * still-loading arena as a fall into the void. That used to kill people outright; once
+     * totems started covering void deaths it started eating their totem on arena entry instead.
+     *
+     * <p>Three seconds is generous on purpose - a false fall-death is a catastrophic,
+     * unrecoverable outcome for the player, while a genuine void fall being caught a moment
+     * late costs nothing.
+     */
+    /**
+     * Turns of Marked applied by a spectral arrow.
+     *
+     * <p>The Marked countdown runs in {@code tickEnemyDeciding}, i.e. at the start of the
+     * ENEMY phase, after the player has finished acting. One turn therefore means "for the
+     * rest of the turn you shot it in" - long enough to set up a follow-up hit with the 2x
+     * bonus, and gone before the enemy acts. (The spyglass uses 2 to also cover the player's
+     * next turn; the arrow is deliberately the cheaper, shorter version.)
+     */
+    private static final int SPECTRAL_ARROW_MARK_TURNS = 1;
+
+    private static final int FALL_DEATH_GRACE_TICKS = 60;
+
+    /** Counts down from {@link #FALL_DEATH_GRACE_TICKS} at combat start. */
+    private int fallDeathGraceTicks = 0;
     // In MP each party member needs their OWN status-effect state -bleed /
     // burn / poison applied to player 2 should not appear on player 1's HUD,
     // tick on player 1's turn, or modify player 1's speed. The field is kept
@@ -1492,12 +1555,70 @@ public class CombatManager {
                 || e.getCommandTags().contains("craftics_arena_mount")
                 || e.getCommandTags().contains("craftics_visual_projectile")
                 || e.getCommandTags().contains("craftics_stack_visual"));
-        if (ghosts.isEmpty()) return;
         for (net.minecraft.entity.Entity ghost : ghosts) {
             ghost.discard();
         }
-        CrafticsMod.LOGGER.info("Purged {} ghost arena mob(s) at {} before starting combat",
-            ghosts.size(), o);
+        if (!ghosts.isEmpty()) {
+            CrafticsMod.LOGGER.info("Purged {} ghost arena mob(s) at {} before starting combat",
+                ghosts.size(), o);
+        }
+
+        // NATURAL spawns are ghosts of a different kind: a Creaking sprouted from a decorative
+        // tree heart (Pale Gardens), or a stray zombie from surrounding terrain, is not part of
+        // any battle but will happily attack the player through it. Sweep untagged hostiles in
+        // and just outside the arena too.
+        java.util.List<net.minecraft.entity.Entity> naturals = world.getOtherEntities(null,
+            volume.expand(8, 0, 8),
+            e -> e instanceof net.minecraft.entity.mob.HostileEntity
+                && e.getCommandTags().isEmpty());
+        for (net.minecraft.entity.Entity stray : naturals) {
+            stray.discard();
+        }
+        if (!naturals.isEmpty()) {
+            CrafticsMod.LOGGER.info("Removed {} naturally-spawned hostile(s) around the arena at {}",
+                naturals.size(), o);
+        }
+
+        // And stop the tap: any creaking_heart block in or around the arena would keep
+        // spawning fresh Creaking all fight. Petrify them into plain wood. Matched by
+        // registry id rather than a Blocks constant, so this also catches the Pale Garden
+        // BACKPORT mod's heart on 1.21.1-1.21.3, where the vanilla constant doesn't exist.
+        // Runs before this fight spawns anything, so the boss fight's own heart (placed
+        // later, as a combat entity) is never touched - only decoration and leftovers.
+        // The heart may be vanilla (1.21.4+) or the Pale Garden backport mod's (1.21.1-1.21.3).
+        var heartBlock = blockByIdOrNull("minecraft", "creaking_heart");
+        if (heartBlock == null) heartBlock = blockByIdOrNull("palegardenbackport", "creaking_heart");
+        if (heartBlock != null) {
+            var woodBlock = blockByIdOrNull("minecraft", "pale_oak_wood");
+            if (woodBlock == null) woodBlock = blockByIdOrNull("palegardenbackport", "pale_oak_wood");
+            if (woodBlock == null) woodBlock = net.minecraft.block.Blocks.OAK_WOOD;
+            int petrified = 0;
+            for (net.minecraft.util.math.BlockPos p : net.minecraft.util.math.BlockPos.iterate(
+                    o.getX() - 16, o.getY() - 6, o.getZ() - 16,
+                    o.getX() + arena.getWidth() + 16, o.getY() + 24, o.getZ() + arena.getHeight() + 16)) {
+                if (world.getBlockState(p).isOf(heartBlock)) {
+                    world.setBlockState(p, woodBlock.getDefaultState(),
+                        net.minecraft.block.Block.FORCE_STATE);
+                    petrified++;
+                }
+            }
+            if (petrified > 0) {
+                CrafticsMod.LOGGER.info("Petrified {} creaking heart(s) around the arena at {}",
+                    petrified, o);
+            }
+        }
+    }
+
+    /** A block by registry id, or null when nothing is registered under it. containsId + get is
+     *  the one lookup shape that exists unchanged across every supported MC version. */
+    private static net.minecraft.block.Block blockByIdOrNull(String namespace, String path) {
+        try {
+            net.minecraft.util.Identifier id = net.minecraft.util.Identifier.of(namespace, path);
+            if (!net.minecraft.registry.Registries.BLOCK.containsId(id)) return null;
+            return net.minecraft.registry.Registries.BLOCK.get(id);
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     private GridArena buildArenaInner(ServerWorld world, LevelDefinition def) {
@@ -1540,14 +1661,24 @@ public class CombatManager {
                     boolean isSnowy = def instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld
                         && gld.getBiomeTemplate() != null
                         && "snowy".equals(gld.getBiomeTemplate().biomeId);
-                    if (isSnowy || com.crackedgames.craftics.level.ArenaPreGenerator.isCorrupted(
+                    // The Tidecaller (river boss) floods half its arena PERMANENTLY by design -
+                    // the terrain safeguard deliberately exempts plain WATER so the Deluge is
+                    // real. But scanExisting reads that water back as legitimate terrain on the
+                    // next visit, so without a rebuild the boss room stays flooded forever.
+                    // Same cure as snowy: regenerate every time.
+                    boolean isFloodedBossRoom = def instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition rgld
+                        && rgld.getBiomeTemplate() != null
+                        && "river".equals(rgld.getBiomeTemplate().biomeId)
+                        && rgld.getBiomeTemplate().isBossLevel(def.getLevelNumber());
+                    boolean alwaysRegen = isSnowy || isFloodedBossRoom;
+                    if (alwaysRegen || com.crackedgames.craftics.level.ArenaPreGenerator.isCorrupted(
                             world, worldOwnerUuid, def.getLevelNumber())) {
-                        if (!isSnowy) sendMessage("§eDetected corrupted arena, rebuilding");
+                        if (!alwaysRegen) sendMessage("§eDetected corrupted arena, rebuilding");
                         boolean repaired = com.crackedgames.craftics.level.ArenaPreGenerator
                             .regenerateLevel(world, worldOwnerUuid, def.getLevelNumber());
                         if (repaired) {
                             meta = pd.getArenaMetadata(def.getLevelNumber());
-                            if (!isSnowy) sendMessage("§aArena rebuilt.");
+                            if (!alwaysRegen) sendMessage("§aArena rebuilt.");
                         }
                     }
                     if (meta != null) {
@@ -1652,6 +1783,211 @@ public class CombatManager {
     private java.util.List<GridPos> mountWallTiles = java.util.List.of();
     /** Last committed cardinal facing of the rider (forward unit), default south. */
     private int mountFaceDx = 0, mountFaceDz = 1;
+
+    // ── Raid event state ─────────────────────────────────────────────────────
+    /** Rounds between raid waves (a wave lands every 3 player turns). */
+    private static final int RAID_WAVE_INTERVAL = 3;
+    /** True while the current fight is the Raid event (waves keep spawning). */
+    private boolean raidActive = false;
+    /** Pillagers not yet spawned. The finale (evoker/ravager) is on top of this. */
+    private int raidRemainingPillagers = 0;
+    /** Wave counter; the opening spawns are wave 1. */
+    private int raidWave = 1;
+    /** Round-boundary countdown to the next wave. At 1 the spawn tiles get telegraphed. */
+    private int raidRoundsUntilWave = RAID_WAVE_INTERVAL;
+    /** Telegraphed tiles for the incoming wave; painted like boss warning tiles. */
+    private final java.util.List<GridPos> raidPendingSpawnTiles = new java.util.ArrayList<>();
+    /** True once the final evoker/ravager has been sent - after that the raid can be won. */
+    private boolean raidFinaleSpawned = false;
+    /** Stat scaling captured from the RaidLevelDef so reinforcements match the openers. */
+    private int raidHpBonus = 0, raidAtkBonus = 0;
+    private float raidNgMult = 1.0f;
+
+    /** Reset per fight from {@code startCombat}; armed when the level def is the raid's. */
+    private void initRaidState(LevelDefinition def) {
+        raidActive = def instanceof TrialChamberEvent.RaidLevelDef;
+        raidPendingSpawnTiles.clear();
+        raidWave = 1;
+        raidRoundsUntilWave = RAID_WAVE_INTERVAL;
+        raidFinaleSpawned = false;
+        raidRemainingPillagers = 0;
+        if (raidActive) {
+            TrialChamberEvent.RaidLevelDef rld = (TrialChamberEvent.RaidLevelDef) def;
+            raidRemainingPillagers = rld.totalPillagers;
+            raidHpBonus = rld.hpBonus;
+            raidAtkBonus = rld.atkBonus;
+            raidNgMult = rld.ngMult;
+        }
+    }
+
+    /**
+     * Advance the raid clock one round (called once per round boundary). The cadence is:
+     * two quiet rounds, then the third round telegraphs the spawn tiles like a boss attack,
+     * and the wave lands at the NEXT boundary - so players get one full turn to read the
+     * warning and clear out.
+     */
+    private void tickRaidWaves() {
+        // Done only when the budget is spent AND the finale is on the field. A finale that
+        // failed to place (no free tile at spawn time) keeps the clock running so it retries
+        // on the next wave rather than stalling the raid unwinnable.
+        if (!raidActive || arena == null
+                || (raidFinaleSpawned && raidRemainingPillagers <= 0)) return;
+
+        raidRoundsUntilWave--;
+        if (raidRoundsUntilWave == 1 && raidPendingSpawnTiles.isEmpty()) {
+            chooseRaidWaveTiles();
+            if (!raidPendingSpawnTiles.isEmpty()) {
+                sendMessage("§c§lThe next wave is coming! §7The marked tiles show where they'll appear.");
+                refreshHighlights();
+            }
+        } else if (raidRoundsUntilWave <= 0) {
+            spawnRaidWave();
+            raidRoundsUntilWave = RAID_WAVE_INTERVAL;
+        }
+    }
+
+    /** Pick and telegraph the incoming wave's spawn tiles (free, walkable, spread out). */
+    private void chooseRaidWaveTiles() {
+        raidPendingSpawnTiles.clear();
+        int waveSize = Math.min(3 + new java.util.Random().nextInt(2), raidRemainingPillagers);
+        boolean finaleWave = waveSize >= raidRemainingPillagers && !raidFinaleSpawned;
+        int tilesNeeded = waveSize + (finaleWave ? 1 : 0);
+        java.util.Random rng = new java.util.Random();
+        int attempts = 0;
+        while (raidPendingSpawnTiles.size() < tilesNeeded && attempts++ < 200) {
+            GridPos p = new GridPos(rng.nextInt(arena.getWidth()), rng.nextInt(arena.getHeight()));
+            if (raidPendingSpawnTiles.contains(p) || arena.isOccupied(p)) continue;
+            GridTile t = arena.getTile(p);
+            if (t == null || !t.isWalkable()) continue;
+            // Never telegraph a spawn onto a player's tile or adjacent to one - the wave
+            // is a threat to walk away from, not an instant surround.
+            if (p.manhattanDistance(arena.getPlayerGridPos()) <= 1) continue;
+            raidPendingSpawnTiles.add(p);
+        }
+    }
+
+    /**
+     * Land the telegraphed wave: pillagers on the marked tiles, plus the finale mob
+     * (evoker or ravager, 50/50) riding along with the LAST wave. Tiles that got occupied
+     * since the telegraph relocate to the nearest free tile rather than fizzle.
+     */
+    private void spawnRaidWave() {
+        if (raidPendingSpawnTiles.isEmpty()) chooseRaidWaveTiles();
+        if (raidPendingSpawnTiles.isEmpty()) return;
+
+        boolean finaleWave = raidRemainingPillagers <= raidPendingSpawnTiles.size() && !raidFinaleSpawned;
+        int spawned = 0;
+        java.util.Random rng = new java.util.Random();
+        for (int i = 0; i < raidPendingSpawnTiles.size(); i++) {
+            GridPos tile = raidPendingSpawnTiles.get(i);
+            boolean finaleSlot = finaleWave && i == raidPendingSpawnTiles.size() - 1;
+            if (!finaleSlot && raidRemainingPillagers <= 0) break;
+            if (finaleSlot) {
+                boolean ravager = rng.nextBoolean();
+                String type = ravager ? "minecraft:ravager" : "minecraft:evoker";
+                int hp = (int) (((ravager ? TrialChamberEvent.RAID_RAVAGER_HP
+                    : TrialChamberEvent.RAID_EVOKER_HP) + raidHpBonus) * raidNgMult);
+                int atk = (int) (((ravager ? TrialChamberEvent.RAID_RAVAGER_ATK
+                    : TrialChamberEvent.RAID_EVOKER_ATK) + raidAtkBonus) * raidNgMult);
+                if (spawnRaidReinforcement(type, tile, hp, atk,
+                        ravager ? TrialChamberEvent.RAID_RAVAGER_DEF : 0, 1) != null) {
+                    raidFinaleSpawned = true;
+                    sendMessage(ravager
+                        ? "§4§lA ravager crashes onto the field!"
+                        : "§4§lAn evoker strides onto the field!");
+                }
+            } else {
+                int hp = (int) ((TrialChamberEvent.RAID_PILLAGER_HP + raidHpBonus) * raidNgMult);
+                int atk = (int) ((TrialChamberEvent.RAID_PILLAGER_ATK + raidAtkBonus) * raidNgMult);
+                if (spawnRaidReinforcement("minecraft:pillager", tile, hp, atk, 0,
+                        TrialChamberEvent.RAID_PILLAGER_RANGE) != null) {
+                    raidRemainingPillagers--;
+                    spawned++;
+                }
+            }
+        }
+        raidPendingSpawnTiles.clear();
+
+        if (spawned > 0 || raidFinaleSpawned) {
+            raidWave++;
+            sendWaveTitle(raidWave);
+            sendMessage("§c§lWave " + raidWave + "! §7" + (raidRemainingPillagers > 0
+                ? raidRemainingPillagers + " pillager(s) still marching."
+                : "This is the last of them - hold the line!"));
+            sendSync();
+            refreshHighlights();
+        }
+    }
+
+    /** Spawn one raid reinforcement mid-fight, with the standard arena mob setup. */
+    private CombatEntity spawnRaidReinforcement(String typeId, GridPos tile,
+                                                int hp, int atk, int def, int range) {
+        if (player == null || arena == null) return null;
+        // The telegraphed tile may have been claimed since; slide to the nearest free one.
+        if (!arena.isInBounds(tile) || arena.isOccupied(tile)
+                || arena.getTile(tile) == null || !arena.getTile(tile).isWalkable()) {
+            java.util.Set<GridPos> reserved = new java.util.HashSet<>();
+            for (CombatEntity e : enemies) if (e.isAlive()) reserved.add(e.getGridPos());
+            reserved.add(arena.getPlayerGridPos());
+            tile = findNearestWalkableUnreserved(arena, tile, reserved);
+            if (tile == null) return null;
+        }
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        EntityType<?> type = Registries.ENTITY_TYPE.get(Identifier.of(typeId));
+        BlockPos bp = arena.gridToBlockPos(tile);
+        var raw = type.create(world, null, bp, SpawnReason.MOB_SUMMONED, false, false);
+        if (!(raw instanceof MobEntity mob)) return null;
+        mob.refreshPositionAndAngles(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5, 0, 0);
+        mob.setAiDisabled(true);
+        mob.setInvulnerable(true);
+        mob.setNoGravity(true);
+        mob.noClip = true;
+        mob.setPersistent();
+        mob.addCommandTag("craftics_arena");
+        if ("minecraft:pillager".equals(typeId) && mob.getMainHandStack().isEmpty()) {
+            mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND,
+                new ItemStack(Items.CROSSBOW));
+        }
+        world.spawnEntity(mob);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+            bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.05);
+        CombatEntity ce = new CombatEntity(mob.getId(), typeId, tile, hp, atk, def, range);
+        ce.setMobEntity(mob);
+        enemies.add(ce);
+        arena.placeEntity(ce);
+        return ce;
+    }
+
+    /** Flash "Wave N" across every participant's screen for a moment. */
+    private void sendWaveTitle(int wave) {
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            p.networkHandler.sendPacket(
+                new net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket(5, 35, 10));
+            p.networkHandler.sendPacket(new net.minecraft.network.packet.s2c.play.TitleS2CPacket(
+                Text.literal("§c§lWave " + wave)));
+            p.getWorld().playSound(null, p.getBlockPos(),
+                net.minecraft.sound.SoundEvents.EVENT_RAID_HORN.value(),
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.0f);
+        }
+    }
+
+    /** The raid is won: persist the unlock (island-scoped) and tell the party what it opened. */
+    private void markRaidDefeated() {
+        raidActive = false;
+        ServerPlayerEntity leader = getCombatLeader() != null ? getCombatLeader() : player;
+        if (leader == null) return;
+        ServerWorld world = (ServerWorld) leader.getEntityWorld();
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        java.util.UUID owner = data.getEffectiveWorldOwner(leader.getUuid());
+        var pd = data.getPlayerData(owner);
+        if (!pd.raidDefeated) {
+            pd.raidDefeated = true;
+            data.markDirty();
+            sendMessage("§a§lThe village is saved! §7The grateful villagers will trade with you"
+                + " - the §6Trading Hall§7 is now open (meet a trader at a run event if you"
+                + " haven't already).");
+        }
+    }
 
     // ── Lead-command state ───────────────────────────────────────────────────
     /** AP a single Lead command costs, whether it's an attack or a reposition. */
@@ -2341,6 +2677,10 @@ public class CombatManager {
     private float playerMoveYaw;
 
     private List<GridPos> movePath;
+    /** Tiles the current move VAULTS over - never stood on. Drawn as arrows, not path dots,
+     *  and used by the mover to arc the player through the air instead of walking them
+     *  into a void pit / lava channel. */
+    private List<GridPos> jumpedTiles = new ArrayList<>();
     private int movePathIndex;
     private int moveTickCounter;
     private double lerpStartX, lerpStartY, lerpStartZ;
@@ -2467,6 +2807,8 @@ public class CombatManager {
         this.apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
         this.movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
         this.turnNumber = 1;
+        // Don't arm the fall-death check until the arena has had time to finish building.
+        this.fallDeathGraceTicks = FALL_DEATH_GRACE_TICKS;
         this.active = true;
         // Fresh fight -reset the anti-farming idle tracker.
         this.antiFarmIdleRounds = 0;
@@ -2475,6 +2817,7 @@ public class CombatManager {
         // Cache the biome ordinal so late-game tuning (boss waiting-turn skip,
         // etc.) doesn't have to recompute it on every enemy decision.
         this.currentBiomeOrdinal = computeCurrentBiomeOrdinal();
+        initRaidState(levelDef);
 
         // Hidden fire resistance -blocks vanilla lava/fire damage; our tile system handles it
         player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
@@ -4043,7 +4386,13 @@ public class CombatManager {
         // across magma and fire (damage still applies per-step at tick time). This
         // mirrors the reachable-tile highlight which also uses ignoreHazardCost=true.
         int moveBudget = elytraFreeMove ? (arena.getWidth() + arena.getHeight()) : movePointsRemaining;
-        List<GridPos> path = Pathfinding.findPathPlayer(arena, playerPos, target, moveBudget, hasBoat, pathfinderActive, phaseThroughEnemies);
+        // Jump-aware: A* will vault a void pit / lava channel when that beats walking around,
+        // at a cost of (gap + 2) speed. resolvedPath carries the REAL cost - a jump is one entry
+        // in the step list but costs several speed, so path.size() is no longer the price.
+        Pathfinding.Path resolvedPath = Pathfinding.findPlayerPathWithJumps(
+            arena, playerPos, target, moveBudget, hasBoat, pathfinderActive, phaseThroughEnemies);
+        List<GridPos> path = new ArrayList<>(resolvedPath.steps());
+        this.jumpedTiles = new ArrayList<>(resolvedPath.jumpedOver());
         if (path.isEmpty()) {
             // Check if the tile is water and they don't have a boat
             GridTile targetTile = arena.getTile(target);
@@ -4100,7 +4449,20 @@ public class CombatManager {
         // Check if leaving water to land
         GridTile endTile = arena.getTile(path.get(path.size() - 1));
 
-        int cost = hitCobweb ? movePointsRemaining : (elytraFreeMove ? 0 : path.size());
+        // Charge the path's REAL cost, not its length. A jump is a single step that costs
+        // (gap + 2) speed, so path.size() would undercharge it badly. A cobweb truncation
+        // still burns everything left, and elytra flight is free.
+        int cost;
+        if (hitCobweb) {
+            cost = movePointsRemaining;
+        } else if (elytraFreeMove) {
+            cost = 0;
+        } else if (path.size() == resolvedPath.steps().size()) {
+            cost = resolvedPath.cost(); // untruncated - use the exact A* cost
+        } else {
+            // Path was cut short (cobweb above); fall back to counting what remains.
+            cost = path.size();
+        }
         movePointsRemaining -= cost;
         movedThisTurn = true;
         tilesMovedThisTurn += path.size();
@@ -4686,11 +5048,17 @@ public class CombatManager {
         // Rocket crossbow shots spend a firework rocket (consumed by the crossbow
         // weapon ability), not an arrow -skip arrow/tipped-arrow consumption.
         java.util.List<String> tippedEffects = java.util.List.of();
+        boolean spectralShot = false;
         if ((PlayerCombatStats.isBow(player) || weapon == Items.CROSSBOW) && !crossbowRocket) {
             if (PlayerCombatStats.hasTippedArrows(player)) {
                 // A tipped arrow is spent for its effect, so the quiver-saving sets
                 // deliberately don't apply here.
                 tippedEffects = PlayerCombatStats.findAndConsumeTippedArrow(player);
+            } else if (PlayerCombatStats.hasSpectralArrows(player)) {
+                // Spectral arrows Mark their target. Like a tipped arrow, one is spent for
+                // its effect, so the quiver-saving sets don't apply.
+                PlayerCombatStats.consumeSpectralArrow(player);
+                spectralShot = true;
             } else if (!PlayerCombatStats.hasInfinity(player)) {
                 // Bone and Wither armor: the quiver never seems to empty, and a lucky
                 // archer's empties slower still.
@@ -5021,6 +5389,7 @@ public class CombatManager {
             ? PlayerCombatStats.getSharpness(player) : 0;
         final boolean fLuckCrit = luckCrit;
         final java.util.List<String> fTippedEffects = tippedEffects;
+        final boolean fSpectralShot = spectralShot;
         final int fFireAspect = fireAspect;
         // Sweeping Edge level scales the Fire Aspect shape (cone -> wide cone
         // -> ring) when both enchants are present on a sword.
@@ -5234,6 +5603,23 @@ public class CombatManager {
                     case "harming" -> { fTarget.takeDamage(4); sendMessage("\u00a74Harming arrow! +4 bonus damage."); }
                     case "healing" -> { player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 4)); sendMessage("\u00a7dHealing arrow! Restored 4 HP."); }
                     case "fire_resistance" -> { addEffectHooked(CombatEffects.EffectType.FIRE_RESISTANCE, 3, 0); sendMessage("\u00a76Fire resistance arrow! 3 turns."); }
+                }
+            }
+
+            // Spectral arrow: Mark the target for 1 turn, so it takes 2x damage (1.5x for a
+            // boss) from every source until the mark ticks out.
+            //
+            // NOT additive: a target that is ALREADY Marked is left exactly as it is. Without
+            // that guard, holding down fire on one enemy would keep resetting the timer and a
+            // stack of spectral arrows would pin a boss under permanent double damage.
+            if (fSpectralShot) {
+                if (fTarget.markNonAdditive(SPECTRAL_ARROW_MARK_TURNS)) {
+                    if (fTarget.getMobEntity() != null) fTarget.getMobEntity().setGlowing(true);
+                    sendMessage("\u00a7d\u2726 Spectral arrow! \u00a7e" + fTarget.getDisplayName()
+                        + "\u00a7d is Marked \u00a77(takes "
+                        + (fTarget.isBoss() ? "1.5x" : "2x") + " damage)");
+                } else {
+                    sendMessage("\u00a77" + fTarget.getDisplayName() + " is already Marked.");
                 }
             }
 
@@ -7263,6 +7649,21 @@ public class CombatManager {
     }
 
     /**
+     * Heavy but not identical: {@code 2-5} enchantments, each rolled HIGH on its own scale
+     * rather than pinned to the cap. A five-level enchantment lands at III-V, a three-level
+     * one at II-III, and single-level ones (Mending, Infinity) stay at I.
+     *
+     * <p>{@link #heavilyEnchant} maxes every pick, so with a fixed pool every "god" piece
+     * comes out as the same item. That is correct for the ominous trial key, which is meant
+     * to be a jackpot, but it made high-tier trader stock monotonous. This keeps rolls
+     * strong while letting two endgame chestplates differ.
+     */
+    public static ItemStack variedHeavyEnchant(ServerWorld world, ItemStack stack,
+                                               String[] pool, java.util.Random rng) {
+        return applyEnchants(world, stack, pool, rng, 2 + rng.nextInt(4), false, true);
+    }
+
+    /**
      * Draw {@code count} distinct enchantments from {@code pool} and put them on
      * {@code stack}. {@code maxLevel} picks each at its vanilla maximum; otherwise each
      * lands at level 1 or 2, capped by its own maximum so single-level enchantments like
@@ -7271,6 +7672,18 @@ public class CombatManager {
      */
     private static ItemStack applyEnchants(ServerWorld world, ItemStack stack, String[] pool,
                                            java.util.Random rng, int count, boolean maxLevel) {
+        return applyEnchants(world, stack, pool, rng, count, maxLevel, false);
+    }
+
+    /**
+     * @param maxLevel pin every pick to its vanilla maximum
+     * @param highRoll roll each pick high on its own scale (upper half of its range, always
+     *                 at least level 2 where the enchantment allows it) instead of pinning it.
+     *                 Ignored when {@code maxLevel} is set.
+     */
+    private static ItemStack applyEnchants(ServerWorld world, ItemStack stack, String[] pool,
+                                           java.util.Random rng, int count, boolean maxLevel,
+                                           boolean highRoll) {
         if (stack == null || stack.isEmpty() || pool == null || pool.length == 0) return stack;
         //? if <=1.21.1 {
         var registry = world.getRegistryManager().get(net.minecraft.registry.RegistryKeys.ENCHANTMENT);
@@ -7290,7 +7703,18 @@ public class CombatManager {
                 .findFirst().orElse(null);
             if (entry == null) continue;
             int cap = entry.value().getMaxLevel();
-            builder.add(entry, maxLevel ? cap : Math.min(cap, 1 + rng.nextInt(2)));
+            int level;
+            if (maxLevel) {
+                level = cap;
+            } else if (highRoll) {
+                // Upper half of the enchantment's own range: a 5-level enchant rolls III-V,
+                // a 3-level one II-III, a 1-level one stays at I. Never exceeds the cap.
+                int floor = Math.max(1, (cap + 1) / 2);
+                level = floor + (cap > floor ? rng.nextInt(cap - floor + 1) : 0);
+            } else {
+                level = Math.min(cap, 1 + rng.nextInt(2));
+            }
+            builder.add(entry, level);
             applied++;
         }
         stack.set(DataComponentTypes.ENCHANTMENTS, builder.build());
@@ -9666,6 +10090,8 @@ public class CombatManager {
         // (e.g. the PHANTOM set bonus below). Round-effect hooks (bee summon, hay
         // heal) still run only on the normal path, via runAllyRoundHooks() later.
         ageTimedSummons();
+        // Raid waves march on the same once-per-round clock.
+        tickRaidWaves();
 
         // Anti-farming: end the fight if the room holds only harmless mobs and the
         // player has made no progress for several rounds. Returns true when it took
@@ -9921,15 +10347,55 @@ public class CombatManager {
             }
         }
 
-        // Fall death bypasses totem -environmental, not combat damage
-        // Teleport back first to stop vanilla lava/void damage loops
+        // Fall death: rescue the player, then let a totem save them (see below).
+        // Teleport back first to stop vanilla lava/void damage loops.
         // Skip if already dying / game over so we don't loop the message and
         // restart the death animation every tick while gravity drags the
         // corpse below the threshold.
-        if (arena != null && phase != CombatPhase.PLAYER_DYING && phase != CombatPhase.GAME_OVER) {
+        //
+        // The grace countdown is what stops a SLOW-LOADING arena from reading as a void fall:
+        // the floor is placed over several ticks (much longer while chunks load on a weak
+        // machine), and until it exists the player is falling through empty air. Without this
+        // they were killed - or, once totems covered void deaths, had their totem eaten - just
+        // for entering an arena that took too long to build.
+        if (fallDeathGraceTicks > 0) {
+            // Hold the grace open while the floor genuinely isn't there yet: on a slow machine
+            // the fixed window can expire with the arena still building. Only ever EXTENDS the
+            // initial window - it can't re-open once the floor has appeared, so a terrain-
+            // destroying boss can't hand the party permanent invulnerability later in the fight.
+            if (!arenaFloorExists()) {
+                fallDeathGraceTicks = Math.max(fallDeathGraceTicks, 20);
+            }
+            fallDeathGraceTicks--;
+
+            // While the floor is still arriving, keep anyone who has started to drop pinned at
+            // the arena instead of letting them sink out of the world. No death, no totem - just
+            // put them back and cancel the fall.
+            if (arena != null && player != null && player.getY() < arena.getOrigin().getY() - 1) {
+                BlockPos hold = getSafeArenaBlockPos(arena);
+                if (hold != null) {
+                    player.requestTeleport(hold.getX() + 0.5, hold.getY(), hold.getZ() + 0.5);
+                    player.setVelocity(0, 0, 0);
+                    player.velocityModified = true;
+                    player.fallDistance = 0;
+                }
+            }
+        }
+        if (arena != null && fallDeathGraceTicks <= 0
+                && phase != CombatPhase.PLAYER_DYING && phase != CombatPhase.GAME_OVER) {
             int arenaFloorY = arena.getOrigin().getY();
             if (player.getY() < arenaFloorY - 2) {
-                BlockPos safePos = getSafeArenaBlockPos(arena);
+                // Move the player's GRID position too, not just their entity: the tile they fell
+                // through is a void obstacle and is not somewhere they can be standing. Leaving
+                // the grid on it desyncs move highlights, attack range, and enemy pathing from
+                // where the player actually is. (Harmless while this path always ended in death;
+                // a live bug now that a totem can bring them back.)
+                GridPos safeGrid = getSafeArenaGridPos(arena);
+                BlockPos safePos = safeGrid != null
+                    ? arena.gridToBlockPos(safeGrid) : arena.getPlayerStartBlockPos();
+                if (safeGrid != null) {
+                    arena.setPlayerGridPos(safeGrid);
+                }
                 if (safePos != null) {
                     player.requestTeleport(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
                 }
@@ -9941,6 +10407,15 @@ public class CombatManager {
                 player.setFireTicks(0);
                 player.setFrozenTicks(0);
                 player.setHealth(1);
+                // A totem saves you from the void too. This path called the death animation
+                // directly instead of going through handlePlayerDeathOrGameOver, so falling
+                // into a void obstacle killed you with a totem still in your hand.
+                if (tryConsumeTotemAndResurrect()) {
+                    sendMessage("§6You were snatched back from the void!");
+                    refreshHighlights();
+                    sendSync();
+                    return;
+                }
                 sendMessage("§c§l☠ You fell to your death!");
                 if (partyPlayers.size() <= 1) {
                     startPlayerDeathAnimation();
@@ -9960,7 +10435,15 @@ public class CombatManager {
                         startPlayerDeathAnimation();
                     } else {
                         sendMessage("§e" + nextAlive.getName().getString() + " takes over the fight!");
-                        BlockPos takeoverPos = getSafeArenaBlockPos(arena);
+                        // Same grid sync as the rescue above: the grid is still sitting on the
+                        // void tile the fallen player dropped through, so the survivor would take
+                        // over "standing" in a pit they aren't actually in.
+                        GridPos takeoverGrid = getSafeArenaGridPos(arena);
+                        BlockPos takeoverPos = takeoverGrid != null
+                            ? arena.gridToBlockPos(takeoverGrid) : arena.getPlayerStartBlockPos();
+                        if (takeoverGrid != null) {
+                            arena.setPlayerGridPos(takeoverGrid);
+                        }
                         if (takeoverPos != null) {
                             nextAlive.requestTeleport(
                                 takeoverPos.getX() + 0.5,
@@ -10423,6 +10906,34 @@ public class CombatManager {
 
         double x = lerpStartX + (endX - lerpStartX) * progress;
         double y = lerpStartY + (endY - lerpStartY) * progress;
+
+        // --- Airborne cases: the body has to get OVER a tile it cannot stand on ---
+        // Both of these arc the player up and back down, interpolating start->end Y underneath
+        // so a jump onto a STAIR (+0.5) or ELEVATED (+1) tile lands at the right height.
+        GridPos prevTile = movePathIndex == 0 ? moveOriginPos : movePath.get(movePathIndex - 1);
+        int spanTiles = prevTile == null ? 1
+            : Math.abs(next.x() - prevTile.x()) + Math.abs(next.z() - prevTile.z());
+        boolean isJumpStep = spanTiles > 1;
+
+        // Pathfinder trim: the bonus lets you WALK THROUGH obstacle tiles, but nothing ever
+        // lifted the body - getEntityY only raises an entity over an obstacle when flying=true,
+        // so a Pathfinder player was routed straight through the middle of the block. Hop them
+        // over its top instead. (Pre-existing bug; obstacles are not jumpable, so this is the
+        // only way a walking player is ever inside one.)
+        GridTile crossingTile = arena.getTile(next);
+        boolean walkingOverObstacle = !isJumpStep && crossingTile != null
+            && crossingTile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE;
+        if (walkingOverObstacle) {
+            endY = arena.getEntityY(next, true); // obstacle top, as a flyer would sit
+            y = lerpStartY + (endY - lerpStartY) * progress;
+        }
+
+        if (isJumpStep || walkingOverObstacle) {
+            // Parabolic hop on top of the straight Y interpolation. Peaks mid-step, zero at both
+            // ends, so it never disturbs the landing height.
+            double arcHeight = isJumpStep ? 0.55 + 0.25 * (spanTiles - 1) : 0.35;
+            y += Math.sin(progress * Math.PI) * arcHeight;
+        }
         double z = lerpStartZ + (endZ - lerpStartZ) * progress;
 
         if (playerMounted && mountMob != null) {
@@ -10842,11 +11353,20 @@ public class CombatManager {
                         retargetEffectsToCurrentPlayer();
                         arena.setPlayerGridPos(gridPosOf(member));
                     }
-                    // Tick down THIS member's status-effect durations. combatEffects is
-                    // retargeted to them above, so Slowness/Poison/Strength/shields expire
-                    // per member. Previously this ran ONCE before the loop against only the
-                    // turn-holder, so in co-op every other member's effects were frozen at
-                    // their initial duration and never wore off.
+                    // ORDER MATTERS: an effect must PAY OUT before it expires.
+                    //
+                    // tickTurn() decrements durations and REMOVES anything that hits 0, and
+                    // applyPerTurnEffects (inside tickPlayerPerTurnEffects) only reads effects
+                    // that are still present. Running the tick first therefore deleted an
+                    // effect on its final turn before that turn's heal/damage ever ran, so an
+                    // N-turn effect only paid out N-1 times: 3-turn Regeneration healed twice,
+                    // and poison / wither / burning / bleeding all silently lost their last
+                    // tick. Poison and wither read turnsRemaining in their damage formulas too,
+                    // so the ordering skewed their numbers as well, not just the count.
+                    if (tickPlayerPerTurnEffects()) { gameOver = true; break; }
+
+                    // Now tick down THIS member's durations. combatEffects is retargeted to
+                    // them above, so Slowness/Poison/Strength/shields expire per member.
                     String memberExpired = combatEffects.tickTurn();
                     if (memberExpired != null) {
                         for (CombatEffects.EffectType expType : combatEffects.getLastExpired()) {
@@ -10858,7 +11378,6 @@ public class CombatManager {
                         final CombatEffects.EffectType expType = expiredType;
                         fireEffectHook(h -> h.onEffectExpired(effectContext, expType));
                     }
-                    if (tickPlayerPerTurnEffects()) { gameOver = true; break; }
                 }
                 // Restore the original turn-holder ONLY if they survived. If the
                 // turn-holder died mid-pass, handlePlayerDeathOrGameOver already
@@ -11268,7 +11787,22 @@ public class CombatManager {
         // Stealth-tile target gate: if the player is on a tall-grass/fern tile
         // and we're not adjacent, we can't see them -skip the turn entirely.
         // Bosses included (per design: bosses do not ignore tall grass).
-        if (invisibleToThisEnemy
+        // A burning mob breaks off and runs for water. This sits AHEAD of the mob's own AI so
+        // all of them inherit it without touching 50-odd AI classes, and it yields (returns
+        // null) whenever the mob isn't alight or there's no water it can reach, in which case
+        // the normal AI runs untouched. Bosses are exempt: a boss abandoning its fight to go
+        // paddle would gut the encounter.
+        // Water-immune mobs (drowned, guardians, ...) don't get Soaked by wading, so running
+        // for water would never put them out - they'd just jog back and forth on fire forever.
+        // They keep fighting and let the burn tick out.
+        EnemyAction waterSeek = (currentEnemy.isBoss()
+                || isWaterImmune(currentEnemy.getEntityTypeId()))
+            ? null
+            : com.crackedgames.craftics.combat.ai.AIUtils.seekWaterIfBurning(currentEnemy, arena);
+
+        if (waterSeek != null) {
+            pendingAction = waterSeek;
+        } else if (invisibleToThisEnemy
                 || StealthTiles.isConcealedFrom(arena, currentEnemy.getGridPos(), aiTargetPos, player.getEntityWorld())) {
             pendingAction = new EnemyAction.Idle();
         } else {
@@ -17732,6 +18266,48 @@ public class CombatManager {
      * Wither/Poison from the killing blow can't chain-kill the resurrected
      * player on the next tick.
      */
+    /**
+     * Last-resort totem hook for damage Craftics never metered: a vanilla source (an explosion,
+     * fire, fall damage, a boss's real-entity attack) that would kill the player outright.
+     *
+     * <p>{@code damagePlayer} clamps HP to 1 so the turn-based flow can never kill, and every
+     * death route it owns checks the totem. But nothing was watching vanilla damage - so a boss
+     * one-shot could take the player from full HP to dead without the totem ever being asked.
+     * {@code PlayerDeathTotemMixin} calls this from {@code LivingEntity.damage} just before the
+     * blow would land lethally, and cancels the damage when a totem is spent.
+     *
+     * @param deathBlow the player is about to die from a source Craftics didn't route
+     * @return true when a totem was consumed and the death must be cancelled
+     */
+    /**
+     * True while the arena is still settling after combat start. Damage taken in this window is
+     * an artifact of the arena not being built yet (the player is falling through air that has
+     * no floor under it yet), so it must not kill anyone or spend a totem - the mixin swallows
+     * it outright instead.
+     */
+    public boolean isArenaSettling() {
+        // Deliberately the TIMER only, not "is the floor missing?". A boss that destroys terrain
+        // can legitimately delete the start tile's floor mid-fight, and keying invulnerability on
+        // that would make the whole party immortal for the rest of the fight - far worse than the
+        // bug this guards. The floor probe is used to EXTEND the grace window (below), never to
+        // re-open it once the fight is genuinely underway.
+        return active && fallDeathGraceTicks > 0;
+    }
+
+    public boolean tryTotemAgainstLethalDamage(ServerPlayerEntity victim) {
+        if (!active || victim == null) return false;
+        // Retarget onto the victim: `player` is the current TURN holder, and in a party the
+        // one taking a vanilla hit may be someone else entirely. Consuming the turn-holder's
+        // totem to save a different player would be a real bug.
+        ServerPlayerEntity saved = this.player;
+        try {
+            this.player = victim;
+            return tryConsumeTotemAndResurrect();
+        } finally {
+            this.player = saved;
+        }
+    }
+
     private boolean tryConsumeTotemAndResurrect() {
         net.minecraft.item.ItemStack totem = findTotemStack();
         if (totem == null) return false;
@@ -17750,8 +18326,10 @@ public class CombatManager {
         float halfMax = Math.max(1.0f, player.getMaxHealth() / 2.0f);
         player.setHealth(halfMax);
 
-        player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
-            net.minecraft.entity.effect.StatusEffects.REGENERATION, 900, 1));
+        // Combat-only regeneration: the vanilla effect heals in real time, which would let a
+        // resurrected player tick their HP back between turns and quietly undo the turn-based
+        // damage economy. The combat effect heals a little at the start of each of their turns.
+        combatEffects.addEffect(CombatEffects.EffectType.REGENERATION, 5, 1);
         player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
             net.minecraft.entity.effect.StatusEffects.ABSORPTION, 100, 1));
         player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
@@ -18800,6 +19378,19 @@ public class CombatManager {
     }
 
     private void handleVictory() {
+        // Raid gate: clearing the field is NOT winning while waves remain. Reward the
+        // early clear by bringing the next wave in immediately (no telegraph wait) rather
+        // than making the party stand around for the timer.
+        if (raidActive && (raidRemainingPillagers > 0 || !raidFinaleSpawned)) {
+            sendMessage("§cNo time to rest - the next wave pours in!");
+            spawnRaidWave();
+            raidRoundsUntilWave = RAID_WAVE_INTERVAL;
+            return;
+        }
+        if (raidActive) {
+            markRaidDefeated();
+        }
+
         // If a thrown trident was lying on the arena when the final blow landed,
         // auto-recover it -otherwise the player loses it permanently on level end.
         if (droppedTridentStack != null) {
@@ -19737,6 +20328,16 @@ public class CombatManager {
                             com.crackedgames.craftics.level.campaign.CampaignManager.regionOf(biome.biomeId))
                         .map(r -> r.id()).orElse("overworld"));
 
+                    // RAID gets first claim on the event slot. A fresh island (raid never
+                    // defeated) is under active pillager threat: 75% of rolls are the raid
+                    // until the players win one, then it drops to an ordinary event rate.
+                    // Rolled independently of eventRoll so the cumulative windows below are
+                    // untouched either way.
+                    boolean raidAlreadyDefeated = data.getPlayerData(
+                        data.getEffectiveWorldOwner(savedPlayer.getUuid())).raidDefeated;
+                    float raidChance = raidAlreadyDefeated ? 0.06f : 0.75f;
+                    float raidRoll = (float) Math.random();
+
                     if (skipEvents) {
                         // No event -go straight to next level. Boss levels get a
                         // narrator intro first; once all members dismiss it the
@@ -19761,6 +20362,17 @@ public class CombatManager {
                         } else {
                             transition.run();
                         }
+                    } else if (forced != null ? forced.equals("raid") : (raidRoll < raidChance)) {
+                        // Raid - defend the villagers from pillager waves on a plains field.
+                        ld.levelsSinceLastEvent = 0;
+                        data.markDirty();
+                        pendingNextLevelDef = nextLevelDef;
+                        pendingBiome = biome;
+                        var raidDef = TrialChamberEvent.generateRaid(
+                            Math.max(0, biomeOrdinal), ngPlusLevel);
+                        pendingEventBiomeOrdinal = Math.max(0, biomeOrdinal);
+                        lastFightWasTrial = true;
+                        offerRaid(savedPlayer, savedMembers, raidDef);
                     } else if (forced != null ? forced.equals("ominous_trial") : (eventRoll < cOminous && biomeOrdinal >= 10)) {
                         // Ominous Trial Chamber (late game only). Party-vote dialogue -
                         // tie or majority Accept enters the trial; majority Decline skips
@@ -20063,6 +20675,9 @@ public class CombatManager {
     // an ambush combat, or a safe pass -picked in resolveShinyVote. The ambush
     // LevelDefinition is held here in case the vote resolves into combat.
     private com.crackedgames.craftics.level.LevelDefinition pendingShinyAmbushDef;
+    /** True when the pending shiny-machinery event is actually the RAID: same vote plumbing,
+     *  different dialogue, no 50/50 reward roll (accept always fights, decline always passes). */
+    private boolean pendingShinyIsRaid = false;
     private java.util.List<java.util.UUID> pendingShinyMembers;
     /** Per-player Yes(true)/No(false) votes during the VOTING phase. */
     private final java.util.Map<java.util.UUID, Boolean> shinyVotes = new java.util.HashMap<>();
@@ -20562,7 +21177,7 @@ public class CombatManager {
         var metData = com.crackedgames.craftics.world.CrafticsSavedData.get(world);
         var metOwner = metData.getEffectiveWorldOwner(savedPlayer.getUuid());
         activeTraderOffer = TraderSystem.generateOffer(biomeTier, new java.util.Random(),
-            metData.getPlayerData(metOwner).metTraders);
+            metData.getPlayerData(metOwner).metTraders, world);
         com.crackedgames.craftics.scene.MetMerchants.recordTrader(
             world, savedPlayer.getUuid(), activeTraderOffer.type().id());
 
@@ -22866,11 +23481,44 @@ public class CombatManager {
 
     /** Stage the shiny vote: send the Take-or-Leave dialogue to every party
      *  member. Resolution waits until every member has voted. */
+    /**
+     * Offer the RAID event: a villager begs for help against incoming pillager waves. Rides
+     * the shiny vote machinery (same pending/vote/finalize plumbing) with its own dialogue
+     * and a no-gamble resolution - accept fights, decline passes.
+     */
+    private void offerRaid(ServerPlayerEntity savedPlayer,
+                           java.util.List<ServerPlayerEntity> members,
+                           com.crackedgames.craftics.level.LevelDefinition raidDef) {
+        eventRoomPending = true;
+        eventRoomType = "shiny";
+        pendingShinyAmbushDef = raidDef;
+        pendingShinyIsRaid = true;
+        pendingShinyMembers = new java.util.ArrayList<>();
+        shinyVotes.clear();
+        shinyDismissTriggersCombat = false;
+        eventPendingPlayers.clear();
+        for (ServerPlayerEntity p : members) {
+            pendingShinyMembers.add(p.getUuid());
+            eventPendingPlayers.add(p.getUuid());
+        }
+        var def = com.crackedgames.craftics.combat.dialogue.DialogueRegistry.get("craftics:raid_intro");
+        if (def == null) {
+            CrafticsMod.LOGGER.warn("raid_intro dialogue missing; starting raid without intro");
+            shinyDismissTriggersCombat = true;
+            finalizeShinyEvent(savedPlayer);
+            return;
+        }
+        for (ServerPlayerEntity p : members) {
+            sendDialogue(p, def, com.crackedgames.craftics.network.DialoguePayload.BG_SOLID);
+        }
+    }
+
     private void offerShinyChoice(ServerPlayerEntity savedPlayer,
                                    java.util.List<ServerPlayerEntity> members,
                                    com.crackedgames.craftics.level.LevelDefinition ambushDef) {
         eventRoomPending = true;
         eventRoomType = "shiny";
+        pendingShinyIsRaid = false;
         pendingShinyAmbushDef = ambushDef;
         pendingShinyMembers = new java.util.ArrayList<>();
         shinyVotes.clear();
@@ -22906,8 +23554,8 @@ public class CombatManager {
         boolean voting = !shinyVotes.containsKey(player.getUuid());
         if (voting) {
             boolean takeIt;
-            if ("shiny:take".equals(action)) takeIt = true;
-            else if ("shiny:leave".equals(action)) takeIt = false;
+            if ("shiny:take".equals(action) || "raid:accept".equals(action)) takeIt = true;
+            else if ("shiny:leave".equals(action) || "raid:decline".equals(action)) takeIt = false;
             else {
                 // Unknown action during voting -count as Leave so the vote can
                 // still resolve. The DISMISS sentinel is also funnelled here
@@ -22938,6 +23586,35 @@ public class CombatManager {
 
         boolean leaveMajority = leaves > takes;
         boolean takeMajority = takes > leaves;
+
+        // RAID variant: no reward roll, no bait. Accept-majority (tie counts as accept -
+        // someone wants to help) goes straight to the defense; decline-majority walks on.
+        if (pendingShinyIsRaid) {
+            shinyDismissTriggersCombat = !leaveMajority;
+            eventPendingPlayers.clear();
+            if (pendingShinyMembers != null) eventPendingPlayers.addAll(pendingShinyMembers);
+            com.crackedgames.craftics.combat.dialogue.DialogueDefinition raidOutcome =
+                shinyDismissTriggersCombat
+                    ? new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                        "craftics:raid_accept", "minecraft:villager", "raid_accept",
+                        java.util.List.of("\"Bless you, travelers!\"",
+                            "The villager leads you to the fields as war drums sound in the distance."),
+                        java.util.List.of())
+                    : new com.crackedgames.craftics.combat.dialogue.DialogueDefinition(
+                        "craftics:raid_decline", "minecraft:villager", "raid_decline",
+                        java.util.List.of("The villager's face falls.",
+                            "\"Then we will face them alone...\""),
+                        java.util.List.of());
+            ServerWorld raidWorld = (ServerWorld) referencePlayer.getEntityWorld();
+            for (java.util.UUID u : new java.util.ArrayList<>(eventPendingPlayers)) {
+                ServerPlayerEntity p = raidWorld.getServer().getPlayerManager().getPlayer(u);
+                if (p == null) { eventPendingPlayers.remove(u); continue; }
+                sendDialogue(p, raidOutcome);
+            }
+            if (eventPendingPlayers.isEmpty()) finalizeShinyEvent(referencePlayer);
+            return;
+        }
+
         // Tie or take-majority → roll 50/50 between reward and ambush.
         // Leave-majority → safe pass.
         java.util.Random rng = new java.util.Random();
@@ -23039,6 +23716,7 @@ public class CombatManager {
         pendingShinyMembers = null;
         shinyVotes.clear();
         shinyDismissTriggersCombat = false;
+        pendingShinyIsRaid = false;
 
         if (referencePlayer == null) return;
 
@@ -24572,7 +25250,10 @@ public class CombatManager {
             if (movePointsRemaining > 0) {
                 boolean pathfinderActive = activeTrimScan != null
                     && activeTrimScan.setBonus() == TrimEffects.SetBonus.PATHFINDER;
-                java.util.Set<GridPos> reachable = Pathfinding.getReachableTiles(arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(), pathfinderActive, true);
+                // Jump-aware: a tile reachable ONLY by vaulting a gap must be highlighted, or
+                // the player could never click it. Mirrors findPlayerPathWithJumps exactly.
+                java.util.Set<GridPos> reachable = Pathfinding.getPlayerReachableTilesWithJumps(
+                    arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(), pathfinderActive);
                 for (GridPos gp : reachable) {
                     moveList.add(gp.x());
                     moveList.add(gp.z());
@@ -24761,6 +25442,12 @@ public class CombatManager {
                     }
                 }
             }
+        }
+
+        // Raid: the incoming wave's spawn tiles telegraph exactly like a boss attack.
+        for (GridPos wt : raidPendingSpawnTiles) {
+            warningList.add(wt.x());
+            warningList.add(wt.z());
         }
 
         // Convert lists to int arrays
@@ -26080,6 +26767,19 @@ public class CombatManager {
             if (e.getBlindedTurns() > 0) efx.append(";Blinded(" + e.getBlindedTurns() + "t)");
             if (e.getDefensePenaltyTurns() > 0) efx.append(";Exposed(-" + e.getDefensePenalty() + "DEF," + e.getDefensePenaltyTurns() + "t)");
             if (e.getBleedStacks() > 0) efx.append(";Bleeding(" + e.getBleedStacks() + " stacks)");
+            // Debuffs the entity tracked but never told the client about, so they had no icon
+            // and no HUD chip even though they were affecting the fight.
+            if (e.getWitherTurns() > 0) efx.append(";Withered(" + e.getWitherTurns() + "t)");
+            if (e.isFrozen()) efx.append(";Frozen");
+            if (e.isTaunting()) efx.append(";Taunting");
+            // Positive buffs. Enemies (and allies, which share CombatEntity) can carry these
+            // from instrument support performances, and none of them were synced at all.
+            if (e.getRegenTurns() > 0) efx.append(";Regenerating(" + e.getRegenTurns() + "t)");
+            if (e.getAbsorptionTurns() > 0) efx.append(";Absorption(" + e.getAbsorption() + "HP," + e.getAbsorptionTurns() + "t)");
+            if (e.getResistanceTurns() > 0) efx.append(";Resistant(" + e.getResistanceTurns() + "t)");
+            if (e.getAttackBuffTurns() > 0) efx.append(";Strengthened(+" + e.getAttackBuffBonus() + "ATK," + e.getAttackBuffTurns() + "t)");
+            if (e.getSpeedBuffTurns() > 0) efx.append(";Hastened(+" + e.getSpeedBuffBonus() + "SPD," + e.getSpeedBuffTurns() + "t)");
+            if (e.getSlowFallingTurns() > 0) efx.append(";SlowFalling(" + e.getSlowFallingTurns() + "t)");
             for (java.util.Map.Entry<String, int[]> ce : e.getCustomEffects().entrySet()) {
                 com.crackedgames.craftics.api.CustomEffectDef cdef =
                     com.crackedgames.craftics.api.registry.CombatEffectRegistry.get(ce.getKey());
@@ -26622,6 +27322,28 @@ public class CombatManager {
                 }
             } else if (oursActive) {
                 member.removeStatusEffect(waterBreathing);
+            }
+        }
+
+        // Mobs get the same courtesy: a combatant parked on a water tile (knocked there,
+        // spawned there, walked there) must not quietly drown between turns. Same
+        // icon-hidden effect, same grant/revoke rule as the players above.
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive()) continue;
+            net.minecraft.entity.mob.MobEntity mob = e.getMobEntity();
+            if (mob == null || mob.isRemoved()) continue;
+            GridTile tile = arena.getTile(e.getGridPos());
+            boolean onWater = tile != null && tile.isWater();
+            var existing = mob.getStatusEffect(waterBreathing);
+            boolean oursActive = existing != null
+                && !existing.shouldShowIcon() && !existing.shouldShowParticles();
+            if (onWater) {
+                if (existing == null) {
+                    mob.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
+                        waterBreathing, Integer.MAX_VALUE, 0, true, false, false));
+                }
+            } else if (oursActive) {
+                mob.removeStatusEffect(waterBreathing);
             }
         }
     }

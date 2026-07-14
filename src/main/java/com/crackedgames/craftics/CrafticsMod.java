@@ -827,9 +827,15 @@ public class CrafticsMod implements ModInitializer {
                             world, cmdPlayer.getUuid(), b.id());
                         barterers++;
                     }
+                    // Testing shortcut: the hall also needs a defeated Raid now, so the
+                    // unlock-everything command grants that too.
+                    CrafticsSavedData mData = CrafticsSavedData.get(world);
+                    var mPd = mData.getPlayerData(mData.getEffectiveWorldOwner(cmdPlayer.getUuid()));
+                    if (!mPd.raidDefeated) { mPd.raidDefeated = true; mData.markDirty(); }
                     final int ft = traders, fb = barterers;
                     src.sendFeedback(() -> Text.literal("§aMet all merchants: §f" + ft
-                        + " trader(s), " + fb + " barterer(s). Every booth will now be filled."), true);
+                        + " trader(s), " + fb + " barterer(s). Raid marked defeated -"
+                        + " every hall is now unlocked and filled."), true);
                     return 1;
                 }))
                 // /craftics merchants meet <id> - meet one, e.g. craftics:weaponsmith

@@ -165,10 +165,14 @@ public class PlayerCombatStats {
         return isBowItem(player.getMainHandStack().getItem()) && hasArrows(player);
     }
 
+    /** Any arrow that a bow or crossbow can fire: plain, tipped, or spectral. */
     public static boolean hasArrows(ServerPlayerEntity player) {
         for (int i = 0; i < player.getInventory().size(); i++) {
             Item item = player.getInventory().getStack(i).getItem();
-            if (item == Items.ARROW || item == Items.TIPPED_ARROW) return true;
+            if (item == Items.ARROW || item == Items.TIPPED_ARROW
+                    || item == Items.SPECTRAL_ARROW) {
+                return true;
+            }
         }
         return false;
     }
@@ -364,6 +368,25 @@ public class PlayerCombatStats {
             if (player.getInventory().getStack(i).getItem() == Items.TIPPED_ARROW) return true;
         }
         return false;
+    }
+
+    /** True if the player is carrying at least one spectral arrow. */
+    public static boolean hasSpectralArrows(ServerPlayerEntity player) {
+        for (int i = 0; i < player.getInventory().size(); i++) {
+            if (player.getInventory().getStack(i).getItem() == Items.SPECTRAL_ARROW) return true;
+        }
+        return false;
+    }
+
+    /** Spend one spectral arrow. */
+    public static void consumeSpectralArrow(ServerPlayerEntity player) {
+        for (int i = 0; i < player.getInventory().size(); i++) {
+            var stack = player.getInventory().getStack(i);
+            if (stack.getItem() == Items.SPECTRAL_ARROW) {
+                stack.decrement(1);
+                return;
+            }
+        }
     }
 
     /** Uses string matching on registry ID for 1.21.1 compatibility. */

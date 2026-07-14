@@ -1126,7 +1126,7 @@ public class GuideBookData {
                 "Wayfinder: +1 Speed /piece\n  Full Set: Pathfinder (ignore obstacles)\n\n" +
                 "Shaper: +1 Armor Class /piece\n  Full Set: Earthshatter (move 3+ tiles to deal 2 dmg around your destination)\n\n" +
                 "Raiser: +1 ally damage /piece\n  Full Set: Rally (allies +2 Spd, +1 Atk)\n\n" +
-                "Host: +8 max HP /piece\n  Full Set: Symbiote (heal 1 HP/kill)\n\n" +
+                "Host: +4 max HP /piece\n  Full Set: Symbiote (heal 1 HP/kill)\n\n" +
                 "Tide: +1 HP regen per 2 turns /piece\n  Full Set: Ocean's Blessing (emergency heal)"),
             new Page("Nether Trims",
                 "Ward: +1 Armor Class /piece\n  Full Set: Fortress (50% less dmg when stationary)\n\n" +
@@ -1151,7 +1151,7 @@ public class GuideBookData {
                 "Netherite: +1 Armor Pen /piece\n" +
                 "Redstone: +1 Ranged Power /piece\n" +
                 "Amethyst: +1 HP Regen /piece\n" +
-                "Quartz: +6 Max HP /piece\n" +
+                "Quartz: +4 Max HP /piece\n" +
                 "Resin: +1 Ally Damage /piece\n\n" +
                 "Pattern + Material stack! Mix for your build.")
         )));

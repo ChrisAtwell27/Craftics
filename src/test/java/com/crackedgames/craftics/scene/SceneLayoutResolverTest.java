@@ -82,14 +82,15 @@ class SceneLayoutResolverTest {
 
     @Test
     void npcPoseComesFromNpcMarkerAndPlayerStandsInFrontFacingIt() {
-        // NPC at (4,64,3) facing south (yaw 0 -> +Z). Player is one tile along
-        // the NPC's facing at (4,64,4), facing back north (yaw 180).
+        // NPC at (4,64,3) facing south (yaw 0 -> +Z). Player is TWO tiles along the NPC's
+        // facing at (4,64,5) - one tile of gap so the counter sits between them - facing
+        // back north (yaw 180).
         StandSlot s = SceneLayoutResolver.resolve(oneBooth("craftics:weaponsmith")).stands().get(0);
         assertEquals(4, s.npcX());
         assertEquals(3, s.npcZ());
         assertEquals(0f, s.npcYaw());
         assertEquals(4, s.playerX());
-        assertEquals(4, s.playerZ());
+        assertEquals(5, s.playerZ());
         assertEquals(180f, s.playerYaw());
     }
 

@@ -13,6 +13,58 @@ public class Pathfinding {
         new GridPos(1, 0), new GridPos(-1, 0)
     };
 
+    // ── Jumping ──────────────────────────────────────────────────────────────
+
+    /** Widest gap a player can clear. 2 tiles => the jump lands 3 away and costs 4. */
+    public static final int MAX_JUMP_GAP = 2;
+
+    /**
+     * Speed a jump costs: what the walk WOULD have cost with no gap in the way, plus one.
+     * A gap of N tiles means landing N+1 tiles away, so the cost is (N + 1) + 1.
+     *
+     * <p>Deliberately independent of what is IN the gap. Charging the skipped tiles' own move
+     * cost would make hopping lava more expensive than wading through it, which defeats the
+     * entire point; a flat "distance + 1" is also a rule a player can hold in their head.
+     */
+    public static int jumpCost(int gapTiles) {
+        return gapTiles + 2;
+    }
+
+    /**
+     * Tiles a player may jump OVER.
+     *
+     * <p>Deliberately excludes OBSTACLE (it stands above the arena floor - you would be jumping
+     * through it, not over it) and POWDER_SNOW (a concealed trap; letting players hop it for a
+     * flat cost would defuse the one thing it is for). Everything else here is either lethal to
+     * enter (VOID, DEEP_WATER) or punishing (LAVA, FIRE, WATER), so clearing it should be a real
+     * option rather than a forced detour.
+     */
+    private static boolean isJumpableGap(GridArena arena, GridPos pos) {
+        var tile = arena.getTile(pos);
+        if (tile == null) return false;
+        return switch (tile.getType()) {
+            case VOID, DEEP_WATER, LAVA, FIRE, WATER -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * A resolved move: the tiles walked or landed on, and the REAL speed it costs.
+     *
+     * <p>The cost has to be carried explicitly. Before jumps existed, every step cost 1 and
+     * callers could infer the price from {@code steps.size()} - and they did, all over
+     * CombatManager. A jump breaks that: clearing a one-tile pit is a SINGLE entry in the step
+     * list but costs 3 speed. Anything that charges movement must read {@link #cost()}.
+     *
+     * @param steps      tiles to move through, in order, excluding the start tile
+     * @param cost       speed actually spent
+     * @param jumpedOver tiles cleared mid-air - never stood on. Drawn as arrows, not path dots.
+     */
+    public record Path(List<GridPos> steps, int cost, List<GridPos> jumpedOver) {
+        public static final Path EMPTY = new Path(List.of(), 0, List.of());
+        public boolean isEmpty() { return steps.isEmpty(); }
+    }
+
     /**
      * A* pathfinding. Returns path (excluding start, including end).
      * Blocks enemy-occupied tiles. Player tile is passable.
@@ -125,6 +177,128 @@ public class Pathfinding {
      * disruption) while leaving AI pathfinding untouched so enemies still
      * naturally avoid hazards.
      */
+    /**
+     * Player pathfinding that may JUMP gaps it cannot walk through.
+     *
+     * <p>Jumps are ordinary graph edges - a hop to the tile N+1 away, costing {@link #jumpCost}
+     * - so A* takes one only when it genuinely beats walking around. There is no "should I jump?"
+     * heuristic to get wrong: if the detour is cheaper, it walks.
+     *
+     * <p>A jump is legal when every tile in the gap is {@link #isJumpableGap}, none of them is
+     * occupied (you cannot vault over an enemy), and the landing tile is one you could normally
+     * stand on. You may jump OVER lava; you may not land IN it.
+     *
+     * <p>AI keeps using the plain {@code findPathFull} - enemies do not jump.
+     */
+    public static Path findPlayerPathWithJumps(GridArena arena, GridPos from, GridPos to, int maxSpeed,
+                                               boolean hasBoat, boolean ignoreObstacles,
+                                               boolean phaseThroughEnemies) {
+        if (from.equals(to) || !arena.isInBounds(to)) return Path.EMPTY;
+        var destTile = arena.getTile(to);
+        if (destTile == null || !destTile.isWalkableEx(hasBoat, ignoreObstacles, false)) return Path.EMPTY;
+        if (isBlockedBy(arena, to, null)) return Path.EMPTY;
+
+        Map<GridPos, GridPos> cameFrom = new HashMap<>();
+        Map<GridPos, Integer> gScore = new HashMap<>();
+        gScore.put(from, 0);
+
+        PriorityQueue<GridPos> open = new PriorityQueue<>(
+            Comparator.comparingInt(p -> gScore.getOrDefault(p, Integer.MAX_VALUE) + p.manhattanDistance(to)));
+        open.add(from);
+        Set<GridPos> closed = new HashSet<>();
+
+        while (!open.isEmpty()) {
+            GridPos current = open.poll();
+            if (current.equals(to)) break;
+            if (!closed.add(current)) continue;
+
+            int currentG = gScore.getOrDefault(current, Integer.MAX_VALUE);
+            if (currentG >= maxSpeed) continue;
+
+            for (GridPos dir : DIRECTIONS) {
+                // --- ordinary 1-tile step ---
+                GridPos step = new GridPos(current.x() + dir.x(), current.z() + dir.z());
+                if (arena.isInBounds(step) && !closed.contains(step)) {
+                    var t = arena.getTile(step);
+                    boolean walkable = t != null && t.isWalkableEx(hasBoat, ignoreObstacles, false);
+                    boolean free = step.equals(to)
+                        || (phaseThroughEnemies ? !step.equals(arena.getPlayerGridPos())
+                                                : !isBlockedBy(arena, step, null, false));
+                    if (walkable && free) {
+                        // Player movement treats LAVA/FIRE as cost 1 (they damage on step but
+                        // must not warp pathing), matching findPathPlayer's ignoreHazardCost.
+                        relax(open, gScore, cameFrom, current, step, currentG + 1, maxSpeed);
+                    }
+                }
+
+                // --- jump over a gap of 1..MAX_JUMP_GAP tiles, landing beyond it ---
+                for (int gap = 1; gap <= MAX_JUMP_GAP; gap++) {
+                    // Every tile in the gap must be jumpable AND empty.
+                    boolean clear = true;
+                    for (int g = 1; g <= gap && clear; g++) {
+                        GridPos over = new GridPos(current.x() + dir.x() * g, current.z() + dir.z() * g);
+                        if (!arena.isInBounds(over) || !isJumpableGap(arena, over)
+                                || arena.getOccupant(over) != null) {
+                            clear = false;
+                        }
+                    }
+                    if (!clear) continue;
+
+                    GridPos land = new GridPos(current.x() + dir.x() * (gap + 1),
+                                               current.z() + dir.z() * (gap + 1));
+                    if (!arena.isInBounds(land) || closed.contains(land)) continue;
+                    var lt = arena.getTile(land);
+                    // Land ON solid ground only: you may clear lava, never end your jump in it.
+                    if (lt == null || !lt.isWalkableEx(hasBoat, ignoreObstacles, false)) continue;
+                    if (isJumpableGap(arena, land)) continue;
+                    if (isBlockedBy(arena, land, null)) continue;
+
+                    relax(open, gScore, cameFrom, current, land, currentG + jumpCost(gap), maxSpeed);
+                }
+            }
+        }
+
+        if (!cameFrom.containsKey(to)) return Path.EMPTY;
+        return buildJumpPath(cameFrom, gScore, from, to);
+    }
+
+    /** Standard A* edge relaxation, bounded by the mover's speed budget. */
+    private static void relax(PriorityQueue<GridPos> open, Map<GridPos, Integer> gScore,
+                              Map<GridPos, GridPos> cameFrom, GridPos from, GridPos to,
+                              int tentativeG, int maxSpeed) {
+        if (tentativeG > maxSpeed) return;
+        if (tentativeG >= gScore.getOrDefault(to, Integer.MAX_VALUE)) return;
+        cameFrom.put(to, from);
+        gScore.put(to, tentativeG);
+        open.add(to);
+    }
+
+    /**
+     * Walk the parent chain back and split it into steps + the tiles that were vaulted.
+     * The cost is read from gScore, NOT inferred from the step count - that is the whole
+     * point of the Path record.
+     */
+    private static Path buildJumpPath(Map<GridPos, GridPos> cameFrom, Map<GridPos, Integer> gScore,
+                                      GridPos from, GridPos to) {
+        List<GridPos> steps = new ArrayList<>();
+        List<GridPos> jumped = new ArrayList<>();
+        GridPos current = to;
+        while (!current.equals(from)) {
+            GridPos prev = cameFrom.get(current);
+            if (prev == null) return Path.EMPTY; // broken chain - refuse rather than half-move
+            steps.add(current);
+            int dx = Integer.signum(current.x() - prev.x());
+            int dz = Integer.signum(current.z() - prev.z());
+            int dist = Math.abs(current.x() - prev.x()) + Math.abs(current.z() - prev.z());
+            for (int g = 1; g < dist; g++) { // the tiles between prev and current were jumped
+                jumped.add(new GridPos(prev.x() + dx * g, prev.z() + dz * g));
+            }
+            current = prev;
+        }
+        Collections.reverse(steps);
+        return new Path(steps, gScore.getOrDefault(to, 0), jumped);
+    }
+
     public static List<GridPos> findPathFull(GridArena arena, GridPos from, GridPos to, int maxSteps, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean aquatic, boolean phaseThroughEnemies, boolean ignoreHazardCost) {
         if (from.equals(to)) return List.of();
         if (!arena.isInBounds(to)) return List.of();
@@ -324,6 +498,76 @@ public class Pathfinding {
     public static Set<GridPos> getReachableTiles(GridArena arena, GridPos from, int maxSteps,
                                                    int entitySize, CombatEntity self, boolean hasBoat, boolean ignoreObstacles, boolean ignoreHazardCost) {
         return getReachableTiles(arena, from, maxSteps, entitySize, entitySize, self, hasBoat, ignoreObstacles, ignoreHazardCost);
+    }
+
+    /**
+     * Player reachability INCLUDING tiles only reachable by jumping a gap.
+     *
+     * <p>Must mirror {@link #findPlayerPathWithJumps} exactly: a tile the pathfinder would
+     * happily route to but that is not highlighted here can never be clicked, and a tile
+     * highlighted here that the pathfinder refuses would be a dead click. Same edges, same costs.
+     */
+    public static Set<GridPos> getPlayerReachableTilesWithJumps(GridArena arena, GridPos from,
+                                                                int maxSpeed, boolean hasBoat,
+                                                                boolean ignoreObstacles) {
+        Set<GridPos> reachable = new HashSet<>();
+        Map<GridPos, Integer> dist = new HashMap<>();
+        PriorityQueue<GridPos> open = new PriorityQueue<>(
+            Comparator.comparingInt(p -> dist.getOrDefault(p, Integer.MAX_VALUE)));
+        dist.put(from, 0);
+        open.add(from);
+
+        while (!open.isEmpty()) {
+            GridPos current = open.poll();
+            int currentDist = dist.getOrDefault(current, Integer.MAX_VALUE);
+            if (currentDist >= maxSpeed) continue;
+
+            for (GridPos dir : DIRECTIONS) {
+                // 1-tile step
+                GridPos step = new GridPos(current.x() + dir.x(), current.z() + dir.z());
+                if (arena.isInBounds(step)) {
+                    var t = arena.getTile(step);
+                    if (t != null && t.isWalkableEx(hasBoat, ignoreObstacles, false)
+                            && !isBlockedBy(arena, step, null, false)) {
+                        int nd = currentDist + 1;
+                        if (nd <= maxSpeed && nd < dist.getOrDefault(step, Integer.MAX_VALUE)) {
+                            dist.put(step, nd);
+                            open.add(step);
+                            if (!isBlockedBy(arena, step, null)) reachable.add(step);
+                        }
+                    }
+                }
+
+                // jump over a gap
+                for (int gap = 1; gap <= MAX_JUMP_GAP; gap++) {
+                    boolean clear = true;
+                    for (int g = 1; g <= gap && clear; g++) {
+                        GridPos over = new GridPos(current.x() + dir.x() * g, current.z() + dir.z() * g);
+                        if (!arena.isInBounds(over) || !isJumpableGap(arena, over)
+                                || arena.getOccupant(over) != null) {
+                            clear = false;
+                        }
+                    }
+                    if (!clear) continue;
+
+                    GridPos land = new GridPos(current.x() + dir.x() * (gap + 1),
+                                               current.z() + dir.z() * (gap + 1));
+                    if (!arena.isInBounds(land)) continue;
+                    var lt = arena.getTile(land);
+                    if (lt == null || !lt.isWalkableEx(hasBoat, ignoreObstacles, false)) continue;
+                    if (isJumpableGap(arena, land)) continue;
+                    if (isBlockedBy(arena, land, null)) continue;
+
+                    int nd = currentDist + jumpCost(gap);
+                    if (nd <= maxSpeed && nd < dist.getOrDefault(land, Integer.MAX_VALUE)) {
+                        dist.put(land, nd);
+                        open.add(land);
+                        reachable.add(land);
+                    }
+                }
+            }
+        }
+        return reachable;
     }
 
     /** Rectangular-footprint reachability - the variant everything else delegates to. */

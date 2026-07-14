@@ -6,6 +6,8 @@
 	"mixins": [
 		"CombatMountMixin",
 		"EnderDragonEntityMixin",
+		"NoVanillaRegenMixin",
+		"PlayerDeathTotemMixin",
 		"PlayerEntityMixin",
 		"ServerPlayNetworkHandlerMixin",
 		"SlimeEntityAccessor",

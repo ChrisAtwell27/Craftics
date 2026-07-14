@@ -45,9 +45,30 @@ public class CombatState {
         setPolygonMask(null, width, height);
     }
 
+    /** Scene booth rects in WORLD coords: {minX, minZ, maxX, maxZ, occupied(0/1)} each.
+     *  Synced from the server so the glow renderer draws the REAL booths, not a locally
+     *  re-derived procedural layout that has nothing to do with a schematic hall. */
+    private static java.util.List<int[]> sceneBooths = java.util.List.of();
+    public static java.util.List<int[]> getSceneBooths() { return sceneBooths; }
+
+    public static void setSceneBooths(String boothData) {
+        if (boothData == null || boothData.isEmpty()) { sceneBooths = java.util.List.of(); return; }
+        java.util.List<int[]> out = new java.util.ArrayList<>();
+        for (String entry : boothData.split(";")) {
+            String[] p = entry.split(",");
+            if (p.length != 5) continue;
+            try {
+                out.add(new int[]{Integer.parseInt(p[0]), Integer.parseInt(p[1]),
+                    Integer.parseInt(p[2]), Integer.parseInt(p[3]), Integer.parseInt(p[4])});
+            } catch (NumberFormatException ignored) { }
+        }
+        sceneBooths = out;
+    }
+
     /** Clear the scene grid bounds (call when the scene state goes inactive). */
     public static void clearSceneBounds() {
         setSceneBounds(0, 0, 0, 0, 0);
+        sceneBooths = java.util.List.of();
     }
 
     /**
@@ -385,7 +406,14 @@ public class CombatState {
     private static int killStreak = 0;
 
     // Party member HP list (empty in solo play)
-    public record PartyMemberHp(String uuid, String name, int hp, int maxHp, boolean dead) {}
+    /**
+     * @param effects that member's own active effects, in {@code CombatEffects.getDisplayString}
+     *                format. The server has always sent this per-UUID column; it used to be
+     *                read only for the local player and thrown away for everyone else, so
+     *                teammates' effects could not be displayed at all.
+     */
+    public record PartyMemberHp(String uuid, String name, int hp, int maxHp, boolean dead,
+                                String effects) {}
     private static java.util.List<PartyMemberHp> partyHpList = new java.util.ArrayList<>();
 
     /** Per-player combat readout for the hover inspect panel, keyed by uuid string. */
@@ -812,7 +840,12 @@ public class CombatState {
                 int hp = Integer.parseInt(parts[2]);
                 int mHp = Integer.parseInt(parts[3]);
                 boolean dead = "1".equals(parts[4]);
-                PartyMemberHp member = new PartyMemberHp(uuid, name, hp, mHp, dead);
+                // Column 5 is this member's own effect string. The separators were swapped on
+                // the way out so they couldn't collide with the row/field delimiters; undo that.
+                String memberEffects = parts.length >= 6
+                    ? parts[5].replace("/", " | ").replace(";", ",")
+                    : "";
+                PartyMemberHp member = new PartyMemberHp(uuid, name, hp, mHp, dead, memberEffects);
                 if (uuid.equals(myUuid)) {
                     self = member;
                     // Override the broadcast `playerHp` / `playerMaxHp` / `playerEffects`
@@ -826,8 +859,7 @@ public class CombatState {
                     CombatState.playerHp = hp;
                     CombatState.playerMaxHp = mHp;
                     if (parts.length >= 6) {
-                        String myEffects = parts[5].replace("/", " | ").replace(";", ",");
-                        CombatState.playerEffects = myEffects;
+                        CombatState.playerEffects = memberEffects;
                     }
                 } else {
                     others.add(member);

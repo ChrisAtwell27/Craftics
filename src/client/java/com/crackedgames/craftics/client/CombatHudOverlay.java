@@ -47,6 +47,11 @@ public class CombatHudOverlay implements HudRenderCallback {
     /** Right edge X of the enemy roster (or inspect panel) so the tile tooltip
      *  aligns with the same right margin even when its width differs. */
     private static int enemyRosterRightX = -1;
+    /** Bottom Y of the top-left player/party HP panel this frame, so the ally roster
+     *  can stack below it. A fixed Y overlapped the HP bars as soon as the party had
+     *  enough members to grow the panel past it. */
+    private static int leftPanelBottomY = 44;
+
     /** Bottom Y of the party turn-order panel this frame so the enemy
      *  act-order strip can stack below it instead of overlapping. */
     private static int turnOrderBottomY = 20;
@@ -344,6 +349,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         int panelH = panelPad + Math.max(headSize, barH) + effectsBlockH + panelPad;
         int panelX = 8;
         int panelY = 6;
+        leftPanelBottomY = panelY + panelH; // ally roster stacks below this
 
         drawPanel(ctx, panelX, panelY, panelW, panelH);
 
@@ -396,6 +402,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         int panelH = panelPad + members.size() * rowH + panelPad - 2;
         int panelX = 8;
         int panelY = 6;
+        leftPanelBottomY = panelY + panelH; // grows with the party; ally roster stacks below
 
         drawPanel(ctx, panelX, panelY, panelW, panelH);
 
@@ -469,7 +476,9 @@ public class CombatHudOverlay implements HudRenderCallback {
         int panelW = panelContentW + panelPad * 2;
         int panelH = headerH + allies.size() * entryH + panelPad;
         int panelX = 8;
-        int panelY = 50; // below player status panel
+        // Stack below wherever the player/party HP panel actually ended this frame. The
+        // old fixed 50 drew straight over the HP bars once the party had 4+ members.
+        int panelY = Math.max(50, leftPanelBottomY + 4);
 
         ctx.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, 0xFF224422);
         ctx.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xBB112211);
@@ -1494,9 +1503,26 @@ public class CombatHudOverlay implements HudRenderCallback {
         int mx = (int) (m[0] / uiScale);
         int my = (int) (m[1] / uiScale);
 
-        int cost = path.size();
+        // Cost is NOT path.size() any more: a jump is one entry in the step list but costs
+        // (gap + 2) speed. Price each step by how far it spans - a 1-tile step is 1, a vault
+        // over an N-tile gap is N + 2. Must agree with Pathfinding.jumpCost or the cursor
+        // would quote a price the server won't honour.
+        com.crackedgames.craftics.core.GridPos prevStep = TileOverlayRenderer.getActivePathFrom();
+        int cost = 0;
+        boolean jumps = false;
+        for (com.crackedgames.craftics.core.GridPos step : path) {
+            if (prevStep == null) { cost += 1; continue; }
+            int span = Math.abs(step.x() - prevStep.x()) + Math.abs(step.z() - prevStep.z());
+            if (span > 1) {
+                cost += com.crackedgames.craftics.client.ClientGridHelper.jumpCost(span - 1);
+                jumps = true;
+            } else {
+                cost += 1;
+            }
+            prevStep = step;
+        }
         int remaining = CombatState.getMovePointsRemaining();
-        String label = cost + " SPD";
+        String label = cost + " SPD" + (jumps ? " (jump)" : "");
         int tw = client.textRenderer.getWidth(label);
         int bx = Math.min(mx + 12, screenW - tw - 6);
         int by = Math.min(my + 12, screenH - 14);

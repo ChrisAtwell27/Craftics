@@ -102,11 +102,13 @@ public final class SceneLayoutResolver {
         StandSlot.Kind kind = StandSlot.isOverflowWildcard(npc.occupant())
             ? StandSlot.Kind.OVERFLOW : StandSlot.Kind.DEDICATED;
 
-        // Player stands one tile in front of the NPC (along the NPC's facing) and faces back at it.
+        // Player stands TWO tiles in front of the NPC (along the NPC's facing) and faces back
+        // at it - one tile of breathing room, so the counter sits between them instead of the
+        // player pressing up against the merchant.
         int[] off = yawToOffset(npc.yaw());
-        int playerX = npc.x() + off[0];
+        int playerX = npc.x() + off[0] * 2;
         int playerY = npc.y();
-        int playerZ = npc.z() + off[1];
+        int playerZ = npc.z() + off[1] * 2;
         float playerYaw = wrap(npc.yaw() + 180f);
 
         return new StandSlot(minX, minZ, maxX, maxZ, y,

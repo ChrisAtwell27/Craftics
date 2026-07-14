@@ -31,10 +31,11 @@ class CodeSceneBuilderTest {
         for (StandSlot s : layout.stands()) {
             // NPC tile is inside the booth's clickable rectangle
             assertTrue(s.contains(s.npcX(), s.npcZ()), "npc tile must be inside the booth rect");
-            // Player walk-up tile is adjacent to the NPC (one tile away, same y level)
+            // Player walk-up tile is two tiles in front of the NPC (one tile of gap,
+            // so the counter sits between them).
             int dx = Math.abs(s.playerX() - s.npcX());
             int dz = Math.abs(s.playerZ() - s.npcZ());
-            assertEquals(1, dx + dz, "player stands one tile in front of the NPC");
+            assertEquals(2, dx + dz, "player stands two tiles in front of the NPC");
         }
     }
 

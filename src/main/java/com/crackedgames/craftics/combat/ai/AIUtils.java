@@ -18,6 +18,70 @@ public class AIUtils {
     };
 
     /**
+     * A burning mob will break off and run for water rather than keep fighting while it cooks.
+     *
+     * <p>Returns a {@link EnemyAction.Move} toward the nearest reachable water tile, or
+     * {@code null} if the mob isn't on fire, there's no water on this map, or it can't reach
+     * any. A {@code null} return means "no opinion" - the caller runs the mob's normal AI.
+     *
+     * <p>Only {@link TileType#WATER} counts: {@code DEEP_WATER} is an instant kill, so a mob
+     * fleeing a few points of burn damage by drowning itself would be a spectacular own goal.
+     * Fire-immune mobs never burn in the first place, so they never end up here.
+     *
+     * <p>The mob commits to the water even if that means turning its back on the player. Fire
+     * is a damage-over-time it cannot otherwise remove, so putting it out is worth a turn.
+     */
+    public static EnemyAction seekWaterIfBurning(CombatEntity self, GridArena arena) {
+        if (self.getBurningTurns() <= 0) return null;
+        if (arena == null) return null;
+
+        GridPos from = self.getGridPos();
+        // Already standing in it - the water tile itself will douse the mob, so hold position
+        // rather than wandering back out of it.
+        if (isWaterTile(arena, from)) return new EnemyAction.Idle();
+
+        List<GridPos> path = pathToNearestWater(arena, from, self);
+        if (path == null || path.isEmpty()) return null;
+        return new EnemyAction.Move(path);
+    }
+
+    /**
+     * The route to the nearest water the mob can actually REACH, or null if there is none.
+     *
+     * <p>Water tiles are tried nearest-first, and each is pathfound before being accepted:
+     * simply picking the closest tile by distance and pathing to it once would strand a mob
+     * next to a pool it cannot enter (walled off, or beyond its move budget) while a farther
+     * but reachable pool sat ignored.
+     */
+    private static List<GridPos> pathToNearestWater(GridArena arena, GridPos from,
+                                                    CombatEntity self) {
+        List<GridPos> candidates = new ArrayList<>();
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos pos = new GridPos(x, z);
+                if (isWaterTile(arena, pos)) candidates.add(pos);
+            }
+        }
+        if (candidates.isEmpty()) return null; // no water on this map at all
+
+        candidates.sort(java.util.Comparator.comparingInt(
+            p -> Math.abs(p.x() - from.x()) + Math.abs(p.z() - from.z())));
+
+        for (GridPos target : candidates) {
+            List<GridPos> path = Pathfinding.findPathSized(
+                arena, from, target, self.getMoveSpeed(), self);
+            if (!path.isEmpty()) return path;
+        }
+        return null; // water exists, but none of it is reachable
+    }
+
+    /** Shallow, walkable water. Deep water is an instant kill and never counts. */
+    private static boolean isWaterTile(GridArena arena, GridPos pos) {
+        GridTile tile = arena.getTile(pos);
+        return tile != null && tile.getType() == TileType.WATER;
+    }
+
+    /**
      * Get walkable, unoccupied tiles adjacent to a position.
      */
     public static List<GridPos> getAdjacentTiles(GridArena arena, GridPos pos) {

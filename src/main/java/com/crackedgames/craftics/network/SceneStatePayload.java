@@ -3,7 +3,6 @@ package com.crackedgames.craftics.network;
 import com.crackedgames.craftics.CrafticsMod;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.codec.PacketCodecs;
 import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.util.Identifier;
 
@@ -21,34 +20,38 @@ import net.minecraft.util.Identifier;
  * floor-block origin; {@code oy} is the floor-BLOCK Y (one below the walkable top
  * surface), because {@code TileRaycast} intersects the floor plane at
  * {@code arenaOriginY + 1}. {@code w}/{@code h} are the floor footprint (x span / z span).
+ *
+ * <p>{@code boothData} carries the scene's REAL booth rectangles in WORLD coords, one
+ * per entry: {@code minX,minZ,maxX,maxZ,occupied} (occupied 1/0), semicolon-separated,
+ * empty when inactive. The client's booth-glow renderer used to rebuild the PROCEDURAL
+ * layout locally, which glowed phantom rectangles that had nothing to do with a
+ * schematic hall's actual booths.
  */
-public record SceneStatePayload(boolean active, int ox, int oy, int oz, int w, int h)
+public record SceneStatePayload(boolean active, int ox, int oy, int oz, int w, int h,
+                                String boothData)
         implements CustomPayload {
 
     public static final CustomPayload.Id<SceneStatePayload> ID =
         new CustomPayload.Id<>(Identifier.of(CrafticsMod.MOD_ID, "scene_state"));
 
-    //? if <=1.21.3 {
+    // Manual codec: 7 fields outruns the tuple() helper arities available everywhere.
     public static final PacketCodec<RegistryByteBuf, SceneStatePayload> CODEC =
-        PacketCodec.tuple(
-            PacketCodecs.BOOL, SceneStatePayload::active,
-            PacketCodecs.INTEGER, SceneStatePayload::ox,
-            PacketCodecs.INTEGER, SceneStatePayload::oy,
-            PacketCodecs.INTEGER, SceneStatePayload::oz,
-            PacketCodecs.INTEGER, SceneStatePayload::w,
-            PacketCodecs.INTEGER, SceneStatePayload::h,
-            SceneStatePayload::new);
-    //?} else {
-    /*public static final PacketCodec<RegistryByteBuf, SceneStatePayload> CODEC =
-        PacketCodec.tuple(
-            PacketCodecs.BOOLEAN, SceneStatePayload::active,
-            PacketCodecs.INTEGER, SceneStatePayload::ox,
-            PacketCodecs.INTEGER, SceneStatePayload::oy,
-            PacketCodecs.INTEGER, SceneStatePayload::oz,
-            PacketCodecs.INTEGER, SceneStatePayload::w,
-            PacketCodecs.INTEGER, SceneStatePayload::h,
-            SceneStatePayload::new);
-    *///?}
+        PacketCodec.of(SceneStatePayload::encode, SceneStatePayload::decode);
+
+    private void encode(RegistryByteBuf buf) {
+        buf.writeBoolean(active);
+        buf.writeInt(ox);
+        buf.writeInt(oy);
+        buf.writeInt(oz);
+        buf.writeInt(w);
+        buf.writeInt(h);
+        buf.writeString(boothData != null ? boothData : "");
+    }
+
+    private static SceneStatePayload decode(RegistryByteBuf buf) {
+        return new SceneStatePayload(buf.readBoolean(), buf.readInt(), buf.readInt(),
+            buf.readInt(), buf.readInt(), buf.readInt(), buf.readString());
+    }
 
     @Override
     public Id<? extends CustomPayload> getId() { return ID; }

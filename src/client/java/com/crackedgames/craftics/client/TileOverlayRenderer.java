@@ -59,6 +59,10 @@ public class TileOverlayRenderer {
     /** Destination of {@link #getActivePath()}, or {@code null}. */
     public static GridPos getActivePathTarget() { return cachedPathTo; }
 
+    /** Start tile of {@link #getActivePath()} - needed to price the first step, since a jump's
+     *  cost depends on how far it spans from the tile before it. */
+    public static GridPos getActivePathFrom() { return cachedPathFrom; }
+
     public static void register() {
         WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
             if (!CombatState.isInCombat() && !CombatState.isInScene()) return;
@@ -490,6 +494,31 @@ public class TileOverlayRenderer {
                     0.55f, 1.0f, 0.75f, 0.25f);
             }
         }
+        // Jumped tiles get a directional ARROW instead of a breadcrumb dot: the player is
+        // vaulting them, not standing on them, and a dot over a void pit would read as
+        // "you walk here". Amber to separate them from the blue-white path dots.
+        if (cachedPath != null && cachedPathFrom != null) {
+            List<GridPos> jumped = ClientGridHelper.jumpedTilesOf(cachedPathFrom, cachedPath);
+            if (!jumped.isEmpty()) {
+                float pulse = 0.55f + 0.30f * (float) Math.sin(timeSeconds() * 6.0);
+                GridPos prev = cachedPathFrom;
+                int j = 0;
+                for (GridPos step : cachedPath) {
+                    int span = Math.abs(step.x() - prev.x()) + Math.abs(step.z() - prev.z());
+                    if (span > 1) {
+                        int adx = Integer.signum(step.x() - prev.x());
+                        int adz = Integer.signum(step.z() - prev.z());
+                        for (int g = 1; g < span && j < jumped.size(); g++, j++) {
+                            arrowTile(out, world, ox, oy, oz, jumped.get(j), adx, adz,
+                                0.016f, 1.0f, 0.78f, 0.25f, pulse);
+                            arrowTile(xray, world, ox, oy, oz, jumped.get(j), adx, adz,
+                                0.016f, 1.0f, 0.78f, 0.25f, pulse * 0.35f);
+                        }
+                    }
+                    prev = step;
+                }
+            }
+        }
 
         // Hover tile (bright pulsing fill + outline ring) - LAST so it renders on top.
         if (hover != null) {
@@ -525,20 +554,27 @@ public class TileOverlayRenderer {
      */
     private static void buildSceneQuads(MinecraftClient mc, net.minecraft.client.world.ClientWorld world,
                                         List<Quad> out, int ox, int oy, int oz) {
-        com.crackedgames.craftics.scene.SceneLayout layout =
-            com.crackedgames.craftics.scene.CodeSceneBuilder.buildLayout(ox, oy + 1, oz, "village");
         // Per-tick cached hover from CombatInputHandler.tickScene - nulled while
         // a screen is open, so no glow invites clicks the UI would swallow.
         GridPos hover = CombatState.getHoveredTile();
         float time = timeSeconds();
 
+        // The REAL booth rects, synced from the server ({minX,minZ,maxX,maxZ,occupied}).
+        // This used to re-derive the PROCEDURAL layout locally, which painted phantom
+        // yellow rectangles that had nothing to do with a schematic hall's actual booths.
+        // Unoccupied booths get no glow: an empty stand is plain ground, and glowing it
+        // invites a click that walks up to nobody.
         boolean overBooth = false;
-        for (com.crackedgames.craftics.scene.StandSlot s : layout.stands()) {
-            boolean hovered = hover != null && s.contains(ox + hover.x(), oz + hover.z());
+        for (int[] b : CombatState.getSceneBooths()) {
+            if (b[4] == 0) continue;
+            boolean hovered = hover != null
+                && ox + hover.x() >= b[0] && ox + hover.x() <= b[2]
+                && oz + hover.z() >= b[1] && oz + hover.z() <= b[3];
             overBooth |= hovered;
             Set<GridPos> rect = new java.util.LinkedHashSet<>();
-            for (int wx = s.minX(); wx <= s.maxX(); wx++) {
-                for (int wz = s.minZ(); wz <= s.maxZ(); wz++) {
+            for (int wx = b[0]; wx <= b[2]; wx++) {
+                for (int wz = b[1]; wz <= b[3]; wz++) {
+                    if (!hasGroundAt(world, wx, oy, wz)) continue; // never glow over a gap
                     rect.add(new GridPos(wx - ox, wz - oz));
                 }
             }
@@ -550,13 +586,26 @@ public class TileOverlayRenderer {
                 1.0f, 0.9f, 0.5f, hovered ? 0.9f : 0.35f);
         }
 
-        // Walk-to hover cue on plain floor tiles (booth hover already glows).
-        if (hover != null && !overBooth) {
+        // Walk-to hover cue on plain floor tiles (booth hover already glows). Only over
+        // real ground - the raycast plane extends across the whole footprint, and the cue
+        // used to float in mid-air past the island's edge.
+        if (hover != null && !overBooth && hasGroundAt(world, ox + hover.x(), oy, oz + hover.z())) {
             float pulse = (float) (0.35 + 0.1 * Math.sin(time * 4.8));
             fillTile(out, world, ox, oy, oz, hover, 0.005f, 0.3f, 0.9f, 1.0f, pulse);
             outlineTile(out, world, ox, oy, oz, hover, 0.013f,
                 lighten(0.3f), lighten(0.9f), lighten(1.0f), 0.9f);
         }
+    }
+
+    /** Whether world column (x, z) has anything to stand on near the scene's floor level -
+     *  the overlay must never paint tiles floating over a gap or past the island's edge. */
+    private static boolean hasGroundAt(net.minecraft.client.world.ClientWorld world,
+                                       int x, int floorBlockY, int z) {
+        for (int dy = -2; dy <= 2; dy++) {
+            net.minecraft.util.math.BlockPos p = new net.minecraft.util.math.BlockPos(x, floorBlockY + dy, z);
+            if (!world.getBlockState(p).getCollisionShape(world, p).isEmpty()) return true;
+        }
+        return false;
     }
 
     /**

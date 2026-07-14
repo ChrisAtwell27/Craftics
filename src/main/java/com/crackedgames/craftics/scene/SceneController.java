@@ -104,6 +104,25 @@ public final class SceneController {
         return (layout != null ? layout.spawnY() : origin.getY()) - 1;
     }
 
+    /**
+     * The scene's booth rectangles for the client's glow renderer, WORLD coords:
+     * {@code minX,minZ,maxX,maxZ,occupied;...}. Occupancy matters - an empty stand is
+     * plain ground and glowing it would invite clicks that walk up to nobody.
+     */
+    private String boothDataString() {
+        if (layout == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < layout.stands().size(); i++) {
+            StandSlot slot = layout.stands().get(i);
+            boolean occupied = i < boothOccupants.size() && boothOccupants.get(i) != null;
+            if (sb.length() > 0) sb.append(';');
+            sb.append(slot.minX()).append(',').append(slot.minZ()).append(',')
+              .append(slot.maxX()).append(',').append(slot.maxZ()).append(',')
+              .append(occupied ? 1 : 0);
+        }
+        return sb.toString();
+    }
+
     private SceneController(UUID islandOwner, ServerWorld world, BlockPos origin, String sceneName) {
         this.islandOwner = islandOwner;
         this.world = world;
@@ -132,6 +151,20 @@ public final class SceneController {
         if (!com.crackedgames.craftics.world.IslandDimensions.isIslandWorld(world)) return;
         CrafticsSavedData data = CrafticsSavedData.get(world);
         UUID owner = data.getEffectiveWorldOwner(player.getUuid());
+        // Server-side unlock gate (the client hides the buttons too, but a stale or
+        // hand-crafted payload must not open a hall the island hasn't earned). The
+        // Trading Hall needs BOTH a met trader and a defeated Raid.
+        var ownerData = data.getPlayerData(owner);
+        if ("village".equals(sceneName)
+                && (ownerData.metTraders.isEmpty() || !ownerData.raidDefeated)) {
+            player.sendMessage(net.minecraft.text.Text.literal(
+                "§cThe Trading Hall is locked - meet a trader at a run event and defend"
+                + " the villagers from a Raid first."), false);
+            return;
+        }
+        if ("barter_station".equals(sceneName) && ownerData.metBarterers.isEmpty()) {
+            return;
+        }
         if (INSTANCES.containsKey(owner)) return; // a scene is already active for this island
         BlockPos origin = data.getSceneOrigin(owner, sceneName);
         if (origin == null) {
@@ -212,7 +245,7 @@ public final class SceneController {
         c.activeBooth.remove(player.getUuid());
         c.barterThresholds.remove(player.getUuid());
         ServerPlayNetworking.send(player, new ExitEventCinematicPayload());
-        ServerPlayNetworking.send(player, new SceneStatePayload(false, 0, 0, 0, 0, 0));
+        ServerPlayNetworking.send(player, new SceneStatePayload(false, 0, 0, 0, 0, 0, ""));
         if (c.members.isEmpty()) c.teardown();
     }
 
@@ -274,15 +307,14 @@ public final class SceneController {
             this.floorDepth = CodeSceneBuilder.FLOOR_DEPTH;
         }
 
-        // Wall the scene in so nobody walks off it. Traced by flooding the walkable floor out from
-        // the spawn tile, so it follows the floor's real shape - an irregular village island gets a
-        // wall along its actual grass edge, not around the schematic's rectangular bounding box
-        // (which sits out in the void and walls nothing). Runs after the floor exists in the world,
-        // since the fill reads the blocks. Snapshot-tracked, so it comes down with the scene.
+        // Wall the scene in so nobody falls off it. Outlines the BLOCKS: every standable
+        // surface in the footprint gets its exposed fall edges walled, reachable or not -
+        // the click-walk mover is a straight-line lerp, so "the player can't walk there"
+        // was never a safe assumption. Runs after the floor exists in the world.
+        // Snapshot-tracked, so it comes down with the scene.
         if (layout != null) {
-            CodeSceneBuilder.sealPerimeter(world,
-                new BlockPos(layout.spawnX(), layout.spawnY(), layout.spawnZ()),
-                layout.spawnY(), snapshot);
+            CodeSceneBuilder.sealPerimeter(world, origin, layout.spawnY(),
+                floorWidth, floorDepth, snapshot);
         }
         CrafticsSavedData data = CrafticsSavedData.get(world);
         this.tradeTier = Math.max(1, Math.min(9,
@@ -308,7 +340,7 @@ public final class SceneController {
             // makes a schematic whose floor sits high inside its own volume click correctly.
             ServerPlayNetworking.send(m, new SceneStatePayload(true,
                 origin.getX(), floorBlockY(), origin.getZ(),
-                floorWidth, floorDepth));
+                floorWidth, floorDepth, boothDataString()));
             // Arrive TWO BLOCKS BEHIND the spawn marker (opposite its facing), still looking the
             // way it points - so the player enters with the hall in front of them instead of
             // standing on the marker tile itself. Falls back to the marker tile when the ground
@@ -361,7 +393,7 @@ public final class SceneController {
             for (int i = 0; i < layout.stands().size(); i++) {
                 if (i >= types.size()) { boothOccupants.add(null); continue; }
                 com.crackedgames.craftics.combat.TraderCategory type = types.get(i);
-                TraderSystem.TraderOffer offer = TraderSystem.generateOffer(type, tradeTier, rng);
+                TraderSystem.TraderOffer offer = TraderSystem.generateOffer(type, tradeTier, rng, world);
                 int[] stock = new int[offer.trades().size()];
                 for (int t = 0; t < stock.length; t++) {
                     // Big-ticket items are one-offs; consumables restock 1-3 per visit.
@@ -574,6 +606,9 @@ public final class SceneController {
                                  boolean openScreen) {
         StringBuilder sb = new StringBuilder();
         List<TraderSystem.Trade> trades = trader.offer().trades();
+        // The REAL stacks travel alongside the string: components (potion contents,
+        // enchantments) don't survive an itemId round-trip, and the preview lied about them.
+        List<ItemStack> stacks = new ArrayList<>(trades.size());
         for (int i = 0; i < trades.size(); i++) {
             TraderSystem.Trade t = trades.get(i);
             if (sb.length() > 0) sb.append('|');
@@ -582,11 +617,12 @@ public final class SceneController {
               .append('~').append(t.emeraldCost())
               .append('~').append(trader.stock()[i])
               .append('~').append(t.description());
+            stacks.add(t.item().copy());
         }
         CrafticsSavedData data = CrafticsSavedData.get(world);
         int emeralds = data.getPlayerData(player.getUuid()).emeralds;
         ServerPlayNetworking.send(player, new TraderOfferPayload(
-            trader.type().displayName(), trader.type().icon(), sb.toString(), emeralds,
+            trader.type().displayName(), trader.type().icon(), sb.toString(), stacks, emeralds,
             openScreen ? 1 : 0));
     }
 
@@ -780,7 +816,7 @@ public final class SceneController {
             ServerPlayerEntity m = world.getServer().getPlayerManager().getPlayer(memberUuid);
             if (m == null) continue;
             ServerPlayNetworking.send(m, new ExitEventCinematicPayload());
-            ServerPlayNetworking.send(m, new SceneStatePayload(false, 0, 0, 0, 0, 0));
+            ServerPlayNetworking.send(m, new SceneStatePayload(false, 0, 0, 0, 0, 0, ""));
             com.crackedgames.craftics.world.HubTeleports.toHub(m);
         }
         teardown();

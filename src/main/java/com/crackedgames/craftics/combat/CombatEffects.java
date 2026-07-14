@@ -74,9 +74,23 @@ public class CombatEffects {
 
     private final EnumMap<EffectType, ActiveEffect> effects = new EnumMap<>(EffectType.class);
 
+    /** Fallback duration cap used when the config isn't loaded (unit tests, or an effect
+     *  applied before mod init). Matches the config default. */
+    private static final int DEFAULT_MAX_DURATION = 10;
+
+    /**
+     * The configured cap on effect duration, or {@link #DEFAULT_MAX_DURATION} if the config
+     * hasn't loaded. Reading {@code CONFIG} directly NPE'd whenever it was null, which made
+     * this class impossible to unit-test and would have crashed combat outright if any effect
+     * were ever applied before mod init.
+     */
+    private static int maxEffectDuration() {
+        var config = com.crackedgames.craftics.CrafticsMod.CONFIG;
+        return config != null ? config.maxCombatEffectDuration() : DEFAULT_MAX_DURATION;
+    }
+
     public void addEffect(EffectType type, int turns, int amplifier) {
-        int maxDur = com.crackedgames.craftics.CrafticsMod.CONFIG.maxCombatEffectDuration();
-        int finalTurns = Math.min(turns, maxDur);
+        int finalTurns = Math.min(turns, maxEffectDuration());
         ActiveEffect prev = effects.get(type);
         ActiveEffect next = new ActiveEffect(type, finalTurns, amplifier);
         // When stacking the SAME effect, keep the highest peak the player has
@@ -85,7 +99,19 @@ public class CombatEffects {
         if (prev != null) {
             next.peakTurns = Math.max(prev.peakTurns, finalTurns);
         }
+        // Water beats fire, in both directions. Mirrors CombatEntity.stackSoaked /
+        // stackBurning so the rule holds whether the victim is a player or a mob.
+        if (type == EffectType.BURNING && hasEffect(EffectType.SOAKED)) {
+            // A drenched player can't catch light. Without this, the douse below would just
+            // be undone by the next fire proc in the same turn.
+            return;
+        }
+
         effects.put(type, next);
+
+        if (type == EffectType.SOAKED) {
+            effects.remove(EffectType.BURNING);
+        }
     }
 
     // Frozen = applied in hub, timer starts when combat begins

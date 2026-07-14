@@ -12,13 +12,20 @@ import net.minecraft.util.Identifier;
  * traderName: display name like "Weaponsmith"
  * traderIcon: formatting code + icon
  * tradeData: serialized trade entries (itemId~count~cost~stock~desc, pipe-separated)
+ * stacks: the REAL item stacks, index-aligned with tradeData entries. The string carries
+ *         only a bare item id, which strips every component - potions previewed as
+ *         "Uncraftable Potion / No Effects" and enchantments vanished from tooltips. The
+ *         client renders icon + hover tooltip from these; the string still carries
+ *         count/cost/stock/description.
  * playerEmeralds: current emerald count
  * openScreen: 1 = the player just opened this booth (open a shop screen if none
  *             is showing); 0 = post-purchase refresh (update in place only -
  *             never resurrect a screen the player already closed)
  */
 public record TraderOfferPayload(String traderName, String traderIcon,
-                                  String tradeData, int playerEmeralds,
+                                  String tradeData,
+                                  java.util.List<net.minecraft.item.ItemStack> stacks,
+                                  int playerEmeralds,
                                   int openScreen) implements CustomPayload {
 
     public static final CustomPayload.Id<TraderOfferPayload> ID =
@@ -29,6 +36,8 @@ public record TraderOfferPayload(String traderName, String traderIcon,
             PacketCodecs.STRING, TraderOfferPayload::traderName,
             PacketCodecs.STRING, TraderOfferPayload::traderIcon,
             PacketCodecs.STRING, TraderOfferPayload::tradeData,
+            net.minecraft.item.ItemStack.PACKET_CODEC.collect(PacketCodecs.toList()),
+            TraderOfferPayload::stacks,
             PacketCodecs.INTEGER, TraderOfferPayload::playerEmeralds,
             PacketCodecs.INTEGER, TraderOfferPayload::openScreen,
             TraderOfferPayload::new

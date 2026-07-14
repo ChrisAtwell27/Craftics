@@ -215,8 +215,10 @@ public final class SimplySwordsCompat {
     private static IntSupplier damageFor(String tier, String type) {
         return switch (type) {
             case "longsword" -> () -> swordDmg(tier);
-            case "katana", "rapier", "cutlass", "twinblade", "warglaive" -> () -> Math.max(1, swordDmg(tier) - 1);
-            case "sai", "chakram" -> () -> Math.max(1, swordDmg(tier) - 2);
+            // Sai matches the Basic Weapons dagger exactly - both mods ship the same light
+            // dual-wield blade, and one being strictly better made the other dead loot.
+            case "katana", "rapier", "cutlass", "twinblade", "warglaive", "sai" -> () -> Math.max(1, swordDmg(tier) - 1);
+            case "chakram" -> () -> Math.max(1, swordDmg(tier) - 2);
             case "spear" -> () -> Math.max(1, swordDmg(tier) - 3);
             case "halberd", "scythe" -> () -> axeDmg(tier);
             case "claymore", "glaive", "greataxe", "greathammer" -> () -> axeDmg(tier) + 1;
@@ -288,6 +290,9 @@ public final class SimplySwordsCompat {
             }
             int offHit = Math.max(1, (int) Math.round(baseDamage * SAI_OFFHAND_MULT));
             int second = target.takeDamage(offHit);
+            // The off hand did real work, so it wears like the main hand does (handleAttack
+            // charges the MAIN weapon's durability; without this the offhand sai was free).
+            player.getOffHandStack().damage(7, player, net.minecraft.entity.EquipmentSlot.OFFHAND);
             List<String> msgs = new ArrayList<>();
             msgs.add("§c✦ Twin sai strike! " + target.getDisplayName() + " hit again for " + second);
             return new WeaponAbility.AttackResult(baseDamage + second, msgs, List.of());

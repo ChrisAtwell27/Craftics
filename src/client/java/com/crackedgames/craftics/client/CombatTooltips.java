@@ -654,7 +654,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "shaper"    -> "+1 Armor Class per piece";
             case "silence"   -> "+1 stealth range per piece";
             case "raiser"    -> "+1 ally damage per piece";
-            case "host"      -> "+2 max HP per piece";
+            case "host"      -> "+4 max HP per piece";
             case "flow"      -> "+1 Speed per piece";
             case "bolt"      -> "+1 Slashing Power per piece";
             default -> "";
@@ -820,16 +820,18 @@ public class CombatTooltips implements ItemTooltipCallback {
         // Hoes and shovels are the two FOCUS tools. They swing badly on purpose - their value is
         // the Craftics enchantments they carry, which work from anywhere in your inventory and
         // take only the highest level, so a second copy of the same enchant adds nothing.
+        //
+        // Deliberately NOT listed here: which enchantments the tool can carry. Each enchant
+        // already prints its own line (with real numbers) once it is actually on the tool, so
+        // naming them up front just repeated that for enchants the player doesn't even have.
         if (item instanceof net.minecraft.item.HoeItem) {
             return weaponStatLine(item)
                 + "\n\u00a7dSpecial focus: \u00a77Low damage, boosted by Special affinity"
-                + "\n\u00a77Carries Reserving, Performative, Radiant and Medic"
                 + "\n\u00a78Enchantments work from your inventory. No need to hold it.";
         }
         if (item instanceof net.minecraft.item.ShovelItem) {
             return weaponStatLine(item)
                 + "\n\u00a7aPet focus: \u00a77Low damage, boosted by Pet affinity"
-                + "\n\u00a77Carries Honed and the Fire, Water and Thunder Fangs"
                 + "\n\u00a78Enchantments arm your pets from your inventory. No need to hold it.";
         }
 
@@ -1038,7 +1040,8 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.ARROW) return "\u00a78Ammo for Bow and Crossbow\n\u00a77Consumed per shot (Infinity skips)";
         // Tipped arrows handled dynamically in getTooltip
         if (item == Items.TIPPED_ARROW) return null;
-        if (item == Items.SPECTRAL_ARROW) return "\u00a78WIP \u00a77- Not yet implemented in combat";
+        if (item == Items.SPECTRAL_ARROW)
+            return "\u00a78Ammo for Bow and Crossbow\n\u00a7d\u2726 Marks \u00a77the target for \u00a7d1 turn\u00a77: it takes \u00a7c2x damage \u00a77(\u00a7c1.5x \u00a77for a boss) from every source\n\u00a77Does not stack \u2014 re-marking an already Marked enemy does nothing";
         // Firework rocket: rocket-crossbow ammo. Held in the off-hand while firing a
         // crossbow, it replaces the bolt with a 3x3 explosive blast (no arrow needed).
         if (item == Items.FIREWORK_ROCKET) return "\u00a76Rocket Crossbow Ammo \u00a77(hold in off-hand)\n\u00a77Fire a Crossbow to launch it: \u00a763x3 explosive blast\u00a77 around the impact\n\u00a77No arrows needed \u2014 the rocket is the ammo. \u00a7bMultishot \u00a77adds 2 diagonal rockets";

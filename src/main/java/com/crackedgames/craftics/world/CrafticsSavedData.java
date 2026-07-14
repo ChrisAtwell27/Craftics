@@ -95,6 +95,10 @@ public class CrafticsSavedData extends PersistentState {
          *  layout to the per-owner dimension. Absent in old saves -> false -> triggers
          *  the one-time migration in {@link IslandMigration#ensureMigrated}. */
         public boolean islandMigrated = false;
+        /** True once this island has defeated the Raid event. Gates the Trading Hall
+         *  (needs a met trader AND a defeated raid) and drops the raid's event chance
+         *  from the new-world 75% down to a normal event rate. Island-scoped via owner. */
+        public boolean raidDefeated = false;
         /** Pity timer - resets when an event occurs */
         public int levelsSinceLastEvent = 0;
         /** Trader types (TraderSystem.TraderType.name()) met in run events - island-scoped via owner. */
@@ -435,6 +439,7 @@ public class CrafticsSavedData extends PersistentState {
             nbt.putBoolean("scaleHpPerLevelEnabled", scaleHpPerLevelEnabled);
             nbt.putBoolean("hardcoreIsland", hardcoreIsland);
             nbt.putBoolean("islandMigrated", islandMigrated);
+            nbt.putBoolean("raidDefeated", raidDefeated);
             // Pipe-delimited (mirrors unlockedGuideEntries). Safe: TraderType enum names and
             // Identifier-validated BarterCategory ids can never contain '|'.
             nbt.putString("metTraders", String.join("|", metTraders));
@@ -506,6 +511,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.scaleHpPerLevelEnabled = !nbt.contains("scaleHpPerLevelEnabled") || nbt.getBoolean("scaleHpPerLevelEnabled");
             pd.hardcoreIsland = nbt.contains("hardcoreIsland") && nbt.getBoolean("hardcoreIsland");
             pd.islandMigrated = nbt.contains("islandMigrated") && nbt.getBoolean("islandMigrated");
+            pd.raidDefeated = nbt.contains("raidDefeated") && nbt.getBoolean("raidDefeated");
             if (nbt.contains("metTraders")) {
                 String raw = nbt.getString("metTraders");
                 if (!raw.isEmpty()) {
@@ -608,6 +614,7 @@ public class CrafticsSavedData extends PersistentState {
             pd.scaleHpPerLevelEnabled = nbt.getBoolean("scaleHpPerLevelEnabled", true);
             pd.hardcoreIsland = nbt.getBoolean("hardcoreIsland", false);
             pd.islandMigrated = nbt.getBoolean("islandMigrated", false);
+            pd.raidDefeated = nbt.getBoolean("raidDefeated", false);
             String metTradersRaw = nbt.getString("metTraders", "");
             if (!metTradersRaw.isEmpty()) {
                 for (String entry : metTradersRaw.split("\\|")) {

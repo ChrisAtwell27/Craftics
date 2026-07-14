@@ -392,11 +392,11 @@ public class CrafticsClient implements ClientModInitializer {
                     if (CombatState.isInScene()) {
                         if (context.client().currentScreen
                                 instanceof com.crackedgames.craftics.client.TraderScreen ts) {
-                            ts.updateOffer(payload.tradeData(), payload.playerEmeralds());
+                            ts.updateOffer(payload.tradeData(), payload.stacks(), payload.playerEmeralds());
                         } else if (payload.openScreen() != 0) {
                             context.client().setScreen(new com.crackedgames.craftics.client.TraderScreen(
                                 payload.traderName(), payload.traderIcon(),
-                                payload.tradeData(), payload.playerEmeralds()));
+                                payload.tradeData(), payload.stacks(), payload.playerEmeralds()));
                         }
                         return;
                     }
@@ -521,6 +521,7 @@ public class CrafticsClient implements ClientModInitializer {
                         // clicks resolve to a tile (a scene never calls enterCombat).
                         CombatState.setSceneBounds(payload.ox(), payload.oy(), payload.oz(),
                             payload.w(), payload.h());
+                        CombatState.setSceneBooths(payload.boothData());
                         // Start centered on the player: a pan left over from the last fight
                         // would otherwise offset the scene camera by that stale drag.
                         CombatState.resetPan();
@@ -691,6 +692,9 @@ public class CrafticsClient implements ClientModInitializer {
         TileOverlayRenderer.register();
         com.crackedgames.craftics.client.PartyLabelRenderer.register();
         com.crackedgames.craftics.client.TesterLabelRenderer.register();
+        com.crackedgames.craftics.client.EffectIconRenderer.register();
+        com.crackedgames.craftics.client.EffectParticleEmitter.register();
+        com.crackedgames.craftics.client.HoverTargetArrowRenderer.register();
 
         // Client-side deferred copper-tier registration. The MP client never sees
         // ServerLifecycleEvents, but tooltips still need WeaponRegistry populated.

@@ -530,7 +530,10 @@ public class ItemUseHandler {
             cm.addEffectHooked(CombatEffects.EffectType.REGENERATION, 5, 1);
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 2400, 3));
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 6000, 0));
-            player.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 600, 1));
+            // NO vanilla Regeneration. It is the one effect that must never reach the player:
+            // it heals in real time, which drip-feeds HP back between turns and quietly
+            // undoes the turn-based damage economy. The addEffectHooked call above already
+            // gives the combat-only version, which heals a little at the START of each turn.
         }
 
         // Golden carrot restores 1 AP (capped at max AP)
@@ -1317,7 +1320,8 @@ public class ItemUseHandler {
         CombatManager cm = CombatManager.get(player);
         cm.addEffectHooked(CombatEffects.EffectType.REGENERATION, 5, 1);
         cm.addEffectHooked(CombatEffects.EffectType.ABSORPTION, 5, 1);
-        player.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 900, 1));
+        // Combat regen only - see the note on the enchanted golden apple. Absorption is fine:
+        // it is a flat shield, not a heal-over-time.
         player.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 100, 1));
         return "§6§lTotem activated! Full heal + Regeneration!";
     }

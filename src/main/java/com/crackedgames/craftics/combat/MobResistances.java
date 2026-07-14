@@ -186,17 +186,69 @@ public class MobResistances {
         IMMUNITIES.put(mobId, EnumSet.copyOf(Set.of(types)));
     }
 
+    // ── Addon variant fallback ──
+
+    /** Resolved addon-id -> table-id mapping, so the suffix match runs once per mob type. */
+    private static final Map<String, String> BASE_FORM_CACHE =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * The id these tables should be consulted under. Vanilla ids (and boss keys) pass through;
+     * an ADDON id with no entry of its own resolves to the vanilla mob it is a variant of, by
+     * matching its path against the table's own minecraft entries - so a Creeper Overhaul
+     * jungle creeper inherits {@code minecraft:creeper}'s weaknesses, a Variants & Ventures
+     * skeleton inherits the skeleton's, and so on. Longest name wins, so a
+     * {@code *_wither_skeleton} resolves to the wither skeleton, not the skeleton.
+     *
+     * <p>Exact entries always win over the fallback: registering an addon id directly still
+     * overrides whatever its base form says.
+     */
+    private static String canonicalId(String entityTypeId) {
+        if (entityTypeId == null || entityTypeId.startsWith("minecraft:")
+                || entityTypeId.startsWith("craftics:") || entityTypeId.startsWith("boss:")) {
+            return entityTypeId;
+        }
+        return BASE_FORM_CACHE.computeIfAbsent(entityTypeId, id -> {
+            int colon = id.indexOf(':');
+            String path = colon >= 0 ? id.substring(colon + 1) : id;
+            String bestBase = null;
+            Set<String> known = new java.util.HashSet<>();
+            known.addAll(VULNERABILITIES.keySet());
+            known.addAll(RESISTANCES.keySet());
+            known.addAll(IMMUNITIES.keySet());
+            for (String key : known) {
+                if (!key.startsWith("minecraft:")) continue;
+                String base = key.substring("minecraft:".length());
+                boolean matches = path.equals(base)
+                    || path.endsWith("_" + base)
+                    || path.startsWith(base + "_")
+                    || path.contains("_" + base + "_");
+                if (matches && (bestBase == null || base.length() > bestBase.length())) {
+                    bestBase = base;
+                }
+            }
+            return bestBase != null ? "minecraft:" + bestBase : id;
+        });
+    }
+
+    /** Table lookup with the addon-variant fallback: exact id first, then its base form. */
+    private static Set<DamageType> lookup(Map<String, Set<DamageType>> table, String entityTypeId) {
+        Set<DamageType> exact = table.get(entityTypeId);
+        if (exact != null) return exact;
+        return table.get(canonicalId(entityTypeId));
+    }
+
     // ── Public API ──
 
     /** Check if a mob type is vulnerable to a damage type. */
     public static boolean isVulnerable(String entityTypeId, DamageType type) {
-        Set<DamageType> set = VULNERABILITIES.get(entityTypeId);
+        Set<DamageType> set = lookup(VULNERABILITIES, entityTypeId);
         return set != null && set.contains(type);
     }
 
     /** Check if a mob type is resistant to a damage type. */
     public static boolean isResistant(String entityTypeId, DamageType type) {
-        Set<DamageType> set = RESISTANCES.get(entityTypeId);
+        Set<DamageType> set = lookup(RESISTANCES, entityTypeId);
         return set != null && set.contains(type);
     }
 
@@ -208,7 +260,7 @@ public class MobResistances {
 
     /** Check if a mob type is immune to a damage type. */
     public static boolean isImmune(String entityTypeId, DamageType type) {
-        Set<DamageType> set = IMMUNITIES.get(entityTypeId);
+        Set<DamageType> set = lookup(IMMUNITIES, entityTypeId);
         return set != null && set.contains(type);
     }
 
@@ -248,7 +300,7 @@ public class MobResistances {
 
     /** Get vulnerability list for display. Returns empty string if none. */
     public static String getVulnerabilityDisplay(String entityTypeId) {
-        Set<DamageType> set = VULNERABILITIES.get(entityTypeId);
+        Set<DamageType> set = lookup(VULNERABILITIES, entityTypeId);
         if (set == null || set.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         for (DamageType t : set) {
@@ -260,7 +312,7 @@ public class MobResistances {
 
     /** Get resistance list for display. Returns empty string if none. */
     public static String getResistanceDisplay(String entityTypeId) {
-        Set<DamageType> set = RESISTANCES.get(entityTypeId);
+        Set<DamageType> set = lookup(RESISTANCES, entityTypeId);
         if (set == null || set.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         for (DamageType t : set) {
@@ -272,7 +324,7 @@ public class MobResistances {
 
     /** Get immunity list for display. Returns empty string if none. */
     public static String getImmunityDisplay(String entityTypeId) {
-        Set<DamageType> set = IMMUNITIES.get(entityTypeId);
+        Set<DamageType> set = lookup(IMMUNITIES, entityTypeId);
         if (set == null || set.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         for (DamageType t : set) {

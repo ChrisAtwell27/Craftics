@@ -269,6 +269,42 @@ public class ClientGridHelper {
         return CombatState.isInPolygon(pos.x(), pos.z());
     }
 
+    /**
+     * Whether a tile is one the player may JUMP OVER. Client-side mirror of
+     * {@code Pathfinding.isJumpableGap}: void, deep water, lava, fire, and shallow water.
+     *
+     * <p>Deliberately NOT obstacles (they stand above the floor - you would be jumping through
+     * them) and not powder snow (a concealed trap; hopping it for a flat cost would defuse it).
+     * Both sides must agree exactly, or the previewed path will not be the path the server walks.
+     */
+    public static boolean isJumpableGap(MinecraftClient client, GridPos pos) {
+        if (client.world == null) return false;
+        int wx = CombatState.getArenaOriginX() + pos.x();
+        int wy = CombatState.getArenaOriginY();
+        int wz = CombatState.getArenaOriginZ() + pos.z();
+
+        var above = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy + 1, wz));
+        // Something solid at body height = an obstacle, not a gap. Never jumpable.
+        if (!above.isAir() && !isPassableAtBodyHeight(above)) return false;
+
+        var floor = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy, wz));
+        if (floor.isOf(net.minecraft.block.Blocks.LAVA)
+                || floor.isOf(net.minecraft.block.Blocks.MAGMA_BLOCK)
+                || floor.isOf(net.minecraft.block.Blocks.FIRE)
+                || floor.isOf(net.minecraft.block.Blocks.SOUL_FIRE)
+                || floor.isOf(net.minecraft.block.Blocks.WATER)) {
+            return true;
+        }
+        if (floor.isAir()) {
+            // Void: air with nothing solid beneath. (Air over solid ground is LOW_GROUND -
+            // walkable, so it is a step, not a gap.)
+            var below = client.world.getBlockState(new net.minecraft.util.math.BlockPos(wx, wy - 1, wz));
+            return below.isAir() || !below.getFluidState().isEmpty();
+        }
+        // Powder snow is deliberately excluded - see the javadoc.
+        return false;
+    }
+
     public static boolean isTileWalkable(MinecraftClient client, GridPos pos) {
         if (client.world == null) return false;
         int wx = CombatState.getArenaOriginX() + pos.x();
@@ -353,16 +389,22 @@ public class ClientGridHelper {
         Set<GridPos> allyTiles = getAllyGridPositions(client);
         Map<GridPos, GridPos> cameFrom = new HashMap<>();
         Map<GridPos, Integer> dist = new HashMap<>();
-        Queue<GridPos> queue = new ArrayDeque<>();
+        // Dijkstra, not a plain BFS queue: jumps cost more than one speed, so a FIFO would
+        // settle tiles at the wrong cost and preview a cheaper route than the server will take.
+        java.util.PriorityQueue<GridPos> open = new java.util.PriorityQueue<>(
+            java.util.Comparator.comparingInt(p -> dist.getOrDefault(p, Integer.MAX_VALUE)));
         dist.put(from, 0);
-        queue.add(from);
+        open.add(from);
+        Set<GridPos> settled = new HashSet<>();
 
-        while (!queue.isEmpty()) {
-            GridPos current = queue.poll();
-            int currentDist = dist.get(current);
+        while (!open.isEmpty()) {
+            GridPos current = open.poll();
+            if (!settled.add(current)) continue;
+            int currentDist = dist.getOrDefault(current, Integer.MAX_VALUE);
             if (current.equals(target)) {
-                List<GridPos> path = new ArrayList<>(currentDist);
+                List<GridPos> path = new ArrayList<>();
                 for (GridPos p = current; !p.equals(from); p = cameFrom.get(p)) {
+                    if (p == null) return null;
                     path.add(p);
                 }
                 Collections.reverse(path);
@@ -371,23 +413,88 @@ public class ClientGridHelper {
             if (currentDist >= maxSteps) continue;
 
             for (GridPos dir : DIRECTIONS) {
+                // --- 1-tile step ---
                 GridPos neighbor = new GridPos(current.x() + dir.x(), current.z() + dir.z());
-                if (neighbor.x() < 0 || neighbor.x() >= w || neighbor.z() < 0 || neighbor.z() >= h) continue;
-                if (dist.containsKey(neighbor)) continue;
-                if (blockers.contains(neighbor)) {
-                    // Allies are pass-through (server: move through, never stop on).
-                    boolean passableAlly = allyTiles.contains(neighbor) && !neighbor.equals(target);
-                    if (!passableAlly) continue;
+                if (inBounds(neighbor, w, h) && !settled.contains(neighbor)) {
+                    boolean ok = true;
+                    if (blockers.contains(neighbor)) {
+                        // Allies are pass-through (server: move through, never stop on).
+                        ok = allyTiles.contains(neighbor) && !neighbor.equals(target);
+                    }
+                    if (ok && CombatState.isInPolygon(neighbor.x(), neighbor.z())
+                            && isTileWalkable(client, neighbor)) {
+                        relaxClient(open, dist, cameFrom, current, neighbor, currentDist + 1, maxSteps);
+                    }
                 }
-                if (!CombatState.isInPolygon(neighbor.x(), neighbor.z())) continue;
-                if (!isTileWalkable(client, neighbor)) continue;
 
-                dist.put(neighbor, currentDist + 1);
-                cameFrom.put(neighbor, current);
-                queue.add(neighbor);
+                // --- jump a gap, landing beyond it (mirrors Pathfinding.findPlayerPathWithJumps) ---
+                for (int gap = 1; gap <= JUMP_MAX_GAP; gap++) {
+                    boolean clear = true;
+                    for (int g = 1; g <= gap && clear; g++) {
+                        GridPos over = new GridPos(current.x() + dir.x() * g, current.z() + dir.z() * g);
+                        if (!inBounds(over, w, h) || !isJumpableGap(client, over)
+                                || blockers.contains(over)) {
+                            clear = false; // cannot vault an enemy, or a tile that isn't a gap
+                        }
+                    }
+                    if (!clear) continue;
+
+                    GridPos land = new GridPos(current.x() + dir.x() * (gap + 1),
+                                               current.z() + dir.z() * (gap + 1));
+                    if (!inBounds(land, w, h) || settled.contains(land)) continue;
+                    if (blockers.contains(land)) continue;
+                    if (!CombatState.isInPolygon(land.x(), land.z())) continue;
+                    // Land ON solid ground: you may clear lava, never end a jump in it.
+                    if (!isTileWalkable(client, land) || isJumpableGap(client, land)) continue;
+
+                    relaxClient(open, dist, cameFrom, current, land,
+                        currentDist + jumpCost(gap), maxSteps);
+                }
             }
         }
         return null;
+    }
+
+    /** Widest gap the player can clear. Must match {@code Pathfinding.MAX_JUMP_GAP}. */
+    public static final int JUMP_MAX_GAP = 2;
+
+    /** Speed a jump costs: the walk it replaces, plus one. Must match {@code Pathfinding.jumpCost}. */
+    public static int jumpCost(int gapTiles) {
+        return gapTiles + 2;
+    }
+
+    private static boolean inBounds(GridPos p, int w, int h) {
+        return p.x() >= 0 && p.x() < w && p.z() >= 0 && p.z() < h;
+    }
+
+    private static void relaxClient(java.util.PriorityQueue<GridPos> open, Map<GridPos, Integer> dist,
+                                    Map<GridPos, GridPos> cameFrom, GridPos from, GridPos to,
+                                    int newDist, int maxSteps) {
+        if (newDist > maxSteps) return;
+        if (newDist >= dist.getOrDefault(to, Integer.MAX_VALUE)) return;
+        dist.put(to, newDist);
+        cameFrom.put(to, from);
+        open.add(to);
+    }
+
+    /**
+     * The tiles a path VAULTS over - the ones between two steps more than one tile apart.
+     * Drawn as arrows rather than path dots, since the player never touches them.
+     */
+    public static List<GridPos> jumpedTilesOf(GridPos from, List<GridPos> path) {
+        List<GridPos> jumped = new ArrayList<>();
+        if (path == null || path.isEmpty()) return jumped;
+        GridPos prev = from;
+        for (GridPos step : path) {
+            int dx = Integer.signum(step.x() - prev.x());
+            int dz = Integer.signum(step.z() - prev.z());
+            int span = Math.abs(step.x() - prev.x()) + Math.abs(step.z() - prev.z());
+            for (int g = 1; g < span; g++) {
+                jumped.add(new GridPos(prev.x() + dx * g, prev.z() + dz * g));
+            }
+            prev = step;
+        }
+        return jumped;
     }
 
     /**

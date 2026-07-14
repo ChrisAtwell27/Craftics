@@ -133,7 +133,7 @@ public final class VanillaContent {
             TrimEffects.SetBonus.RALLY, "Rally",
             "Tamed allies get +2 Speed and +1 Attack"));
         TrimPatternRegistry.register(new TrimPatternEntry("host",
-            TrimEffects.Bonus.MAX_HP, "+8 max HP per piece",
+            TrimEffects.Bonus.MAX_HP, "+4 max HP per piece",
             TrimEffects.SetBonus.SYMBIOTE, "Symbiote",
             "Heal 1 HP for each enemy killed"));
         TrimPatternRegistry.register(new TrimPatternEntry("flow",
@@ -157,7 +157,7 @@ public final class VanillaContent {
         TrimMaterialRegistry.register(new TrimMaterialEntry("redstone",  TrimEffects.Bonus.RANGED_POWER, 1, "+1 Ranged Power per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("amethyst",  TrimEffects.Bonus.REGEN,      1, "+1 HP Regen per piece"));
         // Real hit points, not Health Boost levels. See TrimEffects.TRIM_MAX_HP_PER_PIECE.
-        TrimMaterialRegistry.register(new TrimMaterialEntry("quartz",    TrimEffects.Bonus.MAX_HP,     6, "+6 Max HP per piece"));
+        TrimMaterialRegistry.register(new TrimMaterialEntry("quartz",    TrimEffects.Bonus.MAX_HP,     4, "+4 Max HP per piece"));
         TrimMaterialRegistry.register(new TrimMaterialEntry("resin",     TrimEffects.Bonus.ALLY_DAMAGE, 1, "+1 Ally Damage per piece"));
     }
 
