@@ -24,6 +24,12 @@ public final class EntityBounceState {
     /** Rebound hop height as a fraction of the main amplitude. */
     private static final float REBOUND_SCALE = 0.35f;
 
+    /** Entities currently floating (Airtime/Levitation). Refreshed each frame by EntityFloatTracker. */
+    private static final java.util.Set<Integer> FLOATING = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** Gentle bob: amplitude in blocks and angular speed (radians/ms). */
+    private static final float FLOAT_AMPLITUDE = 0.11f;
+    private static final double FLOAT_SPEED = 0.005;
+
     private EntityBounceState() {}
 
     /** Start (or restart) a bounce for each entity id. */
@@ -35,8 +41,25 @@ public final class EntityBounceState {
         }
     }
 
-    /** Current render Y offset for the entity, 0 when it isn't bouncing. */
+    /** Replace the floating set with this frame's members. */
+    public static void setFloating(java.util.Collection<Integer> ids) {
+        FLOATING.clear();
+        FLOATING.addAll(ids);
+    }
+
+    /** Current render Y offset for the entity, 0 when neither bouncing nor floating. */
     public static float offsetFor(int entityId) {
+        float bounce = bounceOffset(entityId);
+        float floatY = 0f;
+        if (FLOATING.contains(entityId)) {
+            floatY = FLOAT_AMPLITUDE
+                * (0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() * FLOAT_SPEED));
+        }
+        return bounce + floatY;
+    }
+
+    /** The existing parabola/rebound bounce logic, 0 when not bouncing. */
+    private static float bounceOffset(int entityId) {
         Bounce b = ACTIVE.get(entityId);
         if (b == null) return 0f;
         float t = (System.currentTimeMillis() - b.startMs()) / (float) b.durationMs();
@@ -57,5 +80,6 @@ public final class EntityBounceState {
      *  queried again) linger only until the fight ends. */
     public static void clear() {
         ACTIVE.clear();
+        FLOATING.clear();
     }
 }

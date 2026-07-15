@@ -93,6 +93,17 @@ ICONS = {
         "..##....",
         "..#.....",
     ]),
+    # Airtime: an upward double-chevron (being lofted into the air).
+    "airtime": (AQUA, [
+        "...##...",
+        "..####..",
+        ".######.",
+        "########",
+        "...##...",
+        "..####..",
+        ".######.",
+        "########",
+    ]),
     # Haste: a lightning bolt.
     "haste": (YELLOW, [
         "....##..",
@@ -176,20 +187,20 @@ ICONS = {
     "poison": (DARK_GREEN, [
         ".######.",
         "########",
-        "#x#..#x#",
-        "#x#..#x#",
+        "#xx##xx#",
+        "#xx##xx#",
         "########",
         "##.##.##",
         ".######.",
         "..#..#..",
     ]),
-    # Wither: a blackened skull with horns.
+    # Wither: a blackened skull.
     "wither": (BLACK, [
-        "#......#",
-        "#.####.#",
+        "........",
+        "..####..",
         "########",
-        "#o#..#o#",
-        "#o#..#o#",
+        "#oo##oo#",
+        "#oo##oo#",
         "########",
         ".#.##.#.",
         "..####..",

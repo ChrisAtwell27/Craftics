@@ -108,7 +108,7 @@ public class TransitionOverlay {
         "\"Active In Party\" floats above mobs in your battle party. Shift+Right-Click to add or remove.",
         "Trial Chambers ignore biome scaling. They have their own difficulty curve based on NG+ level.",
         "Wind Charges blast you 2 tiles away from an adjacent target, useful for quick repositioning.",
-        "Throwing a Wind Charge for self-launch arms a Momentum bonus. Your next attack deals 1.5x damage.",
+        "Self-launching with a Wind Charge grants Airtime: your next weapon hit deals +0.5x per stack, and ranged attacks reach +2 tiles per stack.",
         "Rocket Crossbows have AOE damage at long range. Load a Firework Rocket in your off-hand.",
         "The Affinities Respec menu lets you redistribute affinity points, costing 1 XP level per refund.",
         "Iron golems are healed by iron ingots in combat. Heal-items get used on a tile-click, not on your golem.",

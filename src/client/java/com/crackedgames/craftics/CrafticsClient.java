@@ -694,6 +694,7 @@ public class CrafticsClient implements ClientModInitializer {
         com.crackedgames.craftics.client.TesterLabelRenderer.register();
         com.crackedgames.craftics.client.EffectIconRenderer.register();
         com.crackedgames.craftics.client.EffectParticleEmitter.register();
+        com.crackedgames.craftics.client.vfx.EntityFloatTracker.register();
         com.crackedgames.craftics.client.HoverTargetArrowRenderer.register();
 
         // Client-side deferred copper-tier registration. The MP client never sees

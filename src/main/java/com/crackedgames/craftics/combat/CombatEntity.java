@@ -61,6 +61,11 @@ public class CombatEntity {
     private int burningDamage = 0;
     private int soakedTurns = 0;
     private int soakedAmplifier = 0;
+    /** Visual+movement Airtime state for enemies/allies. No damage hook. */
+    private int airtimeStateTurns = 0;
+    /** Visual+movement Levitation state; amplifier drives the per-level move slow. */
+    private int levitationStateTurns = 0;
+    private int levitationStateAmplifier = 0;
     private int confusionTurns = 0;
     private int confusionAmplifier = 0;
     private int slownessTurns = 0;
@@ -254,6 +259,7 @@ public class CombatEntity {
         int base = moveSpeed + speedBonus + getSpeedBuffBonus();
         if (soakedTurns > 0) base -= 1;
         if (slownessTurns > 0) base -= slownessPenalty;
+        if (levitationStateTurns > 0) base -= (1 + levitationStateAmplifier);
         var speedCfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
         float mult = speedCfg != null ? speedCfg.enemyMoveSpeedMultiplier() : 1.0f;
         // Allies always keep a usable move budget - never below 2 tiles/turn,
@@ -577,6 +583,25 @@ public class CombatEntity {
     public void setConfusionTurns(int t) { this.confusionTurns = t; }
     public int getConfusionAmplifier() { return confusionAmplifier; }
     public void setConfusionAmplifier(int a) { this.confusionAmplifier = a; }
+
+    public void applyAirtimeState(int turns) { this.airtimeStateTurns = Math.max(this.airtimeStateTurns, turns); }
+    public boolean hasAirtimeState() { return airtimeStateTurns > 0; }
+    public int getAirtimeStateTurns() { return airtimeStateTurns; }
+    public void tickAirtimeState() { if (airtimeStateTurns > 0) airtimeStateTurns--; }
+
+    public void applyLevitationState(int turns, int amplifier) {
+        this.levitationStateTurns = Math.max(this.levitationStateTurns, turns);
+        this.levitationStateAmplifier = Math.max(this.levitationStateAmplifier, amplifier);
+    }
+    public boolean hasLevitationState() { return levitationStateTurns > 0; }
+    public int getLevitationStateTurns() { return levitationStateTurns; }
+    public int getLevitationStateAmplifier() { return levitationStateAmplifier; }
+    public void tickLevitationState() {
+        if (levitationStateTurns > 0) {
+            levitationStateTurns--;
+            if (levitationStateTurns == 0) levitationStateAmplifier = 0;
+        }
+    }
 
     // ── Marked status ──
     // A marked entity takes extra damage from all attacks (2x normally, 1.5x for

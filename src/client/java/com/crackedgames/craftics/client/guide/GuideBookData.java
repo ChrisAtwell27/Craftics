@@ -855,7 +855,7 @@ public class GuideBookData {
                 "Resourceful stat keeps your sherd budget topped up."),
             new Page("Wind Mage",
                 "§dWind Mage. Knock everything around.\n\n" +
-                "Weapon: Wind Charges (knock enemies back up to 3 tiles OR self-launch 2 tiles; momentum bonus = +50% on your next hit).\n\n" +
+                "Weapon: Wind Charges (knock enemies back up to 3 tiles OR self-launch 2 tiles; self-launch grants Airtime: +2 ranged range and +0.5x next-hit damage per stack).\n\n" +
                 "Combine with: any Special weapon for follow-up burst, wall placements to trap targets after KB, or Pottery Sherd Snort (Tectonic Charge) for chained shoves.\n\n" +
                 "Armor: Gold + Rib trim for damage scaling."),
             new Page("Crit Gambler",
@@ -1239,7 +1239,7 @@ public class GuideBookData {
                 "Compass (1 AP): reveal all positions\n" +
                 "Brush (1 AP): dig random loot from an adjacent tile\n" +
                 "Ender Pearl (1 AP): teleport - costs 2 HP on landing\n" +
-                "Wind Charge (1 AP): shove an enemy up to 3 tiles, or self-launch 2 tiles (+50% momentum bonus on your next hit)"),
+                "Wind Charge (1 AP): shove an enemy up to 3 tiles, or self-launch 2 tiles (grants Airtime: +2 ranged range and +0.5x next-hit damage per stack)"),
             new Page("Goat Horns",
                 "Each horn variant is a reusable battle-cry (Special-affinity scaled):\n\n" +
                 "Ponder (1 AP): +2 DEF\n" +

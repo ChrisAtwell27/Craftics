@@ -93,6 +93,7 @@ public final class EffectIcons {
         put(new Icon("fire_resistance", ORANGE, false), "fire_resistance", "fire resistance");
         put(new Icon("invisibility", GRAY, false),   "invisibility");
         put(new Icon("water_breathing", AQUA, false), "water_breathing", "water breathing");
+        put(new Icon("airtime", AQUA, false),        "airtime");
 
         // ---- Debuffs ----
         put(new Icon("poison", DARK_GREEN, true),    "poison", "poisoned");

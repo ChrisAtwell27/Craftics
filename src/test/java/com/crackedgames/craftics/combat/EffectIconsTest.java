@@ -26,7 +26,8 @@ class EffectIconsTest {
         "Blinded(2t)", "Exposed(-2DEF,3t)", "Bleeding(3 stacks)",
         "Withered(3t)", "Frozen", "Taunting",
         "Regenerating(3t)", "Absorption(4HP,3t)", "Resistant(3t)",
-        "Strengthened(+3ATK,3t)", "Hastened(+1SPD,3t)", "SlowFalling(3t)");
+        "Strengthened(+3ATK,3t)", "Hastened(+1SPD,3t)", "SlowFalling(3t)",
+        "Airtime(2t)", "Levitation(2t)");
 
     /** Every player effect must have a real icon - none may fall through to UNKNOWN. */
     @Test

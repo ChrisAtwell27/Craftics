@@ -27,10 +27,11 @@ public class CombatEffects {
         BLEEDING("Bleeding", "Stacking HP loss/turn (1, 3, 6, 10...)"),
         BLINDNESS("Blindness", "-2 range"),
         MINING_FATIGUE("Mining Fatigue", "-1 AP"),
-        LEVITATION("Levitation", "-1 movement"),
+        LEVITATION("Levitation", "-1 movement/level"),
         DARKNESS("Darkness", "-1 range"),
         SOAKED("Soaked", "-1 speed, 2x lightning"),
-        CONFUSION("Confusion", "attack allies");
+        CONFUSION("Confusion", "attack allies"),
+        AIRTIME("Airtime", "+2 ranged range/level; +0.5x next weapon hit/level");
 
         public final String displayName;
         public final String description;
@@ -216,6 +217,9 @@ public class CombatEffects {
         return applyPerTurnEffects(0);
     }
 
+    /** Airtime stacks are capped at this amplifier (Airtime V) to bound the payoff. */
+    public static final int AIRTIME_MAX_AMPLIFIER = 4;
+
     public boolean hasEffect(EffectType type) {
         ActiveEffect e = effects.get(type);
         return e != null && !e.isFrozen();
@@ -234,6 +238,32 @@ public class CombatEffects {
     public int getStrengthBonus() {
         if (!hasEffect(EffectType.STRENGTH)) return 0;
         return 3 * (effects.get(EffectType.STRENGTH).amplifier + 1);
+    }
+
+    public boolean hasAirtime() {
+        return hasEffect(EffectType.AIRTIME);
+    }
+
+    /** Airtime level (amplifier + 1), or 0 when not airborne. */
+    public int getAirtimeLevel() {
+        return hasAirtime() ? effects.get(EffectType.AIRTIME).amplifier + 1 : 0;
+    }
+
+    /**
+     * Spend one Airtime stack for a weapon hit. Returns the level that was in effect for this
+     * hit (0 if not airborne), so the caller can scale damage by that level, then drops the
+     * amplifier by one - removing the effect entirely when it was at level I.
+     */
+    public int consumeAirtimeStack() {
+        ActiveEffect e = effects.get(EffectType.AIRTIME);
+        if (e == null || e.isFrozen()) return 0;
+        int level = e.amplifier + 1;
+        if (e.amplifier <= 0) {
+            effects.remove(EffectType.AIRTIME);
+        } else {
+            e.amplifier -= 1;
+        }
+        return level;
     }
 
     public int getWeaknessPenalty() {

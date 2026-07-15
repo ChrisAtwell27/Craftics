@@ -201,6 +201,18 @@ public class ItemUseHandler {
             + " HP §7(" + (int) newHealth + "/" + (int) maxHealth + ")";
     }
 
+    /** Feed milk to an adjacent ally: clears ALL of THEIR status effects, consumes the feeder's
+     *  bucket, returns an empty bucket to the feeder. Mirrors {@link #feedAlly} for food. */
+    public static String feedMilkToAlly(ServerPlayerEntity feeder, ServerPlayerEntity ally, ItemStack stack) {
+        stack.decrement(1);
+        feeder.getInventory().insertStack(new ItemStack(Items.BUCKET));
+        CombatEffects allyFx = CombatManager.get(ally).getCombatEffects();
+        allyFx.clear();
+        ally.clearStatusEffects();
+        String allyName = ally.getName().getString();
+        return "§fFed milk to " + allyName + " - all their effects cleared.";
+    }
+
     /**
      * Eternal Steak / Everlasting Beef from the Artifacts mod - non-consuming food items.
      * Detected by registry id so this works without a compile-time dependency on Artifacts.
@@ -282,6 +294,7 @@ public class ItemUseHandler {
         if (PotterySherdSpells.isPotterySherd(item)) return PotterySherdSpells.getSherdApCost(item);
         if (item == Items.FISHING_ROD) return FISHING_AP_COST;
         if (item == Items.TNT) return 2; // raised from default 1: TNT now deals %-max-HP blast damage
+        if (item == Items.MILK_BUCKET) return 3; // clears ALL effects; feed self or an adjacent ally
         if (TWO_AP_ITEMS.contains(item)) return 2;
         if (isArtifactsNonConsumingFood(item)) return 2;
         return 1;
@@ -672,6 +685,7 @@ public class ItemUseHandler {
             case BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS -> 3;
             case SOAKED, CONFUSION -> 3;
             case BLEEDING -> 3;
+            case AIRTIME -> 1; // not vanilla-potion-driven; unreachable via this path
         };
         // Extended potions (long vanilla duration > 4 min) double the combat turn count
         if (vanillaDurationTicks > 4800) {
@@ -1219,8 +1233,14 @@ public class ItemUseHandler {
         BlockPos bp = arena.gridToBlockPos(landing);
         player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
 
-        // Arm the momentum bonus for the player's next attack.
-        CombatManager.get(player).setWindChargeMomentum(true);
+        // Apply/stack the Airtime effect for the player's next attack.
+        CombatEffects airFx = CombatManager.get(player).getCombatEffects();
+        int nextAmp = Math.min(airFx.getAirtimeLevel(), CombatEffects.AIRTIME_MAX_AMPLIFIER);
+        // getAirtimeLevel() is 0 when absent (-> amplifier 0 = Airtime I) and N when already
+        // airborne (-> amplifier N = one level higher), so self-launching stacks Airtime,
+        // capped at V. Duration is always refreshed to 1 turn.
+        airFx.addEffect(CombatEffects.EffectType.AIRTIME, 1, nextAmp);
+        int airLevel = airFx.getAirtimeLevel();
 
         if (player.getEntityWorld() instanceof ServerWorld sw) {
             sw.spawnParticles(net.minecraft.particle.ParticleTypes.GUST,
@@ -1232,7 +1252,7 @@ public class ItemUseHandler {
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
         }
         return "§fWind charge! Launched " + moved + " tile" + (moved == 1 ? "" : "s")
-            + " - strike an enemy now for 1.5x damage!";
+            + " - §bAirtime x" + airLevel + "§f (+2 range/level; next weapon hit scales up).";
     }
 
     // --- Milk Bucket: clears all status effects (good and bad) ---

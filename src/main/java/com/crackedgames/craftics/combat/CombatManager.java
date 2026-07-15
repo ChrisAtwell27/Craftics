@@ -2222,8 +2222,6 @@ public class CombatManager {
 
     private boolean doubleDamageNextAttack = false;
     private int windBurstDamageBonus = 0;
-    /** Armed by a Wind Charge self-launch; the next attack deals 1.5x, cleared on any move or end of turn. */
-    private boolean windChargeMomentum = false;
 
     /** Party members whose post-victory loot screen is still open. */
     private final java.util.Set<java.util.UUID> lootPendingPlayers = new java.util.HashSet<>();
@@ -4353,14 +4351,6 @@ public class CombatManager {
         leadWalkLerpInit = false;
     }
 
-    /**
-     * Arms the Wind Charge momentum bonus. Called by a Wind Charge self-launch;
-     * the player's next attack deals 1.5x damage unless they move first.
-     */
-    public void setWindChargeMomentum(boolean armed) {
-        this.windChargeMomentum = armed;
-    }
-
     private void handleMove(GridPos target) {
         // An attack deducts AP immediately but applies its damage after a short animation
         // delay (pendingAttackAction). Moving during that window used to strand the hit while
@@ -4385,6 +4375,11 @@ public class CombatManager {
         boolean hasBoat = playerHasBoat();
         boolean pathfinderActive = activeTrimScan != null
             && activeTrimScan.setBonus() == TrimEffects.SetBonus.PATHFINDER;
+        // Airtime and Levitation let a combatant drift over obstacle tiles, same relaxation
+        // the Pathfinder trim grants. Water still needs a boat; only OBSTACLE is relaxed.
+        boolean flyOverObstacles = pathfinderActive
+            || combatEffects.hasAirtime()
+            || combatEffects.hasEffect(CombatEffects.EffectType.LEVITATION);
         // Helium Flamingo (Artifacts mod compat): the player can phase through enemies
         // on intermediate path tiles, but still can't end their move on top of one.
         boolean phaseThroughEnemies = com.crackedgames.craftics.compat.artifacts
@@ -4399,7 +4394,7 @@ public class CombatManager {
         // at a cost of (gap + 2) speed. resolvedPath carries the REAL cost - a jump is one entry
         // in the step list but costs several speed, so path.size() is no longer the price.
         Pathfinding.Path resolvedPath = Pathfinding.findPlayerPathWithJumps(
-            arena, playerPos, target, moveBudget, hasBoat, pathfinderActive, phaseThroughEnemies);
+            arena, playerPos, target, moveBudget, hasBoat, flyOverObstacles, phaseThroughEnemies);
         List<GridPos> path = new ArrayList<>(resolvedPath.steps());
         this.jumpedTiles = new ArrayList<>(resolvedPath.jumpedOver());
         if (path.isEmpty()) {
@@ -4412,10 +4407,6 @@ public class CombatManager {
             }
             return;
         }
-
-        // Walking forfeits Wind Charge momentum -the strike must come right
-        // after the launch, with no move in between.
-        windChargeMomentum = false;
 
         // Check if path crosses water -boat prevents Soaked effect
         boolean pathHasWater = false;
@@ -5356,12 +5347,14 @@ public class CombatManager {
             windBurstDamageBonus = 0;
         }
 
-        // Wind Charge momentum -striking immediately after a self-launch (with
-        // no move in between) deals 1.5x total damage.
-        if (windChargeMomentum) {
-            baseDamage = Math.round(baseDamage * 1.5f);
-            windChargeMomentum = false;
-            sendMessage("§fWind-charge momentum! 1.5x damage!");
+        // Airtime -a weapon hit spends ONE stack for (1.0 + 0.5*level)x damage:
+        // Airtime I = 1.5x, II = 2.0x, ... V = 3.5x. Only weapon attacks route through
+        // here, so thrown wind charges, items, and sherds neither consume nor benefit.
+        int airLevel = combatEffects.consumeAirtimeStack();
+        if (airLevel > 0) {
+            float airMult = 1.0f + 0.5f * airLevel;
+            baseDamage = Math.round(baseDamage * airMult);
+            sendMessage("§bAirtime! §f" + airMult + "x damage!");
         }
 
         // Axes deal 50% bonus damage to Creaking Hearts (wood blocks)
@@ -8964,6 +8957,28 @@ public class CombatManager {
             }
         }
 
+        // Co-op milk: holding a milk bucket + clicking an adjacent ally tile clears
+        // THEIR status effects instead of the drinker's own. Mirrors the food-feed
+        // branch above.
+        if (heldItem == Items.MILK_BUCKET && partyPlayers.size() > 1 && arena != null) {
+            GridPos myPos = arena.getPlayerGridPos();
+            if (myPos != null && myPos.manhattanDistance(targetTile) <= 1
+                    && !myPos.equals(targetTile)) {
+                net.minecraft.util.math.BlockPos origin = arena.getOrigin();
+                for (ServerPlayerEntity ally : partyPlayers) {
+                    if (ally == null || ally == player || !ally.isAlive()) continue;
+                    if (ally.isRemoved() || ally.isDisconnected()) continue;
+                    net.minecraft.util.math.BlockPos abp = ally.getBlockPos();
+                    GridPos allyPos = new GridPos(
+                        abp.getX() - origin.getX(), abp.getZ() - origin.getZ());
+                    if (allyPos.equals(targetTile)) {
+                        handleFeedMilkToAlly(ally, heldStack);
+                        return;
+                    }
+                }
+            }
+        }
+
         // Registered usable items (addon mods / JSON datapacks) take priority over
         // Craftics' built-in item handling. Unregistered items fall through unchanged.
         com.crackedgames.craftics.api.registry.UsableItemEntry customEntry =
@@ -9882,8 +9897,6 @@ public class CombatManager {
             sendSync();
         }
         killedThisTurn = false;
-        // Wind Charge momentum is a same-turn window -it does not carry over.
-        windChargeMomentum = false;
 
 
         // Lazy init: party members register AFTER startCombat, so the queue may be empty on first use
@@ -11307,6 +11320,21 @@ public class CombatManager {
                 checkAndHandleDeath(e);
             }
 
+            // Enemy Airtime/Levitation (visual + movement only). Levitation wearing off drops
+            // the enemy into Airtime for 1 turn, mirroring the player rule.
+            for (CombatEntity e : enemies) {
+                if (!e.isAlive()) continue;
+                // Tick any PRE-EXISTING Airtime first, so a fresh grant below survives this round.
+                // (Ticking after the grant would decrement the just-granted stack straight back to 0,
+                // making enemy Levitation->Airtime a no-op: no icon, no float, no fly-over next round.)
+                e.tickAirtimeState();
+                boolean levWasActive = e.getLevitationStateTurns() > 0;
+                e.tickLevitationState();
+                if (levWasActive && e.getLevitationStateTurns() == 0) {
+                    e.applyAirtimeState(1);
+                }
+            }
+
             // --- Positive buff ticks on allies (instrument support performances) ---
             for (CombatEntity e : enemies) {
                 if (e.isAlive() && e.isAlly()) e.tickBuffs();
@@ -11422,6 +11450,14 @@ public class CombatManager {
                     // Now tick down THIS member's durations. combatEffects is retargeted to
                     // them above, so Slowness/Poison/Strength/shields expire per member.
                     String memberExpired = combatEffects.tickTurn();
+
+                    // Riding out a Levitation drops you into Airtime: grant Airtime I (1 turn) the turn
+                    // Levitation wears off. combatEffects is already retargeted to this member here.
+                    if (combatEffects.getLastExpired().contains(CombatEffects.EffectType.AIRTIME) == false
+                            && combatEffects.getLastExpired().contains(CombatEffects.EffectType.LEVITATION)) {
+                        combatEffects.addEffect(CombatEffects.EffectType.AIRTIME, 1, 0);
+                    }
+
                     if (memberExpired != null) {
                         for (CombatEffects.EffectType expType : combatEffects.getLastExpired()) {
                             var mcEffect = mapCombatToVanillaEffect(expType);
@@ -11703,7 +11739,9 @@ public class CombatManager {
                     for (CombatEntity candidate : teammates) {
                         java.util.List<GridPos> p = Pathfinding.findPathSized(arena,
                             currentEnemy.getGridPos(), candidate.getGridPos(),
-                            currentEnemy.getMoveSpeed(), currentEnemy);
+                            currentEnemy.getMoveSpeed(), currentEnemy,
+                            currentEnemy.getSizeX(), currentEnemy.getSizeZ(),
+                            currentEnemy.hasAirtimeState() || currentEnemy.hasLevitationState());
                         GridPos end = (p == null || p.isEmpty())
                             ? currentEnemy.getGridPos() : p.get(p.size() - 1);
                         if (candidate.minChebyshevDistanceTo(end) <= 1) {
@@ -11740,7 +11778,9 @@ public class CombatManager {
                             e -> e.minDistanceTo(currentEnemy.getGridPos())));
                         java.util.List<GridPos> stagger = Pathfinding.findPathSized(arena,
                             currentEnemy.getGridPos(), teammates.get(0).getGridPos(),
-                            currentEnemy.getMoveSpeed(), currentEnemy);
+                            currentEnemy.getMoveSpeed(), currentEnemy,
+                            currentEnemy.getSizeX(), currentEnemy.getSizeZ(),
+                            currentEnemy.hasAirtimeState() || currentEnemy.hasLevitationState());
                         sendMessage("§d" + currentEnemy.getDisplayName()
                             + " staggers about in confusion!");
                         if (stagger != null && !stagger.isEmpty()) {
@@ -17531,6 +17571,13 @@ public class CombatManager {
         // apply flat range bonuses or vision penalties to it.
         if (range != PlayerCombatStats.RANGE_CROSSBOW_ROOK) {
             if (activeTrimScan != null) range += activeTrimScan.get(TrimEffects.Bonus.ATTACK_RANGE);
+            // Airtime lofts your shots: +2 range per level, ranged weapons only.
+            if (combatEffects.getAirtimeLevel() > 0) {
+                Item heldWeapon = player.getMainHandStack().getItem();
+                boolean rangedWeapon = PlayerCombatStats.isBowItem(heldWeapon)
+                    || heldWeapon == Items.CROSSBOW;
+                if (rangedWeapon) range += 2 * combatEffects.getAirtimeLevel();
+            }
             // Blindness (-2) and Darkness (-1) shrink vision/range, floored to 1.
             int visionPenalty = combatEffects.getBlindnessPenalty() + combatEffects.getDarknessPenalty();
             if (visionPenalty > 0) range = Math.max(1, range - visionPenalty);
@@ -22947,6 +22994,25 @@ public class CombatManager {
         refreshHighlights();
     }
 
+    /** Feed milk to {@code ally}, clearing ALL of their status effects. Mirrors
+     *  {@link #handleFeedAlly}'s AP-cost + sound / sync handling so co-op milk
+     *  feeding integrates cleanly with combat. */
+    private void handleFeedMilkToAlly(ServerPlayerEntity ally, ItemStack stack) {
+        int apCost = ItemUseHandler.getApCost(stack);
+        if (apRemaining < apCost) {
+            sendMessage("§cNeed " + apCost + " AP to feed!");
+            return;
+        }
+        String result = ItemUseHandler.feedMilkToAlly(player, ally, stack);
+        apRemaining -= apCost;
+        sendMessage(result);
+        ally.getWorld().playSound(null, ally.getBlockPos(),
+            net.minecraft.sound.SoundEvents.ENTITY_PLAYER_BURP,
+            net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.1f);
+        sendSync();
+        refreshHighlights();
+    }
+
     /** Apply the combat HP bonus (Vitality stat + Host trim) to a party member.
      *  Mirrors the per-leader application inside {@link #startCombat} so non-
      *  leader party members aren't stuck at base HP. Preserves their HP ratio
@@ -25392,10 +25458,15 @@ public class CombatManager {
             if (movePointsRemaining > 0) {
                 boolean pathfinderActive = activeTrimScan != null
                     && activeTrimScan.setBonus() == TrimEffects.SetBonus.PATHFINDER;
+                // Airtime and Levitation let a combatant drift over obstacle tiles, same relaxation
+                // the Pathfinder trim grants. Mirrors the flyOverObstacles check in handleMove.
+                boolean flyOverObstacles = pathfinderActive
+                    || combatEffects.hasAirtime()
+                    || combatEffects.hasEffect(CombatEffects.EffectType.LEVITATION);
                 // Jump-aware: a tile reachable ONLY by vaulting a gap must be highlighted, or
                 // the player could never click it. Mirrors findPlayerPathWithJumps exactly.
                 java.util.Set<GridPos> reachable = Pathfinding.getPlayerReachableTilesWithJumps(
-                    arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(), pathfinderActive);
+                    arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(), flyOverObstacles);
                 for (GridPos gp : reachable) {
                     moveList.add(gp.x());
                     moveList.add(gp.z());
@@ -25831,7 +25902,7 @@ public class CombatManager {
             case HASTE -> net.minecraft.entity.effect.StatusEffects.HASTE;
             case SLOW_FALLING -> net.minecraft.entity.effect.StatusEffects.SLOW_FALLING;
             case WATER_BREATHING -> net.minecraft.entity.effect.StatusEffects.WATER_BREATHING;
-            case BURNING, SOAKED, CONFUSION, BLEEDING -> null; // no vanilla equivalent
+            case BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME -> null; // no vanilla equivalent
         };
     }
 
@@ -26928,6 +26999,8 @@ public class CombatManager {
             if (e.getAttackBuffTurns() > 0) efx.append(";Strengthened(+" + e.getAttackBuffBonus() + "ATK," + e.getAttackBuffTurns() + "t)");
             if (e.getSpeedBuffTurns() > 0) efx.append(";Hastened(+" + e.getSpeedBuffBonus() + "SPD," + e.getSpeedBuffTurns() + "t)");
             if (e.getSlowFallingTurns() > 0) efx.append(";SlowFalling(" + e.getSlowFallingTurns() + "t)");
+            if (e.getAirtimeStateTurns() > 0)    efx.append(";Airtime(" + e.getAirtimeStateTurns() + "t)");
+            if (e.getLevitationStateTurns() > 0) efx.append(";Levitation(" + e.getLevitationStateTurns() + "t)");
             for (java.util.Map.Entry<String, int[]> ce : e.getCustomEffects().entrySet()) {
                 com.crackedgames.craftics.api.CustomEffectDef cdef =
                     com.crackedgames.craftics.api.registry.CombatEffectRegistry.get(ce.getKey());

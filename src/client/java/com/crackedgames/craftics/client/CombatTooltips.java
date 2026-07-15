@@ -565,7 +565,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "water_breathing" -> prefix + "\u00a73Water Breathing: \u00a77No drowning damage, \u00a73+2 Water Power";
             case "haste" -> prefix + "\u00a7eHaste" + lvl + ": \u00a77+1 AP for 3 turns";
             case "mining_fatigue" -> prefix + "\u00a78Mining Fatigue: \u00a77-1 AP for 2 turns";
-            case "levitation" -> prefix + "\u00a7dLevitation: \u00a77-1 movement for 2 turns";
+            case "levitation" -> prefix + "\u00a7dLevitation: \u00a77-1 movement/level; grants Airtime when it ends";
             case "slow_falling" -> prefix + "\u00a7fSlow Falling: \u00a77No knockback for 3 turns";
             case "wither" -> prefix + "\u00a78Wither" + lvl + ": \u00a77Damage ramps up as it ticks down";
             case "blindness" -> prefix + "\u00a78Blindness: \u00a77-2 attack range for 2 turns";
@@ -943,7 +943,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         // ── Utility Items ──
         if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+1 DEF when in offhand\n\u00a79Block: \u00a7725% chance to fully block an attack\n\u00a77No AP cost \u2014 equip in offhand slot";
         if (item == Items.TOTEM_OF_UNDYING) return "\u00a76Passive: \u00a77Auto-activates on fatal hit\n\u00a77Restores 50% HP + Regen II\n\u00a77Consumed from inventory automatically";
-        if (item == Items.MILK_BUCKET) return "\u00a7f1 AP \u00a77- Clears ALL status effects\n\u00a77Good and bad effects removed. Returns bucket.";
+        if (item == Items.MILK_BUCKET) return "\u00a7f3 AP \u00a77- Clears ALL status effects (good and bad)\n\u00a77Drink it yourself, or feed an adjacent ally. Returns the bucket.";
         if (item == Items.TNT) return "\u00a7c1 AP \u00a77- Place TNT on target tile\n\u00a7eExplodes next round!\n\u00a7c8/5/3 DMG \u00a77in AoE (distance-based)\n\u00a7cSelf-damage if within 2 tiles!";
         if (item == Items.COBWEB) return "\u00a771 AP \u00a77- Throw at enemy\n\u00a77Stuns target \u2014 they skip next turn";
         if (item == Items.FLINT_AND_STEEL) return "\u00a761 AP \u00a77- Set enemy on fire\n\u00a7c2 DMG \u00a77+ burns for 5 seconds\n\u00a77Uses durability";
@@ -1074,7 +1074,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             + ")\n\u00a77They are not consumed.";
         if (item == Items.BREEZE_ROD) return "\u00a7bBreeze drop\n\u00a77Crafting material from trial chambers";
         if (item == Items.HEAVY_CORE) return "\u00a78Mace crafting component\n\u00a77Rare trial chamber drop";
-        if (item == Items.WIND_CHARGE) return "\u00a7f1 AP \u00a77- Knock an enemy back, or launch yourself off an adjacent tile\n\u00a77Strike an enemy right after a self-launch for \u00a7a1.5x damage";
+        if (item == Items.WIND_CHARGE) return "\u00a7f1 AP \u00a77- Knock an enemy back, or launch yourself off an adjacent tile\n\u00a77Self-launch grants \u00a7bAirtime\u00a77: +2 ranged range and +0.5x damage on your next weapon hit, per stack (stacks up to V)";
 
         // \u2500\u2500 Lead (ally command tool) \u2500\u2500
         if (item == Items.LEAD) return "\u00a7b1 AP \u00a77- Command an ally\n\u00a77Click an ally to select them. Green tiles show how far they can move, red marks enemies they can reach\n\u00a77Click a green tile to reposition them, or a red enemy to make them strike (no ally turn used)";
