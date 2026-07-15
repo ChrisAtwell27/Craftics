@@ -159,8 +159,7 @@ class EffectIconsTest {
      */
     @Test
     void everyReferencedSpriteExistsAndIsEightByEight() {
-        java.nio.file.Path dir = java.nio.file.Path.of(
-            "src/main/resources/assets/craftics/textures/gui/effects");
+        java.nio.file.Path dir = effectsDir();
 
         List<String> names = new ArrayList<>();
         for (EffectType type : EffectType.values()) {
@@ -194,6 +193,25 @@ class EffectIconsTest {
             }
         }
         assertTrue(problems.isEmpty(), String.join("\n", problems));
+    }
+
+    /**
+     * Locate the shared {@code effects} sprite directory, whatever directory the test runs from.
+     *
+     * <p>The sprites live once at the repo root, but under Stonecutter the test JVM's working
+     * directory is a per-version subproject ({@code versions/1.21.1}), not the root - so a plain
+     * relative {@code src/main/resources/...} path resolves to a directory that does not exist
+     * and every sprite reads as missing. Walking up from the working directory finds the real
+     * tree from either location.
+     */
+    private static java.nio.file.Path effectsDir() {
+        String rel = "src/main/resources/assets/craftics/textures/gui/effects";
+        java.nio.file.Path start = java.nio.file.Path.of("").toAbsolutePath();
+        for (java.nio.file.Path p = start; p != null; p = p.getParent()) {
+            java.nio.file.Path candidate = p.resolve(rel);
+            if (java.nio.file.Files.isDirectory(candidate)) return candidate;
+        }
+        throw new IllegalStateException("could not find " + rel + " above " + start);
     }
 
     /**

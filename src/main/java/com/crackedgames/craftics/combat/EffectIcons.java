@@ -28,14 +28,14 @@ public final class EffectIcons {
     private EffectIcons() {}
 
     /**
-     * One effect's presentation: a 16x16 sprite drawn above the afflicted entity's head.
+     * One effect's presentation: an 8x8 sprite drawn above the afflicted entity's head.
      *
      * <p>{@code texture} is the sprite's base name, resolving to
      * {@code assets/craftics/textures/gui/effects/<texture>.png}. The sprites are drawn in
      * full color, so {@code color} is NOT a tint - it is the effect's identifying color, kept
      * for the HUD chips and as the value the sprite generator paints with.
      *
-     * @param texture base name of the 16x16 sprite (no path, no .png)
+     * @param texture base name of the 8x8 sprite (no path, no .png)
      * @param color   0xRRGGBB identifying color
      * @param harmful true for debuffs; lets callers filter buffs from debuffs
      */
