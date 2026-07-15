@@ -88,16 +88,28 @@ public final class HoverTargetArrowRenderer {
             pos.y - cam.y + target.getHeight() + HEIGHT_OFFSET + bob,
             pos.z - cam.z);
         matrices.multiply(camera.getRotation());
+        // 180° in-plane flip, same as the effect icons: raw billboard space is upside down
+        // relative to the UV convention below (see EffectIconRenderer for the full story).
+        matrices.scale(-1.0f, -1.0f, 1.0f);
 
         Matrix4f matrix = matrices.peek().getPositionMatrix();
 
         // See-through layer so the arrow reads even when its target is behind cover.
+        // Double-sided: the see-through layer culls back faces, so a single winding that ends up
+        // facing away from the camera after the billboard would be culled to nothing - the same
+        // reason the effect icons drew invisibly. Emitting both faces removes that dependency.
         VertexConsumer vc = consumers.getBuffer(RenderLayer.getTextSeeThrough(ARROW));
         float h = ARROW_SIZE / 2.0f;
+        // Front face.
         vc.vertex(matrix, -h,  h, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
         vc.vertex(matrix,  h,  h, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
         vc.vertex(matrix,  h, -h, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
         vc.vertex(matrix, -h, -h, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
+        // Back face (reversed winding).
+        vc.vertex(matrix, -h, -h, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix,  h, -h, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix,  h,  h, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix, -h,  h, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
 
         matrices.pop();
     }

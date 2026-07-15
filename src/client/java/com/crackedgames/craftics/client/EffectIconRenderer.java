@@ -151,6 +151,11 @@ public final class EffectIconRenderer {
             pos.z - cam.z);
         // Billboard: face the camera, exactly as the party label does.
         matrices.multiply(camera.getRotation());
+        // 180° in-plane flip - the sign of the negative X/Y scale every vanilla-style label
+        // applies after the camera rotation (the party label's scale(-0.025, -0.025, ...)).
+        // The raw billboard space has +Y screen-up / +X screen-left relative to the UV
+        // convention in drawSprite, so without this the sprites drew upside down and mirrored.
+        matrices.scale(-1.0f, -1.0f, 1.0f);
 
         Matrix4f matrix = matrices.peek().getPositionMatrix();
 
@@ -167,8 +172,9 @@ public final class EffectIconRenderer {
     /**
      * One textured quad in the billboarded local space, its left edge at {@code x}.
      *
-     * <p>Y is negated because the billboard space inherits the camera's downward-positive
-     * axis, the same reason the text-based renderers scale by a negative Y.
+     * <p>Assumes the caller has applied the 180° in-plane flip (the negative X/Y scale in
+     * {@link #drawIconRow}); in that space +Y is screen-down and v=1 is the sprite's bottom
+     * edge, matching the UVs below.
      */
     private static void drawSprite(VertexConsumerProvider consumers, Matrix4f matrix,
                                    Identifier texture, float x, float size) {
@@ -181,10 +187,21 @@ public final class EffectIconRenderer {
         float y0 = -size / 2.0f;
         float y1 = size / 2.0f;
 
-        // Counter-clockwise, with UVs spanning the whole 8x8 sprite.
+        // Emit BOTH windings so the sprite is double-sided. The see-through text layer culls
+        // back faces, and after the camera-facing billboard a single winding can end up facing
+        // AWAY from the camera - which culled the whole quad and drew nothing (the reason the
+        // icons were invisible in game while the text-based party label, whose glyph quads are
+        // wound correctly by the font renderer, showed fine). Drawing front and back removes the
+        // dependency on getting the winding exactly right for this layer's cull mode.
+        // Front face.
         vc.vertex(matrix, x0, y1, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
         vc.vertex(matrix, x1, y1, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
         vc.vertex(matrix, x1, y0, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
         vc.vertex(matrix, x0, y0, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
+        // Back face (reversed winding).
+        vc.vertex(matrix, x0, y0, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x1, y0, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x1, y1, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x0, y1, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
     }
 }

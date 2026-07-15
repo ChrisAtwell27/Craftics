@@ -2683,6 +2683,11 @@ public class CombatManager {
     private List<GridPos> jumpedTiles = new ArrayList<>();
     private int movePathIndex;
     private int moveTickCounter;
+    /** Tick budget for the CURRENT step. A single-tile walk uses {@link #getMoveTicks()};
+     *  a multi-tile jump scales that by its span, so the arc is sampled at the same spatial
+     *  density as a walk instead of teleporting across 2-3 tiles in one walk's worth of ticks
+     *  (the "choppy jump"). Set once per step at lerp init. */
+    private int currentStepTicks = MOVE_TICKS;
     private double lerpStartX, lerpStartY, lerpStartZ;
     private boolean lerpInitialized;
 
@@ -6714,6 +6719,9 @@ public class CombatManager {
         if (pos == null || !arena.isInBounds(pos)) return false;
         GridTile tile = arena.getTile(pos);
         if (tile != null && tile.getType() == TileType.VOID) {
+            // Same mis-classification guard as the player void death: a VOID-typed tile with a
+            // real floor beneath it in the live world is not a pit, so don't hand out a free kill.
+            if (hasSolidFloorAt(pos)) return false;
             sendMessage("§c" + entity.getDisplayName() + " fell to its death!");
             // Death particles at the edge
             if (entity.getMobEntity() != null) {
@@ -10886,9 +10894,19 @@ public class CombatManager {
             int dz = next.z() - prev.z();
             playerMoveYaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
             updateMountFacing(dx, dz); // netherite mount: wall reorients to travel direction
+
+            // Budget this step's ticks by how far it spans. A jump covers 2-3 tiles in a single
+            // path step; giving it one walk's ticks (MOVE_TICKS) crossed all of that plus a tall
+            // arc in ~4 position updates, which read as a choppy pop. Scaling by span keeps the
+            // per-tick distance - and so the arc's smoothness - the same as an ordinary walk.
+            // getMoveTicks() already collapses to 1 when animations are skipped; keep that.
+            int baseTicks = getMoveTicks();
+            int span = Math.abs(dx) + Math.abs(dz);
+            currentStepTicks = baseTicks > 1 && span > 1 ? baseTicks * span : baseTicks;
+
             // Fire up the golem's furnace while it walks (refreshed each step, so it stays
             // lit through a multi-tile move and fades shortly after stopping).
-            chargeMountFurnace(getMoveTicks() + 8);
+            chargeMountFurnace(currentStepTicks + 8);
         }
 
         moveTickCounter++;
@@ -10902,7 +10920,7 @@ public class CombatManager {
         double endY = stayOnSurface ? endBlock.getY() : arena.getEntityY(next);
         double endZ = endBlock.getZ() + 0.5;
 
-        float progress = Math.min(1.0f, (float) moveTickCounter / getMoveTicks());
+        float progress = Math.min(1.0f, (float) moveTickCounter / currentStepTicks);
 
         double x = lerpStartX + (endX - lerpStartX) * progress;
         double y = lerpStartY + (endY - lerpStartY) * progress;
@@ -10995,7 +11013,7 @@ public class CombatManager {
             moveBoat.setYaw(playerMoveYaw - 90f);
         }
 
-        if (moveTickCounter >= getMoveTicks()) {
+        if (moveTickCounter >= currentStepTicks) {
             arena.setPlayerGridPos(next);
             // Netherite mount: the 1×3 wall follows the rider, so rebuild it on the new
             // tile (facing was already updated for this step at lerp init).
@@ -17661,6 +17679,58 @@ public class CombatManager {
     }
 
     /**
+     * True if the live world has a solid, collidable floor under this tile - an entity placed
+     * here would stand, not fall.
+     *
+     * <p>Used to sanity-check a tile the arena scan typed {@code VOID} before applying an
+     * instant-death. A VOID-typed tile with a real block beneath it is a MIS-CLASSIFICATION
+     * (the schematic floor sat at a different Y than the sampled level, so the scan saw air and
+     * called it a pit), and the player - who sees solid ground - must not be void-killed for
+     * standing on it. A genuine pit has air laid at the floor, so this returns false for those
+     * and the lethal path still runs.
+     */
+    private boolean hasSolidFloorAt(GridPos pos) {
+        if (arena == null || !(player.getEntityWorld() instanceof ServerWorld sw)) return false;
+        BlockPos stand = arena.gridToBlockPos(pos); // feet at origin.getY() + 1
+        // Scan from the standing block down to the fall-death threshold (origin.getY() - 2, the
+        // same line the movement fall-check uses). The build-time scan types a tile VOID off a
+        // single sampled floor level, so it MISSES a walkable surface that sits a step above -
+        // the raised temple floor beside a pillar is the classic case. If any block in this
+        // window is solid the player lands on it instead of plummeting, so it is not a death pit.
+        // A genuine pit is air the whole way down and still returns false, keeping it lethal.
+        int bottom = arena.getOrigin().getY() - 2;
+        for (int y = stand.getY(); y >= bottom; y--) {
+            BlockPos p = new BlockPos(stand.getX(), y, stand.getZ());
+            if (!sw.getBlockState(p).getCollisionShape(sw, p).isEmpty()) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Move a player who SURVIVED a void/drown knockback (via a totem) off the hazard tile and
+     * onto solid ground.
+     *
+     * <p>A survivor left standing on a genuine void tile - whose floor is air - falls through
+     * and trips the per-tick fall-death check on the very next tick, dying for real with the
+     * totem already spent. Mirrors the rescue the movement void-fall path performs.
+     */
+    private void rescueSurvivorToSafeTile() {
+        GridPos safeGrid = getSafeArenaGridPos(arena);
+        BlockPos safePos = safeGrid != null
+            ? arena.gridToBlockPos(safeGrid) : arena.getPlayerStartBlockPos();
+        if (safeGrid != null) arena.setPlayerGridPos(safeGrid);
+        if (safePos != null) {
+            player.requestTeleport(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
+            broadcastPlayerPositionToOthers(player);
+        }
+        player.setVelocity(0, 0, 0);
+        player.velocityModified = true;
+        player.fallDistance = 0;
+        refreshHighlights();
+        sendSync();
+    }
+
+    /**
      * Knock the player back N tiles away from the attacker position.
      */
     private void applyPlayerKnockback(GridPos attackerPos, int tiles, CombatEntity source) {
@@ -17714,6 +17784,14 @@ public class CombatManager {
                 || tile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER
                 || tile.getType() == com.crackedgames.craftics.core.TileType.WATER
                 || tile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
+                // A tile typed VOID but with a real floor beneath it in the live world is a
+                // mis-classified tile, not a pit: the player sees solid ground and would not
+                // fall, so treat it as normal footing rather than an instant-death hazard.
+                if (tile.getType() == com.crackedgames.craftics.core.TileType.VOID
+                        && hasSolidFloorAt(candidate)) {
+                    landingPos = candidate;
+                    continue;
+                }
                 landingPos = candidate;
                 hitHazard = true;
                 break;
@@ -17748,6 +17826,10 @@ public class CombatManager {
                         case VOID -> {
                             damagePlayer((int) player.getHealth() + 10, source);
                             sendMessage("§4  Fell into the void!");
+                            // Survived (a totem fired inside damagePlayer): don't leave them
+                            // standing on the void tile or they fall through and the per-tick
+                            // fall-death check kills them for real next tick, totem already spent.
+                            if (getPlayerHp() > 0) rescueSurvivorToSafeTile();
                         }
                         case DEEP_WATER -> {
                             if (playerHasBoat()) {
@@ -17757,6 +17839,7 @@ public class CombatManager {
                             } else {
                                 damagePlayer((int) player.getHealth() + 10, source);
                                 sendMessage("§1  Drowned in deep water!");
+                                if (getPlayerHp() > 0) rescueSurvivorToSafeTile();
                             }
                         }
                         case LAVA -> {
