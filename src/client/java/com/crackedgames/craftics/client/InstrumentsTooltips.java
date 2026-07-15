@@ -63,8 +63,14 @@ public final class InstrumentsTooltips {
             if (fx.type() == null) continue;
             String name = fx.type().displayName;
             String lvl = fx.amplifier() > 0 ? " " + roman(fx.amplifier() + 1) : "";
+            // Confusion is not guaranteed - it rolls confusionApplyChance. Show the % so
+            // the tooltip matches the actual behavior (nerf). Other effects still apply.
+            String chance = fx.type() == com.crackedgames.craftics.combat.CombatEffects.EffectType.CONFUSION
+                ? " (" + Math.round(com.crackedgames.craftics.CrafticsMod.CONFIG.confusionApplyChance() * 100)
+                    + "% chance, " + fx.turns() + " turns)"
+                : " (" + fx.turns() + " turns)";
             out.add((def.role() == InstrumentDef.Role.ATTACK ? "Inflicts " : "Grants ")
-                + name + lvl + " (" + fx.turns() + " turns)");
+                + name + lvl + chance);
         }
         return out.toArray(new String[0]);
     }

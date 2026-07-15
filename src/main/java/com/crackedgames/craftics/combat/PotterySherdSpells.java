@@ -4,6 +4,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.GridTile;
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -50,10 +51,8 @@ public class PotterySherdSpells {
         return max;
     }
 
-    /** Prefix for AP restoration (Plenty sherd). CombatManager parses this. */
-    public static final String RESTORE_AP_PREFIX = "§aRESTORE_AP:";
-    /** Prefix for triple damage next attack (Prize sherd). CombatManager parses this. */
-    public static final String TRIPLE_NEXT_PREFIX = "§6TRIPLE_NEXT:";
+    /** Prefix for double damage next attack (Prize sherd). CombatManager parses this. */
+    public static final String DOUBLE_NEXT_PREFIX = "§6DOUBLE_NEXT:";
     /** Prefix for hex trap tile effect. */
     public static final String HEX_TRAP_PREFIX = "§eTILE:";
     /** Prefix for the Archer sherd's seeker volley (count:damage). CombatManager parses this. */
@@ -145,23 +144,24 @@ public class PotterySherdSpells {
 
     public static int getSherdApCost(Item item) {
         // 2 AP - Quick casts
-        if (item == Items.EXPLORER_POTTERY_SHERD || item == Items.FRIEND_POTTERY_SHERD) return 2;
+        if (item == Items.EXPLORER_POTTERY_SHERD) return 2;
         // 3 AP - Standard spells
-        if (item == Items.HEART_POTTERY_SHERD || item == Items.SCRAPE_POTTERY_SHERD
+        if (item == Items.FRIEND_POTTERY_SHERD || item == Items.SCRAPE_POTTERY_SHERD
             || item == Items.ANGLER_POTTERY_SHERD || item == Items.HEARTBREAK_POTTERY_SHERD
             || item == Items.SHEAF_POTTERY_SHERD || item == Items.MINER_POTTERY_SHERD
-            || item == Items.DANGER_POTTERY_SHERD || item == Items.HOWL_POTTERY_SHERD) return 3;
+            || item == Items.DANGER_POTTERY_SHERD) return 3;
         // 4 AP - Strong spells
         if (item == Items.BLADE_POTTERY_SHERD || item == Items.BURN_POTTERY_SHERD
-            || item == Items.SNORT_POTTERY_SHERD || item == Items.SHELTER_POTTERY_SHERD
+            || item == Items.SNORT_POTTERY_SHERD
             || item == Items.FLOW_POTTERY_SHERD || item == Items.MOURNER_POTTERY_SHERD
-            || item == Items.BREWER_POTTERY_SHERD || item == Items.PLENTY_POTTERY_SHERD
+            || item == Items.HOWL_POTTERY_SHERD
             || item == Items.GUSTER_POTTERY_SHERD) return 4;
-        // 5 AP - Powerful spells
-        if (item == Items.ARCHER_POTTERY_SHERD
-            || item == Items.ARMS_UP_POTTERY_SHERD || item == Items.PRIZE_POTTERY_SHERD) return 5;
+        // 5 AP - Powerful spells (self-buffs and payoff casts)
+        if (item == Items.HEART_POTTERY_SHERD || item == Items.SHELTER_POTTERY_SHERD
+            || item == Items.BREWER_POTTERY_SHERD || item == Items.PLENTY_POTTERY_SHERD
+            || item == Items.ARCHER_POTTERY_SHERD || item == Items.PRIZE_POTTERY_SHERD) return 5;
         // 6 AP - Ultimate
-        if (item == Items.SKULL_POTTERY_SHERD) return 6;
+        if (item == Items.SKULL_POTTERY_SHERD || item == Items.ARMS_UP_POTTERY_SHERD) return 6;
         return 3; // fallback
     }
 
@@ -205,7 +205,7 @@ public class PotterySherdSpells {
         BlockPos playerBlock = arena.gridToBlockPos(playerPos);
 
         String result;
-        if (item == Items.EXPLORER_POTTERY_SHERD) result = useExplorerSherd(player, arena, world, targetTile, playerPos, playerBlock, enemies);
+        if (item == Items.EXPLORER_POTTERY_SHERD) result = useExplorerSherd(player, arena, world, targetTile, playerPos, playerBlock, combatEffects);
         else if (item == Items.FRIEND_POTTERY_SHERD) result = useFriendSherd(player, world, playerBlock, enemies);
         else if (item == Items.HEART_POTTERY_SHERD) result = useHeartSherd(player, world, playerBlock, combatEffects);
         else if (item == Items.SCRAPE_POTTERY_SHERD) result = useScrapeSherd(player, arena, world, targetTile, playerPos, playerBlock);
@@ -291,10 +291,10 @@ public class PotterySherdSpells {
 
     // 2 AP - Quick casts
 
-    /** Explorer Sherd - "Phase Step": Teleport to target tile, reveal enemy stats. */
+    /** Explorer Sherd - "Phase Step": Teleport to target tile + Resistance II for 1 turn on arrival. */
     private static String useExplorerSherd(ServerPlayerEntity player, GridArena arena, ServerWorld world,
                                             GridPos targetTile, GridPos playerPos, BlockPos playerBlock,
-                                            List<CombatEntity> enemies) {
+                                            CombatEffects combatEffects) {
         // Phase 0 - Cast: power gathers at origin
         world.playSound(null, playerBlock, SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 1.0f, 1.0f);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.2, ParticleTypes.REVERSE_PORTAL, 12);
@@ -323,17 +323,11 @@ public class PotterySherdSpells {
             world.playSound(null, destBlock, SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 0.6f, 1.3f);
         });
 
-        StringBuilder reveal = new StringBuilder("§d§lPhase Step! §7Enemies revealed: ");
-        for (CombatEntity e : enemies) {
-            if (!e.isAlive() || e.isAlly()) continue;
-            reveal.append("§f").append(e.getDisplayName())
-                .append(" §7[HP:").append(e.getCurrentHp()).append("/").append(e.getMaxHp())
-                .append(" ATK:").append(e.getAttackPower())
-                .append(" DEF:").append(e.getDefense())
-                .append(" SPD:").append(e.getMoveSpeed()).append("] ");
-        }
+        // Slip through space: brief damage reduction right after the blink, turning Phase Step
+        // into an escape tool rather than a scouting one (enemy stats are already visible in the HUD).
+        combatEffects.addEffect(CombatEffects.EffectType.RESISTANCE, 1, 1);
 
-        return reveal.toString();
+        return "§d§lPhase Step! §7Blinked to safety + Resistance II (1 turn).";
     }
 
     /** Friend Sherd - "Guardian Spirit": Heal 8 HP, buff ally pet. */
@@ -1140,7 +1134,13 @@ public class PotterySherdSpells {
         return "§d§lAlchemist's Surge! §fGained: " + effectNames + " (4 turns each)!";
     }
 
-    /** Plenty Sherd - "Bountiful Harvest": Restore +7 AP + heal 15 HP. */
+    /** Consumables the Plenty sherd can hand out - combat-useful food and throwables. */
+    private static final Item[] PLENTY_CONSUMABLES = {
+        Items.GOLDEN_APPLE, Items.COOKED_BEEF, Items.GOLDEN_CARROT, Items.BREAD,
+        Items.ENDER_PEARL, Items.SPLASH_POTION, Items.HONEY_BOTTLE, Items.SWEET_BERRIES
+    };
+
+    /** Plenty Sherd - "Bountiful Harvest": heal 10 HP + hand the caster 3 random consumables. */
     private static String usePlentySherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock) {
         // Phase 0 - Cast: nature gathering
         world.playSound(null, playerBlock, SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, SoundCategory.PLAYERS, 1.0f, 1.0f);
@@ -1148,8 +1148,21 @@ public class PotterySherdSpells {
         world.spawnParticles(ParticleTypes.COMPOSTER, cx, cy, cz, 8, 0.4, 0.2, 0.4, 0.06);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.0, ParticleTypes.HAPPY_VILLAGER, 8);
 
-        // Heal 15 HP (buffed from 10)
-        int plentyHealed = healCaster(player, 15);
+        // Heal 10 HP.
+        int plentyHealed = healCaster(player, 10);
+
+        // Hand the caster 3 random consumables, dropping any that don't fit the inventory at
+        // the player's feet so nothing is silently lost.
+        StringBuilder gained = new StringBuilder();
+        for (int i = 0; i < 3; i++) {
+            Item pick = PLENTY_CONSUMABLES[player.getRandom().nextInt(PLENTY_CONSUMABLES.length)];
+            ItemStack stack = new ItemStack(pick);
+            if (!player.getInventory().insertStack(stack)) {
+                player.dropItem(stack, false);
+            }
+            if (gained.length() > 0) gained.append(", ");
+            gained.append(pick.getName().getString());
+        }
 
         // Phase 1 (4 ticks) - Golden bloom
         queueEffect(4, () -> {
@@ -1166,8 +1179,7 @@ public class PotterySherdSpells {
             world.spawnParticles(ParticleTypes.FIREWORK, cx, cy + 1.0, cz, 2, 0.1, 0.1, 0.1, 0.05);
         });
 
-        // Return RESTORE_AP prefix - CombatManager adds the AP back (buffed from 5 to 7)
-        return RESTORE_AP_PREFIX + "7|§a§lBountiful Harvest! §fHealed " + plentyHealed + " HP + restored 7 AP!";
+        return "§a§lBountiful Harvest! §fHealed " + plentyHealed + " HP + gained " + gained + "!";
     }
 
     // 5 AP - Powerful spells
@@ -1300,9 +1312,9 @@ public class PotterySherdSpells {
         world.spawnParticles(ParticleTypes.FLAME, cx, cy, cz, 10, 0.3, 0.1, 0.3, 0.06);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.0, ParticleTypes.FLAME, 8);
 
-        // Strength IV (amplifier 3) for 4 turns, Speed III (amplifier 2) for 4 turns (buffed from III/3t + II/3t)
-        combatEffects.addEffect(CombatEffects.EffectType.STRENGTH, 4, 3);
-        combatEffects.addEffect(CombatEffects.EffectType.SPEED, 4, 2);
+        // Strength III (amplifier 2) for 4 turns, Speed II (amplifier 1) for 4 turns.
+        combatEffects.addEffect(CombatEffects.EffectType.STRENGTH, 4, 2);
+        combatEffects.addEffect(CombatEffects.EffectType.SPEED, 4, 1);
 
         // Phase 1 (4 ticks) - Fire eruption
         queueEffect(4, () -> {
@@ -1326,10 +1338,10 @@ public class PotterySherdSpells {
             world.spawnParticles(ParticleTypes.FIREWORK, cx, cy + 1.5, cz, 2, 0.1, 0.1, 0.1, 0.05);
         });
 
-        return "§6§lWar Cry! §fStrength IV (+12 ATK) + Speed III (+6 SPD) for 4 turns!";
+        return "§6§lWar Cry! §fStrength III (+9 ATK) + Speed II (+4 SPD) for 4 turns!";
     }
 
-    /** Prize Sherd - "Fortune's Favor": Next attack deals triple damage + Luck II for 4 turns. */
+    /** Prize Sherd - "Fortune's Favor": Next attack deals double damage + Luck III for 4 turns. */
     private static String usePrizeSherd(ServerPlayerEntity player, ServerWorld world, BlockPos playerBlock,
                                          CombatEffects combatEffects) {
         // Phase 0 - Cast: fortune gathering
@@ -1338,8 +1350,8 @@ public class PotterySherdSpells {
         world.spawnParticles(ParticleTypes.WAX_ON, cx, cy + 1.5, cz, 8, 0.3, 0.3, 0.3, 0.04);
         ProjectileSpawner.spawnConverging(world, playerBlock, 1.0, ParticleTypes.ENCHANT, 8);
 
-        // Luck II for 4 turns (buffed from 3)
-        combatEffects.addEffect(CombatEffects.EffectType.LUCK, 4, 1);
+        // Luck III (amplifier 2) for 4 turns.
+        combatEffects.addEffect(CombatEffects.EffectType.LUCK, 4, 2);
 
         // Phase 1 (4 ticks) - Enchant glyphs orbiting
         queueEffect(4, () -> {
@@ -1361,8 +1373,8 @@ public class PotterySherdSpells {
             ProjectileSpawner.spawnExpandingRing(world, playerBlock, 0.6, ParticleTypes.ENCHANTED_HIT, 8);
         });
 
-        // Return TRIPLE_NEXT prefix - CombatManager sets the flag
-        return TRIPLE_NEXT_PREFIX + "1|§6§lFortune's Favor! §fNext attack deals §6§lTRIPLE DAMAGE! §f+ Luck II (4 turns).";
+        // Return DOUBLE_NEXT prefix - CombatManager sets the flag
+        return DOUBLE_NEXT_PREFIX + "1|§6§lFortune's Favor! §fNext attack deals §6§lDOUBLE DAMAGE! §f+ Luck III (4 turns).";
     }
 
     // 6 AP - Ultimate spell
@@ -1514,11 +1526,11 @@ public class PotterySherdSpells {
 
     /** Get tooltip description for a pottery sherd spell. */
     public static String getSherdTooltip(Item item) {
-        if (item == Items.EXPLORER_POTTERY_SHERD) return "§d[2 AP] Phase Step §7- Teleport 4 tiles + reveal enemy stats";
+        if (item == Items.EXPLORER_POTTERY_SHERD) return "§d[2 AP] Phase Step §7- Teleport 4 tiles + Resistance II (1 turn)";
         if (item == Items.FRIEND_POTTERY_SHERD) return "§d[2 AP] Guardian Spirit §7- Heal ALL pets to full\n"
             + "§7+" + FRIEND_ATK_BUFF + " ATK and +" + FRIEND_SPEED_BUFF + " Speed to every pet ("
             + FRIEND_BUFF_TURNS + " turns)";
-        if (item == Items.HEART_POTTERY_SHERD) return "§d[3 AP] Mending Light §7- Heal 15 HP + Regen II (4 turns)";
+        if (item == Items.HEART_POTTERY_SHERD) return "§d[5 AP] Mending Light §7- Heal 15 HP + Regen II (4 turns)";
         if (item == Items.SCRAPE_POTTERY_SHERD) return "§d[3 AP] Corrode §7- 5 dmg + reduce DEF by 7 (3 turns)";
         if (item == Items.ANGLER_POTTERY_SHERD) return "§3[3 AP] Riptide Hook §7- Pull 2 tiles + 6 dmg (+5 if adjacent)";
         if (item == Items.HEARTBREAK_POTTERY_SHERD) return "§d[3 AP] Shatter Will §7- 5 dmg + -5 ATK, -4 SPD (2 turns)";
@@ -1528,22 +1540,22 @@ public class PotterySherdSpells {
         if (item == Items.BLADE_POTTERY_SHERD) return "§d[4 AP] Phantom Slash §7- 12 dmg + 8 cleave to adjacent enemy";
         if (item == Items.BURN_POTTERY_SHERD) return "§6[4 AP] Immolation §7- 9 fire + burn 3/t (3t), splash 5 dmg + burn";
         if (item == Items.SNORT_POTTERY_SHERD) return "§8[4 AP] Tectonic Charge §7- KB 3 tiles, 4 dmg/tile, wall slam +9";
-        if (item == Items.SHELTER_POTTERY_SHERD) return "§7[4 AP] Stone Aegis §7- Resistance III (5t) + Absorption III (4t)";
+        if (item == Items.SHELTER_POTTERY_SHERD) return "§7[5 AP] Stone Aegis §7- Resistance III (5t) + Absorption III (4t)";
         if (item == Items.FLOW_POTTERY_SHERD) return "§3[4 AP] Tidal Surge §7- 8 WATER dmg + KB 2 to all within 2 tiles";
         if (item == Items.MOURNER_POTTERY_SHERD) return "§5[4 AP] Soul Drain §7- 10 dmg, heal for damage dealt";
-        if (item == Items.BREWER_POTTERY_SHERD) return "§d[4 AP] Alchemist's Surge §7- 4 random buffs II (4 turns each)";
-        if (item == Items.PLENTY_POTTERY_SHERD) return "§a[4 AP] Bountiful Harvest §7- Heal 15 HP + restore 7 AP";
+        if (item == Items.BREWER_POTTERY_SHERD) return "§d[5 AP] Alchemist's Surge §7- 4 random buffs II (4 turns each)";
+        if (item == Items.PLENTY_POTTERY_SHERD) return "§a[5 AP] Bountiful Harvest §7- Heal 10 HP + 3 random consumables";
         if (item == Items.ARCHER_POTTERY_SHERD) return "§b[5 AP] Seeker Vexes §7- Summon "
             + SEEKER_BASE_COUNT + " seeking vexes\n"
             + "§7They fly at the nearest enemy on their own each round, then destroy themselves on attack for "
             + SEEKER_DAMAGE + " damage\n"
             + "§7Fragile (1 HP) and vanish after 5 rounds. Luck can summon another";
-        if (item == Items.HOWL_POTTERY_SHERD) return "§7[3 AP] Petsplosion §7- Every pet erupts in a "
+        if (item == Items.HOWL_POTTERY_SHERD) return "§7[4 AP] Petsplosion §7- Every pet erupts in a "
             + PETSPLOSION_RADIUS + "-tile blast\n"
             + "§7Anvil-grade damage (half an enemy's max HP, min " + PETSPLOSION_MIN_DAMAGE + ")\n"
             + "§7Blasts STACK where they overlap. Pets are unharmed";
-        if (item == Items.ARMS_UP_POTTERY_SHERD) return "§6[5 AP] War Cry §7- STR IV (+12 ATK) + SPD III (+6 SPD) (4 turns)";
-        if (item == Items.PRIZE_POTTERY_SHERD) return "§6[5 AP] Fortune's Favor §7- Next attack = TRIPLE damage + Luck II (4t)";
+        if (item == Items.ARMS_UP_POTTERY_SHERD) return "§6[6 AP] War Cry §7- STR III (+9 ATK) + SPD II (+4 SPD) (4 turns)";
+        if (item == Items.PRIZE_POTTERY_SHERD) return "§6[5 AP] Fortune's Favor §7- Next attack = DOUBLE damage + Luck III (4t)";
         if (item == Items.SKULL_POTTERY_SHERD) return "§4[6 AP] Death Mark §7- Execute <50% HP or 10 dmg + Wither IV (4t)";
         if (item == Items.GUSTER_POTTERY_SHERD) return "§e[4 AP] Chain Lightning §7- 8 dmg, chains to enemies within 2 tiles (2x on Soaked)";
         return null;

@@ -83,7 +83,7 @@ public final class ImmersiveArmorsCompat {
             + pct(ArmorSetEffects.FRAGILE_BREAK_CHANCE) + " chance to shatter when you are hit");
 
         // Robe - no protection worth the name, but the spells come cheap and never fail.
-        set(ArmorSetEffects.ROBE, DamageType.SPECIAL, 2,
+        set(ArmorSetEffects.ROBE, DamageType.SPECIAL, 1,
             "Robe: pottery sherds never shatter and cost "
             + ArmorSetEffects.ROBE_SHERD_AP_DISCOUNT + " less AP (min 1)");
 

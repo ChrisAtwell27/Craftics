@@ -131,6 +131,18 @@ class ArmorClassTableTest {
         assertEquals(0, ArmorClassTable.pieceAC(-1, Slot.LEGGINGS));
     }
 
+    @Test
+    void pieceAC_robeBaseOneFloorsEverySlotAtOne() {
+        // B=1 is the Robe: the softest set. Every worn piece still gives at least 1 AC,
+        // so no slot rounds down to 0. Leggings=1, chest=2, helmet/boots=⌈1/2⌉=1.
+        assertEquals(1, ArmorClassTable.pieceAC(1, Slot.LEGGINGS));
+        assertEquals(2, ArmorClassTable.pieceAC(1, Slot.CHESTPLATE));
+        assertEquals(1, ArmorClassTable.pieceAC(1, Slot.HELMET));
+        assertEquals(1, ArmorClassTable.pieceAC(1, Slot.BOOTS));
+        // Full-set total: 1+2+1+1 = 5.
+        assertEquals(5, fullSet(1));
+    }
+
     // ---- Full-set totals (spec § 1.2) ----
 
     @Test

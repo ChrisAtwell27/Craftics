@@ -193,15 +193,20 @@ public final class EffectIconRenderer {
         // icons were invisible in game while the text-based party label, whose glyph quads are
         // wound correctly by the font renderer, showed fine). Drawing front and back removes the
         // dependency on getting the winding exactly right for this layer's cull mode.
+        //
+        // U is FLIPPED (x0->1, x1->0) to cancel the horizontal mirror introduced by the
+        // drawIconRow scale(-1, -1, 1). Without this, chiral icons (e.g. the confusion "?")
+        // rendered mirror-imaged / facing the wrong way. The -1 X scale mirrors geometry;
+        // pre-mirroring the texture in UV space restores the correct handedness.
         // Front face.
-        vc.vertex(matrix, x0, y1, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
-        vc.vertex(matrix, x1, y1, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
-        vc.vertex(matrix, x1, y0, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
-        vc.vertex(matrix, x0, y0, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x0, y1, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x1, y1, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x1, y0, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x0, y0, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
         // Back face (reversed winding).
-        vc.vertex(matrix, x0, y0, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
-        vc.vertex(matrix, x1, y0, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
-        vc.vertex(matrix, x1, y1, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
-        vc.vertex(matrix, x0, y1, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x0, y0, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x1, y0, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x1, y1, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix, x0, y1, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
     }
 }

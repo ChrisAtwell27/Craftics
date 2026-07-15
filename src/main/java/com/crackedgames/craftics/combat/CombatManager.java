@@ -647,6 +647,10 @@ public class CombatManager {
     private CombatEntity pendingAllyAttackTarget = null;
     /** Non-ally target chosen this turn when an enemy should focus a pet that damaged it. */
     private CombatEntity currentEnemyPetAggroTarget = null;
+    /** When set, the current confused enemy redirects its RANGED action at this fellow
+     *  enemy instead of the player (a confused skeleton shoots its ally). Reset each
+     *  enemy turn so it never leaks to the next mob. */
+    private CombatEntity confusedRangedVictim = null;
 
     public EventManager getEventManager() { return eventManager; }
     public void setEventManager(EventManager em) { this.eventManager = em; }
@@ -2216,7 +2220,7 @@ public class CombatManager {
             net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 0.6f);
     }
 
-    private boolean tripleDamageNextAttack = false;
+    private boolean doubleDamageNextAttack = false;
     private int windBurstDamageBonus = 0;
     /** Armed by a Wind Charge self-launch; the next attack deals 1.5x, cleared on any move or end of turn. */
     private boolean windChargeMomentum = false;
@@ -5338,11 +5342,11 @@ public class CombatManager {
             baseDamage += HybridSetEffects.DEADEYE_BONUS;
         }
 
-        // Prize sherd: Fortune's Favor -triple damage on next attack
+        // Prize sherd: Fortune's Favor -double damage on next attack
         boolean usedTriple = false;
-        if (tripleDamageNextAttack) {
-            baseDamage *= 3;
-            tripleDamageNextAttack = false;
+        if (doubleDamageNextAttack) {
+            baseDamage *= 2;
+            doubleDamageNextAttack = false;
             usedTriple = true;
         }
 
@@ -5734,7 +5738,7 @@ public class CombatManager {
                 }
             }
 
-            String tripleMsg = fUsedTriple ? " §d§l\u2726 TRIPLE!" : "";
+            String tripleMsg = fUsedTriple ? " §d§l\u2726 DOUBLE!" : "";
             String critMsg = fLuckCrit ? " §6§l\u2726 LUCKY CRIT!" : "";
             String typeMsg = fDamageTypeBonus > 0 ? " " + fDamageType.color + "+" + fDamageTypeBonus + " " + fDamageType.displayName : "";
             String resistMsg = fMobResistMult == 0.0 ? " \u00a74IMMUNE!" :
@@ -8741,7 +8745,13 @@ public class CombatManager {
             case BURNING -> target.stackBurning(turns, amplifier);
             case SOAKED -> target.stackSoaked(turns, amplifier);
             case SLOWNESS -> target.stackSlowness(turns, amplifier);
-            case CONFUSION -> target.stackConfusion(turns, amplifier);
+            case CONFUSION -> {
+                // Nerf: confusion is never guaranteed - roll confusionApplyChance.
+                if (com.crackedgames.craftics.combat.ConfusionLogic.rollHits(
+                        Math.random(), CrafticsMod.CONFIG.confusionApplyChance())) {
+                    target.stackConfusion(turns, amplifier);
+                }
+            }
             case WEAKNESS -> {
                 target.setAttackPenalty(2 * (amplifier + 1));
                 target.setAttackPenaltyTurns(turns);
@@ -9550,29 +9560,11 @@ public class CombatManager {
             String volley = castSpectralSeekers(player, seekerCount, seekerDamage);
             sendMessage(parts.length > 1 ? volley + parts[1] : volley);
         }
-        // AP restoration (Plenty sherd)
-        else if (result.contains(PotterySherdSpells.RESTORE_AP_PREFIX)) {
-            String afterPrefix = result.substring(result.indexOf(PotterySherdSpells.RESTORE_AP_PREFIX) + PotterySherdSpells.RESTORE_AP_PREFIX.length());
+        // Double damage next attack (Prize sherd)
+        else if (result.contains(PotterySherdSpells.DOUBLE_NEXT_PREFIX)) {
+            String afterPrefix = result.substring(result.indexOf(PotterySherdSpells.DOUBLE_NEXT_PREFIX) + PotterySherdSpells.DOUBLE_NEXT_PREFIX.length());
             String[] parts = afterPrefix.split("\\|", 2);
-            int restoreAmount = Integer.parseInt(parts[0]);
-            // Clamp the restore to the player's effective AP ceiling for this turn so the
-            // Plenty sherd refills toward the cap instead of stacking past it. The ceiling
-            // is the same expression used at turn start (effective AP + set bonus + Haste
-            // - Mining Fatigue); a player already at/above it gains nothing.
-            PlayerProgression apProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
-            PlayerProgression.PlayerStats apStats = apProg.getStats(player);
-            int apCeiling = Math.max(0, apStats.getEffective(PlayerProgression.Stat.AP)
-                + PlayerCombatStats.getSetApBonus(player)
-                + combatEffects.getHasteBonus()
-                - combatEffects.getMiningFatiguePenalty());
-            apRemaining = Math.min(apCeiling, apRemaining + restoreAmount);
-            if (parts.length > 1) sendMessage(parts[1]);
-        }
-        // Triple damage next attack (Prize sherd)
-        else if (result.contains(PotterySherdSpells.TRIPLE_NEXT_PREFIX)) {
-            String afterPrefix = result.substring(result.indexOf(PotterySherdSpells.TRIPLE_NEXT_PREFIX) + PotterySherdSpells.TRIPLE_NEXT_PREFIX.length());
-            String[] parts = afterPrefix.split("\\|", 2);
-            tripleDamageNextAttack = true;
+            doubleDamageNextAttack = true;
             if (parts.length > 1) sendMessage(parts[1]);
         }
         else {
@@ -9805,7 +9797,13 @@ public class CombatManager {
                 case BURNING -> target.stackBurning(turns, amplifier);
                 case SOAKED -> target.stackSoaked(turns, amplifier);
                 case SLOWNESS -> target.stackSlowness(turns, amplifier);
-                case CONFUSION -> target.stackConfusion(turns, amplifier);
+                case CONFUSION -> {
+                    // Nerf: confusion is never guaranteed - roll confusionApplyChance.
+                    if (com.crackedgames.craftics.combat.ConfusionLogic.rollHits(
+                            Math.random(), CrafticsMod.CONFIG.confusionApplyChance())) {
+                        target.stackConfusion(turns, amplifier);
+                    }
+                }
                 case WEAKNESS -> {
                     target.setAttackPenalty(2 * (amplifier + 1));
                     target.setAttackPenaltyTurns(turns);
@@ -11174,6 +11172,44 @@ public class CombatManager {
         enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
     }
 
+    /**
+     * Transform a confused enemy's REAL AI action so it strikes {@code victim} (another
+     * enemy) instead of the player. Melee single-target actions become a MoveAndAttackMob
+     * at the victim (real damage preserved). Ranged actions are returned UNCHANGED but the
+     * victim is stored in {@code confusedRangedVictim} so the ranged resolver fires at it
+     * (a confused skeleton shoots its ally). AoE / swoop / boss / summon / terrain return
+     * null - the caller then lets the enemy act normally vs the player. Explode is left
+     * as-is: it already damages nearby enemies, so a confused creeper adjacent to allies
+     * catches them in the blast.
+     */
+    private EnemyAction redirectActionAtEnemy(EnemyAction real, CombatEntity victim,
+                                              java.util.List<GridPos> path) {
+        // Ranged: keep the action, aim the resolver at the victim entity.
+        if (real instanceof EnemyAction.RangedAttack) {
+            confusedRangedVictim = victim;
+            return real;
+        }
+        if (real instanceof EnemyAction.MoveAndAttack
+                && getRangedProjectileType(currentEnemy.getEntityTypeId()) != null) {
+            // A MoveAndAttack that resolves as ranged (e.g. a repositioning shooter).
+            confusedRangedVictim = victim;
+            return real;
+        }
+        // Melee single-target: strike the victim with the action's real damage.
+        int dmg = switch (real) {
+            case EnemyAction.Attack a -> a.damage();
+            case EnemyAction.MoveAndAttack m -> m.damage();
+            case EnemyAction.AttackWithKnockback k -> k.damage();
+            case EnemyAction.MoveAndAttackWithKnockback k -> k.damage();
+            case EnemyAction.Pounce p -> p.damage();
+            case EnemyAction.TeleportAndAttack t -> t.damage();
+            default -> -1;
+        };
+        if (dmg < 0) return null; // unsupported: caller falls back to a normal player turn
+        return new EnemyAction.MoveAndAttackMob(
+            path != null ? path : java.util.List.of(), victim.getEntityId(), Math.max(1, dmg));
+    }
+
     private void tickEnemyDeciding() {
         while (enemyTurnIndex < enemies.size() && !enemies.get(enemyTurnIndex).isAlive()) {
             enemyTurnIndex++;
@@ -11644,70 +11680,84 @@ public class CombatManager {
             return;
         }
 
+        confusedRangedVictim = null; // reset per enemy turn; set only on a confused-ranged redirect
         if (currentEnemy.getConfusionTurns() > 0 && !currentEnemy.isAlly()) {
-            java.util.List<CombatEntity> teammates = new java.util.ArrayList<>();
-            for (CombatEntity e : enemies) {
-                if (e != currentEnemy && e.isAlive() && !e.isAlly()) teammates.add(e);
-            }
-            if (!teammates.isEmpty()) {
-                // A confused swing still has to REACH its victim: pick only among
-                // teammates the mob can actually get adjacent to this turn. The old
-                // fully-random pick could land on a mob across the map, and the
-                // empty-path fallback then swung the attack anyway - a psychic hit
-                // from twenty tiles that read as pure nonsense.
-                java.util.Collections.shuffle(teammates);
-                CombatEntity victim = null;
-                java.util.List<GridPos> path = null;
-                for (CombatEntity candidate : teammates) {
-                    // Size-aware path so a confused 2x2 mob (slime/magma cube/spider)
-                    // doesn't route its footprint over the player while staggering.
-                    java.util.List<GridPos> p = Pathfinding.findPathSized(arena,
-                        currentEnemy.getGridPos(), candidate.getGridPos(),
-                        currentEnemy.getMoveSpeed(), currentEnemy);
-                    GridPos end = (p == null || p.isEmpty())
-                        ? currentEnemy.getGridPos() : p.get(p.size() - 1);
-                    if (candidate.minChebyshevDistanceTo(end) <= 1) {
-                        victim = candidate;
-                        path = p;
-                        break;
-                    }
-                }
-                currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
-                if (victim != null) {
-                    sendMessage("§d" + currentEnemy.getDisplayName() + " is confused and attacks "
-                        + victim.getDisplayName() + "!");
-                    pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.MoveAndAttackMob(
-                        path, victim.getEntityId(), currentEnemy.getAttackPower());
-                    if (path != null && !path.isEmpty()) {
-                        startEnemyMove(path);
-                    } else {
-                        // Already adjacent - swing without moving.
-                        startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
-                    }
-                    return;
-                }
-                // Nobody in reach: stagger toward the nearest teammate, hitting nothing.
-                teammates.sort(java.util.Comparator.comparingInt(
-                    e -> e.minDistanceTo(currentEnemy.getGridPos())));
-                java.util.List<GridPos> stagger = Pathfinding.findPathSized(arena,
-                    currentEnemy.getGridPos(), teammates.get(0).getGridPos(),
-                    currentEnemy.getMoveSpeed(), currentEnemy);
-                sendMessage("§d" + currentEnemy.getDisplayName()
-                    + " staggers about in confusion!");
-                if (stagger != null && !stagger.isEmpty()) {
-                    pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.Move(stagger);
-                    startEnemyMove(stagger);
-                } else {
-                    enemyTurnState = EnemyTurnState.DONE;
-                    enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
-                }
-                return;
-            }
+            // Confusion ticks down every confused turn regardless of what happens.
             currentEnemy.setConfusionTurns(currentEnemy.getConfusionTurns() - 1);
-            sendMessage("§d" + currentEnemy.getDisplayName() + " is confused but has no allies to hit!");
-            // If the enemy is also blinded, end the turn now rather than falling through into
-            // the blinded block below -otherwise both debuffs would tick in the same round.
-            // (When not blinded, preserve the pre-existing fall-through to a normal turn.)
+
+            // 50/50: this turn the enemy is either disoriented (redirects its REAL attack
+            // at a random enemy) or acts completely normally against the player.
+            boolean disoriented = com.crackedgames.craftics.combat.ConfusionLogic.rollHits(
+                Math.random(), CrafticsMod.CONFIG.confusedRetargetChance());
+            if (disoriented) {
+                java.util.List<CombatEntity> teammates = new java.util.ArrayList<>();
+                for (CombatEntity e : enemies) {
+                    if (e != currentEnemy && e.isAlive() && !e.isAlly()) teammates.add(e);
+                }
+                if (!teammates.isEmpty()) {
+                    // Pick a random reachable teammate (size-aware path so a 2x2 mob's
+                    // footprint routes correctly).
+                    java.util.Collections.shuffle(teammates);
+                    CombatEntity victim = null;
+                    java.util.List<GridPos> path = null;
+                    for (CombatEntity candidate : teammates) {
+                        java.util.List<GridPos> p = Pathfinding.findPathSized(arena,
+                            currentEnemy.getGridPos(), candidate.getGridPos(),
+                            currentEnemy.getMoveSpeed(), currentEnemy);
+                        GridPos end = (p == null || p.isEmpty())
+                            ? currentEnemy.getGridPos() : p.get(p.size() - 1);
+                        if (candidate.minChebyshevDistanceTo(end) <= 1) {
+                            victim = candidate;
+                            path = p;
+                            break;
+                        }
+                    }
+                    if (victim != null) {
+                        // Run the REAL AI aimed at the victim, then redirect its action.
+                        EnemyAI confusedAi = resolveAi(currentEnemy);
+                        EnemyAction realAction = confusedAi.decideAction(
+                            currentEnemy, arena, victim.getGridPos());
+                        EnemyAction redirected = redirectActionAtEnemy(realAction, victim, path);
+                        if (redirected != null) {
+                            sendMessage("§d" + currentEnemy.getDisplayName()
+                                + " is confused and turns on " + victim.getDisplayName() + "!");
+                            pendingAction = redirected;
+                            boolean isRanged = confusedRangedVictim != null;
+                            if (!isRanged && redirected instanceof
+                                    com.crackedgames.craftics.combat.ai.EnemyAction.MoveAndAttackMob mam
+                                    && mam.path() != null && !mam.path().isEmpty()) {
+                                startEnemyMove(mam.path());
+                            } else {
+                                startAttackAnimation(CrafticsMod.CONFIG.enemyTurnDelay());
+                            }
+                            return;
+                        }
+                        // Unsupported action (AoE/swoop/boss/etc): fall through to a normal
+                        // player-targeted turn below.
+                    } else {
+                        // Nobody reachable: stagger toward the nearest teammate, hit nothing.
+                        teammates.sort(java.util.Comparator.comparingInt(
+                            e -> e.minDistanceTo(currentEnemy.getGridPos())));
+                        java.util.List<GridPos> stagger = Pathfinding.findPathSized(arena,
+                            currentEnemy.getGridPos(), teammates.get(0).getGridPos(),
+                            currentEnemy.getMoveSpeed(), currentEnemy);
+                        sendMessage("§d" + currentEnemy.getDisplayName()
+                            + " staggers about in confusion!");
+                        if (stagger != null && !stagger.isEmpty()) {
+                            pendingAction = new com.crackedgames.craftics.combat.ai.EnemyAction.Move(stagger);
+                            startEnemyMove(stagger);
+                        } else {
+                            enemyTurnState = EnemyTurnState.DONE;
+                            enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                        }
+                        return;
+                    }
+                }
+                // No teammates OR unsupported redirect: fall through to a normal turn.
+            }
+            // Not disoriented (50%) OR redirect fell through: take a normal turn. Do NOT
+            // return - control continues to the normal ai.decideAction path below. But if
+            // ALSO blinded, fumble now so both debuffs don't double-tick this round.
             if (currentEnemy.getBlindedTurns() > 0) {
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -16912,8 +16962,12 @@ public class CombatManager {
             // player took the hit (often producing "skeleton attacked twice in
             // one turn" reports when the death handler then flipped
             // this.player mid-chain).
-            CombatEntity rangedTarget = (currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
-                ? currentEnemyPetAggroTarget : null;
+            // Confused enemy shooting an ally takes priority; else pet-aggro; else player.
+            CombatEntity rangedTarget =
+                (confusedRangedVictim != null && confusedRangedVictim.isAlive())
+                    ? confusedRangedVictim
+                    : ((currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
+                        ? currentEnemyPetAggroTarget : null);
             ServerPlayerEntity rangedTargetPlayer = rangedTarget != null
                 ? null : findClosestPartyTarget(currentEnemy.getGridPos());
             GridPos rangedTargetPos = rangedTarget != null ? rangedTarget.getGridPos()
@@ -16943,8 +16997,13 @@ public class CombatManager {
                 }
             }
             int raDamage = (int)(rangedBaseDmg * com.crackedgames.craftics.CrafticsMod.CONFIG.enemyDamageMultiplier());
-            CombatEntity petTarget = (currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
-                ? currentEnemyPetAggroTarget : null;
+            // Confused-ranged victim (a fellow enemy) takes the CombatEntity damage path,
+            // same as a pet-aggro target - so a confused skeleton's arrow lands on its ally.
+            CombatEntity petTarget =
+                (confusedRangedVictim != null && confusedRangedVictim.isAlive())
+                    ? confusedRangedVictim
+                    : ((currentEnemyPetAggroTarget != null && currentEnemyPetAggroTarget.isAlive())
+                        ? currentEnemyPetAggroTarget : null);
             if (petTarget != null) {
                 // Addon combat effects: modify ally incoming damage
                 int raHookedDmg = fireEffectHookChained(raDamage,
@@ -26296,9 +26355,15 @@ public class CombatManager {
                         + " for " + TileTrap.FLOWER_FIELD_HEAL + " HP.");
                 } else {
                     int dealt = occupant.takeDamage(TileTrap.FLOWER_FIELD_DAMAGE);
-                    occupant.stackConfusion(TileTrap.FLOWER_FIELD_CONFUSION_TURNS, 0);
+                    // Nerf: pollen confusion is never guaranteed - roll confusionApplyChance.
+                    boolean bewildered = com.crackedgames.craftics.combat.ConfusionLogic.rollHits(
+                        Math.random(), CrafticsMod.CONFIG.confusionApplyChance());
+                    if (bewildered) {
+                        occupant.stackConfusion(TileTrap.FLOWER_FIELD_CONFUSION_TURNS, 0);
+                    }
                     sendMessage("§2✿ The flower field saps " + occupant.getDisplayName()
-                        + " for " + dealt + " damage and its pollen bewilders it!");
+                        + " for " + dealt + " damage"
+                        + (bewildered ? " and its pollen bewilders it!" : "."));
                     checkAndHandleDeath(occupant);
                 }
             }

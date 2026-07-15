@@ -142,6 +142,17 @@ public class CrafticsConfig {
     @RangeConstraint(min = 0.0, max = 1.0)
     public float criticalHitChance = 0.05f;
 
+    /** Chance for a normally-guaranteed confusion source (saxophone, Nautilus/Heart items,
+     *  flower field, the Abilities CONFUSION factory) to actually confuse. Nerf: no source
+     *  guarantees confusion anymore. */
+    @RangeConstraint(min = 0.0, max = 1.0)
+    public double confusionApplyChance = 0.35;
+
+    /** Chance each turn that a confused enemy is disoriented and redirects its attack at a
+     *  random enemy (vs acting normally against the player). */
+    @RangeConstraint(min = 0.0, max = 1.0)
+    public double confusedRetargetChance = 0.50;
+
     @RangeConstraint(min = 0.0, max = 1.0)
     public float rangedAccuracy = 0.95f;
 

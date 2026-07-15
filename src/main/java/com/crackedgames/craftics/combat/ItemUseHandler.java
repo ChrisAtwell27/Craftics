@@ -69,8 +69,11 @@ public class ItemUseHandler {
                 if (poisonLevel > 0) {
                     enemy.stackPoison(poisonLevel, poisonLevel);
                 }
-                // Apply Confusion if nautilus/heart
-                if (confusionLevel > 0) {
+                // Apply Confusion if nautilus/heart. Nerf: never guaranteed - roll chance.
+                if (confusionLevel > 0
+                        && com.crackedgames.craftics.combat.ConfusionLogic.rollHits(
+                            Math.random(),
+                            com.crackedgames.craftics.CrafticsMod.CONFIG.confusionApplyChance())) {
                     enemy.stackConfusion(confusionLevel, confusionLevel);
                 }
                 hitCount++;

@@ -87,29 +87,33 @@ public final class HoverTargetArrowRenderer {
             pos.x - cam.x,
             pos.y - cam.y + target.getHeight() + HEIGHT_OFFSET + bob,
             pos.z - cam.z);
-        matrices.multiply(camera.getRotation());
-        // 180° in-plane flip, same as the effect icons: raw billboard space is upside down
-        // relative to the UV convention below (see EffectIconRenderer for the full story).
-        matrices.scale(-1.0f, -1.0f, 1.0f);
+        // Yaw-only billboard: the arrow rotates about the VERTICAL axis to face the camera
+        // horizontally (so it's always visible), but stays UPRIGHT - it never tips to lie
+        // flat-on to the camera. This keeps the down-pointing arrow always pointing straight
+        // down at the entity below it, instead of the old full-camera billboard that made it
+        // look like it was aiming off to the side when the camera pitched.
+        float yawDeg = -camera.getYaw(); // face the camera in the horizontal plane
+        matrices.multiply(net.minecraft.util.math.RotationAxis.POSITIVE_Y.rotationDegrees(yawDeg));
 
         Matrix4f matrix = matrices.peek().getPositionMatrix();
 
+        // Quad in the arrow's local space: X = right, Y = up. The texture is a DOWN arrow
+        // (tip at the bottom). UVs map v=0 to the top of the image and v=1 to the bottom;
+        // we place the quad so its bottom edge (the tip) sits just above the entity's head.
         // See-through layer so the arrow reads even when its target is behind cover.
-        // Double-sided: the see-through layer culls back faces, so a single winding that ends up
-        // facing away from the camera after the billboard would be culled to nothing - the same
-        // reason the effect icons drew invisibly. Emitting both faces removes that dependency.
+        // Double-sided so it shows from both sides of the yaw billboard.
         VertexConsumer vc = consumers.getBuffer(RenderLayer.getTextSeeThrough(ARROW));
         float h = ARROW_SIZE / 2.0f;
-        // Front face.
-        vc.vertex(matrix, -h,  h, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
-        vc.vertex(matrix,  h,  h, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
-        vc.vertex(matrix,  h, -h, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
-        vc.vertex(matrix, -h, -h, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
-        // Back face (reversed winding).
-        vc.vertex(matrix, -h, -h, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
-        vc.vertex(matrix,  h, -h, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
-        vc.vertex(matrix,  h,  h, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
-        vc.vertex(matrix, -h,  h, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
+        // Front face (v: top=0, bottom=1 so the arrow renders upright, tip down).
+        vc.vertex(matrix, -h,  h, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix, -h, -h, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix,  h, -h, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix,  h,  h, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
+        // Back face (reversed winding, so it's visible from behind too).
+        vc.vertex(matrix,  h,  h, 0).color(255, 255, 255, 255).texture(1f, 0f).light(FULL_BRIGHT);
+        vc.vertex(matrix,  h, -h, 0).color(255, 255, 255, 255).texture(1f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix, -h, -h, 0).color(255, 255, 255, 255).texture(0f, 1f).light(FULL_BRIGHT);
+        vc.vertex(matrix, -h,  h, 0).color(255, 255, 255, 255).texture(0f, 0f).light(FULL_BRIGHT);
 
         matrices.pop();
     }

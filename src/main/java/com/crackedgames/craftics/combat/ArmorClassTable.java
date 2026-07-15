@@ -59,14 +59,19 @@ public final class ArmorClassTable {
         };
     }
 
-    /** Per-slot AC contribution from a material's base value. Non-positive base &rarr; 0. */
+    /**
+     * Per-slot AC contribution from a material's base value. Non-positive base &rarr; 0.
+     * A positive base never yields a 0 piece: the softest set (B=1, the Robe) still
+     * gives every slot at least 1 AC, so wearing a piece always counts for something.
+     */
     public static int pieceAC(int baseB, Slot slot) {
         if (baseB <= 0) return 0;
-        return switch (slot) {
+        int ac = switch (slot) {
             case LEGGINGS   -> baseB;
             case CHESTPLATE -> baseB + 1;
             case HELMET, BOOTS -> (baseB + 1) / 2; // integer ⌈B/2⌉
         };
+        return Math.max(1, ac);
     }
 
     /**

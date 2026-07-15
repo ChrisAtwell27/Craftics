@@ -748,6 +748,12 @@ public class CombatTooltips implements ItemTooltipCallback {
         return sb.toString();
     }
 
+    /** Confusion apply chance as a whole-number percent, from config. Confusion is never
+     *  guaranteed (nerf), so tooltips show this instead of implying it always lands. */
+    private static long confusionChancePct() {
+        return Math.round(com.crackedgames.craftics.CrafticsMod.CONFIG.confusionApplyChance() * 100);
+    }
+
     private static String getTooltipFor(Item item) {
         // ── Crafting stations ── open their UI mid-battle for 1 AP.
         com.crackedgames.craftics.combat.CraftingStations.Station station =
@@ -905,8 +911,8 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         // ── Water AoE Throwables ──
         if (item == Items.TURTLE_EGG) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 1)\n\u00a7c2 DMG \u00a77| Radius 1 | \u00a73Water\n\u00a73Soaked I";
-        if (item == Items.NAUTILUS_SHELL) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 3)\n\u00a7c4 DMG \u00a77| Radius 2 | \u00a73Water\n\u00a73Soaked III \u00a77+ \u00a7dConfusion I";
-        if (item == Items.HEART_OF_THE_SEA) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 4)\n\u00a7c5 DMG \u00a77| Radius 3 | \u00a73Water\n\u00a73Soaked IV \u00a77+ \u00a7dConfusion II";
+        if (item == Items.NAUTILUS_SHELL) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 3)\n\u00a7c4 DMG \u00a77| Radius 2 | \u00a73Water\n\u00a73Soaked III \u00a77+ \u00a7d" + confusionChancePct() + "% Confusion I";
+        if (item == Items.HEART_OF_THE_SEA) return "\u00a7b1 AP \u00a77- Water AoE throwable (Tier 4)\n\u00a7c5 DMG \u00a77| Radius 3 | \u00a73Water\n\u00a73Soaked IV \u00a77+ \u00a7d" + confusionChancePct() + "% Confusion II";
 
         // ── Coral Weapons (Water-type melee) ──
         if (item == Items.TUBE_CORAL) return weaponStatLine(item) + "\n\u00a73\u2716 Soaked: \u00a77-1 Speed, 2x lightning dmg (1 turn)";

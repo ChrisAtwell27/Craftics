@@ -242,9 +242,14 @@ public final class Abilities {
                             + " is slowed for " + turns + " turn(s).");
                 }
                 case CONFUSION -> {
-                    target.stackConfusion(turns, amplifier);
-                    messages.add("§dConfused! " + target.getDisplayName()
-                            + " is disoriented for " + turns + " turn(s).");
+                    // Nerf: confusion is never guaranteed - roll confusionApplyChance.
+                    if (com.crackedgames.craftics.combat.ConfusionLogic.rollHits(
+                            Math.random(),
+                            com.crackedgames.craftics.CrafticsMod.CONFIG.confusionApplyChance())) {
+                        target.stackConfusion(turns, amplifier);
+                        messages.add("§dConfused! " + target.getDisplayName()
+                                + " is disoriented for " + turns + " turn(s).");
+                    }
                 }
                 // TODO: WEAKNESS and other types that reduce attack require
                 //   target.stackDefensePenalty() or target.setAttackPenalty() which do not
