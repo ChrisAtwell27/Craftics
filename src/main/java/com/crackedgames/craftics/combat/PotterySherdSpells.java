@@ -53,8 +53,17 @@ public class PotterySherdSpells {
 
     /** Prefix for double damage next attack (Prize sherd). CombatManager parses this. */
     public static final String DOUBLE_NEXT_PREFIX = "§6DOUBLE_NEXT:";
-    /** Prefix for hex trap tile effect. */
-    public static final String HEX_TRAP_PREFIX = "§eTILE:";
+    /**
+     * Prefix for the Danger sherd's hex-trap tile effect.
+     *
+     * <p>Aliases {@link ItemUseHandler#TILE_EFFECT_PREFIX} rather than restating the literal:
+     * a sherd placing a tile effect speaks the same protocol as any other tile-effect item,
+     * and this was previously a second declaration of the identical string. Two constants with
+     * one value invite exactly one bug - the two parsers drifted apart, one matching with
+     * {@code startsWith} and the other with {@code contains} - so they are now provably the
+     * same prefix.
+     */
+    public static final String HEX_TRAP_PREFIX = ItemUseHandler.TILE_EFFECT_PREFIX;
     /** Prefix for the Archer sherd's seeker volley (count:damage). CombatManager parses this. */
     public static final String SEEKERS_PREFIX = "§bSEEKERS:";
 
@@ -106,12 +115,14 @@ public class PotterySherdSpells {
         return pets;
     }
 
-    /** All pottery sherd items that function as spells. */
+    /**
+     * All pottery sherd items that function as spells. Membership only - AP costs live in
+     * {@link #getSherdApCost} and are deliberately not restated here, because the two lists
+     * drifted apart the last time the sherds were rebalanced.
+     */
     public static final Set<Item> POTTERY_SHERDS = Set.of(
-        // 2 AP
         Items.EXPLORER_POTTERY_SHERD,
         Items.FRIEND_POTTERY_SHERD,
-        // 3 AP
         Items.HEART_POTTERY_SHERD,
         Items.SCRAPE_POTTERY_SHERD,
         Items.ANGLER_POTTERY_SHERD,
@@ -119,7 +130,6 @@ public class PotterySherdSpells {
         Items.SHEAF_POTTERY_SHERD,
         Items.MINER_POTTERY_SHERD,
         Items.DANGER_POTTERY_SHERD,
-        // 4 AP
         Items.BLADE_POTTERY_SHERD,
         Items.BURN_POTTERY_SHERD,
         Items.SNORT_POTTERY_SHERD,
@@ -129,12 +139,10 @@ public class PotterySherdSpells {
         Items.BREWER_POTTERY_SHERD,
         Items.PLENTY_POTTERY_SHERD,
         Items.GUSTER_POTTERY_SHERD,
-        // 5 AP
         Items.ARCHER_POTTERY_SHERD,
         Items.HOWL_POTTERY_SHERD,
         Items.ARMS_UP_POTTERY_SHERD,
         Items.PRIZE_POTTERY_SHERD,
-        // 6 AP
         Items.SKULL_POTTERY_SHERD
     );
 
@@ -1527,7 +1535,7 @@ public class PotterySherdSpells {
     /** Get tooltip description for a pottery sherd spell. */
     public static String getSherdTooltip(Item item) {
         if (item == Items.EXPLORER_POTTERY_SHERD) return "§d[2 AP] Phase Step §7- Teleport 4 tiles + Resistance II (1 turn)";
-        if (item == Items.FRIEND_POTTERY_SHERD) return "§d[2 AP] Guardian Spirit §7- Heal ALL pets to full\n"
+        if (item == Items.FRIEND_POTTERY_SHERD) return "§d[3 AP] Guardian Spirit §7- Heal ALL pets to full\n"
             + "§7+" + FRIEND_ATK_BUFF + " ATK and +" + FRIEND_SPEED_BUFF + " Speed to every pet ("
             + FRIEND_BUFF_TURNS + " turns)";
         if (item == Items.HEART_POTTERY_SHERD) return "§d[5 AP] Mending Light §7- Heal 15 HP + Regen II (4 turns)";

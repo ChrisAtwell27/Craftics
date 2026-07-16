@@ -87,14 +87,6 @@ public class CombatManager {
         return (int) INSTANCES.values().stream().filter(cm -> cm.active).count();
     }
 
-    /** @deprecated use get(player) instead */
-    @Deprecated
-    public static CombatManager getInstance() {
-        return INSTANCES.values().stream().filter(cm -> cm.active).findFirst()
-            .orElseGet(CombatManager::new);
-    }
-
-    private static final int DEFAULT_SPEED = 3;
     private static final int MOVE_TICKS = 4; // ticks per tile of movement
     private int getMoveTicks() { return CrafticsMod.CONFIG.skipEnemyAnimations() ? 1 : MOVE_TICKS; }
 
@@ -1725,47 +1717,6 @@ public class CombatManager {
         com.crackedgames.craftics.world.HubTeleports.toHub(p);
     }
 
-    // Best-effort tame state via reflection -- resilient across mapping/name changes
-    private static void applyHubTamingState(net.minecraft.entity.Entity entity, java.util.UUID ownerUuid) {
-        try {
-            java.lang.reflect.Method setOwnerUuid = entity.getClass().getMethod("setOwnerUuid", java.util.UUID.class);
-            setOwnerUuid.invoke(entity, ownerUuid);
-        } catch (ReflectiveOperationException ignored) {}
-
-        try {
-            java.lang.reflect.Method setTamed = entity.getClass().getMethod("setTamed", boolean.class);
-            setTamed.invoke(entity, true);
-        } catch (ReflectiveOperationException ignored) {}
-
-        try {
-            // Horses use setTame instead of setTamed
-            java.lang.reflect.Method setTame = entity.getClass().getMethod("setTame", boolean.class);
-            setTame.invoke(entity, true);
-        } catch (ReflectiveOperationException ignored) {}
-
-        try {
-            java.lang.reflect.Method setSitting = entity.getClass().getMethod("setSitting", boolean.class);
-            setSitting.invoke(entity, false);
-        } catch (ReflectiveOperationException ignored) {}
-
-        try {
-            java.lang.reflect.Method setOrderedToSit = entity.getClass().getMethod("setOrderedToSit", boolean.class);
-            setOrderedToSit.invoke(entity, false);
-        } catch (ReflectiveOperationException ignored) {}
-    }
-
-    private void sendPartyHome(ServerPlayerEntity referencePlayer) {
-        List<ServerPlayerEntity> members = getOnlinePartyMembers(referencePlayer);
-        for (ServerPlayerEntity member : members) {
-            teleportToHub(member);
-        }
-        for (ServerPlayerEntity member : members) {
-            if (member.networkHandler != null) {
-                ServerPlayNetworking.send(member, new ExitCombatPayload(true));
-            }
-        }
-    }
-
     private boolean playerMounted = false;
     private MobEntity mountMob = null;
     /** Ally type id of the current mount (e.g. golemoverhaul:netherite_golem), or null. */
@@ -2064,6 +2015,12 @@ public class CombatManager {
     private static final int SAND_MINE_LIFETIME = 4;
     private final List<SandMine> activeSandMines = new ArrayList<>();
 
+    /** Elytra flight: blocks above the launch tile the player rises to, out of view. */
+    private static final double ELYTRA_FLIGHT_HEIGHT = 14.0;
+    /** Elytra flight: ticks spent rising, and ticks spent falling. */
+    private static final int ELYTRA_RISE_TICKS = 7;
+    private static final int ELYTRA_FALL_TICKS = 7;
+
     // Curse of the Sands: while > 0, every tile the player moves off sprouts a
     // live sand mine (planted in tickAnimation's move-finish block). Applied by
     // the "curse_of_sands" area effect, ticked down with the other end-of-player-
@@ -2221,7 +2178,6 @@ public class CombatManager {
     }
 
     private boolean doubleDamageNextAttack = false;
-    private int windBurstDamageBonus = 0;
 
     /** Party members whose post-victory loot screen is still open. */
     private final java.util.Set<java.util.UUID> lootPendingPlayers = new java.util.HashSet<>();
@@ -4363,10 +4319,7 @@ public class CombatManager {
         }
         if (!arena.isInBounds(target)) return;
 
-        // Elytra: first move of the turn can reach any tile for free
-        boolean elytraFreeMove = !movedThisTurn && playerHasElytra();
-
-        if (!elytraFreeMove && movePointsRemaining <= 0) {
+        if (movePointsRemaining <= 0) {
             sendMessage("§cNo movement left this turn!");
             return;
         }
@@ -4389,7 +4342,7 @@ public class CombatManager {
         // Player movement treats LAVA/FIRE as cost 1 so the player can freely walk
         // across magma and fire (damage still applies per-step at tick time). This
         // mirrors the reachable-tile highlight which also uses ignoreHazardCost=true.
-        int moveBudget = elytraFreeMove ? (arena.getWidth() + arena.getHeight()) : movePointsRemaining;
+        int moveBudget = movePointsRemaining;
         // Jump-aware: A* will vault a void pit / lava channel when that beats walking around,
         // at a cost of (gap + 2) speed. resolvedPath carries the REAL cost - a jump is one entry
         // in the step list but costs several speed, so path.size() is no longer the price.
@@ -4451,12 +4404,10 @@ public class CombatManager {
 
         // Charge the path's REAL cost, not its length. A jump is a single step that costs
         // (gap + 2) speed, so path.size() would undercharge it badly. A cobweb truncation
-        // still burns everything left, and elytra flight is free.
+        // still burns everything left.
         int cost;
         if (hitCobweb) {
             cost = movePointsRemaining;
-        } else if (elytraFreeMove) {
-            cost = 0;
         } else if (path.size() == resolvedPath.steps().size()) {
             cost = resolvedPath.cost(); // untruncated - use the exact A* cost
         } else {
@@ -4493,11 +4444,6 @@ public class CombatManager {
             || w.getBlockState(bp.up(2)).isOf(Blocks.COBWEB);
     }
 
-    private boolean playerHasElytra() {
-        if (player == null) return false;
-        return player.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST).getItem() == Items.ELYTRA;
-    }
-
     private boolean playerHasBoat() {
         if (player == null) return false;
         // Turtle helmet set bonus: water tiles are walkable
@@ -4528,12 +4474,6 @@ public class CombatManager {
             }
         }
         return false;
-    }
-
-    private boolean isPlayerOnWater() {
-        if (arena == null) return false;
-        GridTile tile = arena.getTile(arena.getPlayerGridPos());
-        return tile != null && tile.isWater();
     }
 
     /** Returns server-side tick delay for weapon impact (matches client animation). */
@@ -5341,12 +5281,6 @@ public class CombatManager {
             usedTriple = true;
         }
 
-        // Wind Burst accumulated bonus -consume on mace hit
-        if (weapon == Items.MACE && windBurstDamageBonus > 0) {
-            baseDamage += windBurstDamageBonus;
-            windBurstDamageBonus = 0;
-        }
-
         // Airtime -a weapon hit spends ONE stack for (1.0 + 0.5*level)x damage:
         // Airtime I = 1.5x, II = 2.0x, ... V = 3.5x. Only weapon attacks route through
         // here, so thrown wind charges, items, and sherds neither consume nor benefit.
@@ -5760,13 +5694,26 @@ public class CombatManager {
             WeaponAbility.AttackResult abilityResult = fSuppressDirectHit
                 ? new WeaponAbility.AttackResult(0, "")
                 : WeaponAbility.applyAbility(player, fWeapon, fTarget, arena, fBaseDamage, fAttackerStats, fLuckPoints);
+            // Consume the Wind Burst recoil tag FIRST, and hand every consumer below a list
+            // that no longer contains it. The tag is a control instruction, not a message:
+            // the shockwave blows the SWINGER around too, so it grants Airtime at the
+            // enchant's level plus a 1-tile shove. It is parsed here because VanillaWeapons
+            // is static and can reach neither combatEffects nor the shove helper.
+            //
+            // Stripping once, up front, is deliberate: this list is walked three separate
+            // times (display, achievements, the crit check), and a tag filtered in only the
+            // first walk still reaches the other two. That costs nothing today - no
+            // achievement matches "[WB_SELF:" - but it is precisely how a stringly-typed
+            // tag leaks into a substring match later.
+            List<String> abilityMessages = new ArrayList<>();
             for (String msg : abilityResult.messages()) {
-                // Wind Burst bonus tag -accumulate for next mace hit
-                if (msg.startsWith("[WB_BONUS:")) {
-                    int wbVal = Integer.parseInt(msg.substring(10, msg.length() - 1));
-                    windBurstDamageBonus += wbVal;
+                if (msg.startsWith("[WB_SELF:")) {
+                    applyWindBurstRecoil(Integer.parseInt(msg.substring(9, msg.length() - 1)));
                     continue;
                 }
+                abilityMessages.add(msg);
+            }
+            for (String msg : abilityMessages) {
                 sendMessage(msg);
             }
 
@@ -5780,7 +5727,7 @@ public class CombatManager {
                 achievementTracker.recordShockwaveTargets(extraHits);
             }
             // Check ability messages for specific achievement events
-            for (String msg : abilityResult.messages()) {
+            for (String msg : abilityMessages) {
                 if (msg.contains("Sweep!")) achievementTracker.recordSweepTargets(extraHits);
                 if (msg.contains("CRITICAL HIT")) achievementTracker.recordCrit();
                 if (msg.contains("EXECUTE!") && !fTarget.isAlive()) achievementTracker.recordExecutionKill();
@@ -5798,7 +5745,7 @@ public class CombatManager {
                 if (msg.contains("Confused!")) achievementTracker.recordEnemyConfused(fTarget.getEntityId());
             }
             // Reset crit streak on non-crit
-            boolean wasCrit = abilityResult.messages().stream().anyMatch(m -> m.contains("CRITICAL HIT"));
+            boolean wasCrit = abilityMessages.stream().anyMatch(m -> m.contains("CRITICAL HIT"));
             if (!wasCrit) achievementTracker.resetCritStreak();
             // Addon combat effects: fire onCrit for weapon-ability crits not already caught by luckCrit
             if (wasCrit && !fLuckCrit) {
@@ -7055,13 +7002,6 @@ public class CombatManager {
                     net.minecraft.sound.SoundCategory.HOSTILE, 1.0f, 1.5f);
             }
         }
-    }
-
-    private boolean isPassiveMob(CombatEntity entity) {
-        return switch (entity.getEntityTypeId()) {
-            case "minecraft:cow", "minecraft:pig", "minecraft:sheep", "minecraft:chicken" -> true;
-            default -> false;
-        };
     }
 
     /**
@@ -8515,6 +8455,64 @@ public class CombatManager {
     }
 
     /**
+     * Elytra launch: rise straight up out of view from the current tile, then fall onto
+     * {@code target}. The grid position changes once, at the apex, so nothing observes the
+     * player mid-flight in a stale tile. Input is blocked for the flight.
+     *
+     * <p>Public because {@code ItemUseHandler} drives the Elytra ability but cannot reach
+     * {@code activeWalkers} / {@code spellAnimCooldown} / the position broadcast, which are all
+     * private here - the same reason {@link #applyPlayerEffectLive} exists. The caller is
+     * responsible for validating that {@code target} is a legal landing tile.
+     */
+    public void flyPlayerTo(GridPos target) {
+        if (player == null || arena == null || target == null) return;
+
+        final ServerPlayerEntity fp = player;
+        EntityWalker.Mover mover = (x, y, z, yaw) -> {
+            //? if <=1.21.4 {
+            fp.prevX = fp.getX();
+            fp.prevY = fp.getY();
+            fp.prevZ = fp.getZ();
+            //?} else {
+            /*fp.lastX = fp.getX();
+            fp.lastY = fp.getY();
+            fp.lastZ = fp.getZ();
+            *///?}
+            fp.setPosition(x, y, z);
+            fp.networkHandler.requestTeleport(x, y, z, fp.getYaw(), fp.getPitch());
+            broadcastPlayerPositionToOthers(fp);
+        };
+
+        double startX = fp.getX(), startY = fp.getY(), startZ = fp.getZ();
+        double apexY = startY + ELYTRA_FLIGHT_HEIGHT;
+
+        BlockPos destBlock = arena.gridToBlockPos(target);
+        double destX = destBlock.getX() + 0.5;
+        double destZ = destBlock.getZ() + 0.5;
+        double destY = arena.getEntityY(target, false);
+
+        // Fall leg: starts above the destination, lands on it. Queued by the rise's completion.
+        Runnable startFall = () -> {
+            // The grid tile changes exactly once, at the apex, while the player is out of view.
+            arena.setPlayerGridPos(target);
+            activeWalkers.add(new EntityWalker(mover,
+                destX, apexY, destZ, destX, destY, destZ, ELYTRA_FALL_TICKS,
+                () -> {
+                    fp.setOnGround(true);
+                    fp.fallDistance = 0;
+                    sendSync();
+                    refreshHighlights();
+                }));
+        };
+
+        activeWalkers.add(new EntityWalker(mover,
+            startX, startY, startZ, startX, apexY, startZ, ELYTRA_RISE_TICKS, startFall));
+
+        // Hold input until both legs finish (+2 ticks of slack, matching the sherd-animation gate).
+        spellAnimCooldown = ELYTRA_RISE_TICKS + ELYTRA_FALL_TICKS + 2;
+    }
+
+    /**
      * Run {@code buffApplication} (which may apply SPEED/HASTE to the current
      * player's {@code combatEffects}) and top up the live AP/movement budget by
      * whatever bonus it newly granted. For external buff helpers (goat horns,
@@ -9547,9 +9545,11 @@ public class CombatManager {
 
         // Process prefix-based results from spells
 
-        // Tile effects (hex_trap from Danger sherd)
-        if (result.contains(PotterySherdSpells.HEX_TRAP_PREFIX)) {
-            String afterPrefix = result.substring(result.indexOf(PotterySherdSpells.HEX_TRAP_PREFIX) + PotterySherdSpells.HEX_TRAP_PREFIX.length());
+        // Tile effects (hex_trap from Danger sherd). Matched with startsWith, like the other
+        // tile-effect parser: the sherd puts the prefix at the head of its result, so contains
+        // only added the chance of firing on the prefix appearing inside a message body.
+        if (result.startsWith(PotterySherdSpells.HEX_TRAP_PREFIX)) {
+            String afterPrefix = result.substring(PotterySherdSpells.HEX_TRAP_PREFIX.length());
             String[] parts = afterPrefix.split("\\|", 2);
             String tileData = parts[0];
             String[] tileInfo = tileData.split(":");
@@ -10199,7 +10199,12 @@ public class CombatManager {
         // active: tickAll() ticks every CombatManager instance unconditionally, and
         // the trader event lives outside active combat. Runs before the !active guard.
         if (!activeWalkers.isEmpty()) {
-            for (EntityWalker w : activeWalkers) w.tick();
+            // Snapshot: a walker's onComplete may ADD another walker (the Elytra launch chains
+            // its rise leg into a fall leg). Iterating the live list would then throw
+            // ConcurrentModificationException mid-flight and strand the player in the air.
+            // The snapshot also gives a newly added walker its first tick on the NEXT server
+            // tick, keeping a chained animation's tick budget honest.
+            for (EntityWalker w : new java.util.ArrayList<>(activeWalkers)) w.tick();
             activeWalkers.removeIf(EntityWalker::isComplete);
         }
 
@@ -11267,11 +11272,6 @@ public class CombatManager {
                 }
                 if (wasAlive && !e.isAlive()) achievementTracker.recordWitherKill();
                 checkAndHandleDeath(e);
-            }
-
-            if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
-                handleVictory();
-                return;
             }
 
             if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
@@ -17607,6 +17607,68 @@ public class CombatManager {
     }
 
     /**
+     * Wind Burst recoil: the mace's shockwave throws the swinger around as well as the
+     * enemies. Grants Airtime at the enchant's level for one turn and shoves the player a
+     * single tile in a random direction.
+     *
+     * <p>This does NOT reuse {@link #applyPlayerKnockback(GridPos, int)}. That routine is
+     * for being hit BY something: it lands the player on hazards and applies their
+     * consequences, so a recoil through it could drop you in the void or deep water for a
+     * guaranteed kill - dying to your own successful swing on a 1-in-4 roll. Your own
+     * shockwave shouldn't be able to kill you, so this shove refuses any tile that isn't
+     * plainly safe and simply doesn't move you when every side is blocked.
+     *
+     * <p>Airtime is raised, never lowered: {@code addEffect} overwrites the amplifier, so
+     * re-granting a flat level would downgrade a bigger stack built from wind charges or an
+     * Elytra launch.
+     */
+    private void applyWindBurstRecoil(int windBurstLevel) {
+        if (windBurstLevel <= 0 || arena == null || player == null) return;
+
+        // Airtime at the enchant's level (level N -> amplifier N-1), one turn, capped.
+        // Never downgrade an existing, higher stack.
+        int wantAmp = Math.min(windBurstLevel - 1, CombatEffects.AIRTIME_MAX_AMPLIFIER);
+        int haveAmp = Math.max(0, combatEffects.getAirtimeLevel() - 1);
+        combatEffects.addEffect(CombatEffects.EffectType.AIRTIME, 1, Math.max(wantAmp, haveAmp));
+
+        // Shove one tile to a random side, skipping anything unsafe. Directions are tried in
+        // a random order so a blocked roll still moves you when some other side is open.
+        GridPos from = gridPosOf(player);
+        java.util.List<int[]> dirs = new java.util.ArrayList<>(java.util.List.of(
+            new int[]{1, 0}, new int[]{-1, 0}, new int[]{0, 1}, new int[]{0, -1}));
+        java.util.Collections.shuffle(dirs, new java.util.Random(player.getRandom().nextLong()));
+
+        boolean moved = false;
+        for (int[] d : dirs) {
+            GridPos to = new GridPos(from.x() + d[0], from.z() + d[1]);
+            if (!arena.isInBounds(to) || arena.isEnemyOccupied(to)) continue;
+            var tile = arena.getTile(to);
+            if (tile == null || !isSafeRecoilTile(tile)) continue;
+            arena.setPlayerGridPos(to);
+            BlockPos bp = arena.gridToBlockPos(to);
+            player.requestTeleport(bp.getX() + 0.5, arena.getEntityY(to, false), bp.getZ() + 0.5);
+            moved = true;
+            break;
+        }
+
+        sendMessage("§b✦ Wind Burst recoil! §f" + (moved ? "You're blown a tile" : "You brace against the blast")
+            + " and land in §bAirtime " + Math.max(windBurstLevel, combatEffects.getAirtimeLevel())
+            + "§f (1 turn).");
+    }
+
+    /**
+     * A tile the Wind Burst recoil may drop the player on: somewhere they'd walk anyway, that
+     * won't hurt them. Excludes water and powder snow, which are walkable but carry their own
+     * consequences (Soaked / freezing) that a self-inflicted recoil shouldn't impose.
+     */
+    private static boolean isSafeRecoilTile(GridTile tile) {
+        com.crackedgames.craftics.core.TileType t = tile.getType();
+        if (!t.walkable || t.requiresBoat || t.damageOnStep > 0) return false;
+        return t != com.crackedgames.craftics.core.TileType.WATER
+            && t != com.crackedgames.craftics.core.TileType.POWDER_SNOW;
+    }
+
+    /**
      * Shove the player off a tile perpendicular to a dash direction (used by the
      * Artifacts mimic dash). Damages the player and tries to push them 1 tile
      * sideways. If both perpendicular tiles are blocked, falls back to a 1-tile
@@ -19567,6 +19629,19 @@ public class CombatManager {
     }
 
     private void handleVictory() {
+        // Re-entrancy gate. Twenty-odd call sites all ask "is every enemy dead?" from
+        // different places - DOT ticks, death handling, item use, turn end - and several can
+        // run in the SAME tick off one killing blow. Each entry minted a fresh pendingVictory,
+        // and each pendingVictory bought its own advanceBiomeRun(): two paths meant +2 levels,
+        // three meant +3. That is the "Deep Dark level 3 -> 6, landed in Nether Wastes I"
+        // report - the run skipped its own boss and walked into the next biome.
+        //
+        // The downstream consume-once token in continueVictoryAfterLoot() cannot help here:
+        // it stops that method being re-entered, but a second handleVictory() just hands it a
+        // brand new token. The duplicate has to be rejected at the entry point, and phase is
+        // the state that says the level is already won.
+        if (phase == CombatPhase.LEVEL_COMPLETE) return;
+
         // Raid gate: clearing the field is NOT winning while waves remain. Reward the
         // early clear by bringing the next wave in immediately (no telegraph wait) rather
         // than making the party stand around for the timer.
@@ -24586,18 +24661,6 @@ public class CombatManager {
         }
         return new EnterCombatPayload(
             origin.getX(), origin.getY(), origin.getZ(), w, h, yaw, mask);
-    }
-
-    private String serializeTrades(TraderSystem.TraderOffer offer) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < offer.trades().size(); i++) {
-            TraderSystem.Trade t = offer.trades().get(i);
-            if (i > 0) sb.append("|");
-            String itemId = net.minecraft.registry.Registries.ITEM.getId(t.item().getItem()).toString();
-            sb.append(itemId).append("~").append(t.item().getCount())
-              .append("~").append(t.emeraldCost()).append("~").append(t.description());
-        }
-        return sb.toString();
     }
 
     private static List<ItemStack> getMobDrops(String entityTypeId) {

@@ -392,7 +392,7 @@ public class CrafticsSavedData extends PersistentState {
         }
 
         public float getNgPlusMultiplier() {
-            return 1.0f + ngPlusLevel * 0.25f;
+            return NgPlusScaling.multiplier(ngPlusLevel);
         }
 
         /** Guards {@link #checkCampaignStamp()} so it runs at most once per loaded instance. */

@@ -84,8 +84,6 @@
   "text.config.craftics-config.option.friendlyFireEnabled.tooltip": "Whether players and allies can damage each other.",
   "text.config.craftics-config.option.permadeathMode": "Permadeath Mode",
   "text.config.craftics-config.option.permadeathMode.tooltip": "Whether death is permanent with no respawn.",
-  "text.config.craftics-config.option.hungerEnabled": "Hunger Enabled",
-  "text.config.craftics-config.option.hungerEnabled.tooltip": "Whether the vanilla hunger mechanic is active.",
   "text.config.craftics-config.option.healBetweenLevels": "Heal Between Levels",
   "text.config.craftics-config.option.healBetweenLevels.tooltip": "Whether players are healed when advancing between levels.",
   "text.config.craftics-config.option.rebuildArenasAdminOnly": "Rebuild Arenas Admin Only",
@@ -104,8 +102,6 @@
   "text.config.craftics-config.option.criticalHitChance.tooltip": "Probability (0.0-1.0) that an attack lands a critical hit.",
   "text.config.craftics-config.option.rangedAccuracy": "Ranged Accuracy",
   "text.config.craftics-config.option.rangedAccuracy.tooltip": "Probability (0.0-1.0) that a ranged attack hits its target.",
-  "text.config.craftics-config.option.poisonDamagePerTurn": "Poison Damage Per Turn",
-  "text.config.craftics-config.option.poisonDamagePerTurn.tooltip": "Damage dealt by poison each turn.",
   "text.config.craftics-config.option.maxCombatEffectDuration": "Max Combat Effect Duration",
   "text.config.craftics-config.option.maxCombatEffectDuration.tooltip": "Maximum number of turns a combat effect can last.",
 
@@ -179,8 +175,6 @@
   "text.config.craftics-config.option.dmgCoralFan": "Coral Fan Damage",
   "text.config.craftics-config.option.dmgCoralFan.tooltip": "Base damage dealt with a coral fan weapon (Water-type melee).",
 
-  "text.config.craftics-config.option.arenaGridPadding": "Arena Grid Padding",
-  "text.config.craftics-config.option.arenaGridPadding.tooltip": "Extra padding tiles added around the arena grid.",
   "text.config.craftics-config.option.lootQuantityMultiplier": "Loot Quantity Multiplier",
   "text.config.craftics-config.option.lootQuantityMultiplier.tooltip": "Multiplier on the quantity of loot dropped. 1.0 = normal.",
 
@@ -235,8 +229,6 @@
   "text.config.craftics-config.option.combatLogMaxLines": "Combat Log Max Lines",
   "text.config.craftics-config.option.combatLogMaxLines.tooltip": "Maximum number of lines shown in the combat log.",
 
-  "text.config.craftics-config.option.compactEnemyList": "Compact Enemy List",
-  "text.config.craftics-config.option.compactEnemyList.tooltip": "Whether the enemy list is shown in a compact layout.",
   "text.config.craftics-config.option.showEmeraldsInCombat": "Show Emeralds In Combat",
   "text.config.craftics-config.option.showEmeraldsInCombat.tooltip": "Whether the emerald count is shown during combat.",
   "text.config.craftics-config.option.fadeTurnBanner": "Fade Turn Banner",
@@ -245,8 +237,6 @@
   "text.config.craftics-config.option.showDamageNumbers.tooltip": "Whether floating damage numbers are displayed.",
   "text.config.craftics-config.option.bossGlowEffect": "Boss Glow Effect",
   "text.config.craftics-config.option.bossGlowEffect.tooltip": "Whether bosses are rendered with a glowing outline.",
-  "text.config.craftics-config.option.deathShrinkAnimation": "Death Shrink Animation",
-  "text.config.craftics-config.option.deathShrinkAnimation.tooltip": "Whether defeated entities play a shrink animation on death.",
   "text.config.craftics-config.option.screenShakeOnHit": "Screen Shake On Hit",
   "text.config.craftics-config.option.screenShakeOnHit.tooltip": "Whether the screen shakes when a hit lands.",
   "text.config.craftics-config.option.vfxBlockEntitiesEnabled": "VFX Block Entities Enabled",

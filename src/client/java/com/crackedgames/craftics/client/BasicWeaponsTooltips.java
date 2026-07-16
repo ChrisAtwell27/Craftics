@@ -44,7 +44,7 @@ public final class BasicWeaponsTooltips {
         lines.add(Text.literal(stat.toString()));
 
         for (String line : effectLines(type)) {
-            lines.add(Text.literal("§e • " + line));
+            TooltipWrap.addWrapped(lines, " ", "§e• " + line);
         }
         if (BasicWeaponsCompat.isBluntType(type) && mightLevel > 0) {
             lines.add(Text.literal("§b • Might: +" + mightLevel + " dmg, +"

@@ -70,7 +70,7 @@ public class CombatEntity {
     private int confusionAmplifier = 0;
     private int slownessTurns = 0;
     private int slownessPenalty = 0;
-    private int bleedStacks = 0; // +1 bonus damage per stack when attacked
+    private int bleedStacks = 0; // drives the triangular bleed DOT (1, 3, 6, 10...) - not a per-hit bonus
     private int permanentDefReduction = 0; // from Breach, never expires
     private int attackBoost = 0;
     private int defenseBoost = 0;
@@ -680,9 +680,15 @@ public class CombatEntity {
     /**
      * Damage dealt by a single bleed tick. Scales quadratically with stack count
      * (triangular: 1 stack = 1, 2 = 3, 3 = 6, 4 = 10...) so stacking bleed is meaningful.
+     *
+     * <p>Must stay in step with the player's bleed in {@link CombatEffects#applyPerTurnEffects}.
+     * This method used to return a flat {@code stacks} while the player path charged the
+     * triangular curve above, so the same effect hit far harder on a player than on an enemy;
+     * BleedScalingTest now pins the two together.
      */
     public static int computeBleedTickDamage(int stacks) {
-        return Math.max(0, stacks);
+        if (stacks <= 0) return 0;
+        return stacks * (stacks + 1) / 2;
     }
     public int getPermanentDefReduction() { return permanentDefReduction; }
     public void addPermanentDefReduction(int amount) { this.permanentDefReduction += amount; }

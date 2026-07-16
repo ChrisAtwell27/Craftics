@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics - Usable Items</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo"><img src="https://media.forgecdn.net/avatars/thumbnails/1730/614/64/64/639101389968942522.png" alt="Craftics Logo" style="height:32px;width:32px;vertical-align:middle;border-radius:6px;margin-right:10px;">Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="combat.html">Combat</a></li>
+      <li><a href="effects.html">Effects</a></li>
+      <li><a href="items.html" class="active">Items</a></li>
+      <li><a href="enemies.html">Enemies</a></li>
+      <li><a href="biomes.html">Biomes</a></li>
+      <li><a href="progression.html">Progression</a></li>
+      <li><a href="modding.html">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div class="page-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-label">Usable Items</div>
+    <nav class="sidebar-nav">
+      <a href="#affinity">How Affinity Works</a>
+      <a href="#special">Special</a>
+      <a href="#sherds">Pottery Sherds</a>
+      <a href="#horns">Goat Horns</a>
+      <a href="#blunt">Blunt</a>
+      <a href="#untyped">No Affinity</a>
+      <a href="#water-throwables">Water Throwables</a>
+      <a href="#food">Food</a>
+      <a href="#tiles">Tile Placers</a>
+      <a href="#utility">Utility</a>
+      <a href="#conserve">The Special Conserve Perk</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>Usable Items</h1>
+    <p class="page-desc">Every item you can use in combat, grouped by the damage affinity it scales with. Affinity decides whether your invested points make an item hit harder, so it is the main thing worth knowing about a consumable.</p>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         AFFINITY
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="affinity">How Affinity Works</h2>
+    <p>There are eight damage types. Each has an affinity track fed by level-ups, armor, trims and mob heads. <strong>Every affinity point is worth +3 damage</strong> of that type.</p>
+
+    <p>Weapons get their type from the weapon registry. Usable items do not: each item's handler states its own type when it deals damage. That means an item either names a type and scales with your affinity, or names nothing and deals raw damage that no investment improves.</p>
+
+    <div class="callout">
+      <p><strong>Most combat consumables are Special.</strong> Sherds, potions, horns and most throwables all scale with Special affinity, which makes Special the single most valuable track for an item-focused build. The exceptions are listed below and they are worth knowing, because points spent elsewhere do nothing for them.</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         SPECIAL
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="special">Special <span class="badge">Scales with Special affinity</span></h2>
+    <p>The largest group. Everything here gains +3 damage per Special affinity point, and most of it also benefits from the conserve perk described at the bottom of the page.</p>
+
+    <h3>Throwables</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>AP</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>Snowball</td><td>1</td><td>1 damage and knocks the target back 1 tile. Range 4, needs line of sight.</td></tr>
+          <tr><td>Egg</td><td>1</td><td>1 damage. Range 4, needs line of sight.</td></tr>
+          <tr><td>Blue / Brown Egg</td><td>1</td><td>3 damage. Only exists on Minecraft 1.21.5 and later.</td></tr>
+          <tr><td>Fire Charge</td><td>1</td><td>4 damage plus 8% of the target's max HP, and sets it alight. Unlike other throwables it has no range or line-of-sight check.</td></tr>
+          <tr><td>Wind Charge</td><td>1</td><td>Thrown at an enemy: 1 damage and shoves it up to 3 tiles. Thrown at an adjacent empty tile: launches you up to 2 tiles and grants a stack of Airtime, up to Airtime V.</td></tr>
+          <tr><td>Powder Snow Bucket</td><td>1</td><td>1 damage and stuns an enemy on the tile, then leaves powder snow behind. Returns the bucket.</td></tr>
+          <tr><td>Flint and Steel</td><td>1</td><td>2 damage and sets the target alight. Adjacent only. Also ignites ignitable allies without being consumed.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Potions</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>AP</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>Potion</td><td>1</td><td>Drink it. Vanilla effects map onto their Craftics equivalents. Instant Health heals 8 per level plus your Special affinity. Extended potions last twice as many turns. Returns the empty bottle.</td></tr>
+          <tr><td>Splash Potion</td><td>1</td><td>Range 4, hits a 3x3. Instant Damage scales with Special. Blindness and Darkness splash potions <strong>stun</strong> enemies rather than shortening their range.</td></tr>
+          <tr><td>Lingering Potion</td><td>1</td><td>Range 4. Leaves a real lingering cloud on the tile. Defaults to poison if the potion has no contents.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         SHERDS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="sherds">Pottery Sherds <span class="badge">Special</span></h2>
+    <p>Twenty-three reusable spells. All are Special, all benefit from Special affinity, and all can be conserved by it. Self-cast spells need no target.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Sherd</th><th>AP</th><th>Range</th><th>Spell</th></tr></thead>
+        <tbody>
+          <tr><td>Explorer</td><td>2</td><td>4</td><td>Phase Step: teleport, then Resistance II for 1 turn.</td></tr>
+          <tr><td>Friend</td><td>3</td><td>Self</td><td>Guardian Spirit: heal all pets to full and buff their attack and speed.</td></tr>
+          <tr><td>Scrape</td><td>3</td><td>3</td><td>Corrode: 5 damage and -7 DEF for 3 turns.</td></tr>
+          <tr><td>Angler</td><td>3</td><td>3</td><td>Riptide Hook: pull the target 2 tiles and deal 6 damage, +5 more if it ends up adjacent.</td></tr>
+          <tr><td>Heartbreak</td><td>3</td><td>3</td><td>Shatter Will: 5 damage, -5 ATK and -4 SPD for 2 turns.</td></tr>
+          <tr><td>Sheaf</td><td>3</td><td>3</td><td>Entangle: stun the target and slow everything near it.</td></tr>
+          <tr><td>Miner</td><td>3</td><td>2</td><td>Earthen Spike: 10 <strong>Blunt</strong> damage, +6 more next to an obstacle.</td></tr>
+          <tr><td>Danger</td><td>3</td><td>3</td><td>Hex Trap: an invisible trap dealing 12 damage and a stun when triggered.</td></tr>
+          <tr><td>Blade</td><td>4</td><td>1</td><td>Phantom Slash: 12 damage and 8 cleave to an adjacent enemy.</td></tr>
+          <tr><td>Burn</td><td>4</td><td>3</td><td>Immolation: 9 fire damage and burn, with a 5 damage splash.</td></tr>
+          <tr><td>Snort</td><td>4</td><td>2</td><td>Tectonic Charge: knock back 3 tiles at 4 damage per tile, +9 on a wall slam.</td></tr>
+          <tr><td>Flow</td><td>4</td><td>Self</td><td>Tidal Surge: 8 <strong>Water</strong> damage and knockback to everything within 2 tiles.</td></tr>
+          <tr><td>Mourner</td><td>4</td><td>3</td><td>Soul Drain: 10 damage and heal yourself for what it dealt.</td></tr>
+          <tr><td>Howl</td><td>4</td><td>Self</td><td>Petsplosion: every pet erupts for half an enemy's max HP.</td></tr>
+          <tr><td>Guster</td><td>4</td><td>3</td><td>Chain Lightning: 8 damage chaining between nearby enemies. <strong>Doubles on Soaked targets.</strong></td></tr>
+          <tr><td>Heart</td><td>5</td><td>Self</td><td>Mending Light: heal 15 HP and Regeneration II for 4 turns.</td></tr>
+          <tr><td>Shelter</td><td>5</td><td>Self</td><td>Stone Aegis: Resistance III for 5 turns and Absorption III for 4.</td></tr>
+          <tr><td>Brewer</td><td>5</td><td>Self</td><td>Alchemist's Surge: 4 random level II buffs for 4 turns each.</td></tr>
+          <tr><td>Plenty</td><td>5</td><td>Self</td><td>Bountiful Harvest: heal 10 HP and receive 3 random consumables.</td></tr>
+          <tr><td>Archer</td><td>5</td><td>Self</td><td>Seeker Vexes: summon fragile vexes that chase and strike on their own.</td></tr>
+          <tr><td>Prize</td><td>5</td><td>Self</td><td>Fortune's Favor: your next attack deals double damage, plus Luck III for 4 turns.</td></tr>
+          <tr><td>Arms Up</td><td>6</td><td>Self</td><td>War Cry: Strength III and Speed II for 4 turns.</td></tr>
+          <tr><td>Skull</td><td>6</td><td>3</td><td>Death Mark: executes a target below 50% HP, otherwise 10 damage and Wither IV.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         HORNS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="horns">Goat Horns <span class="badge">Special</span></h2>
+    <p>Reusable battle cries. The horn is never consumed, so you only pay AP. Re-casting a buff horn raises its level by one, up to level IV, and keeps the longer duration.</p>
+    <div class="callout">
+      <p><strong>Every horn costs 5 AP.</strong> That is more than a base turn's 3 AP, so a horn is a setup tool: you spend a whole turn on it and need AP from your stats, a trim, a set bonus or Haste to afford one at all. You cannot chain several in a turn. The horn itself is never consumed, so AP is the only thing limiting it.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Horn</th><th>AP</th><th>Target</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>Ponder</td><td>5</td><td>You</td><td>Resistance for 3 turns.</td></tr>
+          <tr><td>Sing</td><td>5</td><td>You</td><td>Regeneration for 3 turns.</td></tr>
+          <tr><td>Feel</td><td>5</td><td>You</td><td>Speed for 3 turns.</td></tr>
+          <tr><td>Seek</td><td>5</td><td>You</td><td>Strength for 3 turns.</td></tr>
+          <tr><td>Dream</td><td>5</td><td>You</td><td>Fire Resistance for 4 turns.</td></tr>
+          <tr><td>Admire</td><td>5</td><td>All enemies</td><td>Weakness for 2 turns.</td></tr>
+          <tr><td>Call</td><td>5</td><td>All enemies</td><td>Slowness for 2 turns.</td></tr>
+          <tr><td>Yearn</td><td>5</td><td>All enemies</td><td>Poison for 3 turns.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         BLUNT
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="blunt">Blunt <span class="badge">Scales with Blunt affinity</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>AP</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>Brick</td><td>1</td><td>4 damage, range 4. The only Blunt throwable. It is not a Special consumable, so the conserve perk never saves it.</td></tr>
+          <tr><td>Miner Sherd</td><td>3</td><td>Listed above. Its damage is Blunt even though the sherd itself is a Special consumable.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         UNTYPED
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="untyped">No Affinity</h2>
+    <p>These deal raw damage. <strong>No affinity investment improves them</strong>, and they ignore mob type resistances.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>AP</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>TNT</td><td>2</td><td>Placed on a tile, detonates at the start of the next round. 8/5/3 damage by distance plus 24/15/9% of max HP. Hurts you too: 6/4/2 if you are within 2 tiles.</td></tr>
+          <tr><td>Anvil</td><td>1</td><td>Half the target's max HP, minimum 10. Degrades to chipped, then damaged, then breaks.</td></tr>
+          <tr><td>Chipped Anvil</td><td>1</td><td>A third of the target's max HP, minimum 10.</td></tr>
+          <tr><td>Damaged Anvil</td><td>1</td><td>A quarter of the target's max HP, minimum 10.</td></tr>
+          <tr><td>Crossbow (thrown)</td><td>2</td><td>3 raw damage at range 4.</td></tr>
+          <tr><td>Ender Pearl</td><td>1</td><td>Teleport to a tile. Costs 2 HP on landing.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         WATER THROWABLES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="water-throwables">Water Throwables</h2>
+    <p>All four apply Soaked in an area at range 4. Soaked slows an enemy and <strong>doubles the lightning damage it takes</strong>, which is what makes these worth carrying alongside a trident or Chain Lightning.</p>
+
+    <div class="callout">
+      <p><strong>They are not Water-typed.</strong> Despite what they look like, these four deal raw untyped damage and do not scale with Water affinity. Their value is the Soaked application, not the hit.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>AP</th><th>Radius</th><th>Damage</th><th>Soaked</th><th>Extra</th></tr></thead>
+        <tbody>
+          <tr><td>Turtle Egg</td><td>1</td><td>1</td><td>2</td><td>1</td><td>-</td></tr>
+          <tr><td>Pufferfish</td><td>1</td><td>2</td><td>3</td><td>2</td><td>Poison</td></tr>
+          <tr><td>Nautilus Shell</td><td>1</td><td>2</td><td>4</td><td>3</td><td>Chance of Confusion</td></tr>
+          <tr><td>Heart of the Sea</td><td>1</td><td>3</td><td>5</td><td>4</td><td>Better chance of Confusion</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         FOOD
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="food">Food <span class="badge">No affinity</span></h2>
+    <p>Eating costs 1 AP and heals by the food's nourishment. You can feed an adjacent teammate instead of yourself.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Food</th><th>Heal</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Golden Carrot</strong></td><td>2</td><td><strong>Free (0 AP) and grants +1 AP.</strong> If your AP is already full it refunds the carrot rather than wasting it.</td></tr>
+          <tr><td>Enchanted Golden Apple</td><td>Full</td><td>Also Absorption III, Resistance and Regeneration II for 5 turns.</td></tr>
+          <tr><td>Golden Apple</td><td>8</td><td>Also a 4 HP Absorption shield.</td></tr>
+          <tr><td>Rabbit Stew</td><td>6</td><td>-</td></tr>
+          <tr><td>Cooked Beef / Cooked Porkchop</td><td>5</td><td>-</td></tr>
+          <tr><td>Cooked Mutton / Cooked Salmon</td><td>4</td><td>-</td></tr>
+          <tr><td>Pumpkin Pie / Suspicious Stew / Mushroom Stew / Beetroot Soup</td><td>4</td><td>-</td></tr>
+          <tr><td>Bread / Cooked Chicken / Cooked Cod / Baked Potato / Honey Bottle / Cooked Rabbit</td><td>3</td><td>-</td></tr>
+          <tr><td>Apple / Beef / Porkchop / Mutton / Rabbit / Carrot / Chorus Fruit / Rotten Flesh</td><td>2</td><td>Rotten Flesh has an 80% chance to give you Weakness.</td></tr>
+          <tr><td>Cookie / Melon Slice / Berries / Dried Kelp / Chicken / Cod / Salmon / Tropical Fish / Potato / Beetroot</td><td>1</td><td>-</td></tr>
+          <tr><td>Poisonous Potato</td><td>1</td><td>60% chance to poison you.</td></tr>
+          <tr><td>Spider Eye</td><td>1</td><td>Always poisons you.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         TILES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="tiles">Tile Placers <span class="badge">No affinity</span></h2>
+    <p>These change the board instead of dealing damage. Most are 1 AP.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>AP</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>Lava Bucket</td><td>1</td><td>A lava tile dealing 3 fire damage a turn. Returns the bucket.</td></tr>
+          <tr><td>Water Bucket</td><td>1</td><td>A water tile you can fish from. Returns the bucket.</td></tr>
+          <tr><td>Campfire</td><td>1</td><td>Heals 2 HP a turn in a 5x5 and lights the area.</td></tr>
+          <tr><td>Scaffolding</td><td>1</td><td>+1 ranged range while you stand on it.</td></tr>
+          <tr><td>Honey Block</td><td>1</td><td>Enemies that step on it lose all movement.</td></tr>
+          <tr><td>Slime Block</td><td>1</td><td>A bouncy wall that stuns adjacent enemies at the end of the turn.</td></tr>
+          <tr><td>Cactus</td><td>1</td><td>An obstacle that deals 1 damage to anything adjacent.</td></tr>
+          <tr><td>Lightning Rod</td><td>1</td><td>Calls a strike on the tile next turn. Pairs with Soaked.</td></tr>
+          <tr><td>Cake</td><td>1</td><td>Three shared bites of 2 HP each.</td></tr>
+          <tr><td>Lantern</td><td>1</td><td>Reveals hidden enemies within 3 tiles and negates darkness.</td></tr>
+          <tr><td>Torch</td><td>1</td><td>Lights a radius of 2.</td></tr>
+          <tr><td>Cobweb</td><td>1</td><td>Stuns whatever is on the tile.</td></tr>
+          <tr><td>Sponge</td><td>1</td><td>Drains adjacent water.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         UTILITY
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="utility">Utility <span class="badge">No affinity</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>AP</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Milk Bucket</strong></td><td>3</td><td>Clears every effect, good and bad, on yourself or an adjacent teammate. Returns the bucket.</td></tr>
+          <tr><td><strong>Elytra</strong></td><td>2</td><td>Launch to any tile that is not a wall, gaining Airtime II for 2 turns. Costs 2 durability. Water, lava and fire are all legal landings.</td></tr>
+          <tr><td><strong>Spyglass</strong></td><td>2</td><td>Marks an enemy: it takes 2x damage, or 1.5x on a boss, and reveals its stats. Only one enemy can be marked at a time. Not consumed.</td></tr>
+          <tr><td>Totem of Undying</td><td>1</td><td>Eat it for a full heal plus Regeneration and Absorption. Kept in inventory instead, it auto-revives you.</td></tr>
+          <tr><td>Bell</td><td>2</td><td>Stuns every enemy within 2 tiles.</td></tr>
+          <tr><td>Jukebox</td><td>2</td><td>+3 speed to all allies for the rest of the battle. Must be placed adjacent.</td></tr>
+          <tr><td>Fishing Rod</td><td>3</td><td>Cast into adjacent water for loot. Needs at least one living enemy.</td></tr>
+          <tr><td>Hay Block</td><td>1</td><td>Heals an ally for half its max HP, minimum 4.</td></tr>
+          <tr><td>Spore Blossom</td><td>1</td><td>-1 speed to enemies within 3 tiles.</td></tr>
+          <tr><td>Banners (16 colors)</td><td>1</td><td>Defense bonus to friendlies within 2 tiles, improved by Special affinity.</td></tr>
+          <tr><td>Compass</td><td>1</td><td>Reveals every enemy position. Not consumed.</td></tr>
+          <tr><td>Brush</td><td>1</td><td>Digs random loot out of an adjacent tile.</td></tr>
+          <tr><td>Echo Shard</td><td>1</td><td>Returns you to your starting position at the end of the turn.</td></tr>
+          <tr><td>Bucket</td><td>1</td><td>Scoops water, lava or powder snow off a tile.</td></tr>
+          <tr><td>Pickaxes (6)</td><td>1</td><td>Adjacent only. Breaks an obstacle, digs a pit, or turns low ground into <strong>void</strong>, which kills instantly.</td></tr>
+          <tr><td>Breeding items</td><td>1</td><td>Adjacent only. Tames a mob into an ally, a mount, or a friend. Bone always works.</td></tr>
+          <tr><td>Shield</td><td>-</td><td>Passive. +1 Armor Class and a 25% chance to block. Using it does nothing.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         CONSERVE
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="conserve">The Special Conserve Perk</h2>
+    <p>Every point of Special affinity gives a <strong>10% chance not to consume</strong> the item you just used. At 5 points that is half your consumables surviving use, which is the real reason a sherd build invests in Special beyond the damage.</p>
+
+    <p><strong>Applies to:</strong> all three potion kinds, goat horns, fire and wind charges, snowballs, eggs, ender pearls, banners and pottery sherds. Anvils have their own separate roll at the same odds.</p>
+
+    <p><strong>Does not apply to:</strong> TNT, hay blocks, pickaxes and bricks. These are always consumed.</p>
+
+  </main>
+</div>
+
+<footer>
+  <span>Craftics by Cracked Games LLC</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="js/nav.js"></script>
+</body>
+</html>

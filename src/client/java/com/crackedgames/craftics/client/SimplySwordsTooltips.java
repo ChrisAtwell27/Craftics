@@ -51,14 +51,17 @@ public final class SimplySwordsTooltips {
         if (unique) {
             String[] block = uniqueLines(path);
             if (block != null) {
-                lines.add(Text.literal("§6✦ §e§l" + block[0] + "§r§7: " + block[1]));
-                lines.add(Text.literal("§8§o\"" + block[2] + "\""));
+                // These ability descriptions are full sentences (the longest runs 110 chars),
+                // so they must wrap - unwrapped they ran off the edge of the screen.
+                TooltipWrap.addWrapped(lines, "",
+                    "§6✦ §e§l" + block[0] + "§r§7: " + block[1]);
+                TooltipWrap.addWrapped(lines, "", "§8§o\"" + block[2] + "\"");
             }
             lines.add(Text.literal("§5Rare drop from bosses"));
         } else {
             String type = SimplySwordsCompat.weaponType(path);
             for (String line : typeEffectLines(type)) {
-                lines.add(Text.literal("§e • " + line));
+                TooltipWrap.addWrapped(lines, " ", "§e• " + line);
             }
         }
     }

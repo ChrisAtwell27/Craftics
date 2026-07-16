@@ -82,7 +82,7 @@ public class WorldDataComponent implements Component {
     }
 
     public float getNgPlusMultiplier() {
-        return 1.0f + ngPlusLevel * 0.25f;
+        return com.crackedgames.craftics.world.NgPlusScaling.multiplier(ngPlusLevel);
     }
 
     // --- CCA serialization ---

@@ -32,6 +32,7 @@ public class CombatVisualEffects {
     private static final java.util.Random shakeRng = new java.util.Random();
 
     public static void spawnDamageNumberAtEntity(int entityId, int damage, boolean isPlayerDamage) {
+        if (!damageNumbersEnabled()) return;
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.getWindow() == null || client.world == null) return;
 
@@ -65,7 +66,24 @@ public class CombatVisualEffects {
         activeTexts.add(new FloatingText(baseX, baseY, text, color, 35));
     }
 
+    /**
+     * Whether floating damage numbers are switched on.
+     *
+     * <p>Checked at the two spawn entry points rather than at each call site, so every caller
+     * - present and future - is covered by one guard. The config read is wrapped because it
+     * can run before the config loads; a missing config means "show them", matching the
+     * option's default.
+     */
+    private static boolean damageNumbersEnabled() {
+        try {
+            return com.crackedgames.craftics.CrafticsMod.CONFIG.showDamageNumbers();
+        } catch (Exception ignored) {
+            return true;
+        }
+    }
+
     public static void spawnDamageNumber(int damage, boolean isPlayerDamage) {
+        if (!damageNumbersEnabled()) return;
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.getWindow() == null) return;
 

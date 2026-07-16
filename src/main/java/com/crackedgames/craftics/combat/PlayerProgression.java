@@ -168,7 +168,28 @@ public class PlayerProgression extends PersistentState {
         }
 
         public int getEffective(Stat stat) {
-            return stat.baseValue + getPoints(stat);
+            return baseValueOf(stat) + getPoints(stat);
+        }
+
+        /**
+         * A stat's starting value before allocated points.
+         *
+         * <p>AP and Speed read their base from config rather than the enum. The enum's
+         * {@code baseValue} is a constructor argument, fixed at class-init - long before the
+         * config loads - so {@code baseAp} / {@code baseSpeed} could never have taken effect
+         * there. They were declared, shown in the settings UI with a 1-10 range, and silently
+         * ignored while the enum's hardcoded 3 won. Resolving here, at the single point every
+         * read funnels through, is what actually makes the setting mean something. Every other
+         * stat starts where the enum says.
+         */
+        private static int baseValueOf(Stat stat) {
+            var config = com.crackedgames.craftics.CrafticsMod.CONFIG;
+            if (config == null) return stat.baseValue;
+            return switch (stat) {
+                case AP -> config.baseAp();
+                case SPEED -> config.baseSpeed();
+                default -> stat.baseValue;
+            };
         }
 
         public boolean allocatePoint(Stat stat) {

@@ -30,20 +30,6 @@ public class CombatInputHandler {
 
     public enum ActionMode { MOVE, MELEE_ATTACK, RANGED_ATTACK, USE_ITEM, LEAD }
 
-    // Food items for client-side detection (must match ItemUseHandler.FOOD_HEAL on server)
-    private static final Set<Item> FOODS = Set.of(
-        Items.APPLE, Items.BREAD, Items.COOKED_BEEF, Items.COOKED_PORKCHOP,
-        Items.COOKED_CHICKEN, Items.COOKED_MUTTON, Items.COOKED_COD, Items.COOKED_SALMON,
-        Items.BAKED_POTATO, Items.COOKIE, Items.PUMPKIN_PIE, Items.MELON_SLICE,
-        Items.SWEET_BERRIES, Items.GLOW_BERRIES, Items.GOLDEN_CARROT, Items.GOLDEN_APPLE,
-        Items.ENCHANTED_GOLDEN_APPLE, Items.HONEY_BOTTLE, Items.SUSPICIOUS_STEW,
-        Items.CHORUS_FRUIT, Items.BEEF, Items.PORKCHOP, Items.CHICKEN,
-        Items.MUTTON, Items.COD, Items.SALMON, Items.RABBIT, Items.COOKED_RABBIT,
-        Items.TROPICAL_FISH, Items.POTATO, Items.POISONOUS_POTATO, Items.CARROT,
-        Items.BEETROOT, Items.DRIED_KELP, Items.MUSHROOM_STEW, Items.BEETROOT_SOUP,
-        Items.RABBIT_STEW, Items.SPIDER_EYE, Items.ROTTEN_FLESH, Items.PUFFERFISH
-    );
-
     private static final Set<Item> SWORDS = Set.of(
         Items.WOODEN_SWORD, Items.STONE_SWORD, Items.IRON_SWORD,
         Items.DIAMOND_SWORD, Items.GOLDEN_SWORD, Items.NETHERITE_SWORD
@@ -56,12 +42,6 @@ public class CombatInputHandler {
 
     private static final Set<Item> SPEARS = Set.of(
         // Spears not available in 1.21.1
-    );
-
-    private static final Set<Item> USE_ITEMS = Set.of(
-        Items.POTION, Items.SPLASH_POTION, Items.SNOWBALL, Items.EGG,
-        Items.ENDER_PEARL, Items.TNT, Items.FISHING_ROD, Items.FIRE_CHARGE,
-        Items.WIND_CHARGE, Items.BRICK
     );
 
     public static ActionMode getActionMode(MinecraftClient client) {
@@ -88,8 +68,12 @@ public class CombatInputHandler {
         // clickable so it can be cooked on a placed campfire tile.
         if (com.crackedgames.craftics.combat.ItemUseHandler.isCampfireCookable(held))
             return ActionMode.USE_ITEM;
-        if (FOODS.contains(held) || USE_ITEMS.contains(held)
-            || com.crackedgames.craftics.combat.ItemUseHandler.isUsableItem(held))
+        // isUsableItem is the single authority on what the server will accept. It already
+        // covers every food (via FOOD_HEAL), potion, throwable, TNT and fishing rod, so the
+        // client keeps no list of its own: a duplicated list can only ever drift out of step
+        // with the server's, and this one had - it called pufferfish a food while the server
+        // treats it as a water throwable.
+        if (com.crackedgames.craftics.combat.ItemUseHandler.isUsableItem(held))
             return ActionMode.USE_ITEM;
         // Empty hand / anything else = melee attack (fists)
         return ActionMode.MELEE_ATTACK;

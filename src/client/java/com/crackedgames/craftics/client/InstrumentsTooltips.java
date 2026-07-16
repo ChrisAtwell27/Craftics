@@ -35,7 +35,7 @@ public final class InstrumentsTooltips {
         lines.add(Text.literal(stat.toString()));
 
         for (String line : effectLines(def)) {
-            lines.add(Text.literal("§e • " + line));
+            TooltipWrap.addWrapped(lines, " ", "§e• " + line);
         }
         if (def.signature() != InstrumentDef.Signature.NONE) {
             lines.add(Text.literal("§5 ✦ " + signatureLine(def.signature())));

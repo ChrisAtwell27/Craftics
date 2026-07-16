@@ -18,6 +18,8 @@
     <ul class="nav-links">
       <li><a href="index.html">Home</a></li>
       <li><a href="combat.html" class="active">Combat</a></li>
+      <li><a href="effects.html">Effects</a></li>
+      <li><a href="items.html">Items</a></li>
       <li><a href="enemies.html">Enemies</a></li>
       <li><a href="biomes.html">Biomes</a></li>
       <li><a href="progression.html">Progression</a></li>
@@ -102,7 +104,7 @@
           <tr>
             <td><strong>Use Item (Special)</strong></td>
             <td>2 AP</td>
-            <td>Bell, Trident (thrown), Jukebox, and Crossbow.</td>
+            <td>Bell, Trident (thrown), Jukebox, Crossbow, Spyglass, Elytra, and TNT.</td>
           </tr>
           <tr>
             <td><strong>Use Item (Fishing Rod)</strong></td>
@@ -147,98 +149,98 @@
           </tr>
           <tr>
             <td>Wooden Sword</td>
-            <td>3</td>
+            <td>5</td>
             <td>1</td>
             <td>1</td>
             <td>-</td>
           </tr>
           <tr>
             <td>Stone Sword</td>
-            <td>4</td>
+            <td>6</td>
             <td>1</td>
             <td>1</td>
             <td>-</td>
           </tr>
           <tr>
             <td>Iron Sword</td>
-            <td>6</td>
+            <td>9</td>
             <td>1</td>
             <td>1</td>
-            <td>Sweeping Edge: hits adjacent enemy for half damage</td>
+            <td>Sweeping Edge: cleaves adjacent enemies for 60/75/90% by level</td>
           </tr>
           <tr>
             <td>Golden Sword</td>
-            <td>9</td>
+            <td>14</td>
             <td>1</td>
             <td>1</td>
             <td>-</td>
           </tr>
           <tr>
             <td>Diamond Sword</td>
-            <td>8</td>
+            <td>12</td>
             <td>1</td>
             <td>1</td>
             <td>Sweeping Edge + 30% crit (2x damage)</td>
           </tr>
           <tr>
             <td>Netherite Sword</td>
-            <td>10</td>
+            <td>15</td>
             <td>1</td>
             <td>1</td>
             <td>Sweeping Edge + Execute (3x damage below 30% HP)</td>
           </tr>
           <tr>
             <td>Wooden Axe</td>
-            <td>4</td>
+            <td>8</td>
             <td>2</td>
             <td>1</td>
             <td>Stun: target skips next turn</td>
           </tr>
           <tr>
             <td>Stone Axe</td>
-            <td>6</td>
-            <td>2</td>
-            <td>1</td>
-            <td>Stun</td>
-          </tr>
-          <tr>
-            <td>Iron Axe</td>
-            <td>8</td>
-            <td>2</td>
-            <td>1</td>
-            <td>Stun</td>
-          </tr>
-          <tr>
-            <td>Golden Axe</td>
             <td>11</td>
             <td>2</td>
             <td>1</td>
             <td>Stun</td>
           </tr>
           <tr>
+            <td>Iron Axe</td>
+            <td>15</td>
+            <td>2</td>
+            <td>1</td>
+            <td>Stun</td>
+          </tr>
+          <tr>
+            <td>Golden Axe</td>
+            <td>24</td>
+            <td>2</td>
+            <td>1</td>
+            <td>Stun</td>
+          </tr>
+          <tr>
             <td>Diamond Axe</td>
-            <td>10</td>
+            <td>21</td>
             <td>2</td>
             <td>1</td>
             <td>Stun</td>
           </tr>
           <tr>
             <td>Netherite Axe</td>
-            <td>12</td>
+            <td>27</td>
             <td>2</td>
             <td>1</td>
             <td>Stun</td>
           </tr>
           <tr>
             <td>Bow</td>
-            <td>7</td>
+            <td>11</td>
             <td>1</td>
             <td>3</td>
             <td>Requires arrows</td>
           </tr>
           <tr>
             <td>Crossbow</td>
-            <td>10</td>
+            <td>14</td>
             <td>2</td>
             <td>Rook (unlimited cardinal)</td>
             <td>Pierce-through: bolt continues to hit second target for half damage</td>
@@ -647,7 +649,7 @@
          ================================================================ -->
     <h2 id="goat-horns">Goat Horn Effects</h2>
     <p>
-      Goat horns are rare drops from goats (<strong>10% chance</strong>). There are 8 variants, each with a unique sound and a tactical effect. Horns are reusable but cost AP to play. Each horn plays its own instrument sound on use (not a random one).
+      Goat horns are rare drops from goats (<strong>10% chance</strong>). There are 8 variants, each with a unique sound and a tactical effect. Horns are reusable but every one costs 5 AP to play, which is more than a base turn's 3 AP. A horn is a setup tool you open a fight with, not something you chain several of in one turn. Each horn plays its own instrument sound on use (not a random one).
     </p>
     <p>
       Horns are identified by their vanilla <code>INSTRUMENT</code> data component, so horns from <strong>any source</strong> work in combat: goat-kill drops, pillager raid loot, structure chests, trader trades, or <code>/give</code>. Re-using a buff horn refreshes its duration to the larger of remaining and fresh and <strong>stacks the amplifier</strong> (capped) so consecutive casts make the buff stronger, not shorter.
@@ -666,14 +668,14 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td>Ponder</td><td>1</td><td>+2 Defense for 3 turns</td></tr>
-          <tr><td>Sing</td><td>1</td><td>+2 HP regen for 3 turns</td></tr>
-          <tr><td>Seek</td><td>2</td><td>+3 Attack for 3 turns</td></tr>
-          <tr><td>Feel</td><td>1</td><td>+2 Speed for 3 turns</td></tr>
-          <tr><td>Admire</td><td>2</td><td>All enemies -2 Attack for 2 turns</td></tr>
-          <tr><td>Call</td><td>2</td><td>All enemies -1 Speed for 2 turns</td></tr>
-          <tr><td>Yearn</td><td>3</td><td>All enemies Poisoned for 3 turns</td></tr>
-          <tr><td>Dream</td><td>2</td><td>Fire Resistance for 4 turns</td></tr>
+          <tr><td>Ponder</td><td>5</td><td>+2 Defense for 3 turns</td></tr>
+          <tr><td>Sing</td><td>5</td><td>+2 HP regen for 3 turns</td></tr>
+          <tr><td>Seek</td><td>5</td><td>+3 Attack for 3 turns</td></tr>
+          <tr><td>Feel</td><td>5</td><td>+2 Speed for 3 turns</td></tr>
+          <tr><td>Admire</td><td>5</td><td>All enemies -2 Attack for 2 turns</td></tr>
+          <tr><td>Call</td><td>5</td><td>All enemies -1 Speed for 2 turns</td></tr>
+          <tr><td>Yearn</td><td>5</td><td>All enemies Poisoned for 3 turns</td></tr>
+          <tr><td>Dream</td><td>5</td><td>Fire Resistance for 4 turns</td></tr>
         </tbody>
       </table>
     </div>
@@ -683,7 +685,7 @@
          ================================================================ -->
     <h2 id="usable-items">Usable Items</h2>
     <p>
-      All usable items cost AP to activate. Most cost 1 AP, but some special items cost 2 or 3. Data sourced from <code>ItemUseHandler.java</code>.
+      All usable items cost AP to activate. Most cost 1 AP, but some cost 2 or 3, and pottery sherds run from 2 up to 6. Data sourced from <code>ItemUseHandler.java</code> and <code>PotterySherdSpells.java</code>.
     </p>
 
     <h3>Food</h3>
@@ -776,12 +778,13 @@
           <tr><td>Ender Pearl</td><td>1</td><td>Teleport + 2 self damage</td></tr>
           <tr><td>Fire Charge</td><td>1</td><td>4 damage + fire</td></tr>
           <tr><td>Wind Charge</td><td>1</td><td>Knockback + damage</td></tr>
-          <tr><td>TNT</td><td>1</td><td>3x3 AoE: 8/5/3 damage by distance, self damage 6/4/2</td></tr>
+          <tr><td>TNT</td><td>2</td><td>3x3 AoE: 8/5/3 damage +24/15/9% of max HP by distance, self damage 6/4/2</td></tr>
           <tr><td>Splash Potion</td><td>1</td><td>4-tile range, 3x3 AoE, applies effect</td></tr>
           <tr><td>Cobweb</td><td>1</td><td>Stun 1 turn</td></tr>
           <tr><td>Bell</td><td>2</td><td>Stun all enemies within 2 tiles</td></tr>
           <tr><td>Fishing Rod</td><td>3</td><td>Adjacent water tile, loot table (Common 50%, Useful 25%, Good 15%, Rare 10%)</td></tr>
-          <tr><td>Milk Bucket</td><td>1</td><td>Clear all effects (good and bad)</td></tr>
+          <tr><td>Milk Bucket</td><td>3</td><td>Clear all effects (good and bad), on yourself or an adjacent ally</td></tr>
+          <tr><td>Elytra</td><td>2</td><td>Launch to any tile that isn't a wall. Costs 2 durability, grants Airtime II for 2 turns</td></tr>
           <tr><td>Flint and Steel</td><td>1</td><td>2 damage + fire</td></tr>
           <tr><td>Totem of Undying</td><td>1</td><td>Full heal + Regeneration + Absorption</td></tr>
           <tr><td>Lava Bucket</td><td>1</td><td>Creates lava tile (3 fire damage/turn)</td></tr>
@@ -816,17 +819,18 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td>Speed</td><td>+2 movement</td></tr>
-          <tr><td>Strength</td><td>+3 attack</td></tr>
+          <tr><td>Speed</td><td>+2 movement per level</td></tr>
+          <tr><td>Strength</td><td>+3 attack per level</td></tr>
           <tr><td>Resistance</td><td>-2 damage taken per level (flat, min 1 damage)</td></tr>
-          <tr><td>Regeneration</td><td>+2 HP/turn</td></tr>
-          <tr><td>Fire Resistance</td><td>Immune to fire damage</td></tr>
+          <tr><td>Regeneration</td><td>+2 HP/turn per level</td></tr>
+          <tr><td>Fire Resistance</td><td>Immune to fire damage, and +1 Special damage</td></tr>
           <tr><td>Invisibility</td><td>Enemies skip you</td></tr>
           <tr><td>Absorption</td><td>Extra HP</td></tr>
-          <tr><td>Luck</td><td>+crit chance</td></tr>
+          <tr><td>Luck</td><td>+5% crit chance per level</td></tr>
           <tr><td>Slow Falling</td><td>No knockback</td></tr>
-          <tr><td>Haste</td><td>+1 AP</td></tr>
+          <tr><td>Haste</td><td>+1 AP per level</td></tr>
           <tr><td>Water Breathing</td><td>+2 water damage</td></tr>
+          <tr><td>Airtime</td><td>+2 ranged range per level, and your next weapon hit deals +0.5x per level (I is 1.5x, up to V at 3.5x). One stack is spent per weapon hit. Also lets you move over obstacle tiles. Comes from wind charge self-launch, Elytra, Wind Burst, and Levitation expiring.</td></tr>
         </tbody>
       </table>
     </div>
@@ -841,15 +845,16 @@
           </tr>
         </thead>
         <tbody>
-          <tr><td>Poison</td><td>Player: -1 HP/turn (configurable). Enemy: <code>1 + amplifier + max(1, maxHp/20)</code> per turn.</td></tr>
-          <tr><td>Slowness</td><td>-1 movement</td></tr>
-          <tr><td>Weakness</td><td>-2 attack</td></tr>
-          <tr><td>Wither</td><td>Player: -2 HP/turn. Enemy: <code>remainingTurns + 1 + amplifier + max(1, maxHp/20)</code> per turn, front-loaded and tapering as the curse wears off.</td></tr>
-          <tr><td>Burning</td><td>-1 HP/turn</td></tr>
-          <tr><td>Blindness</td><td>-2 range</td></tr>
-          <tr><td>Mining Fatigue</td><td>-1 AP</td></tr>
-          <tr><td>Levitation</td><td>-1 movement</td></tr>
-          <tr><td>Darkness</td><td>-1 range</td></tr>
+          <tr><td>Poison</td><td>Player: <code>(2 x level) + turns remaining + Special affinity</code> per turn, so it hits hardest early and tapers. Enemy: <code>1 + amplifier + max(1, maxHp/20)</code> per turn.</td></tr>
+          <tr><td>Slowness</td><td>-1 movement per level</td></tr>
+          <tr><td>Weakness</td><td>-2 attack per level</td></tr>
+          <tr><td>Wither</td><td>Player: <code>(1 + level + Special affinity)</code> per turn, multiplied by how many turns have elapsed, so it ramps up the longer it runs. Enemy: <code>remainingTurns + 1 + amplifier + max(1, maxHp/20)</code> per turn, front-loaded and tapering as the curse wears off.</td></tr>
+          <tr><td>Burning</td><td><code>1 + level + Special affinity</code> HP/turn</td></tr>
+          <tr><td>Bleeding</td><td>Stacking per-turn damage: 1, 3, 6, 10 as stacks climb. Applies to players and enemies alike.</td></tr>
+          <tr><td>Blindness</td><td>-2 range per level</td></tr>
+          <tr><td>Mining Fatigue</td><td>-1 AP per level</td></tr>
+          <tr><td>Levitation</td><td>-1 movement per level. Lets you move over obstacle tiles. When it expires you drop into Airtime I.</td></tr>
+          <tr><td>Darkness</td><td>-1 range per level</td></tr>
           <tr><td>Soaked</td><td>-1 speed, 2x lightning damage</td></tr>
           <tr><td>Confusion</td><td>Attacks may hit allies</td></tr>
         </tbody>
@@ -870,9 +875,9 @@
 
     <h3>Sword Enchantments</h3>
     <ul>
-      <li><strong>Sharpness:</strong> +1 damage per level and applies stacking Bleed. Each Bleed stack adds +1 bonus damage when the enemy is attacked again.</li>
-      <li><strong>Smite:</strong> AoE radiant burst against undead. All undead in radius take bonus damage and lose movement.</li>
-      <li><strong>Bane of Arthropods:</strong> Injects venom (Poison + Slowness) into arthropods. The venom chains to adjacent arthropods when a poisoned one dies.</li>
+      <li><strong>Sharpness:</strong> +1 damage per level and applies stacking Bleed. Bleed is its own per-turn effect dealing 1, 3, 6, 10 damage as stacks climb. It does not add damage to direct hits.</li>
+      <li><strong>Smite:</strong> AoE radiant burst against undead in a 2/3/4 tile radius by level. Deals 25% of your hit per level, never less than 2 per level.</li>
+      <li><strong>Bane of Arthropods:</strong> Injects venom into arthropods: Poison for 3 turns at 25% of your hit per level (minimum 1 per level), plus Slowness of -1/-2/-3 by level. It deals no direct damage.</li>
       <li><strong>Fire Aspect:</strong> Sends a cone of fire in the swing direction, burning every enemy in the cone.</li>
       <li><strong>Knockback:</strong> Directional shockwave that pushes the target and enemies behind them. Slamming an enemy into a wall deals collision damage.</li>
       <li><strong>Sweeping Edge:</strong> 360° spin hitting all adjacent enemies (60% / 75% / 90% damage by level, plus knockback at level 3).</li>
@@ -894,12 +899,12 @@
     <ul>
       <li><strong>Density:</strong> Gravity well that pulls nearby enemies toward the impact point, with crushing bonus damage.</li>
       <li><strong>Breach:</strong> Permanently reduces the target's defense per hit, stacking for the rest of combat.</li>
-      <li><strong>Wind Burst:</strong> Shockwave knockback on all adjacent enemies that also buffs your next Mace hit's damage.</li>
+      <li><strong>Wind Burst:</strong> Shockwave knockback on all adjacent enemies. The blast also throws you a tile in a random direction and grants you Airtime at the enchantment's level, so your next weapon hit lands for 1.5x, 2x or 2.5x.</li>
     </ul>
 
     <h3>Trident Enchantments</h3>
     <ul>
-      <li><strong>Impaling:</strong> +damage per level and inflicts Bleed stacks.</li>
+      <li><strong>Impaling:</strong> +25% of your hit per level against aquatic mobs, never less than 1/2/5/8/10 by level, and a further +50% if the target is Soaked. Also inflicts Bleed stacks.</li>
       <li><strong>Channeling:</strong> Chain lightning on hit that prioritizes Soaked enemies (double damage); 1 / 3 / 5 chains by level.</li>
       <li><strong>Loyalty:</strong> The trident ricochets to nearby enemies (50% damage) before returning, +1 ricochet per level.</li>
       <li><strong>Riptide:</strong> Dash through enemies instead of throwing.</li>

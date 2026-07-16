@@ -130,4 +130,27 @@ class GoatHornEffectsTest {
         GoatHornEffects.useHorn("admire", effects, List.of(a));
         assertEquals(GoatHornEffects.MAX_HORN_AMPLIFIER + 2, a.getAttackPenalty());
     }
+
+    /**
+     * Horns are a setup tool, not something you chain in one turn. Every variant costs the same
+     * and that cost is deliberately above a turn's base 3 AP, so blowing one takes a whole turn
+     * and affording it at all means investing in AP. Horns are never consumed, so this cost is
+     * the only thing holding them in check - if it silently drops, they go back to being spammable.
+     */
+    @Test
+    void everyHornCostsTheSameAndMoreThanABaseTurn() {
+        for (String horn : List.of("ponder", "sing", "seek", "feel", "admire", "call", "yearn", "dream")) {
+            assertEquals(GoatHornEffects.HORN_AP_COST, GoatHornEffects.getApCost(horn),
+                horn + " must cost the standard horn AP");
+        }
+        assertTrue(GoatHornEffects.HORN_AP_COST > 3,
+            "a horn must cost more than the base 3 AP per turn, or it isn't a setup item");
+    }
+
+    /** An unknown variant must not undercut the real horns. */
+    @Test
+    void unknownHornFallsBackToTheStandardCost() {
+        assertEquals(GoatHornEffects.HORN_AP_COST, GoatHornEffects.getApCost("mymod:brass_horn"));
+        assertEquals(GoatHornEffects.HORN_AP_COST, GoatHornEffects.getApCost(""));
+    }
 }

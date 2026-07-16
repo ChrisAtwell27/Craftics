@@ -66,12 +66,23 @@ public class BiomeTemplate {
         return level >= startLevel && level <= getEndLevel();
     }
 
+    /**
+     * The level's index within this biome, clamped to the biome's own range.
+     *
+     * <p>Clamped because an overshooting counter used to keep indexing off this biome's
+     * startLevel straight into the NEXT biome's global range - the "Deep Dark 3 -> 6 landed me
+     * in Nether Wastes I" bug. See {@link BiomeLevelMath}.
+     */
     public int getBiomeLevelIndex(int globalLevel) {
-        return globalLevel - startLevel;
+        return BiomeLevelMath.biomeLevelIndex(globalLevel, startLevel, levelCount);
     }
 
+    /**
+     * Whether this is the biome's boss level - true at the boss AND anywhere past it, so a run
+     * that somehow overshot still has to clear the boss before it can leave the biome.
+     */
     public boolean isBossLevel(int globalLevel) {
-        return getBiomeLevelIndex(globalLevel) == levelCount - 1;
+        return BiomeLevelMath.isBossLevel(globalLevel, startLevel, levelCount);
     }
 
     public LootPool buildLootPool() {

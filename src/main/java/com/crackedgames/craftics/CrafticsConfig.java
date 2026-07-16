@@ -111,8 +111,6 @@ public class CrafticsConfig {
 
     public boolean permadeathMode = false;
 
-    public boolean hungerEnabled = false;
-
     public boolean healBetweenLevels = true;
 
     /**
@@ -155,9 +153,6 @@ public class CrafticsConfig {
 
     @RangeConstraint(min = 0.0, max = 1.0)
     public float rangedAccuracy = 0.95f;
-
-    @RangeConstraint(min = 1, max = 5)
-    public int poisonDamagePerTurn = 1;
 
     @RangeConstraint(min = 1, max = 20)
     public int maxCombatEffectDuration = 10;
@@ -246,9 +241,6 @@ public class CrafticsConfig {
     // ===== Arena & Progression =====
 
     @SectionHeader("arenaProgression")
-    @RangeConstraint(min = 0, max = 10)
-    public int arenaGridPadding = 0;
-
     @RangeConstraint(min = 0.1, max = 5.0)
     public float lootQuantityMultiplier = 1.0f;
 
@@ -378,13 +370,11 @@ public class CrafticsConfig {
     // ===== Visual =====
 
     @SectionHeader("visual")
-    public boolean compactEnemyList = true;
     public boolean showEmeraldsInCombat = false;
     public boolean fadeTurnBanner = true;
 
     public boolean showDamageNumbers = true;
     public boolean bossGlowEffect = true;
-    public boolean deathShrinkAnimation = true;
     public boolean screenShakeOnHit = true;
     public boolean vfxBlockEntitiesEnabled = true;
     public boolean hitPauseEnabled = true;

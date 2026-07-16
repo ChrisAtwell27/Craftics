@@ -36,7 +36,9 @@ public final class ArtifactsTooltips {
             return;
         }
         for (String line : body) {
-            lines.add(Text.literal(line));
+            // Descriptions are authored as sentences, so wrap rather than let them
+            // run off the screen edge.
+            TooltipWrap.addWrapped(lines, "", line);
         }
     }
 

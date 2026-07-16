@@ -21,6 +21,18 @@ public class GoatHornEffects {
      *  player who spams Seek from trivializing a fight. */
     public static final int MAX_HORN_AMPLIFIER = 3;
 
+    /**
+     * AP a horn costs to blow. Same for every variant.
+     *
+     * <p>Deliberately more than a turn's base 3 AP: a horn is a setup tool you spend a whole
+     * turn on, not something you chain several of in one turn. Affording one at all means
+     * investing in the AP stat, a trim, a set bonus or Haste. Horns are never consumed, so AP
+     * is the only thing holding them in check.
+     *
+     * <p>Declared above {@link #HORN_DEFS} because the defs reference it during static init.
+     */
+    public static final int HORN_AP_COST = 5;
+
     private record HornEffectDef(
         String hornId, String displayName, String description,
         int apCost, boolean isPlayerBuff, CombatEffects.EffectType effectType,
@@ -31,30 +43,30 @@ public class GoatHornEffects {
         // --- Player Buffs ---
         new HornEffectDef("ponder", "§7Ponder Horn",
             "§7§oA contemplative note... §9+2 Defense for 3 turns",
-            1, true, CombatEffects.EffectType.RESISTANCE, 3, 0),
+            HORN_AP_COST, true, CombatEffects.EffectType.RESISTANCE, 3, 0),
         new HornEffectDef("sing", "§eSing Horn",
             "§e§oAn uplifting melody! §a+2 HP regen for 3 turns",
-            1, true, CombatEffects.EffectType.REGENERATION, 3, 0),
+            HORN_AP_COST, true, CombatEffects.EffectType.REGENERATION, 3, 0),
         new HornEffectDef("seek", "§6Seek Horn",
             "§6§oA rallying cry! §c+3 Attack for 3 turns",
-            2, true, CombatEffects.EffectType.STRENGTH, 3, 0),
+            HORN_AP_COST, true, CombatEffects.EffectType.STRENGTH, 3, 0),
         new HornEffectDef("feel", "§dFeel Horn",
             "§d§oA soothing hum... §b+2 Speed for 3 turns",
-            1, true, CombatEffects.EffectType.SPEED, 3, 0),
+            HORN_AP_COST, true, CombatEffects.EffectType.SPEED, 3, 0),
 
         // --- Enemy Debuffs ---
         new HornEffectDef("admire", "§bAdmire Horn",
             "§b§oA piercing blast! §7All enemies -2 Attack for 2 turns",
-            2, false, CombatEffects.EffectType.WEAKNESS, 2, 0),
+            HORN_AP_COST, false, CombatEffects.EffectType.WEAKNESS, 2, 0),
         new HornEffectDef("call", "§aCall Horn",
             "§a§oA thunderous bellow! §3All enemies -1 Speed for 2 turns",
-            2, false, CombatEffects.EffectType.SLOWNESS, 2, 0),
+            HORN_AP_COST, false, CombatEffects.EffectType.SLOWNESS, 2, 0),
         new HornEffectDef("yearn", "§5Yearn Horn",
             "§5§oA haunting wail! §2All enemies Poisoned for 3 turns",
-            3, false, CombatEffects.EffectType.POISON, 3, 0),
+            HORN_AP_COST, false, CombatEffects.EffectType.POISON, 3, 0),
         new HornEffectDef("dream", "§3Dream Horn",
             "§3§oAn ethereal whisper... §6Fire Resistance for 4 turns",
-            2, true, CombatEffects.EffectType.FIRE_RESISTANCE, 4, 0)
+            HORN_AP_COST, true, CombatEffects.EffectType.FIRE_RESISTANCE, 4, 0)
     );
 
     /**
@@ -78,13 +90,15 @@ public class GoatHornEffects {
     }
 
     /**
-     * Get the AP cost for a specific horn variant.
+     * Get the AP cost for a specific horn variant. Unknown variants (a modded or future horn)
+     * fall back to the same cost rather than a cheaper one, so an unrecognised horn can never
+     * undercut the real ones.
      */
     public static int getApCost(String hornId) {
         for (HornEffectDef def : HORN_DEFS) {
             if (def.hornId.equals(hornId)) return def.apCost;
         }
-        return 2;
+        return HORN_AP_COST;
     }
 
     /**

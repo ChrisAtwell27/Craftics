@@ -283,7 +283,7 @@ public class ItemUseHandler {
 
     // Items with special AP costs
     private static final Set<Item> TWO_AP_ITEMS = Set.of(
-        Items.BELL, Items.JUKEBOX, Items.CROSSBOW, Items.SPYGLASS
+        Items.BELL, Items.JUKEBOX, Items.CROSSBOW, Items.SPYGLASS, Items.ELYTRA
     );
 
     public static int getApCost(Item item) {
@@ -307,7 +307,9 @@ public class ItemUseHandler {
         if (stack.getItem() == Items.GOAT_HORN) {
             String hornId = GoatHornEffects.getHornId(stack);
             if (hornId != null) return GoatHornEffects.getApCost(hornId);
-            return 2;
+            // A horn with no readable variant still costs a horn's worth of AP - quoting a
+            // cheaper number here would let an unnamed horn undercut every real one.
+            return GoatHornEffects.HORN_AP_COST;
         }
         return getApCost(stack.getItem());
     }
@@ -328,7 +330,7 @@ public class ItemUseHandler {
         Items.WOODEN_PICKAXE, Items.GOLDEN_PICKAXE, Items.CROSSBOW,
         Items.LINGERING_POTION, Items.LIGHTNING_ROD, Items.CACTUS,
         Items.HAY_BLOCK, Items.CAKE, Items.SPORE_BLOSSOM,
-        Items.LANTERN, Items.TORCH, Items.GOAT_HORN, Items.ECHO_SHARD, Items.BRUSH
+        Items.LANTERN, Items.TORCH, Items.GOAT_HORN, Items.ECHO_SHARD, Items.BRUSH, Items.ELYTRA
     );
 
     private static boolean isBanner(Item item) {
@@ -395,6 +397,8 @@ public class ItemUseHandler {
             return useFireCharge(player, arena, targetTile, held);
         } else if (item == Items.WIND_CHARGE) {
             return useWindCharge(player, arena, targetTile, held);
+        } else if (item == Items.ELYTRA) {
+            return useElytra(player, arena, targetTile, held);
         } else if (item == Items.MILK_BUCKET) {
             return useMilkBucket(player, held);
         } else if (item == Items.TNT) {
@@ -833,6 +837,9 @@ public class ItemUseHandler {
     /** Max tiles a thrown combat item (snowball, egg, pufferfish, water throwables) can reach. */
     private static final int THROWABLE_RANGE = 4;
 
+    /** Durability the Elytra launch spends per use. */
+    private static final int ELYTRA_DURABILITY_COST = 2;
+
     /**
      * Validate that {@code enemy} can be hit by a thrown item: within
      * {@link #THROWABLE_RANGE} tiles of the player and with a clear line of sight,
@@ -1253,6 +1260,35 @@ public class ItemUseHandler {
         }
         return "§fWind charge! Launched " + moved + " tile" + (moved == 1 ? "" : "s")
             + " - §bAirtime x" + airLevel + "§f (+2 range/level; next weapon hit scales up).";
+    }
+
+    // --- Elytra: 2 AP launch. Rise out of view, land on any in-bounds tile that isn't a
+    // wall. Hazards are legal landings - you take whatever the tile normally does to you.
+    private static String useElytra(ServerPlayerEntity player, GridArena arena,
+                                     GridPos targetTile, ItemStack stack) {
+        if (targetTile == null) return "§cNeed to target a tile!";
+        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        GridPos playerPos = arena.getPlayerGridPos();
+        if (targetTile.equals(playerPos)) return "§cYou're already there!";
+        if (arena.isOccupied(targetTile)) return "§cSomething is standing there!";
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null) return "§cInvalid tile!";
+        // Walls only. Water / lava / fire / powder snow are all legal landings.
+        if (tile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE) return "§cCan't land on a wall!";
+
+        // 2 durability, using the same manual idiom as every other Craftics durability item.
+        if (stack.getDamage() + ELYTRA_DURABILITY_COST >= stack.getMaxDamage()) {
+            stack.decrement(1);
+        } else {
+            stack.setDamage(stack.getDamage() + ELYTRA_DURABILITY_COST);
+        }
+
+        CombatManager cm = CombatManager.get(player);
+        cm.applyPlayerEffectLive(CombatEffects.EffectType.AIRTIME, 2, 1); // Airtime II, 2 turns
+        cm.flyPlayerTo(targetTile);
+
+        return "§b§lElytra Launch! §fYou soar up and land at (" + targetTile.x() + ","
+            + targetTile.z() + ") - §bAirtime II §f(2 turns).";
     }
 
     // --- Milk Bucket: clears all status effects (good and bad) ---

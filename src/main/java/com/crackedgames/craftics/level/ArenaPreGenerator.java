@@ -91,6 +91,14 @@ public class ArenaPreGenerator {
             return null;
         }
 
+        // The arena a level actually needs is its override when it has one (the Pale Garden
+        // builds "forest/pale_garden", not "forest"), so the cache must be validated against
+        // that, not against the registry biome. Stamping the registry id meant a Pale Garden
+        // level matched a plain-forest arena and silently reused it: Creakings standing in an
+        // ordinary Dark Forest, with pale_garden.schem never loaded.
+        String wantedBiome = ArenaBiomeStamp.effectiveBiomeId(
+            biome.biomeId, LevelGenerator.arenaBiomeOverrideFor(level));
+
         int[] existing = pd.getArenaMetadata(level);
         if (existing != null) {
             // Trust the cache only if it was built for the biome this level now
@@ -101,7 +109,7 @@ public class ArenaPreGenerator {
             // rebuild. Older saves with no stamp (null) are trusted to avoid mass
             // rebuilds; they self-correct the first time each level is rebuilt.
             String cachedBiome = pd.getArenaBiome(level);
-            if (cachedBiome == null || cachedBiome.equals(biome.biomeId)) {
+            if (ArenaBiomeStamp.stampMatches(cachedBiome, wantedBiome)) {
                 return existing;
             }
             // Biome mismatch: the cached arena belongs to a different biome than
@@ -129,9 +137,12 @@ public class ArenaPreGenerator {
             GridArena arena = ArenaBuilder.buildAt(world, levelDef, origin);
             if (arena == null) return null;
 
+            // Stamp what was actually BUILT (the def's override when it has one), not the
+            // registry biome - otherwise a Pale Garden arena is stamped "forest" and the next
+            // lookup happily reuses a plain-forest arena for it.
             pd.storeArenaMetadata(level, arena.getOrigin(),
                 arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask(),
-                biome.biomeId);
+                ArenaBiomeStamp.effectiveBiomeId(biome.biomeId, levelDef.getArenaBiomeId()));
             pd.arenasPreGenerated = true;
             data.markDirty();
             CrafticsMod.LOGGER.debug(
@@ -194,7 +205,7 @@ public class ArenaPreGenerator {
                 if (arena != null) {
                     pd.storeArenaMetadata(level, arena.getOrigin(),
                         arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask(),
-                        biome.biomeId);
+                        ArenaBiomeStamp.effectiveBiomeId(biome.biomeId, levelDef.getArenaBiomeId()));
                     rebuilt++;
                 }
                 CrafticsMod.LOGGER.debug("ArenaPreGenerator: rebuilt level {} ({}) at {}", level, biome.biomeId, origin);
@@ -237,7 +248,9 @@ public class ArenaPreGenerator {
             if (arena != null) {
                 pd.storeArenaMetadata(level, arena.getOrigin(),
                     arena.getWidth(), arena.getHeight(), arena.getPlayerStart(), arena.getInsideMask(),
-                    biome != null ? biome.biomeId : null);
+                    biome != null
+                        ? ArenaBiomeStamp.effectiveBiomeId(biome.biomeId, levelDef.getArenaBiomeId())
+                        : null);
                 data.markDirty();
                 CrafticsMod.LOGGER.info("ArenaPreGenerator: auto-repaired level {}", level);
                 return true;

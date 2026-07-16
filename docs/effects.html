@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Craftics - Status Effects</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo"><img src="https://media.forgecdn.net/avatars/thumbnails/1730/614/64/64/639101389968942522.png" alt="Craftics Logo" style="height:32px;width:32px;vertical-align:middle;border-radius:6px;margin-right:10px;">Craftics</a>
+    <button class="nav-hamburger" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="combat.html">Combat</a></li>
+      <li><a href="effects.html" class="active">Effects</a></li>
+      <li><a href="items.html">Items</a></li>
+      <li><a href="enemies.html">Enemies</a></li>
+      <li><a href="biomes.html">Biomes</a></li>
+      <li><a href="progression.html">Progression</a></li>
+      <li><a href="modding.html">Modding</a></li>
+      <li><a href="https://github.com/ChrisAtwell27/Craftics" class="nav-github" target="_blank">GitHub &#8599;</a></li>
+    </ul>
+  </div>
+</nav>
+
+<div class="page-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-label">Status Effects</div>
+    <nav class="sidebar-nav">
+      <a href="#how-effects-work">How Effects Work</a>
+      <a href="#player-buffs">Player Buffs</a>
+      <a href="#player-debuffs">Player Debuffs</a>
+      <a href="#dots">Damage Over Time</a>
+      <a href="#enemy-effects">Enemy Effects</a>
+      <a href="#enemy-only">Enemy-Only States</a>
+      <a href="#differences">Player vs Enemy</a>
+      <a href="#cleansing">Cleansing</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <h1>Status Effects</h1>
+    <p class="page-desc">Every status effect in Craftics, for players and enemies. Players and enemies use separate effect systems, so several effects behave differently depending on who has them.</p>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         HOW EFFECTS WORK
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="how-effects-work">How Effects Work</h2>
+    <p>Craftics effects are turn-based, not tick-based. They count down once per turn instead of running on a real-time clock, and they are tracked separately from vanilla Minecraft's effect system.</p>
+
+    <p>Every effect has a <strong>level</strong>. Most formulas below scale with it, so an effect listed as "+2 movement/level" gives +2 at level I and +6 at level III.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Rule</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td>Duration cap</td><td>10 turns by default, set by <code>maxCombatEffectDuration</code>. Any longer duration is clamped down to it.</td></tr>
+          <tr><td>Re-applying</td><td>Replaces the effect outright. A new application overwrites both the duration and the level, so re-applying a weaker version downgrades a stronger one.</td></tr>
+          <tr><td>Frozen effects</td><td>Applied in the hub, they sit inert with no countdown until combat begins. While frozen, an effect does nothing at all.</td></tr>
+          <tr><td>Water beats fire</td><td>Burning cannot be applied while Soaked, and applying Soaked removes Burning outright.</td></tr>
+          <tr><td>Damage over time</td><td>Player DoT can never kill you. It always leaves at least 1 HP.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         PLAYER BUFFS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="player-buffs">Player Buffs</h2>
+    <p>Twelve buffs. None are removed by a cleanse.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Effect</th><th>Per level</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Speed</strong></td><td>+2 movement</td><td>Added to your movement budget at the start of your turn.</td></tr>
+          <tr><td><strong>Strength</strong></td><td>+3 attack</td><td>Added to your raw damage before defense is applied.</td></tr>
+          <tr><td><strong>Resistance</strong></td><td>-2 damage taken</td><td>Flat reduction, floored so a hit always deals at least 1. Only applies to enemy attacks; hazard tiles and damage over time ignore it.</td></tr>
+          <tr><td><strong>Regeneration</strong></td><td>+2 HP/turn</td><td>Healed at the start of your turn. Special affinity does not boost it.</td></tr>
+          <tr><td><strong>Fire Resistance</strong></td><td>-</td><td>Blocks the Burning effect and every fire hazard (lava, fire tiles, magma). Also grants +1 Special affinity point, which is +3 Special damage.</td></tr>
+          <tr><td><strong>Invisibility</strong></td><td>-</td><td>Enemies skip their turn rather than attack you. Does not work on an enemy that has aggroed onto one of your pets.</td></tr>
+          <tr><td><strong>Absorption</strong></td><td>+4 HP shield</td><td>Extra hearts absorbed before real HP. Uses vanilla absorption.</td></tr>
+          <tr><td><strong>Luck</strong></td><td>+5% crit chance</td><td>One of several crit sources; the first one to roll successfully wins.</td></tr>
+          <tr><td><strong>Slow Falling</strong></td><td>-</td><td>Complete knockback immunity.</td></tr>
+          <tr><td><strong>Haste</strong></td><td>+1 AP</td><td>Added to your AP at the start of your turn.</td></tr>
+          <tr><td><strong>Water Breathing</strong></td><td>+2 Water affinity points</td><td>That is <strong>+6 Water damage</strong>, not +2. Affinity points are worth 3 damage each.</td></tr>
+          <tr><td><strong>Airtime</strong></td><td>+2 ranged range, +0.5x next hit</td><td>See <a href="combat.html#combat-effects">Airtime</a>. One stack is spent per weapon hit (I = 1.5x up to V = 3.5x). The range bonus applies to bows and crossbows only and is not consumed. Also lets you move over obstacle tiles. Caps at Airtime V.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         PLAYER DEBUFFS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="player-debuffs">Player Debuffs</h2>
+    <p>Twelve debuffs. All are removed by a cleanse, and all are removed by a Milk Bucket.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Effect</th><th>Per level</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Slowness</strong></td><td>-1 movement</td><td>Subtracted from your movement budget.</td></tr>
+          <tr><td><strong>Weakness</strong></td><td>-2 attack</td><td>Subtracted from your damage, with a floor so you still do something.</td></tr>
+          <tr><td><strong>Blindness</strong></td><td>-2 range</td><td>Shrinks your weapon range, floored at 1. Stacks with Darkness.</td></tr>
+          <tr><td><strong>Darkness</strong></td><td>-1 range</td><td>Same range floor. Stacks with Blindness.</td></tr>
+          <tr><td><strong>Mining Fatigue</strong></td><td>-1 AP</td><td>Subtracted from your AP at the start of your turn.</td></tr>
+          <tr><td><strong>Levitation</strong></td><td>-1 movement</td><td>Also lets you move over obstacle tiles. When it expires you drop into Airtime I for 1 turn.</td></tr>
+          <tr><td><strong>Soaked</strong></td><td>-1 movement (flat)</td><td>The speed loss is a flat 1 regardless of level, floored so you can always move 1 tile. The "2x lightning" half only applies to enemies.</td></tr>
+          <tr><td><strong>Confusion</strong></td><td>-</td><td><strong>Does nothing to a player.</strong> It can be applied and cleansed, but the attack-your-allies behavior only exists for enemies.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>The remaining four debuffs deal damage over time and are covered below.</p>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         DOTS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="dots">Damage Over Time</h2>
+    <p>Four effects deal damage at the start of your turn. They behave very differently from each other, and three of them are made worse by the attacker's Special affinity.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Effect</th><th>Damage per turn</th><th>Shape</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Poison</strong></td>
+            <td><code>(2 x level) + turns remaining + Special affinity</code></td>
+            <td><strong>Front-loaded.</strong> Hits hardest on the first tick and weakens as it runs out, because the turns-remaining term shrinks.</td>
+          </tr>
+          <tr>
+            <td><strong>Wither</strong></td>
+            <td><code>(1 + level + Special affinity) x turns elapsed</code></td>
+            <td><strong>Ramping.</strong> The opposite of Poison. Starts small and climbs the longer it runs, so the last tick is the worst.</td>
+          </tr>
+          <tr>
+            <td><strong>Burning</strong></td>
+            <td><code>1 + level + Special affinity</code></td>
+            <td><strong>Flat.</strong> Same every turn. Blocked entirely by Fire Resistance.</td>
+          </tr>
+          <tr>
+            <td><strong>Bleeding</strong></td>
+            <td><code>stacks x (stacks + 1) / 2</code></td>
+            <td><strong>Triangular.</strong> 1, 3, 6, 10, 15 as stacks climb. Not affected by Special affinity. Bleed is its own damage source and adds nothing to direct hits.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <p><strong>Poison and Wither are mirror images.</strong> Poison front-loads and fades, so cleansing it late saves you little. Wither ramps, so cleansing it late saves you the most. Bleeding punishes stacking rather than duration: four stacks is 10 damage a turn, not 4.</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ENEMY EFFECTS
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="enemy-effects">Enemy Effects</h2>
+    <p>Enemies use a completely separate system from players. Several effects share a name with a player effect but use different math, so the same effect is not always the same thing.</p>
+
+    <p>Every enemy damage-over-time effect adds a <strong>max HP bonus</strong> of <code>max(1, maxHP / 20)</code> on top of the listed formula. That makes DoT scale into big-health targets and bosses instead of falling off.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Effect</th><th>Formula / behavior</th><th>Shown as</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Poison</strong></td><td><code>1 + level</code> per turn, plus the max HP bonus. <strong>Flat</strong>, unlike the player's tapering poison.</td><td>Poisoned</td></tr>
+          <tr><td><strong>Wither</strong></td><td><code>turns remaining + 1 + level</code> per turn, plus the max HP bonus. <strong>Tapers</strong>, the opposite of the player's ramping wither.</td><td>Withered</td></tr>
+          <tr><td><strong>Burning</strong></td><td>A stored burn value plus the max HP bonus. Re-applying <strong>extends</strong> the duration rather than refreshing it. Blocked on fire-immune and soaked mobs.</td><td>Burning</td></tr>
+          <tr><td><strong>Bleeding</strong></td><td><code>stacks x (stacks + 1) / 2</code>, plus the max HP bonus. Identical curve to the player's. <strong>One stack falls off each turn.</strong></td><td>Bleeding (N stacks)</td></tr>
+          <tr><td><strong>Soaked</strong></td><td>-1 movement, and <strong>doubles all lightning damage</strong> taken. Applying it extinguishes burning.</td><td>Soaked</td></tr>
+          <tr><td><strong>Slowness</strong></td><td>Subtracts its penalty from move speed.</td><td>Slowed</td></tr>
+          <tr><td><strong>Confusion</strong></td><td>Each confused turn, a 50/50 roll redirects the enemy's real attack at one of its own teammates. Enemies only, never allies.</td><td>Confused</td></tr>
+          <tr><td><strong>Blinded</strong></td><td><strong>Fumbles the turn entirely</strong> with no attack. Note this is nothing like the player's Blindness, which only shortens range.</td><td>Blinded</td></tr>
+          <tr><td><strong>Weakness</strong></td><td>Attack penalty subtracted from the mob's attack power.</td><td>Weakened (-N ATK)</td></tr>
+          <tr><td><strong>Exposed</strong></td><td>Defense penalty. Makes every later hit land harder.</td><td>Exposed (-N DEF)</td></tr>
+          <tr><td><strong>Regeneration</strong></td><td>Heals <code>2 x level</code> per turn.</td><td>Regenerating</td></tr>
+          <tr><td><strong>Absorption</strong></td><td><code>4 x level</code> temporary HP, soaked before real HP.</td><td>Absorption (N HP)</td></tr>
+          <tr><td><strong>Resistance</strong></td><td><strong>Flat</strong> reduction applied before the defense percentage.</td><td>Resistant</td></tr>
+          <tr><td><strong>Strength</strong></td><td>Attack buff added to attack power.</td><td>Strengthened (+N ATK)</td></tr>
+          <tr><td><strong>Speed</strong></td><td>Speed buff added to move speed.</td><td>Hastened (+N SPD)</td></tr>
+          <tr><td><strong>Slow Falling</strong></td><td>Knockback immunity.</td><td>SlowFalling</td></tr>
+          <tr><td><strong>Airtime</strong></td><td>Visual and movement only. Enemies get <strong>no damage bonus</strong> from it.</td><td>Airtime</td></tr>
+          <tr><td><strong>Levitation</strong></td><td>-1 movement per level. On expiry the enemy drops into Airtime, same as a player.</td><td>Levitation</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ENEMY-ONLY
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="enemy-only">Enemy-Only States</h2>
+    <p>These have no player equivalent.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>State</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Stunned</strong></td><td>Skips its next turn, then clears. Mobs that resist Blunt damage are immune, and <strong>bosses shrug it off half the time</strong>.</td></tr>
+          <tr><td><strong>Frozen</strong></td><td>Move speed becomes 0, ignoring the usual floor. Used by the Creaking's gaze.</td></tr>
+          <tr><td><strong>Enraged</strong></td><td>Per-mob behavior change. Creepers widen their blast, Endermen frenzy, territorial mobs turn hostile permanently.</td></tr>
+          <tr><td><strong>Marked</strong></td><td>Takes <strong>2x damage</strong>, or 1.5x on a boss. Applies to direct hits, area damage and damage over time. Only one enemy can be marked at a time.</td></tr>
+          <tr><td><strong>Taunting</strong></td><td>Forces enemy targeting onto that ally. Used by the Terracotta golem.</td></tr>
+          <tr><td><strong>Permanent DEF loss</strong></td><td>From Breach. Never expires.</td></tr>
+          <tr><td><strong>Permanent max HP loss</strong></td><td>From heavy Wither. Never expires.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         DIFFERENCES
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="differences">Player vs Enemy</h2>
+    <p>The two systems are separate, so the same name can mean two different things. These are the ones worth knowing.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Effect</th><th>On a player</th><th>On an enemy</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Poison</strong></td><td>Front-loaded, fades as it runs out</td><td>Flat every turn</td></tr>
+          <tr><td><strong>Wither</strong></td><td>Ramps up, worst at the end</td><td>Tapers off, worst at the start</td></tr>
+          <tr><td><strong>Blindness</strong></td><td>-2 range per level</td><td>Fumbles the whole turn</td></tr>
+          <tr><td><strong>Soaked</strong></td><td>-1 movement only</td><td>-1 movement <strong>and</strong> 2x lightning damage</td></tr>
+          <tr><td><strong>Confusion</strong></td><td>Nothing</td><td>50/50 to attack its own teammates</td></tr>
+          <tr><td><strong>Airtime</strong></td><td>Range and next-hit damage</td><td>Visual and movement only</td></tr>
+          <tr><td><strong>Bleeding</strong></td><td>Triangular, stacks stay</td><td>Triangular, <strong>one stack falls off per turn</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         CLEANSING
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="cleansing">Cleansing</h2>
+    <p>A cleanse removes the twelve debuffs and leaves buffs alone. A Milk Bucket is different: it clears <strong>everything</strong>, good and bad.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Source</th><th>AP</th><th>Removes</th></tr></thead>
+        <tbody>
+          <tr><td>Milk Bucket</td><td>3</td><td>All effects, buffs included. Works on yourself or an adjacent teammate.</td></tr>
+          <tr><td>Cleanse (instrument signature)</td><td>Varies</td><td>Debuffs only, on all friendlies.</td></tr>
+          <tr><td>Fire Resistance</td><td>-</td><td>Prevents Burning rather than removing it.</td></tr>
+          <tr><td>Soaked</td><td>-</td><td>Removes Burning and prevents it from being re-applied.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <span>Craftics by Cracked Games LLC</span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics">GitHub</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ChrisAtwell27/Craftics/issues">Issues</a>
+  <span class="sep">&middot;</span>
+  <span>All Rights Reserved</span>
+</footer>
+
+<script src="js/nav.js"></script>
+</body>
+</html>

@@ -21,7 +21,7 @@ import net.fabricmc.loader.api.FabricLoader;
  * - "How Trims Work" is referenced by name from CombatManager trim-drop unlocks.
  */
 public class GuideBookData {
-    // Content version: 2026-06-12 mass overhaul
+    // Content version: 2026-07-15 - Airtime, Elytra launch, Wind Burst recoil, milk rework
 
     public record Page(String title, String text) {}
     /** Structured bestiary stats. Any field may be null/empty -> badge hidden. */
@@ -269,7 +269,26 @@ public class GuideBookData {
                 "Eating food costs 1 AP and heals based on the food's nourishment - from 2 HP for a berry up to a full heal from rich golden foods.\n\n" +
                 "Golden Carrot is special: it's FREE to eat (0 AP) and grants +1 AP this turn. Emergency fuel!\n\n" +
                 "Totem of Undying can be eaten for a full heal - or kept in inventory to auto-revive you at half HP when you'd die.\n\n" +
-                "In co-op you can feed an adjacent teammate. Cake placed on a tile gives 3 shared bites of 2 HP each.")
+                "In co-op you can feed an adjacent teammate. Cake placed on a tile gives 3 shared bites of 2 HP each.\n\n" +
+                "Milk Bucket costs 3 AP and clears ALL your status effects, good and bad. You can also use it on an adjacent teammate to clear theirs. You keep the empty bucket.")
+        )));
+        basics.add(new Entry("Airtime", "minecraft:elytra", List.of(
+            new Page("Getting Airborne",
+                "Airtime means you are off the ground, and it makes your next hit land harder.\n\n" +
+                "Each level of Airtime gives:\n" +
+                "+2 ranged attack range\n" +
+                "+0.5x damage on your next weapon hit\n\n" +
+                "So Airtime I is a 1.5x hit, II is 2.0x, III is 2.5x, up to V at 3.5x.\n\n" +
+                "One stack is spent per weapon hit. At Airtime III your first hit lands for 2.5x and drops you to II, the next for 2.0x, and so on. It lasts 1 turn unless something refreshes it."),
+            new Page("Getting It",
+                "Wind Charge self-launch - throw one at an adjacent empty tile. Each launch stacks another level, up to V.\n\n" +
+                "Elytra - 2 AP to launch to any tile that isn't a wall. Grants Airtime II for 2 turns and costs 2 durability.\n\n" +
+                "Wind Burst on a mace - the shockwave blows you a tile too, granting Airtime at the enchantment's level.\n\n" +
+                "Levitation - when it wears off you drop into Airtime I."),
+            new Page("Flying Over Things",
+                "While you have Airtime you can move over obstacle tiles instead of walking around them. Levitation does the same.\n\n" +
+                "Water still needs a boat. Only walls become passable.\n\n" +
+                "The move highlight accounts for this, so tiles you can reach while airborne are shown as reachable.")
         )));
         CATEGORIES.add(new Category("Combat Basics", "minecraft:iron_sword",
             "Learn the fundamentals of grid combat.", basics));
@@ -762,7 +781,7 @@ public class GuideBookData {
             new Page("Bleed Striker",
                 "§cBleed Striker. Stack bleed, finish quick.\n\n" +
                 "Weapon: Diamond or Netherite Sword + Sharpness.\n" +
-                "Each Sharpness hit adds a Bleed stack; the target takes damage equal to its stacks every turn (1, 2, 3...). Classified as Special damage.\n\n" +
+                "Each Sharpness hit adds a Bleed stack; bleed damage climbs steeply with stacks (1, 3, 6, 10...) every turn. Classified as Special damage.\n\n" +
                 "Armor: Chainmail set (Rogue). +2 Slashing, -1 AP cost.\n" +
                 "Trim: Bolt = +1 Slashing per piece.\n\n" +
                 "Tip: Sweeping Edge spreads hits to adjacent foes. Every extra hit is another bleed stack."),
@@ -1062,9 +1081,9 @@ public class GuideBookData {
             new Page("Mace Enchantments",
                 "Density: gravity well. Pulls nearby enemies to the impact point + crushing bonus damage.\n\n" +
                 "Breach: permanently reduces target defense per hit. Stacks all combat.\n\n" +
-                "Wind Burst: shockwave knockback on all adjacent + buffs your next Mace hit (+2/+3/+4)."),
+                "Wind Burst: shockwave knockback on all adjacent - and it blows YOU a tile too, granting Airtime (1 turn) so your next weapon hit lands for 1.5x/2x/2.5x."),
             new Page("Trident Enchantments",
-                "Impaling: 1/2/5/8/10 bonus damage + Bleed stacks (1/1/2/2/3).\n\n" +
+                "Impaling: +25% of your hit per level vs aquatic (never below 1/2/5/8/10), and +50% more on a Soaked target. Adds Bleed stacks (1/1/2/2/3).\n\n" +
                 "Channeling: lightning on throw hit - 3/6/10 damage, DOUBLED vs Soaked, chains to 1/3/5 extra targets at half damage (full vs Soaked).\n\n" +
                 "Loyalty: trident ricochets to 1 nearby enemy per level (50% damage) before returning.\n\n" +
                 "Riptide: dash through enemies instead of throwing - damage + knockback scale with level."),
@@ -1227,7 +1246,7 @@ public class GuideBookData {
         items.add(new Entry("Combat Items", "minecraft:anvil", List.of(
             new Page("Offensive Items",
                 "Anvil (1 AP): drops on the enemy - 1/2 its max HP (pristine), 1/3 (chipped), 1/4 (damaged), then breaks. Wears one stage per use unless Special affinity saves it (10% per point)\n" +
-                "TNT (1 AP): detonates next round - 8/5/3 dmg by distance, radius 2. Hurts everyone, including you\n" +
+                "TNT (2 AP): detonates next round - 8/5/3 dmg +24/15/9% max HP by distance, radius 2. Hurts everyone, including you\n" +
                 "Bell (2 AP): stun all enemies within 2 tiles\n" +
                 "Crossbow item-throw (2 AP): 3 DMG, 4-tile range\n" +
                 "Trident: melee (1 AP) or throw (2 AP)\n" +
@@ -1239,18 +1258,20 @@ public class GuideBookData {
                 "Compass (1 AP): reveal all positions\n" +
                 "Brush (1 AP): dig random loot from an adjacent tile\n" +
                 "Ender Pearl (1 AP): teleport - costs 2 HP on landing\n" +
-                "Wind Charge (1 AP): shove an enemy up to 3 tiles, or self-launch 2 tiles (grants Airtime: +2 ranged range and +0.5x next-hit damage per stack)"),
+                "Wind Charge (1 AP): shove an enemy up to 3 tiles, or self-launch 2 tiles (grants Airtime: +2 ranged range and +0.5x next-hit damage per stack)\n" +
+                "Elytra (2 AP): hold it and launch to any tile that isn't a wall. Costs 2 durability and grants Airtime II for 2 turns. Water, lava and fire are legal landings, so watch where you aim\n" +
+                "Milk Bucket (3 AP): clears ALL status effects, good and bad. Works on yourself or an adjacent teammate. Returns the bucket"),
             new Page("Goat Horns",
-                "Each horn variant is a reusable battle-cry (Special-affinity scaled):\n\n" +
-                "Ponder (1 AP): +2 DEF\n" +
-                "Sing (1 AP): +2 regen\n" +
-                "Feel (1 AP): +2 Speed\n" +
-                "Seek (2 AP): +3 ATK\n" +
-                "Admire (2 AP): -2 ATK on ALL enemies\n" +
-                "Call (2 AP): -1 Speed on ALL enemies\n" +
-                "Dream (2 AP): fire resistance\n" +
-                "Yearn (3 AP): poison ALL enemies\n\n" +
-                "Horns don't break - one horn, every fight."),
+                "Every horn costs 5 AP (Special-affinity scaled):\n\n" +
+                "Ponder: +2 DEF\n" +
+                "Sing: +2 regen\n" +
+                "Feel: +2 Speed\n" +
+                "Seek: +3 ATK\n" +
+                "Admire: -2 ATK on ALL enemies\n" +
+                "Call: -1 Speed on ALL enemies\n" +
+                "Dream: fire resistance\n" +
+                "Yearn: poison ALL enemies\n\n" +
+                "Horns don't break - one horn, every fight. But at 5 AP a horn is a setup tool, not something you chain: it costs more than a base turn's 3 AP, so you need AP from your stats, a trim, a set bonus or Haste to blow one at all. Open with it, then fight."),
             new Page("Potions & Sherds",
                 "Drinkable potions work in combat - durations convert to turns, and Special affinity strengthens them.\n\n" +
                 "Splash & Lingering potions can be thrown for AoE effects; lingering leaves a cloud on the tiles.\n\n" +

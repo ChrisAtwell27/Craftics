@@ -40,6 +40,12 @@ public class LevelGenerator {
         Map.entry("dragons_nest",      Set.of("minecraft:enderman", "minecraft:phantom"))
     );
 
+    /**
+     * Arena id for the Pale Garden sub-biome. Names a single bundled FILE
+     * (arenas/forest/pale_garden.schem) rather than a directory of numbered variants.
+     */
+    public static final String PALE_GARDEN_ARENA_ID = "forest/pale_garden";
+
     public static LevelDefinition generate(int levelNumber) {
         return generate(levelNumber, -1);
     }
@@ -132,13 +138,44 @@ public class LevelGenerator {
 
         // Pale Garden sub-biome: at the forest midpoint, spawn creakings instead.
         // Available natively on 1.21.4+ and via the Pale Garden Backport mod on older shards.
-        if ("forest".equals(biome.biomeId) && !isBoss && biomeIndex == biome.levelCount / 2
-            && com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.shouldSpawnPaleGarden()) {
+        if (isPaleGardenLevel(biome, biomeIndex, isBoss)) {
             levelDef = buildPaleGardenLevel(levelNumber, biome, biomeIndex, width, height, loot, rand, scaleHpPerLevel, branchChoice);
         }
 
         levelDef.setInfiniteSpec(infiniteSpec);
         return levelDef;
+    }
+
+    /**
+     * The Pale Garden replaces the forest biome's midpoint level when the content is available
+     * (natively on 1.21.4+, via the Pale Garden Backport mod on older shards).
+     *
+     * <p>Split out so the arena cache can ask "which arena does this level need?" without
+     * generating a whole level definition to find out. {@link #generate} and
+     * {@link #arenaBiomeOverrideFor} must agree, or the cache validates against a biome the
+     * level does not actually build.
+     */
+    private static boolean isPaleGardenLevel(BiomeTemplate biome, int biomeIndex, boolean isBoss) {
+        return "forest".equals(biome.biomeId) && !isBoss && biomeIndex == biome.levelCount / 2
+            && com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat
+                .shouldSpawnPaleGarden();
+    }
+
+    /**
+     * The arena biome id {@code levelNumber} builds, or null when it just uses its own biome's
+     * arenas. Cheap and side-effect free: no RNG, no world access, no level generation.
+     *
+     * <p>The arena cache is keyed by level number and validated by a biome stamp, so it needs
+     * this answer for every lookup. Generating a full {@code LevelDefinition} just to read the
+     * override would be wasteful and, because {@link #generate} seeds itself from
+     * {@code System.nanoTime()}, would also throw away a level nobody plays.
+     */
+    public static String arenaBiomeOverrideFor(int levelNumber) {
+        BiomeTemplate biome = BiomeRegistry.getForLevel(levelNumber);
+        if (biome == null) return null;
+        int biomeIndex = biome.getBiomeLevelIndex(levelNumber);
+        boolean isBoss = biome.isBossLevel(levelNumber);
+        return isPaleGardenLevel(biome, biomeIndex, isBoss) ? PALE_GARDEN_ARENA_ID : null;
     }
 
     private static GeneratedLevelDefinition buildPaleGardenLevel(
@@ -203,7 +240,7 @@ public class LevelGenerator {
             tiles, enemies, loot,
             true, biome // night = true for creepy atmosphere
         );
-        def.setArenaBiomeOverride("forest/pale_garden");
+        def.setArenaBiomeOverride(PALE_GARDEN_ARENA_ID);
         return def;
     }
 
@@ -293,13 +330,19 @@ public class LevelGenerator {
         // the main threat; extra random biome trash dilutes the fight.
         if (isBoss) count = Math.min(3, com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAdds());
 
+        // The two ends of the ramp are configurable (passiveHostileRatioEarly/Late); the rungs
+        // between them interpolate off those ends rather than being hardcoded, so moving either
+        // end actually moves the curve. These config fields previously did nothing at all - the
+        // 0.4/1.0 defaults were copy-pasted here and the knobs left orphaned.
+        float earlyRatio = com.crackedgames.craftics.CrafticsMod.CONFIG.passiveHostileRatioEarly();
+        float lateRatio = com.crackedgames.craftics.CrafticsMod.CONFIG.passiveHostileRatioLate();
         float hostileRatio;
         if (biomeOrdinal == 0 && biomeIndex == 0) hostileRatio = 0.0f; // Plains I is always passive
-        else if (biomeOrdinal == 0 && biomeIndex <= 1) hostileRatio = 0.4f;
-        else if (biomeIndex <= 0) hostileRatio = 0.6f;
-        else if (biomeIndex <= 1) hostileRatio = 0.75f;
-        else hostileRatio = 1.0f;
-        if (biomeOrdinal >= 9) hostileRatio = 1.0f;
+        else if (biomeOrdinal == 0 && biomeIndex <= 1) hostileRatio = earlyRatio;
+        else if (biomeIndex <= 0) hostileRatio = earlyRatio + (lateRatio - earlyRatio) * 0.33f;
+        else if (biomeIndex <= 1) hostileRatio = earlyRatio + (lateRatio - earlyRatio) * 0.66f;
+        else hostileRatio = lateRatio;
+        if (biomeOrdinal >= 9) hostileRatio = lateRatio;
 
         int hpBonus = biomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
         // Per-level ramp is controlled by the island owner (or the global config

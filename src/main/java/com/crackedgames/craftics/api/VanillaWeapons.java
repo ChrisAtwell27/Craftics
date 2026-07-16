@@ -624,7 +624,6 @@ public final class VanillaWeapons {
             // Wind Burst: knockback ALL adjacent + accumulate bonus for next mace hit
             if (windBurstLevel > 0) {
                 int wbKb = windBurstLevel;
-                int wbNextBonus = windBurstLevel == 1 ? 2 : (windBurstLevel == 2 ? 3 : 4);
                 GridPos pPos = arena.getPlayerGridPos();
                 // Knockback all adjacent enemies (including target)
                 List<CombatEntity> kbTargets = new ArrayList<>();
@@ -674,10 +673,13 @@ public final class VanillaWeapons {
                 if (implosionCombo) {
                     messages.add("\u00a7b\u00a7l\u2726 Implosion Blast! \u00a7r\u00a7bGravity gathered the cluster, then the shockwave hurled it out (+" + comboCollisionDmg + " collision)!");
                 } else {
-                    messages.add("\u00a7b\ud83d\udca8 Wind Burst! Shockwave knocks back enemies " + wbKb + " tiles. Next mace hit +" + wbNextBonus + " damage!");
+                    messages.add("\u00a7b\ud83d\udca8 Wind Burst! Shockwave knocks back enemies " + wbKb + " tiles - and blows YOU off your feet!");
                 }
-                // Convention: CombatManager reads [WB_BONUS:N] from messages
-                messages.add("[WB_BONUS:" + wbNextBonus + "]");
+                // Convention: CombatManager reads [WB_SELF:N] from messages and applies the
+                // shockwave's recoil to the swinger - Airtime N for 1 turn plus a 1-tile shove
+                // in a random direction. Done there because only CombatManager can reach the
+                // player's CombatEffects and the knockback helper.
+                messages.add("[WB_SELF:" + windBurstLevel + "]");
             } else {
                 // Default mace knockback (no Wind Burst)
                 GridPos pPos = arena.getPlayerGridPos();

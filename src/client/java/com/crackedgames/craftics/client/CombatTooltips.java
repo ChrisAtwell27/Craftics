@@ -281,9 +281,10 @@ public class CombatTooltips implements ItemTooltipCallback {
                     String desc = com.crackedgames.craftics.api.registry.ArmorSetRegistry
                         .getDescription(setKey);
                     if (desc != null && !desc.isEmpty()) {
-                        lines.add(Text.literal(fullSet
-                            ? "\u00a7a  Full set: " + desc
-                            : "\u00a78  Full set: " + desc));
+                        // Compat modules write these as full sentences, so they must wrap -
+                        // unwrapped they ran off the screen edge.
+                        TooltipWrap.addWrapped(lines, "  ",
+                            (fullSet ? "\u00a7a" : "\u00a78") + "Full set: " + desc);
                     }
 
                     // Hybrid set \u2014 shown when the client wears a qualifying two-material
@@ -299,7 +300,7 @@ public class CombatTooltips implements ItemTooltipCallback {
                     if (hybrid != null
                             && (setKey.equals(hybrid.materialA()) || setKey.equals(hybrid.materialB()))) {
                         lines.add(Text.literal("\u00a7d  Hybrid: " + hybrid.className()));
-                        lines.add(Text.literal("\u00a77  " + hybrid.description()));
+                        TooltipWrap.addWrapped(lines, "  ", "\u00a77" + hybrid.description());
                     }
                 }
             }
@@ -341,16 +342,18 @@ public class CombatTooltips implements ItemTooltipCallback {
             if (!perPiece.isEmpty() || !matDesc.isEmpty()) {
                 lines.add(Text.empty());
                 lines.add(Text.literal("\u00a7b\u00a7lTrim Combat Bonus:"));
+                // Registry-sourced sentences: wrap them or they run off the screen edge.
                 if (!perPiece.isEmpty()) {
-                    lines.add(Text.literal("\u00a7b  Pattern: " + perPiece));
+                    TooltipWrap.addWrapped(lines, "  ", "\u00a7bPattern: " + perPiece);
                 }
                 if (!matDesc.isEmpty()) {
-                    lines.add(Text.literal("\u00a7e  Material: " + matDesc));
+                    TooltipWrap.addWrapped(lines, "  ", "\u00a7eMaterial: " + matDesc);
                 }
                 String setName = getTrimSetBonusName(patternId);
                 String setDesc = getTrimSetBonusDescription(patternId);
                 if (!setName.isEmpty()) {
-                    lines.add(Text.literal("\u00a78  Full Set (\u00a7e" + setName + "\u00a78): " + setDesc));
+                    TooltipWrap.addWrapped(lines, "  ",
+                        "\u00a78Full Set (\u00a7e" + setName + "\u00a78): " + setDesc);
                 }
             }
         }
@@ -403,19 +406,19 @@ public class CombatTooltips implements ItemTooltipCallback {
         return switch (enchantId) {
             // Weapon damage
             case "sharpness" -> "\u00a7c\u2694 Sharpness " + toRoman(level) + ": \u00a77+" + level + " dmg & +" + level + " Bleed per hit";
-            case "smite" -> "\u00a7e\u2694 Smite " + toRoman(level) + ": \u00a77+" + (level * 2) + " damage vs undead";
-            case "bane_of_arthropods" -> "\u00a72\u2694 Bane " + toRoman(level) + ": \u00a77+" + (level * 2) + " damage vs spiders";
+            case "smite" -> "\u00a7e\u2694 Smite " + toRoman(level) + ": \u00a77+25%/level damage vs undead (min " + (level * 2) + "), splashes nearby undead";
+            case "bane_of_arthropods" -> "\u00a72\u2694 Bane " + toRoman(level) + ": \u00a77Poisons spiders (25%/level, min " + level + ") + slows them, 3 turns";
             case "power" -> "\u00a7c\u27B3 Power " + toRoman(level) + ": \u00a77+" + level + " ranged dmg & +" + ((level + 1) / 2) + " range";
-            case "impaling" -> "\u00a7b\u2694 Impaling " + toRoman(level) + ": \u00a77+" + (level * 2) + " damage vs aquatic";
-            case "density" -> "\u00a78\u2694 Density " + toRoman(level) + ": \u00a77+" + level + " AoE damage (mace)";
+            case "impaling" -> "\u00a7b\u2694 Impaling " + toRoman(level) + ": \u00a77+25%/level damage vs aquatic, \u00a73+50% more if Soaked";
+            case "density" -> "\u00a78\u2694 Density " + toRoman(level) + ": \u00a77Gravity well (mace): pulls enemies in, +" + level + " crush dmg to those left adjacent";
             case "breach" -> "\u00a74\u2694 Breach " + toRoman(level) + ": \u00a77Ignore " + level + " enemy DEF";
 
             // Weapon utility
             case "fire_aspect" -> "\u00a76\u2604 Fire Aspect " + toRoman(level) + ": \u00a77Ignite target for " + (level * 4) + "s";
             case "knockback" -> "\u00a7e\u2B05 Knockback " + toRoman(level) + ": \u00a77Push target " + level + " extra tile(s)";
             case "looting" -> "\u00a7a\u2728 Looting " + toRoman(level) + ": \u00a77+" + level + " bonus loot drops";
-            case "sweeping" -> "\u00a77\u2694 Sweeping Edge " + toRoman(level) + ": \u00a77Cleave deals " + (50 + level * 17) + "% to adjacent";
-            case "wind_burst" -> "\u00a7b\u2B05 Wind Burst " + toRoman(level) + ": \u00a77+" + level + " knockback range";
+            case "sweeping" -> "\u00a77\u2694 Sweeping Edge " + toRoman(level) + ": \u00a77Cleave deals " + (level == 1 ? 60 : (level == 2 ? 75 : 90)) + "% to adjacent";
+            case "wind_burst" -> "\u00a7b\u2B05 Wind Burst " + toRoman(level) + ": \u00a77Knocks enemies back " + level + " tiles; blows you 1 tile and grants Airtime " + toRoman(level) + " (1 turn)";
 
             // Bow/crossbow
             case "flame" -> "\u00a76\u2604 Flame: \u00a77Arrows ignite targets";
@@ -625,15 +628,20 @@ public class CombatTooltips implements ItemTooltipCallback {
         return null;
     }
 
+    /**
+     * Horn tooltips. The AP figure is read from {@link GoatHornEffects#HORN_AP_COST} rather than
+     * written into each string, so a cost change can't leave these lying about what a horn costs.
+     */
     private static String getHornVariantTooltip(String nameStr) {
-        if (nameStr.contains("Ponder")) return "\u00a77Ponder Horn \u2014 \u00a77\u00a7oA contemplative note... \u00a79+2 Armor Class for 3 turns \u00a78(AP: 1)";
-        if (nameStr.contains("Sing")) return "\u00a7eSing Horn \u2014 \u00a7e\u00a7oAn uplifting melody! \u00a7a+2 HP regen for 3 turns \u00a78(AP: 1)";
-        if (nameStr.contains("Seek")) return "\u00a76Seek Horn \u2014 \u00a76\u00a7oA rallying cry! \u00a7c+3 Attack for 3 turns \u00a78(AP: 2)";
-        if (nameStr.contains("Feel")) return "\u00a7dFeel Horn \u2014 \u00a7d\u00a7oA soothing hum... \u00a7b+2 Speed for 3 turns \u00a78(AP: 1)";
-        if (nameStr.contains("Admire")) return "\u00a7bAdmire Horn \u2014 \u00a7b\u00a7oA piercing blast! \u00a77All enemies -2 Attack for 2 turns \u00a78(AP: 2)";
-        if (nameStr.contains("Call")) return "\u00a7aCall Horn \u2014 \u00a7a\u00a7oA thunderous bellow! \u00a73All enemies -1 Speed for 2 turns \u00a78(AP: 2)";
-        if (nameStr.contains("Yearn")) return "\u00a75Yearn Horn \u2014 \u00a75\u00a7oA haunting wail! \u00a72All enemies Poisoned for 3 turns \u00a78(AP: 3)";
-        if (nameStr.contains("Dream")) return "\u00a73Dream Horn \u2014 \u00a73\u00a7oAn ethereal whisper... \u00a76Fire Resistance for 4 turns \u00a78(AP: 2)";
+        String ap = " \u00a78(AP: " + com.crackedgames.craftics.combat.GoatHornEffects.HORN_AP_COST + ")";
+        if (nameStr.contains("Ponder")) return "\u00a77Ponder Horn: \u00a77\u00a7oA contemplative note... \u00a79+2 Armor Class for 3 turns" + ap;
+        if (nameStr.contains("Sing")) return "\u00a7eSing Horn: \u00a7e\u00a7oAn uplifting melody! \u00a7a+2 HP regen for 3 turns" + ap;
+        if (nameStr.contains("Seek")) return "\u00a76Seek Horn: \u00a76\u00a7oA rallying cry! \u00a7c+3 Attack for 3 turns" + ap;
+        if (nameStr.contains("Feel")) return "\u00a7dFeel Horn: \u00a7d\u00a7oA soothing hum... \u00a7b+2 Speed for 3 turns" + ap;
+        if (nameStr.contains("Admire")) return "\u00a7bAdmire Horn: \u00a7b\u00a7oA piercing blast! \u00a77All enemies -2 Attack for 2 turns" + ap;
+        if (nameStr.contains("Call")) return "\u00a7aCall Horn: \u00a7a\u00a7oA thunderous bellow! \u00a73All enemies -1 Speed for 2 turns" + ap;
+        if (nameStr.contains("Yearn")) return "\u00a75Yearn Horn: \u00a75\u00a7oA haunting wail! \u00a72All enemies Poisoned for 3 turns" + ap;
+        if (nameStr.contains("Dream")) return "\u00a73Dream Horn: \u00a73\u00a7oAn ethereal whisper... \u00a76Fire Resistance for 4 turns" + ap;
         return null;
     }
 
@@ -944,7 +952,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+1 DEF when in offhand\n\u00a79Block: \u00a7725% chance to fully block an attack\n\u00a77No AP cost \u2014 equip in offhand slot";
         if (item == Items.TOTEM_OF_UNDYING) return "\u00a76Passive: \u00a77Auto-activates on fatal hit\n\u00a77Restores 50% HP + Regen II\n\u00a77Consumed from inventory automatically";
         if (item == Items.MILK_BUCKET) return "\u00a7f3 AP \u00a77- Clears ALL status effects (good and bad)\n\u00a77Drink it yourself, or feed an adjacent ally. Returns the bucket.";
-        if (item == Items.TNT) return "\u00a7c1 AP \u00a77- Place TNT on target tile\n\u00a7eExplodes next round!\n\u00a7c8/5/3 DMG \u00a77in AoE (distance-based)\n\u00a7cSelf-damage if within 2 tiles!";
+        if (item == Items.TNT) return "\u00a7c2 AP \u00a77- Place TNT on target tile\n\u00a7eExplodes next round!\n\u00a7c8/5/3 + 24/15/9% max HP \u00a77in AoE (distance-based)\n\u00a7cSelf-damage 6/4/2 if within 2 tiles!";
         if (item == Items.COBWEB) return "\u00a771 AP \u00a77- Throw at enemy\n\u00a77Stuns target \u2014 they skip next turn";
         if (item == Items.FLINT_AND_STEEL) return "\u00a761 AP \u00a77- Set enemy on fire\n\u00a7c2 DMG \u00a77+ burns for 5 seconds\n\u00a77Uses durability";
         if (item == Items.FISHING_ROD) return "\u00a7b3 AP \u00a77- Cast into adjacent water tile\n\u00a77Random loot! Fish, treasure, rare items\n\u00a77Must stand next to water";
@@ -961,7 +969,8 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.SLIME_BLOCK) return "\u00a7a1 AP \u00a77- Place bouncy wall\n\u00a77Blocks movement and knocks adjacent enemies back when they end their turn beside it";
         if (item == Items.POWDER_SNOW_BUCKET) return "\u00a7b1 AP \u00a77- Freeze an enemy\n\u00a7c1 DMG \u00a77+ stun (skip next turn)";
         if (item == Items.JUKEBOX) return "\u00a7d2 AP \u00a77- Play music\n\u00a77Buffs all ally pets +1 Speed\n\u00a77Consumed on use";
-        if (item == Items.GOAT_HORN) return "\u00a761-3 AP \u00a77- Combat horn\n\u00a77Each variant gives a different buff or debuff\n\u00a77(see horn name for specific effect)";
+        if (item == Items.GOAT_HORN) return "\u00a76" + com.crackedgames.craftics.combat.GoatHornEffects.HORN_AP_COST
+            + " AP \u00a77- Combat horn. A setup tool: it costs more than a base turn's AP\n\u00a77Each variant gives a different buff or debuff\n\u00a77(see horn name for specific effect)\n\u00a77Never consumed";
         if (item == Items.ECHO_SHARD) return "\u00a751 AP \u00a77- Echo teleport\n\u00a77Return to start-of-turn position\n\u00a77Consumed on use";
         if (item == Items.BRUSH) return "\u00a7e1 AP \u00a77- Excavate adjacent tile\n\u00a77Dig up random loot (gold, gems, etc.)\n\u00a77Uses durability";
         if (item == Items.LANTERN) return "\u00a7e1 AP \u00a77- Place light source\n\u00a77Reveals hidden/invisible enemies in 3 tiles";
@@ -1075,6 +1084,7 @@ public class CombatTooltips implements ItemTooltipCallback {
         if (item == Items.BREEZE_ROD) return "\u00a7bBreeze drop\n\u00a77Crafting material from trial chambers";
         if (item == Items.HEAVY_CORE) return "\u00a78Mace crafting component\n\u00a77Rare trial chamber drop";
         if (item == Items.WIND_CHARGE) return "\u00a7f1 AP \u00a77- Knock an enemy back, or launch yourself off an adjacent tile\n\u00a77Self-launch grants \u00a7bAirtime\u00a77: +2 ranged range and +0.5x damage on your next weapon hit, per stack (stacks up to V)";
+        if (item == Items.ELYTRA) return "\u00a7f2 AP \u00a77- Launch to any tile that isn't a wall\n\u00a77Rise out of view and land there, gaining \u00a7bAirtime II \u00a77(2 turns). Costs 2 durability.";
 
         // \u2500\u2500 Lead (ally command tool) \u2500\u2500
         if (item == Items.LEAD) return "\u00a7b1 AP \u00a77- Command an ally\n\u00a77Click an ally to select them. Green tiles show how far they can move, red marks enemies they can reach\n\u00a77Click a green tile to reposition them, or a red enemy to make them strike (no ally turn used)";
