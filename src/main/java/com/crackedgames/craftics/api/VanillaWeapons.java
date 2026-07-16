@@ -140,17 +140,20 @@ public final class VanillaWeapons {
             }
         }
 
-        // Bane of Arthropods: poison + slowness vs arthropods. The poison's
-        // per-turn intensity scales as +25% of the hit's base damage per level
-        // (Lv5 = +125%) instead of a flat 1/level, so the venom stays relevant
-        // against high-HP late-game arthropods. Floored at the old flat value.
+        // Bane of Arthropods: poison + slowness vs arthropods. Bane N applies Poison N.
+        // The second argument is an AMPLIFIER (a LEVEL), not a damage number: this used to
+        // pass a computed per-turn damage into that slot, which the old flat enemy formula
+        // happened to make look about right. Under the shared EffectFormulas math the same
+        // value reads as a level and deals several times the intended damage.
+        // Consequence: Bane's poison no longer scales with weapon damage.
         int bane = PlayerCombatStats.getBane(player);
         if (bane > 0 && PlayerCombatStats.isArthropod(target.getEntityTypeId())) {
-            int poisonPerTurn = Math.max(bane, (int) Math.round(baseDamage * 0.25 * bane));
-            target.stackPoison(3, poisonPerTurn);
+            target.stackPoison(3, bane - 1); // amplifier is 0-based: Bane I -> amplifier 0
             int slowPenalty = bane <= 2 ? 1 : (bane <= 4 ? 2 : 3);
             target.stackSlowness(3, slowPenalty);
-            messages.add("\u00a72Venom! " + target.getDisplayName() + " is poisoned (" + poisonPerTurn + "/turn) and slowed (-" + slowPenalty + " speed).");
+            // No per-turn figure: EffectFormulas owns that number, it changes per tick as the
+            // poison front-loads, and it varies per target via the max-HP term.
+            messages.add("\u00a72Venom! " + target.getDisplayName() + " is poisoned and slowed (-" + slowPenalty + " speed).");
         }
 
         // Knockback: directional shockwave - push target + enemies behind in a line

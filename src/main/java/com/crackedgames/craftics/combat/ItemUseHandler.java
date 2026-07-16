@@ -450,7 +450,7 @@ public class ItemUseHandler {
         } else if (isPickaxe(item)) {
             return usePickaxe(arena, targetTile, held);
         } else if (item == Items.CROSSBOW) {
-            return useCrossbow(arena, targetTile, held);
+            return useCrossbow(player, arena, targetTile, held);
         } else if (item == Items.LINGERING_POTION) {
             return useLingeringPotion(player, arena, targetTile, held);
         } else if (item == Items.LIGHTNING_ROD) {
@@ -1886,8 +1886,12 @@ public class ItemUseHandler {
             + "|§7You dig out a sunken pit.";
     }
 
-    // --- Crossbow: 4-tile range, 3 damage (2 AP, durability cost) ---
-    private static String useCrossbow(GridArena arena, GridPos targetTile, ItemStack stack) {
+    /** Base damage of a crossbow bolt fired as an item action, before Special affinity. */
+    private static final int CROSSBOW_BOLT_DAMAGE = 3;
+
+    // --- Crossbow: fire a bolt at 4-tile range (2 AP, durability cost) ---
+    private static String useCrossbow(ServerPlayerEntity player, GridArena arena,
+                                      GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target an enemy!";
         CombatEntity enemy = arena.getOccupant(targetTile);
         if (enemy == null || !enemy.isAlive()) return "§cNo enemy at target!";
@@ -1899,7 +1903,7 @@ public class ItemUseHandler {
         } else {
             stack.setDamage(stack.getDamage() + 1);
         }
-        int dealt = enemy.takeDamage(3);
+        int dealt = applyTypedDamage(player, enemy, CROSSBOW_BOLT_DAMAGE, DamageType.RANGED);
         return "§7Crossbow bolt hits " + enemy.getDisplayName() + " for " + dealt + " damage!";
     }
 

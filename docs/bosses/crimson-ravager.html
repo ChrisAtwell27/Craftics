@@ -66,10 +66,10 @@
       </div>
       <table>
         <tr><th>Type</th><td>Skeleton (Piglin wargear)</td></tr>
-        <tr><th>HP</th><td>45</td></tr>
+        <tr><th>HP</th><td>65</td></tr>
         <tr><th>Attack</th><td>8</td></tr>
         <tr><th>Defense</th><td>3</td></tr>
-        <tr><th>Speed</th><td>3</td></tr>
+        <tr><th>Speed</th><td>2, or 4 while the Banner of the March stands</td></tr>
         <tr><th>Size</th><td>1&times;1</td></tr>
         <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
         <tr><th>Dimension</th><td><span class="badge badge-nether">Nether</span></td></tr>
@@ -79,6 +79,8 @@
     <div class="wiki-toc">
       <div class="wiki-toc-title">Contents</div>
       <ol>
+        <li><a href="#momentum">Momentum</a></li>
+        <li><a href="#banners">War Banners</a></li>
         <li><a href="#abilities">Abilities</a></li>
         <li><a href="#phase-2">Phase 2</a></li>
         <li><a href="#strategy">Strategy</a></li>
@@ -89,23 +91,39 @@
     <p class="page-desc">Crimson Forest biome boss, a piglin war-chief revenant wielding a golden axe.</p>
 
     <div class="wiki-content">
-      <p>The Bastion Brute is an undead war-chief clad in piglin trophies. Though built on a skeleton frame, it fights like a brutal bastion enforcer: charging lanes, knocking targets into hazards, and calling piglin support when pressured.</p>
+      <p>The Bastion Brute is an undead war-chief clad in piglin trophies. Though built on a skeleton frame, it fights like a brutal bastion enforcer: charging lanes, setting the floor alight, and calling piglin support when pressured. It is the one boss that gets stronger the further it has to walk.</p>
+
+      <h2 id="momentum">Momentum</h2>
+      <p>Every tile the Brute travels adds <strong>+1 damage to its next hit</strong>. This inverts the rule every other boss teaches: the safest tile is the one right next to it, and kiting is what feeds it. Backing away across the arena hands it a long run-up and the hit that lands at the end of that run is the one that hurts.</p>
+      <p>Standing on its face is not a free win either, because its kit is built to punish exactly that: Rampage hits every adjacent tile, Ground Slam lays a fire cross around it, and the piglin pack body-blocks your retreat. The choice between eating the adjacent pressure and giving it runway is the fight.</p>
+      <p>Distance is measured from the route it actually pathed, not from its speed stat, so a Brute boxed in by terrain only earns the tiles it truly covered. Gore Charge reads its own charge path, so a long charge hits proportionally harder.</p>
+
+      <h2 id="banners">War Banners</h2>
+      <p>Three war banners are placed around the arena when the fight begins. Each is a destructible block with <strong>20 HP</strong>, and each grants something different, so which one you break is a triage decision rather than a chore.</p>
+      <ul>
+        <li><strong>Banner of the March (white):</strong> grants +2 move speed. Break it and the Brute closes slower, which cuts Momentum at its source rather than by a special case.</li>
+        <li><strong>Banner of Fury (red):</strong> grants +3 attack power. Break it and every hit lands softer, Gore Charge included.</li>
+        <li><strong>Banner of the Horde (black):</strong> allows the Brute to summon its piglin pack. Break it and no new piglins arrive; the ones already summoned stay.</li>
+      </ul>
+      <p>Banners <strong>do not count toward clearing the room</strong>. They are optional counterplay, and they sit away from the boss on purpose: walking over to break one means leaving its face and giving it the runway Momentum wants.</p>
 
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Gore Charge:</strong> 4-tile line charge dealing ATK +3 damage with knockback 3. Destroys obstacles in its path. Telegraphed 1 turn in advance.</li>
-        <li><strong>Fungal Growth:</strong> Creates a 3&times;3 crimson terrain zone centered on itself; boss heals 2 HP per turn while standing on it for 3 turns.</li>
-        <li><strong>Rampage:</strong> Hits all 8 adjacent tiles for ATK damage each.</li>
-        <li><strong>Summon Pack:</strong> Calls 2 Piglins (8 HP / 4 ATK / Range 3) to the field. Once per fight.</li>
+        <li><strong>Gore Charge:</strong> Straight-line charge toward the player, ignoring its speed limit, for ATK +3 plus 1 damage per tile of the charge path. In multiplayer it chains through several players. Telegraphed 1 turn in advance. Phase 2 leaves a fire trail.</li>
+        <li><strong>Ground Slam:</strong> Sets a cross pattern of fire terrain around itself, 2-tile range, lasting 3 turns. Phase 2 extends the cross to 3 tiles.</li>
+        <li><strong>Rampage:</strong> Hits all 8 adjacent tiles for ATK damage each. Phase 2 extends to a 2-tile radius.</li>
+        <li><strong>Summon Pack:</strong> Calls 2 Piglins (8 HP / 4 ATK / Range 3). Repeatable on cooldown while the Banner of the Horde stands, and only while no pack is alive.</li>
       </ul>
 
       <h2 id="phase-2">Phase 2, "Blood Frenzy"</h2>
       <div class="phase2-callout">
-        <p><strong>Triggers at &le; 50% HP.</strong> Gains +4 permanent ATK and Speed 4. Gore Charge leaves a fire trail. Rampage extends to a 2-tile radius. Melee attacks no longer knock back.</p>
+        <p><strong>Triggers at &le; 50% HP.</strong> Gains +4 ATK and +1 speed on top of whatever banners still stand. Gore Charge leaves a fire trail. Rampage extends to a 2-tile radius and Ground Slam to a 3-tile cross. Breaking banners still works in Phase 2: the frenzy stacks with the banners rather than replacing them, so speed you took away stays gone.</p>
       </div>
 
       <h2 id="strategy">Strategy</h2>
-      <p>Lure Gore Charge into walls to interrupt it. Stay off the Fungal Growth terrain or the boss heals faster than you can damage it.</p>
+      <p>Decide early which banner is your problem. The March if you cannot get away from it, Fury if you are being shredded, the Horde if the piglins are boxing you in. Breaking the March is the broadest answer, since less speed means fewer tiles per turn and so less Momentum on every hit that follows.</p>
+      <p>Fight it close when you can afford to. Distance is what arms it, and a Brute that only stepped once hits for a fraction of one that crossed the arena. When you do have to reposition, spend that movement on a banner rather than on empty retreating, so the runway you hand it buys you something.</p>
+      <p>With every banner down the Brute is slow, but it never stops closing: enemies keep a floor of 1 tile per turn. Lure Gore Charge into walls to cut the path short, since a shorter charge is also a weaker one.</p>
     </div>
 
     <div class="boss-nav">

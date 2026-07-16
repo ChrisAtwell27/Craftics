@@ -182,31 +182,24 @@ public class CombatEffects {
 
         ActiveEffect poison = effects.get(EffectType.POISON);
         if (poison != null && !poison.isFrozen()) {
-            int level = poison.amplifier + 1;
-            int dmg = (2 * level) + poison.turnsRemaining + specialAffinity;
-            hpChange -= Math.max(1, dmg);
+            hpChange -= EffectFormulas.poisonTick(
+                poison.amplifier + 1, poison.turnsRemaining, specialAffinity);
         }
 
         ActiveEffect wither = effects.get(EffectType.WITHER);
         if (wither != null && !wither.isFrozen()) {
-            int level = wither.amplifier + 1;
-            int base = 1 + level + specialAffinity;
-            int peak = Math.max(1, wither.peakTurns);
-            int consumed = Math.max(1, peak - wither.turnsRemaining + 1);
-            hpChange -= Math.max(1, base * consumed);
+            hpChange -= EffectFormulas.witherTick(
+                wither.amplifier + 1, wither.peakTurns, wither.turnsRemaining, specialAffinity);
         }
 
         ActiveEffect burning = effects.get(EffectType.BURNING);
         if (burning != null && !burning.isFrozen() && !hasFireResistance()) {
-            int level = burning.amplifier + 1;
-            hpChange -= Math.max(1, 1 + level + specialAffinity);
+            hpChange -= EffectFormulas.burningTick(burning.amplifier + 1, specialAffinity);
         }
 
         ActiveEffect bleeding = effects.get(EffectType.BLEEDING);
         if (bleeding != null && !bleeding.isFrozen()) {
-            // Bleed damage scales triangularly with stacks (1, 3, 6, 10, ...).
-            int stacks = bleeding.amplifier + 1;
-            hpChange -= stacks * (stacks + 1) / 2;
+            hpChange -= EffectFormulas.bleedTick(bleeding.amplifier + 1);
         }
 
         return hpChange;
@@ -320,6 +313,15 @@ public class CombatEffects {
     public int getDarknessPenalty() {
         if (!hasEffect(EffectType.DARKNESS)) return 0;
         return 1 + effects.get(EffectType.DARKNESS).amplifier;
+    }
+
+    /** Total range lost to vision debuffs. Same rule the enemy side uses. */
+    public int getRangePenalty() {
+        int blindnessLevel = hasEffect(EffectType.BLINDNESS)
+            ? effects.get(EffectType.BLINDNESS).amplifier + 1 : 0;
+        int darknessLevel = hasEffect(EffectType.DARKNESS)
+            ? effects.get(EffectType.DARKNESS).amplifier + 1 : 0;
+        return EffectFormulas.rangePenalty(blindnessLevel, darknessLevel);
     }
 
     public String getDisplayString() {

@@ -131,6 +131,14 @@ public sealed interface EnemyAction {
     /** Spider ceiling drop: mob drops from ceiling onto a tile near the player, then attacks. */
     record CeilingDrop(GridPos landingPos, int damage) implements EnemyAction {}
 
+    /** Revenant burrow: the boss digs under and is untargetable until it surfaces. Unlike
+     *  {@link CeilingAscend} the boss is not merely off the grid but unreachable by anything
+     *  in the arena, so the handler must clear the flag on every exit path. */
+    record Burrow() implements EnemyAction {}
+
+    /** Revenant surface: the boss erupts with its footprint anchored at {@code anchor}. */
+    record Surface(GridPos anchor) implements EnemyAction {}
+
     /** Multi-action: execute multiple actions in sequence (e.g., teleport + attack + create terrain). */
     record CompositeAction(List<EnemyAction> actions) implements EnemyAction {}
 

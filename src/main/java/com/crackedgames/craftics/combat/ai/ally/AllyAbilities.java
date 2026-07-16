@@ -62,7 +62,7 @@ public final class AllyAbilities {
      */
     public static String applyOnHit(CombatEntity ally, CombatEntity target) {
         switch (effectFor(ally.getEntityTypeId())) {
-            case BURN   -> { target.stackBurning(3, 2);  return " §6Burning!"; }
+            case BURN   -> { target.stackBurning(3, 0);  return " §6Burning!"; }
             case SOAK   -> { target.stackSoaked(3, 0);   return " §bSoaked!"; }
             case SLOW   -> { target.stackSlowness(3, 1); return " §7Slowed!"; }
             case POISON -> { target.stackPoison(3, 0);   return " §2Poisoned!"; }

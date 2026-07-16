@@ -36,7 +36,7 @@
       <a href="#sherds">Pottery Sherds</a>
       <a href="#horns">Goat Horns</a>
       <a href="#blunt">Blunt</a>
-      <a href="#untyped">No Affinity</a>
+      <a href="#ranged">Ranged</a>
       <a href="#water-throwables">Water Throwables</a>
       <a href="#food">Food</a>
       <a href="#tiles">Tile Placers</a>
@@ -55,10 +55,10 @@
     <h2 id="affinity">How Affinity Works</h2>
     <p>There are eight damage types. Each has an affinity track fed by level-ups, armor, trims and mob heads. <strong>Every affinity point is worth +3 damage</strong> of that type.</p>
 
-    <p>Weapons get their type from the weapon registry. Usable items do not: each item's handler states its own type when it deals damage. That means an item either names a type and scales with your affinity, or names nothing and deals raw damage that no investment improves.</p>
+    <p>Weapons get their type from the weapon registry. Usable items do not: each item's handler states its own type when it deals damage. A typed item gains the affinity bonus and respects mob resistances; an untyped one does neither.</p>
 
     <div class="callout">
-      <p><strong>Most combat consumables are Special.</strong> Sherds, potions, horns and most throwables all scale with Special affinity, which makes Special the single most valuable track for an item-focused build. The exceptions are listed below and they are worth knowing, because points spent elsewhere do nothing for them.</p>
+      <p><strong>Almost every combat consumable is Special.</strong> Sherds, potions, horns, throwables, TNT and anvils all scale with Special affinity, which makes Special the single most valuable track for an item-focused build. Only three exceptions exist: the brick is Blunt, the crossbow's bolt is Ranged, and the water throwables are untyped.</p>
     </div>
 
     <!-- ══════════════════════════════════════════════════════════════
@@ -171,22 +171,39 @@
       </table>
     </div>
 
-    <!-- ══════════════════════════════════════════════════════════════
-         UNTYPED
-         ══════════════════════════════════════════════════════════════ -->
-    <h2 id="untyped">No Affinity</h2>
-    <p>These deal raw damage. <strong>No affinity investment improves them</strong>, and they ignore mob type resistances.</p>
-
+    <h3>Heavy Ordnance</h3>
+    <p>These deal a share of the target's max HP rather than a flat number, which is what makes them scale into late-game health pools. The Special affinity bonus is added on top, and like every Special item they respect mob resistances.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Item</th><th>AP</th><th>Effect</th></tr></thead>
         <tbody>
-          <tr><td>TNT</td><td>2</td><td>Placed on a tile, detonates at the start of the next round. 8/5/3 damage by distance plus 24/15/9% of max HP. Hurts you too: 6/4/2 if you are within 2 tiles.</td></tr>
+          <tr><td>TNT</td><td>2</td><td>Placed on a tile, detonates at the start of the next round. 8/5/3 damage by distance plus 24/15/9% of max HP, or a third of that percentage against a boss. Hurts you too: 6/4/2 if you are within 2 tiles.</td></tr>
           <tr><td>Anvil</td><td>1</td><td>Half the target's max HP, minimum 10. Degrades to chipped, then damaged, then breaks.</td></tr>
           <tr><td>Chipped Anvil</td><td>1</td><td>A third of the target's max HP, minimum 10.</td></tr>
           <tr><td>Damaged Anvil</td><td>1</td><td>A quarter of the target's max HP, minimum 10.</td></tr>
-          <tr><td>Crossbow (thrown)</td><td>2</td><td>3 raw damage at range 4.</td></tr>
-          <tr><td>Ender Pearl</td><td>1</td><td>Teleport to a tile. Costs 2 HP on landing.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Movement</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>AP</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>Ender Pearl</td><td>1</td><td>Teleport to a tile. Costs 2 HP on landing. A Special-class item for the conserve perk, but it deals no damage, so there is nothing for the affinity bonus to scale.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         RANGED
+         ══════════════════════════════════════════════════════════════ -->
+    <h2 id="ranged">Ranged <span class="badge">Scales with Ranged affinity</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>AP</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>Crossbow</td><td>2</td><td>Fire a bolt at an enemy up to 4 tiles away for 3 damage plus your Ranged affinity. Costs durability. This is the crossbow's item action; using it as a weapon is covered on the <a href="combat.html#weapons">Combat</a> page.</td></tr>
         </tbody>
       </table>
     </div>

@@ -794,19 +794,21 @@ public class PotterySherdSpells {
             playerBlock.getZ() + 0.5, 10, 0.2, 0.3, 0.2, 0.08);
         ProjectileSpawner.spawnConverging(world, playerBlock, 0.7, ParticleTypes.FLAME, 6);
 
-        // 9 fire damage to target + burning for 3 turns (3 dmg/turn, buffed from 6/2)
+        // 9 fire damage to target + Burning II for 3 turns. The second argument is an amplifier,
+        // not damage per turn: EffectFormulas owns the per-turn number now, so the message below
+        // no longer quotes one.
         int dealt = target.takeSpecialDamage(9, 0.08);
-        target.stackBurning(3, 3); // buffed from 2
+        target.stackBurning(3, 1);
         if (target.getMobEntity() != null) target.getMobEntity().setFireTicks(200);
 
         // Collect AoE hit info for delayed particles
         List<BlockPos> aoeBlocks = new ArrayList<>();
-        StringBuilder msg = new StringBuilder("§6§lImmolation! §f" + target.getDisplayName() + " takes " + dealt + " fire damage + Burning (3 turns, 3/t)!");
+        StringBuilder msg = new StringBuilder("§6§lImmolation! §f" + target.getDisplayName() + " takes " + dealt + " fire damage + Burning II (3 turns)!");
         for (CombatEntity e : enemies) {
             if (!e.isAlive() || e.isAlly() || e == target) continue;
             if (e.getGridPos().manhattanDistance(targetTile) <= 1) {
                 int aoeDmg = e.takeDamage(5); // buffed from 3
-                e.stackBurning(1, 3); // buffed from 2
+                e.stackBurning(1, 0); // Burning I: the splash is the weaker echo of the direct hit
                 if (e.getMobEntity() != null) e.getMobEntity().setFireTicks(60);
                 aoeBlocks.add(arena.gridToBlockPos(e.getGridPos()));
                 msg.append(" §6").append(e.getDisplayName()).append(" caught in blast for ").append(aoeDmg).append(" fire damage!");

@@ -34,8 +34,10 @@ public final class ShovelEnchantEffects {
 
     /** Turns of Burning that Fire Fang I inflicts; each further level adds one more. */
     private static final int FIRE_FANG_BASE_TURNS = 2;
-    /** Extra burn damage per turn that Fire Fang stacks on. */
-    private static final int FIRE_FANG_DAMAGE = 1;
+    /** Burning amplifier Fire Fang applies (0 = level I). Fire Fang scales its burn by DURATION,
+     *  not intensity, so every level lands Burning I for one more turn. This was a damage-per-turn
+     *  constant back when the burn's strength was stored rather than computed. */
+    private static final int FIRE_FANG_AMPLIFIER = 0;
 
     /** Turns of Soaked that Water Fang I inflicts; each further level adds one more. */
     private static final int WATER_FANG_BASE_TURNS = 2;
@@ -89,7 +91,7 @@ public final class ShovelEnchantEffects {
         int fire = CrafticsEnchantments.level(owner, CrafticsEnchantments.FIRE_FANG);
         if (fire > 0) {
             // Level I burns 2 turns, II burns 3, III burns 4.
-            victim.stackBurning(FIRE_FANG_BASE_TURNS + fire - 1, FIRE_FANG_DAMAGE);
+            victim.stackBurning(FIRE_FANG_BASE_TURNS + fire - 1, FIRE_FANG_AMPLIFIER);
             msg.append(" §6Fire Fang!");
             if (world != null && victimBlock != null) {
                 world.spawnParticles(ParticleTypes.FLAME,

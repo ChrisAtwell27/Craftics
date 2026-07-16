@@ -210,7 +210,7 @@ public final class ArtifactEffects {
             if (arena == null) return;
             for (CombatEntity e : adjacentEnemies(arena, arena.getPlayerGridPos())) {
                 e.applyDirectDamage(2);
-                e.stackBurning(2, 1);
+                e.stackBurning(2, 0); // 1 stack = Burning I (amplifier 0)
             }
         }
     }
@@ -340,7 +340,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onDealDamage(CombatEffectContext ctx, CombatEntity target, int damage) {
             if (target != null && target.isAlive()) {
-                target.stackBurning(2, 1);
+                target.stackBurning(2, 0); // 1 stack = Burning I (amplifier 0)
             }
             return CombatResult.unchanged(damage);
         }
@@ -400,7 +400,7 @@ public final class ArtifactEffects {
         @Override
         public CombatResult onDealDamage(CombatEffectContext ctx, CombatEntity target, int damage) {
             if (target != null && target.isAlive()) {
-                target.stackBurning(3, 2);
+                target.stackBurning(3, 1); // 2 stacks = Burning II (amplifier 1)
             }
             return CombatResult.unchanged(damage);
         }
@@ -410,7 +410,7 @@ public final class ArtifactEffects {
             for (CombatEntity e : adjacentEnemies(ctx.getArena(), killed.getGridPos())) {
                 if (e == killed) continue;
                 e.applyDirectDamage(3);
-                e.stackBurning(2, 1);
+                e.stackBurning(2, 0); // 1 stack = Burning I (amplifier 0)
             }
         }
     }

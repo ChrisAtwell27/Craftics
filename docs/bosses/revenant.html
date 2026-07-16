@@ -66,11 +66,11 @@
       </div>
       <table>
         <tr><th>Type</th><td>Zombie</td></tr>
-        <tr><th>HP</th><td>20</td></tr>
-        <tr><th>Attack</th><td>4</td></tr>
-        <tr><th>Defense</th><td>2</td></tr>
-        <tr><th>Speed</th><td>2</td></tr>
-        <tr><th>Size</th><td>2 &times; 2</td></tr>
+        <tr><th>HP</th><td>30</td></tr>
+        <tr><th>Attack</th><td>1</td></tr>
+        <tr><th>Defense</th><td>1</td></tr>
+        <tr><th>Speed</th><td>1</td></tr>
+        <tr><th>Size</th><td>1&times;1</td></tr>
         <tr><th>Phase 2</th><td>&le; 50% HP</td></tr>
         <tr><th>Dimension</th><td><span class="badge badge-overworld">Overworld</span></td></tr>
       </table>
@@ -79,6 +79,7 @@
     <div class="wiki-toc">
       <div class="wiki-toc-title">Contents</div>
       <ol>
+        <li><a href="#graves">Graves</a></li>
         <li><a href="#abilities">Abilities</a></li>
         <li><a href="#phase-2">Phase 2</a></li>
         <li><a href="#strategy">Strategy</a></li>
@@ -89,23 +90,38 @@
     <p class="page-desc">Plains biome boss, a relentless undead warlord that raises fallen foes to fight again.</p>
 
     <div class="wiki-content">
-      <p>The Revenant is an ancient warrior risen from the plains battlefields, bound together by dark energy and relentless spite. It leads a mob of undead and channels supernatural strength into devastating charges.</p>
+      <p>The Revenant is an ancient warrior risen from the plains battlefields, bound together by dark energy and relentless spite. It is slow and hits for almost nothing on its own; the pressure comes from the graves it raises its army out of, and from the fact that it can drop out of reach whenever you get close.</p>
+
+      <h2 id="graves">Graves</h2>
+      <p>Three graves are placed around the arena when the fight begins, as cobblestone walls with <strong>50 HP</strong> each. They are the source of everything the Revenant does, so they are also the counterplay.</p>
+      <ul>
+        <li><strong>Living graves cap living zombies, one each.</strong> Break a grave and the stream permanently narrows. With no graves left there is no raise at all.</li>
+        <li><strong>Zombies rise from a free tile adjacent to a living grave, every other turn.</strong> If every tile around a grave is blocked, that grave's raise fizzles, so body-blocking a grave with your own position is legitimate counterplay.</li>
+        <li><strong>Grave Skulls come from graves too</strong> (Phase 2), so destroying a grave cuts the skulls as well as the zombies. Skulls are projectiles rather than minions, so they do not count toward the zombie cap.</li>
+        <li><strong>Graves are its escape network.</strong> It cannot Burrow with no graves standing.</li>
+      </ul>
+      <p>Graves <strong>do not count toward clearing the room</strong>. Breaking them is optional, and raises never escalate, so ignoring graves does not compound over time; it simply never improves.</p>
 
       <h2 id="abilities">Abilities</h2>
       <ul>
-        <li><strong>Raise the Dead:</strong> Marks summon tiles with Zombie Heads before spawning. Destroying a head prevents that zombie from emerging.</li>
-        <li><strong>Death Charge:</strong> A true straight-line charge from the Revenant's center lane up to 3 tiles, ending adjacent before striking for ATK+2. Telegraphed 1 turn in advance.</li>
+        <li><strong>Raise the Dead:</strong> Every other turn, a zombie claws up from a free tile next to a living grave, capped at one living zombie per living grave. Telegraphed with ground cracks, and the zombie-head markers can still be smashed for a one-off deny.</li>
+        <li><strong>Death Charge:</strong> A straight-line charge up to 3 tiles, ending adjacent before striking for ATK+2. Telegraphed 1 turn in advance.</li>
         <li><strong>Gravefire Grid:</strong> Telegraphs a checker-grid of magma danger tiles for 1 turn, forcing controlled repositioning.</li>
-        <li><strong>Shield Bash:</strong> Knocks back an adjacent player 2 tiles for half ATK damage.</li>
+        <li><strong>Burrow:</strong> When you are within 2 tiles, the Revenant digs in and is <strong>untargetable for one full player round</strong>, then erupts beside a random living grave. 4-turn cooldown. Nothing in the arena can damage it while it is under, including area, splash, and chain effects, but damage over time already on it keeps ticking: it went under carrying the poison, and it can die down there.</li>
       </ul>
+      <div class="phase2-callout">
+        <p><strong>Burrow depends on the graves.</strong> It cannot burrow if no graves are alive. If you destroy the last living grave while it is underground, it is forced back up at the tile it originally burrowed from, the retreat is cancelled, and the cooldown is not refunded.</p>
+      </div>
 
       <h2 id="phase-2">Phase 2, "Undying Rage"</h2>
       <div class="phase2-callout">
-        <p><strong>Triggers at &le; 50% HP.</strong> Gains Regeneration (1 HP / turn). Raise the Dead triggers every 2 turns instead of 3. Death Charge damage increases to ATK+4 and leaves a fire trail behind the Revenant.</p>
+        <p><strong>Triggers at &le; 50% HP.</strong> Gains Regeneration (1 HP / turn). <strong>Tears out 2 more graves</strong>, so the ceiling you thought you had lowered jumps back up. Every raise also pulls a <strong>Grave Skull</strong> out of a living grave: a 1 HP homing skull (2 tiles per turn) that bites for 3 damage plus 2 turns of Wither. Death Charge rises to ATK+4 and leaves a fire trail.</p>
       </div>
 
       <h2 id="strategy">Strategy</h2>
-      <p>Prioritize breaking Zombie Head markers when possible to deny summons before they spawn. Respect the center-lane charge telegraph and rotate early when Gravefire Grid appears so you are not forced into bad tiles.</p>
+      <p>Graves are the fight. Every one you break narrows the zombie cap for good, cuts a Grave Skull source in Phase 2, and removes a place the Revenant can reappear. At 50 HP apiece that is a real investment, which is the point: you are choosing between cutting the stream and hitting the boss.</p>
+      <p>When it burrows you cannot touch it, so spend that turn on a grave rather than waiting it out. That is the strongest play in the fight and it has a payoff: break the <em>last</em> grave while it is under and it is dragged straight back out where it dug in, with its retreat wasted and its cooldown spent. Poison it before it digs in and the damage keeps ticking underground.</p>
+      <p>If you cannot break a grave in time, standing so its neighbouring tiles are blocked makes its raise fizzle for that turn. Respect the charge telegraph and rotate early when Gravefire Grid appears so you are not forced onto bad tiles. Do not expect the Revenant itself to kill you: it is Speed 1 with 1 base attack, and the danger is the army, the skulls, and the turns you lose to Burrow.</p>
     </div>
 
     <div class="boss-nav">

@@ -46,6 +46,11 @@ public class CombatEntity {
     private boolean actedThisRound = false;
     private int witherTurns = 0;
     private int witherAmplifier = 0; // 0 = level I, 1 = level II, etc
+    /** Highest duration this wither has reached, so the ramp in {@link EffectFormulas#witherTick}
+     *  measures elapsed turns from the wither's real start rather than restarting every time it
+     *  is re-applied. Mirrors the player's {@code ActiveEffect.peakTurns}. Reset when wither
+     *  expires or is cleansed. */
+    private int witherPeakTurns = 0;
     private boolean enraged = false;
     /**
      * When set, the entity is fully immobilized this turn - used by the Creaking
@@ -58,7 +63,11 @@ public class CombatEntity {
     private int defensePenalty = 0;
     private int defensePenaltyTurns = 0;
     private int burningTurns = 0;
-    private int burningDamage = 0;
+    /** Burning's LEVEL, stored 0-based (amplifier 0 = level I) like poison's and wither's.
+     *  This was once {@code burningDamage} and held a per-turn damage number, which is how
+     *  damage values ended up passed into a slot that means "level". The name is part of the
+     *  fix: a field called burningDamage holding a level is exactly how that bug happened. */
+    private int burningAmplifier = 0;
     private int soakedTurns = 0;
     private int soakedAmplifier = 0;
     /** Visual+movement Airtime state for enemies/allies. No damage hook. */
@@ -76,6 +85,9 @@ public class CombatEntity {
     private int defenseBoost = 0;
     private int rangeOverride = -1;
     private boolean backgroundBoss = false; // targetable but doesn't block movement
+    // Out of the arena entirely: nothing in it can select or damage this entity (Revenant Burrow).
+    // Not the same as backgroundBoss, which stays targetable.
+    private boolean untargetable = false;
     private int visualProjectileEntityId = -1;
     private boolean deathProcessed = false; // guards against double death handling
     private boolean hasSplit = false; // guards against double-splitting (Molten King)
@@ -160,6 +172,18 @@ public class CombatEntity {
     }
     public boolean isBackgroundBoss() { return backgroundBoss; }
     public void setBackgroundBoss(boolean bg) { this.backgroundBoss = bg; }
+    /**
+     * True while the entity is physically out of the arena and nothing in it can reach the
+     * entity: currently the Revenant's Burrow. Distinct from {@link #isBackgroundBoss}, which
+     * means "pass-through but still targetable" and does NOT block damage.
+     *
+     * <p>Enforced at the {@link #takeDamage} chokepoint rather than only at target selection,
+     * so AoE, splash, and chain effects that reach for a combatant directly cannot bypass it.
+     * DOT ticks route through {@link #applyDirectDamage} and are deliberately still applied:
+     * the entity went under carrying the poison.
+     */
+    public boolean isUntargetable() { return untargetable; }
+    public void setUntargetable(boolean u) { this.untargetable = u; }
     public int getVisualProjectileEntityId() { return visualProjectileEntityId; }
     public void setVisualProjectileEntityId(int id) { this.visualProjectileEntityId = id; }
     public boolean isDeathProcessed() { return deathProcessed; }
@@ -288,7 +312,13 @@ public class CombatEntity {
     public int getWitherTurns() { return witherTurns; }
     public void setWitherTurns(int t) { this.witherTurns = t; }
     public int getWitherAmplifier() { return witherAmplifier; }
-    public void setWitherAmplifier(int a) { this.witherAmplifier = a; }
+    public void setWitherAmplifier(int a) {
+        this.witherAmplifier = a;
+        // The wither-expiry site zeroes the amplifier once the turns run out; clearing the ramp's
+        // peak with it means a fresh wither starts its ramp from the beginning instead of
+        // inheriting the last one's elapsed count and opening at full strength.
+        if (a == 0 && witherTurns <= 0) witherPeakTurns = 0;
+    }
 
     /** Bonus damage that scales DOTs (poison/wither) with the target's max HP.
      *  +1 per 20 max HP, with a floor of 1. Encourages DOT use against tougher
@@ -297,26 +327,41 @@ public class CombatEntity {
         return Math.max(1, maxHp / 20);
     }
 
-    /** Damage one tick of poison would deal at this moment. Returns 0 if not
-     *  poisoned. Formula: {@code 1 + amplifier + maxHpBonus}. */
+    /**
+     * Poison damage for one tick. The shared player formula plus this mob's max-HP term.
+     *
+     * <p>This used to be a flat {@code 1 + amplifier}, which meant poison behaved completely
+     * differently depending on whether it landed on you or on a mob. The formula now comes from
+     * {@link EffectFormulas}, so it front-loads on a mob exactly as it does on a player.
+     */
     public int getPoisonTickDamage() {
         if (poisonTurns <= 0) return 0;
-        return 1 + poisonAmplifier + getMaxHpDotBonus();
+        return EffectFormulas.poisonTick(poisonAmplifier + 1, poisonTurns, 0) + getMaxHpDotBonus();
     }
 
-    /** Damage one tick of wither would deal at this moment. Returns 0 if not
-     *  withered. Formula: {@code remainingTurns + 1 + amplifier + maxHpBonus}.
-     *  Damage tapers as the wither wears off - early ticks are heaviest. */
+    /**
+     * Wither damage for one tick. The shared player formula plus this mob's max-HP term.
+     *
+     * <p>This used to TAPER on a mob while ramping on a player - the two were mirror images of
+     * each other under one name. It now ramps on both.
+     */
     public int getWitherTickDamage() {
         if (witherTurns <= 0) return 0;
-        return witherTurns + 1 + witherAmplifier + getMaxHpDotBonus();
+        return EffectFormulas.witherTick(witherAmplifier + 1, witherPeakTurns, witherTurns, 0)
+            + getMaxHpDotBonus();
     }
 
-    /** Damage one tick of burning would deal at this moment. Returns 0 if not burning.
-     *  Folds in the max-HP bonus like poison/wither so fire DoT scales with tougher targets. */
+    /**
+     * Burning damage for one tick. The shared player formula plus this mob's max-HP term.
+     *
+     * <p>This used to return a stored damage number outright, so burning was the one DoT whose
+     * strength was decided by its caller rather than by the rules - the same effect meant whatever
+     * each of its thirty call sites happened to pass. It now reads a LEVEL, like poison and
+     * wither, and {@link EffectFormulas} owns the per-turn number.
+     */
     public int getBurningTickDamage() {
         if (burningTurns <= 0) return 0;
-        return burningDamage + getMaxHpDotBonus();
+        return EffectFormulas.burningTick(burningAmplifier + 1, 0) + getMaxHpDotBonus();
     }
 
     public MobEntity getMobEntity() { return mobEntity; }
@@ -571,8 +616,8 @@ public class CombatEntity {
     public void setDefensePenaltyTurns(int t) { this.defensePenaltyTurns = t; }
     public int getBurningTurns() { return burningTurns; }
     public void setBurningTurns(int t) { this.burningTurns = t; }
-    public int getBurningDamage() { return burningDamage; }
-    public void setBurningDamage(int d) { this.burningDamage = d; }
+    public int getBurningAmplifier() { return burningAmplifier; }
+    public void setBurningAmplifier(int a) { this.burningAmplifier = a; }
     public int getSoakedTurns() { return soakedTurns; }
     public void setSoakedTurns(int t) { this.soakedTurns = t; }
     /** True while a Soaked status is active. THE predicate lightning sources use. */
@@ -678,17 +723,14 @@ public class CombatEntity {
     public void stackBleed(int stacks) { this.bleedStacks = Math.min(MAX_EFFECT_AMPLIFIER, this.bleedStacks + stacks); }
 
     /**
-     * Damage dealt by a single bleed tick. Scales quadratically with stack count
-     * (triangular: 1 stack = 1, 2 = 3, 3 = 6, 4 = 10...) so stacking bleed is meaningful.
+     * Damage dealt by a single bleed tick, triangular in the stack count (1, 3, 6, 10...).
      *
-     * <p>Must stay in step with the player's bleed in {@link CombatEffects#applyPerTurnEffects}.
-     * This method used to return a flat {@code stacks} while the player path charged the
-     * triangular curve above, so the same effect hit far harder on a player than on an enemy;
-     * BleedScalingTest now pins the two together.
+     * <p>Shared with the player via {@link EffectFormulas}; EffectParityTest pins the two
+     * together. This method used to return a flat {@code stacks} while the player path charged
+     * the triangular curve, so the same effect hit far harder on a player than on an enemy.
      */
     public static int computeBleedTickDamage(int stacks) {
-        if (stacks <= 0) return 0;
-        return stacks * (stacks + 1) / 2;
+        return EffectFormulas.bleedTick(stacks);
     }
     public int getPermanentDefReduction() { return permanentDefReduction; }
     public void addPermanentDefReduction(int amount) { this.permanentDefReduction += amount; }
@@ -699,6 +741,7 @@ public class CombatEntity {
     public void stackWither(int turns, int ampIncrease) {
         witherTurns = Math.max(witherTurns, turns);
         witherAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, witherAmplifier + ampIncrease);
+        witherPeakTurns = Math.max(witherPeakTurns, witherTurns);
     }
 
     public void stackPoison(int turns, int ampIncrease) {
@@ -706,7 +749,15 @@ public class CombatEntity {
         poisonAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, poisonAmplifier + ampIncrease);
     }
 
-    public void stackBurning(int turns, int dmgIncrease) {
+    /**
+     * Set a target alight for {@code turns} turns at {@code ampIncrease} added levels.
+     *
+     * <p>The second argument is an AMPLIFIER (0 = level I), matching {@link #stackPoison} and
+     * {@link #stackWither} and the {@code amplifier} the public addon API has always passed here.
+     * It used to be read as a per-turn damage number at about half its call sites, so burning's
+     * strength depended on which site applied it; {@link EffectFormulas} owns that number now.
+     */
+    public void stackBurning(int turns, int ampIncrease) {
         if (isFireImmune()) return; // fire-immune mobs (blaze, magma cube, ...) don't burn
         // A drenched target can't catch light. Without this, Soaked's douse could be undone
         // by any fire proc landing later in the same turn, and the "water beats fire" rule
@@ -718,7 +769,7 @@ public class CombatEntity {
         var cfg = com.crackedgames.craftics.CrafticsMod.CONFIG;
         int maxDur = cfg != null ? cfg.maxCombatEffectDuration() : 10;
         burningTurns = Math.min(maxDur, burningTurns + turns);
-        burningDamage = Math.min(MAX_EFFECT_AMPLIFIER + 1, burningDamage + dmgIncrease);
+        burningAmplifier = Math.min(MAX_EFFECT_AMPLIFIER, burningAmplifier + ampIncrease);
     }
 
     /**
@@ -742,7 +793,7 @@ public class CombatEntity {
      */
     public void extinguish() {
         burningTurns = 0;
-        burningDamage = 0;
+        burningAmplifier = 0;
         if (mobEntity != null) {
             mobEntity.setFireTicks(0);
             mobEntity.setOnFire(false);
@@ -862,8 +913,8 @@ public class CombatEntity {
     /** Remove all active debuffs (instrument cleanse). Does not touch positive buffs. */
     public void clearDebuffs() {
         poisonTurns = poisonAmplifier = 0;
-        witherTurns = witherAmplifier = 0;
-        burningTurns = burningDamage = 0;
+        witherTurns = witherAmplifier = witherPeakTurns = 0;
+        burningTurns = burningAmplifier = 0;
         soakedTurns = soakedAmplifier = 0;
         slownessTurns = slownessPenalty = 0;
         confusionTurns = confusionAmplifier = 0;
@@ -940,6 +991,12 @@ public class CombatEntity {
      * entity's static defense without each caller duplicating the 5%/cap formula.
      */
     public int takeDamage(int rawDamage, int bonusDefense) {
+        // Underground: no attack, AoE, splash, or chain in the arena reaches it. Checked here
+        // rather than only at target selection because most damage sources reach for a
+        // CombatEntity directly and never consult the occupant map. DOT ticks bypass this by
+        // calling applyDirectDamage, which is intended: poison applied before the dig keeps
+        // ticking underground.
+        if (untargetable) return 0;
         // Timed resistance buff reduces incoming damage by its level (flat), before defense %.
         if (getResistanceLevel() > 0) {
             rawDamage = Math.max(0, rawDamage - getResistanceLevel());

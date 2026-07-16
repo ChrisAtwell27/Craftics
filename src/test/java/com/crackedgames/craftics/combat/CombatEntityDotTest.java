@@ -6,8 +6,12 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the per-tick DOT damage formulas on {@link CombatEntity} -
- * poison, wither, and the {@code maxHp / 20} scaling shared between them.
+ * Tests for the per-tick DOT damage on {@link CombatEntity} - poison, wither, and the
+ * {@code maxHp / 20} scaling term appended to both.
+ *
+ * <p>The math itself now lives in {@link EffectFormulas} and is shared with the player; this
+ * file pins the concrete numbers a mob takes, including the max-HP term that is the enemy
+ * side's one intentional addition. {@code EffectParityTest} holds the two sides together.
  *
  * <p>Tick application itself is in {@code CombatManager.tickEnemyDeciding}
  * and is verified by the in-game smoke checklist; this file covers the
@@ -37,7 +41,11 @@ class CombatEntityDotTest {
         assertEquals(10, makeEnemy(200).getMaxHpDotBonus()); // 200/20 = 10
     }
 
-    // ---- Poison tick formula: 1 + amplifier + maxHpBonus ----
+    // ---- Poison tick formula: EffectFormulas.poisonTick(level, turnsRemaining, 0) + maxHpBonus ----
+    //
+    // Poison used to be a flat 1 + amplifier here, while the same effect front-loaded on a
+    // player. It now computes from the shared canonical formula, so these numbers moved UP and
+    // fall as the poison runs out. EffectParityTest pins this to the player's side.
 
     @Test
     void poisonTickDamage_zeroIfNotPoisoned() {
@@ -48,27 +56,43 @@ class CombatEntityDotTest {
     void poisonTickDamage_zombie_baseAmpAndMaxHpBonus() {
         CombatEntity e = makeEnemy(20);
         e.stackPoison(3, 0);
-        // 1 base + 0 amp + 1 maxHpBonus = 2
-        assertEquals(2, e.getPoisonTickDamage());
+        // (2*1 level) + 3 turns + 1 maxHpBonus = 6
+        assertEquals(6, e.getPoisonTickDamage());
     }
 
     @Test
     void poisonTickDamage_boss_scalesUpWithMaxHp() {
         CombatEntity e = makeEnemy(100);
         e.stackPoison(3, 0);
-        // 1 base + 0 amp + 5 maxHpBonus = 6
-        assertEquals(6, e.getPoisonTickDamage());
+        // (2*1 level) + 3 turns + 5 maxHpBonus = 10
+        assertEquals(10, e.getPoisonTickDamage());
     }
 
     @Test
     void poisonTickDamage_addsAmplifier() {
         CombatEntity e = makeEnemy(20);
         e.stackPoison(3, 2);
-        // 1 base + 2 amp + 1 maxHpBonus = 4
-        assertEquals(4, e.getPoisonTickDamage());
+        // amp 2 = level 3: (2*3) + 3 turns + 1 maxHpBonus = 10
+        assertEquals(10, e.getPoisonTickDamage());
     }
 
-    // ---- Wither tick formula: remainingTurns + 1 + amplifier + maxHpBonus ----
+    /** Poison front-loads on a mob exactly as it does on a player: worst on the first tick. */
+    @Test
+    void poisonTickDamage_frontLoadsAsTurnsRemainingShrink() {
+        CombatEntity e = makeEnemy(20);
+        e.stackPoison(3, 0);
+
+        assertEquals(6, e.getPoisonTickDamage()); // (2*1) + 3 + 1
+        e.setPoisonTurns(2);
+        assertEquals(5, e.getPoisonTickDamage()); // (2*1) + 2 + 1
+        e.setPoisonTurns(1);
+        assertEquals(4, e.getPoisonTickDamage()); // (2*1) + 1 + 1
+    }
+
+    // ---- Wither tick formula: EffectFormulas.witherTick(level, peak, remaining, 0) + maxHpBonus ----
+    //
+    // Wither used to TAPER here while it ramped on a player - the same name meaning opposite
+    // things. It now ramps on both sides, so the progression below runs upward.
 
     @Test
     void witherTickDamage_zeroIfNotWithered() {
@@ -76,34 +100,50 @@ class CombatEntityDotTest {
     }
 
     @Test
-    void witherTickDamage_tapersAsTurnsRemainingShrink() {
+    void witherTickDamage_rampsAsTurnsRemainingShrink() {
         CombatEntity e = makeEnemy(20);
         e.stackWither(3, 0);
 
-        // Tick 1 (turns=3): 3 + 1 + 0 + 1 = 5
-        assertEquals(5, e.getWitherTickDamage());
-        e.setWitherTurns(2);
-        // Tick 2 (turns=2): 2 + 1 + 0 + 1 = 4
-        assertEquals(4, e.getWitherTickDamage());
-        e.setWitherTurns(1);
-        // Tick 3 (turns=1): 1 + 1 + 0 + 1 = 3
+        // base (1 + level 1) = 2, elapsed = peak 3 - remaining + 1
+        // Tick 1 (turns=3, elapsed 1): 2*1 + 1 maxHpBonus = 3
         assertEquals(3, e.getWitherTickDamage());
+        e.setWitherTurns(2);
+        // Tick 2 (turns=2, elapsed 2): 2*2 + 1 = 5
+        assertEquals(5, e.getWitherTickDamage());
+        e.setWitherTurns(1);
+        // Tick 3 (turns=1, elapsed 3): 2*3 + 1 = 7
+        assertEquals(7, e.getWitherTickDamage());
     }
 
     @Test
     void witherTickDamage_boss_addsLargerMaxHpBonus() {
         CombatEntity boss = makeEnemy(200);
         boss.stackWither(3, 0);
-        // turns=3 + 1 + 0 amp + 10 maxHpBonus = 14
-        assertEquals(14, boss.getWitherTickDamage());
+        // base 2 * elapsed 1 + 10 maxHpBonus = 12
+        assertEquals(12, boss.getWitherTickDamage());
     }
 
     @Test
     void witherTickDamage_addsAmplifier() {
         CombatEntity e = makeEnemy(20);
         e.stackWither(4, 3);
-        // turns=4 + 1 + 3 amp + 1 maxHpBonus = 9
-        assertEquals(9, e.getWitherTickDamage());
+        // amp 3 = level 4: base (1+4) = 5 * elapsed 1 + 1 maxHpBonus = 6
+        assertEquals(6, e.getWitherTickDamage());
+    }
+
+    /** The ramp measures from the wither's real start, so re-applying it does not reset the
+     *  elapsed count and drop the damage back to a first tick. */
+    @Test
+    void witherTickDamage_rampMeasuresFromPeakDuration() {
+        CombatEntity e = makeEnemy(20);
+        e.stackWither(3, 0);
+        e.setWitherTurns(1);
+        int lateTick = e.getWitherTickDamage(); // elapsed 3
+
+        e.stackWither(2, 0); // re-applied: turns back up to 2, peak stays 3
+        // elapsed = 3 - 2 + 1 = 2, so it eases off but does not restart at elapsed 1
+        assertEquals(5, e.getWitherTickDamage());
+        assertTrue(lateTick > e.getWitherTickDamage());
     }
 
     // ---- stackWither semantics ----

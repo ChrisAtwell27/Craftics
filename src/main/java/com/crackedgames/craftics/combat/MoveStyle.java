@@ -107,6 +107,8 @@ public enum MoveStyle {
         BY_TYPE.put("minecraft:shulker", STATIONARY);
         BY_TYPE.put("minecraft:end_crystal", STATIONARY);
         BY_TYPE.put("craftics:egg_sac", STATIONARY);
+        BY_TYPE.put("craftics:war_banner", STATIONARY);
+        BY_TYPE.put("craftics:grave", STATIONARY);
 
         // ─── Mounted ───
         BY_TYPE.put("minecraft:camel", WALK);

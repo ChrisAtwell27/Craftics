@@ -32,9 +32,11 @@ import com.crackedgames.craftics.combat.ai.ally.AllyAI;
 import com.crackedgames.craftics.combat.ai.EnemyAI;
 import com.crackedgames.craftics.combat.ai.EnemyAction;
 import com.crackedgames.craftics.combat.ai.WardenAI;
+import com.crackedgames.craftics.combat.ai.boss.BastionBruteAI;
 import com.crackedgames.craftics.combat.ai.boss.BossAI;
 import com.crackedgames.craftics.combat.ai.boss.BroodmotherAI;
 import com.crackedgames.craftics.combat.ai.boss.MoltenKingAI;
+import com.crackedgames.craftics.combat.ai.boss.RevenantAI;
 import com.crackedgames.craftics.combat.ai.boss.ShulkerArchitectAI;
 import com.crackedgames.craftics.combat.ai.boss.WailingRevenantAI;
 import com.crackedgames.craftics.component.DeathProtectionComponent;
@@ -408,6 +410,17 @@ public class CombatManager {
     private LevelDefinition levelDef;
     private List<CombatEntity> enemies;
     private int eggSacIdCounter = 10000;
+    // Separate id ranges per object type. These are FAKE negative entity ids for
+    // block-backed combatants with no world entity; two systems sharing one counter
+    // would collide on the same id in a single fight.
+    private int warBannerIdCounter = 20000;
+    private int graveIdCounter = 30000;
+    // Tuning: high enough that tearing a banner down is a real investment, low enough to be
+    // worth doing against a 45 HP boss.
+    private static final int WAR_BANNER_HP = 20;
+    // Graves take a real beating on purpose: breaking one permanently narrows the zombie stream,
+    // so the cost has to be high enough that ignoring them stays a defensible choice.
+    private static final int GRAVE_HP = 50;
     // Mobs gradually shrinking during death animation
     private record DyingMob(MobEntity mob, int timer, float startScale) {
         DyingMob withTimer(int t) { return new DyingMob(mob, t, startScale); }
@@ -3641,7 +3654,7 @@ public class CombatManager {
         }
         if (from.getBurningTurns() > 0) {
             to.stackBurning(from.getBurningTurns(),
-                Math.max(0, from.getBurningDamage() - to.getBurningDamage()));
+                Math.max(0, from.getBurningAmplifier() - to.getBurningAmplifier()));
             any = true;
         }
         if (from.getSoakedTurns() > 0) {
@@ -4678,6 +4691,12 @@ public class CombatManager {
         CombatEntity target = null;
         for (CombatEntity e : enemies) {
             if (e.getEntityId() == targetEntityId && e.isAlive()) {
+                // Underground and unreachable. Tell the player why the click did nothing rather
+                // than dropping it: they aimed at something and deserve the reason.
+                if (e.isUntargetable()) {
+                    sendMessage("§8" + e.getDisplayName() + " is underground! You cannot reach it.");
+                    return;
+                }
                 target = e;
                 break;
             }
@@ -5477,10 +5496,11 @@ public class CombatManager {
             // player + outer fire ring); see AoeShapes.fireAspectShape.
             if (fFireAspect > 0 && !fIsRangedWeapon) {
                 int burnTurns = fFireAspect + 1; // Lv1 = 2 turns, Lv2 = 3 turns
-                int burnDmg = fFireAspect;        // Lv1 = 1/turn, Lv2 = 2/turn
+                // Fire Aspect N applies Burning N. The slot is a 0-based amplifier, so Lv1 -> 0.
+                int burnAmp = fFireAspect - 1;
                 // Burn the primary target (if a real enemy was struck).
                 if (!fSuppressDirectHit) {
-                    fTarget.stackBurning(burnTurns, burnDmg);
+                    fTarget.stackBurning(burnTurns, burnAmp);
                     if (fTarget.getMobEntity() != null) {
                         fTarget.getMobEntity().setFireTicks(burnTurns * 80);
                     }
@@ -5504,7 +5524,7 @@ public class CombatManager {
                     // so the cone must burn it like any other caught enemy.
                     boolean skipPrimary = coneTarget == fTarget && !fSuppressDirectHit;
                     if (coneTarget != null && coneTarget.isAlive() && !skipPrimary && !coneTarget.isAlly()) {
-                        coneTarget.stackBurning(burnTurns, burnDmg);
+                        coneTarget.stackBurning(burnTurns, burnAmp);
                         if (coneTarget.getMobEntity() != null) {
                             coneTarget.getMobEntity().setFireTicks(burnTurns * 80);
                         }
@@ -5561,9 +5581,10 @@ public class CombatManager {
 
             // Bow Flame -burn target + all adjacent enemies
             if (fHasBowFlame) {
-                int flameBurnDmg = fBowFlameLevel == 1 ? 1 : 3;
+                // Flame N applies Burning N; the slot is a 0-based amplifier, so Lv1 -> 0.
+                int flameBurnAmp = fBowFlameLevel == 1 ? 0 : 1;
                 int flameBurnTurns = fBowFlameLevel == 1 ? 2 : 4;
-                fTarget.stackBurning(flameBurnTurns, flameBurnDmg);
+                fTarget.stackBurning(flameBurnTurns, flameBurnAmp);
                 if (fTarget.getMobEntity() != null) {
                     fTarget.getMobEntity().setFireTicks(flameBurnTurns * 80);
                 }
@@ -5575,7 +5596,7 @@ public class CombatManager {
                         GridPos adj = new GridPos(flamePos.x() + fdx, flamePos.z() + fdz);
                         CombatEntity adjTarget = arena.getOccupant(adj);
                         if (adjTarget != null && adjTarget.isAlive() && adjTarget != fTarget && !adjTarget.isAlly()) {
-                            adjTarget.stackBurning(flameBurnTurns, flameBurnDmg);
+                            adjTarget.stackBurning(flameBurnTurns, flameBurnAmp);
                             if (adjTarget.getMobEntity() != null) {
                                 adjTarget.getMobEntity().setFireTicks(flameBurnTurns * 80);
                             }
@@ -5583,9 +5604,12 @@ public class CombatManager {
                         }
                     }
                 }
+                // No per-turn figure: EffectFormulas owns that number now, and it varies with the
+                // target's max-HP term, so a quoted constant here would be a lie.
+                String flameLvl = flameBurnAmp == 0 ? "I" : "II";
                 String flameMsg = flameSplash > 0
-                    ? "§6Flame! Burns " + (flameSplash + 1) + " enemies for " + flameBurnTurns + " turns (" + flameBurnDmg + "/turn)."
-                    : "§6Flame! Enemy burns for " + flameBurnTurns + " turns (" + flameBurnDmg + "/turn).";
+                    ? "§6Flame! Burns " + (flameSplash + 1) + " enemies (Burning " + flameLvl + ", " + flameBurnTurns + " turns)."
+                    : "§6Flame! Enemy burns (Burning " + flameLvl + ", " + flameBurnTurns + " turns).";
                 sendMessage(flameMsg);
                 // Ignite flammable terrain in the Flame 3x3.
                 igniteFlammableTiles(AoeShapes.slam3x3(flamePos));
@@ -5614,7 +5638,8 @@ public class CombatManager {
                 // slammed against. Detected per-target before the knockback by
                 // scanning the push path for the first occupying enemy.
                 boolean flamePunchCombo = fHasBowFlame;
-                int comboBurnDmg = fBowFlameLevel == 1 ? 1 : 3;
+                // Same Flame tiers as the direct hit above: Flame N -> Burning N, amplifier N-1.
+                int comboBurnAmp = fBowFlameLevel == 1 ? 0 : 1;
                 int comboBurnTurns = fBowFlameLevel == 1 ? 2 : 4;
                 int collisionIgnites = 0;
                 for (CombatEntity pTarget : punchTargets) {
@@ -5647,7 +5672,7 @@ public class CombatManager {
                     if (flamePunchCombo) igniteFlammableTiles(pushPath);
                     // Spread fire to the enemy that was slammed into.
                     if (collidedInto != null) {
-                        collidedInto.stackBurning(comboBurnTurns, comboBurnDmg);
+                        collidedInto.stackBurning(comboBurnTurns, comboBurnAmp);
                         if (collidedInto.getMobEntity() != null) {
                             collidedInto.getMobEntity().setFireTicks(comboBurnTurns * 80);
                         }
@@ -6702,6 +6727,11 @@ public class CombatManager {
             }
             entity.markDeathProcessed();
 
+            // A burrowed boss can still die underground to a DOT that was ticking before it dug
+            // in. Clear the flag at the universal death sink so no death route can leave a
+            // corpse flagged untargetable.
+            entity.setUntargetable(false);
+
             // Anti-farming: a real enemy death this round resets the idle timer.
             // checkAndHandleDeath is the universal death sink (DoT ticks, sweeps,
             // splash, falls), so flag it here as well as in killEnemy/onEnemyKilled
@@ -6753,6 +6783,27 @@ public class CombatManager {
                 eggWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
                     eggBp.getX() + 0.5, eggBp.getY() + 0.5, eggBp.getZ() + 0.5,
                     5, 0.2, 0.2, 0.2, 0.01);
+            }
+
+            // War banners and graves: same unconditional cleanup as the egg sac above, and
+            // for the same reason. notifyBossOfMinionDeath only loops over LIVING bosses, so
+            // a boss that died first would strand these blocks in the arena forever.
+            if (("craftics:war_banner".equals(entity.getEntityTypeId())
+                    || "craftics:grave".equals(entity.getEntityTypeId()))
+                    && entity.getGridPos() != null
+                    && player != null && arena != null) {
+                ServerWorld objWorld = (ServerWorld) player.getEntityWorld();
+                BlockPos objBp = arena.gridToBlockPos(entity.getGridPos());
+                // Read the state BEFORE clearing it: syncWorldEvent(2001) needs the raw id of
+                // the block that broke, and reading after the setBlockState reports air.
+                net.minecraft.block.BlockState objState = objWorld.getBlockState(objBp);
+                objWorld.setBlockState(objBp, Blocks.AIR.getDefaultState(),
+                    net.minecraft.block.Block.NOTIFY_ALL);
+                objWorld.syncWorldEvent(2001, objBp,
+                    net.minecraft.block.Block.getRawIdFromState(objState));
+                objWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    objBp.getX() + 0.5, objBp.getY() + 0.5, objBp.getZ() + 0.5,
+                    8, 0.3, 0.3, 0.3, 0.02);
             }
 
             // Generic on-death ally hook (e.g. slime golem splitting into two small
@@ -11292,7 +11343,7 @@ public class CombatManager {
                         10, 0.3, 0.5, 0.3, 0.02);
                 }
                 if (e.getBurningTurns() <= 0) {
-                    e.setBurningDamage(0);
+                    e.setBurningAmplifier(0);
                 }
                 if (wasAlive && !e.isAlive()) achievementTracker.recordBurnKill();
                 checkAndHandleDeath(e);
@@ -12468,6 +12519,30 @@ public class CombatManager {
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
 
+            // === Revenant burrow ===
+
+            case EnemyAction.Burrow ignored -> {
+                sendMessage("§8§l✦ " + currentEnemy.getDisplayName()
+                    + " digs into the earth! §7You cannot reach it.");
+                burrowEnemy(currentEnemy);
+                // Movement-only turn -announce the actor (no camera focus, it left the grid).
+                sendToAllParty(new CombatEventPayload(
+                    CombatEventPayload.EVENT_MOVED, currentEnemy.getEntityId(), 0, 0, -1, -1));
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
+
+            case EnemyAction.Surface surface -> {
+                surfaceEnemy(currentEnemy, surface.anchor(),
+                    "§c§l✦ " + currentEnemy.getDisplayName() + " erupts from the grave!");
+                GridPos surfacedAt = currentEnemy.getGridPos();
+                sendToAllParty(new CombatEventPayload(
+                    CombatEventPayload.EVENT_MOVED, currentEnemy.getEntityId(), 0, 0,
+                    surfacedAt.x(), surfacedAt.z()));
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
+
             // === Boss action types ===
 
             case EnemyAction.SummonMinions sm -> {
@@ -12478,8 +12553,13 @@ public class CombatManager {
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay() + 4;
             }
             case EnemyAction.AreaAttack aa -> {
+                // A tag can carry a payload after a colon ("conduction:<markId>");
+                // only the ability name before it is meant for humans.
+                String abilityName = aa.effectName() != null ? aa.effectName() : "a powerful attack";
+                int payloadStart = abilityName.indexOf(':');
+                if (payloadStart > 0) abilityName = abilityName.substring(0, payloadStart);
                 sendMessage("§c" + currentEnemy.getDisplayName() + " unleashes " +
-                    (aa.effectName() != null ? aa.effectName().replace('_', ' ') : "a powerful attack") + "!");
+                    abilityName.replace('_', ' ') + "!");
                 resolveAreaAttack(aa);
                 sendSync();
                 enemyTurnState = EnemyTurnState.DONE;
@@ -13486,6 +13566,26 @@ public class CombatManager {
             return;
         }
 
+        // Special handling: Revenant phase-2 graves (not a real mob spawn). Only graves the grid
+        // accepted are registered, so a refused tile does not inflate the zombie cap.
+        if ("craftics:grave".equals(sm.entityTypeId())) {
+            EnemyAI graveAi = resolveAi(currentEnemy);
+            if (graveAi instanceof RevenantAI revenant) {
+                ServerWorld world = (ServerWorld) player.getEntityWorld();
+                int placed = 0;
+                for (GridPos pos : sm.positions()) {
+                    CombatEntity grave = placeBlockObject("craftics:grave", pos,
+                        GRAVE_HP, -(graveIdCounter++), Blocks.COBBLESTONE_WALL, world);
+                    if (grave != null) {
+                        revenant.registerGrave(pos);
+                        placed++;
+                    }
+                }
+                if (placed > 0) sendMessage("§4  The Revenant tears open fresh graves!");
+            }
+            return;
+        }
+
         ServerWorld world = (ServerWorld) player.getEntityWorld();
         EntityType<?> type = Registries.ENTITY_TYPE.get(Identifier.of(sm.entityTypeId()));
         int spawned = 0;
@@ -14176,6 +14276,17 @@ public class CombatManager {
      * Resolve an AoE attack centered on a tile.
      */
     private void resolveAreaAttack(EnemyAction.AreaAttack aa) {
+        // Conduction carries NO center - by design. The strike resolves on the marked
+        // combatant's LIVE position at this moment (the mark id rides in the tag), never
+        // on the tile the mark was cast from. This branch must run before anything below
+        // touches aa.center(), which is null here.
+        if (aa.effectName() != null && aa.effectName().startsWith("conduction:")) {
+            resolveConductionChain(
+                Integer.parseInt(aa.effectName().substring("conduction:".length())),
+                aa.damage());
+            return;
+        }
+
         GridPos center = aa.center();
         int radius = aa.radius();
         int damage = aa.damage();
@@ -14228,6 +14339,123 @@ public class CombatManager {
         if ("hollow_tnt_prime".equals(aa.effectName())) {
             primePendingTnt(center, "§6  The Hollow King primes a TNT cache! §c(2-round fuse)", 2);
         }
+    }
+
+    /**
+     * The Tidecaller's Conduction strike. Lightning lands on the marked combatant's LIVE
+     * tile - never the tile the mark was cast on - then arcs between every combatant
+     * (party members, allies, and the boss's own minions alike) within 2 tiles of the
+     * last one struck, walked by {@link ConductionChain}. Damage decays 1 per jump, and
+     * each Soaked link doubles independently: enemies through
+     * {@link CombatEntity#takeLightningDamage}, players doubled here because they have no
+     * lightning entry point of their own. The Tidecaller itself never conducts - a boss
+     * electrocuting itself reads as a bug, not a mechanic.
+     */
+    private void resolveConductionChain(int markId, int baseDamage) {
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        // Combatant roster: living party members first, then every living combat entity
+        // except the strike's owner and non-combatants (projectiles, background bosses).
+        java.util.List<ServerPlayerEntity> members = new java.util.ArrayList<>();
+        java.util.List<CombatEntity> mobs = new java.util.ArrayList<>();
+        java.util.List<GridPos> positions = new java.util.ArrayList<>();
+        if (partyPlayers.size() > 1) {
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                if (deadPartyMembers.contains(member.getUuid())) continue;
+                members.add(member);
+                positions.add(gridPosOf(member));
+            }
+        } else {
+            members.add(player);
+            positions.add(arena.getPlayerGridPos());
+        }
+        int mobOffset = members.size();
+        int startIndex = markId == com.crackedgames.craftics.combat.ai.boss.BossWarning.MARK_PLAYER_ID
+            ? members.indexOf(player) : -1;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || e == currentEnemy || e.isProjectile() || e.isBackgroundBoss()) continue;
+            if (e.getEntityId() == markId) startIndex = mobOffset + mobs.size();
+            mobs.add(e);
+            positions.add(e.getGridPos());
+        }
+
+        // A dead or absent mark fizzles: no damage, no chain, no fallback to the cast tile.
+        if (startIndex < 0) {
+            sendMessage("§e⚡ The conduction bolt earths itself harmlessly - its mark is gone.");
+            return;
+        }
+
+        java.util.List<ConductionChain.Link> chain = ConductionChain.walk(positions, startIndex, 2);
+        sendMessage("§e§l⚡ Conduction! §eThe bolt strikes the mark and arcs through everything near it!");
+
+        BlockPos prevBlock = null;
+        int chainIndex = 0;
+        for (ConductionChain.Link link : chain) {
+            int dmg = ConductionChain.damageAt(baseDamage, link.depth());
+            BlockPos linkBlock = arena.gridToBlockPos(positions.get(link.index()));
+            boolean soaked;
+            if (link.index() < mobOffset) {
+                ServerPlayerEntity victim = members.get(link.index());
+                soaked = isPartyMemberSoaked(victim);
+                // Soaked doubles lightning. CombatEntity applies this centrally in
+                // takeLightningDamage; the player side has no lightning entry point,
+                // so the 2x is applied here before the shared damage path.
+                final boolean soakedTag = soaked;
+                boolean gameOver = damagePartyVictims(java.util.List.of(victim),
+                    soaked ? dmg * 2 : dmg, (v, actual, swapped) ->
+                        sendMessage("§e  ⚡ The chain hits " + (swapped ? v.getName().getString() : "you")
+                            + " for " + actual + (soakedTag ? " §3(2x Soaked!)" : "") + "§e!"));
+                if (gameOver) return; // a death ended combat - stop touching state
+            } else {
+                CombatEntity e = mobs.get(link.index() - mobOffset);
+                soaked = e.isSoaked();
+                int dealt = e.takeLightningDamage(dmg);
+                sendMessage("§e  ⚡ The chain hits " + e.getDisplayName() + " for " + dealt
+                    + (soaked ? " §3(2x Soaked!)" : "") + "§e!");
+                checkAndHandleDeath(e);
+            }
+
+            // One staggered arc per jump so the bolt visibly travels outward link by
+            // link - same delayed-effect queue and cadence as the Guster sherd's chain.
+            // The first link's arc drops from the sky: it is the strike itself.
+            final BlockPos fromBlock = prevBlock != null ? prevBlock : linkBlock.up(10);
+            final BlockPos toBlock = linkBlock;
+            final int depth = link.depth();
+            final boolean arcSoaked = soaked;
+            PotterySherdSpells.PENDING_EFFECTS.add(new PotterySherdSpells.DelayedSpellEffect(
+                3 + chainIndex * 4, () -> {
+                    ProjectileSpawner.spawnSpellTrail(world, fromBlock, toBlock,
+                        net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK,
+                        net.minecraft.particle.ParticleTypes.SOUL_FIRE_FLAME, 10, 1.5);
+                    world.spawnParticles(net.minecraft.particle.ParticleTypes.ELECTRIC_SPARK,
+                        toBlock.getX() + 0.5, toBlock.getY() + 1.0, toBlock.getZ() + 0.5,
+                        20, 0.3, 0.5, 0.3, 0.15);
+                    if (arcSoaked) {
+                        world.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH,
+                            toBlock.getX() + 0.5, toBlock.getY() + 1.0, toBlock.getZ() + 0.5,
+                            10, 0.3, 0.3, 0.3, 0.1);
+                    }
+                    world.playSound(null, toBlock,
+                        net.minecraft.sound.SoundEvents.ENTITY_LIGHTNING_BOLT_IMPACT,
+                        net.minecraft.sound.SoundCategory.HOSTILE, 0.7f, 1.2f + depth * 0.1f);
+                }));
+            prevBlock = linkBlock;
+            chainIndex++;
+        }
+        if (chain.size() > 1) {
+            sendMessage("§7  (" + chain.size() + " combatants conducted the bolt)");
+        }
+    }
+
+    /** A member's Soaked state read from their OWN effects: the live field for the player
+     *  this manager currently tracks, the per-UUID map for everyone else. */
+    private boolean isPartyMemberSoaked(ServerPlayerEntity member) {
+        if (member == this.player) {
+            return combatEffects.hasEffect(CombatEffects.EffectType.SOAKED);
+        }
+        CombatEffects fx = playerCombatEffects.get(member.getUuid());
+        return fx != null && fx.hasEffect(CombatEffects.EffectType.SOAKED);
     }
 
     /**
@@ -15627,7 +15855,11 @@ public class CombatManager {
                 if (e.getEntityId() == pa.targetEntityId()) { victim = e; break; }
             }
             if (victim == null || !victim.isAlive()) continue;
-            int dealt = victim.takeDamage(pa.damage());
+            // Special, like every other utility item, and like this method's own message has
+            // always claimed. It used to call takeDamage directly, which meant an anvil got no
+            // Special affinity bonus and ignored mob resistances while telling the player it had
+            // dealt "Special damage".
+            int dealt = applySpecialUtilityDamage(victim, pa.damage());
             BlockPos vbp = arena.gridToBlockPos(victim.getGridPos());
             world.playSound(null, vbp,
                 net.minecraft.sound.SoundEvents.BLOCK_ANVIL_LAND,
@@ -16002,6 +16234,72 @@ public class CombatManager {
     }
 
     /**
+     * Take {@code enemy} off the grid and out of reach: no attack, AoE, splash, or chain can
+     * touch it until {@link #surfaceEnemy} puts it back.
+     *
+     * <p>Every exit from this state MUST go through surfaceEnemy. The untargetable flag and the
+     * missing occupancy tiles are the same fact stored twice, and a boss that keeps the flag is
+     * unkillable, so the two calls are a matched pair.
+     */
+    private void burrowEnemy(CombatEntity enemy) {
+        arena.removeEntity(enemy);
+        enemy.setUntargetable(true);
+
+        MobEntity mob = enemy.getMobEntity();
+        if (mob != null) mob.setInvisible(true);
+
+        if (player != null && player.getEntityWorld() instanceof ServerWorld sw) {
+            BlockPos bp = arena.gridToBlockPos(enemy.getGridPos());
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.CAMPFIRE_COSY_SMOKE,
+                bp.getX() + 1.0, bp.getY() + 0.2, bp.getZ() + 1.0, 30, 0.8, 0.1, 0.8, 0.02);
+            sw.playSound(null, bp, net.minecraft.sound.SoundEvents.BLOCK_ROOTED_DIRT_BREAK,
+                net.minecraft.sound.SoundCategory.HOSTILE, 1.4f, 0.5f);
+        }
+        sendSync();
+    }
+
+    /**
+     * Put a burrowed {@code enemy} back on the grid at {@code anchor} and make it targetable
+     * again. This ALWAYS surfaces: a null or refused anchor falls back to the tile it went under
+     * at, and even a refused re-placement still clears the flag. Leaving the boss untargetable
+     * because no tile was free would make the fight unwinnable, which is strictly worse than a
+     * boss standing on an awkward tile.
+     */
+    private void surfaceEnemy(CombatEntity enemy, GridPos anchor, String message) {
+        GridPos target = anchor != null ? anchor : enemy.getGridPos();
+        if (!com.crackedgames.craftics.combat.ai.AIUtils
+                .canPlaceFootprintIgnoringSelf(arena, target, enemy)) {
+            target = enemy.getGridPos();
+        }
+        enemy.setGridPos(target);
+        // Placement can still be refused (its old tiles may be taken while it was under). The
+        // boss surfaces regardless: an entity with no occupancy tile is far less broken than one
+        // that is permanently untargetable, and the flag below is what actually gates damage.
+        arena.placeEntity(enemy);
+        enemy.setUntargetable(false);
+
+        EnemyAI surfaceAi = resolveAi(enemy);
+        if (surfaceAi instanceof RevenantAI revenant) revenant.clearBurrowState();
+
+        MobEntity mob = enemy.getMobEntity();
+        if (mob != null) {
+            mob.setInvisible(false);
+            BlockPos bp = arena.gridToBlockPos(target);
+            mob.requestTeleport(bp.getX() + 0.5, arena.getEntityY(target), bp.getZ() + 0.5);
+        }
+
+        if (message != null) sendMessage(message);
+        if (player != null && player.getEntityWorld() instanceof ServerWorld sw) {
+            BlockPos bp = arena.gridToBlockPos(target);
+            sw.spawnParticles(net.minecraft.particle.ParticleTypes.EXPLOSION,
+                bp.getX() + 1.0, bp.getY() + 0.5, bp.getZ() + 1.0, 6, 0.6, 0.2, 0.6, 0.0);
+            sw.playSound(null, bp, net.minecraft.sound.SoundEvents.ENTITY_ZOMBIE_INFECT,
+                net.minecraft.sound.SoundCategory.HOSTILE, 1.5f, 0.6f);
+        }
+        sendSync();
+    }
+
+    /**
      * Called when a minion/entity in a boss fight dies.
      * Dispatches boss-specific callbacks for minion death.
      */
@@ -16025,6 +16323,33 @@ public class CombatManager {
                     && "craftics:egg_sac".equals(deadEntity.getEntityTypeId())) {
                 bm.onEggSacDestroyed(deadEntity.getGridPos());
                 sendMessage("§a✦ Egg sac destroyed! Spawn capacity reduced.");
+            }
+
+            // Bastion Brute: the three banners are asymmetric, so the AI reports which one fell
+            // and the message names it. Filtered on the type id because this loop sees every
+            // death at a tracked tile, not just banners.
+            if (ai instanceof BastionBruteAI brute
+                    && "craftics:war_banner".equals(deadEntity.getEntityTypeId())) {
+                String bannerMessage = brute.onWarBannerDestroyed(deadEntity.getGridPos(), e);
+                if (bannerMessage != null) sendMessage(bannerMessage);
+            }
+
+            // Revenant: a lost grave narrows the zombie cap permanently. Filtered on the type id
+            // because this loop sees every death at a tracked tile, not just graves. The block
+            // cleanup itself runs in checkAndHandleDeath so it still happens if the boss died first.
+            if (ai instanceof RevenantAI revenant
+                    && "craftics:grave".equals(deadEntity.getEntityTypeId())) {
+                revenant.onGraveDestroyed(deadEntity.getGridPos());
+                sendMessage("§a✦ Grave destroyed! The dead stay down.");
+
+                // Last grave broken while it was under: the escape network is gone, so the
+                // retreat fails and it claws out where it dug in. Spending the untouchable turn
+                // on the network instead of waiting is the strongest play, and this is the payoff.
+                if (revenant.getGraveCount() == 0 && revenant.isBurrowed()) {
+                    GridPos forced = revenant.forceSurfaceOnLastGraveLost(e, arena);
+                    surfaceEnemy(e, forced, "§6§l✦ The last grave collapses! §e"
+                        + e.getDisplayName() + " is dragged back into the light!");
+                }
             }
         }
     }
@@ -16098,6 +16423,29 @@ public class CombatManager {
             ServerWorld world = (ServerWorld) player.getEntityWorld();
             for (GridPos pos : sacPositions) {
                 placeEggSacEntity(broodmother, pos, world);
+            }
+        }
+
+        // Bastion Brute: war banners feed its speed, which feeds Momentum. Only banners the
+        // grid actually accepted are registered, or the AI would grant speed for a banner the
+        // player has no tile to attack.
+        if (ai instanceof BastionBruteAI brute) {
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            for (BastionBruteAI.BannerPlacement bp : brute.initWarBanners(arena)) {
+                CombatEntity banner = placeBlockObject("craftics:war_banner", bp.pos(),
+                    WAR_BANNER_HP, -(warBannerIdCounter++), warBannerBlock(bp.typeName()), world);
+                if (banner != null) brute.registerWarBanner(bp);
+            }
+        }
+
+        // Revenant: graves are the source of every zombie it raises. Only graves the grid actually
+        // accepted are registered, or the AI would raise off a tile the player cannot attack.
+        if (ai instanceof RevenantAI revenant) {
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+            for (GridPos pos : revenant.initGraves(arena)) {
+                CombatEntity grave = placeBlockObject("craftics:grave", pos,
+                    GRAVE_HP, -(graveIdCounter++), Blocks.COBBLESTONE_WALL, world);
+                if (grave != null) revenant.registerGrave(pos);
             }
         }
 
@@ -16246,6 +16594,51 @@ public class CombatManager {
         world.spawnParticles(net.minecraft.particle.ParticleTypes.ITEM_SLIME,
             bp.getX() + 0.5, bp.getY() + 1.5, bp.getZ() + 0.5,
             8, 0.3, 0.2, 0.3, 0.01);
+    }
+
+    /**
+     * The world block for each war banner. Distinct colours so the three levers are told apart at
+     * a glance, which is the whole point of making them asymmetric: white for the March, red for
+     * Fury, black for the Horde. Falls back to red rather than throwing, since an unrecognised
+     * banner should still be visible and breakable.
+     */
+    private static net.minecraft.block.Block warBannerBlock(String typeName) {
+        return switch (typeName) {
+            case "march" -> Blocks.WHITE_BANNER;
+            case "horde" -> Blocks.BLACK_BANNER;
+            default -> Blocks.RED_BANNER;
+        };
+    }
+
+    /**
+     * Place a block-backed destructible object on the grid: a real HP combatant with no mob
+     * entity, drawn as a world block. Returns null if the grid refused the tile.
+     *
+     * Immovable is mandatory: knockback would move the grid entry while the world block stayed
+     * put, leaving an unhittable ghost. The Creaking heart sets this for the same reason; the
+     * egg sac does not, and only gets away with it because nothing shoves it.
+     */
+    private CombatEntity placeBlockObject(String typeId, GridPos pos, int hp, int fakeEntityId,
+                                          net.minecraft.block.Block block, ServerWorld world) {
+        // attackPower=0 intended (these never attack), but CombatEntity clamps to min 1
+        CombatEntity obj = new CombatEntity(fakeEntityId, typeId, pos, hp, 0, 0, 1);
+        obj.setPassableForBoss(true);
+        obj.setAiOverrideKey(typeId);
+        obj.setImmovable(true);
+
+        // A refused placement would otherwise leave a combatant in `enemies` with no grid
+        // tile: unkillable, and the room never clears.
+        if (!arena.placeEntity(obj)) {
+            return null;
+        }
+        enemies.add(obj);
+
+        // gridToBlockPos returns the entity standing block (origin.y + 1), so the
+        // object sits on the arena floor rather than floating at head level.
+        BlockPos bp = arena.gridToBlockPos(pos);
+        world.setBlockState(bp, block.getDefaultState(),
+            net.minecraft.block.Block.NOTIFY_ALL);
+        return obj;
     }
 
     /**
@@ -16879,7 +17272,7 @@ public class CombatManager {
                     }
                 }
                 if (currentEnemy.isLitOneShot() && allyTarget.isAlive()) {
-                    allyTarget.stackBurning(3, 2);
+                    allyTarget.stackBurning(3, 0); // Burning I; the 2 here used to be damage/turn
                 }
                 sendMessage("§a" + currentEnemy.getDisplayName() + " attacks "
                     + allyTarget.getDisplayName() + " for " + dealt + " damage!" + abilityMsg);
@@ -18723,11 +19116,12 @@ public class CombatManager {
 
     /** Ghastly totem: set every living enemy on fire, grant the player Fire Resistance. */
     private void totemBurnAllEnemiesAndFireRes(int turns) {
-        int perTurn = 2;
+        // Burning I. This was a per-turn damage number before the amplifier slot meant a level.
+        int burnAmp = 0;
         int n = 0;
         for (CombatEntity e : enemies) {
             if (!e.isAlive() || e.isAlly()) continue;
-            e.stackBurning(turns, perTurn);
+            e.stackBurning(turns, burnAmp);
             n++;
         }
         addEffectHooked(CombatEffects.EffectType.FIRE_RESISTANCE, turns, 0);
@@ -25104,10 +25498,16 @@ public class CombatManager {
                 }
                 arena.clearAllWebOverlays();
 
-                // Clean up remaining egg sac blocks
+                // Clean up remaining block-backed object blocks (egg sacs, war banners,
+                // graves). These need an explicit sweep because their entity ids are fake
+                // negatives with no world entity, so the getEntityById discard pass above
+                // cannot find them and their blocks would survive the fight.
                 if (enemies != null) {
                     for (CombatEntity e : enemies) {
-                        if ("craftics:egg_sac".equals(e.getEntityTypeId()) && e.getGridPos() != null) {
+                        if (("craftics:egg_sac".equals(e.getEntityTypeId())
+                                || "craftics:war_banner".equals(e.getEntityTypeId())
+                                || "craftics:grave".equals(e.getEntityTypeId()))
+                                && e.getGridPos() != null) {
                             BlockPos bp = arena.gridToBlockPos(e.getGridPos());
                             world.setBlockState(bp, net.minecraft.block.Blocks.AIR.getDefaultState(),
                                 net.minecraft.block.Block.NOTIFY_ALL);
@@ -25893,8 +26293,12 @@ public class CombatManager {
                 }
             }
             case EnemyAction.AreaAttack aa -> {
-                for (GridPos t : AoeShapes.filledDisc(aa.center(), aa.radius())) {
-                    if (arena.isInBounds(t)) addTile(strikeList, t);
+                // Conduction's AreaAttack has no center (the strike follows its mark);
+                // its telegraph is the tracking warning overlay, so the radar adds nothing.
+                if (aa.center() != null) {
+                    for (GridPos t : AoeShapes.filledDisc(aa.center(), aa.radius())) {
+                        if (arena.isInBounds(t)) addTile(strikeList, t);
+                    }
                 }
             }
             case EnemyAction.CompositeAction ca -> {

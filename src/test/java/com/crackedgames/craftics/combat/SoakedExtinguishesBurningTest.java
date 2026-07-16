@@ -94,7 +94,7 @@ class SoakedExtinguishesBurningTest {
         mob.stackSoaked(3, 1);
 
         assertEquals(0, mob.getBurningTurns(), "water must put the fire out at once");
-        assertEquals(0, mob.getBurningDamage(), "and clear the burn damage with it");
+        assertEquals(0, mob.getBurningAmplifier(), "and clear the burn's level with it");
         assertTrue(mob.isSoaked(), "leaving the mob drenched");
     }
 

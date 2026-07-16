@@ -29,7 +29,8 @@ final class AllyTargeting {
         CombatEntity best = null;
         int bestDist = Integer.MAX_VALUE;
         for (CombatEntity e : combatants) {
-            if (!e.isAlive() || e.isAlly()) continue;
+            // An untargetable enemy is underground: allies must not path to it or swing at it.
+            if (!e.isAlive() || e.isAlly() || e.isUntargetable()) continue;
             int d = e.minDistanceTo(from);
             if (d < bestDist) { bestDist = d; best = e; }
         }
@@ -80,7 +81,8 @@ final class AllyTargeting {
         CombatEntity best = null;
         int bestHp = Integer.MAX_VALUE;
         for (CombatEntity e : combatants) {
-            if (!e.isAlive() || e.isAlly()) continue;
+            // Underground: not a valid finisher target no matter how low its HP is.
+            if (!e.isAlive() || e.isAlly() || e.isUntargetable()) continue;
             if (e.getCurrentHp() < bestHp) { bestHp = e.getCurrentHp(); best = e; }
         }
         return best;

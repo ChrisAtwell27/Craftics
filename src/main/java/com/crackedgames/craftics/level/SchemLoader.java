@@ -53,6 +53,86 @@ public class SchemLoader {
         return id < 0 || id >= palHides.length || !palHides[id];
     }
 
+    /**
+     * The visibility cull's keep/cull decision over a whole volume: true at a
+     * flat index means the solid there must be placed. Air is never kept -
+     * place() writes it unconditionally.
+     *
+     * <p>{@code palCorner} flags the polygon-arena corner markers
+     * ({@code craftics:arena_corner}). 3+ of them mean {@code ArenaBuilder}
+     * will read the arena floor off their Y, so the floor and the layer
+     * supporting it are force-kept inside the corners' X/Z bounding box.
+     * Without that, the support layer is fully buried and the cull deletes it,
+     * dropping the arena floor into the void. Rectangle arenas carry no corner
+     * markers and take the untouched path.
+     *
+     * <p>Static and MC-free (plain int[]/boolean[]) so
+     * {@code SchemArenaFloorKeepTest} can pin the geometry down without a
+     * Minecraft bootstrap.
+     */
+    static boolean[] computeKeepMask(int[] paletteIds, boolean[] palAir, boolean[] palHides,
+                                     boolean[] palExempt, boolean[] palCorner,
+                                     int width, int height, int length, boolean cullBuried) {
+        int palCount = palAir.length;
+        boolean[] keep = new boolean[width * height * length];
+        for (int y = 0; y < height; y++) {
+            for (int z = 0; z < length; z++) {
+                for (int x = 0; x < width; x++) {
+                    int flat = ((y * length) + z) * width + x;
+                    int id = paletteIds[flat];
+                    if (id < 0 || id >= palCount || palAir[id]) continue;
+                    keep[flat] = !cullBuried
+                        || palExempt[id]
+                        || isExposedAt(paletteIds, palHides, width, height, length, x, y, z);
+                }
+            }
+        }
+        if (cullBuried) forceKeepArenaFloor(paletteIds, palAir, palCorner, width, height, length, keep);
+        return keep;
+    }
+
+    /**
+     * Force-keep the polygon arena's floor and its support layer. The corners'
+     * bounding box is used as the footprint rather than a true point-in-polygon
+     * test: it over-keeps a few blocks just outside the outline's diagonal
+     * edges, which costs nothing next to a missing floor.
+     */
+    private static void forceKeepArenaFloor(int[] paletteIds, boolean[] palAir, boolean[] palCorner,
+                                            int width, int height, int length, boolean[] keep) {
+        int palCount = palAir.length;
+        int corners = 0;
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        int floorY = Integer.MAX_VALUE;
+        for (int y = 0; y < height; y++) {
+            for (int z = 0; z < length; z++) {
+                for (int x = 0; x < width; x++) {
+                    int id = paletteIds[((y * length) + z) * width + x];
+                    if (id < 0 || id >= palCount || !palCorner[id]) continue;
+                    corners++;
+                    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+                    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+                    // Lowest marker wins if a schematic ever staggers them;
+                    // ArenaBuilder reads one Y, and keeping the deeper layer
+                    // is the safe side of the guess.
+                    floorY = Math.min(floorY, y);
+                }
+            }
+        }
+        if (corners < 3) return;
+
+        for (int y = Math.max(0, floorY - 1); y <= floorY; y++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int x = minX; x <= maxX; x++) {
+                    int flat = ((y * length) + z) * width + x;
+                    int id = paletteIds[flat];
+                    if (id < 0 || id >= palCount || palAir[id]) continue;
+                    keep[flat] = true;
+                }
+            }
+        }
+    }
+
     public record SchemData(int width, int height, int length, BlockState[] palette, byte[] blockData) {
 
         /**
@@ -112,10 +192,12 @@ public class SchemLoader {
             boolean[] palHides = new boolean[palCount];       // opaque full cube: fully hides the face behind it
             boolean[] palFallThrough = new boolean[palCount]; // a gravity block would fall through it
             boolean[] palExempt = new boolean[palCount];      // never culled
+            boolean[] palCorner = new boolean[palCount];      // polygon arena outline marker
             for (int i = 0; i < palCount; i++) {
                 BlockState s = palette[i];
                 if (s == null) continue;
                 Block block = s.getBlock();
+                palCorner[i] = block == com.crackedgames.craftics.block.ModBlocks.ARENA_CORNER_BLOCK;
                 palAir[i] = s.isAir();
                 // Fluid-state check instead of isLiquid()/opacity: on some MC
                 // versions fluids report as opaque full cubes (their culling
@@ -147,19 +229,14 @@ public class SchemLoader {
             // interior rooms and caves intact, or sitting on the volume's
             // outer boundary. Fully buried filler is skipped entirely; on
             // terrain-style schematics that is the bulk of the blocks.
-            boolean[] keep = new boolean[total];
+            boolean[] keep = computeKeepMask(paletteIds, palAir, palHides, palExempt, palCorner,
+                width, height, length, cullBuried);
+
             int nonAir = 0;
-            for (int y = 0; y < height; y++) {
-                for (int z = 0; z < length; z++) {
-                    for (int x = 0; x < width; x++) {
-                        int flat = ((y * length) + z) * width + x;
-                        int id = paletteIds[flat];
-                        if (id < 0 || id >= palCount || palette[id] == null || palAir[id]) continue;
-                        nonAir++;
-                        keep[flat] = !cullBuried
-                            || palExempt[id] || isExposed(paletteIds, palHides, x, y, z);
-                    }
-                }
+            for (int flat = 0; flat < total; flat++) {
+                int id = paletteIds[flat];
+                if (id < 0 || id >= palCount || palette[id] == null || palAir[id]) continue;
+                nonAir++;
             }
 
             // Gravity supports: every kept gravity block must rest on

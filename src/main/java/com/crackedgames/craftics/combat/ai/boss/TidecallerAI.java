@@ -15,6 +15,9 @@ import java.util.List;
  *
  * Abilities:
  * - Tidal Wave: 2-tile-wide column floods with water, 3 turns. P2: 3-wide + permanent.
+ * - Conduction: mark one random combatant; a turn later lightning strikes the mark's
+ *   LIVE position and chains between every combatant within 2 tiles of the last struck.
+ *   4 dmg (P2: 6), -1 per jump; Soaked links take 2x. The boss never conducts.
  * - Trident Storm: three 3×3 splash zones (player + advance + flank), 4 dmg
  *   (P2: 5) + brief Slowness. Every impacted tile shimmers blue.
  * - Riptide Charge: On water, charge 4 tiles, ATK+3, knockback 2.
@@ -27,6 +30,7 @@ public class TidecallerAI extends BossAI {
     private static final String CD_TRIDENT = "trident_storm";
     private static final String CD_RIPTIDE = "riptide_charge";
     private static final String CD_SUMMON = "call_deep";
+    private static final String CD_CONDUCTION = "conduction";
     private boolean delugeCast = false;
 
     @Override
@@ -125,6 +129,24 @@ public class TidecallerAI extends BossAI {
             return new EnemyAction.Idle();
         }
 
+        // Conduction: mark one combatant, then a turn later lightning strikes it and
+        // arcs between everything within 2 tiles of the last link - the boss's own
+        // drowned included. The flood already Soaks whoever stands in it, and Soaked
+        // doubles lightning, so the water is the setup and this is the payoff. The
+        // mark FOLLOWS its wearer (see the tracker), so counterplay is spacing, not
+        // dodging: you cannot escape the bolt, only decide who stands near you when
+        // it lands.
+        if (!isOnCooldown(CD_CONDUCTION)) {
+            setCooldown(CD_CONDUCTION, isPhaseTwo() ? 3 : 4);
+            int markId = pickConductionMarkId(self, arena);
+            EnemyAction strike = new EnemyAction.AreaAttack(
+                null, 0, isPhaseTwo() ? 6 : 4, "conduction:" + markId);
+            pendingWarning = BossWarning.tracking(
+                self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
+                markId, liveTracker(arena), 1, strike, 0xFFFFDD33);
+            return new EnemyAction.Idle();
+        }
+
         // Trident Storm at range - a true volley: three 3×3 impact zones (one on
         // the player, one ahead toward the boss, one on the flank), so a lazy
         // one-tile sidestep can walk straight into the next splash. The warning
@@ -155,6 +177,41 @@ public class TidecallerAI extends BossAI {
         }
 
         return meleeOrApproach(self, arena, playerPos, isPhaseTwo() ? 2 : 0);
+    }
+
+    /**
+     * Pick who wears the Conduction mark: any living combatant except the Tidecaller
+     * itself - the player included, but deliberately at the same odds as everyone else.
+     * Sometimes the chain starts inside the boss's own minion pack and never reaches the
+     * player, which is what makes positioning a decision rather than a fixed dodge.
+     */
+    private int pickConductionMarkId(CombatEntity self, GridArena arena) {
+        List<Integer> ids = new ArrayList<>();
+        ids.add(BossWarning.MARK_PLAYER_ID); // the player is always a candidate
+        for (CombatEntity e : arena.getOccupants().values()) {
+            // The occupant map lists a multi-tile entity once per tile it covers.
+            if (e == self || !e.isAlive() || e.isProjectile() || e.isBackgroundBoss()) continue;
+            if (!ids.contains(e.getEntityId())) ids.add(e.getEntityId());
+        }
+        java.util.Collections.shuffle(ids);
+        return ids.get(0);
+    }
+
+    /**
+     * Resolves a marked id to its LIVE position, queried from the arena on every read -
+     * never captured up front. The telegraph repaints wherever the mark walks, and a mark
+     * that died or left resolves to null so the warning paints nothing and the bolt
+     * fizzles. Capturing a position here instead would freeze the mark to its cast tile,
+     * turning the spacing game into a one-tile sidestep.
+     */
+    private java.util.function.IntFunction<GridPos> liveTracker(GridArena arena) {
+        return id -> {
+            if (id == BossWarning.MARK_PLAYER_ID) return arena.getPlayerGridPos();
+            for (CombatEntity e : arena.getOccupants().values()) {
+                if (e.getEntityId() == id && e.isAlive()) return e.getGridPos();
+            }
+            return null;
+        };
     }
 
     private List<GridPos> getWaterTiles(GridArena arena) {

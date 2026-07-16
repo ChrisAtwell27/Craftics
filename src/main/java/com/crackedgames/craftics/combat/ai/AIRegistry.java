@@ -156,6 +156,8 @@ public class AIRegistry {
 
         // === Structures (non-acting entities) ===
         register("craftics:egg_sac", passive);
+        register("craftics:war_banner", passive);
+        register("craftics:grave", passive);
     }
 
     public static void register(String entityTypeId, EnemyAI ai) {
