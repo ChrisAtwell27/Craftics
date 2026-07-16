@@ -6071,7 +6071,7 @@ public class CombatManager {
             refreshHighlights();
 
             // Check win
-            if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            if (!anyEnemyBlockingVictory()) {
                 handleVictory();
             }
         };
@@ -6223,7 +6223,7 @@ public class CombatManager {
         sendTileFlash(rocketFlash, FLASH_DAMAGE_COLOR, 16);
         sendSync();
         refreshHighlights();
-        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+        if (!anyEnemyBlockingVictory()) {
             handleVictory();
         }
     }
@@ -6423,7 +6423,7 @@ public class CombatManager {
         sendSync();
 
         // Check win only if all enemies are dead -even mid-dash victory is OK.
-        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+        if (!anyEnemyBlockingVictory()) {
             handleVictory();
         }
     }
@@ -6902,7 +6902,7 @@ public class CombatManager {
                 // A boss isn't guaranteed to die last. The client celebration ("BOSS
                 // DEFEATED" banner + toll) must only fire on the WINNING kill - valueB == 1
                 // means no other enemy is still alive, so combat is actually over.
-                boolean combatWon = enemies.stream().noneMatch(e -> e != entity && e.isAlive() && !e.isAlly());
+                boolean combatWon = !anyEnemyBlockingVictory(entity);
                 sendToAllParty(new CombatEventPayload(
                     CombatEventPayload.EVENT_BOSS_MOMENT, entity.getEntityId(),
                     CombatEventPayload.BOSS_MOMENT_DEFEATED, combatWon ? 1 : 0,
@@ -8622,7 +8622,7 @@ public class CombatManager {
         // resolveInstrumentAttack credits and despawns the killed enemy via
         // checkAndHandleDeath, but that helper deliberately never ends the fight,
         // so without this an instrument landing the final blow soft-locks the level.
-        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+        if (!anyEnemyBlockingVictory()) {
             handleVictory();
             return true;
         }
@@ -9225,7 +9225,7 @@ public class CombatManager {
                 }
             }
             // Check if taming the last enemy triggers victory
-            if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            if (!anyEnemyBlockingVictory()) {
                 handleVictory();
                 return;
             }
@@ -9530,7 +9530,7 @@ public class CombatManager {
         // never end the fight on their own, so without this an item kill soft-locks.
         // Same win check as handleAttack / tryHandleInstrument.
         if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
-                && enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+                && !anyEnemyBlockingVictory()) {
             handleVictory();
             return;
         }
@@ -9649,7 +9649,7 @@ public class CombatManager {
             killEnemy(dead);
         }
 
-        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+        if (!anyEnemyBlockingVictory()) {
             handleVictory();
             return;
         }
@@ -9737,7 +9737,7 @@ public class CombatManager {
             ));
             killEnemy(dead);
         }
-        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+        if (!anyEnemyBlockingVictory()) {
             handleVictory();
             return;
         }
@@ -10086,6 +10086,32 @@ public class CombatManager {
 
         sendSync();
         refreshHighlights();
+    }
+
+    /**
+     * The ONE room-clear test. Every victory check routes through this, so a new attackable object
+     * only has to set {@link CombatEntity#setScenery} once instead of being special-cased at each
+     * call site (there are 15).
+     *
+     * <p>Allies never block. Scenery never blocks: graves and war banners are optional counterplay,
+     * not chores. Egg sacs are NOT scenery and still block, which is deliberate.
+     */
+    private boolean anyEnemyBlockingVictory() {
+        return anyEnemyBlockingVictory(null);
+    }
+
+    /**
+     * As {@link #anyEnemyBlockingVictory()}, but ignores {@code excluded}. Used on the death path,
+     * where the dying entity is still in {@code enemies} and still reads as alive but must not count
+     * itself as the reason the room has not cleared.
+     */
+    private boolean anyEnemyBlockingVictory(CombatEntity excluded) {
+        if (enemies == null) return false;
+        for (CombatEntity e : enemies) {
+            if (e == excluded) continue;
+            if (e.blocksRoomClear()) return true;
+        }
+        return false;
     }
 
     /**
@@ -11325,7 +11351,7 @@ public class CombatManager {
                 checkAndHandleDeath(e);
             }
 
-            if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            if (!anyEnemyBlockingVictory()) {
                 handleVictory();
                 return;
             }
@@ -11391,7 +11417,7 @@ public class CombatManager {
                 if (e.isAlive() && e.isAlly()) e.tickBuffs();
             }
 
-            if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+            if (!anyEnemyBlockingVictory()) {
                 handleVictory();
                 return;
             }
@@ -11629,7 +11655,9 @@ public class CombatManager {
             long allyCount = enemies.stream().filter(e -> e.isAlive() && e.isAlly()).count();
             achievementTracker.recordLivingAllies((int) allyCount);
 
-            boolean hasHostile = enemies.stream().anyMatch(e -> e.isAlive() && !e.isAlly());
+            // Same room-clear rule as every other victory path: scenery left standing is not a
+            // reason to keep the fight open, or this auto-end would never tick with a grave up.
+            boolean hasHostile = anyEnemyBlockingVictory();
             if (!hasHostile) {
                 peacefulTurnCount++;
                 int remaining = 3 - peacefulTurnCount;
@@ -12470,7 +12498,12 @@ public class CombatManager {
                     }
                 }
 
-                sendMessage("§7" + currentEnemy.getDisplayName() + " waits...");
+                // Inert objects (graves, war banners, egg sacs) idle every single turn by design, so
+                // announcing it would bury the real combat log. They still TAKE the turn: the
+                // rotation is where per-entity bookkeeping happens, so skipping is not equivalent.
+                if (!currentEnemy.isInertObject()) {
+                    sendMessage("§7" + currentEnemy.getDisplayName() + " waits...");
+                }
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -15880,7 +15913,7 @@ public class CombatManager {
         // win-condition check every other damage path uses (see handleAttack /
         // tryHandleInstrument) once all anvils this tick have resolved.
         if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
-                && enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+                && !anyEnemyBlockingVictory()) {
             handleVictory();
         }
     }
@@ -16105,7 +16138,7 @@ public class CombatManager {
         // the win check every other damage path uses, once all TNT this tick has
         // resolved and only if the blast didn't already trigger a player game-over.
         if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
-                && enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+                && !anyEnemyBlockingVictory()) {
             handleVictory();
             return;
         }
@@ -16578,6 +16611,9 @@ public class CombatManager {
             1, 0, 0, 1);
         eggSac.setPassableForBoss(true);
         eggSac.setAiOverrideKey("craftics:egg_sac");
+        // Inert but deliberately NOT scenery: egg sacs are must-kill for room-clear, which is why
+        // initEggSacs gates on reachability. This only silences the per-turn "waits..." spam.
+        eggSac.setInertObject(true);
 
         enemies.add(eggSac);
         arena.placeEntity(eggSac);
@@ -16625,6 +16661,11 @@ public class CombatManager {
         obj.setPassableForBoss(true);
         obj.setAiOverrideKey(typeId);
         obj.setImmovable(true);
+        // Graves and war banners are optional counterplay: breaking them weakens the boss, but the
+        // room must clear with them still standing. Every caller of this helper is one of those two,
+        // and the must-kill egg sac is built elsewhere and correctly does not pass through here.
+        obj.setScenery(true);
+        obj.setInertObject(true);
 
         // A refused placement would otherwise leave a combatant in `enemies` with no grid
         // tile: unkillable, and the room never clears.
@@ -17312,7 +17353,7 @@ public class CombatManager {
                         if (!allyTarget.isAlly()) {
                             onEnemyKilled(allyTarget);
                         }
-                        if (enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+                        if (!anyEnemyBlockingVictory()) {
                             handleVictory();
                         }
                     }
@@ -17331,7 +17372,7 @@ public class CombatManager {
                     }
                 }
                 if (!fangShocked.isEmpty()
-                        && enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly())) {
+                        && !anyEnemyBlockingVictory()) {
                     handleVictory();
                 }
                 // Bee allies pay the same sting recoil as enemy bees do.
@@ -19973,7 +20014,7 @@ public class CombatManager {
             dyingMobs.add(new DyingMob(mob, 20, scale));
         }
         // Check if all enemies are dead or allied
-        boolean allDead = enemies.stream().noneMatch(e -> e.isAlive() && !e.isAlly());
+        boolean allDead = !anyEnemyBlockingVictory();
         if (allDead) {
             handleVictory();
         }

@@ -57,6 +57,22 @@ class RevenantBurrowTest {
     }
 
     @Test
+    void oneByOneIsTheRevenantsRealFootprintAndHasAnchorsOnAllFourSides() {
+        // The Revenant is 1x1: it never overrides BossAI.getGridSize (which returns 1) and a
+        // zombie's footprint is 1x1. The 2x2 cases above are kept only as size-agnostic coverage;
+        // THIS is the size the live boss actually surfaces with.
+        List<GridPos> anchors = RevenantAI.surfacingAnchors(GRAVE, 1, 1);
+        assertEquals(List.of(
+            new GridPos(GRAVE.x() - 1, GRAVE.z()),
+            new GridPos(GRAVE.x(), GRAVE.z() - 1),
+            new GridPos(GRAVE.x(), GRAVE.z() + 1),
+            new GridPos(GRAVE.x() + 1, GRAVE.z())
+        ), anchors.stream().sorted(
+            java.util.Comparator.comparingInt(GridPos::x).thenComparingInt(GridPos::z)
+        ).toList());
+    }
+
+    @Test
     void anchorsAreDeterministicForAGivenGrave() {
         // Randomness lives in the grave CHOICE, not in the geometry. Keeping this ordering
         // stable is what makes the random-grave pick the only source of variation.
