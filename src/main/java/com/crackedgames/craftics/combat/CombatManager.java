@@ -6224,7 +6224,6 @@ public class CombatManager {
         sendSync();
         refreshHighlights();
         if (!anyEnemyBlockingVictory()) {
-        if (!anyEnemyBlockingVictory()) {
             handleVictory();
         }
     }
@@ -6424,7 +6423,6 @@ public class CombatManager {
         sendSync();
 
         // Check win only if all enemies are dead -even mid-dash victory is OK.
-        if (!anyEnemyBlockingVictory()) {
         if (!anyEnemyBlockingVictory()) {
             handleVictory();
         }
@@ -6904,7 +6902,6 @@ public class CombatManager {
                 // A boss isn't guaranteed to die last. The client celebration ("BOSS
                 // DEFEATED" banner + toll) must only fire on the WINNING kill - valueB == 1
                 // means no other enemy is still alive, so combat is actually over.
-                boolean combatWon = !anyEnemyBlockingVictory(entity);
                 boolean combatWon = !anyEnemyBlockingVictory(entity);
                 sendToAllParty(new CombatEventPayload(
                     CombatEventPayload.EVENT_BOSS_MOMENT, entity.getEntityId(),
@@ -8626,7 +8623,6 @@ public class CombatManager {
         // checkAndHandleDeath, but that helper deliberately never ends the fight,
         // so without this an instrument landing the final blow soft-locks the level.
         if (!anyEnemyBlockingVictory()) {
-        if (!anyEnemyBlockingVictory()) {
             handleVictory();
             return true;
         }
@@ -9230,7 +9226,6 @@ public class CombatManager {
             }
             // Check if taming the last enemy triggers victory
             if (!anyEnemyBlockingVictory()) {
-            if (!anyEnemyBlockingVictory()) {
                 handleVictory();
                 return;
             }
@@ -9536,7 +9531,6 @@ public class CombatManager {
         // Same win check as handleAttack / tryHandleInstrument.
         if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
                 && !anyEnemyBlockingVictory()) {
-                && !anyEnemyBlockingVictory()) {
             handleVictory();
             return;
         }
@@ -9656,7 +9650,6 @@ public class CombatManager {
         }
 
         if (!anyEnemyBlockingVictory()) {
-        if (!anyEnemyBlockingVictory()) {
             handleVictory();
             return;
         }
@@ -9744,7 +9737,6 @@ public class CombatManager {
             ));
             killEnemy(dead);
         }
-        if (!anyEnemyBlockingVictory()) {
         if (!anyEnemyBlockingVictory()) {
             handleVictory();
             return;
@@ -11360,7 +11352,6 @@ public class CombatManager {
             }
 
             if (!anyEnemyBlockingVictory()) {
-            if (!anyEnemyBlockingVictory()) {
                 handleVictory();
                 return;
             }
@@ -11426,7 +11417,6 @@ public class CombatManager {
                 if (e.isAlive() && e.isAlly()) e.tickBuffs();
             }
 
-            if (!anyEnemyBlockingVictory()) {
             if (!anyEnemyBlockingVictory()) {
                 handleVictory();
                 return;
@@ -11665,9 +11655,6 @@ public class CombatManager {
             long allyCount = enemies.stream().filter(e -> e.isAlive() && e.isAlly()).count();
             achievementTracker.recordLivingAllies((int) allyCount);
 
-            // Same room-clear rule as every other victory path: scenery left standing is not a
-            // reason to keep the fight open, or this auto-end would never tick with a grave up.
-            boolean hasHostile = anyEnemyBlockingVictory();
             // Same room-clear rule as every other victory path: scenery left standing is not a
             // reason to keep the fight open, or this auto-end would never tick with a grave up.
             boolean hasHostile = anyEnemyBlockingVictory();
@@ -15933,7 +15920,6 @@ public class CombatManager {
         // tryHandleInstrument) once all anvils this tick have resolved.
         if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
                 && !anyEnemyBlockingVictory()) {
-                && !anyEnemyBlockingVictory()) {
             handleVictory();
         }
     }
@@ -16158,7 +16144,6 @@ public class CombatManager {
         // the win check every other damage path uses, once all TNT this tick has
         // resolved and only if the blast didn't already trigger a player game-over.
         if (phase != CombatPhase.GAME_OVER && phase != CombatPhase.LEVEL_COMPLETE
-                && !anyEnemyBlockingVictory()) {
                 && !anyEnemyBlockingVictory()) {
             handleVictory();
             return;
@@ -16911,7 +16896,6 @@ public class CombatManager {
             enemyLerpStartZ = mob.getZ();
 
             // Face movement direction
-            // Face movement direction
             GridPos next = enemyMovePath.get(enemyMovePathIndex);
             GridPos prev = enemyMovePathIndex == 0 ? currentEnemy.getGridPos() : enemyMovePath.get(enemyMovePathIndex - 1);
             int dx = next.x() - prev.x();
@@ -17383,7 +17367,6 @@ public class CombatManager {
                             onEnemyKilled(allyTarget);
                         }
                         if (!anyEnemyBlockingVictory()) {
-                        if (!anyEnemyBlockingVictory()) {
                             handleVictory();
                         }
                     }
@@ -17402,7 +17385,6 @@ public class CombatManager {
                     }
                 }
                 if (!fangShocked.isEmpty()
-                        && !anyEnemyBlockingVictory()) {
                         && !anyEnemyBlockingVictory()) {
                     handleVictory();
                 }
