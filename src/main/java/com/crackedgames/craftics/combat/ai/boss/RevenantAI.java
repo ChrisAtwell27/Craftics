@@ -211,7 +211,22 @@ public class RevenantAI extends BossAI {
             }
         }
 
-        // Priority 4: Raise the Dead, every other turn, out of the graves themselves.
+        // Priority 4: Burrow. This sits ABOVE the raise on purpose. Both want the same turn (the
+        // raise is up every other turn, and dist <= 2 is exactly when the player has closed), and
+        // the raise winning every time is what made this ability never fire at all. Being cornered
+        // should trigger the escape, not another summon. The cooldown is what stops it stalling.
+        //
+        // No living graves means no burrow: with the network cut there is nowhere to reappear, so
+        // the retreat is simply unavailable. CombatManager does the untargetable toggle and the
+        // tile bookkeeping; the AI only decides and remembers where it went under.
+        if (!isOnCooldown(CD_BURROW) && !graves.isEmpty() && dist <= 2) {
+            setCooldown(CD_BURROW, BURROW_COOLDOWN);
+            burrowed = true;
+            burrowOrigin = self.getGridPos();
+            return new EnemyAction.Burrow();
+        }
+
+        // Priority 5: Raise the Dead, every other turn, out of the graves themselves.
         // No living graves means no raise: destroying them all shuts the stream off, which is
         // the whole reward for spending turns on them.
         if (!isOnCooldown(CD_RAISE) && !graves.isEmpty()) {
@@ -261,17 +276,6 @@ public class RevenantAI extends BossAI {
                 }
                 return new EnemyAction.Idle();
             }
-        }
-
-        // Priority 5: Burrow. No living graves means no burrow: with the network cut there is
-        // nowhere to reappear, so the retreat is simply unavailable. CombatManager does the
-        // untargetable toggle and the tile bookkeeping; the AI only decides and remembers where
-        // it went under.
-        if (!isOnCooldown(CD_BURROW) && !graves.isEmpty() && dist <= 2) {
-            setCooldown(CD_BURROW, BURROW_COOLDOWN);
-            burrowed = true;
-            burrowOrigin = self.getGridPos();
-            return new EnemyAction.Burrow();
         }
 
         // Priority 6: Melee attack or approach
@@ -365,9 +369,11 @@ public class RevenantAI extends BossAI {
      * ordered nearest-first around the grave. Pure geometry: the caller filters these through the
      * arena to find the first one that actually fits.
      *
-     * <p>A 2x2 boss cannot land on the grave's own tile because the grave is a real 1x1 combatant
+     * <p>The boss cannot land on the grave's own tile because the grave is a real 1x1 combatant
      * standing there, so every anchor here is offset to sit beside it. Erupting on top of the grave
-     * would silently destroy the very thing the ability depends on.
+     * would silently destroy the very thing the ability depends on. Size is read from the entity
+     * rather than assumed: this boss is 1x1 (which reduces this to the grave's 4 orthogonal
+     * neighbours), but the geometry holds for any footprint.
      *
      * <p>Extracted as static int-only logic so it is unit-testable without an arena.
      */

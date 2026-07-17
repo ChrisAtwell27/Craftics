@@ -428,6 +428,44 @@ public class CombatEntity {
     public boolean isPassableForBoss() { return passableForBoss; }
     public void setPassableForBoss(boolean v) { this.passableForBoss = v; }
 
+    /**
+     * Scenery: an attackable object that is NOT a must-kill for room-clear (Revenant graves, Bastion
+     * Brute war banners). These are optional counterplay, so the level must be able to end with them
+     * still standing. Being in `enemies` is what makes them attackable at all, so the victory check
+     * cannot simply be "the list is empty"; it has to skip these.
+     *
+     * <p>Deliberately NOT set on the Broodmother's egg sacs, which ARE must-kill. That is why
+     * BroodmotherAI.initEggSacs gates on reachability: an unreachable must-kill soft-locks the run.
+     *
+     */
+    private boolean scenery = false;
+    public boolean isScenery() { return scenery; }
+    public void setScenery(boolean v) { this.scenery = v; }
+
+    /**
+     * True if this entity is a reason the room has not cleared yet. The single rule behind every
+     * victory check: a live, non-ally, non-scenery entity must still be dealt with.
+     *
+     * <p>Lives here rather than in CombatManager so it is one decision rather than one per call
+     * site, and so it is unit-testable without an arena.
+     */
+    public boolean blocksRoomClear() {
+        return alive && !ally && !scenery;
+    }
+
+    /**
+     * An inert block-backed object (grave, war banner, egg sac): it occupies a tile and has HP, but
+     * never acts. Sibling to {@link #isScenery}, not the same axis: this is "never does anything on
+     * its turn", scenery is "does not block room-clear". The egg sac is inert but NOT scenery.
+     *
+     * <p>Suppresses the per-turn "waits..." line, which these would otherwise print every single
+     * turn. They still take their turn slot, since the enemy rotation is where per-entity
+     * bookkeeping runs.
+     */
+    private boolean inertObject = false;
+    public boolean isInertObject() { return inertObject; }
+    public void setInertObject(boolean v) { this.inertObject = v; }
+
     private String bossDisplayName = null;
     public void setBossDisplayName(String name) { this.bossDisplayName = name; }
 
