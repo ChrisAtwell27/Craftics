@@ -24,7 +24,7 @@
 [CmdletBinding()]
 param(
     # Mod version to publish. Must match mod_version in gradle.properties AND a CHANGELOG heading.
-    [string] $ModVersion = "0.2.10",
+    [string] $ModVersion = "0.3.0",
 
     # CurseForge numeric project id (About Project -> Project ID on the project page).
     [int] $ProjectId = 1494583,

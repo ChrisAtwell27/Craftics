@@ -42,6 +42,11 @@ public class BossWarning {
     private final int trackedId;
     /** Resolves a tracked id to a live grid position. Null for fixed-tile warnings. */
     private final java.util.function.IntFunction<GridPos> tracker;
+    /** For a tracking warning, the Manhattan radius painted around the live mark.
+     *  0 paints only the mark tile; a positive value paints the filled Manhattan
+     *  diamond (see {@code AoeShapes.filledDiamond}) so the telegraph shows the
+     *  whole area the attack reaches from the mark, not just the mark itself. */
+    private final int trackRadius;
 
     public BossWarning(int bossEntityId, WarningType type, List<GridPos> affectedTiles,
                        int turnsUntilResolve, EnemyAction resolveAction, int color) {
@@ -64,11 +69,13 @@ public class BossWarning {
         this.dirZ = dirZ;
         this.trackedId = MARK_NONE;
         this.tracker = null;
+        this.trackRadius = 0;
     }
 
     private BossWarning(int bossEntityId, WarningType type, int trackedId,
                         java.util.function.IntFunction<GridPos> tracker,
-                        int turnsUntilResolve, EnemyAction resolveAction, int color) {
+                        int turnsUntilResolve, EnemyAction resolveAction, int color,
+                        int trackRadius) {
         this.bossEntityId = bossEntityId;
         this.type = type;
         this.affectedTiles = List.of();
@@ -79,6 +86,7 @@ public class BossWarning {
         this.dirZ = 0;
         this.trackedId = trackedId;
         this.tracker = tracker;
+        this.trackRadius = Math.max(0, trackRadius);
     }
 
     /**
@@ -96,8 +104,25 @@ public class BossWarning {
     public static BossWarning tracking(int bossEntityId, WarningType type, int trackedId,
                                        java.util.function.IntFunction<GridPos> tracker,
                                        int turnsUntilResolve, EnemyAction resolveAction, int color) {
+        return tracking(bossEntityId, type, trackedId, tracker,
+            turnsUntilResolve, resolveAction, color, 0);
+    }
+
+    /**
+     * Tracking-warning variant that paints a Manhattan {@code trackRadius} area
+     * around the live mark, not just the mark tile. Use this when the attack
+     * reaches beyond the mark (e.g. a chain that jumps to combatants within N
+     * tiles) so the telegraph shows the true danger area and follows the mark as
+     * it moves. {@code trackRadius} MUST equal the mechanic's own reach so the
+     * paint cannot lie about range. A radius of 0 is identical to the single-tile
+     * {@link #tracking(int, WarningType, int, java.util.function.IntFunction, int, EnemyAction, int)}.
+     */
+    public static BossWarning tracking(int bossEntityId, WarningType type, int trackedId,
+                                       java.util.function.IntFunction<GridPos> tracker,
+                                       int turnsUntilResolve, EnemyAction resolveAction, int color,
+                                       int trackRadius) {
         return new BossWarning(bossEntityId, type, trackedId, tracker,
-            turnsUntilResolve, resolveAction, color);
+            turnsUntilResolve, resolveAction, color, trackRadius);
     }
 
     public int getBossEntityId() { return bossEntityId; }
@@ -108,7 +133,14 @@ public class BossWarning {
     public List<GridPos> getAffectedTiles() {
         if (tracker != null) {
             GridPos live = tracker.apply(trackedId);
-            return live == null ? List.of() : List.of(live);
+            if (live == null) return List.of();
+            // trackRadius 0 paints just the mark; a positive radius paints the
+            // filled Manhattan diamond that reach covers, recomputed here so it
+            // still follows the mark as it walks. The chain uses Manhattan
+            // distance, so a diamond (not a Chebyshev square) is what the mechanic
+            // actually reaches - the paint and the jump agree by construction.
+            if (trackRadius <= 0) return List.of(live);
+            return com.crackedgames.craftics.combat.AoeShapes.filledDiamond(live, trackRadius);
         }
         return affectedTiles;
     }

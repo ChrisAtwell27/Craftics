@@ -484,7 +484,17 @@ public class CombatTooltips implements ItemTooltipCallback {
                 + (level * com.crackedgames.craftics.combat.HoeEnchantEffects.MEDIC_HEAL_PER_LEVEL)
                 + " HP (you, teammates, and pets)";
 
-            default -> null;
+            // Any Craftics enchantment without a hand-written case above falls back to its own
+            // table entry, so a new one renders a real tooltip the moment it is added rather than
+            // silently dropping out through default -> null. The cases above stay because they
+            // interpolate live effect constants; this covers the rest.
+            default -> {
+                var entry = com.crackedgames.craftics.combat.CrafticsEnchantments.byId(enchantId);
+                yield entry == null ? null
+                    : "§d" + entry.display()
+                        + (entry.maxLevel() > 1 ? " " + toRoman(level) : "")
+                        + ": §7" + entry.summary();
+            }
         };
     }
 

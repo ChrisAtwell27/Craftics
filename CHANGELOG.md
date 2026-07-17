@@ -1,13 +1,39 @@
 ﻿Changelog
 0.3.0
+Boss Identities
+
+- The Tidecaller gained Conduction: it marks a random combatant, then a turn later lightning strikes the mark and chains between everyone within 2 tiles of each link. Standing in water doubles the hit, so the boss floods the arena then electrocutes it. The mark follows its target, and the boss's own drowned conduct the chain
+- The Tidecaller's flood is now a real wave: a full-width wall 3 tiles thick that sweeps across the arena 3 tiles a turn and carries anyone it catches
+- The Bastion Brute gained Momentum: it hits harder the further it moved to reach you, so hugging it is safest and kiting feeds it. Three destructible war banners feed it (March gives speed, Fury attack, Horde its piglin summons); break the one that is hurting you
+- The Revenant now fights around graves: 50 HP blocks that raise zombies every other turn, plus two more in phase two. Living graves cap the zombie count. Shield Bash became Burrow: it digs under, untargetable for a round, then erupts from a random grave. No graves means no burrow, and breaking the last grave while it is under drags it back out
+
+Boss Balance
+
+- Boss attack is now capped so scaling can never push a boss to a near one-shot. A late-biome boss was reaching 16+ attack
+
+Enchantments
+
+- Facade (axe): your axe hits for 1.5x while you have any negative effect. Works on modded and cleaving weapons, not just vanilla axes
+- Eight more: Conductive (copy your debuffs onto what you hit), Rabid (pets copy theirs), Hilt and Dull (convert a weapon to Physical or Blunt affinity at a damage cost; Hilt renders upside down), Reversal (below 25% HP a hit cleanses a debuff and hits harder), Executioner (more damage per debuff on the target), Pack Bond (pets hit harder per other pet), Serrated (lose the sword sweep for a bleed on every hit)
+
+Artifacts
+
+- The Flame Pendant now burns its wearer instead of nearby enemies: permanent Burning, 2 HP a turn. A pure drawback that pairs with Facade and the debuff-copy enchants
+
+Arena Fixes
+
+- Fixed arenas generating with holes or missing floors, floor sand no longer falls away, and cliff edges no longer carve into the hollow beneath the arena
+- Trial chambers no longer generate inside another arena
+- Fixed events after level 3 of a biome sending you back to replay level 3
+
 Trading Hall & Bartering Station
 
-- The Trading Hall and Bartering Station are now real, working markets instead of empty walk-around sets. Every booth hosts a named merchant with a floating title over its head: the hall draws three distinct villager trader types per visit (Weaponsmith, Armorer, Alchemist, and so on), and the station draws three distinct piglin barter personalities (Warmonger, Hoarder, Flesh Dealer, Relic Trader, Beast Tamer), each holding a gold ingot. Booths re-roll per visit so the market rotates
-- Booths are click-to-shop: booth floors glow softly (and pulse under your cursor) so they read as clickable, and clicking anywhere on a booth walks you up to its counter and opens that merchant automatically. Clicking open floor is still a plain walk-to, with a hover marker showing where you'll go
-- Villager booths open a new parchment shop screen: every trade shows its real item icon with stack count, hovering shows the full item tooltip, costs draw next to an emerald icon and turn red when you can't afford them, and your emerald balance animates down as you spend. Trades carry per-visit stock ("2 left"), big-ticket items are one-offs, and sold-out rows gray out with a SOLD OUT tag. Purchases flash the row green with a villager chime, stock is shared across the party in real time, and ESC or Done both close the booth cleanly. Purchases come straight out of your emerald bank, no item juggling
-- Trade quality scales with your island's highest unlocked biome, so the hall grows with your progression
-- The piglin barter stepper got a full overhaul: -5/-1/+1/+5/Max quick-adjust buttons, a greed meter that fills red-to-green as your offer grows, and the piglin visibly reacting to the amount ("The piglin looks insulted." up to "The piglin CANNOT resist this much gold!"). An honest read of the odds ladder, since a maxed offer always wins. Your gold count now draws with a gold ingot icon, wins play the piglin celebration grunt, losses its angry squeal, and the coin-flip reveal then hands over the goods. Walk away any time; come back and the piglin rolls a fresh hidden threshold
-- Trading in the hall is fully multiplayer-safe: every party member can shop at different booths (or the same one) simultaneously, and a shopper disconnecting can never wedge the market
+- The Trading Hall and Bartering Station are now real markets. Each booth hosts a named merchant (three villager traders per hall visit, three piglin barter personalities per station visit), and booths re-roll each visit
+- Click a booth to walk up and open its merchant; booth floors glow and pulse under your cursor. Open floor is still a plain walk-to
+- Villager booths open a parchment shop screen: real item icons and tooltips, emerald costs that redden when unaffordable, per-visit stock with SOLD OUT rows, and purchases straight from your emerald bank. Stock is shared across the party live
+- Trade quality scales with your island's highest unlocked biome
+- The piglin barter stepper got quick-adjust buttons (-5/-1/+1/+5/Max), a greed meter, the piglin reacting to your offer, gold-ingot icons, and win/loss sounds
+- Trading is fully multiplayer-safe: everyone can shop at once, and a disconnect never wedges the market
 
 Arenas
 
@@ -15,52 +41,47 @@ Arenas
 
 Totems & Regeneration
 
-- Totems of Undying now save you from the void. Falling into a void obstacle called the death animation directly instead of going through the death handler, so you died with a totem still in your hand
-- Totems now also catch damage Craftics never metered. All turn-based damage is clamped so it can never kill outright, but vanilla damage (a boss ability that spawns a real explosion, fire, fall damage) reached the player untouched and could take them from full HP to dead without the totem ever being consulted - that was the "boss one-shot through a totem" report
-- Vanilla Regeneration is no longer applied to players in combat, from any source. It heals on a real-time tick, so it quietly fed HP back between turns and undercut the whole damage economy. Craftics' own Regeneration combat effect (a small heal at the start of each of your turns) is now the only regeneration you get - blocked at the entity level, so potions, tipped arrows, totems, golden apples, and any future or modded source are all covered
+- Totems of Undying now save you from the void, and from untracked vanilla damage (explosions, fire, fall) that used to kill through a totem without consuming it
+- Vanilla Regeneration no longer applies to players in combat, from any source; it healed on a real-time tick and undercut the damage economy. Craftics' own turn-start Regeneration is the only regen you get
 
 Trading Hall Fixes
 
-- Trades now scale with tier in kind, not just price: from tier 5, weapons and armor can roll enchanted (god rolls from tier 8), and plain building blocks come in bigger stacks the deeper you are
-- The armorer no longer sells nothing but diamond. Past tier 6 the diamond four were literally the entire pool, so late-game stock was the same four items forever. The armorer now stocks any armor in the game that's strong enough for your tier, netherite and turtle shells included, and it reads modded armor straight from the item registry: a modded set that registers an Armor Class shows up for sale automatically, priced on the same curve as vanilla, with no compat patch needed
-- High-tier armor enchants are no longer all the same god roll. Armor drew from one hardcoded four-enchant list (Protection, Unbreaking, Mending, Thorns) while a god roll takes 3 to 5 enchants from the pool, so every "god" piece came out as nearly the same item. Armor now draws from the full slot-appropriate pool, so helmets can roll Respiration or Aqua Affinity, boots Feather Falling, Depth Strider, Frost Walker or Soul Speed, and leggings Swift Sneak, alongside the four protection types
-- God rolls are also rolled high rather than pinned to the maximum. Every pick used to land at its cap, which is right for an ominous trial key but made shop stock monotonous. Enchants now roll in the upper half of their own range (Protection III to V, Thorns II to III), so two endgame chestplates can differ while both being worth buying. Single-level enchants like Mending still stay at I
-- Potions preview correctly in the shop. The trade list sent only a bare item id, which stripped potion effects (shown as "Uncraftable Potion / No Effects") and would have hidden enchantments too; the real item stacks now travel with the offer
-- Booth glow highlights now come from the hall's actual booths. The client was re-deriving the procedural layout locally, painting phantom yellow rectangles across schematic halls; empty booths no longer glow, and no highlight draws over a gap or past the island's edge
-- The perimeter wall now outlines the terrain itself: every standable surface in the scene gets its exposed fall edges walled, whether or not you could walk there - the old reachability-based fill left unreached edges open
-- Walking up to a merchant now stops two tiles in front of them (one tile of gap for the counter) instead of pressing up against them
+- Trades scale with tier in kind: from tier 5 weapons and armor can roll enchanted (god rolls from tier 8), and building blocks come in bigger stacks
+- The armorer now stocks any armor strong enough for your tier, netherite and turtle shells included, and reads modded armor from the registry automatically, instead of only the four diamond pieces
+- High-tier armor enchants now draw from the full slot-appropriate pool (Respiration, Feather Falling, Depth Strider, Swift Sneak, and more) instead of one fixed four-enchant list
+- God rolls now roll in the upper half of their range rather than always at max, so endgame pieces differ
+- Potions and enchanted gear now preview correctly in the shop (the trade list was stripping them to bare item ids)
+- Booth glow highlights now come from the hall's real booths instead of a phantom re-derived layout
+- The perimeter wall now walls every standable fall edge, not just reachable ones
+- Walking to a merchant now stops two tiles in front instead of against them
 
 The Raid
 
-- New event: a villager begs the party to defend against incoming pillagers. On a fresh island it dominates the event roll (75%) until you win one; after that it drops to a normal event rate. The party votes to accept or decline
-- Accepting drops the party onto a plains field with pillagers already advancing. Reinforcements of 3-4 arrive every 3 player turns: the spawn tiles telegraph in red one turn ahead, like a boss attack, then the wave lands with a horn and a "Wave N" title. Clearing the field early brings the next wave immediately
-- Total raid size scales with campaign progress, from 10 pillagers minimum to 25 maximum, with the same biome and NG+ stat scaling as other event fights. The last wave brings an evoker or a ravager
-- The Trading Hall now requires BOTH meeting a trader at a run event AND defeating a Raid. Traders met before your first raid win still take their booths once you win it. The Bartering Station is unchanged
-- Admins: /craftics force_event raid to trigger one, /craftics merchants meet_all now also marks the raid defeated for testing
+- New event: defend against a pillager raid. It dominates the event roll (75%) on a fresh island until you win one, then drops to a normal rate. Accept or decline by party vote
+- Waves of 3-4 reinforcements arrive every 3 turns, telegraphed in red a turn ahead with a horn and "Wave N" title. Clearing the field early brings the next wave immediately
+- Raid size scales with progress, 10 to 25 pillagers, with the last wave bringing an evoker or ravager
+- The Trading Hall now requires BOTH meeting a trader at an event AND defeating a raid. The Bartering Station is unchanged
+- Admins: /craftics force_event raid, and /craftics merchants meet_all now also marks the raid defeated
 
 Movement & Jumping
 
-- You can now jump gaps instead of always walking around them. Click across a void pit, deep water, lava, fire, or water and the player vaults it in one arc, landing on the far tile. A jump costs what the walk would have cost if the gap weren't there, plus 1: hopping a 1-tile pit to the other side costs 3 speed, a 2-tile pit costs 4. Gaps wider than 2 tiles still can't be crossed
-- Pathfinding picks the jump on its own, and only when it's actually cheaper than going around, so short detours still walk. Reachable-tile highlights include jump-only destinations, and the move cost shown under your cursor prices the jump
-- Tiles you'll jump over are marked with arrows instead of the usual path dots, so a jump reads differently from a walk before you commit to it
-- You can't jump over obstacles (they stand above the floor, so you'd pass through them), over powder snow (it's meant to be a hidden hazard, not a speed bump), or over enemies
-- Fixed: with the Pathfinder trim, walking a route through an obstacle tile moved the player through the inside of the block. Players now step up and over obstacles instead of clipping through them
+- You can now jump gaps up to 2 tiles wide (void, deep water, lava, fire, water), vaulting across in one arc. A jump costs the walk-equivalent plus 1
+- Pathfinding picks a jump only when it is cheaper than going around; jump destinations show in reachable highlights and price into the move cost. Jumped tiles are marked with arrows instead of dots
+- You cannot jump over obstacles, powder snow, or enemies
+- Fixed the Pathfinder trim routing players through the inside of obstacle blocks; they now step up and over
 
 Status Effect Icons
 
-- Every status effect now shows as a small colored symbol floating above the head of whoever has it, player or enemy. Multiple effects sit in a horizontal row centered on the character, and they last exactly as long as the effect does
-- Each effect has its own symbol and color, so you can read a fight at a glance without opening anything: a green cross for Regeneration, a skull for Poison, a flame for Burning, a snowflake for Frozen, and so on. Addon effects that Craftics has no symbol for still show a neutral marker rather than nothing at all
-- Effects that read physically now give off particles too. A burning combatant throws sparks, poison hangs in a green haze, soaked ones drip, wither smokes, bleeding drips red, frozen gives off snow, and enraged mobs steam. Effects with no natural physical read (Marked, Exposed, Haste) stay clean, so a busy arena doesn't drown in particles
-- Several effects existed on enemies but were never sent to the client, so they had no icon and no HUD chip even while they were changing the fight: Wither, Frozen, Taunting, and every positive buff a mob can carry (Regeneration, Absorption, Resistance, Strength, Haste, Slow Falling). All of them are now visible
-- In multiplayer you can see your teammates' effects, not just your own. The server was already sending each member's effects; the client was throwing them away for everyone but you
-- Hovering a combatant now floats a bobbing green arrow over them, confirming what you're about to click before you commit to it
+- Every status effect now shows as a colored symbol above whoever has it, player or enemy, in a row that lasts as long as the effect. Each effect has its own symbol and color; unknown addon effects show a neutral marker
+- Physical effects give off particles too (burning sparks, poison haze, soaked drips, wither smoke, bleed, frozen snow, enraged steam). Abstract effects (Marked, Exposed, Haste) stay clean
+- Enemy effects that were never sent to the client are now visible: Wither, Frozen, Taunting, and every mob buff (Regeneration, Absorption, Resistance, Strength, Haste, Slow Falling)
+- In multiplayer you now see teammates' effects, not just your own
+- Hovering a combatant floats a green arrow over them to confirm your target
 
 Spectral Arrows
 
-- Spectral arrows do something now. They were valid ammo in name only, with a tooltip that said "WIP - Not yet implemented in combat". Firing one Marks its target for 1 turn, so it takes 2x damage (1.5x for a boss) from every source for the rest of the turn you shot it in, long enough to line up a follow-up hit
-- The Mark does not stack. Firing a second spectral arrow into an already Marked enemy does nothing at all: it neither extends the timer nor refreshes it. Otherwise a stack of arrows would pin a boss under permanent double damage
-- Spectral arrows also count as ammo now. A player carrying nothing but spectral arrows was told "You need arrows to use ranged weapons"
-- The weaponsmith stocks them from tier 4
+- Spectral arrows now Mark their target for a turn, making it take 2x damage (1.5x for a boss) from every source. The Mark does not stack or refresh
+- Spectral arrows now count as ammo, and the weaponsmith stocks them from tier 4
 
 Tooltips
 
@@ -68,17 +89,16 @@ Tooltips
 
 Combat Fixes
 
-- Regeneration, and every other per-turn effect, was losing its final tick. Durations were counted down BEFORE the turn's healing and damage were applied, and an effect that hit zero was removed before it could pay out, so an N-turn effect only ticked N-1 times: 3-turn Regeneration healed twice, not three times. Poison, Wither, Burning and Bleeding all lost their last tick the same way. Wither is hit hardest, since it ramps up to its biggest hit on the final tick, which is exactly the one that was being dropped. Poison and Wither also read their remaining duration when computing damage, so this was skewing their numbers, not just their tick count
-- Water beats fire: getting Soaked now puts out Burning immediately instead of the two ticking side by side, and a drenched target can't be re-lit until the water wears off. Applies to players and mobs alike
-- A burning enemy will now break off and run for the nearest water it can actually reach, rather than standing in the fire and cooking. It routes around walled-off pools to a reachable one, never flees into deep water (which would kill it outright), and holds still once it's standing in the shallows. Bosses don't do this, and neither do mobs that water can't soak (drowned, guardians) since it would never put them out anyway
-
-- Pale Gardens: Creaking that spawned from decorative tree hearts outside the battle no longer harass you mid-fight. Battle start now removes naturally-spawned hostiles in and around the arena and petrifies nearby creaking hearts into wood so they can't spawn more. Works with the Pale Garden backport on older versions
-- Addon mob variants (Creeper Overhaul, Variants & Ventures, etc.) now inherit the weaknesses and resistances of their base mob. An addon jungle creeper takes ranged damage like a creeper; an addon skeleton crushes like a skeleton
-- Mobs on water tiles get water breathing, same as players, so a combatant knocked into water no longer drowns between turns
-- The Tidecaller's arena drains between battles. Its Deluge floods half the room permanently by design, but the water was surviving into every revisit; the boss room now regenerates on entry like snowy arenas do
-- The Host trim pattern and quartz trim material each give +4 max HP per piece (they were giving +8 each, and one tooltip still claimed +2). A full set carrying both is +32
-- Daggers and sais now have identical stats (the sai was strictly worse), and dual wielding wears down the offhand blade too - it used to be free
-- With 4+ players, the ally roster no longer draws over the party HP bars; it stacks below however tall the party list is
+- Per-turn effects were losing their final tick (durations counted down before the payout), so a 3-turn Regeneration healed twice. Poison, Wither, Burning, and Bleeding all now tick their full duration; Wither, which peaks on its last tick, was hit hardest
+- Getting Soaked now puts out Burning immediately, and a drenched target can't be re-lit until it dries. Players and mobs alike
+- A burning enemy now flees to the nearest reachable water instead of standing in the fire, without fleeing into deep water. Bosses and un-soakable mobs (drowned, guardians) do not
+- Pale Gardens: creaking from decorative tree hearts no longer harass you mid-fight; battle start clears naturally-spawned hostiles and petrifies nearby creaking hearts
+- Addon mob variants (Creeper Overhaul, Variants and Ventures) now inherit their base mob's weaknesses and resistances
+- Mobs on water tiles get water breathing, so a combatant knocked into water no longer drowns between turns
+- The Tidecaller's arena drains between battles instead of the Deluge water surviving into every revisit
+- The Host trim and quartz trim material each give +4 max HP per piece (was +8), so a full set of both is +32
+- Daggers and sais now have identical stats, and dual wielding wears down the offhand blade
+- With 4+ players, the ally roster stacks below the party HP bars instead of over them
 
 0.2.10
 Stats, Pets, Armor, and Arena Fixes

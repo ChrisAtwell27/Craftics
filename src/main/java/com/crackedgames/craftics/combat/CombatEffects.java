@@ -353,6 +353,21 @@ public class CombatEffects {
         effects.keySet().removeIf(CombatEffects::isDebuff);
     }
 
+    /**
+     * Remove a single debuff (the first one in iteration order) and return its type, leaving all
+     * buffs and any remaining debuffs intact. Returns null when the wielder carries no debuffs.
+     * Powers the Reversal enchant's per-hit cleanse.
+     */
+    public EffectType removeFirstDebuff() {
+        for (EffectType type : effects.keySet()) {
+            if (isDebuff(type)) {
+                effects.remove(type);
+                return type;
+            }
+        }
+        return null;
+    }
+
     /** True if {@code type} is a harmful effect (removed by a cleanse). */
     public static boolean isDebuff(EffectType type) {
         return switch (type) {

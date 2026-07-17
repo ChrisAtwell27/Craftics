@@ -267,6 +267,28 @@ public final class AoeShapes {
     }
 
     /**
+     * Filled Manhattan disc (a diamond): every tile within Manhattan {@code radius}
+     * of {@code center} (inclusive), including the center. radius 2 = a 13-tile
+     * diamond. This is the shape of a step-by-step reach: the tiles you can get to
+     * in {@code radius} orthogonal steps. Used to paint the Tidecaller's Conduction
+     * chain radius, which jumps between combatants at Manhattan distance <= 2
+     * ({@code ConductionChain.walk}), so the warning must match that metric rather
+     * than the Chebyshev square {@link #filledDisc} draws.
+     *
+     * <p>Pure int geometry: no arena, no bounds clipping. The caller clips.
+     */
+    public static List<GridPos> filledDiamond(GridPos center, int radius) {
+        List<GridPos> out = new ArrayList<>();
+        for (int dx = -radius; dx <= radius; dx++) {
+            int span = radius - Math.abs(dx);
+            for (int dz = -span; dz <= span; dz++) {
+                out.add(new GridPos(center.x() + dx, center.z() + dz));
+            }
+        }
+        return out;
+    }
+
+    /**
      * The UNION of several filled Chebyshev discs: every tile covered by at least one
      * disc, listed exactly once, in first-covered order.
      *

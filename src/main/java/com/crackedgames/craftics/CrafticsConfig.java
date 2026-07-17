@@ -81,6 +81,18 @@ public class CrafticsConfig {
     @RangeConstraint(min = 0.0, max = 3.0)
     public float bossKillHpScale = 0.5f;
 
+    /**
+     * Hard ceiling on a biome boss's scaled attack stat. Boss attack scales
+     * additively with biome progress (baseAttack + atkBonus) and, unlike regular
+     * enemies, bypasses the per-biome damage cap. Without a ceiling a late-campaign
+     * boss can reach an attack that near one-shots a 20 HP player, so the scaled
+     * value is clamped here. 12 matches the strongest hand-authored boss base
+     * (Chorus Grove), so scaling can never push a boss past the hardest boss the
+     * designer built by hand. Authored bosses at or below this value are unchanged.
+     */
+    @RangeConstraint(min = 1, max = 30)
+    public int maxBossAttack = 12;
+
     // ===== Infinite Scaling =====
 
     /** Infinite mode: boss HP at biome 1 (ordinal 0). Replaces the campaign HP path. */

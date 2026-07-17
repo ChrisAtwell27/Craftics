@@ -5,7 +5,9 @@ import com.crackedgames.craftics.api.registry.WeaponEntry;
 import com.crackedgames.craftics.api.registry.WeaponRegistry;
 import com.crackedgames.craftics.combat.AoeShapes;
 import com.crackedgames.craftics.combat.CombatEntity;
+import com.crackedgames.craftics.combat.CrafticsEnchantments;
 import com.crackedgames.craftics.combat.DamageType;
+import com.crackedgames.craftics.combat.SwordAxeEnchantEffects;
 import com.crackedgames.craftics.combat.PlayerCombatStats;
 import com.crackedgames.craftics.combat.PlayerProgression;
 import com.crackedgames.craftics.combat.ProjectileSpawner;
@@ -112,11 +114,21 @@ public final class VanillaWeapons {
         List<CombatEntity> extraTargets = new ArrayList<>();
         int totalExtra = 0;
 
+        // Serrated: trade the sword sweep for Bleed. Gates both sweep branches below off
+        // and applies Bleed stacks equal to the enchant level to the primary target only.
+        int serrated = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.SERRATED);
+
         // Sharpness: apply bleed stacks (each stack = +1 damage when attacked)
         int sharpness = PlayerCombatStats.getSharpness(player);
         if (sharpness > 0) {
             target.stackBleed(sharpness);
             messages.add("\u00a7cBleed! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
+        }
+
+        // Serrated: apply Bleed to the primary target (never the sweep victims).
+        if (serrated > 0) {
+            target.stackBleed(SwordAxeEnchantEffects.serratedBleedStacks(serrated));
+            messages.add("\u00a7cSerrated! " + target.getDisplayName() + " has " + target.getBleedStacks() + " bleed stacks.");
         }
 
         // Smite: AoE radiant burst vs undead. Scales as +25% of the hit's base
@@ -262,7 +274,7 @@ public final class VanillaWeapons {
         // Lv1 = 3-wide chop across the swing direction, Lv2 = 5-wide arc,
         // Lv3 = full 360 ring around the player (see AoeShapes.sweepingEdge).
         int sweepingEdge = PlayerCombatStats.getSweepingEdge(player);
-        if (sweepingEdge > 0) {
+        if (sweepingEdge > 0 && serrated <= 0) {
             double sweepDmgPct = sweepingEdge == 1 ? 0.60 : (sweepingEdge == 2 ? 0.75 : 0.90);
             int sweepKb = sweepingEdge >= 3 ? 1 : 0;
             List<CombatEntity> sweepTargets = AoeShapes.enemiesOn(arena,
@@ -324,7 +336,7 @@ public final class VanillaWeapons {
             // Base sword sweep (affinity-scaled)
             int slashingPts = playerStats != null ? playerStats.getAffinityPoints(PlayerProgression.Affinity.SLASHING) : 0;
             double sweepChance = 0.10 + (slashingPts * 0.05) + luckBonus;
-            if (Math.random() < sweepChance) {
+            if (Math.random() < sweepChance && serrated <= 0) {
                 List<CombatEntity> sweepTargets = Abilities.findAdjacentEnemies(arena, target, 1);
                 for (CombatEntity sweepTarget : sweepTargets) {
                     int sweepDmg = sweepTarget.takeDamage(baseDamage / 2);

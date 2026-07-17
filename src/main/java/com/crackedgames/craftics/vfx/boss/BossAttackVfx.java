@@ -203,6 +203,32 @@ public final class BossAttackVfx {
             .build(), ctx);
     }
 
+    /**
+     * A single mace-slam-style shockwave at one tile, themed to the boss and
+     * delayed by {@code delayTicks}. This is the SLAM impact's shockwave
+     * (SoundEvents.ITEM_MACE_SMASH_GROUND_HEAVY + a traveling ground ring, the
+     * same params {@link #impact} uses for slam abilities), pulled out so a
+     * per-target chain (the Tidecaller's Conduction) can ripple one shockwave at
+     * each combatant it strikes, staggered so the impacts travel outward in time
+     * with the chain arcs. Layers on top of any existing arc/thunder - it does not
+     * replace them.
+     */
+    public static void shockwaveImpact(ServerWorld world, GridArena arena,
+                                       CombatEntity boss, GridPos tile, int delayTicks) {
+        if (world == null || arena == null || tile == null) return;
+        Theme theme = themeFor(boss);
+        VfxContext ctx = contextFor(world, arena, boss, tile);
+        VfxAnchor epicenter = groundAnchor(arena, tile);
+        Vfx.play(world, VfxDescriptor.builder()
+            .phase(Math.max(0, delayTicks))
+                .sound(epicenter, SoundEvents.ITEM_MACE_SMASH_GROUND_HEAVY, 0.9f, 0.9f)
+                .particles(ParticleTypes.EXPLOSION, epicenter, 1, Vec3d.ZERO, 0.0)
+                .shockwave(epicenter, 2, 2, theme.primary(), theme.secondary(),
+                           WAVE_DUST, 10, 0.35f, 10, SoundEvents.BLOCK_BASALT_BREAK)
+                .shake(0.5f, 8)
+            .build(), ctx);
+    }
+
     /** One-line player-facing hint for what a telegraphed ability is about to
      *  do, derived from its category - "prepares fire_pillar!" tells you the
      *  name; this tells you how to survive it. */

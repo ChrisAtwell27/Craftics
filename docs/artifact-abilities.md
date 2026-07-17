@@ -42,7 +42,9 @@ A complete reference for every artifact's combat abilities in the Artifacts × C
 - The shield resets at the start of each turn.
 
 ### Flame Pendant
-- At the start of each turn, deals 2 fire damage to all adjacent enemies (Manhattan distance ≤ 1) and applies 1 stack of BURNING for 2 turns.
+- A pure drawback item. It does nothing to enemies.
+- At the start of each turn, applies BURNING I (2 HP/turn) to the wearer for 1 turn. Re-applied every turn, so the burning never lapses while the pendant is worn, and expires once it is removed.
+- The self-burn goes through the normal BURNING immunity hooks, so Obsidian Skull and Strider Shoes block it. Fire Resistance does not stop it being applied, but zeroes its damage for as long as it lasts.
 
 ### Thorn Pendant
 - When you take damage, reflects 25% (minimum 1) of the damage back to the attacker.

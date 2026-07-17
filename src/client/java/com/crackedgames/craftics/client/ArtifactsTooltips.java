@@ -84,8 +84,9 @@ public final class ArtifactsTooltips {
                 out.add(sub("Shield resets at the start of each turn"));
             }
             case "flame_pendant" -> {
-                out.add(active("Turn start: 2 fire damage to all adjacent enemies"));
-                out.add(sub("Applies 1 stack of BURNING for 2 turns"));
+                out.add("§c  • Sets YOU alight: BURNING, 2 HP per turn");
+                out.add(sub("§cRe-applied every turn, so it never stops while worn"));
+                out.add(sub("§cDoes nothing to enemies. Wearing this only hurts you."));
             }
             case "thorn_pendant" -> {
                 out.add(active("Reflects 25% (min 1) of damage taken back to attacker"));

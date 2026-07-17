@@ -2331,8 +2331,18 @@ public class CombatManager {
      * arrows and other ranged shots ({@link DamageType#RANGED}), explosions
      * ({@link DamageType#BLUNT}) - name their type today.
      */
-    private int damagePlayer(int rawDamage, CombatEntity attacker, DamageType incomingType) {
+    private int damagePlayer(int incomingRaw, CombatEntity attacker, DamageType incomingType) {
         lastHitAvoided = false; // set true below only if the hit is fully avoided
+        // Hard ceiling on a single boss hit. LevelGenerator caps a boss's BASE attack, but
+        // per-ability riders (Tidecaller riptide +3, Deluge +2 on water, and the like) stack on
+        // top of that base, so the actual hit can exceed the base cap. Clamp the resolved hit
+        // here, the one chokepoint every boss attack passes through, so maxBossAttack is a true
+        // ceiling on what any single boss swing can deal to a 20 HP player. Only boss attackers
+        // are clamped; regular mobs and environmental damage are unaffected. Single-assign into
+        // rawDamage so it stays effectively final for the downstream lambdas that capture it.
+        int bossCap = (attacker != null && attacker.isBoss())
+            ? com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAttack() : 0;
+        int rawDamage = (bossCap > 0) ? Math.min(incomingRaw, bossCap) : incomingRaw;
         // AC dodge roll -only enemy attacks roll. Environmental/self damage
         // (attacker == null) and DoT ticks bypass the roll and apply directly.
         // The attack's resolved damage (rawDamage) doubles as the enemy's
@@ -5175,6 +5185,18 @@ public class CombatManager {
         DamageType damageType = DamageType.fromWeapon(weapon);
         DamageType secondaryType =
             com.crackedgames.craftics.api.registry.WeaponRegistry.getSecondaryDamageType(weapon);
+        // Hilt and Dull rewrite the weapon's credited affinity before it is read anywhere: Hilt
+        // makes the swing count as Physical, Dull as Blunt. Redirecting the damageType local (and
+        // clearing the secondary) here feeds BOTH the affinity damage bonus below and the mob
+        // resistance lookup further down, so the whole hit is scored under the new type. They are
+        // mutually exclusive; if both are somehow held, Hilt wins.
+        if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.HILT) > 0) {
+            damageType = DamageType.PHYSICAL;
+            secondaryType = null;
+        } else if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.DULL) > 0) {
+            damageType = DamageType.BLUNT;
+            secondaryType = null;
+        }
         PlayerProgression.PlayerStats attackerStats = PlayerProgression.get(
             (ServerWorld) player.getEntityWorld()).getStats(player);
         int damageTypeBonus = DamageType.getWeaponAffinityBonus(
@@ -5328,6 +5350,17 @@ public class CombatManager {
             usedTriple = true;
         }
 
+        // Executioner: a held axe adds +1 flat damage per debuff on the target, per level. Sits
+        // in the flat-add tier BEFORE the Airtime multiplier so the bonus scales with the swing.
+        int execLevel = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.EXECUTIONER);
+        if (execLevel > 0 && baseDamage > 0) {
+            int execBonus = SwordAxeEnchantEffects.executionerBonus(target.activeDebuffCount(), execLevel);
+            if (execBonus > 0) {
+                baseDamage += execBonus;
+                sendMessage("§6✖ §7Executioner! §f+" + execBonus);
+            }
+        }
+
         // Airtime -a weapon hit spends ONE stack for (1.0 + 0.5*level)x damage:
         // Airtime I = 1.5x, II = 2.0x, ... V = 3.5x. Only weapon attacks route through
         // here, so thrown wind charges, items, and sherds neither consume nor benefit.
@@ -5345,6 +5378,44 @@ public class CombatManager {
                 int axeBonus = Math.max(1, baseDamage / 2);
                 baseDamage += axeBonus;
             }
+        }
+
+        // Facade: a held axe hits 1.5x while its bearer is suffering any debuff. Sits with the
+        // other multiplicative weapon bonuses (crit, kill streak, Airtime) and AFTER the flat
+        // adds, so it scales the whole built-up hit rather than a bare weapon value. The debuff
+        // test is CombatEffects.isDebuff, so it arms on anything that list calls harmful.
+        if (AxeEnchantEffects.facadeActive(player, combatEffects)) {
+            int beforeFacade = baseDamage;
+            baseDamage = AxeEnchantEffects.facadeDamage(baseDamage, true);
+            if (baseDamage > beforeFacade) {
+                sendMessage("§8✖ §7Facade! §f" + AxeEnchantEffects.FACADE_MULT + "x damage while wounded");
+                if (player.getEntityWorld() instanceof ServerWorld facadeWorld) {
+                    AxeEnchantEffects.facadeVfx(player, facadeWorld);
+                }
+            }
+        }
+
+        // Reversal: a held sword, while its bearer is at or below a quarter HP, cleanses one debuff
+        // off the bearer and hits 1.5x. Sits in the same multiplier tier as Facade and stacks with
+        // it (Facade arms on carrying any debuff, Reversal on being low, so both can fire at once).
+        // The HP gate is the only limiter; it fires on every qualifying hit. Player HP is read the
+        // way the surrounding attack site reads it (getHealth/getMaxHealth, cast to int).
+        int reversalLevel = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.REVERSAL);
+        if (reversalLevel > 0
+                && SwordAxeEnchantEffects.isLowHp((int) player.getHealth(), (int) player.getMaxHealth())) {
+            CombatEffects.EffectType removed = combatEffects.removeFirstDebuff();
+            baseDamage = (int) Math.round(baseDamage * SwordAxeEnchantEffects.REVERSAL_MULT);
+            sendMessage("§c✦ §7Reversal! §fcleansed"
+                + (removed != null ? " " + removed.displayName : "") + ", 1.5x damage");
+        }
+
+        // Hilt and Dull trade damage for the affinity they redirected upstream: Hilt drops the hit
+        // to a quarter, Dull to a half. Sits in the same multiplier tier as Facade and Reversal so
+        // it scales the whole built-up hit. Mutually exclusive; if both are held, Hilt wins.
+        if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.HILT) > 0) {
+            baseDamage = SwordAxeEnchantEffects.hiltDamage(baseDamage);
+        } else if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.DULL) > 0) {
+            baseDamage = SwordAxeEnchantEffects.dullDamage(baseDamage);
         }
 
         int fireAspect = PlayerCombatStats.getFireAspect(player);
@@ -5768,6 +5839,27 @@ public class CombatManager {
             }
             for (String msg : abilityMessages) {
                 sendMessage(msg);
+            }
+
+            // Conductive: a held sword copies every debuff on the WIELDER onto the struck enemy at
+            // full remaining duration. heldLevel already gates this to a held sword (the CONDUCTIVE
+            // filter is SWORD-only), so no separate weapon check is needed. Runs after the hit lands
+            // and only while the target still lives. WEAKNESS/MINING_FATIGUE/LEVITATION/DARKNESS have
+            // no enemy-side apply, so DebuffCopy.copyableToEnemy skips them. Full-duration, no
+            // guardrail, is the intended balance: with a permanent Burning it re-arms every hit.
+            if (fTarget.isAlive()
+                    && CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.CONDUCTIVE) > 0) {
+                boolean copiedAny = false;
+                for (CombatEffects.ActiveEffect effect : combatEffects.getAll().values()) {
+                    if (effect.turnsRemaining < 0) continue; // skip frozen effects
+                    CombatEffects.EffectType type = effect.type;
+                    if (!CombatEffects.isDebuff(type) || !DebuffCopy.copyableToEnemy(type)) continue;
+                    DebuffCopy.applyToEnemy(fTarget, type, effect.amplifier, effect.turnsRemaining);
+                    copiedAny = true;
+                }
+                if (copiedAny) {
+                    sendMessage("§b⚡ §7Conductive! §fyour ailments spread to " + fTarget.getDisplayName());
+                }
             }
 
             // Track achievement stats from weapon ability results
@@ -7587,24 +7679,50 @@ public class CombatManager {
         if (item instanceof net.minecraft.item.TridentItem) {
             return new String[]{"loyalty", "channeling", "impaling", "riptide", "unbreaking", "mending"};
         }
+        // Axe pool first: an "axe" is any AxeItem OR any weapon registered Cleaving (e.g. the
+        // SimplySwords greataxe, which is a SwordItem). Same definition the runtime Facade filter
+        // uses (CrafticsEnchantments.isAxeLike), so a Cleaving weapon that can EARN Facade here can
+        // also FIRE it. This must sit above the SwordItem branch below, or a Cleaving SwordItem
+        // would take the sword pool and never see the axe (Cleaving) enchantments.
+        if (CrafticsEnchantments.isAxeLike(stack)) {
+            // The vanilla axe pool plus the Craftics axe (Cleaving) enchantments, which come
+            // straight from CrafticsEnchantments so a new entry there rolls here automatically.
+            String[] vanilla = {"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
+                "knockback", "unbreaking", "mending"};
+            String[] craftics = CrafticsEnchantments.poolFor(CrafticsEnchantments.Tool.AXE);
+            String[] out = java.util.Arrays.copyOf(vanilla, vanilla.length + craftics.length);
+            System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
+            return out;
+        }
         //? if <=1.21.4 {
         if (item instanceof net.minecraft.item.SwordItem) {
-            return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
+            String[] vanilla = {"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
+            String[] craftics = CrafticsEnchantments.poolFor(CrafticsEnchantments.Tool.SWORD);
+            String[] out = java.util.Arrays.copyOf(vanilla, vanilla.length + craftics.length);
+            System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
+            return out;
         }
         //?} else {
         /*if (item.getRegistryEntry().isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) {
-            return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
+            String[] vanilla = {"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
                 "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
+            String[] craftics = CrafticsEnchantments.poolFor(CrafticsEnchantments.Tool.SWORD);
+            String[] out = java.util.Arrays.copyOf(vanilla, vanilla.length + craftics.length);
+            System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
+            return out;
         }
         *///?}
-        if (item instanceof net.minecraft.item.AxeItem) {
-            return new String[]{"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
-                "knockback", "unbreaking", "mending"};
-        }
         if (item instanceof net.minecraft.item.MaceItem) {
-            return new String[]{"smite", "fire_aspect", "knockback", "unbreaking", "mending",
+            // The Mace is a BLUNT weapon, so it also offers the Craftics blunt-eligible enchants
+            // (Hilt). Those come straight from CrafticsEnchantments.poolForBlunt, mirroring how the
+            // runtime filter (CrafticsEnchantments.matchesBlunt) counts a Mace as blunt.
+            String[] vanilla = {"smite", "fire_aspect", "knockback", "unbreaking", "mending",
                 "density", "breach", "wind_burst"};
+            String[] craftics = CrafticsEnchantments.poolForBlunt();
+            String[] out = java.util.Arrays.copyOf(vanilla, vanilla.length + craftics.length);
+            System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
+            return out;
         }
         // Basic Weapons: offer Might on the blunt trio (club/hammer/quarterstaff). The pool holds
         // the BARE PATH "might" -the enchanter resolver matches getValue().getPath(), so a
@@ -7612,7 +7730,14 @@ public class CombatManager {
         // registered blunt basicweapons weapon. Placed outside the version split above so it
         // compiles on every shard.
         if (com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isBlunt(item)) {
-            return new String[]{"might", "unbreaking", "mending"};
+            // Might, the universals, and the Craftics blunt-eligible enchants (Hilt). The Craftics
+            // pool comes from CrafticsEnchantments.poolForBlunt so a new blunt-flagged entry rolls
+            // here on its own, matching the runtime CrafticsEnchantments.matchesBlunt filter.
+            String[] base = {"might", "unbreaking", "mending"};
+            String[] craftics = CrafticsEnchantments.poolForBlunt();
+            String[] out = java.util.Arrays.copyOf(base, base.length + craftics.length);
+            System.arraycopy(craftics, 0, out, base.length, craftics.length);
+            return out;
         }
         // Shovels and hoes are the Pet and Special focuses. They never swing, but the Craftics
         // enchantments on them arm the owner's pets (shovel) and Special casts (hoe). Pools come
@@ -13597,6 +13722,24 @@ public class CombatManager {
                     dispatchBossSubAction(sub);
                 }
             }
+            case EnemyAction.Burrow ignored -> {
+                // Defense in depth: Burrow is meant to be a top-level, turn-owning action (BossAI
+                // never composes it), but if one ever reaches here it MUST bury the boss, or the
+                // untargetable flag never gets set and the "digs under" beat silently vanishes.
+                if (currentEnemy != null) {
+                    sendMessage("§8§l✦ " + currentEnemy.getDisplayName()
+                        + " digs into the earth! §7You cannot reach it.");
+                    burrowEnemy(currentEnemy);
+                }
+            }
+            case EnemyAction.Surface surface -> {
+                // Defense in depth: same reasoning as Burrow. A dropped Surface would strand the
+                // boss underground and permanently untargetable, so route it to the real handler.
+                if (currentEnemy != null) {
+                    surfaceEnemy(currentEnemy, surface.anchor(),
+                        "§c§l✦ " + currentEnemy.getDisplayName() + " erupts from the grave!");
+                }
+            }
             case EnemyAction.Swoop swoop -> {
                 // Dispatch the same way the top-level case does: snap the mob to
                 // the first path tile, make it visible, and kick off the lerp via
@@ -14531,7 +14674,8 @@ public class CombatManager {
             return;
         }
 
-        java.util.List<ConductionChain.Link> chain = ConductionChain.walk(positions, startIndex, 2);
+        java.util.List<ConductionChain.Link> chain = ConductionChain.walk(positions, startIndex,
+            com.crackedgames.craftics.combat.ai.boss.TidecallerAI.CONDUCTION_CHAIN_RANGE);
         sendMessage("§e§l⚡ Conduction! §eThe bolt strikes the mark and arcs through everything near it!");
 
         BlockPos prevBlock = null;
@@ -14585,6 +14729,13 @@ public class CombatManager {
                         net.minecraft.sound.SoundEvents.ENTITY_LIGHTNING_BOLT_IMPACT,
                         net.minecraft.sound.SoundCategory.HOSTILE, 0.7f, 1.2f + depth * 0.1f);
                 }));
+            // A mace-slam shockwave ripples out at each struck tile, staggered on
+            // the SAME cadence as the arc above (3 + chainIndex * 4 ticks) so the
+            // impacts ripple outward in step with the bolt. The shockwave stages
+            // itself via its own phase delay; it layers on top of the arc + thunder
+            // rather than replacing them.
+            com.crackedgames.craftics.vfx.boss.BossAttackVfx.shockwaveImpact(
+                world, arena, currentEnemy, positions.get(link.index()), 3 + chainIndex * 4);
             prevBlock = linkBlock;
             chainIndex++;
         }
@@ -15930,8 +16081,14 @@ public class CombatManager {
                 if (tile == null) continue;
                 if (tile.getType() == TileType.NORMAL) {
                     tile.setTemporaryType(TileType.WATER, 2);
-                    BlockPos bp = arena.gridToBlockPos(pos);
-                    world.setBlockState(bp, tile.getBlockType().getDefaultState());
+                    // gridToBlockPos returns the standing block (origin.getY() + 1).
+                    // The flood must be PART of the floor, so place the water at
+                    // origin.getY() with .down() - matching resolveCreateTerrain,
+                    // which builds terrain at origin.getY() ("floor level, not
+                    // above"). The GridTile stays on the same logical tile; only
+                    // the world block Y drops to the floor.
+                    BlockPos floorBp = arena.gridToBlockPos(pos).down();
+                    world.setBlockState(floorBp, tile.getBlockType().getDefaultState());
                 }
                 BlockPos bp = arena.gridToBlockPos(pos);
                 world.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH,
@@ -17573,6 +17730,54 @@ public class CombatManager {
                     if (fangOwner != null && fangOwner.getEntityWorld() instanceof ServerWorld fangWorld) {
                         abilityMsg += ShovelEnchantEffects.applyOnAllyHit(
                             currentEnemy, allyTarget, fangOwner, arena, fangWorld, fangShocked);
+                    }
+                }
+                // Rabid: the owner's shovel makes every pet copy ITS OWN debuffs onto what it hits.
+                // The pet (currentEnemy) is a CombatEntity with discrete debuff fields, not a
+                // CombatEffects map, so each is read off its getters and dispatched by hand. Full
+                // remaining duration, no guardrail, mirrors Conductive's balance. Rabid reads the
+                // shovel focus inventory-wide (level, not heldLevel). Seekers carry no Rabid, same
+                // as they carry no Fangs.
+                if (allyTarget.isAlive() && !currentEnemy.isSeekerProjectile()) {
+                    ServerPlayerEntity rabidOwner = resolveAllyOwner(currentEnemy.getOwnerUuid());
+                    if (rabidOwner != null
+                            && CrafticsEnchantments.level(rabidOwner, CrafticsEnchantments.RABID) > 0) {
+                        boolean rabidCopied = false;
+                        if (currentEnemy.getPoisonTurns() > 0) {
+                            allyTarget.stackPoison(currentEnemy.getPoisonTurns(), currentEnemy.getPoisonAmplifier());
+                            rabidCopied = true;
+                        }
+                        if (currentEnemy.getBurningTurns() > 0) {
+                            allyTarget.stackBurning(currentEnemy.getBurningTurns(), currentEnemy.getBurningAmplifier());
+                            rabidCopied = true;
+                        }
+                        if (currentEnemy.getWitherTurns() > 0) {
+                            allyTarget.stackWither(currentEnemy.getWitherTurns(), currentEnemy.getWitherAmplifier());
+                            rabidCopied = true;
+                        }
+                        if (currentEnemy.getSlownessTurns() > 0) {
+                            allyTarget.stackSlowness(currentEnemy.getSlownessTurns(), currentEnemy.getSlownessPenalty());
+                            rabidCopied = true;
+                        }
+                        if (currentEnemy.getBleedStacks() > 0) {
+                            allyTarget.stackBleed(currentEnemy.getBleedStacks());
+                            rabidCopied = true;
+                        }
+                        if (currentEnemy.getBlindedTurns() > 0) {
+                            allyTarget.stackBlinded(currentEnemy.getBlindedTurns());
+                            rabidCopied = true;
+                        }
+                        if (currentEnemy.getSoakedTurns() > 0) {
+                            allyTarget.stackSoaked(currentEnemy.getSoakedTurns(), currentEnemy.getSoakedAmplifier());
+                            rabidCopied = true;
+                        }
+                        if (currentEnemy.getConfusionTurns() > 0) {
+                            allyTarget.stackConfusion(currentEnemy.getConfusionTurns(), currentEnemy.getConfusionAmplifier());
+                            rabidCopied = true;
+                        }
+                        if (rabidCopied) {
+                            abilityMsg += " §aRabid!";
+                        }
                     }
                 }
                 if (currentEnemy.isLitOneShot() && allyTarget.isAlive()) {
@@ -27693,7 +27898,29 @@ public class CombatManager {
         // Honed: the owner's shovel sharpens every pet they own. Lives here rather than at the
         // attack site so the inspect panel's ATK (which also calls this) tells the truth.
         petBonus += ShovelEnchantEffects.honedBonus(allyOwner);
+        // Pack Bond: the owner's shovel makes each of their pets deal +1 per OTHER living pet, per
+        // level. Reads level inventory-wide (shovel focus), NOT held. livingPack counts this ally
+        // too; packBondBonus subtracts 1 for "others".
+        int packBondLevel = CrafticsEnchantments.level(allyOwner, CrafticsEnchantments.PACK_BOND);
+        if (packBondLevel > 0) {
+            petBonus += SwordAxeEnchantEffects.packBondBonus(countLivingPack(ally), packBondLevel);
+        }
         return petBonus;
+    }
+
+    /**
+     * Count of living pets sharing this ally's owner, including the ally itself. Pets live in the
+     * {@code enemies} list flagged {@link CombatEntity#isAlly()}; the pack is the subset with the
+     * same owner UUID (null owner = the local player's own pets).
+     */
+    private int countLivingPack(CombatEntity ally) {
+        java.util.UUID owner = ally.getOwnerUuid();
+        int count = 0;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || !e.isAlly()) continue;
+            if (java.util.Objects.equals(e.getOwnerUuid(), owner)) count++;
+        }
+        return count;
     }
 
     /**

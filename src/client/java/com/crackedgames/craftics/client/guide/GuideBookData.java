@@ -1070,6 +1070,16 @@ public class GuideBookData {
             new Page("Sword Enchantments (2)",
                 "Knockback: directional shockwave. Pushes the target + enemies behind them (level+1 tiles). Wall collision = bonus damage.\n\n" +
                 "Sweeping Edge: Lv1 hits a 3-wide chop, Lv2 a 5-tile arc, Lv3 a full 360° spin - at 60/75/90% damage. Lv3 adds knockback."),
+            new Page("Sword Enchantments (Slashing)",
+                "A sword is a WEAPON, not a focus. These count only on the sword you are actually holding.\n\n" +
+                "Conductive (max I): copy every negative effect you are carrying onto each enemy you hit, at its full remaining duration. Fight poisoned and your target ends up poisoned too.\n\n" +
+                "Reversal (max I): while you are at or below a quarter HP, a hit cleanses one debuff off you and lands for 1.5x. Above a quarter it does neither.\n\n" +
+                "Serrated (max III): you lose your sword sweep, but every hit applies Bleed stacks equal to the level. Bleeding enemies take damage every turn as their stacks climb."),
+            new Page("Sword Enchantments (2H)",
+                "Hilt and Dull are affinity converters. They fit swords and axes, and cut your damage in exchange for changing the affinity you hit with.\n\n" +
+                "Hilt (max I): your hits count as Physical and land for a quarter of their damage. The held weapon renders upside down while it is on.\n\n" +
+                "Dull (max I): your hits count as Blunt and land for half of their damage.\n\n" +
+                "Use them when a target resists your natural affinity but is weak to Physical or Blunt, or to arm a weapon type for a slot it was never built for."),
             new Page("Bow & Crossbow Enchantments",
                 "Power: big scaling - 1/3/5/8/11 bonus damage and up to +3 range.\n\n" +
                 "Flame: burns target and all adjacent enemies.\n\n" +
@@ -1106,12 +1116,23 @@ public class GuideBookData {
                 "The three Fangs are exclusive - one shovel takes one element.\n\n" +
                 "But you can carry more than one shovel. Water Fang on one and Thunder Fang on another is the combo: the Soak lands first, and lightning does DOUBLE damage to a Soaked target.\n\n" +
                 "Seeker vexes are a spell's payload, not pets. They carry no Fangs and gain no Honed."),
+            new Page("Shovel Enchantments (3)",
+                "Pack Bond (max III): each pet deals +1 damage per OTHER living pet, per level. A lone pet gets nothing; a pet with two siblings gets +2 at level I, +6 at level III. A bigger party hits harder as one.\n\n" +
+                "Rabid (max I): your pets copy their own negative effects onto whatever they hit, at full remaining duration. A poisoned pet passes its poison on. Pair it with the Fangs so the debuff your pet inflicts is the debuff it spreads."),
             new Page("Hoe Enchantments (Special)",
                 "A hoe rides on your Special-item casts: potions, banners, horns, charges, pearls and pottery sherds.\n\n" +
                 "Reserving (max III): +5% per level that a Special item costs no AP. Stacks with Special affinity's own chance.\n\n" +
                 "Performative (max III): 5% per level to cast the item TWICE. The encore is free - no extra item, no extra AP.\n\n" +
                 "Radiant (max V): +2 damage per level when a Special item hits an undead.\n\n" +
-                "Medic (max III): +2 HP per level to any healing a Special item does - to you, a teammate you feed, or a pet.")
+                "Medic (max III): +2 HP per level to any healing a Special item does - to you, a teammate you feed, or a pet."),
+            new Page("Axe Enchantments (Cleaving)",
+                "An axe is a WEAPON, not a focus. Its enchantment only counts on the axe you are actually holding - one in your bag does nothing.\n\n" +
+                "Facade (max I): your axe hits 1.5x harder while you are suffering ANY debuff - poison, wither, burning, bleeding, soaked, confusion and the rest.\n\n" +
+                "It rewards fighting hurt. The bonus is live only while the debuff is, so it fades the moment you cleanse or it ticks out.\n\n" +
+                "Anything that burns or wounds YOU can be turned into damage. A debuff you inflict on yourself on purpose counts."),
+            new Page("Axe Enchantments (2)",
+                "Executioner (max III): +1 damage for every negative effect on the target, per level. A target under three debuffs takes +3 at level I, +9 at level III.\n\n" +
+                "It pairs with anything that stacks debuffs on the enemy - your own Bleed, poison, wither, soak and the rest all count. The more the target suffers, the harder the axe lands.")
         )));
         equipment.add(new Entry("Tipped Arrows", "minecraft:tipped_arrow", List.of(
             new Page("Arrow Effects",
@@ -1473,7 +1494,7 @@ public class GuideBookData {
             new Page("Head & Necklace",
                 "§5Artifacts§r - wearable trinkets via the Accessories slot system.\n\n" +
                 "Head: Night Vision Goggles +1 Range, Snorkel +1 Water + Soaked immune, Cowboy Hat pulls hits 1 tile closer, Villager Hat +50% emeralds.\n\n" +
-                "Necklace: Flame Pendant burns adjacent 2 dmg/turn, Thorn Pendant reflects 25%, Cross Necklace halves the next hit, Shock Pendant 30% chain 3 dmg on hit."),
+                "Necklace: Flame Pendant §cburns YOU for 2 HP/turn while worn and does nothing to enemies§r, Thorn Pendant reflects 25%, Cross Necklace halves the next hit, Shock Pendant 30% chain 3 dmg on hit."),
             new Page("Hands & Belt",
                 "Hands: Power Glove +1 Melee, Golden Hook pulls hits closer, Lucky Scarf +1 Luck.\n\n" +
                 "Belt: Antidote Vessel cleanses poison, Cloud in a Bottle +1 Speed + jump, Obsidian Skull immune to fire damage, Pickaxe Heater pickaxes ignore obstacle armor."),

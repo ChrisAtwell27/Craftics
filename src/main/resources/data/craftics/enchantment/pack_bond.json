@@ -1,0 +1,22 @@
+{
+  "anvil_cost": 1,
+  "description": {
+    "translate": "enchantment.craftics.pack_bond"
+  },
+  "effects": {},
+  "max_cost": {
+    "base": 21,
+    "per_level_above_first": 11
+  },
+  "max_level": 3,
+  "min_cost": {
+    "base": 1,
+    "per_level_above_first": 11
+  },
+  "primary_items": "#craftics:enchantable/shovel",
+  "slots": [
+    "any"
+  ],
+  "supported_items": "#craftics:enchantable/shovel",
+  "weight": 10
+}

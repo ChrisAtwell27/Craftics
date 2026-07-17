@@ -727,6 +727,25 @@ public class CombatEntity {
     /** Apply/refresh blindness to the longer of the current and new duration. */
     public void stackBlinded(int turns) { this.blindedTurns = Math.max(this.blindedTurns, turns); }
 
+    /**
+     * How many distinct debuffs are currently active on this entity. Each type counts once
+     * regardless of stacks or amplifier: Poison, Wither, Burning, Bleed, Slowness, Blinded,
+     * Soaked, and Confusion. Read by the Executioner enchantment, which scales its bonus with
+     * the number of debuffs on the target.
+     */
+    public int activeDebuffCount() {
+        int count = 0;
+        if (poisonTurns > 0) count++;
+        if (witherTurns > 0) count++;
+        if (burningTurns > 0) count++;
+        if (bleedStacks > 0) count++;
+        if (slownessTurns > 0) count++;
+        if (blindedTurns > 0) count++;
+        if (soakedTurns > 0) count++;
+        if (confusionTurns > 0) count++;
+        return count;
+    }
+
     // --- Positive buffs (instrument support performances). Ticked by tickBuffs(). ---
     private int regenTurns = 0;
     private int regenPerTurn = 0;       // HP per turn (2 * (amplifier + 1))

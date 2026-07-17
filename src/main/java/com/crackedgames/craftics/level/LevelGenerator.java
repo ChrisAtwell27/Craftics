@@ -23,6 +23,27 @@ public class LevelGenerator {
      *
      * If a biome isn't listed the normal biome pool is used.
      */
+    /**
+     * Clamp a scaled boss attack value to {@code cap}. Boss attack scales
+     * additively with biome progress and skips the per-biome enemy damage cap,
+     * so without this clamp a late-campaign boss can reach an attack that near
+     * one-shots a 20 HP player. Pure int math (no MC types or config lookup) so
+     * it can be unit-tested; a boss already at or below the ceiling is returned
+     * unchanged.
+     */
+    public static int clampBossAttack(int scaledAttack, int cap) {
+        return Math.min(scaledAttack, cap);
+    }
+
+    /**
+     * Clamp a scaled boss attack to the configured ceiling
+     * ({@code maxBossAttack}). Call this at every boss spawn path so a new one
+     * cannot slip past the ceiling.
+     */
+    public static int clampBossAttack(int scaledAttack) {
+        return clampBossAttack(scaledAttack, com.crackedgames.craftics.CrafticsMod.CONFIG.maxBossAttack());
+    }
+
     private static final Map<String, Set<String>> BOSS_ADD_TYPES = Map.ofEntries(
         Map.entry("river",             Set.of("minecraft:drowned", "minecraft:zombie")),
         Map.entry("desert",            Set.of("minecraft:husk")),
@@ -400,6 +421,12 @@ public class LevelGenerator {
                 : (int)((biome.boss.baseHp() + hpBonus)
                     * com.crackedgames.craftics.CrafticsMod.CONFIG.bossHpMultiplier());
             bossSpawnIndex = spawns.size();
+            // Boss attack scales additively (baseAttack + atkBonus) and, unlike
+            // regular enemies, skips the per-biome damage cap in CombatManager.
+            // Clamp the scaled value once here so no boss spawn path (standard or
+            // infinite override) can push a boss past the ceiling and near
+            // one-shot a 20 HP player. See clampBossAttack.
+            int bossAttack = clampBossAttack(biome.boss.baseAttack() + atkBonus);
             // Infinite mode: the biome's authored boss is replaced by the run's
             // randomized standard-size boss. Its stats reuse the biome boss's
             // scaled baseline; appearance/AI come from the spec (CombatManager
@@ -408,7 +435,7 @@ public class LevelGenerator {
                 spawns.add(new LevelDefinition.EnemySpawn(
                     infiniteSpec.bossEntityTypeId(), bossPos,
                     bossHp,
-                    biome.boss.baseAttack() + atkBonus,
+                    bossAttack,
                     biome.boss.baseDefense() + defBonus,
                     Math.max(1, biome.boss.range()),
                     "boss:infinite", biome.boss.speed()
@@ -417,7 +444,7 @@ public class LevelGenerator {
                 spawns.add(new LevelDefinition.EnemySpawn(
                     biome.boss.entityTypeId(), bossPos,
                     bossHp,
-                    biome.boss.baseAttack() + atkBonus,
+                    bossAttack,
                     biome.boss.baseDefense() + defBonus,
                     biome.boss.range(),
                     biome.boss.aiKey(), biome.boss.speed()

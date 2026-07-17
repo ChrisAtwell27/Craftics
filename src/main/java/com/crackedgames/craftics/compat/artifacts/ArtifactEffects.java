@@ -202,15 +202,26 @@ public final class ArtifactEffects {
         }
     }
 
-    /** At turn start, deal 2 fire damage + 1 BURNING (2 turns) to all adjacent enemies. */
+    /**
+     * At turn start, set the WEARER alight for 1 turn. Does nothing to enemies.
+     * <p>
+     * The pendant is a pure drawback: it is a cursed trinket, not a weapon. Because the
+     * burn is re-applied every turn at duration 1, it never lapses while the pendant is
+     * worn and expires the turn after it comes off. Burning I with no Special affinity
+     * is 2 HP per turn.
+     * <p>
+     * Routed through addEffectHooked rather than CombatEffects.addEffect so the
+     * existing BURNING immunities (Obsidian Skull, Strider Shoes) still intercept it,
+     * and left unconditional with respect to Fire Resistance: applyPerTurnEffects
+     * already skips burning damage while fire resistant, so the "does fire hurt me"
+     * rule stays in one place instead of being duplicated here.
+     */
     public static final class FlamePendant implements CombatEffectHandler {
         @Override
         public void onTurnStart(CombatEffectContext ctx) {
-            GridArena arena = ctx.getArena();
-            if (arena == null) return;
-            for (CombatEntity e : adjacentEnemies(arena, arena.getPlayerGridPos())) {
-                e.applyDirectDamage(2);
-                e.stackBurning(2, 0); // 1 stack = Burning I (amplifier 0)
+            var cm = com.crackedgames.craftics.combat.CombatManager.get(ctx.getPlayer());
+            if (cm != null) {
+                cm.addEffectHooked(CombatEffects.EffectType.BURNING, 1, 0); // Burning I = amplifier 0
             }
         }
     }

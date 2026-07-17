@@ -36,6 +36,17 @@ public class TidecallerAI extends BossAI {
     private static final String CD_RIPTIDE = "riptide_charge";
     private static final String CD_SUMMON = "call_deep";
     private static final String CD_CONDUCTION = "conduction";
+
+    /**
+     * Manhattan reach of a Conduction chain jump: the bolt arcs from each struck
+     * combatant to every combatant within this many tiles. This is the single
+     * source of truth for the chain range - both the warning paint (the radius-2
+     * diamond around the mark) and the chain walk itself
+     * ({@link com.crackedgames.craftics.combat.CombatManager#resolveConductionChain})
+     * read it, so the telegraph can never claim a range the mechanic does not use.
+     */
+    public static final int CONDUCTION_CHAIN_RANGE = 2;
+
     private boolean delugeCast = false;
 
     // ─── Tidal Wave system ────────────────────────────────────────────────
@@ -131,9 +142,18 @@ public class TidecallerAI extends BossAI {
             int markId = pickConductionMarkId(self, arena);
             EnemyAction strike = new EnemyAction.AreaAttack(
                 null, 0, isPhaseTwo() ? 6 : 4, "conduction:" + markId);
+            // Paint the CHAIN RADIUS around the mark, not just the mark tile: the
+            // bolt jumps between combatants within CONDUCTION_CHAIN_RANGE tiles of
+            // each link (CombatManager.resolveConductionChain, ConductionChain.walk),
+            // so the player must be able to read "stand this close and the bolt
+            // reaches me". The warning still TRACKS - the diamond is recomputed
+            // around the mark's live position on every read (BossWarning), so it
+            // follows the mark as it walks. The radius is the SAME constant the
+            // chain uses, so the telegraph cannot lie about range.
             pendingWarning = BossWarning.tracking(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                markId, liveTracker(arena), 1, strike, 0xFFFFDD33);
+                markId, liveTracker(arena), 1, strike, 0xFFFFDD33,
+                CONDUCTION_CHAIN_RANGE);
             return new EnemyAction.Idle();
         }
 

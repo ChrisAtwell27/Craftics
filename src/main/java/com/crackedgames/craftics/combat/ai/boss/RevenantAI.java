@@ -365,6 +365,21 @@ public class RevenantAI extends BossAI {
     }
 
     /**
+     * A Burrow chosen as a warning-resolve follow-up is discarded by BossAI (it must own its own
+     * turn, or the CompositeAction path drops it and leaves the boss flagged-but-never-buried).
+     * Undo the state this turn's chooseAbility set for that Burrow so the ability is not consumed:
+     * clear the flag AND the cooldown so it re-fires cleanly as a top-level action next turn.
+     */
+    @Override
+    protected void onFollowUpDiscarded(EnemyAction discarded) {
+        if (discarded instanceof EnemyAction.Burrow) {
+            burrowed = false;
+            burrowOrigin = null;
+            setCooldown(CD_BURROW, 0);
+        }
+    }
+
+    /**
      * Anchors for a {@code sizeX x sizeZ} footprint that touches {@code grave} without covering it,
      * ordered nearest-first around the grave. Pure geometry: the caller filters these through the
      * arena to find the first one that actually fits.

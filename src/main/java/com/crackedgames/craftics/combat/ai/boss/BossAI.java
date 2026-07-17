@@ -83,6 +83,19 @@ public abstract class BossAI implements EnemyAI {
                 if (followUpAction == null || followUpAction instanceof EnemyAction.Idle) {
                     return resolvedAction;
                 }
+                // A turn-owning displacement (Burrow/Surface, teleports) leaves or re-enters the
+                // grid and MUST be dispatched as its own top-level action: the CompositeAction
+                // path routes non-movement sub-actions through dispatchBossSubAction, which has no
+                // case for these and silently drops them. Worse, chooseAbility may already have
+                // mutated the subclass (e.g. the Revenant setting burrowed=true) while picking it,
+                // so a dropped Burrow leaves the boss flagged-but-never-buried and it "surfaces"
+                // next turn from a dig that never happened. Do not compose these: let the resolved
+                // warning own this turn and hand the discarded action back so the subclass can undo
+                // whatever it set. The action itself fires cleanly on the following turn.
+                if (isTurnOwningDisplacement(followUpAction)) {
+                    onFollowUpDiscarded(followUpAction);
+                    return resolvedAction;
+                }
                 return new EnemyAction.CompositeAction(List.of(resolvedAction, followUpAction));
             }
         }
@@ -108,6 +121,26 @@ public abstract class BossAI implements EnemyAI {
      */
     protected boolean shouldQueueAbilityAfterWarningResolve() {
         return true;
+    }
+
+    /**
+     * Actions that take over the whole turn by leaving or re-entering the grid, so they cannot
+     * ride alongside a resolved warning in a CompositeAction (dispatchBossSubAction has no case for
+     * them and drops them). These fire only as top-level actions, one per turn.
+     */
+    private static boolean isTurnOwningDisplacement(EnemyAction action) {
+        return action instanceof EnemyAction.Burrow
+            || action instanceof EnemyAction.Surface
+            || action instanceof EnemyAction.Teleport
+            || action instanceof EnemyAction.TeleportAndAttack;
+    }
+
+    /**
+     * Called when a warning-resolve follow-up action is discarded because it must own its own turn
+     * (see {@link #isTurnOwningDisplacement}). {@code chooseAbility} may have mutated subclass state
+     * while choosing it, so the subclass gets a chance to roll that back. Default does nothing.
+     */
+    protected void onFollowUpDiscarded(EnemyAction discarded) {
     }
 
     /**

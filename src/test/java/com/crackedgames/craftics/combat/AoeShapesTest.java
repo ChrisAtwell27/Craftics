@@ -160,4 +160,51 @@ class AoeShapesTest {
         List<GridPos> tiles = AoeShapes.pierceBehind(new GridPos(5, 5), new GridPos(6, 5));
         assertEquals(List.of(new GridPos(6, 5), new GridPos(7, 5)), tiles);
     }
+
+    @Test
+    void filledDiamond_radius0IsJustCenter() {
+        List<GridPos> tiles = AoeShapes.filledDiamond(new GridPos(5, 5), 0);
+        assertEquals(List.of(new GridPos(5, 5)), tiles);
+    }
+
+    @Test
+    void filledDiamond_radius1IsFivePlusShape() {
+        Set<GridPos> tiles = set(AoeShapes.filledDiamond(new GridPos(5, 5), 1));
+        assertEquals(5, tiles.size());
+        assertTrue(tiles.contains(new GridPos(5, 5)));
+        assertTrue(tiles.contains(new GridPos(4, 5)));
+        assertTrue(tiles.contains(new GridPos(6, 5)));
+        assertTrue(tiles.contains(new GridPos(5, 4)));
+        assertTrue(tiles.contains(new GridPos(5, 6)));
+        // Diagonals are Manhattan distance 2, so NOT in a radius-1 diamond.
+        assertFalse(tiles.contains(new GridPos(4, 4)));
+    }
+
+    @Test
+    void filledDiamond_radius2IsThirteenTiles() {
+        Set<GridPos> tiles = set(AoeShapes.filledDiamond(new GridPos(5, 5), 2));
+        assertEquals(13, tiles.size()); // 1 + 4 + 8
+        assertTrue(tiles.contains(new GridPos(3, 5)));   // 2 out on an axis
+        assertTrue(tiles.contains(new GridPos(4, 4)));   // diagonal, dist 2
+        assertFalse(tiles.contains(new GridPos(3, 4)));  // dist 3, excluded
+        assertFalse(tiles.contains(new GridPos(3, 3)));  // dist 4, excluded
+    }
+
+    @Test
+    void filledDiamond_matchesManhattanDistanceMetric() {
+        // The diamond must be EXACTLY the set of tiles within Manhattan radius -
+        // the same metric ConductionChain.walk uses to decide chain jumps, so the
+        // Conduction warning paints precisely the tiles the bolt can reach.
+        GridPos center = new GridPos(8, 8);
+        int radius = 2;
+        Set<GridPos> diamond = set(AoeShapes.filledDiamond(center, radius));
+        for (int dx = -4; dx <= 4; dx++) {
+            for (int dz = -4; dz <= 4; dz++) {
+                GridPos t = new GridPos(center.x() + dx, center.z() + dz);
+                boolean withinReach = center.manhattanDistance(t) <= radius;
+                assertEquals(withinReach, diamond.contains(t),
+                    "diamond membership must equal Manhattan-distance reach at " + t);
+            }
+        }
+    }
 }
