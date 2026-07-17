@@ -267,6 +267,27 @@ public final class AoeShapes {
     }
 
     /**
+     * The UNION of several filled Chebyshev discs: every tile covered by at least one
+     * disc, listed exactly once, in first-covered order.
+     *
+     * <p>This is the shape of a multi-zone volley (the Tidecaller's Trident Storm). Discs
+     * whose centres sit closer together than {@code 2 * radius + 1} overlap, and the overlap
+     * is the whole reason this exists: resolving such a volley as one attack per disc damages
+     * the seam tiles once PER disc, so a tile covered by three radius-1 discs took triple
+     * damage while the telegraph painted it the same as a single-splash tile. Collapsing to a
+     * union first makes "what is painted" and "what is taken" the same set.
+     *
+     * <p>Pure int geometry: no arena, no bounds clipping. The caller clips.
+     */
+    public static List<GridPos> unionOfDiscs(List<GridPos> centers, int radius) {
+        Set<GridPos> out = new LinkedHashSet<>();
+        for (GridPos c : centers) {
+            out.addAll(filledDisc(c, radius));
+        }
+        return new ArrayList<>(out);
+    }
+
+    /**
      * The four diagonal arms out to {@code length} tiles, excluding the center.
      * Used by the X / Diagonals shape (Shamisen).
      */

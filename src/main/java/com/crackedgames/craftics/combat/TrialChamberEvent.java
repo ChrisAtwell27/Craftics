@@ -540,7 +540,7 @@ public class TrialChamberEvent {
             this.spawns = spawns;
             // Trial chamber themed floors
             this.floorBlock = rng.nextBoolean() ? Blocks.TUFF_BRICKS : Blocks.POLISHED_TUFF;
-            this.levelNumber = 9000 + rng.nextInt(900);
+            this.levelNumber = SYNTHETIC_LEVEL_BASE + rng.nextInt(900);
         }
 
         TrialChamberLevelDef(int width, int height, List<EnemySpawn> spawnList, Random rng) {
@@ -555,6 +555,8 @@ public class TrialChamberEvent {
         @Override public Block getFloorBlock() { return floorBlock; }
         @Override public EnemySpawn[] getEnemySpawns() { return spawns; }
         @Override public boolean isNightLevel() { return true; } // dark atmosphere
+
+        @Override public boolean hasOverrideOrigin() { return true; }
 
         @Override
         public net.minecraft.util.math.BlockPos getOverrideOrigin(

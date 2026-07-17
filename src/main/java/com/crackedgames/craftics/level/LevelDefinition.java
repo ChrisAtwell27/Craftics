@@ -48,6 +48,24 @@ public abstract class LevelDefinition {
     public String getArenaBiomeId() { return null; }
 
     /**
+     * Level numbers at or above this are synthetic: event levels (trial chambers,
+     * ambushes, raids, addon fights) that exist outside the real biome-registry
+     * range. A synthetic number is a stable id for logging and metadata only -
+     * it must never be fed to the numbered-arena origin formulas, which multiply
+     * the level number into a world coordinate.
+     */
+    public static final int SYNTHETIC_LEVEL_BASE = 9000;
+
+    /**
+     * True when this definition is meant to be placed at {@link #getOverrideOrigin}.
+     * Lets callers tell "no override defined" (numbered-arena origin is correct)
+     * apart from "override defined but currently unavailable (returned null)",
+     * which must abort the build rather than fall through to the numbered
+     * formula with a synthetic level number.
+     */
+    public boolean hasOverrideOrigin() { return false; }
+
+    /**
      * Override to place this arena at a specific world origin instead of the
      * level-number-derived origin. Used by addon event levels (e.g. the
      * Artifacts abandoned-campsite mimic fight) that need to spawn an arena

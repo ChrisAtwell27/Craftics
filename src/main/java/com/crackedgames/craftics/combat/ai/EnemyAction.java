@@ -89,6 +89,22 @@ public sealed interface EnemyAction {
     /** AoE attack centered on a tile affecting all entities within radius. */
     record AreaAttack(GridPos center, int radius, int damage, String effectName) implements EnemyAction {}
 
+    /**
+     * AoE attack over an EXPLICIT tile list rather than a centre+radius box, for volleys
+     * whose footprint is a union of several splash zones (the Tidecaller's Trident Storm).
+     * <p>
+     * The distinction matters for damage, not just shape: overlapping splashes expressed as
+     * separate {@link AreaAttack}s each resolve independently, so a tile covered by two zones
+     * was hit twice while the telegraph (which dedupes for display) painted it identically to
+     * a tile hit once. Every tile here is hit exactly ONCE, so what the player sees is what
+     * they take. {@code tiles} is expected to be distinct; the resolver damages each victim
+     * at most once regardless.
+     * <p>
+     * {@code center} is carried for VFX/particles only and never for victim selection.
+     */
+    record TileAreaAttack(List<GridPos> tiles, GridPos center, int damage,
+                          String effectName) implements EnemyAction {}
+
     /** Create or transform terrain tiles for a duration (0 = permanent). */
     record CreateTerrain(List<GridPos> tiles, TileType terrainType, int duration) implements EnemyAction {}
 

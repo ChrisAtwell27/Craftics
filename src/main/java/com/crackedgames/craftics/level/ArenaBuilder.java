@@ -81,12 +81,14 @@ public class ArenaBuilder {
     }
 
     public static GridArena build(ServerWorld world, LevelDefinition levelDef) {
+        if (refuseSyntheticLevel(levelDef)) return null;
         int level = levelDef.getLevelNumber();
         BlockPos origin = GridArena.arenaOriginForLevel(level);
         return buildAt(world, levelDef, origin);
     }
 
     public static GridArena build(ServerWorld world, LevelDefinition levelDef, java.util.UUID worldOwner) {
+        if (refuseSyntheticLevel(levelDef)) return null;
         com.crackedgames.craftics.world.CrafticsSavedData data =
             com.crackedgames.craftics.world.CrafticsSavedData.get(world);
         BlockPos origin = data.getArenaOrigin(worldOwner, levelDef.getLevelNumber());
@@ -94,6 +96,24 @@ public class ArenaBuilder {
             origin = GridArena.arenaOriginForLevel(levelDef.getLevelNumber());
         }
         return buildAt(world, levelDef, origin);
+    }
+
+    /**
+     * Synthetic event levels (level number >= {@link LevelDefinition#SYNTHETIC_LEVEL_BASE})
+     * only carry that number as a logging/metadata id - routing it through the
+     * numbered-arena origin formulas turns it into a nonsense world coordinate
+     * (potentially inside or beyond real arena rows). Such defs must be placed
+     * via {@link #buildAt} at their dedicated override origin; if a caller lands
+     * here anyway, refuse the build so the failure is visible instead of a
+     * misplaced arena.
+     */
+    private static boolean refuseSyntheticLevel(LevelDefinition levelDef) {
+        if (levelDef.getLevelNumber() < LevelDefinition.SYNTHETIC_LEVEL_BASE) return false;
+        CrafticsMod.LOGGER.error(
+            "ArenaBuilder.build: refusing to place synthetic event level {} ('{}') via the "
+            + "numbered-arena origin formula; it must be built at its override origin via buildAt",
+            levelDef.getLevelNumber(), levelDef.getName());
+        return true;
     }
 
     /**
@@ -930,6 +950,19 @@ public class ArenaBuilder {
             return processPolygonStructure(world, placeX, placeY, placeZ, sizeX, sizeY, sizeZ,
                 tiles, sourceName, biomeId, preserveSchematicGround,
                 polygonCorners, diamondPos, goldCandidates, ironCandidates, copperCandidates, coalCandidates);
+        }
+
+        // RECTANGLE-BY-CORNERS: exactly two arena_corner markers with no
+        // DIAMOND act as the DIAMOND+EMERALD pair - opposite inside corner
+        // tiles of a rectangular arena. The first corner in scan order
+        // (lowest X wins) takes the DIAMOND role, so it is also the camera
+        // corner. A stray EMERALD without a DIAMOND never formed a valid
+        // rectangle, so the corner pair overrides it here. 2 corners PLUS a
+        // DIAMOND stay a polygon via the gate above.
+        if (polygonCorners.size() == 2 && diamondPos == null) {
+            diamondPos = polygonCorners.get(0);
+            emeraldPos = polygonCorners.get(1);
+            CrafticsMod.LOGGER.info("Structure {}: 2 arena_corner markers, no DIAMOND - treating corners as the rectangle pair.", sourceName);
         }
 
         if (diamondPos == null || emeraldPos == null) {
@@ -1807,13 +1840,15 @@ public class ArenaBuilder {
             }
         }
 
-        schem.place(world, placeX, placeY, placeZ);
         // Skip the edge taper for preserve-ground schematics (bosses + trial
         // chambers) - the dev hand-built the arena and the stepped slope
         // carver would leave 1-block-thick walls 2-3 tiles in from the sloped
         // edge wherever their schematic's walls fit within the dist*2 height
         // envelope. The clearPad=3 air sweep already handles surrounding
         // terrain blending without modifying the schematic interior.
+        // place() needs to know up front: the cull would otherwise hollow out
+        // the very columns the taper is about to slice open.
+        schem.placeTapered(world, placeX, placeY, placeZ, !preserveSchematicGround);
         if (!preserveSchematicGround) {
             taperSchemEdges(world, placeX, placeY, placeZ, schem.width(), schem.height(), schem.length());
         }
@@ -1858,8 +1893,8 @@ public class ArenaBuilder {
                 }
             }
 
-            schem.place(world, placeX, placeY, placeZ);
             // Same preserveGround taper skip as the disk path - see loadAndPlaceSchem.
+            schem.placeTapered(world, placeX, placeY, placeZ, !preserveSchematicGround);
             if (!preserveSchematicGround) {
                 taperSchemEdges(world, placeX, placeY, placeZ, schem.width(), schem.height(), schem.length());
             }
@@ -1873,39 +1908,53 @@ public class ArenaBuilder {
         }
     }
 
-    // Taper schematic edges so terrain doesn't look sliced, fill ground so nothing floats
+    /** How far in from a schematic edge the taper's stepped slope reaches. */
+    static final int TAPER_FADE = 4;
+
+    /**
+     * Highest schematic-local Y the taper keeps in the column {@code dist} tiles
+     * in from the nearest edge, or {@code sizeY - 1} (keep the whole column)
+     * outside the fade zone. The slope rises 2 blocks per tile inward, so the
+     * cut edge reads as a stepped bank rather than a sliced-off wall.
+     *
+     * <p>Pure so {@code SchemTaperKeepTest} can pin the geometry down without a
+     * Minecraft bootstrap, and so the cull can mirror it exactly.
+     */
+    static int taperMaxKeepLocalY(int dist, int sizeY) {
+        if (dist >= TAPER_FADE) return sizeY - 1;
+        return Math.min(dist * 2, sizeY - 1);
+    }
+
+    /** Distance from (x,z) to the nearest edge of a sizeX-by-sizeZ footprint. */
+    static int taperEdgeDist(int x, int z, int sizeX, int sizeZ) {
+        return Math.min(Math.min(x, sizeX - 1 - x), Math.min(z, sizeZ - 1 - z));
+    }
+
+    // Taper schematic edges so terrain doesn't look sliced, and seal the cut so
+    // the arena's hollow underside isn't exposed.
     private static void taperSchemEdges(ServerWorld world, int px, int py, int pz,
                                          int sizeX, int sizeY, int sizeZ) {
-        int fade = 4;
-
         for (int x = 0; x < sizeX; x++) {
             for (int z = 0; z < sizeZ; z++) {
-                int distX = Math.min(x, sizeX - 1 - x);
-                int distZ = Math.min(z, sizeZ - 1 - z);
-                int dist = Math.min(distX, distZ);
+                int dist = taperEdgeDist(x, z, sizeX, sizeZ);
+                if (dist >= TAPER_FADE) continue;
 
-                if (dist < fade) {
-                    // Fade zone: keep fewer blocks as you approach the edge
-                    int maxKeepY = py + dist * 2;
-                    for (int y = maxKeepY + 1; y < py + sizeY; y++) {
-                        BlockPos bp = new BlockPos(px + x, y, pz + z);
-                        if (!world.getBlockState(bp).isAir()) {
-                            world.setBlockState(bp, Blocks.AIR.getDefaultState(), SET_FLAGS);
-                        }
+                // Fade zone: keep fewer blocks as you approach the edge
+                int maxKeepY = py + taperMaxKeepLocalY(dist, sizeY);
+                for (int y = maxKeepY + 1; y < py + sizeY; y++) {
+                    BlockPos bp = new BlockPos(px + x, y, pz + z);
+                    if (!world.getBlockState(bp).isAir()) {
+                        world.setBlockState(bp, Blocks.AIR.getDefaultState(), SET_FLAGS);
                     }
                 }
 
-                // Fill stone under any remaining non-air column so nothing floats
-                boolean foundSolid = false;
-                for (int y = py + sizeY - 1; y >= py; y--) {
-                    if (!world.getBlockState(new BlockPos(px + x, y, pz + z)).isAir()) {
-                        foundSolid = true;
-                    }
-                    if (foundSolid && y < py && world.getBlockState(new BlockPos(px + x, y, pz + z)).isAir()) {
-                        world.setBlockState(new BlockPos(px + x, y, pz + z),
-                            Blocks.STONE.getDefaultState(), SET_FLAGS);
-                    }
-                }
+                // The cut face itself is sealed by SchemData.place's
+                // taper-aware cull (see TAPER_FADE there): the columns this
+                // slope exposes are placed solid instead of hollow, so there is
+                // no cavity left to backfill here. Filling from this side is
+                // not possible anyway - the world cannot tell a cull cavity
+                // from a gap the schematic author left open (a river bank's
+                // undercut), and stoning those shut walls up the arena's edge.
             }
         }
     }

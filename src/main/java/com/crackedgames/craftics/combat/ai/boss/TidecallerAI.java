@@ -14,7 +14,12 @@ import java.util.List;
  * Entity: Drowned | 30HP / 5ATK / 2DEF / Speed 2 (3 on water) / Range 3 | Size 2×2
  *
  * Abilities:
- * - Tidal Wave: 2-tile-wide column floods with water, 3 turns. P2: 3-wide + permanent.
+ * - Tidal Wave: a wall of water spanning the FULL arena width, 3 tiles thick, spawns at the
+ *   end of the arena's long axis farther from the player and marches 3 tiles per turn until
+ *   it exits the far side. It ticks autonomously (CombatManager, like the dragon's breath
+ *   wave), so the boss keeps acting while it sweeps. It deals NO damage: anyone caught in the
+ *   band is carried the same 3 tiles the wave moved, which is how you end up in the drowned
+ *   pack or standing in water when the lightning lands. See SweepingWave.
  * - Conduction: mark one random combatant; a turn later lightning strikes the mark's
  *   LIVE position and chains between every combatant within 2 tiles of the last struck.
  *   4 dmg (P2: 6), -1 per jump; Soaked links take 2x. The boss never conducts.
@@ -32,6 +37,45 @@ public class TidecallerAI extends BossAI {
     private static final String CD_SUMMON = "call_deep";
     private static final String CD_CONDUCTION = "conduction";
     private boolean delugeCast = false;
+
+    // ─── Tidal Wave system ────────────────────────────────────────────────
+    // The wave is a persistent hazard that advances on its own every turn, not on the
+    // boss's action. CombatManager calls tickWave() at each turn start, exactly as it
+    // does for the dragon's breath waves. At most one sweeps at a time.
+
+    private com.crackedgames.craftics.combat.SweepingWave activeWave = null;
+
+    /** The sweeping wave, or null when none is crossing. Read by CombatManager to tick it. */
+    public com.crackedgames.craftics.combat.SweepingWave getActiveWave() { return activeWave; }
+
+    /**
+     * Advance the wave one turn and report the tiles it now covers, which the caller floods
+     * and paints. Returns an empty list when no wave is crossing.
+     *
+     * <p>The returned list IS the flood list and the carry footprint - one call, one set of
+     * tiles, so what is shown and what resolves cannot drift apart. The wave clears itself
+     * once its trailing edge leaves the far side.
+     */
+    public List<GridPos> tickWave() {
+        if (activeWave == null) return List.of();
+        activeWave.advance();
+        if (activeWave.hasExited()) {
+            activeWave = null;
+            return List.of();
+        }
+        return activeWave.tiles();
+    }
+
+    /** Per-turn carry vector of the live wave: {dx, dz}, or null when none is crossing. */
+    public int[] getWaveCarry() {
+        if (activeWave == null) return null;
+        return new int[] { activeWave.carryDx(), activeWave.carryDz() };
+    }
+
+    /** True when {@code pos} is inside the live wave band right now. */
+    public boolean waveCovers(GridPos pos) {
+        return activeWave != null && activeWave.covers(pos);
+    }
 
     @Override
     protected void onPhaseTransition(CombatEntity self, GridArena arena, GridPos playerPos) {
@@ -66,6 +110,31 @@ public class TidecallerAI extends BossAI {
                 delugeCast = true;
                 return new EnemyAction.CreateTerrain(floodTiles, TileType.WATER, 0);
             }
+        }
+
+        // Conduction FIRST: this is the Tidecaller's signature mechanic and it fires on its
+        // own cooldown rhythm rather than on a leftover turn. Below the others it was
+        // effectively dead code - Call of the Deep, Riptide and Tidal Wave are cheap, and
+        // Tidal Wave in particular takes the turn on a bare cooldown check with nothing else
+        // to satisfy, so a turn rarely reached this far and players never saw the ability.
+        // The cooldown (3 in phase 2, 4 in phase 1) is what keeps it from dominating; the
+        // priority only guarantees it is not starved.
+        //
+        // Mark one combatant, then a turn later lightning strikes it and arcs between
+        // everything within 2 tiles of the last link - the boss's own drowned included. The
+        // flood already Soaks whoever stands in it, and Soaked doubles lightning, so the water
+        // is the setup and this is the payoff. The mark FOLLOWS its wearer (see the tracker),
+        // so counterplay is spacing, not dodging: you cannot escape the bolt, only decide who
+        // stands near you when it lands.
+        if (!isOnCooldown(CD_CONDUCTION)) {
+            setCooldown(CD_CONDUCTION, isPhaseTwo() ? 3 : 4);
+            int markId = pickConductionMarkId(self, arena);
+            EnemyAction strike = new EnemyAction.AreaAttack(
+                null, 0, isPhaseTwo() ? 6 : 4, "conduction:" + markId);
+            pendingWarning = BossWarning.tracking(
+                self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
+                markId, liveTracker(arena), 1, strike, 0xFFFFDD33);
+            return new EnemyAction.Idle();
         }
 
         // Call of the Deep
@@ -108,49 +177,45 @@ public class TidecallerAI extends BossAI {
             }
         }
 
-        // Tidal Wave
-        if (!isOnCooldown(CD_WAVE)) {
-            int waveWidth = isPhaseTwo() ? 3 : 2;
-            int waveDuration = isPhaseTwo() ? 0 : 3;
-            // Pick the column the player is on
-            int targetCol = playerPos.x();
-            List<GridPos> waveTiles = new ArrayList<>();
-            for (int dx = 0; dx < waveWidth; dx++) {
-                int col = targetCol + dx - waveWidth / 2;
-                if (col >= 0 && col < arena.getWidth()) {
-                    waveTiles.addAll(getColumnTiles(arena, col));
-                }
-            }
+        // Tidal Wave: a real wave, not a puddle on the player's column. It spans the full
+        // arena width, is 3 tiles thick, and marches 3 tiles per turn from the far end until
+        // it leaves the other side. Only one sweeps at a time - a second wall of water
+        // crossing the first would leave the player nowhere legible to stand.
+        //
+        // The wave is NOT aimed and does NOT follow: it is moving terrain. The threat is
+        // being carried, not being hit. It deals no damage at all; whoever it catches rides
+        // 3 tiles with it, which is how you get dumped into the drowned pack or left standing
+        // in fresh water right before Conduction picks a mark. The water it leaves behind
+        // Soaks whoever wades it, and Soaked doubles the bolt, so this ability is the setup
+        // and Conduction is the payoff.
+        //
+        // The wave spawns here, then ticks itself in CombatManager (same pattern as the
+        // dragon's breath wave), so the Tidecaller keeps acting while it sweeps. Because it
+        // costs the boss no turns after the cast, the cooldown stays at 3.
+        if (!isOnCooldown(CD_WAVE) && activeWave == null) {
             setCooldown(CD_WAVE, 3);
-            EnemyAction waveAction = new EnemyAction.CreateTerrain(waveTiles, TileType.WATER, waveDuration);
+            activeWave = com.crackedgames.craftics.combat.SweepingWave.spawn(
+                arena.getWidth(), arena.getHeight(), playerPos);
+            // Telegraph the band on its spawn row before it starts moving: the wave gets a
+            // turn of paint where it stands, then advances on the next tick.
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                waveTiles, 1, waveAction, 0xFF3388CC);
-            return new EnemyAction.Idle();
-        }
-
-        // Conduction: mark one combatant, then a turn later lightning strikes it and
-        // arcs between everything within 2 tiles of the last link - the boss's own
-        // drowned included. The flood already Soaks whoever stands in it, and Soaked
-        // doubles lightning, so the water is the setup and this is the payoff. The
-        // mark FOLLOWS its wearer (see the tracker), so counterplay is spacing, not
-        // dodging: you cannot escape the bolt, only decide who stands near you when
-        // it lands.
-        if (!isOnCooldown(CD_CONDUCTION)) {
-            setCooldown(CD_CONDUCTION, isPhaseTwo() ? 3 : 4);
-            int markId = pickConductionMarkId(self, arena);
-            EnemyAction strike = new EnemyAction.AreaAttack(
-                null, 0, isPhaseTwo() ? 6 : 4, "conduction:" + markId);
-            pendingWarning = BossWarning.tracking(
-                self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                markId, liveTracker(arena), 1, strike, 0xFFFFDD33);
+                activeWave.tiles(), 1, new EnemyAction.Idle(), 0xFF3388CC);
             return new EnemyAction.Idle();
         }
 
         // Trident Storm at range - a true volley: three 3×3 impact zones (one on
         // the player, one ahead toward the boss, one on the flank), so a lazy
-        // one-tile sidestep can walk straight into the next splash. The warning
-        // paints every tile that will actually be hit.
+        // one-tile sidestep can walk straight into the next splash.
+        //
+        // The zones OVERLAP by design (centres sit 2 apart, radius 1), and that overlap is
+        // exactly why this resolves as ONE attack over the union of the three footprints
+        // rather than one attack per zone. Three independent splashes damaged a seam tile
+        // once each - up to 12 in phase 1, 15 in phase 2, a near one-shot - while the
+        // telegraph deduped for display and painted that tile identically to a 4-damage one.
+        // The volley is meant to punish a lazy sidestep by covering ground, not to hide a
+        // triple-damage seam the player cannot see. Union first: every covered tile is hit
+        // exactly once, so the paint and the damage are the same set by construction.
         if (!isOnCooldown(CD_TRIDENT) && dist >= 2 && dist <= 4) {
             setCooldown(CD_TRIDENT, 2);
             int[] toward = getDirectionToward(playerPos, myPos);
@@ -160,19 +225,20 @@ public class TidecallerAI extends BossAI {
             centers.add(playerPos);
             if (arena.isInBounds(second)) centers.add(second);
             if (arena.isInBounds(third)) centers.add(third);
-            List<GridPos> warnTiles = new ArrayList<>();
-            List<EnemyAction> splashes = new ArrayList<>();
-            for (GridPos c : centers) {
-                for (GridPos t : getAreaTiles(arena, c, 1)) {
-                    if (!warnTiles.contains(t)) warnTiles.add(t);
-                }
-                splashes.add(new EnemyAction.AreaAttack(c, 1, isPhaseTwo() ? 5 : 4, "trident_storm"));
+
+            // Union of the splash footprints, clipped to the arena. This IS the warning
+            // list and the damage list - deliberately the same object, so the two can
+            // never drift apart again.
+            List<GridPos> impactTiles = new ArrayList<>();
+            for (GridPos t : com.crackedgames.craftics.combat.AoeShapes.unionOfDiscs(centers, 1)) {
+                if (arena.isInBounds(t)) impactTiles.add(t);
             }
-            EnemyAction tridentAction = splashes.size() == 1
-                ? splashes.get(0) : new EnemyAction.CompositeAction(splashes);
+
+            EnemyAction tridentAction = new EnemyAction.TileAreaAttack(
+                impactTiles, playerPos, isPhaseTwo() ? 5 : 4, "trident_storm");
             pendingWarning = new BossWarning(
                 self.getEntityId(), BossWarning.WarningType.TILE_HIGHLIGHT,
-                warnTiles, 1, tridentAction, 0xFF2299DD);
+                impactTiles, 1, tridentAction, 0xFF2299DD);
             return new EnemyAction.Idle();
         }
 

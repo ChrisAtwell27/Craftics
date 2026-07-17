@@ -58,13 +58,15 @@ public class SchemLoader {
      * flat index means the solid there must be placed. Air is never kept -
      * place() writes it unconditionally.
      *
-     * <p>{@code palCorner} flags the polygon-arena corner markers
-     * ({@code craftics:arena_corner}). 3+ of them mean {@code ArenaBuilder}
-     * will read the arena floor off their Y, so the floor and the layer
+     * <p>{@code palCorner} flags the arena corner markers
+     * ({@code craftics:arena_corner}). 2+ of them mean {@code ArenaBuilder}
+     * will read the arena floor off their Y (3+ as a polygon outline, exactly
+     * 2 as a rectangle's opposite corner pair), so the floor and the layer
      * supporting it are force-kept inside the corners' X/Z bounding box.
      * Without that, the support layer is fully buried and the cull deletes it,
-     * dropping the arena floor into the void. Rectangle arenas carry no corner
-     * markers and take the untouched path.
+     * dropping the arena floor into the void. Legacy DIAMOND+EMERALD rectangle
+     * arenas carry no corner markers and take the untouched path; a single
+     * stray corner defines no footprint and takes it too.
      *
      * <p>Static and MC-free (plain int[]/boolean[]) so
      * {@code SchemArenaFloorKeepTest} can pin the geometry down without a
@@ -73,6 +75,21 @@ public class SchemLoader {
     static boolean[] computeKeepMask(int[] paletteIds, boolean[] palAir, boolean[] palHides,
                                      boolean[] palExempt, boolean[] palCorner,
                                      int width, int height, int length, boolean cullBuried) {
+        return computeKeepMask(paletteIds, palAir, palHides, palExempt, palCorner,
+            width, height, length, cullBuried, false);
+    }
+
+    /**
+     * @param taperEdges true when {@code ArenaBuilder.taperSchemEdges} will carve
+     *                   a stepped slope into this volume's outer tiles after
+     *                   placement. Those columns are then kept solid rather than
+     *                   hollow, because the carve turns their buried interior
+     *                   into a visible face. See {@link #taperExposedAt}.
+     */
+    static boolean[] computeKeepMask(int[] paletteIds, boolean[] palAir, boolean[] palHides,
+                                     boolean[] palExempt, boolean[] palCorner,
+                                     int width, int height, int length, boolean cullBuried,
+                                     boolean taperEdges) {
         int palCount = palAir.length;
         boolean[] keep = new boolean[width * height * length];
         for (int y = 0; y < height; y++) {
@@ -83,7 +100,8 @@ public class SchemLoader {
                     if (id < 0 || id >= palCount || palAir[id]) continue;
                     keep[flat] = !cullBuried
                         || palExempt[id]
-                        || isExposedAt(paletteIds, palHides, width, height, length, x, y, z);
+                        || isExposedAt(paletteIds, palHides, width, height, length, x, y, z)
+                        || (taperEdges && taperExposedAt(width, height, length, x, y, z));
                 }
             }
         }
@@ -92,10 +110,39 @@ public class SchemLoader {
     }
 
     /**
-     * Force-keep the polygon arena's floor and its support layer. The corners'
-     * bounding box is used as the footprint rather than a true point-in-polygon
-     * test: it over-keeps a few blocks just outside the outline's diagonal
-     * edges, which costs nothing next to a missing floor.
+     * True when {@code ArenaBuilder}'s edge taper will expose (x,y,z).
+     *
+     * <p>The taper carves every column within {@code TAPER_FADE} tiles of an
+     * edge down to a stepped surface that rises 2 blocks per tile inward, so the
+     * arena's bank reads as a slope instead of a sliced-off wall. The cull runs
+     * first and only keeps the schematic's visible shell, which means the carve
+     * cuts straight into hollow interior: the surviving stepped geometry then
+     * hangs over open space, and the arena's underside shows through its own
+     * edge. Keeping the whole carved column solid closes that cavity at the one
+     * place that can tell terrain from an intentional gap - the schematic.
+     *
+     * <p>Everything at or below the taper's surface in a fade column is kept:
+     * the surface tile becomes the new top face, and the blocks under it back
+     * the slope's riser where the next step out cuts lower still.
+     *
+     * <p>Mirrors {@code ArenaBuilder.taperMaxKeepLocalY} / {@code taperEdgeDist};
+     * keep the two in sync.
+     */
+    static boolean taperExposedAt(int width, int height, int length, int x, int y, int z) {
+        int dist = Math.min(Math.min(x, width - 1 - x), Math.min(z, length - 1 - z));
+        if (dist >= TAPER_FADE) return false;
+        return y <= Math.min(dist * 2, height - 1);
+    }
+
+    /** Mirrors {@code ArenaBuilder.TAPER_FADE}; keep the two in sync. */
+    static final int TAPER_FADE = 4;
+
+    /**
+     * Force-keep the corner-marked arena's floor and its support layer. The
+     * corners' bounding box is used as the footprint rather than a true
+     * point-in-polygon test: it over-keeps a few blocks just outside the
+     * outline's diagonal edges, which costs nothing next to a missing floor.
+     * A 2-corner rectangle pair defines the same bbox, so it shares the path.
      */
     private static void forceKeepArenaFloor(int[] paletteIds, boolean[] palAir, boolean[] palCorner,
                                             int width, int height, int length, boolean[] keep) {
@@ -119,7 +166,7 @@ public class SchemLoader {
                 }
             }
         }
-        if (corners < 3) return;
+        if (corners < 2) return;
 
         for (int y = Math.max(0, floorY - 1); y <= floorY; y++) {
             for (int z = minZ; z <= maxZ; z++) {
@@ -128,6 +175,84 @@ public class SchemLoader {
                     int id = paletteIds[flat];
                     if (id < 0 || id >= palCount || palAir[id]) continue;
                     keep[flat] = true;
+                }
+            }
+        }
+    }
+
+    /**
+     * Marks the cell one below a kept gravity block as needing a synthesized
+     * support, returned by {@link #computeGravitySupport} as a flat index of
+     * {@code SYNTH_BELOW_BOTTOM} when the gravity block sits on y=0 and there is
+     * no cell below it inside the volume.
+     */
+    static final int SYNTH_BELOW_BOTTOM = -1;
+
+    /**
+     * The gravity-support pass over a whole volume, split out of {@link
+     * SchemData#place} so it can be pinned down without a Minecraft bootstrap.
+     *
+     * <p>Every kept gravity block (sand, gravel, concrete powder, powder snow)
+     * must rest on something actually placed, or the first block update drops it
+     * as a falling entity and leaves a hole in the arena floor. Two outcomes per
+     * gravity block:
+     *
+     * <ul>
+     *   <li>a real block below that will not fall through: force-keep it, by
+     *       setting {@code keep[belowFlat]} even when the cull buried it;</li>
+     *   <li>otherwise: the caller must synthesize one solid block below, which
+     *       this reports by writing the gravity block's own flat index into
+     *       {@code synthSource[belowFlat]} (the caller derives the material from
+     *       it via {@code supportFor}).</li>
+     * </ul>
+     *
+     * <p>Gravity blocks on y=0 have no cell below them inside the volume, so
+     * their support cannot be represented in {@code synthSource}. They are
+     * reported through {@code bottomSynth} instead: a length-{@code width *
+     * length} array whose x/z entries hold the flat index of the y=0 gravity
+     * block needing a support placed one block BELOW the volume's floor. The
+     * arena floor of a hollow arena is exactly this case: the schematic's ground
+     * runs to the bottom edge of the volume, so any sand there had nothing under
+     * it and fell into the void on load.
+     *
+     * <p>Scanned top-down so force-kept gravity chains cascade their own
+     * supports (a sand column resolves from the top block downward).
+     *
+     * @param keep       the keep mask, mutated in place to force-keep real supports
+     * @param synthSource per-cell source gravity block index, or -1 for none
+     * @param bottomSynth per-x/z source gravity block index for below-volume
+     *                    supports, or -1 for none
+     */
+    static void computeGravitySupport(int[] paletteIds, boolean[] palGravity,
+                                      boolean[] palFallThrough, boolean[] palExempt,
+                                      boolean[] palPresent,
+                                      int width, int height, int length,
+                                      boolean[] keep, int[] synthSource, int[] bottomSynth) {
+        int palCount = palGravity.length;
+        java.util.Arrays.fill(synthSource, -1);
+        java.util.Arrays.fill(bottomSynth, -1);
+        for (int y = height - 1; y >= 0; y--) {
+            for (int z = 0; z < length; z++) {
+                for (int x = 0; x < width; x++) {
+                    int flat = ((y * length) + z) * width + x;
+                    int id = paletteIds[flat];
+                    if (id < 0 || id >= palCount || !palGravity[id] || !keep[flat]) continue;
+                    if (y == 0) {
+                        // Nothing below inside the volume: the support has to go
+                        // one block under the volume's own floor.
+                        if (bottomSynth[z * width + x] < 0) bottomSynth[z * width + x] = flat;
+                        continue;
+                    }
+                    int belowFlat = (((y - 1) * length) + z) * width + x;
+                    int belowId = paletteIds[belowFlat];
+                    boolean realSupport = belowId >= 0 && belowId < palCount
+                        && palPresent[belowId]
+                        && (!palFallThrough[belowId] || palExempt[belowId]);
+                    if (realSupport) {
+                        keep[belowFlat] = true;
+                    } else if (synthSource[belowFlat] < 0) {
+                        synthSource[belowFlat] = flat;
+                    }
                 }
             }
         }
@@ -151,6 +276,16 @@ public class SchemLoader {
          *  {@code cullBuried = false} or their interiors generate hollow. */
         public void place(ServerWorld world, int placeX, int placeY, int placeZ) {
             place(world, placeX, placeY, placeZ, true);
+        }
+
+        /**
+         * Place with the visibility cull, telling it whether {@code ArenaBuilder}
+         * will taper this volume's edges afterwards so the cull can keep the
+         * columns that carve will expose. See {@link #taperExposedAt}.
+         */
+        public void placeTapered(ServerWorld world, int placeX, int placeY, int placeZ,
+                                 boolean taperEdges) {
+            place(world, placeX, placeY, placeZ, true, taperEdges);
         }
 
         /** Decode the varint-packed block indices, or null if truncated. */
@@ -180,6 +315,11 @@ public class SchemLoader {
         }
 
         public void place(ServerWorld world, int placeX, int placeY, int placeZ, boolean cullBuried) {
+            place(world, placeX, placeY, placeZ, cullBuried, false);
+        }
+
+        public void place(ServerWorld world, int placeX, int placeY, int placeZ,
+                          boolean cullBuried, boolean taperEdges) {
             int total = width * height * length;
             int[] paletteIds = decodePaletteIds();
             if (paletteIds == null) return;
@@ -230,7 +370,7 @@ public class SchemLoader {
             // outer boundary. Fully buried filler is skipped entirely; on
             // terrain-style schematics that is the bulk of the blocks.
             boolean[] keep = computeKeepMask(paletteIds, palAir, palHides, palExempt, palCorner,
-                width, height, length, cullBuried);
+                width, height, length, cullBuried, taperEdges);
 
             int nonAir = 0;
             for (int flat = 0; flat < total; flat++) {
@@ -248,28 +388,35 @@ public class SchemLoader {
             // instead of the old same-material column fill: sand -> sandstone,
             // red sand -> red sandstone, gravel -> stone, concrete powder ->
             // its concrete. A solid block cannot fall, so a single one is
-            // always enough. Scan top-down so force-kept gravity chains
-            // cascade their own supports.
+            // always enough. Gravity blocks on the volume's bottom edge get
+            // their support one block below the volume: an arena's ground runs
+            // to that edge, so sand there had nothing under it at all.
+            boolean[] palPresent = new boolean[palCount];
+            for (int i = 0; i < palCount; i++) palPresent[i] = palette[i] != null;
+
+            int[] synthSource = new int[total];
+            int[] bottomSynth = new int[width * length];
+            computeGravitySupport(paletteIds, palGravity, palFallThrough, palExempt, palPresent,
+                width, height, length, keep, synthSource, bottomSynth);
+
             BlockState[] synthetic = new BlockState[total];
             int supports = 0;
-            for (int y = height - 1; y >= 1; y--) {
-                for (int z = 0; z < length; z++) {
-                    for (int x = 0; x < width; x++) {
-                        int flat = ((y * length) + z) * width + x;
-                        int id = paletteIds[flat];
-                        if (id < 0 || id >= palCount || !palGravity[id] || !keep[flat]) continue;
-                        int belowFlat = (((y - 1) * length) + z) * width + x;
-                        int belowId = paletteIds[belowFlat];
-                        boolean realSupport = belowId >= 0 && belowId < palCount
-                            && palette[belowId] != null
-                            && (!palFallThrough[belowId] || palExempt[belowId]);
-                        if (realSupport) {
-                            keep[belowFlat] = true;
-                        } else if (synthetic[belowFlat] == null) {
-                            synthetic[belowFlat] = supportFor(palette[id]);
-                            supports++;
-                        }
-                    }
+            for (int flat = 0; flat < total; flat++) {
+                if (synthSource[flat] < 0) continue;
+                synthetic[flat] = supportFor(palette[paletteIds[synthSource[flat]]]);
+                supports++;
+            }
+
+            // Supports for the y=0 gravity blocks, one block under the volume.
+            for (int z = 0; z < length; z++) {
+                for (int x = 0; x < width; x++) {
+                    int src = bottomSynth[z * width + x];
+                    if (src < 0) continue;
+                    world.setBlockState(
+                        new BlockPos(placeX + x, placeY - 1, placeZ + z),
+                        supportFor(palette[paletteIds[src]]), ArenaBuilder.SET_FLAGS
+                    );
+                    supports++;
                 }
             }
 

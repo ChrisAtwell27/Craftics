@@ -10,14 +10,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Pins down {@link SchemLoader#computeKeepMask} - the visibility cull's
  * keep/cull decision, including the arena-floor exemption.
  *
- * <p>Polygon arenas mark their outline with 3+ {@code craftics:arena_corner}
- * blocks sitting AT floor level ({@code ArenaBuilder.processPolygonStructure}
- * takes {@code arenaFloorY = corners.get(0).getY()}). The corner markers
- * themselves survive the cull via the exempt clause, but the ground layer
- * directly beneath the floor is fully buried - culling it drops the arena
- * floor into the void. Legacy rectangle arenas never hit this: their floor
- * sits at Y=1-2 against the volume's bottom edge, where out-of-bounds counts
- * as an open face.
+ * <p>Corner-marked arenas place {@code craftics:arena_corner} blocks AT floor
+ * level: 3+ outline a polygon ({@code ArenaBuilder.processPolygonStructure}
+ * takes {@code arenaFloorY = corners.get(0).getY()}), exactly 2 are a
+ * rectangle's opposite corner pair (adopted as the DIAMOND/EMERALD roles).
+ * The corner markers themselves survive the cull via the exempt clause, but
+ * the ground layer directly beneath the floor is fully buried - culling it
+ * drops the arena floor into the void. Legacy DIAMOND+EMERALD rectangle
+ * arenas never hit this: their floor sits at Y=1-2 against the volume's
+ * bottom edge, where out-of-bounds counts as an open face.
  *
  * <p>Pure int[]/boolean[] geometry - no Minecraft bootstrap needed.
  */
@@ -101,25 +102,47 @@ class SchemArenaFloorKeepTest {
     }
 
     @Test
-    void fewerThanThreeCornersTakesTheUnchangedPath() {
-        // Rectangle arenas (DIAMOND/EMERALD, zero corner markers) and any
-        // schematic with a stray marker must cull exactly as before.
-        int[] noCorners = filled(9, 9, 9, 1);
+    void twoCornerRectanglePairKeepsBothFloorLayers() {
+        // Exactly 2 corners = a rectangle's opposite corner pair
+        // (desert/4, snowy/2, snowy/4). Same bbox exemption as the polygon:
+        // floor and support layer kept across the whole footprint.
         int[] twoCorners = filled(9, 9, 9, 1);
         twoCorners[flat(9, 9, 2, 4, 2)] = 2;
         twoCorners[flat(9, 9, 6, 4, 6)] = 2;
+
+        boolean[] keep = SchemLoader.computeKeepMask(
+            twoCorners, AIR, HIDES, EXEMPT, CORNER, 9, 9, 9, true);
+        for (int z = 2; z <= 6; z++) {
+            for (int x = 2; x <= 6; x++) {
+                assertTrue(keep[flat(9, 9, x, 4, z)], "floor tile " + x + "," + z);
+                assertTrue(keep[flat(9, 9, x, 3, z)], "support tile " + x + "," + z);
+            }
+        }
+        assertFalse(keep[flat(9, 9, 1, 3, 4)], "x outside the corner bbox is still culled");
+        assertFalse(keep[flat(9, 9, 4, 3, 1)], "z outside the corner bbox is still culled");
+        assertFalse(keep[flat(9, 9, 4, 2, 4)], "two layers under the floor is still culled");
+    }
+
+    @Test
+    void fewerThanTwoCornersTakesTheUnchangedPath() {
+        // Rectangle arenas (DIAMOND/EMERALD, zero corner markers) and any
+        // schematic with a single stray marker must cull exactly as before:
+        // one corner defines no footprint.
+        int[] noCorners = filled(9, 9, 9, 1);
+        int[] oneCorner = filled(9, 9, 9, 1);
+        oneCorner[flat(9, 9, 4, 4, 4)] = 2;
 
         boolean[] baseline = SchemLoader.computeKeepMask(
             noCorners, AIR, HIDES, EXEMPT, CORNER, 9, 9, 9, true);
         assertFalse(baseline[flat(9, 9, 4, 3, 4)], "no corners: buried filler still culled");
 
-        boolean[] twoKeep = SchemLoader.computeKeepMask(
-            twoCorners, AIR, HIDES, EXEMPT, CORNER, 9, 9, 9, true);
-        assertFalse(twoKeep[flat(9, 9, 4, 3, 4)], "2 corners is not a polygon arena");
-        // Only the two marker cells differ from the no-corner baseline.
+        boolean[] oneKeep = SchemLoader.computeKeepMask(
+            oneCorner, AIR, HIDES, EXEMPT, CORNER, 9, 9, 9, true);
+        assertFalse(oneKeep[flat(9, 9, 4, 3, 4)], "1 corner: buried filler still culled");
+        // Only the marker cell itself differs from the no-corner baseline.
         for (int i = 0; i < baseline.length; i++) {
-            if (i == flat(9, 9, 2, 4, 2) || i == flat(9, 9, 6, 4, 6)) continue;
-            assertEqualsAt(baseline[i], twoKeep[i], i);
+            if (i == flat(9, 9, 4, 4, 4)) continue;
+            assertEqualsAt(baseline[i], oneKeep[i], i);
         }
     }
 

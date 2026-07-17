@@ -139,7 +139,7 @@ public final class AbandonedCampsiteEvent {
         // Synthetic level number that's clearly outside the normal 1..100ish range.
         // This is NOT used for world placement (see getOverrideOrigin below) - it's
         // just a stable id for CombatManager logging and metadata lookups.
-        final int levelNumber = 9500 + RNG.nextInt(400);
+        final int levelNumber = LevelDefinition.SYNTHETIC_LEVEL_BASE + 500 + RNG.nextInt(400);
         final List<LevelDefinition.EnemySpawn> spawns = new ArrayList<>();
         spawns.add(new LevelDefinition.EnemySpawn(
             MIMIC_ENTITY,
@@ -168,6 +168,8 @@ public final class AbandonedCampsiteEvent {
              * level number by 300 - that would send us to a million-block-away
              * unloaded chunk and make the whole encounter invisible.
              */
+            @Override public boolean hasOverrideOrigin() { return true; }
+
             @Override
             public net.minecraft.util.math.BlockPos getOverrideOrigin(
                     java.util.UUID worldOwner,

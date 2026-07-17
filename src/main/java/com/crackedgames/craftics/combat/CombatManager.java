@@ -1310,6 +1310,21 @@ public class CombatManager {
             return;
         }
 
+        // A failed arena build (buildArena returned null) must not NPE here on the
+        // server thread. Surface it: tell the party, send them home, and clean up.
+        if (newArena == null) {
+            CrafticsMod.LOGGER.error(
+                "transitionPartyToArena: arena build failed for level '{}' -returning the party to the hub",
+                newLevelDef != null ? newLevelDef.getName() : "?");
+            for (ServerPlayerEntity m : members) {
+                sendMessageTo(m, "§cSomething went wrong building the next area. Returning to the hub.");
+                ServerPlayNetworking.send(m, new ExitCombatPayload(true));
+                teleportToHub(m);
+            }
+            if (active) endCombat();
+            return;
+        }
+
         CrafticsMod.LOGGER.info(
             "transitionPartyToArena: leader={}, members={} → '{}'",
             leader.getName().getString(),
@@ -1644,6 +1659,19 @@ public class CombatManager {
                     "buildArena: level '{}' uses override origin {} (skipping pre-built cache)",
                     def.getName(), overrideOrigin);
                 return com.crackedgames.craftics.level.ArenaBuilder.buildAt(world, def, overrideOrigin);
+            }
+            if (def.hasOverrideOrigin()) {
+                // The def is placement-overridden but its dedicated slot resolved to
+                // null. Falling through would route the synthetic level number into
+                // the numbered-arena origin formula and build in a nonsense location,
+                // so fail the build instead. worldSlot < 0 means the owner has no
+                // island slot assigned yet - that is the real fault to chase.
+                int worldSlot = data.getPlayerData(worldOwnerUuid).worldSlot;
+                CrafticsMod.LOGGER.error(
+                    "buildArena: level '{}' (level number {}) requires an override origin but it "
+                    + "resolved to null (worldOwner={}, worldSlot={}); aborting arena build",
+                    def.getName(), def.getLevelNumber(), worldOwnerUuid, worldSlot);
+                return null;
             }
         }
 
@@ -11682,6 +11710,7 @@ public class CombatManager {
             // this tick keeps its full burn duration instead of losing a turn.
             tickFireSpread();
             tickDragonBreathWaves();
+            tickTidecallerWave();
             detonatePendingTnts();
 
             if (partyPlayers.size() > 1) {
@@ -12504,12 +12533,6 @@ public class CombatManager {
                 if (!currentEnemy.isInertObject()) {
                     sendMessage("§7" + currentEnemy.getDisplayName() + " waits...");
                 }
-                // Inert objects (graves, war banners, egg sacs) idle every single turn by design, so
-                // announcing it would bury the real combat log. They still TAKE the turn: the
-                // rotation is where per-entity bookkeeping happens, so skipping is not equivalent.
-                if (!currentEnemy.isInertObject()) {
-                    sendMessage("§7" + currentEnemy.getDisplayName() + " waits...");
-                }
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
             }
@@ -12600,6 +12623,17 @@ public class CombatManager {
                 sendMessage("§c" + currentEnemy.getDisplayName() + " unleashes " +
                     abilityName.replace('_', ' ') + "!");
                 resolveAreaAttack(aa);
+                sendSync();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+            }
+            case EnemyAction.TileAreaAttack ta -> {
+                String abilityName = ta.effectName() != null ? ta.effectName() : "a powerful attack";
+                int payloadStart = abilityName.indexOf(':');
+                if (payloadStart > 0) abilityName = abilityName.substring(0, payloadStart);
+                sendMessage("§c" + currentEnemy.getDisplayName() + " unleashes "
+                    + abilityName.replace('_', ' ') + "!");
+                resolveTileAreaAttack(ta);
                 sendSync();
                 enemyTurnState = EnemyTurnState.DONE;
                 enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
@@ -13373,6 +13407,7 @@ public class CombatManager {
             case EnemyAction.SummonMinions sm -> spawnBossMinions(sm);
             case EnemyAction.SpawnProjectile sp -> spawnProjectiles(sp);
             case EnemyAction.AreaAttack aa -> resolveAreaAttack(aa);
+            case EnemyAction.TileAreaAttack ta -> resolveTileAreaAttack(ta);
             case EnemyAction.CreateTerrain ct -> resolveCreateTerrain(ct);
             case EnemyAction.PlaceWeb pw -> resolvePlaceWeb(pw);
             case EnemyAction.LineAttack la -> resolveLineAttack(la);
@@ -14378,6 +14413,77 @@ public class CombatManager {
         if ("hollow_tnt_prime".equals(aa.effectName())) {
             primePendingTnt(center, "§6  The Hollow King primes a TNT cache! §c(2-round fuse)", 2);
         }
+    }
+
+    /**
+     * Resolve an AoE attack over an explicit tile list (a multi-zone volley whose splash
+     * footprints overlap, e.g. Trident Storm).
+     *
+     * <p>The contract that makes this different from {@link #resolveAreaAttack}: every victim
+     * is damaged AT MOST ONCE, no matter how many of the volley's zones cover them. The old
+     * shape (one AreaAttack per zone inside a CompositeAction) resolved each zone
+     * independently, so standing on a seam took the hit once per overlapping zone while the
+     * telegraph painted every covered tile the same. Membership in the tile set is the whole
+     * test here, so overlap cannot stack by construction.
+     */
+    private void resolveTileAreaAttack(EnemyAction.TileAreaAttack ta) {
+        if (ta.tiles() == null || ta.tiles().isEmpty()) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+        // Distinct tile set: the damage test. A caller that passed duplicates still cannot
+        // make a tile hit twice.
+        java.util.Set<GridPos> impact = new java.util.LinkedHashSet<>(ta.tiles());
+
+        // Particles are centred for looks only; the centre never selects victims.
+        GridPos vfxCenter = ta.center() != null ? ta.center() : ta.tiles().get(0);
+        BlockPos centerBlock = arena.gridToBlockPos(vfxCenter);
+        spawnAreaAttackParticles(world, ta.effectName(),
+            centerBlock.getX() + 0.5, centerBlock.getY() + 1.0, centerBlock.getZ() + 0.5, 1.5, 1);
+
+        // Each party member standing anywhere in the union is hit exactly once.
+        java.util.List<ServerPlayerEntity> victims = new java.util.ArrayList<>();
+        if (partyPlayers.size() > 1) {
+            for (ServerPlayerEntity member : partyPlayers) {
+                if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                if (deadPartyMembers.contains(member.getUuid())) continue;
+                if (impact.contains(gridPosOf(member))) victims.add(member);
+            }
+        } else if (impact.contains(arena.getPlayerGridPos())) {
+            victims.add(player);
+        }
+
+        boolean gameOver = damagePartyVictims(victims, ta.damage(), (victim, actual, swapped) -> {
+            sendMessage("§c  Area hit " + (swapped ? victim.getName().getString() : "you")
+                + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
+            if (ta.effectName() != null) {
+                applyBossAreaEffect(ta.effectName());
+            }
+        });
+        if (gameOver) return;
+
+        // Friendly fire, same once-per-entity rule: a multi-tile mob standing across two
+        // zones is one victim, not one per covered tile.
+        if (CrafticsMod.CONFIG.friendlyFireEnabled()) {
+            for (CombatEntity e : new ArrayList<>(enemies)) {
+                if (e == currentEnemy || !e.isAlive()) continue;
+                if (!entityTouchesAnyTile(e, impact)) continue;
+                int dealt = e.takeDamage(ta.damage());
+                sendMessage("§6  Blast hits " + e.getDisplayName() + " for " + dealt + "!");
+                checkAndHandleDeath(e);
+            }
+        }
+    }
+
+    /** True when any tile of {@code e}'s footprint is in {@code tiles}. */
+    private static boolean entityTouchesAnyTile(CombatEntity e, java.util.Set<GridPos> tiles) {
+        GridPos base = e.getGridPos();
+        if (base == null) return false;
+        for (int dx = 0; dx < e.getSizeX(); dx++) {
+            for (int dz = 0; dz < e.getSizeZ(); dz++) {
+                if (tiles.contains(new GridPos(base.x() + dx, base.z() + dz))) return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -15735,6 +15841,150 @@ public class CombatManager {
             world.playSound(null, player.getBlockPos(),
                 net.minecraft.sound.SoundEvents.ENTITY_ENDER_DRAGON_GROWL,
                 net.minecraft.sound.SoundCategory.HOSTILE, 0.5f, 1.5f);
+        }
+    }
+
+    /**
+     * Advance the Tidecaller's tidal wave. The wave is a full-width, 3-thick band of water
+     * that marches 3 tiles per turn from one end of the arena to the other and then is gone.
+     * It runs autonomously (same pattern as the dragon's breath waves) so the Tidecaller
+     * keeps acting while it sweeps.
+     *
+     * <p>It deals NO damage. Anyone the band catches is CARRIED the same 3 tiles the wave
+     * moved, via the shared forced-movement resolver, so a blocked destination fails safe
+     * exactly like every other push in the game (carried as far as it can, never overlapping
+     * an entity). The water it leaves behind Soaks whoever wades it, which is what sets up
+     * Conduction.
+     */
+    private void tickTidecallerWave() {
+        if (player == null || arena == null) return;
+        for (CombatEntity e : enemies) {
+            if (!e.isAlive() || !e.isBoss()) continue;
+            EnemyAI ai = resolveAi(e);
+            if (!(ai instanceof com.crackedgames.craftics.combat.ai.boss.TidecallerAI tideAi)) continue;
+            if (tideAi.getActiveWave() == null) continue;
+
+            // Snapshot who the band holds BEFORE it moves: they ride from where they stand,
+            // not from wherever the advanced band happens to reach.
+            int[] carry = tideAi.getWaveCarry();
+            java.util.List<ServerPlayerEntity> riders = new java.util.ArrayList<>();
+            if (partyPlayers.size() > 1) {
+                for (ServerPlayerEntity member : partyPlayers) {
+                    if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                    if (deadPartyMembers.contains(member.getUuid())) continue;
+                    if (tideAi.waveCovers(gridPosOf(member))) riders.add(member);
+                }
+            } else if (tideAi.waveCovers(arena.getPlayerGridPos())) {
+                riders.add(player);
+            }
+
+            List<GridPos> flooded = tideAi.tickWave();
+            ServerWorld world = (ServerWorld) player.getEntityWorld();
+
+            // Carry each rider exactly once, one tile at a time so the existing resolver
+            // stops them at the first wall/occupied tile instead of overlapping anything.
+            if (carry != null && (carry[0] != 0 || carry[1] != 0)) {
+                int dirX = Integer.signum(carry[0]);
+                int dirZ = Integer.signum(carry[1]);
+                int carryTiles = Math.abs(carry[0]) + Math.abs(carry[1]);
+                for (ServerPlayerEntity rider : riders) {
+                    ServerPlayerEntity savedTidePlayer = this.player;
+                    GridPos savedTideGrid = arena.getPlayerGridPos();
+                    boolean tideSwapped = rider != savedTidePlayer;
+                    if (tideSwapped) {
+                        this.player = rider;
+                        retargetEffectsToCurrentPlayer();
+                        arena.setPlayerGridPos(gridPosOf(rider));
+                    }
+                    try {
+                        GridPos before = arena.getPlayerGridPos();
+                        resolveForcedMovement(new EnemyAction.ForcedMovement(-1, dirX, dirZ, carryTiles));
+                        if (!active) return; // the carry killed them (void) and ended the fight
+                        GridPos after = arena.getPlayerGridPos();
+                        if (!after.equals(before)) {
+                            sendMessage("§3§l≈ The tide sweeps "
+                                + (tideSwapped ? rider.getName().getString() : "you")
+                                + " along " + before.manhattanDistance(after) + " tiles!");
+                        } else {
+                            sendMessage("§3≈ The tide breaks against your back - nowhere to be carried.");
+                        }
+                    } finally {
+                        if (tideSwapped && active) {
+                            this.player = savedTidePlayer;
+                            retargetEffectsToCurrentPlayer();
+                            arena.setPlayerGridPos(savedTideGrid);
+                        }
+                    }
+                }
+            }
+
+            if (flooded.isEmpty()) {
+                if (!riders.isEmpty()) sendSync();
+                continue;
+            }
+
+            // Flood the band. Temporary water so the arena drains behind the wave and the
+            // fight does not silently turn into the phase-2 deluge.
+            for (GridPos pos : flooded) {
+                GridTile tile = arena.getTile(pos);
+                if (tile == null) continue;
+                if (tile.getType() == TileType.NORMAL) {
+                    tile.setTemporaryType(TileType.WATER, 2);
+                    BlockPos bp = arena.gridToBlockPos(pos);
+                    world.setBlockState(bp, tile.getBlockType().getDefaultState());
+                }
+                BlockPos bp = arena.gridToBlockPos(pos);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH,
+                    bp.getX() + 0.5, bp.getY() + 0.9, bp.getZ() + 0.5,
+                    6, 0.35, 0.3, 0.35, 0.05);
+                world.spawnParticles(net.minecraft.particle.ParticleTypes.BUBBLE,
+                    bp.getX() + 0.5, bp.getY() + 0.6, bp.getZ() + 0.5,
+                    3, 0.25, 0.2, 0.25, 0.02);
+            }
+            sendTileFlash(flooded, 0xFF3388CC, 14);
+
+            // Soak whoever the wave leaves standing in it. The move-into-water path only
+            // fires on a player's own movement, so without this the wave could wash over
+            // someone and leave them dry - and Conduction's payoff depends on Soaked.
+            java.util.Set<GridPos> floodedSet = new java.util.HashSet<>(flooded);
+            if (partyPlayers.size() > 1) {
+                for (ServerPlayerEntity member : partyPlayers) {
+                    if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+                    if (deadPartyMembers.contains(member.getUuid())) continue;
+                    if (!floodedSet.contains(gridPosOf(member))) continue;
+                    if (boatOf(member) != null || member.hasVehicle()) continue;
+                    ServerPlayerEntity savedSoakPlayer = this.player;
+                    boolean soakSwapped = member != savedSoakPlayer;
+                    if (soakSwapped) { this.player = member; retargetEffectsToCurrentPlayer(); }
+                    try {
+                        addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
+                        sendMessage("§b  The tidal wave leaves "
+                            + (soakSwapped ? member.getName().getString() : "you") + " Soaked for 2 turns.");
+                    } finally {
+                        if (soakSwapped) { this.player = savedSoakPlayer; retargetEffectsToCurrentPlayer(); }
+                    }
+                }
+            } else if (floodedSet.contains(arena.getPlayerGridPos())
+                    && boatOf(player) == null && !player.hasVehicle()) {
+                addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
+                sendMessage("§b  The tidal wave leaves you Soaked for 2 turns.");
+            }
+
+            // Soak the drowned too: the chain arcs through them, and a wave that soaked only
+            // the player would quietly make Conduction weaker than the water it swims in.
+            java.util.Set<Integer> soakedEnemies = new java.util.HashSet<>();
+            for (GridPos pos : flooded) {
+                CombatEntity occ = arena.getOccupant(pos);
+                if (occ == null || !occ.isAlive() || occ.isProjectile()) continue;
+                if (occ == e) continue; // the Tidecaller rides its own tide
+                if (!soakedEnemies.add(occ.getEntityId())) continue; // multi-tile: once only
+                occ.stackSoaked(2, 1);
+            }
+
+            world.playSound(null, player.getBlockPos(),
+                net.minecraft.sound.SoundEvents.ENTITY_PLAYER_SPLASH_HIGH_SPEED,
+                net.minecraft.sound.SoundCategory.HOSTILE, 0.7f, 0.7f);
+            sendSync();
         }
     }
 
@@ -21083,7 +21333,9 @@ public class CombatManager {
                         var raidDef = TrialChamberEvent.generateRaid(
                             Math.max(0, biomeOrdinal), ngPlusLevel);
                         pendingEventBiomeOrdinal = Math.max(0, biomeOrdinal);
-                        lastFightWasTrial = true;
+                        // lastFightWasTrial is set in finalizeShinyEvent only when the
+                        // party actually enters the raid; setting it here leaked the flag
+                        // on a decline and suppressed the next real advanceBiomeRun().
                         offerRaid(savedPlayer, savedMembers, raidDef);
                     } else if (forced != null ? forced.equals("ominous_trial") : (eventRoll < cOminous && biomeOrdinal >= 10)) {
                         // Ominous Trial Chamber (late game only). Party-vote dialogue -
@@ -21119,7 +21371,9 @@ public class CombatManager {
                         var ambushDef = RandomEvents.generateAmbush(biome.biomeId, biomeOrdinal,
                             biome.getBiomeLevelIndex(globalLevel), ngPlusLevel);
                         pendingEventBiomeOrdinal = Math.max(0, biomeOrdinal);
-                        lastFightWasTrial = true;
+                        // lastFightWasTrial is set in finalizeShinyEvent only when the
+                        // ambush combat actually starts; a Leave vote or the reward
+                        // outcome must not leave the flag armed.
                         offerShinyChoice(savedPlayer, savedMembers, ambushDef);
                     } else if (forced != null ? forced.equals("shrine") : (eventRoll < cShrine)) {
                         // Shrine of Fortune -interactive room
@@ -24463,6 +24717,9 @@ public class CombatManager {
             if (members.isEmpty()) members.add(referencePlayer);
             GridArena ambushArena = buildArena(world, ambushDef);
             transitionPartyToArena(referencePlayer, members, ambushArena, ambushDef);
+            // Set only now that combat actually starts (mirrors finalizeTrialEvent):
+            // this fight is a bonus and must not advance the biome cursor.
+            lastFightWasTrial = true;
             return;
         }
         // Safe pass (or reward) -skip the ambush combat and go to the next
@@ -26353,6 +26610,13 @@ public class CombatManager {
                     for (GridPos t : AoeShapes.filledDisc(aa.center(), aa.radius())) {
                         if (arena.isInBounds(t)) addTile(strikeList, t);
                     }
+                }
+            }
+            case EnemyAction.TileAreaAttack ta -> {
+                // The volley already carries its exact union footprint, so the radar paints
+                // that list directly rather than re-deriving a box from a centre.
+                for (GridPos t : ta.tiles()) {
+                    if (arena.isInBounds(t)) addTile(strikeList, t);
                 }
             }
             case EnemyAction.CompositeAction ca -> {
