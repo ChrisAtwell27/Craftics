@@ -103,6 +103,34 @@ function Get-GameVersionIds {
         }
         $ids[$name] = $match.id
     }
+
+    # CurseForge requires at least one id from EACH grouping the project has enabled: a Minecraft
+    # version, a modloader, AND an environment (Client/Server). Sending only the MC version, or even
+    # MC + loader, fails with errorCode 1021 because the Environment group is still empty. All three
+    # live in the same version table, so resolve them here and hand them back under reserved keys the
+    # caller adds to every upload.
+    #
+    # Ids confirmed via tools/cf-probe-versions.ps1: Fabric=7499 (Modloader group 68441),
+    # Client=9638 / Server=9639 (Environment group 75208). Resolved by name rather than hardcoded so
+    # they survive CurseForge renumbering.
+    $fabric = $all | Where-Object { $_.name -eq "Fabric" } | Select-Object -First 1
+    if (-not $fabric) {
+        throw "CurseForge did not return a 'Fabric' modloader version. The upload needs a loader id."
+    }
+    $ids["__loader__"] = $fabric.id
+
+    # This mod runs on both sides, so tag both. Sending at least one Environment id is what actually
+    # clears error 1021.
+    $client = $all | Where-Object { $_.name -eq "Client" } | Select-Object -First 1
+    $server = $all | Where-Object { $_.name -eq "Server" } | Select-Object -First 1
+    if (-not $client -and -not $server) {
+        throw "CurseForge returned no 'Client' or 'Server' environment version. Error 1021 needs one."
+    }
+    $envIds = @()
+    if ($client) { $envIds += $client.id }
+    if ($server) { $envIds += $server.id }
+    $ids["__env__"] = $envIds
+
     return $ids
 }
 
@@ -110,7 +138,9 @@ function Get-GameVersionIds {
 function Publish-Shard {
     param(
         [string] $GameVersion,
-        [int]    $GameVersionId
+        [int]    $GameVersionId,
+        [int]    $LoaderId,
+        [int[]]  $EnvIds
     )
 
     $jar = Join-Path $RepoRoot "versions/$GameVersion/build/libs/craftics-$ModVersion+$GameVersion.jar"
@@ -125,7 +155,7 @@ function Publish-Shard {
         changelog     = $changelog
         changelogType = "markdown"
         displayName   = $displayName
-        gameVersions  = @($GameVersionId)
+        gameVersions  = @($GameVersionId, $LoaderId) + $EnvIds
         releaseType   = $ReleaseType
     } | ConvertTo-Json -Depth 5 -Compress
 
@@ -135,6 +165,8 @@ function Publish-Shard {
     Write-Host "    jar    : $(Split-Path -Leaf $jar) (${sizeMb} MB)"
     Write-Host "    type   : $ReleaseType"
     Write-Host "    mcver  : $GameVersion (id $GameVersionId)"
+    Write-Host "    loader : Fabric (id $LoaderId)"
+    Write-Host "    env    : Client/Server (ids $($EnvIds -join ', '))"
 
     if ($DryRun) {
         Write-Host "    DRY RUN - not uploaded" -ForegroundColor Yellow
@@ -252,13 +284,13 @@ Write-Host "  version $ModVersion  |  $ReleaseType  |  $($GameVersions.Count) sh
 
 $ids = if ($DryRun -and -not $Token) {
     # Let a dry run work with no token at all, so the changelog/jar checks can be tested offline.
-    $fake = @{}; foreach ($v in $GameVersions) { $fake[$v] = 0 }; $fake
+    $fake = @{}; foreach ($v in $GameVersions) { $fake[$v] = 0 }; $fake["__loader__"] = 0; $fake["__env__"] = @(0, 0); $fake
 } else {
     Get-GameVersionIds -Names $GameVersions
 }
 
 foreach ($v in $GameVersions) {
-    Publish-Shard -GameVersion $v -GameVersionId $ids[$v]
+    Publish-Shard -GameVersion $v -GameVersionId $ids[$v] -LoaderId $ids["__loader__"] -EnvIds $ids["__env__"]
 }
 
 Write-Host ""
