@@ -209,6 +209,11 @@ class CrafticsEnchantmentsTest {
             case HOE -> "hoe";
             case AXE -> "axe";
             case SWORD -> "sword";
+            case BLUNT -> "blunt";
+            case HELMET -> "helmet";
+            case CHESTPLATE -> "chestplate";
+            case LEGGINGS -> "leggings";
+            case BOOTS -> "boots";
         };
     }
 
@@ -292,15 +297,24 @@ class CrafticsEnchantmentsTest {
     }
 
     /**
-     * Blunt coverage has no Tool and no tag, so it rides {@code poolForBlunt} instead. Hilt opts
-     * into blunt; Dull does not. Nothing else in the table is blunt-eligible today.
+     * BLUNT is a Tool since {@code #craftics:enchantable/blunt} exists, so its pool comes from
+     * {@code poolFor(BLUNT)} like every other tool ({@code poolForBlunt} is the alias the
+     * enchanter branches call). Hilt includes BLUNT in its tool set; Dull deliberately does not
+     * (converting hits to Blunt is a no-op on an already-blunt weapon).
      */
     @Test
-    void bluntPool_holdsOnlyBluntFlaggedEnchants() {
+    void bluntPool_holdsOnlyBluntEnchants() {
         var blunt = java.util.List.of(CrafticsEnchantments.poolForBlunt());
         assertTrue(blunt.contains("hilt"), "hilt applies to blunt weapons and must be in the blunt pool");
+        assertTrue(blunt.contains("crater"), "crater is blunt-native and must be in the blunt pool");
+        assertTrue(blunt.contains("momentum"), "momentum is blunt-native and must be in the blunt pool");
         assertTrue(!blunt.contains("dull"), "dull is sword+axe only and must not be in the blunt pool");
         assertTrue(!blunt.contains("serrated"), "serrated is not blunt-eligible");
+        // Blunt-native enchants stay out of the sword/axe pools.
+        var swords = java.util.List.of(CrafticsEnchantments.poolFor(CrafticsEnchantments.Tool.SWORD));
+        var axes = java.util.List.of(CrafticsEnchantments.poolFor(CrafticsEnchantments.Tool.AXE));
+        assertTrue(!swords.contains("crater") && !axes.contains("crater"), "crater is blunt-only");
+        assertTrue(!swords.contains("momentum") && !axes.contains("momentum"), "momentum is blunt-only");
     }
 
     /** The primary tool (what tooltips/affinity key off) is the first tool listed. */
@@ -309,6 +323,7 @@ class CrafticsEnchantmentsTest {
         assertEquals(CrafticsEnchantments.Tool.SWORD, CrafticsEnchantments.HILT.tool());
         assertEquals(CrafticsEnchantments.Tool.SWORD, CrafticsEnchantments.DULL.tool());
         assertEquals(CrafticsEnchantments.Tool.AXE, CrafticsEnchantments.FACADE.tool());
+        assertEquals(CrafticsEnchantments.Tool.BLUNT, CrafticsEnchantments.CRATER.tool());
         assertTrue(CrafticsEnchantments.HILT.appliesTo(CrafticsEnchantments.Tool.AXE));
         assertTrue(CrafticsEnchantments.HILT.appliesToBlunt());
         assertTrue(!CrafticsEnchantments.DULL.appliesToBlunt());

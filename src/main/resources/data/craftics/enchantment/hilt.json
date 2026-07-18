@@ -13,11 +13,11 @@
     "base": 5,
     "per_level_above_first": 0
   },
-  "primary_items": "#craftics:enchantable/sword_axe",
+  "primary_items": "#craftics:enchantable/sword_axe_blunt",
   "slots": [
     "mainhand"
   ],
-  "supported_items": "#craftics:enchantable/sword_axe",
+  "supported_items": "#craftics:enchantable/sword_axe_blunt",
   "weight": 2,
   "exclusive_set": "#craftics:exclusive_set/affinity_converter"
 }

@@ -1,4 +1,47 @@
 ﻿Changelog
+0.3.1
+Server Administration
+
+- /craftics config reload (op): re-reads craftics-config from disk, so scaling, timers and toggles can be tuned on a live server without a restart
+- Admin commands now take an optional [player] target: reset_combat, heal, give presets, set_emeralds, set_level, set_ngplus, set_ap, set_speed, set_stat, reset_stats. They all work from the server console or command blocks now, and reset_combat can rescue a stuck player who can't run it themselves
+- /craftics infinite stop <player> (op): force-end another player's infinite run - live or parked - the admin recovery for a hung run
+- Idle performance: combat managers for players not in a fight no longer evaluate music selection every tick - the one per-tick cost that scaled with how many players had EVER fought instead of how many are fighting
+- Config note: dedicated servers should enable turnTimerEnabled so an AFK party member can't stall a fight
+- Download size: the soundtrack re-encoded from ~140-160kbps to ~80kbps Vorbis, and the three 15-minute marathon tracks (Spider Den, Basalt Deltas, Crypt) trimmed to clean 5-minute loops with a fade - 190MB of music is now 75MB with no audible change under gameplay
+- Arena prefetch: the next level's arena now builds while the party sits on the victory screen, so first-time entry into a level no longer hitches at the transition. Repeat visits were already cached and stay instant
+
+Infinite Mode Classes
+
+- Starting an infinite run now opens a class selection: one class per affinity (Slashing, Cleaving, Blunt, Ranged, Water, Special, Pet, Physical) or Skip to go in with nothing but the two logs
+- A class grants +1 point in its affinity and a modest starter weapon - stone sword/axe/hoe/shovel by class, a stick for Blunt, a bow with 8 arrows for Ranged, a horn coral for Water, a shield for Physical. A leg up on the from-nothing start, not a power spike
+- Each party member picks their own class. Rejoining a resumed run as a fresh participant offers the pick again; the host's original choice stands. Closing the screen counts as Skip, and a pick can never be claimed twice
+
+Sixteen New Enchantments
+
+Weapons:
+
+- Undertow (sword): an enemy whose attack you dodge or deflect is dragged 1 tile toward you. the drag obeys real knockback rules, so hazards between you count
+- Hemorrhage (sword): knocking back a Bleeding enemy detonates its Bleed stacks into one burst and clears them
+- Ambush (sword): killing an enemy before it acts this round frightens the next enemy in the order (-2 ATK for 1 turn)
+- Timberfall (axe): obstacles you Demolish fall onto the enemies beside them - damage and a Stun under the falling block
+- Pole Vault (blunt): gap jumps cost the plain walk price, and you can vault clean over enemies. an occupied tile counts as a jumpable gap
+- Midas (blunt): slamming an enemy into a wall shakes 1-2 emeralds into your bank, once per enemy per fight
+- Tag Team (shovel): once per turn, command a pet onto your own tile to swap places with it as a free action
+- Trapper (hoe): a splash potion thrown at an empty tile with no enemy in range buries as a hidden trap; the first enemy to stand there eats the full potion - and knocking an enemy onto a trap springs it too
+
+Armor (a first - armor enchants read from the piece actually worn):
+
+- Iron Will (helmet): Confusion, Blindness and Darkness on you tick out at double speed
+- Beacon (helmet): you count as a walking banner. Party members within 2 tiles gain the banner defense aura
+- Phalanx (chest): +1 AC for you and each adjacent party member, both sides of every pairing
+- Grudgeplate (chest): the last enemy to damage you takes +2 from the whole party
+- Trailblazer (legs): party members moving along tiles you crossed pay 1 less Speed until your next turn
+- Longstride (legs): your jumps clear gaps up to 3 tiles wide
+- Ledgegrip (boots): once per combat, a knockback into a pit or deep water becomes a caught edge - 2 damage instead of death
+- Shockstep (boots): landing a gap jump stomps adjacent enemies for damage and a 1-turn Slow
+
+- The enchanter, trial keys, traders and mob gear all roll the new enchants from their matching pools automatically. Craftics armor enchants join the vanilla armor pools per slot
+
 0.3.0
 Boss Identities
 
@@ -69,6 +112,24 @@ Movement & Jumping
 - Pathfinding picks a jump only when it is cheaper than going around; jump destinations show in reachable highlights and price into the move cost. Jumped tiles are marked with arrows instead of dots
 - You cannot jump over obstacles, powder snow, or enemies
 - Fixed the Pathfinder trim routing players through the inside of obstacle blocks; they now step up and over
+
+New Enchantments
+
+- Seven new enchantments, each a mechanic rather than a stat stick:
+- Matador (sword): every attack you dodge, deflect or block Exposes the attacker (-2 DEF for 1 turn), turning armor-class builds into opening machines
+- Phantom Edge (sword, max III): attacking from tall grass now flattens it and reveals you - this is new; ranged stealth used to be permanent - and Phantom Edge preserves your cover once per turn per level
+- Demolisher (axe): attack an adjacent obstacle to chop it off the battlefield for 1 AP, refunding 1 Speed. Cover, chokepoints and boss walls become targets
+- Crater (blunt): your knockback sends enemies 1 tile further, and slamming into a wall, obstacle, cactus or another enemy deals extra damage and Stuns
+- Momentum (blunt): your killing blow banks +1 AP for the next party member in the turn order (solo: your own next turn), once per turn
+- Vengeful Bond (shovel): an enemy that kills one of your pets is Marked for 2 turns, taking double damage from every source
+- Terraform (hoe): Special items cast at a tile also normalize it - douse fire, drain water, fill sunken ground
+- Blunt weapons (mace, clubs, hammers, quarterstaffs, greathammers) now have their own enchant pool at the enchanter, including "might" ordering fixes: on 1.21.1-1.21.4 the blunt pool was unreachable and clubs rolled sword enchants like Sweeping Edge
+
+Modded Weapon Enchant Compat
+
+- Hilt and Dull can now actually be applied to Simply Swords and Basic Weapons gear. Three separate gates each blocked it: the enchantable item tags only covered vanilla swords/axes (modded weapons live in c: tags, not #minecraft:swords), the runtime sword filter only recognized the six vanilla swords so a force-applied Hilt silently did nothing, and blunt weapons were shadowed into the wrong enchant pool
+- Every Simply Swords and Basic Weapons weapon is whitelisted into the matching enchantable tag by damage class (slashing weapons take sword enchants, cleaving take axe enchants, blunt take the new blunt pool), so anvils and enchanting tables accept the books, and the enchants actually fire in combat
+- Hilt now also fits the vanilla Mace and all blunt weapons via the new #craftics:enchantable/blunt tag
 
 Status Effect Icons
 

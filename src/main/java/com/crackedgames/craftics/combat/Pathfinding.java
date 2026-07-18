@@ -30,6 +30,46 @@ public class Pathfinding {
         return gapTiles + 2;
     }
 
+    /** As {@link #jumpCost}, but {@code cheap} (Pole Vault) drops the +1: a jump costs the plain walk. */
+    public static int jumpCost(int gapTiles, boolean cheap) {
+        return cheap ? gapTiles + 1 : jumpCost(gapTiles);
+    }
+
+    /**
+     * How this player's jumps behave. Threads the movement enchantments through the jump
+     * edges without the pathfinder knowing about enchantments:
+     *
+     * <ul>
+     *   <li>{@code maxGap} - widest clearable gap. {@link #MAX_JUMP_GAP} normally, 3 with
+     *       Longstride leggings worn.
+     *   <li>{@code cheapJumps} - Pole Vault: a jump costs the plain walk price (no +1).
+     *   <li>{@code vaultEnemies} - Pole Vault: an ENEMY-occupied tile counts as a gap you may
+     *       clear, even when the tile itself is ordinary floor. Landing rules are unchanged -
+     *       you sail over the enemy, you never stop on one.
+     * </ul>
+     *
+     * <p>The client mirror ({@code ClientGridHelper}) must build the same profile from the
+     * same stacks, or highlights and clicks disagree with the server's route.
+     */
+    public record JumpProfile(int maxGap, boolean cheapJumps, boolean vaultEnemies) {
+        public static final JumpProfile DEFAULT = new JumpProfile(MAX_JUMP_GAP, false, false);
+    }
+
+    /**
+     * Whether {@code over} may be sailed across mid-jump under {@code profile}: a jumpable
+     * hazard gap that is empty, or - with vaultEnemies - any occupied tile (the enemy IS the
+     * obstacle being vaulted). The player's own tile is never vaultable.
+     */
+    private static boolean canJumpOver(GridArena arena, GridPos over, JumpProfile profile) {
+        if (!arena.isInBounds(over)) return false;
+        boolean occupied = arena.getOccupant(over) != null
+            || over.equals(arena.getPlayerGridPos());
+        if (isJumpableGap(arena, over)) {
+            return !occupied || (profile.vaultEnemies() && !over.equals(arena.getPlayerGridPos()));
+        }
+        return profile.vaultEnemies() && arena.getOccupant(over) != null;
+    }
+
     /**
      * Tiles a player may jump OVER.
      *
@@ -193,6 +233,14 @@ public class Pathfinding {
     public static Path findPlayerPathWithJumps(GridArena arena, GridPos from, GridPos to, int maxSpeed,
                                                boolean hasBoat, boolean ignoreObstacles,
                                                boolean phaseThroughEnemies) {
+        return findPlayerPathWithJumps(arena, from, to, maxSpeed, hasBoat, ignoreObstacles,
+            phaseThroughEnemies, JumpProfile.DEFAULT);
+    }
+
+    /** As above, with the player's {@link JumpProfile} (Pole Vault / Longstride). */
+    public static Path findPlayerPathWithJumps(GridArena arena, GridPos from, GridPos to, int maxSpeed,
+                                               boolean hasBoat, boolean ignoreObstacles,
+                                               boolean phaseThroughEnemies, JumpProfile profile) {
         if (from.equals(to) || !arena.isInBounds(to)) return Path.EMPTY;
         var destTile = arena.getTile(to);
         if (destTile == null || !destTile.isWalkableEx(hasBoat, ignoreObstacles, false)) return Path.EMPTY;
@@ -231,16 +279,13 @@ public class Pathfinding {
                     }
                 }
 
-                // --- jump over a gap of 1..MAX_JUMP_GAP tiles, landing beyond it ---
-                for (int gap = 1; gap <= MAX_JUMP_GAP; gap++) {
-                    // Every tile in the gap must be jumpable AND empty.
+                // --- jump over a gap of 1..maxGap tiles, landing beyond it ---
+                for (int gap = 1; gap <= profile.maxGap(); gap++) {
+                    // Every tile in the gap must be clearable under the profile.
                     boolean clear = true;
                     for (int g = 1; g <= gap && clear; g++) {
                         GridPos over = new GridPos(current.x() + dir.x() * g, current.z() + dir.z() * g);
-                        if (!arena.isInBounds(over) || !isJumpableGap(arena, over)
-                                || arena.getOccupant(over) != null) {
-                            clear = false;
-                        }
+                        if (!canJumpOver(arena, over, profile)) clear = false;
                     }
                     if (!clear) continue;
 
@@ -253,7 +298,8 @@ public class Pathfinding {
                     if (isJumpableGap(arena, land)) continue;
                     if (isBlockedBy(arena, land, null)) continue;
 
-                    relax(open, gScore, cameFrom, current, land, currentG + jumpCost(gap), maxSpeed);
+                    relax(open, gScore, cameFrom, current, land,
+                        currentG + jumpCost(gap, profile.cheapJumps()), maxSpeed);
                 }
             }
         }
@@ -510,6 +556,15 @@ public class Pathfinding {
     public static Set<GridPos> getPlayerReachableTilesWithJumps(GridArena arena, GridPos from,
                                                                 int maxSpeed, boolean hasBoat,
                                                                 boolean ignoreObstacles) {
+        return getPlayerReachableTilesWithJumps(arena, from, maxSpeed, hasBoat, ignoreObstacles,
+            JumpProfile.DEFAULT);
+    }
+
+    /** As above, with the player's {@link JumpProfile} (Pole Vault / Longstride). */
+    public static Set<GridPos> getPlayerReachableTilesWithJumps(GridArena arena, GridPos from,
+                                                                int maxSpeed, boolean hasBoat,
+                                                                boolean ignoreObstacles,
+                                                                JumpProfile profile) {
         Set<GridPos> reachable = new HashSet<>();
         Map<GridPos, Integer> dist = new HashMap<>();
         PriorityQueue<GridPos> open = new PriorityQueue<>(
@@ -539,14 +594,11 @@ public class Pathfinding {
                 }
 
                 // jump over a gap
-                for (int gap = 1; gap <= MAX_JUMP_GAP; gap++) {
+                for (int gap = 1; gap <= profile.maxGap(); gap++) {
                     boolean clear = true;
                     for (int g = 1; g <= gap && clear; g++) {
                         GridPos over = new GridPos(current.x() + dir.x() * g, current.z() + dir.z() * g);
-                        if (!arena.isInBounds(over) || !isJumpableGap(arena, over)
-                                || arena.getOccupant(over) != null) {
-                            clear = false;
-                        }
+                        if (!canJumpOver(arena, over, profile)) clear = false;
                     }
                     if (!clear) continue;
 
@@ -558,7 +610,7 @@ public class Pathfinding {
                     if (isJumpableGap(arena, land)) continue;
                     if (isBlockedBy(arena, land, null)) continue;
 
-                    int nd = currentDist + jumpCost(gap);
+                    int nd = currentDist + jumpCost(gap, profile.cheapJumps());
                     if (nd <= maxSpeed && nd < dist.getOrDefault(land, Integer.MAX_VALUE)) {
                         dist.put(land, nd);
                         open.add(land);

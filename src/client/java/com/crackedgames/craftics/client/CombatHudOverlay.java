@@ -1514,7 +1514,8 @@ public class CombatHudOverlay implements HudRenderCallback {
             if (prevStep == null) { cost += 1; continue; }
             int span = Math.abs(step.x() - prevStep.x()) + Math.abs(step.z() - prevStep.z());
             if (span > 1) {
-                cost += com.crackedgames.craftics.client.ClientGridHelper.jumpCost(span - 1);
+                // Enchant-aware: Pole Vault jumps cost the plain walk, so quote that price.
+                cost += com.crackedgames.craftics.client.ClientGridHelper.jumpCost(client, span - 1);
                 jumps = true;
             } else {
                 cost += 1;

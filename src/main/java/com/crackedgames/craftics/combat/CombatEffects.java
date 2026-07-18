@@ -155,6 +155,31 @@ public class CombatEffects {
     }
 
     /**
+     * Iron Will helmet: the mental effects (Confusion, Blindness, Darkness) tick out at
+     * double speed. Called right after {@link #tickTurn} for wearers - drops one EXTRA turn
+     * from each mental effect, expiring it exactly as tickTurn would (including joining
+     * {@link #getLastExpired()}). Returns the expired names, or null.
+     */
+    public String tickMentalEffectsExtra() {
+        StringJoiner expired = new StringJoiner(", ");
+        var iterator = effects.entrySet().iterator();
+        while (iterator.hasNext()) {
+            ActiveEffect effect = iterator.next().getValue();
+            if (effect.isFrozen()) continue;
+            EffectType t = effect.type;
+            if (t != EffectType.CONFUSION && t != EffectType.BLINDNESS
+                && t != EffectType.DARKNESS) continue;
+            effect.turnsRemaining--;
+            if (effect.turnsRemaining <= 0) {
+                expired.add(effect.type.displayName);
+                lastExpired.add(effect.type);
+                iterator.remove();
+            }
+        }
+        return expired.length() > 0 ? expired.toString() : null;
+    }
+
+    /**
      * Net HP change from regen / poison / wither / burning / bleeding this turn.
      * Positive = heal, negative = damage.
      *

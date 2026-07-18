@@ -1,0 +1,22 @@
+{
+  "anvil_cost": 2,
+  "description": {
+    "translate": "enchantment.craftics.hemorrhage"
+  },
+  "effects": {},
+  "max_cost": {
+    "base": 25,
+    "per_level_above_first": 0
+  },
+  "max_level": 1,
+  "min_cost": {
+    "base": 5,
+    "per_level_above_first": 0
+  },
+  "primary_items": "#craftics:enchantable/sword",
+  "slots": [
+    "mainhand"
+  ],
+  "supported_items": "#craftics:enchantable/sword",
+  "weight": 3
+}

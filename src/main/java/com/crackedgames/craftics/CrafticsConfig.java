@@ -365,7 +365,9 @@ public class CrafticsConfig {
 
     /** When on, a player's turn auto-ends after {@link #turnTimerSeconds} of inactivity
      *  (no action taken), so an AFK player can't stall a multiplayer fight indefinitely.
-     *  Off by default. */
+     *  Off by default for solo play; DEDICATED SERVERS SHOULD TURN THIS ON - one AFK
+     *  party member otherwise blocks the whole fight. Reloadable live via
+     *  {@code /craftics config reload}. */
     public boolean turnTimerEnabled = false;
 
     /** Inactivity timeout (seconds) before {@link #turnTimerEnabled} ends a player's turn. */

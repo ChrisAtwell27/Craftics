@@ -337,8 +337,12 @@ public class GuideBookScreen extends Screen {
         drawRule(ctx, pageX, y, pageW);
         y += 7;
 
-        // Body
-        drawBody(ctx, page.text(), pageX, y, pageW, pageY + pageH - 16);
+        // Body: boxed card layout for list pages, plain prose otherwise.
+        if (page.boxed()) {
+            drawBoxedPage(ctx, page, pageX, y, pageW, pageY + pageH - 16);
+        } else {
+            drawBody(ctx, page.text(), pageX, y, pageW, pageY + pageH - 16);
+        }
 
         drawPageNav(ctx, entry, mouseX, mouseY);
     }
@@ -492,6 +496,61 @@ public class GuideBookScreen extends Screen {
         ctx.fill(x, y, x + w, y + 1, RULE);
         int cx = x + w / 2;
         ctx.fill(cx - 1, y - 1, cx + 1, y + 2, GOLD_DIM);
+    }
+
+    /**
+     * Card layout for list pages: an optional italic intro paragraph, then one bordered
+     * parchment panel per {@link GuideBookData.Box} - item icon in a gold-spined card, bold
+     * name, right-aligned faint tag, and the body wrapped beside the icon. Cards that don't
+     * fit the page are clipped; the data hand-splits long lists across pages, same as prose.
+     */
+    private void drawBoxedPage(DrawContext ctx, GuideBookData.Page page, int x, int y, int w, int maxY) {
+        // Intro (soft ink, italic) above the cards.
+        if (page.text() != null && !page.text().isEmpty()) {
+            for (String raw : page.text().split("\n")) {
+                if (raw.isEmpty()) { y += LINE_HEIGHT / 2; continue; }
+                for (String line : wrapText("§o" + raw, w)) {
+                    if (y + LINE_HEIGHT > maxY) return;
+                    ctx.drawText(textRenderer, Text.literal(line), x, y, INK_SOFT, false);
+                    y += LINE_HEIGHT;
+                }
+            }
+            y += 4;
+        }
+
+        for (GuideBookData.Box box : page.boxes()) {
+            int textX = x + 27;
+            int textW = w - 33;
+            List<String> lines = new ArrayList<>();
+            for (String raw : box.text().split("\n")) {
+                if (raw.isEmpty()) continue;
+                lines.addAll(wrapText(raw, textW));
+            }
+            int boxH = 9 + LINE_HEIGHT + lines.size() * LINE_HEIGHT;
+            if (y + boxH > maxY) return; // clipped - split the data across pages instead
+
+            // Panel: shaded parchment, ruled border, gold spine.
+            ctx.fill(x, y, x + w, y + boxH, PARCH_EDGE);
+            ctx.fill(x, y, x + w, y + 1, RULE);
+            ctx.fill(x, y + boxH - 1, x + w, y + boxH, RULE);
+            ctx.fill(x, y, x + 1, y + boxH, RULE);
+            ctx.fill(x + w - 1, y, x + w, y + boxH, RULE);
+            ctx.fill(x + 1, y + 1, x + 3, y + boxH - 1, GOLD_DIM);
+
+            ctx.drawItem(icon(box.iconItem()), x + 7, y + 4);
+
+            ctx.drawText(textRenderer, Text.literal("§l" + box.name()), textX, y + 5, INK, false);
+            if (box.tag() != null && !box.tag().isEmpty()) {
+                int tw = textRenderer.getWidth(box.tag());
+                ctx.drawText(textRenderer, Text.literal(box.tag()), x + w - tw - 5, y + 5, INK_FAINT, false);
+            }
+            int ty = y + 5 + LINE_HEIGHT + 1;
+            for (String line : lines) {
+                ctx.drawText(textRenderer, Text.literal(line), textX, ty, INK, false);
+                ty += LINE_HEIGHT;
+            }
+            y += boxH + 4;
+        }
     }
 
     /** Word-wrapped body text in ink on parchment. Carries §-codes across wraps. */

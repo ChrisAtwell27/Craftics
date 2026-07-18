@@ -1,10 +1,36 @@
 {
   "values": [
     "#minecraft:axes",
+    { "id": "#c:tools/glaives", "required": false },
     { "id": "simplyswords:iron_greataxe", "required": false },
     { "id": "simplyswords:gold_greataxe", "required": false },
     { "id": "simplyswords:diamond_greataxe", "required": false },
     { "id": "simplyswords:netherite_greataxe", "required": false },
-    { "id": "simplyswords:runic_greataxe", "required": false }
+    { "id": "simplyswords:runic_greataxe", "required": false },
+    { "id": "simplyswords:iron_claymore", "required": false },
+    { "id": "simplyswords:gold_claymore", "required": false },
+    { "id": "simplyswords:diamond_claymore", "required": false },
+    { "id": "simplyswords:netherite_claymore", "required": false },
+    { "id": "simplyswords:runic_claymore", "required": false },
+    { "id": "simplyswords:iron_warglaive", "required": false },
+    { "id": "simplyswords:gold_warglaive", "required": false },
+    { "id": "simplyswords:diamond_warglaive", "required": false },
+    { "id": "simplyswords:netherite_warglaive", "required": false },
+    { "id": "simplyswords:runic_warglaive", "required": false },
+    { "id": "simplyswords:iron_halberd", "required": false },
+    { "id": "simplyswords:gold_halberd", "required": false },
+    { "id": "simplyswords:diamond_halberd", "required": false },
+    { "id": "simplyswords:netherite_halberd", "required": false },
+    { "id": "simplyswords:runic_halberd", "required": false },
+    { "id": "simplyswords:iron_scythe", "required": false },
+    { "id": "simplyswords:gold_scythe", "required": false },
+    { "id": "simplyswords:diamond_scythe", "required": false },
+    { "id": "simplyswords:netherite_scythe", "required": false },
+    { "id": "simplyswords:runic_scythe", "required": false },
+    { "id": "simplyswords:iron_glaive", "required": false },
+    { "id": "simplyswords:gold_glaive", "required": false },
+    { "id": "simplyswords:diamond_glaive", "required": false },
+    { "id": "simplyswords:netherite_glaive", "required": false },
+    { "id": "simplyswords:runic_glaive", "required": false }
   ]
 }

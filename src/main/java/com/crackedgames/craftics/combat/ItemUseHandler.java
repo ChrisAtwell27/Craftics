@@ -989,6 +989,63 @@ public class ItemUseHandler {
     // --- Splash Potion: throw at target tile, applies effects to enemy ---
     private static final int POTION_THROW_RANGE = 4;
 
+    /**
+     * Apply a potion's ENEMY-side combat effects to each target, exactly as a splash potion
+     * landing on them does. Extracted from {@link #useSplashPotion} so the Trapper enchant's
+     * sprung trap runs the identical ruleset - one switch, no drift. Appends per-target
+     * fragments to {@code msg} and returns how many applications landed. Death checks are
+     * the caller's job.
+     */
+    public static int applyPotionEffectsToEnemies(ServerPlayerEntity player,
+            java.util.List<CombatEntity> targets,
+            net.minecraft.component.type.PotionContentsComponent potionContents,
+            StringBuilder msg) {
+        if (player == null || targets == null || targets.isEmpty() || potionContents == null) return 0;
+        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        int specialDamageBonus = getTypedDamageBonus(player, effects, DamageType.SPECIAL);
+        int hitCount = 0;
+        for (StatusEffectInstance sei : potionContents.getEffects()) {
+            var effectType = sei.getEffectType().value();
+            int amp = sei.getAmplifier();
+            int scaledAmp = getScaledPotionAmplifier(player, amp);
+
+            for (CombatEntity target : targets) {
+                // Vanilla particles on mob
+                if (target.getMobEntity() != null) {
+                    target.getMobEntity().addStatusEffect(new StatusEffectInstance(
+                        sei.getEffectType(), -1, scaledAmp, false, true));
+                }
+                if (effectType == StatusEffects.INSTANT_DAMAGE.value()) {
+                    int dealt = target.takeSpecialDamage(3 * (scaledAmp + 1) + specialDamageBonus, 0.12);
+                    msg.append("§5").append(target.getDisplayName()).append(" -").append(dealt).append("HP ");
+                } else if (effectType == StatusEffects.POISON.value()) {
+                    target.takeDamage(1 + scaledAmp);
+                    int poisonTurns = getScaledPotionTurns(player, CombatEffects.EffectType.POISON, sei.getDuration());
+                    target.stackPoison(poisonTurns, scaledAmp + 1);
+                    msg.append("§2").append(target.getDisplayName()).append(" poisoned ");
+                } else if (effectType == StatusEffects.SLOWNESS.value()) {
+                    target.setSpeedBonus(target.getSpeedBonus() - (1 + scaledAmp));
+                    msg.append("§7").append(target.getDisplayName()).append(" slowed ");
+                } else if (effectType == StatusEffects.WEAKNESS.value()) {
+                    target.setAttackPenalty(target.getAttackPenalty() + 2 + scaledAmp);
+                    msg.append("§8").append(target.getDisplayName()).append(" weakened ");
+                } else if (effectType == StatusEffects.WITHER.value()) {
+                    int witherTurns = getScaledPotionTurns(player, CombatEffects.EffectType.WITHER, sei.getDuration());
+                    target.stackWither(witherTurns, scaledAmp);
+                    msg.append("§8").append(target.getDisplayName()).append(" withered ");
+                } else if (effectType == StatusEffects.BLINDNESS.value() || effectType == StatusEffects.DARKNESS.value()) {
+                    target.setStunned(true);
+                    msg.append("§8").append(target.getDisplayName()).append(" stunned ");
+                } else if (effectType == StatusEffects.LEVITATION.value()) {
+                    target.setSpeedBonus(target.getSpeedBonus() - (1 + scaledAmp));
+                    msg.append("§d").append(target.getDisplayName()).append(" levitating ");
+                }
+                hitCount++;
+            }
+        }
+        return hitCount;
+    }
+
     private static String useSplashPotion(ServerPlayerEntity player, GridArena arena,
                                            GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
@@ -1036,45 +1093,12 @@ public class ItemUseHandler {
 
             ProjectileSpawner.spawnPotionSplash(sw, targetBlock, aoeEnemies.isEmpty() && playerInRange);
 
+            hitCount += applyPotionEffectsToEnemies(player, aoeEnemies, potionContents, msg);
+
             for (StatusEffectInstance sei : potionContents.getEffects()) {
                 var effectType = sei.getEffectType().value();
                 int amp = sei.getAmplifier();
                 int scaledAmp = getScaledPotionAmplifier(player, amp);
-
-                // === Apply debuffs to ALL enemies in 3x3 ===
-                for (CombatEntity target : aoeEnemies) {
-                    // Vanilla particles on mob
-                    if (target.getMobEntity() != null) {
-                        target.getMobEntity().addStatusEffect(new StatusEffectInstance(
-                            sei.getEffectType(), -1, scaledAmp, false, true));
-                    }
-                    if (effectType == StatusEffects.INSTANT_DAMAGE.value()) {
-                        int dealt = target.takeSpecialDamage(3 * (scaledAmp + 1) + specialDamageBonus, 0.12);
-                        msg.append("§5").append(target.getDisplayName()).append(" -").append(dealt).append("HP ");
-                    } else if (effectType == StatusEffects.POISON.value()) {
-                        target.takeDamage(1 + scaledAmp);
-                        int poisonTurns = getScaledPotionTurns(player, CombatEffects.EffectType.POISON, sei.getDuration());
-                        target.stackPoison(poisonTurns, scaledAmp + 1);
-                        msg.append("§2").append(target.getDisplayName()).append(" poisoned ");
-                    } else if (effectType == StatusEffects.SLOWNESS.value()) {
-                        target.setSpeedBonus(target.getSpeedBonus() - (1 + scaledAmp));
-                        msg.append("§7").append(target.getDisplayName()).append(" slowed ");
-                    } else if (effectType == StatusEffects.WEAKNESS.value()) {
-                        target.setAttackPenalty(target.getAttackPenalty() + 2 + scaledAmp);
-                        msg.append("§8").append(target.getDisplayName()).append(" weakened ");
-                    } else if (effectType == StatusEffects.WITHER.value()) {
-                        int witherTurns = getScaledPotionTurns(player, CombatEffects.EffectType.WITHER, sei.getDuration());
-                        target.stackWither(witherTurns, scaledAmp);
-                        msg.append("§8").append(target.getDisplayName()).append(" withered ");
-                    } else if (effectType == StatusEffects.BLINDNESS.value() || effectType == StatusEffects.DARKNESS.value()) {
-                        target.setStunned(true);
-                        msg.append("§8").append(target.getDisplayName()).append(" stunned ");
-                    } else if (effectType == StatusEffects.LEVITATION.value()) {
-                        target.setSpeedBonus(target.getSpeedBonus() - (1 + scaledAmp));
-                        msg.append("§d").append(target.getDisplayName()).append(" levitating ");
-                    }
-                    hitCount++;
-                }
 
                 // === Apply effects to the player if caught in the blast ===
                 // Both buffs AND debuffs land on a self-targeted splash, matching vanilla

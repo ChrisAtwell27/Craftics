@@ -23,7 +23,18 @@ import net.fabricmc.loader.api.FabricLoader;
 public class GuideBookData {
     // Content version: 2026-07-15 - Airtime, Elytra launch, Wind Burst recoil, milk rework
 
-    public record Page(String title, String text) {}
+    /**
+     * One boxed feature on a page: an item icon, a bold name, a small right-aligned tag
+     * ("max III", "boots"...) and the body text. Rendered by GuideBookScreen as a bordered
+     * parchment panel, so list-style pages read as cards instead of a wall of prose.
+     */
+    public record Box(String iconItem, String name, String tag, String text) {}
+
+    public record Page(String title, String text, List<Box> boxes) {
+        /** Plain prose page - the common case. */
+        public Page(String title, String text) { this(title, text, null); }
+        public boolean boxed() { return boxes != null && !boxes.isEmpty(); }
+    }
     /** Structured bestiary stats. Any field may be null/empty -> badge hidden. */
     public record MobStats(String role, String hp, String atk, String def, String spd,
                            String rng, String size, String weak, String resist, String immune) {}
@@ -200,55 +211,66 @@ public class GuideBookData {
                 "Hover any enemy to inspect its live stats in the panel.")
         )));
         basics.add(new Entry("Tile Types", "minecraft:grass_block", List.of(
-            new Page("Arena Tiles",
-                "Normal Tiles - Walk freely on grass, stone, sand, etc.\n\n" +
-                "Obstacles - Trees, rocks, and walls block movement. Some can be mined with a pickaxe.\n\n" +
-                "Water Tiles - Require a boat in your inventory to cross (consumed on entry), or a Turtle Helmet to walk on. Enemies cannot cross water unless aquatic (like Drowned - who move double speed on it)."),
+            new Page("Arena Tiles", "", List.of(
+                new Box("minecraft:grass_block", "Normal Tiles", "",
+                    "Walk freely on grass, stone, sand and the rest."),
+                new Box("minecraft:oak_log", "Obstacles", "",
+                    "Trees, rocks and walls block movement. Some can be mined with a pickaxe."),
+                new Box("minecraft:water_bucket", "Water Tiles", "",
+                    "Need a boat to cross (consumed on entry) or a Turtle Helmet to walk on. Enemies can't cross unless aquatic - Drowned move double speed on it."))),
             new Page("Bushes & Stealth",
-                "Tall grass and ferns are BUSH tiles: step in to become hidden.\n\n" +
-                "Hidden players can't be targeted by enemies unless the enemy is adjacent. Great for breaking line of sight, escaping ranged mobs, or setting up ambushes.\n\n" +
-                "Bushes can be broken for 1 AP. The Silence trim extends your stealth range. In co-op, every party member who stays in a bush stays hidden."),
-            new Page("Building & Fire",
-                "Any plain full-cube block in your inventory can be PLACED as a temporary wall (lasts 4 turns). Funnel enemies, block charges, cover retreats.\n\n" +
-                "Fire spreads! Burning tiles ignite adjacent flammable obstacles each turn. Lava, fire cones and fire trails can turn a forest arena into a hazard zone - for both sides.")
+                "The Silence trim extends your stealth range. In co-op, every member who stays in a bush stays hidden.", List.of(
+                new Box("minecraft:tall_grass", "Bush Tiles", "stealth",
+                    "Step into tall grass or ferns to become Hidden: enemies can't target you unless adjacent. Break line of sight, escape ranged mobs, set up ambushes. Bushes can be broken for 1 AP."))),
+            new Page("Building & Fire", "", List.of(
+                new Box("minecraft:cobblestone", "Placed Walls", "4 turns",
+                    "Any plain full-cube block in your inventory can be placed as a temporary wall. Funnel enemies, block charges, cover retreats."),
+                new Box("minecraft:flint_and_steel", "Fire Spread", "",
+                    "Burning tiles ignite adjacent flammable obstacles each turn. Lava, fire cones and fire trails can turn a forest arena into a hazard zone - for both sides.")))
         )));
         basics.add(new Entry("Weapons & AP", "minecraft:diamond_sword", List.of(
             new Page("Attack Costs (AP)",
-                "Each weapon has its own AP cost per attack:\n\n" +
-                "1 AP - Swords, Hoes, Shovels, Bows, sticks/rods, corals, Trident melee\n" +
-                "2 AP - Axes, Mace, Trident throw\n" +
-                "4 AP - Crossbow (Quick Charge lowers it)\n\n" +
-                "Chainmail (Rogue) set reduces melee attack cost by 1 (min 1).\n\n" +
-                "Weapons lose durability on every attack; flimsy improvised weapons can break mid-fight."),
+                "Weapons lose durability on every attack; flimsy improvised weapons can break mid-fight. Chainmail (Rogue) set reduces melee cost by 1 (min 1).", List.of(
+                new Box("minecraft:iron_sword", "Light Attacks", "1 AP",
+                    "Swords, hoes, shovels, bows, sticks and rods, corals, trident melee."),
+                new Box("minecraft:iron_axe", "Heavy Attacks", "2 AP",
+                    "Axes, the mace, and trident throws."),
+                new Box("minecraft:crossbow", "Crossbow", "4 AP",
+                    "Quick Charge lowers it, one AP per level."))),
             new Page("Melee Weapons",
-                "Swords (1 AP, Slashing) - solid damage, range 1.\n" +
-                "Wood 5 / Stone 6 / Iron 9 / Gold 14 / Diamond 12 / Netherite 15.\n" +
-                "Diamond Sword: 30% native crit. Netherite Sword: executes weakened foes.\n\n" +
-                "Axes (2 AP, Cleaving) - heavy hits.\n" +
-                "Wood 8 / Stone 11 / Iron 15 / Gold 24 / Diamond 21 / Netherite 27.\n" +
-                "Chance per hit to ignore enemy armor.\n\n" +
-                "Yes - GOLD weapons are top-tier in Craftics. Fragile, but ferocious."),
-            new Page("Ranged Weapons",
-                "Bows (1 AP) - range 3, need arrows. Power adds damage AND range.\n\n" +
-                "Crossbows (4 AP) - fire in full straight lines across the whole arena (rook lines). Piercing, Multishot, Quick Charge all supported.\n\n" +
-                "Tridents - Melee stab (1 AP) when adjacent. Throw (2 AP) up to 5 tiles in straight/diagonal lines; lodges in the ground, walk over to retrieve. Loyalty: ricochets then auto-returns. Riptide: dash attack. Channeling: lightning strike."),
-            new Page("Special & Pet Weapons",
-                "Hoes (1 AP) - Special damage type. Low base damage but +3 per Special affinity point. The main melee for effect-based builds.\n\n" +
-                "Shovels (1 AP) - Pet damage type. Moderate damage boosted by Pet affinity. The main melee for pet/companion builds.\n\n" +
-                "Blunt oddballs - Stick & Bamboo (stun chance), Blaze Rod (fire), Breeze Rod (wind burst). Cheap, fun, surprisingly viable early.")
+                "Yes - GOLD weapons are top-tier in Craftics. Fragile, but ferocious.", List.of(
+                new Box("minecraft:golden_sword", "Swords", "1 AP · Slashing",
+                    "Solid damage, range 1. Wood 5 / Stone 6 / Iron 9 / Gold 14 / Diamond 12 / Netherite 15. Diamond: 30% crit. Netherite: executes weakened foes."),
+                new Box("minecraft:golden_axe", "Axes", "2 AP · Cleaving",
+                    "Heavy hits. Wood 8 / Stone 11 / Iron 15 / Gold 24 / Diamond 21 / Netherite 27. Chance per hit to ignore enemy armor."))),
+            new Page("Ranged Weapons", "", List.of(
+                new Box("minecraft:bow", "Bows", "1 AP",
+                    "Range 3, need arrows. Power adds damage AND range."),
+                new Box("minecraft:crossbow", "Crossbows", "4 AP",
+                    "Fire full straight lines across the whole arena. Piercing, Multishot, Quick Charge all supported."),
+                new Box("minecraft:trident", "Tridents", "1-2 AP",
+                    "Stab adjacent (1 AP) or throw up to 5 tiles (2 AP); lodges in the ground, walk over to retrieve."))),
+            new Page("Special & Pet Weapons", "", List.of(
+                new Box("minecraft:iron_hoe", "Hoes", "1 AP · Special",
+                    "Low base damage but +3 per Special affinity point. The main melee for effect builds."),
+                new Box("minecraft:iron_shovel", "Shovels", "1 AP · Pet",
+                    "Moderate damage boosted by Pet affinity. The main melee for companion builds."),
+                new Box("minecraft:stick", "Blunt Oddballs", "1 AP · Blunt",
+                    "Stick & bamboo (stun chance), blaze rod (fire), breeze rod (wind burst). Cheap and surprisingly viable early.")))
         )));
         basics.add(new Entry("Damage Types", "minecraft:amethyst_shard", List.of(
             new Page("The Eight Types",
-                "Every attack has a damage type. Every mob has weaknesses and resistances.\n\n" +
-                "Slashing - swords\n" +
-                "Cleaving - axes\n" +
-                "Blunt - maces, sticks, rods\n" +
-                "Ranged - bows, crossbows\n" +
-                "Water - tridents, corals, water throwables\n" +
-                "Special - hoes, sherds, horns, potions\n" +
-                "Pet - shovels and your allies\n" +
-                "Physical - bare fists\n\n" +
-                "Hitting a weakness deals bonus damage; hitting a resistance is reduced. Check the Bestiary badges!"),
+                "Every attack has a damage type; every mob has weaknesses and resistances. Check the Bestiary badges!", List.of(
+                new Box("minecraft:iron_sword", "Slashing", "", "Swords."),
+                new Box("minecraft:iron_axe", "Cleaving", "", "Axes."),
+                new Box("minecraft:mace", "Blunt", "", "Maces, clubs, sticks and rods."),
+                new Box("minecraft:bow", "Ranged", "", "Bows and crossbows."))),
+            new Page("The Eight Types (2)",
+                "Hitting a weakness deals bonus damage; hitting a resistance is reduced.", List.of(
+                new Box("minecraft:trident", "Water", "", "Tridents, corals and water throwables."),
+                new Box("minecraft:iron_hoe", "Special", "", "Hoes, sherds, horns and potions."),
+                new Box("minecraft:iron_shovel", "Pet", "", "Shovels and your allies."),
+                new Box("minecraft:leather", "Physical", "", "Bare fists."))),
             new Page("Affinity",
                 "Each damage type has an AFFINITY track. Points come from odd-numbered level-ups and gear.\n\n" +
                 "Every affinity point adds +3 damage of that type, plus a per-type perk (see Affinities in Leveling & Stats).\n\n" +
@@ -256,13 +278,19 @@ public class GuideBookData {
         )));
         basics.add(new Entry("Stacked Enemies", "minecraft:slime_ball", List.of(
             new Page("Mobs Riding Mobs",
-                "Some enemies arrive stacked:\n\n" +
-                "Zombie Stack - zombies on shoulders\n" +
-                "Skeleton/Zombie Horseman - rider + mount\n" +
-                "Piglin Cavalry - piglin riding a hoglin\n" +
-                "Slime Tower - three slimes high\n" +
-                "Blaze Tower - spinning fire column\n\n" +
-                "Kill the bottom layer and the top keeps fighting from the ground. Towers attack harder while taller - topple them fast, or burst the rider first.")
+                "Some enemies arrive stacked. Kill the bottom layer and the top keeps fighting from the ground.", List.of(
+                new Box("minecraft:zombie_spawn_egg", "Zombie Stack", "",
+                    "Zombies on shoulders."),
+                new Box("minecraft:skeleton_spawn_egg", "Horsemen", "",
+                    "Skeleton or zombie rider + mount."),
+                new Box("minecraft:piglin_spawn_egg", "Piglin Cavalry", "",
+                    "A piglin riding a hoglin."))),
+            new Page("Mobs Riding Mobs (2)",
+                "Towers attack harder while taller - topple them fast, or burst the rider first.", List.of(
+                new Box("minecraft:slime_spawn_egg", "Slime Tower", "",
+                    "Three slimes high."),
+                new Box("minecraft:blaze_spawn_egg", "Blaze Tower", "",
+                    "A spinning fire column.")))
         )));
         basics.add(new Entry("Food & Eating", "minecraft:golden_carrot", List.of(
             new Page("Eating in Combat",
@@ -1053,98 +1081,203 @@ public class GuideBookData {
         )));
         equipment.add(new Entry("Mob Heads", "minecraft:creeper_head", List.of(
             new Page("Head Slot Power",
-                "Wear a mob head instead of a helmet for +1 affinity point (= +3 damage) of its type:\n\n" +
-                "Zombie Head: +1 Physical\n" +
-                "Skeleton Skull: +1 Ranged\n" +
-                "Creeper Head: +1 Blunt\n" +
-                "Piglin Head: +1 Slashing\n" +
-                "Wither Skeleton Skull: +1 Special\n\n" +
-                "You give up the helmet's AC and set slot - pure offense, no defense.")
+                "Wear a mob head instead of a helmet for +1 affinity point (= +3 damage) of its type.", List.of(
+                new Box("minecraft:zombie_head", "Zombie Head", "+1 Physical",
+                    "Bare-fist and Physical-hit builds."),
+                new Box("minecraft:skeleton_skull", "Skeleton Skull", "+1 Ranged",
+                    "Bow and crossbow builds."),
+                new Box("minecraft:creeper_head", "Creeper Head", "+1 Blunt",
+                    "Mace, club and rod builds."))),
+            new Page("Head Slot Power (2)",
+                "You give up the helmet's AC and set slot - pure offense, no defense.", List.of(
+                new Box("minecraft:piglin_head", "Piglin Head", "+1 Slashing",
+                    "Sword builds."),
+                new Box("minecraft:wither_skeleton_skull", "Wither Skeleton Skull", "+1 Special",
+                    "Hoe, sherd and potion builds.")))
         )));
         equipment.add(new Entry("Enchantments", "minecraft:enchanted_book", List.of(
-            new Page("Sword Enchantments",
-                "Sharpness: +1 dmg/lvl + a Bleed stack per hit. Bleeding enemies take damage equal to their stacks every turn.\n\n" +
-                "Smite: radiant AoE burst vs undead - 2x level bonus damage in a radius that grows with level.\n\n" +
-                "Bane of Arthropods: injects venom into arthropods. Poison + Slowness.\n\n" +
-                "Fire Aspect: cone of fire in your swing direction. Burns all enemies in the cone (wider with Sweeping Edge)."),
-            new Page("Sword Enchantments (2)",
-                "Knockback: directional shockwave. Pushes the target + enemies behind them (level+1 tiles). Wall collision = bonus damage.\n\n" +
-                "Sweeping Edge: Lv1 hits a 3-wide chop, Lv2 a 5-tile arc, Lv3 a full 360° spin - at 60/75/90% damage. Lv3 adds knockback."),
-            new Page("Sword Enchantments (Slashing)",
-                "A sword is a WEAPON, not a focus. These count only on the sword you are actually holding.\n\n" +
-                "Conductive (max I): copy every negative effect you are carrying onto each enemy you hit, at its full remaining duration. Fight poisoned and your target ends up poisoned too.\n\n" +
-                "Reversal (max I): while you are at or below a quarter HP, a hit cleanses one debuff off you and lands for 1.5x. Above a quarter it does neither.\n\n" +
-                "Serrated (max III): you lose your sword sweep, but every hit applies Bleed stacks equal to the level. Bleeding enemies take damage every turn as their stacks climb."),
-            new Page("Sword Enchantments (2H)",
-                "Hilt and Dull are affinity converters. They fit swords and axes, and cut your damage in exchange for changing the affinity you hit with.\n\n" +
-                "Hilt (max I): your hits count as Physical and land for a quarter of their damage. The held weapon renders upside down while it is on.\n\n" +
-                "Dull (max I): your hits count as Blunt and land for half of their damage.\n\n" +
-                "Use them when a target resists your natural affinity but is weak to Physical or Blunt, or to arm a weapon type for a slot it was never built for."),
-            new Page("Bow & Crossbow Enchantments",
-                "Power: big scaling - 1/3/5/8/11 bonus damage and up to +3 range.\n\n" +
-                "Flame: burns target and all adjacent enemies.\n\n" +
-                "Infinity: never consume arrows (only need 1). Tipped arrows are still consumed.\n\n" +
-                "Punch: radial knockback burst on impact + collision damage.\n\n" +
-                "Quick Charge: -1 crossbow AP per level (min 1).\n" +
-                "Multishot: 3 bolts in a 45° fan.\n" +
-                "Piercing: bolts pierce 1+level targets (50% behind the first) + inflict Bleed."),
-            new Page("Mace Enchantments",
-                "Density: gravity well. Pulls nearby enemies to the impact point + crushing bonus damage.\n\n" +
-                "Breach: permanently reduces target defense per hit. Stacks all combat.\n\n" +
-                "Wind Burst: shockwave knockback on all adjacent - and it blows YOU a tile too, granting Airtime (1 turn) so your next weapon hit lands for 1.5x/2x/2.5x."),
-            new Page("Trident Enchantments",
-                "Impaling: +25% of your hit per level vs aquatic (never below 1/2/5/8/10), and +50% more on a Soaked target. Adds Bleed stacks (1/1/2/2/3).\n\n" +
-                "Channeling: lightning on throw hit - 3/6/10 damage, DOUBLED vs Soaked, chains to 1/3/5 extra targets at half damage (full vs Soaked).\n\n" +
-                "Loyalty: trident ricochets to 1 nearby enemy per level (50% damage) before returning.\n\n" +
-                "Riptide: dash through enemies instead of throwing - damage + knockback scale with level."),
-            new Page("Armor Enchantments",
-                "Protection (incl. Blast/Projectile Prot.): +1 Armor Class per 2 total levels worn.\n\n" +
-                "Thorns: 15% chance per level (boosted by Luck) to reflect damage back at attackers.\n\n" +
-                "Other vanilla armor enchants have no special combat effect - pick AC and set bonuses first."),
+            new Page("Sword Enchantments", "", List.of(
+                new Box("minecraft:iron_sword", "Sharpness", "vanilla",
+                    "+1 dmg/lvl and a Bleed stack per hit. Bleeding enemies take their stack count in damage every turn."),
+                new Box("minecraft:glowstone_dust", "Smite", "vanilla",
+                    "Radiant AoE burst vs undead - 2x level bonus damage in a radius that grows with level."),
+                new Box("minecraft:spider_eye", "Bane of Arthropods", "vanilla",
+                    "Injects venom into arthropods: Poison + Slowness."))),
+            new Page("Sword Enchantments (2)", "", List.of(
+                new Box("minecraft:blaze_powder", "Fire Aspect", "vanilla",
+                    "Cone of fire in your swing direction. Burns every enemy in the cone (wider with Sweeping Edge)."),
+                new Box("minecraft:piston", "Knockback", "vanilla",
+                    "Directional shockwave: pushes the target and enemies behind them (level+1 tiles). Wall collision adds damage."),
+                new Box("minecraft:diamond_sword", "Sweeping Edge", "vanilla",
+                    "Lv1 3-wide chop, Lv2 5-tile arc, Lv3 full 360° spin - at 60/75/90% damage. Lv3 adds knockback."))),
+            new Page("Slashing Swords",
+                "A sword is a WEAPON: these only count on the sword actually in your hand.", List.of(
+                new Box("minecraft:copper_ingot", "Conductive", "max I",
+                    "Copy every debuff you carry onto each enemy you hit, at full remaining duration."),
+                new Box("minecraft:totem_of_undying", "Reversal", "max I",
+                    "At or below a quarter HP, a hit cleanses one debuff off you and lands for 1.5x."),
+                new Box("minecraft:flint", "Serrated", "max III",
+                    "You lose your sweep; every hit applies Bleed stacks equal to the level."))),
+            new Page("Slashing Swords (2)", "", List.of(
+                new Box("minecraft:red_wool", "Matador", "max I",
+                    "Every attack you dodge, deflect or block Exposes the attacker (-2 DEF, 1 turn). Each miss is an opening."),
+                new Box("minecraft:tall_grass", "Phantom Edge", "max III",
+                    "Attacking from tall grass normally flattens it and reveals you. Phantom Edge preserves your cover, once per turn per level."),
+                new Box("minecraft:prismarine_shard", "Undertow", "max I",
+                    "An enemy whose attack you dodge is dragged 1 tile toward you - across hazards if they're in the way."))),
+            new Page("Slashing Swords (3)", "", List.of(
+                new Box("minecraft:redstone", "Hemorrhage", "max I",
+                    "Knocking back a Bleeding enemy detonates its Bleed: every stack converts to burst damage and clears. Serrated loads, any shove cashes in."),
+                new Box("minecraft:clock", "Ambush", "max I",
+                    "Killing an enemy BEFORE it acts this round frightens the next enemy in the order (-2 ATK, 1 turn). Read the order, break the line."))),
+            new Page("Affinity Converters",
+                "Hilt and Dull trade damage for a different hit affinity. They fit swords, axes and modded gear; Hilt also fits blunt weapons.", List.of(
+                new Box("minecraft:stick", "Hilt", "max I",
+                    "Your hits count as Physical at a quarter damage. The held weapon renders upside down while it is on."),
+                new Box("minecraft:wooden_sword", "Dull", "max I",
+                    "Your hits count as Blunt at half damage. For targets that resist your natural affinity."))),
+            new Page("Blunt Enchantments",
+                "The mace, clubs, hammers, quarterstaffs and greathammers have enchants of their own.", List.of(
+                new Box("minecraft:mace", "Crater", "max I",
+                    "Knockback flies 1 tile further; slamming into a wall, obstacle, cactus or another enemy deals extra damage and Stuns."),
+                new Box("minecraft:sugar", "Momentum", "max I",
+                    "Your killing blow banks +1 AP for the next party member in the order (solo: your next turn). Once per turn."))),
+            new Page("Blunt Enchantments (2)", "", List.of(
+                new Box("minecraft:bamboo", "Pole Vault", "max I",
+                    "Gap jumps cost the plain walk price, and you can vault clean OVER enemies - an occupied tile counts as a gap."),
+                new Box("minecraft:gold_ingot", "Midas", "max I",
+                    "Slamming an enemy into a wall shakes 1-2 emeralds into your bank, once per enemy per fight."))),
+            new Page("Bow Enchantments", "", List.of(
+                new Box("minecraft:bow", "Power", "vanilla",
+                    "Big scaling: 1/3/5/8/11 bonus damage and up to +3 range."),
+                new Box("minecraft:fire_charge", "Flame", "vanilla",
+                    "Burns the target and all adjacent enemies."),
+                new Box("minecraft:arrow", "Infinity", "vanilla",
+                    "Never consume arrows (you still need 1). Tipped arrows are still spent."))),
+            new Page("Bow & Crossbow (2)", "", List.of(
+                new Box("minecraft:slime_block", "Punch", "vanilla",
+                    "Radial knockback burst on impact, plus collision damage."),
+                new Box("minecraft:crossbow", "Quick Charge", "vanilla",
+                    "-1 crossbow AP per level (min 1)."),
+                new Box("minecraft:firework_rocket", "Multishot", "vanilla",
+                    "3 bolts in a 45° fan."),
+                new Box("minecraft:tipped_arrow", "Piercing", "vanilla",
+                    "Bolts pierce 1+level targets (50% behind the first) and inflict Bleed."))),
+            new Page("Mace Enchantments", "", List.of(
+                new Box("minecraft:anvil", "Density", "vanilla",
+                    "Gravity well: pulls nearby enemies to the impact point, plus crushing bonus damage."),
+                new Box("minecraft:iron_pickaxe", "Breach", "vanilla",
+                    "Permanently reduces target defense per hit. Stacks all combat."),
+                new Box("minecraft:wind_charge", "Wind Burst", "vanilla",
+                    "Shockwave knockback on all adjacent - and it blows YOU a tile too, granting Airtime for a 1.5x/2x/2.5x follow-up."))),
+            new Page("Trident Enchantments", "", List.of(
+                new Box("minecraft:trident", "Impaling", "vanilla",
+                    "+25% of your hit per level vs aquatic (floors of 1/2/5/8/10), +50% more vs Soaked. Adds Bleed stacks."),
+                new Box("minecraft:lightning_rod", "Channeling", "vanilla",
+                    "Lightning on throw hit: 3/6/10 damage, DOUBLED vs Soaked, chains to 1/3/5 extra targets."))),
+            new Page("Trident Enchantments (2)", "", List.of(
+                new Box("minecraft:name_tag", "Loyalty", "vanilla",
+                    "The trident ricochets to 1 nearby enemy per level (50% damage) before returning to hand."),
+                new Box("minecraft:heart_of_the_sea", "Riptide", "vanilla",
+                    "Dash through enemies instead of throwing - damage and knockback scale with level."))),
+            new Page("Armor (Vanilla)",
+                "Other vanilla armor enchants have no special combat effect - pick AC and set bonuses first.", List.of(
+                new Box("minecraft:diamond_chestplate", "Protection", "vanilla",
+                    "All Protection variants: +1 Armor Class per 2 total levels worn."),
+                new Box("minecraft:cactus", "Thorns", "vanilla",
+                    "15% chance per level (boosted by Luck) to reflect damage back at attackers."))),
             new Page("Focus Tools",
                 "Shovels and hoes are focuses, not weapons. They swing badly on purpose. Their value is the enchantment they carry.\n\n" +
                 "A focus works from ANYWHERE in your inventory. You never have to hold it.\n\n" +
                 "Carrying two of the same enchant does nothing - only the highest level counts. A second focus is only worth it for a DIFFERENT enchant.\n\n" +
                 "Find them in enchanting tables, enchanted books, the Wandering Enchanter, trial loot and traders."),
             new Page("Shovel Enchantments (Pet)",
-                "A shovel arms your pets. It does nothing for you directly.\n\n" +
-                "Honed (max V): your pets deal +1 damage per level.\n\n" +
-                "Fire Fang (max III): pets set what they hit alight for 2/3/4 turns.\n\n" +
-                "Water Fang (max III): pets apply Soaked for 2/3/4 turns.\n\n" +
-                "Thunder Fang (max III): pets shock every OTHER enemy within 1/2/3 tiles of the target for 3 lightning damage."),
-            new Page("Shovel Enchantments (2)",
-                "The three Fangs are exclusive - one shovel takes one element.\n\n" +
-                "But you can carry more than one shovel. Water Fang on one and Thunder Fang on another is the combo: the Soak lands first, and lightning does DOUBLE damage to a Soaked target.\n\n" +
-                "Seeker vexes are a spell's payload, not pets. They carry no Fangs and gain no Honed."),
+                "A shovel arms your pets. It does nothing for you directly.", List.of(
+                new Box("minecraft:grindstone", "Honed", "max V",
+                    "Your pets deal +1 damage per level."),
+                new Box("minecraft:fire_charge", "Fire Fang", "max III",
+                    "Pets set what they hit alight for 2/3/4 turns."),
+                new Box("minecraft:water_bucket", "Water Fang", "max III",
+                    "Pets apply Soaked for 2/3/4 turns."))),
+            new Page("Shovel Enchantments (2)", "", List.of(
+                new Box("minecraft:lightning_rod", "Thunder Fang", "max III",
+                    "Pets shock every OTHER enemy within 1/2/3 tiles of their target for 3 lightning damage."),
+                new Box("minecraft:bone", "Pack Bond", "max III",
+                    "Each pet deals +1 damage per OTHER living pet, per level. A bigger pack hits harder as one."),
+                new Box("minecraft:rotten_flesh", "Rabid", "max I",
+                    "Pets copy their own debuffs onto whatever they bite, at full remaining duration."))),
             new Page("Shovel Enchantments (3)",
-                "Pack Bond (max III): each pet deals +1 damage per OTHER living pet, per level. A lone pet gets nothing; a pet with two siblings gets +2 at level I, +6 at level III. A bigger party hits harder as one.\n\n" +
-                "Rabid (max I): your pets copy their own negative effects onto whatever they hit, at full remaining duration. A poisoned pet passes its poison on. Pair it with the Fangs so the debuff your pet inflicts is the debuff it spreads."),
+                "The three Fangs are exclusive - one shovel takes one element. But you can carry several shovels: Soak with Water Fang, then Thunder Fang lightning lands DOUBLE.", List.of(
+                new Box("minecraft:wither_rose", "Vengeful Bond", "max I",
+                    "An enemy that kills one of your pets is Marked 2 turns - double damage from every source."),
+                new Box("minecraft:lead", "Tag Team", "max I",
+                    "Once per turn, command a pet onto your own tile to SWAP places with it, free."))),
             new Page("Hoe Enchantments (Special)",
-                "A hoe rides on your Special-item casts: potions, banners, horns, charges, pearls and pottery sherds.\n\n" +
-                "Reserving (max III): +5% per level that a Special item costs no AP. Stacks with Special affinity's own chance.\n\n" +
-                "Performative (max III): 5% per level to cast the item TWICE. The encore is free - no extra item, no extra AP.\n\n" +
-                "Radiant (max V): +2 damage per level when a Special item hits an undead.\n\n" +
-                "Medic (max III): +2 HP per level to any healing a Special item does - to you, a teammate you feed, or a pet."),
+                "A hoe rides on your Special-item casts: potions, banners, horns, charges, pearls and sherds.", List.of(
+                new Box("minecraft:amethyst_shard", "Reserving", "max III",
+                    "+5% per level that a Special item costs no AP."),
+                new Box("minecraft:note_block", "Performative", "max III",
+                    "5% per level to cast the item TWICE. The encore is free."),
+                new Box("minecraft:glowstone_dust", "Radiant", "max V",
+                    "+2 damage per level when a Special item hits an undead."))),
+            new Page("Hoe Enchantments (2)", "", List.of(
+                new Box("minecraft:golden_apple", "Medic", "max III",
+                    "+2 HP per level to any healing a Special item does - you, a teammate, or a pet."),
+                new Box("minecraft:grass_block", "Terraform", "max I",
+                    "Tile-targeted Specials also normalize the tile: douse fire, drain water, fill sunken ground."),
+                new Box("minecraft:string", "Trapper", "max I",
+                    "A splash potion thrown at an empty tile buries as a hidden trap. The first enemy to stand there eats the full potion."))),
             new Page("Axe Enchantments (Cleaving)",
-                "An axe is a WEAPON, not a focus. Its enchantment only counts on the axe you are actually holding - one in your bag does nothing.\n\n" +
-                "Facade (max I): your axe hits 1.5x harder while you are suffering ANY debuff - poison, wither, burning, bleeding, soaked, confusion and the rest.\n\n" +
-                "It rewards fighting hurt. The bonus is live only while the debuff is, so it fades the moment you cleanse or it ticks out.\n\n" +
-                "Anything that burns or wounds YOU can be turned into damage. A debuff you inflict on yourself on purpose counts."),
-            new Page("Axe Enchantments (2)",
-                "Executioner (max III): +1 damage for every negative effect on the target, per level. A target under three debuffs takes +3 at level I, +9 at level III.\n\n" +
-                "It pairs with anything that stacks debuffs on the enemy - your own Bleed, poison, wither, soak and the rest all count. The more the target suffers, the harder the axe lands.")
+                "An axe is a WEAPON: the enchant only counts on the axe actually in your hand.", List.of(
+                new Box("minecraft:carved_pumpkin", "Facade", "max I",
+                    "Your axe hits 1.5x harder while YOU suffer any debuff. Fighting hurt becomes fighting angry - even a self-inflicted debuff counts."),
+                new Box("minecraft:netherite_axe", "Executioner", "max III",
+                    "+1 damage per debuff on the target, per level. Three debuffs at level III is +9."))),
+            new Page("Axe Enchantments (2)", "", List.of(
+                new Box("minecraft:tnt", "Demolisher", "max I",
+                    "Attack an adjacent obstacle to chop it off the battlefield. 1 AP, refunds 1 Speed. Cover becomes targets."),
+                new Box("minecraft:oak_log", "Timberfall", "max I",
+                    "Obstacles you demolish FALL: every enemy beside the chopped tile takes the hit and is Stunned under it."))),
+            new Page("Armor Enchantments",
+                "Armor enchants read from the piece actually WORN - one in your bag does nothing.", List.of(
+                new Box("minecraft:milk_bucket", "Iron Will", "helmet · I",
+                    "Confusion, Blindness and Darkness on you tick out at double speed."),
+                new Box("minecraft:white_banner", "Beacon", "helmet · I",
+                    "You are a walking banner: party members within 2 tiles gain the banner defense aura. Doesn't buff you."))),
+            new Page("Armor Enchantments (2)", "", List.of(
+                new Box("minecraft:shield", "Phalanx", "chest · I",
+                    "+1 AC for you and each adjacent party member while you stand shoulder to shoulder."),
+                new Box("minecraft:iron_chestplate", "Grudgeplate", "chest · I",
+                    "The last enemy to damage you takes +2 from the WHOLE party. A focus-fire pointer painted in bruises."))),
+            new Page("Armor Enchantments (3)", "", List.of(
+                new Box("minecraft:map", "Trailblazer", "legs · I",
+                    "Party members moving along tiles you crossed pay 1 less Speed, until your next turn."),
+                new Box("minecraft:rabbit_foot", "Longstride", "legs · I",
+                    "Your jumps clear gaps up to 3 tiles wide (base is 2)."))),
+            new Page("Armor Enchantments (4)", "", List.of(
+                new Box("minecraft:leather_boots", "Ledgegrip", "boots · I",
+                    "Once per combat, a knockback into a pit or deep water becomes a caught edge: 2 damage instead of death."),
+                new Box("minecraft:netherite_boots", "Shockstep", "boots · I",
+                    "Landing a gap jump stomps every adjacent enemy - damage plus a 1-turn Slow.")))
         )));
         equipment.add(new Entry("Tipped Arrows", "minecraft:tipped_arrow", List.of(
             new Page("Arrow Effects",
-                "Tipped arrows are consumed before regular arrows.\n\n" +
-                "Poison: applies Poison (damage over time)\n" +
-                "Slowness: -1 enemy speed for 2 turns\n" +
-                "Weakness: stuns the enemy\n" +
-                "Harming: +4 bonus damage\n" +
-                "Healing: restores 4 HP to you\n" +
-                "Wither: applies ramping Wither decay\n" +
-                "Fire Res: 3 turns of protection\n\n" +
-                "Infinity does NOT save tipped arrows!")
+                "Tipped arrows are consumed before regular arrows. Infinity does NOT save them!", List.of(
+                new Box("minecraft:spider_eye", "Poison Arrow", "",
+                    "Applies Poison - damage over time."),
+                new Box("minecraft:cobweb", "Slowness Arrow", "",
+                    "-1 enemy speed for 2 turns."),
+                new Box("minecraft:fermented_spider_eye", "Weakness Arrow", "",
+                    "Stuns the enemy."),
+                new Box("minecraft:tipped_arrow", "Harming Arrow", "",
+                    "+4 bonus damage on the hit."))),
+            new Page("Arrow Effects (2)", "", List.of(
+                new Box("minecraft:glistering_melon_slice", "Healing Arrow", "",
+                    "Restores 4 HP to YOU when it lands."),
+                new Box("minecraft:wither_rose", "Wither Arrow", "",
+                    "Applies ramping Wither decay."),
+                new Box("minecraft:magma_cream", "Fire Resistance Arrow", "",
+                    "3 turns of fire protection.")))
         )));
         CATEGORIES.add(new Category("Equipment", "minecraft:diamond_chestplate",
             "Armor sets, enchantments, and gear.", equipment));
@@ -1157,43 +1290,64 @@ public class GuideBookData {
                 "Each trimmed armor piece gives a stackable per-piece bonus. Wearing 4 pieces with the SAME trim activates a powerful Full Set Bonus.\n\n" +
                 "Trim templates drop from biome bosses (~35% chance, improved by Luck).\n" +
                 "Apply trims at a Smithing Table in the hub."),
-            new Page("Overworld Trims",
-                "Sentry: +1 Ranged Power /piece\n  Full Set: Overwatch (counter-attack ranged)\n\n" +
-                "Dune: +1 Blunt Power /piece\n  Full Set: Sandstorm (-1 Speed aura)\n\n" +
-                "Coast: +1 Water Power /piece\n  Full Set: Tidal (water heals)\n\n" +
-                "Wild: +1 AP /piece\n  Full Set: Feral (1.3x kill streak dmg)"),
-            new Page("Overworld Trims (cont.)",
-                "Wayfinder: +1 Speed /piece\n  Full Set: Pathfinder (ignore obstacles)\n\n" +
-                "Shaper: +1 Armor Class /piece\n  Full Set: Earthshatter (move 3+ tiles to deal 2 dmg around your destination)\n\n" +
-                "Raiser: +1 ally damage /piece\n  Full Set: Rally (allies +2 Spd, +1 Atk)\n\n" +
-                "Host: +4 max HP /piece\n  Full Set: Symbiote (heal 1 HP/kill)\n\n" +
-                "Tide: +1 HP regen per 2 turns /piece\n  Full Set: Ocean's Blessing (emergency heal)"),
-            new Page("Nether Trims",
-                "Ward: +1 Armor Class /piece\n  Full Set: Fortress (50% less dmg when stationary)\n\n" +
-                "Snout: +1 Cleaving Power /piece\n  Full Set: Brute Force (splash damage)\n\n" +
-                "Rib: +1 Special Power /piece\n  Full Set: Infernal (fire +3 bonus dmg)\n\n" +
-                "Eye: +1 Attack Range /piece\n  Full Set: Eagle Eye (ranged attacks +30% crit)"),
-            new Page("End & Trial Trims",
-                "Spire: +1 Luck /piece (+3% crit each)\n  Full Set: Fortune's Peak (double emeralds)\n\n" +
-                "Vex: Ignore 1 enemy DEF /piece\n  Full Set: Ethereal (20% deflect)\n\n" +
-                "Silence: +1 stealth range /piece\n  Full Set: Phantom (invisible 2 turns)\n\n" +
-                "Flow: +1 Speed /piece\n  Full Set: Current (kills refund 1 AP)\n\n" +
-                "Bolt: +1 Slashing Power /piece\n  Full Set: Thunderstrike (crits stun)"),
+            new Page("Overworld Trims", "", List.of(
+                new Box("minecraft:sentry_armor_trim_smithing_template", "Sentry", "+1 Ranged /piece",
+                    "Full Set: Overwatch - counter-attack ranged."),
+                new Box("minecraft:dune_armor_trim_smithing_template", "Dune", "+1 Blunt /piece",
+                    "Full Set: Sandstorm - a -1 Speed aura."),
+                new Box("minecraft:coast_armor_trim_smithing_template", "Coast", "+1 Water /piece",
+                    "Full Set: Tidal - water heals."))),
+            new Page("Overworld Trims (2)", "", List.of(
+                new Box("minecraft:wild_armor_trim_smithing_template", "Wild", "+1 AP /piece",
+                    "Full Set: Feral - 1.3x kill streak damage."),
+                new Box("minecraft:wayfinder_armor_trim_smithing_template", "Wayfinder", "+1 Speed /piece",
+                    "Full Set: Pathfinder - ignore obstacles."),
+                new Box("minecraft:shaper_armor_trim_smithing_template", "Shaper", "+1 AC /piece",
+                    "Full Set: Earthshatter - move 3+ tiles to deal 2 damage around your destination."))),
+            new Page("Overworld Trims (3)", "", List.of(
+                new Box("minecraft:raiser_armor_trim_smithing_template", "Raiser", "+1 ally dmg /piece",
+                    "Full Set: Rally - allies +2 Speed, +1 Attack."),
+                new Box("minecraft:host_armor_trim_smithing_template", "Host", "+4 max HP /piece",
+                    "Full Set: Symbiote - heal 1 HP per kill."),
+                new Box("minecraft:tide_armor_trim_smithing_template", "Tide", "+1 regen /2 turns",
+                    "Full Set: Ocean's Blessing - emergency heal."))),
+            new Page("Nether Trims", "", List.of(
+                new Box("minecraft:ward_armor_trim_smithing_template", "Ward", "+1 AC /piece",
+                    "Full Set: Fortress - 50% less damage while stationary."),
+                new Box("minecraft:snout_armor_trim_smithing_template", "Snout", "+1 Cleaving /piece",
+                    "Full Set: Brute Force - splash damage."),
+                new Box("minecraft:rib_armor_trim_smithing_template", "Rib", "+1 Special /piece",
+                    "Full Set: Infernal - fire +3 bonus damage."),
+                new Box("minecraft:eye_armor_trim_smithing_template", "Eye", "+1 range /piece",
+                    "Full Set: Eagle Eye - ranged attacks +30% crit."))),
+            new Page("End & Trial Trims", "", List.of(
+                new Box("minecraft:spire_armor_trim_smithing_template", "Spire", "+1 Luck /piece",
+                    "Full Set: Fortune's Peak - double emeralds."),
+                new Box("minecraft:vex_armor_trim_smithing_template", "Vex", "-1 enemy DEF /piece",
+                    "Full Set: Ethereal - 20% deflect."),
+                new Box("minecraft:silence_armor_trim_smithing_template", "Silence", "+1 stealth /piece",
+                    "Full Set: Phantom - invisible for 2 turns."))),
+            new Page("End & Trial Trims (2)", "", List.of(
+                new Box("minecraft:flow_armor_trim_smithing_template", "Flow", "+1 Speed /piece",
+                    "Full Set: Current - kills refund 1 AP."),
+                new Box("minecraft:bolt_armor_trim_smithing_template", "Bolt", "+1 Slashing /piece",
+                    "Full Set: Thunderstrike - crits stun."))),
             new Page("Trim Materials",
-                "The MATERIAL you use to apply a trim also grants a bonus!\n\n" +
-                "Iron: +1 Armor Class /piece\n" +
-                "Copper: +1 Speed /piece\n" +
-                "Gold: +1 Luck /piece\n" +
-                "Lapis: +1 Special Power /piece\n" +
-                "Emerald: +1 AP /piece"),
-            new Page("Trim Materials (cont.)",
-                "Diamond: +1 Melee Power /piece\n" +
-                "Netherite: +1 Armor Pen /piece\n" +
-                "Redstone: +1 Ranged Power /piece\n" +
-                "Amethyst: +1 HP Regen /piece\n" +
-                "Quartz: +4 Max HP /piece\n" +
-                "Resin: +1 Ally Damage /piece\n\n" +
-                "Pattern + Material stack! Mix for your build.")
+                "The MATERIAL you apply a trim with also grants a per-piece bonus.", List.of(
+                new Box("minecraft:iron_ingot", "Iron", "", "+1 Armor Class per piece."),
+                new Box("minecraft:copper_ingot", "Copper", "", "+1 Speed per piece."),
+                new Box("minecraft:gold_ingot", "Gold", "", "+1 Luck per piece."),
+                new Box("minecraft:lapis_lazuli", "Lapis", "", "+1 Special Power per piece."))),
+            new Page("Trim Materials (2)", "", List.of(
+                new Box("minecraft:emerald", "Emerald", "", "+1 AP per piece."),
+                new Box("minecraft:diamond", "Diamond", "", "+1 Melee Power per piece."),
+                new Box("minecraft:netherite_ingot", "Netherite", "", "+1 Armor Pen per piece."),
+                new Box("minecraft:redstone", "Redstone", "", "+1 Ranged Power per piece."))),
+            new Page("Trim Materials (3)",
+                "Pattern + Material stack! Mix for your build.", List.of(
+                new Box("minecraft:amethyst_shard", "Amethyst", "", "+1 HP Regen per piece."),
+                new Box("minecraft:quartz", "Quartz", "", "+4 Max HP per piece."),
+                new Box("minecraft:resin_clump|minecraft:orange_dye", "Resin", "", "+1 Ally Damage per piece.")))
         )));
         CATEGORIES.add(new Category("Armor Trims", "minecraft:coast_armor_trim_smithing_template",
             "Trim combat bonuses and full set effects.", trims));
@@ -1265,70 +1419,111 @@ public class GuideBookData {
         // === ITEMS & ABILITIES ===
         List<Entry> items = new ArrayList<>();
         items.add(new Entry("Combat Items", "minecraft:anvil", List.of(
-            new Page("Offensive Items",
-                "Anvil (1 AP): drops on the enemy - 1/2 its max HP (pristine), 1/3 (chipped), 1/4 (damaged), then breaks. Wears one stage per use unless Special affinity saves it (10% per point)\n" +
-                "TNT (2 AP): detonates next round - 8/5/3 dmg +24/15/9% max HP by distance, radius 2. Hurts everyone, including you\n" +
-                "Bell (2 AP): stun all enemies within 2 tiles\n" +
-                "Crossbow item-throw (2 AP): 3 DMG, 4-tile range\n" +
-                "Trident: melee (1 AP) or throw (2 AP)\n" +
-                "Fire Charge (1 AP): 4 fire DMG\n" +
-                "Spore Blossom (1 AP): radius-3 AoE, -1 Speed to enemies"),
-            new Page("Defensive & Utility",
-                "Totem (passive): auto-revive at half HP - or EAT it for a full heal\n" +
-                "Spyglass (2 AP): mark an enemy - it takes 2x damage (1.5x bosses) this turn and next, glows, and reveals its stats\n" +
-                "Compass (1 AP): reveal all positions\n" +
-                "Brush (1 AP): dig random loot from an adjacent tile\n" +
-                "Ender Pearl (1 AP): teleport - costs 2 HP on landing\n" +
-                "Wind Charge (1 AP): shove an enemy up to 3 tiles, or self-launch 2 tiles (grants Airtime: +2 ranged range and +0.5x next-hit damage per stack)\n" +
-                "Elytra (2 AP): hold it and launch to any tile that isn't a wall. Costs 2 durability and grants Airtime II for 2 turns. Water, lava and fire are legal landings, so watch where you aim\n" +
-                "Milk Bucket (3 AP): clears ALL status effects, good and bad. Works on yourself or an adjacent teammate. Returns the bucket"),
+            new Page("Offensive Items", "", List.of(
+                new Box("minecraft:anvil", "Anvil", "1 AP",
+                    "Drops on the enemy: 1/2 its max HP (pristine), 1/3 (chipped), 1/4 (damaged), then breaks. Special affinity can save the wear (10%/point)."),
+                new Box("minecraft:tnt", "TNT", "2 AP",
+                    "Detonates next round - 8/5/3 damage +24/15/9% max HP by distance, radius 2. Hurts everyone, including you."),
+                new Box("minecraft:bell", "Bell", "2 AP",
+                    "Stuns all enemies within 2 tiles."))),
+            new Page("Offensive Items (2)", "", List.of(
+                new Box("minecraft:crossbow", "Crossbow Item-Throw", "2 AP",
+                    "3 damage at 4-tile range."),
+                new Box("minecraft:fire_charge", "Fire Charge", "1 AP",
+                    "4 fire damage."),
+                new Box("minecraft:spore_blossom", "Spore Blossom", "1 AP",
+                    "Radius-3 AoE, -1 Speed to enemies."))),
+            new Page("Defensive Items", "", List.of(
+                new Box("minecraft:totem_of_undying", "Totem of Undying", "passive",
+                    "Auto-revive at half HP - or EAT it for a full heal."),
+                new Box("minecraft:spyglass", "Spyglass", "2 AP",
+                    "Mark an enemy: 2x damage (1.5x bosses) this turn and next, glows, reveals its stats."),
+                new Box("minecraft:compass", "Compass", "1 AP",
+                    "Reveals all positions."))),
+            new Page("Utility Items", "", List.of(
+                new Box("minecraft:brush", "Brush", "1 AP",
+                    "Dig random loot from an adjacent tile."),
+                new Box("minecraft:ender_pearl", "Ender Pearl", "1 AP",
+                    "Teleport - costs 2 HP on landing."),
+                new Box("minecraft:wind_charge", "Wind Charge", "1 AP",
+                    "Shove an enemy up to 3 tiles, or self-launch 2 tiles for Airtime (+2 ranged range, +0.5x next hit per stack)."))),
+            new Page("Utility Items (2)", "", List.of(
+                new Box("minecraft:elytra", "Elytra", "2 AP",
+                    "Launch to any tile that isn't a wall. 2 durability, grants Airtime II for 2 turns. Water, lava and fire are legal landings - aim well."),
+                new Box("minecraft:milk_bucket", "Milk Bucket", "3 AP",
+                    "Clears ALL your status effects, good and bad. Works on an adjacent teammate too. Returns the bucket."))),
             new Page("Goat Horns",
-                "Every horn costs 5 AP (Special-affinity scaled):\n\n" +
-                "Ponder: +2 DEF\n" +
-                "Sing: +2 regen\n" +
-                "Feel: +2 Speed\n" +
-                "Seek: +3 ATK\n" +
-                "Admire: -2 ATK on ALL enemies\n" +
-                "Call: -1 Speed on ALL enemies\n" +
-                "Dream: fire resistance\n" +
-                "Yearn: poison ALL enemies\n\n" +
-                "Horns don't break - one horn, every fight. But at 5 AP a horn is a setup tool, not something you chain: it costs more than a base turn's 3 AP, so you need AP from your stats, a trim, a set bonus or Haste to blow one at all. Open with it, then fight."),
-            new Page("Potions & Sherds",
-                "Drinkable potions work in combat - durations convert to turns, and Special affinity strengthens them.\n\n" +
-                "Splash & Lingering potions can be thrown for AoE effects; lingering leaves a cloud on the tiles.\n\n" +
-                "Pottery Sherds cast one-shot spells: Heart (heal+regen), Skull (execute), Prize (3x next hit), Arms Up (war cry), Blade (phantom slash), Snort (tectonic shove) and more.")
+                "Every horn costs 5 AP (Special-scaled) and never breaks. At 5 AP it's an opener, not a chain - you need bonus AP to blow one at all.", List.of(
+                new Box("minecraft:goat_horn", "Ponder", "+2 DEF", "Steady yourself before the wave."),
+                new Box("minecraft:goat_horn", "Sing", "+2 regen", "A healing verse."),
+                new Box("minecraft:goat_horn", "Feel", "+2 Speed", "Quicken the whole turn."),
+                new Box("minecraft:goat_horn", "Seek", "+3 ATK", "Sharpen the hunt."))),
+            new Page("Goat Horns (2)", "", List.of(
+                new Box("minecraft:goat_horn", "Admire", "-2 enemy ATK", "Every enemy swings softer."),
+                new Box("minecraft:goat_horn", "Call", "-1 enemy Speed", "Every enemy drags."),
+                new Box("minecraft:goat_horn", "Dream", "fire resist", "Walk the coals."),
+                new Box("minecraft:goat_horn", "Yearn", "poison all", "Every enemy sickens."))),
+            new Page("Potions & Sherds", "", List.of(
+                new Box("minecraft:potion", "Drinkable Potions", "",
+                    "Work in combat - durations convert to turns, Special affinity strengthens them."),
+                new Box("minecraft:splash_potion", "Splash & Lingering", "",
+                    "Thrown for AoE effects; lingering leaves a cloud on the tiles."),
+                new Box("minecraft:heart_pottery_sherd", "Pottery Sherds", "",
+                    "One-shot spells: Heart (heal+regen), Skull (execute), Prize (3x next hit), Arms Up (war cry), Blade (phantom slash), Snort (shove) and more.")))
         )));
         items.add(new Entry("Tile Effects", "minecraft:campfire", List.of(
-            new Page("Placed Items",
-                "Some items create lasting tile effects:\n\n" +
-                "Lava Bucket: 3 fire DMG/turn to enemies (keeps the empty bucket)\n" +
-                "Campfire: 2 HP/turn to allies in the surrounding 5x5 + light radius 3\n" +
-                "Honey Block: enemies lose all movement on it\n" +
-                "Slime Block: bouncy wall - knocks attackers back\n" +
-                "Powder Snow Bucket: freeze zone\n" +
-                "Lightning Rod: 4 AoE DMG next turn (2x vs Soaked)\n" +
-                "Cactus: 1 DMG/turn to adjacent enemies + blocks movement"),
-            new Page("Placed Items (2)",
-                "Banner: +2 DEF (Special-scaled) to allies within 2 tiles. Multiple banners don't stack - strongest wins\n" +
-                "Cake: heals 2 HP per bite, 3 bites, shareable\n" +
-                "Jukebox (2 AP): +3 Speed to all allies\n" +
-                "Hay Bale: heal an adjacent ally\n" +
-                "Any full block: temporary wall for 4 turns"),
+            new Page("Placed Items", "", List.of(
+                new Box("minecraft:lava_bucket", "Lava Bucket", "",
+                    "3 fire damage per turn to enemies. Keeps the empty bucket."),
+                new Box("minecraft:campfire", "Campfire", "",
+                    "2 HP/turn to allies in the surrounding 5x5, plus light radius 3."),
+                new Box("minecraft:honey_block", "Honey Block", "",
+                    "Enemies lose all movement on it."))),
+            new Page("Placed Items (2)", "", List.of(
+                new Box("minecraft:slime_block", "Slime Block", "",
+                    "Bouncy wall - knocks attackers back."),
+                new Box("minecraft:powder_snow_bucket", "Powder Snow", "",
+                    "A freeze zone."),
+                new Box("minecraft:lightning_rod", "Lightning Rod", "",
+                    "4 AoE damage next turn, doubled vs Soaked."))),
+            new Page("Placed Items (3)", "", List.of(
+                new Box("minecraft:cactus", "Cactus", "",
+                    "1 damage per turn to adjacent enemies, and blocks movement."),
+                new Box("minecraft:white_banner", "Banner", "",
+                    "+2 DEF (Special-scaled) to allies within 2 tiles. Banners don't stack - strongest wins."),
+                new Box("minecraft:cake", "Cake", "",
+                    "Heals 2 HP per bite, 3 bites, shareable."))),
+            new Page("Placed Items (4)", "", List.of(
+                new Box("minecraft:jukebox", "Jukebox", "2 AP",
+                    "+3 Speed to all allies."),
+                new Box("minecraft:hay_block", "Hay Bale", "",
+                    "Heal an adjacent ally."),
+                new Box("minecraft:cobblestone", "Any Full Block", "4 turns",
+                    "Placed as a temporary wall."))),
             new Page("Light Sources (vs Darkness)",
-                "Place to negate darkness effects:\n\n" +
-                "Torch: light radius 2 (small, fast)\n" +
-                "Lantern: light radius 3 + enemy detection\n" +
-                "Campfire: light radius 3 + healing\n\n" +
-                "Essential against The Hollow King - in darkness his minions hit harder, and his Phase 2 darkness is permanent.")
+                "Essential against The Hollow King - in darkness his minions hit harder, and his Phase 2 darkness is permanent.", List.of(
+                new Box("minecraft:torch", "Torch", "radius 2",
+                    "Small and fast."),
+                new Box("minecraft:lantern", "Lantern", "radius 3",
+                    "Light plus enemy detection."),
+                new Box("minecraft:campfire", "Campfire", "radius 3",
+                    "Light plus the healing aura.")))
         )));
         items.add(new Entry("Terrain Tools", "minecraft:iron_pickaxe", List.of(
-            new Page("Modify the Arena",
-                "Water Bucket: place a water tile on clean floor (fishable, keeps the bucket)\n" +
-                "Sponge: absorb adjacent water - but the sponge block itself blocks the tile\n" +
-                "Pickaxe: break an ADJACENT obstacle, make it walkable (costs durability)\n" +
-                "Scaffolding: +1 attack range while standing on it\n" +
-                "Fishing Rod (3 AP): random loot - stand adjacent to water\n\n" +
-                "Boats: cross water tiles (consumed on entry). Each co-op player needs their own.")
+            new Page("Modify the Arena", "", List.of(
+                new Box("minecraft:water_bucket", "Water Bucket", "",
+                    "Place a water tile on clean floor - fishable, keeps the bucket."),
+                new Box("minecraft:sponge", "Sponge", "",
+                    "Absorbs adjacent water, but the sponge block itself blocks the tile."),
+                new Box("minecraft:iron_pickaxe", "Pickaxe", "",
+                    "Break an ADJACENT obstacle and make it walkable. Costs durability."))),
+            new Page("Modify the Arena (2)", "", List.of(
+                new Box("minecraft:scaffolding", "Scaffolding", "",
+                    "+1 attack range while standing on it."),
+                new Box("minecraft:fishing_rod", "Fishing Rod", "3 AP",
+                    "Random loot - stand adjacent to water."),
+                new Box("minecraft:oak_boat", "Boats", "",
+                    "Cross water tiles (consumed on entry). Each co-op player needs their own.")))
         )));
         CATEGORIES.add(new Category("Items & Abilities", "minecraft:anvil",
             "Every usable item explained.", items));
@@ -1435,16 +1630,25 @@ public class GuideBookData {
                 "name <text> - rename the party\n\n" +
                 "Up to 4 players (server-configurable). The leader starts and controls biome entry from the hub, and the whole party joins the run together."),
             new Page("Co-op Basics",
-                "Craftics is fully co-op. The party shares the campaign and fights together on the same grid.\n\n" +
-                "- Players take their turns in rotation before the enemy phase\n" +
-                "- Enemies gain +25% HP per extra player\n" +
-                "- Loot and emeralds are attributed per player\n" +
-                "- Each player needs their own boat for water\n" +
-                "- Events (trials, shiny finds) are decided by party vote"),
-            new Page("Keeping Each Other Alive",
-                "Feed an ADJACENT teammate any food - same healing as eating it yourself.\n\n" +
-                "A teammate knocked below the arena or downed is rescued through the combat flow instead of dying to the void - pick them back up and keep fighting.\n\n" +
-                "Stealth, fire resistance and buffs are tracked per player, and bush stealth now holds for everyone hiding, not just whoever's turn it is.")
+                "Craftics is fully co-op. The party shares the campaign and fights together on the same grid.", List.of(
+                new Box("minecraft:clock", "Turn Rotation", "",
+                    "Players take their turns in rotation before the enemy phase."),
+                new Box("minecraft:zombie_spawn_egg", "Enemy Scaling", "+25% HP",
+                    "Enemies gain +25% HP per extra player."),
+                new Box("minecraft:emerald", "Loot & Emeralds", "per player",
+                    "Rewards are attributed to whoever earned them."))),
+            new Page("Co-op Basics (2)", "", List.of(
+                new Box("minecraft:oak_boat", "Water Crossings", "",
+                    "Each player needs their own boat."),
+                new Box("minecraft:paper", "Party Votes", "",
+                    "Events - trials, shiny finds, raids - are decided by party vote."))),
+            new Page("Keeping Each Other Alive", "", List.of(
+                new Box("minecraft:bread", "Feed a Teammate", "",
+                    "Feed an ADJACENT teammate any food - same healing as eating it yourself."),
+                new Box("minecraft:red_bed", "Downed, Not Dead", "",
+                    "A teammate knocked below the arena or downed is rescued through the combat flow - pick them back up and keep fighting."),
+                new Box("minecraft:potion", "Per-Player Effects", "",
+                    "Stealth, fire resistance and buffs are tracked per player. Bush stealth holds for everyone hiding, not just the turn-holder.")))
         )));
         CATEGORIES.add(new Category("Multiplayer", "minecraft:player_head",
             "Co-op rules and party play.", coop));
@@ -1486,65 +1690,89 @@ public class GuideBookData {
         List<Entry> addons = new ArrayList<>();
         addons.add(new Entry("Copper Age Backport", "minecraft:copper_ingot", List.of(
             new Page("Copper Gear",
-                "§6Copper Age Backport§r adds copper weapons + armor on versions before vanilla added them.\n\n" +
-                "Copper Sword, Axe, Pickaxe, Hoe, and Shovel slot in between stone and iron. Damage type matches the equivalent tool.\n\n" +
-                "Full Copper armor set: §6Marksman§r - +4 Ranged Power and ranged ricochet. Six Copper hybrid sets stack on top of the standard 15. See Ranged Loadouts for the full table.")
+                "§6Copper Age Backport§r adds copper gear on versions before vanilla did.", List.of(
+                new Box("minecraft:copper_ingot", "Copper Weapons & Tools", "",
+                    "Copper Sword, Axe, Pickaxe, Hoe and Shovel slot between stone and iron. Damage type matches the equivalent tool."),
+                new Box("minecraft:bow", "Marksman Set", "full set",
+                    "Full Copper armor: +4 Ranged Power and ranged ricochet. Six Copper hybrid sets stack on top of the standard 15 - see Ranged Loadouts.")))
         )));
         addons.add(new Entry("Artifacts", "minecraft:amethyst_shard", List.of(
             new Page("Head & Necklace",
-                "§5Artifacts§r - wearable trinkets via the Accessories slot system.\n\n" +
-                "Head: Night Vision Goggles +1 Range, Snorkel +1 Water + Soaked immune, Cowboy Hat pulls hits 1 tile closer, Villager Hat +50% emeralds.\n\n" +
-                "Necklace: Flame Pendant §cburns YOU for 2 HP/turn while worn and does nothing to enemies§r, Thorn Pendant reflects 25%, Cross Necklace halves the next hit, Shock Pendant 30% chain 3 dmg on hit."),
-            new Page("Hands & Belt",
-                "Hands: Power Glove +1 Melee, Golden Hook pulls hits closer, Lucky Scarf +1 Luck.\n\n" +
-                "Belt: Antidote Vessel cleanses poison, Cloud in a Bottle +1 Speed + jump, Obsidian Skull immune to fire damage, Pickaxe Heater pickaxes ignore obstacle armor."),
-            new Page("Feet & Curio",
-                "Feet: Running Shoes +1 Speed, Bunny Hoppers double KB resist, Steadfast Spikes pierce armor on melee, Kitty Slippers cancel first fall.\n\n" +
-                "Curio: Lucky Star double crit dmg, Eternal Steak non-consuming food, Pocket Piston pushes 2 tiles, Mimic kicks in custom mimic boss encounters at campsites.")
+                "§5Artifacts§r - wearable trinkets via the Accessories slot system.", List.of(
+                new Box("artifacts:night_vision_goggles|minecraft:leather_helmet", "Head Slot", "",
+                    "Night Vision Goggles +1 Range, Snorkel +1 Water + Soaked immune, Cowboy Hat pulls hits 1 tile closer, Villager Hat +50% emeralds."),
+                new Box("artifacts:cross_necklace|minecraft:gold_ingot", "Necklace Slot", "",
+                    "Flame Pendant §cburns YOU 2 HP/turn and does nothing to enemies§r, Thorn Pendant reflects 25%, Cross Necklace halves the next hit, Shock Pendant 30% chain 3 dmg."))),
+            new Page("Hands & Belt", "", List.of(
+                new Box("artifacts:power_glove|minecraft:leather", "Hands Slot", "",
+                    "Power Glove +1 Melee, Golden Hook pulls hits closer, Lucky Scarf +1 Luck."),
+                new Box("artifacts:obsidian_skull|minecraft:obsidian", "Belt Slot", "",
+                    "Antidote Vessel cleanses poison, Cloud in a Bottle +1 Speed + jump, Obsidian Skull fire-immune, Pickaxe Heater ignores obstacle armor."))),
+            new Page("Feet & Curio", "", List.of(
+                new Box("artifacts:running_shoes|minecraft:leather_boots", "Feet Slot", "",
+                    "Running Shoes +1 Speed, Bunny Hoppers double KB resist, Steadfast Spikes pierce armor on melee, Kitty Slippers cancel first fall."),
+                new Box("artifacts:lucky_scarf|minecraft:nether_star", "Curio Slot", "",
+                    "Lucky Star double crit dmg, Eternal Steak non-consuming food, Pocket Piston pushes 2 tiles, Mimic spawns custom mimic boss encounters at campsites.")))
         )));
         addons.add(new Entry("Golem Overhaul", "minecraft:carved_pumpkin", List.of(
             new Page("Golem Allies",
-                "§7Golem Overhaul§r adds 9 golem types as recruitable allies - from scrappy Cobblestone golems to the mighty Netherite Golem.\n\n" +
-                "The Netherite Golem is RIDEABLE: a 1x3 walking fortress with lava-line attacks. Press M while mounted for its special ability.\n\n" +
-                "Coal Golem: summon mid-fight for 3 AP - a disposable bodyguard on demand.")
+                "§7Golem Overhaul§r adds 9 golem types as recruitable allies.", List.of(
+                new Box("minecraft:carved_pumpkin", "Golem Roster", "9 types",
+                    "From scrappy Cobblestone golems to the mighty Netherite Golem."),
+                new Box("golemoverhaul:netherite_golem_spawn_egg|minecraft:netherite_ingot", "Netherite Golem", "rideable",
+                    "A 1x3 walking fortress with lava-line attacks. Press M while mounted for its special ability."),
+                new Box("golemoverhaul:coal_golem_spawn_egg|minecraft:coal", "Coal Golem", "3 AP",
+                    "Summon mid-fight - a disposable bodyguard on demand.")))
         )));
         addons.add(new Entry("More Totems", "minecraft:totem_of_undying", List.of(
             new Page("Totem Variants",
-                "§eMoreTotems§r adds 7 totem variants, each with its own revive twist - element resistances, buffs on trigger, and more.\n\n" +
-                "All work like the vanilla totem: carry to auto-revive, or eat for the heal.")
+                "All work like the vanilla totem: carry to auto-revive, or eat for the heal.", List.of(
+                new Box("minecraft:totem_of_undying", "MoreTotems", "7 variants",
+                    "Each variant has its own revive twist - element resistances, buffs on trigger, and more.")))
         )));
         addons.add(new Entry("Basic Weapons", "minecraft:iron_sword", List.of(
             new Page("The Six Weapons",
-                "§7Basic Weapons§r adds six weapon types in every tier from wood to netherite (no bronze):\n\n" +
-                "Dagger - Slashing, 1 AP, range 1. Dual-wield two daggers for a second hit at 75% damage, about 1.75x per turn for 1 AP.\n" +
-                "Spear - Slashing, 1 AP, range 2. Lower base damage that grows +20% per tile you walk before attacking, up to 2x.\n" +
-                "Quarterstaff - Blunt, 1 AP, range 2. Reach 2 plus a small sweep to adjacent foes.\n" +
-                "Club - Blunt, 2 AP, range 1. Chance to Slow on hit.\n" +
-                "Hammer - Blunt, 3 AP, range 1. Mace-style knockback, stun, and shockwave.\n" +
-                "Glaive - Cleaving, 3 AP, range 1. Full hit plus a half-damage wide cleave arc."),
+                "§7Basic Weapons§r adds six weapon types in every tier from wood to netherite (no bronze).", List.of(
+                new Box("basicweapons:iron_dagger|minecraft:iron_sword", "Dagger", "Slashing · 1 AP",
+                    "Range 1. Dual-wield two for a second hit at 75% damage - about 1.75x per turn for 1 AP."),
+                new Box("basicweapons:iron_spear|minecraft:trident", "Spear", "Slashing · 1 AP",
+                    "Range 2. Lower base damage that grows +20% per tile walked before attacking, up to 2x."),
+                new Box("basicweapons:iron_quarterstaff|minecraft:stick", "Quarterstaff", "Blunt · 1 AP",
+                    "Reach 2 plus a small sweep to adjacent foes."))),
+            new Page("The Six Weapons (2)", "", List.of(
+                new Box("basicweapons:iron_club|minecraft:wooden_sword", "Club", "Blunt · 2 AP",
+                    "Range 1. Chance to Slow on hit."),
+                new Box("basicweapons:iron_hammer|minecraft:mace", "Hammer", "Blunt · 3 AP",
+                    "Range 1. Mace-style knockback, stun and shockwave."),
+                new Box("basicweapons:iron_glaive|minecraft:iron_axe", "Glaive", "Cleaving · 3 AP",
+                    "Range 1. Full hit plus a half-damage wide cleave arc."))),
             new Page("Damage & Might",
-                "Damage tracks the vanilla weapons per tier:\n" +
-                "Dagger & Quarterstaff = Sword damage minus 1\n" +
-                "Spear = Sword damage minus 2 (before the movement bonus)\n" +
-                "Club = Axe damage\n" +
-                "Hammer & Glaive = Axe damage plus 1\n\n" +
-                "The §bMight§r enchantment goes on the Blunt weapons (Club, Hammer, Quarterstaff): +1 bonus damage and +5% stun chance per level.\n\n" +
-                "Daggers suit Slashing builds, Spears and Quarterstaffs give cheap reach, and the heavy Blunt and Cleaving weapons hit hardest for more AP.")
+                "Daggers suit Slashing builds, Spears and Quarterstaffs give cheap reach, the heavy Blunt and Cleaving weapons hit hardest for more AP.", List.of(
+                new Box("minecraft:iron_ingot", "Damage per Tier", "",
+                    "Dagger & Quarterstaff = Sword -1. Spear = Sword -2 (before movement bonus). Club = Axe. Hammer & Glaive = Axe +1."),
+                new Box("minecraft:enchanted_book", "Might", "blunt only",
+                    "Goes on Club, Hammer and Quarterstaff: +1 bonus damage and +5% stun chance per level.")))
         )));
         addons.add(new Entry("Instruments", "minecraft:note_block", List.of(
             new Page("Battle Bards",
-                "§dGenshin Instruments / Even More Instruments§r - 15 playable instruments double as Special-class performance weapons.\n\n" +
-                "Yes, you can fight the Wither with a lyre. Special affinity scales the encore.")
+                "Yes, you can fight the Wither with a lyre.", List.of(
+                new Box("minecraft:note_block", "Genshin / Even More Instruments", "15 instruments",
+                    "Playable instruments double as Special-class performance weapons. Special affinity scales the encore.")))
         )));
         addons.add(new Entry("Mob Variant Mods", "minecraft:creeper_spawn_egg", List.of(
             new Page("Creeper Overhaul",
-                "§2Creeper Overhaul§r adds biome-themed creepers.\n\n" +
-                "Each variant inherits base Creeper combat AI but with biome-flavored explosions (Cave Creeper blinds, Snowy Creeper slows, etc.). Plan for the post-blast status effect."),
-            new Page("Variants, Ventures & More",
-                "§3Variants & Ventures§r adds zombie, skeleton, and spider sub-variants with stat tweaks. Stats roll within the species' Craftics range, so existing loadouts handle them.\n\n" +
-                "§aSpring to Life§r adds variant cows, pigs, chickens - all taming + ally rules apply unchanged.\n\n" +
-                "§fPale Garden Backport§r brings the Creaking fight to older Minecraft versions.\n\n" +
-                "§bMulti Arrow Effects§r lets tipped arrows stack multiple effects per shot.")
+                "Plan for the post-blast status effect.", List.of(
+                new Box("minecraft:creeper_spawn_egg", "Creeper Overhaul", "",
+                    "Biome-themed creepers. Each variant inherits base Creeper combat AI with biome-flavored explosions - Cave Creeper blinds, Snowy Creeper slows, and so on."))),
+            new Page("Variants, Ventures & More", "", List.of(
+                new Box("minecraft:zombie_spawn_egg", "Variants & Ventures", "",
+                    "Zombie, skeleton and spider sub-variants with stat tweaks, rolled within the species' Craftics range."),
+                new Box("minecraft:pig_spawn_egg", "Spring to Life", "",
+                    "Variant cows, pigs and chickens - all taming and ally rules apply unchanged."),
+                new Box("minecraft:pale_oak_sapling|minecraft:dark_oak_sapling", "Pale Garden Backport", "",
+                    "Brings the Creaking fight to older Minecraft versions."),
+                new Box("minecraft:tipped_arrow", "Multi Arrow Effects", "",
+                    "Tipped arrows can stack multiple effects per shot.")))
         )));
         CATEGORIES.add(new Category("Addon Mods", "minecraft:copper_ingot",
             "Supported mods and what they add. Entries apply only if the mod is installed.", addons));

@@ -2,8 +2,10 @@ package com.crackedgames.craftics.api;
 
 import com.crackedgames.craftics.combat.CombatEffects;
 import com.crackedgames.craftics.combat.CombatEntity;
+import com.crackedgames.craftics.combat.CrafticsEnchantments;
 import com.crackedgames.craftics.combat.PlayerCombatStats;
 import com.crackedgames.craftics.combat.PlayerProgression;
+import com.crackedgames.craftics.combat.SwordAxeEnchantEffects;
 import com.crackedgames.craftics.combat.WeaponAbility;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
@@ -131,13 +133,20 @@ public final class Abilities {
             // Avoid zero-vector when player and target share a row/column axis
             if (dx == 0 && dz == 0) dx = 1;
 
+            // Crater enchant on the held weapon: push further, and slamming into whatever
+            // stopped the push hurts and Stuns. This loop only walks onto clear walkable
+            // tiles, so "stopped short" is the collision signal.
+            boolean crater = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.CRATER) > 0;
+            int reach = crater ? distance + SwordAxeEnchantEffects.CRATER_EXTRA_TILES : distance;
+
             GridPos kbPos = target.getGridPos();
             int pushed = 0;
-            for (int step = 0; step < distance; step++) {
+            boolean blocked = false;
+            for (int step = 0; step < reach; step++) {
                 GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
-                if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
+                if (!arena.isInBounds(next) || arena.isOccupied(next)) { blocked = true; break; }
                 var tile = arena.getTile(next);
-                if (tile == null || !tile.isWalkable()) break;
+                if (tile == null || !tile.isWalkable()) { blocked = true; break; }
                 kbPos = next;
                 pushed++;
             }
@@ -148,6 +157,12 @@ public final class Abilities {
                     target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
                 }
                 messages.add("§6Knocked back " + target.getDisplayName() + " " + pushed + " tile(s)!");
+            }
+            if (crater && blocked && target.isAlive()) {
+                int dealt = target.takeDamage(SwordAxeEnchantEffects.CRATER_COLLISION_DAMAGE);
+                target.setStunned(true);
+                messages.add("§6✸ Crater! " + target.getDisplayName() + " takes " + dealt
+                    + " more from the impact and is Stunned!");
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
         };
@@ -163,18 +178,21 @@ public final class Abilities {
             List<String> messages = new ArrayList<>();
             int kb = PlayerCombatStats.getKnockback(player);
             if (kb <= 0) return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
-            int distance = kb + 1;
+            // Crater enchant: same boost as knockbackDirection - push further, slam stuns.
+            boolean crater = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.CRATER) > 0;
+            int distance = kb + 1 + (crater ? SwordAxeEnchantEffects.CRATER_EXTRA_TILES : 0);
             GridPos pPos = arena.getPlayerGridPos();
             int dx = Integer.signum(target.getGridPos().x() - pPos.x());
             int dz = Integer.signum(target.getGridPos().z() - pPos.z());
             if (dx == 0 && dz == 0) dx = 1;
             GridPos kbPos = target.getGridPos();
             int pushed = 0;
+            boolean blocked = false;
             for (int step = 0; step < distance; step++) {
                 GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
-                if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
+                if (!arena.isInBounds(next) || arena.isOccupied(next)) { blocked = true; break; }
                 var tile = arena.getTile(next);
-                if (tile == null || !tile.isWalkable()) break;
+                if (tile == null || !tile.isWalkable()) { blocked = true; break; }
                 kbPos = next;
                 pushed++;
             }
@@ -185,6 +203,12 @@ public final class Abilities {
                     target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
                 }
                 messages.add("§6Knocked back " + target.getDisplayName() + " " + pushed + " tile(s)!");
+            }
+            if (crater && blocked && target.isAlive()) {
+                int dealt = target.takeDamage(SwordAxeEnchantEffects.CRATER_COLLISION_DAMAGE);
+                target.setStunned(true);
+                messages.add("§6✸ Crater! " + target.getDisplayName() + " takes " + dealt
+                    + " more from the impact and is Stunned!");
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
         };

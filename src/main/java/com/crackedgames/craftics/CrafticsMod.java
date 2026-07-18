@@ -707,6 +707,23 @@ public class CrafticsMod implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             var root = CommandManager.literal("craftics");
 
+            // The player an admin command should act on: the optional "player" argument when
+            // given, else the command source itself. Lets these commands run from the server
+            // console or a command block by naming a target, while staying self-targeting
+            // in-game. (Without a target, a console source throws the vanilla
+            // "requires a player" error, same as before.)
+            interface TargetResolver {
+                ServerPlayerEntity resolve(com.mojang.brigadier.context.CommandContext<ServerCommandSource> ctx)
+                    throws com.mojang.brigadier.exceptions.CommandSyntaxException;
+            }
+            TargetResolver targetOrSelf = ctx -> {
+                try {
+                    return net.minecraft.command.argument.EntityArgumentType.getPlayer(ctx, "player");
+                } catch (IllegalArgumentException noArg) {
+                    return ctx.getSource().getPlayerOrThrow();
+                }
+            };
+
             // /craftics warp: Artifacts Warp Drive activator. Arms the next attack to
             // ignore range/LOS and teleport adjacent to the target. Once per combat.
             root.then(CommandManager.literal("warp").executes(ctx -> {
@@ -923,26 +940,51 @@ public class CrafticsMod implements ModInitializer {
                 })));
 
             // /craftics reset_combat: force-clear corrupted combat state (inCombat, biome run)
-            root.then(CommandManager.literal("reset_combat").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+            // /craftics reset_combat [player]: THE stuck-fight fix. The target form is what
+            // makes it useful from the server console when the stuck player can't run it.
+            var resetCombatExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
                 ServerCommandSource src = ctx.getSource();
-                ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
                 CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
-                CrafticsSavedData.PlayerData pd = data.getPlayerData(cmdPlayer.getUuid());
+                CrafticsSavedData.PlayerData pd = data.getPlayerData(targetPlayer.getUuid());
                 pd.inCombat = false;
                 pd.endBiomeRun();
                 data.markDirty();
-                CombatManager cm = CombatManager.get(cmdPlayer);
+                CombatManager cm = CombatManager.get(targetPlayer);
                 if (cm.isActive()) cm.endCombat();
-                CombatManager.remove(cmdPlayer.getUuid());
+                CombatManager.remove(targetPlayer.getUuid());
                 // Tell the client to exit combat mode (camera, UI, controls)
-                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(cmdPlayer,
+                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(targetPlayer,
                     new com.crackedgames.craftics.network.ExitCombatPayload(false));
-                com.crackedgames.craftics.world.HubTeleports.toLobby(cmdPlayer);
-                cmdPlayer.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
-                cmdPlayer.clearStatusEffects();
-                src.sendFeedback(() -> Text.literal("§aCombat state reset. Teleported to hub."), true);
+                com.crackedgames.craftics.world.HubTeleports.toLobby(targetPlayer);
+                targetPlayer.changeGameMode(net.minecraft.world.GameMode.SURVIVAL);
+                targetPlayer.clearStatusEffects();
+                src.sendFeedback(() -> Text.literal("§aCombat state reset for "
+                    + targetPlayer.getName().getString() + ". Teleported to hub."), true);
                 return 1;
-            }));
+            };
+            root.then(CommandManager.literal("reset_combat").requires(src -> src.hasPermissionLevel(2))
+                .executes(resetCombatExec)
+                .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                    .executes(resetCombatExec)));
+
+            // /craftics config reload: re-read craftics-config from disk, so a server owner
+            // can tune scaling, timers and toggles live instead of restarting. Every
+            // CONFIG.foo() read is live, so changes apply immediately.
+            root.then(CommandManager.literal("config").requires(src -> src.hasPermissionLevel(2))
+                .then(CommandManager.literal("reload").executes(ctx -> {
+                    try {
+                        CONFIG.load();
+                        ctx.getSource().sendFeedback(
+                            () -> Text.literal("§aCraftics config reloaded from disk."), true);
+                        return 1;
+                    } catch (Exception e) {
+                        LOGGER.error("Config reload failed", e);
+                        ctx.getSource().sendError(
+                            Text.literal("§cConfig reload failed: " + e.getMessage()));
+                        return 0;
+                    }
+                })));
 
             // /craftics rebuild_arenas [biome]: wipe and regenerate arena blocks,
             // either all of them or just one biome's worth. Useful when a
@@ -1031,38 +1073,46 @@ public class CrafticsMod implements ModInitializer {
             }));
 
             // /craftics set_emeralds <amount>
+            var setEmeraldsExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                int amount = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "amount");
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
+                data.getPlayerData(targetPlayer.getUuid()).emeralds = amount;
+                data.markDirty();
+                src.sendFeedback(() -> Text.literal("§aSet " + targetPlayer.getName().getString()
+                    + "'s emeralds to " + amount + "."), true);
+                return 1;
+            };
             root.then(CommandManager.literal("set_emeralds").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        int amount = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "amount");
-                        ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
-                        CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
-                        data.getPlayerData(cmdPlayer.getUuid()).emeralds = amount;
-                        data.markDirty();
-                        src.sendFeedback(() -> Text.literal("§aSet emeralds to " + amount + "."), true);
-                        return 1;
-                    })));
+                    .executes(setEmeraldsExec)
+                    .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                        .executes(setEmeraldsExec))));
 
-            // /craftics set_level <level>: set player progression level
+            // /craftics set_level <level> [player]: set progression level
+            var setLevelExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                int level = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "level");
+                var progression = com.crackedgames.craftics.combat.PlayerProgression.get(src.getServer().getOverworld());
+                var stats = progression.getStats(targetPlayer);
+                stats.level = level;
+                // Credit the stat points this level owes; affinity points are
+                // derived from the level and become available in the respec menu.
+                stats.reconcilePoints();
+                progression.saveStats(targetPlayer);
+                com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(targetPlayer);
+                src.sendFeedback(() -> Text.literal("§aSet " + targetPlayer.getName().getString()
+                    + "'s level to " + level
+                    + " (" + stats.unspentPoints + " unspent stat points)."), true);
+                return 1;
+            };
             root.then(CommandManager.literal("set_level").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("level", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        ServerPlayerEntity player = src.getPlayerOrThrow();
-                        int level = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "level");
-                        var progression = com.crackedgames.craftics.combat.PlayerProgression.get(src.getServer().getOverworld());
-                        var stats = progression.getStats(player);
-                        stats.level = level;
-                        // Credit the stat points this level owes; affinity points are
-                        // derived from the level and become available in the respec menu.
-                        stats.reconcilePoints();
-                        progression.saveStats(player);
-                        com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(player);
-                        src.sendFeedback(() -> Text.literal("§aSet player level to " + level
-                            + " (" + stats.unspentPoints + " unspent stat points)."), true);
-                        return 1;
-                    })));
+                    .executes(setLevelExec)
+                    .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                        .executes(setLevelExec))));
 
             // /craftics info: display current save state
             root.then(CommandManager.literal("info").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
@@ -1082,16 +1132,20 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics heal: fully heal the player
-            root.then(CommandManager.literal("heal").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
-                ServerCommandSource src = ctx.getSource();
-                ServerPlayerEntity player = src.getPlayerOrThrow();
-                player.setHealth(player.getMaxHealth());
-                player.getHungerManager().setFoodLevel(20);
-                player.getHungerManager().setSaturationLevel(5.0f);
-                src.sendFeedback(() -> Text.literal("§aFully healed."), true);
+            // /craftics heal [player]: fully heal
+            var healExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                targetPlayer.setHealth(targetPlayer.getMaxHealth());
+                targetPlayer.getHungerManager().setFoodLevel(20);
+                targetPlayer.getHungerManager().setSaturationLevel(5.0f);
+                ctx.getSource().sendFeedback(() -> Text.literal("§aFully healed "
+                    + targetPlayer.getName().getString() + "."), true);
                 return 1;
-            }));
+            };
+            root.then(CommandManager.literal("heal").requires(src -> src.hasPermissionLevel(2))
+                .executes(healExec)
+                .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                    .executes(healExec)));
 
             // /craftics kill_enemies: kill all enemies in current combat
             root.then(CommandManager.literal("kill_enemies").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
@@ -1119,51 +1173,67 @@ public class CrafticsMod implements ModInitializer {
                 return 1;
             }));
 
-            // /craftics set_ap <amount>: set AP remaining during combat
+            // /craftics set_ap <amount> [player]: set AP remaining during combat
+            var setApExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                CombatManager cm = CombatManager.get(targetPlayer);
+                if (!cm.isActive()) {
+                    src.sendError(Text.literal("§c" + targetPlayer.getName().getString()
+                        + " has no active combat."));
+                    return 0;
+                }
+                int amount = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "amount");
+                cm.setApRemaining(amount);
+                src.sendFeedback(() -> Text.literal("§aSet " + targetPlayer.getName().getString()
+                    + "'s AP to " + amount + "."), true);
+                return 1;
+            };
             root.then(CommandManager.literal("set_ap").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
-                        if (!cm.isActive()) {
-                            src.sendError(Text.literal("§cNo active combat."));
-                            return 0;
-                        }
-                        int amount = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "amount");
-                        cm.setApRemaining(amount);
-                        src.sendFeedback(() -> Text.literal("§aSet AP to " + amount + "."), true);
-                        return 1;
-                    })));
+                    .executes(setApExec)
+                    .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                        .executes(setApExec))));
 
-            // /craftics set_speed <amount>: set move points remaining during combat
+            // /craftics set_speed <amount> [player]: set move points remaining during combat
+            var setSpeedExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                CombatManager cm = CombatManager.get(targetPlayer);
+                if (!cm.isActive()) {
+                    src.sendError(Text.literal("§c" + targetPlayer.getName().getString()
+                        + " has no active combat."));
+                    return 0;
+                }
+                int amount = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "amount");
+                cm.setMovePointsRemaining(amount);
+                src.sendFeedback(() -> Text.literal("§aSet " + targetPlayer.getName().getString()
+                    + "'s move points to " + amount + "."), true);
+                return 1;
+            };
             root.then(CommandManager.literal("set_speed").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        ServerPlayerEntity cmdPlayer = src.getPlayer(); if (cmdPlayer == null) { src.sendError(Text.literal("§cMust be a player.")); return 0; } CombatManager cm = CombatManager.get(cmdPlayer);
-                        if (!cm.isActive()) {
-                            src.sendError(Text.literal("§cNo active combat."));
-                            return 0;
-                        }
-                        int amount = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "amount");
-                        cm.setMovePointsRemaining(amount);
-                        src.sendFeedback(() -> Text.literal("§aSet move points to " + amount + "."), true);
-                        return 1;
-                    })));
+                    .executes(setSpeedExec)
+                    .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                        .executes(setSpeedExec))));
 
-            // /craftics set_ngplus <level>: set NG+ cycle
+            // /craftics set_ngplus <level> [player]: set NG+ cycle
+            var setNgplusExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerCommandSource src = ctx.getSource();
+                int level = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "level");
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
+                data.getPlayerData(targetPlayer.getUuid()).ngPlusLevel = level;
+                data.markDirty();
+                src.sendFeedback(() -> Text.literal("§aSet " + targetPlayer.getName().getString()
+                    + "'s NG+ level to " + level + "."), true);
+                return 1;
+            };
             root.then(CommandManager.literal("set_ngplus").requires(src -> src.hasPermissionLevel(2))
                 .then(CommandManager.argument("level", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        int level = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "level");
-                        ServerPlayerEntity cmdPlayer = src.getPlayerOrThrow();
-                        CrafticsSavedData data = CrafticsSavedData.get(src.getServer().getOverworld());
-                        data.getPlayerData(cmdPlayer.getUuid()).ngPlusLevel = level;
-                        data.markDirty();
-                        src.sendFeedback(() -> Text.literal("§aSet NG+ level to " + level + "."), true);
-                        return 1;
-                    })));
+                    .executes(setNgplusExec)
+                    .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                        .executes(setNgplusExec))));
 
             // /craftics set_stat <stat> <value>: set a specific stat's allocated points
             root.then(CommandManager.literal("set_stat").requires(src -> src.hasPermissionLevel(2))
@@ -1176,34 +1246,16 @@ public class CrafticsMod implements ModInitializer {
                         return builder.buildFuture();
                     })
                     .then(CommandManager.argument("value", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
-                        .executes(ctx -> {
-                            ServerCommandSource src = ctx.getSource();
-                            ServerPlayerEntity player = src.getPlayerOrThrow();
-                            String statName = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "stat").toUpperCase();
-                            int value = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "value");
-                            com.crackedgames.craftics.combat.PlayerProgression.Stat stat;
-                            try {
-                                stat = com.crackedgames.craftics.combat.PlayerProgression.Stat.valueOf(statName);
-                            } catch (IllegalArgumentException e) {
-                                src.sendError(Text.literal("§cUnknown stat: " + statName + ". Valid: speed, ap, melee_power, ranged_power, vitality, defense, luck, resourceful"));
-                                return 0;
-                            }
-                            var progression = com.crackedgames.craftics.combat.PlayerProgression.get(src.getServer().getOverworld());
-                            var stats = progression.getStats(player);
-                            int oldValue = stats.getPoints(stat);
-                            stats.setPoints(stat, value);
-                            progression.saveStats(player);
-                            com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(player);
-                            src.sendFeedback(() -> Text.literal("§aSet " + stat.displayName + " to " + value + " (was " + oldValue + ")."), true);
-                            return 1;
-                        }))));
+                        .executes(ctx -> setStatFor(ctx, targetOrSelf.resolve(ctx)))
+                        .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                            .executes(ctx -> setStatFor(ctx, targetOrSelf.resolve(ctx)))))));
 
-            // /craftics reset_stats: reset all player stats to defaults
-            root.then(CommandManager.literal("reset_stats").requires(src -> src.hasPermissionLevel(2)).executes(ctx -> {
+            // /craftics reset_stats [player]: reset all stats to defaults
+            var resetStatsExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
                 ServerCommandSource src = ctx.getSource();
-                ServerPlayerEntity player = src.getPlayerOrThrow();
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
                 var progression = com.crackedgames.craftics.combat.PlayerProgression.get(src.getServer().getOverworld());
-                var stats = progression.getStats(player);
+                var stats = progression.getStats(targetPlayer);
                 int totalAllocated = 0;
                 for (com.crackedgames.craftics.combat.PlayerProgression.Stat s :
                         com.crackedgames.craftics.combat.PlayerProgression.Stat.values()) {
@@ -1211,69 +1263,87 @@ public class CrafticsMod implements ModInitializer {
                     stats.setPoints(s, 0);
                 }
                 stats.unspentPoints += totalAllocated;
-                progression.saveStats(player);
-                com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(player);
+                progression.saveStats(targetPlayer);
+                com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(targetPlayer);
                 int refunded = stats.unspentPoints;
-                src.sendFeedback(() -> Text.literal("§aReset all stats. " + refunded + " unspent points available."), true);
+                src.sendFeedback(() -> Text.literal("§aReset " + targetPlayer.getName().getString()
+                    + "'s stats. " + refunded + " unspent points available."), true);
                 return 1;
-            }));
+            };
+            root.then(CommandManager.literal("reset_stats").requires(src -> src.hasPermissionLevel(2))
+                .executes(resetStatsExec)
+                .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                    .executes(resetStatsExec)));
 
-            // /craftics give <preset>: give a set of gear
+            // /craftics give <preset> [player]: give a set of gear. Each preset takes the
+            // optional target so a console/command block can outfit any player.
+            java.util.function.BiFunction<String, com.mojang.brigadier.Command<ServerCommandSource>,
+                    com.mojang.brigadier.builder.LiteralArgumentBuilder<ServerCommandSource>> givePreset =
+                (name, exec) -> CommandManager.literal(name)
+                    .executes(exec)
+                    .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                        .executes(exec));
             root.then(CommandManager.literal("give").requires(src -> src.hasPermissionLevel(2))
-                .then(CommandManager.literal("wood_gear").executes(ctx -> {
-                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-                    giveItems(player, net.minecraft.item.Items.WOODEN_SWORD, net.minecraft.item.Items.WOODEN_AXE,
+                .then(givePreset.apply("wood_gear", ctx -> {
+                    ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                    giveItems(targetPlayer, net.minecraft.item.Items.WOODEN_SWORD, net.minecraft.item.Items.WOODEN_AXE,
                         net.minecraft.item.Items.SHIELD, net.minecraft.item.Items.LEATHER_HELMET,
                         net.minecraft.item.Items.LEATHER_CHESTPLATE, net.minecraft.item.Items.LEATHER_LEGGINGS,
                         net.minecraft.item.Items.LEATHER_BOOTS);
-                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave wood + leather gear."), true);
+                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave "
+                        + targetPlayer.getName().getString() + " wood + leather gear."), true);
                     return 1;
                 }))
-                .then(CommandManager.literal("stone_gear").executes(ctx -> {
-                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-                    giveItems(player, net.minecraft.item.Items.STONE_SWORD, net.minecraft.item.Items.STONE_AXE,
+                .then(givePreset.apply("stone_gear", ctx -> {
+                    ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                    giveItems(targetPlayer, net.minecraft.item.Items.STONE_SWORD, net.minecraft.item.Items.STONE_AXE,
                         net.minecraft.item.Items.SHIELD, net.minecraft.item.Items.CHAINMAIL_HELMET,
                         net.minecraft.item.Items.CHAINMAIL_CHESTPLATE, net.minecraft.item.Items.CHAINMAIL_LEGGINGS,
                         net.minecraft.item.Items.CHAINMAIL_BOOTS);
-                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave stone + chainmail gear."), true);
+                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave "
+                        + targetPlayer.getName().getString() + " stone + chainmail gear."), true);
                     return 1;
                 }))
-                .then(CommandManager.literal("iron_gear").executes(ctx -> {
-                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-                    giveItems(player, net.minecraft.item.Items.IRON_SWORD, net.minecraft.item.Items.IRON_AXE,
+                .then(givePreset.apply("iron_gear", ctx -> {
+                    ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                    giveItems(targetPlayer, net.minecraft.item.Items.IRON_SWORD, net.minecraft.item.Items.IRON_AXE,
                         net.minecraft.item.Items.SHIELD, net.minecraft.item.Items.IRON_HELMET,
                         net.minecraft.item.Items.IRON_CHESTPLATE, net.minecraft.item.Items.IRON_LEGGINGS,
                         net.minecraft.item.Items.IRON_BOOTS, net.minecraft.item.Items.BOW);
-                    giveStack(player, net.minecraft.item.Items.ARROW, 64);
-                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave iron gear + bow."), true);
+                    giveStack(targetPlayer, net.minecraft.item.Items.ARROW, 64);
+                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave "
+                        + targetPlayer.getName().getString() + " iron gear + bow."), true);
                     return 1;
                 }))
-                .then(CommandManager.literal("diamond_gear").executes(ctx -> {
-                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-                    giveItems(player, net.minecraft.item.Items.DIAMOND_SWORD, net.minecraft.item.Items.DIAMOND_AXE,
+                .then(givePreset.apply("diamond_gear", ctx -> {
+                    ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                    giveItems(targetPlayer, net.minecraft.item.Items.DIAMOND_SWORD, net.minecraft.item.Items.DIAMOND_AXE,
                         net.minecraft.item.Items.SHIELD, net.minecraft.item.Items.DIAMOND_HELMET,
                         net.minecraft.item.Items.DIAMOND_CHESTPLATE, net.minecraft.item.Items.DIAMOND_LEGGINGS,
                         net.minecraft.item.Items.DIAMOND_BOOTS, net.minecraft.item.Items.BOW,
                         net.minecraft.item.Items.CROSSBOW, net.minecraft.item.Items.TRIDENT);
-                    giveStack(player, net.minecraft.item.Items.ARROW, 64);
-                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave diamond gear + ranged weapons."), true);
+                    giveStack(targetPlayer, net.minecraft.item.Items.ARROW, 64);
+                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave "
+                        + targetPlayer.getName().getString() + " diamond gear + ranged weapons."), true);
                     return 1;
                 }))
-                .then(CommandManager.literal("netherite_gear").executes(ctx -> {
-                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-                    giveItems(player, net.minecraft.item.Items.NETHERITE_SWORD, net.minecraft.item.Items.NETHERITE_AXE,
+                .then(givePreset.apply("netherite_gear", ctx -> {
+                    ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                    giveItems(targetPlayer, net.minecraft.item.Items.NETHERITE_SWORD, net.minecraft.item.Items.NETHERITE_AXE,
                         net.minecraft.item.Items.MACE, net.minecraft.item.Items.SHIELD,
                         net.minecraft.item.Items.NETHERITE_HELMET, net.minecraft.item.Items.NETHERITE_CHESTPLATE,
                         net.minecraft.item.Items.NETHERITE_LEGGINGS, net.minecraft.item.Items.NETHERITE_BOOTS,
                         net.minecraft.item.Items.BOW, net.minecraft.item.Items.CROSSBOW, net.minecraft.item.Items.TRIDENT);
-                    giveStack(player, net.minecraft.item.Items.ARROW, 64);
-                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave netherite gear + all weapons."), true);
+                    giveStack(targetPlayer, net.minecraft.item.Items.ARROW, 64);
+                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave "
+                        + targetPlayer.getName().getString() + " netherite gear + all weapons."), true);
                     return 1;
                 }))
-                .then(CommandManager.literal("potions").executes(ctx -> {
-                    ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
-                    givePotions(player);
-                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave combat potions."), true);
+                .then(givePreset.apply("potions", ctx -> {
+                    ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                    givePotions(targetPlayer);
+                    ctx.getSource().sendFeedback(() -> Text.literal("§aGave "
+                        + targetPlayer.getName().getString() + " combat potions."), true);
                     return 1;
                 })));
 
@@ -1402,7 +1472,37 @@ public class CrafticsMod implements ModInitializer {
                     com.crackedgames.craftics.combat.InfiniteRunManager.abandonRun(player);
                     com.crackedgames.craftics.world.HubTeleports.toHub(player);
                     return 1;
-                })));
+                    // /craftics infinite stop <player> (op only): force-end ANOTHER player's
+                    // run - live or parked - from anywhere, including the server console. The
+                    // admin recovery for a hung run whose host can't (or won't) clear it.
+                    }).then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                        .requires(src -> src.hasPermissionLevel(2))
+                        .executes(ctx -> {
+                            ServerPlayerEntity targetPlayer =
+                                net.minecraft.command.argument.EntityArgumentType.getPlayer(ctx, "player");
+                            CrafticsSavedData stopData =
+                                CrafticsSavedData.get(targetPlayer.getServer().getOverworld());
+                            CrafticsSavedData.PlayerData tpd = stopData.getPlayerData(targetPlayer.getUuid());
+                            if (tpd.infiniteRunHost.isEmpty() && !tpd.infiniteActive) {
+                                ctx.getSource().sendError(Text.literal("§c"
+                                    + targetPlayer.getName().getString() + " is not in an infinite run."));
+                                return 0;
+                            }
+                            // Hosts end the whole run (endRun handles live AND parked states,
+                            // and is safe to call twice); a mere participant just steps out.
+                            if (tpd.infiniteActive) {
+                                com.crackedgames.craftics.combat.InfiniteRunManager.endRun(
+                                    targetPlayer.getServer(), targetPlayer.getUuid(), "admin stop");
+                                tpd.infiniteRunHost = "";
+                                stopData.markDirty();
+                            } else {
+                                com.crackedgames.craftics.combat.InfiniteRunManager.abandonRun(targetPlayer);
+                            }
+                            com.crackedgames.craftics.world.HubTeleports.toHub(targetPlayer);
+                            ctx.getSource().sendFeedback(() -> Text.literal("§aEnded "
+                                + targetPlayer.getName().getString() + "'s infinite run."), true);
+                            return 1;
+                        }))));
 
             dispatcher.register(root);
 
@@ -2241,6 +2341,31 @@ public class CrafticsMod implements ModInitializer {
                 net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p, payload);
             } catch (Throwable ignored) {}
         }
+    }
+
+    /** Body of {@code /craftics set_stat <stat> <value> [player]}, shared by both arg shapes. */
+    private static int setStatFor(com.mojang.brigadier.context.CommandContext<ServerCommandSource> ctx,
+                                  ServerPlayerEntity targetPlayer) {
+        ServerCommandSource src = ctx.getSource();
+        String statName = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "stat").toUpperCase();
+        int value = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "value");
+        com.crackedgames.craftics.combat.PlayerProgression.Stat stat;
+        try {
+            stat = com.crackedgames.craftics.combat.PlayerProgression.Stat.valueOf(statName);
+        } catch (IllegalArgumentException e) {
+            src.sendError(Text.literal("§cUnknown stat: " + statName
+                + ". Valid: speed, ap, melee_power, ranged_power, vitality, defense, luck, resourceful"));
+            return 0;
+        }
+        var progression = com.crackedgames.craftics.combat.PlayerProgression.get(src.getServer().getOverworld());
+        var stats = progression.getStats(targetPlayer);
+        int oldValue = stats.getPoints(stat);
+        stats.setPoints(stat, value);
+        progression.saveStats(targetPlayer);
+        com.crackedgames.craftics.network.ModNetworking.syncPlayerStats(targetPlayer);
+        src.sendFeedback(() -> Text.literal("§aSet " + targetPlayer.getName().getString() + "'s "
+            + stat.displayName + " to " + value + " (was " + oldValue + ")."), true);
+        return 1;
     }
 
     private static void giveItems(ServerPlayerEntity player, net.minecraft.item.Item... items) {

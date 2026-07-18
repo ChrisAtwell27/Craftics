@@ -90,6 +90,16 @@ public final class InfiniteRunManager {
 
     private static final Random RNG = new Random();
 
+    /**
+     * Participants who have been OFFERED the run-start class selection and haven't answered
+     * yet. Transient on purpose: the pick is only valid while the offer is outstanding, so a
+     * stray or replayed {@code InfiniteClassPickPayload} can never grant a second class. A
+     * server restart mid-offer simply drops the offer - the player continues classless,
+     * exactly as if they'd skipped.
+     */
+    private static final java.util.Set<UUID> pendingClassOffers =
+        java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
     // ─── Init ──────────────────────────────────────────────────────────────────
 
     /** Called once from CrafticsMod.onInitialize. */
@@ -258,6 +268,7 @@ public final class InfiniteRunManager {
                 "§7Your items and levels are stashed away - you start from nothing."), false);
             member.sendMessage(Text.literal(
                 "§7Emeralds you earn are yours to keep. Everything else stays behind."), false);
+            offerClassSelection(member);
         }
         data.markDirty();
         CrafticsMod.LOGGER.info("Infinite run started by {} with {} player(s)",
@@ -284,6 +295,67 @@ public final class InfiniteRunManager {
         // Infinite runs always begin with a tiny wood bootstrap for crafting.
         player.giveItemStack(new ItemStack(Items.OAK_LOG, 2));
         progression.resetForInfiniteRun(player.getUuid());
+    }
+
+    // ─── Class selection ───────────────────────────────────────────────────────
+
+    /** Send the class-selection offer and arm the one-shot pick guard. */
+    private static void offerClassSelection(ServerPlayerEntity member) {
+        pendingClassOffers.add(member.getUuid());
+        ServerPlayNetworking.send(member,
+            new com.crackedgames.craftics.network.InfiniteClassOfferPayload());
+    }
+
+    /**
+     * The starter weapon each class begins with. Deliberately modest - the run starts from
+     * NOTHING, so a stone tool is a real leg up without skipping the early scramble.
+     */
+    private static ItemStack classWeaponFor(PlayerProgression.Affinity affinity) {
+        return switch (affinity) {
+            case SLASHING -> new ItemStack(Items.STONE_SWORD);
+            case CLEAVING -> new ItemStack(Items.STONE_AXE);
+            case BLUNT -> new ItemStack(Items.STICK);
+            case RANGED -> new ItemStack(Items.BOW);
+            case WATER -> new ItemStack(Items.HORN_CORAL);
+            case SPECIAL -> new ItemStack(Items.STONE_HOE);
+            case PET -> new ItemStack(Items.STONE_SHOVEL);
+            case PHYSICAL -> new ItemStack(Items.SHIELD);
+        };
+    }
+
+    /**
+     * Resolve a player's class pick from the run-start screen: +1 point in the chosen
+     * affinity and its starter weapon (Ranged also gets a handful of arrows). Ordinal
+     * {@code -1} is an explicit skip. Ignored entirely unless this player has an
+     * outstanding offer, so the packet can neither be replayed nor forged mid-run.
+     */
+    public static void applyClassPick(ServerPlayerEntity player, int affinityOrdinal) {
+        if (!pendingClassOffers.remove(player.getUuid())) return;
+
+        if (affinityOrdinal < 0 || affinityOrdinal >= PlayerProgression.Affinity.values().length) {
+            player.sendMessage(Text.literal(
+                "§7No class - just you, your wits, and two logs. Good luck."), false);
+            return;
+        }
+        PlayerProgression.Affinity affinity = PlayerProgression.Affinity.values()[affinityOrdinal];
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        PlayerProgression progression = PlayerProgression.get(world);
+        PlayerProgression.PlayerStats stats = progression.getStats(player);
+        stats.setAffinityPoints(affinity, stats.getAffinityPoints(affinity) + 1);
+        progression.saveStats(player);
+
+        ItemStack weapon = classWeaponFor(affinity);
+        String weaponName = weapon.getName().getString();
+        player.giveItemStack(weapon);
+        if (affinity == PlayerProgression.Affinity.RANGED) {
+            player.giveItemStack(new ItemStack(Items.ARROW, 8));
+        }
+
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        syncStats(player, progression, data.getPlayerData(player.getUuid()));
+        player.sendMessage(Text.literal("§5§l∞ " + affinity.icon + " §r§d"
+            + affinity.displayName + " class!§7 +1 " + affinity.displayName
+            + " affinity and a " + weaponName + " to open with."), false);
     }
 
     // ─── Boss clear → rest room ───────────────────────────────────────────────
@@ -541,6 +613,9 @@ public final class InfiniteRunManager {
                 unparkHost(member, pd, progression);
             } else {
                 stashAndReset(member, pd, progression);
+                // A fresh clean slate deserves the class pick; the host resumed with their
+                // run profile intact, so their earlier choice (or skip) stands.
+                offerClassSelection(member);
             }
             syncStats(member, progression, pd);
             member.sendMessage(Text.literal("§5§l∞ RUN RESUMED ∞"), false);

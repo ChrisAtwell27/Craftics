@@ -428,13 +428,20 @@ public class ClientGridHelper {
                 }
 
                 // --- jump a gap, landing beyond it (mirrors Pathfinding.findPlayerPathWithJumps) ---
-                for (int gap = 1; gap <= JUMP_MAX_GAP; gap++) {
+                boolean vault = hasPoleVault(client);
+                for (int gap = 1; gap <= jumpMaxGap(client); gap++) {
                     boolean clear = true;
                     for (int g = 1; g <= gap && clear; g++) {
                         GridPos over = new GridPos(current.x() + dir.x() * g, current.z() + dir.z() * g);
-                        if (!inBounds(over, w, h) || !isJumpableGap(client, over)
-                                || blockers.contains(over)) {
-                            clear = false; // cannot vault an enemy, or a tile that isn't a gap
+                        // Mirrors Pathfinding.canJumpOver: a hazard gap must be empty (unless
+                        // Pole Vault clears heads), and Pole Vault may also treat an OCCUPIED
+                        // ordinary tile as a vaultable gap.
+                        boolean occupied = blockers.contains(over);
+                        boolean overOk = isJumpableGap(client, over)
+                            ? (!occupied || vault)
+                            : (vault && occupied);
+                        if (!inBounds(over, w, h) || !overOk) {
+                            clear = false;
                         }
                     }
                     if (!clear) continue;
@@ -448,7 +455,7 @@ public class ClientGridHelper {
                     if (!isTileWalkable(client, land) || isJumpableGap(client, land)) continue;
 
                     relaxClient(open, dist, cameFrom, current, land,
-                        currentDist + jumpCost(gap), maxSteps);
+                        currentDist + jumpCost(client, gap), maxSteps);
                 }
             }
         }
@@ -461,6 +468,39 @@ public class ClientGridHelper {
     /** Speed a jump costs: the walk it replaces, plus one. Must match {@code Pathfinding.jumpCost}. */
     public static int jumpCost(int gapTiles) {
         return gapTiles + 2;
+    }
+
+    // ── Client mirror of the server's JumpProfile ───────────────────────────
+    // The server builds its profile from the acting player's held weapon and worn leggings
+    // (CombatManager.playerJumpProfile). The client reads ITS OWN copies of those same
+    // stacks, so the preview and the resolved route can never disagree.
+
+    /** Pole Vault held: jumps cost the plain walk price and may clear enemy-occupied tiles. */
+    public static boolean hasPoleVault(MinecraftClient client) {
+        if (client == null || client.player == null) return false;
+        return com.crackedgames.craftics.combat.PlayerCombatStats.getEnchantLevel(
+            client.player.getMainHandStack(),
+            com.crackedgames.craftics.combat.CrafticsEnchantments.POLE_VAULT.fullId()) > 0;
+    }
+
+    /** Longstride leggings worn: jumps clear gaps up to 3 tiles. */
+    public static boolean hasLongstride(MinecraftClient client) {
+        if (client == null || client.player == null) return false;
+        return com.crackedgames.craftics.combat.PlayerCombatStats.getEnchantLevel(
+            client.player.getEquippedStack(net.minecraft.entity.EquipmentSlot.LEGS),
+            com.crackedgames.craftics.combat.CrafticsEnchantments.LONGSTRIDE.fullId()) > 0;
+    }
+
+    /** The widest clearable gap for the local player. Must match the server profile. */
+    public static int jumpMaxGap(MinecraftClient client) {
+        return hasLongstride(client)
+            ? com.crackedgames.craftics.combat.SwordAxeEnchantEffects.LONGSTRIDE_MAX_GAP
+            : JUMP_MAX_GAP;
+    }
+
+    /** Jump cost for the local player: Pole Vault drops the +1. Must match the server profile. */
+    public static int jumpCost(MinecraftClient client, int gapTiles) {
+        return hasPoleVault(client) ? gapTiles + 1 : jumpCost(gapTiles);
     }
 
     private static boolean inBounds(GridPos p, int w, int h) {

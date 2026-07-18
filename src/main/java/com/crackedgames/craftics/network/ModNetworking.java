@@ -23,6 +23,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playC2S().register(TraderDonePayload.ID, TraderDonePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(StatChoicePayload.ID, StatChoicePayload.CODEC);
         PayloadTypeRegistry.playC2S().register(AffinityChoicePayload.ID, AffinityChoicePayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(InfiniteClassPickPayload.ID, InfiniteClassPickPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(RespecPayload.ID, RespecPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(AffinityRespecPayload.ID, AffinityRespecPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(MoveSlotShiftPayload.ID, MoveSlotShiftPayload.CODEC);
@@ -56,6 +57,7 @@ public class ModNetworking {
         PayloadTypeRegistry.playS2C().register(GuideBookSyncPayload.ID, GuideBookSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(AddonBonusSyncPayload.ID, AddonBonusSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(LoadingScreenPayload.ID, LoadingScreenPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(InfiniteClassOfferPayload.ID, InfiniteClassOfferPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(ScoreboardSyncPayload.ID, ScoreboardSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(VfxClientPayload.ID, VfxClientPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(PartyMobsSyncPayload.ID, PartyMobsSyncPayload.CODEC);
@@ -182,6 +184,12 @@ public class ModNetworking {
                     progression.saveStats(player);
                 }
             }
+        });
+
+        // Infinite mode: the class the player picked on the run-start screen (or -1 = skip).
+        ServerPlayNetworking.registerGlobalReceiver(InfiniteClassPickPayload.ID, (payload, context) -> {
+            com.crackedgames.craftics.combat.InfiniteRunManager.applyClassPick(
+                context.player(), payload.affinityOrdinal());
         });
 
         // Handle affinity choice from level-up screen (second step)

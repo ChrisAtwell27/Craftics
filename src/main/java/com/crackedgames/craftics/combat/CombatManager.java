@@ -461,6 +461,32 @@ public class CombatManager {
 
     // Party turn rotation
     private final List<java.util.UUID> turnQueue = new ArrayList<>();
+
+    /** Momentum enchant: AP banked for a player's NEXT turn start, keyed by player UUID. */
+    private final java.util.Map<java.util.UUID, Integer> pendingMomentumAp = new java.util.HashMap<>();
+    /** Midas enchant: enemies that already paid out a wall-slam, so each pays once per combat. */
+    private final java.util.Set<Integer> midasPaidEnemies = new java.util.HashSet<>();
+
+    /** Trapper enchant: one armed potion trap. The stack keeps its component data so the
+     *  sprung trap applies exactly the potion that was buried. */
+    private record TrapperTrap(ItemStack potion, java.util.UUID owner) {}
+    /** Trapper enchant: armed traps by tile. Springs on the first enemy standing there. */
+    private final java.util.Map<GridPos, TrapperTrap> trapperTraps = new java.util.HashMap<>();
+
+    /** Ledgegrip boots: players whose once-per-combat edge catch is spent. */
+    private final java.util.Set<java.util.UUID> ledgegripUsed = new java.util.HashSet<>();
+
+    /** Grudgeplate: each wearer's grudge - the entity id of the last enemy to damage them. */
+    private final java.util.Map<java.util.UUID, Integer> grudgeTargets = new java.util.HashMap<>();
+
+    /** Trailblazer: tiles each wearer crossed on their last move, cleared at their next turn. */
+    private final java.util.Map<java.util.UUID, java.util.Set<GridPos>> playerTrails = new java.util.HashMap<>();
+    /** Momentum fires once per turn; reset whenever a player turn starts. */
+    private boolean momentumProcThisTurn;
+    /** Phantom Edge: stealth-preserved attacks already spent this turn. Reset at turn start. */
+    private int phantomEdgeUsesThisTurn;
+    /** Tag Team: the free pet-swap already used this turn. Reset at turn start. */
+    private boolean tagTeamUsedThisTurn;
     private int currentTurnIndex = 0;
     /** Server ticks the current player's turn has run without an action. Drives the optional
      *  AFK turn watchdog (CrafticsConfig.turnTimerEnabled). Reset on every action and turn change. */
@@ -2354,7 +2380,8 @@ public class CombatManager {
             // used to anchor the aura lookup on the victim's true position.
             int ac = PlayerCombatStats.getArmorClass(player, combatEffects, activeTrimScan,
                 getProgDefenseBonus(),
-                BannerEffects.defenseBonusAt(gridPosOf(player), tileEffects));
+                BannerEffects.defenseBonusAt(gridPosOf(player), tileEffects)
+                    + phalanxBonusFor(player) + beaconBonusFor(player));
             // A shield swapped in after a shieldless attack this turn grants no AC.
             if (attackedWithoutShieldThisTurn && PlayerCombatStats.hasShield(player)) {
                 ac = Math.max(0, ac - PlayerCombatStats.SHIELD_PASSIVE_AC);
@@ -2370,6 +2397,8 @@ public class CombatManager {
                     net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.2f);
                 fireEffectHook(h -> h.onDodge(effectContext, attacker));
                 hybridSentinelRiposte(attacker);
+                matadorExpose(attacker);
+                undertowPull(attacker);
                 lastHitAvoided = true;
                 return 0;
             }
@@ -2382,6 +2411,8 @@ public class CombatManager {
                     "§b§l✦ Ethereal!§r §7The attack phased through you!");
                 fireEffectHook(h -> h.onDodge(effectContext, attacker));
                 hybridSentinelRiposte(attacker);
+                matadorExpose(attacker);
+                undertowPull(attacker);
                 lastHitAvoided = true;
                 return 0;
             }
@@ -2399,6 +2430,8 @@ public class CombatManager {
             if (!shieldStack.isEmpty()) {
                 shieldStack.damage(1, player, net.minecraft.entity.EquipmentSlot.OFFHAND);
             }
+            matadorExpose(attacker);
+            undertowPull(attacker);
             lastHitAvoided = true;
             return 0;
         }
@@ -2409,6 +2442,8 @@ public class CombatManager {
             playDodgeFeedback("§6§l✦ GILDED GUARD!",
                 "§6§l✦ Gilded Guard!§r §7The " + attacker.getDisplayName() + "'s hit glanced off your gilding.");
             fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
+            matadorExpose(attacker);
+            undertowPull(attacker);
             lastHitAvoided = true;
             return 0;
         }
@@ -2423,6 +2458,8 @@ public class CombatManager {
                 net.minecraft.sound.SoundEvents.BLOCK_BEACON_POWER_SELECT,
                 net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.6f);
             fireEffectHook(h -> h.onBlocked(effectContext, attacker, rawDamage));
+            matadorExpose(attacker);
+            undertowPull(attacker);
             lastHitAvoided = true;
             return 0;
         }
@@ -2437,6 +2474,13 @@ public class CombatManager {
         if (attacker != null && actual > 0) {
             int resist = combatEffects.getResistanceBonus();
             if (resist > 0) actual = Math.max(1, actual - resist);
+        }
+
+        // Grudgeplate chestplate: remember the last enemy to actually land a hit on the
+        // wearer. The whole party's attacks read this pointer.
+        if (attacker != null && actual > 0 && !attacker.isAlly()
+                && CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.GRUDGEPLATE) > 0) {
+            grudgeTargets.put(player.getUuid(), attacker.getEntityId());
         }
 
         // Armor-set resistance to a specific incoming damage type (Wooden armor's
@@ -3653,6 +3697,116 @@ public class CombatManager {
     }
 
     /**
+     * Matador enchant: an attack the player avoided (dodge, phase, block, deflect) Exposes the
+     * attacker. Fired from every avoidance branch of damagePlayer, beside the Sentinel riposte.
+     *
+     * <p>Refresh, not stack: repeated dodges keep the window open rather than deepening it,
+     * so a high-AC Matador build reads as a steady openings machine, not a DEF-shredder. The
+     * penalty is only added when no Exposed is already running, because the expiry tick resets
+     * the WHOLE defensePenalty to 0 - stacking here would let Matador wipe out a deeper
+     * Exposed applied by something else.
+     */
+    private void matadorExpose(CombatEntity attacker) {
+        if (attacker == null || !attacker.isAlive() || attacker.isAlly()) return;
+        if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.MATADOR) <= 0) return;
+        if (attacker.getDefensePenaltyTurns() <= 0) {
+            attacker.setDefensePenalty(
+                attacker.getDefensePenalty() + SwordAxeEnchantEffects.MATADOR_DEFENSE_PENALTY);
+        }
+        attacker.setDefensePenaltyTurns(Math.max(attacker.getDefensePenaltyTurns(),
+            SwordAxeEnchantEffects.MATADOR_EXPOSE_TURNS));
+        sendMessage("§d⚔ Matador! " + attacker.getDisplayName() + " is Exposed (-"
+            + SwordAxeEnchantEffects.MATADOR_DEFENSE_PENALTY + " DEF)!");
+    }
+
+    /**
+     * Phalanx chestplate: +1 AC per adjacent living party member, counted for BOTH sides of
+     * each pairing - the wearer gains it for every neighbor, and a neighbor gains it for
+     * standing beside a wearer. Party members only; pets don't hold a line.
+     */
+    private int phalanxBonusFor(ServerPlayerEntity victim) {
+        if (victim == null || arena == null || partyPlayers.size() <= 1) return 0;
+        GridPos vpos = gridPosOf(victim);
+        if (vpos == null) return 0;
+        boolean victimWears = CrafticsEnchantments.wornLevel(victim, CrafticsEnchantments.PHALANX) > 0;
+        int bonus = 0;
+        for (ServerPlayerEntity member : partyPlayers) {
+            if (member == null || member == victim || member.isRemoved()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            GridPos mpos = gridPosOf(member);
+            if (mpos == null) continue;
+            if (Math.abs(mpos.x() - vpos.x()) <= 1 && Math.abs(mpos.z() - vpos.z()) <= 1) {
+                if (victimWears) bonus += SwordAxeEnchantEffects.PHALANX_AC_PER_NEIGHBOR;
+                if (CrafticsEnchantments.wornLevel(member, CrafticsEnchantments.PHALANX) > 0) {
+                    bonus += SwordAxeEnchantEffects.PHALANX_AC_PER_NEIGHBOR;
+                }
+            }
+        }
+        return bonus;
+    }
+
+    /**
+     * Beacon helmet: a wearer is a walking banner - OTHER party members within the banner
+     * radius get the banner defense bonus. Doesn't stack with itself (one aura, exactly as
+     * planted banners don't compound), and never buffs the wearer.
+     */
+    private int beaconBonusFor(ServerPlayerEntity victim) {
+        if (victim == null || arena == null || partyPlayers.size() <= 1) return 0;
+        GridPos vpos = gridPosOf(victim);
+        if (vpos == null) return 0;
+        for (ServerPlayerEntity member : partyPlayers) {
+            if (member == null || member == victim || member.isRemoved()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            if (CrafticsEnchantments.wornLevel(member, CrafticsEnchantments.BEACON) <= 0) continue;
+            GridPos mpos = gridPosOf(member);
+            if (mpos != null && mpos.manhattanDistance(vpos) <= SwordAxeEnchantEffects.BEACON_RADIUS) {
+                return BannerEffects.DEFENSE_BONUS;
+            }
+        }
+        return 0;
+    }
+
+    /** Grudgeplate: whether ANY wearer's grudge points at this enemy. */
+    private boolean isGrudgeTarget(CombatEntity target) {
+        return target != null && grudgeTargets.containsValue(target.getEntityId());
+    }
+
+    /** Trailblazer: whether this move path crosses another member's fresh trail. */
+    private boolean pathFollowsAnotherTrail(java.util.List<GridPos> path) {
+        if (playerTrails.isEmpty() || path == null || player == null) return false;
+        for (var e : playerTrails.entrySet()) {
+            if (e.getKey().equals(player.getUuid())) continue;
+            for (GridPos step : path) {
+                if (e.getValue().contains(step)) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Undertow enchant: an attacker whose hit the player avoided is dragged 1 tile toward
+     * them. Matador's sibling, fired from the same avoidance branches. The pull reuses the
+     * knockback mover with the direction reversed, so occupancy, walls and hazards behave
+     * exactly as they do for a push - an enemy dragged across a lava channel lands in it.
+     */
+    private void undertowPull(CombatEntity attacker) {
+        if (attacker == null || !attacker.isAlive() || attacker.isAlly()) return;
+        if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.UNDERTOW) <= 0) return;
+        GridPos apos = attacker.getGridPos();
+        GridPos ppos = gridPosOf(player);
+        if (apos == null || ppos == null) return;
+        // Already adjacent (melee range): nothing to drag.
+        if (Math.abs(ppos.x() - apos.x()) <= 1 && Math.abs(ppos.z() - apos.z()) <= 1) return;
+        int dx = Integer.signum(ppos.x() - apos.x());
+        int dz = Integer.signum(ppos.z() - apos.z());
+        if (dx == 0 && dz == 0) return;
+        GridPos after = knockEnemyBack(attacker, dx, dz, 1);
+        if (!after.equals(apos)) {
+            sendMessage("§3≈ Undertow! " + attacker.getDisplayName() + " is dragged toward you.");
+        }
+    }
+
+    /**
      * Contagion hybrid: copy the source enemy's negative status effects onto every
      * adjacent enemy, bringing each up to (but not past) the source's intensity.
      * No-op for any other hybrid set.
@@ -4245,6 +4399,42 @@ public class CombatManager {
             sendMessage("§c" + ally.getDisplayName() + " is already there.");
             return;
         }
+
+        // Tag Team enchant (shovel): commanding a pet onto YOUR OWN tile swaps you with it,
+        // as a free action, once per turn. The occupied-tile rejection below would otherwise
+        // eat the click - your own tile is always "occupied".
+        if (targetTile.equals(gridPosOf(player))) {
+            if (CrafticsEnchantments.level(player, CrafticsEnchantments.TAG_TEAM) <= 0) {
+                sendMessage("§cTarget tile is occupied.");
+                return;
+            }
+            if (tagTeamUsedThisTurn) {
+                sendMessage("§cTag Team is spent for this turn.");
+                return;
+            }
+            tagTeamUsedThisTurn = true;
+            GridPos pPos = gridPosOf(player);
+            arena.moveEntity(ally, pPos);
+            if (ally.getMobEntity() != null) {
+                BlockPos abp = arena.gridToBlockPos(pPos);
+                ally.getMobEntity().requestTeleport(abp.getX() + 0.5,
+                    arena.getEntityY(pPos, ally.isFlying()), abp.getZ() + 0.5);
+            }
+            arena.setPlayerGridPos(allyPos);
+            BlockPos pbp = arena.gridToBlockPos(allyPos);
+            player.requestTeleport(pbp.getX() + 0.5, arena.getEntityY(allyPos), pbp.getZ() + 0.5);
+            broadcastPlayerPositionToOthers(player);
+            ServerWorld swapWorld = (ServerWorld) player.getEntityWorld();
+            swapWorld.playSound(null, pbp, net.minecraft.sound.SoundEvents.ENTITY_ENDERMAN_TELEPORT,
+                net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.4f);
+            sendMessage("§a⇄ Tag Team! You swap places with " + ally.getDisplayName()
+                + ". §7(free action)");
+            handleLeadSelect(-1);
+            sendSync();
+            refreshHighlights();
+            return;
+        }
+
         if (arena.isOccupied(targetTile)) {
             sendMessage("§cTarget tile is occupied.");
             return;
@@ -4398,7 +4588,8 @@ public class CombatManager {
         // at a cost of (gap + 2) speed. resolvedPath carries the REAL cost - a jump is one entry
         // in the step list but costs several speed, so path.size() is no longer the price.
         Pathfinding.Path resolvedPath = Pathfinding.findPlayerPathWithJumps(
-            arena, playerPos, target, moveBudget, hasBoat, flyOverObstacles, phaseThroughEnemies);
+            arena, playerPos, target, moveBudget, hasBoat, flyOverObstacles, phaseThroughEnemies,
+            playerJumpProfile());
         List<GridPos> path = new ArrayList<>(resolvedPath.steps());
         this.jumpedTiles = new ArrayList<>(resolvedPath.jumpedOver());
         if (path.isEmpty()) {
@@ -4464,6 +4655,11 @@ public class CombatManager {
         } else {
             // Path was cut short (cobweb above); fall back to counting what remains.
             cost = path.size();
+        }
+        // Trailblazer leggings: moving along a teammate's fresh trail costs 1 less (min 1).
+        if (!hitCobweb && cost > 1 && pathFollowsAnotherTrail(path)) {
+            cost -= 1;
+            sendMessage("§a≫ Trailblazer! You follow the trail. (-1 Speed cost)");
         }
         movePointsRemaining -= cost;
         movedThisTurn = true;
@@ -4555,6 +4751,19 @@ public class CombatManager {
             sendMessage("§cMust be adjacent to mine!");
             return;
         }
+        // Demolisher enchant: an axe chop removes an OBSTACLE tile outright - including the
+        // natural terrain obstacles the pickaxe path never touched - and refunds Speed for the
+        // opening it creates. Checked before the VFX-obstacle gate below, which silently drops
+        // clicks on natural obstacles.
+        GridTile demolishTile = arena.getTile(targetTile);
+        boolean isObstacleTile = demolishTile != null
+            && demolishTile.getType() == com.crackedgames.craftics.core.TileType.OBSTACLE;
+        if ((isObstacleTile || arena.isVfxObstacle(targetTile))
+                && CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.DEMOLISHER) > 0) {
+            demolishObstacle(targetTile);
+            return;
+        }
+
         if (!arena.isVfxObstacle(targetTile)) {
             // Silent -client optimistically sends ACTION_MINE for any obstacle click
             return;
@@ -4605,6 +4814,110 @@ public class CombatManager {
         }
         sendSync();
         refreshHighlights();
+    }
+
+    /**
+     * Demolisher enchant: chop an obstacle tile off the battlefield. Costs the 1 AP the caller
+     * already verified; refunds Speed. A player-placed wall still refunds its block, exactly as
+     * the pickaxe path does, so Demolisher is never a way to destroy your own materials.
+     */
+    private void demolishObstacle(GridPos targetTile) {
+        net.minecraft.server.world.ServerWorld world =
+            (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+        net.minecraft.util.math.BlockPos tileBlock = arena.gridToBlockPos(targetTile);
+        net.minecraft.block.BlockState chopped = world.getBlockState(tileBlock);
+        sendBlockBreakingProgress(targetTile, -1);
+
+        if (arena.isVfxObstacle(targetTile)) {
+            com.crackedgames.craftics.core.GridArena.PlacedWall placed = arena.getPlacedWall(targetTile);
+            arena.clearVfxObstacle(world, targetTile);
+            if (placed != null) {
+                net.minecraft.item.ItemStack refund = new net.minecraft.item.ItemStack(placed.item());
+                if (!player.getInventory().insertStack(refund)) {
+                    player.dropItem(refund, false);
+                }
+            }
+        } else {
+            GridTile tile = arena.getTile(targetTile);
+            if (tile != null) tile.setType(com.crackedgames.craftics.core.TileType.NORMAL);
+            // Obstacles stand on the surface position; a cactus can be up to three blocks tall.
+            for (int dy = 0; dy < 3; dy++) {
+                world.setBlockState(tileBlock.up(dy),
+                    net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+            }
+        }
+        apRemaining -= 1;
+        movePointsRemaining += SwordAxeEnchantEffects.DEMOLISHER_SPEED_REFUND;
+
+        // Timberfall enchant: the chopped obstacle falls onto the enemies beside it. Every
+        // living enemy on a tile cardinally or diagonally adjacent to the demolished tile
+        // takes the falling-block hit and is Stunned under it.
+        if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.TIMBERFALL) > 0) {
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dz == 0) continue;
+                    CombatEntity crushed = arena.getOccupant(
+                        new GridPos(targetTile.x() + dx, targetTile.z() + dz));
+                    if (crushed == null || !crushed.isAlive() || crushed.isAlly()) continue;
+                    int dealt = crushed.takeDamage(SwordAxeEnchantEffects.TIMBERFALL_DAMAGE);
+                    crushed.setStunned(true);
+                    sendMessage("§6⚒ Timberfall! The obstacle crashes onto "
+                        + crushed.getDisplayName() + " for " + dealt + " - Stunned!");
+                    if (!crushed.isAlive()) killEnemy(crushed);
+                }
+            }
+        }
+
+        net.minecraft.particle.BlockStateParticleEffect blockEffect =
+            new net.minecraft.particle.BlockStateParticleEffect(
+                net.minecraft.particle.ParticleTypes.BLOCK, chopped);
+        world.spawnParticles(blockEffect,
+            tileBlock.getX() + 0.5, tileBlock.getY() + 0.5, tileBlock.getZ() + 0.5,
+            16, 0.3, 0.4, 0.3, 0.2);
+        world.playSound(null, tileBlock, net.minecraft.sound.SoundEvents.BLOCK_WOOD_BREAK,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.9f);
+
+        sendMessage("§6⚒ Demolished! +" + SwordAxeEnchantEffects.DEMOLISHER_SPEED_REFUND
+            + " Speed from the opening.");
+        sendSync();
+        refreshHighlights();
+    }
+
+    /**
+     * Attacking from tall grass flattens it: the swing (or shot) gives your position away, so
+     * the stealth tile under the attacker is destroyed and the Hidden indicator drops on the
+     * next sync. This base rule ships with the Phantom Edge enchant, which preserves the grass
+     * once per turn per level - before it, attacking from a bush carried no cost at all and
+     * ranged stealth was permanent.
+     */
+    private void breakStealthFromAttack() {
+        if (player == null || arena == null) return;
+        GridPos pos = gridPosOf(player);
+        if (pos == null || !StealthTiles.isStealthTile(arena, pos, player.getEntityWorld())) return;
+
+        int level = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.PHANTOM_EDGE);
+        if (phantomEdgeUsesThisTurn < SwordAxeEnchantEffects.phantomEdgeAttacksPerTurn(level)) {
+            phantomEdgeUsesThisTurn++;
+            sendMessage("§7✦ Phantom Edge - the grass doesn't stir.");
+            return;
+        }
+
+        net.minecraft.server.world.ServerWorld sw =
+            (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+        net.minecraft.util.math.BlockPos floorBlock = arena.gridToBlockPos(pos);
+        net.minecraft.util.math.BlockPos lowerPos = floorBlock.up(1);
+        net.minecraft.block.BlockState broken = sw.getBlockState(lowerPos);
+        sw.setBlockState(lowerPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+        sw.setBlockState(floorBlock.up(2), net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+        GridTile tile = arena.getTile(pos);
+        if (tile != null) tile.setType(com.crackedgames.craftics.core.TileType.NORMAL);
+        sw.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
+                net.minecraft.particle.ParticleTypes.BLOCK, broken),
+            lowerPos.getX() + 0.5, lowerPos.getY() + 0.5, lowerPos.getZ() + 0.5,
+            10, 0.3, 0.3, 0.3, 0.1);
+        sw.playSound(null, lowerPos, net.minecraft.sound.SoundEvents.BLOCK_GRASS_BREAK,
+            net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 0.9f);
+        sendMessage("§7You burst from the tall grass - your cover is gone!");
     }
 
     private void handleAttack(int targetEntityId, GridPos clickedTile) {
@@ -5086,6 +5399,9 @@ public class CombatManager {
         if (!freeApProc) {
             apRemaining -= attackCost;
         }
+        // The attack is committed: if it's thrown from tall grass, the grass gives you away
+        // (unless Phantom Edge preserves it).
+        breakStealthFromAttack();
 
         // Apply 10 durability damage per attack (tactical combat is hard on weapons)
         ItemStack weaponStack = player.getMainHandStack();
@@ -5359,6 +5675,13 @@ public class CombatManager {
                 baseDamage += execBonus;
                 sendMessage("§6✖ §7Executioner! §f+" + execBonus);
             }
+        }
+
+        // Grudgeplate: the whole party hits a wearer's grudge target harder - a focus-fire
+        // pointer painted by whoever got hurt last. Flat add in the same tier as Executioner.
+        if (baseDamage > 0 && isGrudgeTarget(target)) {
+            baseDamage += SwordAxeEnchantEffects.GRUDGEPLATE_BONUS;
+            sendMessage("§4⚔ §7Grudge! §f+" + SwordAxeEnchantEffects.GRUDGEPLATE_BONUS);
         }
 
         // Airtime -a weapon hit spends ONE stack for (1.0 + 0.5*level)x damage:
@@ -6861,6 +7184,23 @@ public class CombatManager {
                 killedThisRound = true;
             }
 
+            // Vengeful Bond enchant: an enemy that kills one of your pets is Marked. The pet's
+            // owner carries the shovel focus, so the level is read from THEIR inventory. The
+            // "killer" is the enemy currently acting: this sink can't thread a damager entity
+            // through every takeDamage site, and a pet dying during an enemy's action - to its
+            // hit or its lingering effects - reads as that enemy's kill.
+            if (entity.isAlly() && phase == CombatPhase.ENEMY_TURN
+                    && currentEnemy != null && currentEnemy.isAlive() && !currentEnemy.isAlly()) {
+                ServerPlayerEntity bondOwner = resolveAllyOwner(entity.getOwnerUuid());
+                if (bondOwner != null
+                        && CrafticsEnchantments.level(bondOwner, CrafticsEnchantments.VENGEFUL_BOND) > 0) {
+                    currentEnemy.setMarkedTurns(Math.max(currentEnemy.getMarkedTurns(),
+                        SwordAxeEnchantEffects.VENGEFUL_BOND_MARK_TURNS));
+                    sendMessage("§d♥ Vengeful Bond! " + currentEnemy.getDisplayName()
+                        + " is Marked for killing " + entity.getDisplayName() + "!");
+                }
+            }
+
             // Creaking Heart death → destroy the heart block AND kill the linked Creaking
             if ("craftics:creaking_heart".equals(entity.getEntityTypeId())) {
                 // Remove the in-world heart block (placed when the heart was spawned in
@@ -7679,7 +8019,46 @@ public class CombatManager {
         if (item instanceof net.minecraft.item.TridentItem) {
             return new String[]{"loyalty", "channeling", "impaling", "riptide", "unbreaking", "mending"};
         }
-        // Axe pool first: an "axe" is any AxeItem OR any weapon registered Cleaving (e.g. the
+        // BLUNT pools first, before the axe and sword branches: the Basic Weapons blunt trio and
+        // the SimplySwords greathammer are all SwordItem subclasses, so the SwordItem branch below
+        // would shadow them - on <=1.21.4 the blunt branches were dead code and a club rolled the
+        // sword pool (sweeping_edge on a sweepless club, and never "might" or Hilt).
+        if (item instanceof net.minecraft.item.MaceItem) {
+            // The Mace is a BLUNT weapon, so it also offers the Craftics blunt-eligible enchants
+            // (Hilt). Those come straight from CrafticsEnchantments.poolForBlunt, mirroring how the
+            // runtime filter (CrafticsEnchantments.matchesBlunt) counts a Mace as blunt.
+            String[] vanilla = {"smite", "fire_aspect", "knockback", "unbreaking", "mending",
+                "density", "breach", "wind_burst"};
+            String[] craftics = CrafticsEnchantments.poolForBlunt();
+            String[] out = java.util.Arrays.copyOf(vanilla, vanilla.length + craftics.length);
+            System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
+            return out;
+        }
+        // Basic Weapons: offer Might on the blunt trio (club/hammer/quarterstaff). The pool holds
+        // the BARE PATH "might" -the enchanter resolver matches getValue().getPath(), so a
+        // namespaced id would never resolve. Only when the mod is loaded and the item is a
+        // registered blunt basicweapons weapon.
+        if (com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isBlunt(item)) {
+            // Might, the universals, and the Craftics blunt-eligible enchants (Hilt). The Craftics
+            // pool comes from CrafticsEnchantments.poolForBlunt so a new blunt-flagged entry rolls
+            // here on its own, matching the runtime CrafticsEnchantments.matchesBlunt filter.
+            String[] base = {"might", "unbreaking", "mending"};
+            String[] craftics = CrafticsEnchantments.poolForBlunt();
+            String[] out = java.util.Arrays.copyOf(base, base.length + craftics.length);
+            System.arraycopy(craftics, 0, out, base.length, craftics.length);
+            return out;
+        }
+        // Any other weapon registered BLUNT (the SimplySwords greathammer, a future addon's
+        // maul): the generic blunt pool. Uses the same matchesBlunt authority as the runtime
+        // effect filter, so a weapon that can EARN Hilt here can also FIRE it.
+        if (CrafticsEnchantments.matchesBlunt(stack)) {
+            String[] vanilla = {"smite", "fire_aspect", "knockback", "unbreaking", "mending"};
+            String[] craftics = CrafticsEnchantments.poolForBlunt();
+            String[] out = java.util.Arrays.copyOf(vanilla, vanilla.length + craftics.length);
+            System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
+            return out;
+        }
+        // Axe pool next: an "axe" is any AxeItem OR any weapon registered Cleaving (e.g. the
         // SimplySwords greataxe, which is a SwordItem). Same definition the runtime Facade filter
         // uses (CrafticsEnchantments.isAxeLike), so a Cleaving weapon that can EARN Facade here can
         // also FIRE it. This must sit above the SwordItem branch below, or a Cleaving SwordItem
@@ -7713,32 +8092,6 @@ public class CombatManager {
             return out;
         }
         *///?}
-        if (item instanceof net.minecraft.item.MaceItem) {
-            // The Mace is a BLUNT weapon, so it also offers the Craftics blunt-eligible enchants
-            // (Hilt). Those come straight from CrafticsEnchantments.poolForBlunt, mirroring how the
-            // runtime filter (CrafticsEnchantments.matchesBlunt) counts a Mace as blunt.
-            String[] vanilla = {"smite", "fire_aspect", "knockback", "unbreaking", "mending",
-                "density", "breach", "wind_burst"};
-            String[] craftics = CrafticsEnchantments.poolForBlunt();
-            String[] out = java.util.Arrays.copyOf(vanilla, vanilla.length + craftics.length);
-            System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
-            return out;
-        }
-        // Basic Weapons: offer Might on the blunt trio (club/hammer/quarterstaff). The pool holds
-        // the BARE PATH "might" -the enchanter resolver matches getValue().getPath(), so a
-        // namespaced id would never resolve. Only when the mod is loaded and the item is a
-        // registered blunt basicweapons weapon. Placed outside the version split above so it
-        // compiles on every shard.
-        if (com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.isBlunt(item)) {
-            // Might, the universals, and the Craftics blunt-eligible enchants (Hilt). The Craftics
-            // pool comes from CrafticsEnchantments.poolForBlunt so a new blunt-flagged entry rolls
-            // here on its own, matching the runtime CrafticsEnchantments.matchesBlunt filter.
-            String[] base = {"might", "unbreaking", "mending"};
-            String[] craftics = CrafticsEnchantments.poolForBlunt();
-            String[] out = java.util.Arrays.copyOf(base, base.length + craftics.length);
-            System.arraycopy(craftics, 0, out, base.length, craftics.length);
-            return out;
-        }
         // Shovels and hoes are the Pet and Special focuses. They never swing, but the Craftics
         // enchantments on them arm the owner's pets (shovel) and Special casts (hoe). Pools come
         // straight from CrafticsEnchantments, so a new entry there rolls here automatically.
@@ -7762,7 +8115,7 @@ public class CombatManager {
 
     /** Returns valid enchantment IDs for an armor piece based on its slot. */
     static String[] getValidArmorEnchants(net.minecraft.entity.EquipmentSlot slot) {
-        return switch (slot) {
+        String[] vanilla = switch (slot) {
             case HEAD -> new String[]{"protection", "blast_protection", "fire_protection",
                 "projectile_protection", "thorns", "respiration", "aqua_affinity",
                 "unbreaking", "mending"};
@@ -7775,6 +8128,21 @@ public class CombatManager {
                 "frost_walker", "soul_speed", "unbreaking", "mending"};
             default -> new String[]{"unbreaking", "mending"};
         };
+        // Splice in the Craftics armor enchantments for this slot, straight from
+        // CrafticsEnchantments so a new armor entry rolls here automatically - the same
+        // pattern every weapon pool follows.
+        CrafticsEnchantments.Tool tool = switch (slot) {
+            case HEAD -> CrafticsEnchantments.Tool.HELMET;
+            case CHEST -> CrafticsEnchantments.Tool.CHESTPLATE;
+            case LEGS -> CrafticsEnchantments.Tool.LEGGINGS;
+            case FEET -> CrafticsEnchantments.Tool.BOOTS;
+            default -> null;
+        };
+        if (tool == null) return vanilla;
+        String[] craftics = CrafticsEnchantments.poolFor(tool);
+        String[] out = java.util.Arrays.copyOf(vanilla, vanilla.length + craftics.length);
+        System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
+        return out;
     }
 
     /**
@@ -9250,6 +9618,49 @@ public class CombatManager {
             return;
         }
 
+        // Trapper (hoe): a splash potion cast onto an empty tile with no enemy in splash
+        // range arms a hidden trap there instead of splashing nothing - strictly an upgrade
+        // over the wasted throw it replaces. Springs on the first enemy to stand on the tile.
+        if (ItemUseHandler.isSplashPotion(heldItem) && targetTile != null
+                && CrafticsEnchantments.level(player, CrafticsEnchantments.TRAPPER) > 0
+                && arena.isInBounds(targetTile)
+                && arena.getOccupant(targetTile) == null
+                && !targetTile.equals(gridPosOf(player))
+                && !trapperTraps.containsKey(targetTile)) {
+            boolean enemyInSplash = false;
+            for (CombatEntity ce : enemies) {
+                if (ce.isAlive() && !ce.isAlly()
+                        && ce.getGridPos().manhattanDistance(targetTile) <= 1) {
+                    enemyInSplash = true;
+                    break;
+                }
+            }
+            GridTile trapTile = arena.getTile(targetTile);
+            var trapContents = heldStack.get(DataComponentTypes.POTION_CONTENTS);
+            if (!enemyInSplash && trapTile != null && trapTile.isWalkable() && trapContents != null) {
+                ItemStack buried = heldStack.copyWithCount(1);
+                heldStack.decrement(1);
+                trapperTraps.put(targetTile, new TrapperTrap(buried, player.getUuid()));
+                apRemaining -= apCost;
+                ServerWorld trapWorld = (ServerWorld) player.getEntityWorld();
+                BlockPos trapBp = arena.gridToBlockPos(targetTile);
+                trapWorld.playSound(null, trapBp, net.minecraft.sound.SoundEvents.BLOCK_SAND_PLACE,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 0.8f);
+                sendMessage("§2◇ Trapper: potion buried. The first enemy to step there springs it.");
+                sendSync();
+                refreshHighlights();
+                return;
+            }
+        }
+
+        // Terraform (hoe): remember the target tile's PRE-cast terrain, so a successful cast
+        // can normalize what was already there without undoing terrain the cast itself made.
+        TileType terraformPriorType = null;
+        if (targetTile != null && arena != null) {
+            GridTile tt = arena.getTile(targetTile);
+            if (tt != null) terraformPriorType = tt.getType();
+        }
+
         String result = ItemUseHandler.useItem(player, arena, targetTile);
         if (result == null) {
             sendMessage("§cCan't use that item!");
@@ -9263,6 +9674,8 @@ public class CombatManager {
             refreshHighlights();
             return;
         }
+
+        applyTerraform(targetTile, terraformPriorType, result);
 
         // Performative (hoe): the cast echoes for free. useItem() consumes the held item itself,
         // so hand one back BEFORE the encore - otherwise the second cast eats a second item and
@@ -10121,8 +10534,129 @@ public class CombatManager {
         startEnemyTurn();
     }
 
+    /**
+     * The current player's jump behavior, from their movement enchantments: Pole Vault (held
+     * blunt weapon) makes jumps cost the plain walk and lets them clear enemy-occupied tiles;
+     * Longstride (worn leggings) widens the clearable gap to 3. The client builds the same
+     * profile from the same stacks in ClientGridHelper - keep the two in step.
+     */
+    private Pathfinding.JumpProfile playerJumpProfile() {
+        if (player == null) return Pathfinding.JumpProfile.DEFAULT;
+        boolean poleVault = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.POLE_VAULT) > 0;
+        boolean longstride = CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.LONGSTRIDE) > 0;
+        if (!poleVault && !longstride) return Pathfinding.JumpProfile.DEFAULT;
+        return new Pathfinding.JumpProfile(
+            longstride ? SwordAxeEnchantEffects.LONGSTRIDE_MAX_GAP : Pathfinding.MAX_JUMP_GAP,
+            poleVault, poleVault);
+    }
+
+    /** Display name for a Momentum recipient, falling back to "a party member" if offline. */
+    private String momentumNameOf(java.util.UUID uuid) {
+        for (ServerPlayerEntity member : partyPlayers) {
+            if (member != null && member.getUuid().equals(uuid)) {
+                return member.getName().getString();
+            }
+        }
+        return "a party member";
+    }
+
+    /**
+     * Pay out any Momentum AP banked for the player whose turn is starting, and re-arm the
+     * once-per-turn proc. Called from every turn-start AP reset, right after the AP formula.
+     */
+    private int consumePendingMomentumAp() {
+        // Per-turn enchant state rides the same turn-start call: Momentum re-arms, Phantom
+        // Edge gets its stealth-preserved attacks back, Tag Team's free swap resets.
+        momentumProcThisTurn = false;
+        phantomEdgeUsesThisTurn = 0;
+        tagTeamUsedThisTurn = false;
+        // Trailblazer: the wearer's OWN old trail expires as their new turn begins - it lives
+        // exactly one rotation, so everyone after them in the order could follow it.
+        playerTrails.remove(player.getUuid());
+        Integer banked = pendingMomentumAp.remove(player.getUuid());
+        if (banked != null && banked > 0) {
+            sendMessage("§e⚒ Momentum! +" + banked + " AP this turn.");
+            return banked;
+        }
+        return 0;
+    }
+
+    /**
+     * Terraform (hoe): a successful tile-targeted Special cast also normalizes hostile terrain
+     * at the target - douses FIRE, drains WATER, fills LOW_GROUND. Works from the tile's
+     * PRE-cast type, and skips casts that explicitly reshape the tile themselves (a TILE:
+     * result), so a lava or water bucket's fresh terrain is never erased by its own cast.
+     * Mirrors the empty-bucket "clear" dispatch: overlay space is gridToBlockPos (Y+1), the
+     * real floor is one below.
+     */
+    private void applyTerraform(GridPos targetTile, TileType priorType, String castResult) {
+        if (targetTile == null || arena == null || priorType == null || player == null) return;
+        if (castResult != null && castResult.startsWith(ItemUseHandler.TILE_EFFECT_PREFIX)) return;
+        if (priorType != TileType.FIRE && priorType != TileType.WATER
+                && priorType != TileType.LOW_GROUND) return;
+        if (CrafticsEnchantments.level(player, CrafticsEnchantments.TERRAFORM) <= 0) return;
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null || tile.getType() != priorType) return; // the cast already changed it
+
+        tile.setType(TileType.NORMAL);
+        tile.setBlockType(getBiomeFloorBlock());
+        tileEffects.remove(targetTile);
+        unregisterLightZone(targetTile);
+        BlockPos bp = arena.gridToBlockPos(targetTile);
+        ServerWorld sw = (ServerWorld) player.getEntityWorld();
+        sw.setBlockState(bp, net.minecraft.block.Blocks.AIR.getDefaultState());
+        sw.setBlockState(bp.down(), tile.getBlockType().getDefaultState());
+
+        String what = switch (priorType) {
+            case FIRE -> "The flames are doused";
+            case WATER -> "The water drains away";
+            default -> "The sunken ground fills in";
+        };
+        sw.spawnParticles(net.minecraft.particle.ParticleTypes.COMPOSTER,
+            bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 14, 0.35, 0.3, 0.35, 0.05);
+        sw.playSound(null, bp, net.minecraft.sound.SoundEvents.ITEM_HOE_TILL,
+            net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+        sendMessage("§a❀ Terraform! " + what + ".");
+    }
+
+    /**
+     * Spring any Trapper trap an enemy is standing on: apply the buried potion to it with
+     * the exact splash-potion ruleset. Scanned each enemy-turn tick and after knockback, so
+     * both walking onto a trap and being SHOVED onto one springs it.
+     */
+    private void springTrapperTraps() {
+        if (trapperTraps.isEmpty() || arena == null || player == null) return;
+        var it = trapperTraps.entrySet().iterator();
+        while (it.hasNext()) {
+            var entry = it.next();
+            CombatEntity victim = arena.getOccupant(entry.getKey());
+            if (victim == null || !victim.isAlive() || victim.isAlly()) continue;
+            it.remove();
+            TrapperTrap trap = entry.getValue();
+            var contents = trap.potion().get(DataComponentTypes.POTION_CONTENTS);
+            ServerPlayerEntity owner = resolveAllyOwner(trap.owner());
+            StringBuilder msg = new StringBuilder();
+            if (contents != null && owner != null) {
+                ItemUseHandler.applyPotionEffectsToEnemies(owner, java.util.List.of(victim), contents, msg);
+            }
+            ServerWorld sw = (ServerWorld) player.getEntityWorld();
+            BlockPos bp = arena.gridToBlockPos(entry.getKey());
+            ProjectileSpawner.spawnPotionSplash(sw, bp, false);
+            sw.playSound(null, bp, net.minecraft.sound.SoundEvents.ENTITY_SPLASH_POTION_BREAK,
+                net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
+            sendMessage("§2◆ Trap sprung! " + msg.toString().trim());
+            checkAndHandleDeath(victim);
+        }
+    }
+
     private void rebuildTurnQueue() {
         turnQueue.clear();
+        pendingMomentumAp.clear();
+        midasPaidEnemies.clear();
+        trapperTraps.clear();
+        ledgegripUsed.clear();
+        grudgeTargets.clear();
+        playerTrails.clear();
         for (ServerPlayerEntity member : partyPlayers) {
             if (member != null && !member.isRemoved() && !member.isDisconnected()
                     && !deadPartyMembers.contains(member.getUuid())) {
@@ -10180,6 +10714,7 @@ public class CombatManager {
             + activeTrimScan.get(TrimEffects.Bonus.AP)
             + combatEffects.getHasteBonus()            // Haste: +1 AP per level
             - combatEffects.getMiningFatiguePenalty()); // Mining Fatigue: -1 AP per level
+        apRemaining += consumePendingMomentumAp();
         movePointsRemaining = baseSpeedStat(turnStats)
             + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
             + PlayerCombatStats.getSetSpeedBonus(player)
@@ -10361,6 +10896,7 @@ public class CombatManager {
                 + PlayerCombatStats.getSetApBonus(player)
                 + combatEffects.getHasteBonus()
                 - combatEffects.getMiningFatiguePenalty());
+            apRemaining += consumePendingMomentumAp();
             movePointsRemaining = turnStats2.getEffective(PlayerProgression.Stat.SPEED)
                 + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
                 + PlayerCombatStats.getSetSpeedBonus(player)
@@ -10456,7 +10992,15 @@ public class CombatManager {
         // Keep the soundtrack in sync with combat/event/trader state. Runs before the
         // !active guard so trader and between-level events (which live outside active
         // combat) still get music. Only emits a packet when the chosen track changes.
-        refreshMusic();
+        //
+        // Idle guard: an instance with no combat, no event room, no trader, and no track
+        // playing has nothing to score - and tickAll ticks one instance per player who has
+        // EVER fought, forever. Without this, music selection was the one per-tick cost
+        // that scaled with lifetime player count instead of active fights.
+        if (active || eventRoomType != null || activeTraderOffer != null
+                || !lastSentMusicKey.isEmpty()) {
+            refreshMusic();
+        }
 
         if (!active) return;
 
@@ -11264,6 +11808,39 @@ public class CombatManager {
             // Netherite mount: the 1×3 wall follows the rider, so rebuild it on the new
             // tile (facing was already updated for this step at lerp init).
             refreshMountWall();
+
+            // Trailblazer leggings: every tile the wearer crosses joins their trail, which
+            // teammates can follow at a discount until the wearer's next turn.
+            if (CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.TRAILBLAZER) > 0) {
+                playerTrails.computeIfAbsent(player.getUuid(),
+                    k -> new java.util.HashSet<>()).add(next);
+            }
+
+            // Shockstep boots: landing a gap-jump stomps every enemy beside the landing
+            // tile - damage plus a short Slow from the shockwave.
+            if (spanTiles > 1
+                    && CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.SHOCKSTEP) > 0) {
+                for (int sdx = -1; sdx <= 1; sdx++) {
+                    for (int sdz = -1; sdz <= 1; sdz++) {
+                        if (sdx == 0 && sdz == 0) continue;
+                        CombatEntity stomped = arena.getOccupant(
+                            new GridPos(next.x() + sdx, next.z() + sdz));
+                        if (stomped == null || !stomped.isAlive() || stomped.isAlly()) continue;
+                        int dealt = stomped.takeDamage(SwordAxeEnchantEffects.SHOCKSTEP_DAMAGE);
+                        stomped.stackSlowness(SwordAxeEnchantEffects.SHOCKSTEP_SLOW_TURNS, 1);
+                        sendMessage("§b⚡ Shockstep! " + stomped.getDisplayName()
+                            + " takes " + dealt + " from the landing and is Slowed!");
+                        checkAndHandleDeath(stomped);
+                    }
+                }
+                ServerWorld stompWorld = (ServerWorld) player.getEntityWorld();
+                BlockPos stompBp = arena.gridToBlockPos(next);
+                ProjectileSpawner.spawnExpandingRing(stompWorld, stompBp, 1.2,
+                    net.minecraft.particle.ParticleTypes.CLOUD, 12);
+                stompWorld.playSound(null, stompBp,
+                    net.minecraft.sound.SoundEvents.ENTITY_GENERIC_BIG_FALL,
+                    net.minecraft.sound.SoundCategory.PLAYERS, 0.8f, 1.1f);
+            }
             if (player != null) {
                 player.getWorld().playSound(null, player.getBlockPos(),
                     net.minecraft.sound.SoundEvents.BLOCK_STONE_STEP,
@@ -11301,7 +11878,41 @@ public class CombatManager {
         }
     }
 
+    /**
+     * Build the arena for the level after this one, if it doesn't exist yet. Called from
+     * the victory flow so the build cost is buried under the victory screen instead of
+     * hitching the transition into the next fight. Global level numbering carries across
+     * biome boundaries, and ensureArena's biome-stamp check self-corrects any New Game+
+     * branch re-roll, so blindly prefetching level+1 is always safe - worst case the
+     * stamp mismatches later and that entry rebuilds, exactly as it would have anyway.
+     */
+    private void prefetchNextArena() {
+        try {
+            if (player == null
+                || !(levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld)) {
+                return;
+            }
+            if (!(player.getEntityWorld() instanceof ServerWorld sw)) return;
+            CrafticsSavedData data = CrafticsSavedData.get(sw);
+            java.util.UUID owner = data.getEffectiveWorldOwner(player.getUuid());
+            if (owner == null || data.getPlayerData(owner).worldSlot < 0) return;
+            int next = gld.getLevelNumber() + 1;
+            long start = System.currentTimeMillis();
+            int[] meta = com.crackedgames.craftics.level.ArenaPreGenerator.ensureArena(sw, owner, next);
+            if (meta != null) {
+                CrafticsMod.LOGGER.debug("Prefetched arena for level {} in {}ms",
+                    next, System.currentTimeMillis() - start);
+            }
+        } catch (Exception e) {
+            // Never let a prefetch failure disturb the victory flow - the level entry
+            // path builds lazily exactly as before.
+            CrafticsMod.LOGGER.warn("Next-arena prefetch failed (will build on entry): {}", e.toString());
+        }
+    }
+
     private void tickEnemyTurn() {
+        // Trapper: spring any trap an enemy has stepped onto since the last tick.
+        springTrapperTraps();
         // Cinematic pacing: stretch each freshly-armed action delay (~1.8x, clamped)
         // so the camera has time to pan onto the acting unit and linger before
         // returning. enemyTurnDelay is written in ~60 places but read only here, so
@@ -11681,6 +12292,15 @@ public class CombatManager {
                     // them above, so Slowness/Poison/Strength/shields expire per member.
                     String memberExpired = combatEffects.tickTurn();
 
+                    // Iron Will helmet: mental debuffs (Confusion/Blindness/Darkness) lose a
+                    // second turn, halving how long they cloud the wearer.
+                    if (CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.IRON_WILL) > 0) {
+                        String mentalExpired = combatEffects.tickMentalEffectsExtra();
+                        if (mentalExpired != null) {
+                            sendMessage("§b◈ Iron Will shakes off: " + mentalExpired);
+                        }
+                    }
+
                     // Riding out a Levitation drops you into Airtime: grant Airtime I (1 turn) the turn
                     // Levitation wears off. combatEffects is already retargeted to this member here.
                     if (combatEffects.getLastExpired().contains(CombatEffects.EffectType.AIRTIME) == false
@@ -11874,6 +12494,7 @@ public class CombatManager {
             if (activeTrimScan != null) apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
             apRemaining += combatEffects.getHasteBonus();              // Haste: +1 AP per level
             apRemaining = Math.max(0, apRemaining - combatEffects.getMiningFatiguePenalty());
+            apRemaining += consumePendingMomentumAp();
             movePointsRemaining = baseSpeedStat(turnStats)
                 + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty();
             movePointsRemaining += PlayerCombatStats.getSetSpeedBonus(player);
@@ -18784,6 +19405,22 @@ public class CombatManager {
      * and trips the per-tick fall-death check on the very next tick, dying for real with the
      * totem already spent. Mirrors the rescue the movement void-fall path performs.
      */
+    /**
+     * Ledgegrip boots: once per combat, a knockback that would drop the player into a lethal
+     * hazard becomes a caught edge - a small scrape and a scramble back to safe ground
+     * instead of the fall. Returns true when the catch fired (the caller skips the lethal
+     * branch entirely).
+     */
+    private boolean tryLedgegrip(String hazardName, CombatEntity source) {
+        if (CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.LEDGEGRIP) <= 0) return false;
+        if (!ledgegripUsed.add(player.getUuid())) return false;
+        damagePlayer(SwordAxeEnchantEffects.LEDGEGRIP_DAMAGE, source);
+        sendMessage("§6✋ Ledgegrip! You catch the edge of " + hazardName
+            + " and haul yourself back up!");
+        if (getPlayerHp() > 0) rescueSurvivorToSafeTile();
+        return true;
+    }
+
     private void rescueSurvivorToSafeTile() {
         GridPos safeGrid = getSafeArenaGridPos(arena);
         BlockPos safePos = safeGrid != null
@@ -18894,6 +19531,7 @@ public class CombatManager {
                 if (hazardTile != null) {
                     switch (hazardTile.getType()) {
                         case VOID -> {
+                            if (tryLedgegrip("the pit", source)) break;
                             damagePlayer((int) player.getHealth() + 10, source);
                             sendMessage("§4  Fell into the void!");
                             // Survived (a totem fired inside damagePlayer): don't leave them
@@ -18906,6 +19544,8 @@ public class CombatManager {
                                 consumeBoat();
                                 addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
                                 sendMessage("§b  Your boat saves you from drowning! Soaked for 2 turns.");
+                            } else if (tryLedgegrip("the deep water", source)) {
+                                // caught the edge - nothing more to resolve
                             } else {
                                 damagePlayer((int) player.getHealth() + 10, source);
                                 sendMessage("§1  Drowned in deep water!");
@@ -18995,6 +19635,15 @@ public class CombatManager {
      * Returns the final landing position.
      */
     private GridPos knockEnemyBack(CombatEntity enemy, int dx, int dz, int tiles) {
+        // Crater enchant: knockback the player causes flies 1 tile further, and slamming into
+        // anything hurts and Stuns. Gated on the PLAYER_TURN phase so an enemy-driven push (the
+        // breeze's wind gust fires this same routine on its own turn) is never boosted just
+        // because a Crater weapon happens to be in the player's hand; within the player's turn
+        // the heldLevel check keeps it to pushes made with the blunt weapon actually held.
+        boolean crater = phase == CombatPhase.PLAYER_TURN
+            && CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.CRATER) > 0;
+        if (crater) tiles += SwordAxeEnchantEffects.CRATER_EXTRA_TILES;
+
         GridPos startPos = enemy.getGridPos();
         int sizeX = enemy.getSizeX();
         int sizeZ = enemy.getSizeZ();
@@ -19113,6 +19762,32 @@ public class CombatManager {
             }
         }
 
+        // Crater: any slam (wall, obstacle, another enemy, cactus) also Stuns and hits harder.
+        if (crater && (hitWall || hitCactus) && enemy.isAlive()) {
+            int dealt = enemy.takeDamage(SwordAxeEnchantEffects.CRATER_COLLISION_DAMAGE);
+            enemy.setStunned(true);
+            sendMessage("§6✸ Crater! " + enemy.getDisplayName() + " takes " + dealt
+                + " more from the impact and is Stunned!");
+            if (!enemy.isAlive()) {
+                killEnemy(enemy);
+                return landingPos;
+            }
+        }
+
+        // Midas enchant (blunt): a wall-slam shakes emeralds loose into the slammer's bank,
+        // once per enemy per combat so bouncing the same skeleton off a wall isn't a mint.
+        if ((hitWall || hitCactus) && phase == CombatPhase.PLAYER_TURN && player != null
+                && CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.MIDAS) > 0
+                && midasPaidEnemies.add(enemy.getEntityId())) {
+            int coins = 1 + combatRng.nextInt(SwordAxeEnchantEffects.MIDAS_MAX_EMERALDS);
+            var midasData = com.crackedgames.craftics.world.CrafticsSavedData.get(
+                (ServerWorld) player.getEntityWorld());
+            midasData.getPlayerData(player.getUuid()).addEmeralds(coins);
+            midasData.markDirty();
+            sendMessage("§a✦ Midas! " + coins + " emerald" + (coins == 1 ? "" : "s")
+                + " shake loose into your bank.");
+        }
+
         if (!landingPos.equals(startPos)) {
             arena.moveEntity(enemy, landingPos);
             if (enemy.getMobEntity() != null) {
@@ -19156,6 +19831,23 @@ public class CombatManager {
                 }
             }
         }
+
+        // Hemorrhage enchant (sword): being knocked around detonates the target's Bleed - the
+        // stacks convert to one burst and clear. Player-turn gated like Crater, so an enemy
+        // shove never triggers it.
+        if (phase == CombatPhase.PLAYER_TURN && player != null
+                && enemy.isAlive() && enemy.getBleedStacks() > 0
+                && CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.HEMORRHAGE) > 0) {
+            int stacks = enemy.getBleedStacks();
+            enemy.setBleedStacks(0);
+            int burst = enemy.takeDamage(stacks * SwordAxeEnchantEffects.HEMORRHAGE_DAMAGE_PER_STACK);
+            sendMessage("§4❈ Hemorrhage! " + enemy.getDisplayName() + "'s " + stacks
+                + " Bleed stack" + (stacks == 1 ? "" : "s") + " detonate for " + burst + "!");
+            if (!enemy.isAlive()) killEnemy(enemy);
+        }
+
+        // Trapper: an enemy SHOVED onto a trap springs it immediately.
+        springTrapperTraps();
         return landingPos;
     }
 
@@ -21173,6 +21865,12 @@ public class CombatManager {
             // Don't endCombat yet -wait for player choice
             // But do clear the arena
             clearHighlights();
+
+            // Pre-build the NEXT level's arena while everyone is parked on the victory
+            // screen. A level's first visit otherwise pays its arena build on the way IN -
+            // a main-thread hitch right at the transition. The same cost spent NOW lands in
+            // a moment nobody is moving. Already-built levels return from cache instantly.
+            prefetchNextArena();
         }
         // ===== end moved block =====
     }
@@ -26445,7 +27143,8 @@ public class CombatManager {
                 // Jump-aware: a tile reachable ONLY by vaulting a gap must be highlighted, or
                 // the player could never click it. Mirrors findPlayerPathWithJumps exactly.
                 java.util.Set<GridPos> reachable = Pathfinding.getPlayerReachableTilesWithJumps(
-                    arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(), flyOverObstacles);
+                    arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(),
+                    flyOverObstacles, playerJumpProfile());
                 for (GridPos gp : reachable) {
                     moveList.add(gp.x());
                     moveList.add(gp.z());
@@ -27353,6 +28052,9 @@ public class CombatManager {
             }
         }
         if (!PlayerCombatStats.hasShield(player)) attackedWithoutShieldThisTurn = true;
+        // Aimed casts are attacks too: firing one from tall grass gives you away
+        // (unless Phantom Edge preserves it).
+        breakStealthFromAttack();
         achievementTracker.recordWeaponUsed(weapon);
         achievementTracker.recordPlayerDealtDamage();
 
@@ -28429,6 +29131,43 @@ public class CombatManager {
         if (activeHybridEffect() == HybridEffect.RAMPAGE) {
             apRemaining += HybridSetEffects.RAMPAGE_AP_REFUND;
             sendMessage("§c§l⚔ Rampage! §r§c+" + HybridSetEffects.RAMPAGE_AP_REFUND + " AP refunded");
+        }
+        // Momentum enchant (blunt): the kill hands the NEXT party member in the turn order 1 AP,
+        // banked and paid out when their turn starts (solo, that's your own next turn). Once per
+        // turn, so a multi-kill doesn't snowball the whole party's action economy.
+        if (!momentumProcThisTurn && player != null
+                && CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.MOMENTUM) > 0) {
+            momentumProcThisTurn = true;
+            java.util.UUID next = turnQueue.size() > 1
+                ? turnQueue.get((currentTurnIndex + 1) % turnQueue.size())
+                : player.getUuid();
+            pendingMomentumAp.merge(next, SwordAxeEnchantEffects.MOMENTUM_AP, Integer::sum);
+            String who = next.equals(player.getUuid()) ? "your next turn"
+                : momentumNameOf(next) + "'s next turn";
+            sendMessage("§e⚒ Momentum! +" + SwordAxeEnchantEffects.MOMENTUM_AP
+                + " AP banked for " + who + ".");
+        }
+        // Ambush enchant (sword): killing an enemy BEFORE it acted this round frightens the
+        // next enemy in the order that hasn't acted yet (-2 ATK for a turn, shown as
+        // Weakened). Reading the act order is the skill: kill out of sequence, shake the line.
+        if (player != null && !enemy.hasActedThisRound()
+                && CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.AMBUSH) > 0) {
+            for (CombatEntity nextUp : enemies) {
+                if (nextUp == enemy || !nextUp.isAlive() || nextUp.isAlly()
+                        || nextUp.hasActedThisRound()) continue;
+                // Guarded refresh, like Matador's Exposed: the expiry tick resets the WHOLE
+                // penalty, so only add when no Weakened is already running.
+                if (nextUp.getAttackPenaltyTurns() <= 0) {
+                    nextUp.setAttackPenalty(
+                        nextUp.getAttackPenalty() + SwordAxeEnchantEffects.AMBUSH_ATK_PENALTY);
+                }
+                nextUp.setAttackPenaltyTurns(Math.max(nextUp.getAttackPenaltyTurns(),
+                    SwordAxeEnchantEffects.AMBUSH_PENALTY_TURNS));
+                sendMessage("§5☠ Ambush! " + nextUp.getDisplayName()
+                    + " falters at the sudden kill (-"
+                    + SwordAxeEnchantEffects.AMBUSH_ATK_PENALTY + " ATK).");
+                break;
+            }
         }
         // Lucky Streak hybrid: each consecutive kill raises crit chance (resets when hit).
         if (activeHybridEffect() == HybridEffect.LUCKY_STREAK) {
