@@ -90,7 +90,7 @@ public class InfiniteClassScreen extends Screen {
             y += ROW_H + 2;
         }
         boolean skipHover = rowHovered(mouseX, mouseY, y);
-        drawRow(ctx, y, skipHover, "§7✕ §lNo Class", "§8Skip - just you and the logs.");
+        drawRow(ctx, y, skipHover, "§7§lNo Class", "§8Skip - just you and the logs.");
 
         super.render(ctx, mouseX, mouseY, delta);
     }

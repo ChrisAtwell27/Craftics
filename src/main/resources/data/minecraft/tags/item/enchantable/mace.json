@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:stick",
+    "minecraft:bamboo",
+    "minecraft:blaze_rod",
+    "minecraft:breeze_rod"
+  ]
+}

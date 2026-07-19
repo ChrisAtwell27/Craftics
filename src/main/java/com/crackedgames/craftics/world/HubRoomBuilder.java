@@ -59,10 +59,132 @@ public class HubRoomBuilder {
     }
 
     /** Lobby version - bump to trigger rebuild of the central lobby. */
-    public static final int LOBBY_VERSION = 2;
+    public static final int LOBBY_VERSION = 3;
 
-    /** Build the central lobby - a floating island waiting room with barrier walls. */
+    /**
+     * Base Y the hub schematic is pasted at: puts its 2x2 crying obsidian spawn
+     * pad (schem-local Y=23) at world Y=64, so players stand at Y=65 - the same
+     * spawn height as the old procedural lobby.
+     */
+    private static final int HUB_SCHEM_BASE_Y = 41;
+
+    /** Bounding box of the pasted hub schematic in world coords; null until resolved. */
+    private static volatile net.minecraft.util.math.BlockBox lobbyBounds = null;
+
+    /**
+     * Build the central lobby. Pastes the bundled hub.schem and spawns players on
+     * its 2x2 crying obsidian pad; falls back to the old procedural floating
+     * island if the schematic is missing from resources.
+     */
     public static void buildLobby(ServerWorld world) {
+        if (buildLobbyFromSchem(world)) return;
+        buildLobbyProcedural(world);
+    }
+
+    private static boolean buildLobbyFromSchem(ServerWorld world) {
+        net.minecraft.util.Identifier schemId = net.minecraft.util.Identifier.of("craftics", "hub.schem");
+        var resource = world.getServer().getResourceManager().getResource(schemId);
+        if (resource.isEmpty()) {
+            CrafticsMod.LOGGER.warn("hub.schem not found in resources - using procedural lobby");
+            return false;
+        }
+        com.crackedgames.craftics.level.SchemLoader.SchemData schem;
+        try (java.io.InputStream in = resource.get().getInputStream()) {
+            schem = com.crackedgames.craftics.level.SchemLoader.load(in, schemId.toString());
+        } catch (Exception e) {
+            CrafticsMod.LOGGER.error("Failed to read hub.schem", e);
+            return false;
+        }
+        if (schem == null) return false;
+
+        CrafticsMod.LOGGER.info("Building central hub from hub.schem ({}x{}x{})...",
+            schem.width(), schem.height(), schem.length());
+
+        // Wipe the old procedural lobby (radius-12 island + barrier walls) so nothing
+        // pokes out of the new build; the paste then rewrites its own volume, air included.
+        BlockState clearAir = Blocks.AIR.getDefaultState();
+        for (int x = -14; x <= 14; x++) {
+            for (int z = -14; z <= 14; z++) {
+                for (int y = 58; y <= 76; y++) {
+                    world.setBlockState(new BlockPos(x, y, z), clearAir);
+                }
+            }
+        }
+
+        int placeX = -schem.width() / 2;
+        int placeY = HUB_SCHEM_BASE_Y;
+        int placeZ = -schem.length() / 2;
+        // cullBuried=false: a solid lived-in build, same reasoning as the home island.
+        schem.place(world, placeX, placeY, placeZ, false);
+        lobbyBounds = new net.minecraft.util.math.BlockBox(
+            placeX, placeY, placeZ,
+            placeX + schem.width() - 1, placeY + schem.height() - 1, placeZ + schem.length() - 1);
+
+        // Spawn marker: the 2x2 crying obsidian pad. Average the marker blocks, stand on top.
+        long sumX = 0, sumZ = 0;
+        int count = 0, topY = Integer.MIN_VALUE;
+        for (int y = 0; y < schem.height(); y++) {
+            for (int z = 0; z < schem.length(); z++) {
+                for (int x = 0; x < schem.width(); x++) {
+                    BlockPos p = new BlockPos(placeX + x, placeY + y, placeZ + z);
+                    if (world.getBlockState(p).isOf(Blocks.CRYING_OBSIDIAN)) {
+                        sumX += p.getX();
+                        sumZ += p.getZ();
+                        topY = Math.max(topY, p.getY());
+                        count++;
+                    }
+                }
+            }
+        }
+        BlockPos spawn;
+        if (count > 0) {
+            spawn = new BlockPos(Math.round(sumX / (float) count), topY + 1,
+                Math.round(sumZ / (float) count));
+        } else {
+            spawn = new BlockPos(0, placeY + schem.height(), 0);
+            CrafticsMod.LOGGER.warn("hub.schem has no crying obsidian spawn marker - spawning above the build");
+        }
+        world.setSpawnPos(spawn, 0f);
+        // Stored lobby spawn drives the on-join teleport (and stays overridable
+        // via /craftics lobby setspawn, which writes these same fields).
+        CrafticsSavedData data = CrafticsSavedData.get(world);
+        data.lobbySpawnX = spawn.getX();
+        data.lobbySpawnY = spawn.getY();
+        data.lobbySpawnZ = spawn.getZ();
+        data.markDirty();
+        CrafticsMod.LOGGER.info("Central hub built. origin=({},{},{}), spawn={}",
+            placeX, placeY, placeZ, spawn);
+        return true;
+    }
+
+    /**
+     * Resolve the hub bounding box for break protection without rebuilding -
+     * called on every overworld load where the hub is already current. Reads only
+     * the schematic dimensions; the placement math must mirror
+     * {@link #buildLobbyFromSchem} exactly.
+     */
+    public static void initLobbyBounds(ServerWorld world) {
+        if (lobbyBounds != null) return;
+        net.minecraft.util.Identifier schemId = net.minecraft.util.Identifier.of("craftics", "hub.schem");
+        var resource = world.getServer().getResourceManager().getResource(schemId);
+        if (resource.isEmpty()) return; // procedural lobby - legacy radius check applies
+        com.crackedgames.craftics.level.SchemLoader.SchemData schem;
+        try (java.io.InputStream in = resource.get().getInputStream()) {
+            schem = com.crackedgames.craftics.level.SchemLoader.load(in, schemId.toString());
+        } catch (Exception e) {
+            return;
+        }
+        if (schem == null) return;
+        int placeX = -schem.width() / 2;
+        int placeZ = -schem.length() / 2;
+        lobbyBounds = new net.minecraft.util.math.BlockBox(
+            placeX, HUB_SCHEM_BASE_Y, placeZ,
+            placeX + schem.width() - 1, HUB_SCHEM_BASE_Y + schem.height() - 1,
+            placeZ + schem.length() - 1);
+    }
+
+    /** Build the old procedural lobby - a floating island waiting room with barrier walls. */
+    private static void buildLobbyProcedural(ServerWorld world) {
         CrafticsMod.LOGGER.info("Building central lobby...");
         BlockState stone = Blocks.SMOOTH_STONE.getDefaultState();
         BlockState deepslate = Blocks.POLISHED_DEEPSLATE.getDefaultState();

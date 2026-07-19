@@ -161,7 +161,7 @@ public final class Abilities {
             if (crater && blocked && target.isAlive()) {
                 int dealt = target.takeDamage(SwordAxeEnchantEffects.CRATER_COLLISION_DAMAGE);
                 target.setStunned(true);
-                messages.add("§6✸ Crater! " + target.getDisplayName() + " takes " + dealt
+                messages.add("§6Crater! " + target.getDisplayName() + " takes " + dealt
                     + " more from the impact and is Stunned!");
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, List.of());
@@ -207,7 +207,7 @@ public final class Abilities {
             if (crater && blocked && target.isAlive()) {
                 int dealt = target.takeDamage(SwordAxeEnchantEffects.CRATER_COLLISION_DAMAGE);
                 target.setStunned(true);
-                messages.add("§6✸ Crater! " + target.getDisplayName() + " takes " + dealt
+                messages.add("§6Crater! " + target.getDisplayName() + " takes " + dealt
                     + " more from the impact and is Stunned!");
             }
             return new WeaponAbility.AttackResult(baseDamage, messages, List.of());

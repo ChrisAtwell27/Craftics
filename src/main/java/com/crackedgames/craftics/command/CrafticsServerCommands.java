@@ -40,6 +40,22 @@ public final class CrafticsServerCommands {
                     ctx.getSource().sendFeedback(() -> Text.literal(
                         "§aLobby spawn set to " + p.getBlockPos().toShortString()), true);
                     return 1;
+                }))
+            .then(CommandManager.literal("rebuild")
+                .requires(src -> src.hasPermissionLevel(2))
+                .executes(ctx -> {
+                    // Re-paste the central hub from the bundled schematic in place.
+                    // Anything placed inside its footprint since (lootbox chests,
+                    // scoreboards) is overwritten - re-place those afterwards.
+                    var overworld = ctx.getSource().getServer().getOverworld();
+                    com.crackedgames.craftics.world.HubRoomBuilder.buildLobby(overworld);
+                    CrafticsSavedData data = CrafticsSavedData.get(overworld);
+                    data.hubBuilt = true;
+                    data.hubVersion = com.crackedgames.craftics.world.HubRoomBuilder.LOBBY_VERSION;
+                    data.markDirty();
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        "§aCentral hub rebuilt from the bundled schematic."), true);
+                    return 1;
                 }));
 
         var rescue = CommandManager.literal("rescue")

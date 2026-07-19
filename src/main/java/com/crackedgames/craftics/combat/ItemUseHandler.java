@@ -1634,10 +1634,32 @@ public class ItemUseHandler {
             + "|GIVE:bucket|§6Placed lava! Enemies on it take 3 fire damage per turn.";
     }
 
+    /**
+     * Placement guard for special blocks (campfire, banner, jukebox, ...): they need
+     * flat, solid ground. Rejects void, sunken pits, water, lava, fire, powder snow,
+     * obstacles and stair ramps. Returns the refusal message, or null when placeable.
+     */
+    private static String requireFlatGround(GridArena arena, GridPos targetTile) {
+        GridTile tile = arena.getTile(targetTile);
+        if (tile == null) return "§cTarget out of bounds!";
+        return switch (tile.getType()) {
+            case VOID -> "§cCan't place that over the void!";
+            case WATER, DEEP_WATER -> "§cCan't place that in water!";
+            case LAVA -> "§cCan't place that in lava!";
+            case FIRE -> "§cCan't place that in fire!";
+            case LOW_GROUND -> "§cCan't place that in a sunken pit!";
+            case POWDER_SNOW -> "§cCan't place that on powder snow!";
+            case OBSTACLE -> "§cThat tile is blocked!";
+            case STAIR -> "§cNeeds flat ground - not a stair.";
+            default -> null;
+        };
+    }
+
     // --- Scaffolding: place elevated tile - gives +1 range to ranged attacks from it (1 AP) ---
     private static String useScaffolding(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
-        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "scaffold:" + targetTile.x() + ":" + targetTile.z()
             + "|§aPlaced scaffolding! +1 range for ranged attacks from this tile.";
@@ -1646,7 +1668,8 @@ public class ItemUseHandler {
     // --- Campfire: place healing zone - heals 1 HP per turn when adjacent (1 AP) + creates light zone ---
     private static String useCampfire(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
-        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "campfire:" + targetTile.x() + ":" + targetTile.z()
             + "|§6Placed campfire! Heals 2 HP per turn while you're inside the 5x5 area + creates light (negate darkness).";
@@ -1721,6 +1744,8 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "honey:" + targetTile.x() + ":" + targetTile.z()
             + "|§eHoney block placed! Enemies that walk onto it lose all remaining movement.";
@@ -1732,6 +1757,8 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "slime:" + targetTile.x() + ":" + targetTile.z()
             + "|§aSlime block placed! Bouncy wall - pushes adjacent enemies back when they end their turn next to it.";
@@ -1744,6 +1771,8 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         // If an enemy is right on the target tile, freeze them immediately.
         CombatEntity enemy = arena.getOccupant(targetTile);
         String hitMsg = "";
@@ -1767,6 +1796,8 @@ public class ItemUseHandler {
         GridPos playerPos = arena.getPlayerGridPos();
         int dist = Math.abs(playerPos.x() - targetTile.x()) + Math.abs(playerPos.z() - targetTile.z());
         if (dist > 1) return "§cMust place next to yourself.";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         int buffed = 0;
         for (CombatEntity e : arena.getOccupants().values()) {
@@ -1785,6 +1816,8 @@ public class ItemUseHandler {
                                     GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         String color = BannerEffects.colorIdForItem(stack.getItem());
         if (color == null) color = "white";
         int totalDef = BannerEffects.DEFENSE_BONUS + SpecialAffinity.potencyBonus(player);
@@ -1977,7 +2010,8 @@ public class ItemUseHandler {
     // --- Lightning Rod: place on tile, strikes next turn for 4 AoE damage (1 AP) ---
     private static String useLightningRod(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
-        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "lightning:" + targetTile.x() + ":" + targetTile.z()
             + "|§eLightning rod placed! It will strike all nearby enemies next turn.";
@@ -1988,6 +2022,8 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "cactus:" + targetTile.x() + ":" + targetTile.z()
             + "|§2Cactus placed! It blocks movement and pricks adjacent enemies for 1 damage.";
@@ -2051,7 +2087,8 @@ public class ItemUseHandler {
     // --- Cake: place on tile, heals 2 HP to anyone stepping on it, 3 uses (1 AP) ---
     private static String useCake(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
-        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "cake:" + targetTile.x() + ":" + targetTile.z()
             + "|§dCake placed! Heals 2 HP when stepped on (3 uses).";
@@ -2063,6 +2100,8 @@ public class ItemUseHandler {
         if (targetTile == null) return "§cNeed to target a tile!";
         if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
         if (arena.isOccupied(targetTile)) return "§cTile is occupied!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         int slowed = 0;
         for (CombatEntity e : arena.getOccupants().values()) {
             if (!e.isAlive() || e.isAlly()) continue;
@@ -2080,6 +2119,8 @@ public class ItemUseHandler {
     // --- Lantern: reveals invisible/hidden enemies in 3-tile radius (1 AP, consumes) ---
     private static String useLantern(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "lantern:" + targetTile.x() + ":" + targetTile.z()
             + "|§eLight zone created! Reveals hidden enemies within 3 tiles + negates darkness.";
@@ -2088,7 +2129,8 @@ public class ItemUseHandler {
     // --- Torch: place lightweight light source (1 AP) - creates light (radius 2, negates darkness) ---
     private static String useTorch(GridArena arena, GridPos targetTile, ItemStack stack) {
         if (targetTile == null) return "§cNeed to target a tile!";
-        if (!arena.isInBounds(targetTile)) return "§cTarget out of bounds!";
+        String ground = requireFlatGround(arena, targetTile);
+        if (ground != null) return ground;
         stack.decrement(1);
         return TILE_EFFECT_PREFIX + "torch:" + targetTile.x() + ":" + targetTile.z()
             + "|§eLight from torch! Creates a smaller light zone (radius 2) that negates darkness.";

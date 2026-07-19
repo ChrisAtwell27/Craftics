@@ -782,6 +782,10 @@ public class CrafticsSavedData extends PersistentState {
             }
         }
 
+        if (nbt.contains("lootboxChests")) {
+            data.lootboxChestsDeserialize(nbt.getString("lootboxChests"));
+        }
+
         return data;
     }
 
@@ -808,6 +812,7 @@ public class CrafticsSavedData extends PersistentState {
         nbt.put("parties", partiesNbt);
 
         nbt.putString("pendingHardcoreWipe", joinPendingHardcoreWipe());
+        nbt.putString("lootboxChests", lootboxChestsSerialized());
 
         return nbt;
     }
@@ -875,6 +880,8 @@ public class CrafticsSavedData extends PersistentState {
             catch (IllegalArgumentException ignored) {}
         }
 
+        data.lootboxChestsDeserialize(nbt.getString("lootboxChests", ""));
+
         return data;
     }
 
@@ -901,6 +908,7 @@ public class CrafticsSavedData extends PersistentState {
         nbt.put("parties", partiesNbt);
 
         nbt.putString("pendingHardcoreWipe", joinPendingHardcoreWipe());
+        nbt.putString("lootboxChests", lootboxChestsSerialized());
 
         return nbt;
     }
@@ -1135,6 +1143,53 @@ public class CrafticsSavedData extends PersistentState {
      *  leaderboard, which ranks offline players too. */
     public Map<UUID, PlayerData> getAllPlayerData() {
         return java.util.Collections.unmodifiableMap(players);
+    }
+
+    // ── Lootbox chest kiosks ────────────────────────────────────────────────
+    // Registered chest positions, keyed "dimensionId|x|y|z" -> lootbox type name.
+    // Serialized as one flat string (entries joined with ';') so the NBT round-trip
+    // needs only getString/putString, which exist unchanged on every shard.
+
+    private final Map<String, String> lootboxChests = new HashMap<>();
+
+    private static String lootboxKey(net.minecraft.server.world.ServerWorld world,
+                                     net.minecraft.util.math.BlockPos pos) {
+        return world.getRegistryKey().getValue() + "|" + pos.getX() + "|" + pos.getY() + "|" + pos.getZ();
+    }
+
+    public void registerLootboxChest(net.minecraft.server.world.ServerWorld world,
+                                     net.minecraft.util.math.BlockPos pos, String typeName) {
+        lootboxChests.put(lootboxKey(world, pos), typeName);
+        markDirty();
+    }
+
+    public void unregisterLootboxChest(net.minecraft.server.world.ServerWorld world,
+                                       net.minecraft.util.math.BlockPos pos) {
+        if (lootboxChests.remove(lootboxKey(world, pos)) != null) markDirty();
+    }
+
+    /** The registered lootbox type name at this position, or null. */
+    public String getLootboxChestType(net.minecraft.server.world.ServerWorld world,
+                                      net.minecraft.util.math.BlockPos pos) {
+        return lootboxChests.get(lootboxKey(world, pos));
+    }
+
+    private String lootboxChestsSerialized() {
+        StringBuilder sb = new StringBuilder();
+        for (var e : lootboxChests.entrySet()) {
+            if (sb.length() > 0) sb.append(';');
+            sb.append(e.getKey()).append('=').append(e.getValue());
+        }
+        return sb.toString();
+    }
+
+    private void lootboxChestsDeserialize(String serialized) {
+        lootboxChests.clear();
+        if (serialized == null || serialized.isEmpty()) return;
+        for (String entry : serialized.split(";")) {
+            int eq = entry.lastIndexOf('=');
+            if (eq > 0) lootboxChests.put(entry.substring(0, eq), entry.substring(eq + 1));
+        }
     }
 
     /**

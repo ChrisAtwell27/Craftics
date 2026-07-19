@@ -1,42 +1,173 @@
 {
   "values": [
     "#minecraft:swords",
-    { "id": "#c:tools/daggers", "required": false },
-    { "id": "#c:tools/spears", "required": false },
-    { "id": "simplyswords:iron_longsword", "required": false },
-    { "id": "simplyswords:gold_longsword", "required": false },
-    { "id": "simplyswords:diamond_longsword", "required": false },
-    { "id": "simplyswords:netherite_longsword", "required": false },
-    { "id": "simplyswords:runic_longsword", "required": false },
-    { "id": "simplyswords:iron_katana", "required": false },
-    { "id": "simplyswords:gold_katana", "required": false },
-    { "id": "simplyswords:diamond_katana", "required": false },
-    { "id": "simplyswords:netherite_katana", "required": false },
-    { "id": "simplyswords:runic_katana", "required": false },
-    { "id": "simplyswords:iron_rapier", "required": false },
-    { "id": "simplyswords:gold_rapier", "required": false },
-    { "id": "simplyswords:diamond_rapier", "required": false },
-    { "id": "simplyswords:netherite_rapier", "required": false },
-    { "id": "simplyswords:runic_rapier", "required": false },
-    { "id": "simplyswords:iron_cutlass", "required": false },
-    { "id": "simplyswords:gold_cutlass", "required": false },
-    { "id": "simplyswords:diamond_cutlass", "required": false },
-    { "id": "simplyswords:netherite_cutlass", "required": false },
-    { "id": "simplyswords:runic_cutlass", "required": false },
-    { "id": "simplyswords:iron_sai", "required": false },
-    { "id": "simplyswords:gold_sai", "required": false },
-    { "id": "simplyswords:diamond_sai", "required": false },
-    { "id": "simplyswords:netherite_sai", "required": false },
-    { "id": "simplyswords:runic_sai", "required": false },
-    { "id": "simplyswords:iron_twinblade", "required": false },
-    { "id": "simplyswords:gold_twinblade", "required": false },
-    { "id": "simplyswords:diamond_twinblade", "required": false },
-    { "id": "simplyswords:netherite_twinblade", "required": false },
-    { "id": "simplyswords:runic_twinblade", "required": false },
-    { "id": "simplyswords:iron_spear", "required": false },
-    { "id": "simplyswords:gold_spear", "required": false },
-    { "id": "simplyswords:diamond_spear", "required": false },
-    { "id": "simplyswords:netherite_spear", "required": false },
-    { "id": "simplyswords:runic_spear", "required": false }
+    {
+      "id": "#c:tools/daggers",
+      "required": false
+    },
+    {
+      "id": "#c:tools/spears",
+      "required": false
+    },
+    {
+      "id": "simplyswords:iron_longsword",
+      "required": false
+    },
+    {
+      "id": "simplyswords:gold_longsword",
+      "required": false
+    },
+    {
+      "id": "simplyswords:diamond_longsword",
+      "required": false
+    },
+    {
+      "id": "simplyswords:netherite_longsword",
+      "required": false
+    },
+    {
+      "id": "simplyswords:runic_longsword",
+      "required": false
+    },
+    {
+      "id": "simplyswords:iron_katana",
+      "required": false
+    },
+    {
+      "id": "simplyswords:gold_katana",
+      "required": false
+    },
+    {
+      "id": "simplyswords:diamond_katana",
+      "required": false
+    },
+    {
+      "id": "simplyswords:netherite_katana",
+      "required": false
+    },
+    {
+      "id": "simplyswords:runic_katana",
+      "required": false
+    },
+    {
+      "id": "simplyswords:iron_rapier",
+      "required": false
+    },
+    {
+      "id": "simplyswords:gold_rapier",
+      "required": false
+    },
+    {
+      "id": "simplyswords:diamond_rapier",
+      "required": false
+    },
+    {
+      "id": "simplyswords:netherite_rapier",
+      "required": false
+    },
+    {
+      "id": "simplyswords:runic_rapier",
+      "required": false
+    },
+    {
+      "id": "simplyswords:iron_cutlass",
+      "required": false
+    },
+    {
+      "id": "simplyswords:gold_cutlass",
+      "required": false
+    },
+    {
+      "id": "simplyswords:diamond_cutlass",
+      "required": false
+    },
+    {
+      "id": "simplyswords:netherite_cutlass",
+      "required": false
+    },
+    {
+      "id": "simplyswords:runic_cutlass",
+      "required": false
+    },
+    {
+      "id": "simplyswords:iron_sai",
+      "required": false
+    },
+    {
+      "id": "simplyswords:gold_sai",
+      "required": false
+    },
+    {
+      "id": "simplyswords:diamond_sai",
+      "required": false
+    },
+    {
+      "id": "simplyswords:netherite_sai",
+      "required": false
+    },
+    {
+      "id": "simplyswords:runic_sai",
+      "required": false
+    },
+    {
+      "id": "simplyswords:iron_twinblade",
+      "required": false
+    },
+    {
+      "id": "simplyswords:gold_twinblade",
+      "required": false
+    },
+    {
+      "id": "simplyswords:diamond_twinblade",
+      "required": false
+    },
+    {
+      "id": "simplyswords:netherite_twinblade",
+      "required": false
+    },
+    {
+      "id": "simplyswords:runic_twinblade",
+      "required": false
+    },
+    {
+      "id": "simplyswords:iron_spear",
+      "required": false
+    },
+    {
+      "id": "simplyswords:gold_spear",
+      "required": false
+    },
+    {
+      "id": "simplyswords:diamond_spear",
+      "required": false
+    },
+    {
+      "id": "simplyswords:netherite_spear",
+      "required": false
+    },
+    {
+      "id": "simplyswords:runic_spear",
+      "required": false
+    },
+    "minecraft:tube_coral",
+    "minecraft:tube_coral_fan",
+    "minecraft:dead_tube_coral",
+    "minecraft:dead_tube_coral_fan",
+    "minecraft:brain_coral",
+    "minecraft:brain_coral_fan",
+    "minecraft:dead_brain_coral",
+    "minecraft:dead_brain_coral_fan",
+    "minecraft:bubble_coral",
+    "minecraft:bubble_coral_fan",
+    "minecraft:dead_bubble_coral",
+    "minecraft:dead_bubble_coral_fan",
+    "minecraft:fire_coral",
+    "minecraft:fire_coral_fan",
+    "minecraft:dead_fire_coral",
+    "minecraft:dead_fire_coral_fan",
+    "minecraft:horn_coral",
+    "minecraft:horn_coral_fan",
+    "minecraft:dead_horn_coral",
+    "minecraft:dead_horn_coral_fan"
   ]
 }

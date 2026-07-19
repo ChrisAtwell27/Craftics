@@ -258,7 +258,11 @@ public class SchemLoader {
         }
     }
 
-    public record SchemData(int width, int height, int length, BlockState[] palette, byte[] blockData) {
+    /** One schematic block entity: schematic-local position + full NBT payload ("id" set). */
+    public record SchemBlockEntity(int x, int y, int z, NbtCompound nbt) {}
+
+    public record SchemData(int width, int height, int length, BlockState[] palette, byte[] blockData,
+                            java.util.List<SchemBlockEntity> blockEntities) {
 
         /**
          * Vanilla blocks the post-place scans treat as functional markers
@@ -478,6 +482,40 @@ public class SchemLoader {
             CrafticsMod.LOGGER.info(
                 "Placed schematic: {} of {} solid blocks set ({} buried blocks culled, {} gravity supports added)",
                 placed, nonAir, nonAir - (placed - supports), supports);
+
+            applyBlockEntities(world, placeX, placeY, placeZ);
+        }
+
+        /**
+         * Restore the schematic's saved block-entity NBT (sign text, chest
+         * contents, banner patterns, ...) onto the blocks just placed. Positions
+         * whose block wasn't placed, or whose block holds no block entity, are
+         * skipped - block-entity blocks are cull-exempt in place(), so anything
+         * with saved data is normally present.
+         */
+        private void applyBlockEntities(ServerWorld world, int placeX, int placeY, int placeZ) {
+            if (blockEntities == null || blockEntities.isEmpty()) return;
+            int restored = 0;
+            for (SchemBlockEntity sbe : blockEntities) {
+                BlockPos pos = new BlockPos(placeX + sbe.x(), placeY + sbe.y(), placeZ + sbe.z());
+                net.minecraft.block.entity.BlockEntity be = world.getBlockEntity(pos);
+                if (be == null) continue;
+                NbtCompound nbt = sbe.nbt().copy();
+                nbt.putInt("x", pos.getX());
+                nbt.putInt("y", pos.getY());
+                nbt.putInt("z", pos.getZ());
+                try {
+                    be.read(nbt, world.getRegistryManager());
+                    be.markDirty();
+                    world.updateListeners(pos, world.getBlockState(pos), world.getBlockState(pos), 3);
+                    restored++;
+                } catch (Exception e) {
+                    CrafticsMod.LOGGER.warn("Failed to restore block entity at {}: {}", pos, e.toString());
+                }
+            }
+            if (restored > 0) {
+                CrafticsMod.LOGGER.info("Restored {} block entities from schematic", restored);
+            }
         }
 
         /**
@@ -690,6 +728,7 @@ public class SchemLoader {
         // Palette + block data location differs per version
         NbtCompound paletteNbt;
         byte[] blockDataBytes;
+        NbtCompound beContainer; // where the BlockEntities list lives (v3: Blocks, v2: root)
 
         if (schem.contains("Blocks")) {
             //? if <=1.21.4 {
@@ -703,6 +742,7 @@ public class SchemLoader {
             paletteNbt = blocks.getCompoundOrEmpty("Palette");
             blockDataBytes = blocks.getByteArray("Data").orElse(new byte[0]);
             *///?}
+            beContainer = blocks;
         } else {
             //? if <=1.21.4 {
             // v2
@@ -713,6 +753,7 @@ public class SchemLoader {
             paletteNbt = schem.getCompoundOrEmpty("Palette");
             blockDataBytes = schem.getByteArray("BlockData").orElse(new byte[0]);
             *///?}
+            beContainer = schem;
         }
 
         int maxId = 0;
@@ -733,10 +774,51 @@ public class SchemLoader {
             palette[id] = parseBlockState(blockStr);
         }
 
-        CrafticsMod.LOGGER.info("Loaded .schem {}: {}x{}x{}, {} palette entries",
-            sourceName, schemWidth, schemHeight, schemLength, paletteMap.size());
+        java.util.List<SchemBlockEntity> blockEntities = parseBlockEntities(beContainer);
 
-        return new SchemData(schemWidth, schemHeight, schemLength, palette, blockDataBytes);
+        CrafticsMod.LOGGER.info("Loaded .schem {}: {}x{}x{}, {} palette entries, {} block entities",
+            sourceName, schemWidth, schemHeight, schemLength, paletteMap.size(), blockEntities.size());
+
+        return new SchemData(schemWidth, schemHeight, schemLength, palette, blockDataBytes, blockEntities);
+    }
+
+    /**
+     * Parse the schematic's saved block entities (sign text, chest contents, ...).
+     * v3 nests each entry's payload under "Data"; v2 stores it inline next to
+     * Pos/Id. Either way the result carries a complete NBT payload with "id" set,
+     * positioned by schematic-local coordinates.
+     */
+    private static java.util.List<SchemBlockEntity> parseBlockEntities(NbtCompound container) {
+        java.util.List<SchemBlockEntity> result = new java.util.ArrayList<>();
+        //? if <=1.21.4 {
+        net.minecraft.nbt.NbtList list = container.getList("BlockEntities", net.minecraft.nbt.NbtElement.COMPOUND_TYPE);
+        //?} else
+        /*net.minecraft.nbt.NbtList list = container.getListOrEmpty("BlockEntities");*/
+        for (net.minecraft.nbt.NbtElement el : list) {
+            if (!(el instanceof NbtCompound entry)) continue;
+            //? if <=1.21.4 {
+            int[] pos = entry.getIntArray("Pos");
+            String id = entry.getString("Id");
+            //?} else {
+            /*int[] pos = entry.getIntArray("Pos").orElse(new int[0]);
+            String id = entry.getString("Id", "");
+            *///?}
+            if (pos.length != 3 || id.isEmpty()) continue;
+            NbtCompound nbt;
+            if (entry.contains("Data")) {
+                //? if <=1.21.4 {
+                nbt = entry.getCompound("Data").copy();
+                //?} else
+                /*nbt = entry.getCompoundOrEmpty("Data").copy();*/
+            } else {
+                nbt = entry.copy();
+                nbt.remove("Pos");
+                nbt.remove("Id");
+            }
+            nbt.putString("id", id);
+            result.add(new SchemBlockEntity(pos[0], pos[1], pos[2], nbt));
+        }
+        return result;
     }
 
     // Parses "minecraft:oak_stairs[facing=north,half=bottom]" into a BlockState

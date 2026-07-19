@@ -353,7 +353,7 @@ public final class InfiniteRunManager {
 
         CrafticsSavedData data = CrafticsSavedData.get(world);
         syncStats(player, progression, data.getPlayerData(player.getUuid()));
-        player.sendMessage(Text.literal("§5§l∞ " + affinity.icon + " §r§d"
+        player.sendMessage(Text.literal("§5§l∞ §r§d"
             + affinity.displayName + " class!§7 +1 " + affinity.displayName
             + " affinity and a " + weaponName + " to open with."), false);
     }

@@ -4,12 +4,16 @@
 	"package": "com.crackedgames.craftics.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
+		"AnvilStackEnchantMixin",
 		"CombatMountMixin",
+		"DisplayEntityInvoker",
+		"TextDisplayInvoker",
 		"EnderDragonEntityMixin",
 		"NoVanillaRegenMixin",
 		"PlayerDeathTotemMixin",
 		"PlayerEntityMixin",
 		"ServerPlayNetworkHandlerMixin",
+		"SimpleRegistryAccessor",
 		"SlimeEntityAccessor",
 		"SlimeEntitySplitMixin"
 	],

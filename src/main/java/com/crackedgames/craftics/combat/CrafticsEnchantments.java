@@ -327,6 +327,28 @@ public final class CrafticsEnchantments {
     }
 
     /**
+     * Whether {@code stack} is a coral weapon (live or dead, coral or fan). Corals are WATER
+     * weapons by damage type, but they enchant AS SWORDS by design - the whole vanilla sword
+     * kit plus the Craftics sword enchantments. The suffix check covers all twenty coral
+     * items and nothing else ({@code *_coral_block} doesn't match either suffix).
+     */
+    public static boolean isCoralWeapon(ItemStack stack) {
+        return pathEndsWith(stack, "_coral") || pathEndsWith(stack, "_coral_fan");
+    }
+
+    /**
+     * The blunt oddballs that enchant AS MACES by design: stick, bamboo, blaze rod, breeze
+     * rod. They're registered {@link DamageType#BLUNT} (so the Craftics blunt enchants
+     * already fire on them); this identifies them for the mace enchant pool.
+     */
+    public static boolean isMaceOddball(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        var item = stack.getItem();
+        return item == Items.STICK || item == Items.BAMBOO
+            || item == Items.BLAZE_ROD || item == Items.BREEZE_ROD;
+    }
+
+    /**
      * Whether {@code stack} is one of the weapons {@code entry} can sit on. ORs every tool in the
      * entry's set, plus the blunt weapons when the entry {@link Entry#appliesToBlunt() applies to
      * blunt}. This is the single gate {@link #level} and {@link #heldLevel} use, so a Hilt on an
@@ -409,6 +431,8 @@ public final class CrafticsEnchantments {
             || item == Items.DIAMOND_SWORD || item == Items.NETHERITE_SWORD) {
             return true;
         }
+        // Corals enchant as swords by design, WATER damage type notwithstanding.
+        if (isCoralWeapon(stack)) return true;
         return com.crackedgames.craftics.api.registry.WeaponRegistry.getDamageType(item)
             == com.crackedgames.craftics.combat.DamageType.SLASHING;
     }

@@ -67,6 +67,17 @@ public class CrafticsClient implements ClientModInitializer {
     public void onInitializeClient() {
         CrafticsMod.LOGGER.info("Craftics client initializing...");
 
+        // Registry health scan, client side: multiplayer disconnect crashes happen in
+        // the CLIENT's registries (Fabric's registry-sync unmap iterates them after
+        // the DISCONNECT event), so scan after join's remap and again right before
+        // that unmap runs. A broken slot gets named in the log before it can crash.
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register(
+            (handler, sender, client) ->
+                com.crackedgames.craftics.util.RegistryHealthScanner.scan("client-join"));
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register(
+            (handler, client) ->
+                com.crackedgames.craftics.util.RegistryHealthScanner.scan("client-disconnect"));
+
         HandledScreens.register(ModScreenHandlers.LEVEL_SELECT_SCREEN_HANDLER, LevelSelectScreen::new);
         HandledScreens.register(ModScreenHandlers.LOOT_MANAGEMENT_SCREEN_HANDLER,
             com.crackedgames.craftics.client.LootManagementScreen::new);

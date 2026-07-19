@@ -1,5 +1,38 @@
 ﻿Changelog
 0.3.1
+Crash Fixes
+
+- Fixed a game crash ("Pose stack not empty") and corrupted tooltip positioning when the Artifacts umbrella - or any item another mod renders with a cancelling custom renderer - was visible in an inventory or dropped in the world. The Hilt upside-down render effect pushed a matrix frame that another mod's render cancellation could leak; the flip now wraps the render call so it balances on every exit path
+- Registry health scan: on server start and stop, every game registry is swept for broken entries (null holes, unbound references - the unattributable cause of "NullPointerException in RegistrySyncManager.unmap" crashes when quitting a world). A broken slot is logged with the registry name and the mod entries around it, so the culprit mod is named in the log instead of a blank crash report
+- The registry scan also runs client-side, after joining and right before disconnect cleanup - multiplayer disconnect crashes corrupt the CLIENT's registries, which the server-side scan can't see
+- FIXED the disconnect crash itself: joining a server whose mods register entries the client doesn't have leaves null holes in the client's registries (Fabric registry-sync behavior), and Fabric's own disconnect cleanup then crashes iterating them. Craftics now compacts those holes right before that cleanup runs, so leaving the server no longer crashes the game. The scan still logs the mismatched registry and mod namespaces - aligning the client and server mod lists remains the proper fix
+
+Server Fun
+
+- /craftics scoreboard spawn (op): places a floating, live-updating INFINITE MODE top-10 board where you stand - a text display that refreshes every few seconds from the banked best scores and survives restarts. /craftics scoreboard remove clears boards near you
+- Lootboxes are physical chests in the world: /craftics lootbox place <type> [cost] (op) sets a kiosk chest in front of you, at the standard price or any emerald cost you choose (0 = free to open), in five flavors - Weapon Cache (all affinities, 3% chance at a Simply Swords runic legend), Armor Cache (chainmail to netherite, trim template bonus), Material Crate, Special Cache, and Tome Cache (vanilla + Craftics enchanted books). /craftics lootbox remove (op) retires the chest you're looking at
+- Opening a kiosk plays the full show - the lid swings open with vault and chest sounds and a particle burst, then the treasure-reveal screen - and costs banked emeralds (10-30 by type), or a Lootbox Key, a marked name tag only admins can grant (/craftics lootbox key), which opens any chest free. Kiosks survive restarts
+- /craftics lootbox odds <type> - available to every player, no permissions - prints the exact drop table: section chances, item lists, and per-item percentages, generated from the same data the rolls use so it can never drift from reality
+- All of it is earned in play or admin-granted; no purchase hooks, and full odds disclosure, in line with Minecraft's server monetization rules
+
+New Hub
+
+- The central lobby is now a hand-built hub pasted from a bundled schematic (177x160), replacing the old procedural floating island. Players spawn on its 2x2 crying obsidian pad; the builder finds the pad automatically, sets both the world spawn and the join teleport to it, and /craftics lobby setspawn still overrides
+- The whole hub build is protected from block breaking (overworld only - personal islands are untouched even near their dimension origin). Existing servers rebuild the lobby automatically on next load via the lobby version bump
+- Schematics now restore their saved block entities: sign text, chest contents, banner patterns and the rest survive placement (previously only the blocks were pasted, which left the hub's signs blank). Applies to every schematic the mod places - hub, home islands, arenas, scenes
+- /craftics lobby rebuild (op): re-paste the central hub from the bundled schematic in place, no world reset needed. Re-place lootbox chests and scoreboards inside its footprint afterwards
+- Fresh dedicated servers now default to the Craftics world type on their own: if no world exists yet and level-type was left at vanilla default, server.properties is set to the Craftics preset before the world generates. Existing worlds and deliberate level-type choices are never touched; level-type=default keeps vanilla terrain
+
+Placement Rules
+
+- Special blocks (campfire, banner, torch, lantern, jukebox, scaffolding, honey/slime block, cactus, cake, spore blossom, lightning rod, powder snow) now require flat, solid ground: no more planting a campfire over the void or a banner in lava. Void, sunken pits, water, deep water, lava, fire, powder snow, obstacles and stairs all refuse placement with a clear message
+
+Water Rules Cleanup
+
+- The guide book now tells the truth about water: regular water tiles are wadeable by anyone (Soaked for 2 turns unless a boat is consumed), and only DEEP water blocks movement and drowns you on a knockback. The Tile Types page gained a separate Deep Water card
+- The Turtle Helmet now actually does what the guide always claimed: wearing it lets you wade water without getting Soaked (it already saved you from a deep-water dunk)
+- Clicking an unreachable deep-water tile now says deep water is too deep to wade instead of wrongly asking for a boat
+
 Server Administration
 
 - /craftics config reload (op): re-reads craftics-config from disk, so scaling, timers and toggles can be tuned on a live server without a restart

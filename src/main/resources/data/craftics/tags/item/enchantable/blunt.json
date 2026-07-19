@@ -1,13 +1,41 @@
 {
   "values": [
     "minecraft:mace",
-    { "id": "#c:tools/clubs", "required": false },
-    { "id": "#c:tools/hammers", "required": false },
-    { "id": "#c:tools/quarterstaves", "required": false },
-    { "id": "simplyswords:iron_greathammer", "required": false },
-    { "id": "simplyswords:gold_greathammer", "required": false },
-    { "id": "simplyswords:diamond_greathammer", "required": false },
-    { "id": "simplyswords:netherite_greathammer", "required": false },
-    { "id": "simplyswords:runic_greathammer", "required": false }
+    {
+      "id": "#c:tools/clubs",
+      "required": false
+    },
+    {
+      "id": "#c:tools/hammers",
+      "required": false
+    },
+    {
+      "id": "#c:tools/quarterstaves",
+      "required": false
+    },
+    {
+      "id": "simplyswords:iron_greathammer",
+      "required": false
+    },
+    {
+      "id": "simplyswords:gold_greathammer",
+      "required": false
+    },
+    {
+      "id": "simplyswords:diamond_greathammer",
+      "required": false
+    },
+    {
+      "id": "simplyswords:netherite_greathammer",
+      "required": false
+    },
+    {
+      "id": "simplyswords:runic_greathammer",
+      "required": false
+    },
+    "minecraft:stick",
+    "minecraft:bamboo",
+    "minecraft:blaze_rod",
+    "minecraft:breeze_rod"
   ]
 }

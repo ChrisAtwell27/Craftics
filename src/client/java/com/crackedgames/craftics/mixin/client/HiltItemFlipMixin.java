@@ -2,6 +2,8 @@ package com.crackedgames.craftics.mixin.client;
 
 import com.crackedgames.craftics.combat.CrafticsEnchantments;
 import com.crackedgames.craftics.combat.PlayerCombatStats;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.minecraft.client.render.item.HeldItemRenderer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
@@ -16,9 +18,6 @@ import net.minecraft.client.render.model.json.ModelTransformationMode;
 /*import net.minecraft.item.ModelTransformationMode;
 *///?}
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Renders a Hilt-enchanted held weapon upside down. Purely cosmetic: the flip is a
@@ -29,15 +28,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * <p>Detection reads the {@code craftics:hilt} enchantment straight off the rendered
  * {@link ItemStack}'s enchantment data component via
  * {@link PlayerCombatStats#getEnchantLevel(ItemStack, String)}, which string-matches
- * the registry id and is client-safe (no ServerPlayerEntity). {@code heldLevel} would
- * need a server player, so it is deliberately avoided here.
+ * the registry id and is client-safe (no ServerPlayerEntity).
  *
- * <p>The push at HEAD and pop at RETURN are unconditional so the matrix stack always
- * balances whatever vanilla does in between; the rotation is only added when Hilt is
- * present. {@code HeldItemRenderer.renderItem} covers the item held in hand in both
- * first and third person. Its signature diverges after the 1.21.4 render-state
- * refactor (the {@code ModelTransformationMode}+boolean pair became a single
- * {@code ItemDisplayContext}), so the injection target is split per shard.
+ * <p><b>Why WrapMethod and not HEAD/RETURN.</b> A HEAD-push / RETURN-pop pair balances
+ * only when the method exits through one of ITS OWN return opcodes. Another mod's
+ * cancellable HEAD injection (Artifacts cancels item rendering for its umbrella to run
+ * a custom renderer) exits through a freshly injected return that RETURN handlers never
+ * see - the push leaked, corrupting the matrix stack once per rendered umbrella until
+ * the world renderer's "Pose stack not empty" check crashed the game. WrapMethod owns
+ * the whole call in a try/finally, so the pop runs no matter how the method exits:
+ * normal return, another mixin's cancel, or an exception.
+ *
+ * <p>The rotation is a BARE Z spin about the hand grip - no translate. At this method's
+ * entry the matrix is in the hand/arm frame, where a 0.5 center offset would move the
+ * item half a world block (the old "flung to the right" bug). The signature diverges
+ * after the 1.21.4 render-state refactor, so the wrap target is split per shard.
  */
 @Mixin(HeldItemRenderer.class)
 public abstract class HiltItemFlipMixin {
@@ -49,76 +54,51 @@ public abstract class HiltItemFlipMixin {
             && PlayerCombatStats.getEnchantLevel(stack, CrafticsEnchantments.HILT.fullId()) > 0;
     }
 
-    @org.spongepowered.asm.mixin.Unique
-    private static void craftics$flip(MatrixStack matrices, boolean hilt) {
-        if (!hilt) return;
-        // At HeldItemRenderer.renderItem HEAD the matrix is in the HAND/arm frame set
-        // up by the caller (renderFirstPersonItem / renderArmHoldingItem): the origin
-        // sits at the hand grip and the item model has NOT yet been scaled into its
-        // 0-1 model box. That method delegates straight to ItemRenderer.renderItem with
-        // no transform of its own, so HEAD is exactly the hand frame.
-        //
-        // A center-offset translate of 0.5 here would move the item half a WORLD block
-        // (the "flung to the right" bug), because 0.5 is only the model center once the
-        // matrix is in item 0-1 space, which happens deeper inside ItemRenderer. So we
-        // use a BARE rotation with no translate: it pivots the item 180 degrees about
-        // the hand grip, which keeps the sword in the hand and reads as "upside down".
-        // The Z axis is the roll axis of the flat held sprite, so a Z rotation flips it.
-        matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(180.0f));
-    }
-
     //? if <=1.21.1 {
-    @Inject(method = "renderItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/render/model/json/ModelTransformationMode;ZLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
-            at = @At("HEAD"))
-    private void craftics$hiltFlipPush(LivingEntity entity, ItemStack stack,
+    @WrapMethod(method = "renderItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/render/model/json/ModelTransformationMode;ZLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V")
+    private void craftics$hiltFlip(LivingEntity entity, ItemStack stack,
             ModelTransformationMode mode, boolean leftHand, MatrixStack matrices,
-            VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
+            VertexConsumerProvider vertexConsumers, int light, Operation<Void> original) {
         matrices.push();
-        craftics$flip(matrices, craftics$isHilt(stack));
-    }
-
-    @Inject(method = "renderItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/render/model/json/ModelTransformationMode;ZLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
-            at = @At("RETURN"))
-    private void craftics$hiltFlipPop(LivingEntity entity, ItemStack stack,
-            ModelTransformationMode mode, boolean leftHand, MatrixStack matrices,
-            VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
-        matrices.pop();
+        try {
+            if (craftics$isHilt(stack)) {
+                matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(180.0f));
+            }
+            original.call(entity, stack, mode, leftHand, matrices, vertexConsumers, light);
+        } finally {
+            matrices.pop();
+        }
     }
     //?} else if >=1.21.5 {
-    /*@Inject(method = "renderItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ItemDisplayContext;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
-            at = @At("HEAD"))
-    private void craftics$hiltFlipPush(LivingEntity entity, ItemStack stack,
+    /*@WrapMethod(method = "renderItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ItemDisplayContext;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V")
+    private void craftics$hiltFlip(LivingEntity entity, ItemStack stack,
             ItemDisplayContext mode, MatrixStack matrices,
-            VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
+            VertexConsumerProvider vertexConsumers, int light, Operation<Void> original) {
         matrices.push();
-        craftics$flip(matrices, craftics$isHilt(stack));
-    }
-
-    @Inject(method = "renderItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ItemDisplayContext;Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
-            at = @At("RETURN"))
-    private void craftics$hiltFlipPop(LivingEntity entity, ItemStack stack,
-            ItemDisplayContext mode, MatrixStack matrices,
-            VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
-        matrices.pop();
+        try {
+            if (craftics$isHilt(stack)) {
+                matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(180.0f));
+            }
+            original.call(entity, stack, mode, matrices, vertexConsumers, light);
+        } finally {
+            matrices.pop();
+        }
     }
     *///?} else {
-    /*// 1.21.3 / 1.21.4: HeldItemRenderer.renderItem still takes ModelTransformationMode
-    // plus the leftHand boolean, but ModelTransformationMode moved to net.minecraft.item.
-    @Inject(method = "renderItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ModelTransformationMode;ZLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
-            at = @At("HEAD"))
-    private void craftics$hiltFlipPush(LivingEntity entity, ItemStack stack,
+    /*// 1.21.3 / 1.21.4: same shape, ModelTransformationMode moved to net.minecraft.item.
+    @WrapMethod(method = "renderItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ModelTransformationMode;ZLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V")
+    private void craftics$hiltFlip(LivingEntity entity, ItemStack stack,
             ModelTransformationMode mode, boolean leftHand, MatrixStack matrices,
-            VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
+            VertexConsumerProvider vertexConsumers, int light, Operation<Void> original) {
         matrices.push();
-        craftics$flip(matrices, craftics$isHilt(stack));
-    }
-
-    @Inject(method = "renderItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ModelTransformationMode;ZLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
-            at = @At("RETURN"))
-    private void craftics$hiltFlipPop(LivingEntity entity, ItemStack stack,
-            ModelTransformationMode mode, boolean leftHand, MatrixStack matrices,
-            VertexConsumerProvider vertexConsumers, int light, CallbackInfo ci) {
-        matrices.pop();
+        try {
+            if (craftics$isHilt(stack)) {
+                matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees(180.0f));
+            }
+            original.call(entity, stack, mode, leftHand, matrices, vertexConsumers, light);
+        } finally {
+            matrices.pop();
+        }
     }
     *///?}
 }

@@ -8,6 +8,7 @@
     "BipedAnimMixin",
     "CameraLockMixin",
     "CrafticsEscCloseMixin",
+    "DisconnectScanMixin",
     "EnderDragonRendererMixin",
     "LivingEntityBounceMixin",
     "LivingEntityRendererAnimMixin",

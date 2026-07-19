@@ -3715,7 +3715,7 @@ public class CombatManager {
         }
         attacker.setDefensePenaltyTurns(Math.max(attacker.getDefensePenaltyTurns(),
             SwordAxeEnchantEffects.MATADOR_EXPOSE_TURNS));
-        sendMessage("§d⚔ Matador! " + attacker.getDisplayName() + " is Exposed (-"
+        sendMessage("§dMatador! " + attacker.getDisplayName() + " is Exposed (-"
             + SwordAxeEnchantEffects.MATADOR_DEFENSE_PENALTY + " DEF)!");
     }
 
@@ -3802,7 +3802,7 @@ public class CombatManager {
         if (dx == 0 && dz == 0) return;
         GridPos after = knockEnemyBack(attacker, dx, dz, 1);
         if (!after.equals(apos)) {
-            sendMessage("§3≈ Undertow! " + attacker.getDisplayName() + " is dragged toward you.");
+            sendMessage("§3Undertow! " + attacker.getDisplayName() + " is dragged toward you.");
         }
     }
 
@@ -4427,7 +4427,7 @@ public class CombatManager {
             ServerWorld swapWorld = (ServerWorld) player.getEntityWorld();
             swapWorld.playSound(null, pbp, net.minecraft.sound.SoundEvents.ENTITY_ENDERMAN_TELEPORT,
                 net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 1.4f);
-            sendMessage("§a⇄ Tag Team! You swap places with " + ally.getDisplayName()
+            sendMessage("§aTag Team! You swap places with " + ally.getDisplayName()
                 + ". §7(free action)");
             handleLeadSelect(-1);
             sendSync();
@@ -4593,10 +4593,10 @@ public class CombatManager {
         List<GridPos> path = new ArrayList<>(resolvedPath.steps());
         this.jumpedTiles = new ArrayList<>(resolvedPath.jumpedOver());
         if (path.isEmpty()) {
-            // Check if the tile is water and they don't have a boat
+            // Regular water is always wadeable, so an unreachable water target is deep water.
             GridTile targetTile = arena.getTile(target);
-            if (targetTile != null && targetTile.isWater() && !hasBoat) {
-                sendMessage("§bYou need a boat to cross water!");
+            if (targetTile != null && targetTile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER) {
+                sendMessage("§1Deep water is too deep to wade - jump across or go around!");
             } else {
                 sendMessage("§cCan't reach that tile!");
             }
@@ -4659,7 +4659,7 @@ public class CombatManager {
         // Trailblazer leggings: moving along a teammate's fresh trail costs 1 less (min 1).
         if (!hitCobweb && cost > 1 && pathFollowsAnotherTrail(path)) {
             cost -= 1;
-            sendMessage("§a≫ Trailblazer! You follow the trail. (-1 Speed cost)");
+            sendMessage("§aTrailblazer! You follow the trail. (-1 Speed cost)");
         }
         movePointsRemaining -= cost;
         movedThisTurn = true;
@@ -4861,7 +4861,7 @@ public class CombatManager {
                     if (crushed == null || !crushed.isAlive() || crushed.isAlly()) continue;
                     int dealt = crushed.takeDamage(SwordAxeEnchantEffects.TIMBERFALL_DAMAGE);
                     crushed.setStunned(true);
-                    sendMessage("§6⚒ Timberfall! The obstacle crashes onto "
+                    sendMessage("§6Timberfall! The obstacle crashes onto "
                         + crushed.getDisplayName() + " for " + dealt + " - Stunned!");
                     if (!crushed.isAlive()) killEnemy(crushed);
                 }
@@ -4877,7 +4877,7 @@ public class CombatManager {
         world.playSound(null, tileBlock, net.minecraft.sound.SoundEvents.BLOCK_WOOD_BREAK,
             net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 0.9f);
 
-        sendMessage("§6⚒ Demolished! +" + SwordAxeEnchantEffects.DEMOLISHER_SPEED_REFUND
+        sendMessage("§6Demolished! +" + SwordAxeEnchantEffects.DEMOLISHER_SPEED_REFUND
             + " Speed from the opening.");
         sendSync();
         refreshHighlights();
@@ -4898,7 +4898,7 @@ public class CombatManager {
         int level = CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.PHANTOM_EDGE);
         if (phantomEdgeUsesThisTurn < SwordAxeEnchantEffects.phantomEdgeAttacksPerTurn(level)) {
             phantomEdgeUsesThisTurn++;
-            sendMessage("§7✦ Phantom Edge - the grass doesn't stir.");
+            sendMessage("§7Phantom Edge - the grass doesn't stir.");
             return;
         }
 
@@ -5681,7 +5681,7 @@ public class CombatManager {
         // pointer painted by whoever got hurt last. Flat add in the same tier as Executioner.
         if (baseDamage > 0 && isGrudgeTarget(target)) {
             baseDamage += SwordAxeEnchantEffects.GRUDGEPLATE_BONUS;
-            sendMessage("§4⚔ §7Grudge! §f+" + SwordAxeEnchantEffects.GRUDGEPLATE_BONUS);
+            sendMessage("§7Grudge! §f+" + SwordAxeEnchantEffects.GRUDGEPLATE_BONUS);
         }
 
         // Airtime -a weapon hit spends ONE stack for (1.0 + 0.5*level)x damage:
@@ -7196,7 +7196,7 @@ public class CombatManager {
                         && CrafticsEnchantments.level(bondOwner, CrafticsEnchantments.VENGEFUL_BOND) > 0) {
                     currentEnemy.setMarkedTurns(Math.max(currentEnemy.getMarkedTurns(),
                         SwordAxeEnchantEffects.VENGEFUL_BOND_MARK_TURNS));
-                    sendMessage("§d♥ Vengeful Bond! " + currentEnemy.getDisplayName()
+                    sendMessage("§dVengeful Bond! " + currentEnemy.getDisplayName()
                         + " is Marked for killing " + entity.getDisplayName() + "!");
                 }
             }
@@ -8023,10 +8023,13 @@ public class CombatManager {
         // the SimplySwords greathammer are all SwordItem subclasses, so the SwordItem branch below
         // would shadow them - on <=1.21.4 the blunt branches were dead code and a club rolled the
         // sword pool (sweeping_edge on a sweepless club, and never "might" or Hilt).
-        if (item instanceof net.minecraft.item.MaceItem) {
+        if (item instanceof net.minecraft.item.MaceItem
+                || CrafticsEnchantments.isMaceOddball(stack)) {
             // The Mace is a BLUNT weapon, so it also offers the Craftics blunt-eligible enchants
             // (Hilt). Those come straight from CrafticsEnchantments.poolForBlunt, mirroring how the
             // runtime filter (CrafticsEnchantments.matchesBlunt) counts a Mace as blunt.
+            // The blunt oddballs (stick/bamboo/blaze rod/breeze rod) enchant AS MACES by
+            // design, so they take this same pool - Density on a stick is the whole joke.
             String[] vanilla = {"smite", "fire_aspect", "knockback", "unbreaking", "mending",
                 "density", "breach", "wind_burst"};
             String[] craftics = CrafticsEnchantments.poolForBlunt();
@@ -8058,6 +8061,18 @@ public class CombatManager {
             System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
             return out;
         }
+        // Corals enchant AS SWORDS by design (their damage type stays WATER): the full sword
+        // pool, vanilla and Craftics alike. Before the axe branch only for clarity - corals
+        // are BlockItems and would otherwise fall through to the universal pool.
+        if (CrafticsEnchantments.isCoralWeapon(stack)) {
+            String[] vanilla = {"sharpness", "smite", "bane_of_arthropods", "fire_aspect",
+                "knockback", "looting", "sweeping_edge", "unbreaking", "mending"};
+            String[] craftics = CrafticsEnchantments.poolFor(CrafticsEnchantments.Tool.SWORD);
+            String[] out = java.util.Arrays.copyOf(vanilla, vanilla.length + craftics.length);
+            System.arraycopy(craftics, 0, out, vanilla.length, craftics.length);
+            return out;
+        }
+
         // Axe pool next: an "axe" is any AxeItem OR any weapon registered Cleaving (e.g. the
         // SimplySwords greataxe, which is a SwordItem). Same definition the runtime Facade filter
         // uses (CrafticsEnchantments.isAxeLike), so a Cleaving weapon that can EARN Facade here can
@@ -9646,7 +9661,7 @@ public class CombatManager {
                 BlockPos trapBp = arena.gridToBlockPos(targetTile);
                 trapWorld.playSound(null, trapBp, net.minecraft.sound.SoundEvents.BLOCK_SAND_PLACE,
                     net.minecraft.sound.SoundCategory.PLAYERS, 0.7f, 0.8f);
-                sendMessage("§2◇ Trapper: potion buried. The first enemy to step there springs it.");
+                sendMessage("§2Trapper: potion buried. The first enemy to step there springs it.");
                 sendSync();
                 refreshHighlights();
                 return;
@@ -10575,7 +10590,7 @@ public class CombatManager {
         playerTrails.remove(player.getUuid());
         Integer banked = pendingMomentumAp.remove(player.getUuid());
         if (banked != null && banked > 0) {
-            sendMessage("§e⚒ Momentum! +" + banked + " AP this turn.");
+            sendMessage("§eMomentum! +" + banked + " AP this turn.");
             return banked;
         }
         return 0;
@@ -10616,7 +10631,7 @@ public class CombatManager {
             bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 14, 0.35, 0.3, 0.35, 0.05);
         sw.playSound(null, bp, net.minecraft.sound.SoundEvents.ITEM_HOE_TILL,
             net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
-        sendMessage("§a❀ Terraform! " + what + ".");
+        sendMessage("§aTerraform! " + what + ".");
     }
 
     /**
@@ -10644,7 +10659,7 @@ public class CombatManager {
             ProjectileSpawner.spawnPotionSplash(sw, bp, false);
             sw.playSound(null, bp, net.minecraft.sound.SoundEvents.ENTITY_SPLASH_POTION_BREAK,
                 net.minecraft.sound.SoundCategory.PLAYERS, 1.0f, 1.0f);
-            sendMessage("§2◆ Trap sprung! " + msg.toString().trim());
+            sendMessage("§2Trap sprung! " + msg.toString().trim());
             checkAndHandleDeath(victim);
         }
     }
@@ -11626,7 +11641,7 @@ public class CombatManager {
                         boat.setPosition(boatBlock.getX() + 0.5, boatY, boatBlock.getZ() + 0.5);
                         boat.setYaw(player.getYaw() - 90f);
                     }
-                } else {
+                } else if (player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD).getItem() != Items.TURTLE_HELMET) {
                     addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
                     sendMessage("§b  Wading through water! Soaked for 2 turns.");
                 }
@@ -11828,7 +11843,7 @@ public class CombatManager {
                         if (stomped == null || !stomped.isAlive() || stomped.isAlly()) continue;
                         int dealt = stomped.takeDamage(SwordAxeEnchantEffects.SHOCKSTEP_DAMAGE);
                         stomped.stackSlowness(SwordAxeEnchantEffects.SHOCKSTEP_SLOW_TURNS, 1);
-                        sendMessage("§b⚡ Shockstep! " + stomped.getDisplayName()
+                        sendMessage("§bShockstep! " + stomped.getDisplayName()
                             + " takes " + dealt + " from the landing and is Slowed!");
                         checkAndHandleDeath(stomped);
                     }
@@ -12297,7 +12312,7 @@ public class CombatManager {
                     if (CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.IRON_WILL) > 0) {
                         String mentalExpired = combatEffects.tickMentalEffectsExtra();
                         if (mentalExpired != null) {
-                            sendMessage("§b◈ Iron Will shakes off: " + mentalExpired);
+                            sendMessage("§bIron Will shakes off: " + mentalExpired);
                         }
                     }
 
@@ -19415,7 +19430,7 @@ public class CombatManager {
         if (CrafticsEnchantments.wornLevel(player, CrafticsEnchantments.LEDGEGRIP) <= 0) return false;
         if (!ledgegripUsed.add(player.getUuid())) return false;
         damagePlayer(SwordAxeEnchantEffects.LEDGEGRIP_DAMAGE, source);
-        sendMessage("§6✋ Ledgegrip! You catch the edge of " + hazardName
+        sendMessage("§6Ledgegrip! You catch the edge of " + hazardName
             + " and haul yourself back up!");
         if (getPlayerHp() > 0) rescueSurvivorToSafeTile();
         return true;
@@ -19561,8 +19576,10 @@ public class CombatManager {
                             }
                         }
                         case WATER -> {
-                            addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
-                            sendMessage("§b  Splashed into water! Soaked for 2 turns.");
+                            if (player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD).getItem() != Items.TURTLE_HELMET) {
+                                addEffectHooked(CombatEffects.EffectType.SOAKED, 2, 0);
+                                sendMessage("§b  Splashed into water! Soaked for 2 turns.");
+                            }
                         }
                         default -> {}
                     }
@@ -19766,7 +19783,7 @@ public class CombatManager {
         if (crater && (hitWall || hitCactus) && enemy.isAlive()) {
             int dealt = enemy.takeDamage(SwordAxeEnchantEffects.CRATER_COLLISION_DAMAGE);
             enemy.setStunned(true);
-            sendMessage("§6✸ Crater! " + enemy.getDisplayName() + " takes " + dealt
+            sendMessage("§6Crater! " + enemy.getDisplayName() + " takes " + dealt
                 + " more from the impact and is Stunned!");
             if (!enemy.isAlive()) {
                 killEnemy(enemy);
@@ -19784,7 +19801,7 @@ public class CombatManager {
                 (ServerWorld) player.getEntityWorld());
             midasData.getPlayerData(player.getUuid()).addEmeralds(coins);
             midasData.markDirty();
-            sendMessage("§a✦ Midas! " + coins + " emerald" + (coins == 1 ? "" : "s")
+            sendMessage("§aMidas! " + coins + " emerald" + (coins == 1 ? "" : "s")
                 + " shake loose into your bank.");
         }
 
@@ -19841,7 +19858,7 @@ public class CombatManager {
             int stacks = enemy.getBleedStacks();
             enemy.setBleedStacks(0);
             int burst = enemy.takeDamage(stacks * SwordAxeEnchantEffects.HEMORRHAGE_DAMAGE_PER_STACK);
-            sendMessage("§4❈ Hemorrhage! " + enemy.getDisplayName() + "'s " + stacks
+            sendMessage("§4Hemorrhage! " + enemy.getDisplayName() + "'s " + stacks
                 + " Bleed stack" + (stacks == 1 ? "" : "s") + " detonate for " + burst + "!");
             if (!enemy.isAlive()) killEnemy(enemy);
         }
@@ -24096,18 +24113,28 @@ public class CombatManager {
                 .filter(e -> e.getKey().isPresent() && e.getKey().get().getValue().getPath().equals(chosenKey))
                 .findFirst().orElse(null);
 
+            // Stackable weapons (corals, sticks, rods): the enchant lands on ONE item, not
+            // the whole stack. split(1) peels a single off the inventory stack in place; the
+            // enchanted single goes back beside its former stack (or drops if bags are full).
+            ItemStack enchantTarget = stack;
+            boolean splitFromStack = false;
+            if (stack.getCount() > 1) {
+                enchantTarget = stack.split(1);
+                splitFromStack = true;
+            }
+
             if (enchantEntry != null) {
                 // Clamp the 1-3 roll to the enchant's real max level so the enchanter
                 // never hands out invalid levels like Mending II or Knockback III.
                 level = Math.min(level, enchantEntry.value().getMaxLevel());
                 ItemEnchantmentsComponent.Builder builder = new ItemEnchantmentsComponent.Builder(
-                    stack.getOrDefault(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT));
+                    enchantTarget.getOrDefault(DataComponentTypes.ENCHANTMENTS, ItemEnchantmentsComponent.DEFAULT));
                 builder.add(enchantEntry, level);
-                stack.set(DataComponentTypes.ENCHANTMENTS, builder.build());
+                enchantTarget.set(DataComponentTypes.ENCHANTMENTS, builder.build());
                 sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " received §e"
                     + chosenKey.replace('_', ' ') + " " + level + " §denchantment!");
             } else {
-                stack.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+                enchantTarget.set(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
                 sendMessage("\u00a7d\u2728 " + stack.getName().getString() + " shimmers with new power!");
             }
         }
@@ -29144,7 +29171,7 @@ public class CombatManager {
             pendingMomentumAp.merge(next, SwordAxeEnchantEffects.MOMENTUM_AP, Integer::sum);
             String who = next.equals(player.getUuid()) ? "your next turn"
                 : momentumNameOf(next) + "'s next turn";
-            sendMessage("§e⚒ Momentum! +" + SwordAxeEnchantEffects.MOMENTUM_AP
+            sendMessage("§eMomentum! +" + SwordAxeEnchantEffects.MOMENTUM_AP
                 + " AP banked for " + who + ".");
         }
         // Ambush enchant (sword): killing an enemy BEFORE it acted this round frightens the

@@ -35,9 +35,56 @@ public class CrafticsMod implements ModInitializer {
     public static CrafticsConfigWrapper CONFIG;
     private static final java.util.Map<java.util.UUID, String> addonBonusCache = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * On a FRESH dedicated server (no level.dat yet), rewrite server.properties so
+     * level-type points at the Craftics world preset instead of vanilla terrain -
+     * the server-side counterpart of the client's WorldCreatorMixin default.
+     *
+     * <p>Strictly scoped: never touches anything once the world exists, and
+     * respects any non-default level-type an admin has chosen. An admin who wants
+     * vanilla terrain on a fresh Craftics server can set {@code level-type=default}
+     * (the legacy alias vanilla still accepts), which this deliberately leaves alone.
+     */
+    private static void defaultDedicatedServerWorldType() {
+        if (net.fabricmc.loader.api.FabricLoader.getInstance().getEnvironmentType()
+                != net.fabricmc.api.EnvType.SERVER) {
+            return;
+        }
+        try {
+            java.nio.file.Path gameDir = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir();
+            java.nio.file.Path propsFile = gameDir.resolve("server.properties");
+            java.util.Properties props = new java.util.Properties();
+            if (java.nio.file.Files.exists(propsFile)) {
+                try (java.io.InputStream in = java.nio.file.Files.newInputStream(propsFile)) {
+                    props.load(in);
+                }
+            }
+            String levelName = props.getProperty("level-name", "world");
+            if (java.nio.file.Files.exists(gameDir.resolve(levelName).resolve("level.dat"))) {
+                return; // existing world - never touch it
+            }
+            String levelType = props.getProperty("level-type", "minecraft:normal").trim().toLowerCase(java.util.Locale.ROOT);
+            if (!levelType.equals("minecraft:normal") && !levelType.equals("normal")) {
+                return; // admin picked something deliberate - respect it
+            }
+            props.setProperty("level-type", "craftics:craftics");
+            try (java.io.OutputStream out = java.nio.file.Files.newOutputStream(propsFile)) {
+                props.store(out, "Craftics defaulted level-type to its world preset for this fresh server. Use level-type=default for vanilla terrain.");
+            }
+            LOGGER.info("Fresh dedicated server: level-type set to craftics:craftics (set level-type=default for vanilla terrain).");
+        } catch (Exception e) {
+            LOGGER.warn("Could not default level-type to the Craftics world preset", e);
+        }
+    }
+
     @Override
     public void onInitialize() {
         LOGGER.info("Craftics initializing...");
+
+        // Fresh dedicated servers default to the Craftics world preset. Must run
+        // before vanilla reads server.properties - mod init happens pre-main on
+        // dedicated servers, so this is early enough.
+        defaultDedicatedServerWorldType();
 
         // owo-lib config
         CONFIG = CrafticsConfigWrapper.createAndLoad();
@@ -220,6 +267,9 @@ public class CrafticsMod implements ModInitializer {
 
         // Clear static combat state between world loads (prevents leaking across saves in singleplayer)
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            // Runs before the client's disconnect-time registry unmap, so a broken
+            // registry slot gets named in the log before it can crash that unmap.
+            com.crackedgames.craftics.util.RegistryHealthScanner.scan("server-stop");
             CombatManager.clearAll();
             com.crackedgames.craftics.level.BiomeRegistry.clear();
             // Fantasy saves/unloads its own runtime worlds on stop; this only drops
@@ -237,6 +287,9 @@ public class CrafticsMod implements ModInitializer {
                         data.hubBuilt = true;
                         data.hubVersion = HubRoomBuilder.LOBBY_VERSION;
                         data.markDirty();
+                    } else {
+                        // Hub already current: resolve its protection bounds for this session.
+                        HubRoomBuilder.initLobbyBounds(world);
                     }
                     // Set to daytime on load
                     world.setTimeOfDay(6000);
@@ -553,6 +606,18 @@ public class CrafticsMod implements ModInitializer {
             }
 
             try {
+                com.crackedgames.craftics.world.InfiniteScoreboardHologram.tick(server);
+            } catch (Throwable t) {
+                LOGGER.error("InfiniteScoreboardHologram.tick() crashed; continuing server tick", t);
+            }
+
+            try {
+                com.crackedgames.craftics.combat.LootboxManager.tick(server);
+            } catch (Throwable t) {
+                LOGGER.error("LootboxManager.tick() crashed; continuing server tick", t);
+            }
+
+            try {
                 com.crackedgames.craftics.vfx.PhaseScheduler.tickAll();
                 for (net.minecraft.server.world.ServerWorld w : server.getWorlds()) {
                     com.crackedgames.craftics.vfx.VfxBlockTracker.of(w).tick(w);
@@ -634,8 +699,10 @@ public class CrafticsMod implements ModInitializer {
                         && CombatManager.get(sp).isActive()) {
                     return false; // cancel block breaking for THIS player during combat
                 }
-                // Protect central lobby (floating island, prevent breaking the platform)
-                if (HubRoomBuilder.isLobbyProtected(pos)) return false;
+                // Protect the central hub - overworld only, so a personal island that
+                // happens to sit near its dimension's origin is never caught by this.
+                if (world.getRegistryKey() == World.OVERWORLD
+                        && HubRoomBuilder.isLobbyProtected(pos)) return false;
                 // Personal worlds are fully modifiable, no shell protection
                 return true;
             }
@@ -644,6 +711,11 @@ public class CrafticsMod implements ModInitializer {
         // Infinite mode: registers the boss:infinite AI key and the rest-room
         // continue-bell interaction.
         com.crackedgames.craftics.combat.InfiniteRunManager.init();
+
+        // Lootbox chest kiosks: registers the UseBlockCallback that intercepts
+        // registered chests. Registered BEFORE the visitor guard below would matter,
+        // but kiosks only exist where admins place them, never in visited islands.
+        com.crackedgames.craftics.combat.LootboxManager.init();
 
         // Look-only visitors: block/entity interaction and block-hit (attack) are denied
         // in a foreign island dim; PASS lets vanilla/other handlers decide otherwise.
@@ -671,6 +743,7 @@ public class CrafticsMod implements ModInitializer {
 
         // Load biome definitions from JSON datapacks on server start
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            com.crackedgames.craftics.util.RegistryHealthScanner.scan("server-start");
             com.crackedgames.craftics.level.BiomeRegistry.clear();
             com.crackedgames.craftics.level.BiomeRegistry.loadFromDatapacks(
                 server.getResourceManager()
@@ -1503,6 +1576,138 @@ public class CrafticsMod implements ModInitializer {
                                 + targetPlayer.getName().getString() + "'s infinite run."), true);
                             return 1;
                         }))));
+
+            // /craftics scoreboard spawn|remove (op): a floating, live-updating top-10
+            // board for infinite mode, placed where the admin stands. remove clears any
+            // board within 8 blocks.
+            root.then(CommandManager.literal("scoreboard").requires(src -> src.hasPermissionLevel(2))
+                .then(CommandManager.literal("spawn").executes(ctx -> {
+                    ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
+                    var world = (ServerWorld) admin.getEntityWorld();
+                    var board = com.crackedgames.craftics.world.InfiniteScoreboardHologram.spawn(
+                        world, admin.getPos().add(0, 1.2, 0));
+                    if (board == null) {
+                        ctx.getSource().sendError(Text.literal("§cFailed to spawn the scoreboard."));
+                        return 0;
+                    }
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        "§aScoreboard placed. It refreshes every few seconds; "
+                        + "§e/craftics scoreboard remove§a clears boards near you."), true);
+                    return 1;
+                }))
+                .then(CommandManager.literal("remove").executes(ctx -> {
+                    ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
+                    int removed = com.crackedgames.craftics.world.InfiniteScoreboardHologram.removeNear(
+                        (ServerWorld) admin.getEntityWorld(), admin.getPos(), 8.0);
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        removed > 0 ? "§aRemoved " + removed + " scoreboard(s)."
+                                    : "§7No scoreboard within 8 blocks."), true);
+                    return removed > 0 ? 1 : 0;
+                })));
+
+            // /craftics lootbox place <type> (op): place a lootbox CHEST kiosk in front of
+            // the admin. remove (op) unregisters + breaks the one you're looking at/near.
+            // odds <type> is PUBLIC - the odds disclosure must be readable by everyone.
+            // key [count] [player] (op): the free-open Keys.
+            var lootboxPlaceExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                String typeName = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "type");
+                var boxType = com.crackedgames.craftics.combat.LootboxManager.Type.byName(typeName);
+                if (boxType == null) {
+                    ctx.getSource().sendError(Text.literal("§cUnknown lootbox type: " + typeName
+                        + ". Valid: weapons, armor, materials, special, books"));
+                    return 0;
+                }
+                int cost = boxType.emeraldCost;
+                try {
+                    cost = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "cost");
+                } catch (IllegalArgumentException ignored) {}
+                ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
+                var world = (ServerWorld) admin.getEntityWorld();
+                var facing = admin.getHorizontalFacing();
+                var chestPos = admin.getBlockPos().offset(facing);
+                if (!com.crackedgames.craftics.combat.LootboxManager.placeChest(
+                        world, chestPos, facing, boxType, cost)) {
+                    ctx.getSource().sendError(Text.literal(
+                        "§cThe block in front of you isn't free."));
+                    return 0;
+                }
+                final String priceNote = cost <= 0 ? "free"
+                    : cost + " emeralds or a Key";
+                ctx.getSource().sendFeedback(() -> Text.literal("§aPlaced a " + boxType.display
+                    + " chest. Players open it for " + priceNote
+                    + "; odds via /craftics lootbox odds "
+                    + boxType.name().toLowerCase() + "."), true);
+                return 1;
+            };
+            var lootboxOddsExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                String typeName = com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "type");
+                var boxType = com.crackedgames.craftics.combat.LootboxManager.Type.byName(typeName);
+                if (boxType == null) {
+                    ctx.getSource().sendError(Text.literal("§cUnknown lootbox type: " + typeName
+                        + ". Valid: weapons, armor, materials, special, books"));
+                    return 0;
+                }
+                for (String line : com.crackedgames.craftics.combat.LootboxManager.oddsLines(boxType)) {
+                    ctx.getSource().sendFeedback(() -> Text.literal(line), false);
+                }
+                return 1;
+            };
+            var lootboxRemoveExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                ServerPlayerEntity admin = ctx.getSource().getPlayerOrThrow();
+                var world = (ServerWorld) admin.getEntityWorld();
+                var hit = admin.raycast(6.0, 0.0f, false);
+                if (hit instanceof net.minecraft.util.hit.BlockHitResult blockHit
+                        && com.crackedgames.craftics.combat.LootboxManager.removeChest(
+                            world, blockHit.getBlockPos())) {
+                    ctx.getSource().sendFeedback(() -> Text.literal(
+                        "§aRemoved the lootbox chest."), true);
+                    return 1;
+                }
+                ctx.getSource().sendError(Text.literal(
+                    "§cLook at a lootbox chest to remove it."));
+                return 0;
+            };
+            var lootboxKeyExec = (com.mojang.brigadier.Command<ServerCommandSource>) ctx -> {
+                int count = 1;
+                try {
+                    count = com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "count");
+                } catch (IllegalArgumentException ignored) {}
+                ServerPlayerEntity targetPlayer = targetOrSelf.resolve(ctx);
+                var keyStack = com.crackedgames.craftics.combat.LootboxManager.createKey(count);
+                if (!targetPlayer.getInventory().insertStack(keyStack)) {
+                    targetPlayer.dropItem(keyStack, false);
+                }
+                final int fCount = count;
+                ctx.getSource().sendFeedback(() -> Text.literal("§aGave "
+                    + targetPlayer.getName().getString() + " " + fCount + " Lootbox Key(s)."), true);
+                return 1;
+            };
+            var lootboxTypeSuggester = (com.mojang.brigadier.suggestion.SuggestionProvider<ServerCommandSource>) (ctx, builder) -> {
+                for (var t : com.crackedgames.craftics.combat.LootboxManager.Type.values()) {
+                    builder.suggest(t.name().toLowerCase());
+                }
+                return builder.buildFuture();
+            };
+            // odds is deliberately NOT op-gated: every player must be able to read the pool.
+            root.then(CommandManager.literal("lootbox")
+                .then(CommandManager.literal("place").requires(src -> src.hasPermissionLevel(2))
+                    .then(CommandManager.argument("type", com.mojang.brigadier.arguments.StringArgumentType.word())
+                        .suggests(lootboxTypeSuggester)
+                        .executes(lootboxPlaceExec)
+                        .then(CommandManager.argument("cost", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, 100000))
+                            .executes(lootboxPlaceExec))))
+                .then(CommandManager.literal("remove").requires(src -> src.hasPermissionLevel(2))
+                    .executes(lootboxRemoveExec))
+                .then(CommandManager.literal("odds")
+                    .then(CommandManager.argument("type", com.mojang.brigadier.arguments.StringArgumentType.word())
+                        .suggests(lootboxTypeSuggester)
+                        .executes(lootboxOddsExec)))
+                .then(CommandManager.literal("key").requires(src -> src.hasPermissionLevel(2))
+                    .executes(lootboxKeyExec)
+                    .then(CommandManager.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 27))
+                        .executes(lootboxKeyExec)
+                        .then(CommandManager.argument("player", net.minecraft.command.argument.EntityArgumentType.player())
+                            .executes(lootboxKeyExec)))));
 
             dispatcher.register(root);
 

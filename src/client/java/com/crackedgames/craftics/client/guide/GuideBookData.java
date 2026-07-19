@@ -217,7 +217,9 @@ public class GuideBookData {
                 new Box("minecraft:oak_log", "Obstacles", "",
                     "Trees, rocks and walls block movement. Some can be mined with a pickaxe."),
                 new Box("minecraft:water_bucket", "Water Tiles", "",
-                    "Need a boat to cross (consumed on entry) or a Turtle Helmet to walk on. Enemies can't cross unless aquatic - Drowned move double speed on it."))),
+                    "Wadeable by anyone - but stepping in unprotected leaves you Soaked for 2 turns. A boat (consumed on entry) or a Turtle Helmet keeps you dry. Drowned move double speed on it."),
+                new Box("minecraft:dark_prismarine", "Deep Water", "lethal",
+                    "Too deep to wade - blocks movement, and a knockback into it drowns you outright unless a boat or Turtle Helmet saves you. Jump across narrow spans. Only aquatic enemies can swim it."))),
             new Page("Bushes & Stealth",
                 "The Silence trim extends your stealth range. In co-op, every member who stays in a bush stays hidden.", List.of(
                 new Box("minecraft:tall_grass", "Bush Tiles", "stealth",
@@ -315,7 +317,7 @@ public class GuideBookData {
                 "Levitation - when it wears off you drop into Airtime I."),
             new Page("Flying Over Things",
                 "While you have Airtime you can move over obstacle tiles instead of walking around them. Levitation does the same.\n\n" +
-                "Water still needs a boat. Only walls become passable.\n\n" +
+                "Only walls become passable - deep water, pits and the void still stop you. Regular water was never a wall: you can always wade it, airborne or not.\n\n" +
                 "The move highlight accounts for this, so tiles you can reach while airborne are shown as reachable.")
         )));
         CATEGORIES.add(new Category("Combat Basics", "minecraft:iron_sword",
@@ -864,7 +866,7 @@ public class GuideBookData {
             new Page("Riptide Bruiser",
                 "§3Riptide Bruiser. Dash through enemies in a line.\n\n" +
                 "Weapon: Trident + Riptide II/III. Dash hits + KB everything in the line (1 + level tiles of KB).\n\n" +
-                "Armor: Turtle Helmet (walk on water) + any survival set.\n" +
+                "Armor: Turtle Helmet (wade water without Soaked) + any survival set.\n" +
                 "Trim: Coast = +1 Water per piece.\n\n" +
                 "Best on tight arenas. Turn a row of mobs into pinballs."),
             new Page("Lightning Caller",
@@ -1010,7 +1012,7 @@ public class GuideBookData {
             new Page("Advanced Sets",
                 "Diamond (Knight): +3 AC, +1 ATK, +2 Blunt\n" +
                 "Netherite (Juggernaut): +4 AC, +2 ATK, +2 to ALL damage types\n" +
-                "Turtle Helmet: walk on water tiles, +3 Water\n\n" +
+                "Turtle Helmet: wade water without Soaked, survive a deep-water dunk, +3 Water\n\n" +
                 "Even MIXED armor pulls its weight: every piece grants half an affinity point of its material's damage type. Full sets and exact 2/2 hybrid splits add the perks above."),
             new Page("Hybrid Sets",
                 "Wear exactly 2+2 pieces of two materials to unlock a hybrid bonus:\n\n" +
@@ -1523,7 +1525,7 @@ public class GuideBookData {
                 new Box("minecraft:fishing_rod", "Fishing Rod", "3 AP",
                     "Random loot - stand adjacent to water."),
                 new Box("minecraft:oak_boat", "Boats", "",
-                    "Cross water tiles (consumed on entry). Each co-op player needs their own.")))
+                    "Keep you dry crossing water (consumed on entry) and save you from a deep-water dunk. Each co-op player needs their own.")))
         )));
         CATEGORIES.add(new Category("Items & Abilities", "minecraft:anvil",
             "Every usable item explained.", items));
