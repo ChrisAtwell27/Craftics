@@ -10483,11 +10483,21 @@ public class CombatManager {
             int dz = Integer.signum(target.getGridPos().z() - playerPos.z());
             if (dx == 0 && dz == 0) dx = 1;
             GridPos kbPos = target.getGridPos();
+            boolean intoVoid = false;
             for (int step = 0; step < distance; step++) {
                 GridPos next = new GridPos(kbPos.x() + dx, kbPos.z() + dz);
                 if (!arena.isInBounds(next) || arena.isOccupied(next)) break;
                 GridTile tile = arena.getTile(next);
-                if (tile == null || !tile.isWalkable()) break;
+                if (tile == null) break;
+                // A pit (VOID) is a valid landing spot: push the target onto it and let it
+                // fall in, rather than treating it as an impassable wall. Hazard-immune
+                // (flying) mobs are stopped at the rim like any other non-walkable tile.
+                if (tile.getType() == TileType.VOID && !target.isHazardImmune()) {
+                    kbPos = next;
+                    intoVoid = true;
+                    break;
+                }
+                if (!tile.isWalkable()) break;
                 kbPos = next;
             }
             if (!kbPos.equals(target.getGridPos())) {
@@ -10496,6 +10506,7 @@ public class CombatManager {
                     BlockPos bp = arena.gridToBlockPos(kbPos);
                     target.getMobEntity().requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
                 }
+                if (intoVoid) checkEnemyFallDeath(target);
             }
         }
         @Override public void teleportPlayer(GridPos pos) {
@@ -10913,6 +10924,39 @@ public class CombatManager {
                 - combatEffects.getMiningFatiguePenalty());
             apRemaining += consumePendingMomentumAp();
             movePointsRemaining = turnStats2.getEffective(PlayerProgression.Stat.SPEED)
+                + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
+                + PlayerCombatStats.getSetSpeedBonus(player)
+                - combatEffects.getLevitationPenalty();
+            if (combatEffects.hasEffect(CombatEffects.EffectType.SOAKED)) {
+                movePointsRemaining = Math.max(1, movePointsRemaining - 1);
+            }
+            movePointsRemaining = Math.max(0, movePointsRemaining);
+            phase = CombatPhase.PLAYER_TURN;
+            sendSync();
+            refreshHighlights();
+            return;
+        }
+
+        // Raid prep turn: the opening pillager wave is placed on the field within crossbow
+        // range in a cramped arena and - unlike every later wave, which telegraphs one round
+        // ahead (see tickRaidWaves) - gets no warning. Skip the very first enemy phase so the
+        // party gets a full turn to reposition before any pillager fires. Mirrors the PHANTOM
+        // skip above; runs after the once-per-round bookkeeping so summon aging / the wave
+        // clock stay consistent with a normal skipped round.
+        if (raidActive && turnNumber <= 1) {
+            sendMessage("§c§l✦ The pillagers close in! §r§7Take a turn to get into position.");
+            turnNumber++;
+            movedThisTurn = false;
+            tilesMovedThisTurn = 0;
+            attackedWithoutShieldThisTurn = false;
+            PlayerProgression raidProg = PlayerProgression.get((ServerWorld) player.getEntityWorld());
+            PlayerProgression.PlayerStats raidStats = raidProg.getStats(player);
+            apRemaining = Math.max(0, raidStats.getEffective(PlayerProgression.Stat.AP)
+                + PlayerCombatStats.getSetApBonus(player)
+                + combatEffects.getHasteBonus()
+                - combatEffects.getMiningFatiguePenalty());
+            apRemaining += consumePendingMomentumAp();
+            movePointsRemaining = raidStats.getEffective(PlayerProgression.Stat.SPEED)
                 + combatEffects.getSpeedBonus() - combatEffects.getSpeedPenalty()
                 + PlayerCombatStats.getSetSpeedBonus(player)
                 - combatEffects.getLevitationPenalty();
@@ -11424,6 +11468,11 @@ public class CombatManager {
                     // A lit coal golem is literally on fire -keep the burning overlay
                     // visible by refreshing its fire ticks each tick (otherwise the
                     // stray-fire suppression below would extinguish it instantly).
+                    mob.setFireTicks(Math.max(mob.getFireTicks(), 40));
+                } else if (e.getBurningTurns() > 0) {
+                    // Turn-based Burning DoT active (Blaze Rod / Fire Aspect): keep the fire
+                    // overlay lit instead of extinguishing it, so the burn reads visually for
+                    // its whole duration. The DoT damage is driven by burningTurns, not fireTicks.
                     mob.setFireTicks(Math.max(mob.getFireTicks(), 40));
                 } else if (mob.isOnFire()) {
                     mob.setFireTicks(0);
@@ -19398,13 +19447,18 @@ public class CombatManager {
     private boolean hasSolidFloorAt(GridPos pos) {
         if (arena == null || !(player.getEntityWorld() instanceof ServerWorld sw)) return false;
         BlockPos stand = arena.gridToBlockPos(pos); // feet at origin.getY() + 1
-        // Scan from the standing block down to the fall-death threshold (origin.getY() - 2, the
-        // same line the movement fall-check uses). The build-time scan types a tile VOID off a
-        // single sampled floor level, so it MISSES a walkable surface that sits a step above -
-        // the raised temple floor beside a pillar is the classic case. If any block in this
-        // window is solid the player lands on it instead of plummeting, so it is not a death pit.
-        // A genuine pit is air the whole way down and still returns false, keeping it lethal.
-        int bottom = arena.getOrigin().getY() - 2;
+        // Scan only the standing block and the floor block below it ([origin.getY(),
+        // origin.getY()+1]). The build-time scan types a tile VOID off a single sampled floor
+        // level, so it MISSES a walkable surface that sits a step above - the raised temple
+        // floor beside a pillar is the classic case; a solid block at foot/floor level here
+        // means the entity lands instead of plummeting, so it is not a death pit.
+        //
+        // Do NOT scan down to origin.getY()-2: every real pit is capped with BLACK_CONCRETE at
+        // exactly floorY-2 (see ArenaBuilder.placePitObstacles / digVoidPit), so a -2 window hit
+        // that cap on EVERY genuine pit and wrongly suppressed the fall death (regression). A
+        // real pit is air at floorY and floorY-1, so this narrower window still returns false
+        // for it, keeping it lethal.
+        int bottom = arena.getOrigin().getY();
         for (int y = stand.getY(); y >= bottom; y--) {
             BlockPos p = new BlockPos(stand.getX(), y, stand.getZ());
             if (!sw.getBlockState(p).getCollisionShape(sw, p).isEmpty()) return true;
@@ -24667,12 +24721,17 @@ public class CombatManager {
             GridPos dest = new GridPos(pos.x() + Integer.signum(dx), pos.z() + Integer.signum(dz));
             if (!arena.isInBounds(dest) || arena.isOccupied(dest)) continue;
             GridTile t = arena.getTile(dest);
-            if (t == null || !t.isWalkable()) continue;
+            if (t == null) continue;
+            // A pit (VOID) is a valid destination - the blast shoves the enemy in. Hazard-immune
+            // (flying) mobs are stopped at the rim like any other non-walkable tile.
+            boolean voidDest = t.getType() == TileType.VOID && !e.isHazardImmune();
+            if (!voidDest && !t.isWalkable()) continue;
             arena.moveEntity(e, dest);
             if (e.getMobEntity() != null) {
                 BlockPos bp = arena.gridToBlockPos(dest);
                 e.getMobEntity().requestTeleport(bp.getX() + 0.5, arena.getEntityY(dest, e.isFlying()), bp.getZ() + 0.5);
             }
+            if (voidDest) checkEnemyFallDeath(e);
             any = true;
         }
         if (any) sendMessage("§a✦ Concussive Blast! Nearby enemies are knocked back.");

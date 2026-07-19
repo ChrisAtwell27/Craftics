@@ -2362,57 +2362,79 @@ public class ArenaBuilder {
     private static void placePitObstacles(ServerWorld world, int ox, int oy, int oz,
                                             int w, int h, int min, int max, Random rng) {
         int pitCount = min + rng.nextInt(max - min + 1);
+        if (pitCount <= 0) return;
 
-        // Pick a valid seed tile (solid ground, away from edges)
-        List<int[]> seedCandidates = new ArrayList<>();
-        for (int x = 3; x < w - 3; x++) {
-            for (int z = 3; z < h - 3; z++) {
-                seedCandidates.add(new int[]{x, z});
-            }
-        }
-        if (seedCandidates.isEmpty()) return;
-        java.util.Collections.shuffle(seedCandidates, rng);
+        // Candidate window: a 1-tile edge margin (z starts at 2 so the front player-spawn
+        // row stays clear), matching placePowderSnowPatch. The old hardcoded 3-tile margin
+        // collapsed the whole allowed range to the central 3x3 on the mountain's ~9x9 grids,
+        // so every pit landed dead center. A 1-tile margin lets pits reach the whole board.
+        final int minX = 1, maxX = w - 1;   // exclusive upper bound
+        final int minZ = 2, maxZ = h - 1;
+        if (minX >= maxX || minZ >= maxZ) return;
 
-        // Find a valid seed on solid ground
-        int[] seed = null;
-        for (int[] c : seedCandidates) {
-            BlockPos fp = new BlockPos(ox + c[0], oy, oz + c[1]);
-            BlockState fs = world.getBlockState(fp);
-            if (!isAirLike(fs) && fs.getFluidState().isEmpty()) {
-                seed = c;
-                break;
-            }
-        }
-        if (seed == null) return;
+        // Split the pit budget across 2-3 independent clumps so voids scatter across the
+        // board as separate clusters instead of one centered blob. Never ask for more
+        // clumps than we can seed (>= 2 tiles each), and clamp to the tile budget.
+        int clumps = Math.max(1, Math.min(1 + rng.nextInt(3), Math.max(1, pitCount / 2)));
 
-        // Grow the pit cluster outward from the seed using BFS
         java.util.Set<Long> pitTiles = new java.util.LinkedHashSet<>();
-        java.util.Queue<int[]> frontier = new java.util.LinkedList<>();
-        pitTiles.add(packPos(seed[0], seed[1]));
-        frontier.add(seed);
-
         int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        int remaining = pitCount;
 
-        while (pitTiles.size() < pitCount && !frontier.isEmpty()) {
-            int[] current = frontier.poll();
-            // Shuffle directions for organic growth
-            List<int[]> shuffledDirs = new ArrayList<>(java.util.Arrays.asList(dirs));
-            java.util.Collections.shuffle(shuffledDirs, rng);
+        for (int c = 0; c < clumps && remaining > 0; c++) {
+            // Distribute the remaining budget evenly; the last clump takes whatever is left.
+            int clumpSize = (c == clumps - 1) ? remaining : Math.max(1, remaining / (clumps - c));
 
-            for (int[] d : shuffledDirs) {
-                if (pitTiles.size() >= pitCount) break;
-                int nx = current[0] + d[0], nz = current[1] + d[1];
-                if (nx < 3 || nx >= w - 3 || nz < 3 || nz >= h - 3) continue;
-                if (pitTiles.contains(packPos(nx, nz))) continue;
-
-                BlockPos fp = new BlockPos(ox + nx, oy, oz + nz);
-                BlockState fs = world.getBlockState(fp);
-                if (isAirLike(fs) || !fs.getFluidState().isEmpty()) continue;
-
-                pitTiles.add(packPos(nx, nz));
-                frontier.add(new int[]{nx, nz});
+            // Pick a fresh random seed on solid ground that isn't already carved.
+            List<int[]> seedCandidates = new ArrayList<>();
+            for (int x = minX; x < maxX; x++) {
+                for (int z = minZ; z < maxZ; z++) {
+                    if (!pitTiles.contains(packPos(x, z))) seedCandidates.add(new int[]{x, z});
+                }
             }
+            if (seedCandidates.isEmpty()) break;
+            java.util.Collections.shuffle(seedCandidates, rng);
+
+            int[] seed = null;
+            for (int[] cand : seedCandidates) {
+                BlockPos fp = new BlockPos(ox + cand[0], oy, oz + cand[1]);
+                BlockState fs = world.getBlockState(fp);
+                if (!isAirLike(fs) && fs.getFluidState().isEmpty()) { seed = cand; break; }
+            }
+            if (seed == null) break;
+
+            // Grow this clump outward from its seed using BFS.
+            java.util.Set<Long> clump = new java.util.LinkedHashSet<>();
+            java.util.Queue<int[]> frontier = new java.util.LinkedList<>();
+            clump.add(packPos(seed[0], seed[1]));
+            frontier.add(seed);
+
+            while (clump.size() < clumpSize && !frontier.isEmpty()) {
+                int[] current = frontier.poll();
+                // Shuffle directions for organic growth
+                List<int[]> shuffledDirs = new ArrayList<>(java.util.Arrays.asList(dirs));
+                java.util.Collections.shuffle(shuffledDirs, rng);
+
+                for (int[] d : shuffledDirs) {
+                    if (clump.size() >= clumpSize) break;
+                    int nx = current[0] + d[0], nz = current[1] + d[1];
+                    if (nx < minX || nx >= maxX || nz < minZ || nz >= maxZ) continue;
+                    long key = packPos(nx, nz);
+                    if (clump.contains(key) || pitTiles.contains(key)) continue;
+
+                    BlockPos fp = new BlockPos(ox + nx, oy, oz + nz);
+                    BlockState fs = world.getBlockState(fp);
+                    if (isAirLike(fs) || !fs.getFluidState().isEmpty()) continue;
+
+                    clump.add(key);
+                    frontier.add(new int[]{nx, nz});
+                }
+            }
+
+            pitTiles.addAll(clump);
+            remaining -= clump.size();
         }
+        if (pitTiles.isEmpty()) return;
 
         // Carve each pit tile: floor=air, Y-1=air, Y-2=black concrete
         for (long packed : pitTiles) {

@@ -318,8 +318,14 @@ public final class Abilities {
     public static WeaponAbilityHandler fireDamage(int bonusDmg) {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             List<String> messages = new ArrayList<>();
+            // Apply the turn-based Burning DoT so the fire persists across turns. Vanilla
+            // fireTicks alone is zeroed every server tick by the stray-fire suppression in
+            // CombatManager.tick(), so it never survives a whole turn - the burningTurns DoT
+            // is what actually deals damage each turn (see CombatEntity.stackBurning + the
+            // per-turn burn loop in CombatManager). Mirrors the Fire Aspect path.
+            target.stackBurning(3, 0); // Burning I for 3 turns
             if (target.getMobEntity() != null) {
-                target.getMobEntity().setFireTicks(100);
+                target.getMobEntity().setFireTicks(3 * 80); // visual synced to burn turns
             }
             int actualFireDmg = target.takeDamage(bonusDmg);
             int totalDamage = baseDamage + actualFireDmg;
