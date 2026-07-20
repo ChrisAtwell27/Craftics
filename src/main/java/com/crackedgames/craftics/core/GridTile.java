@@ -159,6 +159,7 @@ public class GridTile {
             case SPORE -> Blocks.MOSS_BLOCK;
             case EMBER -> Blocks.MAGMA_BLOCK;
             case FROST -> Blocks.PACKED_ICE;
+            case MUD -> Blocks.MUD;
             // Stair / elevated default blocks - only used if the GridTile is
             // constructed without an explicit block. ArenaBuilder always
             // passes the real schematic block (e.g. the actual stair block,

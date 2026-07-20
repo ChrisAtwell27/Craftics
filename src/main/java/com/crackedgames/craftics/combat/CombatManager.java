@@ -1886,6 +1886,9 @@ public class CombatManager {
             },
             (typeId, tile, hp, block) -> placeBlockObject(typeId, tile, hp,
                 -(minibossBlockIdCounter++), block, (ServerWorld) player.getEntityWorld()),
+            this::triggerWindGust,
+            this::triggerWindTelegraph,
+            this::applyEffectToParty,
             this::sendMessage,
             this::sendMessage);
     }
@@ -16552,6 +16555,195 @@ public class CombatManager {
     }
 
     /**
+     * Arena-wide wind gust for miniboss mechanics that have no boss {@link CombatEntity} to
+     * channel a {@link EnemyAction.BossAbility} (the Snowy Blizzard's storm, e.g.) - mirrors
+     * {@link com.crackedgames.craftics.combat.ai.boss.FrostboundAI#castHarpoonPull}: sweeping
+     * arrow glyphs across the WHOLE arena in {@code (dirX,dirZ)}, then every unit on the grid -
+     * every live party member and every live enemy - is dragged {@code tiles} tiles that
+     * direction.
+     *
+     * <p>The normal {@link EnemyAction.BossAbility} telegraph path (pendingBossWarnings /
+     * {@link #resolvePendingBossWarnings}) requires a live {@code CombatEntity boss} to key the
+     * pending warning and theme the VFX, which a miniboss mechanic doesn't have. This method
+     * bypasses that system entirely and talks straight to the same client contract
+     * ({@link TileSetPayload}'s {@code warningTiles}/{@code arrowTiles}) that
+     * {@link #syncWarningTiles()} uses, so the arrows rendered are the real client-side arrow
+     * glyphs, not a particles-only approximation. Because there's no boss to hold the warning
+     * across a turn boundary, the arrow paint and the drag happen in the same call - callers
+     * that want a one-round lead time (chat warning, then a later round calling this) get that
+     * by simply not calling this every round.
+     */
+    /** Telegraph-only wind gust: paint the sweeping arrows + wind particles this round, WITHOUT
+     *  dragging. The mechanic calls this a round before {@link #triggerWindGust} so the player
+     *  sees the floor arrows and has a turn to brace/reposition, matching the Frostbound gust's
+     *  telegraph-then-resolve cadence. */
+    private void triggerWindTelegraph(int dirX, int dirZ) {
+        paintWindGust(dirX, dirZ);
+    }
+
+    private void triggerWindGust(int dirX, int dirZ) {
+        if (arena == null || player == null) return;
+        if (dirX == 0 && dirZ == 0) return;
+        paintWindGust(dirX, dirZ);
+
+        // Drag every live party player (each via the same swap-and-move routine ForcedMovement
+        // uses for the player target) - loop the full party, not just the closest member, since
+        // this is an arena-wide gust rather than a single-target harpoon pull.
+        for (ServerPlayerEntity member : new ArrayList<>(partyPlayers.isEmpty()
+                ? java.util.List.of(player) : partyPlayers)) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            dragPartyMember(member, dirX, dirZ, 2);
+        }
+
+        // Drag every live enemy the same direction.
+        for (CombatEntity enemy : new ArrayList<>(enemies)) {
+            if (enemy == null || !enemy.isAlive()) continue;
+            knockEnemyBack(enemy, dirX, dirZ, 2);
+        }
+
+        sendSync();
+    }
+
+    /** Paint the arena-wide directional arrow glyphs + wind particles for a gust in (dirX,dirZ).
+     *  Shared by the telegraph round and the resolve round so both show the same sweep. */
+    private void paintWindGust(int dirX, int dirZ) {
+        if (arena == null || player == null) return;
+        if (dirX == 0 && dirZ == 0) return;
+
+        // Sweep arrows across every tile in the arena, exactly like castHarpoonPull's gustTiles.
+        List<GridPos> gustTiles = new ArrayList<>();
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                gustTiles.add(new GridPos(x, z));
+            }
+        }
+        java.util.List<Integer> arrowList = new java.util.ArrayList<>(gustTiles.size() * 4);
+        for (GridPos t : gustTiles) {
+            arrowList.add(t.x());
+            arrowList.add(t.z());
+            arrowList.add(dirX);
+            arrowList.add(dirZ);
+        }
+        sendToAllParty(new TileSetPayload(
+            new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0],
+            arrowList.stream().mapToInt(Integer::intValue).toArray(),
+            new int[0], new int[0]));
+
+        // Directional wind particles along the whole swept arena, matching renderBossWarning's
+        // DIRECTIONAL case so the server-side layer reads "that way" too.
+        ServerWorld gustWorld = (ServerWorld) player.getEntityWorld();
+        for (GridPos t : gustTiles) {
+            BlockPos bp = arena.gridToBlockPos(t);
+            gustWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                bp.getX() + 0.5, bp.getY() + 1.2, bp.getZ() + 0.5,
+                0, dirX, 0.02, dirZ, 0.18);
+            gustWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE,
+                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
+                0, dirX, 0.0, dirZ, 0.3);
+        }
+        sendSync();
+    }
+
+    /**
+     * Drag a single party member {@code tiles} in {@code (dx,dz)} - the multi-player equivalent
+     * of {@link #resolveForcedMovement}'s {@code targetEntityId == -1} branch, which only ever
+     * moves the closest party member. Swaps {@code this.player}/{@code arena.playerGridPos} to
+     * {@code member} for the duration of the move so the existing void-fall/rift/teleport logic
+     * (keyed off {@code this.player}) applies to the correct person, then swaps back.
+     */
+    private void dragPartyMember(ServerPlayerEntity member, int dx, int dz, int tiles) {
+        ServerWorld fmWorld = (ServerWorld) member.getEntityWorld();
+        ServerPlayerEntity savedFmPlayer = this.player;
+        GridPos savedFmGrid = arena.getPlayerGridPos();
+        boolean fmSwapped = member != savedFmPlayer;
+        if (fmSwapped) {
+            this.player = member;
+            retargetEffectsToCurrentPlayer();
+            arena.setPlayerGridPos(gridPosOf(member));
+        }
+        boolean fmTargetDied = false;
+        try {
+            GridPos memberGridPos = arena.getPlayerGridPos();
+            GridPos landingPos = memberGridPos;
+            for (int i = 1; i <= tiles; i++) {
+                GridPos candidate = new GridPos(memberGridPos.x() + dx * i, memberGridPos.z() + dz * i);
+                if (!arena.isInBounds(candidate) || arena.isEnemyOccupied(candidate)) break;
+                GridTile tile = arena.getTile(candidate);
+                if (tile != null && tile.getType() == TileType.VOID) {
+                    int fallDmg = damagePlayer(5);
+                    sendMessage("§c  " + member.getName().getString() + " is pushed into the void for "
+                        + fallDmg + " damage! (HP: " + getPlayerHp() + ")");
+                    if (getPlayerHp() <= 0) { fmTargetDied = true; handlePlayerDeathOrGameOver(); return; }
+                    break;
+                }
+                if (tile == null || !tile.isWalkable()) break;
+                BlockPos pathBp = arena.gridToBlockPos(candidate);
+                fmWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    pathBp.getX() + 0.5, pathBp.getY() + 0.8, pathBp.getZ() + 0.5,
+                    3, 0.2, 0.3, 0.2, 0.02);
+                fmWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SWEEP_ATTACK,
+                    pathBp.getX() + 0.5, pathBp.getY() + 0.5, pathBp.getZ() + 0.5,
+                    1, 0.1, 0.1, 0.1, 0.0);
+                landingPos = candidate;
+            }
+            if (!landingPos.equals(memberGridPos)) {
+                arena.setPlayerGridPos(landingPos);
+                BlockPos bp = arena.gridToBlockPos(landingPos);
+                member.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
+                broadcastPlayerPositionToOthers(member);
+                BlockPos impactBp = arena.gridToBlockPos(landingPos);
+                fmWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    impactBp.getX() + 0.5, impactBp.getY() + 0.5, impactBp.getZ() + 0.5,
+                    5, 0.3, 0.3, 0.3, 0.01);
+                handleVoidRiftEntry(landingPos);
+            }
+        } finally {
+            if (fmSwapped && !fmTargetDied) {
+                this.player = savedFmPlayer;
+                retargetEffectsToCurrentPlayer();
+                arena.setPlayerGridPos(savedFmGrid);
+            }
+        }
+    }
+
+    /**
+     * Apply a status effect to EVERY live party member (solo: just {@code player}) - the
+     * party-wide analogue of a single {@link #addEffectHooked} call, backing
+     * {@link com.crackedgames.craftics.combat.miniboss.MinibossContext#applyPartyEffect}
+     * for weather-style mechanics (e.g. a sandstorm blinding everyone).
+     *
+     * <p>Follows the same swap-and-restore discipline as {@link #dragPartyMember}: for each
+     * member, swap {@code this.player} to them and retarget effects, apply the effect, then
+     * restore {@code this.player} and retarget again in a {@code finally}. Unlike
+     * {@code dragPartyMember} there's no void-fall/teleport path that can end the fight
+     * mid-loop, so the restore is unconditional.
+     */
+    private void applyEffectToParty(CombatEffects.EffectType type, int turns) {
+        for (ServerPlayerEntity member : new ArrayList<>(partyPlayers.isEmpty()
+                ? java.util.List.of(player) : partyPlayers)) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+
+            ServerPlayerEntity savedPePlayer = this.player;
+            boolean peSwapped = member != savedPePlayer;
+            if (peSwapped) {
+                this.player = member;
+                retargetEffectsToCurrentPlayer();
+            }
+            try {
+                addEffectHooked(type, turns, 0);
+            } finally {
+                if (peSwapped) {
+                    this.player = savedPePlayer;
+                    retargetEffectsToCurrentPlayer();
+                }
+            }
+        }
+        sendSync();
+    }
+
+    /**
      * Highlight a warning tile for the player (red glow effect).
      */
     private void highlightWarningTile(GridPos tile) {
@@ -22395,9 +22587,14 @@ public class CombatManager {
 
                     // No events on the very first continue (level index 1 = just beat level 1)
                     // Never have events before a boss fight
+                    // Never have events before a biome's SPECIAL level (Graveyard, Blizzard, ...) -
+                    // an event interlude here plays instead of the special level and skips it
+                    // entirely (the reported "abandoned campsite replaced the Graveyard" bug).
                     // Reduced event chance on early biomes (first 3 biomes)
                     boolean isBossLevel = biome.isBossLevel(globalLevel);
-                    boolean skipEvents = levelIndex <= 1 || isBossLevel;
+                    boolean nextIsSpecialLevel = com.crackedgames.craftics.level.LevelGenerator
+                        .isMinibossLevel(biome, biome.getBiomeLevelIndex(globalLevel), isBossLevel);
+                    boolean skipEvents = levelIndex <= 1 || isBossLevel || nextIsSpecialLevel;
                     if (!skipEvents && biomeOrdinal < 3) {
                         // Early biomes: reduced event chance (configurable)
                         skipEvents = eventRoll > CrafticsMod.CONFIG.earlyBiomeEventChance();

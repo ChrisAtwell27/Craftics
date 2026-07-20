@@ -209,8 +209,10 @@ public class LevelGenerator {
         // Forest keeps the old buildPaleGardenLevel's forced night (creepy Pale Garden
         // atmosphere) even though the forest biome template itself is a day biome.
         boolean nightLevel = isForest || biome.nightLevel;
+        // The level's display name is the mechanic's own title (e.g. "§2§l☠ Graveyard",
+        // "§b§l☠ Blizzard") - these are special levels named for their event, NOT "minibosses".
         GeneratedLevelDefinition def = new GeneratedLevelDefinition(
-            levelNumber, "§c☠ " + biome.displayName + " Miniboss", width, height, playerStart,
+            levelNumber, mechanic.introTitle(), width, height, playerStart,
             biome.floorBlocks[0], tiles, enemies, loot, nightLevel, biome);
         if (isForest) {
             def.setArenaBiomeOverride(PALE_GARDEN_ARENA_ID);

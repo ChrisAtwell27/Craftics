@@ -25,6 +25,12 @@ public class BiomeTemplate {
     public final int[] enchantmentLootWeights;
     public final boolean nightLevel;
     public final String environmentId;
+    /** Optional biome weather effect (see combat/biomeeffect): the BiomeEffectRegistry id and
+     *  the 1-based level within the biome it starts at, from the biome JSON's biomeEffect block. */
+    public final String biomeEffectId;
+    /** Optional biome weather effect (see combat/biomeeffect): the BiomeEffectRegistry id and
+     *  the 1-based level within the biome it starts at, from the biome JSON's biomeEffect block. */
+    public final int biomeEffectStartLevel;
 
     public BiomeTemplate(String biomeId, String displayName, int startLevel, int levelCount,
                           int baseWidth, int baseHeight, int widthGrowth, int heightGrowth,
@@ -35,6 +41,28 @@ public class BiomeTemplate {
                           Item[] lootItems, int[] lootWeights,
                           String[] enchantmentLootIds, int[] enchantmentLootWeights,
                           boolean nightLevel, String environmentId) {
+        this(biomeId, displayName, startLevel, levelCount,
+            baseWidth, baseHeight, widthGrowth, heightGrowth,
+            floorBlocks, obstacleBlocks,
+            baseObstacleDensity, obstacleDensityGrowth,
+            passiveMobs, hostileMobs,
+            boss,
+            lootItems, lootWeights,
+            enchantmentLootIds, enchantmentLootWeights,
+            nightLevel, environmentId,
+            null, 0);
+    }
+
+    public BiomeTemplate(String biomeId, String displayName, int startLevel, int levelCount,
+                          int baseWidth, int baseHeight, int widthGrowth, int heightGrowth,
+                          Block[] floorBlocks, Block[] obstacleBlocks,
+                          float baseObstacleDensity, float obstacleDensityGrowth,
+                          MobPoolEntry[] passiveMobs, MobPoolEntry[] hostileMobs,
+                          MobPoolEntry boss,
+                          Item[] lootItems, int[] lootWeights,
+                          String[] enchantmentLootIds, int[] enchantmentLootWeights,
+                          boolean nightLevel, String environmentId,
+                          String biomeEffectId, int biomeEffectStartLevel) {
         this.biomeId = biomeId;
         this.displayName = displayName;
         this.startLevel = startLevel;
@@ -56,6 +84,8 @@ public class BiomeTemplate {
         this.enchantmentLootWeights = enchantmentLootWeights;
         this.nightLevel = nightLevel;
         this.environmentId = environmentId;
+        this.biomeEffectId = biomeEffectId;
+        this.biomeEffectStartLevel = biomeEffectStartLevel;
     }
 
     public int getEndLevel() {
@@ -91,5 +121,11 @@ public class BiomeTemplate {
             pool.add(lootItems[i], lootWeights[i]);
         }
         return pool;
+    }
+
+    /** Whether a biome effect starting at 1-based {@code startLevel} is active on 0-based
+     *  {@code biomeIndex}. startLevel <= 0 means "no effect". Pure int math (unit-tested). */
+    public static boolean effectActiveAt(int startLevel, int biomeIndex) {
+        return startLevel > 0 && biomeIndex >= startLevel - 1;
     }
 }

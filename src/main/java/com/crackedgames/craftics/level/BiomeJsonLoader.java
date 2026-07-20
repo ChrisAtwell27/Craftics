@@ -116,6 +116,15 @@ public class BiomeJsonLoader {
             }
             boolean night = json.has("night") && json.get("night").getAsBoolean();
 
+            String biomeEffectId = null;
+            int biomeEffectStartLevel = 0;
+            if (json.has("biomeEffect")) {
+                var effObj = json.getAsJsonObject("biomeEffect");
+                biomeEffectId = effObj.get("id").getAsString();
+                biomeEffectStartLevel = effObj.has("startLevel")
+                    ? Math.max(1, effObj.get("startLevel").getAsInt()) : 1;
+            }
+
             JsonObject enemies = json.getAsJsonObject("enemies");
             MobPoolEntry[] passive = enemies.has("passive")
                 ? parseMobPool(enemies.getAsJsonArray("passive"), true)
@@ -172,7 +181,8 @@ public class BiomeJsonLoader {
                 passive, hostile, boss,
                 lootItems, lootWeights,
                 enchantmentLootIds, enchantmentLootWeights,
-                night, environmentId
+                night, environmentId,
+                biomeEffectId, biomeEffectStartLevel
             );
         } catch (Exception e) {
             CrafticsMod.LOGGER.error("Error parsing biome JSON {}: {}", source, e.getMessage());
