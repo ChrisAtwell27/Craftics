@@ -110,8 +110,16 @@ public class CrafticsClient implements ClientModInitializer {
                 // their own lifecycle and are left alone).
                 net.minecraft.client.gui.screen.Screen openScreen = context.client().currentScreen;
                 if (openScreen != null
-                        && !(openScreen instanceof net.minecraft.client.gui.screen.ingame.HandledScreen)
-                        && openScreen.getClass().getName().startsWith("com.crackedgames.craftics")) {
+                    && !(openScreen instanceof net.minecraft.client.gui.screen.ingame.HandledScreen)
+                    && !(openScreen instanceof com.crackedgames.craftics.client.InfiniteClassScreen)
+                    // Infinite-mode boss victory grants a level-up and then starts the next
+                    // biome's combat in the SAME server tick - this sweep was closing the
+                    // just-opened LevelUpScreen before the player could spend the point
+                    // (the point then stayed stranded forever). Let it survive; the player
+                    // spends the point over the already-running next combat and close()
+                    // drops them in (cursor stays free via MouseUnlockMixin).
+                    && !(openScreen instanceof com.crackedgames.craftics.client.LevelUpScreen)
+                    && openScreen.getClass().getName().startsWith("com.crackedgames.craftics")) {
                     context.client().setScreen(null);
                 }
                 // Only set camera yaw on first combat entry; keep orientation between levels

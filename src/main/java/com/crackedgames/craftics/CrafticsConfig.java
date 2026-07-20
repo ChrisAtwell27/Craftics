@@ -98,23 +98,23 @@ public class CrafticsConfig {
     /** Infinite mode: boss HP at biome 1 (ordinal 0). Replaces the campaign HP path. */
     @SectionHeader("infiniteScaling")
     @RangeConstraint(min = 1, max = 2000)
-    public int infiniteBossBaseHp = 70;
+    public int infiniteBossBaseHp = 50;
 
     /** Infinite mode: boss HP added per cleared biome. */
     @RangeConstraint(min = 0, max = 500)
-    public int infiniteBossHpPerBiome = 50;
+    public int infiniteBossHpPerBiome = 35;
 
     /** Infinite mode: regular enemy HP at biome 1, level 1. */
     @RangeConstraint(min = 1, max = 500)
-    public int infiniteEnemyBaseHp = 8;
+    public int infiniteEnemyBaseHp = 6;
 
     /** Infinite mode: enemy HP added per level within a biome. */
     @RangeConstraint(min = 0, max = 100)
-    public int infiniteEnemyHpPerLevel = 2;
+    public int infiniteEnemyHpPerLevel = 1;
 
     /** Infinite mode: enemy HP added per cleared biome. */
     @RangeConstraint(min = 0, max = 200)
-    public int infiniteEnemyHpPerBiome = 8;
+    public int infiniteEnemyHpPerBiome = 5;
 
     // ===== Gameplay Flags =====
 

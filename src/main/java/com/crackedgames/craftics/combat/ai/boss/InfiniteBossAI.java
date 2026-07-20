@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * INFINITE MODE boss: a random standard-size (1x1) mob wearing a generated
+ * INFINITE MODE boss: a visually enlarged, standard-footprint (1x1) mob wearing a generated
  * "The ____ ____" name, driven by a fixed movepool of abilities pulled from
  * the all-boss pool ({@link InfiniteAbilityPool}). The moves are used in a
  * strict cycle - move 1, move 2, ..., wrap - so the fight is learnable even
@@ -42,7 +42,7 @@ public class InfiniteBossAI extends BossAI {
         this.generatedName = generatedName;
     }
 
-    /** Infinite bosses are always standard humanoid-size mobs. */
+    /** Infinite bosses keep a standard 1x1 combat footprint despite their larger model. */
     @Override
     public int getGridSize() {
         return 1;

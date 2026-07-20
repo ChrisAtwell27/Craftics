@@ -28,6 +28,10 @@ import java.util.List;
  *           reduced cooldowns, Blizzard center stuns.
  */
 public class FrostboundAI extends BossAI {
+    // 2x2 boss (see header + scaleBoss 1.5). Without this the spawn validator sizes it 1x1
+    // and checks only the anchor tile, letting the other 3 body tiles land on a VOID pit.
+    @Override public int getGridSize() { return 2; }
+
     private static final String CD_BLIZZARD = "blizzard";
     private static final String CD_ICE_WALL = "ice_wall";
     private static final String CD_TRAP = "glacial_trap";
@@ -171,9 +175,11 @@ public class FrostboundAI extends BossAI {
             if (harpoon != null) return harpoon;
         }
 
-        // Keep pressure on kiting players with regular bow shots at long range.
+        // Keep pressure on kiting players with regular bow shots at long range - but do it
+        // on the move: the huntsman repositions to hold max range with a clear shot instead
+        // of standing still (walk + shoot).
         if (dist >= 4) {
-            return new EnemyAction.RangedAttack(self.getAttackPower(), "frost_arrow");
+            return kiteAndShoot(self, arena, myPos, playerPos);
         }
 
         // Ice Wall: common lane-control tool in phase 1.
@@ -199,23 +205,70 @@ public class FrostboundAI extends BossAI {
             return castGlacialTrap(self, arena, playerPos, cdTrap);
         }
 
-        // Frost Arrow: standard ranged attack
-        if (dist >= 2 && dist <= 4) {
-            return new EnemyAction.RangedAttack(self.getAttackPower(), "frost_arrow");
-        }
+        // Mid / close range: kite. Reposition to a clear firing lane near max range and
+        // shoot on the move; when the player is too close this walks the huntsman back out
+        // to range before firing, so it never stands still trading blows.
+        return kiteAndShoot(self, arena, myPos, playerPos);
+    }
 
-        // Kite away if too close
-        if (dist <= 1) {
-            GridPos fleeTarget = AIUtils.getFleeTarget(arena, myPos, playerPos, self.getMoveSpeed());
-            if (fleeTarget != null) {
-                List<GridPos> path = Pathfinding.findPath(arena, myPos, fleeTarget, self.getMoveSpeed(), self);
-                if (!path.isEmpty()) {
-                    return new EnemyAction.Flee(path);
+    /**
+     * Kiting poke - the huntsman walks while it shoots. It repositions to hold near max range
+     * with a clear cardinal line of sight and fires via MoveAndAttack (a Stray's "frost_arrow"
+     * resolves as a ranged shot after the move, like BreezeAI's wind charge). Falls back to a
+     * stationary shot when already well placed, or a plain reposition/approach when no shot is
+     * available this turn. This is what makes the boss actually use its Speed stat and move.
+     */
+    private EnemyAction kiteAndShoot(CombatEntity self, GridArena arena, GridPos myPos, GridPos playerPos) {
+        int range = Math.max(1, self.getRange());
+        boolean canShootNow = myPos.manhattanDistance(playerPos) <= range
+                && AIUtils.hasCardinalLOS(arena, myPos, playerPos, range);
+
+        GridPos kitePos = findKiteTile(self, arena, myPos, playerPos, range);
+        if (kitePos != null && !kitePos.equals(myPos)) {
+            List<GridPos> path = Pathfinding.findPath(arena, myPos, kitePos, self.getMoveSpeed(), self);
+            if (!path.isEmpty()) {
+                GridPos endPos = path.get(path.size() - 1);
+                if (endPos.manhattanDistance(playerPos) <= range
+                        && AIUtils.hasCardinalLOS(arena, endPos, playerPos, range)) {
+                    return new EnemyAction.MoveAndAttack(path, self.getAttackPower());
                 }
+                return new EnemyAction.Move(path);
             }
         }
 
+        // Didn't move (already best placed, or nothing reachable is better): fire if we can.
+        if (canShootNow) {
+            return new EnemyAction.RangedAttack(self.getAttackPower(), "frost_arrow");
+        }
+
+        // No shot and no better firing tile - close the gap toward the player.
         return meleeOrApproach(self, arena, playerPos, 0);
+    }
+
+    /**
+     * Pick the reachable tile that best holds the huntsman near max range with a clear cardinal
+     * shot: rewards line of sight and distance near max range (kite), penalizes hugging the
+     * player and standing on hazards, and slightly favours actually moving so it visibly kites.
+     * Returns null if nothing reachable can shoot.
+     */
+    private GridPos findKiteTile(CombatEntity self, GridArena arena, GridPos myPos, GridPos playerPos, int range) {
+        GridPos best = null;
+        int bestScore = Integer.MIN_VALUE;
+        for (GridPos candidate : Pathfinding.getReachableTiles(arena, myPos, self.getMoveSpeed(), self)) {
+            int distToPlayer = candidate.manhattanDistance(playerPos);
+            if (distToPlayer > range) continue;                  // must be able to shoot from here
+            int score = 0;
+            if (AIUtils.hasCardinalLOS(arena, candidate, playerPos, range)) score += 40; // a real shot
+            score += Math.min(distToPlayer, range) * 4;          // hold near max range (kite out)
+            if (distToPlayer <= 1) score -= 40;                  // never hug the player
+            if (AIUtils.isHazardTile(arena, candidate)) score -= 30;
+            if (candidate.equals(myPos)) score -= 5;             // slight bias toward moving/kiting
+            if (score > bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+        return best;
     }
 
     private EnemyAction startExpandingWave(CombatEntity self, GridArena arena, int cooldown, boolean p2) {

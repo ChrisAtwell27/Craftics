@@ -1138,22 +1138,17 @@ public class ArenaBuilder {
             CrafticsMod.LOGGER.info("  Auto P1 spawn: grid({}, {})", spawnX, spawnZ);
         }
 
-        if (!preserveSchematicGround) {
-            for (int x = gridMinX; x <= gridMaxX; x++) {
-                for (int z = gridMinZ; z <= gridMaxZ; z++) {
-                    int gridX = x - gridMinX;
-                    int gridZ = z - gridMinZ;
-                    GridTile tile = (gridX < tiles.length && gridZ < tiles[0].length)
-                        ? tiles[gridX][gridZ]
-                        : new GridTile(com.crackedgames.craftics.core.TileType.NORMAL, floorBlock);
-                    BlockPos floorPos = new BlockPos(x, arenaFloorY, z);
-                    if (!world.getBlockState(floorPos).getFluidState().isEmpty()) {
-                        continue;
-                    }
-                    if (isAirLike(world.getBlockState(floorPos))) {
-                        continue;
-                    }
-                    set(world, x, arenaFloorY - 1, z, Blocks.STONE);
+        // Seal the hollow beneath every floor tile (playable grid + its one-tile border ring).
+        // The schematic cull deletes buried subfloor blocks, leaving grass over air; a 2+ high
+        // wall on the outskirts then exposes that hollow (dirt/stone "vanishing under" the
+        // grass). sealSubfloorColumn refills only air under a solid floor, so it can run even
+        // for boss arenas (preserveSchematicGround) - their ground is meant to be solid, the
+        // cull just made it hollow. Trial chambers are excluded: they are hand-built with
+        // intentional lower rooms that a subfloor fill would wall off.
+        if (!biomeId.startsWith("trial_chamber")) {
+            for (int x = gridMinX - 1; x <= gridMaxX + 1; x++) {
+                for (int z = gridMinZ - 1; z <= gridMaxZ + 1; z++) {
+                    sealSubfloorColumn(world, x, arenaFloorY, z);
                 }
             }
         }
@@ -1431,6 +1426,20 @@ public class ArenaBuilder {
                     if (!world.getBlockState(abovePos).isAir()) {
                         world.setBlockState(abovePos, Blocks.AIR.getDefaultState(), SET_FLAGS);
                     }
+                }
+            }
+        }
+
+        // Seal the hollow beneath every painted tile (mask + border ring) so a raised outskirt
+        // wall can't reveal the arena's underside - the cull deletes buried subfloor, leaving
+        // grass over air. Refills only air under a solid floor tile, so it runs even for boss
+        // arenas (whose ground the cull otherwise leaves as a thin hollow skin); trial chambers
+        // are skipped because their intentional lower rooms must not be filled in.
+        if (!biomeId.startsWith("trial_chamber")) {
+            for (int x = 0; x < gridW; x++) {
+                for (int z = 0; z < gridH; z++) {
+                    if (!outer[x][z]) continue;
+                    sealSubfloorColumn(world, gridMinX + x, arenaFloorY, gridMinZ + z);
                 }
             }
         }
@@ -2054,11 +2063,55 @@ public class ArenaBuilder {
         int sy = oy;
         for (int y = oy + 5; y >= oy - 2; y--) {
             BlockState s = world.getBlockState(new BlockPos(px, y, pz));
-            if (!isAirLike(s) && s.getFluidState().isEmpty()) { sy = y; break; }
+            if (isAirLike(s) || !s.getFluidState().isEmpty()) continue;
+            // A snow layer or bottom slab doesn't fill the top of its cell, so a post one
+            // cell above it would hover. Treat the full block BENEATH the partial layer as
+            // the surface; the post at sy+1 then overwrites the partial block and rests flush.
+            sy = isPartialSurface(s) ? y - 1 : y;
+            break;
         }
         setIf(world, px, sy, pz, Blocks.STONE);   // ensure solid base
         set(world, px, sy + 1, pz, postBlock);
         set(world, px, sy + 2, pz, lightBlock);
+    }
+
+    /** True for surface blocks that don't fill the top of their cell - a post placed one
+     *  cell above would float: layered snow shorter than a full block, and bottom slabs. */
+    private static boolean isPartialSurface(BlockState s) {
+        Block b = s.getBlock();
+        if (b == Blocks.SNOW) { // layered snow_layer (1-8); full height only at 8
+            return s.get(net.minecraft.block.SnowBlock.LAYERS) < 8;
+        }
+        if (b instanceof net.minecraft.block.SlabBlock) {
+            return s.get(net.minecraft.block.SlabBlock.TYPE)
+                    == net.minecraft.block.enums.SlabType.BOTTOM;
+        }
+        return false;
+    }
+
+    /** How deep the subfloor seal reaches when the space under a floor tile is hollow. */
+    private static final int SUBFLOOR_SEAL_DEPTH = 5;
+
+    /**
+     * Seal the hollow beneath one floor column so a raised edge / outskirt wall can't reveal
+     * the arena's underside. The schematic visibility cull (SchemLoader.computeKeepMask) drops
+     * fully-buried solids, so the dirt/stone UNDER the floor grass vanishes and the arena is
+     * left as a thin skin over air; a 2+ high wall on the outskirts then exposes that hollow.
+     * This refills AIR with STONE from floorY-1 downward, stopping at a fluid (covered ponds /
+     * lava pockets aren't filled) and capped at SUBFLOOR_SEAL_DEPTH.
+     *
+     * <p>No-op when the floor block itself is air (VOID / pit / LOW_GROUND) or a fluid (WATER /
+     * LAVA / DEEP_WATER), so carved pit tiles keep their void and water-depth classification is
+     * untouched. Only ever fills air - authored solid ground is never overwritten.
+     */
+    private static void sealSubfloorColumn(ServerWorld world, int x, int floorY, int z) {
+        BlockState floorState = world.getBlockState(new BlockPos(x, floorY, z));
+        if (isAirLike(floorState) || !floorState.getFluidState().isEmpty()) return;
+        for (int dy = 1; dy <= SUBFLOOR_SEAL_DEPTH; dy++) {
+            BlockState s = world.getBlockState(new BlockPos(x, floorY - dy, z));
+            if (!s.getFluidState().isEmpty()) break;   // don't fill into a liquid pocket
+            if (isAirLike(s)) set(world, x, floorY - dy, z, Blocks.STONE);
+        }
     }
 
     /** Check if a border position has at least one adjacent solid arena tile at floor level. */

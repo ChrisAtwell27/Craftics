@@ -96,6 +96,21 @@ public final class InfiniteAbilityPool {
 
     // ─── Shared pattern helpers ────────────────────────────────────────────────
 
+    /**
+     * Max cast distance for point strikes aimed at the player's tile. Lane sweeps
+     * (avalanche, tidal_wave, breath_wave, ash_brand) and the fireball_rain carpet stay
+     * arena-wide by design - they're always telegraphed. But a single-zone nuke landing
+     * from literally anywhere read as "infinite range attacks" and left the boss no
+     * reason to ever approach; past this range the cast returns null and the cycle
+     * falls through to a move/approach instead.
+     */
+    private static final int MAX_POINT_STRIKE_RANGE = 7;
+
+    /** True when the player is beyond {@link #MAX_POINT_STRIKE_RANGE} for a point strike. */
+    private static boolean tooFar(CombatEntity self, GridPos p) {
+        return self.minDistanceTo(p) > MAX_POINT_STRIKE_RANGE;
+    }
+
     /** Axis-aligned charge toward the player: path stops adjacent to them.
      *  Returns null when not aligned, too close, or the lane is blocked. */
     private static List<GridPos> chargeLane(CombatEntity self, GridArena arena, GridPos playerPos, int maxLen) {
@@ -309,7 +324,7 @@ public final class InfiniteAbilityPool {
                 warn, warn, dir[0], dir[1]);
         });
         register("cursed_fog", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("cursed_fog")) return null;
+            if (ctx.isOnCooldown("cursed_fog") || tooFar(self, p)) return null;
             ctx.setCooldown("cursed_fog", 3);
             List<GridPos> warn = ctx.getAreaTiles(arena, p, 2);
             return new EnemyAction.BossAbility("cursed_fog",
@@ -327,13 +342,15 @@ public final class InfiniteAbilityPool {
         });
         register("hex_bolt", (ctx, self, arena, p) -> {
             int dist = self.minDistanceTo(p);
-            if (dist < 2 || dist > 5) return null;
+            if (dist < 2 || dist > 5 || ctx.isOnCooldown("hex_bolt")) return null;
+            // Cooldown so the cycle can't re-fire this boss-atk snipe every single rotation.
+            ctx.setCooldown("hex_bolt", 2);
             return new EnemyAction.RangedAttack(self.getAttackPower(), "hex_bolt");
         });
 
         // ═══ The Frostbound Huntsman (snowy) ═══
         register("blizzard", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("blizzard")) return null;
+            if (ctx.isOnCooldown("blizzard") || tooFar(self, p)) return null;
             ctx.setCooldown("blizzard", 3);
             List<GridPos> warn = ctx.getAreaTiles(arena, p, 2);
             EnemyAction storm = new EnemyAction.AreaAttack(p, 2, self.getAttackPower(), "blizzard");
@@ -366,7 +383,9 @@ public final class InfiniteAbilityPool {
         });
         register("frost_arrow", (ctx, self, arena, p) -> {
             int dist = self.minDistanceTo(p);
-            if (dist < 2 || dist > 6) return null;
+            if (dist < 2 || dist > 6 || ctx.isOnCooldown("frost_arrow")) return null;
+            // Cooldown so the cycle can't re-fire this boss-atk snipe every single rotation.
+            ctx.setCooldown("frost_arrow", 2);
             return new EnemyAction.RangedAttack(self.getAttackPower(), "frost_arrow");
         });
         register("harpoon_pull", (ctx, self, arena, p) -> {
@@ -405,7 +424,7 @@ public final class InfiniteAbilityPool {
                 new EnemyAction.CompositeAction(parts), warn);
         });
         register("boulder_toss", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("boulder_toss") || self.minDistanceTo(p) < 2) return null;
+            if (ctx.isOnCooldown("boulder_toss") || self.minDistanceTo(p) < 2 || tooFar(self, p)) return null;
             ctx.setCooldown("boulder_toss", 2);
             int[] push = dirToward(self.getGridPos(), p);
             if (push[0] == 0 && push[1] == 0) push = new int[]{1, 0};
@@ -520,7 +539,7 @@ public final class InfiniteAbilityPool {
 
         // ═══ The Sandstorm Pharaoh (desert) ═══
         register("plant_mine", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("plant_mine")) return null;
+            if (ctx.isOnCooldown("plant_mine") || tooFar(self, p)) return null;
             // A whole minefield seeds the player's escape routes, not one lone tile.
             int mineCount = ctx.isPhaseTwo() ? 4 : 3;
             List<GridPos> mines = ctx.findSummonPositionsNear(arena, p, 2, mineCount);
@@ -534,7 +553,7 @@ public final class InfiniteAbilityPool {
             return plants.size() == 1 ? plants.get(0) : new EnemyAction.CompositeAction(plants);
         });
         register("sand_burial", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("sand_burial")) return null;
+            if (ctx.isOnCooldown("sand_burial") || tooFar(self, p)) return null;
             ctx.setCooldown("sand_burial", 3);
             List<GridPos> warn = ctx.getAreaTiles(arena, p, 1);
             // "sand_burial" stuns on hit (applyBossAreaEffect) - eat the hit and
@@ -543,7 +562,7 @@ public final class InfiniteAbilityPool {
                 new EnemyAction.AreaAttack(p, 1, self.getAttackPower(), "sand_burial"), warn);
         });
         register("sandstorm", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("sandstorm")) return null;
+            if (ctx.isOnCooldown("sandstorm") || tooFar(self, p)) return null;
             ctx.setCooldown("sandstorm", 4);
             // A 5x5 wall of stinging sand centered on the player - telegraphed,
             // so the storm is dodged by moving, not by luck.
@@ -553,7 +572,7 @@ public final class InfiniteAbilityPool {
                 warn);
         });
         register("curse_of_the_sands", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("curse_of_the_sands")) return null;
+            if (ctx.isOnCooldown("curse_of_the_sands") || tooFar(self, p)) return null;
             ctx.setCooldown("curse_of_the_sands", 5);
             // The curse itself is CombatManager state: while cursed, every tile
             // the player moves off sprouts a live sand mine. Dodge the initial
@@ -566,7 +585,7 @@ public final class InfiniteAbilityPool {
 
         // ═══ The Broodmother (jungle) ═══
         register("web_spray", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("web_spray")) return null;
+            if (ctx.isOnCooldown("web_spray") || tooFar(self, p)) return null;
             List<GridPos> tiles = walkableBox(arena, p, 1, null);
             if (tiles.isEmpty()) return null;
             ctx.setCooldown("web_spray", 3);
@@ -602,14 +621,14 @@ public final class InfiniteAbilityPool {
 
         // ═══ The Hollow King (cave) ═══
         register("rubble_toss", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("rubble_toss") || self.minDistanceTo(p) < 2) return null;
+            if (ctx.isOnCooldown("rubble_toss") || self.minDistanceTo(p) < 2 || tooFar(self, p)) return null;
             ctx.setCooldown("rubble_toss", 2);
             List<GridPos> warn = ctx.getAreaTiles(arena, p, 1);
             return new EnemyAction.BossAbility("rubble_toss",
                 new EnemyAction.AreaAttack(p, 1, self.getAttackPower(), "rubble_toss"), warn);
         });
         register("cave_in", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("cave_in")) return null;
+            if (ctx.isOnCooldown("cave_in") || tooFar(self, p)) return null;
             List<GridPos> rubble = ctx.findSummonPositionsNear(arena, p, 3, 6);
             if (rubble.size() < 3) return null;
             ctx.setCooldown("cave_in", 4);
@@ -671,7 +690,7 @@ public final class InfiniteAbilityPool {
 
         // ═══ The Molten King (nether wastes) ═══
         register("magma_eruption", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("magma_eruption")) return null;
+            if (ctx.isOnCooldown("magma_eruption") || tooFar(self, p)) return null;
             List<GridPos> vents = ctx.findSummonPositionsNear(arena, p, 2, 5);
             if (vents.size() < 3) return null;
             ctx.setCooldown("magma_eruption", 3);
@@ -684,7 +703,7 @@ public final class InfiniteAbilityPool {
             return new EnemyAction.BossAbility("magma_eruption", resolve, warn);
         });
         register("lava_cage", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("lava_cage")) return null;
+            if (ctx.isOnCooldown("lava_cage") || tooFar(self, p)) return null;
             List<GridPos> ring = ringTiles(arena, p, 2);
             if (ring.size() < 5) return null;
             ctx.setCooldown("lava_cage", 4);
@@ -805,7 +824,7 @@ public final class InfiniteAbilityPool {
                 warn, warn, dir[0], dir[1]);
         });
         register("null_burst", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("null_burst")) return null;
+            if (ctx.isOnCooldown("null_burst") || tooFar(self, p)) return null;
             ctx.setCooldown("null_burst", 3);
             int radius = ctx.isPhaseTwo() ? 2 : 1;
             List<GridPos> warn = ctx.getAreaTiles(arena, p, radius);
@@ -820,7 +839,7 @@ public final class InfiniteAbilityPool {
             return new EnemyAction.TeleportAndAttack(target, self.getAttackPower() + 2);
         });
         register("void_pull", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("void_pull")) return null;
+            if (ctx.isOnCooldown("void_pull") || tooFar(self, p)) return null;
             int dist = self.minDistanceTo(p);
             if (dist < 3) return null;
             int[] dir = dirToward(p, self.getGridPos());
@@ -857,7 +876,7 @@ public final class InfiniteAbilityPool {
 
         // ═══ The Void Herald (outer end islands) ═══
         register("void_gale", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("void_gale")) return null;
+            if (ctx.isOnCooldown("void_gale") || tooFar(self, p)) return null;
             int[] dir = dirToward(self.getGridPos(), p);
             if (dir[0] == 0 && dir[1] == 0) return null;
             ctx.setCooldown("void_gale", 3);
@@ -869,7 +888,7 @@ public final class InfiniteAbilityPool {
                 List.of(p), union(List.of(p), throwPath), dir[0], dir[1]);
         });
         register("lightning_strike", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("lightning_strike")) return null;
+            if (ctx.isOnCooldown("lightning_strike") || tooFar(self, p)) return null;
             ctx.setCooldown("lightning_strike", 3);
             List<GridPos> warn = ctx.getAreaTiles(arena, p, 1);
             List<EnemyAction> strikes = new ArrayList<>();
@@ -917,7 +936,7 @@ public final class InfiniteAbilityPool {
 
         // ═══ The Chorus Mind (chorus grove) ═══
         register("chorus_bomb", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("chorus_bomb")) return null;
+            if (ctx.isOnCooldown("chorus_bomb") || tooFar(self, p)) return null;
             ctx.setCooldown("chorus_bomb", 3);
             int radius = ctx.isPhaseTwo() ? 2 : 1;
             List<GridPos> warn = ctx.getAreaTiles(arena, p, radius);
@@ -925,7 +944,7 @@ public final class InfiniteAbilityPool {
                 new EnemyAction.AreaAttack(p, radius, self.getAttackPower() + 1, "chorus_bomb"), warn);
         });
         register("entangle", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("entangle")) return null;
+            if (ctx.isOnCooldown("entangle") || tooFar(self, p)) return null;
             List<GridPos> tiles = walkableBox(arena, p, 1, null);
             if (tiles.isEmpty()) return null;
             ctx.setCooldown("entangle", 4);
@@ -994,7 +1013,7 @@ public final class InfiniteAbilityPool {
             return new EnemyAction.AreaAttack(p, 0, self.getAttackPower() + 1, "wither_slash");
         });
         register("fire_pillar", (ctx, self, arena, p) -> {
-            if (ctx.isOnCooldown("fire_pillar")) return null;
+            if (ctx.isOnCooldown("fire_pillar") || tooFar(self, p)) return null;
             List<GridPos> tiles = walkableBox(arena, p, 1, null);
             if (tiles.isEmpty()) return null;
             ctx.setCooldown("fire_pillar", 3);

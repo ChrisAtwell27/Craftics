@@ -13,6 +13,9 @@ import com.crackedgames.craftics.world.RestRoomBuilder;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.Blocks;
+import net.minecraft.entity.SpawnReason;
+import net.minecraft.entity.passive.TameableEntity;
+import net.minecraft.entity.passive.WolfEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtList;
@@ -307,20 +310,48 @@ public final class InfiniteRunManager {
     }
 
     /**
-     * The starter weapon each class begins with. Deliberately modest - the run starts from
-     * NOTHING, so a stone tool is a real leg up without skipping the early scramble.
+     * The starter weapon each class begins with. Keep this intentionally modest
+     * so class picks feel distinct without skipping the early scramble.
      */
     private static ItemStack classWeaponFor(PlayerProgression.Affinity affinity) {
         return switch (affinity) {
-            case SLASHING -> new ItemStack(Items.STONE_SWORD);
-            case CLEAVING -> new ItemStack(Items.STONE_AXE);
+            case SLASHING -> new ItemStack(Items.WOODEN_SWORD);
+            case CLEAVING -> new ItemStack(Items.WOODEN_AXE);
             case BLUNT -> new ItemStack(Items.STICK);
             case RANGED -> new ItemStack(Items.BOW);
-            case WATER -> new ItemStack(Items.HORN_CORAL);
-            case SPECIAL -> new ItemStack(Items.STONE_HOE);
-            case PET -> new ItemStack(Items.STONE_SHOVEL);
+            case WATER -> new ItemStack(Items.DEAD_HORN_CORAL);
+            case SPECIAL -> new ItemStack(Items.WOODEN_HOE);
+            case PET -> new ItemStack(Items.WOODEN_SHOVEL);
             case PHYSICAL -> new ItemStack(Items.SHIELD);
         };
+    }
+
+    /**
+     * PET class opener: grant a real wolf ally, not a spawn egg.
+     * If class is picked in combat, summon directly into the arena.
+     * Otherwise, spawn a tamed wolf beside the player in-world.
+     */
+    private static void grantPetClassWolfAlly(ServerPlayerEntity player, ServerWorld world) {
+        CombatManager combat = CombatManager.getActiveCombat(player.getUuid());
+        if (combat != null && combat.summonWeaponProcAlly("minecraft:wolf", player, -1) != null) {
+            player.sendMessage(Text.literal("§aA wolf ally joins your side."), false);
+            return;
+        }
+
+        WolfEntity wolf = net.minecraft.entity.EntityType.WOLF.create(
+            world, null, player.getBlockPos(), SpawnReason.MOB_SUMMONED, false, false);
+        if (wolf == null) return;
+        wolf.refreshPositionAndAngles(player.getX() + 1.0, player.getY(), player.getZ(), player.getYaw(), 0.0f);
+        if (wolf instanceof TameableEntity tameable) {
+            //? if <=1.21.4 {
+            tameable.setOwnerUuid(player.getUuid());
+            //?} else
+            /*tameable.setOwner(player);*/
+        }
+        wolf.setTamed(true, false);
+        wolf.setSitting(false);
+        world.spawnEntity(wolf);
+        player.sendMessage(Text.literal("§aA tamed wolf now follows you."), false);
     }
 
     /**
@@ -349,6 +380,12 @@ public final class InfiniteRunManager {
         player.giveItemStack(weapon);
         if (affinity == PlayerProgression.Affinity.RANGED) {
             player.giveItemStack(new ItemStack(Items.ARROW, 8));
+        }
+        if (affinity == PlayerProgression.Affinity.SPECIAL) {
+            player.giveItemStack(new ItemStack(Items.EGG, 16));
+        }
+        if (affinity == PlayerProgression.Affinity.PET) {
+            grantPetClassWolfAlly(player, world);
         }
 
         CrafticsSavedData data = CrafticsSavedData.get(world);

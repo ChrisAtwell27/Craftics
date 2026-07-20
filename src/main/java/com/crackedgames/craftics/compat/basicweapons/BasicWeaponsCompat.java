@@ -224,13 +224,15 @@ public final class BasicWeaponsCompat {
 
     /**
      * Lazy per-tier damage supplier derived from existing config getters, nudged by damage class:
-     * dagger/quarterstaff = max(1, sword-1); spear = max(1, sword-3); club = axe; hammer/glaive = axe+1.
+    * dagger = max(1, sword-2); quarterstaff = max(1, sword-1); spear = max(1, sword-3);
+    * club = axe; hammer/glaive = axe+1.
      * The spear sits below the sword on its own so its damage only catches up when the player
      * closes distance (see the per-tile movement scaling in CombatManager).
      */
     private static IntSupplier damageFor(String tier, String type) {
         return switch (type) {
-            case "dagger", "quarterstaff" -> () -> Math.max(1, swordDmg(tier) - 1);
+            case "dagger" -> () -> Math.max(1, swordDmg(tier) - 2);
+            case "quarterstaff" -> () -> Math.max(1, swordDmg(tier) - 1);
             case "spear" -> () -> Math.max(1, swordDmg(tier) - 3);
             case "club" -> () -> axeDmg(tier);
             case "hammer", "glaive" -> () -> axeDmg(tier) + 1;
@@ -282,7 +284,7 @@ public final class BasicWeaponsCompat {
             if (!isDualDagger(main, off)) {
                 return new WeaponAbility.AttackResult(baseDamage, List.of(), List.of());
             }
-            int offHit = Math.max(1, (int) Math.round(baseDamage * DAGGER_OFFHAND_MULT));
+            int offHit = Math.max(1, (int) Math.round(baseDamage * DAGGER_OFFHAND_MULT) - 1);
             int second = target.takeDamage(offHit);
             // The off hand did real work, so it wears like the main hand does (handleAttack
             // charges the MAIN weapon's durability; without this the offhand dagger was free).

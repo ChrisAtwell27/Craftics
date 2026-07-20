@@ -3075,7 +3075,9 @@ public class CombatManager {
             int sizeZ = footprint[1];
             // Bosses with a larger grid footprint need the spawn search to reserve enough tiles
             if (isBossSpawn && bossBiomeId != null) {
-                var bossAiForSize = AIRegistry.get("boss:" + bossBiomeId);
+                String bossAiKeyForSize = "boss:infinite".equals(spawn.aiKey())
+                    ? InfiniteRunManager.BOSS_AI_KEY : "boss:" + bossBiomeId;
+                var bossAiForSize = AIRegistry.get(bossAiKeyForSize);
                 if (bossAiForSize instanceof BossAI bai) {
                     sizeX = Math.max(sizeX, bai.getGridSize());
                     sizeZ = Math.max(sizeZ, bai.getGridSize());
@@ -3279,10 +3281,16 @@ public class CombatManager {
                 }
 
                 boolean isBoss = isBossSpawn;
+                com.crackedgames.craftics.level.InfiniteSpec runInfiniteSpec = currentInfiniteSpec();
+                boolean isInfiniteBossOverride = isBoss
+                    && runInfiniteSpec != null
+                    && runInfiniteSpec.hasBossOverride();
 
                 // Boss visual distinction: per-boss equipment, name, scale + glowing
                 if (isBoss && bossBiomeId != null) {
-                    equipBossVisuals(mob, bossBiomeId);
+                    if (!isInfiniteBossOverride) {
+                        equipBossVisuals(mob, bossBiomeId);
+                    }
                     if (com.crackedgames.craftics.CrafticsMod.CONFIG.bossGlowEffect()) {
                         mob.setGlowing(true);
                     }
@@ -3297,10 +3305,17 @@ public class CombatManager {
                 // A vanishingly rare roll (0.001%) instead decks the mob out as a
                 // fully enchanted netherite miniboss -that path does its own
                 // enchanting, so the normal per-piece enchant/trim pass is skipped.
-                if (!isBoss) {
-                    boolean miniboss = randomizeMobGear(mob, finalBiomeOrdinal, world);
+                if (!isBoss || isInfiniteBossOverride) {
+                    boolean miniboss = randomizeMobGear(mob, finalBiomeOrdinal, world, isInfiniteBossOverride);
                     if (!miniboss) {
                         enchantMobGear(mob, finalBiomeOrdinal, world);
+                    }
+                    // Infinite bosses: the held item must MATCH the basic attack the body
+                    // actually uses (bow for arrow bodies, crossbow for pillager, trident
+                    // for drowned, melee blade otherwise, bare hands for casters) - the
+                    // random tier roll above could hand a sniping stray a pickaxe.
+                    if (isInfiniteBossOverride) {
+                        equipInfiniteBossWeapon(mob, finalBiomeOrdinal);
                     }
                 }
 
@@ -3429,7 +3444,9 @@ public class CombatManager {
                 // Determine entity grid size: boss AI defines its own, others use mob defaults
                 int sizeOverride = -1;
                 if (isBoss && bossBiomeId != null) {
-                    var bossAiInstance = AIRegistry.get("boss:" + bossBiomeId);
+                    String bossAiKeyForSize = "boss:infinite".equals(spawn.aiKey())
+                        ? InfiniteRunManager.BOSS_AI_KEY : "boss:" + bossBiomeId;
+                    var bossAiInstance = AIRegistry.get(bossAiKeyForSize);
                     if (bossAiInstance instanceof BossAI bai) {
                         sizeOverride = bai.getGridSize();
                     }
@@ -3497,9 +3514,9 @@ public class CombatManager {
                         ce.setAiInstance(freshBossAi);
                     }
                     // INFINITE MODE: replace the biome boss with the run's randomized
-                    // one - a standard-size mob with a generated name and a movepool
+                    // one - a visually enlarged 1x1 mob with a generated name and a movepool
                     // pulled from every boss in the mod. Must run before placeEntity
-                    // so the 1x1 footprint (not the biome boss's) is what gets placed.
+                    // so the standard footprint is what gets placed.
                     com.crackedgames.craftics.level.InfiniteSpec infSpec = currentInfiniteSpec();
                     if (infSpec != null && infSpec.hasBossOverride()) {
                         var infiniteAi = new com.crackedgames.craftics.combat.ai.boss.InfiniteBossAI(
@@ -3514,6 +3531,9 @@ public class CombatManager {
                         // grid shows the generated one.
                         mob.setCustomName(Text.literal("§5§l" + infSpec.bossName()));
                         mob.setCustomNameVisible(true);
+                        // Infinite bosses look imposing, but remain a standard 1x1
+                        // combat target so their visuals never block adjacent tiles.
+                        scaleBoss(mob, 1.6);
                         ce.setSize(1);
                         // Extra actions per enemy phase (+1 every 10 cleared biomes);
                         // consumed by tickEnemyDone's re-entry loop.
@@ -5977,7 +5997,11 @@ public class CombatManager {
                         fTarget.stackSlowness(2, 1);
                         sendMessage("\u00a77Slowness arrow! Enemy slowed for 2 turns.");
                     }
-                    case "weakness" -> { fTarget.setStunned(true); sendMessage("\u00a77Weakness arrow! Enemy stunned."); }
+                    case "weakness" -> {
+                        fTarget.setAttackPenalty(2);
+                        fTarget.setAttackPenaltyTurns(2);
+                        sendMessage("\u00a77Weakness arrow! Enemy weakened for 2 turns.");
+                    }
                     case "harming" -> { fTarget.takeDamage(4); sendMessage("\u00a74Harming arrow! +4 bonus damage."); }
                     case "healing" -> { player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + 4)); sendMessage("\u00a7dHealing arrow! Restored 4 HP."); }
                     case "fire_resistance" -> { addEffectHooked(CombatEffects.EffectType.FIRE_RESISTANCE, 3, 0); sendMessage("\u00a76Fire resistance arrow! 3 turns."); }
@@ -7778,9 +7802,41 @@ public class CombatManager {
                  "minecraft:skeleton", "minecraft:stray", "minecraft:wither_skeleton",
                  "minecraft:zombified_piglin", "minecraft:zombie_villager",
                  "minecraft:piglin", "minecraft:piglin_brute",
-                 "minecraft:vindicator", "minecraft:evoker", "minecraft:pillager" -> true;
+                 "minecraft:vindicator", "minecraft:evoker", "minecraft:pillager",
+                 "minecraft:bogged" -> true;
             default -> false;
         };
+    }
+
+    /**
+     * Force an infinite boss's held item to match its basic attack. The body decides the
+     * attack style (see getRangedProjectileType): arrow bodies get a bow, the pillager a
+     * crossbow, the drowned a trident; caster bodies (blaze, breeze, witch, shulker, ...)
+     * conjure their projectiles, so they fight bare-handed; every other body is melee and
+     * gets a blade whose tier scales with how deep the run is. Overwrites whatever the
+     * random gear roll put in the hand - the weapon the player sees must be the weapon
+     * the boss fights with.
+     */
+    private static void equipInfiniteBossWeapon(MobEntity mob, int biomeOrdinal) {
+        String typeId = Registries.ENTITY_TYPE.getId(mob.getType()).toString();
+        String projectile = getRangedProjectileType(typeId);
+        ItemStack held;
+        if (projectile == null) {
+            // Melee body - blade tier deepens with the run.
+            held = new ItemStack(biomeOrdinal >= 6 ? Items.NETHERITE_SWORD
+                : biomeOrdinal >= 3 ? Items.DIAMOND_SWORD : Items.IRON_SWORD);
+        } else {
+            held = switch (projectile) {
+                case "arrow" -> new ItemStack(Items.BOW);            // skeleton, stray, bogged
+                case "crossbow" -> new ItemStack(Items.CROSSBOW);    // pillager
+                case "trident" -> new ItemStack(Items.TRIDENT);      // drowned
+                // Casters (fireball / wind_charge / potion / shulker_bullet / llama_spit)
+                // conjure their attacks - a held tool would be a lie.
+                default -> ItemStack.EMPTY;
+            };
+        }
+        mob.equipStack(net.minecraft.entity.EquipmentSlot.MAINHAND, held);
+        mob.setEquipmentDropChance(net.minecraft.entity.EquipmentSlot.MAINHAND, 0.0f);
     }
 
     /** Returns the display name for a boss based on biome ID. */
@@ -7865,6 +7921,15 @@ public class CombatManager {
      * vanilla-given gear is preserved.
      */
     private static boolean randomizeMobGear(MobEntity mob, int biomeOrdinal, ServerWorld world) {
+        return randomizeMobGear(mob, biomeOrdinal, world, false);
+    }
+
+    /**
+     * Gear randomizer with an optional force flag used by infinite bosses.
+     * When forced, the top-level spawn gate is skipped so gear is always rolled.
+     */
+    private static boolean randomizeMobGear(MobEntity mob, int biomeOrdinal, ServerWorld world,
+                                            boolean forceSpawnRoll) {
         String typeId = Registries.ENTITY_TYPE.getId(mob.getType()).toString();
         if (!isHumanoidMob(typeId)) return false;
 
@@ -7876,7 +7941,7 @@ public class CombatManager {
         }
 
         // Top-level gate -most mobs get nothing.
-        if (Math.random() >= GEAR_SPAWN_CHANCE) return false;
+        if (!forceSpawnRoll && Math.random() >= GEAR_SPAWN_CHANCE) return false;
 
         // Pick a tier once so the mob's gear is internally consistent
         int tier = rollGearTier();
@@ -13490,7 +13555,15 @@ public class CombatManager {
                 // and the null bursts / beams / roars are unfair without warnings.
                 boolean isVoidWalker = currentEnemy != null
                     && "boss:warped_forest".equals(currentEnemy.getAiKey());
-                boolean skipTelegraph = currentBiomeOrdinal >= 3 && !isVoidWalker;
+                // Infinite bosses NEVER skip the telegraph: currentBiomeOrdinal is the
+                // unbounded infiniteBiomesCleared there, so from the 4th biome onward every
+                // pool ability became an instant, undodgeable nuke on the player's tile
+                // (12 dmg = 6 hearts per hit, doubled by multi-action phases). The pool's
+                // design contract says fairness IS the warning turn; escalation comes from
+                // actionsPerTurn + charging advances instead.
+                boolean isInfiniteBoss = currentEnemy != null
+                    && InfiniteRunManager.BOSS_AI_KEY.equals(currentEnemy.getAiKey());
+                boolean skipTelegraph = currentBiomeOrdinal >= 3 && !isVoidWalker && !isInfiniteBoss;
                 if (!skipTelegraph && ba.warningTiles() != null && !ba.warningTiles().isEmpty()) {
                     sendMessage("§e" + currentEnemy.getDisplayName() + " prepares " +
                         ba.abilityName().replace('_', ' ') + "! §7("
@@ -14962,13 +15035,23 @@ public class CombatManager {
      */
     private boolean damagePartyVictims(java.util.List<ServerPlayerEntity> victims, int damage,
                                        PartyHitCallback afterDamage) {
+        return damagePartyVictims(victims, damage, null, afterDamage);
+    }
+
+    /**
+     * Variant of {@link #damagePartyVictims(java.util.List, int, PartyHitCallback)} that
+     * preserves attacker context for damage routing (boss caps, dodge math, and type hooks).
+     */
+    private boolean damagePartyVictims(java.util.List<ServerPlayerEntity> victims, int damage,
+                                       CombatEntity attacker,
+                                       PartyHitCallback afterDamage) {
         for (ServerPlayerEntity victim : victims) {
             ServerPlayerEntity savedPlayer = this.player;
             boolean swapped = victim != savedPlayer;
             if (swapped) { this.player = victim; retargetEffectsToCurrentPlayer(); }
             boolean victimDied = false;
             try {
-                int actual = damagePlayer(damage);
+                int actual = damagePlayer(damage, attacker);
                 afterDamage.accept(victim, actual, swapped);
                 if (getPlayerHp() <= 0) {
                     victimDied = true;
@@ -15214,7 +15297,7 @@ public class CombatManager {
         // while the wrong player got hit. damagePartyVictims routes each member via
         // the this.player swap so their dodge/armor/effects/death handling apply.
         boolean gameOverFromArea = damagePartyVictims(partyVictimsNear(center, radius),
-            damage, (victim, actual, swapped) -> {
+            damage, currentEnemy, (victim, actual, swapped) -> {
                 sendMessage("§c  Area hit " + (swapped ? victim.getName().getString() : "you")
                     + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 // Apply named effects to this victim
@@ -15280,7 +15363,7 @@ public class CombatManager {
             victims.add(player);
         }
 
-        boolean gameOver = damagePartyVictims(victims, ta.damage(), (victim, actual, swapped) -> {
+        boolean gameOver = damagePartyVictims(victims, ta.damage(), currentEnemy, (victim, actual, swapped) -> {
             sendMessage("§c  Area hit " + (swapped ? victim.getName().getString() : "you")
                 + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
             if (ta.effectName() != null) {
@@ -16112,7 +16195,7 @@ public class CombatManager {
             if (lineSwapped) { this.player = victim; retargetEffectsToCurrentPlayer(); }
             boolean victimDied = false;
             try {
-                int actual = damagePlayer(la.damage());
+                int actual = damagePlayer(la.damage(), currentEnemy);
                 sendMessage("§c  Line attack hits " + (lineSwapped ? victim.getName().getString() : "you")
                     + " for " + actual + " damage! (HP: " + getPlayerHp() + ")");
                 if (getPlayerHp() <= 0) {
@@ -21489,7 +21572,14 @@ public class CombatManager {
                 .ordinalOf(biomeTemplate.biomeId, Math.max(0, ld.branchChoice))
             : 0;
         if (biomeOrdinal < 0) biomeOrdinal = 0;
-        boolean isBoss = biomeTemplate != null && biomeTemplate.isBossLevel(arena.getLevelNumber());
+        // Event fights (trials, raids, ambushes, addon fights) carry synthetic 9000+ level
+        // numbers. isBossLevel clamps ">= last level", so a synthetic id would read as "boss
+        // of the current biome" and process an EVENT victory as a BIOME COMPLETE: wrong
+        // unlock, endBiomeRun, teleport home - while pendingNextLevelDef/lastFightWasTrial
+        // stay armed and warp the NEXT run into the old biome (the wrong-biome ping-pong).
+        boolean isBoss = biomeTemplate != null
+            && arena.getLevelNumber() < com.crackedgames.craftics.level.LevelDefinition.SYNTHETIC_LEVEL_BASE
+            && biomeTemplate.isBossLevel(arena.getLevelNumber());
         // Rare MoreTotems totem drop -boss kills only (Luck boosts chance). No-op when the
         // mod is absent (rollOne returns EMPTY).
         if (isBoss) {
@@ -21718,7 +21808,9 @@ public class CombatManager {
         // not just solo. null when there's no active run (campaign boss).
         java.util.UUID infiniteHostOwner = InfiniteRunManager.resolveActiveHost(
             data, dataOwner, player.getUuid());
-        CrafticsSavedData.PlayerData ld = data.getPlayerData(dataOwner);
+        java.util.UUID progressionOwner = InfiniteRunManager.isHostOfActiveRun(data, infiniteHostOwner)
+            ? infiniteHostOwner : dataOwner;
+        CrafticsSavedData.PlayerData ld = data.getPlayerData(progressionOwner);
         List<ServerPlayerEntity> rewardRecipients = getAllParticipants();
 
         // ===== begin block moved verbatim from handleVictory =====
@@ -21793,6 +21885,10 @@ public class CombatManager {
             }
             ld.endBiomeRun();
             ld.inCombat = false;
+            // The run is over - drop any event-interlude leftovers. Orphaned
+            // pendingNextLevelDef/lastFightWasTrial survive on this per-leader instance and
+            // would hijack the NEXT run's first Continue into the old biome's stale level.
+            clearEventInterludeState();
             data.markDirty();
             world.setTimeOfDay(6000);
             // Teleport all party members home
@@ -22069,8 +22165,6 @@ public class CombatManager {
             pendingEventBiomeOrdinal = 0;
             return;
         }
-        lastFightWasTrial = false;
-
         // Only accept choice from the party leader.
         // CRITICAL: resolve the leader via getCombatLeader() (by stable
         // leaderUuid), NOT via `this.player` -in party combat this.player is
@@ -22091,6 +22185,9 @@ public class CombatManager {
                 leader != null ? leader.getName().getString() : "none");
             return;
         }
+        // Cleared only AFTER the leader check: a non-leader's spurious choice packet must
+        // not strip the post-event routing flag out from under the leader's real click.
+        lastFightWasTrial = false;
 
         // Save references before endCombat() nulls them. snapshotParticipants
         // prefers partyPlayers (still populated here) and falls back through
@@ -22100,7 +22197,11 @@ public class CombatManager {
         ServerWorld world = (ServerWorld) savedPlayer.getEntityWorld();
         CrafticsSavedData data = CrafticsSavedData.get(world);
         java.util.UUID dataOwner = leaderUuid != null ? leaderUuid : savedPlayer.getUuid();
-        CrafticsSavedData.PlayerData ld = data.getPlayerData(dataOwner);
+        java.util.UUID infiniteHostOwner = InfiniteRunManager.resolveActiveHost(
+            data, dataOwner, savedPlayer.getUuid());
+        java.util.UUID progressionOwner = InfiniteRunManager.isHostOfActiveRun(data, infiniteHostOwner)
+            ? infiniteHostOwner : dataOwner;
+        CrafticsSavedData.PlayerData ld = data.getPlayerData(progressionOwner);
 
         // Snapshot biome state BEFORE endCombat can interfere
         String biomeId = ld.activeBiomeId;
@@ -22127,6 +22228,9 @@ public class CombatManager {
             if (!wasInfinite) {
                 ld.endBiomeRun();
             }
+            // Going home ends the interlude either way - stale pending event state must
+            // not leak into the next run (see clearEventInterludeState).
+            clearEventInterludeState();
             ld.inCombat = false;
             data.markDirty();
             world.setTimeOfDay(6000);
@@ -22139,7 +22243,7 @@ public class CombatManager {
             // INFINITE MODE: going home parks the run at a save point - the stash comes
             // back now, and Infinite Mode resumes here later. Score stays banked either way.
             if (wasInfinite) {
-                InfiniteRunManager.suspendRun(world.getServer(), dataOwner, "went home");
+                InfiniteRunManager.suspendRun(world.getServer(), progressionOwner, "went home");
             }
         } else {
             // Continue to next level
@@ -22173,7 +22277,7 @@ public class CombatManager {
                 // INFINITE MODE: thread the run spec so the next level scales off
                 // the cleared-biome count and a boss level rolls the randomized boss.
                 com.crackedgames.craftics.level.InfiniteSpec contInfSpec =
-                    InfiniteRunManager.specFor(data, dataOwner, biome, globalLevel);
+                    InfiniteRunManager.specFor(data, progressionOwner, biome, globalLevel);
                 com.crackedgames.craftics.level.LevelDefinition nextLevelDef =
                     com.crackedgames.craftics.level.LevelRegistry.get(globalLevel, branchChoice,
                         islandHpScale, ownerBeatBiomeBoss, contInfSpec);
@@ -22271,7 +22375,10 @@ public class CombatManager {
                     // untouched either way.
                     boolean raidAlreadyDefeated = data.getPlayerData(
                         data.getEffectiveWorldOwner(savedPlayer.getUuid())).raidDefeated;
-                    float raidChance = raidAlreadyDefeated ? 0.06f : 0.75f;
+                    // Infinite mode should not get the fresh-island raid boost. Keep raid odds
+                    // there equal to the normal post-raid baseline so it competes fairly with
+                    // the rest of the event pool.
+                    float raidChance = (contInfSpec != null || raidAlreadyDefeated) ? 0.06f : 0.75f;
                     float raidRoll = (float) Math.random();
 
                     if (skipEvents) {
@@ -22525,6 +22632,21 @@ public class CombatManager {
     private boolean trialChamberPending = false;
     private com.crackedgames.craftics.level.LevelDefinition trialChamberLevelDef;
     private boolean lastFightWasTrial = false;
+
+    /**
+     * Drop every event-interlude leftover. Called whenever a run ends (biome complete or
+     * go-home): this per-leader CombatManager instance outlives the run, and a stale
+     * pendingNextLevelDef + lastFightWasTrial pair would reroute the next run's first
+     * Continue into the OLD biome's stashed level - the "wrong biome, then ping-pong" bug.
+     */
+    private void clearEventInterludeState() {
+        pendingNextLevelDef = null;
+        pendingBiome = null;
+        pendingEventBiomeOrdinal = 0;
+        lastFightWasTrial = false;
+        trialChamberPending = false;
+        trialChamberLevelDef = null;
+    }
 
     // ---- Addon-event public hooks ----
     /**

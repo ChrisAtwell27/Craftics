@@ -438,7 +438,7 @@ public class LevelGenerator {
                     bossAttack,
                     biome.boss.baseDefense() + defBonus,
                     Math.max(1, biome.boss.range()),
-                    "boss:infinite", biome.boss.speed()
+                    "boss:infinite", 0
                 ));
             } else {
                 spawns.add(new LevelDefinition.EnemySpawn(

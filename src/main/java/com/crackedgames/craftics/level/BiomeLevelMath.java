@@ -40,6 +40,10 @@ public final class BiomeLevelMath {
      * past it, so a run that overshoots still has to clear the boss before it can leave.
      */
     public static boolean isBossLevel(int globalLevel, int startLevel, int levelCount) {
+        // Synthetic event levels (trials, raids, ambushes - ids 9000+) are metadata-only and
+        // must never read as a biome position: the >= clamp below would otherwise classify
+        // every event fight as "the boss level" of whatever biome is active.
+        if (globalLevel >= LevelDefinition.SYNTHETIC_LEVEL_BASE) return false;
         return biomeLevelIndex(globalLevel, startLevel, levelCount) >= Math.max(0, levelCount - 1);
     }
 }

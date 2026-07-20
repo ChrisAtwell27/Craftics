@@ -148,6 +148,108 @@ public class CombatHudOverlay implements HudRenderCallback {
         ctx.fill(x, y, x + w, y + h, color);
     }
 
+    // ─── Inspect-panel shared chrome (hover UI) ──────────────────────────
+    // The hover panels reuse the mod's one visual language: leather PANEL_BG body,
+    // PANEL_BORDER frame, the guide book's signature 1px gold top accent, a
+    // translucent leather header band with a faction-colored underline, and the
+    // same effect pills the self status panel draws. Entrance = short slide-in.
+
+    /** Hover target key currently animating in, and when it appeared (wall clock). */
+    private static String lastInspectKey = null;
+    private static long inspectShownMs = 0;
+
+    /** 0..1 entrance progress for the inspect panel keyed on the hover target -
+     *  re-hovering a different unit restarts the slide. */
+    private static float inspectSlide(String key) {
+        long now = System.currentTimeMillis();
+        if (!key.equals(lastInspectKey)) {
+            lastInspectKey = key;
+            inspectShownMs = now;
+        }
+        return RewardReveal.smoothstep(Math.min(1f, (now - inspectShownMs) / 180f));
+    }
+
+    /** Frame + body + gold top accent + header band + faction underline, one call. */
+    private static void drawInspectChrome(DrawContext ctx, int x, int y, int w, int h,
+                                          int bodyColor, int underlineColor) {
+        ctx.fill(x - 1, y - 1, x + w + 1, y + h + 1, PANEL_BORDER);
+        ctx.fill(x, y, x + w, y + h, bodyColor);
+        // Header band: translucent leather cover, matching the book chrome.
+        ctx.fill(x, y, x + w, y + 14, 0xBB000000 | (GuideTheme.COVER & 0x00FFFFFF));
+        // Faction underline under the header - the friend/foe color vocabulary.
+        ctx.fill(x, y + 14, x + w, y + 16, underlineColor);
+        // Signature gold top accent (GuideButton's hallmark).
+        ctx.fill(x, y, x + w, y + 1, GuideTheme.GOLD_DIM);
+    }
+
+    /** HP bar with the resource plaque's 1px black frame so all framed meters match. */
+    private static void drawFramedHpBar(DrawContext ctx, String key, int x, int y, int w, int h,
+                                        float pct, int fillColor, int trackColor) {
+        ctx.fill(x - 1, y - 1, x + w + 1, y + h + 1, 0xFF000000);
+        drawHpBar(ctx, key, x, y, w, h, pct, fillColor, trackColor);
+    }
+
+    /** One effect pill in the inspect panel, width precomputed for wrapping. */
+    private record InspectPill(String label, int width, boolean debuff) {}
+
+    private static boolean isDebuffEffect(String eff) {
+        String base = eff.split(" ")[0];
+        return switch (base) {
+            case "Stunned", "Slowed", "Burning", "Poisoned", "Withered", "Frozen",
+                 "Soaked", "Rooted", "Bleeding", "Weakened", "Confused", "Cursed",
+                 "Blinded", "Marked", "Levitating", "Drenched" -> true;
+            default -> false;
+        };
+    }
+
+    /** Wrap effect labels into pill rows that fit {@code availW} (mirrors the self panel). */
+    private static List<List<InspectPill>> layoutInspectPills(MinecraftClient client,
+                                                              List<String> effects, int availW) {
+        List<List<InspectPill>> rows = new ArrayList<>();
+        List<InspectPill> row = new ArrayList<>();
+        int rowW = 0;
+        for (String eff : effects) {
+            int pillW = client.textRenderer.getWidth(eff) + 6;
+            if (rowW + pillW > availW && !row.isEmpty()) {
+                rows.add(row);
+                row = new ArrayList<>();
+                rowW = 0;
+            }
+            row.add(new InspectPill(eff, pillW, isDebuffEffect(eff)));
+            rowW += pillW + 3;
+        }
+        if (!row.isEmpty()) rows.add(row);
+        return rows;
+    }
+
+    private static final int INSPECT_PILL_H = 11;
+
+    /** Pixel height of a pill block ({@code rows} from layoutInspectPills). */
+    private static int inspectPillBlockH(List<List<InspectPill>> rows) {
+        if (rows.isEmpty()) return 0;
+        return rows.size() * INSPECT_PILL_H + (rows.size() - 1) * 2 + 1;
+    }
+
+    /** Draw pill rows starting at (x, y); returns the y below the block. */
+    private static int drawInspectPills(DrawContext ctx, MinecraftClient client,
+                                        List<List<InspectPill>> rows, int x, int y) {
+        for (List<InspectPill> row : rows) {
+            int px = x;
+            for (InspectPill pill : row) {
+                int bg = pill.debuff() ? 0xCC882222 : 0xCC226622;
+                int border = pill.debuff() ? 0xFFCC5544 : 0xFF55CC55;
+                int text = pill.debuff() ? 0xFFFFCCCC : 0xFFCCFFCC;
+                ctx.fill(px - 1, y - 1, px + pill.width() + 1, y + INSPECT_PILL_H - 1, border);
+                ctx.fill(px, y, px + pill.width(), y + INSPECT_PILL_H - 2, bg);
+                ctx.drawTextWithShadow(client.textRenderer,
+                    Text.literal(pill.label()), px + 3, y + 1, text);
+                px += pill.width() + 3;
+            }
+            y += INSPECT_PILL_H + 2;
+        }
+        return y - 1;
+    }
+
     // Smooth HP bars
 
     /**
@@ -966,7 +1068,12 @@ public class CombatHudOverlay implements HudRenderCallback {
         if (hoveredPlayer != null) {
             CombatState.PlayerStats ps = CombatState.getPlayerStats(hoveredPlayer);
             if (ps != null) {
+                // Entrance slide-in from the right edge, restarted per hover target.
+                float ease = inspectSlide("p:" + hoveredPlayer);
+                ctx.getMatrices().push();
+                ctx.getMatrices().translate((1f - ease) * 140f, 0f, 0f);
                 renderPlayerInspectPanel(ctx, client, screenW, ps);
+                ctx.getMatrices().pop();
                 enemyRosterPanelW = 130;
                 enemyRosterRightX = screenW - 8;
                 enemyRosterBottomY = 200;
@@ -977,13 +1084,21 @@ public class CombatHudOverlay implements HudRenderCallback {
         // Hovered ally → reuse the enemy inspect panel; ally type strings carry full stats.
         if (hoveredId != -1 && CombatState.getAllyHpMap().containsKey(hoveredId)) {
             String allyType = CombatState.getAllyTypeMap().getOrDefault(hoveredId, "minecraft:wolf");
+            float ease = inspectSlide("a:" + hoveredId);
+            ctx.getMatrices().push();
+            ctx.getMatrices().translate((1f - ease) * 130f, 0f, 0f);
             renderInspectPanel(ctx, client, screenW, hoveredId,
                 CombatState.getAllyHpMap().get(hoveredId), allyType);
+            ctx.getMatrices().pop();
             enemyRosterPanelW = 120;
             enemyRosterRightX = screenW - 8;
             enemyRosterBottomY = 200;
             return;
         }
+
+        // Nothing inspectable hovered - reset the entrance clock so the next
+        // hover animates in again instead of appearing mid-slide.
+        lastInspectKey = null;
 
         if (enemies.isEmpty()) return;
 
@@ -991,7 +1106,11 @@ public class CombatHudOverlay implements HudRenderCallback {
         // The standard enemy roster (to the side) still shows below.
         if (!CombatState.hasBlindness() && hoveredId != -1 && enemies.containsKey(hoveredId)) {
             String typeIdRaw = types.getOrDefault(hoveredId, "minecraft:zombie");
+            float ease = inspectSlide("e:" + hoveredId);
+            ctx.getMatrices().push();
+            ctx.getMatrices().translate((1f - ease) * 150f, 0f, 0f);
             renderInspectPanel(ctx, client, screenW, hoveredId, enemies.get(hoveredId), typeIdRaw);
+            ctx.getMatrices().pop();
             // Mirror renderInspectPanel's dimensions so the tile tooltip can
             // align under it. Width matches the boss/non-boss split there.
             boolean isBoss = typeIdRaw.contains(";boss=");
@@ -1229,19 +1348,27 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
 
         int panelW = bossName != null ? 140 : 120;
-        int panelH = 100 + (themeLine != null ? 10 : 0) + enemyEffects.size() * 10 + (enemyEnchants.isEmpty() ? 0 : (enemyEnchants.size() * 10 + 4));
+        // Effects render as the same wrapped pills the self status panel uses - one
+        // effect language everywhere. Layout first so the frame hugs its content.
+        List<List<InspectPill>> effRows = layoutInspectPills(client, enemyEffects, panelW - 8);
+        String behaviorHint = getAIHint(typeId);
+        int effBlockH = enemyEffects.isEmpty() ? 10 : inspectPillBlockH(effRows) + 2;
+        int panelH = 19 + 8 + 5 + 22                                 // header+gap, bar, stat rows
+            + (themeLine != null ? 10 : 0)
+            + effBlockH
+            + (enemyEnchants.isEmpty() ? 0 : enemyEnchants.size() * 10 + 12)
+            + (behaviorHint != null ? 10 : 0)
+            + 4;
         int panelX = screenW - panelW - 8;
         int panelY = 4;
 
-        // Use standard panel with boss tint
+        // Shared inspect chrome: leather body (boss keeps its dark-red tint), gold top
+        // accent, leather header band, faction underline (gold boss / green ally / red enemy).
         int bgColor = bossName != null ? 0xBB2A0A0A : PANEL_BG;
-        ctx.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, PANEL_BORDER);
-        ctx.fill(panelX, panelY, panelX + panelW, panelY + panelH, bgColor);
-        // Name header bar - green-tinted for allies so friend/foe reads at a glance.
-        int headerColor = bossName != null ? 0xBB8B0000 : isAlly ? 0xBB1B4A1B : 0xBB222244;
-        ctx.fill(panelX, panelY, panelX + panelW, panelY + 14, headerColor);
+        int underline = bossName != null ? GuideTheme.GOLD : isAlly ? 0xFF55CC55 : 0xFFCC4444;
+        drawInspectChrome(ctx, panelX, panelY, panelW, panelH, bgColor, underline);
 
-        int nameColor = bossName != null ? 0xFFFFAA00 : isAlly ? 0xFF66DD66 : 0xFFFFFFFF;
+        int nameColor = bossName != null ? GuideTheme.GOLD : isAlly ? 0xFF66DD66 : 0xFFFFFFFF;
         Identifier inspectHead = MobHeadTextures.get(typeId);
         if (inspectHead != null) {
             MobHeadTextures.drawMobHead(ctx, inspectHead, panelX, panelY, 14);
@@ -1252,12 +1379,12 @@ public class CombatHudOverlay implements HudRenderCallback {
                 Text.literal("\u00a7l" + displayName), panelX + panelW / 2, panelY + 3, nameColor);
         }
 
-        int y = panelY + 17;
+        int y = panelY + 19;
 
-        // HP bar
+        // HP bar - framed like the resource plaque's meters.
         int barW = panelW - 4;
         int barH = 8;
-        drawHpBar(ctx, "insp:" + entityId, panelX + 2, y, barW, barH,
+        drawFramedHpBar(ctx, "insp:" + entityId, panelX + 2, y, barW, barH,
             ePct, hpColor(ePct), 0xFF333333);
         ctx.drawCenteredTextWithShadow(client.textRenderer,
             Text.literal(eHp + " / " + eMaxHp + " HP"), panelX + panelW / 2, y, 0xFFFFFFFF);
@@ -1284,14 +1411,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         }
 
         if (!enemyEffects.isEmpty()) {
-            for (String eff : enemyEffects) {
-                boolean isDebuff = eff.equals("Stunned") || eff.equals("Slowed") || eff.equals("Burning");
-                String icon = isDebuff ? "\u2620 " : "\u2728 ";
-                int effColor = isDebuff ? 0xFFFF6666 : 0xFFFFAA00;
-                ctx.drawTextWithShadow(client.textRenderer,
-                    Text.literal(icon + eff), panelX + 4, y, effColor);
-                y += 10;
-            }
+            y = drawInspectPills(ctx, client, effRows, panelX + 4, y + 1) + 2;
         } else {
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal("\u00a78No effects"), panelX + 4, y, 0xFF555555);
@@ -1335,29 +1455,31 @@ public class CombatHudOverlay implements HudRenderCallback {
             }
         }
 
-        int effectRows = effects.isEmpty() ? (isSelf ? 1 : 0) : effects.size();
         int panelW = 130;
-        int panelH = 62 + effectRows * 10;
+        // Same wrapped effect pills as the self status panel and enemy inspect.
+        List<List<InspectPill>> effRows = layoutInspectPills(client, effects, panelW - 8);
+        int effBlockH = !effects.isEmpty() ? inspectPillBlockH(effRows) + 2
+            : (isSelf ? 10 : 0);
+        int panelH = 19 + 8 + 5 + 22 + effBlockH + 4;
         int panelX = screenW - panelW - 8;
         int panelY = 4;
 
-        ctx.fill(panelX - 1, panelY - 1, panelX + panelW + 1, panelY + panelH + 1, PANEL_BORDER);
-        ctx.fill(panelX, panelY, panelX + panelW, panelY + panelH, PANEL_BG);
-        // Blue-tinted header marks a player \u2014 distinct from enemy (dark) and ally (green).
-        ctx.fill(panelX, panelY, panelX + panelW, panelY + 14, 0xBB1B3A5A);
+        // Shared inspect chrome; blue underline marks a player - distinct from
+        // enemy (red), ally (green) and boss (gold).
+        drawInspectChrome(ctx, panelX, panelY, panelW, panelH, PANEL_BG, 0xFF55BBEE);
 
         String title = (ps.dead() ? "\u2620 " : "") + ps.name();
         ctx.drawCenteredTextWithShadow(client.textRenderer,
             Text.literal("\u00a7l" + title), panelX + panelW / 2, panelY + 3,
             ps.dead() ? 0xFFFF5555 : 0xFF88CCFF);
 
-        int y = panelY + 17;
+        int y = panelY + 19;
 
-        // HP bar
+        // HP bar - framed like the resource plaque's meters.
         int barW = panelW - 4;
         int barH = 8;
         float pct = ps.maxHp() > 0 ? (float) ps.hp() / ps.maxHp() : 0;
-        drawHpBar(ctx, "pinsp:" + ps.uuid(), panelX + 2, y, barW, barH,
+        drawFramedHpBar(ctx, "pinsp:" + ps.uuid(), panelX + 2, y, barW, barH,
             pct, hpColor(pct), 0xFF333333);
         ctx.drawCenteredTextWithShadow(client.textRenderer,
             Text.literal(ps.hp() + " / " + ps.maxHp() + " HP"), panelX + panelW / 2, y, 0xFFFFFFFF);
@@ -1373,11 +1495,7 @@ public class CombatHudOverlay implements HudRenderCallback {
         y += 11;
 
         if (!effects.isEmpty()) {
-            for (String eff : effects) {
-                ctx.drawTextWithShadow(client.textRenderer,
-                    Text.literal("\u00a7e\u2728 " + eff), panelX + 4, y, 0xFFFFAA00);
-                y += 10;
-            }
+            drawInspectPills(ctx, client, effRows, panelX + 4, y + 1);
         } else if (isSelf) {
             ctx.drawTextWithShadow(client.textRenderer,
                 Text.literal("\u00a78No effects"), panelX + 4, y, 0xFF555555);
@@ -1528,7 +1646,9 @@ public class CombatHudOverlay implements HudRenderCallback {
         int bx = Math.min(mx + 12, screenW - tw - 6);
         int by = Math.min(my + 12, screenH - 14);
 
-        ctx.fill(bx - 3, by - 2, bx + tw + 3, by + 10, 0xB0101822);
+        // Same leather chrome as every other HUD surface (was a bare navy fill).
+        ctx.fill(bx - 4, by - 3, bx + tw + 4, by + 11, PANEL_BORDER);
+        ctx.fill(bx - 3, by - 2, bx + tw + 3, by + 10, PANEL_BG);
         int color = cost >= remaining ? 0xFFFFDD55 : 0xFF7FD7FF;
         ctx.drawTextWithShadow(client.textRenderer, Text.literal(label), bx, by, color);
     }
