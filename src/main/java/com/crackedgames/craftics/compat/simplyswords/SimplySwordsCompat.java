@@ -44,7 +44,7 @@ public final class SimplySwordsCompat {
     };
 
     // === Craftics balance tuning ===
-    /** Off-hand sai second hit fraction of the main hit (dual-wield, dagger convention). */
+    /** Off-hand sai second hit fraction of the OFF-hand sai's own base damage (dual-wield, dagger convention). */
     public static final double SAI_OFFHAND_MULT = 0.75;
     /** Twinblade back-blade follow-up fraction of the main hit (always procs). */
     public static final double TWINBLADE_SECOND_MULT = 0.50;
@@ -280,7 +280,21 @@ public final class SimplySwordsCompat {
         };
     }
 
-    /** Sai: dual-wield -> a weaker second hit (SAI_OFFHAND_MULT of the main hit); else plain. */
+    /**
+     * The tier-based base attack of a sai from its own item, independent of which hand holds it.
+     * Parses the tier prefix ("iron_sai" -> "iron") and runs it through the same {@link #damageFor}
+     * supplier the registry uses. Mirrors the Basic Weapons dagger so the twin blades stay matched.
+     */
+    private static int saiBaseDamage(Item sai) {
+        String path = Registries.ITEM.getId(sai).getPath();
+        String suffix = "_sai";
+        String tier = path.endsWith(suffix)
+            ? path.substring(0, path.length() - suffix.length())
+            : "";
+        return damageFor(tier, "sai").getAsInt();
+    }
+
+    /** Sai: dual-wield -> a weaker second hit (SAI_OFFHAND_MULT of the OFF-hand sai); else plain. */
     private static WeaponAbilityHandler saiAbility() {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             Item main = player.getMainHandStack().getItem();
@@ -288,7 +302,11 @@ public final class SimplySwordsCompat {
             if (!(isSai(main) && isSai(off))) {
                 return new WeaponAbility.AttackResult(baseDamage, List.of(), List.of());
             }
-            int offHit = Math.max(1, (int) Math.round(baseDamage * SAI_OFFHAND_MULT));
+            // Second hit scales off the OFF-hand sai's own base damage, not the main hand's -
+            // mirrors the dagger fix so an expensive main + cheap off can't cheat the offhand
+            // into main-tier damage.
+            int offBase = saiBaseDamage(off);
+            int offHit = Math.max(1, (int) Math.round(offBase * SAI_OFFHAND_MULT));
             int second = target.takeDamage(offHit);
             // The off hand did real work, so it wears like the main hand does (handleAttack
             // charges the MAIN weapon's durability; without this the offhand sai was free).

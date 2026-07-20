@@ -2996,11 +2996,22 @@ public class CombatManager {
                     bossEntityTypeId = infBossSpec.bossEntityTypeId();
                 }
             }
-            // Determine biome ordinal from the active campaign for enchant chance scaling
-            CrafticsSavedData.PlayerData pdSpawn = ngData.getPlayerData(player.getUuid());
-            int idx = com.crackedgames.craftics.level.campaign.CampaignManager
-                .ordinalOf(biome.biomeId, Math.max(0, pdSpawn.branchChoice));
-            if (idx >= 0) spawnBiomeOrdinal = idx;
+            // Determine biome ordinal for difficulty scaling (damage cap, enchant
+            // level, gear tier). INFINITE MODE: use the run's virtualOrdinal (biomes
+            // cleared this run), NOT the campaign ordinal of the randomly-rolled
+            // biome. Otherwise rolling a late biome (e.g. Soul Sand Valley, campaign
+            // ordinal 10) early in a run inherits its late-game damage cap
+            // (3 + 10/2 = 8) and over-enchants, spiking damage far past the intended
+            // early-run band. Mirrors the victory path, which already reads the spec.
+            com.crackedgames.craftics.level.InfiniteSpec spawnInfSpec = gld.getInfiniteSpec();
+            if (spawnInfSpec != null) {
+                spawnBiomeOrdinal = Math.max(0, spawnInfSpec.virtualOrdinal());
+            } else {
+                CrafticsSavedData.PlayerData pdSpawn = ngData.getPlayerData(player.getUuid());
+                int idx = com.crackedgames.craftics.level.campaign.CampaignManager
+                    .ordinalOf(biome.biomeId, Math.max(0, pdSpawn.branchChoice));
+                if (idx >= 0) spawnBiomeOrdinal = idx;
+            }
         }
         final int finalBiomeOrdinal = spawnBiomeOrdinal;
         final String finalSpawnBiomeId = spawnBiomeId;

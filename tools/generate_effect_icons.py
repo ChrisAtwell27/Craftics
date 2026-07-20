@@ -183,27 +183,27 @@ ICONS = {
     ]),
 
     # ---------------- Debuffs ----------------
-    # Poison: a skull.
+    # Poison: skull glyph (skull.png shape, recolored to the poison green).
     "poison": (DARK_GREEN, [
+        "........",
         ".######.",
-        "########",
-        "#xx##xx#",
-        "#xx##xx#",
-        "########",
-        "##.##.##",
-        ".######.",
-        "..#..#..",
+        "#......#",
+        "........",
+        "........",
+        ".##..##.",
+        "........",
+        "........",
     ]),
-    # Wither: a blackened skull.
+    # Wither: skull glyph (skull.png shape, recolored to the wither black).
     "wither": (BLACK, [
         "........",
-        "..####..",
-        "########",
-        "#oo##oo#",
-        "#oo##oo#",
-        "########",
-        ".#.##.#.",
-        "..####..",
+        ".######.",
+        "#......#",
+        "........",
+        "........",
+        ".##..##.",
+        "........",
+        "........",
     ]),
     # Burning: a flame.
     "burning": (ORANGE, [

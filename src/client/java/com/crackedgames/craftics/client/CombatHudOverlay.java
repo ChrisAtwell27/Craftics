@@ -1096,15 +1096,10 @@ public class CombatHudOverlay implements HudRenderCallback {
             return;
         }
 
-        // Nothing inspectable hovered - reset the entrance clock so the next
-        // hover animates in again instead of appearing mid-slide.
-        lastInspectKey = null;
-
-        if (enemies.isEmpty()) return;
-
         // Blindness hides enemy inspection entirely - no hover panel, no stat readout.
         // The standard enemy roster (to the side) still shows below.
-        if (!CombatState.hasBlindness() && hoveredId != -1 && enemies.containsKey(hoveredId)) {
+        if (!enemies.isEmpty()
+                && !CombatState.hasBlindness() && hoveredId != -1 && enemies.containsKey(hoveredId)) {
             String typeIdRaw = types.getOrDefault(hoveredId, "minecraft:zombie");
             float ease = inspectSlide("e:" + hoveredId);
             ctx.getMatrices().push();
@@ -1120,6 +1115,12 @@ public class CombatHudOverlay implements HudRenderCallback {
             enemyRosterBottomY = 200;
             return;
         }
+
+        // Nothing inspectable hovered - reset the entrance clock so the next
+        // hover animates in again instead of appearing mid-slide.
+        lastInspectKey = null;
+
+        if (enemies.isEmpty()) return;
 
         // ── Vertical head roster ─────────────────────────────────────────────
         // No outlining container: a single column of mob heads down the right

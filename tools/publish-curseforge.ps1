@@ -69,6 +69,25 @@ $ApiBase = "https://minecraft.curseforge.com"
 $ModrinthApi = "https://api.modrinth.com/v2"
 $UserAgent = "crackedgames/craftics publish script"
 
+# --- Load .env (gitignored) so tokens don't have to be exported by hand each session. ---------
+# Params default to $env:* values, which are bound BEFORE this body runs - so after loading .env
+# into the process environment, back-fill any param the caller left empty from the fresh value.
+$envFile = Join-Path $RepoRoot ".env"
+if (Test-Path $envFile) {
+    foreach ($line in Get-Content $envFile) {
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
+        $eq = $trimmed.IndexOf("=")
+        if ($eq -lt 1) { continue }
+        $key = $trimmed.Substring(0, $eq).Trim()
+        $val = $trimmed.Substring($eq + 1).Trim().Trim('"').Trim("'")
+        [Environment]::SetEnvironmentVariable($key, $val, "Process")
+    }
+    if (-not $Token)           { $Token = $env:CURSEFORGE_TOKEN }
+    if (-not $ModrinthProject) { $ModrinthProject = $env:MODRINTH_PROJECT }
+    if (-not $ModrinthToken)   { $ModrinthToken = $env:MODRINTH_TOKEN }
+}
+
 if (-not $SkipCurseForge -and -not $Token -and -not $DryRun) {
     throw "No CurseForge API token. Set `$env:CURSEFORGE_TOKEN or pass -Token, or use -SkipCurseForge. (Do not hardcode it in this file.)"
 }
@@ -89,6 +108,9 @@ function Get-ChangelogSection {
     $out = New-Object System.Collections.Generic.List[string]
     $inSection = $false
 
+    # Strip a UTF-8 BOM off the first line if Get-Content left one on (PS 5.1 does).
+    if ($lines.Count -gt 0) { $lines[0] = $lines[0] -replace '^﻿', '' }
+
     foreach ($line in $lines) {
         # Version headings are a bare "0.2.10" on their own line.
         $isHeading = $line -match '^\d+\.\d+(\.\d+)?\s*$'
@@ -107,6 +129,15 @@ function Get-ChangelogSection {
 
 $changelog = Get-ChangelogSection -Version $ModVersion
 Write-Host "Release notes: $($changelog.Split("`n").Count) lines from CHANGELOG.md" -ForegroundColor DarkGray
+
+# CurseForge takes the raw text verbatim (changelogType "text" below, so every newline is kept).
+# Modrinth's changelog field is ALWAYS markdown, where a lone newline collapses into a space and
+# glues adjacent lines together. Append two trailing spaces to each line - the markdown hard-break -
+# so every source line stays on its own line there too. Blank lines are left blank (a trailing-space
+# blank line would render as a stray break).
+$changelogMd = ($changelog -split "`n" | ForEach-Object {
+    if ($_.Trim() -eq "") { "" } else { $_ + "  " }
+}) -join "`n"
 
 # --- Resolve CurseForge's internal game-version ids -------------------------------------------
 # The upload API does not take "1.21.1" - it takes an integer id from its own table, which
@@ -175,7 +206,9 @@ function Publish-Shard {
 
     $metadata = @{
         changelog     = $changelog
-        changelogType = "markdown"
+        # "text" keeps every newline literally - "markdown" collapsed lone newlines into spaces,
+        # gluing the changelog into run-on paragraphs. We only need line breaks, not markdown.
+        changelogType = "text"
         displayName   = $displayName
         gameVersions  = @($GameVersionId, $LoaderId) + $EnvIds
         releaseType   = $ReleaseType
@@ -222,7 +255,7 @@ function Publish-ShardModrinth {
     $data = @{
         name           = $displayName
         version_number = "$ModVersion+$GameVersion"
-        changelog      = $changelog
+        changelog      = $changelogMd
         # Fabric API is required at runtime; P7dR8mSH is its Modrinth project id.
         dependencies   = @(@{ project_id = "P7dR8mSH"; dependency_type = "required" })
         game_versions  = @($GameVersion)

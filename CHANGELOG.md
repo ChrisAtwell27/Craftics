@@ -18,20 +18,12 @@ Server Fun
 New Hub
 
 - The central lobby is now a hand-built hub pasted from a bundled schematic (177x160), replacing the old procedural floating island. Players spawn on its 2x2 crying obsidian pad; the builder finds the pad automatically, sets both the world spawn and the join teleport to it, and /craftics lobby setspawn still overrides
-- The whole hub build is protected from block breaking (overworld only - personal islands are untouched even near their dimension origin). Existing servers rebuild the lobby automatically on next load via the lobby version bump
-- Schematics now restore their saved block entities: sign text, chest contents, banner patterns and the rest survive placement (previously only the blocks were pasted, which left the hub's signs blank). Applies to every schematic the mod places - hub, home islands, arenas, scenes
 - /craftics lobby rebuild (op): re-paste the central hub from the bundled schematic in place, no world reset needed. Re-place lootbox chests and scoreboards inside its footprint afterwards
 - Fresh dedicated servers now default to the Craftics world type on their own: if no world exists yet and level-type was left at vanilla default, server.properties is set to the Craftics preset before the world generates. Existing worlds and deliberate level-type choices are never touched; level-type=default keeps vanilla terrain
 
 Placement Rules
 
 - Special blocks (campfire, banner, torch, lantern, jukebox, scaffolding, honey/slime block, cactus, cake, spore blossom, lightning rod, powder snow) now require flat, solid ground: no more planting a campfire over the void or a banner in lava. Void, sunken pits, water, deep water, lava, fire, powder snow, obstacles and stairs all refuse placement with a clear message
-
-Water Rules Cleanup
-
-- The guide book now tells the truth about water: regular water tiles are wadeable by anyone (Soaked for 2 turns unless a boat is consumed), and only DEEP water blocks movement and drowns you on a knockback. The Tile Types page gained a separate Deep Water card
-- The Turtle Helmet now actually does what the guide always claimed: wearing it lets you wade water without getting Soaked (it already saved you from a deep-water dunk)
-- Clicking an unreachable deep-water tile now says deep water is too deep to wade instead of wrongly asking for a boat
 
 Server Administration
 

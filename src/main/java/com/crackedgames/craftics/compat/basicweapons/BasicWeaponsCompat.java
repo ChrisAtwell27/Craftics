@@ -38,7 +38,8 @@ public final class BasicWeaponsCompat {
     static final String[] TYPES = {"dagger", "spear", "quarterstaff", "club", "hammer", "glaive"};
 
     // === Craftics balance tuning (daggers and spears) ===
-    /** Off-hand dagger second hit fraction of the main hit (1.0 main + 0.75 off = 1.75x total). */
+    /** Off-hand dagger second hit fraction of the OFF-hand dagger's own base damage
+     *  (main hit at 1.0 + off hit at 0.75 of the offhand ~= 1.75x with matched tiers). */
     public static final double DAGGER_OFFHAND_MULT = 0.75;
     /**
      * Spear bonus added per tile walked before attacking this turn. Shared by every
@@ -276,7 +277,21 @@ public final class BasicWeaponsCompat {
         return PlayerCombatStats.getMight(player) * 0.05;
     }
 
-    /** Dagger: dual-wield -> a weaker second hit (DAGGER_OFFHAND_MULT of the main hit); else plain. */
+    /**
+     * The tier-based base attack of a basicweapons dagger from its own item, independent of
+     * which hand holds it. Parses the tier prefix ("iron_dagger" -> "iron") and runs it through
+     * the same {@link #damageFor} supplier the registry uses. Unknown tier floors to 1.
+     */
+    private static int daggerBaseDamage(Item dagger) {
+        String path = Registries.ITEM.getId(dagger).getPath();
+        String suffix = "_dagger";
+        String tier = path.endsWith(suffix)
+            ? path.substring(0, path.length() - suffix.length())
+            : "";
+        return damageFor(tier, "dagger").getAsInt();
+    }
+
+    /** Dagger: dual-wield -> a weaker second hit (DAGGER_OFFHAND_MULT of the OFF-hand dagger); else plain. */
     private static WeaponAbilityHandler daggerAbility() {
         return (player, target, arena, baseDamage, stats, luckPoints) -> {
             Item main = player.getMainHandStack().getItem();
@@ -284,7 +299,12 @@ public final class BasicWeaponsCompat {
             if (!isDualDagger(main, off)) {
                 return new WeaponAbility.AttackResult(baseDamage, List.of(), List.of());
             }
-            int offHit = Math.max(1, (int) Math.round(baseDamage * DAGGER_OFFHAND_MULT) - 1);
+            // The second hit scales off the OFF-hand dagger's own base damage, not the main
+            // hand's. Otherwise an iron main + wooden off would swing the wooden dagger for
+            // iron-tier damage - offhanding a cheap dagger with an expensive main was a free
+            // damage bump. Now the offhand pays its own weight.
+            int offBase = daggerBaseDamage(off);
+            int offHit = Math.max(1, (int) Math.round(offBase * DAGGER_OFFHAND_MULT) - 1);
             int second = target.takeDamage(offHit);
             // The off hand did real work, so it wears like the main hand does (handleAttack
             // charges the MAIN weapon's durability; without this the offhand dagger was free).
