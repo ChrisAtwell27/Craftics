@@ -2,7 +2,7 @@
   "id": "nether_wastes",
   "name": "Nether Wastes",
   "order": 10,
-  "levels": 5,
+  "levels": 7,
   "grid": { "base_width": 9, "base_height": 9, "width_growth": 1, "height_growth": 0 },
   "floor_blocks": ["minecraft:netherrack"],
   "obstacle_blocks": ["minecraft:magma_block"],

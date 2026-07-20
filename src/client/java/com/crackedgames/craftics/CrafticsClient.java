@@ -97,6 +97,19 @@ public class CrafticsClient implements ClientModInitializer {
             );
         };
 
+        // /bugreport - purely client-side; opens the report form. setScreen is
+        // deferred a tick (client.send) so the closing chat screen doesn't
+        // immediately stomp the new one.
+        net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT.register(
+            (dispatcher, registryAccess) -> dispatcher.register(
+                net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal("bugreport")
+                    .executes(ctx -> {
+                        var client = net.minecraft.client.MinecraftClient.getInstance();
+                        client.send(() -> client.setScreen(
+                            new com.crackedgames.craftics.client.bugreport.BugReportScreen()));
+                        return 1;
+                    })));
+
         ClientPlayNetworking.registerGlobalReceiver(EnterCombatPayload.ID, (payload, context) -> {
             context.client().execute(() -> {
                 boolean wasInCombat = CombatState.isInCombat();

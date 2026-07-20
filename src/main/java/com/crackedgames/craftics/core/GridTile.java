@@ -155,6 +155,10 @@ public class GridTile {
             case POWDER_SNOW -> Blocks.POWDER_SNOW;
             case TALL_GRASS -> Blocks.TALL_GRASS;
             case TALL_FERN -> Blocks.LARGE_FERN;
+            case RUBBLE -> Blocks.COBBLESTONE;
+            case SPORE -> Blocks.MOSS_BLOCK;
+            case EMBER -> Blocks.MAGMA_BLOCK;
+            case FROST -> Blocks.PACKED_ICE;
             // Stair / elevated default blocks - only used if the GridTile is
             // constructed without an explicit block. ArenaBuilder always
             // passes the real schematic block (e.g. the actual stair block,

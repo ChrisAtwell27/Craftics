@@ -11,6 +11,12 @@ public enum TileType {
     DEEP_WATER(false, false, 0, false), // 2+ blocks deep - instant kill
     LOW_GROUND(true, false, 0, false), // 1 block lower than floor - walkable, Y-1 positioning
     POWDER_SNOW(true, false, 0, false), // walkable, sinks (Y-1), escalating freeze damage unless leather boots
+    // Miniboss hazard tiles. Placed mid-fight via GridTile.setTemporaryType(type, 3)
+    // so they revert after 3 rounds like other temporary terrain.
+    RUBBLE(false, false, 0, false),   // collapsed ceiling / dropped boulder - blocks like an obstacle
+    SPORE(true, false, 0, false),     // walkable; the Fungal Bloom mechanic applies Poison on step
+    EMBER(true, false, 2, false),     // walkable; burns (Burning applied by the mechanic on top of step dmg)
+    FROST(true, false, 0, false),     // walkable; Blizzard applies Frozen risk on step
     // Occupants are visually hidden (INVISIBILITY effect) and mobs can't target them
     // except from an adjacent tile. Breakable by attacking the tile for 1 AP.
     TALL_GRASS(true, false, 0, true),

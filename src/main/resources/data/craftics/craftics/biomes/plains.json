@@ -2,7 +2,7 @@
   "id": "plains",
   "name": "Plains",
   "order": 1,
-  "levels": 5,
+  "levels": 7,
   "grid": {
     "base_width": 8,
     "base_height": 8,

@@ -415,6 +415,10 @@ public class CombatManager {
     // would collide on the same id in a single fight.
     private int warBannerIdCounter = 20000;
     private int graveIdCounter = 30000;
+    // Miniboss mechanics (Task 9+) place their own block-backed objects (e.g. Plains Graveyard
+    // graves) through MinibossContext.spawnBlockObject, which needs its own id range so it never
+    // collides with the boss-driven grave/war-banner counters above.
+    private int minibossBlockIdCounter = 40000;
     // Tuning: high enough that tearing a banner down is a real investment, low enough to be
     // worth doing against a 45 HP boss.
     private static final int WAR_BANNER_HP = 20;
@@ -1825,6 +1829,12 @@ public class CombatManager {
     private int raidHpBonus = 0, raidAtkBonus = 0;
     private float raidNgMult = 1.0f;
 
+    // ── Miniboss event state ─────────────────────────────────────────────────
+    /** The level-4 miniboss mechanic driving this fight, or null for a normal level. */
+    private com.crackedgames.craftics.combat.miniboss.MinibossMechanic activeMiniboss = null;
+    /** Round counter passed to the mechanic; increments once per enemy-turn boundary. */
+    private int minibossRound = 0;
+
     /** Reset per fight from {@code startCombat}; armed when the level def is the raid's. */
     private void initRaidState(LevelDefinition def) {
         raidActive = def instanceof TrialChamberEvent.RaidLevelDef;
@@ -1840,6 +1850,44 @@ public class CombatManager {
             raidAtkBonus = rld.atkBonus;
             raidNgMult = rld.ngMult;
         }
+    }
+
+    /**
+     * Reset per fight from {@code startCombat}; arms {@link #activeMiniboss} when the current
+     * level is a registered biome's level-4 miniboss level (same check {@code LevelGenerator}
+     * used to build it).
+     */
+    private void initMinibossState(LevelDefinition def) {
+        activeMiniboss = null;
+        minibossRound = 0;
+        if (def instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
+            var biome = gld.getBiomeTemplate();
+            if (biome != null
+                    && com.crackedgames.craftics.level.LevelGenerator.isMinibossLevel(
+                        biome, biome.getBiomeLevelIndex(gld.getLevelNumber()),
+                        biome.isBossLevel(gld.getLevelNumber()))) {
+                activeMiniboss = com.crackedgames.craftics.combat.miniboss.MinibossRegistry.get(biome.biomeId);
+            }
+        }
+        if (activeMiniboss != null) {
+            activeMiniboss.onFightStart(buildMinibossCtx());
+            sendMessage(activeMiniboss.introTitle());
+        }
+    }
+
+    /** Builds a fresh, round-scoped context handed to the active miniboss mechanic. */
+    private com.crackedgames.craftics.combat.miniboss.MinibossContext buildMinibossCtx() {
+        return new com.crackedgames.craftics.combat.miniboss.MinibossContext(
+            arena, new java.util.Random(), minibossRound, enemies,
+            (typeId, tile, hp, atk, def, range) -> spawnRaidReinforcement(typeId, tile, hp, atk, def, range),
+            (p, type, turns) -> {
+                GridTile t = arena.getTile(p);
+                if (t != null) t.setTemporaryType(type, turns);
+            },
+            (typeId, tile, hp, block) -> placeBlockObject(typeId, tile, hp,
+                -(minibossBlockIdCounter++), block, (ServerWorld) player.getEntityWorld()),
+            this::sendMessage,
+            this::sendMessage);
     }
 
     /**
@@ -2876,6 +2924,7 @@ public class CombatManager {
         // etc.) doesn't have to recompute it on every enemy decision.
         this.currentBiomeOrdinal = computeCurrentBiomeOrdinal();
         initRaidState(levelDef);
+        initMinibossState(levelDef);
 
         // Hidden fire resistance -blocks vanilla lava/fire damage; our tile system handles it
         player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
@@ -3412,6 +3461,10 @@ public class CombatManager {
                 boolean infiniteRun = currentInfiniteSpec() != null;
                 // Infinite HP already comes from the flat InfiniteScaling curve, so the
                 // enemy multiplier and the per-biome boss-kill ramp must NOT re-inflate it.
+                // The campaign NG+ multiplier is excluded for the same reason: it is
+                // unrelated campaign progress, and stacking it onto the flat curve made
+                // infinite difficulty depend on the player's NG+ level.
+                double effNgMult = infiniteRun ? 1.0 : ngMult;
                 double hpMult = (isBoss || infiniteRun)
                     ? 1.0 : com.crackedgames.craftics.CrafticsMod.CONFIG.enemyHpMultiplier();
                 double bossKillMult = 1.0;
@@ -3420,8 +3473,8 @@ public class CombatManager {
                         .getPlayerData(worldOwnerUuid).getBossKills(bossBiomeId);
                     bossKillMult = 1.0 + com.crackedgames.craftics.CrafticsMod.CONFIG.bossKillHpScale() * kills;
                 }
-                int scaledHp = Math.max(1, (int)(spawn.hp() * ngMult * hpMult * partyHpMult * bossKillMult));
-                int scaledAtk = Math.max(1, (int)((spawn.attack() + equipAtkBonus) * ngMult));
+                int scaledHp = Math.max(1, (int)(spawn.hp() * effNgMult * hpMult * partyHpMult * bossKillMult));
+                int scaledAtk = Math.max(1, (int)((spawn.attack() + equipAtkBonus) * effNgMult));
                 // Sharpness on the mainhand adds to damage at attack time (in
                 // tickEnemyAttacking). A boss handed a Sharpness V netherite
                 // sword would otherwise hit for base + 5 -way past the
@@ -10978,6 +11031,10 @@ public class CombatManager {
         ageTimedSummons();
         // Raid waves march on the same once-per-round clock.
         tickRaidWaves();
+        if (activeMiniboss != null) {
+            minibossRound++;
+            activeMiniboss.onRoundStart(buildMinibossCtx());
+        }
 
         // Anti-farming: end the fight if the room holds only harmless mobs and the
         // player has made no progress for several rounds. Returns true when it took
@@ -20886,10 +20943,16 @@ public class CombatManager {
         }
 
         // INFINITE MODE: a wipe just ends the run. No emerald/XP/item death
-        // penalties - the run items evaporate with the stash restore, emeralds
-        // and the banked best score are kept.
-        if (ld.infiniteActive) {
-            java.util.UUID infHost = leaderUuid != null ? leaderUuid : player.getUuid();
+        // penalties - the run items and the run wallet evaporate with the stash
+        // restore (the real balance returns), and the banked best score is kept.
+        // Resolve the ACTUAL run host, not the party leader: infiniteActive lives on
+        // the HOST's record, and in co-op the host need not be the leader. Checking
+        // the leader's record here skipped this branch entirely and dropped a co-op
+        // wipe into the death-penalty path below (same bug class the victory flow
+        // fixed with resolveActiveHost).
+        java.util.UUID infHost = InfiniteRunManager.resolveActiveHost(
+            data, leaderUuid != null ? leaderUuid : player.getUuid(), player.getUuid());
+        if (infHost != null) {
             finishGameOverTeardown();
             InfiniteRunManager.endRun(world.getServer(), infHost, "the party fell");
             return;
@@ -21402,6 +21465,14 @@ public class CombatManager {
         // the state that says the level is already won.
         if (phase == CombatPhase.LEVEL_COMPLETE) return;
 
+        // Miniboss gate: some mechanics hold an extra objective beyond "enemies dead"
+        // (e.g. graves still standing). Most mechanics use the default isComplete()==true,
+        // so this is a no-op for them - only mechanics with an extra objective hold victory
+        // here. The round hook re-checks next round; combat continues in the meantime.
+        if (activeMiniboss != null && !activeMiniboss.isComplete(buildMinibossCtx())) {
+            return;
+        }
+
         // Raid gate: clearing the field is NOT winning while waves remain. Reward the
         // early clear by bringing the next wave in immediately (no telegraph wait) rather
         // than making the party stand around for the timer.
@@ -21465,6 +21536,9 @@ public class CombatManager {
         java.util.Map<java.util.UUID, List<ItemStack>> lootOverflow = new java.util.HashMap<>();
         int luckBonusItems = PlayerProgression.get((ServerWorld) player.getEntityWorld())
             .getStats(player).getPoints(PlayerProgression.Stat.LUCK);
+        if (activeMiniboss != null) {
+            luckBonusItems += 1; // miniboss bonus: one extra loot roll
+        }
         for (CombatEntity enemy : enemies) {
             // The enemies list also holds the player's allies. A *surviving*
             // ally is not loot (a bee ally that lives must not award honey).
@@ -21576,13 +21650,26 @@ public class CombatManager {
                 if (b.biomeId.equals(ld.activeBiomeId)) { biomeTemplate = b; break; }
             }
         }
-        // Use active-campaign order for biome progression (not registry order)
+        // Use active-campaign order for biome progression (not registry order).
+        // INFINITE MODE: reward scaling tracks the run depth (virtualOrdinal), not the
+        // rolled biome's campaign position - otherwise the payout for the same run
+        // depth swings with whichever biome the roll happened to land on (plains pays
+        // ordinal-0 money at depth 50, a late biome pays campaign-endgame money at
+        // depth 1). Mirrors the spawn path's ordinal swap.
         ld.initBranchIfNeeded();
-        int biomeOrdinal = biomeTemplate != null
-            ? com.crackedgames.craftics.level.campaign.CampaignManager
-                .ordinalOf(biomeTemplate.biomeId, Math.max(0, ld.branchChoice))
-            : 0;
-        if (biomeOrdinal < 0) biomeOrdinal = 0;
+        com.crackedgames.craftics.level.InfiniteSpec victoryInfSpec =
+            levelDef instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition vgld
+                ? vgld.getInfiniteSpec() : null;
+        int biomeOrdinal;
+        if (victoryInfSpec != null) {
+            biomeOrdinal = Math.max(0, victoryInfSpec.virtualOrdinal());
+        } else {
+            biomeOrdinal = biomeTemplate != null
+                ? com.crackedgames.craftics.level.campaign.CampaignManager
+                    .ordinalOf(biomeTemplate.biomeId, Math.max(0, ld.branchChoice))
+                : 0;
+            if (biomeOrdinal < 0) biomeOrdinal = 0;
+        }
         // Event fights (trials, raids, ambushes, addon fights) carry synthetic 9000+ level
         // numbers. isBossLevel clamps ">= last level", so a synthetic id would read as "boss
         // of the current biome" and process an EVENT victory as a BIOME COMPLETE: wrong
@@ -21633,6 +21720,9 @@ public class CombatManager {
             double emeraldMult = com.crackedgames.craftics.level.BiomeDifficulty.rewardMultiplier(
                 levelDef.getEnemySpawns().length);
             baseEmeralds = Math.max(1, (int) Math.round(baseEmeralds * emeraldMult));
+        }
+        if (activeMiniboss != null) {
+            baseEmeralds += 3; // miniboss bonus emeralds
         }
         int emeraldsEarned = baseEmeralds + (isBoss ? 3 : 0) + resourcefulBonus;
         // FORTUNE_PEAK set bonus: double emerald rewards

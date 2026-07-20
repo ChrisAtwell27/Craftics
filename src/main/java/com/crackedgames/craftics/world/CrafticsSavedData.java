@@ -157,6 +157,10 @@ public class CrafticsSavedData extends PersistentState {
         public int infiniteStashSelectedSlot = 0;
         /** Pre-run PlayerProgression snapshot (PlayerStats.serialize format). */
         public String infiniteStashStats = "";
+        /** Pre-run emerald balance. Infinite runs play on their OWN wallet (starting at
+         *  {@code InfiniteRunManager.START_EMERALDS}); the real balance parks here and
+         *  returns when the run ends - run earnings evaporate with the run items. */
+        public int infiniteStashEmeralds = 0;
         /** On the HOST's record: true while the run is parked at a save point (the host
          *  left mid-run or logged out). The cursor, score, and cleared count all stay;
          *  opening Infinite Mode again resumes it, {@code /craftics infinite stop}
@@ -167,6 +171,8 @@ public class CrafticsSavedData extends PersistentState {
         public int infiniteParkedSelectedSlot = 0;
         /** The host's run progression, parked while the run is suspended. */
         public String infiniteParkedStats = "";
+        /** The host's RUN wallet, parked while the run is suspended (resume brings it back). */
+        public int infiniteParkedEmeralds = 0;
         /** The parked run's own biome/level cursor. A LIVE infinite run borrows
          *  {@link #activeBiomeId}/{@link #activeBiomeLevelIndex}; suspending moves the
          *  cursor here so normal biome runs can use the shared fields in the meantime. */
@@ -479,10 +485,12 @@ public class CrafticsSavedData extends PersistentState {
             nbt.put("infiniteStashInventory", infiniteStashInventory.copy());
             nbt.putInt("infiniteStashSelectedSlot", infiniteStashSelectedSlot);
             nbt.putString("infiniteStashStats", infiniteStashStats);
+            nbt.putInt("infiniteStashEmeralds", infiniteStashEmeralds);
             nbt.putBoolean("infiniteSuspended", infiniteSuspended);
             nbt.put("infiniteParkedInventory", infiniteParkedInventory.copy());
             nbt.putInt("infiniteParkedSelectedSlot", infiniteParkedSelectedSlot);
             nbt.putString("infiniteParkedStats", infiniteParkedStats);
+            nbt.putInt("infiniteParkedEmeralds", infiniteParkedEmeralds);
             nbt.putString("infiniteParkedBiomeId", infiniteParkedBiomeId);
             nbt.putInt("infiniteParkedLevelIndex", infiniteParkedLevelIndex);
             nbt.putString("lastKnownName", lastKnownName);
@@ -582,6 +590,7 @@ public class CrafticsSavedData extends PersistentState {
             }
             pd.infiniteStashSelectedSlot = nbt.contains("infiniteStashSelectedSlot") ? nbt.getInt("infiniteStashSelectedSlot") : 0;
             pd.infiniteStashStats = nbt.contains("infiniteStashStats") ? nbt.getString("infiniteStashStats") : "";
+            pd.infiniteStashEmeralds = nbt.contains("infiniteStashEmeralds") ? nbt.getInt("infiniteStashEmeralds") : 0;
             pd.infiniteSuspended = nbt.contains("infiniteSuspended") && nbt.getBoolean("infiniteSuspended");
             if (nbt.contains("infiniteParkedInventory")) {
                 pd.infiniteParkedInventory = nbt.getList("infiniteParkedInventory",
@@ -589,6 +598,7 @@ public class CrafticsSavedData extends PersistentState {
             }
             pd.infiniteParkedSelectedSlot = nbt.contains("infiniteParkedSelectedSlot") ? nbt.getInt("infiniteParkedSelectedSlot") : 0;
             pd.infiniteParkedStats = nbt.contains("infiniteParkedStats") ? nbt.getString("infiniteParkedStats") : "";
+            pd.infiniteParkedEmeralds = nbt.contains("infiniteParkedEmeralds") ? nbt.getInt("infiniteParkedEmeralds") : 0;
             pd.infiniteParkedBiomeId = nbt.contains("infiniteParkedBiomeId") ? nbt.getString("infiniteParkedBiomeId") : "";
             pd.infiniteParkedLevelIndex = nbt.contains("infiniteParkedLevelIndex") ? nbt.getInt("infiniteParkedLevelIndex") : 0;
             pd.lastKnownName = nbt.contains("lastKnownName") ? nbt.getString("lastKnownName") : "";

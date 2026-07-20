@@ -2,7 +2,7 @@
   "id": "river",
   "name": "River Delta",
   "order": 5,
-  "levels": 5,
+  "levels": 7,
   "grid": {
     "base_width": 10,
     "base_height": 10,

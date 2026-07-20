@@ -1,4 +1,31 @@
 ﻿Changelog
+0.3.2
+Biome Minibosses
+
+- Every biome now has a unique miniboss on level 4 (biomes are 7 levels each now, except the Dragon's Nest which stays 3). Each is either an event with its own hazard or a literal miniboss enemy
+- Overworld: Plains Graveyard (graves raise zombies), Desert Sandstorm (buried lanes), Jungle Broodmother (elite spider + spawns), Forest Pale Garden (the Creaking, now on level 4), River Flash Flood (rising water), Snowy Blizzard (creeper waves + freezing gusts), Mountain Rockbreaker (elite golem + falling rock), Cave-In (collapsing ceiling), Deep Dark Warden Echo (elite warden + sculk summons)
+- Nether: Fire Rain (raining embers), Bone Colossus (elite wither skeleton), Fungal Bloom (spreading spores), Warped Enderman (elite + endermite swarm), Magma Surge (erupting lava vents)
+- End: Void Rift (crumbling platform), Shulker Sentinel (elite shulker), Chorus Bloom (spreading chorus)
+- Miniboss levels pay bonus emeralds and a richer loot roll
+
+Infinite Mode
+
+- Infinite runs now use their own emerald wallet, starting at 10. Your real balance is stashed with your items and returns when the run ends; run emeralds evaporate with the run
+- Fixed a co-op party wipe not ending the run when the host wasn't the party leader (players got hit with death penalties and stuck stashes instead)
+- Fixed the Pale Garden level spawning at campaign-forest difficulty instead of scaling with run depth
+- Fixed emerald rewards scaling with the rolled biome's campaign position instead of run depth
+- Fixed NG+ campaign progress making infinite enemies harder. infinite difficulty now depends only on how deep the run is
+- Fixed enemies in late-campaign biomes (like Soul Sand Valley) hitting far too hard when rolled early in a run
+
+Combat
+
+- Dual-wield second strikes (daggers and sais) now deal 75% of the offhand weapon's own damage instead of the main hand's - no more free damage from offhanding a cheap dagger
+- Fixed the enemy/ally/player inspect panel not appearing on hover in battle
+
+Visual
+
+- New skull icons for the Poison and Wither status effects
+
 0.3.1
 Crash Fixes
 

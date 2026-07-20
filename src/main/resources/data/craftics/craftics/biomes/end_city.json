@@ -2,7 +2,7 @@
   "id": "end_city",
   "name": "End City",
   "order": 16,
-  "levels": 5,
+  "levels": 7,
   "grid": { "base_width": 10, "base_height": 10, "width_growth": 1, "height_growth": 1 },
   "floor_blocks": ["minecraft:purpur_block", "minecraft:end_stone_bricks"],
   "obstacle_blocks": ["minecraft:purpur_pillar", "minecraft:end_stone_bricks"],

@@ -75,6 +75,11 @@ public final class InfiniteRunManager {
     public static final String START_ID = "craftics:infinite";
     /** Every run opens in plains, mirroring the campaign. */
     public static final String STARTING_BIOME = "plains";
+
+    /** The run wallet every participant opens with. Infinite runs play on their own
+     *  emerald balance - the real one parks in the stash with everything else, and run
+     *  earnings evaporate when the run ends (they'd otherwise be a campaign money farm). */
+    public static final int START_EMERALDS = 10;
     /** AIRegistry key for the randomized infinite boss. */
     public static final String BOSS_AI_KEY = "boss:infinite";
 
@@ -268,9 +273,9 @@ public final class InfiniteRunManager {
             syncStats(member, progression, pd);
             member.sendMessage(Text.literal("§5§l∞ INFINITE MODE ∞"), false);
             member.sendMessage(Text.literal(
-                "§7Your items and levels are stashed away - you start from nothing."), false);
+                "§7Your items, levels and emeralds are stashed away - you start from nothing."), false);
             member.sendMessage(Text.literal(
-                "§7Emeralds you earn are yours to keep. Everything else stays behind."), false);
+                "§7You carry §a" + START_EMERALDS + " emeralds§7 for the road. The run keeps what it takes."), false);
             offerClassSelection(member);
         }
         data.markDirty();
@@ -289,8 +294,12 @@ public final class InfiniteRunManager {
             //?} else
             /*pd.infiniteStashSelectedSlot = player.getInventory().getSelectedSlot();*/
             pd.infiniteStashStats = progression.snapshotSerialized(player.getUuid());
+            pd.infiniteStashEmeralds = pd.emeralds;
             pd.infiniteStashActive = true;
         }
+        // Fresh run wallet even when the stash was already captured (a leftover stash
+        // means pd.emeralds currently holds stale RUN currency, not the real balance).
+        pd.emeralds = START_EMERALDS;
         player.getInventory().clear();
         player.getInventory().markDirty();
         // The Move item is a core control, not loot - hand it straight back.
@@ -593,6 +602,8 @@ public final class InfiniteRunManager {
         //?} else
         /*pd.infiniteParkedSelectedSlot = player.getInventory().getSelectedSlot();*/
         pd.infiniteParkedStats = progression.snapshotSerialized(player.getUuid());
+        // Park the RUN wallet before the restore below overwrites pd.emeralds with the stash.
+        pd.infiniteParkedEmeralds = pd.emeralds;
         restoreParticipant(player, data, progression);
         // restoreParticipant cleared the host pointer, but this run still exists.
         pd.infiniteRunHost = player.getUuid().toString();
@@ -681,6 +692,7 @@ public final class InfiniteRunManager {
         //?} else
         /*pd.infiniteStashSelectedSlot = player.getInventory().getSelectedSlot();*/
         pd.infiniteStashStats = progression.snapshotSerialized(player.getUuid());
+        pd.infiniteStashEmeralds = pd.emeralds;
         pd.infiniteStashActive = true;
 
         var inventory = player.getInventory();
@@ -693,10 +705,12 @@ public final class InfiniteRunManager {
         inventory.markDirty();
         com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
         progression.restoreSnapshot(player.getUuid(), pd.infiniteParkedStats);
+        pd.emeralds = pd.infiniteParkedEmeralds;
 
         pd.infiniteParkedInventory = new NbtList();
         pd.infiniteParkedSelectedSlot = 0;
         pd.infiniteParkedStats = "";
+        pd.infiniteParkedEmeralds = 0;
     }
 
     // ─── Run end ───────────────────────────────────────────────────────────────
@@ -768,7 +782,7 @@ public final class InfiniteRunManager {
         if (!pd.infiniteStashActive) return;
 
         var inventory = player.getInventory();
-        inventory.clear(); // run loot stays behind - only emeralds persist
+        inventory.clear(); // run loot (and the run wallet) stays behind
         inventory.readNbt(pd.infiniteStashInventory);
         //? if <=1.21.4 {
         inventory.selectedSlot = Math.max(0, Math.min(pd.infiniteStashSelectedSlot, 8));
@@ -778,16 +792,19 @@ public final class InfiniteRunManager {
         com.crackedgames.craftics.item.MoveSlotManager.enforce(player);
 
         progression.restoreSnapshot(player.getUuid(), pd.infiniteStashStats);
+        // The run wallet dies with the run; the real balance comes back with the stash.
+        pd.emeralds = pd.infiniteStashEmeralds;
 
         pd.infiniteStashActive = false;
         pd.infiniteStashInventory = new NbtList();
         pd.infiniteStashSelectedSlot = 0;
         pd.infiniteStashStats = "";
+        pd.infiniteStashEmeralds = 0;
         data.markDirty();
 
         syncStats(player, progression, pd);
         player.sendMessage(Text.literal(
-            "§aYour stashed items and levels have returned. §7(Run emeralds kept.)"), false);
+            "§aYour stashed items, levels and emeralds have returned."), false);
     }
 
     /**

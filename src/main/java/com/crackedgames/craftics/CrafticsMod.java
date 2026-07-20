@@ -104,6 +104,37 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.init();
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
         com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
+        // Forest's level-4 miniboss (the Pale Garden Creaking encounter) only registers when a
+        // creaking entity is actually available (vanilla 1.21.4+, or the backport mod on older
+        // shards) - mirrors the old isPaleGardenLevel gate so a 1.21.1 server without the
+        // backport mod still falls back to a normal forest level at index 3.
+        if (com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.shouldSpawnPaleGarden()) {
+            com.crackedgames.craftics.combat.miniboss.MinibossRegistry.register(
+                new com.crackedgames.craftics.combat.miniboss.mechanics.ForestCreakingMechanic());
+        }
+        // Per-biome level-4 miniboss mechanics (dragons_nest has none - it stays a 3-level biome).
+        // Forest registers conditionally above (needs the Pale Garden content). The rest are
+        // unconditional. MinibossRegistry.register keys each on its own biomeId().
+        for (com.crackedgames.craftics.combat.miniboss.MinibossMechanic m : new com.crackedgames.craftics.combat.miniboss.MinibossMechanic[]{
+            new com.crackedgames.craftics.combat.miniboss.mechanics.PlainsGraveyardMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.DesertSandstormMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.JungleBroodmotherMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.RiverFlashFloodMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.SnowyBlizzardMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.MountainRockbreakerMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.CaveInMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.DeepDarkWardenMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.NetherFireRainMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.SoulSandColossusMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.CrimsonFungalBloomMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.WarpedEndermanMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.BasaltMagmaSurgeMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.OuterEndVoidRiftMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.EndCityShulkerMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.ChorusGroveBloomMechanic(),
+        }) {
+            com.crackedgames.craftics.combat.miniboss.MinibossRegistry.register(m);
+        }
         com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.init();
         com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.init();
         com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();

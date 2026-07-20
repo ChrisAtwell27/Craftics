@@ -410,4 +410,15 @@ public class CrafticsConfig {
     /** Multiplier on every hint's idle threshold (0.5 = hints fire twice as fast, 2.0 = half as fast). */
     @RangeConstraint(min = 0.5, max = 2.0)
     public float hintIdleMultiplier = 1.0f;
+
+    // ===== Bug Reports =====
+
+    /**
+     * Where /bugreport uploads to. The endpoint forwards the report to the
+     * Craftics Discord bug-report forum. Blank disables in-game reporting
+     * (the screen will say so); reports that fail to send are always saved
+     * to the craftics-bugreports/ folder instead.
+     */
+    @SectionHeader("bugReports")
+    public String bugReportEndpoint = "https://crackedgames.co/api/bugreport";
 }

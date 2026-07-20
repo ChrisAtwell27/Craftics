@@ -2,7 +2,7 @@
   "id": "warped_forest",
   "name": "Warped Forest",
   "order": 13,
-  "levels": 5,
+  "levels": 7,
   "grid": { "base_width": 10, "base_height": 10, "width_growth": 1, "height_growth": 1 },
   "floor_blocks": ["minecraft:warped_nylium"],
   "obstacle_blocks": ["minecraft:warped_stem", "minecraft:shroomlight"],

@@ -2,7 +2,7 @@
   "id": "cave",
   "name": "Underground Caverns",
   "order": 8,
-  "levels": 5,
+  "levels": 7,
   "grid": {
     "base_width": 11,
     "base_height": 11,

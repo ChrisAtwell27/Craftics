@@ -2,7 +2,7 @@
   "id": "crimson_forest",
   "name": "Crimson Forest",
   "order": 12,
-  "levels": 5,
+  "levels": 7,
   "grid": { "base_width": 10, "base_height": 10, "width_growth": 1, "height_growth": 0 },
   "floor_blocks": ["minecraft:crimson_nylium"],
   "obstacle_blocks": ["minecraft:crimson_stem", "minecraft:shroomlight"],

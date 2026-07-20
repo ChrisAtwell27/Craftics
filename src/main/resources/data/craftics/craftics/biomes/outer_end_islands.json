@@ -2,7 +2,7 @@
   "id": "outer_end_islands",
   "name": "Outer End Islands",
   "order": 15,
-  "levels": 5,
+  "levels": 7,
   "grid": { "base_width": 10, "base_height": 10, "width_growth": 1, "height_growth": 1 },
   "floor_blocks": ["minecraft:end_stone"],
   "obstacle_blocks": ["minecraft:end_stone_bricks", "minecraft:obsidian"],

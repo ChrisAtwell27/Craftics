@@ -2,7 +2,7 @@
   "id": "chorus_grove",
   "name": "Chorus Grove",
   "order": 17,
-  "levels": 5,
+  "levels": 7,
   "grid": { "base_width": 11, "base_height": 11, "width_growth": 1, "height_growth": 1 },
   "floor_blocks": ["minecraft:end_stone", "minecraft:purpur_block"],
   "obstacle_blocks": ["minecraft:chorus_plant", "minecraft:purpur_pillar"],

@@ -157,29 +157,65 @@ public class LevelGenerator {
             biome.nightLevel, biome
         );
 
-        // Pale Garden sub-biome: at the forest midpoint, spawn creakings instead.
-        // Available natively on 1.21.4+ and via the Pale Garden Backport mod on older shards.
-        if (isPaleGardenLevel(biome, biomeIndex, isBoss)) {
-            levelDef = buildPaleGardenLevel(levelNumber, biome, biomeIndex, width, height, loot, rand, scaleHpPerLevel, branchChoice);
+        // Level-4 miniboss gate: a >=7-level biome with a registered MinibossMechanic replaces
+        // its index-3 level with the mechanic's arena + spawns. Forest's Creaking encounter
+        // (formerly the special-cased isPaleGardenLevel/buildPaleGardenLevel path) now flows
+        // through here via ForestCreakingMechanic, registered only when a creaking entity is
+        // actually available (see CrafticsMod#onInitialize) - so a shard/setup without one
+        // simply has no "forest" entry in MinibossRegistry and falls through to a normal level.
+        if (isMinibossLevel(biome, biomeIndex, isBoss)) {
+            levelDef = buildMinibossLevel(levelNumber, biome, biomeIndex, width, height,
+                tiles, loot, rand, infiniteSpec);
         }
 
         levelDef.setInfiniteSpec(infiniteSpec);
         return levelDef;
     }
 
+    /** Level-4 miniboss gate: index 3 of a >=7-level biome that has a registered mechanic. */
+    public static boolean isMinibossLevel(BiomeTemplate biome, int biomeIndex, boolean isBoss) {
+        return !isBoss && biomeIndex == 3 && biome.levelCount >= 7
+            && com.crackedgames.craftics.combat.miniboss.MinibossRegistry.has(biome.biomeId);
+    }
+
     /**
-     * The Pale Garden replaces the forest biome's midpoint level when the content is available
-     * (natively on 1.21.4+, via the Pale Garden Backport mod on older shards).
+     * Builds the level-4 miniboss level for a biome with a registered {@link
+     * com.crackedgames.craftics.combat.miniboss.MinibossMechanic}. The mechanic supplies its own
+     * spawns via {@code initialSpawns}; this method wires up the ordinal (infinite-mode aware),
+     * wraps the result in a {@link GeneratedLevelDefinition}, and - for biomes whose miniboss
+     * needs a dedicated arena - applies the arena override.
      *
-     * <p>Split out so the arena cache can ask "which arena does this level need?" without
-     * generating a whole level definition to find out. {@link #generate} and
-     * {@link #arenaBiomeOverrideFor} must agree, or the cache validates against a biome the
-     * level does not actually build.
+     * <p>Forest's Creaking encounter (formerly {@code buildPaleGardenLevel}) needs the Pale
+     * Garden arena rather than a normal forest arena; that override must also be reflected in
+     * {@link #arenaBiomeOverrideFor} so the arena cache and the level this method builds agree.
+     *
+     * <p>INFINITE MODE: the ordinal is the run depth ({@code infiniteSpec.virtualOrdinal()}),
+     * never the rolled biome's campaign position. A deep infinite run rolling e.g. plains must
+     * build this level at the run's difficulty, not at plains' fixed campaign-ordinal difficulty.
      */
-    private static boolean isPaleGardenLevel(BiomeTemplate biome, int biomeIndex, boolean isBoss) {
-        return "forest".equals(biome.biomeId) && !isBoss && biomeIndex == biome.levelCount / 2
-            && com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat
-                .shouldSpawnPaleGarden();
+    private static GeneratedLevelDefinition buildMinibossLevel(
+            int levelNumber, BiomeTemplate biome, int biomeIndex,
+            int width, int height, GridTile[][] tiles, List<ItemStack> loot,
+            Random rand, InfiniteSpec infiniteSpec) {
+        var mechanic = com.crackedgames.craftics.combat.miniboss.MinibossRegistry.get(biome.biomeId);
+        int ordinal = infiniteSpec != null
+            ? Math.max(0, infiniteSpec.virtualOrdinal())
+            : Math.max(0, com.crackedgames.craftics.level.campaign.CampaignManager
+                .ordinalOf(biome.biomeId, 0));
+        var spawnList = mechanic.initialSpawns(width, height, ordinal, rand);
+        LevelDefinition.EnemySpawn[] enemies = spawnList.toArray(new LevelDefinition.EnemySpawn[0]);
+        GridPos playerStart = new GridPos(width / 2, 0);
+        boolean isForest = "forest".equals(biome.biomeId);
+        // Forest keeps the old buildPaleGardenLevel's forced night (creepy Pale Garden
+        // atmosphere) even though the forest biome template itself is a day biome.
+        boolean nightLevel = isForest || biome.nightLevel;
+        GeneratedLevelDefinition def = new GeneratedLevelDefinition(
+            levelNumber, "§c☠ " + biome.displayName + " Miniboss", width, height, playerStart,
+            biome.floorBlocks[0], tiles, enemies, loot, nightLevel, biome);
+        if (isForest) {
+            def.setArenaBiomeOverride(PALE_GARDEN_ARENA_ID);
+        }
+        return def;
     }
 
     /**
@@ -190,95 +226,20 @@ public class LevelGenerator {
      * this answer for every lookup. Generating a full {@code LevelDefinition} just to read the
      * override would be wasteful and, because {@link #generate} seeds itself from
      * {@code System.nanoTime()}, would also throw away a level nobody plays.
+     *
+     * <p>Must agree with {@link #buildMinibossLevel}'s override: forest's Creaking miniboss only
+     * exists once {@code ForestCreakingMechanic} is registered (gated on
+     * {@code PaleGardenBackportCompat.shouldSpawnPaleGarden()} at mod init), so checking
+     * {@link #isMinibossLevel} here - rather than re-deriving the availability check - keeps the
+     * two in lockstep by construction.
      */
     public static String arenaBiomeOverrideFor(int levelNumber) {
         BiomeTemplate biome = BiomeRegistry.getForLevel(levelNumber);
         if (biome == null) return null;
         int biomeIndex = biome.getBiomeLevelIndex(levelNumber);
         boolean isBoss = biome.isBossLevel(levelNumber);
-        return isPaleGardenLevel(biome, biomeIndex, isBoss) ? PALE_GARDEN_ARENA_ID : null;
-    }
-
-    private static GeneratedLevelDefinition buildPaleGardenLevel(
-            int levelNumber, BiomeTemplate biome, int biomeIndex,
-            int width, int height, List<ItemStack> loot,
-            Random rand, boolean scaleHpPerLevel, int branchChoice) {
-
-        GridPos playerStart = new GridPos(width / 2, 0);
-        GridTile[][] tiles = generateTiles(biome, width, height, biomeIndex, rand);
-
-        // Compute scaling bonuses (mirrors generateEnemies logic)
-        int biomeOrdinal = Math.max(0, com.crackedgames.craftics.level.campaign.CampaignManager
-                .ordinalOf(biome.biomeId, Math.max(0, branchChoice)));
-        int hpBonus = biomeOrdinal * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerBiome();
-        int atkBonus = biomeOrdinal / Math.max(1, com.crackedgames.craftics.CrafticsMod.CONFIG.atkPerBiome());
-        if (scaleHpPerLevel) hpBonus += biomeIndex * com.crackedgames.craftics.CrafticsMod.CONFIG.hpPerLevel();
-
-        // Spawn 2 creakings, each paired with a creaking heart
-        int creakingCount = 2;
-        java.util.List<LevelDefinition.EnemySpawn> spawns = new java.util.ArrayList<>();
-        java.util.List<GridPos> used = new java.util.ArrayList<>();
-        used.add(playerStart);
-
-        String creakingId = com.crackedgames.craftics.compat.palegardenbackport
-            .PaleGardenBackportCompat.creakingEntityId();
-
-        for (int i = 0; i < creakingCount; i++) {
-            // Creaking mob (vanilla on 1.21.4+, palegardenbackport on older)
-            GridPos creakingPos = findOpenSpawn(tiles, width, height, used, rand);
-            if (creakingPos == null) continue;
-            used.add(creakingPos);
-            spawns.add(new LevelDefinition.EnemySpawn(creakingId, creakingPos,
-                18 + hpBonus, 5 + atkBonus, 2, 1));
-
-            // Creaking Heart - placed nearby behind the creaking (away from player)
-            GridPos heartPos = findOpenSpawn(tiles, width, height, used, rand);
-            if (heartPos == null) continue;
-            used.add(heartPos);
-            spawns.add(new LevelDefinition.EnemySpawn("craftics:creaking_heart", heartPos,
-                10 + hpBonus / 2, 0, 0, 0));
-        }
-
-        // Also add 1-2 normal forest hostiles for variety
-        int extraCount = 1 + (rand.nextFloat() < 0.5f ? 1 : 0);
-        for (int i = 0; i < extraCount; i++) {
-            if (biome.hostileMobs.length == 0) break;
-            MobPoolEntry mob = biome.hostileMobs[rand.nextInt(biome.hostileMobs.length)];
-            GridPos pos = findOpenSpawn(tiles, width, height, used, rand);
-            if (pos == null) continue;
-            used.add(pos);
-            spawns.add(new LevelDefinition.EnemySpawn(mob.entityTypeId(), pos,
-                mob.baseHp() + hpBonus, mob.baseAttack() + atkBonus, mob.baseDefense(), mob.range(),
-                mob.aiKey(), mob.speed()));
-        }
-
-        LevelDefinition.EnemySpawn[] enemies = spawns.toArray(new LevelDefinition.EnemySpawn[0]);
-        String name = "Pale Garden";
-
-        GeneratedLevelDefinition def = new GeneratedLevelDefinition(
-            levelNumber, name, width, height, playerStart,
-            com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.paleMossBlock(),
-            tiles, enemies, loot,
-            true, biome // night = true for creepy atmosphere
-        );
-        def.setArenaBiomeOverride(PALE_GARDEN_ARENA_ID);
-        return def;
-    }
-
-    private static GridPos findOpenSpawn(GridTile[][] tiles, int w, int h,
-                                          java.util.List<GridPos> used, Random rand) {
-        for (int attempts = 0; attempts < 40; attempts++) {
-            int x = 1 + rand.nextInt(w - 2);
-            int z = 2 + rand.nextInt(h - 3);
-            GridPos pos = new GridPos(x, z);
-            boolean tooClose = false;
-            for (GridPos u : used) {
-                if (Math.abs(u.x() - x) + Math.abs(u.z() - z) < 2) {
-                    tooClose = true;
-                    break;
-                }
-            }
-            if (!tooClose && tiles[x][z].isSafeForSpawn()) return pos;
+        if ("forest".equals(biome.biomeId) && isMinibossLevel(biome, biomeIndex, isBoss)) {
+            return PALE_GARDEN_ARENA_ID;
         }
         return null;
     }

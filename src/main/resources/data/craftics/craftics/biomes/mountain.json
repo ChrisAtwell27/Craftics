@@ -2,7 +2,7 @@
   "id": "mountain",
   "name": "Stony Peaks",
   "order": 7,
-  "levels": 5,
+  "levels": 7,
   "grid": {
     "base_width": 10,
     "base_height": 10,

@@ -2,7 +2,7 @@
   "id": "soul_sand_valley",
   "name": "Soul Sand Valley",
   "order": 11,
-  "levels": 5,
+  "levels": 7,
   "grid": { "base_width": 9, "base_height": 9, "width_growth": 1, "height_growth": 1 },
   "floor_blocks": ["minecraft:soul_sand", "minecraft:soul_soil"],
   "obstacle_blocks": ["minecraft:basalt", "minecraft:bone_block"],
