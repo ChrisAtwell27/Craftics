@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -82,6 +83,8 @@ public final class BasaltMagmaSurgeMechanic implements MinibossMechanic {
         if (!pendingVents.isEmpty()) {
             for (GridPos p : pendingVents) {
                 ctx.placeTemporaryTile(p, TileType.LAVA, LAVA_DURATION);
+                ctx.spawnHazardBurst(ParticleTypes.LAVA, p);
+                ctx.spawnTileParticle(ParticleTypes.FLAME, p, 8, 0.3, 0.02);
             }
             pendingVents.clear();
             ctx.message("§6Lava erupts!");
@@ -101,8 +104,15 @@ public final class BasaltMagmaSurgeMechanic implements MinibossMechanic {
                 if (pos == null) continue;
                 avoid.add(pos);
                 pendingVents.add(pos);
+                ctx.spawnTileParticle(ParticleTypes.SMOKE, pos, 6, 0.25, 0.03);
             }
-            ctx.message("§6The ground glows - vents about to erupt!");
+            if (!pendingVents.isEmpty()) {
+                // Red danger overlay on the doomed tiles + an audible hiss, so the eruption is a
+                // real telegraph the party can read and dodge, not just a chat line.
+                ctx.warnTiles(pendingVents);
+                ctx.message("§6The ground glows - vents about to erupt!");
+                ctx.playSound(SoundEvents.BLOCK_LAVA_EXTINGUISH, 0.7f, 0.6f);
+            }
         }
     }
 }

@@ -277,6 +277,16 @@ public class ItemUseHandler {
         return item == Items.BONE; // bone always counts
         }
 
+    /** True if the target tile holds a live, untamed creature this item can tame/breed - the
+     *  condition for a breeding item to CLAIM a click. Lets a dual-use breeding item (cactus is
+     *  also a placeable obstacle) fall through to its normal use when there's nothing to tame. */
+    private static boolean hasBreedableTargetFor(GridArena arena, GridPos targetTile, Item item) {
+        if (arena == null || targetTile == null) return false;
+        CombatEntity occupant = arena.getOccupant(targetTile);
+        if (occupant == null || !occupant.isAlive() || occupant.isAlly()) return false;
+        return isBreedingItem(item, occupant.getEntityTypeId());
+    }
+
     public static boolean isFishingRod(Item item) {
         return item == Items.FISHING_ROD;
     }
@@ -411,7 +421,11 @@ public class ItemUseHandler {
             return useFlintAndSteel(player, arena, targetTile, held);
         } else if (item == Items.TOTEM_OF_UNDYING) {
             return useTotem(player, held);
-        } else if (isAnyBreedingItem(item)) {
+        } else if (isAnyBreedingItem(item) && hasBreedableTargetFor(arena, targetTile, item)) {
+            // Only claim the click for taming when the target tile actually holds a live, untamed
+            // creature this item breeds. Otherwise fall through so a dual-use breeding item that is
+            // ALSO a placeable/usable block (cactus = camel-tame item AND an obstacle you place)
+            // reaches its normal use below instead of being shadowed into a "no creature" failure.
             return useBreedingItem(player, arena, targetTile, held);
         } else if (isFishingRod(item)) {
             return useFishingRod(player, arena, targetTile, held);
@@ -694,6 +708,7 @@ public class ItemUseHandler {
             case SOAKED, CONFUSION -> 3;
             case BLEEDING -> 3;
             case AIRTIME -> 1; // not vanilla-potion-driven; unreachable via this path
+            case WARPED -> 1; // not vanilla-potion-driven; unreachable via this path
         };
         // Extended potions (long vanilla duration > 4 min) double the combat turn count
         if (vanillaDurationTicks > 4800) {

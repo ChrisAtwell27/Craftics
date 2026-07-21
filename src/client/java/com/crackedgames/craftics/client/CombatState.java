@@ -575,6 +575,9 @@ public class CombatState {
             if (!seen.add(id)) continue;          // multi-tile mobs map several tiles to one id
             if (allyHpMap.containsKey(id)) continue; // allies don't threaten the player
             if (!enemyHpMap.containsKey(id)) continue;
+            // Darkness fog-of-war: a hidden enemy leaks its position through its
+            // threat footprint, so drop it from the overlay while shrouded.
+            if (isEnemyHiddenByDarkness(id)) continue;
 
             int range = 1;
             String typeData = enemyTypeMap.getOrDefault(id, "");
@@ -686,6 +689,59 @@ public class CombatState {
 
     public static int getBlindnessLevel() { return getCombatEffectLevel("Blindness"); }
     public static int getDarknessLevel() { return getCombatEffectLevel("Darkness"); }
+
+    /**
+     * Darkness shrouds the battlefield: while the local player is affected,
+     * enemies farther than {@link #DARKNESS_REVEAL_RADIUS} tiles away are hidden
+     * from THIS client only (models, tile overlays, roster, hover panel).
+     * Enemies within the radius stay fully visible - you can feel what's right
+     * next to you in the dark. Purely client-side and per-player: each client
+     * reads its own effect state, so teammates are unaffected and the server is
+     * never involved.
+     */
+    public static final int DARKNESS_REVEAL_RADIUS = 2;
+
+    /** True while the local player is under Darkness (any level) in combat. */
+    public static boolean isDarknessShrouded() {
+        return isInCombat() && getDarknessLevel() > 0;
+    }
+
+    /**
+     * Whether the enemy with {@code entityId} should be hidden from the local
+     * client right now: the player is shrouded AND the enemy is beyond the
+     * reveal radius. Allies/pets are never hidden. Distance is Chebyshev from
+     * the player's grid tile to the enemy's nearest occupied tile (multi-tile
+     * mobs map several tiles to one id), so it updates live as either moves.
+     * Returns false when positions are unknown so nothing flickers wrongly.
+     */
+    public static boolean isEnemyHiddenByDarkness(int entityId) {
+        if (!isDarknessShrouded()) return false;
+        if (allyHpMap.containsKey(entityId)) return false; // never hide allies/pets
+        if (!enemyHpMap.containsKey(entityId)) return false; // not a tracked enemy
+        net.minecraft.client.MinecraftClient client = net.minecraft.client.MinecraftClient.getInstance();
+        com.crackedgames.craftics.core.GridPos playerPos = ClientGridHelper.getPlayerGridPos(client);
+        if (playerPos == null) return false;
+        int best = Integer.MAX_VALUE;
+        for (var entry : enemyGridMap.entrySet()) {
+            if (entry.getValue() != entityId) continue;
+            com.crackedgames.craftics.core.GridPos p = entry.getKey();
+            int cheb = Math.max(Math.abs(p.x() - playerPos.x()), Math.abs(p.z() - playerPos.z()));
+            if (cheb < best) best = cheb;
+        }
+        if (best == Integer.MAX_VALUE) return false; // position unknown - don't hide
+        return best > DARKNESS_REVEAL_RADIUS;
+    }
+
+    /**
+     * Whether the enemy on grid tile {@code pos} is hidden by Darkness. Convenience
+     * for tile-keyed overlays that have a position but not the entity id.
+     */
+    public static boolean isEnemyTileHiddenByDarkness(com.crackedgames.craftics.core.GridPos pos) {
+        if (!isDarknessShrouded() || pos == null) return false;
+        Integer id = enemyGridMap.get(pos);
+        return id != null && isEnemyHiddenByDarkness(id);
+    }
+    public static int getWarpedLevel() { return getCombatEffectLevel("Warped"); }
     public static int getPoisonLevel() { return getCombatEffectLevel("Poison"); }
     public static int getBurningLevel() { return getCombatEffectLevel("Burning"); }
     public static int getKillStreak() { return killStreak; }

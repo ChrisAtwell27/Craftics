@@ -18,7 +18,9 @@ import java.util.Random;
 public final class SandstormEffect implements BiomeEffect {
 
     private static final int CADENCE = 3;
-    private static final int BLIND_TURNS = 1;
+    private static final int BLIND_TURNS = 1; // player-facing turns; applyPartyEffect adds the
+                                              // enemy-phase-tick compensation so this lands on
+                                              // the player's next turn.
 
     // --- Continuous ambience (onCombatTick) ---
     private static final int PARTICLE_CADENCE = 2; // scatter sand every 2 ticks (~10/sec)

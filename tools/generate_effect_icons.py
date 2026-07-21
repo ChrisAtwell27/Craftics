@@ -315,6 +315,18 @@ ICONS = {
         "........",
         "...##...",
     ]),
+    # Warped: two arrows pointing away from a central mirror line - movement reflected outward
+    # from the player's own tile instead of going where clicked.
+    "warped": (PURPLE, [
+        "..#.#...",
+        ".##.##..",
+        "###.###.",
+        "##...##.",
+        ".##...##",
+        ".###.###",
+        "..##.##.",
+        "...#.#..",
+    ]),
 
     # ---------------- Enemy-only states ----------------
     # Stunned: a starburst.

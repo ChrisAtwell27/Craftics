@@ -903,6 +903,18 @@ public class CombatHudOverlay implements HudRenderCallback {
                 "\u00a77Walking through clears the web.");
         }
 
+        // Crimson / warped fungus - walk-through hazard plants (sit in the Y+1 overlay).
+        if (above == net.minecraft.block.Blocks.CRIMSON_FUNGUS) {
+            return new TileTooltipInfo("\u00a7c\u00a7lCrimson Fungus",
+                "\u00a7fWalk through it and it makes you bleed.",
+                "\u00a77Attack to clear it (1 AP), or hit from adjacent.");
+        }
+        if (above == net.minecraft.block.Blocks.WARPED_FUNGUS) {
+            return new TileTooltipInfo("\u00a75\u00a7lWarped Fungus",
+                "\u00a7fWalk through it and your movement warps for 2 turns.",
+                "\u00a77Attack to clear it (1 AP), or hit from adjacent.");
+        }
+
         // Cactus - damaging obstacle.
         if (above == net.minecraft.block.Blocks.CACTUS) {
             return new TileTooltipInfo("\u00a72\u00a7lCactus",
@@ -923,6 +935,21 @@ public class CombatHudOverlay implements HudRenderCallback {
             return new TileTooltipInfo("\u00a7b\u00a7lPowder Snow",
                 "\u00a7fSinks you in.",
                 "\u00a77Freeze damage unless wearing leather boots.");
+        }
+
+        // Mud - rain-churned ground (jungle weather). Blocks.MUD is only ever this hazard.
+        if (floor == net.minecraft.block.Blocks.MUD) {
+            return new TileTooltipInfo("\u00a76\u00a7lMud",
+                "\u00a7fEach mud tile crossed has a 50% chance to stop you there.",
+                "\u00a77Left by the jungle rain. Dries when the level resets.");
+        }
+
+        // Sculk boundary - the sculk-sensor range ring (deep dark). Blocks.SCULK marks the
+        // Chebyshev-2 area a sensor can hear you in.
+        if (floor == net.minecraft.block.Blocks.SCULK) {
+            return new TileTooltipInfo("\u00a73\u00a7lSculk Field",
+                "\u00a7fA sculk sensor can hear you within this ring.",
+                "\u00a77Step in without Swift Sneak and it shrieks. Break the sensor from outside.");
         }
 
         // Everbloom's flower field - a rose bush laid as a trap by the vine bow.
@@ -1099,7 +1126,8 @@ public class CombatHudOverlay implements HudRenderCallback {
         // Blindness hides enemy inspection entirely - no hover panel, no stat readout.
         // The standard enemy roster (to the side) still shows below.
         if (!enemies.isEmpty()
-                && !CombatState.hasBlindness() && hoveredId != -1 && enemies.containsKey(hoveredId)) {
+                && !CombatState.hasBlindness() && hoveredId != -1 && enemies.containsKey(hoveredId)
+                && !CombatState.isEnemyHiddenByDarkness(hoveredId)) {
             String typeIdRaw = types.getOrDefault(hoveredId, "minecraft:zombie");
             float ease = inspectSlide("e:" + hoveredId);
             ctx.getMatrices().push();
@@ -1151,7 +1179,12 @@ public class CombatHudOverlay implements HudRenderCallback {
 
         List<Map.Entry<Integer, int[]>> nonBoss = new ArrayList<>();
         for (Map.Entry<Integer, int[]> entry : enemies.entrySet()) {
-            if (entry.getKey() != bossEntityId) nonBoss.add(entry);
+            if (entry.getKey() == bossEntityId) continue;
+            // Darkness fog-of-war: a far enemy's head in the roster would leak
+            // that it exists and its HP. The boss bar stays (it's a fixed HUD
+            // landmark, not a positional tell).
+            if (CombatState.isEnemyHiddenByDarkness(entry.getKey())) continue;
+            nonBoss.add(entry);
         }
 
         int y = 4;

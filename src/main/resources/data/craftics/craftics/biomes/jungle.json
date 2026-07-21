@@ -9,7 +9,7 @@
     "width_growth": 1,
     "height_growth": 0
   },
-  "floor_blocks": ["minecraft:moss_block", "minecraft:mud"],
+  "floor_blocks": ["minecraft:grass_block", "minecraft:moss_block"],
   "obstacle_blocks": ["minecraft:jungle_log", "minecraft:mangrove_roots"],
   "obstacle_density": 0.0,
   "obstacle_density_growth": 0.0,

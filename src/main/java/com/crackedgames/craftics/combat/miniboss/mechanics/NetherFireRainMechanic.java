@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -106,6 +107,8 @@ public final class NetherFireRainMechanic implements MinibossMechanic {
             }
             if (pos == null) continue;
             ctx.placeTemporaryTile(pos, TileType.EMBER, EMBER_DURATION);
+            ctx.spawnTileParticle(ParticleTypes.FLAME, pos, 6, 0.3, 0.02);
+            ctx.spawnHazardBurst(ParticleTypes.LAVA, pos);
         }
 
         ctx.message("§c☄ Embers rain down!");

@@ -6,6 +6,7 @@ import com.crackedgames.craftics.combat.miniboss.MinibossSpawns;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -101,6 +102,8 @@ public final class DeepDarkWaveMechanic implements MinibossMechanic {
             if (pos == null) continue;
             used.add(pos);
             ctx.spawnMob("minecraft:silverfish", pos, 8, 3, 0, 1);
+            // Sculk-soul wisp on the tile the swarm silverfish crawls out of.
+            ctx.spawnHazardBurst(ParticleTypes.SCULK_SOUL, pos);
             spawnedAny = true;
         }
         if (spawnedAny) {

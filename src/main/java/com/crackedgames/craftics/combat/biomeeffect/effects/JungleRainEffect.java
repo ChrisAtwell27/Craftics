@@ -37,9 +37,42 @@ public final class JungleRainEffect implements BiomeEffect {
         return "jungle_rain";
     }
 
+    private static final double MUD_PATCH_CHANCE = 0.5; // chance a level opens with a mud patch
+    private static final int MUD_PATCH_DURATION = 999;   // effectively permanent - the standing bog
+
     @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.message("§9☔ Rain begins to fall - the ground turns to mud.");
+        // A jungle level has a chance to open with a standing bog: an irregular ~3x3 mud patch
+        // in a random spot (not on the player start). Distinct from the rain's per-round mud.
+        if (ctx.rng().nextDouble() < MUD_PATCH_CHANCE) {
+            spawnMudPatch(ctx);
+        }
+    }
+
+    /** Place an irregular ~3x3 mud patch centered on a random tile (5-8 of the 9 cells, so the
+     *  edge is ragged rather than a clean square). Skips the player-start tile. */
+    private void spawnMudPatch(MinibossContext ctx) {
+        GridArena arena = ctx.arena();
+        int width = arena.getWidth();
+        int height = arena.getHeight();
+        Random rng = ctx.rng();
+        GridPos playerStart = new GridPos(width / 2, 0);
+        // Center in the arena interior so the full 3x3 mostly fits.
+        int cx = 2 + rng.nextInt(Math.max(1, width - 4));
+        int cz = 3 + rng.nextInt(Math.max(1, height - 5));
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                // Ragged edge: the center + orthogonal always mud, the 4 corners 50/50.
+                boolean corner = dx != 0 && dz != 0;
+                if (corner && rng.nextBoolean()) continue;
+                GridPos p = new GridPos(cx + dx, cz + dz);
+                if (!arena.isInBounds(p) || p.equals(playerStart)) continue;
+                GridTile t = arena.getTile(p);
+                if (t == null || !t.isWalkable()) continue;
+                ctx.placeTemporaryTile(p, TileType.MUD, MUD_PATCH_DURATION);
+            }
+        }
     }
 
     @Override
@@ -115,7 +148,9 @@ public final class JungleRainEffect implements BiomeEffect {
             GridTile tile = arena.getTile(pos);
             if (tile == null) continue;
             var block = tile.getBlockType();
-            if (block == Blocks.GRASS_BLOCK || block == Blocks.DIRT) {
+            // The jungle floor is grass + moss; rain churns those (and plain dirt) into mud.
+            // The already-mud tiles are excluded so the rain only converts fresh ground.
+            if (block == Blocks.GRASS_BLOCK || block == Blocks.DIRT || block == Blocks.MOSS_BLOCK) {
                 return pos;
             }
         }

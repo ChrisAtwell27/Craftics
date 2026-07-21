@@ -32,6 +32,12 @@ public abstract class LivingEntityRendererAnimMixin {
         // frame because render states are reused snapshots.
         ((CrafticsAnimHolder) state).craftics$setBounceY(
             com.crackedgames.craftics.client.vfx.EntityBounceState.offsetFor(entity.getId()));
+        // Darkness fog-of-war: mark the snapshot so the render-cancel mixin can
+        // skip drawing this arena enemy when the local player is shrouded and it
+        // is beyond the reveal radius. Read here (entity id available); acted on
+        // at render time. Non-arena mobs and nearby enemies stay visible.
+        ((CrafticsAnimHolder) state).craftics$setDarkHidden(
+            com.crackedgames.craftics.client.CombatState.isEnemyHiddenByDarkness(entity.getId()));
         if (!entity.getCommandTags().contains("craftics_arena")) {
             CrafticsAnimHolder h = (CrafticsAnimHolder) state;
             h.craftics$setAnimState(com.crackedgames.craftics.combat.animation.AnimState.IDLE);

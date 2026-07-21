@@ -41,6 +41,13 @@ public final class MinibossContext {
     public interface AmbientParticleFn { void spawn(net.minecraft.particle.ParticleEffect particle, double x, double y, double z, int count, double dx, double dy, double dz, double speed); }
     public interface ParticipantsFn { java.util.List<net.minecraft.server.network.ServerPlayerEntity> get(); }
     public interface WarnTilesFn { void warn(java.util.List<GridPos> tiles); }
+    /**
+     * Runs the river current: paints per-water-tile flow arrows and, unless {@code telegraphOnly},
+     * sweeps every player/enemy standing on water toward the nearest arena edge. Delegates to
+     * CombatManager's {@code triggerRiverCurrent}, which owns the water scan and the drag/knockback
+     * movement primitives a {@link MinibossContext} does not expose directly.
+     */
+    public interface RiverCurrentFn { void run(boolean telegraphOnly); }
     public interface SwiftSneakFn { boolean has(net.minecraft.server.network.ServerPlayerEntity p); }
     public interface PlayerTileFn { GridPos of(net.minecraft.server.network.ServerPlayerEntity p); }
 
@@ -58,6 +65,7 @@ public final class MinibossContext {
     private final AmbientParticleFn ambientParticleFn;
     private final ParticipantsFn participantsFn;
     private final WarnTilesFn warnTilesFn;
+    private final RiverCurrentFn riverCurrentFn;
     private final SwiftSneakFn swiftSneakFn;
     private final PlayerTileFn playerTileFn;
     private final java.util.function.Consumer<String> message;
@@ -68,7 +76,8 @@ public final class MinibossContext {
                            WindGustFn windGustFn, WindGustFn windTelegraphFn,
                            PartyEffectFn partyEffectFn,
                            SoundFn soundFn, AmbientParticleFn ambientParticleFn,
-                           ParticipantsFn participantsFn, WarnTilesFn warnTilesFn, SwiftSneakFn swiftSneakFn,
+                           ParticipantsFn participantsFn, WarnTilesFn warnTilesFn,
+                           RiverCurrentFn riverCurrentFn, SwiftSneakFn swiftSneakFn,
                            PlayerTileFn playerTileFn,
                            java.util.function.Consumer<String> message,
                            java.util.function.Consumer<String> banner) {
@@ -77,7 +86,8 @@ public final class MinibossContext {
         this.windGustFn = windGustFn; this.windTelegraphFn = windTelegraphFn;
         this.partyEffectFn = partyEffectFn;
         this.soundFn = soundFn; this.ambientParticleFn = ambientParticleFn;
-        this.participantsFn = participantsFn; this.warnTilesFn = warnTilesFn; this.swiftSneakFn = swiftSneakFn;
+        this.participantsFn = participantsFn; this.warnTilesFn = warnTilesFn;
+        this.riverCurrentFn = riverCurrentFn; this.swiftSneakFn = swiftSneakFn;
         this.playerTileFn = playerTileFn;
         this.message = message; this.banner = banner;
     }
@@ -98,11 +108,14 @@ public final class MinibossContext {
     /** Paints the gust's warning arrows in (dirX,dirZ) WITHOUT dragging - call a round before
      *  {@link #windGust} so the player sees which way the wind will pull. */
     public void windTelegraph(int dirX, int dirZ) { windTelegraphFn.gust(dirX, dirZ); }
-    /** Applies a status effect to EVERY live party member (solo: just the player) - the
-     *  party-wide analogue of a single addEffectHooked call. Used by weather effects
-     *  (e.g. sandstorm blinding everyone). */
+    /** Applies a status effect to EVERY live party member (solo: just the player) for {@code turns}
+     *  of the PLAYER's own turns. Effects run from onRoundStart, which fires in the enemy phase;
+     *  a player status ticks down once during that enemy phase, so a bare N would expire before the
+     *  player next acts. We add +1 here so {@code turns} means "turns the player actually feels it"
+     *  - the caller passes the player-facing duration and doesn't have to know the turn ordering.
+     *  Used by weather/hazard effects (sandstorm blind, sculk darkness, ...). */
     public void applyPartyEffect(com.crackedgames.craftics.combat.CombatEffects.EffectType type, int turns) {
-        partyEffectFn.apply(type, turns);
+        partyEffectFn.apply(type, turns <= 0 ? turns : turns + 1);
     }
     /** Plays a sound to the whole party, positioned at the arena. Weather/event cues. */
     public void playSound(net.minecraft.sound.SoundEvent sound, float volume, float pitch) {
@@ -113,6 +126,27 @@ public final class MinibossContext {
                                       int count, double dx, double dy, double dz, double speed) {
         ambientParticleFn.spawn(particle, x, y, z, count, dx, dy, dz, speed);
     }
+    /** Ambient particles centered on a grid TILE (world coords resolved from the arena), so a
+     *  mechanic doesn't have to repeat the origin/grid math. Spawned a little above the floor
+     *  (gridToBlockPos is the Y+1 overlay level) with a small XZ spread across the tile. */
+    public void spawnTileParticle(net.minecraft.particle.ParticleEffect particle, GridPos tile,
+                                   int count, double spread, double speed) {
+        if (arena == null || tile == null) return;
+        net.minecraft.util.math.BlockPos bp = arena.gridToBlockPos(tile);
+        ambientParticleFn.spawn(particle, bp.getX() + 0.5, bp.getY() + 0.2, bp.getZ() + 0.5,
+            count, spread, 0.15, spread, speed);
+    }
+
+    /** A one-shot "puff" burst on a tile: a spawn/impact/telegraph marker. Denser and taller than
+     *  {@link #spawnTileParticle} so a discrete event (a mob warping in, a rock crushing down, a
+     *  vent about to erupt) reads at a glance. */
+    public void spawnHazardBurst(net.minecraft.particle.ParticleEffect particle, GridPos tile) {
+        if (arena == null || tile == null) return;
+        net.minecraft.util.math.BlockPos bp = arena.gridToBlockPos(tile);
+        ambientParticleFn.spawn(particle, bp.getX() + 0.5, bp.getY() + 0.4, bp.getZ() + 0.5,
+            12, 0.35, 0.35, 0.35, 0.05);
+    }
+
     public void message(String s) { message.accept(s); }
     public void banner(String s) { banner.accept(s); }
     /** Live party players (solo: just the acting player). */
@@ -121,6 +155,10 @@ public final class MinibossContext {
      *  telegraph (e.g. the sculk sensor's next-round silverfish spawn), independent of any
      *  boss attack warning. */
     public void warnTiles(java.util.List<GridPos> tiles) { warnTilesFn.warn(tiles); }
+    /** Runs the river current. {@code telegraphOnly=true} just paints the water-tile flow arrows
+     *  (the warning round); {@code false} also sweeps everyone standing in the water toward the
+     *  nearest arena edge. See {@link RiverCurrentFn}. */
+    public void riverCurrent(boolean telegraphOnly) { riverCurrentFn.run(telegraphOnly); }
     /** True if the player's boots have Swift Sneak (bypasses sculk-sensor triggers). */
     public boolean hasSwiftSneak(net.minecraft.server.network.ServerPlayerEntity p) { return swiftSneakFn.has(p); }
     /** The grid tile a specific party member currently stands on (not just the acting player). */

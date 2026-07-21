@@ -9,7 +9,7 @@
     "width_growth": 1,
     "height_growth": 1
   },
-  "floor_blocks": ["minecraft:deepslate", "minecraft:sculk"],
+  "floor_blocks": ["minecraft:deepslate", "minecraft:cobbled_deepslate"],
   "obstacle_blocks": ["minecraft:deepslate_bricks", "minecraft:sculk_catalyst"],
   "obstacle_density": 0.0,
   "obstacle_density_growth": 0.0,

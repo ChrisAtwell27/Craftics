@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -86,7 +87,12 @@ public final class RiverFlashFloodMechanic implements MinibossMechanic {
         if (row <= 1) return; // stop before drowning the player-start row
 
         for (int x = 0; x < width; x++) {
-            ctx.placeTemporaryTile(new GridPos(x, row), TileType.WATER, FLOOD_DURATION);
+            GridPos floodTile = new GridPos(x, row);
+            ctx.placeTemporaryTile(floodTile, TileType.WATER, FLOOD_DURATION);
+            // Signature hazard - make the rising water read: splashing surface plus a
+            // falling-water burst on every newly flooded tile.
+            ctx.spawnTileParticle(ParticleTypes.SPLASH, floodTile, 6, 0.3, 0.05);
+            ctx.spawnHazardBurst(ParticleTypes.FALLING_WATER, floodTile);
         }
         floodedRows++;
         ctx.message("§9The water rises!");

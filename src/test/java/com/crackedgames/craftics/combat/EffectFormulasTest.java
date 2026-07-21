@@ -62,6 +62,18 @@ class EffectFormulasTest {
         assertEquals(0, EffectFormulas.bleedTick(-1), "a negative stack count can't heal");
     }
 
+    /** A single bleed/burn tick is clamped so a runaway stack can't one-shot a full-HP target. */
+    @Test
+    void dotTicksCapAt100() {
+        // Triangular bleed passes 100 at 14 stacks (14*15/2 = 105); it must clamp there.
+        assertEquals(91, EffectFormulas.bleedTick(13), "13 stacks (91) is still under the cap");
+        assertEquals(EffectFormulas.MAX_DOT_TICK, EffectFormulas.bleedTick(14), "14 stacks (105) clamps to 100");
+        assertEquals(EffectFormulas.MAX_DOT_TICK, EffectFormulas.bleedTick(1000), "no stack count exceeds the cap");
+        // Burning is flat and small, but a huge affinity would still clamp.
+        assertEquals(EffectFormulas.MAX_DOT_TICK, EffectFormulas.burningTick(1, 1000));
+        assertEquals(100, EffectFormulas.MAX_DOT_TICK);
+    }
+
     /** Every damaging tick floors at 1: an effect that is active always does something. */
     @Test
     void everyDotFloorsAtOne() {

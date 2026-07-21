@@ -11,6 +11,7 @@ import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.GridTile;
 import com.crackedgames.craftics.core.TileType;
 import net.minecraft.block.Blocks;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.sound.SoundEvents;
 
@@ -129,6 +130,27 @@ public final class SculkSensorEffect implements BiomeEffect {
             pendingSpawns.addAll(spots);
             ctx.warnTiles(spots);
             s.cooldown = REARM_ROUNDS;
+        }
+    }
+
+    // Ambient sculk atmosphere: a slow drift of sculk-soul particles over each live sensor, plus
+    // an occasional low sculk-charge idle so the dark reads as alive between triggers. Cadenced so
+    // it stays a whisper, not a fog.
+    private static final int PARTICLE_CADENCE = 15; // sculk souls every ~0.75s per sensor
+    private static final int SOUND_CADENCE = 90;    // soft sculk charge every ~4.5s
+
+    @Override
+    public void onCombatTick(MinibossContext ctx, int tick) {
+        if (sensors.isEmpty()) return;
+        if (tick % PARTICLE_CADENCE == 0) {
+            for (Sensor s : sensors) {
+                // A wisp rising off the sensor; armed sensors pulse a touch more than cooling ones.
+                int count = s.cooldown > 0 ? 1 : 2;
+                ctx.spawnTileParticle(ParticleTypes.SCULK_SOUL, s.tile, count, 0.2, 0.01);
+            }
+        }
+        if (tick % SOUND_CADENCE == 0) {
+            ctx.playSound(SoundEvents.BLOCK_SCULK_SENSOR_CLICKING, 0.25f, 0.7f);
         }
     }
 

@@ -28,10 +28,11 @@ public class CombatEffects {
         BLINDNESS("Blindness", "-2 range/level"),
         MINING_FATIGUE("Mining Fatigue", "-1 AP/level"),
         LEVITATION("Levitation", "-1 movement/level"),
-        DARKNESS("Darkness", "-1 range/level"),
+        DARKNESS("Darkness", "enemies beyond 2 tiles are hidden"),
         SOAKED("Soaked", "-1 speed, 2x lightning"),
         CONFUSION("Confusion", "attack allies"),
-        AIRTIME("Airtime", "+2 ranged range/level; +0.5x next weapon hit/level");
+        AIRTIME("Airtime", "+2 ranged range/level; +0.5x next weapon hit/level"),
+        WARPED("Warped", "movement mirrored");
 
         public final String displayName;
         public final String description;
@@ -335,18 +336,21 @@ public class CombatEffects {
         return 1 + effects.get(EffectType.LEVITATION).amplifier;
     }
 
+    /**
+     * Darkness no longer shaves attack range - it is now a client-side fog of
+     * war (enemies beyond 2 tiles are hidden from the affected player, handled
+     * in CombatState/render mixins). Kept returning 0 so any legacy caller
+     * summing vision penalties still compiles and behaves.
+     */
     public int getDarknessPenalty() {
-        if (!hasEffect(EffectType.DARKNESS)) return 0;
-        return 1 + effects.get(EffectType.DARKNESS).amplifier;
+        return 0;
     }
 
-    /** Total range lost to vision debuffs. Same rule the enemy side uses. */
+    /** Total range lost to vision debuffs. Blindness only - Darkness is now fog of war. */
     public int getRangePenalty() {
         int blindnessLevel = hasEffect(EffectType.BLINDNESS)
             ? effects.get(EffectType.BLINDNESS).amplifier + 1 : 0;
-        int darknessLevel = hasEffect(EffectType.DARKNESS)
-            ? effects.get(EffectType.DARKNESS).amplifier + 1 : 0;
-        return EffectFormulas.rangePenalty(blindnessLevel, darknessLevel);
+        return EffectFormulas.rangePenalty(blindnessLevel, 0);
     }
 
     public String getDisplayString() {
@@ -397,7 +401,7 @@ public class CombatEffects {
     public static boolean isDebuff(EffectType type) {
         return switch (type) {
             case POISON, SLOWNESS, WEAKNESS, WITHER, BURNING, BLEEDING,
-                 BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS, SOAKED, CONFUSION -> true;
+                 BLINDNESS, MINING_FATIGUE, LEVITATION, DARKNESS, SOAKED, CONFUSION, WARPED -> true;
             default -> false;
         };
     }

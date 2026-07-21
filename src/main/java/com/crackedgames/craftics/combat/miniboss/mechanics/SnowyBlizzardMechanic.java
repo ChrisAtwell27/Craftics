@@ -7,6 +7,7 @@ import com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -107,6 +108,8 @@ public final class SnowyBlizzardMechanic implements MinibossMechanic {
             if (pos == null) continue;
             used.add(pos);
             ctx.spawnMob(creeperTypeId(), pos, 12, 5, 0, 1);
+            // Whiteout flurry on the tile the reinforcement creeper emerges from.
+            ctx.spawnTileParticle(ParticleTypes.SNOWFLAKE, pos, 8, 0.4, 0.05);
             spawnedAny = true;
         }
         if (spawnedAny) {

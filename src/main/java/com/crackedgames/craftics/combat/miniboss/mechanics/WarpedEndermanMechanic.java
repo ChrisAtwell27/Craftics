@@ -5,6 +5,7 @@ import com.crackedgames.craftics.combat.miniboss.MinibossMechanic;
 import com.crackedgames.craftics.combat.miniboss.MinibossSpawns;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -105,6 +106,7 @@ public final class WarpedEndermanMechanic implements MinibossMechanic {
             if (pos == null) continue;
             used.add(pos);
             ctx.spawnMob("minecraft:endermite", pos, 6, 3, 0, 1);
+            ctx.spawnHazardBurst(ParticleTypes.PORTAL, pos);
             spawnedAny = true;
         }
         if (spawnedAny) {

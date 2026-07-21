@@ -8,6 +8,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -91,6 +92,7 @@ public final class ChorusGroveBloomMechanic implements MinibossMechanic {
             GridPos pos = findSeedTile(arena, playerStart, chorusTiles, ctx.rng());
             if (pos == null) continue;
             ctx.placeTemporaryTile(pos, TileType.SPORE, SPORE_DURATION);
+            ctx.spawnTileParticle(ParticleTypes.PORTAL, pos, 5, 0.3, 0.02);
             chorusTiles.add(pos);
         }
     }
@@ -117,6 +119,7 @@ public final class ChorusGroveBloomMechanic implements MinibossMechanic {
                 if (next == null) continue;
 
                 ctx.placeTemporaryTile(next, TileType.SPORE, SPORE_DURATION);
+                ctx.spawnTileParticle(ParticleTypes.PORTAL, next, 5, 0.3, 0.02);
                 newlyBloomed.add(next);
             }
 
@@ -137,13 +140,24 @@ public final class ChorusGroveBloomMechanic implements MinibossMechanic {
      */
     private void applyConfusionToOccupants(MinibossContext ctx) {
         if (chorusTiles.isEmpty()) return;
+        int confused = 0;
         for (CombatEntity e : ctx.enemies()) {
             if (!e.isAlive()) continue;
             GridPos pos = e.getGridPos();
             if (pos == null) continue;
             if (chorusTiles.contains(pos)) {
                 e.stackConfusion(CONFUSION_TURNS, CONFUSION_AMP_INCREASE);
+                ctx.spawnHazardBurst(ParticleTypes.WITCH, pos);
+                confused++;
             }
+        }
+        // One aggregated cue per round (not per enemy) so the confusion is legible without
+        // spamming the log when several enemies stand in the grove at once.
+        if (confused > 0) {
+            ctx.message(confused == 1
+                ? "§dThe chorus scrambles an enemy's senses - Confused!"
+                : "§dThe chorus scrambles " + confused + " enemies' senses - Confused!");
+            ctx.playSound(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 0.4f, 1.4f);
         }
     }
 

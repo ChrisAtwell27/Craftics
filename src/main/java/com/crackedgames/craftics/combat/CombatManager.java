@@ -1945,7 +1945,31 @@ public class CombatManager {
             (typeId, tile, hp, atk, def, range) -> spawnRaidReinforcement(typeId, tile, hp, atk, def, range),
             (p, type, turns) -> {
                 GridTile t = arena.getTile(p);
-                if (t != null) t.setTemporaryType(type, turns);
+                if (t == null) return;
+                t.setTemporaryType(type, turns);
+                // Paint the world block NOW so the change is visible immediately - setTemporaryType
+                // only mutates the logical GridTile; without this, mid-fight tiles (sculk sensor
+                // boundaries, mud, rubble, ...) never show until tickTemporaryTerrain repaints on
+                // revert. Mirrors tickTemporaryTerrain's block-set (floor block = the tile's block).
+                if (player != null) {
+                    ServerWorld tw = (ServerWorld) player.getEntityWorld();
+                    BlockPos floorBp = new BlockPos(
+                        arena.getOrigin().getX() + p.x(),
+                        arena.getOrigin().getY(),
+                        arena.getOrigin().getZ() + p.z());
+                    if (type == TileType.CRIMSON_FUNGUS || type == TileType.WARPED_FUNGUS) {
+                        // Fungus is a PLANT, not a floor block: place it at Y+1 (where the player
+                        // stands, like a cobweb) and leave the biome floor untouched below. A plant
+                        // painted at floor-Y would have no support and fail to render.
+                        tw.setBlockState(floorBp.up(1), t.getBlockType().getDefaultState(),
+                            net.minecraft.block.Block.NOTIFY_ALL);
+                    } else {
+                        // Floor block pos (origin Y, no +1) - matches tickTemporaryTerrain, which
+                        // paints the FLOOR block, not the entity-standing block gridToBlockPos returns.
+                        tw.setBlockState(floorBp, t.getBlockType().getDefaultState(),
+                            net.minecraft.block.Block.NOTIFY_ALL);
+                    }
+                }
             },
             (typeId, tile, hp, block) -> placeBlockObject(typeId, tile, hp,
                 -(minibossBlockIdCounter++), block, (ServerWorld) player.getEntityWorld()),
@@ -1956,6 +1980,7 @@ public class CombatManager {
             this::spawnAmbientParticle,
             this::minibossParticipants,
             this::warnTilesToParty,
+            this::triggerRiverCurrent,
             this::minibossSwiftSneak,
             this::gridPosOf,
             this::sendMessage,
@@ -2238,6 +2263,17 @@ public class CombatManager {
 
     private record PendingBossWarning(CombatEntity boss, EnemyAction.BossAbility ability) {}
     private final List<PendingBossWarning> pendingBossWarnings = new ArrayList<>();
+
+    /**
+     * Persistent directional telegraph arrows for BIOME WEATHER (blizzard gust, river current, ...),
+     * each entry {@code [x, z, dx, dz]}. Weather effects run in the enemy phase; a one-off arrow
+     * payload was wiped by the very next {@link #broadcastTileSets()} / {@link #syncWarningTiles()},
+     * which rebuild {@code warningArrowArr} from {@code pendingBossWarnings} ALONE - so weather
+     * arrows never survived to render. Holding them here, and folding them into both rebuild sites,
+     * routes weather telegraphs through the same persistent path the Frostbound gust uses. Cleared
+     * when the gust/current resolves (or the fight ends).
+     */
+    private final List<int[]> pendingWeatherArrows = new ArrayList<>();
 
     /** Void Walker rift pair. turnsRemaining < 0 = permanent (Phase 2). usedThisTurn prevents infinite re-tp. */
     private static final class VoidRift {
@@ -4813,6 +4849,19 @@ public class CombatManager {
         }
         if (!arena.isInBounds(target)) return;
 
+        // Warped: mirror the intended destination about the player's own tile - a move 2 left /
+        // 1 up instead sends you 2 right / 1 down. Attacks are unaffected (handled separately in
+        // handleAttack); only movement is warped.
+        if (combatEffects.hasEffect(CombatEffects.EffectType.WARPED)) {
+            GridPos p = arena.getPlayerGridPos();
+            GridPos mirrored = new GridPos(2 * p.x() - target.x(), 2 * p.z() - target.z());
+            if (!arena.isInBounds(mirrored)) {
+                sendMessage("§5Warped! That way throws you off the arena - pick another.");
+                return;
+            }
+            target = mirrored;
+        }
+
         if (movePointsRemaining <= 0) {
             sendMessage("§cNo movement left this turn!");
             return;
@@ -4911,6 +4960,33 @@ public class CombatManager {
             }
         }
 
+        // Fungus hazard: crimson/warped mushroom tiles act like a cobweb you CAN walk
+        // through - they never stop the player, but crossing one inflicts a status effect
+        // live on this (the player's own) turn. Scanned over the FINAL, post-truncation
+        // path so only tiles actually reached count. Applied with applyPlayerEffectLive and
+        // the LITERAL duration (no enemy-phase +1 compensation): the player is mid-move on
+        // their own turn, so the effect is meant to land now. One message per hazard type
+        // even if several tiles of it were crossed.
+        boolean crossedCrimson = false;
+        boolean crossedWarped = false;
+        for (GridPos step : path) {
+            GridTile stepTile = arena.getTile(step);
+            if (stepTile == null) continue;
+            switch (stepTile.getType()) {
+                case CRIMSON_FUNGUS -> {
+                    applyPlayerEffectLive(CombatEffects.EffectType.BLEEDING, 1, 0); // Bleeding, 1 turn
+                    crossedCrimson = true;
+                }
+                case WARPED_FUNGUS -> {
+                    applyPlayerEffectLive(CombatEffects.EffectType.WARPED, 2, 0); // Warped, 2 turns
+                    crossedWarped = true;
+                }
+                default -> { }
+            }
+        }
+        if (crossedCrimson) sendMessage("§cThe crimson fungus tears at you - you're bleeding!");
+        if (crossedWarped) sendMessage("§5The warped fungus twists your senses - Warped!");
+
         // Check if leaving water to land
         GridTile endTile = arena.getTile(path.get(path.size() - 1));
 
@@ -4957,7 +5033,11 @@ public class CombatManager {
         if (arena == null || tile == null) return false;
         if (!(player != null && player.getEntityWorld() instanceof ServerWorld w)) return false;
         BlockPos bp = arena.gridToBlockPos(tile);
-        return w.getBlockState(bp.up(1)).isOf(Blocks.COBWEB)
+        // Check the standing block itself AND the two above it: a schematic cobweb sits at the
+        // player's standing level (bp), which the old up(1)/up(2)-only check missed - so pre-placed
+        // stage cobwebs stopped doing anything.
+        return w.getBlockState(bp).isOf(Blocks.COBWEB)
+            || w.getBlockState(bp.up(1)).isOf(Blocks.COBWEB)
             || w.getBlockState(bp.up(2)).isOf(Blocks.COBWEB);
     }
 
@@ -5314,6 +5394,53 @@ public class CombatManager {
                         net.minecraft.sound.SoundEvents.BLOCK_GRASS_BREAK,
                         net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
                 }
+                sendSync();
+                refreshHighlights();
+                return;
+            }
+        }
+
+        // Crimson / warped fungus breaking: like tall grass, any click on a fungus
+        // hazard tile clears it for 1 AP so the party can carve a safe path. The
+        // fungus block is a full cube sitting at the floor Y (unlike grass's two
+        // half-blocks above the floor), so this restores the biome floor there and
+        // resets the tile to NORMAL. Claims the click so an empty-handed or
+        // out-of-range attempt gives an actionable hint, never "No valid target!".
+        if (clickedTile != null) {
+            GridTile fungus = arena.getTile(clickedTile);
+            if (fungus != null
+                && (fungus.getType() == com.crackedgames.craftics.core.TileType.CRIMSON_FUNGUS
+                 || fungus.getType() == com.crackedgames.craftics.core.TileType.WARPED_FUNGUS)) {
+                GridPos pPos = arena.getPlayerGridPos();
+                int chebyshev = Math.max(
+                    Math.abs(pPos.x() - clickedTile.x()),
+                    Math.abs(pPos.z() - clickedTile.z()));
+                if (chebyshev > 1) {
+                    sendMessage("§cMust be adjacent to break the fungus.");
+                    return;
+                }
+                if (apRemaining < 1) {
+                    sendMessage("§cNot enough AP!");
+                    return;
+                }
+                net.minecraft.server.world.ServerWorld sw =
+                    (net.minecraft.server.world.ServerWorld) player.getEntityWorld();
+                // The fungus plant lives in the Y+1 overlay (gridToBlockPos); the biome floor sits
+                // untouched below it. Break clears just the plant and leaves the floor as-is.
+                net.minecraft.util.math.BlockPos plantPos = arena.gridToBlockPos(clickedTile);
+                net.minecraft.block.BlockState broken = sw.getBlockState(plantPos);
+                fungus.setType(com.crackedgames.craftics.core.TileType.NORMAL);
+                fungus.setBlockType(getBiomeFloorBlock());
+                sw.setBlockState(plantPos, net.minecraft.block.Blocks.AIR.getDefaultState(), 3);
+                apRemaining -= 1;
+                sw.spawnParticles(new net.minecraft.particle.BlockStateParticleEffect(
+                        net.minecraft.particle.ParticleTypes.BLOCK, broken),
+                    plantPos.getX() + 0.5, plantPos.getY() + 0.4, plantPos.getZ() + 0.5,
+                    12, 0.3, 0.3, 0.3, 0.1);
+                sw.playSound(null, plantPos,
+                    net.minecraft.sound.SoundEvents.BLOCK_NETHER_WART_BREAK,
+                    net.minecraft.sound.SoundCategory.BLOCKS, 1.0f, 1.0f);
+                sendMessage("§aYou clear the fungus. §7(-1 AP)");
                 sendSync();
                 refreshHighlights();
                 return;
@@ -14560,6 +14687,7 @@ public class CombatManager {
         // Drop unresolved boss telegraphs on teardown too, so a warning whose boss
         // died before it resolved can't keep broadcasting its tiles into later levels.
         pendingBossWarnings.clear();
+        pendingWeatherArrows.clear();
     }
 
     /**
@@ -16848,13 +16976,14 @@ public class CombatManager {
      *  sees the floor arrows and has a turn to brace/reposition, matching the Frostbound gust's
      *  telegraph-then-resolve cadence. */
     private void triggerWindTelegraph(int dirX, int dirZ) {
-        paintWindGust(dirX, dirZ);
+        paintWindArrows(dirX, dirZ); // warning arrows on every tile, no particles
     }
 
     private void triggerWindGust(int dirX, int dirZ) {
         if (arena == null || player == null) return;
         if (dirX == 0 && dirZ == 0) return;
-        paintWindGust(dirX, dirZ);
+        paintWindArrows(dirX, dirZ);  // keep the arrows this round
+        spawnWindSnow(dirX, dirZ);    // + the snow of the actual blow
 
         // Drag every live party player (each via the same swap-and-move routine ForcedMovement
         // uses for the player target) - loop the full party, not just the closest member, since
@@ -16872,47 +17001,165 @@ public class CombatManager {
             knockEnemyBack(enemy, dirX, dirZ, 2);
         }
 
+        // The gust has resolved - drop the arrows so they don't linger into the next turn.
+        pendingWeatherArrows.clear();
         sendSync();
+    }
+
+    // How many tiles the river current sweeps a unit standing in the water.
+    private static final int RIVER_CURRENT_TILES = 2;
+    // If at least this fraction of water tiles share one nearest-edge direction, the whole
+    // current flows that one way (water "clearly on one side"); otherwise each unit is pulled
+    // toward its own nearest edge (arenas with water on several sides, e.g. the boss ring).
+    private static final double RIVER_UNIFORM_THRESHOLD = 0.6;
+
+    /**
+     * The river biome's current. On the telegraph round ({@code telegraphOnly}) it paints
+     * directional arrows on every water tile pointing the way that tile's current flows; on the
+     * resolve round it also sweeps every player and enemy STANDING on a water tile
+     * {@link #RIVER_CURRENT_TILES} tiles toward the nearest outside edge, reusing the same
+     * drag/knockback primitives as the wind gust (which already stop at the arena edge, so a unit
+     * is never swept out of bounds).
+     *
+     * <p>Direction is resolved once from the water layout: if the water is concentrated on one
+     * side (>= {@link #RIVER_UNIFORM_THRESHOLD} of water tiles share a nearest edge) the whole
+     * current flows that one way; otherwise it flows per-tile toward each tile's nearest edge, so
+     * a water-ringed arena pushes outward in all directions at once.
+     */
+    private void triggerRiverCurrent(boolean telegraphOnly) {
+        if (arena == null || player == null) return;
+
+        // Collect every water tile and its nearest-edge push direction.
+        java.util.List<GridPos> waterTiles = new java.util.ArrayList<>();
+        java.util.Map<GridPos, int[]> tileDir = new java.util.HashMap<>();
+        int[] dirVotes = new int[4]; // [-x, +x, -z, +z] tallies for the uniform check
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos p = new GridPos(x, z);
+                GridTile t = arena.getTile(p);
+                if (t == null) continue;
+                if (t.getType() != TileType.WATER && t.getType() != TileType.DEEP_WATER) continue;
+                int[] dir = nearestEdgeDir(x, z);
+                waterTiles.add(p);
+                tileDir.put(p, dir);
+                if (dir[0] < 0) dirVotes[0]++; else if (dir[0] > 0) dirVotes[1]++;
+                else if (dir[1] < 0) dirVotes[2]++; else if (dir[1] > 0) dirVotes[3]++;
+            }
+        }
+        if (waterTiles.isEmpty()) return;
+
+        // Uniform if one edge direction dominates; else keep the per-tile directions.
+        int[] uniform = null;
+        int best = -1, bestIdx = -1;
+        for (int i = 0; i < 4; i++) if (dirVotes[i] > best) { best = dirVotes[i]; bestIdx = i; }
+        if (best >= waterTiles.size() * RIVER_UNIFORM_THRESHOLD) {
+            uniform = switch (bestIdx) {
+                case 0 -> new int[]{-1, 0};
+                case 1 -> new int[]{ 1, 0};
+                case 2 -> new int[]{ 0,-1};
+                default -> new int[]{ 0, 1};
+            };
+            for (GridPos p : waterTiles) tileDir.put(p, uniform);
+        }
+
+        // Paint per-tile flow arrows on the water into the persistent weather-arrow channel (each
+        // tile points its own flow way). Goes through the same list as the blizzard gust so it
+        // survives the enemy-phase rebroadcasts instead of being wiped the moment it's sent.
+        pendingWeatherArrows.clear();
+        for (GridPos p : waterTiles) {
+            int[] d = tileDir.get(p);
+            pendingWeatherArrows.add(new int[]{p.x(), p.z(), d[0], d[1]});
+        }
+
+        if (telegraphOnly) {
+            syncWarningTiles();
+            return;
+        }
+
+        // Resolve: sweep every unit standing on a water tile toward its tile's flow direction.
+        ServerWorld cw = (ServerWorld) player.getEntityWorld();
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                GridPos p = new GridPos(x, z);
+                BlockPos bp = arena.gridToBlockPos(p);
+                if (tileDir.containsKey(p)) {
+                    cw.spawnParticles(net.minecraft.particle.ParticleTypes.SPLASH,
+                        bp.getX() + 0.5, bp.getY() + 0.4, bp.getZ() + 0.5, 4, 0.3, 0.05, 0.3, 0.1);
+                }
+            }
+        }
+        playPartySound(net.minecraft.sound.SoundEvents.WEATHER_RAIN, 0.7f, 0.8f);
+
+        // Players first: a member is swept only if the tile they're on is water.
+        for (ServerPlayerEntity member : new ArrayList<>(partyPlayers.isEmpty()
+                ? java.util.List.of(player) : partyPlayers)) {
+            if (member == null || member.isRemoved() || member.isDisconnected()) continue;
+            if (deadPartyMembers.contains(member.getUuid())) continue;
+            int[] d = tileDir.get(gridPosOf(member));
+            if (d == null) continue;
+            dragPartyMember(member, d[0], d[1], RIVER_CURRENT_TILES);
+        }
+        // Enemies: same rule, keyed off the enemy's own tile.
+        for (CombatEntity enemy : new ArrayList<>(enemies)) {
+            if (enemy == null || !enemy.isAlive()) continue;
+            int[] d = tileDir.get(enemy.getGridPos());
+            if (d == null) continue;
+            knockEnemyBack(enemy, d[0], d[1], RIVER_CURRENT_TILES);
+        }
+
+        // The current has resolved - drop the flow arrows so they don't linger into the next turn.
+        pendingWeatherArrows.clear();
+        sendSync();
+    }
+
+    /** The push direction toward the nearest arena edge from tile (x,z). Compares the four edge
+     *  distances (left=x, right=W-1-x, top=z, bottom=H-1-z) and returns the unit vector toward the
+     *  closest; ties break toward the X axis, then negative, so the choice is deterministic. */
+    private int[] nearestEdgeDir(int x, int z) {
+        int w = arena.getWidth(), h = arena.getHeight();
+        int left = x, right = w - 1 - x, top = z, bottom = h - 1 - z;
+        int min = Math.min(Math.min(left, right), Math.min(top, bottom));
+        if (left == min) return new int[]{-1, 0};
+        if (right == min) return new int[]{1, 0};
+        if (top == min) return new int[]{0, -1};
+        return new int[]{0, 1};
     }
 
     /** Paint the arena-wide directional arrow glyphs + wind particles for a gust in (dirX,dirZ).
      *  Shared by the telegraph round and the resolve round so both show the same sweep. */
-    private void paintWindGust(int dirX, int dirZ) {
+    /** Paint the directional warning arrows on EVERY arena tile (all pointing the drag way).
+     *  This is the telegraph - no particles, so the arrows read cleanly as the warning. */
+    private void paintWindArrows(int dirX, int dirZ) {
         if (arena == null || player == null) return;
         if (dirX == 0 && dirZ == 0) return;
-
-        // Sweep arrows across every tile in the arena, exactly like castHarpoonPull's gustTiles.
-        List<GridPos> gustTiles = new ArrayList<>();
+        // Store the arrows in the persistent weather-arrow list (uniform dir on every tile), then
+        // let the normal broadcast fold them in. A one-off payload here would be wiped by the very
+        // next broadcastTileSets/syncWarningTiles, which is exactly why weather arrows never showed.
+        pendingWeatherArrows.clear();
         for (int x = 0; x < arena.getWidth(); x++) {
             for (int z = 0; z < arena.getHeight(); z++) {
-                gustTiles.add(new GridPos(x, z));
+                pendingWeatherArrows.add(new int[]{x, z, dirX, dirZ});
             }
         }
-        java.util.List<Integer> arrowList = new java.util.ArrayList<>(gustTiles.size() * 4);
-        for (GridPos t : gustTiles) {
-            arrowList.add(t.x());
-            arrowList.add(t.z());
-            arrowList.add(dirX);
-            arrowList.add(dirZ);
-        }
-        sendToAllParty(new TileSetPayload(
-            new int[0], new int[0], new int[0], new int[0], new int[0], "", new int[0],
-            arrowList.stream().mapToInt(Integer::intValue).toArray(),
-            new int[0], new int[0]));
+        syncWarningTiles();
+    }
 
-        // Directional wind particles along the whole swept arena, matching renderBossWarning's
-        // DIRECTIONAL case so the server-side layer reads "that way" too.
+    /** Spawn the drifting snow/cloud that streams in the drag direction - the visual of the
+     *  ACTUAL blow, shown only when the gust resolves (not on the telegraph). */
+    private void spawnWindSnow(int dirX, int dirZ) {
+        if (arena == null || player == null) return;
         ServerWorld gustWorld = (ServerWorld) player.getEntityWorld();
-        for (GridPos t : gustTiles) {
-            BlockPos bp = arena.gridToBlockPos(t);
-            gustWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
-                bp.getX() + 0.5, bp.getY() + 1.2, bp.getZ() + 0.5,
-                0, dirX, 0.02, dirZ, 0.18);
-            gustWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE,
-                bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
-                0, dirX, 0.0, dirZ, 0.3);
+        for (int x = 0; x < arena.getWidth(); x++) {
+            for (int z = 0; z < arena.getHeight(); z++) {
+                BlockPos bp = arena.gridToBlockPos(new GridPos(x, z));
+                gustWorld.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
+                    bp.getX() + 0.5, bp.getY() + 1.2, bp.getZ() + 0.5,
+                    0, dirX, 0.02, dirZ, 0.18);
+                gustWorld.spawnParticles(net.minecraft.particle.ParticleTypes.SNOWFLAKE,
+                    bp.getX() + 0.5, bp.getY() + 1.0, bp.getZ() + 0.5,
+                    0, dirX, 0.0, dirZ, 0.3);
+            }
         }
-        sendSync();
     }
 
     /**
@@ -17196,6 +17443,13 @@ public class CombatManager {
                             arena.getOrigin().getX() + x,
                             arena.getOrigin().getY(),
                             arena.getOrigin().getZ() + z);
+                        // Fungus plants live in the Y+1 overlay and never touched the floor block,
+                        // so on revert just clear the plant above - repainting floor-Y would stomp
+                        // the intact biome floor with a redundant block.
+                        if (before == TileType.CRIMSON_FUNGUS || before == TileType.WARPED_FUNGUS) {
+                            world.setBlockState(bp.up(), Blocks.AIR.getDefaultState());
+                            continue;
+                        }
                         // Temporary wall-style obstacle terrain is rendered in the
                         // obstacle layer (Y+1); clear it when the tile restores.
                         if (before == TileType.OBSTACLE) {
@@ -19791,8 +20045,9 @@ public class CombatManager {
                     || heldWeapon == Items.CROSSBOW;
                 if (rangedWeapon) range += 2 * combatEffects.getAirtimeLevel();
             }
-            // Blindness (-2) and Darkness (-1) shrink vision/range, floored to 1.
-            int visionPenalty = combatEffects.getBlindnessPenalty() + combatEffects.getDarknessPenalty();
+            // Blindness (-2/level) shrinks attack range, floored to 1. (Darkness
+            // is now a client-side fog of war, not a range shave - see CombatState.)
+            int visionPenalty = combatEffects.getBlindnessPenalty();
             if (visionPenalty > 0) range = Math.max(1, range - visionPenalty);
         }
         return range;
@@ -27960,9 +28215,24 @@ public class CombatManager {
                 java.util.Set<GridPos> reachable = Pathfinding.getPlayerReachableTilesWithJumps(
                     arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(),
                     flyOverObstacles, playerJumpProfile(), hasRespiration());
+                // Warped: handleMove mirrors the clicked tile about the player before moving, so
+                // the CLICKABLE tile for a given destination is that destination's mirror. Publish
+                // the mirrored reachable set (dropping mirrors that fall off the arena) so the
+                // player can actually click to reach a real destination - otherwise, to walk
+                // "forward" they'd have to click the tile behind them, which may be blocked or
+                // occupied, and the move would be unselectable. This keeps it a positioning puzzle
+                // where every highlighted tile is a legal move.
+                boolean warpedHighlights = combatEffects.hasEffect(CombatEffects.EffectType.WARPED);
+                GridPos wp = arena.getPlayerGridPos();
                 for (GridPos gp : reachable) {
-                    moveList.add(gp.x());
-                    moveList.add(gp.z());
+                    GridPos shown = gp;
+                    if (warpedHighlights) {
+                        GridPos mirror = new GridPos(2 * wp.x() - gp.x(), 2 * wp.z() - gp.z());
+                        if (!arena.isInBounds(mirror)) continue; // no clickable tile maps here
+                        shown = mirror;
+                    }
+                    moveList.add(shown.x());
+                    moveList.add(shown.z());
                 }
             }
         } else {
@@ -28154,6 +28424,15 @@ public class CombatManager {
         for (GridPos wt : raidPendingSpawnTiles) {
             warningList.add(wt.x());
             warningList.add(wt.z());
+        }
+
+        // Biome-weather directional arrows (blizzard gust, river current) - the same persistent
+        // arrow channel as boss telegraphs, so they survive every rebroadcast.
+        for (int[] a : pendingWeatherArrows) {
+            warningArrowList.add(a[0]);
+            warningArrowList.add(a[1]);
+            warningArrowList.add(a[2]);
+            warningArrowList.add(a[3]);
         }
 
         // Convert lists to int arrays
@@ -28406,7 +28685,7 @@ public class CombatManager {
             case HASTE -> net.minecraft.entity.effect.StatusEffects.HASTE;
             case SLOW_FALLING -> net.minecraft.entity.effect.StatusEffects.SLOW_FALLING;
             case WATER_BREATHING -> net.minecraft.entity.effect.StatusEffects.WATER_BREATHING;
-            case BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME -> null; // no vanilla equivalent
+            case BURNING, SOAKED, CONFUSION, BLEEDING, AIRTIME, WARPED -> null; // no vanilla equivalent
         };
     }
 
@@ -28465,6 +28744,14 @@ public class CombatManager {
                     }
                 }
             }
+        }
+        // Biome-weather directional arrows (blizzard gust, river current) - folded into the same
+        // persistent arrow channel so they survive the enemy-phase rebroadcasts.
+        for (int[] a : pendingWeatherArrows) {
+            arrowList.add(a[0]);
+            arrowList.add(a[1]);
+            arrowList.add(a[2]);
+            arrowList.add(a[3]);
         }
         sendToAllParty(new TileSetPayload(
             new int[0], new int[0], new int[0],

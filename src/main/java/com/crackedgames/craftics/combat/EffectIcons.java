@@ -108,6 +108,7 @@ public final class EffectIcons {
         put(new Icon("darkness", BLACK, true),       "darkness");
         put(new Icon("soaked", BLUE, true),          "soaked");
         put(new Icon("confusion", PINK, true),       "confusion", "confused");
+        put(new Icon("warped", PURPLE, true),        "warped");
 
         // ---- Enemy-only states (no player equivalent) ----
         put(new Icon("stunned", YELLOW, true),       "stunned");

@@ -2146,7 +2146,10 @@ public class ArenaBuilder {
                 /*placeCactusFlowerToppers(world, ox, oy, oz, w, h, rng);
                 *///?}
             }
-            case "snowy" -> placePowderSnowPatch(world, ox, oy, oz, w, h, rng);
+            case "snowy" -> {
+                placePowderSnowPatch(world, ox, oy, oz, w, h, rng);
+                placeSnowyFerns(world, ox, oy, oz, w, h, rng);
+            }
             case "cave", "deep_dark" -> placePitObstacles(world, ox, oy, oz, w, h, 0, 7, rng);
             case "nether" -> placeFloorHazards(world, ox, oy, oz, w, h, Blocks.LAVA, 2, 5, rng);
             case "crimson_forest" -> placeFallenNetherLogs(world, ox, oy, oz, w, h, Blocks.CRIMSON_STEM, rng);
@@ -2171,6 +2174,21 @@ public class ArenaBuilder {
         for (int i = 0; i < grassCount; i++) {
             tryPlaceDoublePlant(world, ox, oy, oz, w, h, Blocks.TALL_GRASS, used, rng);
         }
+        for (int i = 0; i < fernCount; i++) {
+            tryPlaceDoublePlant(world, ox, oy, oz, w, h, Blocks.LARGE_FERN, used, rng);
+        }
+    }
+
+    /**
+     * Scatter a couple of large fern patches across a snowy arena (taiga flavor).
+     * Same 2-block-tall stealth plant as the plains ferns - the occupant tile
+     * becomes {@code TALL_FERN} in the post-placement scan, so it hides and can be
+     * broken for 1 AP like any other bush.
+     */
+    private static void placeSnowyFerns(ServerWorld world, int ox, int oy, int oz,
+                                         int w, int h, Random rng) {
+        int fernCount = 1 + rng.nextInt(3); // 1-3 large fern patches
+        java.util.Set<Long> used = new java.util.HashSet<>();
         for (int i = 0; i < fernCount; i++) {
             tryPlaceDoublePlant(world, ox, oy, oz, w, h, Blocks.LARGE_FERN, used, rng);
         }

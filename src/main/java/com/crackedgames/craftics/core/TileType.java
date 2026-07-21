@@ -22,6 +22,11 @@ public enum TileType {
                                       // traveled has a 50% chance to stop movement there
                                       // (probabilistic cobweb; see the path truncation in
                                       // CombatManager). Placed by the jungle_rain biome effect.
+    // Fungus hazard tiles: walkable, cobweb-like. Crossing one does NOT stop the player,
+    // but inflicts a status effect live on their own turn (see the fungus scan in
+    // CombatManager.handleMove). Scattered at fight start by the crimson/warped biome effects.
+    CRIMSON_FUNGUS(true, false, 0, false), // crimson forest - inflicts Bleeding 1 on cross
+    WARPED_FUNGUS(true, false, 0, false),  // warped forest - inflicts Warped 2 on cross
     // Occupants are visually hidden (INVISIBILITY effect) and mobs can't target them
     // except from an adjacent tile. Breakable by attacking the tile for 1 AP.
     TALL_GRASS(true, false, 0, true),

@@ -23,6 +23,11 @@ public final class EffectFormulas {
 
     private EffectFormulas() {}
 
+    /** Hard ceiling on a single bleed/burn tick. High stacks/levels make these grow without
+     *  bound (bleed is triangular in the stack count), so one tick is clamped here to keep a
+     *  runaway DOT from one-shotting a full-HP target. */
+    public static final int MAX_DOT_TICK = 100;
+
     /**
      * Poison damage for one tick. Front-loaded: the {@code turnsRemaining} term means it hits
      * hardest on the first tick and fades as the effect runs out, so cleansing it late saves
@@ -47,9 +52,9 @@ public final class EffectFormulas {
         return Math.max(1, base * elapsed);
     }
 
-    /** Burning damage for one tick. Flat: the same every turn. */
+    /** Burning damage for one tick. Flat: the same every turn. Clamped to {@link #MAX_DOT_TICK}. */
     public static int burningTick(int level, int specialAffinity) {
-        return Math.max(1, 1 + level + specialAffinity);
+        return Math.min(MAX_DOT_TICK, Math.max(1, 1 + level + specialAffinity));
     }
 
     /**
@@ -58,7 +63,7 @@ public final class EffectFormulas {
      */
     public static int bleedTick(int stacks) {
         if (stacks <= 0) return 0;
-        return stacks * (stacks + 1) / 2;
+        return Math.min(MAX_DOT_TICK, stacks * (stacks + 1) / 2);
     }
 
     /** Range lost to vision debuffs: Blindness costs 2 per level, Darkness 1, and they stack. */

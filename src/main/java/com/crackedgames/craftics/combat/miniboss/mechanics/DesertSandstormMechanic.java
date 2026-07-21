@@ -6,6 +6,7 @@ import com.crackedgames.craftics.combat.miniboss.MinibossSpawns;
 import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -96,6 +97,8 @@ public final class DesertSandstormMechanic implements MinibossMechanic {
             if (pos == null) continue;
             used.add(pos);
             ctx.spawnMob("minecraft:husk", pos, 14, 4, 1, 1);
+            // Sandy puff as the husk staggers out of the sandstorm.
+            ctx.spawnHazardBurst(ParticleTypes.POOF, pos);
             spawnedAny = true;
         }
         if (spawnedAny) {

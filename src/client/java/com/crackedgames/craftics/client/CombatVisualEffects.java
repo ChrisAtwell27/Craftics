@@ -292,6 +292,14 @@ public class CombatVisualEffects {
                     Math.min(220, 170 + darkness * 8),
                     scaledDepth(0.40f, darkness, 0.10f, 0.7f));
             }
+            // Warped: a blue vignette while your movement is mirrored - a visual cue that the
+            // arena's directions are twisted this turn.
+            int warped = CombatState.getWarpedLevel();
+            if (warped > 0) {
+                drawVignette(ctx, screenW, screenH, 0x3355FF,
+                    Math.min(210, 150 + warped * 16),
+                    scaledDepth(0.34f, warped, 0.10f, 0.75f));
+            }
             int poison = CombatState.getPoisonLevel();
             if (poison > 0) {
                 drawVignette(ctx, screenW, screenH, 0x33AA33,

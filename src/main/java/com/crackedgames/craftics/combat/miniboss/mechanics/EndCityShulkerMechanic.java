@@ -5,6 +5,7 @@ import com.crackedgames.craftics.combat.miniboss.MinibossMechanic;
 import com.crackedgames.craftics.combat.miniboss.MinibossSpawns;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -107,6 +108,7 @@ public final class EndCityShulkerMechanic implements MinibossMechanic {
             if (pos == null) continue;
             used.add(pos);
             ctx.spawnMob("minecraft:shulker", pos, 14, 4, 2, 4);
+            ctx.spawnHazardBurst(ParticleTypes.PORTAL, pos);
             spawnedAny = true;
         }
         if (spawnedAny) {

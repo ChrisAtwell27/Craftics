@@ -162,6 +162,13 @@ public class GridTile {
             case FROST -> Blocks.PACKED_ICE;
             case MUD -> Blocks.MUD;
             case SCULK -> Blocks.SCULK;
+            // The crimson / warped fungus PLANTS. Unlike other tiles these are not painted at
+            // floor-Y (a plant there would float and fail to render); the fungus TileFn in
+            // CombatManager places this block in the Y+1 overlay slot (where the player stands,
+            // like a cobweb) and leaves the biome floor intact below. See tickTemporaryTerrain /
+            // the fungus break path, which both clear the Y+1 block on revert.
+            case CRIMSON_FUNGUS -> Blocks.CRIMSON_FUNGUS;
+            case WARPED_FUNGUS -> Blocks.WARPED_FUNGUS;
             // Stair / elevated default blocks - only used if the GridTile is
             // constructed without an explicit block. ArenaBuilder always
             // passes the real schematic block (e.g. the actual stair block,

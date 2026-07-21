@@ -8,6 +8,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
 import net.minecraft.block.Blocks;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -87,7 +88,12 @@ public final class PlainsGraveyardMechanic implements MinibossMechanic {
             if (pos == null) continue;
             used.add(pos);
             CombatEntity grave = ctx.spawnBlockObject("craftics:grave", pos, GRAVE_HP, Blocks.COBBLESTONE_WALL);
-            if (grave != null) graves.add(pos);
+            if (grave != null) {
+                graves.add(pos);
+                // Grave rises from the ground - soul wisps and smoke on the placed tile.
+                ctx.spawnHazardBurst(ParticleTypes.SOUL, pos);
+                ctx.spawnTileParticle(ParticleTypes.SMOKE, pos, 6, 0.3, 0.02);
+            }
         }
         ctx.banner(introTitle());
         // Low tolling bell to open the encounter - the graveyard's fight-start cue.
@@ -105,6 +111,8 @@ public final class PlainsGraveyardMechanic implements MinibossMechanic {
             GridPos spot = adjacentFree(ctx, g);
             if (spot != null) {
                 ctx.spawnMob("minecraft:zombie", spot, 12 + hpBonus, 3, 0, 1);
+                // Soul burst on the tile where the grave raises its zombie.
+                ctx.spawnHazardBurst(ParticleTypes.SOUL, spot);
                 raisedAny = true;
             }
         }

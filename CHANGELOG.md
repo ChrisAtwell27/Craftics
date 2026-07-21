@@ -14,8 +14,23 @@ Biome Weather
 - Snowy (from level 4): blizzard winds telegraph with floor arrows, then drag every fighter one way
 - Jungle (from level 2): rain churns grass and dirt into mud - crossing a mud tile has a 50% chance to stop you (or an enemy) in place
 - Desert (from level 4): a sandstorm blinds everyone for a turn every few rounds
+- River (from level 1): a current runs through the water. Every two rounds it warns with flow arrows on every water tile, then sweeps anyone still standing in the water toward the nearest bank. Where the water sits on one side it all flows that way; on water-ringed arenas it pushes outward in every direction at once
 - Every weather effect now has its own ambience: falling rain, drifting snow with a wind howl, blowing sand, plus one-shot sound cues on the special-level events
 - Fixed biome weather not activating at all in game (the effect settings were being dropped when biome levels were renumbered)
+- Fixed the warning arrows for weather pushes (blizzard gust, river current) never showing - they now use the same persistent arrow telegraph as the Frostbound Hunter's gust
+
+Biome Hazards
+
+- Crimson Forest levels now scatter crimson fungus across the floor - walk through a patch and it makes you bleed
+- Warped Forest levels scatter warped fungus that warps your movement for two turns when crossed, on top of the biome's periodic warp
+- Crimson and warped fungus can be cleared for 1 AP by attacking it, like breaking tall grass
+- Crimson and warped fungus, mud, and the sculk sensor range ring now show a hover tooltip explaining what they do
+- Snowy biomes can now grow large ferns you can hide in (and break) like the plains grass
+- Warped Forest now has a persistent warp effect: starting turn two and every other turn, your movement is mirrored (attacks are unaffected)
+- Fixed Warped movement being unusable when the mirror tile was blocked: the highlighted tiles are now the mirror of where you can actually reach, so every green tile is a legal move
+- Jungle levels can open with a standing mud bog (an irregular patch), separate from the rain's ongoing mud
+- Jungle arenas now use grass and moss floors instead of mud, so the rain has fresh ground to churn
+- Fixed pre-placed stage cobwebs doing nothing when walked through
 
 Sculk Sensors
 
@@ -41,7 +56,18 @@ Combat
 - Five enchants now do something in combat. Efficiency: 10% per level to reduce an action's AP cost by 1 (mining and attacks). Fortune: chance at bonus loot when mining or on a killing blow. Silk Touch: mined obstacles drop their block, and killing blows can drop the enemy's head. Respiration: swim deep water for a few turns before drowning. Swift Sneak: extra speed on your first turn
 - Efficiency, Fortune, and Silk Touch tooltips now describe what they actually do on the item they're on (pickaxe vs weapon)
 - Night Vision Goggles now grant immunity to Blindness and Darkness (previously +1 attack range)
+- Blindness now cuts attack range by 2 per level (Darkness cuts 1, and they stack)
+- Bleeding and Burning ticks are now capped at 100 damage so a runaway stack can't one-shot a full-health target
+- Fixed weather debuffs (blindness, darkness, slowness) wearing off before your next turn instead of lasting it
 - Fixed the Move tool being throwable onto the ground, and fixed items vanishing instead of dropping when you press Q
+
+Event Effects
+
+- Every biome miniboss now throws particles: lava and flame on erupting vents, splashes on the flood, dust on falling rubble, portal swirls on void collapse and enderman spawns, spores on the fungal blooms, and spawn puffs on every reinforcement wave
+- The Void Rift now warns which ring of the arena will crumble a full turn before it drops, instead of vanishing under you with no notice
+- The Magma Surge telegraph now marks the doomed vent tiles in red with a hiss, so you can see and dodge the eruption
+- The Chorus Bloom now tells you (with a sound and message) when it confuses an enemy standing in the grove
+- Crimson and Warped Forest now have their own drifting-spore ambience and biome sound loop, and the sculk sensors give off a faint sculk haze so you can spot them
 
 Visual
 

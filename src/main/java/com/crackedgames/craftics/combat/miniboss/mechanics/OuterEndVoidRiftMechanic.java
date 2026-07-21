@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -39,6 +40,10 @@ public final class OuterEndVoidRiftMechanic implements MinibossMechanic {
 
     /** How many rings have been crumbled so far, counting inward from the arena border. */
     private int ringsCrumbled = 0;
+    /** The ring index warned last round and due to crumble this round (-1 = nothing pending, so
+     *  the very first round only telegraphs and crumbles nothing - the party always gets a round
+     *  of warning before any ground vanishes). */
+    private int warnedRing = -1;
 
     @Override
     public String biomeId() {
@@ -73,6 +78,7 @@ public final class OuterEndVoidRiftMechanic implements MinibossMechanic {
     @Override
     public void onFightStart(MinibossContext ctx) {
         ringsCrumbled = 0;
+        warnedRing = -1;
         ctx.banner(introTitle());
         ctx.playSound(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 0.6f, 0.6f);
     }
@@ -82,28 +88,55 @@ public final class OuterEndVoidRiftMechanic implements MinibossMechanic {
         GridArena arena = ctx.arena();
         int width = arena.getWidth();
         int height = arena.getHeight();
-
-        int maxRings = Math.min(width, height) / 2 - 2;
-        if (ringsCrumbled >= maxRings) return; // stop crumbling - preserve a safe core
-
         GridPos playerStart = new GridPos(width / 2, 0);
-        int ring = ringsCrumbled;
-        boolean crumbledAny = false;
+        int maxRings = Math.min(width, height) / 2 - 2;
 
-        for (int x = 0; x < width; x++) {
-            for (int z = 0; z < height; z++) {
-                if (Math.min(Math.min(x, width - 1 - x), Math.min(z, height - 1 - z)) != ring) continue;
-                GridPos pos = new GridPos(x, z);
+        // 1. Resolve the ring telegraphed last round: it crumbles into the void NOW. The party
+        //    saw the warning last round and had a full turn to step off it.
+        if (warnedRing >= 0) {
+            boolean crumbledAny = false;
+            for (GridPos pos : ringTiles(warnedRing, width, height)) {
                 if (pos.x() == playerStart.x() && pos.z() == playerStart.z()) continue; // never void the spawn
                 ctx.placeTemporaryTile(pos, TileType.VOID, VOID_DURATION);
+                ctx.spawnHazardBurst(ParticleTypes.PORTAL, pos);
+                ctx.spawnTileParticle(ParticleTypes.REVERSE_PORTAL, pos, 6, 0.3, 0.02);
                 crumbledAny = true;
+            }
+            ringsCrumbled++;
+            warnedRing = -1;
+            if (crumbledAny) {
+                ctx.message("§5The islands crumble into the void!");
+                ctx.playSound(SoundEvents.BLOCK_STONE_FALL, 0.6f, 0.6f);
             }
         }
 
-        ringsCrumbled++;
-        if (crumbledAny) {
-            ctx.message("§5The islands crumble into the void!");
-            ctx.playSound(SoundEvents.BLOCK_STONE_FALL, 0.6f, 0.6f);
+        // 2. Telegraph the next ring (unless the safe core has been reached), so it crumbles a
+        //    round from now. Red danger overlay + a portal shimmer + a groaning cue on the tiles.
+        if (ringsCrumbled < maxRings) {
+            List<GridPos> nextRing = new ArrayList<>();
+            for (GridPos pos : ringTiles(ringsCrumbled, width, height)) {
+                if (pos.x() == playerStart.x() && pos.z() == playerStart.z()) continue;
+                nextRing.add(pos);
+                ctx.spawnTileParticle(ParticleTypes.PORTAL, pos, 3, 0.35, 0.02);
+            }
+            if (!nextRing.isEmpty()) {
+                warnedRing = ringsCrumbled;
+                ctx.warnTiles(nextRing);
+                ctx.message("§5The outer islands groan - they'll fall into the void next turn!");
+                ctx.playSound(SoundEvents.BLOCK_RESPAWN_ANCHOR_DEPLETE.value(), 0.7f, 0.5f);
+            }
         }
+    }
+
+    /** All tiles on the square ring at {@code inset} tiles in from the arena border. */
+    private static List<GridPos> ringTiles(int inset, int width, int height) {
+        List<GridPos> tiles = new ArrayList<>();
+        for (int x = 0; x < width; x++) {
+            for (int z = 0; z < height; z++) {
+                if (Math.min(Math.min(x, width - 1 - x), Math.min(z, height - 1 - z)) != inset) continue;
+                tiles.add(new GridPos(x, z));
+            }
+        }
+        return tiles;
     }
 }

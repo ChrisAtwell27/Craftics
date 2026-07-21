@@ -79,6 +79,9 @@ public final class BlizzardWindsEffect implements BiomeEffect {
             ctx.playSound(SoundEvents.ENTITY_PHANTOM_FLAP, 0.8f, 0.6f);
             ctx.windGust(dirX, dirZ);
             windGustFrostAccent(ctx, dirX, dirZ);
+            // The gust chills as it drags: Slowness I for 2 of the player's turns. applyPartyEffect
+            // adds the enemy-phase-tick compensation, so 2 here = 2 turns the player actually feels.
+            ctx.applyPartyEffect(com.crackedgames.craftics.combat.CombatEffects.EffectType.SLOWNESS, 2);
             return; // don't also telegraph the same round - one action per round reads clearly
         }
 

@@ -8,6 +8,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -98,12 +99,16 @@ public final class CaveInMechanic implements MinibossMechanic {
             if (pos == null) continue;
             chosen.add(pos);
             ctx.placeTemporaryTile(pos, TileType.RUBBLE, RUBBLE_DURATION);
+            // Dust puff where the ceiling caves in.
+            ctx.spawnHazardBurst(ParticleTypes.POOF, pos);
 
             // If a living enemy happens to be standing on the tile, it gets crushed.
             for (CombatEntity occupant : ctx.enemies()) {
                 if (occupant.isAlive() && pos.equals(occupant.getGridPos())) {
                     occupant.takeDamage(RUBBLE_DAMAGE);
                     occupant.setStunned(true);
+                    // Extra impact puff on the crushed occupant's tile.
+                    ctx.spawnHazardBurst(ParticleTypes.POOF, pos);
                     ctx.message("§8The ceiling crushes " + occupant.getDisplayName() + "!");
                     break;
                 }

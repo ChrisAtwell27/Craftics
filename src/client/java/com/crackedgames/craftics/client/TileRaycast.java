@@ -208,6 +208,10 @@ public class TileRaycast {
             boolean pickable = e instanceof net.minecraft.entity.mob.MobEntity
                 || e instanceof net.minecraft.entity.player.PlayerEntity;
             if (!pickable || !e.isAlive() || e.isInvisible()) continue;
+            // Darkness fog-of-war: an enemy hidden from this client shouldn't be
+            // hover-pickable via its (unrendered) body - that would leak its
+            // position through the target highlight.
+            if (CombatState.isEnemyHiddenByDarkness(e.getId())) continue;
             var hit = e.getBoundingBox().expand(0.08).raycast(start, end);
             if (hit.isEmpty()) continue;
             double distSq = start.squaredDistanceTo(hit.get());

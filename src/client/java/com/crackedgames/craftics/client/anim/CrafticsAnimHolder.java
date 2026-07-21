@@ -27,4 +27,14 @@ public interface CrafticsAnimHolder {
      */
     default float craftics$getBounceY() { return 0f; }
     default void craftics$setBounceY(float y) {}
+
+    /**
+     * Whether this arena enemy is currently hidden from the local player by the
+     * Darkness effect. Ferried onto the render-state snapshot during
+     * {@code updateRenderState} (where the live entity + its id are available)
+     * so the 1.21.3+ render-cancel mixin can read it without an entity ref.
+     * Unused on 1.21.1, which reads the entity directly in the render mixin.
+     */
+    default boolean craftics$isDarkHidden() { return false; }
+    default void craftics$setDarkHidden(boolean hidden) {}
 }

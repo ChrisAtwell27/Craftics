@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
@@ -86,6 +87,7 @@ public final class CrimsonFungalBloomMechanic implements MinibossMechanic {
             GridPos pos = findSeedTile(arena, playerStart, sporeTiles, ctx.rng());
             if (pos == null) continue;
             ctx.placeTemporaryTile(pos, TileType.SPORE, SPORE_DURATION);
+            ctx.spawnTileParticle(ParticleTypes.SPORE_BLOSSOM_AIR, pos, 5, 0.3, 0.01);
             sporeTiles.add(pos);
         }
     }
@@ -113,6 +115,7 @@ public final class CrimsonFungalBloomMechanic implements MinibossMechanic {
             if (next == null) continue;
 
             ctx.placeTemporaryTile(next, TileType.SPORE, SPORE_DURATION);
+            ctx.spawnTileParticle(ParticleTypes.SPORE_BLOSSOM_AIR, next, 5, 0.3, 0.01);
             newlyBloomed.add(next);
         }
 
