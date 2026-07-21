@@ -73,6 +73,25 @@ Visual
 
 - New skull icons for the Poison and Wither status effects
 
+Boss Attacks
+
+- Boss attacks were reworked to claim space and feel threatening instead of poking single tiles. Attacks now sweep full lanes, rings and multi-zone barrages, and every telegraph paints exactly the tiles that will be hit so you always know where to stand
+- The Sandstorm Pharaoh's Curse of the Sands finally does something: it is a telegraphed hex that, once it lands, sprouts a live sand mine on every tile you step off for the next few turns. Dodge the initial cast and the curse never sticks. Its Sandstorm also grew from a 3x3 to a 5x5 storm that saps your strength
+- The Molten King's Lava Cage now walls off the full ring around you with a single escape gap on the side away from the boss, instead of a few loose embers. The Ashen Warlord's phase 2 Fire Pillar erupts as an eight-lane star of flame. The Tidecaller's Trident Storm lands as three overlapping splash zones so a lazy sidestep walks you into the next one. The Chorus Mind's phase 2 Chorus Bomb detonates a full 5x5 and drags you toward the boss
+- Infinite Mode bosses share the same upgraded movepool, so every random boss reads clearly and leaves real counterplay
+
+Combat Effects
+
+- Darkness is now a fog of war instead of a minor range cut. While you are in Darkness, any enemy more than 2 tiles away vanishes from your screen - model, threat tiles, roster and hover - until it closes in or the effect ends. Only you are blinded; teammates see the battlefield normally
+
+Multiplayer
+
+- Dialed back enemy HP scaling in multiplayer. It was ramping too hard, so the per-extra-player bonus was lowered (2-player fights are now 1.75x enemy HP instead of the previous heavier curve)
+
+Crash Fixes
+
+- Fixed a startup crash on 1.21.3, 1.21.4 and 1.21.5. The inventory stat-panel click handler targeted a method that only exists on 1.21.1, so the mod failed to load at launch on the newer versions. It now targets a method present on every version
+
 0.3.1
 Crash Fixes
 
