@@ -486,6 +486,19 @@ public final class CrafticsEnchantments {
     }
 
     /**
+     * The level of {@code entry} on the OFFHAND item (same item-type filter as
+     * {@link #heldLevel}). For enchants that assist the main hand's action - e.g.
+     * Timberfall on an offhand axe crushing enemies when the PICKAXE in the main
+     * hand mines an obstacle.
+     */
+    public static int offhandLevel(ServerPlayerEntity player, Entry entry) {
+        if (player == null || entry == null) return 0;
+        ItemStack off = player.getOffHandStack();
+        if (off.isEmpty() || !matchesEntry(entry, off)) return 0;
+        return PlayerCombatStats.getEnchantLevel(off, entry.fullId());
+    }
+
+    /**
      * The level of {@code entry} on the armor piece actually WORN in the entry's slot.
      *
      * <p>The armor counterpart to {@link #heldLevel}: an armor enchantment protects the body

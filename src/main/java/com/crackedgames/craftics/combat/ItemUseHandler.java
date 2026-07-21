@@ -406,7 +406,7 @@ public class ItemUseHandler {
         } else if (item == Items.COBWEB) {
             return useCobweb(player, arena, targetTile, held);
         } else if (item == Items.SHIELD) {
-            return "§9Shield is passive! Equip in offhand for +1 DEF and 25% chance to block attacks.";
+            return "§9Shield is passive! Equip in offhand for +1 AC and 25% chance to block attacks.";
         } else if (item == Items.FLINT_AND_STEEL) {
             return useFlintAndSteel(player, arena, targetTile, held);
         } else if (item == Items.TOTEM_OF_UNDYING) {
@@ -512,7 +512,7 @@ public class ItemUseHandler {
 
         // Risky foods - apply debuff effects via the hooked path so addon
         // immunities (e.g. Antidote Vessel) can intercept them.
-        CombatManager cm = CombatManager.get(player);
+        CombatManager cm = CombatManager.getActiveCombat(player.getUuid());
         java.util.Random rng = java.util.concurrent.ThreadLocalRandom.current();
         // These foods apply the CRAFTICS combat effect only - the vanilla
         // StatusEffect doubled up as real per-tick HP damage that bypasses the
@@ -619,7 +619,7 @@ public class ItemUseHandler {
                     int turns = getScaledPotionTurns(player, combatType, sei.getDuration());
                     // Route through the live top-up so a SPEED/HASTE potion drunk on
                     // your turn grants movement/AP this turn, not next.
-                    CombatManager.get(player).applyPlayerEffectLive(combatType, turns, scaledAmplifier);
+                    CombatManager.getActiveCombat(player.getUuid()).applyPlayerEffectLive(combatType, turns, scaledAmplifier);
                     // Apply vanilla effect for particles (infinite duration, removed when combat effect expires)
                     player.addStatusEffect(new StatusEffectInstance(
                         sei.getEffectType(), -1, scaledAmplifier, false, true));
@@ -653,7 +653,9 @@ public class ItemUseHandler {
         return "§dDrank potion!";
     }
 
-    private static CombatEffects.EffectType mapStatusEffect(net.minecraft.entity.effect.StatusEffect effect) {
+    /** Public: the client potion tooltip (CombatTooltips) reuses this mapping so hover
+     *  text and the actual applied effect can never drift apart. */
+    public static CombatEffects.EffectType mapStatusEffect(net.minecraft.entity.effect.StatusEffect effect) {
         // Buffs
         if (effect == StatusEffects.SPEED.value()) return CombatEffects.EffectType.SPEED;
         if (effect == StatusEffects.STRENGTH.value()) return CombatEffects.EffectType.STRENGTH;
@@ -678,7 +680,9 @@ public class ItemUseHandler {
         return null;
     }
 
-    private static int getTurnsForPotion(CombatEffects.EffectType type, int vanillaDurationTicks) {
+    /** Public: the client potion tooltip (CombatTooltips) calls this with the effect's real
+     *  vanilla duration so extended (long_) variants show their doubled turn count. */
+    public static int getTurnsForPotion(CombatEffects.EffectType type, int vanillaDurationTicks) {
         int baseTurns = switch (type) {
             case SPEED, STRENGTH, RESISTANCE, ABSORPTION -> 5;
             case REGENERATION -> 3;
@@ -723,7 +727,7 @@ public class ItemUseHandler {
         int specialPts = SpecialAffinity.points(player);
         double saveChance = specialPts * 0.10;
         if (saveChance <= 0 || Math.random() >= saveChance) return false;
-        CombatManager.get(player).sendMessage(
+        CombatManager.getActiveCombat(player.getUuid()).sendMessage(
             "§dConserved! Special focus preserves your "
                 + stack.getName().getString() + ".");
         return true;
@@ -788,7 +792,7 @@ public class ItemUseHandler {
 
     private static int getTypedDamageBonus(ServerPlayerEntity player, CombatEffects effects, DamageType type) {
         return DamageType.getTotalBonus(
-            player, CombatManager.get(player).getTrimScan(), effects,
+            player, CombatManager.getActiveCombat(player.getUuid()).getTrimScan(), effects,
             type, getPlayerStats(player))
             + DamageType.getMobHeadBonus(
                 player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), type);
@@ -802,7 +806,7 @@ public class ItemUseHandler {
         if (CombatManager.isInvulnerableCreaking(target)) {
             return 0;
         }
-        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        CombatEffects effects = CombatManager.getActiveCombat(player.getUuid()).getCombatEffects();
         int rawDamage = baseDamage + getTypedDamageBonus(player, effects, type);
         // Radiant (hoe): Special items burn the undead. Every Special item's damage funnels
         // through here, so hooking it once covers charges, pearls, sherds, potions and the rest.
@@ -810,7 +814,7 @@ public class ItemUseHandler {
             int radiant = HoeEnchantEffects.radiantBonus(player, target);
             if (radiant > 0) {
                 rawDamage += radiant;
-                var radiantArena = CombatManager.get(player).getArena();
+                var radiantArena = CombatManager.getActiveCombat(player.getUuid()).getArena();
                 if (radiantArena != null && player.getEntityWorld() instanceof ServerWorld rw) {
                     HoeEnchantEffects.radiantVfx(rw, radiantArena.gridToBlockPos(target.getGridPos()));
                 }
@@ -1001,7 +1005,7 @@ public class ItemUseHandler {
             net.minecraft.component.type.PotionContentsComponent potionContents,
             StringBuilder msg) {
         if (player == null || targets == null || targets.isEmpty() || potionContents == null) return 0;
-        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        CombatEffects effects = CombatManager.getActiveCombat(player.getUuid()).getCombatEffects();
         int specialDamageBonus = getTypedDamageBonus(player, effects, DamageType.SPECIAL);
         int hitCount = 0;
         for (StatusEffectInstance sei : potionContents.getEffects()) {
@@ -1071,7 +1075,7 @@ public class ItemUseHandler {
         ProjectileSpawner.spawnPotionThrow(sw, playerBlock, targetBlock);
 
         if (potionContents != null) {
-            CombatEffects effects = CombatManager.get(player).getCombatEffects();
+            CombatEffects effects = CombatManager.getActiveCombat(player.getUuid()).getCombatEffects();
             GridPos playerPos = arena.getPlayerGridPos();
             int specialDamageBonus = getTypedDamageBonus(player, effects, DamageType.SPECIAL);
             int hitCount = 0;
@@ -1123,7 +1127,7 @@ public class ItemUseHandler {
                         int selfAmp = debuff ? amp : scaledAmp;
                         int turns = getScaledPotionTurns(player, combatType, sei.getDuration());
                         // Live top-up so a self-splashed SPEED/HASTE applies this turn.
-                        CombatManager.get(player).applyPlayerEffectLive(combatType, turns, selfAmp);
+                        CombatManager.getActiveCombat(player.getUuid()).applyPlayerEffectLive(combatType, turns, selfAmp);
                         player.addStatusEffect(new StatusEffectInstance(
                             sei.getEffectType(), -1, selfAmp, false, true));
                         msg.append(debuff ? "§c" : "§d").append("You: ")
@@ -1137,7 +1141,7 @@ public class ItemUseHandler {
             if (hitCount > 0) {
                 // Check deaths from AoE
                 for (CombatEntity ce : aoeEnemies) {
-                    CombatManager.get(player).checkAndHandleDeathPublic(ce);
+                    CombatManager.getActiveCombat(player.getUuid()).checkAndHandleDeathPublic(ce);
                 }
                 return "§5Splash hit " + hitCount + "! " + msg.toString().trim();
             }
@@ -1265,7 +1269,7 @@ public class ItemUseHandler {
         player.requestTeleport(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5);
 
         // Apply/stack the Airtime effect for the player's next attack.
-        CombatEffects airFx = CombatManager.get(player).getCombatEffects();
+        CombatEffects airFx = CombatManager.getActiveCombat(player.getUuid()).getCombatEffects();
         int nextAmp = Math.min(airFx.getAirtimeLevel(), CombatEffects.AIRTIME_MAX_AMPLIFIER);
         // getAirtimeLevel() is 0 when absent (-> amplifier 0 = Airtime I) and N when already
         // airborne (-> amplifier N = one level higher), so self-launching stacks Airtime,
@@ -1307,7 +1311,7 @@ public class ItemUseHandler {
             stack.setDamage(stack.getDamage() + ELYTRA_DURABILITY_COST);
         }
 
-        CombatManager cm = CombatManager.get(player);
+        CombatManager cm = CombatManager.getActiveCombat(player.getUuid());
         cm.applyPlayerEffectLive(CombatEffects.EffectType.AIRTIME, 2, 1); // Airtime II, 2 turns
         cm.flyPlayerTo(targetTile);
 
@@ -1319,7 +1323,7 @@ public class ItemUseHandler {
     private static String useMilkBucket(ServerPlayerEntity player, ItemStack stack) {
         stack.decrement(1);
         player.getInventory().insertStack(new ItemStack(Items.BUCKET));
-        CombatEffects effects = CombatManager.get(player).getCombatEffects();
+        CombatEffects effects = CombatManager.getActiveCombat(player.getUuid()).getCombatEffects();
         effects.clear();
         player.clearStatusEffects();
         return "§fDrank milk! All effects cleared.";
@@ -1400,7 +1404,7 @@ public class ItemUseHandler {
         player.setHealth(player.getMaxHealth());
         // Route the buffs through the combat effect system so they function in combat
         // (the ABSORPTION hook grants the real shield). Vanilla effects kept for HUD icons.
-        CombatManager cm = CombatManager.get(player);
+        CombatManager cm = CombatManager.getActiveCombat(player.getUuid());
         cm.addEffectHooked(CombatEffects.EffectType.REGENERATION, 5, 1);
         cm.addEffectHooked(CombatEffects.EffectType.ABSORPTION, 5, 1);
         // Combat regen only - see the note on the enchanted golden apple. Absorption is fine:

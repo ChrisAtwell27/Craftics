@@ -154,6 +154,22 @@ public final class ArtifactEffects {
         }
     }
 
+    /** +1 HP every 2 turns (paired with the +1 Max HP stat bonus). Runs as a handler
+     *  instead of Bonus.REGEN so the heal is announced under the artifact's own name -
+     *  pooled REGEN merges into the trim scan and got branded "Trim regen" in chat. */
+    public static final class OnionRing implements CombatEffectHandler {
+        @Override
+        public void onTurnStart(CombatEffectContext ctx) {
+            var cm = com.crackedgames.craftics.combat.CombatManager.get(ctx.getPlayer());
+            if (cm == null || cm.getTurnNumber() % 2 != 0) return;
+            ServerPlayerEntity p = ctx.getPlayer();
+            if (p.getHealth() < p.getMaxHealth()) {
+                p.heal(1);
+                p.sendMessage(net.minecraft.text.Text.literal("§a♥ Onion Ring regen healed 1 HP"), false);
+            }
+        }
+    }
+
     /** At combat start, randomly grants Strength / Speed / Resistance / Luck for the fight. */
     public static final class NoveltyDrinkingHat implements CombatEffectHandler {
         @Override

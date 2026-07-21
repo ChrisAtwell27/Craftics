@@ -89,6 +89,62 @@ public final class RegistryHealthScanner {
         }
     }
 
+    /**
+     * JOIN-time splint: fill null raw-id slots with the nearest healthy entry's Reference
+     * so mid-session lookups and iterations survive. The holes come from registry-sync
+     * remapping against a server whose registry holds phantom duplicate slots (e.g.
+     * copperagebackport registering its armor material five times - the sync map names
+     * only the last slot, and the client has nothing to put in the other four). Unlike
+     * {@link #repairHoles}, this does NOT shift raw ids - every live id keeps its
+     * server-aligned position, so it is safe while playing; the filler entries occupy
+     * ids the server never references. Without it, equipping an item whose material
+     * resolves near the holes (the copper helmet) NPE'd the wearer's client mid-render.
+     */
+    public static void splintHoles(String phase) {
+        int splinted = 0;
+        try {
+            for (Identifier regId : Registries.REGISTRIES.getIds()) {
+                Registry<?> reg = Registries.REGISTRIES.get(regId);
+                if (!(reg instanceof com.crackedgames.craftics.mixin.SimpleRegistryAccessor<?> acc)) continue;
+                var rawList = acc.craftics$rawIdToEntry();
+                for (int i = 0; i < rawList.size(); i++) {
+                    if (rawList.get(i) != null) continue;
+                    // Nearest healthy neighbor, preferring earlier slots (stable choice).
+                    var filler = pickFiller(rawList, i);
+                    if (filler == null) continue;
+                    fillSlot(rawList, i, filler);
+                    splinted++;
+                    LOGGER.warn("[{}] Splinted null raw-id slot {} of registry {} with '{}' so "
+                        + "lookups/iteration can't NPE mid-session", phase, i, regId, filler.registryKey().getValue());
+                }
+            }
+        } catch (Throwable t) {
+            LOGGER.warn("[{}] Registry hole splint aborted: {}", phase, t.toString());
+            return;
+        }
+        if (splinted > 0) {
+            LOGGER.warn("[{}] {} registry hole(s) splinted. Root cause is a server-side mod "
+                + "registering duplicate/phantom entries (or a client/server mod mismatch) - "
+                + "fix the mod lists to remove this warning.", phase, splinted);
+        }
+    }
+
+    private static net.minecraft.registry.entry.RegistryEntry.Reference<?> pickFiller(
+            it.unimi.dsi.fastutil.objects.ObjectList<? extends net.minecraft.registry.entry.RegistryEntry.Reference<?>> rawList,
+            int hole) {
+        for (int d = 1; d < rawList.size(); d++) {
+            int lo = hole - d, hi = hole + d;
+            if (lo >= 0 && rawList.get(lo) != null) return rawList.get(lo);
+            if (hi < rawList.size() && rawList.get(hi) != null) return rawList.get(hi);
+        }
+        return null;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void fillSlot(it.unimi.dsi.fastutil.objects.ObjectList rawList, int i, Object filler) {
+        rawList.set(i, filler);
+    }
+
     private static int scanRegistry(Identifier regId, Registry<?> reg) {
         // 1) The exact iteration Fabric's disconnect unmap performs. A broken slot
         //    anywhere in the raw-id list - including trailing holes past the last

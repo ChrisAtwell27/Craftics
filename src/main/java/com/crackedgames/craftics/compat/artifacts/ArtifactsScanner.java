@@ -93,7 +93,10 @@ public final class ArtifactsScanner implements EquipmentScanner {
 
             // ===== Ring slot =====
             case "onion_ring" -> {
-                mods.add(Bonus.REGEN, 1);
+                // Regen runs as a per-artifact handler (not Bonus.REGEN): the stat pool is
+                // merged into the trim scan, so pooled regen got announced as "Trim regen".
+                // The handler heals on the same every-2-turns cadence under its own name.
+                mods.addCombatEffect("Onion Ring", new ArtifactEffects.OnionRing());
                 mods.add(Bonus.MAX_HP, 1);
             }
             case "golden_hook" ->

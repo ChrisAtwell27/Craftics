@@ -533,7 +533,20 @@ public class CombatTooltips implements ItemTooltipCallback {
             String effectId = effect.getEffectType().getKey()
                 .map(k -> k.getValue().getPath()).orElse("");
             int amplifier = effect.getAmplifier();
-            String desc = getPotionEffectDescription(effectId, amplifier, item == Items.TIPPED_ARROW);
+            // Compute the turn count with the SAME server mapping the drink path uses
+            // (ItemUseHandler.getTurnsForPotion) so extended (long_) potions show their
+            // doubled duration instead of a stale hardcoded "3 turns". Tipped arrows
+            // apply through a different path - their "On hit" lines keep their text.
+            int turns = 0;
+            if (item != Items.TIPPED_ARROW) {
+                var combatType = com.crackedgames.craftics.combat.ItemUseHandler
+                    .mapStatusEffect(effect.getEffectType().value());
+                if (combatType != null) {
+                    turns = com.crackedgames.craftics.combat.ItemUseHandler
+                        .getTurnsForPotion(combatType, effect.getDuration());
+                }
+            }
+            String desc = getPotionEffectDescription(effectId, amplifier, item == Items.TIPPED_ARROW, turns);
             if (desc != null) {
                 lines.add(Text.literal(desc));
                 hasEffect = true;
@@ -554,36 +567,45 @@ public class CombatTooltips implements ItemTooltipCallback {
     }
 
     /**
-     * Get combat description for a specific status effect.
+     * Get combat description for a specific status effect. {@code turns} is the REAL
+     * duration the apply path will use (ItemUseHandler.getTurnsForPotion, so extended
+     * potions show doubled turns); 0 means "unknown - keep the legacy fallback number"
+     * (tipped arrows, effects with no combat mapping).
      */
-    private static String getPotionEffectDescription(String effectId, int amplifier, boolean isArrow) {
+    private static String getPotionEffectDescription(String effectId, int amplifier, boolean isArrow, int turns) {
         String prefix = isArrow ? "\u00a77  On hit: " : "\u00a77  ";
         String lvl = amplifier > 0 ? " " + toRoman(amplifier + 1) : "";
         return switch (effectId) {
-            case "speed" -> prefix + "\u00a7bSpeed" + lvl + ": \u00a77+2 movement for 3 turns";
-            case "slowness" -> prefix + "\u00a77Slowness" + lvl + ": \u00a77-" + (1 + amplifier) + " movement for 2 turns";
-            case "strength" -> prefix + "\u00a7cStrength" + lvl + ": \u00a77+" + (3 + amplifier * 2) + " attack for 3 turns";
-            case "weakness" -> prefix + "\u00a78Weakness" + lvl + ": \u00a77-2 attack for 2 turns";
+            case "speed" -> prefix + "\u00a7bSpeed" + lvl + ": \u00a77+2 movement for " + dur(turns, 3);
+            case "slowness" -> prefix + "\u00a77Slowness" + lvl + ": \u00a77-" + (1 + amplifier) + " movement for " + dur(turns, 2);
+            case "strength" -> prefix + "\u00a7cStrength" + lvl + ": \u00a77+" + (3 + amplifier * 2) + " attack for " + dur(turns, 3);
+            case "weakness" -> prefix + "\u00a78Weakness" + lvl + ": \u00a77-2 attack for " + dur(turns, 2);
             case "instant_health" -> prefix + "\u00a7aHealing" + lvl + ": \u00a77Restore " + (4 + amplifier * 4) + " HP instantly";
             case "instant_damage" -> prefix + "\u00a74Harming" + lvl + ": \u00a77Deal " + (4 + amplifier * 4) + " damage";
-            case "regeneration" -> prefix + "\u00a7dRegen" + lvl + ": \u00a77+2 HP/turn for 3 turns";
-            case "resistance" -> prefix + "\u00a79Resistance" + lvl + ": \u00a77+2 Armor Class for 3 turns";
-            case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for 3 turns, \u00a75+1 Special Power";
+            case "regeneration" -> prefix + "\u00a7dRegen" + lvl + ": \u00a77+2 HP/turn for " + dur(turns, 3);
+            case "resistance" -> prefix + "\u00a79Resistance" + lvl + ": \u00a77+2 Armor Class for " + dur(turns, 3);
+            case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for " + dur(turns, 3) + ", \u00a75+1 Special Power";
             case "poison" -> prefix + "\u00a72Poison" + lvl + ": \u00a77Damage fades as it ticks down";
-            case "invisibility" -> prefix + "\u00a77Invisibility: \u00a77Enemies skip your turn for 2 turns";
+            case "invisibility" -> prefix + "\u00a77Invisibility: \u00a77Enemies skip your turn for " + dur(turns, 2);
             case "night_vision" -> prefix + "\u00a7eNight Vision: \u00a77See in darkness (no combat effect)";
             case "absorption" -> prefix + "\u00a76Absorption" + lvl + ": \u00a77+" + (4 + amplifier * 4) + " bonus HP";
-            case "luck" -> prefix + "\u00a7aLuck" + lvl + ": \u00a77+" + (1 + amplifier) + " crit chance for 3 turns";
+            case "luck" -> prefix + "\u00a7aLuck" + lvl + ": \u00a77+" + (1 + amplifier) + " crit chance for " + dur(turns, 3);
             case "jump_boost" -> prefix + "\u00a7aLeaping" + lvl + ": \u00a77+1 movement for 3 turns";
             case "water_breathing" -> prefix + "\u00a73Water Breathing: \u00a77No drowning damage, \u00a73+2 Water Power";
-            case "haste" -> prefix + "\u00a7eHaste" + lvl + ": \u00a77+1 AP for 3 turns";
-            case "mining_fatigue" -> prefix + "\u00a78Mining Fatigue: \u00a77-1 AP for 2 turns";
+            case "haste" -> prefix + "\u00a7eHaste" + lvl + ": \u00a77+1 AP for " + dur(turns, 3);
+            case "mining_fatigue" -> prefix + "\u00a78Mining Fatigue: \u00a77-1 AP for " + dur(turns, 2);
             case "levitation" -> prefix + "\u00a7dLevitation: \u00a77-1 movement/level; grants Airtime when it ends";
-            case "slow_falling" -> prefix + "\u00a7fSlow Falling: \u00a77No knockback for 3 turns";
+            case "slow_falling" -> prefix + "\u00a7fSlow Falling: \u00a77No knockback for " + dur(turns, 3);
             case "wither" -> prefix + "\u00a78Wither" + lvl + ": \u00a77Damage ramps up as it ticks down";
-            case "blindness" -> prefix + "\u00a78Blindness: \u00a77-2 attack range for 2 turns";
+            case "blindness" -> prefix + "\u00a78Blindness: \u00a77-2 attack range for " + dur(turns, 2);
             default -> null;
         };
+    }
+
+    /** "{turns} turns" when the real applied duration is known, else the legacy number. */
+    private static String dur(int turns, int fallback) {
+        int n = turns > 0 ? turns : fallback;
+        return n + (n == 1 ? " turn" : " turns");
     }
 
     /**
@@ -959,7 +981,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             return weaponStatLine(item) + "\n\u00a73\u2716 Splash: \u00a77Hits target + 1 tile directly behind it (pierce)";
 
         // ── Utility Items ──
-        if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+1 DEF when in offhand\n\u00a79Block: \u00a7725% chance to fully block an attack\n\u00a77No AP cost \u2014 equip in offhand slot";
+        if (item == Items.SHIELD) return "\u00a79Passive: \u00a77+1 AC when in offhand\n\u00a79Block: \u00a7725% chance to fully block an attack\n\u00a77No AP cost \u2014 equip in offhand slot";
         if (item == Items.TOTEM_OF_UNDYING) return "\u00a76Passive: \u00a77Auto-activates on fatal hit\n\u00a77Restores 50% HP + Regen II\n\u00a77Consumed from inventory automatically";
         if (item == Items.MILK_BUCKET) return "\u00a7f3 AP \u00a77- Clears ALL status effects (good and bad)\n\u00a77Drink it yourself, or feed an adjacent ally. Returns the bucket.";
         if (item == Items.TNT) return "\u00a7c2 AP \u00a77- Place TNT on target tile\n\u00a7eExplodes next round!\n\u00a7c8/5/3 + 24/15/9% max HP \u00a77in AoE (distance-based)\n\u00a7cSelf-damage 6/4/2 if within 2 tiles!";

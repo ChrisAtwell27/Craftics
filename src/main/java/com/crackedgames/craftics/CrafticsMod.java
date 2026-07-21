@@ -135,6 +135,9 @@ public class CrafticsMod implements ModInitializer {
         }) {
             com.crackedgames.craftics.combat.miniboss.MinibossRegistry.register(m);
         }
+        // Mid-biome weather effects (biome JSON "biomeEffect" block picks them up by id).
+        com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(
+            new com.crackedgames.craftics.combat.biomeeffect.SandstormEffect());
         com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.init();
         com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.init();
         com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();
@@ -483,10 +486,32 @@ public class CrafticsMod implements ModInitializer {
             }
         });
 
-        // Clean up combat on player disconnect: handle both leader and party member cases
+        // Clean up combat on player disconnect: handle both leader and party member cases.
+        //
+        // THREADING: on a TIMEOUT this event fires on the Netty IO thread (channel-inactive
+        // path), NOT the server thread. This cleanup teleports players, ends combat, and
+        // mutates world state - doing that off-thread desynced positions ("moved too
+        // quickly" storms), fall-killed the remaining party members mid-teleport, left
+        // stale player entities behind (duplicate-UUID force-adds on rejoin) and NPE'd
+        // vanilla's chunk ticket tracking. Capture what we need from the handler, then run
+        // the ENTIRE cleanup on the main thread via server.execute (immediate when already
+        // on the server thread, e.g. a normal quit).
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             var playerUuid = handler.getPlayer().getUuid();
             String playerName = handler.getPlayer().getName().getString();
+            // The leaving player's world must be read NOW - by the time the deferred task
+            // runs, the entity is torn down.
+            net.minecraft.world.World leftWorld = handler.getPlayer().getEntityWorld();
+            server.execute(() -> runDisconnectCleanup(server, playerUuid, playerName, leftWorld));
+        });
+
+        registerRespawnHooks();
+    }
+
+    /** Body of the combat-disconnect cleanup; always runs on the server thread. */
+    private static void runDisconnectCleanup(net.minecraft.server.MinecraftServer server,
+            java.util.UUID playerUuid, String playerName, net.minecraft.world.World leftWorld) {
+        {
             addonBonusCache.remove(playerUuid);
 
             // Check if this player is in someone else's party combat (non-leader)
@@ -562,10 +587,10 @@ public class CrafticsMod implements ModInitializer {
 
             // De-laned islands are per-owner runtime dims that should cost zero tick
             // time when empty. If this player logged out inside an island dim, unload
-            // it once nobody remains. Deferred one tick via server.execute so the
+            // it once nobody remains. Deferred one more tick via server.execute so the
             // leaving player entity is fully removed from the world's player list
-            // before unloadIfEmpty checks getPlayers().isEmpty().
-            net.minecraft.world.World leftWorld = handler.getPlayer().getEntityWorld();
+            // before unloadIfEmpty checks getPlayers().isEmpty(). (leftWorld was captured
+            // on the netty thread before the entity was torn down.)
             if (com.crackedgames.craftics.world.IslandDimensions.isIslandWorld(leftWorld)) {
                 java.util.UUID leftOwner =
                     com.crackedgames.craftics.world.IslandDimensions.ownerOf(leftWorld);
@@ -574,7 +599,10 @@ public class CrafticsMod implements ModInitializer {
                         com.crackedgames.craftics.world.IslandDimensions.unloadIfEmpty(server, leftOwner));
                 }
             }
-        });
+        }
+    }
+
+    private void registerRespawnHooks() {
 
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
             var deathProtection = CrafticsComponents.DEATH_PROTECTION.get(newPlayer);

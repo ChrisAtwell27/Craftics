@@ -93,6 +93,10 @@ public class PlayerCombatStats {
                 && !player.getOffHandStack().isOf(Items.FIREWORK_ROCKET)) {
             return 1; // melee range fallback
         }
+        // Rook-mode sentinel is a MODE, not a number: adding the Skeleton Skull's flat +1
+        // turned -1 into a literal range 0, making the crossbow unusable ("range: 0" refusals,
+        // zero attack tiles) for exactly the players the skull tells to use crossbows.
+        if (baseRange == RANGE_CROSSBOW_ROOK) return RANGE_CROSSBOW_ROOK;
         return baseRange + headRange;
     }
 

@@ -1835,6 +1835,14 @@ public class CombatManager {
     /** Round counter passed to the mechanic; increments once per enemy-turn boundary. */
     private int minibossRound = 0;
 
+    // ── Mid-biome weather effect state (sandstorm, ...) ─────────────────────
+    /** The biome weather effect active on this level, or null. Armed per fight from the
+     *  biome JSON's biomeEffect block once the run reaches its configured start level. */
+    private com.crackedgames.craftics.combat.biomeeffect.BiomeEffect activeBiomeEffect = null;
+    /** Round counter for the weather effect; separate from minibossRound so a miniboss
+     *  level with weather doesn't double-advance either cadence. */
+    private int biomeEffectRound = 0;
+
     /** Reset per fight from {@code startCombat}; armed when the level def is the raid's. */
     private void initRaidState(LevelDefinition def) {
         raidActive = def instanceof TrialChamberEvent.RaidLevelDef;
@@ -1872,6 +1880,31 @@ public class CombatManager {
         if (activeMiniboss != null) {
             activeMiniboss.onFightStart(buildMinibossCtx());
             sendMessage(activeMiniboss.introTitle());
+        }
+    }
+
+    /**
+     * Reset per fight from {@code startCombat}; arms {@link #activeBiomeEffect} when the
+     * current level's biome declares a weather effect (biome JSON {@code biomeEffect} block)
+     * and the run has reached its 1-based start level. Runs on every level from there
+     * through the boss - the persistent mid-biome weather layer, distinct from the one-off
+     * level-4 miniboss mechanic.
+     */
+    private void initBiomeEffectState(LevelDefinition def) {
+        activeBiomeEffect = null;
+        biomeEffectRound = 0;
+        if (def instanceof com.crackedgames.craftics.level.GeneratedLevelDefinition gld) {
+            var biome = gld.getBiomeTemplate();
+            if (biome != null && com.crackedgames.craftics.level.BiomeTemplate.effectActiveAt(
+                    biome.biomeEffectStartLevel,
+                    biome.getBiomeLevelIndex(gld.getLevelNumber()))) {
+                activeBiomeEffect =
+                    com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry
+                        .get(biome.biomeEffectId);
+            }
+        }
+        if (activeBiomeEffect != null) {
+            activeBiomeEffect.onFightStart(buildMinibossCtx());
         }
     }
 
@@ -1996,13 +2029,16 @@ public class CombatManager {
     private CombatEntity spawnRaidReinforcement(String typeId, GridPos tile,
                                                 int hp, int atk, int def, int range) {
         if (player == null || arena == null) return null;
-        // The telegraphed tile may have been claimed since; slide to the nearest free one.
-        if (!arena.isInBounds(tile) || arena.isOccupied(tile)
-                || arena.getTile(tile) == null || !arena.getTile(tile).isWalkable()) {
-            java.util.Set<GridPos> reserved = new java.util.HashSet<>();
-            for (CombatEntity e : enemies) if (e.isAlive()) reserved.add(e.getGridPos());
-            reserved.add(arena.getPlayerGridPos());
-            tile = findNearestWalkableUnreserved(arena, tile, reserved);
+        // Multi-tile bodies (the finale RAVAGER is 2x3) must have their WHOLE footprint
+        // validated, not just the anchor: the old single-tile check let an edge anchor
+        // through, and the per-tick grid snap then teleported the mob to its footprint
+        // center - half off the arena, hovering over the outside terrain.
+        int[] fp = CombatEntity.orientFootprint(
+            CombatEntity.getDefaultFootprint(typeId), tile, arena.getPlayerGridPos());
+        // The telegraphed tile may have been claimed since (or can't fit the footprint);
+        // slide to the nearest anchor whose full footprint is free and in-bounds.
+        if (!canPlaceSpawnAt(arena, tile, fp[0], fp[1], false)) {
+            tile = findNearestValidSpawn(arena, tile, fp[0], fp[1], false);
             if (tile == null) return null;
         }
         ServerWorld world = (ServerWorld) player.getEntityWorld();
@@ -2010,7 +2046,10 @@ public class CombatManager {
         BlockPos bp = arena.gridToBlockPos(tile);
         var raw = type.create(world, null, bp, SpawnReason.MOB_SUMMONED, false, false);
         if (!(raw instanceof MobEntity mob)) return null;
-        mob.refreshPositionAndAngles(bp.getX() + 0.5, bp.getY(), bp.getZ() + 0.5, 0, 0);
+        // Spawn at the FOOTPRINT center (matches the main spawn path and the per-tick
+        // snap), not the anchor tile center - otherwise the first idle tick visibly
+        // teleports a large mob half a body sideways.
+        mob.refreshPositionAndAngles(bp.getX() + fp[0] / 2.0, bp.getY(), bp.getZ() + fp[1] / 2.0, 0, 0);
         mob.setAiDisabled(true);
         mob.setInvulnerable(true);
         mob.setNoGravity(true);
@@ -2025,9 +2064,17 @@ public class CombatManager {
         world.spawnParticles(net.minecraft.particle.ParticleTypes.CLOUD,
             bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.05);
         CombatEntity ce = new CombatEntity(mob.getId(), typeId, tile, hp, atk, def, range);
+        ce.setFootprint(fp[0], fp[1]);
         ce.setMobEntity(mob);
+        // Place BEFORE registering: a refused placement (footprint clash raced in) must
+        // not leave a mob in `enemies` that occupies zero tiles - it would be
+        // untargetable (all targeting resolves via arena.getOccupant) while still
+        // gating the raid win. tickRaidWaves treats null as "retry next wave".
+        if (!arena.placeEntity(ce)) {
+            mob.discard();
+            return null;
+        }
         enemies.add(ce);
-        arena.placeEntity(ce);
         return ce;
     }
 
@@ -2335,11 +2382,16 @@ public class CombatManager {
 
     private static net.minecraft.item.Item lastDroppedTrim = null;
 
-    private GridPos droppedTridentPos = null;
-    private ItemStack droppedTridentStack = null;
-    private net.minecraft.entity.ItemEntity droppedTridentEntity = null;
-    private java.util.UUID droppedTridentOwner = null;
-    public GridPos getDroppedTridentPos() { return droppedTridentPos; }
+    /** One thrown (non-Loyalty) trident lying on the arena. Each throw appends an entry -
+     *  the old four scalar fields were overwritten by every throw, so throwing a second
+     *  trident silently destroyed the first (its exact stack, its tile, and its ghost
+     *  ItemEntity reference, which then lingered in the world forever). */
+    private record DroppedTrident(GridPos pos, ItemStack stack,
+            net.minecraft.entity.ItemEntity entity, java.util.UUID owner) {}
+    private final java.util.List<DroppedTrident> droppedTridents = new java.util.ArrayList<>();
+    public GridPos getDroppedTridentPos() {
+        return droppedTridents.isEmpty() ? null : droppedTridents.get(0).pos();
+    }
 
     /**
      * Indirect (empty-tile) attack state. When the player clicks a tile in
@@ -2928,6 +2980,7 @@ public class CombatManager {
         this.currentBiomeOrdinal = computeCurrentBiomeOrdinal();
         initRaidState(levelDef);
         initMinibossState(levelDef);
+        initBiomeEffectState(levelDef);
 
         // Hidden fire resistance -blocks vanilla lava/fire damage; our tile system handles it
         player.addStatusEffect(new net.minecraft.entity.effect.StatusEffectInstance(
@@ -4876,6 +4929,13 @@ public class CombatManager {
         arena.clearVfxObstacle(world, targetTile);
         apRemaining -= 1;
 
+        // Timberfall from the OFFHAND: mining an obstacle with the pickaxe while a
+        // Timberfall axe rides in the offhand drops the mined block onto the enemies
+        // beside it - same crush the Demolisher chop triggers with the axe in hand.
+        if (CrafticsEnchantments.offhandLevel(player, CrafticsEnchantments.TIMBERFALL) > 0) {
+            timberfallCrush(targetTile);
+        }
+
         if (refundItem != null) {
             net.minecraft.item.ItemStack refund = new net.minecraft.item.ItemStack(refundItem);
             if (!player.getInventory().insertStack(refund)) {
@@ -4936,23 +4996,9 @@ public class CombatManager {
         apRemaining -= 1;
         movePointsRemaining += SwordAxeEnchantEffects.DEMOLISHER_SPEED_REFUND;
 
-        // Timberfall enchant: the chopped obstacle falls onto the enemies beside it. Every
-        // living enemy on a tile cardinally or diagonally adjacent to the demolished tile
-        // takes the falling-block hit and is Stunned under it.
+        // Timberfall enchant: the chopped obstacle falls onto the enemies beside it.
         if (CrafticsEnchantments.heldLevel(player, CrafticsEnchantments.TIMBERFALL) > 0) {
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    if (dx == 0 && dz == 0) continue;
-                    CombatEntity crushed = arena.getOccupant(
-                        new GridPos(targetTile.x() + dx, targetTile.z() + dz));
-                    if (crushed == null || !crushed.isAlive() || crushed.isAlly()) continue;
-                    int dealt = crushed.takeDamage(SwordAxeEnchantEffects.TIMBERFALL_DAMAGE);
-                    crushed.setStunned(true);
-                    sendMessage("§6Timberfall! The obstacle crashes onto "
-                        + crushed.getDisplayName() + " for " + dealt + " - Stunned!");
-                    if (!crushed.isAlive()) killEnemy(crushed);
-                }
-            }
+            timberfallCrush(targetTile);
         }
 
         net.minecraft.particle.BlockStateParticleEffect blockEffect =
@@ -4968,6 +5014,28 @@ public class CombatManager {
             + " Speed from the opening.");
         sendSync();
         refreshHighlights();
+    }
+
+    /**
+     * Timberfall's falling-obstacle crush: every living enemy on a tile cardinally or
+     * diagonally adjacent to the removed obstacle takes the hit and is Stunned under it.
+     * Fired by the Demolisher axe chop (Timberfall on the held axe) and by a pickaxe
+     * mine with a Timberfall axe in the OFFHAND.
+     */
+    private void timberfallCrush(GridPos targetTile) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                CombatEntity crushed = arena.getOccupant(
+                    new GridPos(targetTile.x() + dx, targetTile.z() + dz));
+                if (crushed == null || !crushed.isAlive() || crushed.isAlly()) continue;
+                int dealt = crushed.takeDamage(SwordAxeEnchantEffects.TIMBERFALL_DAMAGE);
+                crushed.setStunned(true);
+                sendMessage("§6Timberfall! The obstacle crashes onto "
+                    + crushed.getDisplayName() + " for " + dealt + " - Stunned!");
+                if (!crushed.isAlive()) killEnemy(crushed);
+            }
+        }
     }
 
     /**
@@ -5509,8 +5577,9 @@ public class CombatManager {
 
         // Trident throw: remove from hand and drop on arena (unless Loyalty)
         if (isTridentThrow && !tridentHasLoyalty) {
-            droppedTridentStack = player.getMainHandStack().copy();
-            droppedTridentOwner = player.getUuid();
+            // copyWithCount(1): exactly one is decremented from hand below, and each drop
+            // entry owns its own stack so per-trident enchants/damage survive N throws.
+            ItemStack thrownStack = player.getMainHandStack().copyWithCount(1);
             // Calculate landing tile: one tile before the nearest target tile along throw direction
             int ddx = Integer.signum(tridentAimTile.x() - pPos.x());
             int ddz = Integer.signum(tridentAimTile.z() - pPos.z());
@@ -5550,18 +5619,18 @@ public class CombatManager {
                 }
                 landPos = fallback;
             }
-            droppedTridentPos = landPos;
             player.getMainHandStack().decrement(1);
             // Spawn a visual item entity on the ground
             ServerWorld dropWorld = (ServerWorld) player.getEntityWorld();
             BlockPos dropBlock = arena.gridToBlockPos(landPos);
-            droppedTridentEntity = new net.minecraft.entity.ItemEntity(dropWorld,
+            net.minecraft.entity.ItemEntity tridentEntity = new net.minecraft.entity.ItemEntity(dropWorld,
                 dropBlock.getX() + 0.5, dropBlock.getY() + 0.2, dropBlock.getZ() + 0.5,
-                droppedTridentStack.copy());
-            droppedTridentEntity.setPickupDelay(Integer.MAX_VALUE); // prevent vanilla pickup
-            droppedTridentEntity.setNeverDespawn();
-            dropWorld.spawnEntity(droppedTridentEntity);
-            sendMessage("§3" + droppedTridentStack.getName().getString() + " lodges in the ground at ("
+                thrownStack.copy());
+            tridentEntity.setPickupDelay(Integer.MAX_VALUE); // prevent vanilla pickup
+            tridentEntity.setNeverDespawn();
+            dropWorld.spawnEntity(tridentEntity);
+            droppedTridents.add(new DroppedTrident(landPos, thrownStack, tridentEntity, player.getUuid()));
+            sendMessage("§3" + thrownStack.getName().getString() + " lodges in the ground at ("
                 + landPos.x() + ", " + landPos.z() + ")! Walk there to retrieve it.");
         }
 
@@ -7099,25 +7168,31 @@ public class CombatManager {
         }
     }
 
-    // === TRIDENT: Return dropped trident to player ===
+    // === TRIDENT: Return ALL dropped tridents to their throwers ===
     private void returnDroppedTrident() {
-        if (droppedTridentStack == null) return;
+        if (droppedTridents.isEmpty()) return;
+        for (DroppedTrident dropped : new java.util.ArrayList<>(droppedTridents)) {
+            returnOneTrident(dropped);
+        }
+        droppedTridents.clear();
+    }
+
+    /** Hand one dropped trident back to its thrower (fallback: current player), and clean
+     *  up its ghost ItemEntity. Full inventory drops the trident at the recipient's feet
+     *  instead of silently voiding it. */
+    private void returnOneTrident(DroppedTrident dropped) {
         ServerPlayerEntity recipient = null;
-        if (droppedTridentOwner != null) {
+        if (dropped.owner() != null) {
             for (ServerPlayerEntity p : getAllParticipants()) {
-                if (p != null && p.getUuid().equals(droppedTridentOwner)) { recipient = p; break; }
+                if (p != null && p.getUuid().equals(dropped.owner())) { recipient = p; break; }
             }
         }
         if (recipient == null) recipient = player;
-        if (recipient != null) {
-            recipient.getInventory().insertStack(droppedTridentStack.copy());
+        if (recipient != null && !recipient.getInventory().insertStack(dropped.stack().copy())) {
+            recipient.dropItem(dropped.stack().copy(), false);
         }
-        droppedTridentStack = null;
-        droppedTridentPos = null;
-        droppedTridentOwner = null;
-        if (droppedTridentEntity != null) {
-            droppedTridentEntity.discard();
-            droppedTridentEntity = null;
+        if (dropped.entity() != null) {
+            dropped.entity().discard();
         }
     }
 
@@ -11038,6 +11113,15 @@ public class CombatManager {
             minibossRound++;
             activeMiniboss.onRoundStart(buildMinibossCtx());
         }
+        // Mid-biome weather (sandstorm, ...) pulses on the same round boundary, with its
+        // own counter so it can't drift when a miniboss shares the level.
+        if (activeBiomeEffect != null) {
+            biomeEffectRound++;
+            int saved = minibossRound;
+            minibossRound = biomeEffectRound;   // ctx.round() reads this field
+            activeBiomeEffect.onRoundStart(buildMinibossCtx());
+            minibossRound = saved;
+        }
 
         // Anti-farming: end the fight if the room holds only harmless mobs and the
         // player has made no progress for several rounds. Returns true when it took
@@ -12047,11 +12131,14 @@ public class CombatManager {
                     net.minecraft.sound.SoundCategory.PLAYERS, 0.3f, 1.0f);
             }
 
-            if (droppedTridentPos != null && next.equals(droppedTridentPos)) {
-                String retrievedName = droppedTridentStack != null
-                    ? droppedTridentStack.getName().getString() : "trident";
-                returnDroppedTrident();
-                sendMessage("§3You retrieve your " + retrievedName + "!");
+            // Walk-over pickup: retrieve exactly the trident(s) lying on THIS tile,
+            // leaving any others where they landed.
+            for (java.util.Iterator<DroppedTrident> it = droppedTridents.iterator(); it.hasNext();) {
+                DroppedTrident dropped = it.next();
+                if (!next.equals(dropped.pos())) continue;
+                returnOneTrident(dropped);
+                it.remove();
+                sendMessage("§3You retrieve your " + dropped.stack().getName().getString() + "!");
             }
 
             if (tileEffects.containsKey(next) && tileEffects.get(next).startsWith("cake")) {
@@ -21680,10 +21767,12 @@ public class CombatManager {
 
         // If a thrown trident was lying on the arena when the final blow landed,
         // auto-recover it -otherwise the player loses it permanently on level end.
-        if (droppedTridentStack != null) {
-            String tridentName = droppedTridentStack.getName().getString();
+        if (!droppedTridents.isEmpty()) {
+            int recovered = droppedTridents.size();
             returnDroppedTrident();
-            sendMessage("§3\u21BA Recovered your " + tridentName + "!");
+            sendMessage(recovered == 1
+                ? "§3\u21BA Recovered your trident!"
+                : "§3\u21BA Recovered " + recovered + " thrown tridents!");
         }
 
         // Diagnostic: in party combat, this.player is the current turn player

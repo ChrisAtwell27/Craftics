@@ -72,8 +72,15 @@ public class CrafticsClient implements ClientModInitializer {
         // the DISCONNECT event), so scan after join's remap and again right before
         // that unmap runs. A broken slot gets named in the log before it can crash.
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register(
-            (handler, sender, client) ->
-                com.crackedgames.craftics.util.RegistryHealthScanner.scan("client-join"));
+            (handler, sender, client) -> {
+                if (com.crackedgames.craftics.util.RegistryHealthScanner.scan("client-join") > 0) {
+                    // Null raw-id holes survive the whole session and NPE the first code
+                    // path that touches them (equipping a copper helmet crashed the
+                    // wearer's client mid-render). Splint them in place - ids stay
+                    // server-aligned, so this is safe while playing.
+                    com.crackedgames.craftics.util.RegistryHealthScanner.splintHoles("client-join");
+                }
+            });
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register(
             (handler, client) ->
                 com.crackedgames.craftics.util.RegistryHealthScanner.scan("client-disconnect"));
