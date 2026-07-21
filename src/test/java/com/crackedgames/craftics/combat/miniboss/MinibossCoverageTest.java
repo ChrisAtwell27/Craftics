@@ -34,7 +34,7 @@ class MinibossCoverageTest {
         new SnowyBlizzardMechanic(),
         new MountainRockbreakerMechanic(),
         new CaveInMechanic(),
-        new DeepDarkWardenMechanic(),
+        new DeepDarkWaveMechanic(),
         new NetherFireRainMechanic(),
         new SoulSandColossusMechanic(),
         new CrimsonFungalBloomMechanic(),

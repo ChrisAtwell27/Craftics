@@ -234,16 +234,29 @@ public class Pathfinding {
                                                boolean hasBoat, boolean ignoreObstacles,
                                                boolean phaseThroughEnemies) {
         return findPlayerPathWithJumps(arena, from, to, maxSpeed, hasBoat, ignoreObstacles,
-            phaseThroughEnemies, JumpProfile.DEFAULT);
+            phaseThroughEnemies, JumpProfile.DEFAULT, false);
     }
 
     /** As above, with the player's {@link JumpProfile} (Pole Vault / Longstride). */
     public static Path findPlayerPathWithJumps(GridArena arena, GridPos from, GridPos to, int maxSpeed,
                                                boolean hasBoat, boolean ignoreObstacles,
                                                boolean phaseThroughEnemies, JumpProfile profile) {
+        return findPlayerPathWithJumps(arena, from, to, maxSpeed, hasBoat, ignoreObstacles,
+            phaseThroughEnemies, profile, false);
+    }
+
+    /**
+     * As above, with {@code aquatic} - a Respiration-helmet wearer treated as able to
+     * swim DEEP_WATER (see {@link com.crackedgames.craftics.core.GridTile#isWalkableEx}).
+     * Player-move callers only; enemies never pass true here.
+     */
+    public static Path findPlayerPathWithJumps(GridArena arena, GridPos from, GridPos to, int maxSpeed,
+                                               boolean hasBoat, boolean ignoreObstacles,
+                                               boolean phaseThroughEnemies, JumpProfile profile,
+                                               boolean aquatic) {
         if (from.equals(to) || !arena.isInBounds(to)) return Path.EMPTY;
         var destTile = arena.getTile(to);
-        if (destTile == null || !destTile.isWalkableEx(hasBoat, ignoreObstacles, false)) return Path.EMPTY;
+        if (destTile == null || !destTile.isWalkableEx(hasBoat, ignoreObstacles, aquatic)) return Path.EMPTY;
         if (isBlockedBy(arena, to, null)) return Path.EMPTY;
 
         Map<GridPos, GridPos> cameFrom = new HashMap<>();
@@ -268,7 +281,7 @@ public class Pathfinding {
                 GridPos step = new GridPos(current.x() + dir.x(), current.z() + dir.z());
                 if (arena.isInBounds(step) && !closed.contains(step)) {
                     var t = arena.getTile(step);
-                    boolean walkable = t != null && t.isWalkableEx(hasBoat, ignoreObstacles, false);
+                    boolean walkable = t != null && t.isWalkableEx(hasBoat, ignoreObstacles, aquatic);
                     boolean free = step.equals(to)
                         || (phaseThroughEnemies ? !step.equals(arena.getPlayerGridPos())
                                                 : !isBlockedBy(arena, step, null, false));
@@ -294,7 +307,7 @@ public class Pathfinding {
                     if (!arena.isInBounds(land) || closed.contains(land)) continue;
                     var lt = arena.getTile(land);
                     // Land ON solid ground only: you may clear lava, never end your jump in it.
-                    if (lt == null || !lt.isWalkableEx(hasBoat, ignoreObstacles, false)) continue;
+                    if (lt == null || !lt.isWalkableEx(hasBoat, ignoreObstacles, aquatic)) continue;
                     if (isJumpableGap(arena, land)) continue;
                     if (isBlockedBy(arena, land, null)) continue;
 
@@ -557,7 +570,7 @@ public class Pathfinding {
                                                                 int maxSpeed, boolean hasBoat,
                                                                 boolean ignoreObstacles) {
         return getPlayerReachableTilesWithJumps(arena, from, maxSpeed, hasBoat, ignoreObstacles,
-            JumpProfile.DEFAULT);
+            JumpProfile.DEFAULT, false);
     }
 
     /** As above, with the player's {@link JumpProfile} (Pole Vault / Longstride). */
@@ -565,6 +578,19 @@ public class Pathfinding {
                                                                 int maxSpeed, boolean hasBoat,
                                                                 boolean ignoreObstacles,
                                                                 JumpProfile profile) {
+        return getPlayerReachableTilesWithJumps(arena, from, maxSpeed, hasBoat, ignoreObstacles,
+            profile, false);
+    }
+
+    /**
+     * As above, with {@code aquatic} (Respiration) - mirrors
+     * {@link #findPlayerPathWithJumps(GridArena, GridPos, GridPos, int, boolean, boolean, boolean, JumpProfile, boolean)}.
+     */
+    public static Set<GridPos> getPlayerReachableTilesWithJumps(GridArena arena, GridPos from,
+                                                                int maxSpeed, boolean hasBoat,
+                                                                boolean ignoreObstacles,
+                                                                JumpProfile profile,
+                                                                boolean aquatic) {
         Set<GridPos> reachable = new HashSet<>();
         Map<GridPos, Integer> dist = new HashMap<>();
         PriorityQueue<GridPos> open = new PriorityQueue<>(
@@ -582,7 +608,7 @@ public class Pathfinding {
                 GridPos step = new GridPos(current.x() + dir.x(), current.z() + dir.z());
                 if (arena.isInBounds(step)) {
                     var t = arena.getTile(step);
-                    if (t != null && t.isWalkableEx(hasBoat, ignoreObstacles, false)
+                    if (t != null && t.isWalkableEx(hasBoat, ignoreObstacles, aquatic)
                             && !isBlockedBy(arena, step, null, false)) {
                         int nd = currentDist + 1;
                         if (nd <= maxSpeed && nd < dist.getOrDefault(step, Integer.MAX_VALUE)) {
@@ -606,7 +632,7 @@ public class Pathfinding {
                                                current.z() + dir.z() * (gap + 1));
                     if (!arena.isInBounds(land)) continue;
                     var lt = arena.getTile(land);
-                    if (lt == null || !lt.isWalkableEx(hasBoat, ignoreObstacles, false)) continue;
+                    if (lt == null || !lt.isWalkableEx(hasBoat, ignoreObstacles, aquatic)) continue;
                     if (isJumpableGap(arena, land)) continue;
                     if (isBlockedBy(arena, land, null)) continue;
 

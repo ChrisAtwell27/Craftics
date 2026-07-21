@@ -3,10 +3,26 @@
 Biome Minibosses
 
 - Every biome now has a unique miniboss on level 4 (biomes are 7 levels each now, except the Dragon's Nest which stays 3). Each is either an event with its own hazard or a literal miniboss enemy
-- Overworld: Plains Graveyard (graves raise zombies), Desert Sandstorm (buried lanes), Jungle Broodmother (elite spider + spawns), Forest Pale Garden (the Creaking, now on level 4), River Flash Flood (rising water), Snowy Blizzard (creeper waves + freezing gusts), Mountain Rockbreaker (elite golem + falling rock), Cave-In (collapsing ceiling), Deep Dark Warden Echo (elite warden + sculk summons)
+- Overworld: Plains Graveyard (graves raise zombies), Desert Sandstorm (husks + reinforcement waves), Jungle Broodmother (elite spider + spawns), Forest Pale Garden (the Creaking, now on level 4), River Flash Flood (rising water), Snowy Blizzard (snowy creeper waves), Mountain Rockbreaker (elite golem + falling rock), Cave-In (collapsing ceiling), Deep Dark Swarm (silverfish and skeleton waves)
 - Nether: Fire Rain (raining embers), Bone Colossus (elite wither skeleton), Fungal Bloom (spreading spores), Warped Enderman (elite + endermite swarm), Magma Surge (erupting lava vents)
 - End: Void Rift (crumbling platform), Shulker Sentinel (elite shulker), Chorus Bloom (spreading chorus)
 - Miniboss levels pay bonus emeralds and a richer loot roll
+
+Biome Weather
+
+- Biomes now have persistent weather that kicks in partway through and lasts the rest of the biome
+- Snowy (from level 4): blizzard winds telegraph with floor arrows, then drag every fighter one way
+- Jungle (from level 2): rain churns grass and dirt into mud - crossing a mud tile has a 50% chance to stop you (or an enemy) in place
+- Desert (from level 4): a sandstorm blinds everyone for a turn every few rounds
+- Every weather effect now has its own ambience: falling rain, drifting snow with a wind howl, blowing sand, plus one-shot sound cues on the special-level events
+- Fixed biome weather not activating at all in game (the effect settings were being dropped when biome levels were renumbered)
+
+Sculk Sensors
+
+- The Deep Dark now has sculk sensors on every level (1 to 3 each), ringed by sculk blocks marking their range
+- Step within 2 tiles of one and it shrieks: darkness on the whole party for a turn and a wave of silverfish spawns next round, warned in red where they'll appear
+- Sensors re-arm every other round. Wearing Swift Sneak lets you walk past without setting them off
+- Destroy a sensor by attacking it, but only from outside its range - it senses you if you're too close
 
 Infinite Mode
 
@@ -21,6 +37,11 @@ Combat
 
 - Dual-wield second strikes (daggers and sais) now deal 75% of the offhand weapon's own damage instead of the main hand's - no more free damage from offhanding a cheap dagger
 - Fixed the enemy/ally/player inspect panel not appearing on hover in battle
+- Scaled down multiplayer mob and boss health scaling to 0.7x instead of 0.95
+- Five enchants now do something in combat. Efficiency: 10% per level to reduce an action's AP cost by 1 (mining and attacks). Fortune: chance at bonus loot when mining or on a killing blow. Silk Touch: mined obstacles drop their block, and killing blows can drop the enemy's head. Respiration: swim deep water for a few turns before drowning. Swift Sneak: extra speed on your first turn
+- Efficiency, Fortune, and Silk Touch tooltips now describe what they actually do on the item they're on (pickaxe vs weapon)
+- Night Vision Goggles now grant immunity to Blindness and Darkness (previously +1 attack range)
+- Fixed the Move tool being throwable onto the ground, and fixed items vanishing instead of dropping when you press Q
 
 Visual
 

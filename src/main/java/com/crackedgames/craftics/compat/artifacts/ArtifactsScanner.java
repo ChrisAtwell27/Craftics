@@ -49,7 +49,8 @@ public final class ArtifactsScanner implements EquipmentScanner {
     private static void applyArtifact(StatModifiers mods, String id) {
         switch (id) {
             // ===== Head slot =====
-            case "night_vision_goggles" -> mods.add(Bonus.ATTACK_RANGE, 1);
+            case "night_vision_goggles" ->
+                mods.addCombatEffect("Night Vision Goggles", new ArtifactEffects.NightVisionGoggles());
             case "superstitious_hat" ->
                 mods.addCombatEffect("Superstitious Hat", new ArtifactEffects.SuperstitiousHat());
             case "villager_hat" ->

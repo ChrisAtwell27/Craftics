@@ -34,9 +34,30 @@ public abstract class ServerPlayNetworkHandlerMixin {
             return;
         }
         if (player == null) return;
-        var cm = com.crackedgames.craftics.combat.CombatManager.get(player);
-        if (cm.isActive()) {
+
+        // The Move item must never be droppable, in or out of combat, and it's
+        // always the held/selected hotbar stack when a drop key is pressed
+        // (MoveSlotManager locks it to a hotbar slot).
+        boolean droppingMoveItem = com.crackedgames.craftics.item.MoveSlotManager.isMoveStack(player.getMainHandStack());
+
+        // Resolve through getActiveCombat (leader-resolved), NOT get(player):
+        // non-leader party members share the leader's CombatManager, and their
+        // own per-player instance is always inactive, so get(player).isActive()
+        // never blocks a non-leader's drop. getActiveCombat never returns null.
+        boolean inActiveCombat = com.crackedgames.craftics.combat.CombatManager
+            .getActiveCombat(player.getUuid()).isActive();
+
+        if (droppingMoveItem || inActiveCombat) {
             ci.cancel();
+            // The client optimistically removes the dropped stack from its
+            // inventory view before the server packet round-trips. Cancelling
+            // here stops the server-side removeStack, but without a resync the
+            // client still shows the item gone until some unrelated sync
+            // happens. Force a full content resync so the item reappears.
+            // ScreenHandler.syncState() has an identical signature on every
+            // supported shard (verified 1.21.1/1.21.3/1.21.4/1.21.5 via javap),
+            // so no Stonecutter conditional is needed here.
+            player.playerScreenHandler.syncState();
         }
     }
 }

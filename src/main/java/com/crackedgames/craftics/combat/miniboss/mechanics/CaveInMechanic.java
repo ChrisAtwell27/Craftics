@@ -8,6 +8,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -77,6 +78,7 @@ public final class CaveInMechanic implements MinibossMechanic {
     @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.BLOCK_GRAVEL_BREAK, 0.6f, 0.7f);
     }
 
     @Override
@@ -108,7 +110,10 @@ public final class CaveInMechanic implements MinibossMechanic {
             }
         }
 
-        if (!chosen.isEmpty()) ctx.message("§8The ceiling collapses!");
+        if (!chosen.isEmpty()) {
+            ctx.message("§8The ceiling collapses!");
+            ctx.playSound(SoundEvents.BLOCK_STONE_BREAK, 0.7f, 0.6f);
+        }
     }
 
     /**

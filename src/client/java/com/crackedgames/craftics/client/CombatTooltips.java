@@ -387,7 +387,7 @@ public class CombatTooltips implements ItemTooltipCallback {
 
         boolean headerAdded = false;
         for (var entry : combined) {
-            String effect = getEnchantEffect(entry.getKey(), entry.getValue());
+            String effect = getEnchantEffect(entry.getKey(), entry.getValue(), stack.getItem());
             if (effect != null) {
                 if (!headerAdded) {
                     lines.add(Text.empty());
@@ -402,7 +402,10 @@ public class CombatTooltips implements ItemTooltipCallback {
     /**
      * Get the combat effect description for a specific enchantment and level.
      */
-    private static String getEnchantEffect(String enchantId, int level) {
+    private static String getEnchantEffect(String enchantId, int level, Item item) {
+        // Efficiency/Fortune/Silk Touch do different things on a pickaxe (mining) vs a weapon
+        // (attacks / killing blows), so their tooltip text branches on the item type.
+        boolean pickaxe = net.minecraft.registry.Registries.ITEM.getId(item).getPath().endsWith("_pickaxe");
         return switch (enchantId) {
             // Weapon damage
             case "sharpness" -> "\u00a7c\u2694 Sharpness " + toRoman(level) + ": \u00a77+" + level + " dmg & +" + level + " Bleed per hit";
@@ -436,17 +439,21 @@ public class CombatTooltips implements ItemTooltipCallback {
 
             // Armor utility
             case "thorns" -> "\u00a74\u2748 Thorns " + toRoman(level) + ": \u00a77" + (level * 15) + "% chance reflect " + level + " damage";
-            case "respiration" -> "\u00a7b\u2B58 Respiration " + toRoman(level) + ": \u00a77+" + level + " turns underwater";
             case "feather_falling" -> "\u00a7a\u2193 Feather Falling " + toRoman(level) + ": \u00a77-" + level + " fall/knockback damage";
             case "depth_strider" -> "\u00a73\u2248 Depth Strider " + toRoman(level) + ": \u00a77+" + level + " speed on water tiles";
             case "frost_walker" -> "\u00a7b\u2744 Frost Walker " + toRoman(level) + ": \u00a77Water tiles become walkable ice";
             case "soul_speed" -> "\u00a75\u2605 Soul Speed " + toRoman(level) + ": \u00a77+" + level + " speed on soul sand";
-            case "swift_sneak" -> "\u00a78\u2605 Swift Sneak " + toRoman(level) + ": \u00a77No effect in tactical combat";
 
             // Tool enchants with combat use
-            case "efficiency" -> "\u00a7e\u26CF Efficiency " + toRoman(level) + ": \u00a77Break obstacles faster";
-            case "silk_touch" -> "\u00a7a\u2728 Silk Touch: \u00a77Obstacle drops itself when broken";
-            case "fortune" -> "\u00a7a\u2728 Fortune " + toRoman(level) + ": \u00a77+" + level + " bonus drops from obstacles";
+            case "efficiency" -> "\u00a7e\u26CF Efficiency " + toRoman(level) + ": \u00a77" + (10 * level) + "% chance to reduce AP by 1 (10% per level)";
+            case "silk_touch" -> pickaxe
+                ? "\u00a7a\u2728 Silk Touch: \u00a77Mined obstacles drop their block"
+                : "\u00a7a\u2728 Silk Touch " + toRoman(level) + ": \u00a77" + Math.min(100, 25 * level) + "% chance a killing blow drops the enemy's head";
+            case "fortune" -> pickaxe
+                ? "\u00a7a\u2728 Fortune " + toRoman(level) + ": \u00a77" + (5 * level) + "% to find treasure mining natural obstacles"
+                : "\u00a7a\u2728 Fortune " + toRoman(level) + ": \u00a77" + (5 * level) + "% chance of bonus loot on a killing blow";
+            case "respiration" -> "\u00a71\u2248 Respiration " + toRoman(level) + ": \u00a77Swim deep water for " + level + " turn" + (level == 1 ? "" : "s") + " before drowning";
+            case "swift_sneak" -> "\u00a7b\u26a1 Swift Sneak " + toRoman(level) + ": \u00a77+" + level + " speed on your first turn";
             case "unbreaking" -> "\u00a77\u26E8 Unbreaking " + toRoman(level) + ": \u00a77" + (100 / (level + 1)) + "% durability use";
             case "mending" -> "\u00a7a\u2764 Mending: \u00a77Repairs with XP on kill";
 
@@ -554,11 +561,25 @@ public class CombatTooltips implements ItemTooltipCallback {
         }
 
         if (!hasEffect) {
-            // Try reading from the potion registry entry name
+            // Try reading from the potion registry entry name. Compute the REAL applied turns
+            // from the base potion's own effects (same server mapping the drink path uses) so
+            // extended (long_) potions show their doubled duration instead of a stale "3 turns".
             contents.potion().ifPresent(potionEntry -> {
                 String potionId = potionEntry.getKey()
                     .map(k -> k.getValue().getPath()).orElse("");
-                String desc = getPotionIdDescription(potionId, item == Items.TIPPED_ARROW);
+                int idTurns = 0;
+                if (item != Items.TIPPED_ARROW) {
+                    for (var eff : potionEntry.value().getEffects()) {
+                        var ct = com.crackedgames.craftics.combat.ItemUseHandler
+                            .mapStatusEffect(eff.getEffectType().value());
+                        if (ct != null) {
+                            idTurns = com.crackedgames.craftics.combat.ItemUseHandler
+                                .getTurnsForPotion(ct, eff.getDuration());
+                            break;
+                        }
+                    }
+                }
+                String desc = getPotionIdDescription(potionId, item == Items.TIPPED_ARROW, idTurns);
                 if (desc != null) {
                     lines.add(Text.literal(desc));
                 }
@@ -590,7 +611,7 @@ public class CombatTooltips implements ItemTooltipCallback {
             case "night_vision" -> prefix + "\u00a7eNight Vision: \u00a77See in darkness (no combat effect)";
             case "absorption" -> prefix + "\u00a76Absorption" + lvl + ": \u00a77+" + (4 + amplifier * 4) + " bonus HP";
             case "luck" -> prefix + "\u00a7aLuck" + lvl + ": \u00a77+" + (1 + amplifier) + " crit chance for " + dur(turns, 3);
-            case "jump_boost" -> prefix + "\u00a7aLeaping" + lvl + ": \u00a77+1 movement for 3 turns";
+            case "jump_boost" -> prefix + "\u00a7aLeaping" + lvl + ": \u00a77+1 movement for " + dur(turns, 3);
             case "water_breathing" -> prefix + "\u00a73Water Breathing: \u00a77No drowning damage, \u00a73+2 Water Power";
             case "haste" -> prefix + "\u00a7eHaste" + lvl + ": \u00a77+1 AP for " + dur(turns, 3);
             case "mining_fatigue" -> prefix + "\u00a78Mining Fatigue: \u00a77-1 AP for " + dur(turns, 2);
@@ -611,29 +632,29 @@ public class CombatTooltips implements ItemTooltipCallback {
     /**
      * Fallback: get description from potion registry ID (e.g., "strong_healing", "long_swiftness").
      */
-    private static String getPotionIdDescription(String potionId, boolean isArrow) {
+    private static String getPotionIdDescription(String potionId, boolean isArrow, int turns) {
         String prefix = isArrow ? "\u00a77  On hit: " : "\u00a77  ";
         // Strip "long_" and "strong_" prefixes, match base potion
         String base = potionId.replace("long_", "").replace("strong_", "");
         boolean strong = potionId.startsWith("strong_");
         String lvl = strong ? " II" : "";
         return switch (base) {
-            case "swiftness" -> prefix + "\u00a7bSpeed" + lvl + ": \u00a77+2 movement for 3 turns";
-            case "slowness" -> prefix + "\u00a77Slowness" + lvl + ": \u00a77-1 movement for 2 turns";
-            case "strength" -> prefix + "\u00a7cStrength" + lvl + ": \u00a77+" + (strong ? 5 : 3) + " attack for 3 turns";
-            case "weakness" -> prefix + "\u00a78Weakness: \u00a77-2 attack for 2 turns";
+            case "swiftness" -> prefix + "\u00a7bSpeed" + lvl + ": \u00a77+2 movement for " + dur(turns, 3);
+            case "slowness" -> prefix + "\u00a77Slowness" + lvl + ": \u00a77-1 movement for " + dur(turns, 2);
+            case "strength" -> prefix + "\u00a7cStrength" + lvl + ": \u00a77+" + (strong ? 5 : 3) + " attack for " + dur(turns, 3);
+            case "weakness" -> prefix + "\u00a78Weakness: \u00a77-2 attack for " + dur(turns, 2);
             case "healing" -> prefix + "\u00a7aHealing" + lvl + ": \u00a77Restore " + (strong ? 8 : 4) + " HP instantly";
             case "harming" -> prefix + "\u00a74Harming" + lvl + ": \u00a77Deal " + (strong ? 8 : 4) + " damage";
-            case "regeneration" -> prefix + "\u00a7dRegen" + lvl + ": \u00a77+2 HP/turn for 3 turns";
-            case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for 3 turns, \u00a75+1 Special Power";
+            case "regeneration" -> prefix + "\u00a7dRegen" + lvl + ": \u00a77+2 HP/turn for " + dur(turns, 3);
+            case "fire_resistance" -> prefix + "\u00a76Fire Res: \u00a77Immune to fire for " + dur(turns, 3) + ", \u00a75+1 Special Power";
             case "poison" -> prefix + "\u00a72Poison" + lvl + ": \u00a77Damage fades as it ticks down";
-            case "invisibility" -> prefix + "\u00a77Invisibility: \u00a77Enemies skip you for 2 turns";
+            case "invisibility" -> prefix + "\u00a77Invisibility: \u00a77Enemies skip you for " + dur(turns, 2);
             case "night_vision" -> prefix + "\u00a7eNight Vision: \u00a77(no combat effect)";
-            case "leaping" -> prefix + "\u00a7aLeaping" + lvl + ": \u00a77+1 movement for 3 turns";
+            case "leaping" -> prefix + "\u00a7aLeaping" + lvl + ": \u00a77+1 movement for " + dur(turns, 3);
             case "water_breathing" -> prefix + "\u00a73Water Breathing: \u00a77No drowning damage, \u00a73+2 Water Power";
-            case "turtle_master" -> prefix + "\u00a72Turtle Master: \u00a77+4 DEF, -2 movement for 3 turns";
-            case "luck" -> prefix + "\u00a7aLuck: \u00a77+1 crit chance for 3 turns";
-            case "slow_falling" -> prefix + "\u00a7fSlow Falling: \u00a77No knockback for 3 turns";
+            case "turtle_master" -> prefix + "\u00a72Turtle Master: \u00a77+4 DEF, -2 movement for " + dur(turns, 3);
+            case "luck" -> prefix + "\u00a7aLuck: \u00a77+1 crit chance for " + dur(turns, 3);
+            case "slow_falling" -> prefix + "\u00a7fSlow Falling: \u00a77No knockback for " + dur(turns, 3);
             default -> prefix + "\u00a78" + potionId.replace("_", " ") + " (no combat effect)";
         };
     }

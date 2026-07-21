@@ -5,6 +5,7 @@ import com.crackedgames.craftics.combat.miniboss.MinibossMechanic;
 import com.crackedgames.craftics.combat.miniboss.MinibossSpawns;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,6 +81,7 @@ public final class EndCityShulkerMechanic implements MinibossMechanic {
     @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.ENTITY_SHULKER_OPEN, 0.6f, 0.8f);
     }
 
     @Override
@@ -107,6 +109,9 @@ public final class EndCityShulkerMechanic implements MinibossMechanic {
             ctx.spawnMob("minecraft:shulker", pos, 14, 4, 2, 4);
             spawnedAny = true;
         }
-        if (spawnedAny) ctx.message("§dThe Sentinel deploys more shulkers!");
+        if (spawnedAny) {
+            ctx.message("§dThe Sentinel deploys more shulkers!");
+            ctx.playSound(SoundEvents.ENTITY_SHULKER_TELEPORT, 0.5f, 1.0f);
+        }
     }
 }

@@ -8,4 +8,5 @@ class TileTypeTest {
     @Test void sporeWalkable()        { assertTrue(TileType.SPORE.walkable); }
     @Test void frostWalkable()        { assertTrue(TileType.FROST.walkable); }
     @Test void mudWalkableNoStepDamage() { assertTrue(TileType.MUD.walkable); assertEquals(0, TileType.MUD.damageOnStep); }
+    @Test void sculkWalkable() { assertTrue(TileType.SCULK.walkable); }
 }

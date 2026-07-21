@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -72,6 +73,7 @@ public final class BasaltMagmaSurgeMechanic implements MinibossMechanic {
     public void onFightStart(MinibossContext ctx) {
         pendingVents.clear();
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.BLOCK_FIRE_AMBIENT, 0.6f, 0.8f);
     }
 
     @Override
@@ -83,6 +85,7 @@ public final class BasaltMagmaSurgeMechanic implements MinibossMechanic {
             }
             pendingVents.clear();
             ctx.message("§6Lava erupts!");
+            ctx.playSound(SoundEvents.BLOCK_LAVA_POP, 0.7f, 0.7f);
         }
 
         // Telegraph the next eruption on even rounds when nothing is currently pending, so

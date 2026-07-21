@@ -5,6 +5,7 @@ import com.crackedgames.craftics.combat.miniboss.MinibossMechanic;
 import com.crackedgames.craftics.combat.miniboss.MinibossSpawns;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -78,6 +79,7 @@ public final class WarpedEndermanMechanic implements MinibossMechanic {
     @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.ENTITY_ENDERMAN_STARE, 0.6f, 0.8f);
     }
 
     @Override
@@ -105,6 +107,9 @@ public final class WarpedEndermanMechanic implements MinibossMechanic {
             ctx.spawnMob("minecraft:endermite", pos, 6, 3, 0, 1);
             spawnedAny = true;
         }
-        if (spawnedAny) ctx.message("§3The warp tears - endermites spill out!");
+        if (spawnedAny) {
+            ctx.message("§3The warp tears - endermites spill out!");
+            ctx.playSound(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 0.5f, 1.1f);
+        }
     }
 }

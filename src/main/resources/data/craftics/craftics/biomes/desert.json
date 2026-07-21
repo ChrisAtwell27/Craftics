@@ -15,7 +15,7 @@
   "obstacle_density_growth": 0.0,
   "environment": "desert",
   "night": false,
-  "biomeEffect": {"id": "sandstorm", "startLevel": 3},
+  "biomeEffect": {"id": "sandstorm", "startLevel": 4},
   "enemies": {
     "passive": [
       {"type": "minecraft:rabbit", "weight": 5, "hp": 2, "attack": 0, "defense": 0, "range": 1}

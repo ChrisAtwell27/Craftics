@@ -15,6 +15,7 @@
   "obstacle_density_growth": 0.0,
   "environment": "deep_dark",
   "night": true,
+  "biomeEffect": {"id": "sculk_sensors", "startLevel": 1},
   "enemies": {
     "passive": [],
     "hostile": [

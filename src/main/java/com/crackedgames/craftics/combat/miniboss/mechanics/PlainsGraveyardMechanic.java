@@ -8,6 +8,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
 import net.minecraft.block.Blocks;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -89,6 +90,8 @@ public final class PlainsGraveyardMechanic implements MinibossMechanic {
             if (grave != null) graves.add(pos);
         }
         ctx.banner(introTitle());
+        // Low tolling bell to open the encounter - the graveyard's fight-start cue.
+        ctx.playSound(SoundEvents.BLOCK_BELL_USE, 0.6f, 0.7f);
     }
 
     @Override
@@ -96,11 +99,17 @@ public final class PlainsGraveyardMechanic implements MinibossMechanic {
         if (ctx.round() % ZOMBIE_CADENCE != 0) return;
 
         int hpBonus = 0; // round-hook zombies mirror the opening wave's base stats
+        boolean raisedAny = false;
         for (GridPos g : graves) {
             if (!graveAlive(ctx, g)) continue;
             GridPos spot = adjacentFree(ctx, g);
-            if (spot != null) ctx.spawnMob("minecraft:zombie", spot, 12 + hpBonus, 3, 0, 1);
+            if (spot != null) {
+                ctx.spawnMob("minecraft:zombie", spot, 12 + hpBonus, 3, 0, 1);
+                raisedAny = true;
+            }
         }
+        // One-shot zombie groan on the raise round, not spammed per-grave.
+        if (raisedAny) ctx.playSound(SoundEvents.ENTITY_ZOMBIE_AMBIENT, 0.6f, 0.9f);
     }
 
     @Override

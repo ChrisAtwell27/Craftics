@@ -37,6 +37,12 @@ public final class MinibossContext {
      * (e.g. sandstorm blinding everyone).
      */
     public interface PartyEffectFn { void apply(com.crackedgames.craftics.combat.CombatEffects.EffectType type, int turns); }
+    public interface SoundFn { void play(net.minecraft.sound.SoundEvent sound, float volume, float pitch); }
+    public interface AmbientParticleFn { void spawn(net.minecraft.particle.ParticleEffect particle, double x, double y, double z, int count, double dx, double dy, double dz, double speed); }
+    public interface ParticipantsFn { java.util.List<net.minecraft.server.network.ServerPlayerEntity> get(); }
+    public interface WarnTilesFn { void warn(java.util.List<GridPos> tiles); }
+    public interface SwiftSneakFn { boolean has(net.minecraft.server.network.ServerPlayerEntity p); }
+    public interface PlayerTileFn { GridPos of(net.minecraft.server.network.ServerPlayerEntity p); }
 
     private final GridArena arena;
     private final Random rng;
@@ -48,6 +54,12 @@ public final class MinibossContext {
     private final WindGustFn windGustFn;
     private final WindGustFn windTelegraphFn;
     private final PartyEffectFn partyEffectFn;
+    private final SoundFn soundFn;
+    private final AmbientParticleFn ambientParticleFn;
+    private final ParticipantsFn participantsFn;
+    private final WarnTilesFn warnTilesFn;
+    private final SwiftSneakFn swiftSneakFn;
+    private final PlayerTileFn playerTileFn;
     private final java.util.function.Consumer<String> message;
     private final java.util.function.Consumer<String> banner;
 
@@ -55,12 +67,18 @@ public final class MinibossContext {
                            SpawnFn spawnFn, TileFn tileFn, BlockObjectFn blockObjectFn,
                            WindGustFn windGustFn, WindGustFn windTelegraphFn,
                            PartyEffectFn partyEffectFn,
+                           SoundFn soundFn, AmbientParticleFn ambientParticleFn,
+                           ParticipantsFn participantsFn, WarnTilesFn warnTilesFn, SwiftSneakFn swiftSneakFn,
+                           PlayerTileFn playerTileFn,
                            java.util.function.Consumer<String> message,
                            java.util.function.Consumer<String> banner) {
         this.arena = arena; this.rng = rng; this.round = round; this.enemies = enemies;
         this.spawnFn = spawnFn; this.tileFn = tileFn; this.blockObjectFn = blockObjectFn;
         this.windGustFn = windGustFn; this.windTelegraphFn = windTelegraphFn;
         this.partyEffectFn = partyEffectFn;
+        this.soundFn = soundFn; this.ambientParticleFn = ambientParticleFn;
+        this.participantsFn = participantsFn; this.warnTilesFn = warnTilesFn; this.swiftSneakFn = swiftSneakFn;
+        this.playerTileFn = playerTileFn;
         this.message = message; this.banner = banner;
     }
 
@@ -86,6 +104,25 @@ public final class MinibossContext {
     public void applyPartyEffect(com.crackedgames.craftics.combat.CombatEffects.EffectType type, int turns) {
         partyEffectFn.apply(type, turns);
     }
+    /** Plays a sound to the whole party, positioned at the arena. Weather/event cues. */
+    public void playSound(net.minecraft.sound.SoundEvent sound, float volume, float pitch) {
+        soundFn.play(sound, volume, pitch);
+    }
+    /** Spawns ambient particles (rain, snow, embers...) at an arena-relative position. */
+    public void spawnAmbientParticle(net.minecraft.particle.ParticleEffect particle, double x, double y, double z,
+                                      int count, double dx, double dy, double dz, double speed) {
+        ambientParticleFn.spawn(particle, x, y, z, count, dx, dy, dz, speed);
+    }
     public void message(String s) { message.accept(s); }
     public void banner(String s) { banner.accept(s); }
+    /** Live party players (solo: just the acting player). */
+    public java.util.List<net.minecraft.server.network.ServerPlayerEntity> participants() { return participantsFn.get(); }
+    /** Paints a red danger-warning overlay on {@code tiles} for the party - a standalone
+     *  telegraph (e.g. the sculk sensor's next-round silverfish spawn), independent of any
+     *  boss attack warning. */
+    public void warnTiles(java.util.List<GridPos> tiles) { warnTilesFn.warn(tiles); }
+    /** True if the player's boots have Swift Sneak (bypasses sculk-sensor triggers). */
+    public boolean hasSwiftSneak(net.minecraft.server.network.ServerPlayerEntity p) { return swiftSneakFn.has(p); }
+    /** The grid tile a specific party member currently stands on (not just the acting player). */
+    public GridPos tileOf(net.minecraft.server.network.ServerPlayerEntity p) { return playerTileFn.of(p); }
 }

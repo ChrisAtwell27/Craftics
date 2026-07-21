@@ -53,6 +53,21 @@ class BiomeRegistryTest {
             false, null);
     }
 
+    /** Same minimal biome but carrying a biome-effect ({@code effectId}/{@code startLevel}). */
+    private static BiomeTemplate biomeWithEffect(String biomeId, int startLevel, int levelCount,
+                                                 String effectId, int effectStartLevel) {
+        return new BiomeTemplate(
+            biomeId, biomeId, startLevel, levelCount,
+            10, 10, 0, 0,
+            (Block[]) null, (Block[]) null,
+            0f, 0f,
+            (MobPoolEntry[]) null, (MobPoolEntry[]) null, null,
+            (Item[]) null, (int[]) null,
+            (String[]) null, (int[]) null,
+            false, null,
+            effectId, effectStartLevel);
+    }
+
     /**
      * The canonical vanilla branch-0 play/campaign order (from {@link VanillaCampaign}). This is the
      * sequence the rebuild numbers by; it is NOT the same as the legacy JSON {@code order} sort, which
@@ -63,6 +78,21 @@ class BiomeRegistryTest {
         "plains", "desert", "jungle", "forest", "river", "snowy", "mountain", "cave", "deep_dark",
         "nether_wastes", "soul_sand_valley", "crimson_forest", "warped_forest", "basalt_deltas",
         "outer_end_islands", "end_city", "chorus_grove", "dragons_nest");
+
+    @Test
+    void rebuildPreservesBiomeEffectFields() {
+        // A biome registered at a non-1 startLevel is rebuilt by rebuildLevelNumbers (renumber).
+        // That rebuild must carry biomeEffectId/biomeEffectStartLevel through - the 20-arg
+        // constructor would default them away, silently killing the weather in-game.
+        CampaignManager.register(VanillaCampaign.build());
+        BiomeRegistry.register(biome("plains", 500, 3));
+        BiomeRegistry.register(biomeWithEffect("desert", 42, 2, "sandstorm", 4));
+
+        BiomeTemplate desert = BiomeRegistry.getForLevel(4); // desert, post-rebuild
+        assertEquals("desert", desert.biomeId);
+        assertEquals("sandstorm", desert.biomeEffectId, "effect id dropped by rebuild");
+        assertEquals(4, desert.biomeEffectStartLevel, "effect startLevel dropped by rebuild");
+    }
 
     @Test
     void ordersByCampaignPositionWithContiguousLevels_evenWhenRegisteredScrambled() {

@@ -458,6 +458,12 @@ public class CombatManager {
 
     private int apRemaining;
     private int movePointsRemaining;
+    /** Respiration air remaining this fight: full (level) out of deep water, else counts down.
+     *  Keyed by player UUID -mirrors {@link #playerCombatEffects}. tickPlayerPerTurnEffects()
+     *  runs once PER PARTY MEMBER in the same tick (see the ptMembers loop), so a single shared
+     *  field let one member's tick (e.g. dry land, no Respiration) stomp another member's
+     *  in-progress air countdown (e.g. mid deep-water swim) in the same pass. */
+    private final java.util.Map<java.util.UUID, Integer> respirationAir = new java.util.HashMap<>();
     private int turnNumber;
     private int peacefulTurnCount = 0;
     private boolean endTurnHintSent = false;
@@ -591,6 +597,30 @@ public class CombatManager {
             } else if (tileBlock == Blocks.SOUL_SAND || tileBlock == Blocks.SOUL_SOIL) {
                 movePointsRemaining = Math.max(1, movePointsRemaining - 1);
                 sendMessage("§7☁ Soul sand slows your movement (-1 Speed)");
+            }
+            // Respiration air: swim deep water for `level` turns, then drown if still standing
+            // in it. this.player is already swapped to `member` by the caller, so playerTile
+            // (read from arena.getPlayerGridPos() above) is member's own tile.
+            int respLevel = PlayerCombatStats.getEnchantLevel(
+                member.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), "minecraft:respiration");
+            boolean inDeepWater = playerTile.getType() == com.crackedgames.craftics.core.TileType.DEEP_WATER;
+            // Per-member air, keyed by UUID (mirrors playerCombatEffects): this method runs
+            // once per party member in the same tick via the ptMembers loop above, so a
+            // single shared field let one member's pass stomp another's in-progress air.
+            // Default to this member's own current respLevel so a lazily-seeded member (see
+            // startCombat) or one who just equipped/removed Respiration mid-fight starts full
+            // rather than inheriting whatever the map happened to hold (or 0).
+            int air = respirationAir.getOrDefault(member.getUuid(), respLevel);
+            if (CombatEnchantHelpers.respirationDrowns(air, inDeepWater)) {
+                sendMessage("§1You run out of air and drown!");
+                // Same lethal-tile mechanism as the MAGMA_BLOCK branch above: environmental
+                // damage (no attacker) skips all dodge/armor mitigation, so an overkill value
+                // reliably clamps health to the death threshold and routes through the normal
+                // death flow (game-over / coin-flip loot / party handling).
+                damagePlayer((int) member.getMaxHealth() + 100);
+                if (getPlayerHp() <= 0) { handlePlayerDeathOrGameOver(); return partyPlayers.size() <= 1 || !active; }
+            } else {
+                respirationAir.put(member.getUuid(), CombatEnchantHelpers.respirationNextAir(air, inDeepWater, respLevel));
             }
             // TIDAL set bonus: water tiles heal 1 HP/turn
             if (playerTile.isWater() && activeTrimScan != null
@@ -1922,8 +1952,57 @@ public class CombatManager {
             this::triggerWindGust,
             this::triggerWindTelegraph,
             this::applyEffectToParty,
+            this::playPartySound,
+            this::spawnAmbientParticle,
+            this::minibossParticipants,
+            this::warnTilesToParty,
+            this::minibossSwiftSneak,
+            this::gridPosOf,
             this::sendMessage,
             this::sendMessage);
+    }
+
+    /** Live party players (solo: just the acting player) - for miniboss/biome-effect
+     *  mechanics that need to scan every participant, not just the acting player. */
+    private java.util.List<ServerPlayerEntity> minibossParticipants() {
+        return partyPlayers.isEmpty() ? java.util.List.of(player) : new java.util.ArrayList<>(partyPlayers);
+    }
+
+    /** True if the player's boots have Swift Sneak (bypasses sculk-sensor triggers). */
+    private boolean minibossSwiftSneak(ServerPlayerEntity p) {
+        return p != null && PlayerCombatStats.getEnchantLevel(
+            p.getEquippedStack(net.minecraft.entity.EquipmentSlot.FEET), "minecraft:swift_sneak") > 0;
+    }
+
+    /** Paints a red danger-warning overlay on {@code tiles} for the whole party - a standalone
+     *  telegraph (e.g. the sculk sensor's next-round silverfish spawn), independent of any
+     *  boss attack warning. Sends its own TileSetPayload with only the warningTiles slot
+     *  populated; every other slot is empty since this isn't tied to a full tile-sync. */
+    private void warnTilesToParty(java.util.List<GridPos> tiles) {
+        if (tiles == null || tiles.isEmpty()) return;
+        java.util.List<Integer> warnList = new java.util.ArrayList<>();
+        for (GridPos t : tiles) { warnList.add(t.x()); warnList.add(t.z()); }
+        sendToAllParty(new com.crackedgames.craftics.network.TileSetPayload(
+            new int[0], new int[0], new int[0],
+            warnList.stream().mapToInt(Integer::intValue).toArray(),
+            new int[0], "", new int[0], new int[0], new int[0], new int[0]));
+    }
+
+    /** Plays a sound to the whole party, positioned at the arena's centre tile. Used by
+     *  miniboss/biome-effect weather cues (rain, wind gusts, ambience). */
+    private void playPartySound(net.minecraft.sound.SoundEvent sound, float volume, float pitch) {
+        if (arena == null || player == null) return;
+        net.minecraft.util.math.BlockPos origin = arena.getOrigin();
+        net.minecraft.util.math.BlockPos center = origin.add(arena.getWidth() / 2, 0, arena.getHeight() / 2);
+        player.getWorld().playSound(null, center, sound, net.minecraft.sound.SoundCategory.PLAYERS, volume, pitch);
+    }
+
+    /** Spawns ambient particles (rain, snow, embers...) at an arena-relative position. Used by
+     *  miniboss/biome-effect continuous weather ambience. */
+    private void spawnAmbientParticle(net.minecraft.particle.ParticleEffect particle, double x, double y, double z,
+                                       int count, double dx, double dy, double dz, double speed) {
+        if (player == null) return;
+        ((ServerWorld) player.getEntityWorld()).spawnParticles(particle, x, y, z, count, dx, dy, dz, speed);
     }
 
     /**
@@ -1960,6 +2039,11 @@ public class CombatManager {
         int tilesNeeded = waveSize + (finaleWave ? 1 : 0);
         java.util.Random rng = new java.util.Random();
         int attempts = 0;
+        // The finale mob is a ravager (2x3) or evoker - the LAST tile hosts it, so keep that
+        // telegraph tile off the arena edge by the ravager's footprint. Otherwise the red
+        // warning lands at an edge, spawnRaidReinforcement slides the mob inward to fit, and
+        // the telegraph disagrees with where it actually appears (or, pre-footprint-check, the
+        // body overflowed off the arena entirely).
         while (raidPendingSpawnTiles.size() < tilesNeeded && attempts++ < 200) {
             GridPos p = new GridPos(rng.nextInt(arena.getWidth()), rng.nextInt(arena.getHeight()));
             if (raidPendingSpawnTiles.contains(p) || arena.isOccupied(p)) continue;
@@ -1968,6 +2052,13 @@ public class CombatManager {
             // Never telegraph a spawn onto a player's tile or adjacent to one - the wave
             // is a threat to walk away from, not an instant surround.
             if (p.manhattanDistance(arena.getPlayerGridPos()) <= 1) continue;
+            // The finale slot (last tile added on a finale wave) must fit a large mob's whole
+            // footprint - validate a 2x3 (the biggest finale body) fits at this anchor.
+            boolean isFinaleSlot = finaleWave && raidPendingSpawnTiles.size() == tilesNeeded - 1;
+            if (isFinaleSlot && !canPlaceSpawnAt(arena, p, 2, 3, false)
+                    && !canPlaceSpawnAt(arena, p, 3, 2, false)) {
+                continue;
+            }
             raidPendingSpawnTiles.add(p);
         }
     }
@@ -2967,6 +3058,28 @@ public class CombatManager {
         fireEffectHook(h -> h.onCombatStart(effectContext));
         this.apRemaining += activeTrimScan.get(TrimEffects.Bonus.AP);
         this.movePointsRemaining += activeTrimScan.get(TrimEffects.Bonus.SPEED);
+        // Swift Sneak: +1 speed per level, opening turn only. This seed runs at combat start
+        // (= turn 1), so adding it here fires once and later turns re-seed without it.
+        int swiftSneak = PlayerCombatStats.getEnchantLevel(
+            player.getEquippedStack(net.minecraft.entity.EquipmentSlot.FEET), "minecraft:swift_sneak");
+        if (swiftSneak > 0) {
+            this.movePointsRemaining += swiftSneak;
+            sendMessage("§bSwift Sneak! +" + swiftSneak + " speed this turn.");
+        }
+        // Respiration: full air for `level` turns of deep-water swimming, reset each fight.
+        // Seed every party member known at this point (getAllParticipants() falls back to
+        // just `player` when partyPlayers is still empty -non-leader members are attached
+        // later via addPartyMember(), AFTER startCombat() returns, so this loop in practice
+        // only seeds the leader here). Non-leader members are instead lazily seeded on their
+        // first tickPlayerPerTurnEffects() pass via getOrDefault(uuid, respLevel) below, which
+        // defaults to THEIR OWN current helmet's level -covers both a member who joins mid
+        // fight and one who equips/removes Respiration mid fight.
+        this.respirationAir.clear();
+        for (ServerPlayerEntity p : getAllParticipants()) {
+            if (p == null) continue;
+            this.respirationAir.put(p.getUuid(), PlayerCombatStats.getEnchantLevel(
+                p.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), "minecraft:respiration"));
+        }
         this.turnNumber = 1;
         // Don't arm the fall-death check until the arena has had time to finish building.
         this.fallDeathGraceTicks = FALL_DEATH_GRACE_TICKS;
@@ -4729,7 +4842,7 @@ public class CombatManager {
         // in the step list but costs several speed, so path.size() is no longer the price.
         Pathfinding.Path resolvedPath = Pathfinding.findPlayerPathWithJumps(
             arena, playerPos, target, moveBudget, hasBoat, flyOverObstacles, phaseThroughEnemies,
-            playerJumpProfile());
+            playerJumpProfile(), hasRespiration());
         List<GridPos> path = new ArrayList<>(resolvedPath.steps());
         this.jumpedTiles = new ArrayList<>(resolvedPath.jumpedOver());
         if (path.isEmpty()) {
@@ -4779,6 +4892,23 @@ public class CombatManager {
             path = new ArrayList<>(path.subList(0, pi + 1)); // stop ON the cobweb tile
             hitCobweb = true;
             break;
+        }
+
+        // Mud trap: each mud tile crossed has a 50% chance to stop the player there,
+        // same truncation mechanics as cobweb above. Checked after cobweb so a
+        // guaranteed web stop keeps priority over the probabilistic mud stop.
+        if (!hitCobweb) {
+            for (int pi = 0; pi < path.size(); pi++) {
+                GridPos step = path.get(pi);
+                GridTile stepTile = arena.getTile(step);
+                if (stepTile == null || stepTile.getType() != com.crackedgames.craftics.core.TileType.MUD) continue;
+                if (Math.random() < 0.5) {
+                    path = new ArrayList<>(path.subList(0, pi + 1)); // stop ON the mud tile
+                    hitCobweb = true; // reuse cobweb's cost/truncation handling below
+                    sendMessage("§6You're stuck in the mud!");
+                    break;
+                }
+            }
         }
 
         // Check if leaving water to land
@@ -4846,6 +4976,12 @@ public class CombatManager {
             }
         }
         return false;
+    }
+
+    /** Respiration on the helmet lets the wearer swim deep water (treated as aquatic). */
+    private boolean hasRespiration() {
+        return player != null && PlayerCombatStats.getEnchantLevel(
+            player.getEquippedStack(net.minecraft.entity.EquipmentSlot.HEAD), "minecraft:respiration") > 0;
     }
 
     private boolean consumeBoat() {
@@ -4927,7 +5063,11 @@ public class CombatManager {
         sendBlockBreakingProgress(targetTile, -1);
 
         arena.clearVfxObstacle(world, targetTile);
-        apRemaining -= 1;
+        int effLevel = PlayerCombatStats.getEnchantLevel(player.getMainHandStack(), "minecraft:efficiency");
+        int effCut = CombatEnchantHelpers.apReduction(effLevel, Math::random);
+        int mineCost = Math.max(0, 1 - effCut);
+        apRemaining -= mineCost;
+        if (mineCost == 0 && effLevel > 0) sendMessage("§b⛏ Efficient! No AP spent.");
 
         // Timberfall from the OFFHAND: mining an obstacle with the pickaxe while a
         // Timberfall axe rides in the offhand drops the mined block onto the enemies
@@ -4958,6 +5098,30 @@ public class CombatManager {
 
         if (refundItem == null) {
             sendMessage("§7⛏ Mined obstacle!");
+        }
+
+        // Natural obstacle only (a placed wall has refundItem and already returned its block).
+        if (refundItem == null) {
+            // Silk Touch: collect the mined block itself.
+            if (PlayerCombatStats.getEnchantLevel(player.getMainHandStack(), "minecraft:silk_touch") > 0) {
+                net.minecraft.item.Item blockItem = mined.getBlock().asItem();
+                if (blockItem != net.minecraft.item.Items.AIR) {
+                    net.minecraft.item.ItemStack drop = new net.minecraft.item.ItemStack(blockItem);
+                    if (!player.getInventory().insertStack(drop)) player.dropItem(drop, false);
+                    sendMessage("§7⛏ Silk Touch: collected " + drop.getName().getString() + ".");
+                }
+            }
+            // Fortune: 5% per level for a small treasure.
+            int fortune = PlayerCombatStats.getEnchantLevel(player.getMainHandStack(), "minecraft:fortune");
+            if (fortune > 0 && Math.random() < 0.05 * fortune) {
+                net.minecraft.item.ItemStack treasure = switch (CombatEnchantHelpers.fortunePick(Math.random())) {
+                    case 0 -> new net.minecraft.item.ItemStack(net.minecraft.item.Items.EMERALD, 1);
+                    case 1 -> new net.minecraft.item.ItemStack(net.minecraft.item.Items.IRON_NUGGET, 2);
+                    default -> new net.minecraft.item.ItemStack(net.minecraft.item.Items.COAL, 3);
+                };
+                LootDelivery.deliver(player, treasure);
+                sendMessage("§6⛏ Fortune! Found " + treasure.getName().getString() + ".");
+            }
         }
         sendSync();
         refreshHighlights();
@@ -5279,6 +5443,16 @@ public class CombatManager {
             return;
         }
 
+        // Sculk sensor: can't be destroyed while you stand in its 2-tile range - back off first.
+        if (target != null && "craftics:sculk_sensor".equals(target.getEntityTypeId())) {
+            GridPos sensorTile = target.getGridPos();
+            if (sensorTile != null
+                    && com.crackedgames.craftics.combat.SculkRange.within(gridPosOf(player), sensorTile, 2)) {
+                sendMessage("\u00a73Too close - the sculk senses you. Back off before breaking it.");
+                return;
+            }
+        }
+
         // Void Walker: attacking the real boss instantly destroys every active mirror
         // image. Clones are weak decoys that take normal (doubled) damage via the standard
         // hit path, so we only need to mass-dispel the rest when the real boss is hit.
@@ -5552,7 +5726,11 @@ public class CombatManager {
             }
         }
         if (!freeApProc) {
-            apRemaining -= attackCost;
+            int weaponEff = PlayerCombatStats.getEnchantLevel(player.getMainHandStack(), "minecraft:efficiency");
+            int atkCut = CombatEnchantHelpers.apReduction(weaponEff, Math::random);
+            int reducedCost = Math.max(0, attackCost - atkCut);
+            if (atkCut > 0) sendMessage("§bEfficient strike! -" + Math.min(atkCut, attackCost) + " AP.");
+            apRemaining -= reducedCost;
         }
         // The attack is committed: if it's thrown from tall grass, the grass gives you away
         // (unless Phantom Edge preserves it).
@@ -11593,6 +11771,11 @@ public class CombatManager {
         tickDragonPositionEnforcer();
         tickVoidRiftParticles();
         tickSandMineParticles();
+
+        if (activeMiniboss != null || activeBiomeEffect != null) {
+            if (activeMiniboss != null) activeMiniboss.onCombatTick(buildMinibossCtx(), tickCounter);
+            if (activeBiomeEffect != null) activeBiomeEffect.onCombatTick(buildMinibossCtx(), tickCounter);
+        }
 
         // Damage synced to animation impact frame
         if (pendingAttackDelay > 0) {
@@ -18568,6 +18751,19 @@ public class CombatManager {
                 sendMessage("§b" + currentEnemy.getDisplayName() + " is soaked from wading through water!");
             }
 
+            // Mud tile: 50% chance to stop the enemy's remaining movement, mirroring
+            // the player's mud-truncation rule above (probabilistic cobweb).
+            if (enemyLandingTile != null
+                    && enemyLandingTile.getType() == com.crackedgames.craftics.core.TileType.MUD
+                    && Math.random() < 0.5) {
+                sendMessage("§6" + currentEnemy.getDisplayName() + " is stuck in the mud!");
+                enemyLerpInitialized = false;
+                enemyMovePathIndex = enemyMovePath.size();
+                enemyTurnState = EnemyTurnState.DONE;
+                enemyTurnDelay = CrafticsMod.CONFIG.enemyTurnDelay();
+                return;
+            }
+
             // Lava tile: 10 damage when enemy steps on it
             if (enemyLandingTile != null
                     && enemyLandingTile.getType() == com.crackedgames.craftics.core.TileType.LAVA) {
@@ -21614,6 +21810,28 @@ public class CombatManager {
         if (!enemy.isAlly() && !enemy.isMirrorClone() && !enemy.isDeathProcessed()
                 && enemy.getMobEntity() != null) {
             rollMobEquipmentDrops(enemy);
+        }
+        // Weapon Fortune + Silk Touch: the tool enchants are dead weight on an axe/shovel/hoe
+        // used as a weapon, so give them a killing-blow effect. Same real-kill guard as loot.
+        if (!enemy.isAlly() && !enemy.isMirrorClone() && enemy.getMobEntity() != null && player != null) {
+            net.minecraft.item.ItemStack weapon = player.getMainHandStack();
+            // Fortune (weapon): 5% per level for a bonus loot roll on this enemy.
+            int wFortune = PlayerCombatStats.getEnchantLevel(weapon, "minecraft:fortune");
+            if (wFortune > 0 && Math.random() < 0.05 * wFortune) {
+                rollMobEquipmentDrops(enemy); // an extra roll of the enemy's own drops
+                sendMessage("§6✦ Fortune! Extra loot from " + enemy.getDisplayName() + ".");
+            }
+            // Silk Touch (weapon): 25% per level (capped 100%) to drop the enemy's head.
+            int wSilk = PlayerCombatStats.getEnchantLevel(weapon, "minecraft:silk_touch");
+            if (wSilk > 0) {
+                double headChance = Math.min(1.0, 0.25 * wSilk);
+                net.minecraft.item.Item head = getMobHeadForType(enemy.getEntityTypeId());
+                if (head != null && Math.random() < headChance) {
+                    net.minecraft.item.ItemStack headStack = new net.minecraft.item.ItemStack(head);
+                    LootDelivery.deliver(player, headStack);
+                    sendMessage("§7✦ Silk Touch: " + enemy.getDisplayName() + "'s head drops.");
+                }
+            }
         }
         // Ally died: drop from the persistent battle-party list right now so
         // the cap-aware spawn-egg gate, party HUD, and post-fight pet collector
@@ -27295,6 +27513,8 @@ public class CombatManager {
         cleanupPartyTracking();
         // Drop per-player status-effect entries so a fresh combat starts clean.
         playerCombatEffects.clear();
+        // Drop per-player respiration-air entries so a fresh combat re-seeds clean.
+        respirationAir.clear();
 
         // Clean up Broodmother web overlays
         try {
@@ -27739,7 +27959,7 @@ public class CombatManager {
                 // the player could never click it. Mirrors findPlayerPathWithJumps exactly.
                 java.util.Set<GridPos> reachable = Pathfinding.getPlayerReachableTilesWithJumps(
                     arena, arena.getPlayerGridPos(), movePointsRemaining, playerHasBoat(),
-                    flyOverObstacles, playerJumpProfile());
+                    flyOverObstacles, playerJumpProfile(), hasRespiration());
                 for (GridPos gp : reachable) {
                     moveList.add(gp.x());
                     moveList.add(gp.z());

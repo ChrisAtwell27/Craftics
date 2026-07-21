@@ -61,9 +61,12 @@ public class CrafticsConfig {
      * Extra enemy HP per additional party member, as a fraction of base HP.
      * partyHpMult = 1 + (partySize - 1) * partyHpPerPlayer. Default 0.75 →
      * 2p = 1.75x, 3p = 2.5x, 4p = 3.25x. Applies to bosses too.
+     * (Was 0.95 for a while - real per-player throughput lands well under a
+     * full extra player once turn order and shared AoE exposure are counted,
+     * so 0.95 made co-op fights drag.)
      */
     @RangeConstraint(min = 0.0, max = 3.0)
-    public float partyHpPerPlayer = 0.95f;
+    public float partyHpPerPlayer = 0.75f;
 
     // ===== Boss Scaling =====
 

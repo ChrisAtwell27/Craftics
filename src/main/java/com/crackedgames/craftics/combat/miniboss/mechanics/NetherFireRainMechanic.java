@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +71,7 @@ public final class NetherFireRainMechanic implements MinibossMechanic {
     @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.BLOCK_FIRE_AMBIENT, 0.6f, 0.9f);
     }
 
     @Override
@@ -107,5 +109,6 @@ public final class NetherFireRainMechanic implements MinibossMechanic {
         }
 
         ctx.message("§c☄ Embers rain down!");
+        ctx.playSound(SoundEvents.BLOCK_FIRE_AMBIENT, 0.6f, 0.7f);
     }
 }

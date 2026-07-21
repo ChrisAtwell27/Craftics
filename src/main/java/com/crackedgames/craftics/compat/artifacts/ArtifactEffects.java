@@ -100,6 +100,21 @@ public final class ArtifactEffects {
         }
     }
 
+    /**
+     * Night Vision Goggles: the wearer's eyes are shielded, so Blindness and Darkness never
+     * take hold - a sandstorm's grit, a whiteout gust, the Warden's dark, all shrugged off.
+     * Cancels the effect at application time via {@link CombatEffectHandler#onEffectApplied}.
+     */
+    public static final class NightVisionGoggles implements CombatEffectHandler {
+        @Override
+        public CombatResult onEffectApplied(CombatEffectContext ctx, CombatEffects.EffectType effect, int turns) {
+            if (effect == CombatEffects.EffectType.BLINDNESS || effect == CombatEffects.EffectType.DARKNESS) {
+                return CombatResult.cancel("§bNight Vision Goggles: your eyes are shielded.");
+            }
+            return CombatResult.unchanged(turns);
+        }
+    }
+
     /** +50% emeralds (rounding up to at least +1). */
     public static final class VillagerHat implements CombatEffectHandler {
         @Override

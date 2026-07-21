@@ -1702,7 +1702,7 @@ public class GuideBookData {
             new Page("Head & Necklace",
                 "§5Artifacts§r - wearable trinkets via the Accessories slot system.", List.of(
                 new Box("artifacts:night_vision_goggles|minecraft:leather_helmet", "Head Slot", "",
-                    "Night Vision Goggles +1 Range, Snorkel +1 Water + Soaked immune, Cowboy Hat pulls hits 1 tile closer, Villager Hat +50% emeralds."),
+                    "Night Vision Goggles block Blindness & Darkness, Snorkel +1 Water + Soaked immune, Cowboy Hat pulls hits 1 tile closer, Villager Hat +50% emeralds."),
                 new Box("artifacts:cross_necklace|minecraft:gold_ingot", "Necklace Slot", "",
                     "Flame Pendant §cburns YOU 2 HP/turn and does nothing to enemies§r, Thorn Pendant reflects 25%, Cross Necklace halves the next hit, Shock Pendant 30% chain 3 dmg."))),
             new Page("Hands & Belt", "", List.of(

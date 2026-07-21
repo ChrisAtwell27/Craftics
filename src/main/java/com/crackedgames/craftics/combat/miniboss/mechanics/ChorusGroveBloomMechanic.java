@@ -8,6 +8,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,6 +81,7 @@ public final class ChorusGroveBloomMechanic implements MinibossMechanic {
     public void onFightStart(MinibossContext ctx) {
         chorusTiles.clear();
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.BLOCK_CHORUS_FLOWER_GROW, 0.6f, 0.9f);
 
         GridArena arena = ctx.arena();
         GridPos playerStart = arena.getPlayerStart();
@@ -121,6 +123,7 @@ public final class ChorusGroveBloomMechanic implements MinibossMechanic {
             if (!newlyBloomed.isEmpty()) {
                 chorusTiles.addAll(newlyBloomed);
                 ctx.message("§dThe chorus blooms wider...");
+                ctx.playSound(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 0.5f, 1.0f);
             }
         }
 

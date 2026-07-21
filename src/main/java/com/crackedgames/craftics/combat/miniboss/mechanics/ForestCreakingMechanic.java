@@ -1,9 +1,11 @@
 package com.crackedgames.craftics.combat.miniboss.mechanics;
 
+import com.crackedgames.craftics.combat.miniboss.MinibossContext;
 import com.crackedgames.craftics.combat.miniboss.MinibossMechanic;
 import com.crackedgames.craftics.combat.miniboss.MinibossSpawns;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,5 +62,14 @@ public final class ForestCreakingMechanic implements MinibossMechanic {
         }
 
         return spawns;
+    }
+
+    @Override
+    public void onFightStart(MinibossContext ctx) {
+        ctx.banner(introTitle());
+        // No vanilla creaking sound constant exists on all shards (creaking sounds were added
+        // in a later data version than this mod's minimum supported shard) - a wood-break creak
+        // is the nearest fitting vanilla stand-in for the encounter's opening beat.
+        ctx.playSound(SoundEvents.BLOCK_WOOD_BREAK, 0.6f, 0.7f);
     }
 }

@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -73,6 +74,7 @@ public final class OuterEndVoidRiftMechanic implements MinibossMechanic {
     public void onFightStart(MinibossContext ctx) {
         ringsCrumbled = 0;
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.ENTITY_ENDERMAN_TELEPORT, 0.6f, 0.6f);
     }
 
     @Override
@@ -99,6 +101,9 @@ public final class OuterEndVoidRiftMechanic implements MinibossMechanic {
         }
 
         ringsCrumbled++;
-        if (crumbledAny) ctx.message("§5The islands crumble into the void!");
+        if (crumbledAny) {
+            ctx.message("§5The islands crumble into the void!");
+            ctx.playSound(SoundEvents.BLOCK_STONE_FALL, 0.6f, 0.6f);
+        }
     }
 }

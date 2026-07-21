@@ -123,7 +123,7 @@ public class CrafticsMod implements ModInitializer {
             new com.crackedgames.craftics.combat.miniboss.mechanics.SnowyBlizzardMechanic(),
             new com.crackedgames.craftics.combat.miniboss.mechanics.MountainRockbreakerMechanic(),
             new com.crackedgames.craftics.combat.miniboss.mechanics.CaveInMechanic(),
-            new com.crackedgames.craftics.combat.miniboss.mechanics.DeepDarkWardenMechanic(),
+            new com.crackedgames.craftics.combat.miniboss.mechanics.DeepDarkWaveMechanic(),
             new com.crackedgames.craftics.combat.miniboss.mechanics.NetherFireRainMechanic(),
             new com.crackedgames.craftics.combat.miniboss.mechanics.SoulSandColossusMechanic(),
             new com.crackedgames.craftics.combat.miniboss.mechanics.CrimsonFungalBloomMechanic(),
@@ -136,8 +136,10 @@ public class CrafticsMod implements ModInitializer {
             com.crackedgames.craftics.combat.miniboss.MinibossRegistry.register(m);
         }
         // Mid-biome weather effects (biome JSON "biomeEffect" block picks them up by id).
-        com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(
-            new com.crackedgames.craftics.combat.biomeeffect.SandstormEffect());
+        com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.BlizzardWindsEffect());
+        com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.JungleRainEffect());
+        com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.SandstormEffect());
+        com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.SculkSensorEffect());
         com.crackedgames.craftics.compat.moretotems.MoreTotemsCompat.init();
         com.crackedgames.craftics.compat.basicweapons.BasicWeaponsCompat.init();
         com.crackedgames.craftics.compat.golemoverhaul.GolemOverhaulCompat.init();
@@ -1593,8 +1595,11 @@ public class CrafticsMod implements ModInitializer {
                         ctx.getSource().sendError(Text.literal("§cYou're not in an infinite run."));
                         return 0;
                     }
-                    if (CombatManager.get(player).isActive()
-                            || CombatManager.getActiveCombat(player.getUuid()) != null) {
+                    // Must use isEngaged, NOT getActiveCombat(...) != null: getActiveCombat
+                    // falls back to get(uuid) which lazily creates an INACTIVE manager, so
+                    // "!= null" is always true and the guard fired even in the hub - locking
+                    // the player out of ever stopping their parked run.
+                    if (CombatManager.isEngaged(player.getUuid())) {
                         ctx.getSource().sendError(Text.literal(
                             "§cFinish (or flee) the current fight first."));
                         return 0;

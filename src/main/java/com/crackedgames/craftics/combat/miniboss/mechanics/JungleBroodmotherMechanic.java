@@ -5,6 +5,7 @@ import com.crackedgames.craftics.combat.miniboss.MinibossMechanic;
 import com.crackedgames.craftics.combat.miniboss.MinibossSpawns;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -73,6 +74,9 @@ public final class JungleBroodmotherMechanic implements MinibossMechanic {
     @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.banner(introTitle());
+        // No vanilla spider "roar" exists; the ravager's roar is the nearest large-beast growl
+        // vanilla offers and reads well as the elite broodmother's opening cue.
+        ctx.playSound(SoundEvents.ENTITY_RAVAGER_ROAR, 0.5f, 1.4f);
     }
 
     @Override
@@ -100,6 +104,9 @@ public final class JungleBroodmotherMechanic implements MinibossMechanic {
             ctx.spawnMob("minecraft:cave_spider", pos, 14, 4, 0, 1);
             spawnedAny = true;
         }
-        if (spawnedAny) ctx.message("§2More spiders skitter out of the brood!");
+        if (spawnedAny) {
+            ctx.message("§2More spiders skitter out of the brood!");
+            ctx.playSound(SoundEvents.ENTITY_ILLUSIONER_CAST_SPELL, 0.5f, 1.2f);
+        }
     }
 }

@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +71,7 @@ public final class RiverFlashFloodMechanic implements MinibossMechanic {
     public void onFightStart(MinibossContext ctx) {
         floodedRows = 0;
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.BLOCK_WATER_AMBIENT, 0.6f, 1.0f);
     }
 
     @Override
@@ -88,5 +90,6 @@ public final class RiverFlashFloodMechanic implements MinibossMechanic {
         }
         floodedRows++;
         ctx.message("§9The water rises!");
+        ctx.playSound(SoundEvents.ENTITY_GENERIC_SPLASH, 0.7f, 0.8f);
     }
 }

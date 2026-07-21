@@ -83,7 +83,11 @@ public class BiomeRegistry {
                     old.passiveMobs, old.hostileMobs, old.boss,
                     old.lootItems, old.lootWeights,
                     old.enchantmentLootIds, old.enchantmentLootWeights,
-                    old.nightLevel, old.environmentId
+                    old.nightLevel, old.environmentId,
+                    // Carry the biome-effect fields through the startLevel-renumber rebuild -
+                    // the 20-arg constructor would default them to null/0 and silently drop the
+                    // weather (the "no rain/sandstorm in-game" bug).
+                    old.biomeEffectId, old.biomeEffectStartLevel
                 ));
             }
             currentLevel += BIOMES.get(i).levelCount;

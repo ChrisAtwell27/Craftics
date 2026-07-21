@@ -100,6 +100,7 @@ public class GridTile {
      */
     public int getMoveCost() {
         if (type.damageOnStep > 0) return 50;
+        if (type == TileType.MUD) return 3;
         return 1;
     }
 
@@ -160,6 +161,7 @@ public class GridTile {
             case EMBER -> Blocks.MAGMA_BLOCK;
             case FROST -> Blocks.PACKED_ICE;
             case MUD -> Blocks.MUD;
+            case SCULK -> Blocks.SCULK;
             // Stair / elevated default blocks - only used if the GridTile is
             // constructed without an explicit block. ArenaBuilder always
             // passes the real schematic block (e.g. the actual stair block,

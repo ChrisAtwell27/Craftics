@@ -22,6 +22,11 @@ public interface MinibossMechanic {
     /** Runs at each round boundary (waves, hazards, wind). */
     default void onRoundStart(MinibossContext ctx) {}
 
+    /** Called every combat tick (20/sec) while active - for continuous ambience (falling rain,
+     *  drifting snow, looping wind) that the turn-based onRoundStart can't produce. {@code tick}
+     *  is a monotonically increasing combat tick counter; gate work with {@code tick % N == 0}. */
+    default void onCombatTick(MinibossContext ctx, int tick) {}
+
     /** Extra win condition beyond "all enemies cleared". Default: no extra condition. */
     default boolean isComplete(MinibossContext ctx) { return true; }
 

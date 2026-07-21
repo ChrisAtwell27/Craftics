@@ -17,6 +17,7 @@ public enum TileType {
     SPORE(true, false, 0, false),     // walkable; the Fungal Bloom mechanic applies Poison on step
     EMBER(true, false, 2, false),     // walkable; burns (Burning applied by the mechanic on top of step dmg)
     FROST(true, false, 0, false),     // walkable; Blizzard applies Frozen risk on step
+    SCULK(true, false, 0, false),     // sculk-sensor boundary paint - walkable, purely visual
     MUD(true, false, 0, false),       // rain-churned ground - walkable, but each mud tile
                                       // traveled has a 50% chance to stop movement there
                                       // (probabilistic cobweb; see the path truncation in

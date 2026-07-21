@@ -52,7 +52,7 @@ public final class ArtifactsTooltips {
         switch (path) {
             // Head slot
             case "night_vision_goggles" -> {
-                out.add(stat("+1 Attack Range"));
+                out.add(stat("Immune to Blindness & Darkness"));
             }
             case "superstitious_hat" -> {
                 out.add(active("30% chance for a bonus loot duplicate on level clear"));

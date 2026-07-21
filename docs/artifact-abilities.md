@@ -7,7 +7,7 @@ A complete reference for every artifact's combat abilities in the Artifacts × C
 ## Head Slot
 
 ### Night Vision Goggles
-- **Stat Bonus:** +1 Attack Range
+- **Effect:** Immune to Blindness and Darkness (the goggles shield your eyes from sandstorms, whiteouts, and the dark).
 
 ### Superstitious Hat
 - 30% chance for bonus loot on kill.

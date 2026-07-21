@@ -7,6 +7,7 @@ import com.crackedgames.craftics.core.GridArena;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.core.TileType;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,6 +76,7 @@ public final class CrimsonFungalBloomMechanic implements MinibossMechanic {
     public void onFightStart(MinibossContext ctx) {
         sporeTiles.clear();
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.BLOCK_FUNGUS_PLACE, 0.6f, 0.9f);
 
         GridArena arena = ctx.arena();
         GridPos playerStart = arena.getPlayerStart();
@@ -117,6 +119,7 @@ public final class CrimsonFungalBloomMechanic implements MinibossMechanic {
         if (!newlyBloomed.isEmpty()) {
             sporeTiles.addAll(newlyBloomed);
             ctx.message("§c☣ The spores spread!");
+            ctx.playSound(SoundEvents.BLOCK_FUNGUS_STEP, 0.5f, 1.0f);
         }
     }
 

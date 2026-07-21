@@ -5,6 +5,7 @@ import com.crackedgames.craftics.combat.miniboss.MinibossMechanic;
 import com.crackedgames.craftics.combat.miniboss.MinibossSpawns;
 import com.crackedgames.craftics.core.GridPos;
 import com.crackedgames.craftics.level.LevelDefinition;
+import net.minecraft.sound.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -73,6 +74,7 @@ public final class SoulSandColossusMechanic implements MinibossMechanic {
     @Override
     public void onFightStart(MinibossContext ctx) {
         ctx.banner(introTitle());
+        ctx.playSound(SoundEvents.ENTITY_WITHER_SKELETON_AMBIENT, 0.6f, 0.7f);
     }
 
     @Override
@@ -100,6 +102,9 @@ public final class SoulSandColossusMechanic implements MinibossMechanic {
             ctx.spawnMob("minecraft:skeleton", pos, 10, 4, 0, 3);
             spawnedAny = true;
         }
-        if (spawnedAny) ctx.message("§f☠ The Colossus raises the fallen!");
+        if (spawnedAny) {
+            ctx.message("§f☠ The Colossus raises the fallen!");
+            ctx.playSound(SoundEvents.ENTITY_SKELETON_AMBIENT, 0.5f, 0.9f);
+        }
     }
 }
