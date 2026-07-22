@@ -27,6 +27,11 @@ public enum TileType {
     // CombatManager.handleMove). Scattered at fight start by the crimson/warped biome effects.
     CRIMSON_FUNGUS(true, false, 0, false), // crimson forest - inflicts Bleeding 1 on cross
     WARPED_FUNGUS(true, false, 0, false),  // warped forest - inflicts Warped 2 on cross
+    // Deeper-and-Darker compat hazards (Blooming Caverns). Walkable, cobweb-like:
+    // crossing does NOT stop the player but fires an on-step effect in
+    // CombatManager.handleMove (same scan the fungus tiles use).
+    BLOOM(true, false, 2, false),   // glowing bloom growth - 2 step dmg + Burning on cross
+    GEYSER(true, false, 0, false),  // sculk geyser - step-trap: Burning II + random launch up to 3 tiles
     // Occupants are visually hidden (INVISIBILITY effect) and mobs can't target them
     // except from an adjacent tile. Breakable by attacking the tile for 1 AP.
     TALL_GRASS(true, false, 0, true),

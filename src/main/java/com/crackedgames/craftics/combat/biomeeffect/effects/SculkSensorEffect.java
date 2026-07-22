@@ -1,7 +1,6 @@
 package com.crackedgames.craftics.combat.biomeeffect.effects;
 
 import com.crackedgames.craftics.combat.CombatEffects;
-import com.crackedgames.craftics.combat.CombatEntity;
 import com.crackedgames.craftics.combat.SculkRange;
 import com.crackedgames.craftics.combat.biomeeffect.BiomeEffect;
 import com.crackedgames.craftics.combat.miniboss.MinibossContext;
@@ -27,16 +26,15 @@ import java.util.Random;
  * lands next round near the sensor. A triggered sensor re-arms after {@link #REARM_ROUNDS}
  * rounds of quiet.
  *
- * <p>Sensors are placed via {@link MinibossContext#spawnBlockObject} - the graves pattern
- * ({@link com.crackedgames.craftics.combat.miniboss.mechanics.PlainsGraveyardMechanic}) - a
- * block-backed, scenery/inert occupant, not a real mob entity. They are tracked here as plain
- * {@link Sensor} records keyed by tile, and dropped from tracking once no longer found alive
- * among {@link MinibossContext#enemies()} (i.e. once a player breaks one).
+ * <p>Sensors are placed as permanent, pickaxe-breakable OBSTACLE tiles (via
+ * {@link MinibossContext#placeObstacle}) - a normal mineable arena block, NOT an
+ * HP-bearing entity. A player clears one by mining it for 1 AP like any other
+ * obstacle, after which the tile reverts to walkable NORMAL. They are tracked
+ * here as plain {@link Sensor} records keyed by tile, and dropped from tracking
+ * once the tile is no longer a sculk-sensor obstacle (i.e. once a player mines it).
  */
 public final class SculkSensorEffect implements BiomeEffect {
 
-    private static final String SENSOR_ID = "craftics:sculk_sensor";
-    private static final int SENSOR_HP = 10;
     private static final int RANGE = 2;              // Chebyshev trigger + boundary radius
     private static final int REARM_ROUNDS = 2;        // re-arm every other round after firing
     private static final int SILVERFISH_PER_TRIGGER = 2;
@@ -77,8 +75,10 @@ public final class SculkSensorEffect implements BiomeEffect {
             GridPos pos = MinibossSpawns.findOpen(width, height, used, rng);
             if (pos == null) continue;
             used.add(pos);
-            CombatEntity sensor = ctx.spawnBlockObject(SENSOR_ID, pos, SENSOR_HP, Blocks.SCULK_SENSOR);
-            if (sensor == null) continue;
+            // A plain mineable obstacle backed by the sculk sensor block - no HP
+            // entity. Mining it (1 AP) reverts the tile to NORMAL; we detect that
+            // in onRoundStart and drop the sensor from tracking.
+            ctx.placeObstacle(pos, Blocks.SCULK_SENSOR);
             sensors.add(new Sensor(pos));
             paintBoundary(ctx, pos);
         }
@@ -101,9 +101,15 @@ public final class SculkSensorEffect implements BiomeEffect {
             if (s.cooldown > 0) s.cooldown--;
         }
 
-        // 3. Drop sensors that are no longer alive on the field (player broke them).
-        sensors.removeIf(s -> ctx.enemies().stream().noneMatch(e ->
-            e.isAlive() && SENSOR_ID.equals(e.getEntityTypeId()) && s.tile.equals(e.getGridPos())));
+        // 3. Drop sensors the player has mined: the tile is no longer a sculk-sensor
+        //    obstacle (mining reverts it to walkable NORMAL). Re-validate against the
+        //    arena, the same way ChorusMind re-validates its plant tiles.
+        GridArena arena = ctx.arena();
+        sensors.removeIf(s -> {
+            GridTile t = arena.getTile(s.tile);
+            return t == null || t.getType() != TileType.OBSTACLE
+                || t.getBlockType() != Blocks.SCULK_SENSOR;
+        });
 
         // 4. Check each armed sensor for a triggering (non-swift-sneak) participant in range.
         for (Sensor s : sensors) {
@@ -161,8 +167,13 @@ public final class SculkSensorEffect implements BiomeEffect {
         GridArena arena = ctx.arena();
         for (int dx = -RANGE; dx <= RANGE; dx++) {
             for (int dz = -RANGE; dz <= RANGE; dz++) {
+                if (dx == 0 && dz == 0) continue; // the center IS the sensor obstacle - don't paint over it
                 GridPos t = new GridPos(center.x() + dx, center.z() + dz);
                 if (!arena.isInBounds(t)) continue;
+                // Only paint the sculk boundary on walkable ground; never overwrite
+                // another sensor obstacle or a wall.
+                GridTile gt = arena.getTile(t);
+                if (gt == null || !gt.isWalkable()) continue;
                 ctx.placeTemporaryTile(t, TileType.SCULK, 99);
             }
         }

@@ -39,6 +39,15 @@ public final class MobThemeTags {
     private static final Set<String> WATER_MOBS = new HashSet<>();
     private static final Set<String> JUNGLE_MOBS = new HashSet<>();
     private static final Set<String> COLD_MOBS = new HashSet<>();
+    // ROOT: locks the player in place for a turn on hit (amp-9 MINING_FATIGUE
+    // stun, the same lock the web/sand-burial use). LIFESTEAL: the attacker
+    // heals for a fraction of the damage it dealt. Both populated by compat
+    // modules (Deeper and Darker: Sculk Snapper / Shriek Worm root, Sculk Leech
+    // lifesteal). Resolved in applyOnHitEffect alongside the debuff themes.
+    private static final Set<String> ROOT_MOBS = new HashSet<>();
+    private static final Set<String> LIFESTEAL_MOBS = new HashSet<>();
+    /** Fraction of damage dealt that a LIFESTEAL mob heals back (rounded up, min 1). */
+    public static final float LIFESTEAL_FRACTION = 0.5f;
 
     static {
         // Vanilla water-themed mobs
@@ -74,6 +83,22 @@ public final class MobThemeTags {
 
     public static void addColdMob(String entityTypeId) {
         if (entityTypeId != null) COLD_MOBS.add(entityTypeId);
+    }
+
+    public static void addRootMob(String entityTypeId) {
+        if (entityTypeId != null) ROOT_MOBS.add(entityTypeId);
+    }
+
+    public static void addLifestealMob(String entityTypeId) {
+        if (entityTypeId != null) LIFESTEAL_MOBS.add(entityTypeId);
+    }
+
+    public static boolean isRoot(String entityTypeId) {
+        return entityTypeId != null && ROOT_MOBS.contains(entityTypeId);
+    }
+
+    public static boolean isLifesteal(String entityTypeId) {
+        return entityTypeId != null && LIFESTEAL_MOBS.contains(entityTypeId);
     }
 
     public static boolean isWater(String entityTypeId) {
@@ -147,17 +172,45 @@ public final class MobThemeTags {
      * combat-log message to the player.
      */
     public static void applyOnHitEffect(com.crackedgames.craftics.combat.CombatManager cm, CombatEntity attacker) {
+        applyOnHitEffect(cm, attacker, 0);
+    }
+
+    /**
+     * Full on-hit resolution. {@code damageDealt} is the damage the attacker just
+     * dealt to the player (used for lifesteal). Applies, in order: the debuff
+     * theme (water/jungle/cold), a root lock (ROOT mobs), and lifesteal healing
+     * (LIFESTEAL mobs). Each is independent, so a mob may carry more than one tag.
+     */
+    public static void applyOnHitEffect(com.crackedgames.craftics.combat.CombatManager cm,
+                                        CombatEntity attacker, int damageDealt) {
         if (cm == null || attacker == null) return;
         String typeId = attacker.getEntityTypeId();
+
+        // Debuff theme (soaked / poison / weakness).
         CombatEffects.EffectType effect = getOnHitEffect(typeId);
-        if (effect == null) return;
-        int turns = getOnHitEffectTurns(typeId);
-        if (turns <= 0) return;
-        boolean applied = cm.addEffectHooked(effect, turns, 0);
-        if (applied) {
-            String label = getThemeLabel(typeId);
-            if (label != null) {
-                cm.sendMessage("§7  " + attacker.getDisplayName() + " inflicts " + label + "§7!");
+        if (effect != null) {
+            int turns = getOnHitEffectTurns(typeId);
+            if (turns > 0 && cm.addEffectHooked(effect, turns, 0)) {
+                String label = getThemeLabel(typeId);
+                if (label != null) {
+                    cm.sendMessage("§7  " + attacker.getDisplayName() + " inflicts " + label + "§7!");
+                }
+            }
+        }
+
+        // Root: lock the player in place next turn (amp-9 MINING_FATIGUE stun,
+        // the same lock the web / sand-burial use).
+        if (isRoot(typeId) && cm.addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 9)) {
+            cm.sendMessage("§7  " + attacker.getDisplayName() + " §8roots you in place!");
+        }
+
+        // Lifesteal: heal the attacker for a fraction of the damage it dealt.
+        if (isLifesteal(typeId) && damageDealt > 0) {
+            int heal = Math.max(1, (int) Math.ceil(damageDealt * LIFESTEAL_FRACTION));
+            int before = attacker.getCurrentHp();
+            attacker.heal(heal);
+            if (attacker.getCurrentHp() > before) {
+                cm.sendMessage("§7  " + attacker.getDisplayName() + " §5drains your life!");
             }
         }
     }

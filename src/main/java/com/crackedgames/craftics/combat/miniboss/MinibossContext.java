@@ -16,6 +16,15 @@ public final class MinibossContext {
     public interface SpawnFn { CombatEntity spawn(String typeId, GridPos tile, int hp, int atk, int def, int range); }
     public interface TileFn  { void place(GridPos p, TileType type, int turns); }
     /**
+     * Places a permanent, pickaxe-breakable OBSTACLE tile backed by a specific
+     * world block (e.g. a sculk sensor). Unlike {@link #spawnBlockObject} this is
+     * NOT an entity with HP - it's a normal arena obstacle the player mines for
+     * 1 AP, after which the tile reverts to walkable NORMAL. The effect detects
+     * the break by re-validating the tile against the arena. Delegates to
+     * CombatManager's {@code placeObstacleTile}.
+     */
+    public interface ObstacleFn { void place(GridPos p, Block block); }
+    /**
      * Places a block-backed destructible object (grave, banner, etc.) rather than a normal mob
      * entity - {@link #spawnMob} cannot do this, it only spawns real mob entities and would not
      * render or behave correctly for something like {@code craftics:grave}. Delegates to
@@ -57,6 +66,7 @@ public final class MinibossContext {
     private final List<CombatEntity> enemies;
     private final SpawnFn spawnFn;
     private final TileFn tileFn;
+    private final ObstacleFn obstacleFn;
     private final BlockObjectFn blockObjectFn;
     private final WindGustFn windGustFn;
     private final WindGustFn windTelegraphFn;
@@ -72,7 +82,7 @@ public final class MinibossContext {
     private final java.util.function.Consumer<String> banner;
 
     public MinibossContext(GridArena arena, Random rng, int round, List<CombatEntity> enemies,
-                           SpawnFn spawnFn, TileFn tileFn, BlockObjectFn blockObjectFn,
+                           SpawnFn spawnFn, TileFn tileFn, ObstacleFn obstacleFn, BlockObjectFn blockObjectFn,
                            WindGustFn windGustFn, WindGustFn windTelegraphFn,
                            PartyEffectFn partyEffectFn,
                            SoundFn soundFn, AmbientParticleFn ambientParticleFn,
@@ -82,7 +92,7 @@ public final class MinibossContext {
                            java.util.function.Consumer<String> message,
                            java.util.function.Consumer<String> banner) {
         this.arena = arena; this.rng = rng; this.round = round; this.enemies = enemies;
-        this.spawnFn = spawnFn; this.tileFn = tileFn; this.blockObjectFn = blockObjectFn;
+        this.spawnFn = spawnFn; this.tileFn = tileFn; this.obstacleFn = obstacleFn; this.blockObjectFn = blockObjectFn;
         this.windGustFn = windGustFn; this.windTelegraphFn = windTelegraphFn;
         this.partyEffectFn = partyEffectFn;
         this.soundFn = soundFn; this.ambientParticleFn = ambientParticleFn;
@@ -103,6 +113,10 @@ public final class MinibossContext {
         return blockObjectFn.place(typeId, tile, hp, block);
     }
     public void placeTemporaryTile(GridPos p, TileType type, int turns) { tileFn.place(p, type, turns); }
+    /** Places a permanent, pickaxe-breakable OBSTACLE tile backed by {@code block}
+     *  (see {@link ObstacleFn}). The player mines it for 1 AP; the effect detects
+     *  the break by re-checking the tile's type/block against the arena. */
+    public void placeObstacle(GridPos p, Block block) { obstacleFn.place(p, block); }
     /** Telegraphs arrows across the arena and drags every player + enemy (dirX,dirZ) 2 tiles. */
     public void windGust(int dirX, int dirZ) { windGustFn.gust(dirX, dirZ); }
     /** Paints the gust's warning arrows in (dirX,dirZ) WITHOUT dragging - call a round before

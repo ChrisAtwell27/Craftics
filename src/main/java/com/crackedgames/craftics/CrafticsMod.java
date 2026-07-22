@@ -102,6 +102,7 @@ public class CrafticsMod implements ModInitializer {
         com.crackedgames.craftics.compat.artifacts.ArtifactsCompat.init();
         com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.init();
         com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.init();
+        com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.init();
         com.crackedgames.craftics.compat.copperagebackport.CopperAgeCompat.init();
         com.crackedgames.craftics.compat.palegardenbackport.PaleGardenBackportCompat.init();
         // Forest's level-4 miniboss (the Pale Garden Creaking encounter) only registers when a
@@ -134,6 +135,13 @@ public class CrafticsMod implements ModInitializer {
             new com.crackedgames.craftics.combat.miniboss.mechanics.ChorusGroveBloomMechanic(),
         }) {
             com.crackedgames.craftics.combat.miniboss.MinibossRegistry.register(m);
+        }
+        // Deeper and Darker: when the mod is installed, the Stalker replaces the
+        // vanilla deep_dark Swarm miniboss. Registered AFTER the array above so it
+        // supersedes DeepDarkWaveMechanic's "deep_dark" key. No-op without the mod.
+        if (com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.isLoaded()) {
+            com.crackedgames.craftics.combat.miniboss.MinibossRegistry.register(
+                new com.crackedgames.craftics.combat.miniboss.mechanics.StalkerMinibossMechanic());
         }
         // Mid-biome weather effects (biome JSON "biomeEffect" block picks them up by id).
         com.crackedgames.craftics.combat.biomeeffect.BiomeEffectRegistry.register(new com.crackedgames.craftics.combat.biomeeffect.effects.BlizzardWindsEffect());
@@ -817,6 +825,9 @@ public class CrafticsMod implements ModInitializer {
             com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.applyBiomeOverrides();
             com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.applyBiomeOverrides();
             com.crackedgames.craftics.compat.springtolife.SpringToLifeCompat.applyBiomeOverrides();
+            // Deeper and Darker fully replaces the deep_dark pool, so it must run
+            // LAST - after creeperoverhaul's cave_creeper swap - to win.
+            com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.applyBiomeOverrides();
         });
 
         // Also reload on /reload command
@@ -830,6 +841,7 @@ public class CrafticsMod implements ModInitializer {
                     com.crackedgames.craftics.compat.creeperoverhaul.CreeperOverhaulCompat.applyBiomeOverrides();
                     com.crackedgames.craftics.compat.variantsandventures.VariantsAndVenturesCompat.applyBiomeOverrides();
                     com.crackedgames.craftics.compat.springtolife.SpringToLifeCompat.applyBiomeOverrides();
+                    com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat.applyBiomeOverrides();
                 }
             }
         );

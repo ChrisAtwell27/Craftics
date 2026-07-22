@@ -269,6 +269,16 @@ public final class MobHeadTextures {
             case "minecraft:cave_spider" -> 0xFF224455;
             case "minecraft:silverfish" -> 0xFFAAAAAA;
             case "minecraft:slime" -> 0xFF55CC55;
+            // Deeper and Darker: sculk teal/cyan family, with the odd ones out
+            // (Shattered greenish, Angler dark, Sludge glowing) tinted apart.
+            case "deeperdarker:stalker" -> 0xFF0B3A44;
+            case "deeperdarker:sculk_centipede" -> 0xFF1E7A82;
+            case "deeperdarker:sculk_leech" -> 0xFF2AA0A8;
+            case "deeperdarker:sculk_snapper" -> 0xFF166068;
+            case "deeperdarker:shattered" -> 0xFF6FA88A;
+            case "deeperdarker:shriek_worm" -> 0xFF0E4C55;
+            case "deeperdarker:angler_fish" -> 0xFF0A2630;
+            case "deeperdarker:sludge" -> 0xFF3FBF7F;
             default -> 0xFF888888;
         };
     }

@@ -128,6 +128,32 @@ public final class BiomeCompatHelper {
             new MobPoolEntry(entityTypeId, weight, baseHp, baseAttack, baseDefense, range, false));
     }
 
+    /**
+     * Completely replace a biome's hostile pool with {@code newPool}. Entries
+     * whose entity id isn't registered are dropped, so a full-replacement compat
+     * (e.g. Deeper and Darker taking over the Deep Dark roster) only lands the
+     * mobs the mod actually provides. If NOTHING in {@code newPool} is registered
+     * the original pool is left untouched (never blank out a biome). Any per-mob
+     * swaps a lower-priority compat already made are superseded, since this
+     * rebuilds the array wholesale.
+     *
+     * @return true if the pool was replaced
+     */
+    public static boolean replaceAllHostile(String biomeId, MobPoolEntry[] newPool) {
+        BiomeTemplate biome = findBiome(biomeId);
+        if (biome == null || newPool == null) return false;
+
+        List<MobPoolEntry> kept = new ArrayList<>(newPool.length);
+        for (MobPoolEntry e : newPool) {
+            if (e != null && entityExists(e.entityTypeId())) kept.add(e);
+        }
+        if (kept.isEmpty()) return false; // mod present but no entities registered - don't wipe the biome
+
+        replaceBiomeHostile(biome, kept.toArray(new MobPoolEntry[0]));
+        CrafticsMod.LOGGER.info("[Compat] {}: hostile pool fully replaced ({} mobs)", biomeId, kept.size());
+        return true;
+    }
+
     /** Rebuild {@code biome} with the given new passive pool and re-register it. */
     private static void replaceBiomePassive(BiomeTemplate biome, MobPoolEntry[] newPool) {
         BiomeTemplate replaced = new BiomeTemplate(

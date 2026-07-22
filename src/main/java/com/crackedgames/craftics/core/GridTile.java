@@ -169,6 +169,12 @@ public class GridTile {
             // the fungus break path, which both clear the Y+1 block on revert.
             case CRIMSON_FUNGUS -> Blocks.CRIMSON_FUNGUS;
             case WARPED_FUNGUS -> Blocks.WARPED_FUNGUS;
+            // Deeper-and-Darker hazard tiles. Fallbacks only - ArenaBuilder
+            // passes the real D&D block (bloom growth / geyser) when it
+            // classifies from the schematic. Vanilla stand-ins so the tile
+            // still renders if the mod's block is unavailable.
+            case BLOOM -> Blocks.PINK_PETALS;
+            case GEYSER -> Blocks.MAGMA_BLOCK;
             // Stair / elevated default blocks - only used if the GridTile is
             // constructed without an explicit block. ArenaBuilder always
             // passes the real schematic block (e.g. the actual stair block,

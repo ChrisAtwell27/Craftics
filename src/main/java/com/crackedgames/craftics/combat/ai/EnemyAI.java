@@ -37,4 +37,18 @@ public interface EnemyAI {
     default boolean isHostileThreat(CombatEntity self, GridArena arena, GridPos playerPos) {
         return true;
     }
+
+    /**
+     * Whether this enemy should be spawned already invisible (hidden from every
+     * client until the AI reveals it). Defaults to {@code false}.
+     * <p>
+     * Overridden by ambush mobs like the Deeper-and-Darker Shriek Worm, which
+     * lurk unseen until a player wanders into range. CombatManager calls this
+     * right after building the entity and, if true, sets the mob invisible so
+     * there's no one-turn window where it's visible before its first
+     * {@code decideAction} runs. The AI is still responsible for the reveal.
+     */
+    default boolean spawnsInvisible(CombatEntity self, GridArena arena) {
+        return false;
+    }
 }

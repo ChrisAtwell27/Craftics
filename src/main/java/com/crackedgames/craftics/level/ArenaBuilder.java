@@ -306,6 +306,17 @@ public class ArenaBuilder {
                     continue;
                 }
 
+                // Deeper-and-Darker hazard blocks (Blooming Caverns): walkable
+                // cobweb-like hazards, caught before the obstacle check so their
+                // collision shape doesn't read as a wall.
+                com.crackedgames.craftics.core.TileType ddHazardScan =
+                    com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+                        .hazardTileFor(aboveState);
+                if (ddHazardScan != null) {
+                    tiles[x][z] = new GridTile(ddHazardScan, aboveState.getBlock());
+                    continue;
+                }
+
                 // Fences, walls, panes, iron bars, fence gates, and cactus all
                 // have non-full collision shapes so isSolidBlock returns false,
                 // yet they hard-block movement. isArenaObstacle catches them all
@@ -590,6 +601,19 @@ public class ArenaBuilder {
                     } else if (slabType == net.minecraft.block.enums.SlabType.TOP) {
                         finalTiles[x][z] = new GridTile(
                             com.crackedgames.craftics.core.TileType.ELEVATED, aboveState.getBlock());
+                        continue;
+                    }
+                }
+
+                // Deeper-and-Darker hazard blocks (Blooming Caverns): walkable
+                // cobweb-like hazards, caught before the obstacle check so their
+                // collision shape doesn't read as a wall.
+                if (tile.isWalkable()) {
+                    com.crackedgames.craftics.core.TileType ddHazard =
+                        com.crackedgames.craftics.compat.deeperanddarker.DeeperAndDarkerCompat
+                            .hazardTileFor(aboveState);
+                    if (ddHazard != null) {
+                        finalTiles[x][z] = new GridTile(ddHazard, aboveState.getBlock());
                         continue;
                     }
                 }

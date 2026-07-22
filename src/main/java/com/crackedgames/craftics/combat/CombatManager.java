@@ -1971,6 +1971,7 @@ public class CombatManager {
                     }
                 }
             },
+            (p, block) -> placeObstacleTile(p, block),
             (typeId, tile, hp, block) -> placeBlockObject(typeId, tile, hp,
                 -(minibossBlockIdCounter++), block, (ServerWorld) player.getEntityWorld()),
             this::triggerWindGust,
@@ -1991,6 +1992,27 @@ public class CombatManager {
      *  mechanics that need to scan every participant, not just the acting player. */
     private java.util.List<ServerPlayerEntity> minibossParticipants() {
         return partyPlayers.isEmpty() ? java.util.List.of(player) : new java.util.ArrayList<>(partyPlayers);
+    }
+
+    /**
+     * Place a permanent, pickaxe-breakable OBSTACLE tile backed by {@code block}
+     * (used by the sculk-sensor hazard: sensors are normal mineable obstacles, not
+     * HP-bearing entities). Sets the logical tile to OBSTACLE with the given block
+     * and paints it at the obstacle-standing Y (gridToBlockPos = origin Y+1), the
+     * same slot the pickaxe-break path clears. No-ops off an unbreakable/occupied
+     * tile so a sensor never lands on the player or a wall.
+     */
+    private void placeObstacleTile(GridPos pos, net.minecraft.block.Block block) {
+        if (pos == null || block == null) return;
+        GridTile tile = arena.getTile(pos);
+        if (tile == null || arena.isOccupied(pos)) return;
+        tile.setType(TileType.OBSTACLE);
+        tile.setBlockType(block);
+        if (player != null) {
+            ServerWorld sw = (ServerWorld) player.getEntityWorld();
+            BlockPos aboveBp = arena.gridToBlockPos(pos); // obstacle sits at floor Y+1
+            sw.setBlockState(aboveBp, block.getDefaultState(), net.minecraft.block.Block.NOTIFY_ALL);
+        }
     }
 
     /** True if the player's boots have Swift Sneak (bypasses sculk-sensor triggers). */
@@ -2182,6 +2204,13 @@ public class CombatManager {
         CombatEntity ce = new CombatEntity(mob.getId(), typeId, tile, hp, atk, def, range);
         ce.setFootprint(fp[0], fp[1]);
         ce.setMobEntity(mob);
+        // Ambush mobs (Shriek Worm) spawn already invisible so there's no one-turn
+        // window where they're visible before their first decideAction hides them.
+        // The AI owns the reveal; this just sets the initial hidden state.
+        EnemyAI spawnAi = resolveAi(ce);
+        if (spawnAi != null && spawnAi.spawnsInvisible(ce, arena)) {
+            mob.setInvisible(true);
+        }
         // Place BEFORE registering: a refused placement (footprint clash raced in) must
         // not leave a mob in `enemies` that occupies zero tiles - it would be
         // untargetable (all targeting resolves via arena.getOccupant) while still
@@ -2818,7 +2847,7 @@ public class CombatManager {
         // (Creeper Overhaul, Variants & Ventures). Routed through addEffectHooked
         // so addon immunities (Antidote Vessel, Snorkel, Strider Shoes, etc.)
         // still intercept the application. No-ops for untagged attackers.
-        MobThemeTags.applyOnHitEffect(this, attacker);
+        MobThemeTags.applyOnHitEffect(this, attacker, actual);
 
         return actual;
     }
@@ -4969,6 +4998,8 @@ public class CombatManager {
         // even if several tiles of it were crossed.
         boolean crossedCrimson = false;
         boolean crossedWarped = false;
+        boolean crossedBloom = false;
+        GridPos geyserTile = null; // last geyser stepped on this move (launch resolves after the scan)
         for (GridPos step : path) {
             GridTile stepTile = arena.getTile(step);
             if (stepTile == null) continue;
@@ -4981,11 +5012,26 @@ public class CombatManager {
                     applyPlayerEffectLive(CombatEffects.EffectType.WARPED, 2, 0); // Warped, 2 turns
                     crossedWarped = true;
                 }
+                case BLOOM -> {
+                    // Deeper-and-Darker glowing bloom: the tile's 2 step damage is
+                    // applied by the generic damage-on-step path; here we add the burn.
+                    if (!combatEffects.hasFireResistance()) {
+                        applyPlayerEffectLive(CombatEffects.EffectType.BURNING, 2, 0);
+                    }
+                    crossedBloom = true;
+                }
+                case GEYSER -> geyserTile = step; // resolved below (needs the launch)
                 default -> { }
             }
         }
         if (crossedCrimson) sendMessage("§cThe crimson fungus tears at you - you're bleeding!");
         if (crossedWarped) sendMessage("§5The warped fungus twists your senses - Warped!");
+        if (crossedBloom && !combatEffects.hasFireResistance()) {
+            sendMessage("§dThe bloom scorches you - you're burning!");
+        }
+        if (geyserTile != null) {
+            triggerGeyser(geyserTile);
+        }
 
         // Check if leaving water to land
         GridTile endTile = arena.getTile(path.get(path.size() - 1));
@@ -14457,6 +14503,39 @@ public class CombatManager {
         addEffectHooked(CombatEffects.EffectType.MINING_FATIGUE, 1, 9);
         sendMessage("§7  The blast staggers you! §8(stunned 1 turn)");
         return true;
+    }
+
+    /**
+     * Deeper-and-Darker geyser trap (Blooming Caverns): stepping onto a
+     * {@link TileType#GEYSER} tile erupts - Burning II plus a launch of up to 3
+     * tiles in a random cardinal direction. The launch reuses
+     * {@link #resolveForcedMovement} so all the void-fall / teleport / particle
+     * handling is shared. Called from the move-finish path scan in handleMove.
+     */
+    private void triggerGeyser(GridPos tile) {
+        if (player == null || tile == null) return;
+        ServerWorld world = (ServerWorld) player.getEntityWorld();
+        BlockPos bp = arena.gridToBlockPos(tile);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.LAVA,
+            bp.getX() + 0.5, bp.getY() + 0.3, bp.getZ() + 0.5, 20, 0.3, 0.6, 0.3, 0.05);
+        world.spawnParticles(net.minecraft.particle.ParticleTypes.SCULK_SOUL,
+            bp.getX() + 0.5, bp.getY() + 0.6, bp.getZ() + 0.5, 12, 0.2, 0.8, 0.2, 0.04);
+        world.playSound(null, bp,
+            net.minecraft.sound.SoundEvents.BLOCK_LAVA_POP,
+            net.minecraft.sound.SoundCategory.HOSTILE, 0.9f, 0.7f);
+
+        if (!combatEffects.hasFireResistance()) {
+            addEffectHooked(CombatEffects.EffectType.BURNING, 2, 1); // Burning II
+            sendMessage("§cA sculk geyser erupts beneath you! §6(Burning II)");
+        } else {
+            sendMessage("§cA sculk geyser erupts beneath you!");
+        }
+
+        // Random cardinal launch, up to 3 tiles. resolveForcedMovement stops at
+        // walls/edges and applies void-fall damage if it flings you off a ledge.
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        int[] dir = dirs[(int) (Math.random() * dirs.length)];
+        resolveForcedMovement(new EnemyAction.ForcedMovement(-1, dir[0], dir[1], 3));
     }
 
     /** Tick sand-mine lifetimes at end of player turn; arm fresh mines and expire old ones. */
@@ -28304,6 +28383,10 @@ public class CombatManager {
             java.util.Set<GridPos> dangerTiles = new java.util.HashSet<>();
             for (CombatEntity enemy : enemies) {
                 if (!enemy.isAlive() || enemy.isAlly()) continue;
+                // Hidden ambushers (invisible Shriek Worm, stalking Stalker) must
+                // not paint danger tiles - that would leak the position of an
+                // enemy the player can't even see.
+                if (enemy.getMobEntity() != null && enemy.getMobEntity().isInvisible()) continue;
 
                 // Let the AI override the generic speed+range calc with an
                 // action-aware threat set. The mimic uses this so its tantrum
