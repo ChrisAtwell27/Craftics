@@ -91,6 +91,46 @@ Multiplayer
 Crash Fixes
 
 - Fixed a startup crash on 1.21.3, 1.21.4 and 1.21.5. The inventory stat-panel click handler targeted a method that only exists on 1.21.1, so the mod failed to load at launch on the newer versions. It now targets a method present on every version
+- Fixed a crash for players wearing the Copper Helmet (Copper Age Backport). A duplicate armor-material registration left holes in the client's registry that crashed the wearer mid-render; those holes are now splinted on join so the game stays stable (and the offending mod is named in the log)
+- Fixed a multiplayer meltdown when someone timed out mid-combat: the cleanup ran off-thread and desynced positions, fall-killed the remaining party, and left duplicate player entities behind. All disconnect cleanup now runs on the server thread
+
+Raids & Bosses
+
+- Raids now give you a turn to get into position before the pillagers open fire, instead of being shot the instant you arrive
+- Pillagers only fire in straight lines now (down a row or column, with a clear line of sight) - break the line and you break their shot
+- The raid finale ravager no longer spawns half off the arena; large mobs validate their full footprint and land on solid ground
+- The Frostbound Huntsman actually moves now - it kites, repositioning to hold its range and shoot on the move instead of standing still
+- Bosses no longer spawn on top of void tiles (the 2x2 boss footprint is fully checked against pits)
+- Infinite Mode bosses no longer nuke you from across the arena with no warning: their attacks are range-limited and always telegraphed, and a boss's held weapon now matches how it actually attacks
+
+World Generation
+
+- Fixed arena floors being hollow underneath, so a raised wall on the edge no longer lets you see into the void below the ground
+- Fixed border fences and walls floating above snow layers and slabs; they now rest flush on the surface
+- Mountain-biome void tiles now scatter in clumps across the board instead of always sitting dead center
+
+Mid-Biome Events
+
+- Deserts now brew sandstorms from level 4 on: every few turns the storm breaks and blinds the whole party for a couple of turns - a warning turn lets you close the distance first
+
+Combat
+
+- The Blaze Rod's burn now lasts its full duration instead of fizzling before your next turn
+- Knockback can now shove enemies into pits again
+- Rotten flesh now correctly applies Weakness to party members (not just the host)
+- The Crossbow no longer reads "0 range" (and stays usable) when wearing a Skeleton Skull
+- Thrown tridents are all recovered at the end of the level - throwing several no longer loses all but one
+- Timberfall now also triggers when you mine an obstacle with a pickaxe while holding a Timberfall axe in your offhand
+- Shield tooltip/help now correctly says it grants +1 AC (not DEF)
+- Extended (long) potions now show their real longer duration on hover instead of a flat 3 turns
+
+Bug Fixes
+
+- Fixed a major progression bug where completing a mid-run event could send you to the wrong biome and then bounce you back and forth between it and the correct one
+- Fixed the Infinite Mode class-select screen rendering blurry
+- Fixed the level-up point menu vanishing instantly after beating an Infinite boss, so you can actually spend the points now
+- Artifact-granted regen is now labeled by the artifact (e.g. Onion Ring) in chat instead of "Trim regen"
+- Restyled the hover panel over players and enemies to match the rest of the mod's UI
 
 0.3.1
 Crash Fixes
